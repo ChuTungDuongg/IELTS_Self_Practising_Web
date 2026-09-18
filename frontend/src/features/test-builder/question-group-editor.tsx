@@ -2,18 +2,20 @@
 
 import { useState } from "react";
 import { questionRegistry } from "@/features/questions/registry";
-import type { ExamGroup, QuestionGroupModel } from "@/features/questions/types";
+import type { ExamGroup, PassageBlock, QuestionGroupModel } from "@/features/questions/types";
 
 export function QuestionGroupEditor({
   initial,
   onSave,
   onCancel,
   nextQuestionNumber,
+  passageBlocks,
 }: {
   initial: QuestionGroupModel;
   onSave: (group: QuestionGroupModel) => Promise<void>;
   onCancel: () => void;
   nextQuestionNumber: number;
+  passageBlocks: PassageBlock[];
 }) {
   const [group, setGroup] = useState(initial);
   const [preview, setPreview] = useState(false);
@@ -23,7 +25,20 @@ export function QuestionGroupEditor({
   const Renderer = definition.ExamRenderer;
 
   function addQuestion() {
-    const next = definition.createDefault(nextQuestionNumber).questions[0];
+    const nextNumber = Math.max(
+      nextQuestionNumber,
+      Math.max(0, ...group.questions.map((question) => question.number)) + 1,
+    );
+    const next = definition.createDefault(nextNumber).questions[0];
+    if (group.question_type === "matching_headings") {
+      next.config = {
+        target_block_id: passageBlocks.find((block) => block.type === "paragraph")?.id ?? "",
+      };
+      next.answer_key = {
+        kind: "SINGLE_OPTION",
+        value: String((group.config.options as Array<{ id: string }>)[0]?.id ?? ""),
+      };
+    }
     setGroup({
       ...group,
       questions: [...group.questions, { ...next, order_index: group.questions.length }],
@@ -51,11 +66,11 @@ export function QuestionGroupEditor({
       {preview ? (
         <div className="rounded-lg bg-[var(--surface-soft)] p-5">
           <p className="mb-4 text-sm font-medium">{group.instruction}</p>
-          <Renderer group={group as ExamGroup} values={{}} disabled />
+          <Renderer group={group as ExamGroup} values={{}} passageBlocks={passageBlocks} disabled />
         </div>
       ) : (
         <>
-          <Editor group={group} onChange={setGroup} />
+          <Editor group={group} onChange={setGroup} passageBlocks={passageBlocks} />
           <button type="button" onClick={addQuestion} className="mt-4 text-sm font-semibold text-[var(--accent)]">+ Add question</button>
         </>
       )}

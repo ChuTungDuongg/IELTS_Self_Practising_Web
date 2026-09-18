@@ -1,4 +1,11 @@
-export type Option = { id: string; label: string };
+export type Option = { id: string; label: string; text: string };
+
+export type PassageBlock = {
+  id: string;
+  type: "paragraph" | "heading";
+  label?: string | null;
+  text: string;
+};
 
 export type QuestionModel = {
   id?: string;

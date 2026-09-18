@@ -32,7 +32,7 @@ const groupSchema = z.object({
 });
 const passageSchema = z.object({
   id: z.string().uuid(), title: z.string(), order_index: z.number(),
-  blocks: z.array(z.object({ id: z.string().uuid(), type: z.enum(["paragraph", "heading"]), text: z.string() })),
+  blocks: z.array(z.object({ id: z.string().uuid(), type: z.enum(["paragraph", "heading"]), label: z.string().nullable().optional(), text: z.string() })),
   question_groups: z.array(groupSchema),
 });
 const highlightSchema = z.object({
@@ -74,7 +74,7 @@ export async function getReadingReview(attemptId: string) {
     };
     passages: Array<{
       id: string; title: string; order_index: number;
-      blocks: Array<{ id: string; type: "paragraph" | "heading"; text: string }>;
+      blocks: Array<{ id: string; type: "paragraph" | "heading"; label?: string | null; text: string }>;
       question_groups: Array<{
         id: string; question_type: string; instruction: string; config: Record<string, unknown>; order_index: number;
         questions: Array<{ id: string; number: number; prompt: string; config: Record<string, unknown>; answer_key: Record<string, unknown>; explanation: string | null; order_index: number }>;

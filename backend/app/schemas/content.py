@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.models.enums import ModuleType, VersionStatus
 from app.schemas.attempts import AttemptResponse, AttemptReview
@@ -11,6 +11,7 @@ from app.schemas.attempts import AttemptResponse, AttemptReview
 class TextBlock(BaseModel):
     id: UUID
     type: Literal["paragraph", "heading"] = "paragraph"
+    label: str | None = Field(default=None, min_length=1, max_length=20)
     text: str = Field(min_length=1, max_length=20_000)
 
 
@@ -24,6 +25,20 @@ class PassageWrite(BaseModel):
     title: str = Field(min_length=1, max_length=240)
     order_index: int = Field(ge=0)
     blocks: list[TextBlock] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def validate_block_identity(self) -> "PassageWrite":
+        ids = [block.id for block in self.blocks]
+        if len(ids) != len(set(ids)):
+            raise ValueError("Passage block IDs must be unique")
+        labels = [
+            block.label.casefold()
+            for block in self.blocks
+            if block.type == "paragraph" and block.label
+        ]
+        if len(labels) != len(set(labels)):
+            raise ValueError("Paragraph labels must be unique")
+        return self
 
 
 class QuestionWrite(BaseModel):
@@ -42,6 +57,26 @@ class QuestionGroupWrite(BaseModel):
     config: dict[str, Any] = Field(default_factory=dict)
     order_index: int = Field(ge=0)
     questions: list[QuestionWrite] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def validate_question_identity_and_order(self) -> "QuestionGroupWrite":
+        question_ids = [question.id for question in self.questions if question.id is not None]
+        if len(question_ids) != len(set(question_ids)):
+            raise ValueError("Question IDs must be unique")
+        order_indexes = [question.order_index for question in self.questions]
+        if len(order_indexes) != len(set(order_indexes)):
+            raise ValueError("Question order indexes must be unique")
+        return self
+
+
+class QuestionGroupOrderWrite(BaseModel):
+    group_ids: list[UUID] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def validate_unique_ids(self) -> "QuestionGroupOrderWrite":
+        if len(self.group_ids) != len(set(self.group_ids)):
+            raise ValueError("Question group IDs must be unique")
+        return self
 
 
 class BuilderQuestion(BaseModel):

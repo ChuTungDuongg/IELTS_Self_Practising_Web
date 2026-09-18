@@ -5,10 +5,16 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.exceptions import AppError
 from app.domains.attempts import AttemptStateMachine
 from app.domains.questions import question_registry
+from app.domains.questions.normalization import (
+    normalize_passage_blocks,
+    normalize_question_group_payload,
+    normalize_response_value,
+)
 from app.domains.timers import TimerService
 from app.models import (
     Attempt,
@@ -127,21 +133,56 @@ class AttemptService:
                 raise AppError(
                     "INVALID_QUESTION", "The question does not belong to this attempt.", 422
                 )
-            group_type = await self.session.scalar(
-                select(QuestionGroup.question_type).where(
-                    QuestionGroup.id == question.question_group_id
-                )
+            group = await self.session.scalar(
+                select(QuestionGroup)
+                .where(QuestionGroup.id == question.question_group_id)
+                .options(selectinload(QuestionGroup.passage))
+            )
+            assert group is not None
+            passage_blocks = (
+                normalize_passage_blocks(group.passage.content_json, group.passage.id)
+                if group.passage
+                else []
+            )
+            normalized_group_config, normalized_questions = normalize_question_group_payload(
+                question_type=group.question_type,
+                group_config=group.config,
+                questions=[
+                    {
+                        "id": question.id,
+                        "number": question.number,
+                        "prompt": question.prompt,
+                        "config": question.config,
+                        "answer_key": question.answer_key,
+                        "explanation": question.explanation,
+                        "order_index": question.order_index,
+                    }
+                ],
+                group_id=group.id,
+                passage_blocks=passage_blocks,
+            )
+            normalized_question = normalized_questions[0]
+            normalized_value = normalize_response_value(
+                question_type=group.question_type,
+                value=value,
+                raw_group_config=group.config,
+                raw_question_config=question.config,
+                normalized_group_config=normalized_group_config,
+                normalized_question_config=normalized_question["config"],
             )
             validated_value = (
-                question_registry.validate_response(group_type, value)
-                if group_type and question_registry.supports(group_type)
-                else value
+                question_registry.validate_response(group.question_type, normalized_value)
+                if question_registry.supports(group.question_type)
+                else normalized_value
             )
             is_correct = (
                 question_registry.evaluate(
-                    group_type, question.answer_key, validated_value, question.config
+                    group.question_type,
+                    normalized_question["answer_key"],
+                    validated_value,
+                    normalized_question["config"],
                 )
-                if group_type and question_registry.supports(group_type)
+                if question_registry.supports(group.question_type)
                 else None
             )
             statement = insert(AttemptAnswer).values(
@@ -210,15 +251,7 @@ class AttemptService:
                 "ATTEMPT_NOT_FINALIZED", "Submit the attempt before reviewing answer keys.", 409
             )
         answer_rows = [
-            ReviewAnswer(
-                question_id=answer.question_id,
-                question_number=answer.question.number,
-                prompt=answer.question.prompt,
-                value=answer.value,
-                answer_key=answer.question.answer_key,
-                is_correct=answer.is_correct,
-                explanation=answer.question.explanation,
-            )
+            self._present_review_answer(answer)
             for answer in sorted(attempt.answers, key=lambda item: item.question.number)
         ]
         writing_rows = [
@@ -254,6 +287,51 @@ class AttemptService:
             ],
         )
 
+    @staticmethod
+    def _present_review_answer(answer: AttemptAnswer) -> ReviewAnswer:
+        question = answer.question
+        group = question.question_group
+        passage_blocks = (
+            normalize_passage_blocks(group.passage.content_json, group.passage.id)
+            if group.passage
+            else []
+        )
+        normalized_group_config, normalized_questions = normalize_question_group_payload(
+            question_type=group.question_type,
+            group_config=group.config,
+            questions=[
+                {
+                    "id": question.id,
+                    "number": question.number,
+                    "prompt": question.prompt,
+                    "config": question.config,
+                    "answer_key": question.answer_key,
+                    "explanation": question.explanation,
+                    "order_index": question.order_index,
+                }
+            ],
+            group_id=group.id,
+            passage_blocks=passage_blocks,
+        )
+        normalized_question = normalized_questions[0]
+        normalized_value = normalize_response_value(
+            question_type=group.question_type,
+            value=answer.value,
+            raw_group_config=group.config,
+            raw_question_config=question.config,
+            normalized_group_config=normalized_group_config,
+            normalized_question_config=normalized_question["config"],
+        )
+        return ReviewAnswer(
+            question_id=answer.question_id,
+            question_number=normalized_question["number"],
+            prompt=normalized_question["prompt"],
+            value=normalized_value,
+            answer_key=normalized_question["answer_key"],
+            is_correct=answer.is_correct,
+            explanation=normalized_question["explanation"],
+        )
+
     async def history(self) -> AttemptList:
         attempts = await self.repository.list_history()
         items = [
@@ -286,36 +364,7 @@ class AttemptService:
         passages: list[ExamPassage] = []
         if reading is not None:
             for passage in reading.passages:
-                passages.append(
-                    ExamPassage(
-                        id=passage.id,
-                        title=passage.title,
-                        order_index=passage.order_index,
-                        blocks=passage.content_json,
-                        question_groups=[
-                            ExamQuestionGroup(
-                                id=group.id,
-                                question_type=group.question_type,
-                                instruction=group.instruction,
-                                config=group.config,
-                                order_index=group.order_index,
-                                questions=[
-                                    ExamQuestion(
-                                        id=question.id,
-                                        number=question.number,
-                                        prompt=question.prompt,
-                                        config=question.config,
-                                        order_index=question.order_index,
-                                        value=answer_values.get(question.id),
-                                        flagged=flags.get(question.id, False),
-                                    )
-                                    for question in group.questions
-                                ],
-                            )
-                            for group in passage.question_groups
-                        ],
-                    )
-                )
+                passages.append(self._present_exam_passage(passage, answer_values, flags))
         return AttemptExam(
             attempt=attempt_response,
             test_title=version.test.title,
@@ -324,6 +373,74 @@ class AttemptService:
                 HighlightResponse.model_validate(item, from_attributes=True)
                 for item in attempt.highlights
             ],
+        )
+
+    @staticmethod
+    def _present_exam_passage(
+        passage: ReadingPassage,
+        answer_values: dict[uuid.UUID, Any],
+        flags: dict[uuid.UUID, bool],
+    ) -> ExamPassage:
+        blocks = normalize_passage_blocks(passage.content_json, passage.id)
+        exam_groups: list[ExamQuestionGroup] = []
+        for group in sorted(passage.question_groups, key=lambda item: item.order_index):
+            source_questions = sorted(group.questions, key=lambda item: item.order_index)
+            question_rows = [
+                {
+                    "id": question.id,
+                    "number": question.number,
+                    "prompt": question.prompt,
+                    "config": question.config,
+                    "answer_key": question.answer_key,
+                    "explanation": question.explanation,
+                    "order_index": question.order_index,
+                }
+                for question in source_questions
+            ]
+            normalized_config, normalized_questions = normalize_question_group_payload(
+                question_type=group.question_type,
+                group_config=group.config,
+                questions=question_rows,
+                group_id=group.id,
+                passage_blocks=blocks,
+            )
+            exam_questions: list[ExamQuestion] = []
+            for source, question in zip(source_questions, normalized_questions, strict=True):
+                stored_value = normalize_response_value(
+                    question_type=group.question_type,
+                    value=answer_values.get(source.id),
+                    raw_group_config=group.config,
+                    raw_question_config=source.config,
+                    normalized_group_config=normalized_config,
+                    normalized_question_config=question["config"],
+                )
+                exam_questions.append(
+                    ExamQuestion(
+                        id=source.id,
+                        number=question["number"],
+                        prompt=question["prompt"],
+                        config=question["config"],
+                        order_index=question["order_index"],
+                        value=stored_value,
+                        flagged=flags.get(source.id, False),
+                    )
+                )
+            exam_groups.append(
+                ExamQuestionGroup(
+                    id=group.id,
+                    question_type=group.question_type,
+                    instruction=group.instruction,
+                    config=normalized_config,
+                    order_index=group.order_index,
+                    questions=exam_questions,
+                )
+            )
+        return ExamPassage(
+            id=passage.id,
+            title=passage.title,
+            order_index=passage.order_index,
+            blocks=blocks,
+            question_groups=exam_groups,
         )
 
     async def reading_review(self, attempt_id: uuid.UUID) -> ReadingReview:
@@ -438,7 +555,10 @@ class AttemptService:
 
     @staticmethod
     def _validate_highlight(passage: ReadingPassage, body: HighlightCreate) -> None:
-        blocks = {uuid.UUID(str(item["id"])): item["text"] for item in passage.content_json}
+        blocks = {
+            uuid.UUID(str(item["id"])): item["text"]
+            for item in normalize_passage_blocks(passage.content_json, passage.id)
+        }
         start_text = blocks.get(body.start_block_id)
         end_text = blocks.get(body.end_block_id)
         if start_text is None or end_text is None:

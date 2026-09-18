@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import re
+import uuid
 from collections.abc import Callable
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, RootModel
+from pydantic import BaseModel, ConfigDict, Field, RootModel, model_validator
 
 
 class EmptyConfig(BaseModel):
@@ -13,11 +14,31 @@ class EmptyConfig(BaseModel):
 
 class Option(BaseModel):
     id: str = Field(min_length=1, max_length=40)
-    label: str = Field(min_length=1, max_length=500)
+    label: str = Field(min_length=1, max_length=20)
+    text: str = Field(min_length=1, max_length=500)
+
+    @model_validator(mode="before")
+    @classmethod
+    def accept_legacy_option(cls, value: Any) -> Any:
+        if isinstance(value, dict) and "text" not in value:
+            try:
+                uuid.UUID(str(value.get("id")))
+            except ValueError:
+                return {
+                    "id": value.get("id"),
+                    "label": value.get("id"),
+                    "text": value.get("label"),
+                }
+        return value
 
 
 class MultipleChoiceConfig(BaseModel):
     options: list[Option] = Field(min_length=2)
+
+    @model_validator(mode="after")
+    def validate_options(self) -> MultipleChoiceConfig:
+        _validate_option_identity(self.options)
+        return self
 
 
 class TextCompletionConfig(BaseModel):
@@ -29,14 +50,37 @@ class MatchingHeadingsGroupConfig(BaseModel):
     options: list[Option] = Field(min_length=2)
     allow_option_reuse: bool = False
 
+    @model_validator(mode="after")
+    def validate_options(self) -> MatchingHeadingsGroupConfig:
+        _validate_option_identity(self.options)
+        return self
+
 
 class MatchingTargetConfig(BaseModel):
-    target_label: str = Field(min_length=1, max_length=80)
+    target_block_id: str = Field(min_length=1, max_length=80)
+
+    @model_validator(mode="before")
+    @classmethod
+    def accept_legacy_target(cls, value: Any) -> Any:
+        if isinstance(value, dict) and "target_block_id" not in value:
+            return {"target_block_id": value.get("target_label")}
+        return value
 
 
-class ChoiceAnswerKey(BaseModel):
-    type: str = "single_choice"
-    accepted: list[str] = Field(min_length=1, max_length=1)
+class SingleOptionAnswerKey(BaseModel):
+    kind: Literal["SINGLE_OPTION"] = "SINGLE_OPTION"
+    value: str = Field(min_length=1, max_length=80)
+
+    @model_validator(mode="before")
+    @classmethod
+    def accept_legacy_key(cls, value: Any) -> Any:
+        if isinstance(value, dict) and "value" not in value:
+            accepted = value.get("accepted")
+            return {
+                "kind": "SINGLE_OPTION",
+                "value": accepted[0] if isinstance(accepted, list) and accepted else "",
+            }
+        return value
 
 
 class TextAnswerKey(BaseModel):
@@ -47,6 +91,15 @@ class TextAnswerKey(BaseModel):
 
 class StringResponse(RootModel[str]):
     pass
+
+
+def _validate_option_identity(options: list[Option]) -> None:
+    ids = [item.id for item in options]
+    if len(ids) != len(set(ids)):
+        raise ValueError("Option IDs must be unique")
+    labels = [item.label.casefold() for item in options]
+    if len(labels) != len(set(labels)):
+        raise ValueError("Option labels must be unique")
 
 
 Evaluator = Callable[[BaseModel, Any, BaseModel], bool]
@@ -73,8 +126,8 @@ class RegisteredQuestionType:
 
 
 def _choice_evaluator(key: BaseModel, value: Any, _: BaseModel) -> bool:
-    parsed = ChoiceAnswerKey.model_validate(key)
-    return isinstance(value, str) and value == parsed.accepted[0]
+    parsed = SingleOptionAnswerKey.model_validate(key)
+    return isinstance(value, str) and value == parsed.value
 
 
 def normalize_text(value: str, *, case_sensitive: bool) -> str:
@@ -151,7 +204,7 @@ question_registry.register(
         group_config_model=EmptyConfig,
         question_config_model=MultipleChoiceConfig,
         response_model=StringResponse,
-        answer_key_model=ChoiceAnswerKey,
+        answer_key_model=SingleOptionAnswerKey,
         evaluator=_choice_evaluator,
     ),
 )
@@ -161,7 +214,7 @@ question_registry.register(
         group_config_model=EmptyConfig,
         question_config_model=EmptyConfig,
         response_model=StringResponse,
-        answer_key_model=ChoiceAnswerKey,
+        answer_key_model=SingleOptionAnswerKey,
         evaluator=_choice_evaluator,
     ),
 )
@@ -181,7 +234,7 @@ question_registry.register(
         group_config_model=MatchingHeadingsGroupConfig,
         question_config_model=MatchingTargetConfig,
         response_model=StringResponse,
-        answer_key_model=ChoiceAnswerKey,
+        answer_key_model=SingleOptionAnswerKey,
         evaluator=_choice_evaluator,
     ),
 )

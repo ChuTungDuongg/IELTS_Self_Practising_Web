@@ -7,6 +7,10 @@ from sqlalchemy.orm import selectinload
 
 from app.core.exceptions import AppError
 from app.domains.questions import question_registry
+from app.domains.questions.normalization import (
+    normalize_passage_blocks,
+    normalize_question_group_payload,
+)
 from app.models import Question, QuestionGroup, ReadingPassage, TestModule, TestVersion
 from app.models.enums import ModuleType, VersionStatus
 from app.repositories.tests import TestRepository
@@ -18,7 +22,9 @@ from app.schemas.content import (
     BuilderVersion,
     ModuleCreate,
     PassageWrite,
+    QuestionGroupOrderWrite,
     QuestionGroupWrite,
+    QuestionWrite,
 )
 
 
@@ -77,11 +83,18 @@ class ReadingService:
             passage.order_index = body.order_index
             passage.content_json = [item.model_dump(mode="json") for item in body.blocks]
             passage.plain_text = "\n\n".join(item.text for item in body.blocks)
+            await self._canonicalize_module(passage.module_id)
         return await self.get_passage(passage_id)
 
     async def delete_passage(self, passage_id: uuid.UUID) -> None:
         async with self.session.begin():
             passage = await self._draft_passage(passage_id)
+            if passage.question_groups:
+                raise AppError(
+                    "PASSAGE_HAS_QUESTION_GROUPS",
+                    "Delete this passage's question groups before deleting the passage.",
+                    409,
+                )
             await self.session.delete(passage)
 
     async def get_passage(self, passage_id: uuid.UUID) -> BuilderPassage:
@@ -95,11 +108,15 @@ class ReadingService:
     async def create_group(
         self, passage_id: uuid.UUID, body: QuestionGroupWrite
     ) -> BuilderQuestionGroup:
-        self._validate_group_body(body)
         async with self.session.begin():
             passage = await self._draft_passage(passage_id)
+            passage_blocks = normalize_passage_blocks(passage.content_json, passage.id)
+            group_id = uuid.uuid4()
+            body = self._normalize_group_body(body, group_id, passage_blocks)
+            self._validate_group_body(body, passage_blocks)
             await self._ensure_numbers_available(passage.module_id, body, None)
             group = QuestionGroup(
+                id=group_id,
                 module_id=passage.module_id,
                 passage_id=passage.id,
                 question_type=body.question_type,
@@ -110,21 +127,32 @@ class ReadingService:
             self._apply_questions(group, body)
             self.session.add(group)
             await self.session.flush()
+            await self._canonicalize_module(passage.module_id)
             group_id = group.id
         return await self.get_group(group_id)
 
     async def update_group(
         self, group_id: uuid.UUID, body: QuestionGroupWrite
     ) -> BuilderQuestionGroup:
-        self._validate_group_body(body)
         async with self.session.begin():
             group = await self._draft_group(group_id)
+            passage_blocks = (
+                normalize_passage_blocks(group.passage.content_json, group.passage.id)
+                if group.passage
+                else []
+            )
+            body = self._normalize_group_body(body, group.id, passage_blocks)
+            self._validate_group_body(body, passage_blocks)
             await self._ensure_numbers_available(group.module_id, body, group.id)
             group.question_type = body.question_type
             group.instruction = body.instruction
             group.config = body.config
             group.order_index = body.order_index
             existing = {item.id: item for item in group.questions}
+            for temporary_index, question in enumerate(existing.values(), start=1):
+                question.number = -temporary_index
+                question.order_index = -temporary_index
+            await self.session.flush()
             retained: set[uuid.UUID] = set()
             for item in body.questions:
                 if item.id is not None and item.id in existing:
@@ -148,24 +176,105 @@ class ReadingService:
                     group.questions.append(question)
             for question_id, question in existing.items():
                 if question_id not in retained:
-                    await self.session.delete(question)
+                    group.questions.remove(question)
             await self.session.flush()
+            await self._canonicalize_module(group.module_id)
         return await self.get_group(group_id)
 
     async def delete_group(self, group_id: uuid.UUID) -> None:
         async with self.session.begin():
             group = await self._draft_group(group_id)
+            module_id = group.module_id
             await self.session.delete(group)
+            await self.session.flush()
+            await self._canonicalize_module(module_id)
+
+    async def reorder_groups(self, module_id: uuid.UUID, body: QuestionGroupOrderWrite) -> None:
+        async with self.session.begin():
+            module = await self.session.scalar(
+                select(TestModule)
+                .where(TestModule.id == module_id)
+                .options(
+                    selectinload(TestModule.question_groups).selectinload(QuestionGroup.questions),
+                    selectinload(TestModule.test_version),
+                )
+                .with_for_update()
+            )
+            if module is None:
+                raise AppError("TEST_MODULE_NOT_FOUND", "The test module does not exist.", 404)
+            if module.test_version.status != VersionStatus.DRAFT:
+                raise AppError(
+                    "TEST_VERSION_IMMUTABLE", "Published versions cannot be changed.", 409
+                )
+            groups = {group.id: group for group in module.question_groups}
+            if set(body.group_ids) != set(groups):
+                raise AppError(
+                    "INVALID_GROUP_ORDER",
+                    "The order must contain every question group exactly once.",
+                    422,
+                )
+            for temporary_index, group_id in enumerate(body.group_ids, start=1):
+                groups[group_id].order_index = -temporary_index
+            await self.session.flush()
+            for order_index, group_id in enumerate(body.group_ids):
+                groups[group_id].order_index = order_index
+            await self._canonicalize_module(module_id)
+
+    async def _canonicalize_module(self, module_id: uuid.UUID) -> None:
+        module = await self.session.scalar(
+            select(TestModule)
+            .where(TestModule.id == module_id)
+            .options(
+                selectinload(TestModule.passages),
+                selectinload(TestModule.question_groups).selectinload(QuestionGroup.questions),
+            )
+        )
+        assert module is not None
+        passage_order = {passage.id: passage.order_index for passage in module.passages}
+        ordered_groups = sorted(
+            module.question_groups,
+            key=lambda group: (
+                passage_order.get(group.passage_id, len(passage_order)),
+                group.order_index,
+            ),
+        )
+        group_questions = [
+            (group, sorted(group.questions, key=lambda item: item.order_index))
+            for group in ordered_groups
+        ]
+        all_questions = [question for _, questions in group_questions for question in questions]
+        for temporary_index, group in enumerate(ordered_groups, start=1):
+            group.order_index = -temporary_index
+        for temporary_number, question in enumerate(all_questions, start=1):
+            question.number = -temporary_number
+            question.order_index = -temporary_number
+        await self.session.flush()
+        for order_index, group in enumerate(ordered_groups):
+            group.order_index = order_index
+        next_number = 1
+        for _, questions in group_questions:
+            for order_index, question in enumerate(questions):
+                question.number = next_number
+                question.order_index = order_index
+                next_number += 1
 
     async def get_group(self, group_id: uuid.UUID) -> BuilderQuestionGroup:
         group = await self.session.scalar(
             select(QuestionGroup)
             .where(QuestionGroup.id == group_id)
-            .options(selectinload(QuestionGroup.questions))
+            .options(
+                selectinload(QuestionGroup.questions),
+                selectinload(QuestionGroup.passage),
+            )
         )
         if group is None:
             raise AppError("QUESTION_GROUP_NOT_FOUND", "The question group does not exist.", 404)
-        return self._present_group(group)
+        blocks = (
+            normalize_passage_blocks(group.passage.content_json, group.passage.id)
+            if group.passage
+            else []
+        )
+        return self._present_group(group, blocks)
 
     async def _draft_version(self, version_id: uuid.UUID) -> TestVersion:
         version = await self.session.scalar(
@@ -196,6 +305,7 @@ class ReadingService:
             .where(QuestionGroup.id == group_id)
             .options(
                 selectinload(QuestionGroup.questions),
+                selectinload(QuestionGroup.passage),
                 selectinload(QuestionGroup.module).selectinload(TestModule.test_version),
             )
             .with_for_update()
@@ -235,7 +345,29 @@ class ReadingService:
             )
 
     @staticmethod
-    def _validate_group_body(body: QuestionGroupWrite) -> None:
+    def _normalize_group_body(
+        body: QuestionGroupWrite,
+        group_id: uuid.UUID,
+        passage_blocks: list[dict[str, object]],
+    ) -> QuestionGroupWrite:
+        config, questions = normalize_question_group_payload(
+            question_type=body.question_type,
+            group_config=body.config,
+            questions=[item.model_dump(mode="json") for item in body.questions],
+            group_id=group_id,
+            passage_blocks=passage_blocks,
+        )
+        return body.model_copy(
+            update={
+                "config": config,
+                "questions": [QuestionWrite.model_validate(item) for item in questions],
+            }
+        )
+
+    @staticmethod
+    def _validate_group_body(
+        body: QuestionGroupWrite, passage_blocks: list[dict[str, object]]
+    ) -> None:
         if not question_registry.supports(body.question_type):
             raise AppError("UNSUPPORTED_QUESTION_TYPE", "This question type is not supported.", 422)
         try:
@@ -252,7 +384,9 @@ class ReadingService:
                 )
                 from app.services.tests import TestService
 
-                TestService._validate_references(transient_group, transient)
+                TestService._validate_references(
+                    transient_group, transient, passage_blocks=passage_blocks
+                )
         except (ValidationError, KeyError, ValueError) as exc:
             raise AppError("VALIDATION_FAILED", f"Invalid question group: {exc}", 422) from exc
 
@@ -293,32 +427,46 @@ class ReadingService:
 
     @classmethod
     def _present_passage(cls, passage: ReadingPassage) -> BuilderPassage:
+        blocks = normalize_passage_blocks(passage.content_json, passage.id)
         return BuilderPassage(
             id=passage.id,
             title=passage.title,
             order_index=passage.order_index,
-            blocks=passage.content_json,
-            question_groups=[cls._present_group(item) for item in passage.question_groups],
+            blocks=blocks,
+            question_groups=[
+                cls._present_group(item, blocks)
+                for item in sorted(passage.question_groups, key=lambda row: row.order_index)
+            ],
         )
 
     @staticmethod
-    def _present_group(group: QuestionGroup) -> BuilderQuestionGroup:
+    def _present_group(
+        group: QuestionGroup, passage_blocks: list[dict[str, object]]
+    ) -> BuilderQuestionGroup:
+        question_rows = [
+            {
+                "id": item.id,
+                "number": item.number,
+                "prompt": item.prompt,
+                "config": item.config,
+                "answer_key": item.answer_key,
+                "explanation": item.explanation,
+                "order_index": item.order_index,
+            }
+            for item in sorted(group.questions, key=lambda row: row.order_index)
+        ]
+        config, questions = normalize_question_group_payload(
+            question_type=group.question_type,
+            group_config=group.config,
+            questions=question_rows,
+            group_id=group.id,
+            passage_blocks=passage_blocks,
+        )
         return BuilderQuestionGroup(
             id=group.id,
             question_type=group.question_type,
             instruction=group.instruction,
-            config=group.config,
+            config=config,
             order_index=group.order_index,
-            questions=[
-                BuilderQuestion(
-                    id=item.id,
-                    number=item.number,
-                    prompt=item.prompt,
-                    config=item.config,
-                    answer_key=item.answer_key,
-                    explanation=item.explanation,
-                    order_index=item.order_index,
-                )
-                for item in sorted(group.questions, key=lambda row: row.order_index)
-            ],
+            questions=[BuilderQuestion.model_validate(item) for item in questions],
         )

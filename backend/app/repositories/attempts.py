@@ -4,7 +4,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models import Attempt, AttemptAnswer, AttemptWritingResponse, TestVersion
+from app.models import (
+    Attempt,
+    AttemptAnswer,
+    AttemptWritingResponse,
+    Question,
+    QuestionGroup,
+    TestVersion,
+)
 
 
 class AttemptRepository:
@@ -16,7 +23,10 @@ class AttemptRepository:
             select(Attempt)
             .where(Attempt.id == attempt_id)
             .options(
-                selectinload(Attempt.answers).selectinload(AttemptAnswer.question),
+                selectinload(Attempt.answers)
+                .selectinload(AttemptAnswer.question)
+                .selectinload(Question.question_group)
+                .selectinload(QuestionGroup.passage),
                 selectinload(Attempt.writing_responses).selectinload(
                     AttemptWritingResponse.writing_task
                 ),

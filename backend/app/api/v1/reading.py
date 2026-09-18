@@ -11,6 +11,7 @@ from app.schemas.content import (
     BuilderVersion,
     ModuleCreate,
     PassageWrite,
+    QuestionGroupOrderWrite,
     QuestionGroupWrite,
 )
 from app.services.reading import ReadingService
@@ -89,4 +90,16 @@ async def delete_question_group(
     group_id: UUID, session: AsyncSession = Depends(get_session)
 ) -> Response:
     await ReadingService(session).delete_group(group_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.put(
+    "/test-modules/{module_id}/question-groups/order", status_code=status.HTTP_204_NO_CONTENT
+)
+async def reorder_question_groups(
+    module_id: UUID,
+    body: QuestionGroupOrderWrite,
+    session: AsyncSession = Depends(get_session),
+) -> Response:
+    await ReadingService(session).reorder_groups(module_id, body)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

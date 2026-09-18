@@ -104,7 +104,9 @@ class ReadingPassage(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     plain_text: Mapped[str] = mapped_column(Text, nullable=False)
 
     module: Mapped[TestModule] = relationship(back_populates="passages")
-    question_groups: Mapped[list[QuestionGroup]] = relationship(back_populates="passage")
+    question_groups: Mapped[list[QuestionGroup]] = relationship(
+        back_populates="passage", order_by="QuestionGroup.order_index"
+    )
 
 
 class ListeningPart(UUIDPrimaryKeyMixin, TimestampMixin, Base):

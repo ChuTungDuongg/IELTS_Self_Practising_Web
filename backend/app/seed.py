@@ -40,6 +40,7 @@ async def seed() -> None:
                 {
                     "id": str(block_id),
                     "type": "paragraph",
+                    "label": "A",
                     "text": "Harbour City introduced electric ferries to reduce noise and local emissions.",
                 }
             ],
@@ -58,11 +59,19 @@ async def seed() -> None:
                 prompt="Why did Harbour City introduce electric ferries?",
                 config={
                     "options": [
-                        {"id": "A", "label": "To reduce noise and local emissions"},
-                        {"id": "B", "label": "To increase ticket prices"},
+                        {
+                            "id": str(correct_option_id := uuid4()),
+                            "label": "A",
+                            "text": "To reduce noise and local emissions",
+                        },
+                        {
+                            "id": str(uuid4()),
+                            "label": "B",
+                            "text": "To increase ticket prices",
+                        },
                     ]
                 },
-                answer_key={"type": "single_choice", "accepted": ["A"]},
+                answer_key={"kind": "SINGLE_OPTION", "value": str(correct_option_id)},
                 explanation="The passage states both reasons directly.",
                 order_index=0,
             )

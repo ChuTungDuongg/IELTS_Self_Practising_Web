@@ -5,6 +5,7 @@ import { apiRequest } from "./client";
 const blockSchema = z.object({
   id: z.string().uuid(),
   type: z.enum(["paragraph", "heading"]),
+  label: z.string().nullable().optional(),
   text: z.string(),
 });
 
@@ -133,4 +134,11 @@ export function deleteQuestionGroup(groupId: string) {
 
 export function deletePassage(passageId: string) {
   return apiRequest(`/reading/passages/${passageId}`, { method: "DELETE" });
+}
+
+export function reorderQuestionGroups(moduleId: string, groupIds: string[]) {
+  return apiRequest(`/test-modules/${moduleId}/question-groups/order`, {
+    method: "PUT",
+    body: JSON.stringify({ group_ids: groupIds }),
+  });
 }

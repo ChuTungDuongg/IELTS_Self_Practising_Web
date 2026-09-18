@@ -16,8 +16,8 @@ import {
 } from "./renderers";
 import type { QuestionGroupModel, QuestionType } from "./types";
 
-const optionSchema = z.object({ id: z.string().min(1), label: z.string().min(1) });
-const choiceKeySchema = z.object({ type: z.literal("single_choice"), accepted: z.array(z.string()).length(1) });
+const optionSchema = z.object({ id: z.string().uuid(), label: z.string().min(1), text: z.string().min(1) });
+const choiceKeySchema = z.object({ kind: z.literal("SINGLE_OPTION"), value: z.string().min(1) });
 const textKeySchema = z.object({ type: z.literal("text"), accepted: z.array(z.string()).min(1), case_sensitive: z.boolean() });
 
 export type QuestionTypeDefinition = {
@@ -39,28 +39,36 @@ const definitions: QuestionTypeDefinition[] = [
     BuilderEditor: MultipleChoiceEditor, AnswerKeyEditor: MultipleChoiceEditor,
     ExamRenderer: MultipleChoiceRenderer, ReviewRenderer: MultipleChoiceRenderer,
     responseSchema: z.string(), configSchema: z.object({ options: z.array(optionSchema).min(2) }),
-    createDefault: (number) => ({ question_type: "multiple_choice", instruction: "Choose the correct answer.", config: {}, order_index: 0, questions: [{ number, prompt: "Question prompt", config: { options: [{ id: "A", label: "Option A" }, { id: "B", label: "Option B" }] }, answer_key: choiceKeySchema.parse({ type: "single_choice", accepted: ["A"] }), order_index: 0 }] }),
+    createDefault: (number) => {
+      const first = crypto.randomUUID();
+      const second = crypto.randomUUID();
+      return { question_type: "multiple_choice", instruction: "Choose the correct answer.", config: {}, order_index: 0, questions: [{ id: crypto.randomUUID(), number, prompt: "Question prompt", config: { options: [{ id: first, label: "A", text: "Option A" }, { id: second, label: "B", text: "Option B" }] }, answer_key: choiceKeySchema.parse({ kind: "SINGLE_OPTION", value: first }), order_index: 0 }] };
+    },
   },
   {
     id: "true_false_not_given", label: "True / False / Not Given", category: "reading",
     BuilderEditor: TrueFalseNotGivenEditor, AnswerKeyEditor: TrueFalseNotGivenEditor,
     ExamRenderer: TrueFalseNotGivenRenderer, ReviewRenderer: TrueFalseNotGivenRenderer,
     responseSchema: z.enum(["TRUE", "FALSE", "NOT_GIVEN"]), configSchema: z.object({}),
-    createDefault: (number) => ({ question_type: "true_false_not_given", instruction: "Do the statements agree with the information in the passage?", config: {}, order_index: 0, questions: [{ number, prompt: "Statement", config: {}, answer_key: choiceKeySchema.parse({ type: "single_choice", accepted: ["TRUE"] }), order_index: 0 }] }),
+    createDefault: (number) => ({ question_type: "true_false_not_given", instruction: "Do the statements agree with the information in the passage?", config: {}, order_index: 0, questions: [{ id: crypto.randomUUID(), number, prompt: "Statement", config: {}, answer_key: choiceKeySchema.parse({ kind: "SINGLE_OPTION", value: "TRUE" }), order_index: 0 }] }),
   },
   {
     id: "text_completion", label: "Text Completion", category: "shared",
     BuilderEditor: TextCompletionEditor, AnswerKeyEditor: TextCompletionEditor,
     ExamRenderer: TextCompletionRenderer, ReviewRenderer: TextCompletionRenderer,
     responseSchema: z.string(), configSchema: z.object({ max_words: z.number().nullable().optional(), max_numbers: z.number().nullable().optional() }),
-    createDefault: (number) => ({ question_type: "text_completion", instruction: "Complete the sentence using words from the passage.", config: {}, order_index: 0, questions: [{ number, prompt: "Complete this sentence: ____", config: { max_words: 2, max_numbers: 1 }, answer_key: textKeySchema.parse({ type: "text", accepted: ["sample answer"], case_sensitive: false }), order_index: 0 }] }),
+    createDefault: (number) => ({ question_type: "text_completion", instruction: "Complete the sentence using words from the passage.", config: {}, order_index: 0, questions: [{ id: crypto.randomUUID(), number, prompt: "Complete this sentence: ____", config: { max_words: 2, max_numbers: 1 }, answer_key: textKeySchema.parse({ type: "text", accepted: ["sample answer"], case_sensitive: false }), order_index: 0 }] }),
   },
   {
     id: "matching_headings", label: "Matching Headings", category: "reading",
     BuilderEditor: MatchingHeadingsEditor, AnswerKeyEditor: MatchingHeadingsEditor,
     ExamRenderer: MatchingHeadingsRenderer, ReviewRenderer: MatchingHeadingsRenderer,
-    responseSchema: z.string(), configSchema: z.object({ target_label: z.string().min(1) }),
-    createDefault: (number) => ({ question_type: "matching_headings", instruction: "Choose the correct heading for each paragraph.", config: { options: [{ id: "i", label: "First heading" }, { id: "ii", label: "Second heading" }], allow_option_reuse: false }, order_index: 0, questions: [{ number, prompt: "Paragraph A", config: { target_label: "Paragraph A" }, answer_key: choiceKeySchema.parse({ type: "single_choice", accepted: ["i"] }), order_index: 0 }] }),
+    responseSchema: z.string(), configSchema: z.object({ target_block_id: z.string().uuid() }),
+    createDefault: (number) => {
+      const first = crypto.randomUUID();
+      const second = crypto.randomUUID();
+      return { question_type: "matching_headings", instruction: "Choose the correct heading for each paragraph.", config: { options: [{ id: first, label: "i", text: "First heading" }, { id: second, label: "ii", text: "Second heading" }], allow_option_reuse: false }, order_index: 0, questions: [{ id: crypto.randomUUID(), number, prompt: "Choose a heading for the selected paragraph.", config: { target_block_id: "" }, answer_key: choiceKeySchema.parse({ kind: "SINGLE_OPTION", value: first }), order_index: 0 }] };
+    },
   },
 ];
 
