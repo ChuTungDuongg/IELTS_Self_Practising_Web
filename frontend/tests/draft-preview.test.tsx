@@ -44,4 +44,22 @@ describe("DraftPreview", () => {
     expect(screen.getByRole("radio", { name: "TRUE" })).toBeChecked();
     expect(screen.getByText("Answers in preview are not saved.")).toBeInTheDocument();
   });
+
+  it("renders Listening preview with the shared exam theme", () => {
+    const listeningVersion = {
+      ...version,
+      modules: [{
+        ...version.modules[0],
+        module_type: "LISTENING" as const,
+        title: "Listening",
+        passages: [],
+        listening_parts: [{ id: crypto.randomUUID(), title: "Section 1", order_index: 0, question_groups: [] }],
+      }],
+    } satisfies BuilderVersion;
+
+    const view = render(<DraftPreview version={listeningVersion} moduleType="LISTENING" />);
+
+    expect(screen.getByText("No audio is attached. Preview remains available.")).toBeInTheDocument();
+    expect(view.container.querySelector(".exam-runner.listening-exam")).toBeInTheDocument();
+  });
 });

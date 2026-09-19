@@ -4,6 +4,7 @@ import { ListeningAudioPlayer } from "@/features/listening/audio-player";
 import { listeningQuestionTypeOptions, questionRegistry } from "@/features/questions/registry";
 import { ListeningBuilder } from "@/features/test-builder/listening-builder";
 import { ListeningRunner } from "@/features/listening/listening-runner";
+import { ListeningReviewView } from "@/features/listening/listening-review";
 import { BuilderLifecycleProvider } from "@/features/test-builder/builder-lifecycle";
 import type { BuilderVersion } from "@/lib/api/builder";
 
@@ -80,5 +81,30 @@ describe("Listening audio and templates", () => {
 
     expect(screen.getAllByLabelText("Listening audio player")).toHaveLength(1);
     expect(HTMLMediaElement.prototype.load).toHaveBeenCalledTimes(loadsAfterMount);
+  });
+
+  it("renders Listening review answers with semantic result styles", () => {
+    const questionId = crypto.randomUUID();
+    const data = {
+      review: {
+        attempt: { raw_score: 1, max_score: 1 },
+        test_title: "Practice",
+        answers: [{ question_id: questionId, value: "TRUE", is_correct: true }],
+      },
+      audio_asset: null,
+      parts: [{
+        id: crypto.randomUUID(), title: "Section 1", order_index: 0,
+        question_groups: [{
+          id: crypto.randomUUID(), question_type: "true_false_not_given", instruction: "", config: {}, order_index: 0,
+          questions: [{ id: questionId, number: 1, prompt: "Statement", config: {}, answer_key: { kind: "SINGLE_OPTION", value: "TRUE" }, explanation: "Supported by the recording.", order_index: 0 }],
+        }],
+      }],
+    };
+
+    const view = render(<ListeningReviewView data={data as never} />);
+
+    expect(screen.getByText("Listening review")).toBeInTheDocument();
+    expect(screen.getByText("Your answer: TRUE")).toBeInTheDocument();
+    expect(view.container.querySelector(".review-answer-correct")).toBeInTheDocument();
   });
 });

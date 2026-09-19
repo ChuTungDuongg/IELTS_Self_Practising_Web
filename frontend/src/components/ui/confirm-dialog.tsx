@@ -6,6 +6,7 @@ export function ConfirmDialog({
   description,
   confirmLabel,
   pending,
+  errorMessage,
   onCancel,
   onConfirm,
 }: {
@@ -14,6 +15,7 @@ export function ConfirmDialog({
   description: string;
   confirmLabel: string;
   pending: boolean;
+  errorMessage?: string;
   onCancel: () => void;
   onConfirm: () => void;
 }) {
@@ -33,6 +35,7 @@ export function ConfirmDialog({
         <p id="confirm-dialog-description">
           {description}
         </p>
+        {errorMessage ? <p role="alert" className="notice notice-error">{errorMessage}</p> : null}
         <div className="dialog-actions">
           <button
             type="button"

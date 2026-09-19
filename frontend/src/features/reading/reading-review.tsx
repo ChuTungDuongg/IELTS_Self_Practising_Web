@@ -29,7 +29,7 @@ export function ReadingReviewView({ data }: { data: ReviewData }) {
           const answer = answers.get(question.id);
           const optionLists = [...((group.config.options as Array<{ id: string; label: string; text: string }> | undefined) ?? []), ...((question.config.options as Array<{ id: string; label: string; text: string }> | undefined) ?? [])];
           const display = (value: unknown) => optionLists.find((option) => option.id === value) ? `${optionLists.find((option) => option.id === value)!.label} — ${optionLists.find((option) => option.id === value)!.text}` : String(value ?? "—");
-          return <div key={question.id} className={`rounded-md border p-3 text-sm ${answer?.is_correct ? "border-emerald-400 bg-emerald-50 text-emerald-950" : "border-red-300 bg-red-50 text-red-950"}`}><b>Q{question.number}</b> · Your answer: {display(answer?.value)} · Correct: {display(question.answer_key.value ?? (question.answer_key.accepted as string[] | undefined)?.[0])}</div>;
+          return <div key={question.id} className={`rounded-md border p-3 text-sm ${answer?.is_correct ? "review-answer-correct" : "review-answer-wrong"}`}><b>Q{question.number}</b> · Your answer: {display(answer?.value)} · Correct: {display(question.answer_key.value ?? (question.answer_key.accepted as string[] | undefined)?.[0])}</div>;
         })}</div></div>;
       })}</div>
     </section>

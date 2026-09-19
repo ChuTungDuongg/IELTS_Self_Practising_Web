@@ -19,7 +19,7 @@ export function DraftPreview({ version, moduleType }: { version: BuilderVersion;
   if (!builderModule || !section) return <p className="notice notice-error">This draft module has no previewable content yet.</p>;
   const passage = moduleType === "READING" ? section as BuilderPassage : null;
   const groups = section.question_groups;
-  return <div className="exam-runner draft-preview">
+  return <div className={`exam-runner draft-preview ${moduleType === "LISTENING" ? "listening-exam" : ""}`}>
     <header className="exam-header"><div><p>DRAFT PREVIEW · {moduleType}</p><h1>{version.test_title}</h1></div><Link className="btn btn-secondary" href={`${builderEditPath(version.test_id, version.id)}?workspace=${moduleType.toLowerCase()}`}>Back to Builder</Link></header>
     {moduleType === "LISTENING" ? builderModule.audio_asset ? <ListeningAudioPlayer src={assetContentUrl(builderModule.audio_asset)} /> : <p className="notice m-4">No audio is attached. Preview remains available.</p> : null}
     <main className={moduleType === "READING" ? "grid min-h-0 flex-1 lg:grid-cols-2" : "listening-question-pane"}>

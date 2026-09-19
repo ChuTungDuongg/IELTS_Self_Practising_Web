@@ -8,6 +8,7 @@ import type { ExamGroup } from "@/features/questions/types";
 import { QuestionGroupInstruction } from "@/features/questions/question-group-instruction";
 import { SelectableText, type HighlightController } from "@/features/highlighting/selectable-text";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { recordActivity, saveAnswer } from "@/lib/api/attempts";
 import { createHighlight, deleteAllHighlights, deleteHighlight, getExam, saveFlag, submitAttempt, type ExamPassage, type ExamPayload, type HighlightCreate } from "@/lib/api/exam";
 
@@ -20,6 +21,7 @@ export function ReadingRunner({ initial }: { initial: ExamPayload }) {
   const [highlights, setHighlights] = useState(initial.highlights);
   const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
   const [deletingAll, setDeletingAll] = useState(false);
+  const [highlightError, setHighlightError] = useState("");
   const [saveState, setSaveState] = useState<"saved" | "saving" | "error">("saved");
   const [clock, setClock] = useState(() => Date.now());
   const dirty = useRef(new Map<string, unknown>());
@@ -85,13 +87,13 @@ export function ReadingRunner({ initial }: { initial: ExamPayload }) {
   const highlighting: HighlightController = { highlights, onCreate: addHighlight, onDelete: removeHighlight };
 
   return <div className="exam-runner">
-    <header className="exam-header"><div><p>READING</p><h1>{initial.test_title}</h1></div><div className="exam-header-status"><span className={`exam-timer ${initial.attempt.timer_mode === "COUNTDOWN" && seconds < 300 ? "exam-timer-warning" : ""}`}>{initial.attempt.timer_mode === "COUNT_UP" ? "Time used " : ""}{formatDuration(seconds)}</span><span className={`exam-save-state exam-save-${saveState}`}>{saveState === "saving" ? "Saving…" : saveState === "error" ? "Save failed" : "Saved"}</span></div></header>
+    <header className="exam-header"><div><p>READING</p><h1>{initial.test_title}</h1></div><div className="exam-header-tools"><ThemeToggle /><div className="exam-highlight-toolbar" aria-label="Highlight management"><span>{highlights.length} {highlights.length === 1 ? "highlight" : "highlights"}</span>{highlights.length ? <button type="button" onClick={() => { setHighlightError(""); setConfirmDeleteAll(true); }}>Delete all</button> : null}</div><div className="exam-header-status"><span className={`exam-timer ${initial.attempt.timer_mode === "COUNTDOWN" && seconds < 300 ? "exam-timer-warning" : ""}`}>{initial.attempt.timer_mode === "COUNT_UP" ? "Time used " : ""}{formatDuration(seconds)}</span><span className={`exam-save-state exam-save-${saveState}`}>{saveState === "saving" ? "Saving…" : saveState === "error" ? "Save failed" : "Saved"}</span></div></div></header>
     <div className="grid min-h-0 flex-1 lg:grid-cols-2">
       <PassagePane passage={passage} highlighting={highlighting} />
-      <div className="exam-questions"><div className="flex items-center justify-between gap-3"><h2>Questions</h2>{highlights.length ? <button type="button" className="btn btn-danger-ghost" onClick={() => setConfirmDeleteAll(true)}>Delete all highlights</button> : null}</div>{passage.question_groups.map((group) => { const definition = questionRegistry[group.question_type as keyof typeof questionRegistry]; if (!definition) return null; const Renderer = definition.ExamRenderer; return <section key={group.id} className="exam-question-group"><QuestionGroupInstruction group={group as ExamGroup} passageNumber={passage.order_index + 1} /><Renderer group={group as ExamGroup} values={values} passageBlocks={passage.blocks} onAnswer={answer} highlighting={highlighting} /><div className="exam-flags">{group.questions.map((question) => <button key={question.id} onClick={() => toggleFlag(question.id)} className={flags[question.id] ? "flagged" : ""}>{flags[question.id] ? "⚑" : "⚐"} {question.number}</button>)}</div></section>; })}</div>
+      <div className="exam-questions"><h2>Questions</h2>{passage.question_groups.map((group) => { const definition = questionRegistry[group.question_type as keyof typeof questionRegistry]; if (!definition) return null; const Renderer = definition.ExamRenderer; return <section key={group.id} className="exam-question-group"><QuestionGroupInstruction group={group as ExamGroup} passageNumber={passage.order_index + 1} /><Renderer group={group as ExamGroup} values={values} passageBlocks={passage.blocks} onAnswer={answer} highlighting={highlighting} /><div className="exam-flags">{group.questions.map((question) => <button key={question.id} onClick={() => toggleFlag(question.id)} className={flags[question.id] ? "flagged" : ""}>{flags[question.id] ? "⚑" : "⚐"} {question.number}</button>)}</div></section>; })}</div>
     </div>
     <footer className="exam-footer"><div>{initial.passages.map((item, index) => <button key={item.id} onClick={() => setPassageIndex(index)} className={index === passageIndex ? "active" : ""}>Passage {item.order_index + 1}</button>)}</div><button onClick={submit} className="exam-submit">Submit answers</button></footer>
-    <ConfirmDialog open={confirmDeleteAll} title="Delete all highlights?" description="All highlights in this attempt will be removed." confirmLabel="Delete all highlights" pending={deletingAll} onCancel={() => setConfirmDeleteAll(false)} onConfirm={() => { setDeletingAll(true); void deleteAllHighlights(attemptId).then(() => { setHighlights([]); setConfirmDeleteAll(false); }).finally(() => setDeletingAll(false)); }} />
+    <ConfirmDialog open={confirmDeleteAll} title="Delete all highlights?" description="All highlights in this attempt will be removed. This action cannot be undone." confirmLabel="Delete all highlights" pending={deletingAll} errorMessage={highlightError} onCancel={() => { setConfirmDeleteAll(false); setHighlightError(""); }} onConfirm={() => { setDeletingAll(true); setHighlightError(""); void deleteAllHighlights(attemptId).then(() => { setHighlights([]); setConfirmDeleteAll(false); }).catch(() => setHighlightError("Could not delete the highlights. Please try again.")).finally(() => setDeletingAll(false)); }} />
   </div>;
 }
 

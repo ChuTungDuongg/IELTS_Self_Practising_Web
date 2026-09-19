@@ -128,6 +128,17 @@ uv run python -m app.seed
 uv run fastapi dev app/main.py
 ```
 
+`uv` và [`backend/uv.lock`](backend/uv.lock) là workflow phát triển được ưu tiên. Với môi trường triển khai chỉ hỗ trợ `pip`, repository cũng cung cấp bản export runtime đã khóa phiên bản:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r backend/requirements.txt
+```
+
+`backend/requirements.txt` được tạo từ dependency set do `uv` quản lý; không chỉnh version trực tiếp trong file này. Tạo lại từ thư mục `backend/` bằng `uv export --format requirements.txt --no-dev --no-emit-project --locked --output-file requirements.txt`.
+
 Sau khi chạy:
 
 - API: [http://localhost:8000](http://localhost:8000)
