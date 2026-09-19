@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { questionRegistry } from "@/features/questions/registry";
 import { MatchingHeadingsEditor, MultipleChoiceEditor, TextCompletionEditor } from "@/features/questions/editors";
@@ -93,22 +93,72 @@ describe("question registry", () => {
     block.segments = [{ id: crypto.randomUUID(), type: "TEXT", text: "source of income" }];
     group.questions = [];
     const onChange = vi.fn();
-    render(<TextCompletionEditor group={group} onChange={onChange} />);
-    const text = screen.getByLabelText("Paragraph 1 text segment") as HTMLTextAreaElement;
-    text.focus();
-    text.setSelectionRange(6, 6);
-    fireEvent.select(text);
+    render(<TextCompletionEditor group={group} onChange={onChange} baseQuestionNumber={11} />);
+    const text = screen.getByRole("textbox", { name: "Paragraph 1 text segment 1" });
+    const range = document.createRange();
+    range.setStart(text.firstChild!, 6);
+    range.collapse(true);
+    const selection = window.getSelection()!;
+    selection.removeAllRanges();
+    selection.addRange(range);
+    fireEvent.mouseUp(text);
     fireEvent.click(screen.getByRole("button", { name: "+ Insert gap" }));
     const updated = onChange.mock.calls.at(-1)?.[0];
     expect(updated.config.blocks[0].segments.map((segment: { type: string; text?: string }) => segment.type)).toEqual(["TEXT", "GAP", "TEXT"]);
     expect(updated.config.blocks[0].segments[0].text).toBe("source");
     expect(updated.config.blocks[0].segments[2].text).toBe(" of income");
     expect(updated.config.blocks[0].segments[1].question_id).toBe(updated.questions[0].id);
+    expect(updated.questions[0].number).toBe(11);
   });
 
-  it("renders multiple text-completion gaps inline in one paragraph", () => {
+  it("uses the module-global Q11-Q13 range and preserves it through save and reload", async () => {
+    const group = questionRegistry.text_completion.createDefault(1);
+    const first = group.questions[0];
+    const second = { ...questionRegistry.text_completion.createDefault(2).questions[0], order_index: 1 };
+    const third = { ...questionRegistry.text_completion.createDefault(3).questions[0], order_index: 2 };
+    first.answer_key = { kind: "TEXT", accepted: ["first"], case_sensitive: false };
+    second.answer_key = { kind: "TEXT", accepted: ["second"], case_sensitive: false };
+    third.answer_key = { kind: "TEXT", accepted: ["third"], case_sensitive: false };
+    group.questions = [first, second, third];
+    group.config = {
+      mode: "SENTENCE",
+      blocks: [{
+        id: crypto.randomUUID(),
+        segments: [
+          { id: crypto.randomUUID(), type: "TEXT", text: "One " },
+          { id: crypto.randomUUID(), type: "GAP", question_id: first.id },
+          { id: crypto.randomUUID(), type: "TEXT", text: " two " },
+          { id: crypto.randomUUID(), type: "GAP", question_id: second.id },
+          { id: crypto.randomUUID(), type: "TEXT", text: " three " },
+          { id: crypto.randomUUID(), type: "GAP", question_id: third.id },
+        ],
+      }],
+    };
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const view = render(<QuestionGroupEditor initial={group} nextQuestionNumber={14} baseQuestionNumber={11} passageBlocks={[]} onCancel={vi.fn()} onSave={onSave} />);
+
+    expect(screen.getByRole("button", { name: "Gap question 11" })).toHaveTextContent("Q11");
+    expect(screen.getByRole("button", { name: "Gap question 12" })).toHaveTextContent("Q12");
+    expect(screen.getByRole("button", { name: "Gap question 13" })).toHaveTextContent("Q13");
+    expect(screen.queryByRole("button", { name: "Gap question 1" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Save group" }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    const saved = onSave.mock.calls[0][0];
+    expect(saved.questions.map((question: { number: number }) => question.number)).toEqual([11, 12, 13]);
+    expect(saved.questions.map((question: { id?: string }) => question.id)).toEqual([first.id, second.id, third.id]);
+    expect(saved.questions.map((question: { answer_key: Record<string, unknown> }) => question.answer_key.accepted)).toEqual([["first"], ["second"], ["third"]]);
+
+    view.unmount();
+    render(<TextCompletionEditor group={saved} baseQuestionNumber={11} onChange={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "Gap question 11" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Gap question 13" })).toBeInTheDocument();
+  });
+
+  it("renders compact text-completion gaps inline without per-gap limit helpers", () => {
     const group = questionRegistry.text_completion.createDefault(11) as ExamGroup;
     group.id = crypto.randomUUID();
+    group.questions[0].config = { max_words: 3, max_numbers: 1 };
     const second = { ...group.questions[0], id: crypto.randomUUID(), number: 12, order_index: 1 };
     group.questions.push(second);
     const block = (group.config.blocks as Array<{ segments: Array<Record<string, unknown>> }>)[0];
@@ -118,10 +168,42 @@ describe("question registry", () => {
       { id: crypto.randomUUID(), type: "TEXT", text: "." },
     );
     const Renderer = questionRegistry.text_completion.ExamRenderer;
-    render(<Renderer group={group} values={{}} onAnswer={vi.fn()} />);
+    const onAnswer = vi.fn();
+    const view = render(<Renderer group={group} values={{}} onAnswer={onAnswer} />);
     expect(screen.getByLabelText("Question 11")).toBeInTheDocument();
     expect(screen.getByLabelText("Question 12")).toBeInTheDocument();
     expect(screen.getAllByRole("textbox")).toHaveLength(2);
+    expect(view.container.querySelectorAll(".completion-gap-inline")).toHaveLength(2);
+    expect(view.container.querySelectorAll(".text-completion-block")).toHaveLength(1);
+    expect(screen.queryByText(/max 3 words/i)).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Question 12"), { target: { value: "harbour" } });
+    expect(onAnswer).toHaveBeenCalledWith(second.id, "harbour");
+    expect(group.questions[0].config).toEqual({ max_words: 3, max_numbers: 1 });
+  });
+
+  it("keeps multiline completion instructions author-controlled as limits change", async () => {
+    const group = questionRegistry.text_completion.createDefault(11);
+    group.instruction = "Complete the notes below.\nWrite your answers in the gaps.";
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const view = render(<QuestionGroupEditor initial={group} nextQuestionNumber={12} passageBlocks={[]} onCancel={vi.fn()} onSave={onSave} />);
+
+    const instructions = screen.getByRole("textbox", { name: "Candidate instructions" });
+    expect(instructions.tagName).toBe("TEXTAREA");
+    fireEvent.change(screen.getByLabelText("Maximum words"), { target: { value: "4" } });
+    expect(instructions).toHaveValue("Complete the notes below.\nWrite your answers in the gaps.");
+
+    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    expect(view.container.querySelector(".question-group-instruction-text")).toHaveTextContent("Complete the notes below. Write your answers in the gaps.");
+    fireEvent.click(screen.getByRole("button", { name: "Back to edit" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save group" }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    expect(onSave.mock.calls[0][0].instruction).toBe("Complete the notes below.\nWrite your answers in the gaps.");
+  });
+
+  it("preserves the single-line instruction editor for non-completion groups", () => {
+    const group = questionRegistry.true_false_not_given.createDefault(1);
+    render(<QuestionGroupEditor initial={group} nextQuestionNumber={2} passageBlocks={[]} onCancel={vi.fn()} onSave={vi.fn()} />);
+    expect(screen.getByRole("textbox", { name: "Group instruction" }).tagName).toBe("INPUT");
   });
 
   it("keeps punctuation inside one primary or alternative answer", () => {

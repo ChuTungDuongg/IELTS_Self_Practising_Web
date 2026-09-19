@@ -28,7 +28,7 @@ export default async function VersionEditorPage({ params, searchParams }: { para
     <>
       <PageHeading eyebrow="IELTS Studio · Engine Builder" title={version.test_title} description={`Version ${version.version_number} · Structured authoring workspace`} action={<StatusBadge status={version.status} />} />
       <BuilderLifecycleProvider>
-        <VersionActions testId={testId} versionId={versionId} status={version.status} />
+        <VersionActions testId={testId} version={version} />
         <div className="builder-workspace">
           <BuilderWorkspaceNavigation testId={testId} versionId={versionId} workspace={workspace} moduleTypes={version.modules.map((item) => item.module_type)} />
           <div className="builder-canvas">

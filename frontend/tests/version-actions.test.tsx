@@ -5,7 +5,8 @@ import {
   useBuilderLifecycle,
 } from "@/features/test-builder/builder-lifecycle";
 import { VersionActions } from "@/features/test-builder/version-actions";
-import { deleteDraft, validateVersion } from "@/lib/api/tests";
+import type { BuilderVersion } from "@/lib/api/builder";
+import { deleteDraft, publishVersion, validateVersion } from "@/lib/api/tests";
 
 const push = vi.fn();
 const refresh = vi.fn();
@@ -16,16 +17,59 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("@/lib/api/tests", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api/tests")>();
-  return { ...actual, deleteDraft: vi.fn(), validateVersion: vi.fn() };
+  return { ...actual, deleteDraft: vi.fn(), publishVersion: vi.fn(), validateVersion: vi.fn() };
 });
+
+const groupId = "33333333-3333-4333-8333-333333333333";
+
+function builderVersion(status: "DRAFT" | "PUBLISHED" | "ARCHIVED"): BuilderVersion {
+  return {
+    id: "22222222-2222-4222-8222-222222222222",
+    test_id: "11111111-1111-4111-8111-111111111111",
+    test_title: "Fictional test",
+    version_number: 1,
+    status,
+    modules: [{
+      id: "44444444-4444-4444-8444-444444444444",
+      module_type: "READING",
+      title: "Reading",
+      recommended_duration_seconds: 3600,
+      audio_asset: null,
+      listening_parts: [],
+      passages: [{
+        id: "55555555-5555-4555-8555-555555555555",
+        title: "Urban foxes",
+        order_index: 0,
+        blocks: [],
+        question_groups: [{
+          id: groupId,
+          question_type: "multiple_choice",
+          instruction: "",
+          config: {},
+          order_index: 0,
+          questions: [{
+            id: "66666666-6666-4666-8666-666666666666",
+            number: 1,
+            prompt: "Question",
+            config: {},
+            answer_key: {},
+            explanation: null,
+            order_index: 0,
+          }],
+          image_asset_id: null,
+          image_asset: null,
+        }],
+      }],
+    }],
+  };
+}
 
 function renderActions(status: "DRAFT" | "PUBLISHED" | "ARCHIVED") {
   return render(
     <BuilderLifecycleProvider>
       <VersionActions
         testId="11111111-1111-4111-8111-111111111111"
-        versionId="22222222-2222-4222-8222-222222222222"
-        status={status}
+        version={builderVersion(status)}
       />
     </BuilderLifecycleProvider>,
   );
@@ -44,8 +88,7 @@ describe("VersionActions draft deletion", () => {
       <BuilderLifecycleProvider>
         <VersionActions
           testId="11111111-1111-4111-8111-111111111111"
-          versionId="22222222-2222-4222-8222-222222222222"
-          status="PUBLISHED"
+          version={builderVersion("PUBLISHED")}
         />
       </BuilderLifecycleProvider>,
     );
@@ -58,7 +101,43 @@ describe("VersionActions draft deletion", () => {
     fireEvent.click(screen.getByRole("button", { name: "Validate" }));
     expect(await screen.findByText("IELTS readiness")).toBeInTheDocument();
     expect(screen.getByText("Listening contains 1 / 40 questions.")).toBeInTheDocument();
-    expect(screen.getByText("Version is valid.")).toBeInTheDocument();
+    expect(screen.getByText("Validation complete.")).toBeInTheDocument();
+    expect(screen.getByText("These recommendations do not block publishing.")).toBeInTheDocument();
+  });
+
+  it("publishes when validation is valid even when readiness warnings exist", async () => {
+    vi.mocked(validateVersion).mockResolvedValue({ valid: true, errors: [], warnings: [{ path: "reading.questions", message: "Reading contains 1 / 40 questions." }] });
+    vi.mocked(publishVersion).mockResolvedValue(undefined as never);
+    renderActions("DRAFT");
+
+    fireEvent.click(screen.getByRole("button", { name: "Publish version" }));
+
+    await waitFor(() => expect(publishVersion).toHaveBeenCalledWith("22222222-2222-4222-8222-222222222222"));
+    expect(screen.getByText("Reading contains 1 / 40 questions.")).toBeInTheDocument();
+    expect(screen.getByText("These recommendations do not block publishing.")).toBeInTheDocument();
+    expect(refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("blocks publish and renders a complete contextual error outside the compact status", async () => {
+    const message = "The answer key does not reference an available option, so this deliberately long validation explanation must remain fully readable.";
+    vi.mocked(validateVersion).mockResolvedValue({
+      valid: false,
+      errors: [{ path: `reading.question_groups.${groupId}`, message }],
+      warnings: [{ path: "reading.passages", message: "Reading contains 1 / 3 passages." }],
+    });
+    renderActions("DRAFT");
+
+    fireEvent.click(screen.getByRole("button", { name: "Publish version" }));
+
+    const panel = await screen.findByRole("alert");
+    expect(within(panel).getByText("Cannot publish yet")).toBeInTheDocument();
+    expect(within(panel).getByText("Reading Passage 1 · Urban foxes")).toBeInTheDocument();
+    expect(within(panel).getByText("Multiple Choice — Single · Q1")).toBeInTheDocument();
+    expect(within(panel).getByText(message)).toHaveClass("validation-issue-message");
+    expect(within(panel).getByText(`reading.question_groups.${groupId}`)).toBeInTheDocument();
+    expect(within(panel).getByText("IELTS readiness")).toBeInTheDocument();
+    expect(publishVersion).not.toHaveBeenCalled();
+    expect(within(screen.getByRole("status")).queryByText(message)).not.toBeInTheDocument();
   });
 
   it("cancels draft deletion without sending a request", () => {
@@ -121,5 +200,40 @@ describe("VersionActions draft deletion", () => {
 
     resolveSave?.();
     await waitFor(() => expect(deletion).toHaveBeenCalledTimes(1));
+  });
+
+  it("serializes rapid builder mutations in submission order", async () => {
+    let resolveFirst: (() => void) | undefined;
+    const calls: string[] = [];
+    const first = vi.fn(() => new Promise<void>((resolve) => {
+      calls.push("first:start");
+      resolveFirst = () => {
+        calls.push("first:end");
+        resolve();
+      };
+    }));
+    const second = vi.fn(async () => {
+      calls.push("second:start");
+    });
+
+    function Harness() {
+      const lifecycle = useBuilderLifecycle();
+      return (
+        <>
+          <button onClick={() => void lifecycle.runMutation(first)}>First save</button>
+          <button onClick={() => void lifecycle.runMutation(second)}>Second save</button>
+        </>
+      );
+    }
+
+    render(<BuilderLifecycleProvider><Harness /></BuilderLifecycleProvider>);
+    fireEvent.click(screen.getByRole("button", { name: "First save" }));
+    fireEvent.click(screen.getByRole("button", { name: "Second save" }));
+
+    expect(first).toHaveBeenCalledTimes(1);
+    expect(second).not.toHaveBeenCalled();
+    resolveFirst?.();
+    await waitFor(() => expect(second).toHaveBeenCalledTimes(1));
+    expect(calls).toEqual(["first:start", "first:end", "second:start"]);
   });
 });

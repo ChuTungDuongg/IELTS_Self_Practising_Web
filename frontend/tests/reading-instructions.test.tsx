@@ -64,6 +64,29 @@ describe("Reading question group instructions", () => {
     expect(screen.getAllByText(intro)).toHaveLength(1);
   });
 
+  it("shares the compact multiline completion presentation between candidate and review", () => {
+    const completionInstruction = "Complete the notes below.\nUse words from the passage.";
+    const completionConfig = { mode: "SENTENCE", blocks: [{ id: crypto.randomUUID(), segments: [{ id: crypto.randomUUID(), type: "TEXT", text: "The fictional answer is " }, { id: crypto.randomUUID(), type: "GAP", question_id: questionId }, { id: crypto.randomUUID(), type: "TEXT", text: "." }] }] };
+    const initial = {
+      attempt, test_title: "Practice", highlights: [], listening_audio_asset: null, listening_parts: [],
+      passages: [{ id: passageId, title: "Passage", order_index: 0, blocks: [{ id: "44444444-4444-4444-8444-444444444444", type: "paragraph", label: "A", text: "Fictional text." }], question_groups: [{ id: groupId, question_type: "text_completion", instruction: completionInstruction, config: completionConfig, order_index: 0, questions: [{ id: questionId, number: 1, prompt: "", config: { max_words: 2, max_numbers: 0 }, order_index: 0, value: null, flagged: false }] }] }],
+    } as ExamPayload;
+    const candidate = render(<ReadingRunner initial={initial} />);
+    expect(candidate.container.querySelector(".completion-gap-inline")).toBeInTheDocument();
+    expect(candidate.container.querySelector(".question-group-instruction-text")?.textContent).toBe(completionInstruction);
+    expect(screen.queryByText(/max 2 words/i)).not.toBeInTheDocument();
+    candidate.unmount();
+
+    const data = {
+      review: { attempt: { ...attempt, status: "SUBMITTED", raw_score: 1, max_score: 1 }, test_title: "Practice", answers: [{ question_id: questionId, question_number: 1, prompt: "", value: "fictional", answer_key: { kind: "TEXT", accepted: ["fictional"], case_sensitive: false }, is_correct: true, explanation: null }] },
+      passages: [{ id: passageId, title: "Passage", order_index: 0, blocks: [{ id: "44444444-4444-4444-8444-444444444444", type: "paragraph", label: "A", text: "Fictional text." }], question_groups: [{ id: groupId, question_type: "text_completion", instruction: completionInstruction, config: completionConfig, order_index: 0, questions: [{ id: questionId, number: 1, prompt: "", config: { max_words: 2, max_numbers: 0 }, answer_key: { kind: "TEXT", accepted: ["fictional"], case_sensitive: false }, explanation: null, order_index: 0 }] }] }],
+    };
+    const review = render(<ReadingReviewView data={data as never} />);
+    expect(review.container.querySelector(".completion-gap-inline")).toBeInTheDocument();
+    expect(review.container.querySelector(".question-group-instruction-text")?.textContent).toBe(completionInstruction);
+    expect(screen.queryByText(/max 2 words/i)).not.toBeInTheDocument();
+  });
+
   it("confirms and bulk deletes all highlight target types with one request", async () => {
     vi.mocked(deleteAllHighlights).mockClear();
     const initial = {

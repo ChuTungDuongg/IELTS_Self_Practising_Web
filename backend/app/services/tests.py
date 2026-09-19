@@ -572,11 +572,20 @@ class TestService:
                             message="Paragraph labels must be unique.",
                         )
                     )
+            available_passage_ids = {passage.id for passage in module.passages if passage.id}
+            available_part_ids = {part.id for part in module.listening_parts if part.id}
             for group in module.question_groups:
-                if module.module_type == ModuleType.READING and not any(
+                reading_relationship_matches = any(
                     group is passage_group
                     for passage in module.passages
                     for passage_group in passage.question_groups
+                )
+                reading_ids_match = (
+                    group.passage_id in available_passage_ids
+                    and group.module_id == module.id
+                )
+                if module.module_type == ModuleType.READING and not (
+                    reading_relationship_matches or reading_ids_match
                 ):
                     issues.append(
                         ValidationIssue(
@@ -585,10 +594,17 @@ class TestService:
                         )
                     )
                     continue
-                if module.module_type == ModuleType.LISTENING and not any(
+                listening_relationship_matches = any(
                     group is part_group
                     for part in module.listening_parts
                     for part_group in part.question_groups
+                )
+                listening_ids_match = (
+                    group.listening_part_id in available_part_ids
+                    and group.module_id == module.id
+                )
+                if module.module_type == ModuleType.LISTENING and not (
+                    listening_relationship_matches or listening_ids_match
                 ):
                     issues.append(
                         ValidationIssue(

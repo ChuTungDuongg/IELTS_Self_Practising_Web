@@ -146,7 +146,7 @@ export function ListeningBuilder({ version }: { version: BuilderVersion }) {
               {editing ? (
                 <div>
                   {visualTypes.includes(editing.question_type) ? <div className="visual-upload-row"><label className="btn btn-secondary">{editing.image_asset ? "Replace image" : "Upload question image"}<input type="file" className="sr-only" accept="image/png,image/jpeg,image/webp" onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadImage(file); }} /></label>{editing.image_asset ? <button className="btn btn-danger-ghost" onClick={() => setEditing({ ...editing, image_asset: null, image_asset_id: null })}>Remove image</button> : null}</div> : null}
-                  <QuestionGroupEditor initial={editing} nextQuestionNumber={nextNumber} passageBlocks={[]} onCancel={() => setEditing(null)} onSave={(body) => run(() => editing.id ? updateListeningQuestionGroup(editing.id, body) : createListeningQuestionGroup(part.id, body))} />
+                  <QuestionGroupEditor initial={editing} nextQuestionNumber={nextNumber} baseQuestionNumber={canonicalListeningGroupStart(parts, editing)} passageBlocks={[]} onCancel={() => setEditing(null)} onSave={(body) => run(() => editing.id ? updateListeningQuestionGroup(editing.id, body) : createListeningQuestionGroup(part.id, body))} />
                 </div>
               ) : (
                 <div className="new-group-row"><label className="field-label flex-1">Listening template<select className="select-field" value={type} onChange={(event) => setType(event.target.value as QuestionType)}>{listeningQuestionTypeOptions.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label><button className="btn btn-listening" onClick={createGroup}><PlusIcon className="size-4" /> Add question group</button></div>
@@ -158,4 +158,18 @@ export function ListeningBuilder({ version }: { version: BuilderVersion }) {
       <ConfirmDialog open={confirmingModuleDelete} title="Delete Listening module?" description="All Listening sections and questions in this draft will be removed." confirmLabel="Delete Listening module" pending={deleting} onCancel={() => setConfirmingModuleDelete(false)} onConfirm={() => void run(() => deleteModule(listening.id))} />
     </fieldset>
   );
+}
+
+function canonicalListeningGroupStart(
+  parts: Array<{ order_index: number; question_groups: QuestionGroupModel[] }>,
+  target: QuestionGroupModel,
+): number {
+  let number = 1;
+  for (const part of [...parts].sort((a, b) => a.order_index - b.order_index)) {
+    for (const group of [...part.question_groups].sort((a, b) => a.order_index - b.order_index)) {
+      if (group.id === target.id) return number;
+      number += group.questions.length;
+    }
+  }
+  return target.questions.length ? Math.min(...target.questions.map((question) => question.number)) : number;
 }

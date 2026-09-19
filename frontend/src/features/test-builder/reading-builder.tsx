@@ -133,7 +133,7 @@ export function ReadingBuilder({ version }: { version: BuilderVersion }) {
                   <GroupSummary key={group.id} group={group} passageNumber={passage.order_index + 1} onMove={(offset) => moveGroup(passage.id, group.id, offset)} onEdit={() => setEditingGroup({ passageId: passage.id, group })} onDelete={() => run(() => deleteQuestionGroup(group.id))} />
                 ))}
                 {editingGroup?.passageId === passage.id ? (
-                  <QuestionGroupEditor initial={editingGroup.group} nextQuestionNumber={nextNumber} passageBlocks={passage.blocks} passageNumber={passage.order_index + 1} onCancel={() => setEditingGroup(null)} onSave={(body) => run(() => editingGroup.group.id ? updateQuestionGroup(editingGroup.group.id, body) : createQuestionGroup(passage.id, body))} />
+                  <QuestionGroupEditor initial={editingGroup.group} nextQuestionNumber={nextNumber} baseQuestionNumber={canonicalReadingGroupStart(reading.passages, editingGroup.group)} passageBlocks={passage.blocks} passageNumber={passage.order_index + 1} onCancel={() => setEditingGroup(null)} onSave={(body) => run(() => editingGroup.group.id ? updateQuestionGroup(editingGroup.group.id, body) : createQuestionGroup(passage.id, body))} />
                 ) : (
                   <NewGroupButton nextNumber={nextNumber} orderIndex={nextGroupOrder} passageBlocks={passage.blocks} onCreate={(group) => setEditingGroup({ passageId: passage.id, group })} />
                 )}
@@ -252,4 +252,15 @@ function nextParagraphLabel(blocks: TextBlock[]): string {
     value = Math.floor(value / 26);
   }
   return label;
+}
+
+function canonicalReadingGroupStart(passages: BuilderPassage[], target: QuestionGroupModel): number {
+  let number = 1;
+  for (const passage of [...passages].sort((a, b) => a.order_index - b.order_index)) {
+    for (const group of [...passage.question_groups].sort((a, b) => a.order_index - b.order_index)) {
+      if (group.id === target.id) return number;
+      number += group.questions.length;
+    }
+  }
+  return target.questions.length ? Math.min(...target.questions.map((question) => question.number)) : number;
 }

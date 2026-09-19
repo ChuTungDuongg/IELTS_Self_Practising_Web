@@ -2,14 +2,16 @@
 
 import { useState } from "react";
 import { questionRegistry } from "@/features/questions/registry";
-import type { ExamGroup, PassageBlock, QuestionGroupModel } from "@/features/questions/types";
-import { QuestionGroupInstruction, resolveQuestionGroupInstruction } from "@/features/questions/question-group-instruction";
+import type { ExamGroup, PassageBlock, QuestionGroupModel, TextCompletionLayout } from "@/features/questions/types";
+import { isCompletionQuestionType, QuestionGroupInstruction, resolveQuestionGroupInstruction } from "@/features/questions/question-group-instruction";
+import { normalizeTextCompletionOrder } from "@/features/questions/text-completion-canvas";
 
 export function QuestionGroupEditor({
   initial,
   onSave,
   onCancel,
   nextQuestionNumber,
+  baseQuestionNumber: requestedBaseQuestionNumber,
   passageBlocks,
   passageNumber,
 }: {
@@ -17,6 +19,7 @@ export function QuestionGroupEditor({
   onSave: (group: QuestionGroupModel) => Promise<void>;
   onCancel: () => void;
   nextQuestionNumber: number;
+  baseQuestionNumber?: number;
   passageBlocks: PassageBlock[];
   passageNumber?: number;
 }) {
@@ -26,6 +29,13 @@ export function QuestionGroupEditor({
   const definition = questionRegistry[group.question_type];
   const Editor = definition.BuilderEditor;
   const Renderer = definition.ExamRenderer;
+  const baseQuestionNumber = requestedBaseQuestionNumber ?? (group.questions.length
+    ? Math.min(...group.questions.map((question) => question.number))
+    : nextQuestionNumber);
+  const presentedGroup = group.question_type === "text_completion"
+    ? normalizeTextCompletionOrder(group, group.config as unknown as TextCompletionLayout, baseQuestionNumber)
+    : group;
+  const usesMultilineInstruction = isCompletionQuestionType(group.question_type);
 
   function addQuestion() {
     const nextNumber = Math.max(
@@ -74,30 +84,46 @@ export function QuestionGroupEditor({
       <div className="group-editor-header">
         <div className="min-w-0 flex-1">
           <p className="page-eyebrow">Question group · {definition.label}</p>
-          <label className="field-label">Custom candidate instruction <span className="font-normal text-[var(--muted)]">(optional)</span></label>
-          <input
-            value={group.instruction}
-            onChange={(event) => setGroup({ ...group, instruction: event.target.value })}
-            className="field mt-2"
-            aria-label="Group instruction"
-            placeholder={resolveQuestionGroupInstruction({ ...group, instruction: "" }, { passageNumber }).intro}
-          />
+          {usesMultilineInstruction ? (
+            <label className="field-label">
+              Candidate instructions
+              <textarea
+                value={group.instruction}
+                onChange={(event) => setGroup({ ...group, instruction: event.target.value })}
+                className="field mt-2 min-h-24 resize-y"
+                aria-label="Candidate instructions"
+                placeholder={resolveQuestionGroupInstruction({ ...group, instruction: "" }, { passageNumber }).intro}
+              />
+              <span className="mt-1 block font-normal text-[var(--muted)]">Line breaks are preserved in Candidate, Preview and Review.</span>
+            </label>
+          ) : (
+            <>
+              <label className="field-label">Custom candidate instruction <span className="font-normal text-[var(--muted)]">(optional)</span></label>
+              <input
+                value={group.instruction}
+                onChange={(event) => setGroup({ ...group, instruction: event.target.value })}
+                className="field mt-2"
+                aria-label="Group instruction"
+                placeholder={resolveQuestionGroupInstruction({ ...group, instruction: "" }, { passageNumber }).intro}
+              />
+            </>
+          )}
         </div>
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={() => setPreview(!preview)} className="btn btn-secondary">{preview ? "Back to edit" : "Preview"}</button>
           <button type="button" onClick={onCancel} className="btn btn-ghost">Cancel</button>
-          <button type="button" disabled={pending || !group.questions.length} onClick={async () => { setPending(true); try { await onSave(group); } finally { setPending(false); } }} className="btn btn-primary">{pending ? "Saving…" : "Save group"}</button>
+          <button type="button" disabled={pending || !presentedGroup.questions.length} onClick={async () => { setPending(true); try { await onSave(presentedGroup); } finally { setPending(false); } }} className="btn btn-primary">{pending ? "Saving…" : "Save group"}</button>
         </div>
       </div>
       {preview ? (
         <div className="group-preview">
           <p className="mb-2 text-xs font-bold uppercase tracking-wider text-[var(--muted)]">Candidate preview</p>
-          <QuestionGroupInstruction group={group} passageNumber={passageNumber} />
-          <Renderer group={group as ExamGroup} values={{}} passageBlocks={passageBlocks} disabled />
+          <QuestionGroupInstruction group={presentedGroup} passageNumber={passageNumber} />
+          <Renderer group={presentedGroup as ExamGroup} values={{}} passageBlocks={passageBlocks} disabled />
         </div>
       ) : (
         <>
-          <Editor group={group} onChange={setGroup} passageBlocks={passageBlocks} />
+          <Editor group={group} onChange={setGroup} passageBlocks={passageBlocks} baseQuestionNumber={baseQuestionNumber} />
           {group.question_type !== "text_completion" ? <button type="button" onClick={addQuestion} className="btn btn-secondary mt-4">+ Add question</button> : null}
         </>
       )}

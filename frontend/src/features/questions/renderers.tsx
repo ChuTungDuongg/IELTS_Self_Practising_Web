@@ -62,11 +62,30 @@ function AgreementRenderer({ group, values, disabled, onAnswer, highlighting, ch
 export function TextCompletionRenderer({ group, values, disabled, onAnswer, highlighting }: RendererProps) {
   const layout = group.config as unknown as TextCompletionLayout;
   if (!layout.blocks) return <div className="space-y-4">{group.questions.map((question) => <label key={question.id} className="block"><QuestionHeader question={question} highlighting={highlighting} /><input disabled={disabled} value={String(values[question.id] ?? "")} onChange={(event) => onAnswer?.(question.id, event.target.value)} className="mt-2 w-full rounded-md border border-[var(--line)] px-3 py-2" /></label>)}</div>;
-  return <div className="space-y-4">{layout.blocks.map((block) => <p key={block.id} className="leading-10">{block.segments.map((segment) => {
-    if (segment.type === "TEXT") return <SelectableText key={segment.id} text={segment.text ?? ""} target={{ target_kind: "TEXT_COMPLETION_SEGMENT", target_id: group.id, segment_id: segment.id }} controller={highlighting} />;
-    const question = group.questions.find((item) => item.id === segment.question_id);
-    return question ? <label key={segment.id} className="mx-1 inline-flex items-center gap-1 align-middle"><span className="text-sm font-bold text-[var(--accent)]">{question.number}</span><input aria-label={`Question ${question.number}`} disabled={disabled} value={String(values[question.id] ?? "")} onChange={(event) => onAnswer?.(question.id, event.target.value)} className="inline-gap-input rounded-md border border-[var(--line)] px-2 py-1" />{question.config.max_words || question.config.max_numbers ? <span className="text-xs text-[var(--muted)]">max {question.config.max_words ? `${question.config.max_words} words` : ""}{question.config.max_words && question.config.max_numbers ? " / " : ""}{question.config.max_numbers ? `${question.config.max_numbers} numbers` : ""}</span> : null}</label> : null;
-  })}</p>)}</div>;
+  return (
+    <div className={`text-completion-layout text-completion-${layout.mode.toLowerCase()}`}>
+      {layout.blocks.map((block) => (
+        <p key={block.id} className="text-completion-block">
+          {block.segments.map((segment) => {
+            if (segment.type === "TEXT") return <SelectableText key={segment.id} text={segment.text ?? ""} target={{ target_kind: "TEXT_COMPLETION_SEGMENT", target_id: group.id, segment_id: segment.id }} controller={highlighting} />;
+            const question = group.questions.find((item) => item.id === segment.question_id);
+            return question ? (
+              <label key={segment.id} className="completion-gap-inline">
+                <span className="completion-gap-number">{question.number}</span>
+                <input
+                  aria-label={`Question ${question.number}`}
+                  disabled={disabled}
+                  value={String(values[question.id] ?? "")}
+                  onChange={(event) => onAnswer?.(question.id, event.target.value)}
+                  className="completion-gap-input"
+                />
+              </label>
+            ) : null;
+          })}
+        </p>
+      ))}
+    </div>
+  );
 }
 
 export function MatchingHeadingsRenderer({ group, values, disabled, onAnswer, passageBlocks = [] }: RendererProps) {

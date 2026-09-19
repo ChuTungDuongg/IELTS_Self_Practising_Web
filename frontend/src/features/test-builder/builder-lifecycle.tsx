@@ -12,6 +12,7 @@ const BuilderLifecycleContext = createContext<BuilderLifecycleValue | null>(null
 
 export function BuilderLifecycleProvider({ children }: { children: React.ReactNode }) {
   const pending = useRef(new Set<Promise<unknown>>());
+  const mutationTail = useRef<Promise<void> | null>(null);
   const deletingRef = useRef(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -19,12 +20,26 @@ export function BuilderLifecycleProvider({ children }: { children: React.ReactNo
     if (deletingRef.current) {
       throw new Error("Draft deletion is in progress.");
     }
-    const operation = action();
+    let operation: Promise<T>;
+    if (mutationTail.current) {
+      operation = mutationTail.current.then(action);
+    } else {
+      try {
+        operation = Promise.resolve(action());
+      } catch (error) {
+        operation = Promise.reject(error);
+      }
+    }
+    mutationTail.current = operation.then(
+      () => undefined,
+      () => undefined,
+    );
     pending.current.add(operation);
     try {
       return await operation;
     } finally {
       pending.current.delete(operation);
+      if (!pending.current.size) mutationTail.current = null;
     }
   }
 

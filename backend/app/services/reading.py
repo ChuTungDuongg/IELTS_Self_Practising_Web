@@ -1,7 +1,7 @@
 import uuid
 
 from pydantic import ValidationError
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -123,7 +123,19 @@ class ReadingService:
             group_id = uuid.uuid4()
             body = self._normalize_group_body(body, group_id, passage_blocks)
             self._validate_group_body(body, passage_blocks)
-            await self._ensure_numbers_available(passage.module_id, body, None)
+            self._validate_local_question_numbers(body)
+            # QuestionGroup.order_index is module-global. New Builder groups are
+            # appended safely, then canonicalized into passage presentation order.
+            await self.session.scalar(
+                select(TestModule.id)
+                .where(TestModule.id == passage.module_id)
+                .with_for_update()
+            )
+            highest_group_order = await self.session.scalar(
+                select(func.max(QuestionGroup.order_index)).where(
+                    QuestionGroup.module_id == passage.module_id
+                )
+            )
             group = QuestionGroup(
                 id=group_id,
                 module_id=passage.module_id,
@@ -132,7 +144,7 @@ class ReadingService:
                 question_type=body.question_type,
                 instruction=body.instruction,
                 config=body.config,
-                order_index=body.order_index,
+                order_index=(highest_group_order if highest_group_order is not None else -1) + 1,
             )
             self._apply_questions(group, body)
             self.session.add(group)
@@ -155,12 +167,11 @@ class ReadingService:
             )
             body = self._normalize_group_body(body, group.id, passage_blocks)
             self._validate_group_body(body, passage_blocks)
-            await self._ensure_numbers_available(group.module_id, body, group.id)
+            self._validate_local_question_numbers(body)
             group.question_type = body.question_type
             group.instruction = body.instruction
             group.config = body.config
             group.image_asset_id = body.image_asset_id
-            group.order_index = body.order_index
             existing = {item.id: item for item in group.questions}
             for temporary_index, question in enumerate(existing.values(), start=1):
                 question.number = -temporary_index
@@ -179,6 +190,7 @@ class ReadingService:
                     retained.add(item.id)
                 else:
                     question = Question(
+                        id=item.id or uuid.uuid4(),
                         number=item.number,
                         prompt=item.prompt,
                         config=item.config,
@@ -264,6 +276,7 @@ class ReadingService:
                 selectinload(TestModule.listening_parts),
                 selectinload(TestModule.question_groups).selectinload(QuestionGroup.questions),
             )
+            .execution_options(populate_existing=True)
         )
         assert module is not None
         passage_order = {passage.id: passage.order_index for passage in module.passages}
@@ -368,12 +381,22 @@ class ReadingService:
             selectinload(ReadingPassage.question_groups).selectinload(QuestionGroup.questions),
         )
 
-    async def _ensure_numbers_available(
-        self, module_id: uuid.UUID, body: QuestionGroupWrite, excluded_group_id: uuid.UUID | None
-    ) -> None:
+    @staticmethod
+    def _validate_local_question_numbers(body: QuestionGroupWrite) -> None:
         numbers = [item.number for item in body.questions]
         if len(numbers) != len(set(numbers)):
             raise AppError("DUPLICATE_QUESTION_NUMBER", "Question numbers must be unique.", 422)
+
+    async def _ensure_numbers_available(
+        self, module_id: uuid.UUID, body: QuestionGroupWrite, excluded_group_id: uuid.UUID | None
+    ) -> None:
+        """Retain Listening's existing cross-group number guard.
+
+        Reading mutations intentionally use _validate_local_question_numbers because
+        their module-wide display numbers are reassigned passage-first after every write.
+        """
+        self._validate_local_question_numbers(body)
+        numbers = [item.number for item in body.questions]
         statement = (
             select(Question.number)
             .join(QuestionGroup)

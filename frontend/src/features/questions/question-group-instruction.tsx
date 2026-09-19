@@ -1,4 +1,19 @@
 import { questionRegistry, type InstructionContext, type InstructionGroup, type QuestionInstruction } from "./registry";
+import type { QuestionType } from "./types";
+
+const completionQuestionTypes = new Set<QuestionType>([
+  "text_completion",
+  "sentence_completion",
+  "summary_completion",
+  "note_completion",
+  "form_completion",
+  "table_completion",
+  "flow_chart_completion",
+]);
+
+export function isCompletionQuestionType(questionType: QuestionType): boolean {
+  return completionQuestionTypes.has(questionType);
+}
 
 export function resolveQuestionGroupInstruction(
   group: InstructionGroup,
@@ -13,7 +28,7 @@ export function QuestionGroupInstruction({ group, passageNumber }: { group: Inst
   const instruction = resolveQuestionGroupInstruction(group, { passageNumber });
   return (
     <div className="question-group-instruction">
-      <p>{instruction.intro}</p>
+      <p className="question-group-instruction-text">{instruction.intro}</p>
       {instruction.options?.length ? (
         <dl>
           {instruction.options.map((option) => (
