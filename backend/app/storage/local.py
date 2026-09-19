@@ -16,6 +16,8 @@ class LocalAssetStorage:
     AUDIO_TYPES = {
         "audio/mpeg": ".mp3",
         "audio/mp4": ".m4a",
+        "audio/x-m4a": ".m4a",
+        "audio/aac": ".aac",
         "audio/wav": ".wav",
         "audio/x-wav": ".wav",
         "audio/ogg": ".ogg",
@@ -54,3 +56,9 @@ class LocalAssetStorage:
         destination = directory / filename
         destination.write_bytes(content)
         return StoredAsset(relative_path=f"{category}/{filename}", size=len(content))
+
+    def resolve(self, relative_path: str) -> Path:
+        candidate = (self.root / relative_path).resolve()
+        if self.root not in candidate.parents or not candidate.is_file():
+            raise AppError("ASSET_NOT_FOUND", "The asset file does not exist.", 404)
+        return candidate

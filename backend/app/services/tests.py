@@ -24,7 +24,7 @@ from app.models import (
     TestVersion,
     WritingTask,
 )
-from app.models.enums import ModuleType, VersionStatus
+from app.models.enums import AssetType, ModuleType, VersionStatus
 from app.repositories.tests import TestRepository, version_detail_query
 from app.schemas.common import ValidationIssue, ValidationResult
 from app.schemas.content import TextBlock
@@ -196,6 +196,16 @@ class TestService:
                     )
                     .limit(1)
                 )
+            if replacement_version_id is None:
+                replacement_version_id = await self.session.scalar(
+                    select(TestModule.test_version_id)
+                    .join(QuestionGroup, QuestionGroup.module_id == TestModule.id)
+                    .where(
+                        QuestionGroup.image_asset_id == asset.id,
+                        TestModule.test_version_id.not_in(excluded_version_ids),
+                    )
+                    .limit(1)
+                )
             if replacement_version_id is not None:
                 asset.test_version_id = replacement_version_id
         await self.session.flush()
@@ -242,6 +252,7 @@ class TestService:
             )
             target.modules.append(new_module)
             passage_map: dict[uuid.UUID, ReadingPassage] = {}
+            part_map: dict[uuid.UUID, ListeningPart] = {}
             for passage in module.passages:
                 cloned_passage = ReadingPassage(
                     title=passage.title,
@@ -252,13 +263,13 @@ class TestService:
                 new_module.passages.append(cloned_passage)
                 passage_map[passage.id] = cloned_passage
             for part in module.listening_parts:
-                new_module.listening_parts.append(
-                    ListeningPart(
-                        title=part.title,
-                        order_index=part.order_index,
-                        audio_asset_id=part.audio_asset_id,
-                    )
+                cloned_part = ListeningPart(
+                    title=part.title,
+                    order_index=part.order_index,
+                    audio_asset_id=part.audio_asset_id,
                 )
+                new_module.listening_parts.append(cloned_part)
+                part_map[part.id] = cloned_part
             for task in module.writing_tasks:
                 new_module.writing_tasks.append(
                     WritingTask(
@@ -273,6 +284,8 @@ class TestService:
             for group in module.question_groups:
                 new_group = QuestionGroup(
                     passage=passage_map.get(group.passage_id),
+                    listening_part=part_map.get(group.listening_part_id),
+                    image_asset_id=group.image_asset_id,
                     section_reference=group.section_reference,
                     question_type=group.question_type,
                     instruction=group.instruction,
@@ -306,6 +319,34 @@ class TestService:
                     for passage in sorted(module.passages, key=lambda item: item.order_index)
                     for group in sorted(passage.question_groups, key=lambda item: item.order_index)
                 ]
+            elif module.module_type == ModuleType.LISTENING:
+                ordered_groups = [
+                    group
+                    for part in sorted(module.listening_parts, key=lambda item: item.order_index)
+                    for group in sorted(part.question_groups, key=lambda item: item.order_index)
+                ]
+                if len(module.listening_parts) != 4:
+                    issues.append(
+                        ValidationIssue(
+                            path="listening.parts",
+                            message="A complete IELTS Listening module requires Parts 1 through 4.",
+                        )
+                    )
+                if sorted(part.order_index for part in module.listening_parts) != [0, 1, 2, 3]:
+                    issues.append(
+                        ValidationIssue(
+                            path="listening.parts",
+                            message="Listening parts must use the canonical order 1 through 4.",
+                        )
+                    )
+                for part in module.listening_parts:
+                    if part.audio_asset is None:
+                        issues.append(
+                            ValidationIssue(
+                                path=f"listening.parts.{part.id}.audio",
+                                message="Attach an audio file before publishing.",
+                            )
+                        )
             else:
                 ordered_groups = sorted(module.question_groups, key=lambda item: item.order_index)
             question_numbers = [
@@ -332,6 +373,13 @@ class TestService:
                     ValidationIssue(
                         path=f"{prefix}.questions",
                         message="Question numbers must form the canonical sequence 1 through N.",
+                    )
+                )
+            if module.module_type == ModuleType.LISTENING and len(question_numbers) != 40:
+                issues.append(
+                    ValidationIssue(
+                        path="listening.questions",
+                        message="A complete IELTS Listening module requires 40 questions.",
                     )
                 )
             is_nonempty = {
@@ -390,6 +438,18 @@ class TestService:
                         ValidationIssue(
                             path=f"{prefix}.question_groups.{group.id}",
                             message="Reading question groups must reference an available passage.",
+                        )
+                    )
+                    continue
+                if module.module_type == ModuleType.LISTENING and not any(
+                    group is part_group
+                    for part in module.listening_parts
+                    for part_group in part.question_groups
+                ):
+                    issues.append(
+                        ValidationIssue(
+                            path=f"{prefix}.question_groups.{group.id}",
+                            message="Listening question groups must reference an available Part.",
                         )
                     )
                     continue
@@ -460,6 +520,19 @@ class TestService:
                                 message=f"Invalid question configuration: {exc}",
                             )
                         )
+                try:
+                    TestService._validate_group_references(
+                        group,
+                        normalized_config,
+                        normalized_questions,
+                    )
+                except (ValidationError, KeyError, ValueError) as exc:
+                    issues.append(
+                        ValidationIssue(
+                            path=f"{prefix}.question_groups.{group.id}",
+                            message=f"Invalid question group configuration: {exc}",
+                        )
+                    )
         return ValidationResult(valid=not issues, errors=issues)
 
     @staticmethod
@@ -481,6 +554,18 @@ class TestService:
             option_ids = {str(option["id"]) for option in resolved_question_config["options"]}
             if resolved_answer_key["value"] not in option_ids:
                 raise ValueError("The answer key does not reference an available option")
+        elif group.question_type == "multiple_choice_multiple":
+            option_ids = {str(option["id"]) for option in resolved_question_config["options"]}
+            values = set(resolved_answer_key["values"])
+            if not values or not values.issubset(option_ids):
+                raise ValueError("The answer key references unavailable options")
+            selected_count = len(values)
+            if not (
+                resolved_question_config["min_selections"]
+                <= selected_count
+                <= resolved_question_config["max_selections"]
+            ):
+                raise ValueError("The answer key does not satisfy the selection limits")
         elif group.question_type == "true_false_not_given":
             if resolved_answer_key["value"] not in {"TRUE", "FALSE", "NOT_GIVEN"}:
                 raise ValueError("The answer key must be TRUE, FALSE, or NOT_GIVEN")
@@ -495,6 +580,59 @@ class TestService:
             }
             if str(resolved_question_config["target_block_id"]) not in paragraph_ids:
                 raise ValueError("The paragraph target does not reference an available block")
+        elif group.question_type in {
+            "matching",
+            "plan_labelling",
+            "map_labelling",
+            "diagram_labelling",
+        }:
+            option_ids = {str(option["id"]) for option in resolved_group_config["options"]}
+            if resolved_answer_key["value"] not in option_ids:
+                raise ValueError("The answer key does not reference an available option")
+
+    @staticmethod
+    def _validate_group_references(
+        group: QuestionGroup,
+        group_config: dict,
+        normalized_questions: list[dict],
+    ) -> None:
+        question_ids = {str(question["id"]) for question in normalized_questions}
+        if group.question_type in {
+            "plan_labelling",
+            "map_labelling",
+            "diagram_labelling",
+        }:
+            if (
+                group.image_asset is None
+                or group.image_asset.asset_type != AssetType.QUESTION_IMAGE
+            ):
+                raise ValueError("Visual labelling requires an available question image")
+            marker_question_ids = {
+                str(marker["question_id"]) for marker in group_config.get("markers", [])
+            }
+            if marker_question_ids != question_ids:
+                raise ValueError("Visual markers must reference every group question exactly once")
+        if group.question_type in {
+            "form_completion",
+            "note_completion",
+            "table_completion",
+            "flow_chart_completion",
+            "summary_completion",
+            "sentence_completion",
+        }:
+            layout = group_config.get("layout", {})
+            gap_ids = {
+                str(cell.get("question_id"))
+                for row in layout.get("rows", [])
+                for cell in row.get("cells", [])
+                if cell.get("type") == "GAP"
+            } | {
+                str(node.get("question_id"))
+                for node in layout.get("nodes", [])
+                if node.get("type") == "GAP"
+            }
+            if gap_ids != question_ids:
+                raise ValueError("Every completion question must map to exactly one layout gap")
 
     async def validate(self, version_id: uuid.UUID) -> ValidationResult:
         return self.validate_version(await self.get_version(version_id))
@@ -528,35 +666,37 @@ class TestService:
     @staticmethod
     def _persist_normalized_draft(version: TestVersion) -> None:
         for module in version.modules:
+            passage_blocks = {
+                passage.id: normalize_passage_blocks(passage.content_json, passage.id)
+                for passage in module.passages
+            }
             for passage in module.passages:
-                blocks = normalize_passage_blocks(passage.content_json, passage.id)
+                blocks = passage_blocks[passage.id]
                 passage.content_json = blocks
-                for group in passage.question_groups:
-                    question_rows = [
-                        {
-                            "id": question.id,
-                            "number": question.number,
-                            "prompt": question.prompt,
-                            "config": question.config,
-                            "answer_key": question.answer_key,
-                            "explanation": question.explanation,
-                            "order_index": question.order_index,
-                        }
-                        for question in group.questions
-                    ]
-                    config, normalized_questions = normalize_question_group_payload(
-                        question_type=group.question_type,
-                        group_config=group.config,
-                        questions=question_rows,
-                        group_id=group.id,
-                        passage_blocks=blocks,
-                    )
-                    group.config = config
-                    for question, normalized in zip(
-                        group.questions, normalized_questions, strict=True
-                    ):
-                        question.config = normalized["config"]
-                        question.answer_key = normalized["answer_key"]
+            for group in module.question_groups:
+                question_rows = [
+                    {
+                        "id": question.id,
+                        "number": question.number,
+                        "prompt": question.prompt,
+                        "config": question.config,
+                        "answer_key": question.answer_key,
+                        "explanation": question.explanation,
+                        "order_index": question.order_index,
+                    }
+                    for question in group.questions
+                ]
+                config, normalized_questions = normalize_question_group_payload(
+                    question_type=group.question_type,
+                    group_config=group.config,
+                    questions=question_rows,
+                    group_id=group.id,
+                    passage_blocks=passage_blocks.get(group.passage_id, []),
+                )
+                group.config = config
+                for question, normalized in zip(group.questions, normalized_questions, strict=True):
+                    question.config = normalized["config"]
+                    question.answer_key = normalized["answer_key"]
 
     async def ensure_draft(self, version_id: uuid.UUID) -> TestVersion:
         version = await self.session.scalar(

@@ -1,0 +1,260 @@
+import uuid
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+from app.core.exceptions import AppError
+from app.models import Asset, ListeningPart, Question, QuestionGroup, TestModule, TestVersion
+from app.models.enums import AssetType, ModuleType, VersionStatus
+from app.schemas.content import (
+    BuilderListeningPart,
+    BuilderQuestionGroup,
+    ListeningPartAudioWrite,
+    ListeningPartWrite,
+    QuestionGroupWrite,
+    QuestionWrite,
+)
+from app.services.reading import ReadingService
+
+
+class ListeningService:
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
+        self.shared = ReadingService(session)
+
+    async def create_part(
+        self, version_id: uuid.UUID, body: ListeningPartWrite
+    ) -> BuilderListeningPart:
+        async with self.session.begin():
+            module = await self._draft_module_for_version(version_id)
+            if any(part.order_index == body.order_index for part in module.listening_parts):
+                raise AppError("LISTENING_PART_EXISTS", "This Listening part already exists.", 409)
+            part = ListeningPart(
+                module_id=module.id,
+                title=body.title.strip(),
+                order_index=body.order_index,
+            )
+            self.session.add(part)
+            await self.session.flush()
+            part_id = part.id
+        return await self.get_part(part_id)
+
+    async def update_part(
+        self, part_id: uuid.UUID, body: ListeningPartWrite
+    ) -> BuilderListeningPart:
+        async with self.session.begin():
+            part = await self._draft_part(part_id)
+            part.title = body.title.strip()
+            part.order_index = body.order_index
+            await self.shared._canonicalize_module(part.module_id)
+        return await self.get_part(part_id)
+
+    async def delete_part(self, part_id: uuid.UUID) -> None:
+        async with self.session.begin():
+            part = await self._draft_part(part_id)
+            if part.question_groups:
+                raise AppError(
+                    "LISTENING_PART_HAS_GROUPS",
+                    "Delete this part's question groups before deleting the part.",
+                    409,
+                )
+            await self.session.delete(part)
+
+    async def attach_audio(
+        self, part_id: uuid.UUID, body: ListeningPartAudioWrite
+    ) -> BuilderListeningPart:
+        async with self.session.begin():
+            part = await self._draft_part(part_id)
+            if body.asset_id is None:
+                part.audio_asset_id = None
+            else:
+                asset = await self.session.scalar(
+                    select(Asset).where(
+                        Asset.id == body.asset_id,
+                        Asset.test_version_id == part.module.test_version_id,
+                        Asset.asset_type == AssetType.LISTENING_AUDIO,
+                    )
+                )
+                if asset is None:
+                    raise AppError(
+                        "INVALID_AUDIO_ASSET",
+                        "The audio asset does not belong to this draft version.",
+                        422,
+                    )
+                part.audio_asset_id = asset.id
+        return await self.get_part(part_id)
+
+    async def create_group(
+        self, part_id: uuid.UUID, body: QuestionGroupWrite
+    ) -> BuilderQuestionGroup:
+        async with self.session.begin():
+            part = await self._draft_part(part_id)
+            await self._validate_image_asset(part.module.test_version_id, body)
+            group_id = uuid.uuid4()
+            body = self.shared._normalize_group_body(body, group_id, [])
+            self.shared._validate_group_body(body, [])
+            await self.shared._ensure_numbers_available(part.module_id, body, None)
+            group = QuestionGroup(
+                id=group_id,
+                module_id=part.module_id,
+                listening_part_id=part.id,
+                image_asset_id=body.image_asset_id,
+                question_type=body.question_type,
+                instruction=body.instruction,
+                config=body.config,
+                order_index=body.order_index,
+            )
+            self.shared._apply_questions(group, body)
+            self.session.add(group)
+            await self.session.flush()
+            await self.shared._canonicalize_module(part.module_id)
+        return await self.get_group(group_id)
+
+    async def update_group(
+        self, group_id: uuid.UUID, body: QuestionGroupWrite
+    ) -> BuilderQuestionGroup:
+        async with self.session.begin():
+            group = await self._draft_group(group_id)
+            await self._validate_image_asset(group.module.test_version_id, body)
+            body = self.shared._normalize_group_body(body, group.id, [])
+            self.shared._validate_group_body(body, [])
+            await self.shared._ensure_numbers_available(group.module_id, body, group.id)
+            group.question_type = body.question_type
+            group.instruction = body.instruction
+            group.config = body.config
+            group.image_asset_id = body.image_asset_id
+            group.order_index = body.order_index
+            existing = {item.id: item for item in group.questions}
+            for temporary_index, question in enumerate(existing.values(), start=1):
+                question.number = -temporary_index
+                question.order_index = -temporary_index
+            await self.session.flush()
+            retained: set[uuid.UUID] = set()
+            for item in body.questions:
+                if item.id is not None and item.id in existing:
+                    question = existing[item.id]
+                    self._apply_question(question, item)
+                    retained.add(item.id)
+                else:
+                    question = Question()
+                    self._apply_question(question, item)
+                    group.questions.append(question)
+            for question_id, question in existing.items():
+                if question_id not in retained:
+                    group.questions.remove(question)
+            await self.session.flush()
+            await self.shared._canonicalize_module(group.module_id)
+        return await self.get_group(group_id)
+
+    async def get_part(self, part_id: uuid.UUID) -> BuilderListeningPart:
+        part = await self.session.scalar(self._part_query().where(ListeningPart.id == part_id))
+        if part is None:
+            raise AppError("LISTENING_PART_NOT_FOUND", "The Listening part does not exist.", 404)
+        return ReadingService._present_listening_part(part)
+
+    async def get_group(self, group_id: uuid.UUID) -> BuilderQuestionGroup:
+        group = await self.session.scalar(
+            select(QuestionGroup)
+            .where(QuestionGroup.id == group_id)
+            .options(
+                selectinload(QuestionGroup.questions),
+                selectinload(QuestionGroup.image_asset),
+            )
+        )
+        if group is None or group.listening_part_id is None:
+            raise AppError("QUESTION_GROUP_NOT_FOUND", "The question group does not exist.", 404)
+        return ReadingService._present_group(group, [])
+
+    async def _draft_module_for_version(self, version_id: uuid.UUID) -> TestModule:
+        version = await self.session.scalar(
+            select(TestVersion)
+            .where(TestVersion.id == version_id)
+            .options(selectinload(TestVersion.modules).selectinload(TestModule.listening_parts))
+            .with_for_update()
+        )
+        if version is None:
+            raise AppError("TEST_VERSION_NOT_FOUND", "The test version does not exist.", 404)
+        if version.status != VersionStatus.DRAFT:
+            raise AppError("TEST_VERSION_IMMUTABLE", "Published versions cannot be changed.", 409)
+        module = next(
+            (item for item in version.modules if item.module_type == ModuleType.LISTENING), None
+        )
+        if module is None:
+            raise AppError("LISTENING_MODULE_NOT_FOUND", "Create the Listening module first.", 422)
+        return module
+
+    async def _draft_part(self, part_id: uuid.UUID) -> ListeningPart:
+        part = await self.session.scalar(
+            self._part_query().where(ListeningPart.id == part_id).with_for_update()
+        )
+        if part is None:
+            raise AppError("LISTENING_PART_NOT_FOUND", "The Listening part does not exist.", 404)
+        if part.module.test_version.status != VersionStatus.DRAFT:
+            raise AppError("TEST_VERSION_IMMUTABLE", "Published versions cannot be changed.", 409)
+        return part
+
+    async def _draft_group(self, group_id: uuid.UUID) -> QuestionGroup:
+        group = await self.session.scalar(
+            select(QuestionGroup)
+            .where(QuestionGroup.id == group_id)
+            .options(
+                selectinload(QuestionGroup.questions),
+                selectinload(QuestionGroup.listening_part),
+                selectinload(QuestionGroup.module).selectinload(TestModule.test_version),
+            )
+            .with_for_update()
+        )
+        if group is None or group.listening_part_id is None:
+            raise AppError("QUESTION_GROUP_NOT_FOUND", "The question group does not exist.", 404)
+        if group.module.test_version.status != VersionStatus.DRAFT:
+            raise AppError("TEST_VERSION_IMMUTABLE", "Published versions cannot be changed.", 409)
+        return group
+
+    async def _validate_image_asset(self, version_id: uuid.UUID, body: QuestionGroupWrite) -> None:
+        visual = body.question_type in {
+            "plan_labelling",
+            "map_labelling",
+            "diagram_labelling",
+        }
+        if not visual and body.image_asset_id is not None:
+            raise AppError(
+                "INVALID_IMAGE_ASSET",
+                "Only visual labelling groups can attach a question image.",
+                422,
+            )
+        if not visual:
+            return
+        if body.image_asset_id is None:
+            raise AppError("INVALID_IMAGE_ASSET", "Upload a question image first.", 422)
+        asset = await self.session.scalar(
+            select(Asset).where(
+                Asset.id == body.image_asset_id,
+                Asset.test_version_id == version_id,
+                Asset.asset_type == AssetType.QUESTION_IMAGE,
+            )
+        )
+        if asset is None:
+            raise AppError(
+                "INVALID_IMAGE_ASSET",
+                "The question image does not belong to this draft version.",
+                422,
+            )
+
+    @staticmethod
+    def _apply_question(question: Question, item: QuestionWrite) -> None:
+        question.number = item.number
+        question.prompt = item.prompt
+        question.config = item.config
+        question.answer_key = item.answer_key
+        question.explanation = item.explanation
+        question.order_index = item.order_index
+
+    @staticmethod
+    def _part_query():
+        return select(ListeningPart).options(
+            selectinload(ListeningPart.audio_asset),
+            selectinload(ListeningPart.question_groups).selectinload(QuestionGroup.questions),
+            selectinload(ListeningPart.question_groups).selectinload(QuestionGroup.image_asset),
+            selectinload(ListeningPart.module).selectinload(TestModule.test_version),
+        )

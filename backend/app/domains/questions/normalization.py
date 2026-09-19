@@ -91,6 +91,22 @@ def _normalize_single_option_key(
     return {"kind": "SINGLE_OPTION", "value": value_string}
 
 
+def _normalize_multiple_options_key(
+    answer_key: dict[str, Any], option_ids: dict[str, list[str]]
+) -> dict[str, Any]:
+    raw_values = answer_key.get("values", answer_key.get("accepted", []))
+    values: list[str] = []
+    for raw in raw_values if isinstance(raw_values, list) else []:
+        value = str(raw)
+        matches = option_ids.get(value, [])
+        values.append(matches[0] if len(set(matches)) == 1 else value)
+    return {
+        "kind": "MULTIPLE_OPTIONS",
+        "values": values,
+        "order_matters": bool(answer_key.get("order_matters", False)),
+    }
+
+
 def normalize_question_group_payload(
     *,
     question_type: str,
@@ -109,7 +125,13 @@ def normalize_question_group_payload(
     normalized_questions = deepcopy(questions)
 
     group_option_ids: dict[str, list[str]] | None = None
-    if question_type == "matching_headings":
+    if question_type in {
+        "matching_headings",
+        "matching",
+        "plan_labelling",
+        "map_labelling",
+        "diagram_labelling",
+    }:
         options, group_option_ids = _normalize_options(
             list(config.get("options") or []), f"group:{group_id}:heading"
         )
@@ -143,14 +165,34 @@ def normalize_question_group_payload(
             question["answer_key"] = _normalize_single_option_key(
                 dict(question.get("answer_key") or {}), option_ids
             )
-        elif question_type == "matching_headings":
+        elif question_type in {
+            "matching_headings",
+            "matching",
+            "plan_labelling",
+            "map_labelling",
+            "diagram_labelling",
+        }:
             question_config = dict(question.get("config") or {})
-            target = question_config.get("target_block_id", question_config.get("target_label", ""))
-            matches = block_ids.get(str(target), [])
-            target_id = next(iter(set(matches))) if len(set(matches)) == 1 else str(target)
-            question["config"] = {"target_block_id": target_id}
+            if question_type == "matching_headings":
+                target = question_config.get(
+                    "target_block_id", question_config.get("target_label", "")
+                )
+                matches = block_ids.get(str(target), [])
+                target_id = next(iter(set(matches))) if len(set(matches)) == 1 else str(target)
+                question["config"] = {"target_block_id": target_id}
             question["answer_key"] = _normalize_single_option_key(
                 dict(question.get("answer_key") or {}), group_option_ids
+            )
+        elif question_type == "multiple_choice_multiple":
+            question_config = dict(question.get("config") or {})
+            options, option_ids = _normalize_options(
+                list(question_config.get("options") or []),
+                f"question:{question_id}:option",
+            )
+            question_config["options"] = options
+            question["config"] = question_config
+            question["answer_key"] = _normalize_multiple_options_key(
+                dict(question.get("answer_key") or {}), option_ids
             )
         elif question_type == "true_false_not_given":
             question["answer_key"] = _normalize_single_option_key(
@@ -170,16 +212,38 @@ def normalize_response_value(
     normalized_question_config: dict[str, Any],
 ) -> Any:
     """Translate a legacy visible option value to its normalized stable ID."""
-    if not isinstance(value, str):
+    if question_type == "multiple_choice_multiple" and isinstance(value, list):
+        pass
+    elif not isinstance(value, str):
         return value
-    if question_type == "multiple_choice":
+    if question_type in {"multiple_choice", "multiple_choice_multiple"}:
         raw_options = list(raw_question_config.get("options") or [])
         normalized_options = list(normalized_question_config.get("options") or [])
-    elif question_type == "matching_headings":
+    elif question_type in {
+        "matching_headings",
+        "matching",
+        "plan_labelling",
+        "map_labelling",
+        "diagram_labelling",
+    }:
         raw_options = list(raw_group_config.get("options") or [])
         normalized_options = list(normalized_group_config.get("options") or [])
     else:
         return value
+    if question_type == "multiple_choice_multiple" and isinstance(value, list):
+        normalized_values: list[str] = []
+        for selected in value:
+            selected_matches = {
+                str(normalized.get("id"))
+                for raw, normalized in zip(raw_options, normalized_options, strict=False)
+                if isinstance(raw, dict)
+                and isinstance(normalized, dict)
+                and selected in {str(raw.get("id") or ""), str(normalized.get("id") or "")}
+            }
+            normalized_values.append(
+                next(iter(selected_matches)) if len(selected_matches) == 1 else selected
+            )
+        return normalized_values
     matches = {
         str(normalized.get("id"))
         for raw, normalized in zip(raw_options, normalized_options, strict=False)

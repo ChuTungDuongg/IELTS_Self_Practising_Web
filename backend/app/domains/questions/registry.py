@@ -5,7 +5,7 @@ import uuid
 from collections.abc import Callable
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, RootModel, model_validator
+from pydantic import BaseModel, ConfigDict, Field, RootModel, field_validator, model_validator
 
 
 class EmptyConfig(BaseModel):
@@ -41,6 +41,19 @@ class MultipleChoiceConfig(BaseModel):
         return self
 
 
+class MultipleChoiceMultipleConfig(MultipleChoiceConfig):
+    min_selections: int = Field(default=2, ge=1, le=10)
+    max_selections: int = Field(default=2, ge=1, le=10)
+
+    @model_validator(mode="after")
+    def validate_selection_range(self) -> MultipleChoiceMultipleConfig:
+        if self.min_selections > self.max_selections:
+            raise ValueError("Minimum selections cannot exceed maximum selections")
+        if self.max_selections > len(self.options):
+            raise ValueError("Maximum selections cannot exceed the option count")
+        return self
+
+
 class TextCompletionConfig(BaseModel):
     max_words: int | None = Field(default=None, ge=1, le=20)
     max_numbers: int | None = Field(default=None, ge=0, le=20)
@@ -54,6 +67,96 @@ class MatchingHeadingsGroupConfig(BaseModel):
     def validate_options(self) -> MatchingHeadingsGroupConfig:
         _validate_option_identity(self.options)
         return self
+
+
+class MatchingGroupConfig(MatchingHeadingsGroupConfig):
+    pass
+
+
+class VisualMarker(BaseModel):
+    id: str = Field(min_length=1, max_length=80)
+    question_id: str = Field(min_length=1, max_length=80)
+    x: float = Field(ge=0, le=1)
+    y: float = Field(ge=0, le=1)
+
+
+class VisualLabellingGroupConfig(BaseModel):
+    options: list[Option] = Field(min_length=2)
+    markers: list[VisualMarker] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def validate_identity(self) -> VisualLabellingGroupConfig:
+        _validate_option_identity(self.options)
+        marker_ids = [marker.id for marker in self.markers]
+        if len(marker_ids) != len(set(marker_ids)):
+            raise ValueError("Marker IDs must be unique")
+        question_ids = [marker.question_id for marker in self.markers]
+        if len(question_ids) != len(set(question_ids)):
+            raise ValueError("Each visual question must have exactly one marker")
+        return self
+
+
+class LayoutCell(BaseModel):
+    id: str = Field(min_length=1, max_length=80)
+    type: Literal["TEXT", "GAP"]
+    text: str = Field(default="", max_length=1000)
+    question_id: str | None = Field(default=None, max_length=80)
+
+    @model_validator(mode="after")
+    def validate_cell(self) -> LayoutCell:
+        if self.type == "GAP" and not self.question_id:
+            raise ValueError("Gap cells must reference a question")
+        if self.type == "TEXT" and not self.text.strip():
+            raise ValueError("Text cells cannot be empty")
+        return self
+
+
+class LayoutColumn(BaseModel):
+    id: str = Field(min_length=1, max_length=80)
+    label: str = Field(min_length=1, max_length=200)
+
+
+class LayoutRow(BaseModel):
+    id: str = Field(min_length=1, max_length=80)
+    cells: list[LayoutCell] = Field(min_length=1)
+
+
+class LayoutNode(BaseModel):
+    id: str = Field(min_length=1, max_length=80)
+    type: Literal["TEXT", "GAP"]
+    text: str = Field(default="", max_length=2000)
+    question_id: str | None = Field(default=None, max_length=80)
+    level: int = Field(default=0, ge=0, le=4)
+
+    @model_validator(mode="after")
+    def validate_node(self) -> LayoutNode:
+        if self.type == "GAP" and not self.question_id:
+            raise ValueError("Gap nodes must reference a question")
+        if self.type == "TEXT" and not self.text.strip():
+            raise ValueError("Text nodes cannot be empty")
+        return self
+
+
+class StructuredLayout(BaseModel):
+    kind: Literal["FORM", "NOTE", "TABLE", "FLOW_CHART", "SUMMARY", "SENTENCE"]
+    columns: list[LayoutColumn] = Field(default_factory=list)
+    rows: list[LayoutRow] = Field(default_factory=list)
+    nodes: list[LayoutNode] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_shape(self) -> StructuredLayout:
+        if self.kind == "TABLE":
+            if not self.columns or not self.rows:
+                raise ValueError("Table layouts require columns and rows")
+            if any(len(row.cells) != len(self.columns) for row in self.rows):
+                raise ValueError("Every table row must match the column count")
+        elif not self.nodes:
+            raise ValueError("This completion layout requires at least one node")
+        return self
+
+
+class StructuredCompletionGroupConfig(BaseModel):
+    layout: StructuredLayout
 
 
 class MatchingTargetConfig(BaseModel):
@@ -84,13 +187,42 @@ class SingleOptionAnswerKey(BaseModel):
 
 
 class TextAnswerKey(BaseModel):
-    type: str = "text"
+    kind: Literal["TEXT"] = "TEXT"
     accepted: list[str] = Field(min_length=1)
     case_sensitive: bool = False
+
+    @model_validator(mode="before")
+    @classmethod
+    def accept_legacy_key(cls, value: Any) -> Any:
+        if isinstance(value, dict) and value.get("kind") != "TEXT":
+            return {**value, "kind": "TEXT"}
+        return value
+
+
+class MultipleOptionsAnswerKey(BaseModel):
+    kind: Literal["MULTIPLE_OPTIONS"] = "MULTIPLE_OPTIONS"
+    values: list[str] = Field(min_length=1)
+    order_matters: bool = False
+
+    @field_validator("values")
+    @classmethod
+    def unique_values(cls, value: list[str]) -> list[str]:
+        if len(value) != len(set(value)):
+            raise ValueError("Multiple option answer keys cannot contain duplicates")
+        return value
 
 
 class StringResponse(RootModel[str]):
     pass
+
+
+class StringListResponse(RootModel[list[str]]):
+    @field_validator("root")
+    @classmethod
+    def unique_values(cls, value: list[str]) -> list[str]:
+        if len(value) != len(set(value)):
+            raise ValueError("Responses cannot contain duplicate options")
+        return value
 
 
 def _validate_option_identity(options: list[Option]) -> None:
@@ -128,6 +260,13 @@ class RegisteredQuestionType:
 def _choice_evaluator(key: BaseModel, value: Any, _: BaseModel) -> bool:
     parsed = SingleOptionAnswerKey.model_validate(key)
     return isinstance(value, str) and value == parsed.value
+
+
+def _multiple_choice_evaluator(key: BaseModel, value: Any, _: BaseModel) -> bool:
+    parsed = MultipleOptionsAnswerKey.model_validate(key)
+    if not isinstance(value, list):
+        return False
+    return value == parsed.values if parsed.order_matters else set(value) == set(parsed.values)
 
 
 def normalize_text(value: str, *, case_sensitive: bool) -> str:
@@ -236,5 +375,68 @@ question_registry.register(
         response_model=StringResponse,
         answer_key_model=SingleOptionAnswerKey,
         evaluator=_choice_evaluator,
+    ),
+)
+
+question_registry.register(
+    "multiple_choice_multiple",
+    RegisteredQuestionType(
+        group_config_model=EmptyConfig,
+        question_config_model=MultipleChoiceMultipleConfig,
+        response_model=StringListResponse,
+        answer_key_model=MultipleOptionsAnswerKey,
+        evaluator=_multiple_choice_evaluator,
+    ),
+)
+question_registry.register(
+    "matching",
+    RegisteredQuestionType(
+        group_config_model=MatchingGroupConfig,
+        question_config_model=EmptyConfig,
+        response_model=StringResponse,
+        answer_key_model=SingleOptionAnswerKey,
+        evaluator=_choice_evaluator,
+    ),
+)
+
+for visual_type in ("plan_labelling", "map_labelling", "diagram_labelling"):
+    question_registry.register(
+        visual_type,
+        RegisteredQuestionType(
+            group_config_model=VisualLabellingGroupConfig,
+            question_config_model=EmptyConfig,
+            response_model=StringResponse,
+            answer_key_model=SingleOptionAnswerKey,
+            evaluator=_choice_evaluator,
+        ),
+    )
+
+for completion_type in (
+    "form_completion",
+    "note_completion",
+    "table_completion",
+    "flow_chart_completion",
+    "summary_completion",
+    "sentence_completion",
+):
+    question_registry.register(
+        completion_type,
+        RegisteredQuestionType(
+            group_config_model=StructuredCompletionGroupConfig,
+            question_config_model=TextCompletionConfig,
+            response_model=StringResponse,
+            answer_key_model=TextAnswerKey,
+            evaluator=_text_evaluator,
+        ),
+    )
+
+question_registry.register(
+    "short_answer",
+    RegisteredQuestionType(
+        group_config_model=EmptyConfig,
+        question_config_model=TextCompletionConfig,
+        response_model=StringResponse,
+        answer_key_model=TextAnswerKey,
+        evaluator=_text_evaluator,
     ),
 )

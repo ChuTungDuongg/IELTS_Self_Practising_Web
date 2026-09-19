@@ -18,6 +18,7 @@ from app.schemas.content import (
     FlagUpdate,
     HighlightCreate,
     HighlightResponse,
+    ListeningReview,
     ReadingReview,
 )
 from app.services.attempts import AttemptService
@@ -82,6 +83,13 @@ async def get_reading_review(
     attempt_id: UUID, session: AsyncSession = Depends(get_session)
 ) -> ReadingReview:
     return await AttemptService(session).reading_review(attempt_id)
+
+
+@router.get("/{attempt_id}/listening-review", response_model=ListeningReview)
+async def get_listening_review(
+    attempt_id: UUID, session: AsyncSession = Depends(get_session)
+) -> ListeningReview:
+    return await AttemptService(session).listening_review(attempt_id)
 
 
 @router.put("/{attempt_id}/flags/{question_id}", response_model=FlagResponse)

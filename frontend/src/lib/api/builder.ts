@@ -21,16 +21,13 @@ const questionSchema = z.object({
 
 const groupSchema = z.object({
   id: z.string().uuid(),
-  question_type: z.enum([
-    "multiple_choice",
-    "true_false_not_given",
-    "text_completion",
-    "matching_headings",
-  ]),
+  question_type: z.enum(["multiple_choice", "multiple_choice_multiple", "true_false_not_given", "text_completion", "matching_headings", "matching", "plan_labelling", "map_labelling", "diagram_labelling", "form_completion", "note_completion", "table_completion", "flow_chart_completion", "summary_completion", "sentence_completion", "short_answer"]),
   instruction: z.string(),
   config: z.record(z.string(), z.unknown()),
   order_index: z.number().int(),
   questions: z.array(questionSchema),
+  image_asset_id: z.string().uuid().nullable().optional(),
+  image_asset: z.object({ id: z.string().uuid(), original_name: z.string(), mime_type: z.string(), file_size: z.number(), content_url: z.string() }).nullable().optional(),
 });
 
 const passageSchema = z.object({
@@ -39,6 +36,12 @@ const passageSchema = z.object({
   order_index: z.number().int(),
   blocks: z.array(blockSchema),
   question_groups: z.array(groupSchema),
+});
+
+const assetSchema = z.object({ id: z.string().uuid(), original_name: z.string(), mime_type: z.string(), file_size: z.number(), content_url: z.string() });
+const listeningPartSchema = z.object({
+  id: z.string().uuid(), title: z.string().nullable(), order_index: z.number().int(),
+  audio_asset: assetSchema.nullable(), question_groups: z.array(groupSchema),
 });
 
 const builderVersionSchema = z.object({
@@ -54,6 +57,7 @@ const builderVersionSchema = z.object({
       title: z.string().nullable(),
       recommended_duration_seconds: z.number().int().nullable(),
       passages: z.array(passageSchema),
+      listening_parts: z.array(listeningPartSchema),
     }),
   ),
 });
@@ -61,6 +65,7 @@ const builderVersionSchema = z.object({
 export type BuilderVersion = z.infer<typeof builderVersionSchema>;
 export type BuilderPassage = z.infer<typeof passageSchema>;
 export type BuilderQuestionGroup = z.infer<typeof groupSchema>;
+export type BuilderListeningPart = z.infer<typeof listeningPartSchema>;
 export type TextBlock = z.infer<typeof blockSchema>;
 
 export async function getBuilderVersion(versionId: string): Promise<BuilderVersion> {
@@ -78,6 +83,32 @@ export function createReadingModule(versionId: string) {
       recommended_duration_seconds: 3600,
     }),
   });
+}
+
+export function createListeningModule(versionId: string) {
+  return apiRequest(`/test-versions/${versionId}/modules`, { method: "POST", body: JSON.stringify({ module_type: "LISTENING", title: "Listening", recommended_duration_seconds: 1800 }) });
+}
+
+export function createListeningPart(versionId: string, body: { title: string; order_index: number }) {
+  return apiRequest<BuilderListeningPart>(`/test-versions/${versionId}/listening/parts`, { method: "POST", body: JSON.stringify(body) });
+}
+
+export function updateListeningPart(partId: string, body: { title: string | null; order_index: number }) {
+  return apiRequest<BuilderListeningPart>(`/listening/parts/${partId}`, { method: "PUT", body: JSON.stringify(body) });
+}
+
+export function deleteListeningPart(partId: string) { return apiRequest(`/listening/parts/${partId}`, { method: "DELETE" }); }
+
+export function attachListeningAudio(partId: string, assetId: string | null) {
+  return apiRequest<BuilderListeningPart>(`/listening/parts/${partId}/audio`, { method: "PUT", body: JSON.stringify({ asset_id: assetId }) });
+}
+
+export function createListeningQuestionGroup(partId: string, body: QuestionGroupModel) {
+  return apiRequest<BuilderQuestionGroup>(`/listening/parts/${partId}/question-groups`, { method: "POST", body: JSON.stringify(body) });
+}
+
+export function updateListeningQuestionGroup(groupId: string, body: QuestionGroupModel) {
+  return apiRequest<BuilderQuestionGroup>(`/listening/question-groups/${groupId}`, { method: "PUT", body: JSON.stringify(body) });
 }
 
 export async function createPassage(

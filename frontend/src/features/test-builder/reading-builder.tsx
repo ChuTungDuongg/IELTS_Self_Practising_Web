@@ -18,7 +18,7 @@ import {
   type BuilderVersion,
   type TextBlock,
 } from "@/lib/api/builder";
-import { questionRegistry, questionTypeOptions } from "@/features/questions/registry";
+import { questionRegistry, readingQuestionTypeOptions } from "@/features/questions/registry";
 import type { QuestionGroupModel, QuestionType } from "@/features/questions/types";
 import { QuestionGroupEditor } from "./question-group-editor";
 import { useBuilderLifecycle } from "./builder-lifecycle";
@@ -227,7 +227,7 @@ function NewGroupButton({ nextNumber, orderIndex, passageBlocks, onCreate }: { n
     if (type === "matching_headings") group.questions[0].config = { target_block_id: passageBlocks.find((block) => block.type === "paragraph")?.id ?? "" };
     onCreate(group);
   }
-  return <div className="new-group-row"><label className="field-label flex-1">Question type<select value={type} onChange={(event) => setType(event.target.value as QuestionType)} className="select-field">{questionTypeOptions.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label><button onClick={create} className="btn btn-secondary"><PlusIcon className="size-4" /> Add question group</button></div>;
+  return <div className="new-group-row"><label className="field-label flex-1">Question type<select value={type} onChange={(event) => setType(event.target.value as QuestionType)} className="select-field">{readingQuestionTypeOptions.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label><button onClick={create} className="btn btn-secondary"><PlusIcon className="size-4" /> Add question group</button></div>;
 }
 
 function duplicateValues(values: string[]): string[] {

@@ -31,7 +31,7 @@ export function ReadingRunner({ initial }: { initial: ExamPayload }) {
     catch { setSaveState("error"); }
   }, [attemptId]);
 
-  function answer(questionId: string, value: string) {
+  function answer(questionId: string, value: string | string[]) {
     setValues((current) => ({ ...current, [questionId]: value }));
     dirty.current.set(questionId, value);
     const currentTimer = timers.current.get(questionId);

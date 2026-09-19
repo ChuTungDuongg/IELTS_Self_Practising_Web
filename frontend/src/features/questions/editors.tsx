@@ -1,6 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import type { Option, PassageBlock, QuestionGroupModel, QuestionModel } from "./types";
+import { assetContentUrl } from "@/lib/api/assets";
+
+/* eslint-disable @next/next/no-img-element -- builder previews preserve uploaded image aspect ratios */
 
 export type EditorProps = {
   group: QuestionGroupModel;
@@ -37,7 +41,16 @@ function QuestionActions({ group, index, onChange }: EditorProps & { index: numb
     const questions = group.questions
       .filter((_, item) => item !== index)
       .map((question, order_index) => ({ ...question, number: firstNumber + order_index, order_index }));
-    onChange({ ...group, questions });
+    const removedId = group.questions[index].id;
+    const config = { ...group.config };
+    if (Array.isArray(config.markers)) config.markers = (config.markers as Array<{ question_id: string }>).filter((item) => item.question_id !== removedId);
+    const layout = config.layout as { rows?: Array<{ cells: Array<{ question_id?: string }> }>; nodes?: Array<{ question_id?: string }> } | undefined;
+    if (layout) config.layout = {
+      ...layout,
+      rows: layout.rows?.filter((row) => !row.cells.some((cell) => cell.question_id === removedId)),
+      nodes: layout.nodes?.filter((node) => node.question_id !== removedId),
+    };
+    onChange({ ...group, config, questions });
   }
 
   return (
@@ -90,6 +103,38 @@ export function MultipleChoiceEditor(props: EditorProps) {
       })}
     </div>
   );
+}
+
+export function MultipleChoiceMultipleEditor(props: EditorProps) {
+  const { group, onChange } = props;
+  return <div className="space-y-4">{group.questions.map((question, index) => {
+    const options = question.config.options as Option[];
+    const selected = new Set((question.answer_key.values as string[] | undefined) ?? []);
+    const setOptions = (next: Option[]) => onChange(updateQuestion(group, index, { config: { ...question.config, options: next } }));
+    return <QuestionFrame key={question.id} {...props} index={index}><p className="answer-key-label">Select every correct answer</p><div className="option-editor-list">{options.map((option, optionIndex) => <div key={option.id} className={`option-editor-row ${selected.has(option.id) ? "option-editor-correct" : ""}`}><input type="checkbox" checked={selected.has(option.id)} onChange={() => { const next = selected.has(option.id) ? [...selected].filter((id) => id !== option.id) : [...selected, option.id]; onChange(updateQuestion(group, index, { answer_key: { kind: "MULTIPLE_OPTIONS", values: next, order_matters: false } })); }} aria-label={`Mark ${option.label} correct`} /><input value={option.label} onChange={(event) => setOptions(options.map((item) => item.id === option.id ? { ...item, label: event.target.value } : item))} aria-label={`Option ${optionIndex + 1} label`} className="field option-label-field" /><input value={option.text} onChange={(event) => setOptions(options.map((item) => item.id === option.id ? { ...item, text: event.target.value } : item))} aria-label={`Option ${optionIndex + 1} text`} className="field" /></div>)}</div><button type="button" className="btn btn-secondary mt-3" onClick={() => setOptions([...options, { id: crypto.randomUUID(), label: String.fromCharCode(65 + options.length), text: "New option" }])}>+ Add option</button></QuestionFrame>;
+  })}</div>;
+}
+
+export function MatchingEditor(props: EditorProps) {
+  const { group, onChange } = props;
+  const options = group.config.options as Option[];
+  const setOptions = (next: Option[]) => onChange({ ...group, config: { ...group.config, options: next } });
+  return <div className="matching-editor"><section className="matching-section"><div className="matching-section-title"><div><h3>Matching options</h3><p>Stable option IDs remain unchanged when labels are edited.</p></div></div><div className="heading-editor-list">{options.map((option, index) => <div key={option.id} className="heading-editor-row"><input className="field heading-label-field" value={option.label} aria-label={`Matching option ${index + 1} label`} onChange={(event) => setOptions(options.map((item) => item.id === option.id ? { ...item, label: event.target.value } : item))} /><input className="field" value={option.text} aria-label={`Matching option ${index + 1} text`} onChange={(event) => setOptions(options.map((item) => item.id === option.id ? { ...item, text: event.target.value } : item))} /></div>)}</div><button type="button" className="btn btn-secondary mt-3" onClick={() => setOptions([...options, { id: crypto.randomUUID(), label: String.fromCharCode(65 + options.length), text: "New option" }])}>+ Add option</button></section><section className="matching-section"><div className="matching-section-title"><div><h3>Assignments</h3><p>Choose the correct option for each numbered prompt.</p></div></div>{group.questions.map((question, index) => <QuestionFrame key={question.id} {...props} index={index}><label className="field-label">Correct option<select className="select-field" value={singleOptionValue(question)} onChange={(event) => onChange(updateQuestion(group, index, { answer_key: singleOptionKey(event.target.value) }))}>{options.map((option) => <option key={option.id} value={option.id}>{option.label} — {option.text}</option>)}</select></label></QuestionFrame>)}</section></div>;
+}
+
+export function VisualLabellingEditor(props: EditorProps) {
+  const { group, onChange } = props;
+  const markers = group.config.markers as Array<{ id: string; question_id: string; x: number; y: number }>;
+  const [selected, setSelected] = useState(markers[0]?.id ?? "");
+  return <div className="space-y-4">{group.image_asset ? <div className="visual-marker-editor"><img src={assetContentUrl(group.image_asset)} alt="Plan, map, or diagram" />{markers.map((marker) => { const question = group.questions.find((item) => item.id === marker.question_id); return <button type="button" key={marker.id} aria-label={`Select marker ${question?.number ?? ""}`} className={`visual-marker ${selected === marker.id ? "visual-marker-selected" : ""}`} style={{ left: `${marker.x * 100}%`, top: `${marker.y * 100}%` }} onClick={() => setSelected(marker.id)} title="Select, then click the image to reposition">{question?.number ?? "?"}</button>; })}<button type="button" className="visual-marker-hitarea" aria-label="Place selected marker" onClick={(event) => { const rect = event.currentTarget.getBoundingClientRect(); onChange({ ...group, config: { ...group.config, markers: markers.map((item) => item.id === selected ? { ...item, x: (event.clientX - rect.left) / rect.width, y: (event.clientY - rect.top) / rect.height } : item) } }); }} /></div> : <p className="notice">Upload a PNG, JPEG, or WEBP image above before placing markers.</p>}<MatchingEditor {...props} /></div>;
+}
+
+export function StructuredCompletionEditor(props: EditorProps) {
+  const { group, onChange } = props;
+  const layout = group.config.layout as { kind: string; columns?: Array<{ id: string; label: string }>; rows?: Array<{ id: string; cells: Array<{ id: string; type: "TEXT" | "GAP"; text: string; question_id?: string }> }>; nodes?: Array<{ id: string; type: "TEXT" | "GAP"; text: string; question_id?: string; level: number }> };
+  const setLayout = (next: typeof layout) => onChange({ ...group, config: { ...group.config, layout: next } });
+  function removeQuestionIds(ids: Set<string>) { return group.questions.filter((question) => !ids.has(question.id ?? "")).map((question, order_index) => ({ ...question, order_index })); }
+  return <div className="space-y-4"><section className="matching-section"><div className="matching-section-title"><div><h3>{layout.kind.replace("_", " ")} layout</h3><p>Each gap is linked to one stable question UUID.</p></div></div>{layout.kind === "TABLE" ? <div className="structured-table"><div className="structured-row">{layout.columns?.map((column, columnIndex) => <div key={column.id} className="structured-column"><input className="field" value={column.label} onChange={(event) => setLayout({ ...layout, columns: layout.columns?.map((item) => item.id === column.id ? { ...item, label: event.target.value } : item) })} />{(layout.columns?.length ?? 0) > 1 ? <button type="button" className="icon-button" aria-label={`Remove column ${columnIndex + 1}`} onClick={() => { const removed = new Set(layout.rows?.map((row) => row.cells[columnIndex]?.question_id).filter(Boolean) as string[]); onChange({ ...group, questions: removeQuestionIds(removed), config: { ...group.config, layout: { ...layout, columns: layout.columns?.filter((item) => item.id !== column.id), rows: layout.rows?.map((row) => ({ ...row, cells: row.cells.filter((_, index) => index !== columnIndex) })) } } }); }}>×</button> : null}</div>)}</div>{layout.rows?.map((row) => <div key={row.id} className="structured-row-wrap"><div className="structured-row">{row.cells.map((cell) => cell.type === "GAP" ? <span key={cell.id} className="structured-gap">Q{group.questions.find((item) => item.id === cell.question_id)?.number ?? "?"}</span> : <input key={cell.id} className="field" value={cell.text} onChange={(event) => setLayout({ ...layout, rows: layout.rows?.map((item) => item.id === row.id ? { ...item, cells: item.cells.map((entry) => entry.id === cell.id ? { ...entry, text: event.target.value } : entry) } : item) })} />)}</div><button type="button" className="btn btn-danger-ghost" onClick={() => { const removed = new Set(row.cells.map((cell) => cell.question_id).filter(Boolean) as string[]); onChange({ ...group, questions: removeQuestionIds(removed), config: { ...group.config, layout: { ...layout, rows: layout.rows?.filter((item) => item.id !== row.id) } } }); }}>Remove row</button></div>)}<div className="flex flex-wrap gap-2"><button type="button" className="btn btn-secondary" onClick={() => setLayout({ ...layout, columns: [...(layout.columns ?? []), { id: crypto.randomUUID(), label: "Column" }], rows: layout.rows?.map((row) => ({ ...row, cells: [...row.cells, { id: crypto.randomUUID(), type: "TEXT", text: "Text" }] })) })}>+ Add column</button><button type="button" className="btn btn-secondary" onClick={() => setLayout({ ...layout, rows: [...(layout.rows ?? []), { id: crypto.randomUUID(), cells: (layout.columns ?? []).map(() => ({ id: crypto.randomUUID(), type: "TEXT", text: "Text" })) }] })}>+ Add row</button></div></div> : <div className="structured-node-list">{layout.nodes?.map((node) => <div key={node.id} className="structured-node">{node.type === "GAP" ? <span className="structured-gap">Gap · Q{group.questions.find((item) => item.id === node.question_id)?.number ?? "?"}</span> : <input className="field" value={node.text} onChange={(event) => setLayout({ ...layout, nodes: layout.nodes?.map((item) => item.id === node.id ? { ...item, text: event.target.value } : item) })} />}<button type="button" className="icon-button" aria-label="Remove layout node" onClick={() => { const removed = new Set(node.question_id ? [node.question_id] : []); onChange({ ...group, questions: removeQuestionIds(removed), config: { ...group.config, layout: { ...layout, nodes: layout.nodes?.filter((item) => item.id !== node.id) } } }); }}>×</button></div>)}<button type="button" className="btn btn-secondary" onClick={() => setLayout({ ...layout, nodes: [...(layout.nodes ?? []), { id: crypto.randomUUID(), type: "TEXT", text: "Text", level: 0 }] })}>+ Add text block</button></div>}</section><TextCompletionEditor {...props} /></div>;
 }
 
 const TFNG = ["TRUE", "FALSE", "NOT_GIVEN"] as const;

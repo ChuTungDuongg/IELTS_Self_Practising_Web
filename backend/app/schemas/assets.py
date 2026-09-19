@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, computed_field
 
 from app.models.enums import AssetType
 
@@ -15,3 +15,8 @@ class AssetResponse(BaseModel):
     original_name: str
     file_size: int
     created_at: datetime
+
+    @computed_field
+    @property
+    def content_url(self) -> str:
+        return f"/assets/{self.id}/content"

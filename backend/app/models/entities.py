@@ -63,6 +63,9 @@ class TestVersion(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         cascade="all, delete-orphan",
         order_by="TestModule.order_index",
     )
+    assets: Mapped[list[Asset]] = relationship(
+        back_populates="test_version", cascade="all, delete-orphan", passive_deletes=True
+    )
 
 
 class TestModule(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -122,6 +125,10 @@ class ListeningPart(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
 
     module: Mapped[TestModule] = relationship(back_populates="listening_parts")
+    audio_asset: Mapped[Asset | None] = relationship(foreign_keys=[audio_asset_id])
+    question_groups: Mapped[list[QuestionGroup]] = relationship(
+        back_populates="listening_part", order_by="QuestionGroup.order_index"
+    )
 
 
 class WritingTask(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -149,6 +156,12 @@ class QuestionGroup(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     passage_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("reading_passages.id", ondelete="SET NULL")
     )
+    listening_part_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("listening_parts.id", ondelete="SET NULL"), index=True
+    )
+    image_asset_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("assets.id", ondelete="SET NULL")
+    )
     section_reference: Mapped[str | None] = mapped_column(String(120))
     question_type: Mapped[str] = mapped_column(String(80), nullable=False)
     instruction: Mapped[str] = mapped_column(Text, nullable=False)
@@ -157,6 +170,8 @@ class QuestionGroup(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     module: Mapped[TestModule] = relationship(back_populates="question_groups")
     passage: Mapped[ReadingPassage | None] = relationship(back_populates="question_groups")
+    listening_part: Mapped[ListeningPart | None] = relationship(back_populates="question_groups")
+    image_asset: Mapped[Asset | None] = relationship(foreign_keys=[image_asset_id])
     questions: Mapped[list[Question]] = relationship(
         back_populates="question_group",
         cascade="all, delete-orphan",
@@ -302,6 +317,7 @@ class Asset(UUIDPrimaryKeyMixin, Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+    test_version: Mapped[TestVersion] = relationship(back_populates="assets")
 
 
 class AttemptEvent(UUIDPrimaryKeyMixin, Base):

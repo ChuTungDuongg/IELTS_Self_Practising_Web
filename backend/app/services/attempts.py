@@ -36,6 +36,7 @@ from app.models.enums import (
 )
 from app.repositories.attempts import AttemptRepository
 from app.repositories.tests import TestRepository
+from app.schemas.assets import AssetResponse
 from app.schemas.attempts import (
     AnswerResponse,
     AttemptCreate,
@@ -48,12 +49,14 @@ from app.schemas.attempts import (
 )
 from app.schemas.content import (
     AttemptExam,
+    ExamListeningPart,
     ExamPassage,
     ExamQuestion,
     ExamQuestionGroup,
     FlagResponse,
     HighlightCreate,
     HighlightResponse,
+    ListeningReview,
     ReadingReview,
 )
 from app.services.reading import ReadingService
@@ -358,13 +361,33 @@ class AttemptService:
         assert version is not None
         answer_values = {item.question_id: item.value for item in attempt.answers}
         flags = {item.question_id: item.flagged for item in attempt.flags}
-        reading = next(
+        module = next(
             (item for item in version.modules if item.module_type == attempt.module_type), None
         )
         passages: list[ExamPassage] = []
-        if reading is not None:
-            for passage in reading.passages:
+        listening_parts: list[ExamListeningPart] = []
+        if module is not None:
+            for passage in module.passages:
                 passages.append(self._present_exam_passage(passage, answer_values, flags))
+            for part in sorted(module.listening_parts, key=lambda item: item.order_index):
+                listening_parts.append(
+                    ExamListeningPart(
+                        id=part.id,
+                        title=part.title,
+                        order_index=part.order_index,
+                        audio_asset=(
+                            AssetResponse.model_validate(part.audio_asset, from_attributes=True)
+                            if part.audio_asset
+                            else None
+                        ),
+                        question_groups=[
+                            self._present_exam_group(group, answer_values, flags, [])
+                            for group in sorted(
+                                part.question_groups, key=lambda item: item.order_index
+                            )
+                        ],
+                    )
+                )
         return AttemptExam(
             attempt=attempt_response,
             test_title=version.test.title,
@@ -373,6 +396,7 @@ class AttemptService:
                 HighlightResponse.model_validate(item, from_attributes=True)
                 for item in attempt.highlights
             ],
+            listening_parts=listening_parts,
         )
 
     @staticmethod
@@ -382,65 +406,84 @@ class AttemptService:
         flags: dict[uuid.UUID, bool],
     ) -> ExamPassage:
         blocks = normalize_passage_blocks(passage.content_json, passage.id)
-        exam_groups: list[ExamQuestionGroup] = []
-        for group in sorted(passage.question_groups, key=lambda item: item.order_index):
-            source_questions = sorted(group.questions, key=lambda item: item.order_index)
-            question_rows = [
-                {
-                    "id": question.id,
-                    "number": question.number,
-                    "prompt": question.prompt,
-                    "config": question.config,
-                    "answer_key": question.answer_key,
-                    "explanation": question.explanation,
-                    "order_index": question.order_index,
-                }
-                for question in source_questions
-            ]
-            normalized_config, normalized_questions = normalize_question_group_payload(
-                question_type=group.question_type,
-                group_config=group.config,
-                questions=question_rows,
-                group_id=group.id,
-                passage_blocks=blocks,
-            )
-            exam_questions: list[ExamQuestion] = []
-            for source, question in zip(source_questions, normalized_questions, strict=True):
-                stored_value = normalize_response_value(
-                    question_type=group.question_type,
-                    value=answer_values.get(source.id),
-                    raw_group_config=group.config,
-                    raw_question_config=source.config,
-                    normalized_group_config=normalized_config,
-                    normalized_question_config=question["config"],
-                )
-                exam_questions.append(
-                    ExamQuestion(
-                        id=source.id,
-                        number=question["number"],
-                        prompt=question["prompt"],
-                        config=question["config"],
-                        order_index=question["order_index"],
-                        value=stored_value,
-                        flagged=flags.get(source.id, False),
-                    )
-                )
-            exam_groups.append(
-                ExamQuestionGroup(
-                    id=group.id,
-                    question_type=group.question_type,
-                    instruction=group.instruction,
-                    config=normalized_config,
-                    order_index=group.order_index,
-                    questions=exam_questions,
-                )
-            )
+        exam_groups = [
+            AttemptService._present_exam_group(group, answer_values, flags, blocks)
+            for group in sorted(passage.question_groups, key=lambda item: item.order_index)
+        ]
         return ExamPassage(
             id=passage.id,
             title=passage.title,
             order_index=passage.order_index,
             blocks=blocks,
             question_groups=exam_groups,
+        )
+
+    @staticmethod
+    def _present_exam_group(
+        group: QuestionGroup,
+        answer_values: dict[uuid.UUID, Any],
+        flags: dict[uuid.UUID, bool],
+        passage_blocks: list[dict[str, Any]],
+    ) -> ExamQuestionGroup:
+        source_questions = sorted(group.questions, key=lambda item: item.order_index)
+        question_rows = [
+            {
+                "id": question.id,
+                "number": question.number,
+                "prompt": question.prompt,
+                "config": question.config,
+                "answer_key": question.answer_key,
+                "explanation": question.explanation,
+                "order_index": question.order_index,
+            }
+            for question in source_questions
+        ]
+        normalized_config, normalized_questions = normalize_question_group_payload(
+            question_type=group.question_type,
+            group_config=group.config,
+            questions=question_rows,
+            group_id=group.id,
+            passage_blocks=passage_blocks,
+        )
+        exam_questions: list[ExamQuestion] = []
+        for source, question in zip(source_questions, normalized_questions, strict=True):
+            stored_value = normalize_response_value(
+                question_type=group.question_type,
+                value=answer_values.get(source.id),
+                raw_group_config=group.config,
+                raw_question_config=source.config,
+                normalized_group_config=normalized_config,
+                normalized_question_config=question["config"],
+            )
+            exam_questions.append(
+                ExamQuestion(
+                    id=source.id,
+                    number=question["number"],
+                    prompt=question["prompt"],
+                    config=question["config"],
+                    order_index=question["order_index"],
+                    value=stored_value,
+                    flagged=flags.get(source.id, False),
+                )
+            )
+        return ExamQuestionGroup(
+            id=group.id,
+            question_type=group.question_type,
+            instruction=group.instruction,
+            config={
+                **normalized_config,
+                **(
+                    {
+                        "image_asset": AssetResponse.model_validate(
+                            group.image_asset, from_attributes=True
+                        ).model_dump(mode="json")
+                    }
+                    if group.image_asset
+                    else {}
+                ),
+            },
+            order_index=group.order_index,
+            questions=exam_questions,
         )
 
     async def reading_review(self, attempt_id: uuid.UUID) -> ReadingReview:
@@ -455,6 +498,21 @@ class AttemptService:
             [ReadingService._present_passage(item) for item in module.passages] if module else []
         )
         return ReadingReview(review=review, passages=passages)
+
+    async def listening_review(self, attempt_id: uuid.UUID) -> ListeningReview:
+        review = await self.review(attempt_id)
+        attempt = await self._require(attempt_id)
+        version = await TestRepository(self.session).get_version(attempt.test_version_id)
+        assert version is not None
+        module = next(
+            (item for item in version.modules if item.module_type == attempt.module_type), None
+        )
+        parts = (
+            [ReadingService._present_listening_part(item) for item in module.listening_parts]
+            if module
+            else []
+        )
+        return ListeningReview(review=review, parts=parts)
 
     async def save_flag(
         self, attempt_id: uuid.UUID, question_id: uuid.UUID, flagged: bool

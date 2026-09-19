@@ -24,13 +24,35 @@ export type QuestionGroupModel = {
   config: Record<string, unknown>;
   order_index: number;
   questions: QuestionModel[];
+  image_asset_id?: string | null;
+  image_asset?: AssetModel | null;
 };
 
 export type QuestionType =
   | "multiple_choice"
+  | "multiple_choice_multiple"
   | "true_false_not_given"
   | "text_completion"
-  | "matching_headings";
+  | "matching_headings"
+  | "matching"
+  | "plan_labelling"
+  | "map_labelling"
+  | "diagram_labelling"
+  | "form_completion"
+  | "note_completion"
+  | "table_completion"
+  | "flow_chart_completion"
+  | "summary_completion"
+  | "sentence_completion"
+  | "short_answer";
+
+export type AssetModel = {
+  id: string;
+  original_name: string;
+  mime_type: string;
+  file_size: number;
+  content_url: string;
+};
 
 export type ExamQuestion = Omit<QuestionModel, "answer_key"> & {
   id: string;

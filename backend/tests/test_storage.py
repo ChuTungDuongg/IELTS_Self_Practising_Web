@@ -29,3 +29,26 @@ def test_storage_rejects_mismatched_extension(tmp_path: Path) -> None:
             max_bytes=100,
         )
     assert caught.value.code == "ASSET_UPLOAD_INVALID"
+
+
+@pytest.mark.parametrize(
+    ("mime_type", "name"),
+    [
+        ("audio/mpeg", "part.mp3"),
+        ("audio/mp4", "part.m4a"),
+        ("audio/x-m4a", "part.m4a"),
+        ("audio/aac", "part.aac"),
+        ("audio/wav", "part.wav"),
+    ],
+)
+def test_storage_accepts_browser_playable_listening_audio(
+    tmp_path: Path, mime_type: str, name: str
+) -> None:
+    stored = LocalAssetStorage(tmp_path).store(
+        category="audio",
+        mime_type=mime_type,
+        original_name=name,
+        content=b"fictional-audio-bytes",
+        max_bytes=100,
+    )
+    assert (tmp_path / stored.relative_path).exists()

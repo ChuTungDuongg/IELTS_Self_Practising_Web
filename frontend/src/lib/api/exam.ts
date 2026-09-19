@@ -35,14 +35,17 @@ const passageSchema = z.object({
   blocks: z.array(z.object({ id: z.string().uuid(), type: z.enum(["paragraph", "heading"]), label: z.string().nullable().optional(), text: z.string() })),
   question_groups: z.array(groupSchema),
 });
+const assetSchema = z.object({ id: z.string().uuid(), original_name: z.string(), mime_type: z.string(), file_size: z.number(), content_url: z.string() });
+const listeningPartSchema = z.object({ id: z.string().uuid(), title: z.string(), order_index: z.number(), audio_asset: assetSchema.nullable(), question_groups: z.array(groupSchema) });
 const highlightSchema = z.object({
   id: z.string().uuid(), passage_id: z.string().uuid(), start_block_id: z.string().uuid(),
   start_offset: z.number(), end_block_id: z.string().uuid(), end_offset: z.number(),
   selected_text: z.string(), created_at: z.string(),
 });
-const examSchema = z.object({ attempt: attemptSchema, test_title: z.string(), passages: z.array(passageSchema), highlights: z.array(highlightSchema) });
+const examSchema = z.object({ attempt: attemptSchema, test_title: z.string(), passages: z.array(passageSchema), highlights: z.array(highlightSchema), listening_parts: z.array(listeningPartSchema) });
 export type ExamPayload = z.infer<typeof examSchema>;
 export type ExamPassage = z.infer<typeof passageSchema>;
+export type ExamListeningPart = z.infer<typeof listeningPartSchema>;
 export type Highlight = z.infer<typeof highlightSchema>;
 
 export async function getExam(attemptId: string): Promise<ExamPayload> {
@@ -81,4 +84,11 @@ export async function getReadingReview(attemptId: string) {
       }>;
     }>;
   }>(`/attempts/${attemptId}/reading-review`);
+}
+
+export async function getListeningReview(attemptId: string) {
+  return apiRequest<{
+    review: { attempt: z.infer<typeof attemptSchema>; test_title: string; answers: Array<{ question_id: string; question_number: number; prompt: string; value: unknown; answer_key: Record<string, unknown>; is_correct: boolean | null; explanation: string | null }> };
+    parts: Array<{ id: string; title: string; order_index: number; audio_asset: z.infer<typeof assetSchema> | null; question_groups: Array<{ id: string; question_type: string; instruction: string; config: Record<string, unknown>; image_asset?: z.infer<typeof assetSchema> | null; order_index: number; questions: Array<{ id: string; number: number; prompt: string; config: Record<string, unknown>; answer_key: Record<string, unknown>; explanation: string | null; order_index: number }> }> }>;
+  }>(`/attempts/${attemptId}/listening-review`);
 }

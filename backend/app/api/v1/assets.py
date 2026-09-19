@@ -3,10 +3,13 @@ from pathlib import Path
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile, status
+from fastapi.responses import FileResponse
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.database import get_session
+from app.core.exceptions import AppError
 from app.models import Asset
 from app.models.enums import AssetType
 from app.schemas.assets import AssetResponse
@@ -71,6 +74,21 @@ async def upload_image(
     )
 
 
+@router.post("/question-images", response_model=AssetResponse, status_code=status.HTTP_201_CREATED)
+async def upload_question_image(
+    test_version_id: UUID = Form(),
+    file: UploadFile = File(),
+    session: AsyncSession = Depends(get_session),
+) -> AssetResponse:
+    return await _upload(
+        version_id=test_version_id,
+        upload=file,
+        category="images",
+        asset_type=AssetType.QUESTION_IMAGE,
+        session=session,
+    )
+
+
 @router.post("/audio", response_model=AssetResponse, status_code=status.HTTP_201_CREATED)
 async def upload_audio(
     test_version_id: UUID = Form(),
@@ -83,4 +101,20 @@ async def upload_audio(
         category="audio",
         asset_type=AssetType.LISTENING_AUDIO,
         session=session,
+    )
+
+
+@router.get("/{asset_id}/content", response_class=FileResponse)
+async def get_asset_content(
+    asset_id: UUID, session: AsyncSession = Depends(get_session)
+) -> FileResponse:
+    asset = await session.scalar(select(Asset).where(Asset.id == asset_id))
+    if asset is None:
+        raise AppError("ASSET_NOT_FOUND", "The asset does not exist.", 404)
+    path = LocalAssetStorage(get_settings().resolved_storage_root).resolve(asset.relative_path)
+    return FileResponse(
+        path,
+        media_type=asset.mime_type,
+        filename=asset.original_name,
+        content_disposition_type="inline",
     )

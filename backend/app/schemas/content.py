@@ -5,6 +5,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field, model_validator
 
 from app.models.enums import ModuleType, VersionStatus
+from app.schemas.assets import AssetResponse
 from app.schemas.attempts import AttemptResponse, AttemptReview
 
 
@@ -57,6 +58,7 @@ class QuestionGroupWrite(BaseModel):
     config: dict[str, Any] = Field(default_factory=dict)
     order_index: int = Field(ge=0)
     questions: list[QuestionWrite] = Field(min_length=1)
+    image_asset_id: UUID | None = None
 
     @model_validator(mode="after")
     def validate_question_identity_and_order(self) -> "QuestionGroupWrite":
@@ -96,6 +98,8 @@ class BuilderQuestionGroup(BaseModel):
     config: dict[str, Any]
     order_index: int
     questions: list[BuilderQuestion]
+    image_asset_id: UUID | None = None
+    image_asset: AssetResponse | None = None
 
 
 class BuilderPassage(BaseModel):
@@ -106,12 +110,30 @@ class BuilderPassage(BaseModel):
     question_groups: list[BuilderQuestionGroup]
 
 
+class ListeningPartWrite(BaseModel):
+    title: str = Field(min_length=1, max_length=240)
+    order_index: int = Field(ge=0, le=3)
+
+
+class ListeningPartAudioWrite(BaseModel):
+    asset_id: UUID | None = None
+
+
+class BuilderListeningPart(BaseModel):
+    id: UUID
+    title: str
+    order_index: int
+    audio_asset: AssetResponse | None
+    question_groups: list[BuilderQuestionGroup]
+
+
 class BuilderModule(BaseModel):
     id: UUID
     module_type: ModuleType
     title: str | None
     recommended_duration_seconds: int | None
     passages: list[BuilderPassage]
+    listening_parts: list[BuilderListeningPart]
 
 
 class BuilderVersion(BaseModel):
@@ -150,6 +172,14 @@ class ExamPassage(BaseModel):
     question_groups: list[ExamQuestionGroup]
 
 
+class ExamListeningPart(BaseModel):
+    id: UUID
+    title: str
+    order_index: int
+    audio_asset: AssetResponse | None
+    question_groups: list[ExamQuestionGroup]
+
+
 class HighlightResponse(BaseModel):
     id: UUID
     passage_id: UUID
@@ -184,8 +214,14 @@ class AttemptExam(BaseModel):
     test_title: str
     passages: list[ExamPassage]
     highlights: list[HighlightResponse]
+    listening_parts: list[ExamListeningPart] = Field(default_factory=list)
 
 
 class ReadingReview(BaseModel):
     review: AttemptReview
     passages: list[BuilderPassage]
+
+
+class ListeningReview(BaseModel):
+    review: AttemptReview
+    parts: list[BuilderListeningPart]

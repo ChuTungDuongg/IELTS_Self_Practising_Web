@@ -29,7 +29,9 @@ export function QuestionGroupEditor({
       nextQuestionNumber,
       Math.max(0, ...group.questions.map((question) => question.number)) + 1,
     );
-    const next = definition.createDefault(nextNumber).questions[0];
+    const template = definition.createDefault(nextNumber);
+    const next = template.questions[0];
+    let config = group.config;
     if (group.question_type === "matching_headings") {
       next.config = {
         target_block_id: passageBlocks.find((block) => block.type === "paragraph")?.id ?? "",
@@ -39,8 +41,27 @@ export function QuestionGroupEditor({
         value: String((group.config.options as Array<{ id: string }>)[0]?.id ?? ""),
       };
     }
+    if (group.question_type === "matching") {
+      next.answer_key = {
+        kind: "SINGLE_OPTION",
+        value: String((group.config.options as Array<{ id: string }>)[0]?.id ?? ""),
+      };
+    }
+    if (["plan_labelling", "map_labelling", "diagram_labelling"].includes(group.question_type)) {
+      const marker = (template.config.markers as Array<Record<string, unknown>>)[0];
+      config = { ...group.config, markers: [...(group.config.markers as Array<Record<string, unknown>>), marker] };
+      next.answer_key = { kind: "SINGLE_OPTION", value: String((group.config.options as Array<{ id: string }>)[0]?.id ?? "") };
+    }
+    if (["form_completion", "note_completion", "table_completion", "flow_chart_completion", "summary_completion", "sentence_completion"].includes(group.question_type)) {
+      const layout = group.config.layout as { kind: string; columns?: unknown[]; rows?: unknown[]; nodes?: unknown[] };
+      const templateLayout = template.config.layout as typeof layout;
+      config = layout.kind === "TABLE"
+        ? { ...group.config, layout: { ...layout, rows: [...(layout.rows ?? []), ...(templateLayout.rows ?? [])] } }
+        : { ...group.config, layout: { ...layout, nodes: [...(layout.nodes ?? []), ...(templateLayout.nodes ?? []).filter((_, index) => index > 0)] } };
+    }
     setGroup({
       ...group,
+      config,
       questions: [...group.questions, { ...next, order_index: group.questions.length }],
     });
   }

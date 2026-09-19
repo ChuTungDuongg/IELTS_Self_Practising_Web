@@ -4,7 +4,7 @@ from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models import QuestionGroup, ReadingPassage, Test, TestModule, TestVersion
+from app.models import ListeningPart, QuestionGroup, ReadingPassage, Test, TestModule, TestVersion
 
 
 def version_detail_query() -> Select[tuple[TestVersion]]:
@@ -16,10 +16,21 @@ def version_detail_query() -> Select[tuple[TestVersion]]:
         .selectinload(ReadingPassage.question_groups)
         .selectinload(QuestionGroup.questions),
         selectinload(TestVersion.modules).selectinload(TestModule.listening_parts),
+        selectinload(TestVersion.modules)
+        .selectinload(TestModule.listening_parts)
+        .selectinload(ListeningPart.audio_asset),
+        selectinload(TestVersion.modules)
+        .selectinload(TestModule.listening_parts)
+        .selectinload(ListeningPart.question_groups)
+        .selectinload(QuestionGroup.questions),
         selectinload(TestVersion.modules).selectinload(TestModule.writing_tasks),
         selectinload(TestVersion.modules)
         .selectinload(TestModule.question_groups)
         .selectinload(QuestionGroup.questions),
+        selectinload(TestVersion.modules)
+        .selectinload(TestModule.question_groups)
+        .selectinload(QuestionGroup.image_asset),
+        selectinload(TestVersion.assets),
     )
 
 

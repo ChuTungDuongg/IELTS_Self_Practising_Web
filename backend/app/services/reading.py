@@ -11,10 +11,19 @@ from app.domains.questions.normalization import (
     normalize_passage_blocks,
     normalize_question_group_payload,
 )
-from app.models import Question, QuestionGroup, ReadingPassage, TestModule, TestVersion
+from app.models import (
+    ListeningPart,
+    Question,
+    QuestionGroup,
+    ReadingPassage,
+    TestModule,
+    TestVersion,
+)
 from app.models.enums import ModuleType, VersionStatus
 from app.repositories.tests import TestRepository
+from app.schemas.assets import AssetResponse
 from app.schemas.content import (
+    BuilderListeningPart,
     BuilderModule,
     BuilderPassage,
     BuilderQuestion,
@@ -119,6 +128,7 @@ class ReadingService:
                 id=group_id,
                 module_id=passage.module_id,
                 passage_id=passage.id,
+                image_asset_id=body.image_asset_id,
                 question_type=body.question_type,
                 instruction=body.instruction,
                 config=body.config,
@@ -147,6 +157,7 @@ class ReadingService:
             group.question_type = body.question_type
             group.instruction = body.instruction
             group.config = body.config
+            group.image_asset_id = body.image_asset_id
             group.order_index = body.order_index
             existing = {item.id: item for item in group.questions}
             for temporary_index, question in enumerate(existing.values(), start=1):
@@ -226,15 +237,20 @@ class ReadingService:
             .where(TestModule.id == module_id)
             .options(
                 selectinload(TestModule.passages),
+                selectinload(TestModule.listening_parts),
                 selectinload(TestModule.question_groups).selectinload(QuestionGroup.questions),
             )
         )
         assert module is not None
         passage_order = {passage.id: passage.order_index for passage in module.passages}
+        part_order = {part.id: part.order_index for part in module.listening_parts}
         ordered_groups = sorted(
             module.question_groups,
             key=lambda group: (
-                passage_order.get(group.passage_id, len(passage_order)),
+                passage_order.get(
+                    group.passage_id,
+                    part_order.get(group.listening_part_id, len(passage_order) + len(part_order)),
+                ),
                 group.order_index,
             ),
         )
@@ -265,6 +281,8 @@ class ReadingService:
             .options(
                 selectinload(QuestionGroup.questions),
                 selectinload(QuestionGroup.passage),
+                selectinload(QuestionGroup.listening_part),
+                selectinload(QuestionGroup.image_asset),
             )
         )
         if group is None:
@@ -306,6 +324,8 @@ class ReadingService:
             .options(
                 selectinload(QuestionGroup.questions),
                 selectinload(QuestionGroup.passage),
+                selectinload(QuestionGroup.listening_part),
+                selectinload(QuestionGroup.image_asset),
                 selectinload(QuestionGroup.module).selectinload(TestModule.test_version),
             )
             .with_for_update()
@@ -387,6 +407,42 @@ class ReadingService:
                 TestService._validate_references(
                     transient_group, transient, passage_blocks=passage_blocks
                 )
+            question_ids = {str(question.id) for question in body.questions if question.id}
+            if body.question_type in {
+                "plan_labelling",
+                "map_labelling",
+                "diagram_labelling",
+            }:
+                marker_question_ids = {
+                    str(marker["question_id"]) for marker in body.config.get("markers", [])
+                }
+                if marker_question_ids != question_ids:
+                    raise ValueError(
+                        "Visual markers must reference every group question exactly once"
+                    )
+                if body.image_asset_id is None:
+                    raise ValueError("Visual labelling groups require an image asset")
+            if body.question_type in {
+                "form_completion",
+                "note_completion",
+                "table_completion",
+                "flow_chart_completion",
+                "summary_completion",
+                "sentence_completion",
+            }:
+                layout = body.config.get("layout", {})
+                gap_ids = {
+                    str(cell.get("question_id"))
+                    for row in layout.get("rows", [])
+                    for cell in row.get("cells", [])
+                    if cell.get("type") == "GAP"
+                } | {
+                    str(node.get("question_id"))
+                    for node in layout.get("nodes", [])
+                    if node.get("type") == "GAP"
+                }
+                if gap_ids != question_ids:
+                    raise ValueError("Every completion question must map to exactly one layout gap")
         except (ValidationError, KeyError, ValueError) as exc:
             raise AppError("VALIDATION_FAILED", f"Invalid question group: {exc}", 422) from exc
 
@@ -420,6 +476,9 @@ class ReadingService:
                     title=module.title,
                     recommended_duration_seconds=module.recommended_duration_seconds,
                     passages=[cls._present_passage(item) for item in module.passages],
+                    listening_parts=[
+                        cls._present_listening_part(item) for item in module.listening_parts
+                    ],
                 )
                 for module in version.modules
             ],
@@ -469,4 +528,27 @@ class ReadingService:
             config=config,
             order_index=group.order_index,
             questions=[BuilderQuestion.model_validate(item) for item in questions],
+            image_asset_id=group.image_asset_id,
+            image_asset=(
+                AssetResponse.model_validate(group.image_asset, from_attributes=True)
+                if group.image_asset
+                else None
+            ),
+        )
+
+    @classmethod
+    def _present_listening_part(cls, part: ListeningPart) -> BuilderListeningPart:
+        return BuilderListeningPart(
+            id=part.id,
+            title=part.title,
+            order_index=part.order_index,
+            audio_asset=(
+                AssetResponse.model_validate(part.audio_asset, from_attributes=True)
+                if part.audio_asset
+                else None
+            ),
+            question_groups=[
+                cls._present_group(group, [])
+                for group in sorted(part.question_groups, key=lambda item: item.order_index)
+            ],
         )
