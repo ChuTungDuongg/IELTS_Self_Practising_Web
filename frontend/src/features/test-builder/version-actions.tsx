@@ -6,6 +6,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ApiError } from "@/lib/api/client";
 import { cloneVersion, deleteDraft, publishVersion, validateVersion } from "@/lib/api/tests";
 import { useBuilderLifecycle } from "./builder-lifecycle";
+import { CheckIcon } from "@/components/ui/icons";
 
 export function VersionActions({ testId, versionId, status }: { testId: string; versionId: string; status: "DRAFT" | "PUBLISHED" | "ARCHIVED" }) {
   const router = useRouter();
@@ -54,26 +55,31 @@ export function VersionActions({ testId, versionId, status }: { testId: string; 
   }
 
   return (
-    <div>
-      <div className="flex flex-wrap gap-2">
-        <button onClick={() => act("validate")} disabled={pending || deleting} className="rounded-md border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-sm font-semibold">Validate</button>
+    <div className="builder-toolbar">
+      <div className="save-status" role="status">
+        <span className={message?.includes("failed") || message?.includes("could not") ? "save-status-error" : ""}>
+          <CheckIcon className="size-4" /> {pending || deleting ? "Working…" : published ? "Published · frozen" : "Draft ready"}
+        </span>
+        {message ? <p>{message}</p> : null}
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <button onClick={() => act("validate")} disabled={pending || deleting} className="btn btn-secondary">Validate</button>
         {published ? (
-          <button onClick={() => act("clone")} disabled={pending || deleting} className="rounded-md bg-[var(--accent)] px-3 py-2 text-sm font-semibold text-white">Clone to draft</button>
+          <button onClick={() => act("clone")} disabled={pending || deleting} className="btn btn-primary">Clone to draft</button>
         ) : status === "DRAFT" ? (
-          <button onClick={() => act("publish")} disabled={pending || deleting} className="rounded-md bg-[var(--accent)] px-3 py-2 text-sm font-semibold text-white">Publish</button>
+          <button onClick={() => act("publish")} disabled={pending || deleting} className="btn btn-primary">Publish version</button>
         ) : null}
         {status === "DRAFT" ? (
           <button
             type="button"
             onClick={() => setConfirmingDelete(true)}
             disabled={pending || deleting}
-            className="ml-auto rounded-md px-3 py-2 text-sm font-semibold text-red-700 disabled:opacity-50"
+            className="btn btn-danger-ghost ml-2"
           >
             Delete draft
           </button>
         ) : null}
       </div>
-      {message ? <p role="status" className="mt-3 max-w-xl text-sm text-[var(--muted)]">{message}</p> : null}
       <ConfirmDialog
         open={confirmingDelete}
         title="Delete this draft?"

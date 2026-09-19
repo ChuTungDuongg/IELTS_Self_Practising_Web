@@ -17,27 +17,26 @@ export default async function DashboardPage() {
     <>
       <PageHeading
         eyebrow="Local study workspace"
-        title="Practice with focus. Build with confidence."
-        description="A private IELTS computer-test workspace backed by frozen test versions and server-saved attempts."
+        title="Build thoughtfully. Practice with focus."
+        description="Your private IELTS studio for structured test authoring, frozen published versions, and server-saved practice attempts."
       />
-      <section className="grid gap-4 sm:grid-cols-3" aria-label="Workspace summary">
+      <section className="grid gap-5 sm:grid-cols-3" aria-label="Workspace summary">
         {[
           ["Published versions", String(published.length), "/library"],
           ["Active attempts", String(inProgress.length), "/history"],
           ["Tests in builder", String(tests.length), "/admin/tests"],
         ].map(([label, value, href]) => (
-          <Link key={label} href={href} className="rounded-xl border border-[var(--line)] bg-[var(--surface)] p-5 hover:border-[#9eb8ae]">
-            <p className="text-sm text-[var(--muted)]">{label}</p>
-            <p className="mt-3 text-3xl font-semibold">{value}</p>
+          <Link key={label} href={href} className="surface-card group relative overflow-hidden p-6 transition hover:-translate-y-0.5 hover:shadow-[var(--shadow-md)]">
+            <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-600 to-cyan-400 opacity-80" />
+            <p className="text-xs font-bold uppercase tracking-wider text-[var(--muted)]">{label}</p>
+            <p className="mt-4 text-4xl font-bold tracking-tight">{value}</p>
+            <p className="mt-3 text-xs font-semibold text-[var(--accent)]">View workspace →</p>
           </Link>
         ))}
       </section>
-      <section className="mt-10 rounded-xl border border-[var(--line)] bg-[var(--surface)] p-6">
-        <h2 className="text-lg font-semibold">Phase 1 foundation</h2>
-        <p className="mt-2 max-w-3xl leading-7 text-[var(--muted)]">
-          Test metadata, immutable publishing, attempts, timers, history, and asset boundaries are ready.
-          Reading authoring and the split-pane exam runner arrive in Phase 2.
-        </p>
+      <section className="surface-card mt-8 overflow-hidden p-7">
+        <div className="max-w-3xl"><p className="page-eyebrow">Workspace foundation</p><h2 className="section-title">Reliable authoring from draft to review</h2>
+        <p className="mt-3 leading-7 text-[var(--muted)]">Test metadata, immutable publishing, attempts, timers, history, and asset boundaries work together so the authoring flow stays flexible without compromising past results.</p></div>
       </section>
     </>
   );

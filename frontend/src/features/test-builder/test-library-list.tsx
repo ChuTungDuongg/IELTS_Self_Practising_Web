@@ -2,8 +2,10 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { EmptyState } from "@/components/ui/empty-state";
+import { ArchiveIcon, ArrowIcon, BuilderIcon, SearchIcon } from "@/components/ui/icons";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { ApiError } from "@/lib/api/client";
 import type { TestSummary } from "@/lib/api/schema";
@@ -20,9 +22,10 @@ export function TestLibraryList({
   const [activeTests, setActiveTests] = useState(initialActiveTests);
   const [archivedTests, setArchivedTests] = useState(initialArchivedTests);
   const [view, setView] = useState<"active" | "archived">("active");
+  const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<TestSummary | null>(null);
   const [pendingId, setPendingId] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
+  const [message, setMessage] = useState<{ kind: "success" | "error"; text: string } | null>(null);
   const selectedWillArchive = selected ? hasHistory(selected) : false;
 
   async function removeSelected() {
@@ -34,18 +37,15 @@ export function TestLibraryList({
       const result = await deleteTest(target.id);
       setActiveTests((current) => current.filter((item) => item.id !== target.id));
       if (result.action === "ARCHIVED") {
-        setArchivedTests((current) => [
-          { ...target, archived_at: new Date().toISOString() },
-          ...current,
-        ]);
-        setMessage(`Archived “${target.title}”.`);
+        setArchivedTests((current) => [{ ...target, archived_at: new Date().toISOString() }, ...current]);
+        setMessage({ kind: "success", text: `Archived “${target.title}”.` });
       } else {
-        setMessage(`Deleted “${target.title}”.`);
+        setMessage({ kind: "success", text: `Deleted “${target.title}”.` });
       }
       setSelected(null);
       router.refresh();
     } catch (error) {
-      setMessage(error instanceof ApiError ? error.message : "The test could not be removed.");
+      setMessage({ kind: "error", text: error instanceof ApiError ? error.message : "The test could not be removed." });
     } finally {
       setPendingId(null);
     }
@@ -59,123 +59,108 @@ export function TestLibraryList({
       const restored = await restoreTest(target.id);
       setArchivedTests((current) => current.filter((item) => item.id !== target.id));
       setActiveTests((current) => [restored, ...current]);
-      setMessage(`Restored “${target.title}”.`);
+      setMessage({ kind: "success", text: `Restored “${target.title}”.` });
       router.refresh();
     } catch (error) {
-      setMessage(error instanceof ApiError ? error.message : "The test could not be restored.");
+      setMessage({ kind: "error", text: error instanceof ApiError ? error.message : "The test could not be restored." });
     } finally {
       setPendingId(null);
     }
   }
 
   const visibleTests = view === "active" ? activeTests : archivedTests;
+  const filteredTests = useMemo(() => {
+    const normalized = query.trim().toLocaleLowerCase();
+    if (!normalized) return visibleTests;
+    return visibleTests.filter((test) => `${test.title} ${test.description ?? ""}`.toLocaleLowerCase().includes(normalized));
+  }, [query, visibleTests]);
 
   return (
     <>
-      <div className="mb-4 flex gap-2" role="tablist" aria-label="Test status">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={view === "active"}
-          onClick={() => setView("active")}
-          className={`rounded-md px-3 py-2 text-sm font-semibold ${view === "active" ? "bg-[var(--accent)] text-white" : "border border-[var(--line)] bg-[var(--surface)]"}`}
-        >
-          Active ({activeTests.length})
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={view === "archived"}
-          onClick={() => setView("archived")}
-          className={`rounded-md px-3 py-2 text-sm font-semibold ${view === "archived" ? "bg-[var(--accent)] text-white" : "border border-[var(--line)] bg-[var(--surface)]"}`}
-        >
-          Archived ({archivedTests.length})
-        </button>
+      <div className="library-toolbar surface-card">
+        <div className="segmented-control" role="tablist" aria-label="Test status">
+          <button type="button" role="tab" aria-selected={view === "active"} onClick={() => setView("active")}>
+            Active <span>({activeTests.length})</span>
+          </button>
+          <button type="button" role="tab" aria-selected={view === "archived"} onClick={() => setView("archived")}>
+            Archived <span>({archivedTests.length})</span>
+          </button>
+        </div>
+        <label className="library-search">
+          <SearchIcon className="size-4" />
+          <span className="sr-only">Search tests</span>
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search tests…" />
+          {query ? <button type="button" onClick={() => setQuery("")} aria-label="Clear search">×</button> : null}
+        </label>
       </div>
 
       {message ? (
-        <p role={message.includes("could not") ? "alert" : "status"} className="mb-4 text-sm text-[var(--muted)]">
-          {message}
+        <p role={message.kind === "error" ? "alert" : "status"} className={`notice mt-4 ${message.kind === "error" ? "notice-error" : "notice-success"}`}>
+          {message.text}
         </p>
       ) : null}
 
-      <div className="space-y-3">
-        {visibleTests.map((test) => {
-          const draft = [...test.versions].reverse().find((version) => version.status === "DRAFT");
-          const destructiveLabel = hasHistory(test) ? "Archive" : "Delete";
-          return (
-            <article
-              key={test.id}
-              className="flex flex-wrap items-center gap-4 rounded-xl border border-[var(--line)] bg-[var(--surface)] p-5"
-            >
-              <div className="min-w-0 flex-1">
-                <h2 className="truncate font-semibold">{test.title}</h2>
-                <p className="mt-1 text-sm text-[var(--muted)]">
-                  {test.versions.length} version{test.versions.length === 1 ? "" : "s"}
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                {test.versions.slice(-3).map((version) => (
-                  <StatusBadge key={version.id} status={version.status} />
-                ))}
-                <Link
-                  href={`/admin/tests/${test.id}`}
-                  className="rounded-md border border-[var(--line)] px-3 py-2 text-sm font-semibold"
-                >
-                  Open
-                </Link>
-                {view === "active" && draft ? (
-                  <Link
-                    href={`/admin/tests/${test.id}/versions/${draft.id}/edit`}
-                    className="rounded-md border border-[var(--line)] px-3 py-2 text-sm font-semibold"
-                  >
-                    Continue draft
-                  </Link>
-                ) : null}
-                {view === "active" ? (
-                  <button
-                    type="button"
-                    disabled={pendingId !== null}
-                    aria-label={`${destructiveLabel} ${test.title}`}
-                    onClick={() => setSelected(test)}
-                    className="rounded-md px-3 py-2 text-sm font-semibold text-red-700 disabled:opacity-50"
-                  >
-                    {destructiveLabel}
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    disabled={pendingId !== null}
-                    aria-label={`Restore ${test.title}`}
-                    onClick={() => void restore(test)}
-                    className="rounded-md border border-[var(--line)] px-3 py-2 text-sm font-semibold text-[var(--accent)] disabled:opacity-50"
-                  >
-                    Restore
-                  </button>
-                )}
-              </div>
-            </article>
-          );
-        })}
-        {!visibleTests.length ? (
-          <p className="rounded-xl border border-dashed border-[var(--line)] p-8 text-center text-[var(--muted)]">
-            {view === "active" ? "No tests yet. Create the first draft." : "No archived tests."}
-          </p>
-        ) : null}
-      </div>
+      {filteredTests.length ? (
+        <div className={`test-card-grid ${view === "archived" ? "archived-grid" : ""}`}>
+          {filteredTests.map((test) => {
+            const latest = test.versions.at(-1);
+            const draft = [...test.versions].reverse().find((version) => version.status === "DRAFT");
+            const destructiveLabel = hasHistory(test) ? "Archive" : "Delete";
+            return (
+              <article key={test.id} className="test-card">
+                <div className="test-card-accent" aria-hidden="true" />
+                <div className="test-card-topline">
+                  <span className="test-type"><BuilderIcon className="size-4" /> IELTS test</span>
+                  {latest ? <StatusBadge status={view === "archived" ? "ARCHIVED" : latest.status} /> : null}
+                </div>
+                <div className="test-card-title">
+                  <h2>{test.title}</h2>
+                  <p>{test.description || "No description has been added yet."}</p>
+                </div>
+                <div className="test-card-stats">
+                  <div><strong>{test.versions.length}</strong><span>Version{test.versions.length === 1 ? "" : "s"}</span></div>
+                  <div><strong>{test.versions.filter((version) => version.status === "PUBLISHED").length}</strong><span>Published</span></div>
+                  <div><strong>{draft ? "Yes" : "—"}</strong><span>Open draft</span></div>
+                </div>
+                <div className="test-card-meta">
+                  <span>Updated {formatUpdated(test.updated_at)}</span>
+                  {latest ? <span>Latest · v{latest.version_number}</span> : <span>No versions</span>}
+                </div>
+                <div className="test-card-actions">
+                  <Link href={`/admin/tests/${test.id}`} className="btn btn-secondary">Open</Link>
+                  {view === "active" && draft ? (
+                    <Link href={`/admin/tests/${test.id}/versions/${draft.id}/edit`} className="btn btn-primary">
+                      Continue draft <ArrowIcon className="size-4" />
+                    </Link>
+                  ) : view === "archived" ? (
+                    <button type="button" disabled={pendingId !== null} aria-label={`Restore ${test.title}`} onClick={() => void restore(test)} className="btn btn-primary">
+                      Restore
+                    </button>
+                  ) : null}
+                  {view === "active" ? (
+                    <button type="button" disabled={pendingId !== null} aria-label={`${destructiveLabel} ${test.title}`} onClick={() => setSelected(test)} className="btn btn-danger-ghost ml-auto">
+                      {destructiveLabel}
+                    </button>
+                  ) : null}
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="mt-5">
+          <EmptyState
+            icon={view === "archived" ? <ArchiveIcon className="size-6" /> : undefined}
+            title={query ? "No matching tests" : view === "active" ? "Your builder is ready" : "Archive is empty"}
+            description={query ? "Try a different title or clear the search." : view === "active" ? "Create the first test to start building structured IELTS content." : "Tests you archive will remain safely available here for restoration."}
+          />
+        </div>
+      )}
 
       <ConfirmDialog
         open={selected !== null}
-        title={
-          selectedWillArchive
-            ? `Archive “${selected?.title ?? ""}”?`
-            : `Delete “${selected?.title ?? ""}”?`
-        }
-        description={
-          selectedWillArchive
-            ? "Published versions and attempt history will be preserved. You can restore this test later."
-            : "This action cannot be undone."
-        }
+        title={selectedWillArchive ? `Archive “${selected?.title ?? ""}”?` : `Delete “${selected?.title ?? ""}”?`}
+        description={selectedWillArchive ? "Published versions and attempt history will be preserved. You can restore this test later." : "This action cannot be undone."}
         confirmLabel={selectedWillArchive ? "Archive" : "Delete"}
         pending={pendingId !== null}
         onCancel={() => setSelected(null)}
@@ -186,7 +171,11 @@ export function TestLibraryList({
 }
 
 function hasHistory(test: TestSummary): boolean {
-  return test.versions.some(
-    (version) => version.status === "PUBLISHED" || version.status === "ARCHIVED",
-  );
+  return test.versions.some((version) => version.status === "PUBLISHED" || version.status === "ARCHIVED");
+}
+
+function formatUpdated(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "recently";
+  return new Intl.DateTimeFormat("en", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).format(date);
 }

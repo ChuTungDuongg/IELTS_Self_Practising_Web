@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { PlusIcon } from "@/components/ui/icons";
 import { PageHeading } from "@/components/ui/page-heading";
 import { TestLibraryList } from "@/features/test-builder/test-library-list";
 import { getTests } from "@/lib/api/tests";
@@ -13,10 +14,10 @@ export default async function AdminTestsPage() {
   return (
     <>
       <PageHeading
-        eyebrow="Exam builder"
-        title="Tests"
-        description="Create logical tests, then publish immutable versions when their module content is valid."
-        action={<Link href="/admin/tests/new" className="rounded-md bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[var(--accent-strong)]">New test</Link>}
+        eyebrow="Authoring workspace"
+        title="Test Library"
+        description="Create, manage, and publish structured IELTS tests. Published versions stay frozen so every attempt remains historically accurate."
+        action={<Link href="/admin/tests/new" className="btn btn-primary"><PlusIcon className="size-4" /> New test</Link>}
       />
       <TestLibraryList activeTests={activeTests} archivedTests={archivedTests} />
     </>

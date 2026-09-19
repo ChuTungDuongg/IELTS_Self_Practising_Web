@@ -5,6 +5,8 @@ import { VersionActions } from "@/features/test-builder/version-actions";
 import { BuilderLifecycleProvider } from "@/features/test-builder/builder-lifecycle";
 import { ReadingBuilder } from "@/features/test-builder/reading-builder";
 import { getBuilderVersion } from "@/lib/api/builder";
+import { BuilderIcon, ReadingIcon } from "@/components/ui/icons";
+import { ModuleBadge } from "@/components/ui/module-badge";
 
 export const dynamic = "force-dynamic";
 
@@ -14,26 +16,38 @@ export default async function VersionEditorPage({ params }: { params: Promise<{ 
   if (!version || version.test_id !== testId) notFound();
   return (
     <>
-      <PageHeading eyebrow="Exam builder" title={`${version.test_title} · Version ${version.version_number}`} action={<StatusBadge status={version.status} />} />
+      <PageHeading eyebrow="IELTS Studio · Engine Builder" title={version.test_title} description={`Version ${version.version_number} · Structured authoring workspace`} action={<StatusBadge status={version.status} />} />
       <BuilderLifecycleProvider>
         <VersionActions testId={testId} versionId={versionId} status={version.status} />
-        <section className="mt-8 grid gap-4 md:grid-cols-3">
-          {(["READING", "LISTENING", "WRITING"] as const).map((kind) => {
-            const moduleRecord = version.modules.find((item) => item.module_type === kind);
-            return (
-              <article key={kind} className="rounded-xl border border-[var(--line)] bg-[var(--surface)] p-5">
-                <h2 className="font-semibold">{kind[0] + kind.slice(1).toLowerCase()}</h2>
-                {moduleRecord ? (
-                  <dl className="mt-4 space-y-2 text-sm text-[var(--muted)]">
-                    <div className="flex justify-between"><dt>Passages</dt><dd>{moduleRecord.passages.length}</dd></div>
-                    <div className="flex justify-between"><dt>Question groups</dt><dd>{moduleRecord.passages.reduce((sum, item) => sum + item.question_groups.length, 0)}</dd></div>
-                  </dl>
-                ) : <p className="mt-3 text-sm text-[var(--muted)]">Not created</p>}
-              </article>
-            );
-          })}
-        </section>
-        {version.status === "DRAFT" ? <ReadingBuilder version={version} /> : <p className="mt-6 rounded-lg bg-[var(--surface-soft)] p-4 text-sm text-[var(--muted)]">This published version is frozen. Clone it to create an editable draft.</p>}
+        <div className="builder-workspace">
+          <aside className="builder-local-nav" aria-label="Builder sections">
+            <p>Test structure</p>
+            <a href="#overview"><BuilderIcon className="size-4" /> Overview</a>
+            <a href="#reading" className="builder-local-active"><ReadingIcon className="size-4" /> Reading</a>
+            <span><span className="module-listening-dot" /> Listening <small>Not created</small></span>
+            <span><span className="module-writing-dot" /> Writing <small>Not created</small></span>
+          </aside>
+          <div className="builder-canvas">
+            <section id="overview" className="builder-overview">
+              <div className="section-header"><div><h2 className="section-title">Test overview</h2><p className="section-description">A quick view of the modules currently included in this version.</p></div></div>
+              <div className="module-overview-grid">
+                {(["READING", "LISTENING", "WRITING"] as const).map((kind) => {
+                  const moduleRecord = version.modules.find((item) => item.module_type === kind);
+                  const groups = moduleRecord?.passages.reduce((sum, item) => sum + item.question_groups.length, 0) ?? 0;
+                  return (
+                    <article key={kind} className={`module-overview-card module-card-${kind.toLowerCase()}`}>
+                      <div className="flex items-center justify-between gap-3"><ModuleBadge module={kind} /><span className="module-state">{moduleRecord ? "Active" : "Not created"}</span></div>
+                      <dl><div><dt>{kind === "READING" ? "Passages" : "Sections"}</dt><dd>{moduleRecord?.passages.length ?? 0}</dd></div><div><dt>Groups</dt><dd>{groups}</dd></div></dl>
+                    </article>
+                  );
+                })}
+              </div>
+            </section>
+            <div id="reading">
+              {version.status === "DRAFT" ? <ReadingBuilder version={version} /> : <p className="notice mt-6">This published version is frozen. Clone it to create an editable draft.</p>}
+            </div>
+          </div>
+        </div>
       </BuilderLifecycleProvider>
     </>
   );

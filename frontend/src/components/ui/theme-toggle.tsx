@@ -35,12 +35,12 @@ export function ThemeToggle() {
     <button
       type="button"
       onClick={toggle}
-      className="inline-flex min-w-24 items-center justify-center gap-2 rounded-md border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--muted)] hover:bg-[var(--surface-soft)]"
+      className="theme-toggle"
       aria-label="Toggle color theme"
       title="Toggle light and dark mode"
     >
-      <span className="theme-light-label" aria-hidden="true">☾ Dark</span>
-      <span className="theme-dark-label" aria-hidden="true">☀ Light</span>
+      <span className="theme-light-label" aria-hidden="true"><span className="theme-icon">☾</span><span className="theme-text">Dark</span></span>
+      <span className="theme-dark-label" aria-hidden="true"><span className="theme-icon">☀</span><span className="theme-text">Light</span></span>
     </button>
   );
 }

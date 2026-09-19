@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { PageHeading } from "@/components/ui/page-heading";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { ArrowIcon } from "@/components/ui/icons";
 import { getTest } from "@/lib/api/tests";
 
 export const dynamic = "force-dynamic";
@@ -13,16 +14,18 @@ export default async function TestDetailPage({ params }: { params: Promise<{ tes
   return (
     <>
       <PageHeading eyebrow="Exam builder" title={test.title} description={test.description ?? "No description"} />
-      <section>
-        <h2 className="mb-3 text-lg font-semibold">Versions</h2>
-        <div className="space-y-3">
+      <section className="surface-card overflow-hidden">
+        <div className="section-header border-b border-[var(--line)] px-6 py-5">
+          <div><h2 className="section-title">Versions</h2><p className="section-description">Open a draft to continue authoring, or inspect a frozen published version.</p></div>
+        </div>
+        <div className="divide-y divide-[var(--line)]">
           {test.versions.map((version) => (
-            <Link key={version.id} href={`/admin/tests/${test.id}/versions/${version.id}/edit`} className="flex items-center justify-between rounded-xl border border-[var(--line)] bg-[var(--surface)] p-5 hover:border-[#9eb8ae]">
+            <Link key={version.id} href={`/admin/tests/${test.id}/versions/${version.id}/edit`} className="group flex items-center justify-between gap-4 px-6 py-5 transition-colors hover:bg-[var(--surface-soft)]">
               <div>
-                <p className="font-medium">Version {version.version_number}</p>
+                <p className="font-semibold">Version {version.version_number}</p>
                 <p className="mt-1 text-sm text-[var(--muted)]">Created {new Date(version.created_at).toLocaleString()}</p>
               </div>
-              <StatusBadge status={version.status} />
+              <div className="flex items-center gap-4"><StatusBadge status={version.status} /><ArrowIcon className="size-4 text-[var(--muted)] transition-transform group-hover:translate-x-1" /></div>
             </Link>
           ))}
         </div>

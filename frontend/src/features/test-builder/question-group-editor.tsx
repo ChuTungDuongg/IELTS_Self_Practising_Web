@@ -46,32 +46,34 @@ export function QuestionGroupEditor({
   }
 
   return (
-    <div className="rounded-xl border-2 border-[var(--accent)] bg-[var(--surface)] p-5">
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wider text-[var(--accent)]">{definition.label}</p>
+    <div className="group-editor">
+      <div className="group-editor-header">
+        <div className="min-w-0 flex-1">
+          <p className="page-eyebrow">Question group · {definition.label}</p>
+          <label className="field-label">Candidate instruction</label>
           <input
             value={group.instruction}
             onChange={(event) => setGroup({ ...group, instruction: event.target.value })}
-            className="mt-2 w-full min-w-80 rounded-md border border-[var(--line)] px-3 py-2"
+            className="field mt-2"
             aria-label="Group instruction"
           />
         </div>
-        <div className="flex gap-2">
-          <button type="button" onClick={() => setPreview(!preview)} className="rounded-md border border-[var(--line)] px-3 py-2 text-sm font-semibold">{preview ? "Edit" : "Preview"}</button>
-          <button type="button" onClick={onCancel} className="rounded-md border border-[var(--line)] px-3 py-2 text-sm">Cancel</button>
-          <button type="button" disabled={pending || !group.questions.length} onClick={async () => { setPending(true); try { await onSave(group); } finally { setPending(false); } }} className="rounded-md bg-[var(--accent)] px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">{pending ? "Saving…" : "Save group"}</button>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={() => setPreview(!preview)} className="btn btn-secondary">{preview ? "Back to edit" : "Preview"}</button>
+          <button type="button" onClick={onCancel} className="btn btn-ghost">Cancel</button>
+          <button type="button" disabled={pending || !group.questions.length} onClick={async () => { setPending(true); try { await onSave(group); } finally { setPending(false); } }} className="btn btn-primary">{pending ? "Saving…" : "Save group"}</button>
         </div>
       </div>
       {preview ? (
-        <div className="rounded-lg bg-[var(--surface-soft)] p-5">
+        <div className="group-preview">
+          <p className="mb-2 text-xs font-bold uppercase tracking-wider text-[var(--muted)]">Candidate preview</p>
           <p className="mb-4 text-sm font-medium">{group.instruction}</p>
           <Renderer group={group as ExamGroup} values={{}} passageBlocks={passageBlocks} disabled />
         </div>
       ) : (
         <>
           <Editor group={group} onChange={setGroup} passageBlocks={passageBlocks} />
-          <button type="button" onClick={addQuestion} className="mt-4 text-sm font-semibold text-[var(--accent)]">+ Add question</button>
+          <button type="button" onClick={addQuestion} className="btn btn-secondary mt-4">+ Add question</button>
         </>
       )}
     </div>

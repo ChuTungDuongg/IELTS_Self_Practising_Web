@@ -10,12 +10,12 @@ export default async function HistoryPage() {
   const history = await getHistory().catch(() => ({ items: [], total: 0 }));
   return (
     <>
-      <PageHeading title="Attempt history" description="Every attempt remains attached to its exact test version." />
-      <div className="overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--surface)]">
+      <PageHeading eyebrow="Practice record" title="Attempt history" description="Every attempt remains attached to its exact frozen test version." />
+      <div className="surface-card overflow-hidden">
         {history.items.length ? (
           <ul className="divide-y divide-[var(--line)]">
             {history.items.map((item) => (
-              <li key={item.attempt_id} className="flex flex-wrap items-center gap-4 px-5 py-4">
+              <li key={item.attempt_id} className="flex flex-wrap items-center gap-4 px-6 py-5 transition-colors hover:bg-[var(--surface-soft)]">
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-medium">{item.test_title}</p>
                   <p className="mt-1 text-sm text-[var(--muted)]">

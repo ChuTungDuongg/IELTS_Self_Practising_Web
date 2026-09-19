@@ -10,17 +10,17 @@ export function PageHeading({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="mb-8 flex flex-wrap items-end justify-between gap-5">
-      <div className="max-w-2xl">
+    <div className="page-heading">
+      <div className="max-w-3xl">
         {eyebrow ? (
-          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--accent)]">
+          <p className="page-eyebrow">
             {eyebrow}
           </p>
         ) : null}
-        <h1 className="text-3xl font-semibold tracking-tight">{title}</h1>
-        {description ? <p className="mt-3 leading-7 text-[var(--muted)]">{description}</p> : null}
+        <h1>{title}</h1>
+        {description ? <p className="page-description">{description}</p> : null}
       </div>
-      {action}
+      {action ? <div className="page-heading-action">{action}</div> : null}
     </div>
   );
 }

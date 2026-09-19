@@ -30,19 +30,25 @@ export function NewTestForm() {
   }
 
   return (
-    <form onSubmit={submit} className="max-w-2xl space-y-5 rounded-xl border border-[var(--line)] bg-[var(--surface)] p-6">
-      <label className="block">
-        <span className="text-sm font-medium">Title</span>
-        <input name="title" required maxLength={240} className="mt-2 w-full rounded-md border border-[var(--line)] px-3 py-2.5" />
+    <form onSubmit={submit} className="surface-card max-w-2xl p-7 sm:p-8">
+      <div className="mb-7 border-b border-[var(--line)] pb-5">
+        <h2 className="section-title">Test details</h2>
+        <p className="section-description">Use a clear title that will still make sense when multiple versions exist.</p>
+      </div>
+      <label className="field-label">
+        Test title
+        <input name="title" required maxLength={240} placeholder="e.g. Reading Practice Set 01" className="field" />
       </label>
-      <label className="block">
-        <span className="text-sm font-medium">Description</span>
-        <textarea name="description" rows={4} className="mt-2 w-full resize-y rounded-md border border-[var(--line)] px-3 py-2.5" />
+      <label className="field-label mt-5">
+        Description <span className="font-normal text-[var(--muted)]">(optional)</span>
+        <textarea name="description" rows={4} placeholder="Add a short internal description…" className="field resize-y" />
       </label>
-      {error ? <p role="alert" className="text-sm text-red-700">{error}</p> : null}
-      <button disabled={pending} className="rounded-md bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60">
+      {error ? <p role="alert" className="notice notice-error mt-5">{error}</p> : null}
+      <div className="mt-7 flex justify-end border-t border-[var(--line)] pt-5">
+      <button disabled={pending} className="btn btn-primary">
         {pending ? "Creating…" : "Create draft"}
       </button>
+      </div>
     </form>
   );
 }
