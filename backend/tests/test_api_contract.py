@@ -34,6 +34,7 @@ async def test_openapi_exposes_phase_one_routes() -> None:
     assert "/api/v1/tests" in paths
     assert "/api/v1/test-versions/{version_id}/publish" in paths
     assert "/api/v1/attempts/{attempt_id}/answers/{question_id}" in paths
+    assert "delete" in paths["/api/v1/attempts/{attempt_id}"]
     assert "/api/v1/history" in paths
     assert "/api/v1/test-modules/{module_id}/question-groups/order" in paths
     assert "/api/v1/listening/modules/{module_id}/audio" in paths

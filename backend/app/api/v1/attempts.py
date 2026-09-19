@@ -40,6 +40,14 @@ async def get_attempt(
     return await AttemptService(session).get(attempt_id)
 
 
+@router.delete("/{attempt_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_attempt(
+    attempt_id: UUID, session: AsyncSession = Depends(get_session)
+) -> Response:
+    await AttemptService(session).delete_attempt(attempt_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.post("/{attempt_id}/activity", response_model=AttemptResponse)
 async def record_activity(
     attempt_id: UUID,

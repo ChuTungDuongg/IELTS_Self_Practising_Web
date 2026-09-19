@@ -602,6 +602,11 @@ class AttemptService:
             await self.session.execute(delete(Highlight).where(Highlight.attempt_id == attempt.id))
             attempt.last_active_at = now
 
+    async def delete_attempt(self, attempt_id: uuid.UUID) -> None:
+        async with self.session.begin():
+            attempt = await self._require(attempt_id, for_update=True)
+            await self.session.delete(attempt)
+
     async def _require(self, attempt_id: uuid.UUID, *, for_update: bool = False) -> Attempt:
         attempt = await self.repository.get(attempt_id, for_update=for_update)
         if attempt is None:

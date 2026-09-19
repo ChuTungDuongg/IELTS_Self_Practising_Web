@@ -26,3 +26,7 @@ export function recordActivity(attemptId: string) {
     body: JSON.stringify({ client_observed_at: new Date().toISOString() }),
   });
 }
+
+export async function deleteAttempt(attemptId: string): Promise<void> {
+  await apiRequest(`/attempts/${attemptId}`, { method: "DELETE" });
+}
