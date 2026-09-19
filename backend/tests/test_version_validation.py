@@ -19,24 +19,55 @@ def test_reading_module_requires_content() -> None:
     version.modules.append(ModuleRecord(module_type=ModuleType.READING, order_index=0))
     result = VersionService.validate_version(version)
     assert not result.valid
-    assert result.errors[0].path == "reading"
+    assert any(issue.path == "modules" for issue in result.errors)
+    assert any(issue.path == "reading" for issue in result.warnings)
 
 
-def test_reading_passage_satisfies_phase_one_content_rule() -> None:
+def test_reading_passage_without_questions_is_not_publishable_content() -> None:
     version = VersionRecord(version_number=1, status=VersionStatus.DRAFT)
     module = ModuleRecord(module_type=ModuleType.READING, order_index=0)
     module.passages.append(
         ReadingPassage(title="Fictional passage", order_index=0, content_json=[], plain_text="Text")
     )
     version.modules.append(module)
-    assert VersionService.validate_version(version).valid
+    result = VersionService.validate_version(version)
+    assert not result.valid
+    assert any("usable module" in issue.message for issue in result.errors)
+
+
+def test_partial_reading_with_one_valid_question_is_publishable_with_warnings() -> None:
+    version = VersionRecord(version_number=1, status=VersionStatus.DRAFT)
+    module = ModuleRecord(module_type=ModuleType.READING, order_index=0)
+    passage = ReadingPassage(
+        title="Fictional passage",
+        order_index=0,
+        content_json=[
+            {"id": str(uuid4()), "type": "paragraph", "label": "A", "text": "Text"}
+        ],
+        plain_text="Text",
+    )
+    group = QuestionGroup(question_type="true_false_not_given", instruction="Choose", config={}, order_index=0)
+    group.questions.append(Question(number=1, prompt="Statement", config={}, answer_key={"kind": "SINGLE_OPTION", "value": "TRUE"}, order_index=0))
+    passage.question_groups.append(group)
+    module.passages.append(passage)
+    module.question_groups.append(group)
+    version.modules.append(module)
+
+    result = VersionService.validate_version(version)
+
+    assert result.valid
+    assert not result.errors
+    assert any("1 / 40" in issue.message for issue in result.warnings)
 
 
 def test_publish_validation_rejects_answer_key_outside_mcq_options() -> None:
     version = VersionRecord(version_number=1, status=VersionStatus.DRAFT)
     module = ModuleRecord(module_type=ModuleType.READING, order_index=0)
     passage = ReadingPassage(
-        title="Fictional passage", order_index=0, content_json=[], plain_text="Text"
+        title="Fictional passage",
+        order_index=0,
+        content_json=[{"id": str(uuid4()), "type": "paragraph", "label": "A", "text": "Text"}],
+        plain_text="Text",
     )
     group = QuestionGroup(
         question_type="multiple_choice", instruction="Choose one", config={}, order_index=0

@@ -13,6 +13,7 @@ export function VersionActions({ testId, versionId, status }: { testId: string; 
   const router = useRouter();
   const { beginDelete, deleting } = useBuilderLifecycle();
   const [message, setMessage] = useState<string | null>(null);
+  const [warnings, setWarnings] = useState<string[]>([]);
   const [pending, setPending] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const published = status === "PUBLISHED";
@@ -24,7 +25,14 @@ export function VersionActions({ testId, versionId, status }: { testId: string; 
       if (action === "validate") {
         const result = await validateVersion(versionId);
         setMessage(result.valid ? "Version is valid." : result.errors.map((item) => `${item.path}: ${item.message}`).join(" "));
+        setWarnings(result.warnings.map((item) => item.message));
       } else if (action === "publish") {
+        const result = await validateVersion(versionId);
+        setWarnings(result.warnings.map((item) => item.message));
+        if (!result.valid) {
+          setMessage(result.errors.map((item) => `${item.path}: ${item.message}`).join(" "));
+          return;
+        }
         await publishVersion(versionId);
         setMessage("Version published and frozen.");
         router.refresh();
@@ -66,7 +74,7 @@ export function VersionActions({ testId, versionId, status }: { testId: string; 
       <div className="flex flex-wrap items-center gap-2">
         <button onClick={() => act("validate")} disabled={pending || deleting} className="btn btn-secondary">Validate</button>
         {published ? (
-          <button onClick={() => act("clone")} disabled={pending || deleting} className="btn btn-primary">Clone to draft</button>
+          <button onClick={() => act("clone")} disabled={pending || deleting} className="btn btn-primary">Edit</button>
         ) : status === "DRAFT" ? (
           <button onClick={() => act("publish")} disabled={pending || deleting} className="btn btn-primary">Publish version</button>
         ) : null}
@@ -81,6 +89,7 @@ export function VersionActions({ testId, versionId, status }: { testId: string; 
           </button>
         ) : null}
       </div>
+      {warnings.length ? <div className="validation-warnings" role="status"><strong>IELTS readiness</strong><ul>{warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul></div> : null}
       <ConfirmDialog
         open={confirmingDelete}
         title="Delete this draft?"

@@ -2,7 +2,9 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { PlusIcon } from "@/components/ui/icons";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { resolveQuestionGroupInstruction } from "@/features/questions/question-group-instruction";
 import { listeningQuestionTypeOptions, questionRegistry } from "@/features/questions/registry";
 import type { QuestionGroupModel, QuestionType } from "@/features/questions/types";
@@ -13,11 +15,13 @@ import {
   createListeningPart,
   createListeningQuestionGroup,
   deleteQuestionGroup,
+  deleteModule,
   reorderQuestionGroups,
   updateListeningPart,
   updateListeningQuestionGroup,
   type BuilderVersion,
 } from "@/lib/api/builder";
+import { builderPreviewPath } from "@/lib/routes";
 import { ApiError } from "@/lib/api/client";
 import { useBuilderLifecycle } from "./builder-lifecycle";
 import { QuestionGroupEditor } from "./question-group-editor";
@@ -34,6 +38,7 @@ export function ListeningBuilder({ version }: { version: BuilderVersion }) {
   const [type, setType] = useState<QuestionType>("multiple_choice");
   const [message, setMessage] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [confirmingModuleDelete, setConfirmingModuleDelete] = useState(false);
   const part = parts[partIndex];
   const nextNumber = Math.max(0, ...parts.flatMap((item) => item.question_groups.flatMap((group) => group.questions.map((question) => question.number)))) + 1;
   const nextOrder = Math.max(-1, ...parts.flatMap((item) => item.question_groups.map((group) => group.order_index))) + 1;
@@ -114,7 +119,7 @@ export function ListeningBuilder({ version }: { version: BuilderVersion }) {
       <section className="listening-builder">
         <div className="section-header">
           <div><p className="page-eyebrow listening-eyebrow">Listening module</p><h2>Listening Builder</h2><p>Four stable sections, globally numbered questions, and one optional shared recording.</p></div>
-          <span className="module-state">{parts.flatMap((item) => item.question_groups.flatMap((group) => group.questions)).length} / 40 questions</span>
+          <div className="flex flex-wrap gap-2"><Link href={builderPreviewPath(version.test_id, version.id, "listening")} className="btn btn-secondary">Preview Listening</Link><span className="module-state">{parts.flatMap((item) => item.question_groups.flatMap((group) => group.questions)).length} / 40 questions</span><button onClick={() => setConfirmingModuleDelete(true)} className="btn btn-danger-ghost">Delete module</button></div>
         </div>
 
         <div className="listening-part-tabs" role="tablist">
@@ -150,6 +155,7 @@ export function ListeningBuilder({ version }: { version: BuilderVersion }) {
           </div>
         ) : null}
       </section>
+      <ConfirmDialog open={confirmingModuleDelete} title="Delete Listening module?" description="All Listening sections and questions in this draft will be removed." confirmLabel="Delete Listening module" pending={deleting} onCancel={() => setConfirmingModuleDelete(false)} onConfirm={() => void run(() => deleteModule(listening.id))} />
     </fieldset>
   );
 }

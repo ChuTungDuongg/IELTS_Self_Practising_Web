@@ -11,11 +11,10 @@ export const dynamic = "force-dynamic";
 
 export default async function LibraryPage() {
   const tests = await getTests().catch(() => []);
-  const published = tests.flatMap((test) =>
-    test.versions
-      .filter((version) => version.status === "PUBLISHED")
-      .map((version) => ({ test, version })),
-  );
+  const published = tests.flatMap((test) => {
+    const version = [...test.versions].reverse().find((item) => item.status === "PUBLISHED");
+    return version ? [{ test, version }] : [];
+  });
   const available = (await Promise.all(published.map(async (item) => ({ ...item, detail: await getVersion(item.version.id).catch(() => null) })))).filter((item) => item.detail);
   return (
     <>

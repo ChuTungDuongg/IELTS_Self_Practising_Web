@@ -144,8 +144,10 @@ class ReadingService:
     async def update_group(
         self, group_id: uuid.UUID, body: QuestionGroupWrite
     ) -> BuilderQuestionGroup:
+        deleted_path: str | None = None
         async with self.session.begin():
             group = await self._draft_group(group_id)
+            previous_image_asset_id = group.image_asset_id
             passage_blocks = (
                 normalize_passage_blocks(group.passage.content_json, group.passage.id)
                 if group.passage
@@ -190,15 +192,37 @@ class ReadingService:
                     group.questions.remove(question)
             await self.session.flush()
             await self._canonicalize_module(group.module_id)
+            if previous_image_asset_id and previous_image_asset_id != group.image_asset_id:
+                from app.services.tests import TestService
+
+                deleted_path = await TestService(self.session).cleanup_asset_if_unreferenced(
+                    previous_image_asset_id
+                )
+        if deleted_path:
+            from app.services.tests import TestService
+
+            TestService._delete_files([deleted_path])
         return await self.get_group(group_id)
 
     async def delete_group(self, group_id: uuid.UUID) -> None:
+        deleted_path: str | None = None
         async with self.session.begin():
             group = await self._draft_group(group_id)
             module_id = group.module_id
+            image_asset_id = group.image_asset_id
             await self.session.delete(group)
             await self.session.flush()
             await self._canonicalize_module(module_id)
+            if image_asset_id:
+                from app.services.tests import TestService
+
+                deleted_path = await TestService(self.session).cleanup_asset_if_unreferenced(
+                    image_asset_id
+                )
+        if deleted_path:
+            from app.services.tests import TestService
+
+            TestService._delete_files([deleted_path])
 
     async def reorder_groups(self, module_id: uuid.UUID, body: QuestionGroupOrderWrite) -> None:
         async with self.session.begin():
@@ -299,6 +323,7 @@ class ReadingService:
             select(TestVersion)
             .where(TestVersion.id == version_id)
             .options(selectinload(TestVersion.modules))
+            .execution_options(populate_existing=True)
             .with_for_update()
         )
         if version is None:

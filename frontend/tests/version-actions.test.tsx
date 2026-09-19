@@ -5,7 +5,7 @@ import {
   useBuilderLifecycle,
 } from "@/features/test-builder/builder-lifecycle";
 import { VersionActions } from "@/features/test-builder/version-actions";
-import { deleteDraft } from "@/lib/api/tests";
+import { deleteDraft, validateVersion } from "@/lib/api/tests";
 
 const push = vi.fn();
 const refresh = vi.fn();
@@ -16,7 +16,7 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("@/lib/api/tests", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api/tests")>();
-  return { ...actual, deleteDraft: vi.fn() };
+  return { ...actual, deleteDraft: vi.fn(), validateVersion: vi.fn() };
 });
 
 function renderActions(status: "DRAFT" | "PUBLISHED" | "ARCHIVED") {
@@ -50,6 +50,15 @@ describe("VersionActions draft deletion", () => {
       </BuilderLifecycleProvider>,
     );
     expect(screen.queryByRole("button", { name: "Delete draft" })).not.toBeInTheDocument();
+  });
+
+  it("shows IELTS readiness warnings separately from blocking errors", async () => {
+    vi.mocked(validateVersion).mockResolvedValue({ valid: true, errors: [], warnings: [{ path: "listening.questions", message: "Listening contains 1 / 40 questions." }] });
+    renderActions("DRAFT");
+    fireEvent.click(screen.getByRole("button", { name: "Validate" }));
+    expect(await screen.findByText("IELTS readiness")).toBeInTheDocument();
+    expect(screen.getByText("Listening contains 1 / 40 questions.")).toBeInTheDocument();
+    expect(screen.getByText("Version is valid.")).toBeInTheDocument();
   });
 
   it("cancels draft deletion without sending a request", () => {

@@ -40,7 +40,7 @@ export async function cloneVersion(testId: string, sourceVersionId: string): Pro
 }
 
 export async function validateVersion(versionId: string) {
-  return apiRequest<{ valid: boolean; errors: Array<{ path: string; message: string }> }>(
+  return apiRequest<{ valid: boolean; errors: Array<{ path: string; message: string }>; warnings: Array<{ path: string; message: string }> }>(
     `/test-versions/${versionId}/validate`,
     { method: "POST" },
   );
@@ -62,6 +62,10 @@ export async function restoreTest(testId: string): Promise<TestSummary> {
   return testSchema.parse(
     await apiRequest<unknown>(`/tests/${testId}/restore`, { method: "POST" }),
   );
+}
+
+export async function permanentlyDeleteTest(testId: string): Promise<void> {
+  await apiRequest(`/tests/${testId}/permanent`, { method: "DELETE" });
 }
 
 export async function deleteDraft(testId: string, versionId: string): Promise<void> {

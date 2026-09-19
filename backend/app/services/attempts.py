@@ -25,6 +25,7 @@ from app.models import (
     QuestionFlag,
     QuestionGroup,
     ReadingPassage,
+    Test,
     TestModule,
     TestVersion,
 )
@@ -74,9 +75,11 @@ class AttemptService:
             module = await self.session.scalar(
                 select(TestModule)
                 .join(TestVersion)
+                .join(Test, TestVersion.test_id == Test.id)
                 .where(
                     TestVersion.id == data.test_version_id,
                     TestVersion.status == VersionStatus.PUBLISHED,
+                    Test.archived_at.is_(None),
                     TestModule.module_type == data.module,
                 )
             )

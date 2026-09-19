@@ -1,14 +1,17 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { AlertIcon, PlusIcon, ReadingIcon } from "@/components/ui/icons";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ApiError } from "@/lib/api/client";
 import {
   createPassage,
   createQuestionGroup,
   createReadingModule,
   deletePassage,
+  deleteModule,
   deleteQuestionGroup,
   reorderQuestionGroups,
   updatePassage,
@@ -18,6 +21,7 @@ import {
   type BuilderVersion,
   type TextBlock,
 } from "@/lib/api/builder";
+import { builderPreviewPath } from "@/lib/routes";
 import { questionRegistry, readingQuestionTypeOptions } from "@/features/questions/registry";
 import type { QuestionGroupModel, QuestionType } from "@/features/questions/types";
 import { QuestionGroupEditor } from "./question-group-editor";
@@ -31,6 +35,7 @@ export function ReadingBuilder({ version }: { version: BuilderVersion }) {
   const [editingPassage, setEditingPassage] = useState<BuilderPassage | "new" | null>(null);
   const [editingGroup, setEditingGroup] = useState<{ passageId: string; group: QuestionGroupModel } | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [confirmingModuleDelete, setConfirmingModuleDelete] = useState(false);
   const nextNumber = useMemo(() => Math.max(0, ...(reading?.passages.flatMap((passage) => passage.question_groups.flatMap((group) => group.questions.map((question) => question.number))) ?? [])) + 1, [reading]);
   const nextGroupOrder = useMemo(() => Math.max(-1, ...(reading?.passages.flatMap((passage) => passage.question_groups.map((group) => group.order_index)) ?? [])) + 1, [reading]);
   const duplicateQuestionNumbers = useMemo(() => {
@@ -89,7 +94,7 @@ export function ReadingBuilder({ version }: { version: BuilderVersion }) {
             <h2>Reading Builder</h2>
             <p>Build passage blocks, arrange question groups, and keep answer keys next to each question.</p>
           </div>
-          <button onClick={() => setEditingPassage("new")} className="btn btn-primary"><PlusIcon className="size-4" /> Add passage</button>
+          <div className="flex flex-wrap gap-2"><Link href={builderPreviewPath(version.test_id, version.id, "reading")} className="btn btn-secondary">Preview Reading</Link><button onClick={() => setEditingPassage("new")} className="btn btn-primary"><PlusIcon className="size-4" /> Add passage</button><button onClick={() => setConfirmingModuleDelete(true)} className="btn btn-danger-ghost">Delete module</button></div>
         </div>
 
         {duplicateQuestionNumbers.length ? <p role="alert" className="notice notice-error mt-4"><AlertIcon className="mt-0.5 size-4 shrink-0" /> Duplicate displayed question numbers: {duplicateQuestionNumbers.join(", ")}. Renumber before publishing.</p> : null}
@@ -138,6 +143,7 @@ export function ReadingBuilder({ version }: { version: BuilderVersion }) {
           {!reading.passages.length ? <div className="reading-inline-empty"><p>No passages yet.</p><span>Add a passage to begin authoring Reading content.</span></div> : null}
         </div>
       </section>
+      <ConfirmDialog open={confirmingModuleDelete} title="Delete Reading module?" description="All Reading passages and questions in this draft will be removed." confirmLabel="Delete Reading module" pending={deleting} onCancel={() => setConfirmingModuleDelete(false)} onConfirm={() => void run(() => deleteModule(reading.id))} />
     </fieldset>
   );
 }

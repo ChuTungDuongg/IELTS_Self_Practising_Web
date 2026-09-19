@@ -10,12 +10,14 @@ from sqlalchemy import (
     DateTime,
     Enum,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
     UniqueConstraint,
     Uuid,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -48,7 +50,21 @@ class Test(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
 class TestVersion(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "test_versions"
-    __table_args__ = (UniqueConstraint("test_id", "version_number"),)
+    __table_args__ = (
+        UniqueConstraint("test_id", "version_number"),
+        Index(
+            "uq_test_versions_one_draft_per_test",
+            "test_id",
+            unique=True,
+            postgresql_where=text("status = 'DRAFT'"),
+        ),
+        Index(
+            "uq_test_versions_one_published_per_test",
+            "test_id",
+            unique=True,
+            postgresql_where=text("status = 'PUBLISHED'"),
+        ),
+    )
 
     test_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tests.id", ondelete="CASCADE"))
     version_number: Mapped[int] = mapped_column(Integer, nullable=False)

@@ -65,8 +65,10 @@ class ListeningService:
     async def attach_audio(
         self, module_id: uuid.UUID, body: ListeningModuleAudioWrite
     ) -> BuilderModule:
+        deleted_path: str | None = None
         async with self.session.begin():
             module = await self._draft_module(module_id)
+            previous_asset_id = module.audio_asset_id
             if body.asset_id is None:
                 module.audio_asset_id = None
             else:
@@ -84,7 +86,18 @@ class ListeningService:
                         422,
                     )
                 module.audio_asset_id = asset.id
+            await self.session.flush()
+            if previous_asset_id is not None and previous_asset_id != module.audio_asset_id:
+                from app.services.tests import TestService
+
+                deleted_path = await TestService(self.session).cleanup_asset_if_unreferenced(
+                    previous_asset_id
+                )
             version_id = module.test_version_id
+        if deleted_path:
+            from app.services.tests import TestService
+
+            TestService._delete_files([deleted_path])
         version = await self.shared.builder_version(version_id)
         return next(item for item in version.modules if item.id == module_id)
 
@@ -117,8 +130,10 @@ class ListeningService:
     async def update_group(
         self, group_id: uuid.UUID, body: QuestionGroupWrite
     ) -> BuilderQuestionGroup:
+        deleted_path: str | None = None
         async with self.session.begin():
             group = await self._draft_group(group_id)
+            previous_image_asset_id = group.image_asset_id
             await self._validate_image_asset(group.module.test_version_id, body)
             body = self.shared._normalize_group_body(body, group.id, [])
             self.shared._validate_group_body(body, [])
@@ -148,6 +163,16 @@ class ListeningService:
                     group.questions.remove(question)
             await self.session.flush()
             await self.shared._canonicalize_module(group.module_id)
+            if previous_image_asset_id and previous_image_asset_id != group.image_asset_id:
+                from app.services.tests import TestService
+
+                deleted_path = await TestService(self.session).cleanup_asset_if_unreferenced(
+                    previous_image_asset_id
+                )
+        if deleted_path:
+            from app.services.tests import TestService
+
+            TestService._delete_files([deleted_path])
         return await self.get_group(group_id)
 
     async def get_part(self, part_id: uuid.UUID) -> BuilderListeningPart:
@@ -195,7 +220,9 @@ class ListeningService:
             .with_for_update()
         )
         if module is None:
-            raise AppError("LISTENING_MODULE_NOT_FOUND", "The Listening module does not exist.", 404)
+            raise AppError(
+                "LISTENING_MODULE_NOT_FOUND", "The Listening module does not exist.", 404
+            )
         if module.test_version.status != VersionStatus.DRAFT:
             raise AppError("TEST_VERSION_IMMUTABLE", "Published versions cannot be changed.", 409)
         return module

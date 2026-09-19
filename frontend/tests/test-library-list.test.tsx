@@ -1,14 +1,15 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { TestLibraryList } from "@/features/test-builder/test-library-list";
 import { ApiError } from "@/lib/api/client";
 import type { TestSummary } from "@/lib/api/schema";
-import { deleteTest, restoreTest } from "@/lib/api/tests";
+import { deleteTest, permanentlyDeleteTest, restoreTest } from "@/lib/api/tests";
 
 const refresh = vi.fn();
+const push = vi.fn();
 
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ refresh }),
+  useRouter: () => ({ refresh, push }),
 }));
 
 vi.mock("@/lib/api/tests", async (importOriginal) => {
@@ -17,6 +18,8 @@ vi.mock("@/lib/api/tests", async (importOriginal) => {
     ...actual,
     deleteTest: vi.fn(),
     restoreTest: vi.fn(),
+    permanentlyDeleteTest: vi.fn(),
+    cloneVersion: vi.fn(),
   };
 });
 
@@ -117,5 +120,15 @@ describe("TestLibraryList", () => {
 
     fireEvent.click(screen.getByRole("tab", { name: "Active (1)" }));
     expect(screen.getByText("Fictional archived test")).toBeInTheDocument();
+  });
+
+  it("warns about attempt history before permanently deleting an archived test", async () => {
+    vi.mocked(permanentlyDeleteTest).mockResolvedValue(undefined);
+    render(<TestLibraryList activeTests={[]} archivedTests={[archivedTest]} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Archived (1)" }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete permanently Fictional archived test" }));
+    expect(screen.getByRole("dialog")).toHaveTextContent("also delete all attempt history");
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Delete permanently" }));
+    await waitFor(() => expect(permanentlyDeleteTest).toHaveBeenCalledWith(archivedTest.id));
   });
 });

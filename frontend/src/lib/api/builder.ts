@@ -94,6 +94,10 @@ export function createListeningModule(versionId: string) {
   return apiRequest(`/test-versions/${versionId}/modules`, { method: "POST", body: JSON.stringify({ module_type: "LISTENING", title: "Listening", recommended_duration_seconds: 1800 }) });
 }
 
+export function deleteModule(moduleId: string) {
+  return apiRequest(`/test-modules/${moduleId}`, { method: "DELETE" });
+}
+
 export function createListeningPart(versionId: string, body: { title: string; order_index: number }) {
   return apiRequest<BuilderListeningPart>(`/test-versions/${versionId}/listening/parts`, { method: "POST", body: JSON.stringify(body) });
 }

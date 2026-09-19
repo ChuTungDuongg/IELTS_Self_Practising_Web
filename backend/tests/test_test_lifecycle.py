@@ -80,7 +80,7 @@ async def test_delete_draft_removes_owned_children_and_keeps_other_version(
 ) -> None:
     test = DomainTest(title="Draft lifecycle")
     deleted_version = DomainVersion(version_number=1, status=VersionStatus.DRAFT)
-    surviving_version = DomainVersion(version_number=2, status=VersionStatus.DRAFT)
+    surviving_version = DomainVersion(version_number=2, status=VersionStatus.ARCHIVED)
     test.versions.extend([deleted_version, surviving_version])
     module, passage, group, question = draft_content(deleted_version)
     await persist(db_session, test)
@@ -169,7 +169,7 @@ async def test_delete_draft_preserves_asset_referenced_by_surviving_version(
 ) -> None:
     test = DomainTest(title="Shared draft asset")
     owner = DomainVersion(id=uuid4(), version_number=1, status=VersionStatus.DRAFT)
-    survivor = DomainVersion(version_number=2, status=VersionStatus.DRAFT)
+    survivor = DomainVersion(version_number=2, status=VersionStatus.ARCHIVED)
     test.versions.extend([owner, survivor])
     listening = DomainModule(module_type=ModuleType.LISTENING, order_index=0)
     survivor.modules.append(listening)
@@ -185,16 +185,21 @@ async def test_delete_draft_preserves_asset_referenced_by_surviving_version(
     )
     await persist(db_session, test)
     await persist(db_session, asset)
-    listening.audio_asset_id = asset.id
+    listening_id = listening.id
+    asset_id = asset.id
     part = ListeningPart(
-        module_id=listening.id,
+        module_id=listening_id,
         title="Part 1",
         order_index=0,
     )
-    await persist(db_session, part)
+    async with db_session.begin():
+        stored_listening = await db_session.get(DomainModule, listening_id)
+        assert stored_listening is not None
+        stored_listening.audio_asset_id = asset_id
+        db_session.add(part)
+        await db_session.flush()
     test_id = test.id
     owner_id = owner.id
-    asset_id = asset.id
     survivor_id = survivor.id
     part_id = part.id
 
@@ -203,7 +208,7 @@ async def test_delete_draft_preserves_asset_referenced_by_surviving_version(
     preserved = await db_session.scalar(select(Asset).where(Asset.id == asset_id))
     assert preserved is not None
     assert preserved.test_version_id == survivor_id
-    assert (await db_session.get(DomainModule, listening.id)).audio_asset_id == asset_id  # type: ignore[union-attr]
+    assert (await db_session.get(DomainModule, listening_id)).audio_asset_id == asset_id  # type: ignore[union-attr]
     assert await db_session.get(ListeningPart, part_id) is not None
 
 
@@ -275,16 +280,21 @@ async def test_hard_delete_preserves_asset_referenced_by_unrelated_test(
         created_at=datetime.now(UTC),
     )
     await persist(db_session, asset)
-    listening.audio_asset_id = asset.id
+    listening_id = listening.id
+    asset_id = asset.id
     part = ListeningPart(
-        module_id=listening.id,
+        module_id=listening_id,
         title="Part 1",
         order_index=0,
     )
-    await persist(db_session, part)
+    async with db_session.begin():
+        stored_listening = await db_session.get(DomainModule, listening_id)
+        assert stored_listening is not None
+        stored_listening.audio_asset_id = asset_id
+        db_session.add(part)
+        await db_session.flush()
     deleted_test_id = deleted_test.id
     surviving_draft_id = surviving_draft.id
-    asset_id = asset.id
     part_id = part.id
 
     result = await LifecycleService(db_session).delete_test(deleted_test_id)
@@ -293,7 +303,7 @@ async def test_hard_delete_preserves_asset_referenced_by_unrelated_test(
     preserved = await db_session.scalar(select(Asset).where(Asset.id == asset_id))
     assert preserved is not None
     assert preserved.test_version_id == surviving_draft_id
-    assert (await db_session.get(DomainModule, listening.id)).audio_asset_id == asset_id  # type: ignore[union-attr]
+    assert (await db_session.get(DomainModule, listening_id)).audio_asset_id == asset_id  # type: ignore[union-attr]
     assert await db_session.get(ListeningPart, part_id) is not None
 
 

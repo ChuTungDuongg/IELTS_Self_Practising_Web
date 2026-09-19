@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class HealthResponse(BaseModel):
@@ -16,3 +16,4 @@ class ValidationIssue(BaseModel):
 class ValidationResult(BaseModel):
     valid: bool
     errors: list[ValidationIssue]
+    warnings: list[ValidationIssue] = Field(default_factory=list)

@@ -2,10 +2,11 @@ import uuid
 from datetime import UTC, datetime
 
 from pydantic import ValidationError
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.config import get_settings
 from app.core.exceptions import AppError
 from app.domains.questions import question_registry
 from app.domains.questions.normalization import (
@@ -29,6 +30,7 @@ from app.repositories.tests import TestRepository, version_detail_query
 from app.schemas.common import ValidationIssue, ValidationResult
 from app.schemas.content import TextBlock
 from app.schemas.tests import TestCreate, TestDeleteResult, VersionCreate
+from app.storage import LocalAssetStorage
 
 
 class TestService:
@@ -60,6 +62,7 @@ class TestService:
         return test
 
     async def delete_test(self, test_id: uuid.UUID) -> TestDeleteResult:
+        deleted_paths: list[str] = []
         async with self.session.begin():
             test = await self.session.scalar(
                 select(Test).where(Test.id == test_id).with_for_update()
@@ -101,9 +104,124 @@ class TestService:
                 await self._preserve_shared_assets(
                     version_id, excluded_version_ids=deleted_version_ids
                 )
+            deleted_paths = list(
+                await self.session.scalars(
+                    select(Asset.relative_path).where(
+                        Asset.test_version_id.in_(deleted_version_ids)
+                    )
+                )
+            )
             await self.session.delete(test)
             await self.session.flush()
-            return TestDeleteResult(test_id=test_id, action="DELETED")
+        self._delete_files(deleted_paths)
+        return TestDeleteResult(test_id=test_id, action="DELETED")
+
+    async def permanently_delete_test(self, test_id: uuid.UUID) -> None:
+        deleted_paths: list[str] = []
+        async with self.session.begin():
+            test = await self.session.scalar(
+                select(Test).where(Test.id == test_id).with_for_update()
+            )
+            if test is None:
+                raise AppError("TEST_NOT_FOUND", "The requested test does not exist.", 404)
+            if test.archived_at is None:
+                raise AppError(
+                    "TEST_NOT_ARCHIVED",
+                    "Archive this test before deleting it permanently.",
+                    409,
+                )
+            version_ids = set(
+                await self.session.scalars(
+                    select(TestVersion.id).where(TestVersion.test_id == test_id)
+                )
+            )
+            if version_ids:
+                await self.session.execute(
+                    delete(Attempt).where(Attempt.test_version_id.in_(version_ids))
+                )
+                for version_id in version_ids:
+                    await self._preserve_shared_assets(version_id, excluded_version_ids=version_ids)
+                deleted_paths = list(
+                    await self.session.scalars(
+                        select(Asset.relative_path).where(Asset.test_version_id.in_(version_ids))
+                    )
+                )
+            await self.session.delete(test)
+            await self.session.flush()
+        self._delete_files(deleted_paths)
+
+    async def delete_module(self, module_id: uuid.UUID) -> None:
+        deleted_paths: list[str] = []
+        async with self.session.begin():
+            module = await self.session.scalar(
+                select(TestModule)
+                .where(TestModule.id == module_id)
+                .options(
+                    selectinload(TestModule.test_version),
+                    selectinload(TestModule.question_groups),
+                    selectinload(TestModule.writing_tasks),
+                )
+                .with_for_update()
+            )
+            if module is None:
+                raise AppError("TEST_MODULE_NOT_FOUND", "The test module does not exist.", 404)
+            if module.test_version.status != VersionStatus.DRAFT:
+                raise AppError(
+                    "TEST_VERSION_IMMUTABLE",
+                    "Only Draft modules can be deleted.",
+                    409,
+                )
+            asset_ids = {
+                asset_id
+                for asset_id in [
+                    module.audio_asset_id,
+                    *(group.image_asset_id for group in module.question_groups),
+                    *(task.image_asset_id for task in module.writing_tasks),
+                ]
+                if asset_id is not None
+            }
+            await self.session.delete(module)
+            await self.session.flush()
+            for asset_id in asset_ids:
+                path = await self.cleanup_asset_if_unreferenced(asset_id)
+                if path:
+                    deleted_paths.append(path)
+        self._delete_files(deleted_paths)
+
+    async def cleanup_asset_if_unreferenced(self, asset_id: uuid.UUID) -> str | None:
+        referenced = any(
+            item is not None
+            for item in [
+                await self.session.scalar(
+                    select(TestModule.id).where(TestModule.audio_asset_id == asset_id).limit(1)
+                ),
+                await self.session.scalar(
+                    select(QuestionGroup.id)
+                    .where(QuestionGroup.image_asset_id == asset_id)
+                    .limit(1)
+                ),
+                await self.session.scalar(
+                    select(WritingTask.id).where(WritingTask.image_asset_id == asset_id).limit(1)
+                ),
+            ]
+        )
+        if referenced:
+            return None
+        asset = await self.session.scalar(
+            select(Asset).where(Asset.id == asset_id).with_for_update()
+        )
+        if asset is None:
+            return None
+        path = asset.relative_path
+        await self.session.delete(asset)
+        await self.session.flush()
+        return path
+
+    @staticmethod
+    def _delete_files(paths: list[str]) -> None:
+        storage = LocalAssetStorage(get_settings().resolved_storage_root)
+        for path in paths:
+            storage.delete(path)
 
     async def restore_test(self, test_id: uuid.UUID) -> Test:
         async with self.session.begin():
@@ -116,15 +234,14 @@ class TestService:
             if test is None:
                 raise AppError("TEST_NOT_FOUND", "The requested test does not exist.", 404)
             if test.archived_at is None:
-                raise AppError(
-                    "TEST_NOT_ARCHIVED", "Only archived tests can be restored.", 409
-                )
+                raise AppError("TEST_NOT_ARCHIVED", "Only archived tests can be restored.", 409)
             test.archived_at = None
             await self.session.flush()
             await self.session.refresh(test, attribute_names=["updated_at"])
         return test
 
     async def delete_draft(self, test_id: uuid.UUID, version_id: uuid.UUID) -> None:
+        deleted_paths: list[str] = []
         async with self.session.begin():
             test = await self.session.scalar(
                 select(Test).where(Test.id == test_id).with_for_update()
@@ -154,6 +271,11 @@ class TestService:
                     409,
                 )
             await self._preserve_shared_assets(version_id, excluded_version_ids={version_id})
+            deleted_paths = list(
+                await self.session.scalars(
+                    select(Asset.relative_path).where(Asset.test_version_id == version_id)
+                )
+            )
             await self.session.delete(version)
             await self.session.flush()
             remaining_version_id = await self.session.scalar(
@@ -164,6 +286,7 @@ class TestService:
             if remaining_version_id is None:
                 await self.session.execute(delete(Test).where(Test.id == test_id))
                 await self.session.flush()
+        self._delete_files(deleted_paths)
 
     async def _preserve_shared_assets(
         self,
@@ -219,25 +342,41 @@ class TestService:
 
     async def create_version(self, test_id: uuid.UUID, data: VersionCreate) -> TestVersion:
         async with self.session.begin():
-            test = await self.repository.get(test_id)
+            test = await self.session.scalar(
+                select(Test).where(Test.id == test_id).with_for_update()
+            )
             if test is None:
                 raise AppError("TEST_NOT_FOUND", "The requested test does not exist.", 404)
-            number = await self.repository.next_version_number(test_id)
-            version = TestVersion(
-                test_id=test_id, version_number=number, status=VersionStatus.DRAFT
+            if test.archived_at is not None:
+                raise AppError("TEST_ARCHIVED", "Restore this test before editing it.", 409)
+            existing_draft_id = await self.session.scalar(
+                select(TestVersion.id).where(
+                    TestVersion.test_id == test_id,
+                    TestVersion.status == VersionStatus.DRAFT,
+                )
             )
-            self.session.add(version)
-            if data.source_version_id is not None:
-                source = await self.repository.get_version(data.source_version_id)
-                if source is None or source.test_id != test_id:
-                    raise AppError(
-                        "TEST_VERSION_NOT_FOUND",
-                        "The source version does not belong to this test.",
-                        404,
-                    )
-                self._clone_content(source, version)
-            await self.session.flush()
-            version_id = version.id
+            if existing_draft_id is not None:
+                version_id = existing_draft_id
+            else:
+                number = await self.repository.next_version_number(test_id)
+                version = TestVersion(
+                    test_id=test_id,
+                    version_number=number,
+                    status=VersionStatus.DRAFT,
+                    modules=[],
+                )
+                self.session.add(version)
+                if data.source_version_id is not None:
+                    source = await self.repository.get_version(data.source_version_id)
+                    if source is None or source.test_id != test_id:
+                        raise AppError(
+                            "TEST_VERSION_NOT_FOUND",
+                            "The source version does not belong to this test.",
+                            404,
+                        )
+                    self._clone_content(source, version)
+                await self.session.flush()
+                version_id = version.id
         return await self.get_version(version_id)
 
     @staticmethod
@@ -307,6 +446,8 @@ class TestService:
     @staticmethod
     def validate_version(version: TestVersion) -> ValidationResult:
         issues: list[ValidationIssue] = []
+        warnings: list[ValidationIssue] = []
+        usable_modules = 0
         if not version.modules:
             issues.append(ValidationIssue(path="modules", message="Add at least one module."))
         for module in version.modules:
@@ -325,17 +466,19 @@ class TestService:
                     for group in sorted(part.question_groups, key=lambda item: item.order_index)
                 ]
                 if len(module.listening_parts) != 4:
-                    issues.append(
+                    warnings.append(
                         ValidationIssue(
                             path="listening.parts",
-                            message="A complete IELTS Listening module requires Parts 1 through 4.",
+                            message=f"IELTS readiness: Listening contains {len(module.listening_parts)} / 4 sections.",
                         )
                     )
-                if sorted(part.order_index for part in module.listening_parts) != [0, 1, 2, 3]:
+                if sorted(part.order_index for part in module.listening_parts) != list(
+                    range(len(module.listening_parts))
+                ):
                     issues.append(
                         ValidationIssue(
                             path="listening.parts",
-                            message="Listening parts must use the canonical order 1 through 4.",
+                            message="Listening sections must use a canonical contiguous order.",
                         )
                     )
             else:
@@ -366,11 +509,14 @@ class TestService:
                         message="Question numbers must form the canonical sequence 1 through N.",
                     )
                 )
-            if module.module_type == ModuleType.LISTENING and len(question_numbers) != 40:
-                issues.append(
+            if (
+                module.module_type in {ModuleType.READING, ModuleType.LISTENING}
+                and len(question_numbers) != 40
+            ):
+                warnings.append(
                     ValidationIssue(
-                        path="listening.questions",
-                        message="A complete IELTS Listening module requires 40 questions.",
+                        path=f"{prefix}.questions",
+                        message=f"IELTS readiness: {module.module_type.value.title()} contains {len(question_numbers)} / 40 questions.",
                     )
                 )
             is_nonempty = {
@@ -379,8 +525,15 @@ class TestService:
                 ModuleType.WRITING: bool(module.writing_tasks),
             }[module.module_type]
             if not is_nonempty:
-                issues.append(
-                    ValidationIssue(path=prefix, message=f"The {prefix} module has no content.")
+                warnings.append(
+                    ValidationIssue(path=prefix, message=f"The {prefix} module has no content yet.")
+                )
+            if module.module_type == ModuleType.LISTENING and module.audio_asset_id is None:
+                warnings.append(
+                    ValidationIssue(
+                        path="listening.audio",
+                        message="IELTS readiness: Listening has no audio attached.",
+                    )
                 )
             for passage in module.passages:
                 try:
@@ -524,7 +677,37 @@ class TestService:
                             message=f"Invalid question group configuration: {exc}",
                         )
                     )
-        return ValidationResult(valid=not issues, errors=issues)
+            if module.module_type == ModuleType.READING:
+                meaningful_passages = [
+                    passage
+                    for passage in module.passages
+                    if any(
+                        str(block.get("text", "")).strip()
+                        for block in normalized_passages.get(passage.id, [])
+                    )
+                ]
+                if meaningful_passages and question_numbers:
+                    usable_modules += 1
+                if len(module.passages) != 3:
+                    warnings.append(
+                        ValidationIssue(
+                            path="reading.passages",
+                            message=f"IELTS readiness: Reading contains {len(module.passages)} / 3 passages.",
+                        )
+                    )
+            elif module.module_type == ModuleType.LISTENING:
+                if module.listening_parts and question_numbers:
+                    usable_modules += 1
+            elif module.writing_tasks:
+                usable_modules += 1
+        if version.modules and usable_modules == 0:
+            issues.append(
+                ValidationIssue(
+                    path="modules",
+                    message="Add at least one usable module with valid question content.",
+                )
+            )
+        return ValidationResult(valid=not issues, errors=issues, warnings=warnings)
 
     @staticmethod
     def _validate_references(
@@ -633,6 +816,19 @@ class TestService:
 
     async def publish(self, version_id: uuid.UUID) -> TestVersion:
         async with self.session.begin():
+            test_id = await self.session.scalar(
+                select(TestVersion.test_id).where(TestVersion.id == version_id)
+            )
+            if test_id is None:
+                raise AppError(
+                    "TEST_VERSION_NOT_FOUND", "The requested test version does not exist.", 404
+                )
+            test = await self.session.scalar(
+                select(Test).where(Test.id == test_id).with_for_update()
+            )
+            assert test is not None
+            if test.archived_at is not None:
+                raise AppError("TEST_ARCHIVED", "Restore this test before publishing.", 409)
             version = await self.session.scalar(
                 version_detail_query().where(TestVersion.id == version_id).with_for_update()
             )
@@ -652,6 +848,15 @@ class TestService:
                     422,
                 )
             self._persist_normalized_draft(version)
+            await self.session.execute(
+                update(TestVersion)
+                .where(
+                    TestVersion.test_id == version.test_id,
+                    TestVersion.id != version.id,
+                    TestVersion.status == VersionStatus.PUBLISHED,
+                )
+                .values(status=VersionStatus.ARCHIVED)
+            )
             version.status = VersionStatus.PUBLISHED
             version.published_at = datetime.now(UTC)
             await self.session.flush()

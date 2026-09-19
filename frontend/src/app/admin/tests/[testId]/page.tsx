@@ -23,7 +23,7 @@ export default async function TestDetailPage({ params }: { params: Promise<{ tes
           {test.versions.map((version) => (
             <Link key={version.id} href={builderEditPath(test.id, version.id)} className="group flex items-center justify-between gap-4 px-6 py-5 transition-colors hover:bg-[var(--surface-soft)]">
               <div>
-                <p className="font-semibold">Version {version.version_number}</p>
+                <p className="font-semibold">Version {version.version_number} · {version.status === "PUBLISHED" ? "Current published" : version.status === "DRAFT" ? "Draft" : "Historical"}</p>
                 <p className="mt-1 text-sm text-[var(--muted)]">Created {new Date(version.created_at).toLocaleString()}</p>
               </div>
               <div className="flex items-center gap-4"><StatusBadge status={version.status} /><ArrowIcon className="size-4 text-[var(--muted)] transition-transform group-hover:translate-x-1" /></div>

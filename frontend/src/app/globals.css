@@ -206,6 +206,11 @@ input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--mute
 .builder-local-nav > a:hover { color: var(--ink); background: var(--surface-soft); }
 .builder-local-nav .builder-local-active { color: var(--reading); background: color-mix(in srgb, var(--reading) 10%, transparent); }
 .builder-local-nav small { margin-left: auto; font-size: 9px; font-weight: 600; }
+.builder-workspace-disabled { cursor: not-allowed; opacity: .55; }
+.builder-row-label { min-width: 0; }
+.validation-warnings { grid-column: 1 / -1; width: 100%; border: 1px solid color-mix(in srgb, var(--warning) 35%, var(--line)); border-radius: 12px; padding: 12px 16px; background: color-mix(in srgb, var(--warning) 9%, var(--surface)); color: var(--ink); font-size: 12px; }
+.validation-warnings ul { margin: 6px 0 0 18px; color: var(--muted); }
+.draft-preview .exam-header p { color: var(--warning); }
 .module-listening-dot, .module-writing-dot { width: 7px; height: 7px; border-radius: 999px; background: var(--listening); }
 .module-writing-dot { background: var(--writing); }
 .builder-canvas { min-width: 0; }

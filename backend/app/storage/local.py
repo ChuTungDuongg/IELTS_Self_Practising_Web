@@ -62,3 +62,14 @@ class LocalAssetStorage:
         if self.root not in candidate.parents or not candidate.is_file():
             raise AppError("ASSET_NOT_FOUND", "The asset file does not exist.", 404)
         return candidate
+
+    def delete(self, relative_path: str) -> bool:
+        candidate = (self.root / relative_path).resolve()
+        if candidate == self.root or self.root not in candidate.parents:
+            raise AppError("ASSET_DELETE_INVALID", "Invalid storage path.", 422)
+        if not candidate.exists():
+            return False
+        if not candidate.is_file():
+            raise AppError("ASSET_DELETE_INVALID", "The storage path is not a file.", 422)
+        candidate.unlink()
+        return True

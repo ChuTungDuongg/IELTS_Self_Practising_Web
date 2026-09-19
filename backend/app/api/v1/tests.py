@@ -46,10 +46,20 @@ async def delete_test(
 
 
 @router.post("/tests/{test_id}/restore", response_model=TestSummary)
-async def restore_test(
-    test_id: UUID, session: AsyncSession = Depends(get_session)
-) -> TestSummary:
+async def restore_test(test_id: UUID, session: AsyncSession = Depends(get_session)) -> TestSummary:
     return TestSummary.model_validate(await TestService(session).restore_test(test_id))
+
+
+@router.delete("/tests/{test_id}/permanent", status_code=status.HTTP_204_NO_CONTENT)
+async def permanently_delete_test(
+    test_id: UUID, session: AsyncSession = Depends(get_session)
+) -> None:
+    await TestService(session).permanently_delete_test(test_id)
+
+
+@router.delete("/test-modules/{module_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_module(module_id: UUID, session: AsyncSession = Depends(get_session)) -> None:
+    await TestService(session).delete_module(module_id)
 
 
 @router.post(

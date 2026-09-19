@@ -7,7 +7,7 @@ const versionId = "22222222-2222-4222-8222-222222222222";
 
 describe("Builder workspace navigation", () => {
   it("uses URL-backed navigation and follows the selected workspace", () => {
-    render(<BuilderWorkspaceNavigation testId={testId} versionId={versionId} workspace="listening" />);
+    render(<BuilderWorkspaceNavigation testId={testId} versionId={versionId} workspace="listening" moduleTypes={["READING"]} />);
 
     expect(screen.getByRole("link", { name: /Overview/ })).toHaveAttribute(
       "href",
@@ -16,6 +16,8 @@ describe("Builder workspace navigation", () => {
     expect(screen.getByRole("link", { name: /Reading/ })).not.toHaveAttribute("aria-current");
     expect(screen.getByRole("link", { name: /Listening/ })).toHaveAttribute("aria-current", "page");
     expect(screen.getByText(/Writing/).closest("a")).toBeNull();
+    expect(screen.getByRole("link", { name: /ReadingCreated/ })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /ListeningNot created/ })).toBeInTheDocument();
   });
 
   it("keeps Listening navigable when it has not been created", () => {

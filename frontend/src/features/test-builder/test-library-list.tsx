@@ -9,7 +9,7 @@ import { ArchiveIcon, ArrowIcon, BuilderIcon, SearchIcon } from "@/components/ui
 import { StatusBadge } from "@/components/ui/status-badge";
 import { ApiError } from "@/lib/api/client";
 import type { TestSummary } from "@/lib/api/schema";
-import { deleteTest, restoreTest } from "@/lib/api/tests";
+import { cloneVersion, deleteTest, permanentlyDeleteTest, restoreTest } from "@/lib/api/tests";
 import { builderEditPath } from "@/lib/routes";
 
 export function TestLibraryList({
@@ -25,6 +25,7 @@ export function TestLibraryList({
   const [view, setView] = useState<"active" | "archived">("active");
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<TestSummary | null>(null);
+  const [permanentSelected, setPermanentSelected] = useState<TestSummary | null>(null);
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [message, setMessage] = useState<{ kind: "success" | "error"; text: string } | null>(null);
   const selectedWillArchive = selected ? hasHistory(selected) : false;
@@ -69,6 +70,37 @@ export function TestLibraryList({
     }
   }
 
+  async function editPublished(target: TestSummary) {
+    if (pendingId) return;
+    const published = [...target.versions].reverse().find((version) => version.status === "PUBLISHED");
+    if (!published) return;
+    setPendingId(target.id);
+    try {
+      const draft = await cloneVersion(target.id, published.id);
+      router.push(builderEditPath(target.id, draft.id));
+    } catch (error) {
+      setMessage({ kind: "error", text: error instanceof ApiError ? error.message : "The draft could not be opened." });
+      setPendingId(null);
+    }
+  }
+
+  async function permanentlyRemove() {
+    if (!permanentSelected || pendingId) return;
+    const target = permanentSelected;
+    setPendingId(target.id);
+    try {
+      await permanentlyDeleteTest(target.id);
+      setArchivedTests((current) => current.filter((item) => item.id !== target.id));
+      setPermanentSelected(null);
+      setMessage({ kind: "success", text: `Permanently deleted “${target.title}” and its attempt history.` });
+      router.refresh();
+    } catch (error) {
+      setMessage({ kind: "error", text: error instanceof ApiError ? error.message : "The test could not be permanently deleted." });
+    } finally {
+      setPendingId(null);
+    }
+  }
+
   const visibleTests = view === "active" ? activeTests : archivedTests;
   const filteredTests = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase();
@@ -106,6 +138,7 @@ export function TestLibraryList({
           {filteredTests.map((test) => {
             const latest = test.versions.at(-1);
             const draft = [...test.versions].reverse().find((version) => version.status === "DRAFT");
+            const published = [...test.versions].reverse().find((version) => version.status === "PUBLISHED");
             const destructiveLabel = hasHistory(test) ? "Archive" : "Delete";
             return (
               <article key={test.id} className="test-card">
@@ -133,6 +166,8 @@ export function TestLibraryList({
                     <Link href={builderEditPath(test.id, draft.id)} className="btn btn-primary">
                       Continue draft <ArrowIcon className="size-4" />
                     </Link>
+                  ) : view === "active" && published ? (
+                    <button type="button" disabled={pendingId !== null} onClick={() => void editPublished(test)} className="btn btn-primary">Edit <ArrowIcon className="size-4" /></button>
                   ) : view === "archived" ? (
                     <button type="button" disabled={pendingId !== null} aria-label={`Restore ${test.title}`} onClick={() => void restore(test)} className="btn btn-primary">
                       Restore
@@ -142,7 +177,7 @@ export function TestLibraryList({
                     <button type="button" disabled={pendingId !== null} aria-label={`${destructiveLabel} ${test.title}`} onClick={() => setSelected(test)} className="btn btn-danger-ghost ml-auto">
                       {destructiveLabel}
                     </button>
-                  ) : null}
+                  ) : <button type="button" disabled={pendingId !== null} aria-label={`Delete permanently ${test.title}`} onClick={() => setPermanentSelected(test)} className="btn btn-danger-ghost ml-auto">Delete permanently</button>}
                 </div>
               </article>
             );
@@ -167,6 +202,7 @@ export function TestLibraryList({
         onCancel={() => setSelected(null)}
         onConfirm={() => void removeSelected()}
       />
+      <ConfirmDialog open={permanentSelected !== null} title={`Delete “${permanentSelected?.title ?? ""}” permanently?`} description="Deleting this test permanently will also delete all attempt history for this test. This action cannot be undone." confirmLabel="Delete permanently" pending={pendingId !== null} onCancel={() => setPermanentSelected(null)} onConfirm={() => void permanentlyRemove()} />
     </>
   );
 }

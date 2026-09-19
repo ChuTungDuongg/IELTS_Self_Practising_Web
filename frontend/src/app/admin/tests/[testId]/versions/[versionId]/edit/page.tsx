@@ -30,7 +30,7 @@ export default async function VersionEditorPage({ params, searchParams }: { para
       <BuilderLifecycleProvider>
         <VersionActions testId={testId} versionId={versionId} status={version.status} />
         <div className="builder-workspace">
-          <BuilderWorkspaceNavigation testId={testId} versionId={versionId} workspace={workspace} />
+          <BuilderWorkspaceNavigation testId={testId} versionId={versionId} workspace={workspace} moduleTypes={version.modules.map((item) => item.module_type)} />
           <div className="builder-canvas">
             {workspace === "overview" ? <section className="builder-overview">
               <div className="section-header"><div><h2 className="section-title">Test overview</h2><p className="section-description">A quick view of the modules currently included in this version.</p></div></div>

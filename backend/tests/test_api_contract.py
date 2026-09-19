@@ -210,8 +210,9 @@ async def test_yes_no_not_given_persists_and_reloads_through_builder_service(
             }],
         ),
     )
+    version_id = version.id
     await db_session.rollback()
-    reloaded = await ReadingService(db_session).builder_version(version.id)
+    reloaded = await ReadingService(db_session).builder_version(version_id)
     reloaded_group = reloaded.modules[0].passages[0].question_groups[0]
 
     assert created.question_type == "yes_no_not_given"

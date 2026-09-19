@@ -130,15 +130,34 @@ def test_complete_listening_structure_validates_four_parts_and_global_numbering(
     assert VersionService.validate_version(version).valid
 
 
-def test_listening_validation_rejects_missing_parts_but_allows_optional_audio() -> None:
+def test_listening_validation_warns_about_missing_parts_and_allows_optional_audio() -> None:
     version = VersionRecord(version_number=1, status=VersionStatus.DRAFT)
     module = ModuleRecord(module_type=ModuleType.LISTENING, order_index=0)
     module.listening_parts.append(ListeningPart(id=uuid4(), title="Part 1", order_index=0))
     version.modules.append(module)
     result = VersionService.validate_version(version)
     assert not result.valid
-    assert any(issue.path == "listening.parts" for issue in result.errors)
+    assert any(issue.path == "listening.parts" for issue in result.warnings)
     assert not any(issue.path.endswith(".audio") for issue in result.errors)
+
+
+def test_partial_listening_with_one_section_and_question_is_publishable() -> None:
+    version = VersionRecord(version_number=1, status=VersionStatus.DRAFT)
+    module = ModuleRecord(module_type=ModuleType.LISTENING, order_index=0)
+    part = ListeningPart(id=uuid4(), title="Section 1", order_index=0)
+    group = QuestionGroup(id=uuid4(), question_type="short_answer", instruction="Answer", config={}, order_index=0)
+    group.questions.append(Question(id=uuid4(), number=1, prompt="Prompt", config={"max_words": 2, "max_numbers": 1}, answer_key={"kind": "TEXT", "accepted": ["answer"], "case_sensitive": False}, order_index=0))
+    part.question_groups.append(group)
+    module.listening_parts.append(part)
+    module.question_groups.append(group)
+    version.modules.append(module)
+
+    result = VersionService.validate_version(version)
+
+    assert result.valid
+    assert not result.errors
+    assert any("1 / 4" in issue.message for issue in result.warnings)
+    assert any("no audio" in issue.message.lower() for issue in result.warnings)
 
 
 @pytest.mark.integration
@@ -163,17 +182,22 @@ async def test_shared_audio_replace_and_remove_preserves_sections_and_questions(
         await db_session.flush()
 
     service = ListeningService(db_session)
-    await service.attach_audio(module.id, ListeningModuleAudioWrite(asset_id=first.id))
+    module_id = module.id
+    first_id = first.id
+    second_id = second.id
+    part_id = part.id
+    question_id = group.questions[0].id
+    await service.attach_audio(module_id, ListeningModuleAudioWrite(asset_id=first_id))
     await db_session.rollback()
-    await service.attach_audio(module.id, ListeningModuleAudioWrite(asset_id=second.id))
+    await service.attach_audio(module_id, ListeningModuleAudioWrite(asset_id=second_id))
     await db_session.rollback()
-    await service.attach_audio(module.id, ListeningModuleAudioWrite(asset_id=None))
+    await service.attach_audio(module_id, ListeningModuleAudioWrite(asset_id=None))
     await db_session.rollback()
 
-    stored_module = await db_session.get(ModuleRecord, module.id)
+    stored_module = await db_session.get(ModuleRecord, module_id)
     assert stored_module is not None and stored_module.audio_asset_id is None
-    assert await db_session.get(ListeningPart, part.id) is not None
-    assert await db_session.get(Question, group.questions[0].id) is not None
+    assert await db_session.get(ListeningPart, part_id) is not None
+    assert await db_session.get(Question, question_id) is not None
 
 
 @pytest.mark.integration
