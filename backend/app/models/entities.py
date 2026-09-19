@@ -39,6 +39,7 @@ class Test(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     description: Mapped[str | None] = mapped_column(Text)
     source_label: Mapped[str | None] = mapped_column(String(160))
     test_number: Mapped[int | None] = mapped_column(Integer)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
 
     versions: Mapped[list[TestVersion]] = relationship(
         back_populates="test", cascade="all, delete-orphan", order_by="TestVersion.version_number"

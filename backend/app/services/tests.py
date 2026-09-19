@@ -2,8 +2,9 @@ import uuid
 from datetime import UTC, datetime
 
 from pydantic import ValidationError
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.exceptions import AppError
 from app.domains.questions import question_registry
@@ -12,6 +13,8 @@ from app.domains.questions.normalization import (
     normalize_question_group_payload,
 )
 from app.models import (
+    Asset,
+    Attempt,
     ListeningPart,
     Question,
     QuestionGroup,
@@ -25,7 +28,7 @@ from app.models.enums import ModuleType, VersionStatus
 from app.repositories.tests import TestRepository, version_detail_query
 from app.schemas.common import ValidationIssue, ValidationResult
 from app.schemas.content import TextBlock
-from app.schemas.tests import TestCreate, VersionCreate
+from app.schemas.tests import TestCreate, TestDeleteResult, VersionCreate
 
 
 class TestService:
@@ -33,8 +36,8 @@ class TestService:
         self.session = session
         self.repository = TestRepository(session)
 
-    async def list_tests(self) -> list[Test]:
-        return await self.repository.list()
+    async def list_tests(self, *, archived: bool = False) -> list[Test]:
+        return await self.repository.list(archived=archived)
 
     async def get_test(self, test_id: uuid.UUID) -> Test:
         test = await self.repository.get(test_id)
@@ -55,6 +58,147 @@ class TestService:
                 test.versions.append(TestVersion(version_number=1, status=VersionStatus.DRAFT))
             await self.session.flush()
         return test
+
+    async def delete_test(self, test_id: uuid.UUID) -> TestDeleteResult:
+        async with self.session.begin():
+            test = await self.session.scalar(
+                select(Test).where(Test.id == test_id).with_for_update()
+            )
+            if test is None:
+                raise AppError("TEST_NOT_FOUND", "The requested test does not exist.", 404)
+            if test.archived_at is not None:
+                raise AppError(
+                    "TEST_ALREADY_ARCHIVED", "The requested test is already archived.", 409
+                )
+            version_rows = list(
+                (
+                    await self.session.execute(
+                        select(TestVersion.id, TestVersion.status).where(
+                            TestVersion.test_id == test_id
+                        )
+                    )
+                ).all()
+            )
+            has_history = any(
+                status in {VersionStatus.PUBLISHED, VersionStatus.ARCHIVED}
+                for _, status in version_rows
+            )
+            has_attempts = (
+                await self.session.scalar(
+                    select(Attempt.id)
+                    .join(TestVersion, Attempt.test_version_id == TestVersion.id)
+                    .where(TestVersion.test_id == test_id)
+                    .limit(1)
+                )
+                is not None
+            )
+            if has_history or has_attempts:
+                test.archived_at = datetime.now(UTC)
+                await self.session.flush()
+                return TestDeleteResult(test_id=test_id, action="ARCHIVED")
+            deleted_version_ids = {version_id for version_id, _ in version_rows}
+            for version_id in deleted_version_ids:
+                await self._preserve_shared_assets(
+                    version_id, excluded_version_ids=deleted_version_ids
+                )
+            await self.session.delete(test)
+            await self.session.flush()
+            return TestDeleteResult(test_id=test_id, action="DELETED")
+
+    async def restore_test(self, test_id: uuid.UUID) -> Test:
+        async with self.session.begin():
+            test = await self.session.scalar(
+                select(Test)
+                .where(Test.id == test_id)
+                .options(selectinload(Test.versions))
+                .with_for_update()
+            )
+            if test is None:
+                raise AppError("TEST_NOT_FOUND", "The requested test does not exist.", 404)
+            if test.archived_at is None:
+                raise AppError(
+                    "TEST_NOT_ARCHIVED", "Only archived tests can be restored.", 409
+                )
+            test.archived_at = None
+            await self.session.flush()
+            await self.session.refresh(test, attribute_names=["updated_at"])
+        return test
+
+    async def delete_draft(self, test_id: uuid.UUID, version_id: uuid.UUID) -> None:
+        async with self.session.begin():
+            test = await self.session.scalar(
+                select(Test).where(Test.id == test_id).with_for_update()
+            )
+            if test is None:
+                raise AppError("TEST_NOT_FOUND", "The requested test does not exist.", 404)
+            version = await self.session.scalar(
+                select(TestVersion)
+                .where(TestVersion.id == version_id, TestVersion.test_id == test_id)
+                .with_for_update()
+            )
+            if version is None:
+                raise AppError(
+                    "VERSION_NOT_FOUND",
+                    "The requested draft version does not belong to this test.",
+                    404,
+                )
+            if version.status != VersionStatus.DRAFT:
+                raise AppError("VERSION_NOT_DRAFT", "Only draft versions can be deleted.", 409)
+            attempt_id = await self.session.scalar(
+                select(Attempt.id).where(Attempt.test_version_id == version_id).limit(1)
+            )
+            if attempt_id is not None:
+                raise AppError(
+                    "DELETE_CONFLICT",
+                    "This draft has attempt history and cannot be deleted.",
+                    409,
+                )
+            await self._preserve_shared_assets(version_id, excluded_version_ids={version_id})
+            await self.session.delete(version)
+            await self.session.flush()
+            remaining_version_id = await self.session.scalar(
+                select(TestVersion.id)
+                .where(TestVersion.test_id == test_id, TestVersion.id != version_id)
+                .limit(1)
+            )
+            if remaining_version_id is None:
+                await self.session.execute(delete(Test).where(Test.id == test_id))
+                await self.session.flush()
+
+    async def _preserve_shared_assets(
+        self,
+        version_id: uuid.UUID,
+        *,
+        excluded_version_ids: set[uuid.UUID],
+    ) -> None:
+        assets = list(
+            await self.session.scalars(
+                select(Asset).where(Asset.test_version_id == version_id).with_for_update()
+            )
+        )
+        for asset in assets:
+            replacement_version_id = await self.session.scalar(
+                select(TestModule.test_version_id)
+                .join(ListeningPart, ListeningPart.module_id == TestModule.id)
+                .where(
+                    ListeningPart.audio_asset_id == asset.id,
+                    TestModule.test_version_id.not_in(excluded_version_ids),
+                )
+                .limit(1)
+            )
+            if replacement_version_id is None:
+                replacement_version_id = await self.session.scalar(
+                    select(TestModule.test_version_id)
+                    .join(WritingTask, WritingTask.module_id == TestModule.id)
+                    .where(
+                        WritingTask.image_asset_id == asset.id,
+                        TestModule.test_version_id.not_in(excluded_version_ids),
+                    )
+                    .limit(1)
+                )
+            if replacement_version_id is not None:
+                asset.test_version_id = replacement_version_id
+        await self.session.flush()
 
     async def get_version(self, version_id: uuid.UUID) -> TestVersion:
         version = await self.repository.get_version(version_id)

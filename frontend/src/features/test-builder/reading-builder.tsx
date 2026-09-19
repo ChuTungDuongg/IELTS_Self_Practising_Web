@@ -20,9 +20,11 @@ import {
 import { questionRegistry, questionTypeOptions } from "@/features/questions/registry";
 import type { QuestionGroupModel, QuestionType } from "@/features/questions/types";
 import { QuestionGroupEditor } from "./question-group-editor";
+import { useBuilderLifecycle } from "./builder-lifecycle";
 
 export function ReadingBuilder({ version }: { version: BuilderVersion }) {
   const router = useRouter();
+  const { deleting, runMutation } = useBuilderLifecycle();
   const reading = version.modules.find((item) => item.module_type === "READING");
   const [editingPassage, setEditingPassage] = useState<BuilderPassage | "new" | null>(null);
   const [editingGroup, setEditingGroup] = useState<{ passageId: string; group: QuestionGroupModel } | null>(null);
@@ -52,7 +54,7 @@ export function ReadingBuilder({ version }: { version: BuilderVersion }) {
   async function run(action: () => Promise<unknown>) {
     setMessage(null);
     try {
-      await action();
+      await runMutation(action);
       setEditingPassage(null);
       setEditingGroup(null);
       router.refresh();
@@ -62,11 +64,12 @@ export function ReadingBuilder({ version }: { version: BuilderVersion }) {
   }
 
   if (!reading) {
-    return <section className="mt-8 rounded-xl border border-dashed border-[var(--line)] p-8 text-center"><h2 className="font-semibold">Reading module</h2><p className="mt-2 text-sm text-[var(--muted)]">Create the module before adding passages and question groups.</p><button onClick={() => run(() => createReadingModule(version.id))} className="mt-4 rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white">Create Reading module</button>{message ? <p className="mt-3 text-sm text-red-700">{message}</p> : null}</section>;
+    return <fieldset disabled={deleting} className="contents"><section aria-busy={deleting} className="mt-8 rounded-xl border border-dashed border-[var(--line)] p-8 text-center"><h2 className="font-semibold">Reading module</h2><p className="mt-2 text-sm text-[var(--muted)]">Create the module before adding passages and question groups.</p><button onClick={() => run(() => createReadingModule(version.id))} className="mt-4 rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white">Create Reading module</button>{message ? <p className="mt-3 text-sm text-red-700">{message}</p> : null}</section></fieldset>;
   }
 
   return (
-    <section className="mt-8">
+    <fieldset disabled={deleting} className="contents">
+    <section aria-busy={deleting} className="mt-8">
       <div className="mb-4 flex items-center justify-between"><div><h2 className="text-xl font-semibold">Reading Builder</h2><p className="mt-1 text-sm text-[var(--muted)]">Stable passage blocks · structured questions · inline answer keys</p></div><button onClick={() => setEditingPassage("new")} className="rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white">Add passage</button></div>
       {duplicateQuestionNumbers.length ? <p role="alert" className="mb-4 rounded-md bg-red-50 p-3 text-sm text-red-800">Duplicate displayed question numbers: {duplicateQuestionNumbers.join(", ")}. Renumber before publishing.</p> : null}
       {message ? <p role="alert" className="mb-4 rounded-md bg-red-50 p-3 text-sm text-red-800">{message}</p> : null}
@@ -83,6 +86,7 @@ export function ReadingBuilder({ version }: { version: BuilderVersion }) {
         ))}
       </div>
     </section>
+    </fieldset>
   );
 }
 

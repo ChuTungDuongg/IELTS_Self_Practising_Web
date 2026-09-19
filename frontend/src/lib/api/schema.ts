@@ -14,6 +14,7 @@ export const testSchema = z.object({
   description: z.string().nullable(),
   source_label: z.string().nullable(),
   test_number: z.number().int().nullable(),
+  archived_at: z.string().nullable(),
   created_at: z.string(),
   updated_at: z.string(),
   versions: z.array(versionSchema),

@@ -27,9 +27,13 @@ class TestRepository:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
-    async def list(self) -> list[Test]:
+    async def list(self, *, archived: bool = False) -> list[Test]:
+        archive_filter = Test.archived_at.is_not(None) if archived else Test.archived_at.is_(None)
         result = await self.session.scalars(
-            select(Test).options(selectinload(Test.versions)).order_by(Test.created_at.desc())
+            select(Test)
+            .where(archive_filter)
+            .options(selectinload(Test.versions))
+            .order_by(Test.created_at.desc())
         )
         return list(result.unique())
 

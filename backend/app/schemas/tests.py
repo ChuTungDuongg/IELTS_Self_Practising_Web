@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -36,9 +37,15 @@ class TestSummary(BaseModel):
     description: str | None
     source_label: str | None
     test_number: int | None
+    archived_at: datetime | None
     created_at: datetime
     updated_at: datetime
     versions: list[VersionSummary] = Field(default_factory=list)
+
+
+class TestDeleteResult(BaseModel):
+    test_id: UUID
+    action: Literal["DELETED", "ARCHIVED"]
 
 
 class ModuleSummary(BaseModel):

@@ -7,8 +7,9 @@ const createTestInput = z.object({
   description: z.string().trim().max(4000).optional(),
 });
 
-export async function getTests(): Promise<TestSummary[]> {
-  return z.array(testSchema).parse(await apiRequest<unknown>("/tests"));
+export async function getTests(options?: { archived?: boolean }): Promise<TestSummary[]> {
+  const query = options?.archived ? "?archived=true" : "";
+  return z.array(testSchema).parse(await apiRequest<unknown>(`/tests${query}`));
 }
 
 export async function getTest(testId: string): Promise<TestSummary> {
@@ -49,4 +50,20 @@ export async function publishVersion(versionId: string): Promise<VersionDetail> 
   return versionDetailSchema.parse(
     await apiRequest<unknown>(`/test-versions/${versionId}/publish`, { method: "POST" }),
   );
+}
+
+export async function deleteTest(
+  testId: string,
+): Promise<{ test_id: string; action: "DELETED" | "ARCHIVED" }> {
+  return apiRequest(`/tests/${testId}`, { method: "DELETE" });
+}
+
+export async function restoreTest(testId: string): Promise<TestSummary> {
+  return testSchema.parse(
+    await apiRequest<unknown>(`/tests/${testId}/restore`, { method: "POST" }),
+  );
+}
+
+export async function deleteDraft(testId: string, versionId: string): Promise<void> {
+  await apiRequest(`/tests/${testId}/versions/${versionId}`, { method: "DELETE" });
 }
