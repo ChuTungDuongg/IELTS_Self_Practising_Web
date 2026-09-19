@@ -4,6 +4,7 @@ import { useState } from "react";
 import { questionRegistry } from "@/features/questions/registry";
 import type { ExamGroup, PassageBlock, QuestionGroupModel, TextCompletionLayout } from "@/features/questions/types";
 import { isCompletionQuestionType, QuestionGroupInstruction, resolveQuestionGroupInstruction } from "@/features/questions/question-group-instruction";
+import { textCompletionIntegrityErrors } from "@/features/questions/text-completion-integrity";
 import { normalizeTextCompletionOrder } from "@/features/questions/text-completion-canvas";
 
 export function QuestionGroupEditor({
@@ -35,6 +36,7 @@ export function QuestionGroupEditor({
   const presentedGroup = group.question_type === "text_completion"
     ? normalizeTextCompletionOrder(group, group.config as unknown as TextCompletionLayout, baseQuestionNumber)
     : group;
+  const integrityErrors = group.question_type === "text_completion" ? textCompletionIntegrityErrors(group) : [];
   const usesMultilineInstruction = isCompletionQuestionType(group.question_type);
 
   function addQuestion() {
@@ -112,9 +114,10 @@ export function QuestionGroupEditor({
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={() => setPreview(!preview)} className="btn btn-secondary">{preview ? "Back to edit" : "Preview"}</button>
           <button type="button" onClick={onCancel} className="btn btn-ghost">Cancel</button>
-          <button type="button" disabled={pending || !presentedGroup.questions.length} onClick={async () => { setPending(true); try { await onSave(presentedGroup); } finally { setPending(false); } }} className="btn btn-primary">{pending ? "Saving…" : "Save group"}</button>
+          <button type="button" disabled={pending || !presentedGroup.questions.length || integrityErrors.length > 0} onClick={async () => { if (integrityErrors.length) return; setPending(true); try { await onSave(presentedGroup); } finally { setPending(false); } }} className="btn btn-primary">{pending ? "Saving…" : "Save group"}</button>
         </div>
       </div>
+      {integrityErrors.length ? <div role="alert" className="notice notice-warning">{integrityErrors.map((message) => <p key={message}>{message}</p>)}</div> : null}
       {preview ? (
         <div className="group-preview">
           <p className="mb-2 text-xs font-bold uppercase tracking-wider text-[var(--muted)]">Candidate preview</p>

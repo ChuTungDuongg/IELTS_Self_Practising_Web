@@ -1,5 +1,9 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { renderToString } from "react-dom/server";
+import { TrueFalseNotGivenRenderer } from "@/features/questions/renderers";
+import { questionRegistry } from "@/features/questions/registry";
+import type { ExamGroup } from "@/features/questions/types";
 import { SelectableText } from "@/features/highlighting/selectable-text";
 import type { Highlight } from "@/lib/api/exam";
 
@@ -108,5 +112,61 @@ describe("selectable text", () => {
     fireEvent.click(mark);
     fireEvent.pointerDown(screen.getByRole("button", { name: "Outside options" }));
     expect(screen.queryByRole("dialog", { name: "Highlight options" })).not.toBeInTheDocument();
+  });
+});
+
+
+describe("inline-safe highlight portals", () => {
+  it("keeps both dialogs outside a real QuestionHeader paragraph without nesting warnings", async () => {
+    const error = vi.spyOn(console, "error");
+    const group = { ...questionRegistry.true_false_not_given.createDefault(5), id: crypto.randomUUID() } as ExamGroup;
+    group.questions[0].prompt = "Tourism supports jobs";
+    const onCreate = vi.fn().mockRejectedValue(new Error("offline"));
+    const onDelete = vi.fn().mockResolvedValue(undefined);
+    const view = render(<TrueFalseNotGivenRenderer group={group} values={{}} highlighting={{ highlights: [], onCreate, onDelete }} />);
+    const text = screen.getByText("Tourism supports jobs");
+    selectText(text.firstChild!, 0, 7);
+    fireEvent.mouseUp(text);
+    const create = screen.getByRole("dialog", { name: "Create highlight" });
+    expect(create.parentElement).toBe(document.body);
+    expect(create).toHaveStyle({ left: "30px", top: "12px" });
+    expect(view.container.querySelector("p div, p p, span div")).toBeNull();
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Highlight" }));
+    fireEvent.click(screen.getByRole("button", { name: "Highlight" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not create");
+    expect(onCreate).toHaveBeenCalledOnce();
+    fireEvent.keyDown(document, { key: "Escape" });
+    window.getSelection()!.removeAllRanges();
+    view.rerender(<TrueFalseNotGivenRenderer group={group} values={{}} highlighting={{ highlights: [storedHighlight(group.questions[0].id)], onCreate, onDelete }} />);
+    fireEvent.click(screen.getByRole("button", { name: /Highlight: Tourism/ }));
+    expect(screen.getByRole("dialog", { name: "Highlight options" }).parentElement).toBe(document.body);
+    expect(view.container.querySelector("p div, p p, span div")).toBeNull();
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Remove highlight" }));
+    fireEvent.click(screen.getByRole("button", { name: "Remove highlight" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(onDelete).toHaveBeenCalledOnce();
+    expect(error.mock.calls.flat().join(" ")).not.toMatch(/descendant|nested|hydration/i);
+    error.mockRestore();
+  });
+
+  it("renders inline server markup with no portal on the initial render", () => {
+    const html = renderToString(<p><SelectableText text="Fictional text" target={{ target_kind: "QUESTION_PROMPT", target_id: "test" }} controller={{ highlights: [], onCreate: vi.fn() }} /></p>);
+    expect(html).not.toContain("<div");
+    expect(html).not.toContain("dialog");
+    expect(html).toContain("Fictional text");
+  });
+
+  it("closes peers and dismisses stale viewport positions on scroll", () => {
+    render(<><SelectableText text="First fictional text" target={{ target_kind: "QUESTION_PROMPT", target_id: "first" }} controller={{ highlights: [], onCreate: vi.fn() }} /><SelectableText text="Second fictional text" target={{ target_kind: "QUESTION_PROMPT", target_id: "second" }} controller={{ highlights: [], onCreate: vi.fn() }} /></>);
+    const first = screen.getByText("First fictional text");
+    selectText(first.firstChild!, 0, 5);
+    fireEvent.mouseUp(first);
+    const second = screen.getByText("Second fictional text");
+    selectText(second.firstChild!, 0, 6);
+    fireEvent.mouseUp(second);
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    expect(screen.getByRole("dialog")).toHaveTextContent("Second");
+    fireEvent.scroll(document);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 });

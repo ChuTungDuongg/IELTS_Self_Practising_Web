@@ -65,21 +65,31 @@ describe("DraftPreview", () => {
 
   it("uses the compact completion flow and preserves multiline instructions", () => {
     const questionId = "88888888-8888-4888-8888-888888888888";
+    const secondQuestionId = "88888888-8888-4888-8888-888888888889";
     const completionVersion = structuredClone(version);
     completionVersion.modules[0].passages[0].question_groups = [{
       id: "99999999-9999-4999-8999-999999999999",
       question_type: "text_completion",
       instruction: "Complete the notes below.\nUse words from the passage.",
-      config: { mode: "PASSAGE", blocks: [{ id: crypto.randomUUID(), segments: [{ id: crypto.randomUUID(), type: "TEXT", text: "The destination was " }, { id: crypto.randomUUID(), type: "GAP", question_id: questionId }, { id: crypto.randomUUID(), type: "TEXT", text: "." }] }] },
+      config: { mode: "SENTENCE", blocks: [
+        { id: crypto.randomUUID(), segments: [{ id: crypto.randomUUID(), type: "TEXT", text: "The destination was " }, { id: crypto.randomUUID(), type: "GAP", question_id: questionId }, { id: crypto.randomUUID(), type: "TEXT", text: "." }] },
+        { id: crypto.randomUUID(), segments: [{ id: crypto.randomUUID(), type: "TEXT", text: "The second destination was " }, { id: crypto.randomUUID(), type: "GAP", question_id: secondQuestionId }, { id: crypto.randomUUID(), type: "TEXT", text: "." }] },
+      ] },
       order_index: 0,
-      questions: [{ id: questionId, number: 1, prompt: "", config: { max_words: 2, max_numbers: 0 }, answer_key: { kind: "TEXT", accepted: ["fictional"], case_sensitive: false }, explanation: null, order_index: 0 }],
+      questions: [
+        { id: questionId, number: 1, prompt: "", config: { max_words: 2, max_numbers: 0 }, answer_key: { kind: "TEXT", accepted: ["fictional"], case_sensitive: false }, explanation: null, order_index: 0 },
+        { id: secondQuestionId, number: 2, prompt: "", config: { max_words: 2, max_numbers: 0 }, answer_key: { kind: "TEXT", accepted: ["invented"], case_sensitive: false }, explanation: null, order_index: 1 },
+      ],
       image_asset_id: null,
       image_asset: null,
     }];
 
     const view = render(<DraftPreview version={completionVersion} moduleType="READING" />);
 
-    expect(view.container.querySelector(".completion-gap-inline")).toBeInTheDocument();
+    const lines = [...view.container.querySelectorAll(".text-completion-line")];
+    expect(lines).toHaveLength(2);
+    expect(lines.map((line) => line.textContent)).toEqual(["The destination was 1.", "The second destination was 2."]);
+    expect(view.container.querySelectorAll(".completion-gap-inline")).toHaveLength(2);
     expect(view.container.querySelector(".question-group-instruction-text")?.textContent).toBe("Complete the notes below.\nUse words from the passage.");
     expect(screen.queryByText(/max 2 words/i)).not.toBeInTheDocument();
   });

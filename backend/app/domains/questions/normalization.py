@@ -125,7 +125,7 @@ def normalize_question_group_payload(
     config = deepcopy(group_config)
     normalized_questions = deepcopy(questions)
 
-    if question_type == "text_completion" and not config.get("blocks"):
+    if question_type == "text_completion" and "blocks" not in config:
         blocks: list[dict[str, Any]] = []
         for index, question in enumerate(normalized_questions):
             question_id = str(
@@ -319,3 +319,17 @@ def _normalize_agreement_value(value: Any) -> Any:
         return value
     normalized = "_".join(value.strip().upper().replace("/", " ").split())
     return normalized
+
+
+def remap_question_references(value: Any, question_ids: dict[str, str]) -> Any:
+    """Copy structured config when cloning to a new version, remapping explicit links only."""
+    if isinstance(value, list):
+        return [remap_question_references(item, question_ids) for item in value]
+    if isinstance(value, dict):
+        return {
+            key: question_ids.get(str(item), item)
+            if key == "question_id"
+            else remap_question_references(item, question_ids)
+            for key, item in value.items()
+        }
+    return value

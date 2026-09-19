@@ -12,6 +12,7 @@ from app.domains.questions import question_registry
 from app.domains.questions.normalization import (
     normalize_passage_blocks,
     normalize_question_group_payload,
+    remap_question_references,
 )
 from app.models import (
     Asset,
@@ -420,6 +421,7 @@ class TestService:
                     )
                 )
             for group in module.question_groups:
+                question_ids = {str(question.id): str(uuid.uuid4()) for question in group.questions}
                 new_group = QuestionGroup(
                     passage=passage_map.get(group.passage_id),
                     listening_part=part_map.get(group.listening_part_id),
@@ -427,13 +429,14 @@ class TestService:
                     section_reference=group.section_reference,
                     question_type=group.question_type,
                     instruction=group.instruction,
-                    config=group.config,
+                    config=remap_question_references(group.config, question_ids),
                     order_index=group.order_index,
                 )
                 new_module.question_groups.append(new_group)
                 for question in group.questions:
                     new_group.questions.append(
                         Question(
+                            id=uuid.UUID(question_ids[str(question.id)]),
                             number=question.number,
                             prompt=question.prompt,
                             config=question.config,

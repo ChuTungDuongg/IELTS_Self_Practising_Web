@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { snapToWordBoundaries } from "./word-boundaries";
 import type { Highlight, HighlightCreate, HighlightTarget } from "@/lib/api/exam";
 
@@ -65,10 +66,19 @@ export function SelectableText({ text, target, controller, className }: {
         setError("");
       }
     };
+    const closeOnScroll = (event: Event) => {
+      if (event.target instanceof Node && (createPopover.current?.contains(event.target) || removePopover.current?.contains(event.target))) return;
+      setPending(null);
+      setActiveHighlight(null);
+    };
+    document.addEventListener("scroll", closeOnScroll, true);
+    window.addEventListener("resize", closeOnScroll);
     document.addEventListener("pointerdown", dismiss);
     document.addEventListener("keydown", escape);
     document.addEventListener(POPOVER_EVENT, closePeer);
     return () => {
+      document.removeEventListener("scroll", closeOnScroll, true);
+      window.removeEventListener("resize", closeOnScroll);
       document.removeEventListener("pointerdown", dismiss);
       document.removeEventListener("keydown", escape);
       document.removeEventListener(POPOVER_EVENT, closePeer);
@@ -156,7 +166,7 @@ export function SelectableText({ text, target, controller, className }: {
 
   return <span className={className}>
     <span ref={root} onMouseUp={select} onTouchEnd={select} data-highlight-target>{content}</span>
-    {pending ? <div ref={createPopover} className="highlight-popover highlight-create-popover" style={{ left: pending.x, top: pending.y }} role="dialog" aria-label="Create highlight">
+    {pending && typeof document !== "undefined" ? createPortal(<div ref={createPopover} className="highlight-popover highlight-create-popover" style={{ left: pending.x, top: pending.y }} role="dialog" aria-label="Create highlight">
       <q>{pending.selected_text}</q>
       <button type="button" disabled={working} onClick={async () => {
         setWorking(true);
@@ -177,8 +187,8 @@ export function SelectableText({ text, target, controller, className }: {
         }
       }}>{working ? "Working…" : "Highlight"}</button>
       {error ? <p role="alert">{error}</p> : null}
-    </div> : null}
-    {activeHighlight ? <div ref={removePopover} className="highlight-popover highlight-remove-popover" style={{ left: activeHighlight.x, top: activeHighlight.y }} role="dialog" aria-label="Highlight options">
+    </div>, document.body) : null}
+    {activeHighlight && typeof document !== "undefined" ? createPortal(<div ref={removePopover} className="highlight-popover highlight-remove-popover" style={{ left: activeHighlight.x, top: activeHighlight.y }} role="dialog" aria-label="Highlight options">
       <p>Highlight</p>
       <q>{activeHighlight.selected_text}</q>
       <button type="button" className="highlight-remove-action" disabled={working} onClick={async () => {
@@ -194,6 +204,6 @@ export function SelectableText({ text, target, controller, className }: {
         }
       }}>{working ? "Removing…" : "Remove highlight"}</button>
       {error ? <p role="alert">{error}</p> : null}
-    </div> : null}
+    </div>, document.body) : null}
   </span>;
 }

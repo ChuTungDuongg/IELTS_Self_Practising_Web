@@ -155,7 +155,7 @@ class ListeningService:
                     self._apply_question(question, item)
                     retained.add(item.id)
                 else:
-                    question = Question()
+                    question = Question(id=item.id or uuid.uuid4())
                     self._apply_question(question, item)
                     group.questions.append(question)
             for question_id, question in existing.items():

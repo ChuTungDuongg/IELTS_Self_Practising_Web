@@ -94,7 +94,7 @@ describe("question registry", () => {
     group.questions = [];
     const onChange = vi.fn();
     render(<TextCompletionEditor group={group} onChange={onChange} baseQuestionNumber={11} />);
-    const text = screen.getByRole("textbox", { name: "Paragraph 1 text segment 1" });
+    const text = screen.getByRole("textbox", { name: "Sentence 1 text segment 1" });
     const range = document.createRange();
     range.setStart(text.firstChild!, 6);
     range.collapse(true);
@@ -179,6 +179,43 @@ describe("question registry", () => {
     fireEvent.change(screen.getByLabelText("Question 12"), { target: { value: "harbour" } });
     expect(onAnswer).toHaveBeenCalledWith(second.id, "harbour");
     expect(group.questions[0].config).toEqual({ max_words: 3, max_numbers: 1 });
+  });
+
+  it("keeps four authored completion blocks as four visual lines", () => {
+    const group = questionRegistry.text_completion.createDefault(19) as ExamGroup;
+    group.id = crypto.randomUUID();
+    const questions = Array.from({ length: 4 }, (_, index) => ({
+      ...group.questions[0],
+      id: crypto.randomUUID(),
+      number: 19 + index,
+      order_index: index,
+    }));
+    group.questions = questions;
+    group.config = {
+      mode: "SENTENCE",
+      blocks: questions.map((question, index) => ({
+        id: crypto.randomUUID(),
+        segments: [
+          { id: crypto.randomUUID(), type: "TEXT", text: `Authored line ${index + 1} before ` },
+          { id: crypto.randomUUID(), type: "GAP", question_id: question.id },
+          { id: crypto.randomUUID(), type: "TEXT", text: ` after line ${index + 1}.` },
+        ],
+      })),
+    };
+
+    const Renderer = questionRegistry.text_completion.ExamRenderer;
+    const view = render(<Renderer group={group} values={{}} onAnswer={vi.fn()} />);
+    const lines = [...view.container.querySelectorAll(".text-completion-line")];
+
+    expect(lines).toHaveLength(4);
+    expect(lines.map((line) => line.textContent)).toEqual([
+      "Authored line 1 before 19 after line 1.",
+      "Authored line 2 before 20 after line 2.",
+      "Authored line 3 before 21 after line 3.",
+      "Authored line 4 before 22 after line 4.",
+    ]);
+    expect(lines.every((line) => line.querySelector(".completion-gap-inline input"))).toBe(true);
+    expect(view.container.querySelectorAll(".completion-gap-inline")).toHaveLength(4);
   });
 
   it("keeps multiline completion instructions author-controlled as limits change", async () => {

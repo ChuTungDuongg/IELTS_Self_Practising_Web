@@ -66,25 +66,41 @@ describe("Reading question group instructions", () => {
 
   it("shares the compact multiline completion presentation between candidate and review", () => {
     const completionInstruction = "Complete the notes below.\nUse words from the passage.";
-    const completionConfig = { mode: "SENTENCE", blocks: [{ id: crypto.randomUUID(), segments: [{ id: crypto.randomUUID(), type: "TEXT", text: "The fictional answer is " }, { id: crypto.randomUUID(), type: "GAP", question_id: questionId }, { id: crypto.randomUUID(), type: "TEXT", text: "." }] }] };
+    const secondQuestionId = "77777777-7777-4777-8777-777777777778";
+    const completionConfig = { mode: "SENTENCE", blocks: [
+      { id: crypto.randomUUID(), segments: [{ id: crypto.randomUUID(), type: "TEXT", text: "The fictional answer is " }, { id: crypto.randomUUID(), type: "GAP", question_id: questionId }, { id: crypto.randomUUID(), type: "TEXT", text: "." }] },
+      { id: crypto.randomUUID(), segments: [{ id: crypto.randomUUID(), type: "TEXT", text: "The second fictional answer is " }, { id: crypto.randomUUID(), type: "GAP", question_id: secondQuestionId }, { id: crypto.randomUUID(), type: "TEXT", text: "." }] },
+    ] };
     const initial = {
       attempt, test_title: "Practice", highlights: [], listening_audio_asset: null, listening_parts: [],
-      passages: [{ id: passageId, title: "Passage", order_index: 0, blocks: [{ id: "44444444-4444-4444-8444-444444444444", type: "paragraph", label: "A", text: "Fictional text." }], question_groups: [{ id: groupId, question_type: "text_completion", instruction: completionInstruction, config: completionConfig, order_index: 0, questions: [{ id: questionId, number: 1, prompt: "", config: { max_words: 2, max_numbers: 0 }, order_index: 0, value: null, flagged: false }] }] }],
+      passages: [{ id: passageId, title: "Passage", order_index: 0, blocks: [{ id: "44444444-4444-4444-8444-444444444444", type: "paragraph", label: "A", text: "Fictional text." }], question_groups: [{ id: groupId, question_type: "text_completion", instruction: completionInstruction, config: completionConfig, order_index: 0, questions: [
+        { id: questionId, number: 1, prompt: "", config: { max_words: 2, max_numbers: 0 }, order_index: 0, value: null, flagged: false },
+        { id: secondQuestionId, number: 2, prompt: "", config: { max_words: 2, max_numbers: 0 }, order_index: 1, value: null, flagged: false },
+      ] }] }],
     } as ExamPayload;
     const candidate = render(<ReadingRunner initial={initial} />);
-    expect(candidate.container.querySelector(".completion-gap-inline")).toBeInTheDocument();
+    expect(candidate.container.querySelectorAll(".text-completion-line")).toHaveLength(2);
+    expect(candidate.container.querySelectorAll(".completion-gap-inline")).toHaveLength(2);
     expect(candidate.container.querySelector(".question-group-instruction-text")?.textContent).toBe(completionInstruction);
     expect(screen.queryByText(/max 2 words/i)).not.toBeInTheDocument();
     candidate.unmount();
 
     const data = {
-      review: { attempt: { ...attempt, status: "SUBMITTED", raw_score: 1, max_score: 1 }, test_title: "Practice", answers: [{ question_id: questionId, question_number: 1, prompt: "", value: "fictional", answer_key: { kind: "TEXT", accepted: ["fictional"], case_sensitive: false }, is_correct: true, explanation: null }] },
-      passages: [{ id: passageId, title: "Passage", order_index: 0, blocks: [{ id: "44444444-4444-4444-8444-444444444444", type: "paragraph", label: "A", text: "Fictional text." }], question_groups: [{ id: groupId, question_type: "text_completion", instruction: completionInstruction, config: completionConfig, order_index: 0, questions: [{ id: questionId, number: 1, prompt: "", config: { max_words: 2, max_numbers: 0 }, answer_key: { kind: "TEXT", accepted: ["fictional"], case_sensitive: false }, explanation: null, order_index: 0 }] }] }],
+      review: { attempt: { ...attempt, status: "SUBMITTED", raw_score: 2, max_score: 2 }, test_title: "Practice", answers: [
+        { question_id: questionId, question_number: 1, prompt: "", value: "fictional", answer_key: { kind: "TEXT", accepted: ["fictional"], case_sensitive: false }, is_correct: true, explanation: null },
+        { question_id: secondQuestionId, question_number: 2, prompt: "", value: "invented", answer_key: { kind: "TEXT", accepted: ["invented"], case_sensitive: false }, is_correct: true, explanation: null },
+      ] },
+      passages: [{ id: passageId, title: "Passage", order_index: 0, blocks: [{ id: "44444444-4444-4444-8444-444444444444", type: "paragraph", label: "A", text: "Fictional text." }], question_groups: [{ id: groupId, question_type: "text_completion", instruction: completionInstruction, config: completionConfig, order_index: 0, questions: [
+        { id: questionId, number: 1, prompt: "", config: { max_words: 2, max_numbers: 0 }, answer_key: { kind: "TEXT", accepted: ["fictional"], case_sensitive: false }, explanation: null, order_index: 0 },
+        { id: secondQuestionId, number: 2, prompt: "", config: { max_words: 2, max_numbers: 0 }, answer_key: { kind: "TEXT", accepted: ["invented"], case_sensitive: false }, explanation: null, order_index: 1 },
+      ] }] }],
     };
     const review = render(<ReadingReviewView data={data as never} />);
-    expect(review.container.querySelector(".completion-gap-inline")).toBeInTheDocument();
+    expect(review.container.querySelectorAll(".text-completion-line")).toHaveLength(2);
+    expect(review.container.querySelectorAll(".completion-gap-inline")).toHaveLength(2);
     expect(review.container.querySelector(".question-group-instruction-text")?.textContent).toBe(completionInstruction);
     expect(screen.queryByText(/max 2 words/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /flag question/i })).not.toBeInTheDocument();
   });
 
   it("confirms and bulk deletes all highlight target types with one request", async () => {
