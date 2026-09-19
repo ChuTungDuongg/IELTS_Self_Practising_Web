@@ -810,6 +810,15 @@ class TestService:
             }
             if gap_ids != question_ids:
                 raise ValueError("Every completion question must map to exactly one layout gap")
+        if group.question_type == "text_completion":
+            gap_ids = [
+                str(segment.get("question_id"))
+                for block in group_config.get("blocks", [])
+                for segment in block.get("segments", [])
+                if segment.get("type") == "GAP"
+            ]
+            if len(gap_ids) != len(set(gap_ids)) or set(gap_ids) != question_ids:
+                raise ValueError("Every text completion question must map to exactly one gap")
 
     async def validate(self, version_id: uuid.UUID) -> ValidationResult:
         return self.validate_version(await self.get_version(version_id))

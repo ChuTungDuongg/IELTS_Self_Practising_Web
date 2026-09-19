@@ -468,6 +468,15 @@ class ReadingService:
                 }
                 if gap_ids != question_ids:
                     raise ValueError("Every completion question must map to exactly one layout gap")
+            if body.question_type == "text_completion":
+                gap_ids = [
+                    str(segment.get("question_id"))
+                    for block in body.config.get("blocks", [])
+                    for segment in block.get("segments", [])
+                    if segment.get("type") == "GAP"
+                ]
+                if len(gap_ids) != len(set(gap_ids)) or set(gap_ids) != question_ids:
+                    raise ValueError("Every text completion question must map to exactly one gap")
         except (ValidationError, KeyError, ValueError) as exc:
             raise AppError("VALIDATION_FAILED", f"Invalid question group: {exc}", 422) from exc
 

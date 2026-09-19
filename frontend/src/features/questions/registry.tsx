@@ -51,7 +51,7 @@ export type QuestionTypeDefinition = {
 };
 
 const optionSchema = z.object({ id: z.string().uuid(), label: z.string().min(1), text: z.string().min(1) });
-const textQuestion = (number: number) => ({ id: crypto.randomUUID(), number, prompt: "Enter the answer.", config: { max_words: 2, max_numbers: 1 }, answer_key: { kind: "TEXT", accepted: ["sample answer"], case_sensitive: false }, order_index: 0 });
+const textQuestion = (number: number) => ({ id: crypto.randomUUID(), number, prompt: "Answer", config: { max_words: 2, max_numbers: 1 }, answer_key: { kind: "TEXT", accepted: ["sample answer"], case_sensitive: false }, order_index: 0 });
 const newOptions = () => [{ id: crypto.randomUUID(), label: "A", text: "Option A" }, { id: crypto.randomUUID(), label: "B", text: "Option B" }, { id: crypto.randomUUID(), label: "C", text: "Option C" }];
 const staticInstruction = (intro: string, options?: QuestionInstruction["options"]) => () => ({ intro, options });
 const readingPassage = ({ passageNumber }: InstructionContext) => passageNumber ? `Reading Passage ${passageNumber}` : "the reading passage";
@@ -106,8 +106,8 @@ const definitions: QuestionTypeDefinition[] = [
   {
     id: "text_completion", label: "Text Completion", category: "shared",
     BuilderEditor: TextCompletionEditor, AnswerKeyEditor: TextCompletionEditor, ExamRenderer: TextCompletionRenderer, ReviewRenderer: TextCompletionRenderer,
-    responseSchema: z.string(), configSchema: z.object({}), instruction: (group) => ({ intro: `Complete the text below. ${limitInstruction(group)}` }),
-    createDefault: (number) => ({ question_type: "text_completion", instruction: "", config: {}, order_index: 0, questions: [textQuestion(number)] }),
+    responseSchema: z.string(), configSchema: z.object({ mode: z.enum(["SENTENCE", "PASSAGE"]), blocks: z.array(z.object({ id: z.string().uuid(), segments: z.array(z.object({ id: z.string().uuid(), type: z.enum(["TEXT", "GAP"]), text: z.string().optional(), question_id: z.string().uuid().optional() })).min(1) })).min(1) }), instruction: (group) => ({ intro: `Complete the text below. ${limitInstruction(group)}` }),
+    createDefault: (number) => { const question = textQuestion(number); return { question_type: "text_completion", instruction: "", config: { mode: "SENTENCE", blocks: [{ id: crypto.randomUUID(), segments: [{ id: crypto.randomUUID(), type: "TEXT", text: "Complete the sentence: " }, { id: crypto.randomUUID(), type: "GAP", question_id: question.id }] }] }, order_index: 0, questions: [question] }; },
   },
   {
     id: "matching_headings", label: "Matching Headings", category: "reading",

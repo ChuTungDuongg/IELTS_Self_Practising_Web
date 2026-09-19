@@ -8,7 +8,7 @@ from app.domains.questions.normalization import (
     normalize_question_group_payload,
     normalize_response_value,
 )
-from app.domains.questions.registry import normalize_text, question_registry
+from app.domains.questions.registry import TextAnswerKey, normalize_text, question_registry
 
 
 def test_text_evaluation_normalizes_case_and_whitespace() -> None:
@@ -178,6 +178,88 @@ def test_number_limit_is_enforced() -> None:
     assert not question_registry.evaluate(
         "text_completion", key, "12 and 14", {"max_words": 1, "max_numbers": 1}
     )
+
+
+def test_legacy_text_completion_prompt_normalizes_to_structured_gap() -> None:
+    question_id = uuid4()
+    config, questions = normalize_question_group_payload(
+        question_type="text_completion",
+        group_config={},
+        questions=[
+            {
+                "id": str(question_id),
+                "number": 11,
+                "prompt": "Tourism is the most important_______ in Greece.",
+                "config": {"max_words": 3},
+                "answer_key": {"kind": "TEXT", "accepted": ["source of income"]},
+                "order_index": 0,
+            }
+        ],
+        group_id=uuid4(),
+        passage_blocks=[],
+    )
+    assert config["mode"] == "SENTENCE"
+    assert [segment["type"] for segment in config["blocks"][0]["segments"]] == [
+        "TEXT",
+        "GAP",
+        "TEXT",
+    ]
+    assert config["blocks"][0]["segments"][1]["question_id"] == str(question_id)
+    assert questions[0]["id"] == str(question_id)
+    assert questions[0]["answer_key"] == {
+        "kind": "TEXT",
+        "accepted": ["source of income"],
+        "case_sensitive": False,
+    }
+
+
+def test_legacy_text_completion_without_marker_preserves_prompt_and_appends_gap() -> None:
+    config, _ = normalize_question_group_payload(
+        question_type="text_completion",
+        group_config={},
+        questions=[
+            {
+                "id": str(uuid4()),
+                "number": 1,
+                "prompt": "Complete this sentence.",
+                "config": {},
+                "answer_key": {"kind": "TEXT", "accepted": ["answer"]},
+                "order_index": 0,
+            }
+        ],
+        group_id=uuid4(),
+        passage_blocks=[],
+    )
+    segments = config["blocks"][0]["segments"]
+    assert segments[0]["text"] == "Complete this sentence."
+    assert segments[-1]["type"] == "GAP"
+
+
+def test_text_answer_key_trims_and_rejects_normalized_duplicates() -> None:
+    parsed = TextAnswerKey.model_validate(
+        {"kind": "TEXT", "accepted": [" source, income ", "alternative"]}
+    )
+    assert parsed.accepted == ["source, income", "alternative"]
+    with pytest.raises(ValidationError):
+        question_registry.validate(
+            "text_completion",
+            {
+                "mode": "SENTENCE",
+                "blocks": [
+                    {
+                        "id": str(uuid4()),
+                        "segments": [
+                            {"id": str(uuid4()), "type": "GAP", "question_id": str(uuid4())}
+                        ],
+                    }
+                ],
+            },
+            {},
+            {"kind": "TEXT", "accepted": ["Answer", " answer "]},
+        )
+    assert TextAnswerKey.model_validate(
+        {"kind": "TEXT", "accepted": ["Answer", "answer"], "case_sensitive": True}
+    ).accepted == ["Answer", "answer"]
 
 
 @pytest.mark.parametrize("value", ["TRUE", "FALSE", "NOT_GIVEN"])

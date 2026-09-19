@@ -38,8 +38,9 @@ const passageSchema = z.object({
 const assetSchema = z.object({ id: z.string().uuid(), original_name: z.string(), mime_type: z.string(), file_size: z.number(), content_url: z.string() });
 const listeningPartSchema = z.object({ id: z.string().uuid(), title: z.string(), order_index: z.number(), question_groups: z.array(groupSchema) });
 const highlightSchema = z.object({
-  id: z.string().uuid(), passage_id: z.string().uuid(), start_block_id: z.string().uuid(),
-  start_offset: z.number(), end_block_id: z.string().uuid(), end_offset: z.number(),
+  id: z.string().uuid(), target_kind: z.enum(["PASSAGE_BLOCK", "QUESTION_PROMPT", "TEXT_COMPLETION_SEGMENT"]), target_id: z.string().uuid(), segment_id: z.string().uuid().nullable().optional(),
+  passage_id: z.string().uuid().nullable().optional(), start_block_id: z.string().uuid().nullable().optional(),
+  start_offset: z.number(), end_block_id: z.string().uuid().nullable().optional(), end_offset: z.number(),
   selected_text: z.string(), created_at: z.string(),
 });
 const examSchema = z.object({ attempt: attemptSchema, test_title: z.string(), passages: z.array(passageSchema), highlights: z.array(highlightSchema), listening_audio_asset: assetSchema.nullable().default(null), listening_parts: z.array(listeningPartSchema) });
@@ -47,6 +48,8 @@ export type ExamPayload = z.infer<typeof examSchema>;
 export type ExamPassage = z.infer<typeof passageSchema>;
 export type ExamListeningPart = z.infer<typeof listeningPartSchema>;
 export type Highlight = z.infer<typeof highlightSchema>;
+export type HighlightTarget = Pick<Highlight, "target_kind" | "target_id" | "segment_id">;
+export type HighlightCreate = HighlightTarget & Pick<Highlight, "start_offset" | "end_offset" | "selected_text">;
 
 export async function getExam(attemptId: string): Promise<ExamPayload> {
   return examSchema.parse(await apiRequest<unknown>(`/attempts/${attemptId}/exam`));
@@ -60,12 +63,16 @@ export function saveFlag(attemptId: string, questionId: string, flagged: boolean
   return apiRequest(`/attempts/${attemptId}/flags/${questionId}`, { method: "PUT", body: JSON.stringify({ flagged }) });
 }
 
-export async function createHighlight(attemptId: string, body: Omit<Highlight, "id" | "created_at">) {
+export async function createHighlight(attemptId: string, body: HighlightCreate) {
   return highlightSchema.parse(await apiRequest<unknown>(`/attempts/${attemptId}/highlights`, { method: "POST", body: JSON.stringify(body) }));
 }
 
 export function deleteHighlight(attemptId: string, highlightId: string) {
   return apiRequest(`/attempts/${attemptId}/highlights/${highlightId}`, { method: "DELETE" });
+}
+
+export function deleteAllHighlights(attemptId: string) {
+  return apiRequest(`/attempts/${attemptId}/highlights`, { method: "DELETE" });
 }
 
 export async function getReadingReview(attemptId: string) {
@@ -75,6 +82,7 @@ export async function getReadingReview(attemptId: string) {
       test_title: string;
       answers: Array<{ question_id: string; question_number: number; prompt: string; value: unknown; answer_key: Record<string, unknown>; is_correct: boolean | null; explanation: string | null }>;
     };
+    highlights: z.infer<typeof highlightSchema>[];
     passages: Array<{
       id: string; title: string; order_index: number;
       blocks: Array<{ id: string; type: "paragraph" | "heading"; label?: string | null; text: string }>;

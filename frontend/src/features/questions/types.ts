@@ -55,6 +55,19 @@ export type AssetModel = {
   content_url: string;
 };
 
+export type TextCompletionSegment = {
+  id: string;
+  type: "TEXT" | "GAP";
+  text?: string;
+  question_id?: string;
+};
+
+export type TextCompletionBlock = { id: string; segments: TextCompletionSegment[] };
+export type TextCompletionLayout = {
+  mode: "SENTENCE" | "PASSAGE";
+  blocks: TextCompletionBlock[];
+};
+
 export type ExamQuestion = Omit<QuestionModel, "answer_key"> & {
   id: string;
   value?: unknown;

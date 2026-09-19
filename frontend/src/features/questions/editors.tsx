@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import type { Option, PassageBlock, QuestionGroupModel, QuestionModel } from "./types";
+import { useRef, useState } from "react";
+import type { Option, PassageBlock, QuestionGroupModel, QuestionModel, TextCompletionLayout, TextCompletionSegment } from "./types";
 import { assetContentUrl } from "@/lib/api/assets";
 
 /* eslint-disable @next/next/no-img-element -- builder previews preserve uploaded image aspect ratios */
@@ -164,17 +164,109 @@ function AgreementEditor({ values, name, ...props }: EditorProps & { values: rea
 }
 
 export function TextCompletionEditor(props: EditorProps) {
+  const { group } = props;
+  if (group.question_type !== "text_completion") return <TextAnswerEditors {...props} />;
+  return <StructuredTextCompletionEditor {...props} />;
+}
+
+function normalizeTextCompletionOrder(group: QuestionGroupModel, layout: TextCompletionLayout): QuestionGroupModel {
+  const ids = layout.blocks.flatMap((block) => block.segments.filter((segment) => segment.type === "GAP").map((segment) => segment.question_id!));
+  const byId = new Map(group.questions.map((question) => [question.id, question]));
+  const first = group.questions.length ? Math.min(...group.questions.map((question) => question.number)) : 1;
+  return {
+    ...group,
+    config: layout,
+    questions: ids.flatMap((id, order_index) => {
+      const question = byId.get(id);
+      return question ? [{ ...question, number: first + order_index, order_index }] : [];
+    }),
+  };
+}
+
+function StructuredTextCompletionEditor(props: EditorProps) {
+  const { group, onChange } = props;
+  const layout = group.config as unknown as TextCompletionLayout;
+  const active = useRef<{ segmentId: string; offset: number } | null>(null);
+
+  function commit(nextLayout: TextCompletionLayout, nextQuestions = group.questions) {
+    onChange(normalizeTextCompletionOrder({ ...group, questions: nextQuestions }, nextLayout));
+  }
+
+  function updateText(segmentId: string, text: string) {
+    commit({ ...layout, blocks: layout.blocks.map((block) => ({ ...block, segments: block.segments.map((segment) => segment.id === segmentId ? { ...segment, text } : segment) })) });
+  }
+
+  function insertGap() {
+    const targetBlock = layout.blocks.find((block) => block.segments.some((segment) => segment.id === active.current?.segmentId)) ?? layout.blocks.at(-1);
+    if (!targetBlock) return;
+    const target = targetBlock.segments.find((segment) => segment.id === active.current?.segmentId && segment.type === "TEXT") ?? [...targetBlock.segments].reverse().find((segment) => segment.type === "TEXT");
+    const questionId = crypto.randomUUID();
+    const nextNumber = Math.max(0, ...group.questions.map((question) => question.number)) + 1;
+    const question: QuestionModel = { id: questionId, number: nextNumber, prompt: "Answer", config: { max_words: 2, max_numbers: 1 }, answer_key: { kind: "TEXT", accepted: ["answer"], case_sensitive: false }, order_index: group.questions.length };
+    const gap: TextCompletionSegment = { id: crypto.randomUUID(), type: "GAP", question_id: questionId };
+    const blocks = layout.blocks.map((block) => {
+      if (block.id !== targetBlock.id) return block;
+      if (!target) return { ...block, segments: [...block.segments, gap] };
+      const offset = active.current?.segmentId === target.id ? Math.max(0, Math.min(active.current.offset, target.text?.length ?? 0)) : target.text?.length ?? 0;
+      const segments = block.segments.flatMap((segment) => segment.id !== target.id ? [segment] : [
+        { ...segment, text: (segment.text ?? "").slice(0, offset) },
+        gap,
+        { id: crypto.randomUUID(), type: "TEXT" as const, text: (segment.text ?? "").slice(offset) },
+      ]).filter((segment) => segment.type === "GAP" || Boolean(segment.text));
+      return { ...block, segments };
+    });
+    active.current = null;
+    commit({ ...layout, blocks }, [...group.questions, question]);
+  }
+
+  function removeGap(questionId: string) {
+    if (!window.confirm("Remove this gap and its linked question?")) return;
+    const blocks = layout.blocks.map((block) => {
+      const segments: TextCompletionSegment[] = [];
+      for (const segment of block.segments) {
+        if (segment.type === "GAP" && segment.question_id === questionId) continue;
+        const previous = segments.at(-1);
+        if (previous?.type === "TEXT" && segment.type === "TEXT") previous.text = `${previous.text ?? ""}${segment.text ?? ""}`;
+        else segments.push({ ...segment });
+      }
+      return { ...block, segments: segments.length ? segments : [{ id: crypto.randomUUID(), type: "TEXT" as const, text: "" }] };
+    });
+    commit({ ...layout, blocks }, group.questions.filter((question) => question.id !== questionId));
+  }
+
+  function moveBlock(index: number, offset: number) {
+    const target = index + offset;
+    if (target < 0 || target >= layout.blocks.length) return;
+    const blocks = [...layout.blocks];
+    [blocks[index], blocks[target]] = [blocks[target], blocks[index]];
+    commit({ ...layout, blocks });
+  }
+
+  return <div className="space-y-5">
+    <section className="matching-section">
+      <div className="matching-section-title"><div><h3>Completion text</h3><p>Place the caret in a text segment, then insert a stable numbered gap.</p></div><label className="field-label">Mode<select className="select-field" value={layout.mode} onChange={(event) => commit({ ...layout, mode: event.target.value as TextCompletionLayout["mode"] })}><option value="SENTENCE">Sentence</option><option value="PASSAGE">Passage</option></select></label></div>
+      <div className="space-y-3">{layout.blocks.map((block, blockIndex) => <div key={block.id} className="rounded-xl border border-[var(--line)] bg-[var(--surface-soft)] p-3"><div className="flex flex-wrap items-center gap-2">{block.segments.map((segment) => segment.type === "GAP" ? <button key={segment.id} type="button" className="structured-gap" onClick={() => removeGap(segment.question_id!)} title="Remove gap">Q{group.questions.find((question) => question.id === segment.question_id)?.number ?? "?"} ×</button> : <textarea key={segment.id} aria-label={`Paragraph ${blockIndex + 1} text segment`} className="field min-h-20 min-w-48 flex-1" value={segment.text ?? ""} onFocus={(event) => { active.current = { segmentId: segment.id, offset: event.currentTarget.selectionStart }; }} onSelect={(event) => { active.current = { segmentId: segment.id, offset: event.currentTarget.selectionStart }; }} onChange={(event) => updateText(segment.id, event.target.value)} />)}</div>{layout.mode === "PASSAGE" ? <div className="mt-2 flex flex-wrap gap-2"><button type="button" className="icon-button" disabled={blockIndex === 0} aria-label={`Move paragraph ${blockIndex + 1} up`} onClick={() => moveBlock(blockIndex, -1)}>↑</button><button type="button" className="icon-button" disabled={blockIndex === layout.blocks.length - 1} aria-label={`Move paragraph ${blockIndex + 1} down`} onClick={() => moveBlock(blockIndex, 1)}>↓</button>{layout.blocks.length > 1 ? <button type="button" className="btn btn-danger-ghost" onClick={() => { if (!window.confirm("Remove this paragraph and all linked gaps?")) return; const removed = new Set(block.segments.filter((segment) => segment.type === "GAP").map((segment) => segment.question_id)); commit({ ...layout, blocks: layout.blocks.filter((item) => item.id !== block.id) }, group.questions.filter((question) => !removed.has(question.id))); }}>Remove paragraph</button> : null}</div> : null}</div>)}</div>
+      <div className="mt-3 flex flex-wrap gap-2"><button type="button" className="btn btn-secondary" onClick={insertGap}>+ Insert gap</button>{layout.mode === "PASSAGE" ? <button type="button" className="btn btn-secondary" onClick={() => commit({ ...layout, blocks: [...layout.blocks, { id: crypto.randomUUID(), segments: [{ id: crypto.randomUUID(), type: "TEXT", text: "New paragraph" }] }] })}>+ Add paragraph</button> : null}</div>
+    </section>
+    <TextAnswerEditors {...props} group={{ ...group, config: layout }} />
+  </div>;
+}
+
+function TextAnswerEditors(props: EditorProps) {
   const { group, onChange } = props;
   return (
     <div className="space-y-4">
       {group.questions.map((question, index) => (
-        <QuestionFrame key={question.id} {...props} index={index}>
+        <fieldset key={question.id} className="question-editor-card" aria-label={`Question ${question.number} answer editor`}>
+          <div className="question-editor-header"><span className="question-number">Q{question.number}</span><p>Answer key</p></div>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            <label className="field-label sm:col-span-2">Accepted answers, separated by commas<input value={(question.answer_key.accepted as string[]).join(", ")} onChange={(event) => onChange(updateQuestion(group, index, { answer_key: { type: "text", accepted: event.target.value.split(",").map((item) => item.trim()).filter(Boolean), case_sensitive: false } }))} className="field" /></label>
+            <label className="field-label sm:col-span-2">Correct answer<input value={String((question.answer_key.accepted as string[] | undefined)?.[0] ?? "")} onChange={(event) => onChange(updateQuestion(group, index, { answer_key: { kind: "TEXT", accepted: [event.target.value, ...((question.answer_key.accepted as string[] | undefined) ?? []).slice(1)], case_sensitive: Boolean(question.answer_key.case_sensitive) } }))} className="field" /></label>
+            <div className="sm:col-span-2"><p className="field-label">Alternative answers</p>{((question.answer_key.accepted as string[] | undefined) ?? []).slice(1).map((answer, alternativeIndex) => <div key={alternativeIndex} className="mt-2 flex gap-2"><input aria-label={`Alternative answer ${alternativeIndex + 1}`} className="field" value={answer} onChange={(event) => { const accepted = [...(question.answer_key.accepted as string[])]; accepted[alternativeIndex + 1] = event.target.value; onChange(updateQuestion(group, index, { answer_key: { kind: "TEXT", accepted, case_sensitive: Boolean(question.answer_key.case_sensitive) } })); }} /><button type="button" className="btn btn-danger-ghost" onClick={() => onChange(updateQuestion(group, index, { answer_key: { kind: "TEXT", accepted: (question.answer_key.accepted as string[]).filter((_, item) => item !== alternativeIndex + 1), case_sensitive: Boolean(question.answer_key.case_sensitive) } }))}>Remove</button></div>)}<button type="button" className="btn btn-secondary mt-2" onClick={() => onChange(updateQuestion(group, index, { answer_key: { kind: "TEXT", accepted: [...((question.answer_key.accepted as string[] | undefined) ?? []), ""], case_sensitive: Boolean(question.answer_key.case_sensitive) } }))}>+ Add alternative answer</button></div>
             <label className="field-label">Maximum words<input type="number" min={1} value={(question.config.max_words as number | undefined) ?? ""} onChange={(event) => onChange(updateQuestion(group, index, { config: { ...question.config, max_words: event.target.value ? Number(event.target.value) : null } }))} className="field" /></label>
             <label className="field-label">Maximum numbers<input type="number" min={0} value={(question.config.max_numbers as number | undefined) ?? ""} onChange={(event) => onChange(updateQuestion(group, index, { config: { ...question.config, max_numbers: event.target.value ? Number(event.target.value) : null } }))} className="field" /></label>
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={Boolean(question.answer_key.case_sensitive)} onChange={(event) => onChange(updateQuestion(group, index, { answer_key: { kind: "TEXT", accepted: question.answer_key.accepted, case_sensitive: event.target.checked } }))} /> Case-sensitive grading</label>
           </div>
-        </QuestionFrame>
+        </fieldset>
       ))}
     </div>
   );

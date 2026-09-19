@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { questionRegistry } from "@/features/questions/registry";
-import { MatchingHeadingsEditor, MultipleChoiceEditor } from "@/features/questions/editors";
+import { MatchingHeadingsEditor, MultipleChoiceEditor, TextCompletionEditor } from "@/features/questions/editors";
 import { QuestionGroupEditor } from "@/features/test-builder/question-group-editor";
 import { QuestionGroupInstruction, resolveQuestionGroupInstruction } from "@/features/questions/question-group-instruction";
 import type { ExamGroup } from "@/features/questions/types";
@@ -85,6 +85,52 @@ describe("question registry", () => {
 
     expect(instruction.intro).toContain("NO MORE THAN 3 WORDS");
     expect(instruction.intro).toContain("1 NUMBER");
+  });
+
+  it("inserts a stable text-completion gap at the active caret", () => {
+    const group = questionRegistry.text_completion.createDefault(11);
+    const block = (group.config.blocks as Array<{ segments: Array<{ id: string; type: string; text?: string }> }>)[0];
+    block.segments = [{ id: crypto.randomUUID(), type: "TEXT", text: "source of income" }];
+    group.questions = [];
+    const onChange = vi.fn();
+    render(<TextCompletionEditor group={group} onChange={onChange} />);
+    const text = screen.getByLabelText("Paragraph 1 text segment") as HTMLTextAreaElement;
+    text.focus();
+    text.setSelectionRange(6, 6);
+    fireEvent.select(text);
+    fireEvent.click(screen.getByRole("button", { name: "+ Insert gap" }));
+    const updated = onChange.mock.calls.at(-1)?.[0];
+    expect(updated.config.blocks[0].segments.map((segment: { type: string; text?: string }) => segment.type)).toEqual(["TEXT", "GAP", "TEXT"]);
+    expect(updated.config.blocks[0].segments[0].text).toBe("source");
+    expect(updated.config.blocks[0].segments[2].text).toBe(" of income");
+    expect(updated.config.blocks[0].segments[1].question_id).toBe(updated.questions[0].id);
+  });
+
+  it("renders multiple text-completion gaps inline in one paragraph", () => {
+    const group = questionRegistry.text_completion.createDefault(11) as ExamGroup;
+    group.id = crypto.randomUUID();
+    const second = { ...group.questions[0], id: crypto.randomUUID(), number: 12, order_index: 1 };
+    group.questions.push(second);
+    const block = (group.config.blocks as Array<{ segments: Array<Record<string, unknown>> }>)[0];
+    block.segments.push(
+      { id: crypto.randomUUID(), type: "TEXT", text: " and " },
+      { id: crypto.randomUUID(), type: "GAP", question_id: second.id },
+      { id: crypto.randomUUID(), type: "TEXT", text: "." },
+    );
+    const Renderer = questionRegistry.text_completion.ExamRenderer;
+    render(<Renderer group={group} values={{}} onAnswer={vi.fn()} />);
+    expect(screen.getByLabelText("Question 11")).toBeInTheDocument();
+    expect(screen.getByLabelText("Question 12")).toBeInTheDocument();
+    expect(screen.getAllByRole("textbox")).toHaveLength(2);
+  });
+
+  it("keeps punctuation inside one primary or alternative answer", () => {
+    const group = questionRegistry.text_completion.createDefault(1);
+    group.questions[0].answer_key = { kind: "TEXT", accepted: ["Athens, Greece", "the capital, Athens"], case_sensitive: false };
+    const onChange = vi.fn();
+    render(<TextCompletionEditor group={group} onChange={onChange} />);
+    expect(screen.getByDisplayValue("Athens, Greece")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("the capital, Athens")).toBeInTheDocument();
   });
 
   it("keeps heading identity stable while labels and order change", () => {

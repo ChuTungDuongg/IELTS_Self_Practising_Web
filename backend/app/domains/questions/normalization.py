@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import uuid
 from collections import defaultdict
 from copy import deepcopy
@@ -124,6 +125,51 @@ def normalize_question_group_payload(
     config = deepcopy(group_config)
     normalized_questions = deepcopy(questions)
 
+    if question_type == "text_completion" and not config.get("blocks"):
+        blocks: list[dict[str, Any]] = []
+        for index, question in enumerate(normalized_questions):
+            question_id = str(
+                question.get("id")
+                or _stable_uuid(f"group:{group_id}:question", question.get("number"), index)
+            )
+            question["id"] = question_id
+            prompt = str(question.get("prompt") or "")
+            marker = re.search(r"_{2,}", prompt)
+            before = prompt[: marker.start()] if marker else prompt
+            after = prompt[marker.end() :] if marker else ""
+            segments: list[dict[str, Any]] = []
+            if before:
+                segments.append(
+                    {
+                        "id": _stable_uuid(f"group:{group_id}:block:{index}:segment", "before", 0),
+                        "type": "TEXT",
+                        "text": before,
+                    }
+                )
+            segments.append(
+                {
+                    "id": _stable_uuid(f"group:{group_id}:block:{index}:segment", "gap", 1),
+                    "type": "GAP",
+                    "text": "",
+                    "question_id": question_id,
+                }
+            )
+            if after:
+                segments.append(
+                    {
+                        "id": _stable_uuid(f"group:{group_id}:block:{index}:segment", "after", 2),
+                        "type": "TEXT",
+                        "text": after,
+                    }
+                )
+            blocks.append(
+                {
+                    "id": _stable_uuid(f"group:{group_id}:block", question_id, index),
+                    "segments": segments,
+                }
+            )
+        config = {"mode": "SENTENCE", "blocks": blocks}
+
     group_option_ids: dict[str, list[str]] | None = None
     if question_type in {
         "matching_headings",
@@ -195,11 +241,21 @@ def normalize_question_group_payload(
                 dict(question.get("answer_key") or {}), option_ids
             )
         elif question_type in {"true_false_not_given", "yes_no_not_given"}:
-            normalized_key = _normalize_single_option_key(
-                dict(question.get("answer_key") or {})
-            )
+            normalized_key = _normalize_single_option_key(dict(question.get("answer_key") or {}))
             normalized_key["value"] = _normalize_agreement_value(normalized_key["value"])
             question["answer_key"] = normalized_key
+        elif question_type == "text_completion":
+            raw_key = dict(question.get("answer_key") or {})
+            accepted = [
+                str(candidate).strip()
+                for candidate in raw_key.get("accepted", [])
+                if str(candidate).strip()
+            ]
+            question["answer_key"] = {
+                "kind": "TEXT",
+                "accepted": accepted,
+                "case_sensitive": bool(raw_key.get("case_sensitive", False)),
+            }
 
     return config, normalized_questions
 

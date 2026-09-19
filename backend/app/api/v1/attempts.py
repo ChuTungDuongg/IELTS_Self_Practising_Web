@@ -123,3 +123,12 @@ async def delete_highlight(
 ) -> Response:
     await AttemptService(session).delete_highlight(attempt_id, highlight_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.delete("/{attempt_id}/highlights", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_all_highlights(
+    attempt_id: UUID,
+    session: AsyncSession = Depends(get_session),
+) -> Response:
+    await AttemptService(session).delete_all_highlights(attempt_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

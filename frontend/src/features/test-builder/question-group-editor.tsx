@@ -98,7 +98,7 @@ export function QuestionGroupEditor({
       ) : (
         <>
           <Editor group={group} onChange={setGroup} passageBlocks={passageBlocks} />
-          <button type="button" onClick={addQuestion} className="btn btn-secondary mt-4">+ Add question</button>
+          {group.question_type !== "text_completion" ? <button type="button" onClick={addQuestion} className="btn btn-secondary mt-4">+ Add question</button> : null}
         </>
       )}
     </div>

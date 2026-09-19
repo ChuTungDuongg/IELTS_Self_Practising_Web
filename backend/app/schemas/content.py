@@ -181,22 +181,44 @@ class ExamListeningPart(BaseModel):
 
 class HighlightResponse(BaseModel):
     id: UUID
-    passage_id: UUID
-    start_block_id: UUID
+    target_kind: Literal["PASSAGE_BLOCK", "QUESTION_PROMPT", "TEXT_COMPLETION_SEGMENT"]
+    target_id: UUID
+    segment_id: UUID | None = None
+    passage_id: UUID | None = None
+    start_block_id: UUID | None = None
     start_offset: int
-    end_block_id: UUID
+    end_block_id: UUID | None = None
     end_offset: int
     selected_text: str
     created_at: datetime
 
 
 class HighlightCreate(BaseModel):
-    passage_id: UUID
-    start_block_id: UUID
+    target_kind: Literal["PASSAGE_BLOCK", "QUESTION_PROMPT", "TEXT_COMPLETION_SEGMENT"] | None = (
+        None
+    )
+    target_id: UUID | None = None
+    segment_id: UUID | None = None
+    passage_id: UUID | None = None
+    start_block_id: UUID | None = None
     start_offset: int = Field(ge=0)
-    end_block_id: UUID
+    end_block_id: UUID | None = None
     end_offset: int = Field(ge=0)
     selected_text: str = Field(min_length=1, max_length=10_000)
+
+    @model_validator(mode="after")
+    def normalize_target(self) -> "HighlightCreate":
+        if self.target_kind is None and self.passage_id and self.start_block_id:
+            if self.end_block_id and self.end_block_id != self.start_block_id:
+                raise ValueError("A highlight cannot span separate logical targets")
+            self.target_kind = "PASSAGE_BLOCK"
+            self.target_id = self.passage_id
+            self.segment_id = self.start_block_id
+        if not self.target_kind or not self.target_id:
+            raise ValueError("A highlight target is required")
+        if self.target_kind in {"PASSAGE_BLOCK", "TEXT_COMPLETION_SEGMENT"} and not self.segment_id:
+            raise ValueError("This highlight target requires a segment ID")
+        return self
 
 
 class FlagUpdate(BaseModel):
@@ -220,6 +242,7 @@ class AttemptExam(BaseModel):
 class ReadingReview(BaseModel):
     review: AttemptReview
     passages: list[BuilderPassage]
+    highlights: list[HighlightResponse] = Field(default_factory=list)
 
 
 class ListeningReview(BaseModel):

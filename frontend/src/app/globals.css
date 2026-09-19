@@ -487,3 +487,18 @@ input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--mute
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
 }
+
+.inline-gap-input { width: clamp(8rem, 18vw, 14rem); background: var(--surface); }
+.highlight-popover {
+  position: fixed;
+  z-index: 80;
+  transform: translate(-50%, -100%);
+  border: 1px solid var(--line);
+  border-radius: 0.65rem;
+  background: var(--ink);
+  color: var(--surface);
+  padding: 0.45rem 0.75rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  box-shadow: 0 10px 30px rgb(15 23 42 / 25%);
+}

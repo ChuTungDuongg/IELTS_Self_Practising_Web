@@ -288,14 +288,18 @@ class AttemptWritingResponse(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
 class Highlight(UUIDPrimaryKeyMixin, Base):
     __tablename__ = "highlights"
+    __table_args__ = (Index("ix_highlights_target", "target_kind", "target_id", "segment_id"),)
 
     attempt_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("attempts.id", ondelete="CASCADE"))
-    passage_id: Mapped[uuid.UUID] = mapped_column(
+    target_kind: Mapped[str] = mapped_column(String(40), nullable=False)
+    target_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    segment_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    passage_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("reading_passages.id", ondelete="RESTRICT")
     )
-    start_block_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    start_block_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
     start_offset: Mapped[int] = mapped_column(Integer, nullable=False)
-    end_block_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    end_block_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
     end_offset: Mapped[int] = mapped_column(Integer, nullable=False)
     selected_text: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(

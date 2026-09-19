@@ -2,7 +2,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -277,15 +277,7 @@ class AttemptService:
             answers=answer_rows,
             writing_responses=writing_rows,
             highlights=[
-                {
-                    "id": str(item.id),
-                    "passage_id": str(item.passage_id),
-                    "start_block_id": str(item.start_block_id),
-                    "start_offset": item.start_offset,
-                    "end_block_id": str(item.end_block_id),
-                    "end_offset": item.end_offset,
-                    "selected_text": item.selected_text,
-                }
+                HighlightResponse.model_validate(item, from_attributes=True).model_dump(mode="json")
                 for item in attempt.highlights
             ],
             flags=[
@@ -501,7 +493,14 @@ class AttemptService:
         passages = (
             [ReadingService._present_passage(item) for item in module.passages] if module else []
         )
-        return ReadingReview(review=review, passages=passages)
+        return ReadingReview(
+            review=review,
+            passages=passages,
+            highlights=[
+                HighlightResponse.model_validate(item, from_attributes=True)
+                for item in attempt.highlights
+            ],
+        )
 
     async def listening_review(self, attempt_id: uuid.UUID) -> ListeningReview:
         review = await self.review(attempt_id)
@@ -558,25 +557,18 @@ class AttemptService:
             attempt = await self._require(attempt_id, for_update=True)
             now = TimerService.now()
             self._ensure_mutable(attempt, now)
-            passage = await self.session.scalar(
-                select(ReadingPassage)
-                .join(TestModule)
-                .where(
-                    ReadingPassage.id == body.passage_id,
-                    TestModule.test_version_id == attempt.test_version_id,
-                )
-            )
-            if passage is None:
-                raise AppError(
-                    "INVALID_PASSAGE", "The passage does not belong to this attempt.", 422
-                )
-            self._validate_highlight(passage, body)
+            source_text = await self._highlight_source(attempt, body)
+            self._validate_highlight_text(source_text, body)
+            is_passage = body.target_kind == "PASSAGE_BLOCK"
             highlight = Highlight(
                 attempt_id=attempt.id,
-                passage_id=body.passage_id,
-                start_block_id=body.start_block_id,
+                target_kind=body.target_kind,
+                target_id=body.target_id,
+                segment_id=body.segment_id,
+                passage_id=body.target_id if is_passage else None,
+                start_block_id=body.segment_id if is_passage else None,
                 start_offset=body.start_offset,
-                end_block_id=body.end_block_id,
+                end_block_id=body.segment_id if is_passage else None,
                 end_offset=body.end_offset,
                 selected_text=body.selected_text,
                 created_at=now,
@@ -602,6 +594,14 @@ class AttemptService:
             await self.session.delete(highlight)
             attempt.last_active_at = now
 
+    async def delete_all_highlights(self, attempt_id: uuid.UUID) -> None:
+        async with self.session.begin():
+            attempt = await self._require(attempt_id, for_update=True)
+            now = TimerService.now()
+            self._ensure_mutable(attempt, now)
+            await self.session.execute(delete(Highlight).where(Highlight.attempt_id == attempt.id))
+            attempt.last_active_at = now
+
     async def _require(self, attempt_id: uuid.UUID, *, for_update: bool = False) -> Attempt:
         attempt = await self.repository.get(attempt_id, for_update=for_update)
         if attempt is None:
@@ -623,27 +623,95 @@ class AttemptService:
             raise AppError("INVALID_QUESTION", "The question does not belong to this attempt.", 422)
         return question
 
+    async def _highlight_source(self, attempt: Attempt, body: HighlightCreate) -> str:
+        if body.target_kind == "PASSAGE_BLOCK":
+            passage = await self.session.scalar(
+                select(ReadingPassage)
+                .join(TestModule)
+                .where(
+                    ReadingPassage.id == body.target_id,
+                    TestModule.test_version_id == attempt.test_version_id,
+                )
+            )
+            if passage is None:
+                raise AppError(
+                    "INVALID_HIGHLIGHT", "The passage does not belong to this attempt.", 422
+                )
+            blocks = {
+                uuid.UUID(str(item["id"])): item["text"]
+                for item in normalize_passage_blocks(passage.content_json, passage.id)
+            }
+            source = blocks.get(body.segment_id)
+            if source is None:
+                raise AppError(
+                    "INVALID_HIGHLIGHT", "A referenced passage block does not exist.", 422
+                )
+            return source
+        if body.target_kind == "QUESTION_PROMPT":
+            question = await self._require_attempt_question(attempt, body.target_id)
+            return question.prompt
+        if body.target_kind == "TEXT_COMPLETION_SEGMENT":
+            group = await self.session.scalar(
+                select(QuestionGroup)
+                .join(TestModule)
+                .where(
+                    QuestionGroup.id == body.target_id,
+                    QuestionGroup.question_type == "text_completion",
+                    TestModule.test_version_id == attempt.test_version_id,
+                    TestModule.module_type == attempt.module_type,
+                )
+            )
+            if group is None:
+                raise AppError(
+                    "INVALID_HIGHLIGHT",
+                    "The text completion group does not belong to this attempt.",
+                    422,
+                )
+            normalized, _ = normalize_question_group_payload(
+                question_type=group.question_type,
+                group_config=group.config,
+                questions=[
+                    {
+                        "id": item.id,
+                        "number": item.number,
+                        "prompt": item.prompt,
+                        "config": item.config,
+                        "answer_key": item.answer_key,
+                        "order_index": item.order_index,
+                    }
+                    for item in group.questions
+                ],
+                group_id=group.id,
+                passage_blocks=[],
+            )
+            for block in normalized.get("blocks", []):
+                for segment in block.get("segments", []):
+                    if segment.get("type") == "TEXT" and str(segment.get("id")) == str(
+                        body.segment_id
+                    ):
+                        return str(segment.get("text") or "")
+            raise AppError("INVALID_HIGHLIGHT", "The text segment does not exist.", 422)
+        raise AppError("INVALID_HIGHLIGHT", "The highlight target type is unsupported.", 422)
+
+    @staticmethod
+    def _validate_highlight_text(source_text: str, body: HighlightCreate) -> None:
+        if body.start_offset >= body.end_offset or body.end_offset > len(source_text):
+            raise AppError("INVALID_HIGHLIGHT", "Highlight offsets are invalid.", 422)
+        actual = source_text[body.start_offset : body.end_offset]
+        if " ".join(actual.split()) != " ".join(body.selected_text.split()):
+            raise AppError("INVALID_HIGHLIGHT", "Selected text does not match the passage.", 422)
+
     @staticmethod
     def _validate_highlight(passage: ReadingPassage, body: HighlightCreate) -> None:
+        """Compatibility helper for validating legacy passage-only payloads."""
         blocks = {
             uuid.UUID(str(item["id"])): item["text"]
             for item in normalize_passage_blocks(passage.content_json, passage.id)
         }
-        start_text = blocks.get(body.start_block_id)
-        end_text = blocks.get(body.end_block_id)
-        if start_text is None or end_text is None:
+        source = blocks.get(body.segment_id)
+        if source is None:
             raise AppError("INVALID_HIGHLIGHT", "A referenced passage block does not exist.", 422)
-        if body.start_block_id != body.end_block_id:
-            raise AppError(
-                "INVALID_HIGHLIGHT",
-                "Multi-block highlights are reserved but not enabled in the Reading MVP.",
-                422,
-            )
-        if body.start_offset >= body.end_offset or body.end_offset > len(start_text):
-            raise AppError("INVALID_HIGHLIGHT", "Highlight offsets are invalid.", 422)
-        actual = start_text[body.start_offset : body.end_offset]
-        if " ".join(actual.split()) != " ".join(body.selected_text.split()):
-            raise AppError("INVALID_HIGHLIGHT", "Selected text does not match the passage.", 422)
+        AttemptService._validate_highlight_text(source, body)
 
     def _ensure_mutable(self, attempt: Attempt, now: datetime) -> None:
         self._synchronize_state(attempt, now)

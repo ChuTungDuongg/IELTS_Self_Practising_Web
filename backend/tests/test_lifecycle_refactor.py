@@ -9,6 +9,7 @@ from app.core.exceptions import AppError
 from app.models import (
     Attempt,
     AttemptAnswer,
+    Highlight,
     Question,
     QuestionGroup,
     ReadingPassage,
@@ -18,7 +19,7 @@ from app.models import TestModule as DomainModule
 from app.models import TestVersion as DomainVersion
 from app.models.enums import AttemptStatus, ModuleType, TimerMode, VersionStatus
 from app.schemas.attempts import AttemptCreate, TimerRequest
-from app.schemas.content import ModuleCreate
+from app.schemas.content import HighlightCreate, ModuleCreate, QuestionGroupWrite, QuestionWrite
 from app.schemas.tests import VersionCreate
 from app.services.attempts import AttemptService
 from app.services.reading import ReadingService
@@ -30,7 +31,9 @@ def add_valid_reading(version: DomainVersion) -> DomainModule:
     passage = ReadingPassage(
         title="Fictional",
         order_index=0,
-        content_json=[{"id": str(uuid4()), "type": "paragraph", "label": "A", "text": "Meaningful text"}],
+        content_json=[
+            {"id": str(uuid4()), "type": "paragraph", "label": "A", "text": "Meaningful text"}
+        ],
         plain_text="Meaningful text",
     )
     group = QuestionGroup(
@@ -56,6 +59,159 @@ async def persist(session: AsyncSession, *records: object) -> None:
     async with session.begin():
         session.add_all(records)
         await session.flush()
+
+
+@pytest.mark.integration
+async def test_generic_highlights_and_bulk_delete(db_session: AsyncSession) -> None:
+    test = DomainTest(title="Highlights")
+    version = DomainVersion(version_number=1, status=VersionStatus.PUBLISHED)
+    test.versions.append(version)
+    module = add_valid_reading(version)
+    completion_question = Question(
+        id=uuid4(),
+        number=2,
+        prompt="Answer",
+        config={"max_words": 2},
+        answer_key={"kind": "TEXT", "accepted": ["supports jobs"]},
+        order_index=0,
+    )
+    segment_id = uuid4()
+    completion_group = QuestionGroup(
+        id=uuid4(),
+        question_type="text_completion",
+        instruction="Complete",
+        order_index=1,
+        config={
+            "mode": "SENTENCE",
+            "blocks": [
+                {
+                    "id": str(uuid4()),
+                    "segments": [
+                        {"id": str(segment_id), "type": "TEXT", "text": "Tourism supports jobs"},
+                        {
+                            "id": str(uuid4()),
+                            "type": "GAP",
+                            "question_id": str(completion_question.id),
+                        },
+                    ],
+                }
+            ],
+        },
+    )
+    completion_group.questions.append(completion_question)
+    module.passages[0].question_groups.append(completion_group)
+    module.question_groups.append(completion_group)
+    await persist(db_session, test)
+    passage = module.passages[0]
+    question = passage.question_groups[0].questions[0]
+    attempt = await AttemptService(db_session).start(
+        AttemptCreate(
+            test_version_id=version.id,
+            module=ModuleType.READING,
+            timer=TimerRequest(mode=TimerMode.COUNT_UP),
+        )
+    )
+    block_id = passage.content_json[0]["id"]
+    passage_highlight = await AttemptService(db_session).create_highlight(
+        attempt.attempt_id,
+        HighlightCreate(
+            target_kind="PASSAGE_BLOCK",
+            target_id=passage.id,
+            segment_id=block_id,
+            start_offset=0,
+            end_offset=10,
+            selected_text="Meaningful",
+        ),
+    )
+    question_highlight = await AttemptService(db_session).create_highlight(
+        attempt.attempt_id,
+        HighlightCreate(
+            target_kind="QUESTION_PROMPT",
+            target_id=question.id,
+            start_offset=0,
+            end_offset=9,
+            selected_text="Statement",
+        ),
+    )
+    completion_highlight = await AttemptService(db_session).create_highlight(
+        attempt.attempt_id,
+        HighlightCreate(
+            target_kind="TEXT_COMPLETION_SEGMENT",
+            target_id=completion_group.id,
+            segment_id=segment_id,
+            start_offset=8,
+            end_offset=16,
+            selected_text="supports",
+        ),
+    )
+    assert passage_highlight.target_kind == "PASSAGE_BLOCK"
+    assert question_highlight.target_kind == "QUESTION_PROMPT"
+    assert completion_highlight.target_kind == "TEXT_COMPLETION_SEGMENT"
+
+    await AttemptService(db_session).delete_all_highlights(attempt.attempt_id)
+    remaining = list(
+        await db_session.scalars(
+            select(Highlight).where(Highlight.attempt_id == attempt.attempt_id)
+        )
+    )
+    assert remaining == []
+
+
+@pytest.mark.integration
+async def test_text_completion_layout_and_answers_round_trip(db_session: AsyncSession) -> None:
+    test = DomainTest(title="Text completion")
+    version = DomainVersion(version_number=1, status=VersionStatus.DRAFT)
+    test.versions.append(version)
+    module = add_valid_reading(version)
+    await persist(db_session, test)
+    question_id = uuid4()
+    block_id = uuid4()
+    gap_id = uuid4()
+    created = await ReadingService(db_session).create_group(
+        module.passages[0].id,
+        QuestionGroupWrite(
+            question_type="text_completion",
+            instruction="",
+            order_index=1,
+            config={
+                "mode": "PASSAGE",
+                "blocks": [
+                    {
+                        "id": str(block_id),
+                        "segments": [
+                            {"id": str(uuid4()), "type": "TEXT", "text": "Tourism provides "},
+                            {"id": str(gap_id), "type": "GAP", "question_id": str(question_id)},
+                            {"id": str(uuid4()), "type": "TEXT", "text": "."},
+                        ],
+                    }
+                ],
+            },
+            questions=[
+                QuestionWrite(
+                    id=question_id,
+                    number=2,
+                    prompt="Answer",
+                    order_index=0,
+                    config={"max_words": 3, "max_numbers": 1},
+                    answer_key={
+                        "kind": "TEXT",
+                        "accepted": ["source, of income", "main source of income"],
+                        "case_sensitive": False,
+                    },
+                )
+            ],
+        ),
+    )
+
+    reloaded = await ReadingService(db_session).get_group(created.id)
+    assert reloaded.config["mode"] == "PASSAGE"
+    assert reloaded.config["blocks"][0]["segments"][1]["question_id"] == str(question_id)
+    assert reloaded.questions[0].id == question_id
+    assert reloaded.questions[0].answer_key == {
+        "kind": "TEXT",
+        "accepted": ["source, of income", "main source of income"],
+        "case_sensitive": False,
+    }
 
 
 @pytest.mark.integration
@@ -160,7 +316,9 @@ async def test_draft_module_can_be_deleted_and_recreated(db_session: AsyncSessio
 
     recreated = await ReadingService(db_session).create_module(
         draft_id,
-        ModuleCreate(module_type=ModuleType.READING, title="Reading", recommended_duration_seconds=3600),
+        ModuleCreate(
+            module_type=ModuleType.READING, title="Reading", recommended_duration_seconds=3600
+        ),
     )
     assert recreated.module_type == ModuleType.READING
     assert await db_session.get(DomainModule, reading_id) is None

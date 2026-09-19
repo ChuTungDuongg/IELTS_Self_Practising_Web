@@ -59,6 +59,62 @@ class TextCompletionConfig(BaseModel):
     max_numbers: int | None = Field(default=None, ge=0, le=20)
 
 
+class TextCompletionSegment(BaseModel):
+    id: str = Field(min_length=1, max_length=80)
+    type: Literal["TEXT", "GAP"]
+    text: str = Field(default="", max_length=10_000)
+    question_id: str | None = Field(default=None, max_length=80)
+
+    @field_validator("id", "question_id")
+    @classmethod
+    def validate_uuid_identity(cls, value: str | None) -> str | None:
+        if value is not None:
+            uuid.UUID(value)
+        return value
+
+    @model_validator(mode="after")
+    def validate_segment(self) -> TextCompletionSegment:
+        if self.type == "GAP" and not self.question_id:
+            raise ValueError("Text completion gaps must reference a question")
+        if self.type == "TEXT" and self.question_id is not None:
+            raise ValueError("Text segments cannot reference a question")
+        return self
+
+
+class TextCompletionBlock(BaseModel):
+    id: str = Field(min_length=1, max_length=80)
+    segments: list[TextCompletionSegment] = Field(min_length=1)
+
+    @field_validator("id")
+    @classmethod
+    def validate_uuid_identity(cls, value: str) -> str:
+        uuid.UUID(value)
+        return value
+
+
+class TextCompletionGroupConfig(BaseModel):
+    mode: Literal["SENTENCE", "PASSAGE"] = "SENTENCE"
+    blocks: list[TextCompletionBlock] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def validate_identity(self) -> TextCompletionGroupConfig:
+        block_ids = [block.id for block in self.blocks]
+        segment_ids = [segment.id for block in self.blocks for segment in block.segments]
+        if len(block_ids) != len(set(block_ids)):
+            raise ValueError("Text completion block IDs must be unique")
+        if len(segment_ids) != len(set(segment_ids)):
+            raise ValueError("Text completion segment IDs must be unique")
+        gap_ids = [
+            segment.question_id
+            for block in self.blocks
+            for segment in block.segments
+            if segment.type == "GAP"
+        ]
+        if len(gap_ids) != len(set(gap_ids)):
+            raise ValueError("Each text completion question may be referenced by only one gap")
+        return self
+
+
 class MatchingHeadingsGroupConfig(BaseModel):
     options: list[Option] = Field(min_length=2)
     allow_option_reuse: bool = False
@@ -205,6 +261,31 @@ class TextAnswerKey(BaseModel):
         if isinstance(value, dict) and value.get("kind") != "TEXT":
             return {**value, "kind": "TEXT"}
         return value
+
+    @field_validator("accepted")
+    @classmethod
+    def normalize_accepted(cls, value: list[str]) -> list[str]:
+        cleaned: list[str] = []
+        for candidate in value:
+            trimmed = candidate.strip()
+            if not trimmed:
+                continue
+            cleaned.append(trimmed)
+        if not cleaned:
+            raise ValueError("A primary accepted answer is required")
+        return cleaned
+
+    @model_validator(mode="after")
+    def reject_duplicate_accepted(self) -> TextAnswerKey:
+        normalized = [
+            " ".join(candidate.split())
+            if self.case_sensitive
+            else " ".join(candidate.split()).casefold()
+            for candidate in self.accepted
+        ]
+        if len(normalized) != len(set(normalized)):
+            raise ValueError("Accepted answers must be unique after grading normalization")
+        return self
 
 
 class MultipleOptionsAnswerKey(BaseModel):
@@ -386,7 +467,7 @@ question_registry.register(
 question_registry.register(
     "text_completion",
     RegisteredQuestionType(
-        group_config_model=EmptyConfig,
+        group_config_model=TextCompletionGroupConfig,
         question_config_model=TextCompletionConfig,
         response_model=StringResponse,
         answer_key_model=TextAnswerKey,
