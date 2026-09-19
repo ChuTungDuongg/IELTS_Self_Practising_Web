@@ -10,6 +10,7 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { ApiError } from "@/lib/api/client";
 import type { TestSummary } from "@/lib/api/schema";
 import { deleteTest, restoreTest } from "@/lib/api/tests";
+import { builderEditPath } from "@/lib/routes";
 
 export function TestLibraryList({
   activeTests: initialActiveTests,
@@ -129,7 +130,7 @@ export function TestLibraryList({
                 <div className="test-card-actions">
                   <Link href={`/admin/tests/${test.id}`} className="btn btn-secondary">Open</Link>
                   {view === "active" && draft ? (
-                    <Link href={`/admin/tests/${test.id}/versions/${draft.id}/edit`} className="btn btn-primary">
+                    <Link href={builderEditPath(test.id, draft.id)} className="btn btn-primary">
                       Continue draft <ArrowIcon className="size-4" />
                     </Link>
                   ) : view === "archived" ? (

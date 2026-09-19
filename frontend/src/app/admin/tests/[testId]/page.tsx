@@ -4,6 +4,7 @@ import { PageHeading } from "@/components/ui/page-heading";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { ArrowIcon } from "@/components/ui/icons";
 import { getTest } from "@/lib/api/tests";
+import { builderEditPath } from "@/lib/routes";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +21,7 @@ export default async function TestDetailPage({ params }: { params: Promise<{ tes
         </div>
         <div className="divide-y divide-[var(--line)]">
           {test.versions.map((version) => (
-            <Link key={version.id} href={`/admin/tests/${test.id}/versions/${version.id}/edit`} className="group flex items-center justify-between gap-4 px-6 py-5 transition-colors hover:bg-[var(--surface-soft)]">
+            <Link key={version.id} href={builderEditPath(test.id, version.id)} className="group flex items-center justify-between gap-4 px-6 py-5 transition-colors hover:bg-[var(--surface-soft)]">
               <div>
                 <p className="font-semibold">Version {version.version_number}</p>
                 <p className="mt-1 text-sm text-[var(--muted)]">Created {new Date(version.created_at).toLocaleString()}</p>

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ApiError } from "@/lib/api/client";
 import { cloneVersion, deleteDraft, publishVersion, validateVersion } from "@/lib/api/tests";
+import { builderEditPath } from "@/lib/routes";
 import { useBuilderLifecycle } from "./builder-lifecycle";
 import { CheckIcon } from "@/components/ui/icons";
 
@@ -29,7 +30,7 @@ export function VersionActions({ testId, versionId, status }: { testId: string; 
         router.refresh();
       } else {
         const clone = await cloneVersion(testId, versionId);
-        router.push(`/admin/tests/${testId}/versions/${clone.id}/edit`);
+        router.push(builderEditPath(testId, clone.id));
         router.refresh();
       }
     } catch (caught) {

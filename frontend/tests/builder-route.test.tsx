@@ -1,0 +1,63 @@
+import { existsSync } from "node:fs";
+import { resolve } from "node:path";
+import { render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { TestLibraryList } from "@/features/test-builder/test-library-list";
+import TestDetailPage from "@/app/admin/tests/[testId]/page";
+import { parseBuilderVersion } from "@/lib/api/builder";
+import type { TestSummary } from "@/lib/api/schema";
+import { getTest } from "@/lib/api/tests";
+import { BUILDER_EDIT_ROUTE, builderEditPath } from "@/lib/routes";
+
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
+vi.mock("@/lib/api/tests", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/api/tests")>();
+  return { ...actual, getTest: vi.fn() };
+});
+
+const testId = "11111111-1111-4111-8111-111111111111";
+const versionId = "22222222-2222-4222-8222-222222222222";
+const draft: TestSummary = {
+  id: testId,
+  title: "Fictional draft",
+  description: null,
+  source_label: null,
+  test_number: null,
+  archived_at: null,
+  created_at: "2026-09-19T00:00:00Z",
+  updated_at: "2026-09-19T00:00:00Z",
+  versions: [{ id: versionId, version_number: 1, status: "DRAFT", created_at: "2026-09-19T00:00:00Z", published_at: null }],
+};
+
+describe("canonical Builder edit route", () => {
+  it("exists in the App Router and is used by Continue draft", () => {
+    expect(BUILDER_EDIT_ROUTE).toBe("/admin/tests/[testId]/versions/[versionId]/edit");
+    expect(existsSync(resolve(process.cwd(), "src/app/admin/tests/[testId]/versions/[versionId]/edit/page.tsx"))).toBe(true);
+    render(<TestLibraryList activeTests={[draft]} archivedTests={[]} />);
+    expect(screen.getByRole("link", { name: /Continue draft/ })).toHaveAttribute("href", builderEditPath(testId, versionId));
+  });
+
+  it("uses the same route from the test detail version list", async () => {
+    vi.mocked(getTest).mockResolvedValue(draft);
+    render(await TestDetailPage({ params: Promise.resolve({ testId }) }));
+    expect(screen.getByRole("link", { name: /Version 1/ })).toHaveAttribute("href", builderEditPath(testId, versionId));
+  });
+
+  it("accepts a Reading-only Builder payload without Listening arrays", () => {
+    const parsed = parseBuilderVersion({
+      id: versionId,
+      test_id: testId,
+      test_title: "Fictional draft",
+      version_number: 1,
+      status: "DRAFT",
+      modules: [{
+        id: "33333333-3333-4333-8333-333333333333",
+        module_type: "READING",
+        title: "Reading",
+        recommended_duration_seconds: 3600,
+      }],
+    });
+    expect(parsed.modules[0].passages).toEqual([]);
+    expect(parsed.modules[0].listening_parts).toEqual([]);
+  });
+});

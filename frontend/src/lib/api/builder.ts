@@ -56,8 +56,8 @@ const builderVersionSchema = z.object({
       module_type: z.enum(["READING", "LISTENING", "WRITING"]),
       title: z.string().nullable(),
       recommended_duration_seconds: z.number().int().nullable(),
-      passages: z.array(passageSchema),
-      listening_parts: z.array(listeningPartSchema),
+      passages: z.array(passageSchema).default([]),
+      listening_parts: z.array(listeningPartSchema).default([]),
     }),
   ),
 });
@@ -68,8 +68,12 @@ export type BuilderQuestionGroup = z.infer<typeof groupSchema>;
 export type BuilderListeningPart = z.infer<typeof listeningPartSchema>;
 export type TextBlock = z.infer<typeof blockSchema>;
 
+export function parseBuilderVersion(value: unknown): BuilderVersion {
+  return builderVersionSchema.parse(value);
+}
+
 export async function getBuilderVersion(versionId: string): Promise<BuilderVersion> {
-  return builderVersionSchema.parse(
+  return parseBuilderVersion(
     await apiRequest<unknown>(`/test-versions/${versionId}/builder`),
   );
 }

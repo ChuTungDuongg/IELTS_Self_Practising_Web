@@ -8,13 +8,20 @@ import { ListeningBuilder } from "@/features/test-builder/listening-builder";
 import { getBuilderVersion } from "@/lib/api/builder";
 import { BuilderIcon, ReadingIcon } from "@/components/ui/icons";
 import { ModuleBadge } from "@/components/ui/module-badge";
+import { ApiError } from "@/lib/api/client";
 
 export const dynamic = "force-dynamic";
 
 export default async function VersionEditorPage({ params }: { params: Promise<{ testId: string; versionId: string }> }) {
   const { testId, versionId } = await params;
-  const version = await getBuilderVersion(versionId).catch(() => null);
-  if (!version || version.test_id !== testId) notFound();
+  let version;
+  try {
+    version = await getBuilderVersion(versionId);
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) notFound();
+    throw error;
+  }
+  if (version.test_id !== testId) notFound();
   return (
     <>
       <PageHeading eyebrow="IELTS Studio · Engine Builder" title={version.test_title} description={`Version ${version.version_number} · Structured authoring workspace`} action={<StatusBadge status={version.status} />} />
