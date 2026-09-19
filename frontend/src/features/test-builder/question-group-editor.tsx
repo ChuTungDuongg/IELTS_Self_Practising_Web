@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { questionRegistry } from "@/features/questions/registry";
 import type { ExamGroup, PassageBlock, QuestionGroupModel } from "@/features/questions/types";
+import { QuestionGroupInstruction, resolveQuestionGroupInstruction } from "@/features/questions/question-group-instruction";
 
 export function QuestionGroupEditor({
   initial,
@@ -10,12 +11,14 @@ export function QuestionGroupEditor({
   onCancel,
   nextQuestionNumber,
   passageBlocks,
+  passageNumber,
 }: {
   initial: QuestionGroupModel;
   onSave: (group: QuestionGroupModel) => Promise<void>;
   onCancel: () => void;
   nextQuestionNumber: number;
   passageBlocks: PassageBlock[];
+  passageNumber?: number;
 }) {
   const [group, setGroup] = useState(initial);
   const [preview, setPreview] = useState(false);
@@ -71,12 +74,13 @@ export function QuestionGroupEditor({
       <div className="group-editor-header">
         <div className="min-w-0 flex-1">
           <p className="page-eyebrow">Question group · {definition.label}</p>
-          <label className="field-label">Candidate instruction</label>
+          <label className="field-label">Custom candidate instruction <span className="font-normal text-[var(--muted)]">(optional)</span></label>
           <input
             value={group.instruction}
             onChange={(event) => setGroup({ ...group, instruction: event.target.value })}
             className="field mt-2"
             aria-label="Group instruction"
+            placeholder={resolveQuestionGroupInstruction({ ...group, instruction: "" }, { passageNumber }).intro}
           />
         </div>
         <div className="flex flex-wrap gap-2">
@@ -88,7 +92,7 @@ export function QuestionGroupEditor({
       {preview ? (
         <div className="group-preview">
           <p className="mb-2 text-xs font-bold uppercase tracking-wider text-[var(--muted)]">Candidate preview</p>
-          <p className="mb-4 text-sm font-medium">{group.instruction}</p>
+          <QuestionGroupInstruction group={group} passageNumber={passageNumber} />
           <Renderer group={group as ExamGroup} values={{}} passageBlocks={passageBlocks} disabled />
         </div>
       ) : (

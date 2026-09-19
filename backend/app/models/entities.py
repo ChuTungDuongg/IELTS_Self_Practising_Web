@@ -81,8 +81,12 @@ class TestModule(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     title: Mapped[str | None] = mapped_column(String(240))
     recommended_duration_seconds: Mapped[int | None] = mapped_column(Integer)
     order_index: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    audio_asset_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("assets.id", ondelete="SET NULL")
+    )
 
     test_version: Mapped[TestVersion] = relationship(back_populates="modules")
+    audio_asset: Mapped[Asset | None] = relationship(foreign_keys=[audio_asset_id])
     passages: Mapped[list[ReadingPassage]] = relationship(
         back_populates="module", cascade="all, delete-orphan", order_by="ReadingPassage.order_index"
     )
@@ -120,12 +124,7 @@ class ListeningPart(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     module_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("test_modules.id", ondelete="CASCADE"))
     title: Mapped[str] = mapped_column(String(240), nullable=False)
     order_index: Mapped[int] = mapped_column(Integer, nullable=False)
-    audio_asset_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("assets.id", ondelete="SET NULL")
-    )
-
     module: Mapped[TestModule] = relationship(back_populates="listening_parts")
-    audio_asset: Mapped[Asset | None] = relationship(foreign_keys=[audio_asset_id])
     question_groups: Mapped[list[QuestionGroup]] = relationship(
         back_populates="listening_part", order_by="QuestionGroup.order_index"
     )

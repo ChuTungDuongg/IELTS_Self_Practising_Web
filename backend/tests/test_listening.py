@@ -11,7 +11,7 @@ from app.models import Test as DomainTest
 from app.models import TestModule as ModuleRecord
 from app.models import TestVersion as VersionRecord
 from app.models.enums import AssetType, ModuleType, VersionStatus
-from app.schemas.content import ListeningPartWrite, QuestionGroupWrite
+from app.schemas.content import ListeningModuleAudioWrite, ListeningPartWrite, QuestionGroupWrite
 from app.services.attempts import AttemptService
 from app.services.listening import ListeningService
 from app.services.tests import TestService as VersionService
@@ -88,17 +88,18 @@ def test_complete_listening_structure_validates_four_parts_and_global_numbering(
     version = VersionRecord(version_number=1, status=VersionStatus.DRAFT)
     module = ModuleRecord(module_type=ModuleType.LISTENING, order_index=0)
     version.modules.append(module)
+    asset = Asset(
+        id=uuid4(),
+        asset_type=AssetType.LISTENING_AUDIO,
+        relative_path="audio/shared.mp3",
+        mime_type="audio/mpeg",
+        original_name="shared.mp3",
+        file_size=10,
+    )
+    module.audio_asset = asset
     for part_index in range(4):
-        asset = Asset(
-            id=uuid4(),
-            asset_type=AssetType.LISTENING_AUDIO,
-            relative_path=f"audio/{part_index}.mp3",
-            mime_type="audio/mpeg",
-            original_name=f"part-{part_index + 1}.mp3",
-            file_size=10,
-        )
         part = ListeningPart(
-            id=uuid4(), title=f"Part {part_index + 1}", order_index=part_index, audio_asset=asset
+            id=uuid4(), title=f"Section {part_index + 1}", order_index=part_index
         )
         group = QuestionGroup(
             id=uuid4(),
@@ -129,7 +130,7 @@ def test_complete_listening_structure_validates_four_parts_and_global_numbering(
     assert VersionService.validate_version(version).valid
 
 
-def test_listening_validation_rejects_missing_parts_and_audio() -> None:
+def test_listening_validation_rejects_missing_parts_but_allows_optional_audio() -> None:
     version = VersionRecord(version_number=1, status=VersionStatus.DRAFT)
     module = ModuleRecord(module_type=ModuleType.LISTENING, order_index=0)
     module.listening_parts.append(ListeningPart(id=uuid4(), title="Part 1", order_index=0))
@@ -137,7 +138,42 @@ def test_listening_validation_rejects_missing_parts_and_audio() -> None:
     result = VersionService.validate_version(version)
     assert not result.valid
     assert any(issue.path == "listening.parts" for issue in result.errors)
-    assert any(issue.path.endswith(".audio") for issue in result.errors)
+    assert not any(issue.path.endswith(".audio") for issue in result.errors)
+
+
+@pytest.mark.integration
+async def test_shared_audio_replace_and_remove_preserves_sections_and_questions(
+    db_session: AsyncSession,
+) -> None:
+    test = DomainTest(title="Shared audio")
+    version = VersionRecord(id=uuid4(), version_number=1, status=VersionStatus.DRAFT)
+    module = ModuleRecord(id=uuid4(), module_type=ModuleType.LISTENING, order_index=0)
+    part = ListeningPart(id=uuid4(), title="Section 1", order_index=0)
+    group = QuestionGroup(id=uuid4(), question_type="short_answer", instruction="", config={}, order_index=0)
+    group.questions.append(Question(id=uuid4(), number=1, prompt="Prompt", config={"max_words": 2}, answer_key={"kind": "TEXT", "accepted": ["answer"], "case_sensitive": False}, order_index=0))
+    part.question_groups.append(group)
+    module.listening_parts.append(part)
+    module.question_groups.append(group)
+    test.versions.append(version)
+    version.modules.append(module)
+    first = Asset(id=uuid4(), test_version_id=version.id, asset_type=AssetType.LISTENING_AUDIO, relative_path="audio/first.mp3", mime_type="audio/mpeg", original_name="first.mp3", file_size=10)
+    second = Asset(id=uuid4(), test_version_id=version.id, asset_type=AssetType.LISTENING_AUDIO, relative_path="audio/second.mp3", mime_type="audio/mpeg", original_name="second.mp3", file_size=10)
+    async with db_session.begin():
+        db_session.add_all([test, first, second])
+        await db_session.flush()
+
+    service = ListeningService(db_session)
+    await service.attach_audio(module.id, ListeningModuleAudioWrite(asset_id=first.id))
+    await db_session.rollback()
+    await service.attach_audio(module.id, ListeningModuleAudioWrite(asset_id=second.id))
+    await db_session.rollback()
+    await service.attach_audio(module.id, ListeningModuleAudioWrite(asset_id=None))
+    await db_session.rollback()
+
+    stored_module = await db_session.get(ModuleRecord, module.id)
+    assert stored_module is not None and stored_module.audio_asset_id is None
+    assert await db_session.get(ListeningPart, part.id) is not None
+    assert await db_session.get(Question, group.questions[0].id) is not None
 
 
 @pytest.mark.integration

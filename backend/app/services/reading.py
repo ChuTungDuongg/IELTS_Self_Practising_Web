@@ -475,6 +475,11 @@ class ReadingService:
                     module_type=module.module_type,
                     title=module.title,
                     recommended_duration_seconds=module.recommended_duration_seconds,
+                    audio_asset=(
+                        AssetResponse.model_validate(module.audio_asset, from_attributes=True)
+                        if module.audio_asset
+                        else None
+                    ),
                     passages=[cls._present_passage(item) for item in module.passages],
                     listening_parts=[
                         cls._present_listening_part(item) for item in module.listening_parts
@@ -542,11 +547,6 @@ class ReadingService:
             id=part.id,
             title=part.title,
             order_index=part.order_index,
-            audio_asset=(
-                AssetResponse.model_validate(part.audio_asset, from_attributes=True)
-                if part.audio_asset
-                else None
-            ),
             question_groups=[
                 cls._present_group(group, [])
                 for group in sorted(part.question_groups, key=lambda item: item.order_index)

@@ -9,8 +9,9 @@ from app.models import Asset, ListeningPart, Question, QuestionGroup, TestModule
 from app.models.enums import AssetType, ModuleType, VersionStatus
 from app.schemas.content import (
     BuilderListeningPart,
+    BuilderModule,
     BuilderQuestionGroup,
-    ListeningPartAudioWrite,
+    ListeningModuleAudioWrite,
     ListeningPartWrite,
     QuestionGroupWrite,
     QuestionWrite,
@@ -62,17 +63,17 @@ class ListeningService:
             await self.session.delete(part)
 
     async def attach_audio(
-        self, part_id: uuid.UUID, body: ListeningPartAudioWrite
-    ) -> BuilderListeningPart:
+        self, module_id: uuid.UUID, body: ListeningModuleAudioWrite
+    ) -> BuilderModule:
         async with self.session.begin():
-            part = await self._draft_part(part_id)
+            module = await self._draft_module(module_id)
             if body.asset_id is None:
-                part.audio_asset_id = None
+                module.audio_asset_id = None
             else:
                 asset = await self.session.scalar(
                     select(Asset).where(
                         Asset.id == body.asset_id,
-                        Asset.test_version_id == part.module.test_version_id,
+                        Asset.test_version_id == module.test_version_id,
                         Asset.asset_type == AssetType.LISTENING_AUDIO,
                     )
                 )
@@ -82,8 +83,10 @@ class ListeningService:
                         "The audio asset does not belong to this draft version.",
                         422,
                     )
-                part.audio_asset_id = asset.id
-        return await self.get_part(part_id)
+                module.audio_asset_id = asset.id
+            version_id = module.test_version_id
+        version = await self.shared.builder_version(version_id)
+        return next(item for item in version.modules if item.id == module_id)
 
     async def create_group(
         self, part_id: uuid.UUID, body: QuestionGroupWrite
@@ -184,6 +187,19 @@ class ListeningService:
             raise AppError("LISTENING_MODULE_NOT_FOUND", "Create the Listening module first.", 422)
         return module
 
+    async def _draft_module(self, module_id: uuid.UUID) -> TestModule:
+        module = await self.session.scalar(
+            select(TestModule)
+            .where(TestModule.id == module_id, TestModule.module_type == ModuleType.LISTENING)
+            .options(selectinload(TestModule.test_version))
+            .with_for_update()
+        )
+        if module is None:
+            raise AppError("LISTENING_MODULE_NOT_FOUND", "The Listening module does not exist.", 404)
+        if module.test_version.status != VersionStatus.DRAFT:
+            raise AppError("TEST_VERSION_IMMUTABLE", "Published versions cannot be changed.", 409)
+        return module
+
     async def _draft_part(self, part_id: uuid.UUID) -> ListeningPart:
         part = await self.session.scalar(
             self._part_query().where(ListeningPart.id == part_id).with_for_update()
@@ -253,7 +269,6 @@ class ListeningService:
     @staticmethod
     def _part_query():
         return select(ListeningPart).options(
-            selectinload(ListeningPart.audio_asset),
             selectinload(ListeningPart.question_groups).selectinload(QuestionGroup.questions),
             selectinload(ListeningPart.question_groups).selectinload(QuestionGroup.image_asset),
             selectinload(ListeningPart.module).selectinload(TestModule.test_version),

@@ -194,10 +194,12 @@ def normalize_question_group_payload(
             question["answer_key"] = _normalize_multiple_options_key(
                 dict(question.get("answer_key") or {}), option_ids
             )
-        elif question_type == "true_false_not_given":
-            question["answer_key"] = _normalize_single_option_key(
+        elif question_type in {"true_false_not_given", "yes_no_not_given"}:
+            normalized_key = _normalize_single_option_key(
                 dict(question.get("answer_key") or {})
             )
+            normalized_key["value"] = _normalize_agreement_value(normalized_key["value"])
+            question["answer_key"] = normalized_key
 
     return config, normalized_questions
 
@@ -216,6 +218,8 @@ def normalize_response_value(
         pass
     elif not isinstance(value, str):
         return value
+    if question_type in {"true_false_not_given", "yes_no_not_given"}:
+        return _normalize_agreement_value(value)
     if question_type in {"multiple_choice", "multiple_choice_multiple"}:
         raw_options = list(raw_question_config.get("options") or [])
         normalized_options = list(normalized_question_config.get("options") or [])
@@ -252,3 +256,10 @@ def normalize_response_value(
         and value in {str(raw.get("id") or ""), str(normalized.get("id") or "")}
     }
     return next(iter(matches)) if len(matches) == 1 else value
+
+
+def _normalize_agreement_value(value: Any) -> Any:
+    if not isinstance(value, str):
+        return value
+    normalized = "_".join(value.strip().upper().replace("/", " ").split())
+    return normalized

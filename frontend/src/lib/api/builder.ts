@@ -21,7 +21,7 @@ const questionSchema = z.object({
 
 const groupSchema = z.object({
   id: z.string().uuid(),
-  question_type: z.enum(["multiple_choice", "multiple_choice_multiple", "true_false_not_given", "text_completion", "matching_headings", "matching", "plan_labelling", "map_labelling", "diagram_labelling", "form_completion", "note_completion", "table_completion", "flow_chart_completion", "summary_completion", "sentence_completion", "short_answer"]),
+  question_type: z.enum(["multiple_choice", "multiple_choice_multiple", "true_false_not_given", "yes_no_not_given", "text_completion", "matching_headings", "matching", "plan_labelling", "map_labelling", "diagram_labelling", "form_completion", "note_completion", "table_completion", "flow_chart_completion", "summary_completion", "sentence_completion", "short_answer"]),
   instruction: z.string(),
   config: z.record(z.string(), z.unknown()),
   order_index: z.number().int(),
@@ -41,7 +41,7 @@ const passageSchema = z.object({
 const assetSchema = z.object({ id: z.string().uuid(), original_name: z.string(), mime_type: z.string(), file_size: z.number(), content_url: z.string() });
 const listeningPartSchema = z.object({
   id: z.string().uuid(), title: z.string().nullable(), order_index: z.number().int(),
-  audio_asset: assetSchema.nullable(), question_groups: z.array(groupSchema),
+  question_groups: z.array(groupSchema),
 });
 
 const builderVersionSchema = z.object({
@@ -56,6 +56,7 @@ const builderVersionSchema = z.object({
       module_type: z.enum(["READING", "LISTENING", "WRITING"]),
       title: z.string().nullable(),
       recommended_duration_seconds: z.number().int().nullable(),
+      audio_asset: assetSchema.nullable().default(null),
       passages: z.array(passageSchema).default([]),
       listening_parts: z.array(listeningPartSchema).default([]),
     }),
@@ -103,8 +104,8 @@ export function updateListeningPart(partId: string, body: { title: string | null
 
 export function deleteListeningPart(partId: string) { return apiRequest(`/listening/parts/${partId}`, { method: "DELETE" }); }
 
-export function attachListeningAudio(partId: string, assetId: string | null) {
-  return apiRequest<BuilderListeningPart>(`/listening/parts/${partId}/audio`, { method: "PUT", body: JSON.stringify({ asset_id: assetId }) });
+export function attachListeningAudio(moduleId: string, assetId: string | null) {
+  return apiRequest(`/listening/modules/${moduleId}/audio`, { method: "PUT", body: JSON.stringify({ asset_id: assetId }) });
 }
 
 export function createListeningQuestionGroup(partId: string, body: QuestionGroupModel) {

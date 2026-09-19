@@ -138,15 +138,24 @@ export function StructuredCompletionEditor(props: EditorProps) {
 }
 
 const TFNG = ["TRUE", "FALSE", "NOT_GIVEN"] as const;
+const YNNG = ["YES", "NO", "NOT_GIVEN"] as const;
 
 export function TrueFalseNotGivenEditor(props: EditorProps) {
+  return <AgreementEditor {...props} values={TFNG} name="tfng" />;
+}
+
+export function YesNoNotGivenEditor(props: EditorProps) {
+  return <AgreementEditor {...props} values={YNNG} name="ynng" />;
+}
+
+function AgreementEditor({ values, name, ...props }: EditorProps & { values: readonly string[]; name: string }) {
   const { group, onChange } = props;
   return (
     <div className="space-y-4">
       {group.questions.map((question, index) => (
         <QuestionFrame key={question.id} {...props} index={index}>
           <div className="answer-choice-row">
-            {TFNG.map((value) => <label key={value} className={singleOptionValue(question) === value ? "selected" : ""}><input type="radio" name={`tfng-${question.id}`} checked={singleOptionValue(question) === value} onChange={() => onChange(updateQuestion(group, index, { answer_key: singleOptionKey(value) }))} />{value.replace("_", " ")}</label>)}
+            {values.map((value) => <label key={value} className={singleOptionValue(question) === value ? "selected" : ""}><input type="radio" name={`${name}-${question.id}`} checked={singleOptionValue(question) === value} onChange={() => onChange(updateQuestion(group, index, { answer_key: singleOptionKey(value) }))} />{value.replace("_", " ")}</label>)}
           </div>
         </QuestionFrame>
       ))}

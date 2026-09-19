@@ -185,11 +185,11 @@ async def test_delete_draft_preserves_asset_referenced_by_surviving_version(
     )
     await persist(db_session, test)
     await persist(db_session, asset)
+    listening.audio_asset_id = asset.id
     part = ListeningPart(
         module_id=listening.id,
         title="Part 1",
         order_index=0,
-        audio_asset_id=asset.id,
     )
     await persist(db_session, part)
     test_id = test.id
@@ -203,7 +203,8 @@ async def test_delete_draft_preserves_asset_referenced_by_surviving_version(
     preserved = await db_session.scalar(select(Asset).where(Asset.id == asset_id))
     assert preserved is not None
     assert preserved.test_version_id == survivor_id
-    assert (await db_session.get(ListeningPart, part_id)).audio_asset_id == asset_id  # type: ignore[union-attr]
+    assert (await db_session.get(DomainModule, listening.id)).audio_asset_id == asset_id  # type: ignore[union-attr]
+    assert await db_session.get(ListeningPart, part_id) is not None
 
 
 @pytest.mark.integration
@@ -274,11 +275,11 @@ async def test_hard_delete_preserves_asset_referenced_by_unrelated_test(
         created_at=datetime.now(UTC),
     )
     await persist(db_session, asset)
+    listening.audio_asset_id = asset.id
     part = ListeningPart(
         module_id=listening.id,
         title="Part 1",
         order_index=0,
-        audio_asset_id=asset.id,
     )
     await persist(db_session, part)
     deleted_test_id = deleted_test.id
@@ -292,7 +293,8 @@ async def test_hard_delete_preserves_asset_referenced_by_unrelated_test(
     preserved = await db_session.scalar(select(Asset).where(Asset.id == asset_id))
     assert preserved is not None
     assert preserved.test_version_id == surviving_draft_id
-    assert (await db_session.get(ListeningPart, part_id)).audio_asset_id == asset_id  # type: ignore[union-attr]
+    assert (await db_session.get(DomainModule, listening.id)).audio_asset_id == asset_id  # type: ignore[union-attr]
+    assert await db_session.get(ListeningPart, part_id) is not None
 
 
 @pytest.mark.integration

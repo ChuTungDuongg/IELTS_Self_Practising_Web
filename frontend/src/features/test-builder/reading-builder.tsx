@@ -21,6 +21,7 @@ import {
 import { questionRegistry, readingQuestionTypeOptions } from "@/features/questions/registry";
 import type { QuestionGroupModel, QuestionType } from "@/features/questions/types";
 import { QuestionGroupEditor } from "./question-group-editor";
+import { resolveQuestionGroupInstruction } from "@/features/questions/question-group-instruction";
 import { useBuilderLifecycle } from "./builder-lifecycle";
 
 export function ReadingBuilder({ version }: { version: BuilderVersion }) {
@@ -124,10 +125,10 @@ export function ReadingBuilder({ version }: { version: BuilderVersion }) {
 
               <div className="question-group-list">
                 {passage.question_groups.map((group) => (
-                  <GroupSummary key={group.id} group={group} onMove={(offset) => moveGroup(passage.id, group.id, offset)} onEdit={() => setEditingGroup({ passageId: passage.id, group })} onDelete={() => run(() => deleteQuestionGroup(group.id))} />
+                  <GroupSummary key={group.id} group={group} passageNumber={passage.order_index + 1} onMove={(offset) => moveGroup(passage.id, group.id, offset)} onEdit={() => setEditingGroup({ passageId: passage.id, group })} onDelete={() => run(() => deleteQuestionGroup(group.id))} />
                 ))}
                 {editingGroup?.passageId === passage.id ? (
-                  <QuestionGroupEditor initial={editingGroup.group} nextQuestionNumber={nextNumber} passageBlocks={passage.blocks} onCancel={() => setEditingGroup(null)} onSave={(body) => run(() => editingGroup.group.id ? updateQuestionGroup(editingGroup.group.id, body) : createQuestionGroup(passage.id, body))} />
+                  <QuestionGroupEditor initial={editingGroup.group} nextQuestionNumber={nextNumber} passageBlocks={passage.blocks} passageNumber={passage.order_index + 1} onCancel={() => setEditingGroup(null)} onSave={(body) => run(() => editingGroup.group.id ? updateQuestionGroup(editingGroup.group.id, body) : createQuestionGroup(passage.id, body))} />
                 ) : (
                   <NewGroupButton nextNumber={nextNumber} orderIndex={nextGroupOrder} passageBlocks={passage.blocks} onCreate={(group) => setEditingGroup({ passageId: passage.id, group })} />
                 )}
@@ -208,13 +209,13 @@ function PassageEditor({ passage, orderIndex, onSave, onCancel }: { passage?: Bu
   );
 }
 
-function GroupSummary({ group, onMove, onEdit, onDelete }: { group: BuilderQuestionGroup; onMove: (offset: number) => void; onEdit: () => void; onDelete: () => void }) {
+function GroupSummary({ group, passageNumber, onMove, onEdit, onDelete }: { group: BuilderQuestionGroup; passageNumber: number; onMove: (offset: number) => void; onEdit: () => void; onDelete: () => void }) {
   const numbers = group.questions.map((item) => item.number);
   const range = numbers.length > 1 ? `Q${Math.min(...numbers)}–${Math.max(...numbers)}` : `Q${numbers[0] ?? "—"}`;
   return (
     <div className="question-group-card">
       <span className="question-range">{range}</span>
-      <div className="min-w-0 flex-1"><p>{questionRegistry[group.question_type].label}</p><span>{group.questions.length} question{group.questions.length === 1 ? "" : "s"} · {group.instruction}</span></div>
+      <div className="min-w-0 flex-1"><p>{questionRegistry[group.question_type].label}</p><span>{group.questions.length} question{group.questions.length === 1 ? "" : "s"} · {resolveQuestionGroupInstruction(group, { passageNumber }).intro}</span></div>
       <div className="group-actions"><button type="button" onClick={() => onMove(-1)} aria-label="Move question group up" className="icon-button">↑</button><button type="button" onClick={() => onMove(1)} aria-label="Move question group down" className="icon-button">↓</button><button onClick={onEdit} className="btn btn-secondary">Edit / Preview</button><button onClick={onDelete} className="btn btn-danger-ghost">Delete</button></div>
     </div>
   );

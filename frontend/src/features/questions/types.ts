@@ -32,6 +32,7 @@ export type QuestionType =
   | "multiple_choice"
   | "multiple_choice_multiple"
   | "true_false_not_given"
+  | "yes_no_not_given"
   | "text_completion"
   | "matching_headings"
   | "matching"

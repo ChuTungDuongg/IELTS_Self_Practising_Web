@@ -46,7 +46,14 @@ export function StructuredCompletionRenderer(props: RendererProps) {
 }
 
 export function TrueFalseNotGivenRenderer({ group, values, disabled, onAnswer }: RendererProps) {
-  const choices = ["TRUE", "FALSE", "NOT_GIVEN"];
+  return <AgreementRenderer group={group} values={values} disabled={disabled} onAnswer={onAnswer} choices={["TRUE", "FALSE", "NOT_GIVEN"]} />;
+}
+
+export function YesNoNotGivenRenderer({ group, values, disabled, onAnswer }: RendererProps) {
+  return <AgreementRenderer group={group} values={values} disabled={disabled} onAnswer={onAnswer} choices={["YES", "NO", "NOT_GIVEN"]} />;
+}
+
+function AgreementRenderer({ group, values, disabled, onAnswer, choices }: RendererProps & { choices: string[] }) {
   return <div className="space-y-5">{group.questions.map((question) => <fieldset key={question.id}><QuestionHeader question={question} /><div className="mt-2 flex flex-wrap gap-4">{choices.map((choice) => <label key={choice} className="flex items-center gap-2"><input type="radio" disabled={disabled} name={question.id} checked={values[question.id] === choice} onChange={() => onAnswer?.(question.id, choice)} />{choice.replace("_", " ")}</label>)}</div></fieldset>)}</div>;
 }
 

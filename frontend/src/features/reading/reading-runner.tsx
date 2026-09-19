@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { formatDuration, elapsedSeconds, estimateServerOffset, remainingSeconds } from "@/features/exam/timer";
 import { questionRegistry } from "@/features/questions/registry";
 import type { ExamGroup } from "@/features/questions/types";
+import { QuestionGroupInstruction } from "@/features/questions/question-group-instruction";
 import { snapToWordBoundaries } from "@/features/highlighting/word-boundaries";
 import { recordActivity, saveAnswer } from "@/lib/api/attempts";
 import { createHighlight, deleteHighlight, getExam, saveFlag, submitAttempt, type ExamPassage, type ExamPayload, type Highlight } from "@/lib/api/exam";
@@ -83,9 +84,9 @@ export function ReadingRunner({ initial }: { initial: ExamPayload }) {
     <header className="exam-header"><div><p>READING</p><h1>{initial.test_title}</h1></div><div className="exam-header-status"><span className={`exam-timer ${initial.attempt.timer_mode === "COUNTDOWN" && seconds < 300 ? "exam-timer-warning" : ""}`}>{initial.attempt.timer_mode === "COUNT_UP" ? "Time used " : ""}{formatDuration(seconds)}</span><span className={`exam-save-state exam-save-${saveState}`}>{saveState === "saving" ? "Saving…" : saveState === "error" ? "Save failed" : "Saved"}</span></div></header>
     <div className="grid min-h-0 flex-1 lg:grid-cols-2">
       <PassagePane passage={passage} highlights={highlights.filter((item) => item.passage_id === passage.id)} onCreate={addHighlight} onDelete={removeHighlight} />
-      <div className="exam-questions"><h2>Questions</h2>{passage.question_groups.map((group) => { const definition = questionRegistry[group.question_type as keyof typeof questionRegistry]; if (!definition) return null; const Renderer = definition.ExamRenderer; return <section key={group.id} className="exam-question-group"><p className="exam-instruction">{group.instruction}</p><Renderer group={group as ExamGroup} values={values} passageBlocks={passage.blocks} onAnswer={answer} /><div className="exam-flags">{group.questions.map((question) => <button key={question.id} onClick={() => toggleFlag(question.id)} className={flags[question.id] ? "flagged" : ""}>{flags[question.id] ? "⚑" : "⚐"} {question.number}</button>)}</div></section>; })}</div>
+      <div className="exam-questions"><h2>Questions</h2>{passage.question_groups.map((group) => { const definition = questionRegistry[group.question_type as keyof typeof questionRegistry]; if (!definition) return null; const Renderer = definition.ExamRenderer; return <section key={group.id} className="exam-question-group"><QuestionGroupInstruction group={group as ExamGroup} passageNumber={passage.order_index + 1} /><Renderer group={group as ExamGroup} values={values} passageBlocks={passage.blocks} onAnswer={answer} /><div className="exam-flags">{group.questions.map((question) => <button key={question.id} onClick={() => toggleFlag(question.id)} className={flags[question.id] ? "flagged" : ""}>{flags[question.id] ? "⚑" : "⚐"} {question.number}</button>)}</div></section>; })}</div>
     </div>
-    <footer className="exam-footer"><div>{initial.passages.map((item, index) => <button key={item.id} onClick={() => setPassageIndex(index)} className={index === passageIndex ? "active" : ""}>Passage {index + 1}</button>)}</div><button onClick={submit} className="exam-submit">Submit answers</button></footer>
+    <footer className="exam-footer"><div>{initial.passages.map((item, index) => <button key={item.id} onClick={() => setPassageIndex(index)} className={index === passageIndex ? "active" : ""}>Passage {item.order_index + 1}</button>)}</div><button onClick={submit} className="exam-submit">Submit answers</button></footer>
   </div>;
 }
 

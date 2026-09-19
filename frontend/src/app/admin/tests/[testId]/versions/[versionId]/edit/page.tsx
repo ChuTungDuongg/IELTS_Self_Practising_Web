@@ -5,15 +5,17 @@ import { VersionActions } from "@/features/test-builder/version-actions";
 import { BuilderLifecycleProvider } from "@/features/test-builder/builder-lifecycle";
 import { ReadingBuilder } from "@/features/test-builder/reading-builder";
 import { ListeningBuilder } from "@/features/test-builder/listening-builder";
+import { BuilderWorkspaceNavigation, type BuilderWorkspace } from "@/features/test-builder/builder-workspace-navigation";
 import { getBuilderVersion } from "@/lib/api/builder";
-import { BuilderIcon, ReadingIcon } from "@/components/ui/icons";
 import { ModuleBadge } from "@/components/ui/module-badge";
 import { ApiError } from "@/lib/api/client";
 
 export const dynamic = "force-dynamic";
 
-export default async function VersionEditorPage({ params }: { params: Promise<{ testId: string; versionId: string }> }) {
+export default async function VersionEditorPage({ params, searchParams }: { params: Promise<{ testId: string; versionId: string }>; searchParams?: Promise<{ workspace?: string | string[] }> }) {
   const { testId, versionId } = await params;
+  const requestedWorkspace = (await searchParams)?.workspace;
+  const workspace: BuilderWorkspace = typeof requestedWorkspace === "string" && ["overview", "reading", "listening"].includes(requestedWorkspace) ? requestedWorkspace as BuilderWorkspace : "overview";
   let version;
   try {
     version = await getBuilderVersion(versionId);
@@ -28,15 +30,9 @@ export default async function VersionEditorPage({ params }: { params: Promise<{ 
       <BuilderLifecycleProvider>
         <VersionActions testId={testId} versionId={versionId} status={version.status} />
         <div className="builder-workspace">
-          <aside className="builder-local-nav" aria-label="Builder sections">
-            <p>Test structure</p>
-            <a href="#overview"><BuilderIcon className="size-4" /> Overview</a>
-            <a href="#reading" className="builder-local-active"><ReadingIcon className="size-4" /> Reading</a>
-            <a href="#listening"><span className="module-listening-dot" /> Listening</a>
-            <span><span className="module-writing-dot" /> Writing <small>Not created</small></span>
-          </aside>
+          <BuilderWorkspaceNavigation testId={testId} versionId={versionId} workspace={workspace} />
           <div className="builder-canvas">
-            <section id="overview" className="builder-overview">
+            {workspace === "overview" ? <section className="builder-overview">
               <div className="section-header"><div><h2 className="section-title">Test overview</h2><p className="section-description">A quick view of the modules currently included in this version.</p></div></div>
               <div className="module-overview-grid">
                 {(["READING", "LISTENING", "WRITING"] as const).map((kind) => {
@@ -50,11 +46,11 @@ export default async function VersionEditorPage({ params }: { params: Promise<{ 
                   );
                 })}
               </div>
-            </section>
-            <div id="reading">
+            </section> : null}
+            {workspace === "reading" ? <div>
               {version.status === "DRAFT" ? <ReadingBuilder version={version} /> : <p className="notice mt-6">This published version is frozen. Clone it to create an editable draft.</p>}
-            </div>
-            {version.status === "DRAFT" ? <ListeningBuilder version={version} /> : null}
+            </div> : null}
+            {workspace === "listening" ? version.status === "DRAFT" ? <ListeningBuilder version={version} /> : <p className="notice mt-6">This published version is frozen. Clone it to create an editable draft.</p> : null}
           </div>
         </div>
       </BuilderLifecycleProvider>

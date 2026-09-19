@@ -54,7 +54,7 @@ class QuestionWrite(BaseModel):
 
 class QuestionGroupWrite(BaseModel):
     question_type: str = Field(min_length=1, max_length=80)
-    instruction: str = Field(min_length=1, max_length=4000)
+    instruction: str = Field(default="", max_length=4000)
     config: dict[str, Any] = Field(default_factory=dict)
     order_index: int = Field(ge=0)
     questions: list[QuestionWrite] = Field(min_length=1)
@@ -115,7 +115,7 @@ class ListeningPartWrite(BaseModel):
     order_index: int = Field(ge=0, le=3)
 
 
-class ListeningPartAudioWrite(BaseModel):
+class ListeningModuleAudioWrite(BaseModel):
     asset_id: UUID | None = None
 
 
@@ -123,7 +123,6 @@ class BuilderListeningPart(BaseModel):
     id: UUID
     title: str
     order_index: int
-    audio_asset: AssetResponse | None
     question_groups: list[BuilderQuestionGroup]
 
 
@@ -132,6 +131,7 @@ class BuilderModule(BaseModel):
     module_type: ModuleType
     title: str | None
     recommended_duration_seconds: int | None
+    audio_asset: AssetResponse | None = None
     passages: list[BuilderPassage]
     listening_parts: list[BuilderListeningPart]
 
@@ -176,7 +176,6 @@ class ExamListeningPart(BaseModel):
     id: UUID
     title: str
     order_index: int
-    audio_asset: AssetResponse | None
     question_groups: list[ExamQuestionGroup]
 
 
@@ -214,6 +213,7 @@ class AttemptExam(BaseModel):
     test_title: str
     passages: list[ExamPassage]
     highlights: list[HighlightResponse]
+    listening_audio_asset: AssetResponse | None = None
     listening_parts: list[ExamListeningPart] = Field(default_factory=list)
 
 
@@ -224,4 +224,5 @@ class ReadingReview(BaseModel):
 
 class ListeningReview(BaseModel):
     review: AttemptReview
+    audio_asset: AssetResponse | None = None
     parts: list[BuilderListeningPart]

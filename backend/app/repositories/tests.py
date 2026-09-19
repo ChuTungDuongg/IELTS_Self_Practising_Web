@@ -16,9 +16,7 @@ def version_detail_query() -> Select[tuple[TestVersion]]:
         .selectinload(ReadingPassage.question_groups)
         .selectinload(QuestionGroup.questions),
         selectinload(TestVersion.modules).selectinload(TestModule.listening_parts),
-        selectinload(TestVersion.modules)
-        .selectinload(TestModule.listening_parts)
-        .selectinload(ListeningPart.audio_asset),
+        selectinload(TestVersion.modules).selectinload(TestModule.audio_asset),
         selectinload(TestVersion.modules)
         .selectinload(TestModule.listening_parts)
         .selectinload(ListeningPart.question_groups)

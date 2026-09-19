@@ -6,8 +6,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_session
 from app.schemas.content import (
     BuilderListeningPart,
+    BuilderModule,
     BuilderQuestionGroup,
-    ListeningPartAudioWrite,
+    ListeningModuleAudioWrite,
     ListeningPartWrite,
     QuestionGroupWrite,
 )
@@ -46,13 +47,13 @@ async def delete_listening_part(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.put("/listening/parts/{part_id}/audio", response_model=BuilderListeningPart)
+@router.put("/listening/modules/{module_id}/audio", response_model=BuilderModule)
 async def attach_listening_audio(
-    part_id: UUID,
-    body: ListeningPartAudioWrite,
+    module_id: UUID,
+    body: ListeningModuleAudioWrite,
     session: AsyncSession = Depends(get_session),
-) -> BuilderListeningPart:
-    return await ListeningService(session).attach_audio(part_id, body)
+) -> BuilderModule:
+    return await ListeningService(session).attach_audio(module_id, body)
 
 
 @router.post(

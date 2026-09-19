@@ -2,11 +2,17 @@ from uuid import UUID, uuid4
 
 import httpx
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.main import app
 from app.models import AttemptAnswer, Question, QuestionGroup, ReadingPassage
-from app.schemas.content import HighlightCreate
+from app.models import Test as DomainTest
+from app.models import TestModule as DomainModule
+from app.models import TestVersion as DomainVersion
+from app.models.enums import ModuleType, VersionStatus
+from app.schemas.content import HighlightCreate, QuestionGroupWrite
 from app.services.attempts import AttemptService
+from app.services.reading import ReadingService
 
 
 @pytest.mark.asyncio
@@ -30,6 +36,7 @@ async def test_openapi_exposes_phase_one_routes() -> None:
     assert "/api/v1/attempts/{attempt_id}/answers/{question_id}" in paths
     assert "/api/v1/history" in paths
     assert "/api/v1/test-modules/{module_id}/question-groups/order" in paths
+    assert "/api/v1/listening/modules/{module_id}/audio" in paths
     exam_question = document["components"]["schemas"]["ExamQuestion"]
     assert "answer_key" not in exam_question["properties"]
 
@@ -131,3 +138,83 @@ def test_finalized_review_normalizes_legacy_heading_value_and_key() -> None:
     assert payload["answer_key"]["kind"] == "SINGLE_OPTION"
     assert payload["value"] != "ii"
     assert UUID(payload["value"])
+
+
+def test_yes_no_not_given_round_trips_canonical_values_without_active_key_leak() -> None:
+    group = QuestionGroup(
+        id=uuid4(),
+        question_type="yes_no_not_given",
+        instruction="",
+        config={},
+        order_index=0,
+    )
+    question = Question(
+        id=uuid4(),
+        number=1,
+        prompt="The writer supports the proposal.",
+        config={},
+        answer_key={"kind": "SINGLE_OPTION", "value": "NOT GIVEN"},
+        order_index=0,
+    )
+    group.questions.append(question)
+
+    active = AttemptService._present_exam_group(
+        group, {question.id: "not given"}, {question.id: False}, []
+    ).model_dump(mode="json")
+    assert active["questions"][0]["value"] == "NOT_GIVEN"
+    assert "answer_key" not in active["questions"][0]
+
+    answer = AttemptAnswer(
+        question_id=question.id,
+        question=question,
+        value="not given",
+        is_correct=True,
+    )
+    review = AttemptService._present_review_answer(answer).model_dump(mode="json")
+    assert review["value"] == "NOT_GIVEN"
+    assert review["answer_key"]["value"] == "NOT_GIVEN"
+
+
+@pytest.mark.integration
+async def test_yes_no_not_given_persists_and_reloads_through_builder_service(
+    db_session: AsyncSession,
+) -> None:
+    test = DomainTest(title="YNNG round trip")
+    version = DomainVersion(id=uuid4(), version_number=1, status=VersionStatus.DRAFT)
+    module = DomainModule(id=uuid4(), module_type=ModuleType.READING, order_index=0)
+    passage = ReadingPassage(
+        id=uuid4(),
+        title="Passage",
+        order_index=0,
+        content_json=[{"id": str(uuid4()), "type": "paragraph", "label": "A", "text": "Fictional text."}],
+        plain_text="Fictional text.",
+    )
+    test.versions.append(version)
+    version.modules.append(module)
+    module.passages.append(passage)
+    async with db_session.begin():
+        db_session.add(test)
+        await db_session.flush()
+
+    created = await ReadingService(db_session).create_group(
+        passage.id,
+        QuestionGroupWrite(
+            question_type="yes_no_not_given",
+            instruction="",
+            config={},
+            order_index=0,
+            questions=[{
+                "id": uuid4(), "number": 1, "prompt": "Claim", "config": {},
+                "answer_key": {"kind": "SINGLE_OPTION", "value": "NOT GIVEN"},
+                "order_index": 0,
+            }],
+        ),
+    )
+    await db_session.rollback()
+    reloaded = await ReadingService(db_session).builder_version(version.id)
+    reloaded_group = reloaded.modules[0].passages[0].question_groups[0]
+
+    assert created.question_type == "yes_no_not_given"
+    assert created.questions[0].answer_key["value"] == "NOT_GIVEN"
+    assert reloaded_group.question_type == "yes_no_not_given"
+    assert reloaded_group.questions[0].answer_key["value"] == "NOT_GIVEN"

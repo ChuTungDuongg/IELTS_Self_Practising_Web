@@ -314,6 +314,13 @@ input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--mute
 .exam-questions > h2 { margin: 0 0 22px; font-size: 20px; }
 .exam-question-group { margin-bottom: 32px; }
 .exam-instruction { margin: 0 0 18px; border-left: 3px solid #94a3b8; padding: 11px 13px; color: #334155; background: #f1f5f9; font-size: 13px; font-weight: 600; line-height: 1.55; }
+.question-group-instruction { margin: 0 0 18px; border-left: 3px solid #64748b; border-radius: 0 10px 10px 0; padding: 13px 15px; color: var(--text); background: var(--surface-soft); font-size: 13px; line-height: 1.55; }
+.question-group-instruction > p { margin: 0; font-weight: 650; }
+.question-group-instruction dl { display: grid; gap: 6px; margin-top: 10px; }
+.question-group-instruction dl > div { display: grid; grid-template-columns: minmax(5.5rem, auto) 1fr; gap: 12px; }
+.question-group-instruction dt { font-weight: 800; letter-spacing: .025em; }
+.question-group-instruction dd { margin: 0; color: var(--muted); }
+@media (max-width: 520px) { .question-group-instruction dl > div { grid-template-columns: 1fr; gap: 0; } }
 .exam-flags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 15px; }
 .exam-flags button { border: 1px solid #d5dae2; border-radius: 6px; padding: 4px 7px; color: #64748b; background: #fff; font-size: 10px; }
 .exam-flags button.flagged { border-color: #f59e0b; color: #92400e; background: #fef3c7; }

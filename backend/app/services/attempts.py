@@ -32,6 +32,7 @@ from app.models.enums import (
     AttemptStatus,
     EventType,
     FinishedReason,
+    ModuleType,
     VersionStatus,
 )
 from app.repositories.attempts import AttemptRepository
@@ -375,11 +376,6 @@ class AttemptService:
                         id=part.id,
                         title=part.title,
                         order_index=part.order_index,
-                        audio_asset=(
-                            AssetResponse.model_validate(part.audio_asset, from_attributes=True)
-                            if part.audio_asset
-                            else None
-                        ),
                         question_groups=[
                             self._present_exam_group(group, answer_values, flags, [])
                             for group in sorted(
@@ -396,6 +392,11 @@ class AttemptService:
                 HighlightResponse.model_validate(item, from_attributes=True)
                 for item in attempt.highlights
             ],
+            listening_audio_asset=(
+                AssetResponse.model_validate(module.audio_asset, from_attributes=True)
+                if module and module.module_type == ModuleType.LISTENING and module.audio_asset
+                else None
+            ),
             listening_parts=listening_parts,
         )
 
@@ -512,7 +513,15 @@ class AttemptService:
             if module
             else []
         )
-        return ListeningReview(review=review, parts=parts)
+        return ListeningReview(
+            review=review,
+            audio_asset=(
+                AssetResponse.model_validate(module.audio_asset, from_attributes=True)
+                if module and module.audio_asset
+                else None
+            ),
+            parts=parts,
+        )
 
     async def save_flag(
         self, attempt_id: uuid.UUID, question_id: uuid.UUID, flagged: bool

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { questionRegistry } from "@/features/questions/registry";
 import { MatchingHeadingsEditor, MultipleChoiceEditor } from "@/features/questions/editors";
 import { QuestionGroupEditor } from "@/features/test-builder/question-group-editor";
+import { QuestionGroupInstruction, resolveQuestionGroupInstruction } from "@/features/questions/question-group-instruction";
 import type { ExamGroup } from "@/features/questions/types";
 
 describe("question registry", () => {
@@ -24,6 +25,66 @@ describe("question registry", () => {
     render(<Renderer group={group} values={{}} onAnswer={onAnswer} />);
     fireEvent.click(screen.getByLabelText("FALSE"));
     expect(onAnswer).toHaveBeenCalledWith(group.questions[0].id, "FALSE");
+  });
+
+  it("registers YES / NO / NOT GIVEN as a distinct canonical type", () => {
+    const group = questionRegistry.yes_no_not_given.createDefault(4) as ExamGroup;
+    group.id = crypto.randomUUID();
+    group.questions[0].id = crypto.randomUUID();
+    const onAnswer = vi.fn();
+    const Renderer = questionRegistry.yes_no_not_given.ExamRenderer;
+    render(<Renderer group={group} values={{}} onAnswer={onAnswer} />);
+
+    fireEvent.click(screen.getByLabelText("NOT GIVEN"));
+
+    expect(group.question_type).toBe("yes_no_not_given");
+    expect(onAnswer).toHaveBeenCalledWith(group.questions[0].id, "NOT_GIVEN");
+  });
+
+  it("stores the visible NOT GIVEN editor choice as NOT_GIVEN", () => {
+    const group = questionRegistry.yes_no_not_given.createDefault(4);
+    const onChange = vi.fn();
+    const Editor = questionRegistry.yes_no_not_given.BuilderEditor;
+    render(<Editor group={group} onChange={onChange} />);
+
+    fireEvent.click(screen.getByLabelText("NOT GIVEN"));
+
+    expect(onChange.mock.calls.at(-1)?.[0].questions[0].answer_key.value).toBe("NOT_GIVEN");
+  });
+
+  it("uses different IELTS semantics for TFNG and YNNG", () => {
+    const tfng = questionRegistry.true_false_not_given.createDefault(1);
+    const ynng = questionRegistry.yes_no_not_given.createDefault(2);
+    tfng.instruction = "";
+    ynng.instruction = "";
+
+    const tfngInstruction = resolveQuestionGroupInstruction(tfng, { passageNumber: 3 });
+    const ynngInstruction = resolveQuestionGroupInstruction(ynng, { passageNumber: 3 });
+
+    expect(tfngInstruction.intro).toContain("information given in Reading Passage 3");
+    expect(ynngInstruction.intro).toContain("views/claims of the writer in Reading Passage 3");
+    expect(tfngInstruction.options?.map((option) => option.label)).toEqual(["TRUE", "FALSE", "NOT GIVEN"]);
+    expect(ynngInstruction.options?.map((option) => option.label)).toEqual(["YES", "NO", "NOT GIVEN"]);
+  });
+
+  it("lets a custom instruction override the registry fallback", () => {
+    const group = questionRegistry.true_false_not_given.createDefault(1);
+    group.instruction = "Use the tutor's custom direction.";
+    render(<QuestionGroupInstruction group={group} passageNumber={2} />);
+
+    expect(screen.getByText("Use the tutor's custom direction.")).toBeInTheDocument();
+    expect(screen.queryByText(/information given in Reading Passage 2/)).not.toBeInTheDocument();
+  });
+
+  it("generates word and number limits from the actual config", () => {
+    const group = questionRegistry.text_completion.createDefault(8);
+    group.instruction = "";
+    group.questions[0].config = { max_words: 3, max_numbers: 1 };
+
+    const instruction = resolveQuestionGroupInstruction(group, { passageNumber: 1 });
+
+    expect(instruction.intro).toContain("NO MORE THAN 3 WORDS");
+    expect(instruction.intro).toContain("1 NUMBER");
   });
 
   it("keeps heading identity stable while labels and order change", () => {

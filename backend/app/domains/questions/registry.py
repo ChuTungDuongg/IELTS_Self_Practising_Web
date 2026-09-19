@@ -186,6 +186,14 @@ class SingleOptionAnswerKey(BaseModel):
         return value
 
 
+class TrueFalseNotGivenAnswerKey(SingleOptionAnswerKey):
+    value: Literal["TRUE", "FALSE", "NOT_GIVEN"]
+
+
+class YesNoNotGivenAnswerKey(SingleOptionAnswerKey):
+    value: Literal["YES", "NO", "NOT_GIVEN"]
+
+
 class TextAnswerKey(BaseModel):
     kind: Literal["TEXT"] = "TEXT"
     accepted: list[str] = Field(min_length=1)
@@ -213,6 +221,14 @@ class MultipleOptionsAnswerKey(BaseModel):
 
 
 class StringResponse(RootModel[str]):
+    pass
+
+
+class TrueFalseNotGivenResponse(RootModel[Literal["TRUE", "FALSE", "NOT_GIVEN"]]):
+    pass
+
+
+class YesNoNotGivenResponse(RootModel[Literal["YES", "NO", "NOT_GIVEN"]]):
     pass
 
 
@@ -352,8 +368,18 @@ question_registry.register(
     RegisteredQuestionType(
         group_config_model=EmptyConfig,
         question_config_model=EmptyConfig,
-        response_model=StringResponse,
-        answer_key_model=SingleOptionAnswerKey,
+        response_model=TrueFalseNotGivenResponse,
+        answer_key_model=TrueFalseNotGivenAnswerKey,
+        evaluator=_choice_evaluator,
+    ),
+)
+question_registry.register(
+    "yes_no_not_given",
+    RegisteredQuestionType(
+        group_config_model=EmptyConfig,
+        question_config_model=EmptyConfig,
+        response_model=YesNoNotGivenResponse,
+        answer_key_model=YesNoNotGivenAnswerKey,
         evaluator=_choice_evaluator,
     ),
 )

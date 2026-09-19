@@ -179,9 +179,8 @@ class TestService:
         for asset in assets:
             replacement_version_id = await self.session.scalar(
                 select(TestModule.test_version_id)
-                .join(ListeningPart, ListeningPart.module_id == TestModule.id)
                 .where(
-                    ListeningPart.audio_asset_id == asset.id,
+                    TestModule.audio_asset_id == asset.id,
                     TestModule.test_version_id.not_in(excluded_version_ids),
                 )
                 .limit(1)
@@ -249,6 +248,7 @@ class TestService:
                 title=module.title,
                 recommended_duration_seconds=module.recommended_duration_seconds,
                 order_index=module.order_index,
+                audio_asset_id=module.audio_asset_id,
             )
             target.modules.append(new_module)
             passage_map: dict[uuid.UUID, ReadingPassage] = {}
@@ -266,7 +266,6 @@ class TestService:
                 cloned_part = ListeningPart(
                     title=part.title,
                     order_index=part.order_index,
-                    audio_asset_id=part.audio_asset_id,
                 )
                 new_module.listening_parts.append(cloned_part)
                 part_map[part.id] = cloned_part
@@ -339,14 +338,6 @@ class TestService:
                             message="Listening parts must use the canonical order 1 through 4.",
                         )
                     )
-                for part in module.listening_parts:
-                    if part.audio_asset is None:
-                        issues.append(
-                            ValidationIssue(
-                                path=f"listening.parts.{part.id}.audio",
-                                message="Attach an audio file before publishing.",
-                            )
-                        )
             else:
                 ordered_groups = sorted(module.question_groups, key=lambda item: item.order_index)
             question_numbers = [
@@ -569,6 +560,9 @@ class TestService:
         elif group.question_type == "true_false_not_given":
             if resolved_answer_key["value"] not in {"TRUE", "FALSE", "NOT_GIVEN"}:
                 raise ValueError("The answer key must be TRUE, FALSE, or NOT_GIVEN")
+        elif group.question_type == "yes_no_not_given":
+            if resolved_answer_key["value"] not in {"YES", "NO", "NOT_GIVEN"}:
+                raise ValueError("The answer key must be YES, NO, or NOT_GIVEN")
         elif group.question_type == "matching_headings":
             option_ids = {str(option["id"]) for option in resolved_group_config["options"]}
             if resolved_answer_key["value"] not in option_ids:

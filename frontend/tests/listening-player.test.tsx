@@ -3,13 +3,20 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ListeningAudioPlayer } from "@/features/listening/audio-player";
 import { listeningQuestionTypeOptions, questionRegistry } from "@/features/questions/registry";
 import { ListeningBuilder } from "@/features/test-builder/listening-builder";
+import { ListeningRunner } from "@/features/listening/listening-runner";
 import { BuilderLifecycleProvider } from "@/features/test-builder/builder-lifecycle";
 import type { BuilderVersion } from "@/lib/api/builder";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }) }));
+vi.mock("@/lib/api/attempts", () => ({ recordActivity: vi.fn(), saveAnswer: vi.fn() }));
+vi.mock("@/lib/api/exam", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/api/exam")>();
+  return { ...actual, getExam: vi.fn(), saveFlag: vi.fn(), submitAttempt: vi.fn() };
+});
 
 describe("Listening audio and templates", () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     Object.defineProperty(HTMLMediaElement.prototype, "play", { configurable: true, value: vi.fn().mockResolvedValue(undefined) });
     Object.defineProperty(HTMLMediaElement.prototype, "pause", { configurable: true, value: vi.fn() });
     Object.defineProperty(HTMLMediaElement.prototype, "load", { configurable: true, value: vi.fn() });
@@ -47,11 +54,31 @@ describe("Listening audio and templates", () => {
     expect(questionRegistry.map_labelling.createDefault(11).questions[0].number).toBe(11);
   });
 
-  it("navigates stable Part 1–4 records and shows each audio attachment", () => {
-    const version = { id: crypto.randomUUID(), test_id: crypto.randomUUID(), test_title: "Practice", version_number: 1, status: "DRAFT", modules: [{ id: crypto.randomUUID(), module_type: "LISTENING", title: "Listening", recommended_duration_seconds: 1800, passages: [], listening_parts: Array.from({ length: 4 }, (_, index) => ({ id: crypto.randomUUID(), title: `Part ${index + 1}`, order_index: index, audio_asset: { id: crypto.randomUUID(), original_name: `part-${index + 1}.mp3`, mime_type: "audio/mpeg", file_size: 1000, content_url: `/assets/${index}/content` }, question_groups: [] })) }] } as BuilderVersion;
+  it("opens all four stable sections with one optional shared audio", () => {
+    const version = { id: crypto.randomUUID(), test_id: crypto.randomUUID(), test_title: "Practice", version_number: 1, status: "DRAFT", modules: [{ id: crypto.randomUUID(), module_type: "LISTENING", title: "Listening", recommended_duration_seconds: 1800, audio_asset: null, passages: [], listening_parts: Array.from({ length: 4 }, (_, index) => ({ id: crypto.randomUUID(), title: `Section ${index + 1}`, order_index: index, question_groups: [] })) }] } as BuilderVersion;
     render(<BuilderLifecycleProvider><ListeningBuilder version={version} /></BuilderLifecycleProvider>);
-    expect(screen.getByRole("tab", { name: /Part 1/ })).toHaveAttribute("aria-selected", "true");
-    fireEvent.click(screen.getByRole("tab", { name: /Part 2/ }));
-    expect(screen.getByText("part-2.mp3")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /Section 1/ })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("No recording attached")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: /Section 2/ }));
+    expect(screen.getByText("No recording attached")).toBeInTheDocument();
+    expect(screen.getAllByText(/Shared Listening audio/)).toHaveLength(1);
+  });
+
+  it("mounts one shared player while navigating Listening sections", () => {
+    const audio = { id: crypto.randomUUID(), original_name: "shared.mp3", mime_type: "audio/mpeg", file_size: 1000, content_url: "/assets/shared/content" };
+    const initial = {
+      attempt: { attempt_id: crypto.randomUUID(), test_version_id: crypto.randomUUID(), module: "LISTENING", status: "IN_PROGRESS", finished_reason: null, timer_mode: "COUNT_UP", timer_limit_seconds: null, started_at: new Date().toISOString(), deadline_at: null, last_active_at: new Date().toISOString(), finished_at: null, elapsed_seconds: 0, remaining_seconds: null, raw_score: null, max_score: null, server_time: new Date().toISOString() },
+      test_title: "Practice",
+      passages: [], highlights: [], listening_audio_asset: audio,
+      listening_parts: Array.from({ length: 4 }, (_, index) => ({ id: crypto.randomUUID(), title: `Section ${index + 1}`, order_index: index, question_groups: [] })),
+    } as unknown as import("@/lib/api/exam").ExamPayload;
+    render(<ListeningRunner initial={initial} />);
+    expect(screen.getAllByLabelText("Listening audio player")).toHaveLength(1);
+    const loadsAfterMount = vi.mocked(HTMLMediaElement.prototype.load).mock.calls.length;
+
+    fireEvent.click(screen.getByRole("button", { name: "Section 2" }));
+
+    expect(screen.getAllByLabelText("Listening audio player")).toHaveLength(1);
+    expect(HTMLMediaElement.prototype.load).toHaveBeenCalledTimes(loadsAfterMount);
   });
 });

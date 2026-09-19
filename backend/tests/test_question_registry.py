@@ -195,3 +195,32 @@ def test_true_false_not_given_values(value: str) -> None:
         different,
         {},
     )
+
+
+@pytest.mark.parametrize("value", ["YES", "NO", "NOT_GIVEN"])
+def test_yes_no_not_given_is_distinct_and_uses_canonical_values(value: str) -> None:
+    assert question_registry.supports("yes_no_not_given")
+    assert question_registry.evaluate(
+        "yes_no_not_given",
+        {"kind": "SINGLE_OPTION", "value": value},
+        value,
+        {},
+    )
+    assert not question_registry.evaluate(
+        "yes_no_not_given",
+        {"kind": "SINGLE_OPTION", "value": value},
+        "YES" if value != "YES" else "NO",
+        {},
+    )
+
+
+def test_yes_no_not_given_normalizes_visible_not_given_value() -> None:
+    normalized = normalize_response_value(
+        question_type="yes_no_not_given",
+        value="not given",
+        raw_group_config={},
+        raw_question_config={},
+        normalized_group_config={},
+        normalized_question_config={},
+    )
+    assert normalized == "NOT_GIVEN"
