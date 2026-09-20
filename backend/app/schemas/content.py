@@ -126,6 +126,24 @@ class BuilderListeningPart(BaseModel):
     question_groups: list[BuilderQuestionGroup]
 
 
+class WritingTaskWrite(BaseModel):
+    prompt: str = Field(default="", max_length=20_000)
+    image_asset_id: UUID | None = None
+    minimum_recommended_words: int | None = Field(default=None, ge=1, le=5000)
+    recommended_duration_seconds: int | None = Field(default=None, ge=1, le=14_400)
+
+
+class BuilderWritingTask(BaseModel):
+    id: UUID
+    task_number: int
+    prompt: str
+    image_asset_id: UUID | None = None
+    image_asset: AssetResponse | None = None
+    minimum_recommended_words: int | None
+    recommended_duration_seconds: int | None
+    order_index: int
+
+
 class BuilderModule(BaseModel):
     id: UUID
     module_type: ModuleType
@@ -134,6 +152,7 @@ class BuilderModule(BaseModel):
     audio_asset: AssetResponse | None = None
     passages: list[BuilderPassage]
     listening_parts: list[BuilderListeningPart]
+    writing_tasks: list[BuilderWritingTask] = Field(default_factory=list)
 
 
 class BuilderVersion(BaseModel):

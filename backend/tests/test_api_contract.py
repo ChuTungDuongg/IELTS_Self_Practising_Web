@@ -38,6 +38,7 @@ async def test_openapi_exposes_phase_one_routes() -> None:
     assert "/api/v1/history" in paths
     assert "/api/v1/test-modules/{module_id}/question-groups/order" in paths
     assert "/api/v1/listening/modules/{module_id}/audio" in paths
+    assert "/api/v1/writing/tasks/{task_id}" in paths
     exam_question = document["components"]["schemas"]["ExamQuestion"]
     assert "answer_key" not in exam_question["properties"]
 
@@ -187,7 +188,9 @@ async def test_yes_no_not_given_persists_and_reloads_through_builder_service(
         id=uuid4(),
         title="Passage",
         order_index=0,
-        content_json=[{"id": str(uuid4()), "type": "paragraph", "label": "A", "text": "Fictional text."}],
+        content_json=[
+            {"id": str(uuid4()), "type": "paragraph", "label": "A", "text": "Fictional text."}
+        ],
         plain_text="Fictional text.",
     )
     test.versions.append(version)
@@ -204,11 +207,16 @@ async def test_yes_no_not_given_persists_and_reloads_through_builder_service(
             instruction="",
             config={},
             order_index=0,
-            questions=[{
-                "id": uuid4(), "number": 1, "prompt": "Claim", "config": {},
-                "answer_key": {"kind": "SINGLE_OPTION", "value": "NOT GIVEN"},
-                "order_index": 0,
-            }],
+            questions=[
+                {
+                    "id": uuid4(),
+                    "number": 1,
+                    "prompt": "Claim",
+                    "config": {},
+                    "answer_key": {"kind": "SINGLE_OPTION", "value": "NOT GIVEN"},
+                    "order_index": 0,
+                }
+            ],
         ),
     )
     version_id = version.id

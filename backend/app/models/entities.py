@@ -163,6 +163,7 @@ class WritingTask(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     order_index: Mapped[int] = mapped_column(Integer, nullable=False)
 
     module: Mapped[TestModule] = relationship(back_populates="writing_tasks")
+    image_asset: Mapped[Asset | None] = relationship(foreign_keys=[image_asset_id])
 
 
 class QuestionGroup(UUIDPrimaryKeyMixin, TimestampMixin, Base):

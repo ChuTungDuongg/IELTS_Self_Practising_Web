@@ -18,6 +18,7 @@ from app.models import (
     ReadingPassage,
     TestModule,
     TestVersion,
+    WritingTask,
 )
 from app.models.enums import ModuleType, VersionStatus
 from app.repositories.tests import TestRepository
@@ -29,6 +30,7 @@ from app.schemas.content import (
     BuilderQuestion,
     BuilderQuestionGroup,
     BuilderVersion,
+    BuilderWritingTask,
     ModuleCreate,
     PassageWrite,
     QuestionGroupOrderWrite,
@@ -59,6 +61,25 @@ class ReadingService:
                 order_index=len(version.modules),
             )
             version.modules.append(module)
+            if body.module_type == ModuleType.WRITING:
+                module.writing_tasks.extend(
+                    [
+                        WritingTask(
+                            task_number=1,
+                            prompt="",
+                            minimum_recommended_words=150,
+                            recommended_duration_seconds=1200,
+                            order_index=0,
+                        ),
+                        WritingTask(
+                            task_number=2,
+                            prompt="",
+                            minimum_recommended_words=250,
+                            recommended_duration_seconds=2400,
+                            order_index=1,
+                        ),
+                    ]
+                )
             await self.session.flush()
             module_id = module.id
         version = await TestRepository(self.session).get_version(version_id)
@@ -127,9 +148,7 @@ class ReadingService:
             # QuestionGroup.order_index is module-global. New Builder groups are
             # appended safely, then canonicalized into passage presentation order.
             await self.session.scalar(
-                select(TestModule.id)
-                .where(TestModule.id == passage.module_id)
-                .with_for_update()
+                select(TestModule.id).where(TestModule.id == passage.module_id).with_for_update()
             )
             highest_group_order = await self.session.scalar(
                 select(func.max(QuestionGroup.order_index)).where(
@@ -541,9 +560,29 @@ class ReadingService:
                     listening_parts=[
                         cls._present_listening_part(item) for item in module.listening_parts
                     ],
+                    writing_tasks=[
+                        cls._present_writing_task(item) for item in module.writing_tasks
+                    ],
                 )
                 for module in version.modules
             ],
+        )
+
+    @staticmethod
+    def _present_writing_task(task: WritingTask) -> BuilderWritingTask:
+        return BuilderWritingTask(
+            id=task.id,
+            task_number=task.task_number,
+            prompt=task.prompt,
+            image_asset_id=task.image_asset_id,
+            image_asset=(
+                AssetResponse.model_validate(task.image_asset, from_attributes=True)
+                if task.image_asset
+                else None
+            ),
+            minimum_recommended_words=task.minimum_recommended_words,
+            recommended_duration_seconds=task.recommended_duration_seconds,
+            order_index=task.order_index,
         )
 
     @classmethod

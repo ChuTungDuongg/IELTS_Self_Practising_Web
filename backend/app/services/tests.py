@@ -538,6 +538,98 @@ class TestService:
                         message="IELTS readiness: Listening has no audio attached.",
                     )
                 )
+            if module.module_type == ModuleType.WRITING:
+                task_numbers = [task.task_number for task in module.writing_tasks]
+                task_orders = [task.order_index for task in module.writing_tasks]
+                if len(module.writing_tasks) != 2:
+                    warnings.append(
+                        ValidationIssue(
+                            path="writing.tasks",
+                            message=(
+                                "IELTS readiness: Writing contains "
+                                f"{len(module.writing_tasks)} / 2 tasks."
+                            ),
+                        )
+                    )
+                if len(task_numbers) != len(set(task_numbers)):
+                    issues.append(
+                        ValidationIssue(
+                            path="writing.tasks",
+                            message="Writing task numbers must be unique.",
+                        )
+                    )
+                if len(task_orders) != len(set(task_orders)):
+                    issues.append(
+                        ValidationIssue(
+                            path="writing.tasks",
+                            message="Writing task order indexes must be unique.",
+                        )
+                    )
+                expected_settings = {
+                    (1, 0): (150, 1200),
+                    (2, 1): (250, 2400),
+                }
+                for task in module.writing_tasks:
+                    task_path = f"writing.tasks.{task.task_number}"
+                    identity = (task.task_number, task.order_index)
+                    if identity not in expected_settings:
+                        issues.append(
+                            ValidationIssue(
+                                path=task_path,
+                                message=(
+                                    "Writing tasks must use fixed identities: "
+                                    "Task 1 at order 0 and Task 2 at order 1."
+                                ),
+                            )
+                        )
+                    if task.module is not module and task.module_id != module.id:
+                        issues.append(
+                            ValidationIssue(
+                                path=task_path,
+                                message="The Writing task must belong to its containing module.",
+                            )
+                        )
+                    has_image = task.image_asset_id is not None or task.image_asset is not None
+                    if task.task_number == 2 and has_image:
+                        issues.append(
+                            ValidationIssue(
+                                path=f"{task_path}.image",
+                                message="Writing Task 2 cannot have an image attachment.",
+                            )
+                        )
+                    elif task.task_number == 1 and has_image:
+                        if (
+                            task.image_asset is None
+                            or task.image_asset.asset_type != AssetType.WRITING_TASK_IMAGE
+                            or task.image_asset.mime_type not in LocalAssetStorage.IMAGE_TYPES
+                        ):
+                            issues.append(
+                                ValidationIssue(
+                                    path=f"{task_path}.image",
+                                    message="Writing Task 1 has an invalid image attachment.",
+                                )
+                            )
+                    if not task.prompt.strip():
+                        warnings.append(
+                            ValidationIssue(
+                                path=f"{task_path}.prompt",
+                                message=f"Writing Task {task.task_number} has no prompt yet.",
+                            )
+                        )
+                    expected = expected_settings.get(identity)
+                    if expected and (
+                        task.minimum_recommended_words != expected[0]
+                        or task.recommended_duration_seconds != expected[1]
+                    ):
+                        warnings.append(
+                            ValidationIssue(
+                                path=f"{task_path}.recommendations",
+                                message=(
+                                    f"IELTS readiness: Writing Task {task.task_number} uses "
+                                    "nonstandard word or time guidance."
+                                ),
+                            )
+                        )
             for passage in module.passages:
                 try:
                     raw_blocks = normalize_passage_blocks(passage.content_json, passage.id)
@@ -584,8 +676,7 @@ class TestService:
                     for passage_group in passage.question_groups
                 )
                 reading_ids_match = (
-                    group.passage_id in available_passage_ids
-                    and group.module_id == module.id
+                    group.passage_id in available_passage_ids and group.module_id == module.id
                 )
                 if module.module_type == ModuleType.READING and not (
                     reading_relationship_matches or reading_ids_match
@@ -603,8 +694,7 @@ class TestService:
                     for part_group in part.question_groups
                 )
                 listening_ids_match = (
-                    group.listening_part_id in available_part_ids
-                    and group.module_id == module.id
+                    group.listening_part_id in available_part_ids and group.module_id == module.id
                 )
                 if module.module_type == ModuleType.LISTENING and not (
                     listening_relationship_matches or listening_ids_match
@@ -717,8 +807,9 @@ class TestService:
             elif module.module_type == ModuleType.LISTENING:
                 if module.listening_parts and question_numbers:
                     usable_modules += 1
-            elif module.writing_tasks:
-                usable_modules += 1
+            elif module.module_type == ModuleType.WRITING:
+                if any(task.prompt.strip() for task in module.writing_tasks):
+                    usable_modules += 1
         if version.modules and usable_modules == 0:
             issues.append(
                 ValidationIssue(
