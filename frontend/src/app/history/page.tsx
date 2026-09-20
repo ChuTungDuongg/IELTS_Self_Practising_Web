@@ -5,12 +5,12 @@ import { getHistory } from "@/lib/api/history";
 export const dynamic = "force-dynamic";
 
 export default async function HistoryPage() {
-  const history = await getHistory().catch(() => ({ items: [], total: 0 }));
+  const history = await getHistory().catch(() => ({ items: [], groups: [], total: 0 }));
   return (
     <>
       <PageHeading eyebrow="Practice record" title="Attempt history" description="Every attempt remains attached to its exact frozen test version." />
       <div className="history-surface">
-        <AttemptHistoryList initialItems={history.items} />
+        <AttemptHistoryList initialHistory={history} />
       </div>
     </>
   );

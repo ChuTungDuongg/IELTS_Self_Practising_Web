@@ -11,14 +11,18 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { formatDuration } from "@/features/exam/timer";
 import { deleteAttempt } from "@/lib/api/attempts";
 import { ApiError } from "@/lib/api/client";
-import type { HistoryItem } from "@/lib/api/history";
+import type { HistoryGroup, HistoryItem, HistoryResponse } from "@/lib/api/history";
 
-export function AttemptHistoryList({ initialItems }: { initialItems: HistoryItem[] }) {
+type HistoryMode = "skill" | "test";
+
+export function AttemptHistoryList({ initialHistory }: { initialHistory: HistoryResponse }) {
   const router = useRouter();
-  const [items, setItems] = useState(initialItems);
+  const [mode, setMode] = useState<HistoryMode>("skill");
+  const [deletedAttemptIds, setDeletedAttemptIds] = useState<Set<string>>(() => new Set());
   const [selected, setSelected] = useState<HistoryItem | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string>();
+  const items = initialHistory.items.filter((item) => !deletedAttemptIds.has(item.attempt_id));
 
   function chooseAttempt(item: HistoryItem) {
     setSelected(item);
@@ -37,7 +41,7 @@ export function AttemptHistoryList({ initialItems }: { initialItems: HistoryItem
     setError(undefined);
     try {
       await deleteAttempt(selected.attempt_id);
-      setItems((current) => current.filter((item) => item.attempt_id !== selected.attempt_id));
+      setDeletedAttemptIds((current) => new Set(current).add(selected.attempt_id));
       setSelected(null);
       router.refresh();
     } catch (caught) {
@@ -52,36 +56,62 @@ export function AttemptHistoryList({ initialItems }: { initialItems: HistoryItem
   return (
     <>
       {items.length ? (
-        <ul className="history-list">
-          {items.map((item) => (
-            <li
-              key={item.attempt_id}
-              className="history-row"
+        <>
+          <div className="history-tabs" role="tablist" aria-label="History view">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mode === "skill"}
+              aria-controls="history-by-skill"
+              className={mode === "skill" ? "btn btn-primary" : "btn btn-secondary"}
+              onClick={() => setMode("skill")}
             >
-              <div className="history-record">
-                <div className="history-record-topline"><ModuleBadge module={item.module} /><span>Version {item.version_number}</span></div>
-                <p className="history-record-title">{item.test_title}</p>
-                <p className="history-record-date">Started {new Date(item.started_at).toLocaleString()}</p>
-              </div>
-              <div className="history-state">
-                <StatusBadge status={item.status} />
-                <span className="history-duration">
-                  {item.elapsed_seconds === null ? "Time in progress" : formatDuration(item.elapsed_seconds)}
-                </span>
-              </div>
-              <div className="history-actions">
-                {item.status !== "IN_PROGRESS" ? (
-                  <Link href={`/review/${item.attempt_id}`} className="btn btn-primary">Review</Link>
-                ) : (
-                  <Link href={`/attempt/${item.attempt_id}`} className="btn btn-primary">Continue</Link>
-                )}
-                <button type="button" disabled={pending} aria-label={`Delete ${item.test_title}`} onClick={() => chooseAttempt(item)} className="btn btn-danger-ghost">Delete</button>
-              </div>
-            </li>
-          ))}
-        </ul>
+              By skill
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mode === "test"}
+              aria-controls="history-by-test"
+              className={mode === "test" ? "btn btn-primary" : "btn btn-secondary"}
+              onClick={() => setMode("test")}
+            >
+              By test
+            </button>
+          </div>
+
+          {mode === "skill" ? (
+            <div id="history-by-skill" role="tabpanel">
+              <ul className="history-list">
+                {items.map((item) => (
+                  <HistoryRow key={item.attempt_id} item={item} pending={pending} onDelete={chooseAttempt} />
+                ))}
+              </ul>
+            </div>
+          ) : (
+            <div id="history-by-test" role="tabpanel">
+              {initialHistory.groups.length ? (
+                <ul className="history-group-grid">
+                  {initialHistory.groups.map((group) => (
+                    <HistoryGroupCard key={group.test_version_id} group={group} />
+                  ))}
+                </ul>
+              ) : (
+                <EmptyState
+                  icon={<HistoryIcon className="size-6" />}
+                  title="No finalized test groups yet"
+                  description="Finalize an attempt to see its exact test-version group here."
+                />
+              )}
+            </div>
+          )}
+        </>
       ) : (
-        <EmptyState icon={<HistoryIcon className="size-6" />} title="No practice attempts yet" description="Start a published Reading or Listening test and your saved progress will appear here." />
+        <EmptyState
+          icon={<HistoryIcon className="size-6" />}
+          title="No practice attempts yet"
+          description="Start a published Reading, Listening or Writing test and your saved progress will appear here."
+        />
       )}
 
       <ConfirmDialog
@@ -95,5 +125,121 @@ export function AttemptHistoryList({ initialItems }: { initialItems: HistoryItem
         onConfirm={() => void confirmDelete()}
       />
     </>
+  );
+}
+
+function HistoryRow({
+  item,
+  pending,
+  onDelete,
+}: {
+  item: HistoryItem;
+  pending: boolean;
+  onDelete: (item: HistoryItem) => void;
+}) {
+  return (
+    <li className="history-row">
+      <div className="history-record">
+        <div className="history-record-topline">
+          <ModuleBadge module={item.module} />
+          <span>Version {item.version_number}</span>
+        </div>
+        <p className="history-record-title">{item.test_title}</p>
+        <p className="history-record-date">Started {new Date(item.started_at).toLocaleString()}</p>
+      </div>
+      <div className="history-state">
+        <StatusBadge status={item.status} />
+        <span className="history-duration">
+          {item.elapsed_seconds === null ? "Time in progress" : formatDuration(item.elapsed_seconds)}
+        </span>
+        <AttemptScore item={item} />
+      </div>
+      <div className="history-actions">
+        {item.status !== "IN_PROGRESS" ? (
+          <Link href={`/review/${item.attempt_id}`} className="btn btn-primary">
+            Review
+          </Link>
+        ) : (
+          <Link href={`/attempt/${item.attempt_id}`} className="btn btn-primary">
+            Continue
+          </Link>
+        )}
+        <button
+          type="button"
+          disabled={pending}
+          aria-label={`Delete ${item.test_title}`}
+          onClick={() => onDelete(item)}
+          className="btn btn-danger-ghost"
+        >
+          Delete
+        </button>
+      </div>
+    </li>
+  );
+}
+
+function AttemptScore({ item }: { item: HistoryItem }) {
+  if (item.status === "IN_PROGRESS") {
+    return <span className="history-score">In progress</span>;
+  }
+  if (item.module === "WRITING") {
+    return (
+      <span className="history-score">
+        {item.band_score === null ? "Not graded" : `Band ${item.band_score.toFixed(1)}`}
+      </span>
+    );
+  }
+
+  return (
+    <span className="history-score">
+      <span>
+        {item.raw_score === null || item.max_score === null
+          ? "Raw score unavailable"
+          : `Raw ${item.raw_score} / ${item.max_score}`}
+      </span>
+      <span aria-hidden="true"> · </span>
+      <span>
+        {item.band_score === null ? "Official band unavailable" : `Band ${item.band_score.toFixed(1)}`}
+      </span>
+    </span>
+  );
+}
+
+function HistoryGroupCard({ group }: { group: HistoryGroup }) {
+  return (
+    <li className="history-group-card">
+      <div className="history-group-heading">
+        <div>
+          <p className="history-record-title">{group.test_title}</p>
+          <p className="history-record-date">Version {group.version_number}</p>
+        </div>
+        <strong>
+          {group.overall_band_score === null
+            ? "Overall band —"
+            : `Overall band ${group.overall_band_score.toFixed(1)}`}
+        </strong>
+      </div>
+      <ul className="history-group-skills">
+        <HistoryGroupSkill label="Reading" item={group.reading} />
+        <HistoryGroupSkill label="Listening" item={group.listening} />
+        <HistoryGroupSkill label="Writing" item={group.writing} />
+      </ul>
+    </li>
+  );
+}
+
+function HistoryGroupSkill({ label, item }: { label: string; item: HistoryItem | null }) {
+  return (
+    <li className="history-group-skill">
+      <span>{label}</span>
+      <span>{item?.band_score === null || !item ? "—" : item.band_score.toFixed(1)}</span>
+      {item ? (
+        <Link href={`/review/${item.attempt_id}`} className="btn btn-secondary">
+          Review {label}
+        </Link>
+      ) : (
+        <span>No finalized attempt</span>
+      )}
+    </li>
   );
 }
