@@ -46,6 +46,13 @@ describe("fantasy galaxy visual system", () => {
     expect(css).toMatch(/\.btn-danger\s*\{[^}]*color:\s*var\(--danger-contrast\)/);
   });
 
+  it("styles the reusable planet brand mark without raster dependencies", () => {
+    expect(css).toContain(".app-logo");
+    expect(css).toMatch(/\.brand-mark\s*\{[^}]*width:\s*42px[^}]*height:\s*42px/);
+    expect(css).toMatch(/\.brand-mark \.app-logo\s*\{[^}]*drop-shadow/);
+    expect(css).toMatch(/@media \(max-width:\s*560px\)[\s\S]*?\.brand-mark\s*\{[^}]*width:\s*36px[^}]*height:\s*36px/);
+  });
+
   it("uses quiet semantic review states and shared raised overlay surfaces", () => {
     expect(css).toMatch(/\.review-answer-correct\s*\{[^}]*background:\s*var\(--success-soft\)/);
     expect(css).toMatch(/\.review-answer-wrong\s*\{[^}]*background:\s*var\(--danger-soft\)/);

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { AppLogo } from "./app-logo";
 import { BuilderIcon, HistoryIcon, HomeIcon, LibraryIcon } from "./icons";
 import { ThemeToggle } from "./theme-toggle";
 
@@ -29,7 +30,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <div className="app-shell">
       <header className="app-header">
         <Link href="/" className="brand" aria-label="IELTS Studio overview">
-          <span className="brand-mark" aria-hidden="true">IS</span>
+          <span className="brand-mark" aria-hidden="true"><AppLogo variant="primary" /></span>
           <span>
             <strong>IELTS Studio</strong>
             <small>Practice & authoring</small>
