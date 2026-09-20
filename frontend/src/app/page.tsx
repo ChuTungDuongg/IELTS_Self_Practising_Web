@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { InteractivePlanet } from "@/components/home/interactive-planet";
 import { ArrowIcon, BuilderIcon, HeadphonesIcon, HistoryIcon, LibraryIcon, ReadingIcon, SparkleIcon } from "@/components/ui/icons";
 import { getHistory } from "@/lib/api/history";
 import { getTests } from "@/lib/api/tests";
@@ -31,13 +32,7 @@ export default async function DashboardPage() {
             <Link href="/admin/tests" className="btn btn-secondary"><BuilderIcon className="size-4" /> Open Builder</Link>
           </div>
         </div>
-        <div className="home-orbit" aria-hidden="true">
-          <span className="home-orbit-core"><SparkleIcon /></span>
-          <span className="home-orbit-ring home-orbit-ring-one" />
-          <span className="home-orbit-ring home-orbit-ring-two" />
-          <span className="home-orbit-star home-orbit-star-one" />
-          <span className="home-orbit-star home-orbit-star-two" />
-        </div>
+        <InteractivePlanet />
       </section>
 
       <section className="home-metrics" aria-label="Workspace summary">
