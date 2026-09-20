@@ -36,6 +36,7 @@ function builderVersion(status: "DRAFT" | "PUBLISHED" | "ARCHIVED"): BuilderVers
       recommended_duration_seconds: 3600,
       audio_asset: null,
       listening_parts: [],
+      writing_tasks: [],
       passages: [{
         id: "55555555-5555-4555-8555-555555555555",
         title: "Urban foxes",

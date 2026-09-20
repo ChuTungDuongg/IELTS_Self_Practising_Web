@@ -43,6 +43,16 @@ const listeningPartSchema = z.object({
   id: z.string().uuid(), title: z.string().nullable(), order_index: z.number().int(),
   question_groups: z.array(groupSchema),
 });
+const builderWritingTaskSchema = z.object({
+  id: z.string().uuid(),
+  task_number: z.number().int(),
+  prompt: z.string(),
+  image_asset_id: z.string().uuid().nullable().default(null),
+  image_asset: assetSchema.nullable().default(null),
+  minimum_recommended_words: z.number().int().nullable(),
+  recommended_duration_seconds: z.number().int().nullable(),
+  order_index: z.number().int(),
+});
 
 const builderVersionSchema = z.object({
   id: z.string().uuid(),
@@ -59,6 +69,7 @@ const builderVersionSchema = z.object({
       audio_asset: assetSchema.nullable().default(null),
       passages: z.array(passageSchema).default([]),
       listening_parts: z.array(listeningPartSchema).default([]),
+      writing_tasks: z.array(builderWritingTaskSchema).default([]),
     }),
   ),
 });
@@ -67,6 +78,7 @@ export type BuilderVersion = z.infer<typeof builderVersionSchema>;
 export type BuilderPassage = z.infer<typeof passageSchema>;
 export type BuilderQuestionGroup = z.infer<typeof groupSchema>;
 export type BuilderListeningPart = z.infer<typeof listeningPartSchema>;
+export type BuilderWritingTask = z.infer<typeof builderWritingTaskSchema>;
 export type TextBlock = z.infer<typeof blockSchema>;
 
 export function parseBuilderVersion(value: unknown): BuilderVersion {
@@ -92,6 +104,31 @@ export function createReadingModule(versionId: string) {
 
 export function createListeningModule(versionId: string) {
   return apiRequest(`/test-versions/${versionId}/modules`, { method: "POST", body: JSON.stringify({ module_type: "LISTENING", title: "Listening", recommended_duration_seconds: 1800 }) });
+}
+
+export function createWritingModule(versionId: string) {
+  return apiRequest(`/test-versions/${versionId}/modules`, {
+    method: "POST",
+    body: JSON.stringify({
+      module_type: "WRITING",
+      title: "Writing",
+      recommended_duration_seconds: 3600,
+    }),
+  });
+}
+
+export type WritingTaskUpdate = {
+  prompt: string;
+  image_asset_id: string | null;
+  minimum_recommended_words: number | null;
+  recommended_duration_seconds: number | null;
+};
+
+export function updateWritingTask(taskId: string, body: WritingTaskUpdate) {
+  return apiRequest<BuilderWritingTask>(`/writing/tasks/${taskId}`, {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
 }
 
 export function deleteModule(moduleId: string) {

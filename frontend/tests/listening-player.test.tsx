@@ -56,7 +56,7 @@ describe("Listening audio and templates", () => {
   });
 
   it("opens all four stable sections with one optional shared audio", () => {
-    const version = { id: crypto.randomUUID(), test_id: crypto.randomUUID(), test_title: "Practice", version_number: 1, status: "DRAFT", modules: [{ id: crypto.randomUUID(), module_type: "LISTENING", title: "Listening", recommended_duration_seconds: 1800, audio_asset: null, passages: [], listening_parts: Array.from({ length: 4 }, (_, index) => ({ id: crypto.randomUUID(), title: `Section ${index + 1}`, order_index: index, question_groups: [] })) }] } as BuilderVersion;
+    const version = { id: crypto.randomUUID(), test_id: crypto.randomUUID(), test_title: "Practice", version_number: 1, status: "DRAFT", modules: [{ id: crypto.randomUUID(), module_type: "LISTENING", title: "Listening", recommended_duration_seconds: 1800, audio_asset: null, passages: [], listening_parts: Array.from({ length: 4 }, (_, index) => ({ id: crypto.randomUUID(), title: `Section ${index + 1}`, order_index: index, question_groups: [] })), writing_tasks: [] }] } as BuilderVersion;
     render(<BuilderLifecycleProvider><ListeningBuilder version={version} /></BuilderLifecycleProvider>);
     expect(screen.getByRole("tab", { name: /Section 1/ })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByText("No recording attached")).toBeInTheDocument();

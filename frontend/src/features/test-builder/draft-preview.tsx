@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { QuestionGroupInstruction } from "@/features/questions/question-group-instruction";
 import { questionRegistry } from "@/features/questions/registry";
@@ -10,12 +11,30 @@ import { assetContentUrl } from "@/lib/api/assets";
 import type { BuilderListeningPart, BuilderPassage, BuilderVersion } from "@/lib/api/builder";
 import { builderEditPath } from "@/lib/routes";
 
-export function DraftPreview({ version, moduleType }: { version: BuilderVersion; moduleType: "READING" | "LISTENING" }) {
+export function DraftPreview({ version, moduleType }: { version: BuilderVersion; moduleType: "READING" | "LISTENING" | "WRITING" }) {
   const builderModule = version.modules.find((item) => item.module_type === moduleType);
-  const sections: Array<BuilderPassage | BuilderListeningPart> = moduleType === "READING" ? builderModule?.passages ?? [] : builderModule?.listening_parts ?? [];
+  const sections: Array<BuilderPassage | BuilderListeningPart> = moduleType === "READING" ? builderModule?.passages ?? [] : moduleType === "LISTENING" ? builderModule?.listening_parts ?? [] : [];
   const [sectionIndex, setSectionIndex] = useState(0);
   const [values, setValues] = useState<Record<string, unknown>>({});
   const section = sections[sectionIndex];
+  if (moduleType === "WRITING") {
+    const tasks = [...(builderModule?.writing_tasks ?? [])].sort((a, b) => a.order_index - b.order_index);
+    if (!builderModule || !tasks.length) return <p className="notice notice-error">This draft module has no previewable content yet.</p>;
+    return <div className="exam-runner draft-preview writing-exam">
+      <header className="exam-header"><div><p>DRAFT PREVIEW · WRITING</p><h1>{version.test_title}</h1></div><Link className="btn btn-secondary" href={`${builderEditPath(version.test_id, version.id)}?workspace=writing`}>Back to Builder</Link></header>
+      <main className="writing-preview-layout">
+        {tasks.map((task) => <article key={task.id} className="writing-preview-task">
+          <p className="page-eyebrow">Writing Task {task.task_number}</p>
+          <h2>Task {task.task_number}</h2>
+          <p>{task.prompt || "No prompt has been added yet."}</p>
+          {task.image_asset ? <Image unoptimized width={720} height={420} src={assetContentUrl(task.image_asset)} alt={`Writing Task ${task.task_number} reference`} /> : null}
+          <div className="writing-preview-guidance"><span>{task.minimum_recommended_words ?? "—"} words</span><span>{task.recommended_duration_seconds ? Math.round(task.recommended_duration_seconds / 60) : "—"} minutes</span></div>
+          <div className="writing-preview-response" aria-label={`Writing Task ${task.task_number} response preview`}>Candidate response area</div>
+        </article>)}
+      </main>
+      <footer className="exam-footer"><span className="exam-preview-note">Responses in preview are not saved.</span></footer>
+    </div>;
+  }
   if (!builderModule || !section) return <p className="notice notice-error">This draft module has no previewable content yet.</p>;
   const passage = moduleType === "READING" ? section as BuilderPassage : null;
   const groups = section.question_groups;

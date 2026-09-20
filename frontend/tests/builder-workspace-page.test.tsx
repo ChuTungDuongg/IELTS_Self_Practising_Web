@@ -22,4 +22,13 @@ describe("Builder workspace page", () => {
     expect(screen.queryByRole("heading", { name: "Build the Reading module" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Listening/ })).toHaveAttribute("aria-current", "page");
   });
+
+  it("opens the Writing workspace without a module", async () => {
+    vi.mocked(getBuilderVersion).mockResolvedValue({ id: versionId, test_id: testId, test_title: "Practice", version_number: 1, status: "DRAFT", modules: [] });
+
+    render(await VersionEditorPage({ params: Promise.resolve({ testId, versionId }), searchParams: Promise.resolve({ workspace: "writing" }) }));
+
+    expect(screen.getByRole("heading", { name: "Build the Writing module" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Writing/ })).toHaveAttribute("aria-current", "page");
+  });
 });

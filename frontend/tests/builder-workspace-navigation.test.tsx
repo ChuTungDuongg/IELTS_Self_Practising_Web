@@ -17,7 +17,10 @@ describe("Builder workspace navigation", () => {
     expect(screen.getByRole("link", { name: /Reading/ })).not.toHaveAttribute("aria-current");
     expect(screen.getByRole("link", { name: /Listening/ })).toHaveClass("builder-workspace-listening");
     expect(screen.getByRole("link", { name: /Listening/ })).toHaveAttribute("aria-current", "page");
-    expect(screen.getByText(/Writing/).closest("a")).toBeNull();
+    expect(screen.getByRole("link", { name: /WritingNot created/ })).toHaveAttribute(
+      "href",
+      `/admin/tests/${testId}/versions/${versionId}/edit?workspace=writing`,
+    );
     expect(screen.getByRole("link", { name: /ReadingCreated/ })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /ListeningNot created/ })).toBeInTheDocument();
   });
@@ -28,5 +31,6 @@ describe("Builder workspace navigation", () => {
       "href",
       `/admin/tests/${testId}/versions/${versionId}/edit?workspace=listening`,
     );
+    expect(screen.getByRole("link", { name: /Writing/ })).toBeInTheDocument();
   });
 });

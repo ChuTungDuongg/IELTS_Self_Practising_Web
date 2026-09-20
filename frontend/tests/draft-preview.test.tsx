@@ -16,6 +16,7 @@ const version: BuilderVersion = {
     recommended_duration_seconds: 3600,
     audio_asset: null,
     listening_parts: [],
+    writing_tasks: [],
     passages: [{
       id: "44444444-4444-4444-8444-444444444444",
       title: "Passage",
@@ -61,6 +62,29 @@ describe("DraftPreview", () => {
 
     expect(screen.getByText("No audio is attached. Preview remains available.")).toBeInTheDocument();
     expect(view.container.querySelector(".exam-runner.listening-exam")).toBeInTheDocument();
+  });
+
+  it("renders both Writing tasks and Task 1 image in draft preview", () => {
+    const writingVersion = {
+      ...version,
+      modules: [{
+        ...version.modules[0],
+        module_type: "WRITING" as const,
+        title: "Writing",
+        passages: [],
+        listening_parts: [],
+        writing_tasks: [
+          { id: crypto.randomUUID(), task_number: 1, prompt: "Describe fictional data.", image_asset_id: crypto.randomUUID(), image_asset: { id: crypto.randomUUID(), original_name: "chart.png", mime_type: "image/png", file_size: 12, content_url: "/assets/chart.png" }, minimum_recommended_words: 150, recommended_duration_seconds: 1200, order_index: 0 },
+          { id: crypto.randomUUID(), task_number: 2, prompt: "Discuss a fictional proposition.", image_asset_id: null, image_asset: null, minimum_recommended_words: 250, recommended_duration_seconds: 2400, order_index: 1 },
+        ],
+      }],
+    } satisfies BuilderVersion;
+
+    render(<DraftPreview version={writingVersion} moduleType="WRITING" />);
+
+    expect(screen.getByText("Describe fictional data.")).toBeInTheDocument();
+    expect(screen.getByText("Discuss a fictional proposition.")).toBeInTheDocument();
+    expect(screen.getByAltText("Writing Task 1 reference")).toBeInTheDocument();
   });
 
   it("uses the compact completion flow and preserves multiline instructions", () => {
