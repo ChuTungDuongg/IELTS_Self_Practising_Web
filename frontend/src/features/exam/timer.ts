@@ -10,6 +10,18 @@ export function elapsedSeconds(startedAt: string, serverOffsetMs: number, now = 
   return Math.max(0, Math.floor((now + serverOffsetMs - new Date(startedAt).getTime()) / 1000));
 }
 
+export function elapsedFromSnapshot(
+  elapsedAtSnapshot: number,
+  serverTime: string,
+  serverOffsetMs: number,
+  now = Date.now(),
+): number {
+  const secondsSinceSnapshot = Math.floor(
+    (now + serverOffsetMs - new Date(serverTime).getTime()) / 1000,
+  );
+  return Math.max(0, elapsedAtSnapshot + secondsSinceSnapshot);
+}
+
 export function formatDuration(totalSeconds: number): string {
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);

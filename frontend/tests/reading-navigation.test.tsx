@@ -44,6 +44,8 @@ function payload(): ExamPayload {
       timer_mode: "COUNT_UP",
       timer_limit_seconds: null,
       started_at: now,
+      paused_at: null,
+      total_paused_seconds: 0,
       deadline_at: null,
       last_active_at: now,
       finished_at: null,
@@ -95,6 +97,7 @@ describe("Reading footer navigation", () => {
 
   it("renders canonical passage and question rows without per-group flag controls", () => {
     const view = render(<ReadingRunner initial={payload()} />);
+    expect(screen.getByRole("button", { name: "Pause & exit" })).toBeInTheDocument();
     expect(view.container.querySelector(".exam-passage")).toBeInTheDocument();
     expect(view.container.querySelector(".exam-passage-body")).toBeInTheDocument();
     expect(view.container.querySelector(".exam-question-panel-heading")).toBeInTheDocument();

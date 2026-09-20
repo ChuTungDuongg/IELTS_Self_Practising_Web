@@ -3,6 +3,7 @@ const styles: Record<string, string> = {
   PUBLISHED: "status-published",
   ARCHIVED: "status-archived",
   IN_PROGRESS: "status-progress",
+  PAUSED: "status-paused",
   SUBMITTED: "status-published",
   AUTO_SUBMITTED: "status-published",
   INTERRUPTED: "status-draft",

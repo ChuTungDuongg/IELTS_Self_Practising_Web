@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { formatDuration, elapsedSeconds, estimateServerOffset, remainingSeconds } from "@/features/exam/timer";
+import { elapsedFromSnapshot, formatDuration, estimateServerOffset, remainingSeconds } from "@/features/exam/timer";
+import { PauseAttemptControl } from "@/features/exam/pause-attempt-control";
 import { questionRegistry } from "@/features/questions/registry";
 import type { ExamGroup } from "@/features/questions/types";
 import { QuestionGroupInstruction } from "@/features/questions/question-group-instruction";
@@ -43,8 +44,8 @@ export function ReadingRunner({ initial }: { initial: ExamPayload }) {
 
   const persist = useCallback(async (questionId: string, value: unknown) => {
     setSaveState("saving");
-    try { await saveAnswer(attemptId, questionId, value); dirty.current.delete(questionId); setSaveState("saved"); }
-    catch { setSaveState("error"); }
+    try { await saveAnswer(attemptId, questionId, value); dirty.current.delete(questionId); setSaveState("saved"); return true; }
+    catch { setSaveState("error"); return false; }
   }, [attemptId]);
 
   function answer(questionId: string, value: string | string[]) {
@@ -59,7 +60,8 @@ export function ReadingRunner({ initial }: { initial: ExamPayload }) {
   const flush = useCallback(async () => {
     timers.current.forEach(clearTimeout);
     timers.current.clear();
-    await Promise.all([...dirty.current].map(([id, value]) => persist(id, value)));
+    const saved = await Promise.all([...dirty.current].map(([id, value]) => persist(id, value)));
+    if (saved.some((result) => !result)) throw new Error("Pending answers could not be saved.");
   }, [persist]);
 
   useEffect(() => {
@@ -114,7 +116,7 @@ export function ReadingRunner({ initial }: { initial: ExamPayload }) {
     return () => observer.disconnect();
   }, [passageIndex]);
 
-  const seconds = initial.attempt.timer_mode === "COUNTDOWN" && initial.attempt.deadline_at ? remainingSeconds(initial.attempt.deadline_at, offset, clock) : elapsedSeconds(initial.attempt.started_at, offset, clock);
+  const seconds = initial.attempt.timer_mode === "COUNTDOWN" && initial.attempt.deadline_at ? remainingSeconds(initial.attempt.deadline_at, offset, clock) : elapsedFromSnapshot(initial.attempt.elapsed_seconds, initial.attempt.server_time, offset, clock);
   useEffect(() => {
     if (initial.attempt.timer_mode === "COUNTDOWN" && seconds === 0 && !finalized.current) {
       finalized.current = true; void flush().finally(() => submitAttempt(attemptId).finally(() => router.push(`/review/${attemptId}`)));
@@ -145,7 +147,7 @@ export function ReadingRunner({ initial }: { initial: ExamPayload }) {
   const highlighting: HighlightController = { highlights, onCreate: addHighlight, onDelete: removeHighlight };
 
   return <div className="exam-runner">
-    <header className="exam-header"><div><p>READING</p><h1>{initial.test_title}</h1></div><div className="exam-header-tools"><ThemeToggle /><div className="exam-highlight-toolbar" aria-label="Highlight management"><span>{highlights.length} {highlights.length === 1 ? "highlight" : "highlights"}</span>{highlights.length ? <button type="button" onClick={() => { setHighlightError(""); setConfirmDeleteAll(true); }}>Delete all</button> : null}</div><div className="exam-header-status"><span className={`exam-timer ${initial.attempt.timer_mode === "COUNTDOWN" && seconds < 300 ? "exam-timer-warning" : ""}`}>{initial.attempt.timer_mode === "COUNT_UP" ? "Time used " : ""}{formatDuration(seconds)}</span><span className={`exam-save-state exam-save-${saveState}`}>{saveState === "saving" ? "Saving…" : saveState === "error" ? "Save failed" : "Saved"}</span></div></div></header>
+    <header className="exam-header"><div><p>READING</p><h1>{initial.test_title}</h1></div><div className="exam-header-tools"><PauseAttemptControl attemptId={attemptId} beforePause={flush} /><ThemeToggle /><div className="exam-highlight-toolbar" aria-label="Highlight management"><span>{highlights.length} {highlights.length === 1 ? "highlight" : "highlights"}</span>{highlights.length ? <button type="button" onClick={() => { setHighlightError(""); setConfirmDeleteAll(true); }}>Delete all</button> : null}</div><div className="exam-header-status"><span className={`exam-timer ${initial.attempt.timer_mode === "COUNTDOWN" && seconds < 300 ? "exam-timer-warning" : ""}`}>{initial.attempt.timer_mode === "COUNT_UP" ? "Time used " : ""}{formatDuration(seconds)}</span><span className={`exam-save-state exam-save-${saveState}`}>{saveState === "saving" ? "Saving…" : saveState === "error" ? "Save failed" : "Saved"}</span></div></div></header>
     <div className="grid min-h-0 flex-1 lg:grid-cols-2">
       <PassagePane passage={passage} highlighting={highlighting} />
       <div ref={questionPane} className="exam-questions" onFocusCapture={(event) => { const target = (event.target as HTMLElement).closest<HTMLElement>(".exam-question-target[data-question-id]"); if (target?.dataset.questionId) setActiveQuestionId(target.dataset.questionId); }}><div className="exam-question-panel-heading"><p>Reading · Passage {passage.order_index + 1}</p><h2>Questions</h2></div>{[...passage.question_groups].sort((left, right) => left.order_index - right.order_index).map((group) => { const definition = questionRegistry[group.question_type as keyof typeof questionRegistry]; if (!definition) return null; const Renderer = definition.ExamRenderer; return <section key={group.id} className="exam-question-group"><QuestionGroupInstruction group={group as ExamGroup} passageNumber={passage.order_index + 1} /><Renderer group={{ ...group, questions: [...group.questions].sort((left, right) => left.order_index - right.order_index) } as ExamGroup} values={values} passageBlocks={passage.blocks} onAnswer={answer} highlighting={highlighting} activeQuestionId={activeQuestionId} /></section>; })}</div>

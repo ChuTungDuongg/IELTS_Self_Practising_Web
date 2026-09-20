@@ -71,12 +71,13 @@ describe("Listening audio and templates", () => {
   it("mounts one shared player while navigating Listening sections", () => {
     const audio = { id: crypto.randomUUID(), original_name: "shared.mp3", mime_type: "audio/mpeg", file_size: 1000, content_url: "/assets/shared/content" };
     const initial = {
-      attempt: { attempt_id: crypto.randomUUID(), test_version_id: crypto.randomUUID(), module: "LISTENING", status: "IN_PROGRESS", finished_reason: null, timer_mode: "COUNT_UP", timer_limit_seconds: null, started_at: new Date().toISOString(), deadline_at: null, last_active_at: new Date().toISOString(), finished_at: null, elapsed_seconds: 0, remaining_seconds: null, raw_score: null, max_score: null, server_time: new Date().toISOString() },
+      attempt: { attempt_id: crypto.randomUUID(), test_version_id: crypto.randomUUID(), module: "LISTENING", status: "IN_PROGRESS", finished_reason: null, timer_mode: "COUNT_UP", timer_limit_seconds: null, started_at: new Date().toISOString(), paused_at: null, total_paused_seconds: 0, deadline_at: null, last_active_at: new Date().toISOString(), finished_at: null, elapsed_seconds: 0, remaining_seconds: null, raw_score: null, max_score: null, band_score: null, server_time: new Date().toISOString() },
       test_title: "Practice",
       passages: [], highlights: [], listening_audio_asset: audio,
       listening_parts: Array.from({ length: 4 }, (_, index) => ({ id: crypto.randomUUID(), title: `Section ${index + 1}`, order_index: index, question_groups: [] })),
     } as unknown as import("@/lib/api/exam").ExamPayload;
     render(<ListeningRunner initial={initial} />);
+    expect(screen.getByRole("button", { name: "Pause & exit" })).toBeInTheDocument();
     expect(screen.getAllByLabelText("Listening audio player")).toHaveLength(1);
     const loadsAfterMount = vi.mocked(HTMLMediaElement.prototype.load).mock.calls.length;
 

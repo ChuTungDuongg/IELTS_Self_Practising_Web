@@ -199,6 +199,7 @@ input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--mute
 .status-published { border-color: color-mix(in srgb, var(--success) 34%, transparent); color: var(--success); background: var(--success-soft); }
 .status-archived { border-color: var(--line-strong); color: var(--muted); background: var(--surface-soft); }
 .status-progress { border-color: color-mix(in srgb, var(--accent) 28%, transparent); color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--surface)); }
+.status-paused { border-color: color-mix(in srgb, #b7791f 34%, transparent); color: #9a6700; background: color-mix(in srgb, #f6ad55 14%, var(--surface)); }
 :root[data-theme="dark"] .status-draft { color: var(--warning); }
 :root[data-theme="dark"] .status-published { color: var(--success); }
 .module-badge { display: inline-flex; align-items: center; border-radius: 7px; padding: 4px 8px; font-size: 10px; font-weight: 800; letter-spacing: 0.07em; text-transform: uppercase; }
@@ -301,6 +302,12 @@ input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--mute
 .practice-version-link { display: inline-flex; align-items: center; gap: 7px; margin-top: 16px; color: var(--muted); font-size: 11px; font-weight: 700; }
 .practice-version-link:hover { color: var(--accent); }
 .practice-card-content > .mt-5 { margin-top: 18px; }
+.practice-module-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+.practice-skill-count { margin: 12px 0 0; color: var(--muted); font-size: 12px; font-weight: 700; }
+.practice-open-test { width: 100%; margin-top: 18px; }
+.practice-version { color: var(--muted); font-size: 11px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }
+.practice-back-link { display: inline-flex; margin-bottom: 18px; color: var(--accent); font-size: 13px; font-weight: 750; }
+.practice-skill-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 310px), 1fr)); gap: 18px; }
 
 .history-surface { overflow: hidden; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); box-shadow: var(--shadow-sm); }
 .history-list { margin: 0; padding: 0; list-style: none; }
@@ -313,6 +320,7 @@ input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--mute
 .history-record-date { margin: 5px 0 0; color: var(--muted); font-size: 11px; }
 .history-state { display: grid; justify-items: end; gap: 7px; }
 .history-duration { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.history-action-error { flex-basis: 100%; color: var(--danger); font-size: 11px; }
 .history-actions { display: flex; align-items: center; gap: 7px; }
 .history-actions .btn { min-height: 36px; padding-inline: 12px; font-size: 11px; }
 .history-tabs { display: flex; flex-wrap: wrap; gap: 8px; border-bottom: 1px solid var(--line); padding: 12px 16px; background: var(--surface-soft); }
@@ -910,6 +918,13 @@ input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--mute
 .highlight-popover p[role="alert"] { color: var(--danger); font-size: 11px; }
 .highlight-popover .highlight-remove-action { justify-self: start; background: var(--danger); color: var(--danger-contrast); }
 .exam-header-tools { display: flex; align-items: center; gap: 22px; }
+.exam-pause-button { min-height: 38px; border: 1px solid var(--exam-border); border-radius: 9px; background: var(--exam-control-bg); padding: 0 12px; color: var(--exam-muted); font-size: 11px; font-weight: 800; }
+.exam-pause-button:hover { border-color: #b7791f; color: #b7791f; }
+.paused-attempt-gate { display: grid; width: min(100%, 560px); justify-items: start; gap: 14px; margin: 8vh auto 0; border: 1px solid var(--line); border-radius: 20px; background: var(--surface); padding: clamp(28px, 5vw, 48px); box-shadow: var(--shadow-md); }
+.paused-attempt-gate h1, .paused-attempt-gate p { margin: 0; }
+.paused-attempt-gate > p:not(.page-eyebrow, .notice) { color: var(--muted); }
+.paused-attempt-gate > strong { color: #9a6700; font-size: 18px; font-variant-numeric: tabular-nums; }
+.paused-attempt-gate > div { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 6px; }
 .exam-runner .theme-toggle { border-color: var(--exam-border); color: var(--exam-muted); background: var(--exam-control-bg); box-shadow: none; }
 .exam-runner .theme-toggle:hover { border-color: var(--exam-accent); color: var(--exam-text); }
 .exam-runner .highlight-popover { border-color: var(--exam-border); color: var(--exam-text); background: var(--exam-surface); }

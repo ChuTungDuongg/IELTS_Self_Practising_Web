@@ -9,7 +9,7 @@ import { HistoryIcon } from "@/components/ui/icons";
 import { ModuleBadge } from "@/components/ui/module-badge";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { formatDuration } from "@/features/exam/timer";
-import { deleteAttempt } from "@/lib/api/attempts";
+import { deleteAttempt, resumeAttempt } from "@/lib/api/attempts";
 import { ApiError } from "@/lib/api/client";
 import type { HistoryGroup, HistoryItem, HistoryResponse } from "@/lib/api/history";
 
@@ -117,7 +117,7 @@ export function AttemptHistoryList({ initialHistory }: { initialHistory: History
       <ConfirmDialog
         open={selected !== null}
         title="Delete this attempt?"
-        description={`${selected?.status === "IN_PROGRESS" ? "This attempt is still in progress. " : ""}This will permanently remove this attempt and its saved answers, highlights, flags and activity history. The test itself will not be deleted.`}
+        description={`${selected?.status === "IN_PROGRESS" || selected?.status === "PAUSED" ? "This attempt is not finalized. " : ""}This will permanently remove this attempt and its saved answers, highlights, flags and activity history. The test itself will not be deleted.`}
         confirmLabel="Delete attempt"
         pending={pending}
         errorMessage={error}
@@ -137,6 +137,23 @@ function HistoryRow({
   pending: boolean;
   onDelete: (item: HistoryItem) => void;
 }) {
+  const router = useRouter();
+  const [resuming, setResuming] = useState(false);
+  const [resumeError, setResumeError] = useState<string>();
+
+  async function resume() {
+    if (resuming) return;
+    setResuming(true);
+    setResumeError(undefined);
+    try {
+      await resumeAttempt(item.attempt_id);
+      router.push(`/attempt/${item.attempt_id}`);
+    } catch (caught) {
+      setResumeError(caught instanceof ApiError ? caught.message : "This attempt could not be resumed. Please try again.");
+      setResuming(false);
+    }
+  }
+
   return (
     <li className="history-row">
       <div className="history-record">
@@ -150,12 +167,20 @@ function HistoryRow({
       <div className="history-state">
         <StatusBadge status={item.status} />
         <span className="history-duration">
-          {item.elapsed_seconds === null ? "Time in progress" : formatDuration(item.elapsed_seconds)}
+          {item.status === "PAUSED" && item.timer_mode === "COUNTDOWN"
+            ? `Remaining: ${formatDuration(item.remaining_seconds ?? 0)}`
+            : item.status === "PAUSED"
+              ? `Practice time: ${formatDuration(item.elapsed_seconds ?? 0)}`
+              : item.elapsed_seconds === null ? "Time in progress" : formatDuration(item.elapsed_seconds)}
         </span>
         <AttemptScore item={item} />
       </div>
       <div className="history-actions">
-        {item.status !== "IN_PROGRESS" ? (
+        {item.status === "PAUSED" ? (
+          <button type="button" className="btn btn-primary" disabled={resuming} onClick={() => void resume()}>
+            {resuming ? "Resuming…" : "Resume"}
+          </button>
+        ) : item.status !== "IN_PROGRESS" ? (
           <Link href={`/review/${item.attempt_id}`} className="btn btn-primary">
             Review
           </Link>
@@ -173,12 +198,16 @@ function HistoryRow({
         >
           Delete
         </button>
+        {resumeError ? <span role="alert" className="history-action-error">{resumeError}</span> : null}
       </div>
     </li>
   );
 }
 
 function AttemptScore({ item }: { item: HistoryItem }) {
+  if (item.status === "PAUSED") {
+    return <span className="history-score">Paused</span>;
+  }
   if (item.status === "IN_PROGRESS") {
     return <span className="history-score">In progress</span>;
   }

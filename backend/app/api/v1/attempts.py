@@ -61,6 +61,20 @@ async def record_activity(
     return await AttemptService(session).record_activity(attempt_id)
 
 
+@router.post("/{attempt_id}/pause", response_model=AttemptResponse)
+async def pause_attempt(
+    attempt_id: UUID, session: AsyncSession = Depends(get_session)
+) -> AttemptResponse:
+    return await AttemptService(session).pause(attempt_id)
+
+
+@router.post("/{attempt_id}/resume", response_model=AttemptResponse)
+async def resume_attempt(
+    attempt_id: UUID, session: AsyncSession = Depends(get_session)
+) -> AttemptResponse:
+    return await AttemptService(session).resume(attempt_id)
+
+
 @router.put("/{attempt_id}/answers/{question_id}", response_model=AnswerResponse)
 async def save_answer(
     attempt_id: UUID,

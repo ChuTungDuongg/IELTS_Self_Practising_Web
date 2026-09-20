@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { elapsedSeconds, estimateServerOffset, formatDuration, remainingSeconds } from "@/features/exam/timer";
+import { elapsedFromSnapshot, elapsedSeconds, estimateServerOffset, formatDuration, remainingSeconds } from "@/features/exam/timer";
 
 describe("server-derived timers", () => {
   it("derives remaining time from timestamps rather than interval ticks", () => {
@@ -13,5 +13,9 @@ describe("server-derived timers", () => {
 
   it("estimates server clock offset", () => {
     expect(estimateServerOffset("2026-01-01T00:00:05.000Z", Date.parse("2026-01-01T00:00:00.000Z"))).toBe(5000);
+  });
+
+  it("continues a count-up timer from the backend snapshot after paused time", () => {
+    expect(elapsedFromSnapshot(125, "2026-01-01T01:00:00.000Z", 0, Date.parse("2026-01-01T01:00:05.000Z"))).toBe(130);
   });
 });

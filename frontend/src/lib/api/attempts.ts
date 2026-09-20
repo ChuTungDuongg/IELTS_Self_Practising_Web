@@ -7,11 +7,13 @@ export const attemptResponseSchema = z.object({
   attempt_id: z.string().uuid(),
   test_version_id: z.string().uuid(),
   module: z.enum(["READING", "LISTENING", "WRITING"]),
-  status: z.enum(["IN_PROGRESS", "SUBMITTED", "AUTO_SUBMITTED", "INTERRUPTED", "ABANDONED"]),
+  status: z.enum(["IN_PROGRESS", "PAUSED", "SUBMITTED", "AUTO_SUBMITTED", "INTERRUPTED", "ABANDONED"]),
   finished_reason: z.string().nullable(),
   timer_mode: z.enum(["COUNTDOWN", "COUNT_UP"]),
   timer_limit_seconds: z.number().nullable(),
   started_at: z.string(),
+  paused_at: z.string().nullable(),
+  total_paused_seconds: z.number().int().nonnegative(),
   deadline_at: z.string().nullable(),
   last_active_at: z.string(),
   finished_at: z.string().nullable(),
@@ -73,4 +75,16 @@ export async function saveWritingResponse(
 
 export async function deleteAttempt(attemptId: string): Promise<void> {
   await apiRequest(`/attempts/${attemptId}`, { method: "DELETE" });
+}
+
+export async function pauseAttempt(attemptId: string): Promise<AttemptResponse> {
+  return attemptResponseSchema.parse(
+    await apiRequest<unknown>(`/attempts/${attemptId}/pause`, { method: "POST" }),
+  );
+}
+
+export async function resumeAttempt(attemptId: string): Promise<AttemptResponse> {
+  return attemptResponseSchema.parse(
+    await apiRequest<unknown>(`/attempts/${attemptId}/resume`, { method: "POST" }),
+  );
 }

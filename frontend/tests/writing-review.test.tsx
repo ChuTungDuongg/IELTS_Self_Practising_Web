@@ -23,6 +23,8 @@ function reviewPayload(): WritingReviewPayload {
         timer_mode: "COUNT_UP",
         timer_limit_seconds: null,
         started_at: now,
+        paused_at: null,
+        total_paused_seconds: 0,
         deadline_at: null,
         last_active_at: now,
         finished_at: now,

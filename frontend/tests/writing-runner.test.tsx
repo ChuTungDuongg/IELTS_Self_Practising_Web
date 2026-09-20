@@ -1,14 +1,14 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WritingRunner } from "@/features/writing/writing-runner";
-import { saveWritingResponse } from "@/lib/api/attempts";
+import { pauseAttempt, saveWritingResponse } from "@/lib/api/attempts";
 import { submitAttempt, type ExamPayload } from "@/lib/api/exam";
 
 const push = vi.fn();
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push, refresh: vi.fn() }) }));
 vi.mock("@/lib/api/attempts", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api/attempts")>();
-  return { ...actual, recordActivity: vi.fn(), saveWritingResponse: vi.fn() };
+  return { ...actual, recordActivity: vi.fn(), saveWritingResponse: vi.fn(), pauseAttempt: vi.fn() };
 });
 vi.mock("@/lib/api/exam", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api/exam")>();
@@ -31,6 +31,8 @@ function payload(): ExamPayload {
       timer_mode: "COUNT_UP",
       timer_limit_seconds: null,
       started_at: now,
+      paused_at: null,
+      total_paused_seconds: 0,
       deadline_at: null,
       last_active_at: now,
       finished_at: null,
@@ -81,6 +83,7 @@ describe("WritingRunner", () => {
     vi.clearAllMocks();
     vi.mocked(saveWritingResponse).mockResolvedValue({ writing_task_id: taskOneId, content: "", word_count: 0, saved_at: new Date().toISOString() });
     vi.mocked(submitAttempt).mockResolvedValue({});
+    vi.mocked(pauseAttempt).mockResolvedValue({ status: "PAUSED" } as never);
   });
 
   afterEach(() => {
@@ -144,5 +147,19 @@ describe("WritingRunner", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("could not be saved");
     expect(submitAttempt).not.toHaveBeenCalled();
     expect(within(screen.getByRole("alert")).getByRole("button", { name: "Retry save" })).toBeInTheDocument();
+  });
+
+  it("saves the current response before pausing and exits to history", async () => {
+    render(<WritingRunner initial={payload()} />);
+    fireEvent.change(screen.getByLabelText("Response for Task 1"), { target: { value: "Pause-safe draft" } });
+    fireEvent.click(screen.getByRole("button", { name: "Pause & exit" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Pause & exit" }));
+    await act(async () => undefined);
+
+    expect(saveWritingResponse).toHaveBeenCalledWith(attemptId, taskOneId, "Pause-safe draft");
+    expect(vi.mocked(saveWritingResponse).mock.invocationCallOrder.at(-1)).toBeLessThan(
+      vi.mocked(pauseAttempt).mock.invocationCallOrder[0],
+    );
+    expect(push).toHaveBeenCalledWith("/history");
   });
 });

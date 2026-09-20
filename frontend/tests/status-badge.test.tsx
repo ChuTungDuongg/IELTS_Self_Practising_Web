@@ -7,4 +7,9 @@ describe("StatusBadge", () => {
     render(<StatusBadge status="AUTO_SUBMITTED" />);
     expect(screen.getByText("AUTO SUBMITTED")).toBeInTheDocument();
   });
+
+  it("renders paused attempts with their calm distinct style", () => {
+    render(<StatusBadge status="PAUSED" />);
+    expect(screen.getByText("PAUSED")).toHaveClass("status-paused");
+  });
 });

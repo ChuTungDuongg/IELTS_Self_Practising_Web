@@ -6,12 +6,14 @@ class AttemptStateMachine:
     _allowed: dict[AttemptStatus, frozenset[AttemptStatus]] = {
         AttemptStatus.IN_PROGRESS: frozenset(
             {
+                AttemptStatus.PAUSED,
                 AttemptStatus.SUBMITTED,
                 AttemptStatus.AUTO_SUBMITTED,
                 AttemptStatus.INTERRUPTED,
                 AttemptStatus.ABANDONED,
             }
         ),
+        AttemptStatus.PAUSED: frozenset({AttemptStatus.IN_PROGRESS}),
         AttemptStatus.SUBMITTED: frozenset(),
         AttemptStatus.AUTO_SUBMITTED: frozenset(),
         AttemptStatus.INTERRUPTED: frozenset(),

@@ -232,6 +232,10 @@ class Attempt(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     timer_limit_seconds: Mapped[int | None] = mapped_column(Integer)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     last_active_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    paused_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    total_paused_seconds: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False
+    )
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     elapsed_seconds: Mapped[int | None] = mapped_column(Integer)
     status: Mapped[AttemptStatus] = mapped_column(

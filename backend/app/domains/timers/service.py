@@ -28,17 +28,27 @@ class TimerService:
         mode: TimerMode,
         started_at: datetime,
         limit_seconds: int | None,
+        paused_at: datetime | None = None,
+        total_paused_seconds: int = 0,
         now: datetime | None = None,
     ) -> TimerSnapshot:
         server_time = now or cls.now()
-        elapsed = max(0, int((server_time - started_at).total_seconds()))
+        effective_now = paused_at or server_time
+        paused_seconds = max(0, total_paused_seconds)
+        active_duration = effective_now - started_at - timedelta(seconds=paused_seconds)
+        elapsed = max(0, int(active_duration.total_seconds()))
         if mode == TimerMode.COUNT_UP:
             return TimerSnapshot(server_time, None, elapsed, None, False)
         if limit_seconds is None or limit_seconds <= 0:
             raise ValueError("Countdown attempts require a positive limit")
-        deadline = started_at + timedelta(seconds=limit_seconds)
-        remaining = max(0, int((deadline - server_time).total_seconds()))
-        return TimerSnapshot(server_time, deadline, elapsed, remaining, server_time >= deadline)
+        remaining = max(0, limit_seconds - elapsed)
+        deadline = (
+            None
+            if paused_at is not None
+            else started_at + timedelta(seconds=limit_seconds + paused_seconds)
+        )
+        expired = active_duration.total_seconds() >= limit_seconds
+        return TimerSnapshot(server_time, deadline, elapsed, remaining, expired)
 
     @staticmethod
     def is_afk(last_active_at: datetime, now: datetime | None = None) -> bool:

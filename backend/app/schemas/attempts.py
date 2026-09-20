@@ -75,6 +75,8 @@ class AttemptResponse(BaseModel):
     timer_mode: TimerMode
     timer_limit_seconds: int | None
     started_at: datetime
+    paused_at: datetime | None
+    total_paused_seconds: int = Field(ge=0)
     deadline_at: datetime | None
     last_active_at: datetime
     finished_at: datetime | None
@@ -128,6 +130,9 @@ class HistoryItem(BaseModel):
     started_at: datetime
     finished_at: datetime | None
     elapsed_seconds: int | None
+    timer_mode: TimerMode
+    timer_limit_seconds: int | None
+    remaining_seconds: int | None
     raw_score: int | None
     max_score: int | None
     band_score: float | None

@@ -4,7 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
-import { elapsedSeconds, estimateServerOffset, formatDuration, remainingSeconds } from "@/features/exam/timer";
+import { elapsedFromSnapshot, estimateServerOffset, formatDuration, remainingSeconds } from "@/features/exam/timer";
+import { PauseAttemptControl } from "@/features/exam/pause-attempt-control";
 import { countWords } from "@/features/writing/word-count";
 import { recordActivity, saveWritingResponse } from "@/lib/api/attempts";
 import { assetContentUrl } from "@/lib/api/assets";
@@ -132,7 +133,7 @@ export function WritingRunner({ initial }: { initial: ExamPayload }) {
 
   const seconds = initial.attempt.timer_mode === "COUNTDOWN" && initial.attempt.deadline_at
     ? remainingSeconds(initial.attempt.deadline_at, offset, clock)
-    : elapsedSeconds(initial.attempt.started_at, offset, clock);
+    : elapsedFromSnapshot(initial.attempt.elapsed_seconds, initial.attempt.server_time, offset, clock);
 
   useEffect(() => {
     if (initial.attempt.timer_mode === "COUNTDOWN" && seconds === 0 && !finalized.current) {
@@ -147,7 +148,7 @@ export function WritingRunner({ initial }: { initial: ExamPayload }) {
   return <div className="exam-runner writing-exam">
     <header className="exam-header">
       <div><p>WRITING · TASK {task.task_number}</p><h1>{initial.test_title}</h1></div>
-      <div className="exam-header-tools"><ThemeToggle /><div className="exam-header-status"><span className={`exam-timer ${initial.attempt.timer_mode === "COUNTDOWN" && seconds < 300 ? "exam-timer-warning" : ""}`}>{initial.attempt.timer_mode === "COUNT_UP" ? "Time used " : ""}{formatDuration(seconds)}</span><span className={`exam-save-state exam-save-${saveState}`}>{saveState === "saving" ? "Saving…" : saveState === "error" ? "Save failed" : "Saved"}</span></div></div>
+      <div className="exam-header-tools"><PauseAttemptControl attemptId={attemptId} beforePause={flushForSubmission} /><ThemeToggle /><div className="exam-header-status"><span className={`exam-timer ${initial.attempt.timer_mode === "COUNTDOWN" && seconds < 300 ? "exam-timer-warning" : ""}`}>{initial.attempt.timer_mode === "COUNT_UP" ? "Time used " : ""}{formatDuration(seconds)}</span><span className={`exam-save-state exam-save-${saveState}`}>{saveState === "saving" ? "Saving…" : saveState === "error" ? "Save failed" : "Saved"}</span></div></div>
     </header>
     <div className="writing-task-tabs" role="tablist" aria-label="Writing tasks">
       {tasks.map((item, index) => <button key={item.id} type="button" role="tab" aria-selected={index === taskIndex} className={index === taskIndex ? "active" : ""} onClick={() => setTaskIndex(index)}><b>Task {item.task_number}</b><span>{countWords(contents[item.id] ?? "")} words</span></button>)}

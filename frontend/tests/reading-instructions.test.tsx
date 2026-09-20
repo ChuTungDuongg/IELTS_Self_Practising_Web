@@ -25,7 +25,7 @@ const attempt = {
   test_version_id: "22222222-2222-4222-8222-222222222222",
   module: "READING", status: "IN_PROGRESS", finished_reason: null,
   timer_mode: "COUNT_UP", timer_limit_seconds: null,
-  started_at: new Date().toISOString(), deadline_at: null, last_active_at: new Date().toISOString(), finished_at: null,
+  started_at: new Date().toISOString(), paused_at: null, total_paused_seconds: 0, deadline_at: null, last_active_at: new Date().toISOString(), finished_at: null,
   elapsed_seconds: 0, remaining_seconds: null, raw_score: null, max_score: null, band_score: null, server_time: new Date().toISOString(),
 };
 

@@ -168,6 +168,7 @@ async def _delete(session: AsyncSession, attempt_id: UUID) -> httpx.Response:
     "attempt_status",
     [
         AttemptStatus.IN_PROGRESS,
+        AttemptStatus.PAUSED,
         AttemptStatus.SUBMITTED,
         AttemptStatus.AUTO_SUBMITTED,
         AttemptStatus.INTERRUPTED,

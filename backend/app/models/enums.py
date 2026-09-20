@@ -20,6 +20,7 @@ class TimerMode(StrEnum):
 
 class AttemptStatus(StrEnum):
     IN_PROGRESS = "IN_PROGRESS"
+    PAUSED = "PAUSED"
     SUBMITTED = "SUBMITTED"
     AUTO_SUBMITTED = "AUTO_SUBMITTED"
     INTERRUPTED = "INTERRUPTED"

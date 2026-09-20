@@ -2,18 +2,19 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AttemptHistoryList } from "@/features/history/attempt-history-list";
 import { ApiError } from "@/lib/api/client";
-import { deleteAttempt } from "@/lib/api/attempts";
+import { deleteAttempt, resumeAttempt } from "@/lib/api/attempts";
 import type { HistoryGroup, HistoryItem, HistoryResponse } from "@/lib/api/history";
 
 const refresh = vi.fn();
+const push = vi.fn();
 
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ refresh }),
+  useRouter: () => ({ refresh, push }),
 }));
 
 vi.mock("@/lib/api/attempts", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api/attempts")>();
-  return { ...actual, deleteAttempt: vi.fn() };
+  return { ...actual, deleteAttempt: vi.fn(), resumeAttempt: vi.fn() };
 });
 
 const submitted: HistoryItem = {
@@ -27,6 +28,9 @@ const submitted: HistoryItem = {
   started_at: "2026-09-20T00:00:00Z",
   finished_at: "2026-09-20T00:01:00Z",
   elapsed_seconds: 60,
+  timer_mode: "COUNT_UP",
+  timer_limit_seconds: null,
+  remaining_seconds: null,
   raw_score: 35,
   max_score: 40,
   band_score: 8.0,
@@ -42,6 +46,17 @@ const inProgress: HistoryItem = {
   raw_score: null,
   max_score: null,
   band_score: null,
+};
+
+const paused: HistoryItem = {
+  ...inProgress,
+  attempt_id: "88888888-8888-4888-8888-888888888888",
+  test_title: "Fictional paused attempt",
+  status: "PAUSED",
+  timer_mode: "COUNTDOWN",
+  timer_limit_seconds: 3600,
+  elapsed_seconds: 600,
+  remaining_seconds: 3000,
 };
 
 const listening: HistoryItem = {
@@ -83,7 +98,7 @@ describe("AttemptHistoryList", () => {
     vi.clearAllMocks();
   });
 
-  it.each(["IN_PROGRESS", "SUBMITTED", "INTERRUPTED", "AUTO_SUBMITTED", "ABANDONED"] as const)(
+  it.each(["IN_PROGRESS", "PAUSED", "SUBMITTED", "INTERRUPTED", "AUTO_SUBMITTED", "ABANDONED"] as const)(
     "renders Delete for %s attempts",
     (status) => {
       render(<AttemptHistoryList initialHistory={history([{ ...submitted, status }])} />);
@@ -103,6 +118,29 @@ describe("AttemptHistoryList", () => {
     );
   });
 
+  it("resumes a paused row through the backend before navigating", async () => {
+    vi.mocked(resumeAttempt).mockResolvedValue({} as never);
+    render(<AttemptHistoryList initialHistory={history([paused])} />);
+
+    expect(screen.getByText("Remaining: 50:00")).toBeInTheDocument();
+    expect(screen.getByText("Paused")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Review" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Resume" }));
+
+    await waitFor(() => expect(resumeAttempt).toHaveBeenCalledWith(paused.attempt_id));
+    expect(push).toHaveBeenCalledWith(`/attempt/${paused.attempt_id}`);
+  });
+
+  it("keeps a paused row in History when resume fails", async () => {
+    vi.mocked(resumeAttempt).mockRejectedValue(new ApiError("RESUME_FAILED", "Resume failed.", 409));
+    render(<AttemptHistoryList initialHistory={history([paused])} />);
+    fireEvent.click(screen.getByRole("button", { name: "Resume" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Resume failed.");
+    expect(screen.getByText("Fictional paused attempt")).toBeInTheDocument();
+    expect(push).not.toHaveBeenCalled();
+  });
+
   it("renders the shared empty state when there are no attempts", () => {
     const { container } = render(<AttemptHistoryList initialHistory={history([])} />);
 
@@ -116,7 +154,7 @@ describe("AttemptHistoryList", () => {
     fireEvent.click(screen.getByRole("button", { name: "Delete Fictional active attempt" }));
     const dialog = screen.getByRole("dialog");
     expect(dialog).toHaveTextContent("Delete this attempt?");
-    expect(dialog).toHaveTextContent("This attempt is still in progress.");
+    expect(dialog).toHaveTextContent("This attempt is not finalized.");
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
 
     expect(deleteAttempt).not.toHaveBeenCalled();

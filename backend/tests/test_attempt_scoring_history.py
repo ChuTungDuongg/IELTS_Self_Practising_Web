@@ -64,7 +64,7 @@ def _attempt(
     status: AttemptStatus = AttemptStatus.SUBMITTED,
     band_score: Decimal | None = None,
 ) -> Attempt:
-    finalized = status != AttemptStatus.IN_PROGRESS
+    finalized = status not in {AttemptStatus.IN_PROGRESS, AttemptStatus.PAUSED}
     return Attempt(
         test_version=version,
         module_type=module,
@@ -232,6 +232,14 @@ async def test_history_groups_exact_versions_and_uses_latest_finalized_attempt_p
         status=AttemptStatus.IN_PROGRESS,
         band_score=Decimal("9.0"),
     )
+    paused_reading = _attempt(
+        first,
+        module=ModuleType.READING,
+        started_at=base + timedelta(hours=4, minutes=30),
+        status=AttemptStatus.PAUSED,
+        band_score=Decimal("9.0"),
+    )
+    paused_reading.paused_at = base + timedelta(hours=4, minutes=31)
     second_version_reading = _attempt(
         second,
         module=ModuleType.READING,
@@ -244,6 +252,7 @@ async def test_history_groups_exact_versions_and_uses_latest_finalized_attempt_p
         listening,
         writing,
         active_reading,
+        paused_reading,
         second_version_reading,
     ]
     async with db_session.begin():

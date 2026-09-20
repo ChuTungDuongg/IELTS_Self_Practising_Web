@@ -8,10 +8,10 @@ export const dynamic = "force-dynamic";
 export default async function DashboardPage() {
   const [tests, history] = await Promise.all([
     getTests().catch(() => []),
-    getHistory().catch(() => ({ items: [], total: 0 })),
+    getHistory().catch(() => ({ items: [], groups: [], total: 0 })),
   ]);
   const published = tests.flatMap((test) => test.versions).filter((item) => item.status === "PUBLISHED");
-  const inProgress = history.items.filter((item) => item.status === "IN_PROGRESS");
+  const inProgress = history.items.filter((item) => item.status === "IN_PROGRESS" || item.status === "PAUSED");
   const pathways = [
     { title: "IELTS Tests", description: "Choose a frozen published test and begin a focused practice session.", href: "/library", eyebrow: "Practice library", icon: LibraryIcon, tone: "indigo" },
     { title: "Reading", description: "Work through passages in a calm split-pane exam experience.", href: "/library", eyebrow: "Editorial focus", icon: ReadingIcon, tone: "cyan" },
@@ -43,7 +43,7 @@ export default async function DashboardPage() {
       <section className="home-metrics" aria-label="Workspace summary">
         {[
           ["Published", String(published.length), "Ready to practice", "/library"],
-          ["In progress", String(inProgress.length), "Saved attempts", "/history"],
+          ["Resumable", String(inProgress.length), "Saved attempts", "/history"],
           ["Builder tests", String(tests.length), "Authoring workspace", "/admin/tests"],
         ].map(([label, value, detail, href]) => (
           <Link key={label} href={href} className="home-metric">

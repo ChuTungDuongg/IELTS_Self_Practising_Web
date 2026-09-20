@@ -132,6 +132,41 @@ class AttemptService:
             response = self._to_response(attempt, now)
         return response
 
+    async def pause(self, attempt_id: uuid.UUID) -> AttemptResponse:
+        async with self.session.begin():
+            attempt = await self._require(attempt_id, for_update=True)
+            now = TimerService.now()
+            await self._synchronize_state(attempt, now)
+            if attempt.status == AttemptStatus.AUTO_SUBMITTED:
+                return self._to_response(attempt, now)
+            AttemptStateMachine.ensure_transition(attempt.status, AttemptStatus.PAUSED)
+            attempt.status = AttemptStatus.PAUSED
+            attempt.paused_at = now
+            attempt.last_active_at = now
+            attempt.finished_at = None
+            attempt.finished_reason = None
+            response = self._to_response(attempt, now)
+        return response
+
+    async def resume(self, attempt_id: uuid.UUID) -> AttemptResponse:
+        async with self.session.begin():
+            attempt = await self._require(attempt_id, for_update=True)
+            now = TimerService.now()
+            AttemptStateMachine.ensure_transition(attempt.status, AttemptStatus.IN_PROGRESS)
+            if attempt.paused_at is None:
+                raise AppError(
+                    "INVALID_PAUSE_STATE",
+                    "This paused attempt has no pause timestamp.",
+                    409,
+                )
+            pause_duration = max(0, int((now - attempt.paused_at).total_seconds()))
+            attempt.total_paused_seconds += pause_duration
+            attempt.paused_at = None
+            attempt.status = AttemptStatus.IN_PROGRESS
+            attempt.last_active_at = now
+            response = self._to_response(attempt, now)
+        return response
+
     async def save_answer(
         self, attempt_id: uuid.UUID, question_id: uuid.UUID, value: Any
     ) -> AnswerResponse:
@@ -312,6 +347,12 @@ class AttemptService:
             attempt = await self._require(attempt_id, for_update=True)
             now = TimerService.now()
             await self._synchronize_state(attempt, now)
+            if attempt.status == AttemptStatus.PAUSED:
+                raise AppError(
+                    "ATTEMPT_PAUSED",
+                    "Resume this attempt before submitting it.",
+                    409,
+                )
             if attempt.status == AttemptStatus.IN_PROGRESS:
                 await self._score(attempt)
                 self._finalize(
@@ -333,7 +374,7 @@ class AttemptService:
 
     async def review(self, attempt_id: uuid.UUID) -> AttemptReview:
         attempt = await self._require(attempt_id)
-        if attempt.status == AttemptStatus.IN_PROGRESS:
+        if attempt.status in {AttemptStatus.IN_PROGRESS, AttemptStatus.PAUSED}:
             raise AppError(
                 "ATTEMPT_NOT_FINALIZED", "Submit the attempt before reviewing answer keys.", 409
             )
@@ -422,7 +463,7 @@ class AttemptService:
                 )
             now = TimerService.now()
             await self._synchronize_state(attempt, now)
-            if attempt.status == AttemptStatus.IN_PROGRESS:
+            if attempt.status in {AttemptStatus.IN_PROGRESS, AttemptStatus.PAUSED}:
                 raise AppError(
                     "ATTEMPT_NOT_FINALIZED",
                     "Submit the Writing attempt before assigning a band.",
@@ -481,24 +522,41 @@ class AttemptService:
 
     async def history(self) -> AttemptList:
         attempts = await self.repository.list_history()
-        items = [
-            HistoryItem(
-                attempt_id=item.id,
-                test_id=item.test_version.test_id,
-                test_version_id=item.test_version_id,
-                test_title=item.test_version.test.title,
-                version_number=item.test_version.version_number,
-                module=item.module_type,
-                status=item.status,
+        history_now = TimerService.now()
+        items: list[HistoryItem] = []
+        for item in attempts:
+            timer = TimerService.snapshot(
+                mode=item.timer_mode,
                 started_at=item.started_at,
-                finished_at=item.finished_at,
-                elapsed_seconds=item.elapsed_seconds,
-                raw_score=item.raw_score,
-                max_score=item.max_score,
-                band_score=item.band_score,
+                limit_seconds=item.timer_limit_seconds,
+                paused_at=item.paused_at,
+                total_paused_seconds=item.total_paused_seconds,
+                now=item.finished_at or history_now,
             )
-            for item in attempts
-        ]
+            items.append(
+                HistoryItem(
+                    attempt_id=item.id,
+                    test_id=item.test_version.test_id,
+                    test_version_id=item.test_version_id,
+                    test_title=item.test_version.test.title,
+                    version_number=item.test_version.version_number,
+                    module=item.module_type,
+                    status=item.status,
+                    started_at=item.started_at,
+                    finished_at=item.finished_at,
+                    elapsed_seconds=(
+                        item.elapsed_seconds
+                        if item.elapsed_seconds is not None
+                        else timer.elapsed_seconds
+                    ),
+                    timer_mode=item.timer_mode,
+                    timer_limit_seconds=item.timer_limit_seconds,
+                    remaining_seconds=timer.remaining_seconds,
+                    raw_score=item.raw_score,
+                    max_score=item.max_score,
+                    band_score=item.band_score,
+                )
+            )
         items_by_id = {item.attempt_id: item for item in items}
         by_version: dict[uuid.UUID, list[Attempt]] = {}
         for attempt in attempts:
@@ -510,7 +568,8 @@ class AttemptService:
             candidates = [
                 item
                 for item in version_attempts
-                if item.status != AttemptStatus.IN_PROGRESS and item.module_type == module
+                if item.status not in {AttemptStatus.IN_PROGRESS, AttemptStatus.PAUSED}
+                and item.module_type == module
             ]
             if not candidates:
                 return None
@@ -949,6 +1008,12 @@ class AttemptService:
         await self._synchronize_state(attempt, now)
         if attempt.status == AttemptStatus.AUTO_SUBMITTED:
             raise AppError("ATTEMPT_EXPIRED", "The countdown period has ended.", 409)
+        if attempt.status == AttemptStatus.PAUSED:
+            raise AppError(
+                "ATTEMPT_PAUSED",
+                "Resume this attempt before changing it.",
+                409,
+            )
         if attempt.status != AttemptStatus.IN_PROGRESS:
             raise AppError("ATTEMPT_FINALIZED", "This attempt no longer accepts changes.", 409)
 
@@ -959,6 +1024,8 @@ class AttemptService:
             mode=attempt.timer_mode,
             started_at=attempt.started_at,
             limit_seconds=attempt.timer_limit_seconds,
+            paused_at=attempt.paused_at,
+            total_paused_seconds=attempt.total_paused_seconds,
             now=now,
         )
         if timer.expired:
@@ -998,10 +1065,12 @@ class AttemptService:
         attempt.status = status
         attempt.finished_reason = reason
         attempt.finished_at = now
+        attempt.paused_at = None
         timer = TimerService.snapshot(
             mode=attempt.timer_mode,
             started_at=attempt.started_at,
             limit_seconds=attempt.timer_limit_seconds,
+            total_paused_seconds=attempt.total_paused_seconds,
             now=now,
         )
         attempt.elapsed_seconds = timer.elapsed_seconds
@@ -1053,6 +1122,8 @@ class AttemptService:
             mode=attempt.timer_mode,
             started_at=attempt.started_at,
             limit_seconds=attempt.timer_limit_seconds,
+            paused_at=attempt.paused_at,
+            total_paused_seconds=attempt.total_paused_seconds,
             now=attempt.finished_at or snapshot_at,
         )
         elapsed = (
@@ -1069,6 +1140,8 @@ class AttemptService:
             timer_mode=attempt.timer_mode,
             timer_limit_seconds=attempt.timer_limit_seconds,
             started_at=attempt.started_at,
+            paused_at=attempt.paused_at,
+            total_paused_seconds=attempt.total_paused_seconds,
             deadline_at=timer.deadline_at,
             last_active_at=attempt.last_active_at,
             finished_at=attempt.finished_at,
