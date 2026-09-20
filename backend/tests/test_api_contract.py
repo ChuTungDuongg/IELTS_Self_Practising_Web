@@ -110,6 +110,18 @@ def test_active_exam_normalizes_legacy_content_without_exposing_answer_keys() ->
     )
 
 
+def test_highlight_payload_accepts_question_group_options() -> None:
+    payload = HighlightCreate(
+        target_kind="QUESTION_GROUP_OPTION",
+        target_id=uuid4(),
+        segment_id=uuid4(),
+        start_offset=0,
+        end_offset=7,
+        selected_text="Heading",
+    )
+    assert payload.target_kind == "QUESTION_GROUP_OPTION"
+
+
 def test_finalized_review_normalizes_legacy_heading_value_and_key() -> None:
     passage = ReadingPassage(
         id=uuid4(),

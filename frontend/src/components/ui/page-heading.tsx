@@ -15,7 +15,7 @@ export function PageHeading({
     <div className="page-heading">
       <div className="max-w-3xl">
         {eyebrow ? (
-          <p className={`page-eyebrow ${eyebrowClassName ?? ""}`.trim()}>
+          <p className={`page-eyebrow page-context-kicker ${eyebrowClassName ?? ""}`.trim()}>
             {eyebrow}
           </p>
         ) : null}

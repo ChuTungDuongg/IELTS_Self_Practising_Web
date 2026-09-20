@@ -232,11 +232,29 @@ describe("AttemptHistoryList", () => {
     render(<AttemptHistoryList initialHistory={history([submitted, shortObjective, ungradedWriting, inProgress])} />);
 
     expect(screen.getByRole("tab", { name: "By skill" })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByText("Band 8.0")).toBeInTheDocument();
-    expect(screen.getByText("Raw 35 / 40")).toBeInTheDocument();
+    const readingScore = screen.getByTestId(`history-score-${submitted.attempt_id}`);
+    expect(within(readingScore).getByText("Band")).toHaveClass("history-band-label");
+    expect(within(readingScore).getByText("8.0")).toHaveClass("history-band-value");
+    expect(within(readingScore).getByText("35 / 40 correct")).toBeInTheDocument();
     expect(screen.getByText("Official band unavailable")).toBeInTheDocument();
     expect(screen.getByText("Not graded")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Continue" })).toHaveAttribute("href", `/attempt/${inProgress.attempt_id}`);
+  });
+
+  it("shows finalized Writing prominently without inventing scores for active attempts", () => {
+    render(<AttemptHistoryList initialHistory={history([writing, inProgress, paused])} />);
+
+    const writingScore = screen.getByTestId(`history-score-${writing.attempt_id}`);
+    expect(within(writingScore).getByText("Band")).toBeInTheDocument();
+    expect(within(writingScore).getByText("7.0")).toHaveClass("history-band-value");
+    expect(screen.getByTestId(`history-score-${inProgress.attempt_id}`)).toHaveTextContent("In progress");
+    expect(screen.getByTestId(`history-score-${paused.attempt_id}`)).toHaveTextContent("Paused");
+    expect(screen.getAllByText("Band")).toHaveLength(1);
+  });
+
+  it("renders dates deterministically in the project timezone", () => {
+    render(<AttemptHistoryList initialHistory={history([{ ...submitted, started_at: "2026-09-20T15:00:01Z" }])} />);
+    expect(screen.getByText("Started 20/09/2026, 22:00:01")).toBeInTheDocument();
   });
 
   it("renders backend-produced exact-version groups and does not derive incomplete overall", () => {

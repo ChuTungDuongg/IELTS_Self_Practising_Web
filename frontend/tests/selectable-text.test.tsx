@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { renderToString } from "react-dom/server";
-import { TrueFalseNotGivenRenderer } from "@/features/questions/renderers";
+import { MatchingHeadingsRenderer, TrueFalseNotGivenRenderer } from "@/features/questions/renderers";
 import { questionRegistry } from "@/features/questions/registry";
 import type { ExamGroup } from "@/features/questions/types";
 import { SelectableText } from "@/features/highlighting/selectable-text";
@@ -112,6 +112,77 @@ describe("selectable text", () => {
     fireEvent.click(mark);
     fireEvent.pointerDown(screen.getByRole("button", { name: "Outside options" }));
     expect(screen.queryByRole("dialog", { name: "Highlight options" })).not.toBeInTheDocument();
+  });
+});
+
+describe("Matching Headings option highlighting", () => {
+  it("creates, restores, and removes a highlight using the group and stable option IDs", async () => {
+    const groupId = crypto.randomUUID();
+    const optionId = crypto.randomUUID();
+    const questionId = crypto.randomUUID();
+    const blockId = crypto.randomUUID();
+    const group = {
+      id: groupId,
+      question_type: "matching_headings",
+      instruction: "Choose the correct heading.",
+      order_index: 0,
+      config: { options: [
+        { id: optionId, label: "i", text: "Earning foreign exchange through tourism" },
+        { id: crypto.randomUUID(), label: "ii", text: "The development of mass tourism" },
+      ] },
+      questions: [{ id: questionId, number: 1, prompt: "Paragraph A", config: { target_block_id: blockId }, order_index: 0 }],
+    } as ExamGroup;
+    const onCreate = vi.fn().mockResolvedValue(undefined);
+    const onDelete = vi.fn().mockResolvedValue(undefined);
+    const view = render(
+      <MatchingHeadingsRenderer
+        group={group}
+        values={{}}
+        passageBlocks={[{ id: blockId, type: "paragraph", label: "A", text: "Fictional paragraph" }]}
+        highlighting={{ highlights: [], onCreate, onDelete }}
+      />,
+    );
+    const optionText = screen.getByText("Earning foreign exchange through tourism");
+    expect(optionText.closest("li")).toHaveClass("matching-heading-option");
+    selectText(optionText.firstChild!, 0, 7);
+    fireEvent.mouseUp(optionText);
+    fireEvent.click(screen.getByRole("button", { name: "Highlight" }));
+
+    await waitFor(() => expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({
+      target_kind: "QUESTION_GROUP_OPTION",
+      target_id: groupId,
+      segment_id: optionId,
+      start_offset: 0,
+      end_offset: 7,
+      selected_text: "Earning",
+    })));
+
+    const stored: Highlight = {
+      id: crypto.randomUUID(),
+      target_kind: "QUESTION_GROUP_OPTION",
+      target_id: groupId,
+      segment_id: optionId,
+      passage_id: null,
+      start_block_id: null,
+      end_block_id: null,
+      start_offset: 0,
+      end_offset: 7,
+      selected_text: "Earning",
+      created_at: new Date().toISOString(),
+    };
+    view.rerender(
+      <MatchingHeadingsRenderer
+        group={group}
+        values={{}}
+        passageBlocks={[{ id: blockId, type: "paragraph", label: "A", text: "Fictional paragraph" }]}
+        highlighting={{ highlights: [stored], onCreate, onDelete }}
+      />,
+    );
+    window.getSelection()?.removeAllRanges();
+    fireEvent.click(screen.getByRole("button", { name: "Highlight: Earning. Open options" }));
+    fireEvent.click(screen.getByRole("button", { name: "Remove highlight" }));
+    await waitFor(() => expect(onDelete).toHaveBeenCalledWith(stored.id));
+    expect(screen.getByRole("combobox", { name: "Question 1" })).toBeInTheDocument();
   });
 });
 

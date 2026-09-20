@@ -89,20 +89,30 @@ describe("fantasy galaxy visual system", () => {
   it("uses readable contextual label and criterion assessment classes", () => {
     for (const selector of [
       ".authoring-eyebrow",
+      ".page-context-kicker",
       ".test-type",
       ".practice-module-kicker",
       ".writing-task-kicker",
       ".writing-review-kicker",
       ".writing-response-kicker",
       ".review-result-label",
+      ".history-eyebrow",
+      ".history-band-value",
+      ".matching-heading-options",
+      ".matching-heading-text",
       ".writing-assessment-grid",
       ".writing-criteria-grid",
     ]) {
       expect(css).toContain(selector);
     }
     expect(css).toMatch(/\.authoring-eyebrow\s*\{[^}]*font-size:\s*14px[^}]*letter-spacing:\s*\.03em/);
+    expect(css).toMatch(/\.page-context-kicker\s*\{[^}]*font-size:\s*14px[^}]*letter-spacing:\s*\.04em[^}]*text-transform:\s*none/);
     expect(css).toMatch(/\.writing-task-kicker[^\{]*\{[^}]*font-size:\s*13px/);
     expect(css).toMatch(/\.review-score \.review-result-label\s*\{[^}]*font-size:\s*13px[^}]*text-transform:\s*none/);
+    expect(css).toMatch(/\.history-eyebrow\s*\{[^}]*font-size:\s*14px[^}]*letter-spacing:\s*\.03em[^}]*text-transform:\s*none/);
+    expect(css).toMatch(/\.history-band-value\s*\{[^}]*font-size:\s*21px/);
+    expect(css).toMatch(/\.matching-heading-options\s*\{[^}]*font-size:\s*15\.5px[^}]*line-height:\s*1\.62/);
+    expect(css).toMatch(/\.matching-heading-text\s*\{[^}]*color:\s*var\(--exam-text\)/);
     expect(css).toMatch(/@media \(max-width:\s*520px\)[\s\S]*?\.writing-criteria-grid\s*\{[^}]*grid-template-columns:\s*1fr/);
   });
 });

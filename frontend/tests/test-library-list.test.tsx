@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { TestLibraryList } from "@/features/test-builder/test-library-list";
 import { ApiError } from "@/lib/api/client";
 import type { TestSummary } from "@/lib/api/schema";
-import { deleteTest, permanentlyDeleteTest, restoreTest } from "@/lib/api/tests";
+import { cloneVersion, deleteTest, permanentlyDeleteTest, restoreTest } from "@/lib/api/tests";
 
 const refresh = vi.fn();
 const push = vi.fn();
@@ -74,6 +74,27 @@ describe("TestLibraryList", () => {
     expect(screen.getByRole("heading", { name: "Fictional draft" }).closest("article")).toHaveClass(
       "admin-test-card",
     );
+  });
+
+  it("routes Edit on a published version to the draft returned by cloning", async () => {
+    const published = { ...archivedTest, archived_at: null };
+    const newDraftId = "55555555-5555-4555-8555-555555555555";
+    vi.mocked(cloneVersion).mockResolvedValue({
+      id: newDraftId,
+      test_id: published.id,
+      test_title: published.title,
+      version_number: 2,
+      status: "DRAFT",
+      created_at: "2026-09-20T00:00:00Z",
+      published_at: null,
+      modules: [],
+    });
+    render(<TestLibraryList activeTests={[published]} archivedTests={[]} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+
+    await waitFor(() => expect(cloneVersion).toHaveBeenCalledWith(published.id, published.versions[0].id));
+    expect(push).toHaveBeenCalledWith(`/admin/tests/${published.id}/versions/${newDraftId}/edit`);
   });
 
   it("cancels deletion without sending a request", () => {

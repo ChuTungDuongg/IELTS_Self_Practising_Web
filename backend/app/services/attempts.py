@@ -1047,6 +1047,7 @@ class AttemptService:
             group = await self.session.scalar(
                 select(QuestionGroup)
                 .join(TestModule)
+                .options(selectinload(QuestionGroup.questions))
                 .where(
                     QuestionGroup.id == body.target_id,
                     QuestionGroup.question_type == "text_completion",
@@ -1084,6 +1085,49 @@ class AttemptService:
                     ):
                         return str(segment.get("text") or "")
             raise AppError("INVALID_HIGHLIGHT", "The text segment does not exist.", 422)
+        if body.target_kind == "QUESTION_GROUP_OPTION":
+            group = await self.session.scalar(
+                select(QuestionGroup)
+                .join(TestModule)
+                .options(selectinload(QuestionGroup.questions))
+                .where(
+                    QuestionGroup.id == body.target_id,
+                    TestModule.test_version_id == attempt.test_version_id,
+                    TestModule.module_type == attempt.module_type,
+                )
+            )
+            if group is None:
+                raise AppError(
+                    "INVALID_HIGHLIGHT",
+                    "The question group does not belong to this attempt.",
+                    422,
+                )
+            passage_blocks: list[dict] = []
+            if group.passage_id is not None:
+                passage = await self.session.get(ReadingPassage, group.passage_id)
+                if passage is not None:
+                    passage_blocks = normalize_passage_blocks(passage.content_json, passage.id)
+            normalized, _ = normalize_question_group_payload(
+                question_type=group.question_type,
+                group_config=group.config,
+                questions=[
+                    {
+                        "id": item.id,
+                        "number": item.number,
+                        "prompt": item.prompt,
+                        "config": item.config,
+                        "answer_key": item.answer_key,
+                        "order_index": item.order_index,
+                    }
+                    for item in group.questions
+                ],
+                group_id=group.id,
+                passage_blocks=passage_blocks,
+            )
+            for option in normalized.get("options", []):
+                if str(option.get("id")) == str(body.segment_id):
+                    return str(option.get("text") or "")
+            raise AppError("INVALID_HIGHLIGHT", "The question group option does not exist.", 422)
         raise AppError("INVALID_HIGHLIGHT", "The highlight target type is unsupported.", 422)
 
     @staticmethod
@@ -1092,7 +1136,9 @@ class AttemptService:
             raise AppError("INVALID_HIGHLIGHT", "Highlight offsets are invalid.", 422)
         actual = source_text[body.start_offset : body.end_offset]
         if " ".join(actual.split()) != " ".join(body.selected_text.split()):
-            raise AppError("INVALID_HIGHLIGHT", "Selected text does not match the passage.", 422)
+            raise AppError(
+                "INVALID_HIGHLIGHT", "Selected text does not match the source text.", 422
+            )
 
     @staticmethod
     def _validate_highlight(passage: ReadingPassage, body: HighlightCreate) -> None:

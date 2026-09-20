@@ -32,7 +32,7 @@ const writingTaskSchema = z.object({
   word_count: z.number().int().nonnegative(),
 });
 const highlightSchema = z.object({
-  id: z.string().uuid(), target_kind: z.enum(["PASSAGE_BLOCK", "QUESTION_PROMPT", "TEXT_COMPLETION_SEGMENT"]), target_id: z.string().uuid(), segment_id: z.string().uuid().nullable().optional(),
+  id: z.string().uuid(), target_kind: z.enum(["PASSAGE_BLOCK", "QUESTION_PROMPT", "TEXT_COMPLETION_SEGMENT", "QUESTION_GROUP_OPTION"]), target_id: z.string().uuid(), segment_id: z.string().uuid().nullable().optional(),
   passage_id: z.string().uuid().nullable().optional(), start_block_id: z.string().uuid().nullable().optional(),
   start_offset: z.number(), end_block_id: z.string().uuid().nullable().optional(), end_offset: z.number(),
   selected_text: z.string(), created_at: z.string(),

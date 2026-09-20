@@ -8,7 +8,7 @@ export default async function HistoryPage() {
   const history = await getHistory().catch(() => ({ items: [], groups: [], total: 0 }));
   return (
     <>
-      <PageHeading eyebrow="Practice record" title="Attempt history" description="Every attempt remains attached to its exact frozen test version." />
+      <PageHeading eyebrow="Practice record" eyebrowClassName="history-eyebrow" title="Attempt history" description="Every attempt remains attached to its exact frozen test version." />
       <div className="history-surface">
         <AttemptHistoryList initialHistory={history} />
       </div>

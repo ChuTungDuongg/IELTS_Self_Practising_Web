@@ -3,13 +3,14 @@ import { resolve } from "node:path";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { TestLibraryList } from "@/features/test-builder/test-library-list";
+import { AppShell } from "@/components/ui/app-shell";
 import TestDetailPage from "@/app/admin/tests/[testId]/page";
 import { parseBuilderVersion } from "@/lib/api/builder";
 import type { TestSummary } from "@/lib/api/schema";
 import { getTest } from "@/lib/api/tests";
 import { BUILDER_EDIT_ROUTE, builderEditPath } from "@/lib/routes";
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
+vi.mock("next/navigation", () => ({ usePathname: () => "/", useRouter: () => ({ refresh: vi.fn() }) }));
 vi.mock("@/lib/api/tests", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api/tests")>();
   return { ...actual, getTest: vi.fn() };
@@ -31,16 +32,23 @@ const draft: TestSummary = {
 
 describe("canonical Builder edit route", () => {
   it("exists in the App Router and is used by Continue draft", () => {
+    expect(existsSync(resolve(process.cwd(), "src/app/admin/tests/page.tsx"))).toBe(true);
     expect(BUILDER_EDIT_ROUTE).toBe("/admin/tests/[testId]/versions/[versionId]/edit");
     expect(existsSync(resolve(process.cwd(), "src/app/admin/tests/[testId]/versions/[versionId]/edit/page.tsx"))).toBe(true);
     render(<TestLibraryList activeTests={[draft]} archivedTests={[]} />);
     expect(screen.getByRole("link", { name: /Continue draft/ })).toHaveAttribute("href", builderEditPath(testId, versionId));
   });
 
+  it("keeps the sidebar Builder destination on the authoring Test Library", () => {
+    render(<AppShell><p>content</p></AppShell>);
+    expect(screen.getByRole("link", { name: "Builder" })).toHaveAttribute("href", "/admin/tests");
+  });
+
   it("uses the same route from the test detail version list", async () => {
     vi.mocked(getTest).mockResolvedValue(draft);
     render(await TestDetailPage({ params: Promise.resolve({ testId }) }));
     expect(screen.getByRole("link", { name: /Version 1/ })).toHaveAttribute("href", builderEditPath(testId, versionId));
+    expect(screen.getByText("Created 19/09/2026, 07:00:00")).toBeInTheDocument();
   });
 
   it("accepts a Reading-only Builder payload without Listening arrays", () => {

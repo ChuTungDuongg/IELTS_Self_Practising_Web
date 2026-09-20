@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Script from "next/script";
 import { AppShell } from "@/components/ui/app-shell";
 import "./globals.css";
 
@@ -14,7 +13,10 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="en" data-theme="light" suppressHydrationWarning>
       <body>
-        <Script id="theme-initialization" strategy="beforeInteractive">{themeInitializationScript}</Script>
+        <script
+          id="theme-initialization"
+          dangerouslySetInnerHTML={{ __html: themeInitializationScript }}
+        />
         <AppShell>{children}</AppShell>
       </body>
     </html>

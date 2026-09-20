@@ -213,7 +213,9 @@ class ExamWritingTask(BaseModel):
 
 class HighlightResponse(BaseModel):
     id: UUID
-    target_kind: Literal["PASSAGE_BLOCK", "QUESTION_PROMPT", "TEXT_COMPLETION_SEGMENT"]
+    target_kind: Literal[
+        "PASSAGE_BLOCK", "QUESTION_PROMPT", "TEXT_COMPLETION_SEGMENT", "QUESTION_GROUP_OPTION"
+    ]
     target_id: UUID
     segment_id: UUID | None = None
     passage_id: UUID | None = None
@@ -226,9 +228,12 @@ class HighlightResponse(BaseModel):
 
 
 class HighlightCreate(BaseModel):
-    target_kind: Literal["PASSAGE_BLOCK", "QUESTION_PROMPT", "TEXT_COMPLETION_SEGMENT"] | None = (
-        None
-    )
+    target_kind: (
+        Literal[
+            "PASSAGE_BLOCK", "QUESTION_PROMPT", "TEXT_COMPLETION_SEGMENT", "QUESTION_GROUP_OPTION"
+        ]
+        | None
+    ) = None
     target_id: UUID | None = None
     segment_id: UUID | None = None
     passage_id: UUID | None = None
@@ -248,7 +253,15 @@ class HighlightCreate(BaseModel):
             self.segment_id = self.start_block_id
         if not self.target_kind or not self.target_id:
             raise ValueError("A highlight target is required")
-        if self.target_kind in {"PASSAGE_BLOCK", "TEXT_COMPLETION_SEGMENT"} and not self.segment_id:
+        if (
+            self.target_kind
+            in {
+                "PASSAGE_BLOCK",
+                "TEXT_COMPLETION_SEGMENT",
+                "QUESTION_GROUP_OPTION",
+            }
+            and not self.segment_id
+        ):
             raise ValueError("This highlight target requires a segment ID")
         return self
 

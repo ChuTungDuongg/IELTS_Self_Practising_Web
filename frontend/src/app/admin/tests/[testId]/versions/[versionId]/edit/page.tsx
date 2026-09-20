@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { PageHeading } from "@/components/ui/page-heading";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { VersionActions } from "@/features/test-builder/version-actions";
@@ -10,6 +10,8 @@ import { BuilderWorkspaceNavigation, type BuilderWorkspace } from "@/features/te
 import { getBuilderVersion } from "@/lib/api/builder";
 import { ModuleBadge } from "@/components/ui/module-badge";
 import { ApiError } from "@/lib/api/client";
+import { getTest } from "@/lib/api/tests";
+import { builderEditPath } from "@/lib/routes";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +23,15 @@ export default async function VersionEditorPage({ params, searchParams }: { para
   try {
     version = await getBuilderVersion(versionId);
   } catch (error) {
-    if (error instanceof ApiError && error.status === 404) notFound();
+    if (error instanceof ApiError && error.status === 404) {
+      const test = await getTest(testId).catch(() => null);
+      if (!test) redirect("/admin/tests");
+      const currentDraft = [...test.versions]
+        .filter((item) => item.status === "DRAFT")
+        .sort((left, right) => right.version_number - left.version_number)[0];
+      if (currentDraft && currentDraft.id !== versionId) redirect(builderEditPath(test.id, currentDraft.id));
+      redirect(`/admin/tests/${encodeURIComponent(test.id)}?builder=version-unavailable`);
+    }
     throw error;
   }
   if (version.test_id !== testId) notFound();

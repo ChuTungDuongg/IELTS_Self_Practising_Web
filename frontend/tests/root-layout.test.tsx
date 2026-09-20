@@ -1,18 +1,19 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { Children, type ReactElement, type ReactNode } from "react";
 import { describe, expect, it } from "vitest";
-import Script from "next/script";
 import RootLayout, { themeInitializationScript } from "@/app/layout";
 
 describe("RootLayout theme initialization", () => {
-  it("renders a deterministic server theme and a static beforeInteractive script", () => {
+  it("renders a deterministic server theme and a trusted inline bootstrap script", () => {
     const markup = renderToStaticMarkup(<RootLayout><p>content</p></RootLayout>);
     expect(markup).toContain('data-theme="light"');
     const layout = RootLayout({ children: <p>content</p> }) as ReactElement<{ children: ReactNode }>;
     const body = layout.props.children as ReactElement<{ children: ReactNode }>;
-    const initialization = Children.toArray(body.props.children)[0] as ReactElement<{ id: string; strategy: string }>;
-    expect(initialization.type).toBe(Script);
-    expect(initialization.props).toMatchObject({ id: "theme-initialization", strategy: "beforeInteractive" });
+    const initialization = Children.toArray(body.props.children)[0] as ReactElement<{ id: string; dangerouslySetInnerHTML: { __html: string } }>;
+    expect(initialization.type).toBe("script");
+    expect(initialization.props.id).toBe("theme-initialization");
+    expect(initialization.props.dangerouslySetInnerHTML.__html).toBe(themeInitializationScript);
+    expect(markup).not.toContain("data-nscript");
     expect(themeInitializationScript).toContain('localStorage.getItem("ielts-theme")');
     expect(themeInitializationScript).not.toContain("Date.now");
   });

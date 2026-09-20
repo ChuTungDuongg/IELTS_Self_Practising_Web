@@ -12,6 +12,7 @@ import { formatDuration } from "@/features/exam/timer";
 import { deleteAttempt, resumeAttempt } from "@/lib/api/attempts";
 import { ApiError } from "@/lib/api/client";
 import type { HistoryGroup, HistoryItem, HistoryResponse } from "@/lib/api/history";
+import { formatProjectDateTime } from "@/lib/date-time";
 
 type HistoryMode = "skill" | "test";
 
@@ -162,7 +163,7 @@ function HistoryRow({
           <span>Version {item.version_number}</span>
         </div>
         <p className="history-record-title">{item.test_title}</p>
-        <p className="history-record-date">Started {new Date(item.started_at).toLocaleString()}</p>
+        <p className="history-record-date">Started {formatProjectDateTime(item.started_at)}</p>
       </div>
       <div className="history-state">
         <StatusBadge status={item.status} />
@@ -206,30 +207,25 @@ function HistoryRow({
 
 function AttemptScore({ item }: { item: HistoryItem }) {
   if (item.status === "PAUSED") {
-    return <span className="history-score">Paused</span>;
+    return <span className="history-score history-score-state" data-testid={`history-score-${item.attempt_id}`}>Paused</span>;
   }
   if (item.status === "IN_PROGRESS") {
-    return <span className="history-score">In progress</span>;
+    return <span className="history-score history-score-state" data-testid={`history-score-${item.attempt_id}`}>In progress</span>;
   }
-  if (item.module === "WRITING") {
+  if (item.band_score === null) {
     return (
-      <span className="history-score">
-        {item.band_score === null ? "Not graded" : `Band ${item.band_score.toFixed(1)}`}
+      <span className="history-score history-score-unavailable" data-testid={`history-score-${item.attempt_id}`}>
+        {item.module === "WRITING" ? "Not graded" : "Official band unavailable"}
+        {item.module !== "WRITING" && item.raw_score !== null && item.max_score !== null ? <small>{item.raw_score} / {item.max_score} correct</small> : null}
       </span>
     );
   }
 
   return (
-    <span className="history-score">
-      <span>
-        {item.raw_score === null || item.max_score === null
-          ? "Raw score unavailable"
-          : `Raw ${item.raw_score} / ${item.max_score}`}
-      </span>
-      <span aria-hidden="true"> · </span>
-      <span>
-        {item.band_score === null ? "Official band unavailable" : `Band ${item.band_score.toFixed(1)}`}
-      </span>
+    <span className="history-score history-score-result" data-testid={`history-score-${item.attempt_id}`}>
+      <span className="history-band-label">Band</span>
+      <strong className="history-band-value">{item.band_score.toFixed(1)}</strong>
+      {item.module !== "WRITING" ? <small>{item.raw_score === null || item.max_score === null ? "Raw score unavailable" : `${item.raw_score} / ${item.max_score} correct`}</small> : null}
     </span>
   );
 }

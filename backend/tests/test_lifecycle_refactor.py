@@ -101,7 +101,59 @@ async def test_generic_highlights_and_bulk_delete(db_session: AsyncSession) -> N
     completion_group.questions.append(completion_question)
     module.passages[0].question_groups.append(completion_group)
     module.question_groups.append(completion_group)
+    heading_option_id = uuid4()
+    other_option_id = uuid4()
+    target_block_id = module.passages[0].content_json[0]["id"]
+    heading_group = QuestionGroup(
+        id=uuid4(),
+        question_type="matching_headings",
+        instruction="Match headings",
+        order_index=2,
+        config={
+            "options": [
+                {
+                    "id": str(heading_option_id),
+                    "label": "i",
+                    "text": "Earning foreign exchange through tourism",
+                },
+                {"id": str(uuid4()), "label": "ii", "text": "Mass tourism"},
+            ]
+        },
+    )
+    heading_group.questions.append(
+        Question(
+            number=3,
+            prompt="Paragraph A",
+            config={"target_block_id": target_block_id},
+            answer_key={"kind": "SINGLE_OPTION", "value": str(heading_option_id)},
+            order_index=0,
+        )
+    )
+    other_group = QuestionGroup(
+        id=uuid4(),
+        question_type="matching_headings",
+        instruction="Other headings",
+        order_index=3,
+        config={
+            "options": [
+                {"id": str(other_option_id), "label": "i", "text": "Other group option"},
+                {"id": str(uuid4()), "label": "ii", "text": "Another option"},
+            ]
+        },
+    )
+    other_group.questions.append(
+        Question(
+            number=4,
+            prompt="Paragraph A",
+            config={"target_block_id": target_block_id},
+            answer_key={"kind": "SINGLE_OPTION", "value": str(other_option_id)},
+            order_index=0,
+        )
+    )
+    module.passages[0].question_groups.extend([heading_group, other_group])
+    module.question_groups.extend([heading_group, other_group])
     await persist(db_session, test)
+    heading_group_id = heading_group.id
     passage = module.passages[0]
     question = passage.question_groups[0].questions[0]
     attempt = await AttemptService(db_session).start(
@@ -144,10 +196,71 @@ async def test_generic_highlights_and_bulk_delete(db_session: AsyncSession) -> N
             selected_text="supports",
         ),
     )
+    heading_highlight = await AttemptService(db_session).create_highlight(
+        attempt.attempt_id,
+        HighlightCreate(
+            target_kind="QUESTION_GROUP_OPTION",
+            target_id=heading_group_id,
+            segment_id=heading_option_id,
+            start_offset=0,
+            end_offset=7,
+            selected_text="Earning",
+        ),
+    )
     assert passage_highlight.target_kind == "PASSAGE_BLOCK"
     assert question_highlight.target_kind == "QUESTION_PROMPT"
     assert completion_highlight.target_kind == "TEXT_COMPLETION_SEGMENT"
+    assert heading_highlight.target_kind == "QUESTION_GROUP_OPTION"
 
+    reloaded = await AttemptService(db_session).exam(attempt.attempt_id)
+    assert any(item.id == heading_highlight.id for item in reloaded.highlights)
+    await db_session.commit()
+
+    with pytest.raises(AppError) as wrong_group:
+        await AttemptService(db_session).create_highlight(
+            attempt.attempt_id,
+            HighlightCreate(
+                target_kind="QUESTION_GROUP_OPTION",
+                target_id=heading_group_id,
+                segment_id=other_option_id,
+                start_offset=0,
+                end_offset=5,
+                selected_text="Other",
+            ),
+        )
+    assert wrong_group.value.code == "INVALID_HIGHLIGHT"
+
+    with pytest.raises(AppError) as wrong_text:
+        await AttemptService(db_session).create_highlight(
+            attempt.attempt_id,
+            HighlightCreate(
+                target_kind="QUESTION_GROUP_OPTION",
+                target_id=heading_group_id,
+                segment_id=heading_option_id,
+                start_offset=0,
+                end_offset=7,
+                selected_text="Foreign",
+            ),
+        )
+    assert wrong_text.value.code == "INVALID_HIGHLIGHT"
+
+    await AttemptService(db_session).delete_highlight(attempt.attempt_id, heading_highlight.id)
+    db_session.expire_all()
+    after_delete = await AttemptService(db_session).exam(attempt.attempt_id)
+    assert all(item.id != heading_highlight.id for item in after_delete.highlights)
+    await db_session.commit()
+
+    bulk_heading = await AttemptService(db_session).create_highlight(
+        attempt.attempt_id,
+        HighlightCreate(
+            target_kind="QUESTION_GROUP_OPTION",
+            target_id=heading_group_id,
+            segment_id=heading_option_id,
+            start_offset=8,
+            end_offset=15,
+            selected_text="foreign",
+        ),
+    )
     await AttemptService(db_session).delete_all_highlights(attempt.attempt_id)
     remaining = list(
         await db_session.scalars(
@@ -155,6 +268,7 @@ async def test_generic_highlights_and_bulk_delete(db_session: AsyncSession) -> N
         )
     )
     assert remaining == []
+    assert bulk_heading.id is not None
 
 
 @pytest.mark.integration
