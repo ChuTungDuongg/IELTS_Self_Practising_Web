@@ -15,13 +15,13 @@ export default async function TestDetailPage({ params }: { params: Promise<{ tes
   return (
     <>
       <PageHeading eyebrow="Exam builder" title={test.title} description={test.description ?? "No description"} />
-      <section className="surface-card overflow-hidden">
+      <section className="version-library surface-card overflow-hidden">
         <div className="section-header border-b border-[var(--line)] px-6 py-5">
           <div><h2 className="section-title">Versions</h2><p className="section-description">Open a draft to continue authoring, or inspect a frozen published version.</p></div>
         </div>
         <div className="divide-y divide-[var(--line)]">
           {test.versions.map((version) => (
-            <Link key={version.id} href={builderEditPath(test.id, version.id)} className="group flex items-center justify-between gap-4 px-6 py-5 transition-colors hover:bg-[var(--surface-soft)]">
+            <Link key={version.id} href={builderEditPath(test.id, version.id)} className="version-row group">
               <div>
                 <p className="font-semibold">Version {version.version_number} · {version.status === "PUBLISHED" ? "Current published" : version.status === "DRAFT" ? "Draft" : "Historical"}</p>
                 <p className="mt-1 text-sm text-[var(--muted)]">Created {new Date(version.created_at).toLocaleString()}</p>

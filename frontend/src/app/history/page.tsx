@@ -9,7 +9,7 @@ export default async function HistoryPage() {
   return (
     <>
       <PageHeading eyebrow="Practice record" title="Attempt history" description="Every attempt remains attached to its exact frozen test version." />
-      <div className="surface-card overflow-hidden">
+      <div className="history-surface">
         <AttemptHistoryList initialItems={history.items} />
       </div>
     </>

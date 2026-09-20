@@ -18,26 +18,34 @@ export default async function LibraryPage() {
   const available = (await Promise.all(published.map(async (item) => ({ ...item, detail: await getVersion(item.version.id).catch(() => null) })))).filter((item) => item.detail);
   return (
     <>
-      <PageHeading eyebrow="Practice" title="Choose your next test" description="Published, frozen test versions available for a focused Reading practice session." />
+      <PageHeading eyebrow="Practice" title="Choose your next test" description="Published, frozen test versions available for focused Reading and Listening practice sessions." />
       {available.length ? (
-        <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+        <div className="practice-grid">
           {available.flatMap(({ test, version, detail }) => detail!.modules.filter((module) => module.module_type === "READING" || module.module_type === "LISTENING").map((module) => (
-            <article key={`${version.id}-${module.module_type}`} className="surface-card group overflow-hidden">
-              <div className={`h-1 bg-gradient-to-r ${module.module_type === "LISTENING" ? "from-violet-700 to-fuchsia-400" : "from-sky-600 to-cyan-400"}`} />
-              <div className="p-6">
-              <div className="flex items-start justify-between gap-3">
-                <ModuleBadge module={module.module_type} />
-                <StatusBadge status={version.status} />
-              </div>
-              <h2 className="mt-5 text-xl font-semibold tracking-tight">{test.title}</h2>
-              <p className="mt-2 min-h-12 text-sm leading-6 text-[var(--muted)]">{test.description ?? `A published ${module.module_type === "LISTENING" ? "Listening" : "Reading"} practice test.`}</p>
-              <Link className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-[var(--accent)]" href={`/admin/tests/${test.id}`}>
-                View version {version.version_number} <ArrowIcon className="size-4 transition-transform group-hover:translate-x-1" />
-              </Link>
-              <StartAttempt versionId={version.id} module={module.module_type as "READING" | "LISTENING"} />
+            <article key={`${version.id}-${module.module_type}`} className={`practice-card practice-card-${module.module_type.toLowerCase()}`}>
+              <div className="practice-card-accent" aria-hidden="true" />
+              <div className="practice-card-content">
+                <div className="practice-card-topline">
+                  <ModuleBadge module={module.module_type} />
+                  <StatusBadge status={version.status} />
+                </div>
+                <div className="practice-card-title">
+                  <p>{module.module_type === "LISTENING" ? "Listening practice" : "Reading practice"}</p>
+                  <h2>{test.title}</h2>
+                  <span>{test.description ?? `A published ${module.module_type === "LISTENING" ? "Listening" : "Reading"} practice test.`}</span>
+                </div>
+                <dl className="practice-card-meta">
+                  <div><dt>Version</dt><dd>{version.version_number}</dd></div>
+                  <div><dt>Questions</dt><dd>{module.question_count}</dd></div>
+                  <div><dt>{module.module_type === "LISTENING" ? "Sections" : "Passages"}</dt><dd>{module.module_type === "LISTENING" ? module.listening_part_count : module.passage_count}</dd></div>
+                </dl>
+                <Link className="practice-version-link" href={`/admin/tests/${test.id}`}>
+                  View published version <ArrowIcon className="size-4" />
+                </Link>
+                <StartAttempt versionId={version.id} module={module.module_type as "READING" | "LISTENING"} />
               </div>
             </article>
-          ))) }
+          )))}
         </div>
       ) : (
         <EmptyState title="No published tests yet" description="Publish a valid version in the Builder and it will appear here, ready for practice." />

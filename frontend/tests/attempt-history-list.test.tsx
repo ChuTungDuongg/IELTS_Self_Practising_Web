@@ -56,6 +56,22 @@ describe("AttemptHistoryList", () => {
     },
   );
 
+  it("keeps the primary attempt action ahead of the quiet destructive action", () => {
+    render(<AttemptHistoryList initialItems={[inProgress]} />);
+
+    expect(screen.getByRole("link", { name: "Continue" })).toHaveClass("btn", "btn-primary");
+    expect(screen.getByRole("button", { name: "Delete Fictional active attempt" })).toHaveClass(
+      "btn-danger-ghost",
+    );
+  });
+
+  it("renders the shared empty state when there are no attempts", () => {
+    const { container } = render(<AttemptHistoryList initialItems={[]} />);
+
+    expect(screen.getByRole("heading", { name: "No practice attempts yet" })).toBeInTheDocument();
+    expect(container.querySelector(".empty-state")).toBeInTheDocument();
+  });
+
   it("opens the confirmation dialog and cancellation sends no request", () => {
     render(<AttemptHistoryList initialItems={[inProgress]} />);
 
@@ -119,6 +135,6 @@ describe("AttemptHistoryList", () => {
     fireEvent.click(screen.getByRole("button", { name: "Delete Fictional submitted attempt" }));
     fireEvent.click(screen.getByRole("button", { name: "Delete attempt" }));
 
-    expect(await screen.findByText("No attempts have been recorded.")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "No practice attempts yet" })).toBeInTheDocument();
   });
 });

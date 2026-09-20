@@ -26,7 +26,7 @@ export default async function VersionEditorPage({ params, searchParams }: { para
   if (version.test_id !== testId) notFound();
   return (
     <>
-      <PageHeading eyebrow="IELTS Studio · Engine Builder" title={version.test_title} description={`Version ${version.version_number} · Structured authoring workspace`} action={<StatusBadge status={version.status} />} />
+      <PageHeading eyebrow="IELTS Studio · Exam Builder" title={version.test_title} description={`Version ${version.version_number} · Structured authoring workspace`} action={<StatusBadge status={version.status} />} />
       <BuilderLifecycleProvider>
         <VersionActions testId={testId} version={version} />
         <div className="builder-workspace">

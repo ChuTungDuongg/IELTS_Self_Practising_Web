@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { PageHeading } from "@/components/ui/page-heading";
+import { ArrowIcon, BuilderIcon, HeadphonesIcon, HistoryIcon, LibraryIcon, ReadingIcon, SparkleIcon } from "@/components/ui/icons";
 import { getHistory } from "@/lib/api/history";
 import { getTests } from "@/lib/api/tests";
 
@@ -12,32 +12,69 @@ export default async function DashboardPage() {
   ]);
   const published = tests.flatMap((test) => test.versions).filter((item) => item.status === "PUBLISHED");
   const inProgress = history.items.filter((item) => item.status === "IN_PROGRESS");
+  const pathways = [
+    { title: "IELTS Tests", description: "Choose a frozen published test and begin a focused practice session.", href: "/library", eyebrow: "Practice library", icon: LibraryIcon, tone: "indigo" },
+    { title: "Reading", description: "Work through passages in a calm split-pane exam experience.", href: "/library", eyebrow: "Editorial focus", icon: ReadingIcon, tone: "cyan" },
+    { title: "Listening", description: "Practice with shared audio controls and structured question groups.", href: "/library", eyebrow: "Guided audio", icon: HeadphonesIcon, tone: "violet" },
+    { title: "History & progress", description: "Continue active attempts or revisit submitted work and feedback.", href: "/history", eyebrow: "Practice record", icon: HistoryIcon, tone: "blue" },
+  ] as const;
 
   return (
-    <>
-      <PageHeading
-        eyebrow="Local study workspace"
-        title="Build thoughtfully. Practice with focus."
-        description="Your private IELTS studio for structured test authoring, frozen published versions, and server-saved practice attempts."
-      />
-      <section className="grid gap-5 sm:grid-cols-3" aria-label="Workspace summary">
+    <div className="home-page">
+      <section className="home-hero" aria-labelledby="home-title">
+        <div className="home-hero-content">
+          <p className="page-eyebrow"><SparkleIcon className="size-4" /> IELTS Studio · Your learning observatory</p>
+          <h1 id="home-title">Build thoughtfully.<br /><span>Practice with focus.</span></h1>
+          <p className="home-hero-description">A private IELTS workspace where structured authoring, calm exam practice, and meaningful review stay connected from first draft to final answer.</p>
+          <div className="home-hero-actions">
+            <Link href="/library" className="btn btn-primary">Start practicing <ArrowIcon className="size-4" /></Link>
+            <Link href="/admin/tests" className="btn btn-secondary"><BuilderIcon className="size-4" /> Open Builder</Link>
+          </div>
+        </div>
+        <div className="home-orbit" aria-hidden="true">
+          <span className="home-orbit-core"><SparkleIcon /></span>
+          <span className="home-orbit-ring home-orbit-ring-one" />
+          <span className="home-orbit-ring home-orbit-ring-two" />
+          <span className="home-orbit-star home-orbit-star-one" />
+          <span className="home-orbit-star home-orbit-star-two" />
+        </div>
+      </section>
+
+      <section className="home-metrics" aria-label="Workspace summary">
         {[
-          ["Published versions", String(published.length), "/library"],
-          ["Active attempts", String(inProgress.length), "/history"],
-          ["Tests in builder", String(tests.length), "/admin/tests"],
-        ].map(([label, value, href]) => (
-          <Link key={label} href={href} className="surface-card group relative overflow-hidden p-6 transition hover:-translate-y-0.5 hover:shadow-[var(--shadow-md)]">
-            <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-600 to-cyan-400 opacity-80" />
-            <p className="text-xs font-bold uppercase tracking-wider text-[var(--muted)]">{label}</p>
-            <p className="mt-4 text-4xl font-bold tracking-tight">{value}</p>
-            <p className="mt-3 text-xs font-semibold text-[var(--accent)]">View workspace →</p>
+          ["Published", String(published.length), "Ready to practice", "/library"],
+          ["In progress", String(inProgress.length), "Saved attempts", "/history"],
+          ["Builder tests", String(tests.length), "Authoring workspace", "/admin/tests"],
+        ].map(([label, value, detail, href]) => (
+          <Link key={label} href={href} className="home-metric">
+            <span className="home-metric-value">{value}</span>
+            <span><strong>{label}</strong><small>{detail}</small></span>
+            <ArrowIcon className="size-4" />
           </Link>
         ))}
       </section>
-      <section className="surface-card mt-8 overflow-hidden p-7">
-        <div className="max-w-3xl"><p className="page-eyebrow">Workspace foundation</p><h2 className="section-title">Reliable authoring from draft to review</h2>
-        <p className="mt-3 leading-7 text-[var(--muted)]">Test metadata, immutable publishing, attempts, timers, history, and asset boundaries work together so the authoring flow stays flexible without compromising past results.</p></div>
+
+      <section className="home-learning" aria-labelledby="learning-paths-title">
+        <div className="section-header">
+          <div><p className="page-eyebrow">Learning pathways</p><h2 id="learning-paths-title" className="section-title">Choose where to continue</h2><p className="section-description">Everything you need to build, practice, and review—without losing your place.</p></div>
+          <Link href="/library" className="btn btn-ghost">Explore all tests <ArrowIcon className="size-4" /></Link>
+        </div>
+        <div className="learning-path-grid">
+          {pathways.map(({ title, description, href, eyebrow, icon: Icon, tone }) => (
+            <Link key={title} href={href} className={`learning-path-card learning-path-${tone}`}>
+              <span className="learning-path-icon"><Icon className="size-6" /></span>
+              <span className="learning-path-copy"><small>{eyebrow}</small><strong>{title}</strong><span>{description}</span></span>
+              <ArrowIcon className="learning-path-arrow size-4" />
+            </Link>
+          ))}
+        </div>
       </section>
-    </>
+
+      <section className="home-foundation">
+        <span className="home-foundation-mark" aria-hidden="true"><SparkleIcon /></span>
+        <div><p className="page-eyebrow">Built for continuity</p><h2 className="section-title">Reliable from draft to review</h2><p>Published versions remain frozen, attempts stay tied to their exact source, and every saved response is ready when you return.</p></div>
+        <Link href="/history" className="btn btn-secondary">View progress</Link>
+      </section>
+    </div>
   );
 }

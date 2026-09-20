@@ -31,4 +31,19 @@ describe("exam theme CSS", () => {
       expect(darkTheme).toMatch(new RegExp(`--${token}:`));
     }
   });
+
+  it("keeps Candidate Reading editorial and navigation states explicit", () => {
+    expect(css).toMatch(/\.exam-passage\s*\{[^}]*background:\s*var\(--exam-surface\)/);
+    expect(css).toMatch(/\.exam-questions\s*\{[^}]*background:\s*var\(--exam-surface-alt\)/);
+    expect(css).toMatch(/\.exam-question-strip\s*\{[^}]*flex-wrap:\s*nowrap[^}]*overflow-x:\s*auto/);
+    for (const state of ["answered", "unanswered", "flagged", "current"]) {
+      expect(css).toContain(`.exam-question-chip.${state}`);
+    }
+  });
+
+  it("preserves multiline instructions and compact inline completion gaps", () => {
+    expect(css).toMatch(/\.question-group-instruction\s*>\s*p\s*\{[^}]*white-space:\s*pre-wrap/);
+    expect(css).toMatch(/\.completion-gap-inline\s*\{[^}]*display:\s*inline-flex/);
+    expect(css).toMatch(/\.completion-gap-input\s*\{[^}]*min-height:\s*32px/);
+  });
 });

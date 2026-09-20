@@ -141,7 +141,7 @@ export function TestLibraryList({
             const published = [...test.versions].reverse().find((version) => version.status === "PUBLISHED");
             const destructiveLabel = hasHistory(test) ? "Archive" : "Delete";
             return (
-              <article key={test.id} className="test-card">
+              <article key={test.id} className="test-card admin-test-card">
                 <div className="test-card-accent" aria-hidden="true" />
                 <div className="test-card-topline">
                   <span className="test-type"><BuilderIcon className="size-4" /> IELTS test</span>

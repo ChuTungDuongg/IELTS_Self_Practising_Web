@@ -5,7 +5,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "IELTS Studio",
-  description: "Local IELTS test authoring and practice",
+  description: "A focused IELTS learning, practice, and authoring workspace",
 };
 
 export const themeInitializationScript = `(function(){try{var saved=localStorage.getItem("ielts-theme");var theme=saved==="light"||saved==="dark"?saved:(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");document.documentElement.dataset.theme=theme}catch(e){document.documentElement.dataset.theme="light"}})();`;

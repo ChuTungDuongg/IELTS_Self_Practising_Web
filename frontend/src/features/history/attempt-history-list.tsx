@@ -4,6 +4,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { EmptyState } from "@/components/ui/empty-state";
+import { HistoryIcon } from "@/components/ui/icons";
+import { ModuleBadge } from "@/components/ui/module-badge";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { formatDuration } from "@/features/exam/timer";
 import { deleteAttempt } from "@/lib/api/attempts";
@@ -49,52 +52,36 @@ export function AttemptHistoryList({ initialItems }: { initialItems: HistoryItem
   return (
     <>
       {items.length ? (
-        <ul className="divide-y divide-[var(--line)]">
+        <ul className="history-list">
           {items.map((item) => (
             <li
               key={item.attempt_id}
-              className="flex flex-wrap items-center gap-4 px-6 py-5 transition-colors hover:bg-[var(--surface-soft)]"
+              className="history-row"
             >
-              <div className="min-w-0 flex-1">
-                <p className="truncate font-medium">{item.test_title}</p>
-                <p className="mt-1 text-sm text-[var(--muted)]">
-                  {item.module} · Version {item.version_number} ·{" "}
-                  {new Date(item.started_at).toLocaleString()}
-                </p>
+              <div className="history-record">
+                <div className="history-record-topline"><ModuleBadge module={item.module} /><span>Version {item.version_number}</span></div>
+                <p className="history-record-title">{item.test_title}</p>
+                <p className="history-record-date">Started {new Date(item.started_at).toLocaleString()}</p>
               </div>
-              <StatusBadge status={item.status} />
-              <span className="w-20 text-right text-sm tabular-nums text-[var(--muted)]">
-                {item.elapsed_seconds === null ? "—" : formatDuration(item.elapsed_seconds)}
-              </span>
-              {item.status !== "IN_PROGRESS" ? (
-                <Link
-                  href={`/review/${item.attempt_id}`}
-                  className="text-sm font-semibold text-[var(--accent)]"
-                >
-                  Review
-                </Link>
-              ) : (
-                <Link
-                  href={`/attempt/${item.attempt_id}`}
-                  className="text-sm font-semibold text-[var(--accent)]"
-                >
-                  Continue
-                </Link>
-              )}
-              <button
-                type="button"
-                disabled={pending}
-                aria-label={`Delete ${item.test_title}`}
-                onClick={() => chooseAttempt(item)}
-                className="btn btn-danger-ghost"
-              >
-                Delete
-              </button>
+              <div className="history-state">
+                <StatusBadge status={item.status} />
+                <span className="history-duration">
+                  {item.elapsed_seconds === null ? "Time in progress" : formatDuration(item.elapsed_seconds)}
+                </span>
+              </div>
+              <div className="history-actions">
+                {item.status !== "IN_PROGRESS" ? (
+                  <Link href={`/review/${item.attempt_id}`} className="btn btn-primary">Review</Link>
+                ) : (
+                  <Link href={`/attempt/${item.attempt_id}`} className="btn btn-primary">Continue</Link>
+                )}
+                <button type="button" disabled={pending} aria-label={`Delete ${item.test_title}`} onClick={() => chooseAttempt(item)} className="btn btn-danger-ghost">Delete</button>
+              </div>
             </li>
           ))}
         </ul>
       ) : (
-        <p className="p-8 text-center text-[var(--muted)]">No attempts have been recorded.</p>
+        <EmptyState icon={<HistoryIcon className="size-6" />} title="No practice attempts yet" description="Start a published Reading or Listening test and your saved progress will appear here." />
       )}
 
       <ConfirmDialog

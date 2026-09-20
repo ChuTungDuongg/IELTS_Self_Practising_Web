@@ -13,7 +13,9 @@ describe("Builder workspace navigation", () => {
       "href",
       `/admin/tests/${testId}/versions/${versionId}/edit?workspace=overview`,
     );
+    expect(screen.getByRole("link", { name: /Reading/ })).toHaveClass("builder-workspace-reading");
     expect(screen.getByRole("link", { name: /Reading/ })).not.toHaveAttribute("aria-current");
+    expect(screen.getByRole("link", { name: /Listening/ })).toHaveClass("builder-workspace-listening");
     expect(screen.getByRole("link", { name: /Listening/ })).toHaveAttribute("aria-current", "page");
     expect(screen.getByText(/Writing/).closest("a")).toBeNull();
     expect(screen.getByRole("link", { name: /ReadingCreated/ })).toBeInTheDocument();

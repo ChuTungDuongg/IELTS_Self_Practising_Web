@@ -90,6 +90,9 @@ describe("Reading footer navigation", () => {
 
   it("renders canonical passage and question rows without per-group flag controls", () => {
     const view = render(<ReadingRunner initial={payload()} />);
+    expect(view.container.querySelector(".exam-passage")).toBeInTheDocument();
+    expect(view.container.querySelector(".exam-passage-body")).toBeInTheDocument();
+    expect(view.container.querySelector(".exam-question-panel-heading")).toBeInTheDocument();
     const footer = view.container.querySelector(".reading-exam-footer")!;
     const passageRow = footer.querySelector(".exam-passage-navigation")!;
     const questionStrip = footer.querySelector(".exam-question-strip")!;

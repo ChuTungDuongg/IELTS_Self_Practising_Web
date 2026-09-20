@@ -66,7 +66,13 @@ describe("TestLibraryList", () => {
   it("renders the active test destructive action", () => {
     render(<TestLibraryList activeTests={[draftTest]} archivedTests={[]} />);
 
-    expect(screen.getByRole("button", { name: "Delete Fictional draft" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Active (1)" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByPlaceholderText("Search tests…")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Continue draft/ })).toHaveClass("btn-primary");
+    expect(screen.getByRole("button", { name: "Delete Fictional draft" })).toHaveClass("btn-danger-ghost");
+    expect(screen.getByRole("heading", { name: "Fictional draft" }).closest("article")).toHaveClass(
+      "admin-test-card",
+    );
   });
 
   it("cancels deletion without sending a request", () => {
