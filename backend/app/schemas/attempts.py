@@ -91,6 +91,8 @@ class AttemptReview(BaseModel):
 
 class HistoryItem(BaseModel):
     attempt_id: UUID
+    test_id: UUID
+    test_version_id: UUID
     test_title: str
     version_number: int
     module: ModuleType
@@ -103,6 +105,18 @@ class HistoryItem(BaseModel):
     band_score: float | None
 
 
+class HistoryGroup(BaseModel):
+    test_id: UUID
+    test_version_id: UUID
+    test_title: str
+    version_number: int
+    reading: HistoryItem | None = None
+    listening: HistoryItem | None = None
+    writing: HistoryItem | None = None
+    overall_band_score: float | None = None
+
+
 class AttemptList(BaseModel):
     items: list[HistoryItem]
+    groups: list[HistoryGroup]
     total: int = Field(ge=0)

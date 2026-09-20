@@ -1,5 +1,6 @@
 import uuid
 from datetime import UTC, datetime
+from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import delete, func, select
@@ -14,6 +15,11 @@ from app.domains.questions.normalization import (
     normalize_passage_blocks,
     normalize_question_group_payload,
     normalize_response_value,
+)
+from app.domains.scoring import (
+    listening_raw_to_band,
+    project_overall_band,
+    reading_raw_to_band,
 )
 from app.domains.timers import TimerService
 from app.models import (
@@ -45,6 +51,7 @@ from app.schemas.attempts import (
     AttemptList,
     AttemptResponse,
     AttemptReview,
+    HistoryGroup,
     HistoryItem,
     ReviewAnswer,
     WritingReview,
@@ -106,7 +113,7 @@ class AttemptService:
     async def get(self, attempt_id: uuid.UUID) -> AttemptResponse:
         async with self.session.begin():
             attempt = await self._require(attempt_id, for_update=True)
-            self._synchronize_state(attempt, TimerService.now())
+            await self._synchronize_state(attempt, TimerService.now())
             response = self._to_response(attempt)
         return response
 
@@ -114,7 +121,7 @@ class AttemptService:
         async with self.session.begin():
             attempt = await self._require(attempt_id, for_update=True)
             now = TimerService.now()
-            self._ensure_mutable(attempt, now)
+            await self._ensure_mutable(attempt, now)
             attempt.last_active_at = now
             response = self._to_response(attempt, now)
         return response
@@ -125,7 +132,7 @@ class AttemptService:
         async with self.session.begin():
             attempt = await self._require(attempt_id, for_update=True)
             now = TimerService.now()
-            self._ensure_mutable(attempt, now)
+            await self._ensure_mutable(attempt, now)
             question = await self.session.scalar(
                 select(Question)
                 .join(QuestionGroup)
@@ -231,7 +238,7 @@ class AttemptService:
         async with self.session.begin():
             attempt = await self._require(attempt_id, for_update=True)
             now = TimerService.now()
-            self._synchronize_state(attempt, now)
+            await self._synchronize_state(attempt, now)
             if attempt.status == AttemptStatus.IN_PROGRESS:
                 await self._score(attempt)
                 self._finalize(
@@ -336,6 +343,8 @@ class AttemptService:
         items = [
             HistoryItem(
                 attempt_id=item.id,
+                test_id=item.test_version.test_id,
+                test_version_id=item.test_version_id,
                 test_title=item.test_version.test.title,
                 version_number=item.test_version.version_number,
                 module=item.module_type,
@@ -345,10 +354,62 @@ class AttemptService:
                 elapsed_seconds=item.elapsed_seconds,
                 raw_score=item.raw_score,
                 max_score=item.max_score,
+                band_score=item.band_score,
             )
             for item in attempts
         ]
-        return AttemptList(items=items, total=len(items))
+        items_by_id = {item.attempt_id: item for item in items}
+        by_version: dict[uuid.UUID, list[Attempt]] = {}
+        for attempt in attempts:
+            by_version.setdefault(attempt.test_version_id, []).append(attempt)
+
+        def latest_finalized(
+            version_attempts: list[Attempt], module: ModuleType
+        ) -> HistoryItem | None:
+            candidates = [
+                item
+                for item in version_attempts
+                if item.status != AttemptStatus.IN_PROGRESS and item.module_type == module
+            ]
+            if not candidates:
+                return None
+            selected = max(
+                candidates,
+                key=lambda item: (
+                    item.finished_at or item.started_at,
+                    item.started_at,
+                ),
+            )
+            return items_by_id[selected.id]
+
+        groups: list[HistoryGroup] = []
+        for version_attempts in by_version.values():
+            version = version_attempts[0].test_version
+            reading = latest_finalized(version_attempts, ModuleType.READING)
+            listening = latest_finalized(version_attempts, ModuleType.LISTENING)
+            writing = latest_finalized(version_attempts, ModuleType.WRITING)
+            groups.append(
+                HistoryGroup(
+                    test_id=version.test_id,
+                    test_version_id=version.id,
+                    test_title=version.test.title,
+                    version_number=version.version_number,
+                    reading=reading,
+                    listening=listening,
+                    writing=writing,
+                    overall_band_score=project_overall_band(
+                        reading.band_score if reading else None,
+                        listening.band_score if listening else None,
+                        writing.band_score if writing else None,
+                    ),
+                )
+            )
+        group_recency = {
+            version_id: max(item.started_at for item in version_attempts)
+            for version_id, version_attempts in by_version.items()
+        }
+        groups.sort(key=lambda item: group_recency[item.test_version_id], reverse=True)
+        return AttemptList(items=items, groups=groups, total=len(items))
 
     async def exam(self, attempt_id: uuid.UUID) -> AttemptExam:
         attempt_response = await self.get(attempt_id)
@@ -531,7 +592,7 @@ class AttemptService:
         async with self.session.begin():
             attempt = await self._require(attempt_id, for_update=True)
             now = TimerService.now()
-            self._ensure_mutable(attempt, now)
+            await self._ensure_mutable(attempt, now)
             await self._require_attempt_question(attempt, question_id)
             statement = insert(QuestionFlag).values(
                 id=uuid.uuid4(),
@@ -556,7 +617,7 @@ class AttemptService:
         async with self.session.begin():
             attempt = await self._require(attempt_id, for_update=True)
             now = TimerService.now()
-            self._ensure_mutable(attempt, now)
+            await self._ensure_mutable(attempt, now)
             source_text = await self._highlight_source(attempt, body)
             self._validate_highlight_text(source_text, body)
             is_passage = body.target_kind == "PASSAGE_BLOCK"
@@ -583,7 +644,7 @@ class AttemptService:
         async with self.session.begin():
             attempt = await self._require(attempt_id, for_update=True)
             now = TimerService.now()
-            self._ensure_mutable(attempt, now)
+            await self._ensure_mutable(attempt, now)
             highlight = await self.session.scalar(
                 select(Highlight).where(
                     Highlight.id == highlight_id, Highlight.attempt_id == attempt.id
@@ -598,7 +659,7 @@ class AttemptService:
         async with self.session.begin():
             attempt = await self._require(attempt_id, for_update=True)
             now = TimerService.now()
-            self._ensure_mutable(attempt, now)
+            await self._ensure_mutable(attempt, now)
             await self.session.execute(delete(Highlight).where(Highlight.attempt_id == attempt.id))
             attempt.last_active_at = now
 
@@ -718,14 +779,14 @@ class AttemptService:
             raise AppError("INVALID_HIGHLIGHT", "A referenced passage block does not exist.", 422)
         AttemptService._validate_highlight_text(source, body)
 
-    def _ensure_mutable(self, attempt: Attempt, now: datetime) -> None:
-        self._synchronize_state(attempt, now)
+    async def _ensure_mutable(self, attempt: Attempt, now: datetime) -> None:
+        await self._synchronize_state(attempt, now)
         if attempt.status == AttemptStatus.AUTO_SUBMITTED:
             raise AppError("ATTEMPT_EXPIRED", "The countdown period has ended.", 409)
         if attempt.status != AttemptStatus.IN_PROGRESS:
             raise AppError("ATTEMPT_FINALIZED", "This attempt no longer accepts changes.", 409)
 
-    def _synchronize_state(self, attempt: Attempt, now: datetime) -> None:
+    async def _synchronize_state(self, attempt: Attempt, now: datetime) -> None:
         if attempt.status != AttemptStatus.IN_PROGRESS:
             return
         timer = TimerService.snapshot(
@@ -735,6 +796,7 @@ class AttemptService:
             now=now,
         )
         if timer.expired:
+            await self._score(attempt)
             self._finalize(
                 attempt,
                 status=AttemptStatus.AUTO_SUBMITTED,
@@ -742,6 +804,7 @@ class AttemptService:
                 now=now,
             )
         elif TimerService.is_afk(attempt.last_active_at, now):
+            await self._score(attempt)
             self._finalize(
                 attempt,
                 status=AttemptStatus.INTERRUPTED,
@@ -778,6 +841,11 @@ class AttemptService:
         attempt.elapsed_seconds = timer.elapsed_seconds
 
     async def _score(self, attempt: Attempt) -> None:
+        if attempt.module_type == ModuleType.WRITING:
+            attempt.raw_score = None
+            attempt.max_score = None
+            attempt.band_score = None
+            return
         questions = list(
             await self.session.scalars(
                 select(Question)
@@ -792,6 +860,7 @@ class AttemptService:
         if not questions:
             attempt.raw_score = None
             attempt.max_score = None
+            attempt.band_score = None
             return
         attempt.max_score = len(questions)
         attempt.raw_score = int(
@@ -803,6 +872,13 @@ class AttemptService:
             )
             or 0
         )
+        converter = (
+            reading_raw_to_band
+            if attempt.module_type == ModuleType.READING
+            else listening_raw_to_band
+        )
+        band = converter(attempt.raw_score, attempt.max_score)
+        attempt.band_score = Decimal(str(band)) if band is not None else None
 
     @staticmethod
     def _to_response(attempt: Attempt, now: datetime | None = None) -> AttemptResponse:
