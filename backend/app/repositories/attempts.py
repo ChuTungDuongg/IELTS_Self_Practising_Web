@@ -10,7 +10,9 @@ from app.models import (
     AttemptWritingResponse,
     Question,
     QuestionGroup,
+    TestModule,
     TestVersion,
+    WritingTask,
 )
 
 
@@ -33,6 +35,10 @@ class AttemptRepository:
                 selectinload(Attempt.highlights),
                 selectinload(Attempt.flags),
                 selectinload(Attempt.test_version).selectinload(TestVersion.test),
+                selectinload(Attempt.test_version)
+                .selectinload(TestVersion.modules)
+                .selectinload(TestModule.writing_tasks)
+                .selectinload(WritingTask.image_asset),
             )
         )
         if for_update:

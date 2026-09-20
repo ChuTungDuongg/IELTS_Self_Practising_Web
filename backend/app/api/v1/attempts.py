@@ -11,6 +11,9 @@ from app.schemas.attempts import (
     AttemptCreate,
     AttemptResponse,
     AttemptReview,
+    WritingResponse,
+    WritingResponseUpdate,
+    WritingScoreUpdate,
 )
 from app.schemas.content import (
     AttemptExam,
@@ -20,6 +23,7 @@ from app.schemas.content import (
     HighlightResponse,
     ListeningReview,
     ReadingReview,
+    WritingAttemptReview,
 )
 from app.services.attempts import AttemptService
 
@@ -67,6 +71,21 @@ async def save_answer(
     return await AttemptService(session).save_answer(attempt_id, question_id, body.value)
 
 
+@router.put(
+    "/{attempt_id}/writing/{writing_task_id}",
+    response_model=WritingResponse,
+)
+async def save_writing_response(
+    attempt_id: UUID,
+    writing_task_id: UUID,
+    body: WritingResponseUpdate,
+    session: AsyncSession = Depends(get_session),
+) -> WritingResponse:
+    return await AttemptService(session).save_writing_response(
+        attempt_id, writing_task_id, body.content
+    )
+
+
 @router.post("/{attempt_id}/submit", response_model=AttemptResponse)
 async def submit_attempt(
     attempt_id: UUID, session: AsyncSession = Depends(get_session)
@@ -98,6 +117,22 @@ async def get_listening_review(
     attempt_id: UUID, session: AsyncSession = Depends(get_session)
 ) -> ListeningReview:
     return await AttemptService(session).listening_review(attempt_id)
+
+
+@router.get("/{attempt_id}/writing-review", response_model=WritingAttemptReview)
+async def get_writing_review(
+    attempt_id: UUID, session: AsyncSession = Depends(get_session)
+) -> WritingAttemptReview:
+    return await AttemptService(session).writing_review(attempt_id)
+
+
+@router.put("/{attempt_id}/writing-score", response_model=AttemptResponse)
+async def save_writing_score(
+    attempt_id: UUID,
+    body: WritingScoreUpdate,
+    session: AsyncSession = Depends(get_session),
+) -> AttemptResponse:
+    return await AttemptService(session).grade_writing(attempt_id, body.band_score)
 
 
 @router.put("/{attempt_id}/flags/{question_id}", response_model=FlagResponse)

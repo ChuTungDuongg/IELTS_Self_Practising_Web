@@ -39,8 +39,13 @@ async def test_openapi_exposes_phase_one_routes() -> None:
     assert "/api/v1/test-modules/{module_id}/question-groups/order" in paths
     assert "/api/v1/listening/modules/{module_id}/audio" in paths
     assert "/api/v1/writing/tasks/{task_id}" in paths
+    assert "/api/v1/attempts/{attempt_id}/writing/{writing_task_id}" in paths
+    assert "/api/v1/attempts/{attempt_id}/writing-review" in paths
+    assert "/api/v1/attempts/{attempt_id}/writing-score" in paths
     exam_question = document["components"]["schemas"]["ExamQuestion"]
     assert "answer_key" not in exam_question["properties"]
+    exam_writing_task = document["components"]["schemas"]["ExamWritingTask"]
+    assert "answer_key" not in exam_writing_task["properties"]
 
 
 def test_active_exam_normalizes_legacy_content_without_exposing_answer_keys() -> None:

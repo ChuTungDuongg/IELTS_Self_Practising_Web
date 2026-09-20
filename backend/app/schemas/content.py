@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from app.models.enums import ModuleType, VersionStatus
 from app.schemas.assets import AssetResponse
-from app.schemas.attempts import AttemptResponse, AttemptReview
+from app.schemas.attempts import AttemptResponse, AttemptReview, WritingReview
 
 
 class TextBlock(BaseModel):
@@ -198,6 +198,19 @@ class ExamListeningPart(BaseModel):
     question_groups: list[ExamQuestionGroup]
 
 
+class ExamWritingTask(BaseModel):
+    id: UUID
+    task_number: int
+    prompt: str
+    image_asset_id: UUID | None = None
+    image_asset: AssetResponse | None = None
+    minimum_recommended_words: int | None
+    recommended_duration_seconds: int | None
+    order_index: int
+    content: str
+    word_count: int = Field(ge=0)
+
+
 class HighlightResponse(BaseModel):
     id: UUID
     target_kind: Literal["PASSAGE_BLOCK", "QUESTION_PROMPT", "TEXT_COMPLETION_SEGMENT"]
@@ -256,6 +269,7 @@ class AttemptExam(BaseModel):
     highlights: list[HighlightResponse]
     listening_audio_asset: AssetResponse | None = None
     listening_parts: list[ExamListeningPart] = Field(default_factory=list)
+    writing_tasks: list[ExamWritingTask] = Field(default_factory=list)
 
 
 class ReadingReview(BaseModel):
@@ -268,3 +282,8 @@ class ListeningReview(BaseModel):
     review: AttemptReview
     audio_asset: AssetResponse | None = None
     parts: list[BuilderListeningPart]
+
+
+class WritingAttemptReview(BaseModel):
+    review: AttemptReview
+    tasks: list[WritingReview]

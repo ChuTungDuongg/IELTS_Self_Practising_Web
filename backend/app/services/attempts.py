@@ -22,10 +22,12 @@ from app.domains.scoring import (
     reading_raw_to_band,
 )
 from app.domains.timers import TimerService
+from app.domains.writing import count_words
 from app.models import (
     Attempt,
     AttemptAnswer,
     AttemptEvent,
+    AttemptWritingResponse,
     Highlight,
     Question,
     QuestionFlag,
@@ -34,6 +36,7 @@ from app.models import (
     Test,
     TestModule,
     TestVersion,
+    WritingTask,
 )
 from app.models.enums import (
     AttemptStatus,
@@ -54,6 +57,7 @@ from app.schemas.attempts import (
     HistoryGroup,
     HistoryItem,
     ReviewAnswer,
+    WritingResponse,
     WritingReview,
 )
 from app.schemas.content import (
@@ -62,11 +66,13 @@ from app.schemas.content import (
     ExamPassage,
     ExamQuestion,
     ExamQuestionGroup,
+    ExamWritingTask,
     FlagResponse,
     HighlightCreate,
     HighlightResponse,
     ListeningReview,
     ReadingReview,
+    WritingAttemptReview,
 )
 from app.services.reading import ReadingService
 
@@ -234,6 +240,73 @@ class AttemptService:
             saved_at=now,
         )
 
+    async def save_writing_response(
+        self, attempt_id: uuid.UUID, writing_task_id: uuid.UUID, content: str
+    ) -> WritingResponse:
+        async with self.session.begin():
+            attempt = await self._require(attempt_id, for_update=True)
+            now = TimerService.now()
+            await self._ensure_mutable(attempt, now)
+            if attempt.module_type != ModuleType.WRITING:
+                raise AppError(
+                    "WRITING_ATTEMPT_REQUIRED",
+                    "Writing responses can only be saved on a Writing attempt.",
+                    422,
+                )
+            task = await self.session.scalar(
+                select(WritingTask)
+                .join(TestModule)
+                .where(
+                    WritingTask.id == writing_task_id,
+                    TestModule.test_version_id == attempt.test_version_id,
+                    TestModule.module_type == ModuleType.WRITING,
+                )
+            )
+            if task is None:
+                raise AppError(
+                    "INVALID_WRITING_TASK",
+                    "The Writing task does not belong to this attempt.",
+                    422,
+                )
+            word_count = count_words(content)
+            statement = insert(AttemptWritingResponse).values(
+                id=uuid.uuid4(),
+                attempt_id=attempt.id,
+                writing_task_id=task.id,
+                content=content,
+                word_count=word_count,
+                created_at=now,
+                updated_at=now,
+            )
+            await self.session.execute(
+                statement.on_conflict_do_update(
+                    index_elements=[
+                        AttemptWritingResponse.attempt_id,
+                        AttemptWritingResponse.writing_task_id,
+                    ],
+                    set_={
+                        "content": content,
+                        "word_count": word_count,
+                        "updated_at": now,
+                    },
+                )
+            )
+            self.session.add(
+                AttemptEvent(
+                    attempt_id=attempt.id,
+                    event_type=EventType.WRITING_UPDATED,
+                    event_metadata={"writing_task_id": str(task.id)},
+                    created_at=now,
+                )
+            )
+            attempt.last_active_at = now
+        return WritingResponse(
+            writing_task_id=writing_task_id,
+            content=content,
+            word_count=word_count,
+            saved_at=now,
+        )
+
     async def submit(self, attempt_id: uuid.UUID) -> AttemptResponse:
         async with self.session.begin():
             attempt = await self._require(attempt_id, for_update=True)
@@ -268,16 +341,24 @@ class AttemptService:
             self._present_review_answer(answer)
             for answer in sorted(attempt.answers, key=lambda item: item.question.number)
         ]
-        writing_rows = [
-            WritingReview(
-                writing_task_id=response.writing_task_id,
-                task_number=response.writing_task.task_number,
-                prompt=response.writing_task.prompt,
-                content=response.content,
-                word_count=response.word_count,
+        writing_rows: list[WritingReview] = []
+        if attempt.module_type == ModuleType.WRITING:
+            module = next(
+                (
+                    item
+                    for item in attempt.test_version.modules
+                    if item.module_type == ModuleType.WRITING
+                ),
+                None,
             )
-            for response in attempt.writing_responses
-        ]
+            responses = {
+                response.writing_task_id: response for response in attempt.writing_responses
+            }
+            if module is not None:
+                writing_rows = [
+                    self._present_writing_review(task, responses.get(task.id))
+                    for task in sorted(module.writing_tasks, key=lambda item: item.order_index)
+                ]
         return AttemptReview(
             attempt=self._to_response(attempt),
             test_title=attempt.test_version.test.title,
@@ -292,6 +373,66 @@ class AttemptService:
                 for item in attempt.flags
             ],
         )
+
+    @staticmethod
+    def _present_writing_review(
+        task: WritingTask, response: AttemptWritingResponse | None
+    ) -> WritingReview:
+        return WritingReview(
+            writing_task_id=task.id,
+            task_number=task.task_number,
+            prompt=task.prompt,
+            image_asset_id=task.image_asset_id,
+            image_asset=(
+                AssetResponse.model_validate(task.image_asset, from_attributes=True)
+                if task.image_asset
+                else None
+            ),
+            minimum_recommended_words=task.minimum_recommended_words,
+            recommended_duration_seconds=task.recommended_duration_seconds,
+            content=response.content if response else "",
+            word_count=response.word_count if response else 0,
+        )
+
+    async def writing_review(self, attempt_id: uuid.UUID) -> WritingAttemptReview:
+        review = await self.review(attempt_id)
+        if review.attempt.module != ModuleType.WRITING:
+            raise AppError(
+                "WRITING_ATTEMPT_REQUIRED",
+                "Writing review is only available for a Writing attempt.",
+                422,
+            )
+        return WritingAttemptReview(review=review, tasks=review.writing_responses)
+
+    async def grade_writing(self, attempt_id: uuid.UUID, band_score: Decimal) -> AttemptResponse:
+        band = Decimal(str(band_score))
+        if band < Decimal("0.0") or band > Decimal("9.0") or band % Decimal("0.5") != 0:
+            raise AppError(
+                "INVALID_WRITING_BAND",
+                "Writing band must be from 0.0 to 9.0 in 0.5 increments.",
+                422,
+            )
+        async with self.session.begin():
+            attempt = await self._require(attempt_id, for_update=True)
+            if attempt.module_type != ModuleType.WRITING:
+                raise AppError(
+                    "WRITING_ATTEMPT_REQUIRED",
+                    "Manual Writing bands can only be saved on a Writing attempt.",
+                    422,
+                )
+            now = TimerService.now()
+            await self._synchronize_state(attempt, now)
+            if attempt.status == AttemptStatus.IN_PROGRESS:
+                raise AppError(
+                    "ATTEMPT_NOT_FINALIZED",
+                    "Submit the Writing attempt before assigning a band.",
+                    409,
+                )
+            attempt.raw_score = None
+            attempt.max_score = None
+            attempt.band_score = band
+            response = self._to_response(attempt, now)
+        return response
 
     @staticmethod
     def _present_review_answer(answer: AttemptAnswer) -> ReviewAnswer:
@@ -423,6 +564,7 @@ class AttemptService:
         )
         passages: list[ExamPassage] = []
         listening_parts: list[ExamListeningPart] = []
+        writing_tasks: list[ExamWritingTask] = []
         if module is not None:
             for passage in module.passages:
                 passages.append(self._present_exam_passage(passage, answer_values, flags))
@@ -440,6 +582,29 @@ class AttemptService:
                         ],
                     )
                 )
+            responses = {
+                response.writing_task_id: response for response in attempt.writing_responses
+            }
+            for task in sorted(module.writing_tasks, key=lambda item: item.order_index):
+                response = responses.get(task.id)
+                writing_tasks.append(
+                    ExamWritingTask(
+                        id=task.id,
+                        task_number=task.task_number,
+                        prompt=task.prompt,
+                        image_asset_id=task.image_asset_id,
+                        image_asset=(
+                            AssetResponse.model_validate(task.image_asset, from_attributes=True)
+                            if task.image_asset
+                            else None
+                        ),
+                        minimum_recommended_words=task.minimum_recommended_words,
+                        recommended_duration_seconds=task.recommended_duration_seconds,
+                        order_index=task.order_index,
+                        content=response.content if response else "",
+                        word_count=response.word_count if response else 0,
+                    )
+                )
         return AttemptExam(
             attempt=attempt_response,
             test_title=version.test.title,
@@ -454,6 +619,7 @@ class AttemptService:
                 else None
             ),
             listening_parts=listening_parts,
+            writing_tasks=writing_tasks,
         )
 
     @staticmethod

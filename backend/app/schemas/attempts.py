@@ -1,10 +1,12 @@
 from datetime import datetime
+from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.models.enums import AttemptStatus, FinishedReason, ModuleType, TimerMode
+from app.schemas.assets import AssetResponse
 
 
 class TimerRequest(BaseModel):
@@ -42,6 +44,28 @@ class AnswerResponse(BaseModel):
     saved_at: datetime
 
 
+class WritingResponseUpdate(BaseModel):
+    content: str = Field(max_length=100_000)
+
+
+class WritingResponse(BaseModel):
+    writing_task_id: UUID
+    content: str
+    word_count: int = Field(ge=0)
+    saved_at: datetime
+
+
+class WritingScoreUpdate(BaseModel):
+    band_score: Decimal = Field(ge=Decimal("0.0"), le=Decimal("9.0"))
+
+    @field_validator("band_score")
+    @classmethod
+    def validate_half_band(cls, value: Decimal) -> Decimal:
+        if value % Decimal("0.5") != 0:
+            raise ValueError("Writing band must use 0.5 increments")
+        return value
+
+
 class AttemptResponse(BaseModel):
     attempt_id: UUID
     test_version_id: UUID
@@ -76,6 +100,10 @@ class WritingReview(BaseModel):
     writing_task_id: UUID
     task_number: int
     prompt: str
+    image_asset_id: UUID | None = None
+    image_asset: AssetResponse | None = None
+    minimum_recommended_words: int | None
+    recommended_duration_seconds: int | None
     content: str
     word_count: int
 
