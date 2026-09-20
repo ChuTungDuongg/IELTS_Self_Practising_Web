@@ -1,24 +1,6 @@
 import { z } from "zod";
+import { attemptResponseSchema } from "./attempts";
 import { apiRequest } from "./client";
-
-const attemptSchema = z.object({
-  attempt_id: z.string().uuid(),
-  test_version_id: z.string().uuid(),
-  module: z.string(),
-  status: z.string(),
-  finished_reason: z.string().nullable(),
-  timer_mode: z.enum(["COUNTDOWN", "COUNT_UP"]),
-  timer_limit_seconds: z.number().nullable(),
-  started_at: z.string(),
-  deadline_at: z.string().nullable(),
-  last_active_at: z.string(),
-  finished_at: z.string().nullable(),
-  elapsed_seconds: z.number(),
-  remaining_seconds: z.number().nullable(),
-  raw_score: z.number().nullable(),
-  max_score: z.number().nullable(),
-  server_time: z.string(),
-});
 
 const questionSchema = z.object({
   id: z.string().uuid(), number: z.number(), prompt: z.string(),
@@ -37,16 +19,29 @@ const passageSchema = z.object({
 });
 const assetSchema = z.object({ id: z.string().uuid(), original_name: z.string(), mime_type: z.string(), file_size: z.number(), content_url: z.string() });
 const listeningPartSchema = z.object({ id: z.string().uuid(), title: z.string(), order_index: z.number(), question_groups: z.array(groupSchema) });
+const writingTaskSchema = z.object({
+  id: z.string().uuid(),
+  task_number: z.number().int(),
+  prompt: z.string(),
+  image_asset_id: z.string().uuid().nullable().default(null),
+  image_asset: assetSchema.nullable().default(null),
+  minimum_recommended_words: z.number().int().nullable(),
+  recommended_duration_seconds: z.number().int().nullable(),
+  order_index: z.number().int(),
+  content: z.string(),
+  word_count: z.number().int().nonnegative(),
+});
 const highlightSchema = z.object({
   id: z.string().uuid(), target_kind: z.enum(["PASSAGE_BLOCK", "QUESTION_PROMPT", "TEXT_COMPLETION_SEGMENT"]), target_id: z.string().uuid(), segment_id: z.string().uuid().nullable().optional(),
   passage_id: z.string().uuid().nullable().optional(), start_block_id: z.string().uuid().nullable().optional(),
   start_offset: z.number(), end_block_id: z.string().uuid().nullable().optional(), end_offset: z.number(),
   selected_text: z.string(), created_at: z.string(),
 });
-const examSchema = z.object({ attempt: attemptSchema, test_title: z.string(), passages: z.array(passageSchema), highlights: z.array(highlightSchema), listening_audio_asset: assetSchema.nullable().default(null), listening_parts: z.array(listeningPartSchema) });
+const examSchema = z.object({ attempt: attemptResponseSchema, test_title: z.string(), passages: z.array(passageSchema), highlights: z.array(highlightSchema), listening_audio_asset: assetSchema.nullable().default(null), listening_parts: z.array(listeningPartSchema).default([]), writing_tasks: z.array(writingTaskSchema).default([]) });
 export type ExamPayload = z.infer<typeof examSchema>;
 export type ExamPassage = z.infer<typeof passageSchema>;
 export type ExamListeningPart = z.infer<typeof listeningPartSchema>;
+export type ExamWritingTask = z.infer<typeof writingTaskSchema>;
 export type Highlight = z.infer<typeof highlightSchema>;
 export type HighlightTarget = Pick<Highlight, "target_kind" | "target_id" | "segment_id">;
 export type HighlightCreate = HighlightTarget & Pick<Highlight, "start_offset" | "end_offset" | "selected_text">;
@@ -78,7 +73,7 @@ export function deleteAllHighlights(attemptId: string) {
 export async function getReadingReview(attemptId: string) {
   return apiRequest<{
     review: {
-      attempt: z.infer<typeof attemptSchema>;
+      attempt: z.infer<typeof attemptResponseSchema>;
       test_title: string;
       answers: Array<{ question_id: string; question_number: number; prompt: string; value: unknown; answer_key: Record<string, unknown>; is_correct: boolean | null; explanation: string | null }>;
     };
@@ -96,8 +91,49 @@ export async function getReadingReview(attemptId: string) {
 
 export async function getListeningReview(attemptId: string) {
   return apiRequest<{
-    review: { attempt: z.infer<typeof attemptSchema>; test_title: string; answers: Array<{ question_id: string; question_number: number; prompt: string; value: unknown; answer_key: Record<string, unknown>; is_correct: boolean | null; explanation: string | null }> };
+    review: { attempt: z.infer<typeof attemptResponseSchema>; test_title: string; answers: Array<{ question_id: string; question_number: number; prompt: string; value: unknown; answer_key: Record<string, unknown>; is_correct: boolean | null; explanation: string | null }> };
     audio_asset: z.infer<typeof assetSchema> | null;
     parts: Array<{ id: string; title: string; order_index: number; question_groups: Array<{ id: string; question_type: string; instruction: string; config: Record<string, unknown>; image_asset?: z.infer<typeof assetSchema> | null; order_index: number; questions: Array<{ id: string; number: number; prompt: string; config: Record<string, unknown>; answer_key: Record<string, unknown>; explanation: string | null; order_index: number }> }> }>;
   }>(`/attempts/${attemptId}/listening-review`);
+}
+
+const writingReviewTaskSchema = z.object({
+  writing_task_id: z.string().uuid(),
+  task_number: z.number().int(),
+  prompt: z.string(),
+  image_asset_id: z.string().uuid().nullable().default(null),
+  image_asset: assetSchema.nullable().default(null),
+  minimum_recommended_words: z.number().int().nullable(),
+  recommended_duration_seconds: z.number().int().nullable(),
+  content: z.string(),
+  word_count: z.number().int().nonnegative(),
+});
+
+const writingReviewSchema = z.object({
+  review: z.object({
+    attempt: attemptResponseSchema,
+    test_title: z.string(),
+    answers: z.array(z.unknown()),
+    writing_responses: z.array(writingReviewTaskSchema).default([]),
+    highlights: z.array(z.unknown()).default([]),
+    flags: z.array(z.unknown()).default([]),
+  }),
+  tasks: z.array(writingReviewTaskSchema),
+});
+
+export type WritingReviewPayload = z.infer<typeof writingReviewSchema>;
+
+export async function getWritingReview(attemptId: string): Promise<WritingReviewPayload> {
+  return writingReviewSchema.parse(
+    await apiRequest<unknown>(`/attempts/${attemptId}/writing-review`),
+  );
+}
+
+export async function saveWritingScore(attemptId: string, bandScore: number) {
+  return attemptResponseSchema.parse(
+    await apiRequest<unknown>(`/attempts/${attemptId}/writing-score`, {
+      method: "PUT",
+      body: JSON.stringify({ band_score: bandScore }),
+    }),
+  );
 }

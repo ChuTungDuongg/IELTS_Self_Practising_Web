@@ -8,7 +8,10 @@ import { saveFlag, submitAttempt } from "@/lib/api/exam";
 const push = vi.fn();
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn(), push }) }));
-vi.mock("@/lib/api/attempts", () => ({ recordActivity: vi.fn(), saveAnswer: vi.fn() }));
+vi.mock("@/lib/api/attempts", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/api/attempts")>();
+  return { ...actual, recordActivity: vi.fn(), saveAnswer: vi.fn() };
+});
 vi.mock("@/lib/api/exam", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api/exam")>();
   return { ...actual, createHighlight: vi.fn(), deleteAllHighlights: vi.fn(), deleteHighlight: vi.fn(), getExam: vi.fn(), saveFlag: vi.fn(), submitAttempt: vi.fn() };
@@ -48,12 +51,14 @@ function payload(): ExamPayload {
       remaining_seconds: null,
       raw_score: null,
       max_score: null,
+      band_score: null,
       server_time: now,
     },
     test_title: "Navigation practice",
     highlights: [],
     listening_audio_asset: null,
     listening_parts: [],
+    writing_tasks: [],
     passages: [
       {
         id: "44444444-4444-4444-8444-444444444402",

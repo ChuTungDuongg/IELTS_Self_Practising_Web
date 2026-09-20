@@ -9,7 +9,10 @@ import { BuilderLifecycleProvider } from "@/features/test-builder/builder-lifecy
 import type { BuilderVersion } from "@/lib/api/builder";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }) }));
-vi.mock("@/lib/api/attempts", () => ({ recordActivity: vi.fn(), saveAnswer: vi.fn() }));
+vi.mock("@/lib/api/attempts", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/api/attempts")>();
+  return { ...actual, recordActivity: vi.fn(), saveAnswer: vi.fn() };
+});
 vi.mock("@/lib/api/exam", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api/exam")>();
   return { ...actual, getExam: vi.fn(), saveFlag: vi.fn(), submitAttempt: vi.fn() };
@@ -87,7 +90,7 @@ describe("Listening audio and templates", () => {
     const questionId = crypto.randomUUID();
     const data = {
       review: {
-        attempt: { raw_score: 1, max_score: 1 },
+        attempt: { raw_score: 35, max_score: 40, band_score: 8.0 },
         test_title: "Practice",
         answers: [{ question_id: questionId, value: "TRUE", is_correct: true }],
       },
@@ -104,6 +107,8 @@ describe("Listening audio and templates", () => {
     const view = render(<ListeningReviewView data={data as never} />);
 
     expect(screen.getByText("Listening review")).toBeInTheDocument();
+    expect(screen.getByText("35 / 40")).toBeInTheDocument();
+    expect(screen.getByText("Band 8.0")).toBeInTheDocument();
     expect(screen.getByText("Your answer: TRUE")).toBeInTheDocument();
     expect(view.container.querySelector(".review-answer-correct")).toBeInTheDocument();
   });

@@ -35,6 +35,7 @@ export function ReadingReviewView({ data }: { data: ReviewData }) {
         <p className="review-score">
           <span>Score</span>
           <b>{data.review.attempt.raw_score ?? "—"} / {data.review.attempt.max_score ?? "—"}</b>
+          <small>{data.review.attempt.band_score === null ? "Official band unavailable" : `Band ${data.review.attempt.band_score.toFixed(1)}`}</small>
         </p>
       </header>
 

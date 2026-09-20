@@ -18,10 +18,10 @@ export default async function LibraryPage() {
   const available = (await Promise.all(published.map(async (item) => ({ ...item, detail: await getVersion(item.version.id).catch(() => null) })))).filter((item) => item.detail);
   return (
     <>
-      <PageHeading eyebrow="Practice" title="Choose your next test" description="Published, frozen test versions available for focused Reading and Listening practice sessions." />
+      <PageHeading eyebrow="Practice" title="Choose your next test" description="Published, frozen test versions available for focused Reading, Listening, and Writing practice sessions." />
       {available.length ? (
         <div className="practice-grid">
-          {available.flatMap(({ test, version, detail }) => detail!.modules.filter((module) => module.module_type === "READING" || module.module_type === "LISTENING").map((module) => (
+          {available.flatMap(({ test, version, detail }) => detail!.modules.map((module) => (
             <article key={`${version.id}-${module.module_type}`} className={`practice-card practice-card-${module.module_type.toLowerCase()}`}>
               <div className="practice-card-accent" aria-hidden="true" />
               <div className="practice-card-content">
@@ -30,19 +30,19 @@ export default async function LibraryPage() {
                   <StatusBadge status={version.status} />
                 </div>
                 <div className="practice-card-title">
-                  <p>{module.module_type === "LISTENING" ? "Listening practice" : "Reading practice"}</p>
+                  <p>{module.module_type === "LISTENING" ? "Listening practice" : module.module_type === "WRITING" ? "Writing practice" : "Reading practice"}</p>
                   <h2>{test.title}</h2>
-                  <span>{test.description ?? `A published ${module.module_type === "LISTENING" ? "Listening" : "Reading"} practice test.`}</span>
+                  <span>{test.description ?? `A published ${module.module_type === "LISTENING" ? "Listening" : module.module_type === "WRITING" ? "Writing" : "Reading"} practice test.`}</span>
                 </div>
                 <dl className="practice-card-meta">
                   <div><dt>Version</dt><dd>{version.version_number}</dd></div>
-                  <div><dt>Questions</dt><dd>{module.question_count}</dd></div>
-                  <div><dt>{module.module_type === "LISTENING" ? "Sections" : "Passages"}</dt><dd>{module.module_type === "LISTENING" ? module.listening_part_count : module.passage_count}</dd></div>
+                  <div><dt>{module.module_type === "WRITING" ? "Tasks" : "Questions"}</dt><dd>{module.module_type === "WRITING" ? module.writing_task_count : module.question_count}</dd></div>
+                  <div><dt>{module.module_type === "LISTENING" ? "Sections" : module.module_type === "WRITING" ? "Suggested time" : "Passages"}</dt><dd>{module.module_type === "LISTENING" ? module.listening_part_count : module.module_type === "WRITING" ? `${Math.round((module.recommended_duration_seconds ?? 3600) / 60)} min` : module.passage_count}</dd></div>
                 </dl>
                 <Link className="practice-version-link" href={`/admin/tests/${test.id}`}>
                   View published version <ArrowIcon className="size-4" />
                 </Link>
-                <StartAttempt versionId={version.id} module={module.module_type as "READING" | "LISTENING"} />
+                <StartAttempt versionId={version.id} module={module.module_type} />
               </div>
             </article>
           )))}

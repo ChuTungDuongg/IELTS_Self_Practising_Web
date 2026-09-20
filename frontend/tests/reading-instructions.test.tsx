@@ -6,7 +6,10 @@ import type { ExamPayload } from "@/lib/api/exam";
 import { deleteAllHighlights } from "@/lib/api/exam";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }) }));
-vi.mock("@/lib/api/attempts", () => ({ recordActivity: vi.fn(), saveAnswer: vi.fn() }));
+vi.mock("@/lib/api/attempts", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/api/attempts")>();
+  return { ...actual, recordActivity: vi.fn(), saveAnswer: vi.fn() };
+});
 vi.mock("@/lib/api/exam", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api/exam")>();
   return { ...actual, createHighlight: vi.fn(), deleteAllHighlights: vi.fn().mockResolvedValue(undefined), deleteHighlight: vi.fn(), getExam: vi.fn(), saveFlag: vi.fn(), submitAttempt: vi.fn() };
@@ -23,13 +26,13 @@ const attempt = {
   module: "READING", status: "IN_PROGRESS", finished_reason: null,
   timer_mode: "COUNT_UP", timer_limit_seconds: null,
   started_at: new Date().toISOString(), deadline_at: null, last_active_at: new Date().toISOString(), finished_at: null,
-  elapsed_seconds: 0, remaining_seconds: null, raw_score: null, max_score: null, server_time: new Date().toISOString(),
+  elapsed_seconds: 0, remaining_seconds: null, raw_score: null, max_score: null, band_score: null, server_time: new Date().toISOString(),
 };
 
 describe("Reading question group instructions", () => {
   it("renders one registry instruction in the candidate interface using actual passage order", () => {
     const initial = {
-      attempt, test_title: "Practice", highlights: [], listening_audio_asset: null, listening_parts: [],
+      attempt, test_title: "Practice", highlights: [], listening_audio_asset: null, listening_parts: [], writing_tasks: [],
       passages: [{ id: passageId, title: "Passage", order_index: 2, blocks: [{ id: "44444444-4444-4444-8444-444444444444", type: "paragraph", label: "A", text: "Fictional text." }], question_groups: [{ id: groupId, question_type: "true_false_not_given", instruction: "", config: {}, order_index: 0, questions: [{ id: questionId, number: 1, prompt: "Statement", config: {}, order_index: 0, value: null, flagged: false }] }] }],
     } as ExamPayload;
 
@@ -41,7 +44,7 @@ describe("Reading question group instructions", () => {
   it("changes the application theme without resetting candidate answers", () => {
     document.documentElement.dataset.theme = "light";
     const initial = {
-      attempt, test_title: "Practice", highlights: [], listening_audio_asset: null, listening_parts: [],
+      attempt, test_title: "Practice", highlights: [], listening_audio_asset: null, listening_parts: [], writing_tasks: [],
       passages: [{ id: passageId, title: "Passage", order_index: 2, blocks: [{ id: "44444444-4444-4444-8444-444444444444", type: "paragraph", label: "A", text: "Fictional text." }], question_groups: [{ id: groupId, question_type: "true_false_not_given", instruction: "", config: {}, order_index: 0, questions: [{ id: questionId, number: 1, prompt: "Statement", config: {}, order_index: 0, value: null, flagged: false }] }] }],
     } as ExamPayload;
 
@@ -55,13 +58,15 @@ describe("Reading question group instructions", () => {
 
   it("renders the same instruction once in review", () => {
     const data = {
-      review: { attempt: { ...attempt, status: "SUBMITTED", raw_score: 1, max_score: 1 }, test_title: "Practice", answers: [{ question_id: questionId, question_number: 1, prompt: "Statement", value: "TRUE", answer_key: { kind: "SINGLE_OPTION", value: "TRUE" }, is_correct: true, explanation: null }] },
+      review: { attempt: { ...attempt, status: "SUBMITTED", raw_score: 35, max_score: 40, band_score: 8.0 }, test_title: "Practice", answers: [{ question_id: questionId, question_number: 1, prompt: "Statement", value: "TRUE", answer_key: { kind: "SINGLE_OPTION", value: "TRUE" }, is_correct: true, explanation: null }] },
       passages: [{ id: passageId, title: "Passage", order_index: 2, blocks: [{ id: "44444444-4444-4444-8444-444444444444", type: "paragraph", label: "A", text: "Fictional text." }], question_groups: [{ id: groupId, question_type: "true_false_not_given", instruction: "", config: {}, order_index: 0, questions: [{ id: questionId, number: 1, prompt: "Statement", config: {}, answer_key: { kind: "SINGLE_OPTION", value: "TRUE" }, explanation: null, order_index: 0 }] }] }],
     };
 
     render(<ReadingReviewView data={data as never} />);
 
     expect(screen.getAllByText(intro)).toHaveLength(1);
+    expect(screen.getByText("35 / 40")).toBeInTheDocument();
+    expect(screen.getByText("Band 8.0")).toBeInTheDocument();
   });
 
   it("shares the compact multiline completion presentation between candidate and review", () => {
@@ -72,7 +77,7 @@ describe("Reading question group instructions", () => {
       { id: crypto.randomUUID(), segments: [{ id: crypto.randomUUID(), type: "TEXT", text: "The second fictional answer is " }, { id: crypto.randomUUID(), type: "GAP", question_id: secondQuestionId }, { id: crypto.randomUUID(), type: "TEXT", text: "." }] },
     ] };
     const initial = {
-      attempt, test_title: "Practice", highlights: [], listening_audio_asset: null, listening_parts: [],
+      attempt, test_title: "Practice", highlights: [], listening_audio_asset: null, listening_parts: [], writing_tasks: [],
       passages: [{ id: passageId, title: "Passage", order_index: 0, blocks: [{ id: "44444444-4444-4444-8444-444444444444", type: "paragraph", label: "A", text: "Fictional text." }], question_groups: [{ id: groupId, question_type: "text_completion", instruction: completionInstruction, config: completionConfig, order_index: 0, questions: [
         { id: questionId, number: 1, prompt: "", config: { max_words: 2, max_numbers: 0 }, order_index: 0, value: null, flagged: false },
         { id: secondQuestionId, number: 2, prompt: "", config: { max_words: 2, max_numbers: 0 }, order_index: 1, value: null, flagged: false },
@@ -106,7 +111,7 @@ describe("Reading question group instructions", () => {
   it("confirms and bulk deletes all highlight target types with one request", async () => {
     vi.mocked(deleteAllHighlights).mockClear();
     const initial = {
-      attempt, test_title: "Practice", listening_audio_asset: null, listening_parts: [],
+      attempt, test_title: "Practice", listening_audio_asset: null, listening_parts: [], writing_tasks: [],
       highlights: [{ id: "33333333-3333-4333-8333-333333333333", target_kind: "QUESTION_PROMPT", target_id: questionId, segment_id: null, passage_id: null, start_block_id: null, end_block_id: null, start_offset: 0, end_offset: 9, selected_text: "Statement", created_at: new Date().toISOString() }],
       passages: [{ id: passageId, title: "Passage", order_index: 0, blocks: [{ id: "44444444-4444-4444-8444-444444444444", type: "paragraph", label: "A", text: "Fictional text." }], question_groups: [{ id: groupId, question_type: "true_false_not_given", instruction: "", config: {}, order_index: 0, questions: [{ id: questionId, number: 1, prompt: "Statement", config: {}, order_index: 0, value: null, flagged: false }] }] }],
     } as ExamPayload;
@@ -124,7 +129,7 @@ describe("Reading question group instructions", () => {
     vi.mocked(deleteAllHighlights).mockClear();
     vi.mocked(deleteAllHighlights).mockRejectedValueOnce(new Error("offline"));
     const initial = {
-      attempt, test_title: "Practice", listening_audio_asset: null, listening_parts: [],
+      attempt, test_title: "Practice", listening_audio_asset: null, listening_parts: [], writing_tasks: [],
       highlights: [{ id: "33333333-3333-4333-8333-333333333333", target_kind: "QUESTION_PROMPT", target_id: questionId, segment_id: null, passage_id: null, start_block_id: null, end_block_id: null, start_offset: 0, end_offset: 9, selected_text: "Statement", created_at: new Date().toISOString() }],
       passages: [{ id: passageId, title: "Passage", order_index: 0, blocks: [{ id: "44444444-4444-4444-8444-444444444444", type: "paragraph", label: "A", text: "Fictional text." }], question_groups: [{ id: groupId, question_type: "true_false_not_given", instruction: "", config: {}, order_index: 0, questions: [{ id: questionId, number: 1, prompt: "Statement", config: {}, order_index: 0, value: null, flagged: false }] }] }],
     } as ExamPayload;

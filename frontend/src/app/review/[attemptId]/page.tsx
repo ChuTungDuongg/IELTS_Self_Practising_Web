@@ -1,12 +1,18 @@
 import { notFound } from "next/navigation";
 import { ReadingReviewView } from "@/features/reading/reading-review";
 import { ListeningReviewView } from "@/features/listening/listening-review";
-import { getExam, getListeningReview, getReadingReview } from "@/lib/api/exam";
+import { WritingReviewView } from "@/features/writing/writing-review";
+import { getExam, getListeningReview, getReadingReview, getWritingReview } from "@/lib/api/exam";
 
 export default async function ReviewShellPage({ params }: { params: Promise<{ attemptId: string }> }) {
   const { attemptId } = await params;
   const exam = await getExam(attemptId).catch(() => null);
   if (!exam) notFound();
+  if (exam.attempt.module === "WRITING") {
+    const writing = await getWritingReview(attemptId).catch(() => null);
+    if (!writing) notFound();
+    return <WritingReviewView data={writing} />;
+  }
   if (exam.attempt.module === "LISTENING") {
     const listening = await getListeningReview(attemptId).catch(() => null);
     if (!listening) notFound();
