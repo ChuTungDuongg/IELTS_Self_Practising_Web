@@ -107,6 +107,13 @@ const writingReviewTaskSchema = z.object({
   recommended_duration_seconds: z.number().int().nullable(),
   content: z.string(),
   word_count: z.number().int().nonnegative(),
+  score: z.object({
+    ta: z.number(),
+    cc: z.number(),
+    lr: z.number(),
+    gra: z.number(),
+    overall: z.number(),
+  }).nullable().default(null),
 });
 
 const writingReviewSchema = z.object({
@@ -119,6 +126,10 @@ const writingReviewSchema = z.object({
     flags: z.array(z.unknown()).default([]),
   }),
   tasks: z.array(writingReviewTaskSchema),
+  task1_overall: z.number().nullable(),
+  task2_overall: z.number().nullable(),
+  weighted_overall: z.number().nullable(),
+  band_score: z.number().nullable(),
 });
 
 export type WritingReviewPayload = z.infer<typeof writingReviewSchema>;
@@ -129,11 +140,17 @@ export async function getWritingReview(attemptId: string): Promise<WritingReview
   );
 }
 
-export async function saveWritingScore(attemptId: string, bandScore: number) {
-  return attemptResponseSchema.parse(
-    await apiRequest<unknown>(`/attempts/${attemptId}/writing-score`, {
+export type WritingCriteriaInput = { ta: number; cc: number; lr: number; gra: number };
+
+export async function saveWritingTaskScore(
+  attemptId: string,
+  writingTaskId: string,
+  scores: WritingCriteriaInput,
+): Promise<WritingReviewPayload> {
+  return writingReviewSchema.parse(
+    await apiRequest<unknown>(`/attempts/${attemptId}/writing-scores/${writingTaskId}`, {
       method: "PUT",
-      body: JSON.stringify({ band_score: bandScore }),
+      body: JSON.stringify(scores),
     }),
   );
 }

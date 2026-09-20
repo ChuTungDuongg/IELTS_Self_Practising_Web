@@ -5,6 +5,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from app.domains.scoring import validate_writing_criterion_score
 from app.models.enums import AttemptStatus, FinishedReason, ModuleType, TimerMode
 from app.schemas.assets import AssetResponse
 
@@ -55,15 +56,24 @@ class WritingResponse(BaseModel):
     saved_at: datetime
 
 
-class WritingScoreUpdate(BaseModel):
-    band_score: Decimal = Field(ge=Decimal("0.0"), le=Decimal("9.0"))
+class WritingTaskScoreUpdate(BaseModel):
+    ta: Decimal
+    cc: Decimal
+    lr: Decimal
+    gra: Decimal
 
-    @field_validator("band_score")
+    @field_validator("ta", "cc", "lr", "gra")
     @classmethod
     def validate_half_band(cls, value: Decimal) -> Decimal:
-        if value % Decimal("0.5") != 0:
-            raise ValueError("Writing band must use 0.5 increments")
-        return value
+        return validate_writing_criterion_score(value)
+
+
+class WritingTaskScore(BaseModel):
+    ta: float
+    cc: float
+    lr: float
+    gra: float
+    overall: float
 
 
 class AttemptResponse(BaseModel):
@@ -108,6 +118,7 @@ class WritingReview(BaseModel):
     recommended_duration_seconds: int | None
     content: str
     word_count: int
+    score: WritingTaskScore | None = None
 
 
 class AttemptReview(BaseModel):

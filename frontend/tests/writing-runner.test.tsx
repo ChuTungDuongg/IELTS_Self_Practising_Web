@@ -93,6 +93,7 @@ describe("WritingRunner", () => {
   it("restores both task drafts, shows Task 1 image, and switches tabs", () => {
     render(<WritingRunner initial={payload()} />);
 
+    expect(screen.getByText("Writing Task 1")).toHaveClass("writing-task-kicker");
     expect(screen.getByAltText("Writing Task 1 reference")).toBeInTheDocument();
     expect(screen.getByLabelText("Response for Task 1")).toHaveValue("Restored Task One");
     fireEvent.click(screen.getByRole("tab", { name: /Task 2/ }));

@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from decimal import Decimal
 from uuid import UUID, uuid4
 
 import httpx
@@ -13,6 +14,7 @@ from app.models import (
     AttemptAnswer,
     AttemptEvent,
     AttemptWritingResponse,
+    AttemptWritingScore,
     Highlight,
     Question,
     QuestionFlag,
@@ -118,6 +120,14 @@ async def _seed_attempt_with_owned_data(
                     content="Fictional response.",
                     word_count=2,
                 ),
+                AttemptWritingScore(
+                    attempt_id=attempt_id,
+                    writing_task_id=writing_task_id,
+                    ta=Decimal("7.0"),
+                    cc=Decimal("7.0"),
+                    lr=Decimal("7.0"),
+                    gra=Decimal("7.0"),
+                ),
                 Highlight(
                     attempt_id=attempt_id,
                     target_kind="PASSAGE",
@@ -192,6 +202,7 @@ async def test_delete_attempt_removes_owned_data_but_preserves_shared_content(
     for model in (
         AttemptAnswer,
         AttemptWritingResponse,
+        AttemptWritingScore,
         Highlight,
         QuestionFlag,
         AttemptEvent,

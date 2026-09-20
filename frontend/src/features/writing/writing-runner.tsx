@@ -156,7 +156,7 @@ export function WritingRunner({ initial }: { initial: ExamPayload }) {
     {saveError ? <div role="alert" className="notice notice-error writing-save-error"><span>{saveError}</span><button type="button" className="btn btn-secondary" onClick={() => void saveTask(task.id).catch(() => undefined)}>Retry save</button></div> : null}
     <main className="writing-runner-layout">
       <article className="writing-task-prompt">
-        <p className="page-eyebrow">Writing Task {task.task_number}</p>
+        <p className="writing-task-kicker">Writing Task {task.task_number}</p>
         <h2>Task {task.task_number}</h2>
         <p>{task.prompt}</p>
         {task.image_asset ? <Image unoptimized width={720} height={420} src={assetContentUrl(task.image_asset)} alt={`Writing Task ${task.task_number} reference`} /> : null}

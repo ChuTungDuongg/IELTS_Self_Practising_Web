@@ -51,6 +51,8 @@ describe("Practice library", () => {
     render(await TestVersionLibraryPage({ params: Promise.resolve({ versionId }) }));
     const starts = screen.getAllByRole("button", { name: /Start/ });
     expect(starts.map((button) => button.textContent)).toEqual(["Start READING", "Start LISTENING", "Start WRITING"]);
+    expect(screen.getByText("Reading practice")).toHaveClass("practice-module-kicker");
+    expect(screen.getByText("Writing practice")).toHaveClass("practice-module-kicker");
     expect(screen.queryByText("SPEAKING")).not.toBeInTheDocument();
   });
 });

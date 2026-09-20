@@ -1,17 +1,20 @@
 from decimal import Decimal
 from uuid import UUID, uuid4
 
+import httpx
 import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.database import get_session
 from app.core.exceptions import AppError
+from app.main import app
 from app.models import Asset, AttemptEvent, WritingTask
 from app.models import Test as DomainTest
 from app.models import TestModule as DomainModule
 from app.models import TestVersion as DomainVersion
 from app.models.enums import AssetType, EventType, ModuleType, TimerMode, VersionStatus
-from app.schemas.attempts import AttemptCreate, TimerRequest
+from app.schemas.attempts import AttemptCreate, TimerRequest, WritingTaskScoreUpdate
 from app.services.attempts import AttemptService
 
 
@@ -177,42 +180,121 @@ async def test_writing_response_rejects_wrong_attempt_task_and_finalized_state(
 
 
 @pytest.mark.integration
-async def test_manual_writing_band_validation_and_history_visibility(
+async def test_writing_criterion_grading_recomputes_band_and_history(
     db_session: AsyncSession,
 ) -> None:
-    version_id, _, _, _ = await _persist_writing_test(db_session)
+    version_id, task_one_id, task_two_id, _ = await _persist_writing_test(db_session)
+    other_version_id, other_task_id, _, _ = await _persist_writing_test(
+        db_session, title="Other Writing grading"
+    )
     objective_version_id = await _persist_objective_test(db_session)
     writing_attempt_id = await _start(db_session, version_id, ModuleType.WRITING)
     objective_attempt_id = await _start(db_session, objective_version_id, ModuleType.READING)
     service = AttemptService(db_session)
+    task_one_scores = WritingTaskScoreUpdate(
+        ta=Decimal("7.0"),
+        cc=Decimal("6.5"),
+        lr=Decimal("7.0"),
+        gra=Decimal("6.5"),
+    )
+    task_two_scores = WritingTaskScoreUpdate(
+        ta=Decimal("7.0"),
+        cc=Decimal("7.0"),
+        lr=Decimal("7.0"),
+        gra=Decimal("7.0"),
+    )
 
     with pytest.raises(AppError) as active_error:
-        await service.grade_writing(writing_attempt_id, Decimal("7.0"))
+        await service.grade_writing_task(writing_attempt_id, task_one_id, task_one_scores)
     assert active_error.value.code == "ATTEMPT_NOT_FINALIZED"
 
+    await service.pause(writing_attempt_id)
+    with pytest.raises(AppError) as paused_error:
+        await service.grade_writing_task(writing_attempt_id, task_one_id, task_one_scores)
+    assert paused_error.value.code == "ATTEMPT_NOT_FINALIZED"
+    await service.resume(writing_attempt_id)
     await service.submit(writing_attempt_id)
     await service.submit(objective_attempt_id)
 
-    for half_step in range(19):
-        band = Decimal(half_step) / Decimal(2)
-        response = await service.grade_writing(writing_attempt_id, band)
-        assert response.band_score == float(band)
-        assert response.raw_score is None
-        assert response.max_score is None
-
-    for invalid in (Decimal("-0.5"), Decimal("7.25"), Decimal("9.5")):
-        with pytest.raises(AppError) as invalid_error:
-            await service.grade_writing(writing_attempt_id, invalid)
-        assert invalid_error.value.code == "INVALID_WRITING_BAND"
-
     with pytest.raises(AppError) as objective_error:
-        await service.grade_writing(objective_attempt_id, Decimal("7.0"))
+        await service.grade_writing_task(objective_attempt_id, task_one_id, task_one_scores)
     assert objective_error.value.code == "WRITING_ATTEMPT_REQUIRED"
 
-    saved = await service.grade_writing(writing_attempt_id, Decimal("7.5"))
-    review = await service.writing_review(writing_attempt_id)
+    with pytest.raises(AppError) as ownership_error:
+        await service.grade_writing_task(writing_attempt_id, other_task_id, task_one_scores)
+    assert ownership_error.value.code == "INVALID_WRITING_TASK"
+    assert other_version_id != version_id
+
+    first = await service.grade_writing_task(writing_attempt_id, task_one_id, task_one_scores)
+    assert first.task1_overall == 6.75
+    assert first.task2_overall is None
+    assert first.weighted_overall is None
+    assert first.band_score is None
+    assert first.review.attempt.band_score is None
+
+    completed = await service.grade_writing_task(writing_attempt_id, task_two_id, task_two_scores)
+    assert completed.task1_overall == 6.75
+    assert completed.task2_overall == 7.0
+    assert completed.weighted_overall == pytest.approx(6.9166666667)
+    assert completed.band_score == 7.0
+    assert completed.review.attempt.raw_score is None
+    assert completed.review.attempt.max_score is None
+    assert completed.tasks[0].score is not None
+    assert completed.tasks[0].score.ta == 7.0
+
+    updated = await service.grade_writing_task(
+        writing_attempt_id,
+        task_two_id,
+        WritingTaskScoreUpdate(
+            ta=Decimal("7.5"), cc=Decimal("7.5"), lr=Decimal("7.5"), gra=Decimal("7.5")
+        ),
+    )
+    assert updated.task2_overall == 7.5
+    assert updated.weighted_overall == 7.25
+    assert updated.band_score == 7.5
+
     history = await service.history()
-    assert saved.band_score == 7.5
-    assert review.review.attempt.band_score == 7.5
     item = next(row for row in history.items if row.attempt_id == writing_attempt_id)
     assert item.band_score == 7.5
+
+
+@pytest.mark.integration
+async def test_writing_task_score_endpoint_returns_authoritative_summary(
+    db_session: AsyncSession,
+) -> None:
+    version_id, task_one_id, _, _ = await _persist_writing_test(db_session)
+    attempt_id = await _start(db_session, version_id, ModuleType.WRITING)
+    await AttemptService(db_session).submit(attempt_id)
+
+    async def override_session():
+        yield db_session
+
+    app.dependency_overrides[get_session] = override_session
+    try:
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.put(
+                f"/api/v1/attempts/{attempt_id}/writing-scores/{task_one_id}",
+                json={"ta": 7.0, "cc": 6.5, "lr": 7.0, "gra": 6.5},
+            )
+            invalid = await client.put(
+                f"/api/v1/attempts/{attempt_id}/writing-scores/{task_one_id}",
+                json={"ta": 7.25, "cc": 6.5, "lr": 7.0, "gra": 6.5},
+            )
+    finally:
+        app.dependency_overrides.pop(get_session, None)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["task1_overall"] == 6.75
+    assert payload["task2_overall"] is None
+    assert payload["weighted_overall"] is None
+    assert payload["band_score"] is None
+    assert payload["tasks"][0]["score"] == {
+        "ta": 7.0,
+        "cc": 6.5,
+        "lr": 7.0,
+        "gra": 6.5,
+        "overall": 6.75,
+    }
+    assert invalid.status_code == 422

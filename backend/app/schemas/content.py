@@ -287,3 +287,7 @@ class ListeningReview(BaseModel):
 class WritingAttemptReview(BaseModel):
     review: AttemptReview
     tasks: list[WritingReview]
+    task1_overall: float | None = None
+    task2_overall: float | None = None
+    weighted_overall: float | None = None
+    band_score: float | None = None

@@ -70,6 +70,7 @@ describe("TestLibraryList", () => {
     expect(screen.getByPlaceholderText("Search tests…")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Continue draft/ })).toHaveClass("btn-primary");
     expect(screen.getByRole("button", { name: "Delete Fictional draft" })).toHaveClass("btn-danger-ghost");
+    expect(screen.getByText("IELTS Test")).toHaveClass("test-type");
     expect(screen.getByRole("heading", { name: "Fictional draft" }).closest("article")).toHaveClass(
       "admin-test-card",
     );

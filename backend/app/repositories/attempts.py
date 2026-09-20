@@ -8,6 +8,7 @@ from app.models import (
     Attempt,
     AttemptAnswer,
     AttemptWritingResponse,
+    AttemptWritingScore,
     Question,
     QuestionGroup,
     TestModule,
@@ -32,6 +33,7 @@ class AttemptRepository:
                 selectinload(Attempt.writing_responses).selectinload(
                     AttemptWritingResponse.writing_task
                 ),
+                selectinload(Attempt.writing_scores).selectinload(AttemptWritingScore.writing_task),
                 selectinload(Attempt.highlights),
                 selectinload(Attempt.flags),
                 selectinload(Attempt.test_version).selectinload(TestVersion.test),

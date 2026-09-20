@@ -17,6 +17,9 @@ from app.domains.questions.normalization import (
     normalize_response_value,
 )
 from app.domains.scoring import (
+    calculate_final_writing_band,
+    calculate_task_overall,
+    calculate_weighted_writing_overall,
     listening_raw_to_band,
     project_overall_band,
     reading_raw_to_band,
@@ -28,6 +31,7 @@ from app.models import (
     AttemptAnswer,
     AttemptEvent,
     AttemptWritingResponse,
+    AttemptWritingScore,
     Highlight,
     Question,
     QuestionFlag,
@@ -59,6 +63,8 @@ from app.schemas.attempts import (
     ReviewAnswer,
     WritingResponse,
     WritingReview,
+    WritingTaskScore,
+    WritingTaskScoreUpdate,
 )
 from app.schemas.content import (
     AttemptExam,
@@ -395,9 +401,14 @@ class AttemptService:
             responses = {
                 response.writing_task_id: response for response in attempt.writing_responses
             }
+            scores = {score.writing_task_id: score for score in attempt.writing_scores}
             if module is not None:
                 writing_rows = [
-                    self._present_writing_review(task, responses.get(task.id))
+                    self._present_writing_review(
+                        task,
+                        responses.get(task.id),
+                        scores.get(task.id),
+                    )
                     for task in sorted(module.writing_tasks, key=lambda item: item.order_index)
                 ]
         return AttemptReview(
@@ -417,7 +428,9 @@ class AttemptService:
 
     @staticmethod
     def _present_writing_review(
-        task: WritingTask, response: AttemptWritingResponse | None
+        task: WritingTask,
+        response: AttemptWritingResponse | None,
+        score: AttemptWritingScore | None,
     ) -> WritingReview:
         return WritingReview(
             writing_task_id=task.id,
@@ -433,6 +446,18 @@ class AttemptService:
             recommended_duration_seconds=task.recommended_duration_seconds,
             content=response.content if response else "",
             word_count=response.word_count if response else 0,
+            score=(AttemptService._present_writing_score(score) if score else None),
+        )
+
+    @staticmethod
+    def _present_writing_score(score: AttemptWritingScore) -> WritingTaskScore:
+        overall = calculate_task_overall(score.ta, score.cc, score.lr, score.gra)
+        return WritingTaskScore(
+            ta=float(score.ta),
+            cc=float(score.cc),
+            lr=float(score.lr),
+            gra=float(score.gra),
+            overall=float(overall),
         )
 
     async def writing_review(self, attempt_id: uuid.UUID) -> WritingAttemptReview:
@@ -443,22 +468,39 @@ class AttemptService:
                 "Writing review is only available for a Writing attempt.",
                 422,
             )
-        return WritingAttemptReview(review=review, tasks=review.writing_responses)
+        return self._present_writing_attempt_review(review)
 
-    async def grade_writing(self, attempt_id: uuid.UUID, band_score: Decimal) -> AttemptResponse:
-        band = Decimal(str(band_score))
-        if band < Decimal("0.0") or band > Decimal("9.0") or band % Decimal("0.5") != 0:
-            raise AppError(
-                "INVALID_WRITING_BAND",
-                "Writing band must be from 0.0 to 9.0 in 0.5 increments.",
-                422,
-            )
+    @staticmethod
+    def _present_writing_attempt_review(review: AttemptReview) -> WritingAttemptReview:
+        task_scores = {
+            task.task_number: Decimal(str(task.score.overall))
+            for task in review.writing_responses
+            if task.score is not None
+        }
+        task_one_overall = task_scores.get(1)
+        task_two_overall = task_scores.get(2)
+        weighted_overall = calculate_weighted_writing_overall(task_one_overall, task_two_overall)
+        return WritingAttemptReview(
+            review=review,
+            tasks=review.writing_responses,
+            task1_overall=(float(task_one_overall) if task_one_overall is not None else None),
+            task2_overall=(float(task_two_overall) if task_two_overall is not None else None),
+            weighted_overall=(float(weighted_overall) if weighted_overall is not None else None),
+            band_score=review.attempt.band_score,
+        )
+
+    async def grade_writing_task(
+        self,
+        attempt_id: uuid.UUID,
+        writing_task_id: uuid.UUID,
+        body: WritingTaskScoreUpdate,
+    ) -> WritingAttemptReview:
         async with self.session.begin():
             attempt = await self._require(attempt_id, for_update=True)
             if attempt.module_type != ModuleType.WRITING:
                 raise AppError(
                     "WRITING_ATTEMPT_REQUIRED",
-                    "Manual Writing bands can only be saved on a Writing attempt.",
+                    "Writing criteria can only be saved on a Writing attempt.",
                     422,
                 )
             now = TimerService.now()
@@ -469,10 +511,70 @@ class AttemptService:
                     "Submit the Writing attempt before assigning a band.",
                     409,
                 )
+            module = next(
+                (
+                    item
+                    for item in attempt.test_version.modules
+                    if item.module_type == ModuleType.WRITING
+                ),
+                None,
+            )
+            task = (
+                next(
+                    (item for item in module.writing_tasks if item.id == writing_task_id),
+                    None,
+                )
+                if module
+                else None
+            )
+            if task is None:
+                raise AppError(
+                    "INVALID_WRITING_TASK",
+                    "The Writing task does not belong to this attempt.",
+                    422,
+                )
+            score = next(
+                (
+                    item
+                    for item in attempt.writing_scores
+                    if item.writing_task_id == writing_task_id
+                ),
+                None,
+            )
+            if score is None:
+                score = AttemptWritingScore(
+                    writing_task=task,
+                    ta=body.ta,
+                    cc=body.cc,
+                    lr=body.lr,
+                    gra=body.gra,
+                )
+                attempt.writing_scores.append(score)
+            else:
+                score.ta = body.ta
+                score.cc = body.cc
+                score.lr = body.lr
+                score.gra = body.gra
+            await self.session.flush()
+
+            scores_by_task_id = {item.writing_task_id: item for item in attempt.writing_scores}
+            task_overalls: dict[int, Decimal] = {}
+            for candidate in module.writing_tasks:
+                candidate_score = scores_by_task_id.get(candidate.id)
+                if candidate_score and candidate.task_number in {1, 2}:
+                    task_overalls[candidate.task_number] = calculate_task_overall(
+                        candidate_score.ta,
+                        candidate_score.cc,
+                        candidate_score.lr,
+                        candidate_score.gra,
+                    )
+            weighted_overall = calculate_weighted_writing_overall(
+                task_overalls.get(1), task_overalls.get(2)
+            )
             attempt.raw_score = None
             attempt.max_score = None
-            attempt.band_score = band
-            response = self._to_response(attempt, now)
+            attempt.band_score = calculate_final_writing_band(weighted_overall)
+            response = self._present_writing_attempt_review(await self.review(attempt_id))
         return response
 
     @staticmethod

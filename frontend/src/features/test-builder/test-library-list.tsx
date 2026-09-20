@@ -144,7 +144,7 @@ export function TestLibraryList({
               <article key={test.id} className="test-card admin-test-card">
                 <div className="test-card-accent" aria-hidden="true" />
                 <div className="test-card-topline">
-                  <span className="test-type"><BuilderIcon className="size-4" /> IELTS test</span>
+                  <span className="test-type"><BuilderIcon className="size-4" /> IELTS Test</span>
                   {latest ? <StatusBadge status={view === "archived" ? "ARCHIVED" : latest.status} /> : null}
                 </div>
                 <div className="test-card-title">

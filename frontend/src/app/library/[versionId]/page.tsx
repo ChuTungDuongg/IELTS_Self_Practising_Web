@@ -8,6 +8,7 @@ import { getTest, getVersion } from "@/lib/api/tests";
 export const dynamic = "force-dynamic";
 
 const moduleOrder = { READING: 0, LISTENING: 1, WRITING: 2 } as const;
+const moduleLabel = { READING: "Reading", LISTENING: "Listening", WRITING: "Writing" } as const;
 
 export default async function TestVersionLibraryPage({ params }: { params: Promise<{ versionId: string }> }) {
   const { versionId } = await params;
@@ -25,7 +26,7 @@ export default async function TestVersionLibraryPage({ params }: { params: Promi
         <div className="practice-card-accent" aria-hidden="true" />
         <div className="practice-card-content">
           <div className="practice-card-topline"><ModuleBadge module={module.module_type} /></div>
-          <div className="practice-card-title"><p>{module.module_type} practice</p><h2>{module.title ?? module.module_type.charAt(0) + module.module_type.slice(1).toLowerCase()}</h2><span>Continue with this skill in the published, frozen test version.</span></div>
+          <div className="practice-card-title"><p className="practice-module-kicker">{moduleLabel[module.module_type]} practice</p><h2>{module.title ?? moduleLabel[module.module_type]}</h2><span>Continue with this skill in the published, frozen test version.</span></div>
           <dl className="practice-card-meta">
             <div><dt>Version</dt><dd>{version.version_number}</dd></div>
             <div><dt>{module.module_type === "WRITING" ? "Tasks" : "Questions"}</dt><dd>{module.module_type === "WRITING" ? module.writing_task_count : module.question_count}</dd></div>

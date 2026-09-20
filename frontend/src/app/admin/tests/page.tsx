@@ -15,6 +15,7 @@ export default async function AdminTestsPage() {
     <>
       <PageHeading
         eyebrow="Authoring workspace"
+        eyebrowClassName="authoring-eyebrow"
         title="Test Library"
         description="Create, manage, and publish structured IELTS tests. Published versions stay frozen so every attempt remains historically accurate."
         action={<Link href="/admin/tests/new" className="btn btn-primary"><PlusIcon className="size-4" /> New test</Link>}

@@ -30,7 +30,7 @@ export default async function LibraryPage() {
           <div className="practice-card-accent" aria-hidden="true" />
           <div className="practice-card-content">
             <div className="practice-card-topline"><span className="practice-version">Version {version.version_number}</span><StatusBadge status={version.status} /></div>
-            <div className="practice-card-title"><p>Complete test</p><h2>{test.title}</h2><span>{test.description ?? "A published IELTS practice test."}</span></div>
+            <div className="practice-card-title"><p className="practice-module-kicker">Complete test</p><h2>{test.title}</h2><span>{test.description ?? "A published IELTS practice test."}</span></div>
             <div className="practice-module-chips" aria-label={`${test.title} skills`}>{modules.map((module) => <ModuleBadge key={module.id} module={module.module_type} />)}</div>
             <p className="practice-skill-count">{modules.length} skills available</p>
             <Link className="btn btn-primary practice-open-test" href={`/library/${version.id}`}>Open test <ArrowIcon className="size-4" /></Link>

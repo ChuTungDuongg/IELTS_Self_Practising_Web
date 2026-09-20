@@ -1,10 +1,12 @@
 export function PageHeading({
   eyebrow,
+  eyebrowClassName,
   title,
   description,
   action,
 }: {
   eyebrow?: string;
+  eyebrowClassName?: string;
   title: string;
   description?: string;
   action?: React.ReactNode;
@@ -13,7 +15,7 @@ export function PageHeading({
     <div className="page-heading">
       <div className="max-w-3xl">
         {eyebrow ? (
-          <p className="page-eyebrow">
+          <p className={`page-eyebrow ${eyebrowClassName ?? ""}`.trim()}>
             {eyebrow}
           </p>
         ) : null}

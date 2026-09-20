@@ -78,4 +78,24 @@ describe("fantasy galaxy visual system", () => {
     expect(css).toMatch(/@media \(max-width:\s*900px\)[\s\S]*?\.writing-runner-layout\s*\{[^}]*grid-template-columns:\s*1fr/);
     expect(css).toMatch(/@media \(max-width:\s*700px\)[\s\S]*?\.history-group-skill\s*\{[^}]*grid-template-columns:\s*1fr/);
   });
+
+  it("uses readable contextual label and criterion assessment classes", () => {
+    for (const selector of [
+      ".authoring-eyebrow",
+      ".test-type",
+      ".practice-module-kicker",
+      ".writing-task-kicker",
+      ".writing-review-kicker",
+      ".writing-response-kicker",
+      ".review-result-label",
+      ".writing-assessment-grid",
+      ".writing-criteria-grid",
+    ]) {
+      expect(css).toContain(selector);
+    }
+    expect(css).toMatch(/\.authoring-eyebrow\s*\{[^}]*font-size:\s*14px[^}]*letter-spacing:\s*\.03em/);
+    expect(css).toMatch(/\.writing-task-kicker[^\{]*\{[^}]*font-size:\s*13px/);
+    expect(css).toMatch(/\.review-score \.review-result-label\s*\{[^}]*font-size:\s*13px[^}]*text-transform:\s*none/);
+    expect(css).toMatch(/@media \(max-width:\s*520px\)[\s\S]*?\.writing-criteria-grid\s*\{[^}]*grid-template-columns:\s*1fr/);
+  });
 });

@@ -24,7 +24,7 @@ export function DraftPreview({ version, moduleType }: { version: BuilderVersion;
       <header className="exam-header"><div><p>DRAFT PREVIEW · WRITING</p><h1>{version.test_title}</h1></div><Link className="btn btn-secondary" href={`${builderEditPath(version.test_id, version.id)}?workspace=writing`}>Back to Builder</Link></header>
       <main className="writing-preview-layout">
         {tasks.map((task) => <article key={task.id} className="writing-preview-task">
-          <p className="page-eyebrow">Writing Task {task.task_number}</p>
+          <p className="writing-task-kicker">Writing Task {task.task_number}</p>
           <h2>Task {task.task_number}</h2>
           <p>{task.prompt || "No prompt has been added yet."}</p>
           {task.image_asset ? <Image unoptimized width={720} height={420} src={assetContentUrl(task.image_asset)} alt={`Writing Task ${task.task_number} reference`} /> : null}

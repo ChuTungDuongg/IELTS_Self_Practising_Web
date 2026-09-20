@@ -8,6 +8,7 @@ from typing import Any
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    CheckConstraint,
     DateTime,
     Enum,
     ForeignKey,
@@ -164,6 +165,7 @@ class WritingTask(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     module: Mapped[TestModule] = relationship(back_populates="writing_tasks")
     image_asset: Mapped[Asset | None] = relationship(foreign_keys=[image_asset_id])
+    attempt_scores: Mapped[list[AttemptWritingScore]] = relationship(back_populates="writing_task")
 
 
 class QuestionGroup(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -255,6 +257,9 @@ class Attempt(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     writing_responses: Mapped[list[AttemptWritingResponse]] = relationship(
         back_populates="attempt", cascade="all, delete-orphan"
     )
+    writing_scores: Mapped[list[AttemptWritingScore]] = relationship(
+        back_populates="attempt", cascade="all, delete-orphan"
+    )
     highlights: Mapped[list[Highlight]] = relationship(
         back_populates="attempt", cascade="all, delete-orphan"
     )
@@ -292,6 +297,29 @@ class AttemptWritingResponse(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     attempt: Mapped[Attempt] = relationship(back_populates="writing_responses")
     writing_task: Mapped[WritingTask] = relationship()
+
+
+class AttemptWritingScore(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "attempt_writing_scores"
+    __table_args__ = (
+        UniqueConstraint("attempt_id", "writing_task_id"),
+        CheckConstraint("ta >= 0 AND ta <= 9 AND mod(ta * 2, 1) = 0", name="ta_half_band"),
+        CheckConstraint("cc >= 0 AND cc <= 9 AND mod(cc * 2, 1) = 0", name="cc_half_band"),
+        CheckConstraint("lr >= 0 AND lr <= 9 AND mod(lr * 2, 1) = 0", name="lr_half_band"),
+        CheckConstraint("gra >= 0 AND gra <= 9 AND mod(gra * 2, 1) = 0", name="gra_half_band"),
+    )
+
+    attempt_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("attempts.id", ondelete="CASCADE"))
+    writing_task_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("writing_tasks.id", ondelete="RESTRICT")
+    )
+    ta: Mapped[Decimal] = mapped_column(Numeric(2, 1), nullable=False)
+    cc: Mapped[Decimal] = mapped_column(Numeric(2, 1), nullable=False)
+    lr: Mapped[Decimal] = mapped_column(Numeric(2, 1), nullable=False)
+    gra: Mapped[Decimal] = mapped_column(Numeric(2, 1), nullable=False)
+
+    attempt: Mapped[Attempt] = relationship(back_populates="writing_scores")
+    writing_task: Mapped[WritingTask] = relationship(back_populates="attempt_scores")
 
 
 class Highlight(UUIDPrimaryKeyMixin, Base):

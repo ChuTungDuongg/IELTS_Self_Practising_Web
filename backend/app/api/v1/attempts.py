@@ -13,7 +13,7 @@ from app.schemas.attempts import (
     AttemptReview,
     WritingResponse,
     WritingResponseUpdate,
-    WritingScoreUpdate,
+    WritingTaskScoreUpdate,
 )
 from app.schemas.content import (
     AttemptExam,
@@ -140,13 +140,17 @@ async def get_writing_review(
     return await AttemptService(session).writing_review(attempt_id)
 
 
-@router.put("/{attempt_id}/writing-score", response_model=AttemptResponse)
-async def save_writing_score(
+@router.put(
+    "/{attempt_id}/writing-scores/{writing_task_id}",
+    response_model=WritingAttemptReview,
+)
+async def save_writing_task_score(
     attempt_id: UUID,
-    body: WritingScoreUpdate,
+    writing_task_id: UUID,
+    body: WritingTaskScoreUpdate,
     session: AsyncSession = Depends(get_session),
-) -> AttemptResponse:
-    return await AttemptService(session).grade_writing(attempt_id, body.band_score)
+) -> WritingAttemptReview:
+    return await AttemptService(session).grade_writing_task(attempt_id, writing_task_id, body)
 
 
 @router.put("/{attempt_id}/flags/{question_id}", response_model=FlagResponse)
