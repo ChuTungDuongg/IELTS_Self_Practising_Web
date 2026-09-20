@@ -60,4 +60,22 @@ describe("fantasy galaxy visual system", () => {
     expect(narrow).toContain(".exam-passage-content");
     expect(narrow).toContain(".exam-footer");
   });
+
+  it("integrates responsive Writing and grouped history surfaces", () => {
+    for (const selector of [
+      ".btn-writing",
+      ".writing-task-grid",
+      ".writing-runner-layout",
+      ".writing-response-textarea",
+      ".writing-review-layout",
+      ".history-tabs",
+      ".history-group-grid",
+      ".history-group-skill",
+    ]) {
+      expect(css).toContain(selector);
+    }
+    expect(css).toMatch(/\.writing-response-textarea\s*\{[^}]*width:\s*100%[^}]*resize:\s*vertical/);
+    expect(css).toMatch(/@media \(max-width:\s*900px\)[\s\S]*?\.writing-runner-layout\s*\{[^}]*grid-template-columns:\s*1fr/);
+    expect(css).toMatch(/@media \(max-width:\s*700px\)[\s\S]*?\.history-group-skill\s*\{[^}]*grid-template-columns:\s*1fr/);
+  });
 });
