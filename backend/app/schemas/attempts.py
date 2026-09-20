@@ -58,6 +58,7 @@ class AttemptResponse(BaseModel):
     remaining_seconds: int | None
     raw_score: int | None
     max_score: int | None
+    band_score: float | None
     server_time: datetime
 
 
@@ -99,6 +100,7 @@ class HistoryItem(BaseModel):
     elapsed_seconds: int | None
     raw_score: int | None
     max_score: int | None
+    band_score: float | None
 
 
 class AttemptList(BaseModel):

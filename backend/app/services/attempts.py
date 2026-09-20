@@ -834,5 +834,6 @@ class AttemptService:
             remaining_seconds=timer.remaining_seconds,
             raw_score=attempt.raw_score,
             max_score=attempt.max_score,
+            band_score=attempt.band_score,
             server_time=snapshot_at,
         )

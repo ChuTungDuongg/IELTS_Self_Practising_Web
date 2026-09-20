@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import (
@@ -12,6 +13,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -239,6 +241,7 @@ class Attempt(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     raw_score: Mapped[int | None] = mapped_column(Integer)
     max_score: Mapped[int | None] = mapped_column(Integer)
+    band_score: Mapped[Decimal | None] = mapped_column(Numeric(2, 1))
 
     test_version: Mapped[TestVersion] = relationship()
     answers: Mapped[list[AttemptAnswer]] = relationship(
