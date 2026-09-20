@@ -230,4 +230,27 @@ describe("AttemptHistoryList", () => {
       `/review/${writing.attempt_id}`,
     );
   });
+
+  it("replaces group selection and overall when refreshed server props arrive", () => {
+    const { rerender } = render(
+      <AttemptHistoryList
+        initialHistory={history([submitted, listening, writing], [completeGroup])}
+      />,
+    );
+    fireEvent.click(screen.getByRole("tab", { name: "By test" }));
+    expect(screen.getByText("Overall band 8.0")).toBeInTheDocument();
+
+    rerender(
+      <AttemptHistoryList
+        initialHistory={history([submitted, listening], [{
+          ...completeGroup,
+          writing: null,
+          overall_band_score: null,
+        }])}
+      />,
+    );
+
+    expect(screen.getByText("Overall band —")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Review Writing" })).not.toBeInTheDocument();
+  });
 });
