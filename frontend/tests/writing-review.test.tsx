@@ -121,6 +121,7 @@ describe("WritingReviewView", () => {
 
     await waitFor(() => expect(saveWritingTaskScore).toHaveBeenCalledWith(attemptId, taskOneId, {
       ta: 7, cc: 6.5, lr: 7, gra: 6.5,
+      ta_feedback: null, cc_feedback: null, lr_feedback: null, gra_feedback: null,
     }));
     expect(await screen.findByText("Overall 6.75")).toBeInTheDocument();
     expect(screen.getByText("Waiting for all 8 criterion scores")).toBeInTheDocument();
@@ -149,14 +150,35 @@ describe("WritingReviewView", () => {
     expect(screen.getByText("6.92")).toBeInTheDocument();
     expect(saveWritingTaskScore).toHaveBeenCalledWith(attemptId, taskTwoId, {
       ta: 7, cc: 7, lr: 7, gra: 7,
+      ta_feedback: null, cc_feedback: null, lr_feedback: null, gra_feedback: null,
     });
 
     selectTaskScores(1, ["9.0", "9.0", "9.0", "9.0"]);
     fireEvent.click(screen.getByRole("button", { name: "Save Task 1 scores" }));
     await waitFor(() => expect(saveWritingTaskScore).toHaveBeenLastCalledWith(attemptId, taskOneId, {
       ta: 9, cc: 9, lr: 9, gra: 9,
+      ta_feedback: null, cc_feedback: null, lr_feedback: null, gra_feedback: null,
     }));
     expect(await screen.findByText("Overall 9.00")).toBeInTheDocument();
     expect(screen.getAllByText("Band 7.5")).toHaveLength(2);
+  });
+
+  it("saves optional criterion feedback and sends cleared whitespace as null", async () => {
+    vi.mocked(saveWritingTaskScore).mockResolvedValue(reviewPayload({ taskOne: taskOneScore }));
+    render(<WritingReviewView data={reviewPayload()} />);
+    selectTaskScores(1, ["7.0", "6.5", "7.0", "6.5"]);
+    fireEvent.change(screen.getByLabelText("Task 1 TA feedback"), { target: { value: "  Strong coverage.  " } });
+    fireEvent.change(screen.getByLabelText("Task 1 CC feedback"), { target: { value: "   " } });
+    fireEvent.click(screen.getByRole("button", { name: "Save Task 1 scores" }));
+    await waitFor(() => expect(saveWritingTaskScore).toHaveBeenCalledWith(attemptId, taskOneId, {
+      ta: 7, cc: 6.5, lr: 7, gra: 6.5,
+      ta_feedback: "Strong coverage.", cc_feedback: null, lr_feedback: null, gra_feedback: null,
+    }));
+  });
+
+  it("reloads previously saved criterion feedback", () => {
+    const scoredWithFeedback = { ...taskOneScore, ta_feedback: "Previously saved feedback." };
+    render(<WritingReviewView data={reviewPayload({ taskOne: scoredWithFeedback })} />);
+    expect(screen.getByLabelText("Task 1 TA feedback")).toHaveValue("Previously saved feedback.");
   });
 });

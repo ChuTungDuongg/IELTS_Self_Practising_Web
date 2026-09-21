@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     storage_root: Path = Path("../storage")
     max_image_upload_mb: int = Field(default=10, gt=0)
     max_audio_upload_mb: int = Field(default=100, gt=0)
+    max_transfer_zip_mb: int = Field(default=300, gt=0)
+    max_transfer_uncompressed_mb: int = Field(default=600, gt=0)
+    max_transfer_files: int = Field(default=5000, gt=0)
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

@@ -196,6 +196,8 @@ async def test_writing_criterion_grading_recomputes_band_and_history(
         cc=Decimal("6.5"),
         lr=Decimal("7.0"),
         gra=Decimal("6.5"),
+        ta_feedback="  Strong task coverage.  ",
+        cc_feedback="Clear progression.",
     )
     task_two_scores = WritingTaskScoreUpdate(
         ta=Decimal("7.0"),
@@ -241,17 +243,40 @@ async def test_writing_criterion_grading_recomputes_band_and_history(
     assert completed.review.attempt.max_score is None
     assert completed.tasks[0].score is not None
     assert completed.tasks[0].score.ta == 7.0
+    assert completed.tasks[0].score.ta_feedback == "Strong task coverage."
+    assert completed.tasks[0].score.cc_feedback == "Clear progression."
+
+    cleared = await service.grade_writing_task(
+        writing_attempt_id,
+        task_one_id,
+        WritingTaskScoreUpdate(
+            ta=Decimal("7.0"),
+            cc=Decimal("6.5"),
+            lr=Decimal("7.0"),
+            gra=Decimal("6.5"),
+            ta_feedback="   ",
+        ),
+    )
+    assert cleared.tasks[0].score is not None
+    assert cleared.tasks[0].score.ta_feedback is None
+    assert cleared.tasks[0].score.cc_feedback == "Clear progression."
 
     updated = await service.grade_writing_task(
         writing_attempt_id,
         task_two_id,
         WritingTaskScoreUpdate(
-            ta=Decimal("7.5"), cc=Decimal("7.5"), lr=Decimal("7.5"), gra=Decimal("7.5")
+            ta=Decimal("7.5"),
+            cc=Decimal("7.5"),
+            lr=Decimal("7.5"),
+            gra=Decimal("7.5"),
+            ta_feedback="   ",
         ),
     )
     assert updated.task2_overall == 7.5
     assert updated.weighted_overall == 7.25
     assert updated.band_score == 7.5
+    assert updated.tasks[1].score is not None
+    assert updated.tasks[1].score.ta_feedback is None
 
     history = await service.history()
     item = next(row for row in history.items if row.attempt_id == writing_attempt_id)
@@ -275,11 +300,21 @@ async def test_writing_task_score_endpoint_returns_authoritative_summary(
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
             response = await client.put(
                 f"/api/v1/attempts/{attempt_id}/writing-scores/{task_one_id}",
-                json={"ta": 7.0, "cc": 6.5, "lr": 7.0, "gra": 6.5},
+                json={
+                    "ta": 7.0,
+                    "cc": 6.5,
+                    "lr": 7.0,
+                    "gra": 6.5,
+                    "gra_feedback": "Accurate range.",
+                },
             )
             invalid = await client.put(
                 f"/api/v1/attempts/{attempt_id}/writing-scores/{task_one_id}",
                 json={"ta": 7.25, "cc": 6.5, "lr": 7.0, "gra": 6.5},
+            )
+            oversized = await client.put(
+                f"/api/v1/attempts/{attempt_id}/writing-scores/{task_one_id}",
+                json={"ta": 7.0, "cc": 6.5, "lr": 7.0, "gra": 6.5, "ta_feedback": "x" * 4001},
             )
     finally:
         app.dependency_overrides.pop(get_session, None)
@@ -296,5 +331,10 @@ async def test_writing_task_score_endpoint_returns_authoritative_summary(
         "lr": 7.0,
         "gra": 6.5,
         "overall": 6.75,
+        "ta_feedback": None,
+        "cc_feedback": None,
+        "lr_feedback": None,
+        "gra_feedback": "Accurate range.",
     }
     assert invalid.status_code == 422
+    assert oversized.status_code == 422

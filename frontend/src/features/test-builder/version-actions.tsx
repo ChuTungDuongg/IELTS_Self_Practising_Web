@@ -3,20 +3,19 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { CheckIcon } from "@/components/ui/icons";
 import { questionRegistry } from "@/features/questions/registry";
 import { ApiError } from "@/lib/api/client";
 import type { BuilderVersion } from "@/lib/api/builder";
 import { cloneVersion, deleteDraft, publishVersion, validateVersion } from "@/lib/api/tests";
 import { builderEditPath } from "@/lib/routes";
-import { useBuilderLifecycle } from "./builder-lifecycle";
+import { BuilderAutosaveStatus, useBuilderLifecycle } from "./builder-lifecycle";
 
 type ValidationIssue = { path: string; message: string };
 type ValidationResult = { valid: boolean; errors: ValidationIssue[]; warnings: ValidationIssue[] };
 
 export function VersionActions({ testId, version }: { testId: string; version: BuilderVersion }) {
   const router = useRouter();
-  const { beginDelete, deleting } = useBuilderLifecycle();
+  const { beginDelete, deleting, flushAutosaves } = useBuilderLifecycle();
   const [message, setMessage] = useState<string | null>(null);
   const [validation, setValidation] = useState<ValidationResult | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -35,6 +34,11 @@ export function VersionActions({ testId, version }: { testId: string; version: B
     setMessage(null);
     setActionError(null);
     try {
+      if (!(await flushAutosaves())) {
+        setActionError("Fix invalid draft fields or retry the failed save before continuing.");
+        focusValidationPanel();
+        return;
+      }
       if (action === "validate" || action === "publish") {
         const result = await validateVersion(versionId);
         setValidation(result);
@@ -83,12 +87,7 @@ export function VersionActions({ testId, version }: { testId: string; version: B
   return (
     <>
       <div className="builder-toolbar">
-        <div className="save-status" role="status">
-          <span className={actionError ? "save-status-error" : ""}>
-            <CheckIcon className="size-4" /> {pending || deleting ? "Working…" : published ? "Published · frozen" : "Draft ready"}
-          </span>
-          {message ? <p>{message}</p> : null}
-        </div>
+        <div><BuilderAutosaveStatus />{message ? <p role="status">{message}</p> : null}{pending || deleting ? <p role="status">Working…</p> : published ? <p>Published · frozen</p> : null}</div>
         <div className="flex flex-wrap items-center gap-2">
           <button onClick={() => act("validate")} disabled={pending || deleting} className="btn btn-secondary">Validate</button>
           {published ? (

@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react";
 import Image from "next/image";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { PlusIcon } from "@/components/ui/icons";
@@ -17,7 +16,8 @@ import {
 } from "@/lib/api/builder";
 import { ApiError } from "@/lib/api/client";
 import { builderPreviewPath } from "@/lib/routes";
-import { useBuilderLifecycle } from "./builder-lifecycle";
+import { useBuilderAutosave, useBuilderLifecycle } from "./builder-lifecycle";
+import { AutosaveLink } from "./autosave-link";
 
 type TaskDraft = {
   prompt: string;
@@ -65,6 +65,21 @@ export function WritingBuilder({ version }: { version: BuilderVersion }) {
   const [error, setError] = useState<string | null>(null);
   const [uploadingTaskId, setUploadingTaskId] = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const draftsValid = Object.values(drafts).every((draft) => draft.prompt.length <= 20_000
+    && (draft.minimumWords === null || (draft.minimumWords >= 1 && draft.minimumWords <= 5000))
+    && (draft.durationMinutes === null || (draft.durationMinutes >= 1 && draft.durationMinutes <= 240)));
+  const { saveNow } = useBuilderAutosave({
+    resourceKey: `writing-module:${writing?.id ?? "new"}`,
+    value: drafts,
+    enabled: Boolean(writing),
+    valid: draftsValid,
+    save: async (values) => {
+      if (!writing) return;
+      for (const task of tasks) {
+        await updateWritingTask(task.id, toPayload(values[task.id] ?? toDraft(task)));
+      }
+    },
+  });
 
   async function mutate(action: () => Promise<unknown>, success: string) {
     setError(null);
@@ -156,7 +171,7 @@ export function WritingBuilder({ version }: { version: BuilderVersion }) {
     <section className="writing-builder">
       <div className="section-header">
         <div><p className="page-eyebrow writing-eyebrow">Writing module</p><h2>Writing Builder</h2><p>Two fixed tasks with server-owned structure and optional visual material for Task 1.</p></div>
-        <div className="flex flex-wrap gap-2"><Link href={builderPreviewPath(version.test_id, version.id, "writing")} className="btn btn-secondary">Preview Writing</Link><span className="module-state">{tasks.filter((task) => drafts[task.id]?.prompt.trim()).length} / 2 prompts ready</span><button onClick={() => setConfirmingDelete(true)} className="btn btn-danger-ghost">Delete module</button></div>
+        <div className="flex flex-wrap gap-2"><AutosaveLink href={builderPreviewPath(version.test_id, version.id, "writing")} className="btn btn-secondary">Preview Writing</AutosaveLink><span className="module-state">{tasks.filter((task) => drafts[task.id]?.prompt.trim()).length} / 2 prompts ready</span><button onClick={() => setConfirmingDelete(true)} className="btn btn-danger-ghost">Delete module</button></div>
       </div>
       {message ? <p role="status" className="notice mt-4">{message}</p> : null}
       {error ? <p role="alert" className="notice notice-error mt-4">{error}</p> : null}
@@ -175,7 +190,7 @@ export function WritingBuilder({ version }: { version: BuilderVersion }) {
               <div>{draft.imageAsset ? <Image unoptimized width={720} height={420} src={assetContentUrl(draft.imageAsset)} alt="Writing Task 1 reference" /> : <p>No Task 1 image attached.</p>}</div>
               <div className="flex flex-wrap gap-2"><label className="btn btn-secondary">{uploadingTaskId === task.id ? "Uploading…" : draft.imageAsset ? "Replace image" : "Upload image"}<input aria-label="Task image" type="file" className="sr-only" accept="image/png,image/jpeg,image/webp" disabled={uploadingTaskId === task.id} onChange={(event) => { const file = event.target.files?.[0]; if (file) void upload(task, file); }} /></label>{draft.imageAsset ? <button type="button" className="btn btn-danger-ghost" onClick={() => void removeImage(task)}>Remove image</button> : null}</div>
             </div> : null}
-            <button type="button" className="btn btn-writing" onClick={() => void save(task)}>Save Task {task.task_number}</button>
+            <button type="button" className="btn btn-writing" disabled={!draftsValid} onClick={() => void saveNow()}>Save Task {task.task_number}</button>
           </fieldset>;
         })}
       </div>

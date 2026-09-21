@@ -351,6 +351,10 @@ class AttemptWritingScore(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     cc: Mapped[Decimal] = mapped_column(Numeric(2, 1), nullable=False)
     lr: Mapped[Decimal] = mapped_column(Numeric(2, 1), nullable=False)
     gra: Mapped[Decimal] = mapped_column(Numeric(2, 1), nullable=False)
+    ta_feedback: Mapped[str | None] = mapped_column(Text)
+    cc_feedback: Mapped[str | None] = mapped_column(Text)
+    lr_feedback: Mapped[str | None] = mapped_column(Text)
+    gra_feedback: Mapped[str | None] = mapped_column(Text)
 
     attempt: Mapped[Attempt] = relationship(back_populates="writing_scores")
     writing_task: Mapped[WritingTask] = relationship(back_populates="attempt_scores")

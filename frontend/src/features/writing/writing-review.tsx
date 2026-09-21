@@ -5,7 +5,6 @@ import Image from "next/image";
 import { assetContentUrl } from "@/lib/api/assets";
 import {
   saveWritingTaskScore,
-  type WritingCriteriaInput,
   type WritingReviewPayload,
 } from "@/lib/api/exam";
 
@@ -16,8 +15,9 @@ const criteria = [
   ["lr", "LR", "Lexical Resource"],
   ["gra", "GRA", "Grammatical Range & Accuracy"],
 ] as const;
-type Criterion = keyof WritingCriteriaInput;
+type Criterion = "ta" | "cc" | "lr" | "gra";
 type TaskSelection = Record<Criterion, string>;
+type TaskFeedback = Record<Criterion, string>;
 
 function initialSelections(data: WritingReviewPayload): Record<string, TaskSelection> {
   return Object.fromEntries(data.tasks.map((task) => [
@@ -31,10 +31,23 @@ function initialSelections(data: WritingReviewPayload): Record<string, TaskSelec
   ]));
 }
 
+function initialFeedback(data: WritingReviewPayload): Record<string, TaskFeedback> {
+  return Object.fromEntries(data.tasks.map((task) => [
+    task.writing_task_id,
+    {
+      ta: task.score?.ta_feedback ?? "",
+      cc: task.score?.cc_feedback ?? "",
+      lr: task.score?.lr_feedback ?? "",
+      gra: task.score?.gra_feedback ?? "",
+    },
+  ]));
+}
+
 export function WritingReviewView({ data }: { data: WritingReviewPayload }) {
   const [reviewData, setReviewData] = useState(data);
   const [taskIndex, setTaskIndex] = useState(0);
   const [selections, setSelections] = useState(() => initialSelections(data));
+  const [feedback, setFeedback] = useState(() => initialFeedback(data));
   const [savingTaskId, setSavingTaskId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -44,6 +57,14 @@ export function WritingReviewView({ data }: { data: WritingReviewPayload }) {
 
   function updateCriterion(taskId: string, criterion: Criterion, value: string) {
     setSelections((current) => ({
+      ...current,
+      [taskId]: { ...current[taskId], [criterion]: value },
+    }));
+    setMessages((current) => ({ ...current, [taskId]: "" }));
+  }
+
+  function updateFeedback(taskId: string, criterion: Criterion, value: string) {
+    setFeedback((current) => ({
       ...current,
       [taskId]: { ...current[taskId], [criterion]: value },
     }));
@@ -65,6 +86,10 @@ export function WritingReviewView({ data }: { data: WritingReviewPayload }) {
           cc: Number(selection.cc),
           lr: Number(selection.lr),
           gra: Number(selection.gra),
+          ta_feedback: feedback[taskId]?.ta.trim() || null,
+          cc_feedback: feedback[taskId]?.cc.trim() || null,
+          lr_feedback: feedback[taskId]?.lr.trim() || null,
+          gra_feedback: feedback[taskId]?.gra.trim() || null,
         },
       );
       setReviewData(response);
@@ -100,7 +125,7 @@ export function WritingReviewView({ data }: { data: WritingReviewPayload }) {
         return <section key={scoreTask.writing_task_id} className="writing-assessment-card" aria-label={`Task ${scoreTask.task_number} assessment`}>
           <div className="writing-assessment-card-heading"><div><p className="writing-review-kicker">Writing Task {scoreTask.task_number}</p><h2>Task {scoreTask.task_number} assessment</h2></div><strong>{scoreTask.score ? `Overall ${scoreTask.score.overall.toFixed(2)}` : "Awaiting scores"}</strong></div>
           <div className="writing-criteria-grid">
-            {criteria.map(([key, abbreviation, fullName]) => <label key={key} className="writing-criterion-field"><span><b>{abbreviation}</b><small>{fullName}</small></span><select aria-label={`Task ${scoreTask.task_number} ${abbreviation}`} className="select-field" value={selection?.[key] ?? ""} onChange={(event) => updateCriterion(scoreTask.writing_task_id, key, event.target.value)}><option value="">Not scored</option>{bands.map((band) => <option key={band} value={band}>{band}</option>)}</select></label>)}
+            {criteria.map(([key, abbreviation, fullName]) => <div key={key} className="writing-criterion-field"><label><span><b>{abbreviation}</b><small>{fullName}</small></span><select aria-label={`Task ${scoreTask.task_number} ${abbreviation}`} className="select-field" value={selection?.[key] ?? ""} onChange={(event) => updateCriterion(scoreTask.writing_task_id, key, event.target.value)}><option value="">Not scored</option>{bands.map((band) => <option key={band} value={band}>{band}</option>)}</select></label><label className="field-label">{abbreviation} feedback <span className="font-normal text-[var(--muted)]">(optional)</span><textarea aria-label={`Task ${scoreTask.task_number} ${abbreviation} feedback`} className="textarea-field mt-2" rows={3} maxLength={4000} value={feedback[scoreTask.writing_task_id]?.[key] ?? ""} onChange={(event) => updateFeedback(scoreTask.writing_task_id, key, event.target.value)} /></label></div>)}
           </div>
           <button type="button" className="btn btn-writing" disabled={!complete || saving} onClick={() => void saveTaskScores(scoreTask.writing_task_id, scoreTask.task_number)}>{saving ? "Saving…" : `Save Task ${scoreTask.task_number} scores`}</button>
           {messages[scoreTask.writing_task_id] ? <p role="status" className="notice notice-success">{messages[scoreTask.writing_task_id]}</p> : null}

@@ -6,10 +6,12 @@ import type { ExamGroup, PassageBlock, QuestionGroupModel, TextCompletionLayout 
 import { isCompletionQuestionType, QuestionGroupInstruction, resolveQuestionGroupInstruction } from "@/features/questions/question-group-instruction";
 import { textCompletionIntegrityErrors } from "@/features/questions/text-completion-integrity";
 import { normalizeTextCompletionOrder } from "@/features/questions/text-completion-canvas";
+import { useBuilderAutosave } from "./builder-lifecycle";
 
 export function QuestionGroupEditor({
   initial,
   onSave,
+  onAutosave,
   onCancel,
   nextQuestionNumber,
   baseQuestionNumber: requestedBaseQuestionNumber,
@@ -18,6 +20,7 @@ export function QuestionGroupEditor({
 }: {
   initial: QuestionGroupModel;
   onSave: (group: QuestionGroupModel) => Promise<void>;
+  onAutosave?: (group: QuestionGroupModel) => Promise<unknown>;
   onCancel: () => void;
   nextQuestionNumber: number;
   baseQuestionNumber?: number;
@@ -37,6 +40,14 @@ export function QuestionGroupEditor({
     ? normalizeTextCompletionOrder(group, group.config as unknown as TextCompletionLayout, baseQuestionNumber)
     : group;
   const integrityErrors = group.question_type === "text_completion" ? textCompletionIntegrityErrors(group) : [];
+  const structurallyValid = integrityErrors.length === 0 && questionGroupIsValid(presentedGroup, passageBlocks);
+  const { saveNow } = useBuilderAutosave({
+    resourceKey: `question-group:${initial.id ?? "new"}`,
+    value: presentedGroup,
+    save: (value) => (onAutosave ?? onSave)(value),
+    valid: structurallyValid,
+    enabled: Boolean(initial.id && onAutosave),
+  });
   const usesMultilineInstruction = isCompletionQuestionType(group.question_type);
 
   function addQuestion() {
@@ -113,8 +124,8 @@ export function QuestionGroupEditor({
         </div>
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={() => setPreview(!preview)} className="btn btn-secondary">{preview ? "Back to edit" : "Preview"}</button>
-          <button type="button" onClick={onCancel} className="btn btn-ghost">Cancel</button>
-          <button type="button" disabled={pending || !presentedGroup.questions.length || integrityErrors.length > 0} onClick={async () => { if (integrityErrors.length) return; setPending(true); try { await onSave(presentedGroup); } finally { setPending(false); } }} className="btn btn-primary">{pending ? "Saving…" : "Save group"}</button>
+          <button type="button" onClick={() => { if (initial.id && onAutosave) void saveNow().then((saved) => { if (saved) onCancel(); }); else onCancel(); }} className="btn btn-ghost">{initial.id ? "Close" : "Cancel"}</button>
+          <button type="button" disabled={pending || !structurallyValid} onClick={async () => { setPending(true); try { if (initial.id && onAutosave) await saveNow(); else await onSave(presentedGroup); } finally { setPending(false); } }} className="btn btn-primary">{pending ? "Saving…" : initial.id ? "Save now" : "Create group"}</button>
         </div>
       </div>
       {integrityErrors.length ? <div role="alert" className="notice notice-warning">{integrityErrors.map((message) => <p key={message}>{message}</p>)}</div> : null}
@@ -132,4 +143,42 @@ export function QuestionGroupEditor({
       )}
     </div>
   );
+}
+
+function questionGroupIsValid(group: QuestionGroupModel, passageBlocks: PassageBlock[]): boolean {
+  if (!group.questions.length || group.instruction.length > 4000) return false;
+  const ids = group.questions.map((question) => question.id).filter(Boolean);
+  const numbers = group.questions.map((question) => question.number);
+  const orders = group.questions.map((question) => question.order_index);
+  if (ids.length !== group.questions.length || new Set(ids).size !== ids.length || new Set(numbers).size !== numbers.length || new Set(orders).size !== orders.length) return false;
+  if (group.questions.some((question) => question.number < 1 || question.order_index < 0 || !question.prompt.trim() || question.prompt.length > 5000 || !Object.keys(question.answer_key).length)) return false;
+
+  const optionLists: Array<Array<{ id?: unknown; label?: unknown; text?: unknown }>> = [];
+  for (const value of [group.config, ...group.questions.map((question) => question.config)]) {
+    const options = value.options;
+    if (Array.isArray(options)) optionLists.push(options as Array<{ id?: unknown; label?: unknown; text?: unknown }>);
+  }
+  if (optionLists.some((options) => {
+    const optionIds = options.map((option) => String(option.id ?? "").trim());
+    const labels = options.map((option) => String(option.label ?? "").trim().toLocaleLowerCase());
+    return options.length < 2 || optionIds.some((id) => !id) || labels.some((label) => !label)
+      || options.some((option) => !String(option.text ?? "").trim())
+      || new Set(optionIds).size !== optionIds.length || new Set(labels).size !== labels.length;
+  })) return false;
+
+  const questionIds = new Set(ids.map(String));
+  if (["plan_labelling", "map_labelling", "diagram_labelling"].includes(group.question_type)) {
+    const markerIds = new Set(((group.config.markers as Array<{ question_id?: string }> | undefined) ?? []).map((marker) => String(marker.question_id ?? "")));
+    if (markerIds.size !== questionIds.size || [...questionIds].some((id) => !markerIds.has(id))) return false;
+  }
+  if (["form_completion", "note_completion", "table_completion", "flow_chart_completion", "summary_completion", "sentence_completion"].includes(group.question_type)) {
+    const layout = (group.config.layout ?? {}) as { rows?: Array<{ cells?: Array<{ type?: string; question_id?: string }> }>; nodes?: Array<{ type?: string; question_id?: string }> };
+    const gaps = [...(layout.rows ?? []).flatMap((row) => row.cells ?? []), ...(layout.nodes ?? [])].filter((item) => item.type === "GAP").map((item) => String(item.question_id ?? ""));
+    if (gaps.length !== questionIds.size || new Set(gaps).size !== gaps.length || gaps.some((id) => !questionIds.has(id))) return false;
+  }
+  if (group.question_type === "matching_headings") {
+    const paragraphIds = new Set(passageBlocks.filter((block) => block.type === "paragraph").map((block) => block.id));
+    if (group.questions.some((question) => !paragraphIds.has(String(question.config.target_block_id ?? "")))) return false;
+  }
+  return true;
 }

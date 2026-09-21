@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { AppLogo } from "./app-logo";
-import { AnalyticsIcon, BuilderIcon, HistoryIcon, HomeIcon, LibraryIcon } from "./icons";
+import { AnalyticsIcon, BuilderIcon, HistoryIcon, HomeIcon, LibraryIcon, TransferIcon } from "./icons";
 import { ThemeToggle } from "./theme-toggle";
+import { TRANSFER_ROUTE } from "@/lib/routes";
 
 const navigation = [
   { label: "Overview", href: "/", icon: HomeIcon },
@@ -12,6 +13,7 @@ const navigation = [
   { label: "Builder", href: "/admin/tests", icon: BuilderIcon },
   { label: "Attempt history", href: "/history", icon: HistoryIcon },
   { label: "Analytics", href: "/analytics", icon: AnalyticsIcon },
+  { label: "Transfer", href: TRANSFER_ROUTE, icon: TransferIcon },
 ] as const;
 
 function isCurrent(pathname: string, href: string) {

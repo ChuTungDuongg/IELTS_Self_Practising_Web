@@ -1,3 +1,4 @@
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from uuid import uuid4
@@ -35,6 +36,44 @@ class LocalAssetStorage:
         content: bytes,
         max_bytes: int,
     ) -> StoredAsset:
+        destination, relative_path = self._destination(
+            category=category,
+            mime_type=mime_type,
+            original_name=original_name,
+            size=len(content),
+            max_bytes=max_bytes,
+        )
+        destination.write_bytes(content)
+        return StoredAsset(relative_path=relative_path, size=len(content))
+
+    def store_file(
+        self,
+        *,
+        category: str,
+        mime_type: str,
+        original_name: str,
+        source: Path,
+        max_bytes: int,
+    ) -> StoredAsset:
+        size = source.stat().st_size
+        destination, relative_path = self._destination(
+            category=category,
+            mime_type=mime_type,
+            original_name=original_name,
+            size=size,
+            max_bytes=max_bytes,
+        )
+        try:
+            with source.open("rb") as input_file, destination.open("xb") as output_file:
+                shutil.copyfileobj(input_file, output_file, length=1024 * 1024)
+        except Exception:
+            destination.unlink(missing_ok=True)
+            raise
+        return StoredAsset(relative_path=relative_path, size=size)
+
+    def _destination(
+        self, *, category: str, mime_type: str, original_name: str, size: int, max_bytes: int
+    ) -> tuple[Path, str]:
         allowed = self.IMAGE_TYPES if category == "images" else self.AUDIO_TYPES
         extension = allowed.get(mime_type)
         supplied_extension = Path(original_name).suffix.lower()
@@ -42,8 +81,8 @@ class LocalAssetStorage:
         if (
             extension is None
             or supplied_extension not in compatible_extensions
-            or not content
-            or len(content) > max_bytes
+            or size <= 0
+            or size > max_bytes
         ):
             raise AppError(
                 "ASSET_UPLOAD_INVALID", "The uploaded file type or size is invalid.", 422
@@ -53,9 +92,7 @@ class LocalAssetStorage:
             raise AppError("ASSET_UPLOAD_INVALID", "Invalid storage destination.", 422)
         directory.mkdir(parents=True, exist_ok=True)
         filename = f"{uuid4().hex}{extension}"
-        destination = directory / filename
-        destination.write_bytes(content)
-        return StoredAsset(relative_path=f"{category}/{filename}", size=len(content))
+        return directory / filename, f"{category}/{filename}"
 
     def resolve(self, relative_path: str) -> Path:
         candidate = (self.root / relative_path).resolve()

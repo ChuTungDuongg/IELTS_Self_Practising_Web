@@ -113,6 +113,10 @@ const writingReviewTaskSchema = z.object({
     lr: z.number(),
     gra: z.number(),
     overall: z.number(),
+    ta_feedback: z.string().nullable().optional(),
+    cc_feedback: z.string().nullable().optional(),
+    lr_feedback: z.string().nullable().optional(),
+    gra_feedback: z.string().nullable().optional(),
   }).nullable().default(null),
 });
 
@@ -140,7 +144,11 @@ export async function getWritingReview(attemptId: string): Promise<WritingReview
   );
 }
 
-export type WritingCriteriaInput = { ta: number; cc: number; lr: number; gra: number };
+export type WritingCriteriaInput = {
+  ta: number; cc: number; lr: number; gra: number;
+  ta_feedback?: string | null; cc_feedback?: string | null;
+  lr_feedback?: string | null; gra_feedback?: string | null;
+};
 
 export async function saveWritingTaskScore(
   attemptId: string,

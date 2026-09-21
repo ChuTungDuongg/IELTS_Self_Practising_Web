@@ -73,11 +73,22 @@ class WritingTaskScoreUpdate(BaseModel):
     cc: Decimal
     lr: Decimal
     gra: Decimal
+    ta_feedback: str | None = Field(default=None, max_length=4000)
+    cc_feedback: str | None = Field(default=None, max_length=4000)
+    lr_feedback: str | None = Field(default=None, max_length=4000)
+    gra_feedback: str | None = Field(default=None, max_length=4000)
 
     @field_validator("ta", "cc", "lr", "gra")
     @classmethod
     def validate_half_band(cls, value: Decimal) -> Decimal:
         return validate_writing_criterion_score(value)
+
+    @field_validator("ta_feedback", "cc_feedback", "lr_feedback", "gra_feedback")
+    @classmethod
+    def normalize_feedback(cls, value: str | None) -> str | None:
+        if value is None or not value.strip():
+            return None
+        return value.strip()
 
 
 class WritingTaskScore(BaseModel):
@@ -86,6 +97,10 @@ class WritingTaskScore(BaseModel):
     lr: float
     gra: float
     overall: float
+    ta_feedback: str | None = None
+    cc_feedback: str | None = None
+    lr_feedback: str | None = None
+    gra_feedback: str | None = None
 
 
 class AttemptResponse(BaseModel):

@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { PlusIcon } from "@/components/ui/icons";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { resolveQuestionGroupInstruction } from "@/features/questions/question-group-instruction";
@@ -23,7 +22,8 @@ import {
 } from "@/lib/api/builder";
 import { builderPreviewPath } from "@/lib/routes";
 import { ApiError } from "@/lib/api/client";
-import { useBuilderLifecycle } from "./builder-lifecycle";
+import { useBuilderAutosave, useBuilderLifecycle } from "./builder-lifecycle";
+import { AutosaveLink } from "./autosave-link";
 import { QuestionGroupEditor } from "./question-group-editor";
 
 const visualTypes: QuestionType[] = ["plan_labelling", "map_labelling", "diagram_labelling"];
@@ -119,7 +119,7 @@ export function ListeningBuilder({ version }: { version: BuilderVersion }) {
       <section className="listening-builder">
         <div className="section-header">
           <div><p className="page-eyebrow listening-eyebrow">Listening module</p><h2>Listening Builder</h2><p>Four stable sections, globally numbered questions, and one optional shared recording.</p></div>
-          <div className="flex flex-wrap gap-2"><Link href={builderPreviewPath(version.test_id, version.id, "listening")} className="btn btn-secondary">Preview Listening</Link><span className="module-state">{parts.flatMap((item) => item.question_groups.flatMap((group) => group.questions)).length} / 40 questions</span><button onClick={() => setConfirmingModuleDelete(true)} className="btn btn-danger-ghost">Delete module</button></div>
+          <div className="flex flex-wrap gap-2"><AutosaveLink href={builderPreviewPath(version.test_id, version.id, "listening")} className="btn btn-secondary">Preview Listening</AutosaveLink><span className="module-state">{parts.flatMap((item) => item.question_groups.flatMap((group) => group.questions)).length} / 40 questions</span><button onClick={() => setConfirmingModuleDelete(true)} className="btn btn-danger-ghost">Delete module</button></div>
         </div>
 
         <div className="listening-part-tabs" role="tablist">
@@ -137,7 +137,7 @@ export function ListeningBuilder({ version }: { version: BuilderVersion }) {
 
         {part ? (
           <div className="listening-part-panel">
-            <label className="field-label mb-4 block">Section title / internal label<input className="field mt-2" defaultValue={part.title ?? `Section ${part.order_index + 1}`} onBlur={(event) => { const title = event.target.value.trim(); if (title && title !== part.title) void run(() => updateListeningPart(part.id, { title, order_index: part.order_index })); }} /></label>
+            <ListeningPartTitle key={part.id} part={part} />
             <div className="question-group-list mt-5">
               {part.question_groups.map((group) => {
                 const numbers = group.questions.map((item) => item.number);
@@ -146,7 +146,7 @@ export function ListeningBuilder({ version }: { version: BuilderVersion }) {
               {editing ? (
                 <div>
                   {visualTypes.includes(editing.question_type) ? <div className="visual-upload-row"><label className="btn btn-secondary">{editing.image_asset ? "Replace image" : "Upload question image"}<input type="file" className="sr-only" accept="image/png,image/jpeg,image/webp" onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadImage(file); }} /></label>{editing.image_asset ? <button className="btn btn-danger-ghost" onClick={() => setEditing({ ...editing, image_asset: null, image_asset_id: null })}>Remove image</button> : null}</div> : null}
-                  <QuestionGroupEditor initial={editing} nextQuestionNumber={nextNumber} baseQuestionNumber={canonicalListeningGroupStart(parts, editing)} passageBlocks={[]} onCancel={() => setEditing(null)} onSave={(body) => run(() => editing.id ? updateListeningQuestionGroup(editing.id, body) : createListeningQuestionGroup(part.id, body))} />
+                  <QuestionGroupEditor initial={editing} nextQuestionNumber={nextNumber} baseQuestionNumber={canonicalListeningGroupStart(parts, editing)} passageBlocks={[]} onCancel={() => setEditing(null)} onSave={(body) => run(() => editing.id ? updateListeningQuestionGroup(editing.id, body) : createListeningQuestionGroup(part.id, body))} onAutosave={editing.id ? (body) => updateListeningQuestionGroup(editing.id!, body) : undefined} />
                 </div>
               ) : (
                 <div className="new-group-row"><label className="field-label flex-1">Listening template<select className="select-field" value={type} onChange={(event) => setType(event.target.value as QuestionType)}>{listeningQuestionTypeOptions.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label><button className="btn btn-listening" onClick={createGroup}><PlusIcon className="size-4" /> Add question group</button></div>
@@ -158,6 +158,12 @@ export function ListeningBuilder({ version }: { version: BuilderVersion }) {
       <ConfirmDialog open={confirmingModuleDelete} title="Delete Listening module?" description="All Listening sections and questions in this draft will be removed." confirmLabel="Delete Listening module" pending={deleting} onCancel={() => setConfirmingModuleDelete(false)} onConfirm={() => void run(() => deleteModule(listening.id))} />
     </fieldset>
   );
+}
+
+function ListeningPartTitle({ part }: { part: { id: string; title: string | null; order_index: number } }) {
+  const [title, setTitle] = useState(part.title ?? `Section ${part.order_index + 1}`);
+  useBuilderAutosave({ resourceKey: `listening-part:${part.id}`, value: { title, order_index: part.order_index }, save: (value) => updateListeningPart(part.id, value), valid: title.trim().length > 0 && title.length <= 240 });
+  return <label className="field-label mb-4 block">Section title / internal label<input className="field mt-2" value={title} onChange={(event) => setTitle(event.target.value)} /></label>;
 }
 
 function canonicalListeningGroupStart(

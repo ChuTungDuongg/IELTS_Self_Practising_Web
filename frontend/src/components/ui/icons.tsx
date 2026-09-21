@@ -39,6 +39,10 @@ export function AnalyticsIcon(props: IconProps) {
   return <IconBase {...props}><path d="M4 20V10M10 20V4M16 20v-7M22 20H2" /></IconBase>;
 }
 
+export function TransferIcon(props: IconProps) {
+  return <IconBase {...props}><path d="M7 7h12M15 3l4 4-4 4M17 17H5M9 13l-4 4 4 4" /></IconBase>;
+}
+
 export function ReadingIcon(props: IconProps) {
   return <IconBase {...props}><path d="M5 4h14v16H5z" /><path d="M8 8h8M8 12h8M8 16h5" /></IconBase>;
 }

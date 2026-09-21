@@ -522,6 +522,10 @@ class AttemptService:
             lr=float(score.lr),
             gra=float(score.gra),
             overall=float(overall),
+            ta_feedback=score.ta_feedback,
+            cc_feedback=score.cc_feedback,
+            lr_feedback=score.lr_feedback,
+            gra_feedback=score.gra_feedback,
         )
 
     async def writing_review(self, attempt_id: uuid.UUID) -> WritingAttemptReview:
@@ -612,6 +616,10 @@ class AttemptService:
                     cc=body.cc,
                     lr=body.lr,
                     gra=body.gra,
+                    ta_feedback=body.ta_feedback,
+                    cc_feedback=body.cc_feedback,
+                    lr_feedback=body.lr_feedback,
+                    gra_feedback=body.gra_feedback,
                 )
                 attempt.writing_scores.append(score)
             else:
@@ -619,6 +627,9 @@ class AttemptService:
                 score.cc = body.cc
                 score.lr = body.lr
                 score.gra = body.gra
+                for field in ("ta_feedback", "cc_feedback", "lr_feedback", "gra_feedback"):
+                    if field in body.model_fields_set:
+                        setattr(score, field, getattr(body, field))
             await self.session.flush()
 
             scores_by_task_id = {item.writing_task_id: item for item in attempt.writing_scores}

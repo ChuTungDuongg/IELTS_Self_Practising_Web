@@ -1,6 +1,8 @@
-import Link from "next/link";
+"use client";
+
 import { BuilderIcon, ReadingIcon } from "@/components/ui/icons";
 import { builderEditPath } from "@/lib/routes";
+import { AutosaveLink } from "./autosave-link";
 
 export type BuilderWorkspace = "overview" | "reading" | "listening" | "writing";
 
@@ -9,7 +11,7 @@ type RowProps = { active: boolean; disabled?: boolean; href?: string; icon: Reac
 export function BuilderWorkspaceRow({ active, disabled, href, icon, label, status, tone }: RowProps) {
   const content = <>{icon}<span className="builder-row-label">{label}</span><small>{status}</small></>;
   const className = `builder-workspace-row builder-workspace-${tone}${active ? " builder-local-active" : ""}${disabled ? " builder-workspace-disabled" : ""}`;
-  return href && !disabled ? <Link href={href} aria-current={active ? "page" : undefined} className={className}>{content}</Link> : <span aria-disabled="true" className={className}>{content}</span>;
+  return href && !disabled ? <AutosaveLink href={href} aria-current={active ? "page" : undefined} className={className}>{content}</AutosaveLink> : <span aria-disabled="true" className={className}>{content}</span>;
 }
 
 export function BuilderWorkspaceNavigation({ testId, versionId, workspace, moduleTypes = [] }: { testId: string; versionId: string; workspace: BuilderWorkspace; moduleTypes?: Array<"READING" | "LISTENING" | "WRITING"> }) {

@@ -25,7 +25,7 @@
 - ✅ Full Mock dùng thời lượng khuyến nghị của module; review/key chỉ mở khi toàn bộ mock hoàn tất
 - ✅ Listening practice cho seek, ±10 giây và tốc độ; Full Mock khóa seek và tốc độ bằng policy từ backend
 - ✅ Pause/Resume giữ nguyên attempt và thời gian active; History nhóm theo skill, test version và Full Mock
-- ✅ Writing lưu riêng từng task, đếm từ và chấm thủ công theo TA/CC/LR/GRA
+- ✅ Writing lưu riêng từng task, đếm từ và chấm thủ công theo TA/CC/LR/GRA, kèm feedback tùy chọn cho từng tiêu chí
 - ✅ Band khách quan chỉ chính thức khi module có 40 câu; overall dùng Reading + Listening + Writing
 - ✅ Analytics: tổng thời gian active, band trend, độ chính xác theo loại câu, weak areas, so sánh attempt và timing theo nội dung
 
@@ -41,6 +41,8 @@
 - ✅ Highlight bám theo nguyên từ, lưu semantic offset thay vì HTML
 - ✅ Submit/chấm điểm ở FastAPI và review giữ nguyên bố cục câu hỏi
 - ✅ Active Exam DTO không gửi answer key trước khi nộp bài
+- ✅ Builder tự lưu draft sau khoảng 1 giây, hiển thị Saved/Unsaved/Saving/Error và flush trước Preview/Validate/Publish
+- ✅ Transfer Portal xuất/nhập test, version, câu hỏi, hình và audio bằng ZIP có checksum; không chứa attempt/history
 
 Các dạng câu hỏi Reading hiện có:
 
@@ -117,6 +119,9 @@ Giá trị mặc định dùng cho local:
 | `STORAGE_ROOT` | Nơi lưu binary asset | `../storage` |
 | `MAX_IMAGE_UPLOAD_MB` | Giới hạn hình ảnh | `10` |
 | `MAX_AUDIO_UPLOAD_MB` | Giới hạn audio | `100` |
+| `MAX_TRANSFER_ZIP_MB` | Giới hạn ZIP nén khi import | `300` |
+| `MAX_TRANSFER_UNCOMPRESSED_MB` | Giới hạn tổng dung lượng giải nén | `600` |
+| `MAX_TRANSFER_FILES` | Giới hạn số file trong ZIP | `5000` |
 | `NEXT_PUBLIC_API_BASE_URL` | API URL phía frontend | `http://localhost:8000/api/v1` |
 
 ### 2. Khởi động PostgreSQL 🐘
@@ -256,6 +261,8 @@ Binary không nằm trong PostgreSQL. Backend kiểm tra MIME, đuôi file, kíc
 - `PUT/DELETE /api/v1/question-groups/{id}`
 - `POST /api/v1/test-versions/{id}/validate`
 - `POST /api/v1/test-versions/{id}/publish`
+- `POST /api/v1/transfer/export`
+- `POST /api/v1/transfer/import`
 
 ### Attempt
 
@@ -285,7 +292,7 @@ Lỗi ứng dụng có cấu trúc ổn định:
 
 ## 🛣️ Trạng thái phát triển
 
-- **Hiện có:** Reading/Listening/Writing, Full Mock, pause/resume, manual Writing grading, History và Analytics.
+- **Hiện có:** Reading/Listening/Writing, Full Mock, pause/resume, manual Writing grading + criterion feedback, Builder autosave, Test Transfer ZIP, History và Analytics.
 - **Tiếp theo:** tăng độ sâu của analytics, accessibility và độ bền của Builder workflow.
 - **Cố ý không làm:** Speaking, authentication, thanh toán và AI Writing scoring.
 
