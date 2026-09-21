@@ -37,7 +37,7 @@ const highlightSchema = z.object({
   start_offset: z.number(), end_block_id: z.string().uuid().nullable().optional(), end_offset: z.number(),
   selected_text: z.string(), created_at: z.string(),
 });
-const examSchema = z.object({ attempt: attemptResponseSchema, test_title: z.string(), passages: z.array(passageSchema), highlights: z.array(highlightSchema), listening_audio_asset: assetSchema.nullable().default(null), listening_parts: z.array(listeningPartSchema).default([]), writing_tasks: z.array(writingTaskSchema).default([]) });
+const examSchema = z.object({ attempt: attemptResponseSchema, test_title: z.string(), passages: z.array(passageSchema), highlights: z.array(highlightSchema), listening_audio_asset: assetSchema.nullable().default(null), listening_parts: z.array(listeningPartSchema).default([]), writing_tasks: z.array(writingTaskSchema).default([]), audio_policy: z.object({ allow_seeking: z.boolean(), allow_speed: z.boolean() }).optional() });
 export type ExamPayload = z.infer<typeof examSchema>;
 export type ExamPassage = z.infer<typeof passageSchema>;
 export type ExamListeningPart = z.infer<typeof listeningPartSchema>;

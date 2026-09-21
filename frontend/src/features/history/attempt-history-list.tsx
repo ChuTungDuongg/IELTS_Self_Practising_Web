@@ -11,7 +11,7 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { formatDuration } from "@/features/exam/timer";
 import { deleteAttempt, resumeAttempt } from "@/lib/api/attempts";
 import { ApiError } from "@/lib/api/client";
-import type { HistoryGroup, HistoryItem, HistoryResponse } from "@/lib/api/history";
+import type { HistoryGroup, HistoryItem, HistoryResponse, MockHistoryGroup } from "@/lib/api/history";
 import { formatProjectDateTime } from "@/lib/date-time";
 
 type HistoryMode = "skill" | "test";
@@ -58,6 +58,7 @@ export function AttemptHistoryList({ initialHistory }: { initialHistory: History
     <>
       {items.length ? (
         <>
+          {initialHistory.sessions?.length ? <section className="mb-6"><h2 className="mb-3">Full Mock sessions</h2><ul className="history-group-grid">{initialHistory.sessions.map((session) => <MockSessionCard key={session.session_id} session={session} />)}</ul></section> : null}
           <div className="history-tabs" role="tablist" aria-label="History view">
             <button
               type="button"
@@ -181,15 +182,15 @@ function HistoryRow({
           <button type="button" className="btn btn-primary" disabled={resuming} onClick={() => void resume()}>
             {resuming ? "Resuming…" : "Resume"}
           </button>
-        ) : item.status !== "IN_PROGRESS" ? (
+        ) : item.status !== "IN_PROGRESS" && item.review_available !== false ? (
           <Link href={`/review/${item.attempt_id}`} className="btn btn-primary">
             Review
           </Link>
-        ) : (
+        ) : item.status === "IN_PROGRESS" ? (
           <Link href={`/attempt/${item.attempt_id}`} className="btn btn-primary">
             Continue
           </Link>
-        )}
+        ) : item.test_session_id ? <Link href={`/test-session/${item.test_session_id}`} className="btn btn-secondary">Resume Full Mock</Link> : null}
         <button
           type="button"
           disabled={pending}
@@ -258,7 +259,7 @@ function HistoryGroupSkill({ label, item }: { label: string; item: HistoryItem |
     <li className="history-group-skill">
       <span>{label}</span>
       <span>{item?.band_score === null || !item ? "—" : item.band_score.toFixed(1)}</span>
-      {item ? (
+      {item && item.review_available !== false ? (
         <Link href={`/review/${item.attempt_id}`} className="btn btn-secondary">
           Review {label}
         </Link>
@@ -267,4 +268,8 @@ function HistoryGroupSkill({ label, item }: { label: string; item: HistoryItem |
       )}
     </li>
   );
+}
+
+function MockSessionCard({ session }: { session: MockHistoryGroup }) {
+  return <li className="history-group-card"><div className="history-group-heading"><div><p className="practice-module-kicker">Full Mock</p><p className="history-record-title">{session.test_title}</p><p className="history-record-date">Version {session.version_number}</p></div><strong>{session.status === "COMPLETED" ? `Overall band ${session.overall_band_score?.toFixed(1) ?? "—"}` : "In progress"}</strong></div><ul className="history-group-skills"><HistoryGroupSkill label="Listening" item={session.listening} /><HistoryGroupSkill label="Reading" item={session.reading} /><HistoryGroupSkill label="Writing" item={session.writing} /></ul>{session.status === "IN_PROGRESS" ? <Link href={`/test-session/${session.session_id}`} className="btn btn-primary mt-3">Resume Full Mock</Link> : null}</li>;
 }

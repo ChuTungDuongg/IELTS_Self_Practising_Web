@@ -125,7 +125,7 @@ def normalize_question_group_payload(
     config = deepcopy(group_config)
     normalized_questions = deepcopy(questions)
 
-    if question_type == "text_completion" and "blocks" not in config:
+    if question_type in {"text_completion", "summary_completion_word_list"} and "blocks" not in config:
         blocks: list[dict[str, Any]] = []
         for index, question in enumerate(normalized_questions):
             question_id = str(
@@ -174,6 +174,9 @@ def normalize_question_group_payload(
     if question_type in {
         "matching_headings",
         "matching",
+        "matching_features",
+        "matching_sentence_endings",
+        "summary_completion_word_list",
         "plan_labelling",
         "map_labelling",
         "diagram_labelling",
@@ -214,6 +217,9 @@ def normalize_question_group_payload(
         elif question_type in {
             "matching_headings",
             "matching",
+            "matching_features",
+            "matching_sentence_endings",
+            "summary_completion_word_list",
             "plan_labelling",
             "map_labelling",
             "diagram_labelling",
@@ -228,6 +234,11 @@ def normalize_question_group_payload(
                 question["config"] = {"target_block_id": target_id}
             question["answer_key"] = _normalize_single_option_key(
                 dict(question.get("answer_key") or {}), group_option_ids
+            )
+        elif question_type == "matching_information":
+            question["config"] = {}
+            question["answer_key"] = _normalize_single_option_key(
+                dict(question.get("answer_key") or {})
             )
         elif question_type == "multiple_choice_multiple":
             question_config = dict(question.get("config") or {})
@@ -282,6 +293,9 @@ def normalize_response_value(
     elif question_type in {
         "matching_headings",
         "matching",
+        "matching_features",
+        "matching_sentence_endings",
+        "summary_completion_word_list",
         "plan_labelling",
         "map_labelling",
         "diagram_labelling",

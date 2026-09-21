@@ -5,7 +5,7 @@ import TestVersionLibraryPage from "@/app/library/[versionId]/page";
 import { getTest, getTests, getVersion } from "@/lib/api/tests";
 import type { TestSummary, VersionDetail } from "@/lib/api/schema";
 
-vi.mock("next/navigation", () => ({ notFound: vi.fn() }));
+vi.mock("next/navigation", () => ({ notFound: vi.fn(), useRouter: () => ({ push: vi.fn() }) }));
 vi.mock("@/lib/api/tests", () => ({ getTests: vi.fn(), getTest: vi.fn(), getVersion: vi.fn() }));
 vi.mock("@/features/exam/start-attempt", () => ({
   StartAttempt: ({ module }: { module: string }) => <button>Start {module}</button>,
@@ -50,7 +50,7 @@ describe("Practice library", () => {
   it("shows available modules on the version detail route in canonical order", async () => {
     render(await TestVersionLibraryPage({ params: Promise.resolve({ versionId }) }));
     const starts = screen.getAllByRole("button", { name: /Start/ });
-    expect(starts.map((button) => button.textContent)).toEqual(["Start READING", "Start LISTENING", "Start WRITING"]);
+    expect(starts.map((button) => button.textContent)).toEqual(["Start Full Mock", "Start READING", "Start LISTENING", "Start WRITING"]);
     expect(screen.getByText("Reading practice")).toHaveClass("practice-module-kicker");
     expect(screen.getByText("Writing practice")).toHaveClass("practice-module-kicker");
     expect(screen.queryByText("SPEAKING")).not.toBeInTheDocument();

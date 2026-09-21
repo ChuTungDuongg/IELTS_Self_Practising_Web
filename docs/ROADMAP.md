@@ -17,41 +17,51 @@ AFK, lưu asset cục bộ, API typed, seed hư cấu và bộ kiểm thử nề
 - Chấm điểm backend và review giữ nguyên bố cục.
 - Active Exam DTO không chứa answer key.
 
-## ⏳ Phase 3 — Đủ loại câu hỏi Reading
+## ✅ Phase 3 — Đủ loại câu hỏi Reading
 
-- [ ] Multiple Choice — Multiple Answers
-- [ ] Yes / No / Not Given
-- [ ] Matching Information
-- [ ] Matching Features
-- [ ] Matching Sentence Endings
-- [ ] Sentence Completion
-- [ ] Summary Completion — Text
-- [ ] Summary Completion — Word List
-- [ ] Note Completion
-- [ ] Table Completion
-- [ ] Flow-chart Completion
-- [ ] Diagram Label Completion
-- [ ] Short Answer
+- [x] Multiple Choice — Multiple Answers
+- [x] Yes / No / Not Given
+- [x] Matching Information
+- [x] Matching Features
+- [x] Matching Sentence Endings
+- [x] Sentence Completion
+- [x] Summary Completion — Text
+- [x] Summary Completion — Word List
+- [x] Note Completion
+- [x] Table Completion
+- [x] Flow-chart Completion
+- [x] Diagram Label Completion
+- [x] Short Answer
 
 Mỗi loại chỉ được đánh dấu hoàn thành khi có Builder, key editor, Pydantic/Zod validation,
 exam renderer, backend evaluator, review renderer và tests.
 
-## ⏳ Phase 4 — Listening
+## ✅ Phase 4 — Listening
 
-- [ ] Part 1–4, audio upload và nhiều group mỗi part
-- [ ] MCQ Single/Multiple, Matching
-- [ ] Plan/Map/Diagram Labelling với tọa độ chuẩn hóa
-- [ ] Form, Note, Table, Flow-chart, Summary, Sentence Completion và Short Answer
-- [ ] Audio controller giới hạn seek/rewind/speed trong Exam Mode
-- [ ] Autosave, timer, AFK, scoring và review
+- [x] Part 1–4, audio upload và nhiều group mỗi part
+- [x] MCQ Single/Multiple, Matching
+- [x] Plan/Map/Diagram Labelling với tọa độ chuẩn hóa
+- [x] Form, Note, Table, Flow-chart, Summary, Sentence Completion và Short Answer
+- [x] Audio policy: practice linh hoạt, Full Mock khóa seek/rewind/speed
+- [x] Autosave, timer, AFK, scoring và review
 
-## ⏳ Phase 5 — Writing
+## ✅ Phase 5 — Writing
 
-- [ ] Task 1 + hình ảnh, Task 2
-- [ ] Plain-text editor, word count, autosave, timer, AFK, history/review
-- [ ] Không triển khai AI scoring cho đến khi có yêu cầu riêng
+- [x] Task 1 + hình ảnh, Task 2
+- [x] Plain-text editor, word count, autosave, timer, AFK, history/review
+- [x] Chấm thủ công theo TA/CC/LR/GRA và band tổng hợp
+- [ ] AI scoring (chỉ triển khai khi có yêu cầu riêng)
 
-## ⏳ Phase 6 — Analytics & hoàn thiện
+## ✅ Phase 6 — Full Mock và Analytics nền tảng
 
-Độ chính xác theo loại câu hỏi, thời gian theo passage/group, so sánh attempt, lịch sử đổi đáp án
-và cải thiện trải nghiệm Builder.
+- Full Mock session liên kết ba attempt theo Listening → Reading → Writing và chỉ tạo attempt khi bắt đầu module.
+- Pause/resume, chuyển module, review lock, History và overall sau khi Writing được chấm.
+- Overview band/time, band trend, độ chính xác theo loại câu, weak areas với ngưỡng 5 câu.
+- So sánh hai attempt và timing active theo passage/Listening part/Writing task cho dữ liệu mới.
+- Dữ liệu cũ không có event timing vẫn hiển thị an toàn.
+
+## ⏳ Tiếp theo
+
+- Mở rộng drill-down analytics và bộ lọc ngày/test version.
+- Tiếp tục cải thiện accessibility, keyboard navigation và Builder ergonomics.
+- Speaking, authentication và AI Writing scoring vẫn ngoài phạm vi hiện tại.

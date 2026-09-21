@@ -5,6 +5,7 @@ const completionQuestionTypes = new Set<QuestionType>([
   "text_completion",
   "sentence_completion",
   "summary_completion",
+  "summary_completion_word_list",
   "note_completion",
   "form_completion",
   "table_completion",

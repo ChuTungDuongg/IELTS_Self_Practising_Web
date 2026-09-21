@@ -867,8 +867,19 @@ class TestService:
             }
             if str(resolved_question_config["target_block_id"]) not in paragraph_ids:
                 raise ValueError("The paragraph target does not reference an available block")
+        elif group.question_type == "matching_information":
+            paragraph_ids = {
+                str(block["id"])
+                for block in (passage_blocks or [])
+                if block.get("type") == "paragraph"
+            }
+            if resolved_answer_key["value"] not in paragraph_ids:
+                raise ValueError("The answer key does not reference an available passage paragraph")
         elif group.question_type in {
             "matching",
+            "matching_features",
+            "matching_sentence_endings",
+            "summary_completion_word_list",
             "plan_labelling",
             "map_labelling",
             "diagram_labelling",
@@ -929,6 +940,15 @@ class TestService:
             ]
             if len(gap_ids) != len(set(gap_ids)) or set(gap_ids) != question_ids:
                 raise ValueError("Every text completion question must map to exactly one gap")
+        if group.question_type == "summary_completion_word_list":
+            gap_ids = [
+                str(segment.get("question_id"))
+                for block in group_config.get("blocks", [])
+                for segment in block.get("segments", [])
+                if segment.get("type") == "GAP"
+            ]
+            if len(gap_ids) != len(set(gap_ids)) or set(gap_ids) != question_ids:
+                raise ValueError("Every word-list summary question must map to exactly one gap")
 
     async def validate(self, version_id: uuid.UUID) -> ValidationResult:
         return self.validate_version(await self.get_version(version_id))

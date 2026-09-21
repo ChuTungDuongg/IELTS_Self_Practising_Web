@@ -1016,11 +1016,33 @@ input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--mute
 .exam-runner .theme-toggle:hover { border-color: var(--exam-accent); color: var(--exam-text); }
 .exam-runner .highlight-popover { border-color: var(--exam-border); color: var(--exam-text); background: var(--exam-surface); }
 .exam-runner .highlight-popover q { color: var(--exam-muted); }
+.full-mock-card, .session-transition, .analytics-panel, .analytics-metric { border: 1px solid var(--line); border-radius: 18px; background: var(--surface); box-shadow: var(--shadow-sm); }
+.full-mock-card { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-top: 24px; padding: 24px; }
+.full-mock-card h2, .full-mock-card p, .full-mock-card span { margin: 0; }
+.full-mock-card span { color: var(--muted); }
+.session-transition { display: grid; width: min(100%, 720px); gap: 16px; margin: 8vh auto; padding: clamp(28px, 5vw, 52px); }
+.session-score-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 10px; }
+.session-score-grid > div { display: grid; gap: 5px; border-radius: 12px; background: var(--surface-soft); padding: 13px; }
+.session-score-grid span, .analytics-metric span { color: var(--muted); font-size: 12px; }
+.session-score-grid strong { font-size: 22px; }
+.exam-mode-label { margin: 0; background: var(--exam-control-bg); padding: 5px 18px; color: var(--exam-muted); font-size: 11px; font-weight: 750; text-align: center; }
+.analytics-dashboard { display: grid; gap: 18px; transition: opacity .15s; }.analytics-dashboard.is-loading { opacity: .6; }
+.analytics-filters, .analytics-compare-controls { display: flex; flex-wrap: wrap; gap: 8px; }
+.analytics-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+.analytics-metric { display: grid; gap: 8px; padding: 17px; }.analytics-metric strong { font-size: 21px; }
+.analytics-panel { padding: 20px; }.analytics-panel h2 { margin: 0 0 16px; }
+.analytics-two-column { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.analytics-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }.analytics-list li { display: grid; grid-template-columns: 1fr auto; gap: 4px 14px; border-bottom: 1px solid var(--line); padding: 10px 0; }.analytics-list small { grid-column: 1 / -1; color: var(--muted); }
+.analytics-empty { color: var(--muted); }.trend-chart { width: 100%; max-height: 260px; }.trend-chart text { fill: var(--muted); font-size: 11px; }.trend-grid { stroke: var(--line); stroke-width: 1; }
+.analytics-compare-controls select { min-width: min(100%, 260px); border: 1px solid var(--line); border-radius: 9px; background: var(--surface); padding: 10px; color: var(--ink); }
+.comparison-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 16px; }.comparison-grid article { border-radius: 12px; background: var(--surface-soft); padding: 16px; }.comparison-grid dl > div { display: flex; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--line); padding: 7px 0; }.comparison-grid dt { color: var(--muted); }
 .exam-highlight-toolbar { display: flex; align-items: center; gap: 8px; border-right: 1px solid var(--exam-border); padding-right: 20px; color: var(--exam-muted); font-size: 11px; font-weight: 700; }
 .exam-highlight-toolbar button { min-height: 30px; border: 1px solid color-mix(in srgb, var(--danger) 52%, var(--exam-border)); border-radius: 7px; background: var(--exam-control-bg); padding: 0 9px; color: var(--danger); font-size: 10px; font-weight: 750; }
 .exam-highlight-toolbar button:hover { background: color-mix(in srgb, var(--danger) 10%, var(--exam-control-bg)); }
 
 @media (max-width: 700px) {
+  .full-mock-card { align-items: stretch; flex-direction: column; }
+  .analytics-two-column, .comparison-grid { grid-template-columns: 1fr; }
   .review-header { align-items: flex-start; flex-direction: column; }
   .review-score { border-top: 1px solid var(--line); border-left: 0; padding-top: 13px; padding-left: 0; }
   .review-layout { grid-template-columns: 1fr; }

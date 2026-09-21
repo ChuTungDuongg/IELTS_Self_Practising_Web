@@ -30,6 +30,49 @@ def test_choice_and_matching_evaluation() -> None:
         "B",
         {"options": [{"id": "A", "label": "A"}, {"id": "B", "label": "B"}]},
     )
+
+
+def test_reading_matching_aliases_and_word_list_use_stable_option_ids() -> None:
+    option_a = str(uuid4())
+    option_b = str(uuid4())
+    options = [
+        {"id": option_a, "label": "A", "text": "First"},
+        {"id": option_b, "label": "B", "text": "Second"},
+    ]
+    for question_type in ("matching_features", "matching_sentence_endings"):
+        question_registry.validate(
+            question_type,
+            {"options": options, "allow_option_reuse": True},
+            {},
+            {"kind": "SINGLE_OPTION", "value": option_b},
+        )
+        assert question_registry.evaluate(
+            question_type, {"kind": "SINGLE_OPTION", "value": option_b}, option_b, {}
+        )
+    question_id = str(uuid4())
+    question_registry.validate(
+        "summary_completion_word_list",
+        {
+            "mode": "PASSAGE",
+            "options": options,
+            "blocks": [
+                {
+                    "id": str(uuid4()),
+                    "segments": [
+                        {"id": str(uuid4()), "type": "GAP", "question_id": question_id}
+                    ],
+                }
+            ],
+        },
+        {},
+        {"kind": "SINGLE_OPTION", "value": option_a},
+    )
+    assert not question_registry.evaluate(
+        "summary_completion_word_list",
+        {"kind": "SINGLE_OPTION", "value": option_a},
+        option_b,
+        {},
+    )
     assert question_registry.evaluate(
         "matching_headings",
         {"type": "single_choice", "accepted": ["iv"]},

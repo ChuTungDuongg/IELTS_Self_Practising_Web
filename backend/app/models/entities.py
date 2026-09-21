@@ -32,6 +32,7 @@ from app.models.enums import (
     EventType,
     FinishedReason,
     ModuleType,
+    TestSessionStatus,
     TimerMode,
     VersionStatus,
 )
@@ -117,6 +118,26 @@ class TestModule(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     question_groups: Mapped[list[QuestionGroup]] = relationship(
         back_populates="module", cascade="all, delete-orphan", order_by="QuestionGroup.order_index"
+    )
+
+
+class TestSession(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "test_sessions"
+
+    test_version_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("test_versions.id", ondelete="RESTRICT"), index=True
+    )
+    status: Mapped[TestSessionStatus] = mapped_column(
+        Enum(TestSessionStatus, name="test_session_status"),
+        default=TestSessionStatus.IN_PROGRESS,
+        nullable=False,
+    )
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    test_version: Mapped[TestVersion] = relationship()
+    attempts: Mapped[list[Attempt]] = relationship(
+        back_populates="test_session", order_by="Attempt.started_at"
     )
 
 
@@ -221,9 +242,21 @@ class Question(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
 class Attempt(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "attempts"
+    __table_args__ = (
+        Index(
+            "uq_attempts_test_session_module",
+            "test_session_id",
+            "module_type",
+            unique=True,
+            postgresql_where=text("test_session_id IS NOT NULL"),
+        ),
+    )
 
     test_version_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("test_versions.id", ondelete="RESTRICT"), index=True
+    )
+    test_session_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("test_sessions.id", ondelete="CASCADE"), index=True
     )
     module_type: Mapped[ModuleType] = mapped_column(
         Enum(ModuleType, name="attempt_module_type"), nullable=False
@@ -251,6 +284,7 @@ class Attempt(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     band_score: Mapped[Decimal | None] = mapped_column(Numeric(2, 1))
 
     test_version: Mapped[TestVersion] = relationship()
+    test_session: Mapped[TestSession | None] = relationship(back_populates="attempts")
     answers: Mapped[list[AttemptAnswer]] = relationship(
         back_populates="attempt", cascade="all, delete-orphan"
     )

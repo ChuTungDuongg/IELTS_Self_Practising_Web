@@ -12,6 +12,7 @@ from app.models import (
     Question,
     QuestionGroup,
     TestModule,
+    TestSession,
     TestVersion,
     WritingTask,
 )
@@ -37,6 +38,7 @@ class AttemptRepository:
                 selectinload(Attempt.highlights),
                 selectinload(Attempt.flags),
                 selectinload(Attempt.test_version).selectinload(TestVersion.test),
+                selectinload(Attempt.test_session).selectinload(TestSession.attempts),
                 selectinload(Attempt.test_version)
                 .selectinload(TestVersion.modules)
                 .selectinload(TestModule.writing_tasks)
@@ -51,6 +53,7 @@ class AttemptRepository:
         result = await self.session.scalars(
             select(Attempt)
             .options(selectinload(Attempt.test_version).selectinload(TestVersion.test))
+            .options(selectinload(Attempt.test_session))
             .order_by(Attempt.started_at.desc())
         )
         return list(result)

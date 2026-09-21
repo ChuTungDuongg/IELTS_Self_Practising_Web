@@ -283,6 +283,9 @@ class AttemptExam(BaseModel):
     listening_audio_asset: AssetResponse | None = None
     listening_parts: list[ExamListeningPart] = Field(default_factory=list)
     writing_tasks: list[ExamWritingTask] = Field(default_factory=list)
+    audio_policy: dict[str, bool] = Field(
+        default_factory=lambda: {"allow_seeking": True, "allow_speed": True}
+    )
 
 
 class ReadingReview(BaseModel):

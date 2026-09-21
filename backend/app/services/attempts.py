@@ -39,14 +39,17 @@ from app.models import (
     ReadingPassage,
     Test,
     TestModule,
+    TestSession,
     TestVersion,
     WritingTask,
 )
 from app.models.enums import (
+    AttemptContext,
     AttemptStatus,
     EventType,
     FinishedReason,
     ModuleType,
+    TestSessionStatus,
     VersionStatus,
 )
 from app.repositories.attempts import AttemptRepository
@@ -60,6 +63,8 @@ from app.schemas.attempts import (
     AttemptReview,
     HistoryGroup,
     HistoryItem,
+    MockHistoryGroup,
+    NavigationRequest,
     ReviewAnswer,
     WritingResponse,
     WritingReview,
@@ -137,6 +142,55 @@ class AttemptService:
             attempt.last_active_at = now
             response = self._to_response(attempt, now)
         return response
+
+    async def record_navigation(
+        self, attempt_id: uuid.UUID, body: NavigationRequest
+    ) -> AttemptResponse:
+        event_types = {
+            "PASSAGE": EventType.PASSAGE_CHANGED,
+            "LISTENING_PART": EventType.LISTENING_PART_CHANGED,
+            "WRITING_TASK": EventType.WRITING_TASK_CHANGED,
+            "QUESTION": EventType.QUESTION_VISITED,
+        }
+        async with self.session.begin():
+            attempt = await self._require(attempt_id, for_update=True)
+            now = TimerService.now()
+            await self._ensure_mutable(attempt, now)
+            await self._validate_navigation_target(attempt, body.kind, body.target_id)
+            event_type = event_types[body.kind]
+            latest = await self.session.scalar(
+                select(AttemptEvent)
+                .where(
+                    AttemptEvent.attempt_id == attempt.id,
+                    AttemptEvent.event_type == event_type,
+                )
+                .order_by(AttemptEvent.created_at.desc())
+                .limit(1)
+            )
+            if latest is None or latest.event_metadata.get("target_id") != str(body.target_id):
+                snapshot = TimerService.snapshot(
+                    mode=attempt.timer_mode,
+                    started_at=attempt.started_at,
+                    limit_seconds=attempt.timer_limit_seconds,
+                    paused_at=attempt.paused_at,
+                    total_paused_seconds=attempt.total_paused_seconds,
+                    now=now,
+                )
+                self.session.add(
+                    AttemptEvent(
+                        attempt_id=attempt.id,
+                        event_type=event_type,
+                        question_id=body.target_id if body.kind == "QUESTION" else None,
+                        event_metadata={
+                            "active_elapsed_seconds": snapshot.elapsed_seconds,
+                            "target_id": str(body.target_id),
+                            "kind": body.kind,
+                        },
+                        created_at=now,
+                    )
+                )
+            attempt.last_active_at = now
+            return self._to_response(attempt, now)
 
     async def pause(self, attempt_id: uuid.UUID) -> AttemptResponse:
         async with self.session.begin():
@@ -375,6 +429,7 @@ class AttemptService:
                         created_at=now,
                     )
                 )
+                self._complete_mock_if_writing(attempt, now)
             response = self._to_response(attempt, now)
         return response
 
@@ -383,6 +438,15 @@ class AttemptService:
         if attempt.status in {AttemptStatus.IN_PROGRESS, AttemptStatus.PAUSED}:
             raise AppError(
                 "ATTEMPT_NOT_FINALIZED", "Submit the attempt before reviewing answer keys.", 409
+            )
+        if (
+            attempt.test_session is not None
+            and attempt.test_session.status == TestSessionStatus.IN_PROGRESS
+        ):
+            raise AppError(
+                "FULL_MOCK_REVIEW_LOCKED",
+                "Module review is available after the Full Mock is complete.",
+                409,
             )
         answer_rows = [
             self._present_review_answer(answer)
@@ -640,6 +704,7 @@ class AttemptService:
                     attempt_id=item.id,
                     test_id=item.test_version.test_id,
                     test_version_id=item.test_version_id,
+                    test_session_id=item.test_session_id,
                     test_title=item.test_version.test.title,
                     version_number=item.test_version.version_number,
                     module=item.module_type,
@@ -657,6 +722,10 @@ class AttemptService:
                     raw_score=item.raw_score,
                     max_score=item.max_score,
                     band_score=item.band_score,
+                    review_available=(
+                        item.test_session is None
+                        or item.test_session.status == TestSessionStatus.COMPLETED
+                    ),
                 )
             )
         items_by_id = {item.attempt_id: item for item in items}
@@ -711,7 +780,43 @@ class AttemptService:
             for version_id, version_attempts in by_version.items()
         }
         groups.sort(key=lambda item: group_recency[item.test_version_id], reverse=True)
-        return AttemptList(items=items, groups=groups, total=len(items))
+        session_rows = list(
+            await self.session.scalars(
+                select(TestSession)
+                .options(
+                    selectinload(TestSession.attempts),
+                    selectinload(TestSession.test_version).selectinload(TestVersion.test),
+                )
+                .order_by(TestSession.started_at.desc())
+            )
+        )
+        mock_groups: list[MockHistoryGroup] = []
+        for test_session in session_rows:
+            session_items = {
+                item.module: item
+                for item in items
+                if item.test_session_id == test_session.id
+            }
+            mock_groups.append(
+                MockHistoryGroup(
+                    session_id=test_session.id,
+                    test_version_id=test_session.test_version_id,
+                    test_title=test_session.test_version.test.title,
+                    version_number=test_session.test_version.version_number,
+                    status=test_session.status,
+                    started_at=test_session.started_at,
+                    finished_at=test_session.finished_at,
+                    reading=session_items.get(ModuleType.READING),
+                    listening=session_items.get(ModuleType.LISTENING),
+                    writing=session_items.get(ModuleType.WRITING),
+                    overall_band_score=project_overall_band(
+                        session_items.get(ModuleType.READING).band_score if session_items.get(ModuleType.READING) else None,
+                        session_items.get(ModuleType.LISTENING).band_score if session_items.get(ModuleType.LISTENING) else None,
+                        session_items.get(ModuleType.WRITING).band_score if session_items.get(ModuleType.WRITING) else None,
+                    ),
+                )
+            )
+        return AttemptList(items=items, groups=groups, sessions=mock_groups, total=len(items))
 
     async def exam(self, attempt_id: uuid.UUID) -> AttemptExam:
         attempt_response = await self.get(attempt_id)
@@ -781,6 +886,10 @@ class AttemptService:
             ),
             listening_parts=listening_parts,
             writing_tasks=writing_tasks,
+            audio_policy={
+                "allow_seeking": attempt.test_session_id is None,
+                "allow_speed": attempt.test_session_id is None,
+            },
         )
 
     @staticmethod
@@ -1016,6 +1125,54 @@ class AttemptService:
             raise AppError("INVALID_QUESTION", "The question does not belong to this attempt.", 422)
         return question
 
+    async def _validate_navigation_target(
+        self, attempt: Attempt, kind: str, target_id: uuid.UUID
+    ) -> None:
+        if kind == "QUESTION":
+            await self._require_attempt_question(attempt, target_id)
+            return
+        if kind == "PASSAGE":
+            valid = await self.session.scalar(
+                select(ReadingPassage.id)
+                .join(TestModule)
+                .where(
+                    ReadingPassage.id == target_id,
+                    TestModule.test_version_id == attempt.test_version_id,
+                    TestModule.module_type == attempt.module_type,
+                    attempt.module_type == ModuleType.READING,
+                )
+            )
+        elif kind == "LISTENING_PART":
+            from app.models import ListeningPart
+
+            valid = await self.session.scalar(
+                select(ListeningPart.id)
+                .join(TestModule)
+                .where(
+                    ListeningPart.id == target_id,
+                    TestModule.test_version_id == attempt.test_version_id,
+                    TestModule.module_type == attempt.module_type,
+                    attempt.module_type == ModuleType.LISTENING,
+                )
+            )
+        else:
+            valid = await self.session.scalar(
+                select(WritingTask.id)
+                .join(TestModule)
+                .where(
+                    WritingTask.id == target_id,
+                    TestModule.test_version_id == attempt.test_version_id,
+                    TestModule.module_type == attempt.module_type,
+                    attempt.module_type == ModuleType.WRITING,
+                )
+            )
+        if valid is None:
+            raise AppError(
+                "INVALID_NAVIGATION_TARGET",
+                "The navigation target does not belong to this attempt.",
+                422,
+            )
+
     async def _highlight_source(self, attempt: Attempt, body: HighlightCreate) -> str:
         if body.target_kind == "PASSAGE_BLOCK":
             passage = await self.session.scalar(
@@ -1184,6 +1341,7 @@ class AttemptService:
                 reason=FinishedReason.TIME_EXPIRED,
                 now=now,
             )
+            self._complete_mock_if_writing(attempt, now)
         elif TimerService.is_afk(attempt.last_active_at, now):
             await self._score(attempt)
             self._finalize(
@@ -1192,6 +1350,7 @@ class AttemptService:
                 reason=FinishedReason.AFK_TIMEOUT,
                 now=now,
             )
+            self._complete_mock_if_writing(attempt, now)
             self.session.add(
                 AttemptEvent(
                     attempt_id=attempt.id,
@@ -1222,6 +1381,16 @@ class AttemptService:
             now=now,
         )
         attempt.elapsed_seconds = timer.elapsed_seconds
+
+    @staticmethod
+    def _complete_mock_if_writing(attempt: Attempt, now: datetime) -> None:
+        if (
+            attempt.module_type == ModuleType.WRITING
+            and attempt.test_session is not None
+            and attempt.test_session.status == TestSessionStatus.IN_PROGRESS
+        ):
+            attempt.test_session.status = TestSessionStatus.COMPLETED
+            attempt.test_session.finished_at = now
 
     async def _score(self, attempt: Attempt) -> None:
         if attempt.module_type == ModuleType.WRITING:
@@ -1282,6 +1451,12 @@ class AttemptService:
         return AttemptResponse(
             attempt_id=attempt.id,
             test_version_id=attempt.test_version_id,
+            test_session_id=attempt.test_session_id,
+            attempt_context=(
+                AttemptContext.FULL_MOCK
+                if attempt.test_session_id is not None
+                else AttemptContext.STANDALONE
+            ),
             module=attempt.module_type,
             status=attempt.status,
             finished_reason=attempt.finished_reason,

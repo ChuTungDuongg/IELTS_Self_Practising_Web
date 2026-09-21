@@ -21,7 +21,7 @@ const questionSchema = z.object({
 
 const groupSchema = z.object({
   id: z.string().uuid(),
-  question_type: z.enum(["multiple_choice", "multiple_choice_multiple", "true_false_not_given", "yes_no_not_given", "text_completion", "matching_headings", "matching", "plan_labelling", "map_labelling", "diagram_labelling", "form_completion", "note_completion", "table_completion", "flow_chart_completion", "summary_completion", "sentence_completion", "short_answer"]),
+  question_type: z.enum(["multiple_choice", "multiple_choice_multiple", "true_false_not_given", "yes_no_not_given", "text_completion", "matching_headings", "matching", "matching_information", "matching_features", "matching_sentence_endings", "summary_completion_word_list", "plan_labelling", "map_labelling", "diagram_labelling", "form_completion", "note_completion", "table_completion", "flow_chart_completion", "summary_completion", "sentence_completion", "short_answer"]),
   instruction: z.string(),
   config: z.record(z.string(), z.unknown()),
   order_index: z.number().int(),

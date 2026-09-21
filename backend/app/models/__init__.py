@@ -14,6 +14,7 @@ from app.models.entities import (
     ReadingPassage,
     Test,
     TestModule,
+    TestSession,
     TestVersion,
     WritingTask,
 )
@@ -34,6 +35,7 @@ __all__ = [
     "ReadingPassage",
     "Test",
     "TestModule",
+    "TestSession",
     "TestVersion",
     "WritingTask",
 ]

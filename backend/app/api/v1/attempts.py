@@ -11,6 +11,7 @@ from app.schemas.attempts import (
     AttemptCreate,
     AttemptResponse,
     AttemptReview,
+    NavigationRequest,
     WritingResponse,
     WritingResponseUpdate,
     WritingTaskScoreUpdate,
@@ -59,6 +60,15 @@ async def record_activity(
     session: AsyncSession = Depends(get_session),
 ) -> AttemptResponse:
     return await AttemptService(session).record_activity(attempt_id)
+
+
+@router.post("/{attempt_id}/navigation", response_model=AttemptResponse)
+async def record_navigation(
+    attempt_id: UUID,
+    body: NavigationRequest,
+    session: AsyncSession = Depends(get_session),
+) -> AttemptResponse:
+    return await AttemptService(session).record_navigation(attempt_id, body)
 
 
 @router.post("/{attempt_id}/pause", response_model=AttemptResponse)

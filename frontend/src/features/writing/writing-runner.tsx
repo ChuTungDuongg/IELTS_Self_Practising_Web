@@ -7,7 +7,7 @@ import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { elapsedFromSnapshot, estimateServerOffset, formatDuration, remainingSeconds } from "@/features/exam/timer";
 import { PauseAttemptControl } from "@/features/exam/pause-attempt-control";
 import { countWords } from "@/features/writing/word-count";
-import { recordActivity, saveWritingResponse } from "@/lib/api/attempts";
+import { recordActivity, recordNavigation, saveWritingResponse } from "@/lib/api/attempts";
 import { assetContentUrl } from "@/lib/api/assets";
 import { submitAttempt, type ExamPayload } from "@/lib/api/exam";
 
@@ -40,6 +40,8 @@ export function WritingRunner({ initial }: { initial: ExamPayload }) {
     [initial.attempt.server_time],
   );
   const task = tasks[taskIndex];
+  const completionPath = initial.attempt.test_session_id ? `/test-session/${initial.attempt.test_session_id}` : `/review/${attemptId}`;
+  useEffect(() => { if (task) void recordNavigation(attemptId, "WRITING_TASK", task.id).catch(() => undefined); }, [attemptId, task]);
 
   const persist = useCallback(async (taskId: string, revision: number) => {
     const content = contentsRef.current[taskId] ?? "";
@@ -101,11 +103,11 @@ export function WritingRunner({ initial }: { initial: ExamPayload }) {
     try {
       await flushForSubmission();
       await submitAttempt(attemptId);
-      router.push(`/review/${attemptId}`);
+      router.push(completionPath);
     } catch {
       setSubmitting(false);
     }
-  }, [attemptId, flushForSubmission, router, submitting]);
+  }, [attemptId, completionPath, flushForSubmission, router, submitting]);
 
   useEffect(() => {
     const timerMap = timers.current;

@@ -1,12 +1,19 @@
 from datetime import datetime
 from decimal import Decimal
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.domains.scoring import validate_writing_criterion_score
-from app.models.enums import AttemptStatus, FinishedReason, ModuleType, TimerMode
+from app.models.enums import (
+    AttemptContext,
+    AttemptStatus,
+    FinishedReason,
+    ModuleType,
+    TestSessionStatus,
+    TimerMode,
+)
 from app.schemas.assets import AssetResponse
 
 
@@ -32,6 +39,11 @@ class AttemptCreate(BaseModel):
 
 class ActivityRequest(BaseModel):
     client_observed_at: datetime | None = None
+
+
+class NavigationRequest(BaseModel):
+    kind: Literal["PASSAGE", "LISTENING_PART", "WRITING_TASK", "QUESTION"]
+    target_id: UUID
 
 
 class AnswerUpdate(BaseModel):
@@ -79,6 +91,8 @@ class WritingTaskScore(BaseModel):
 class AttemptResponse(BaseModel):
     attempt_id: UUID
     test_version_id: UUID
+    test_session_id: UUID | None = None
+    attempt_context: AttemptContext = AttemptContext.STANDALONE
     module: ModuleType
     status: AttemptStatus
     finished_reason: FinishedReason | None
@@ -134,6 +148,7 @@ class HistoryItem(BaseModel):
     attempt_id: UUID
     test_id: UUID
     test_version_id: UUID
+    test_session_id: UUID | None = None
     test_title: str
     version_number: int
     module: ModuleType
@@ -147,6 +162,7 @@ class HistoryItem(BaseModel):
     raw_score: int | None
     max_score: int | None
     band_score: float | None
+    review_available: bool = True
 
 
 class HistoryGroup(BaseModel):
@@ -163,4 +179,19 @@ class HistoryGroup(BaseModel):
 class AttemptList(BaseModel):
     items: list[HistoryItem]
     groups: list[HistoryGroup]
+    sessions: list["MockHistoryGroup"] = Field(default_factory=list)
     total: int = Field(ge=0)
+
+
+class MockHistoryGroup(BaseModel):
+    session_id: UUID
+    test_version_id: UUID
+    test_title: str
+    version_number: int
+    status: TestSessionStatus
+    started_at: datetime
+    finished_at: datetime | None
+    reading: HistoryItem | None = None
+    listening: HistoryItem | None = None
+    writing: HistoryItem | None = None
+    overall_band_score: float | None = None

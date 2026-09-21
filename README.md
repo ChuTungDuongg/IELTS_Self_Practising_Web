@@ -18,7 +18,18 @@
 - ✅ Backend kiểm tra deadline, AFK 5 phút và trạng thái attempt
 - ✅ Light/Dark mode theo hệ điều hành, có nút chuyển trên header 🌙☀️
 
-### Reading MVP
+### Luyện thi và Full Mock
+
+- ✅ Reading, Listening và Writing Builder/runner/review hoàn chỉnh
+- ✅ Full Mock theo thứ tự Listening → Reading → Writing, tạo attempt theo từng chặng để timer không chạy sớm
+- ✅ Full Mock dùng thời lượng khuyến nghị của module; review/key chỉ mở khi toàn bộ mock hoàn tất
+- ✅ Listening practice cho seek, ±10 giây và tốc độ; Full Mock khóa seek và tốc độ bằng policy từ backend
+- ✅ Pause/Resume giữ nguyên attempt và thời gian active; History nhóm theo skill, test version và Full Mock
+- ✅ Writing lưu riêng từng task, đếm từ và chấm thủ công theo TA/CC/LR/GRA
+- ✅ Band khách quan chỉ chính thức khi module có 40 câu; overall dùng Reading + Listening + Writing
+- ✅ Analytics: tổng thời gian active, band trend, độ chính xác theo loại câu, weak areas, so sánh attempt và timing theo nội dung
+
+### Reading
 
 - ✅ Reading Builder tạo passage bằng các block có UUID ổn định
 - ✅ Một passage có nhiều question group
@@ -31,14 +42,15 @@
 - ✅ Submit/chấm điểm ở FastAPI và review giữ nguyên bố cục câu hỏi
 - ✅ Active Exam DTO không gửi answer key trước khi nộp bài
 
-Các dạng câu hỏi Reading đã hoàn chỉnh trong Phase 2:
+Các dạng câu hỏi Reading hiện có:
 
-1. Multiple Choice — Single Answer
-2. True / False / Not Given
-3. Text Completion, có accepted alternatives và giới hạn từ/số
-4. Matching Headings
+1. Multiple Choice — Single / Multiple
+2. True / False / Not Given; Yes / No / Not Given
+3. Matching Headings, Information, Features và Sentence Endings
+4. Sentence, Summary (text/word list), Note, Table và Flow-chart Completion
+5. Diagram Label Completion và Short Answer
 
-Danh sách đầy đủ của các phase tiếp theo nằm tại [docs/ROADMAP.md](docs/ROADMAP.md).
+Các family dùng chung editor/renderer/evaluator khi data shape giống nhau; key và chấm điểm vẫn do backend quản lý.
 
 ## 🧭 Kiến trúc
 
@@ -162,14 +174,14 @@ Mở [http://localhost:3000](http://localhost:3000).
 ### 5. Luồng dùng thử đề xuất
 
 1. Vào **Builder** → **New test**.
-2. Mở Version 1 → tạo Reading module.
-3. Thêm passage và các text block.
-4. Thêm question group, chọn một trong bốn dạng Reading hiện có.
+2. Mở Version 1 → tạo Reading, Listening và Writing module cùng thời lượng khuyến nghị.
+3. Thêm passage, Listening parts/audio và Writing tasks.
+4. Thêm question group bằng registry loại câu hỏi dùng chung.
 5. Nhập câu hỏi và answer key ngay trong editor.
 6. Bấm **Preview**, sau đó **Validate** và **Publish**.
-7. Vào **Library**, chọn timer và bấm **Start Reading**.
-8. Trả lời, flag/highlight nếu cần, rồi **Submit**.
-9. Mở **History** → **Review** để xem điểm và đáp án.
+7. Vào **Library** để bắt đầu Full Mock hoặc luyện riêng từng skill với timer tự chọn.
+8. Trả lời, flag/highlight nếu cần, rồi **Submit**; Full Mock chuyển sang module kế tiếp.
+9. Mở **History** → **Review** hoặc **Analytics** để xem kết quả và tiến trình.
 
 ## 🧪 Chạy kiểm thử
 
@@ -222,7 +234,7 @@ Frontend chỉ vẽ đồng hồ. Thời gian thật được suy ra từ `start
 
 - Builder DTO có key để tác giả chỉnh sửa.
 - Active Exam DTO không có key.
-- Review DTO chỉ có key sau khi attempt kết thúc.
+- Review DTO chỉ có key sau khi attempt kết thúc; module thuộc Full Mock còn bị khóa đến khi session hoàn tất.
 - Frontend không gửi `isCorrect`; FastAPI tự tải key từ bản đề đã đóng băng và chấm.
 
 ### Asset
@@ -250,12 +262,17 @@ Binary không nằm trong PostgreSQL. Backend kiểm tra MIME, đuôi file, kíc
 - `POST /api/v1/attempts`
 - `GET /api/v1/attempts/{id}/exam`
 - `POST /api/v1/attempts/{id}/activity`
+- `POST /api/v1/attempts/{id}/navigation`
 - `PUT /api/v1/attempts/{id}/answers/{question_id}`
 - `PUT /api/v1/attempts/{id}/flags/{question_id}`
 - `POST/DELETE /api/v1/attempts/{id}/highlights`
 - `POST /api/v1/attempts/{id}/submit`
 - `GET /api/v1/attempts/{id}/reading-review`
 - `GET /api/v1/history`
+- `POST/GET /api/v1/test-sessions`
+- `POST /api/v1/test-sessions/{id}/advance`
+- `GET /api/v1/analytics`
+- `GET /api/v1/analytics/compare`
 
 Lỗi ứng dụng có cấu trúc ổn định:
 
@@ -268,9 +285,8 @@ Lỗi ứng dụng có cấu trúc ổn định:
 
 ## 🛣️ Trạng thái phát triển
 
-- **Phase hiện tại:** Phase 2 — Reading MVP hoàn thành.
-- **Tiếp theo:** Phase 3 — bổ sung đầy đủ các dạng câu hỏi Reading có cấu trúc.
-- **Chưa làm:** Listening runner, Writing runner, analytics nâng cao.
+- **Hiện có:** Reading/Listening/Writing, Full Mock, pause/resume, manual Writing grading, History và Analytics.
+- **Tiếp theo:** tăng độ sâu của analytics, accessibility và độ bền của Builder workflow.
 - **Cố ý không làm:** Speaking, authentication, thanh toán và AI Writing scoring.
 
 Xem checklist chi tiết tại [docs/ROADMAP.md](docs/ROADMAP.md). 💫

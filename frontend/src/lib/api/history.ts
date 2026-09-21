@@ -5,6 +5,7 @@ const historyItemSchema = z.object({
   attempt_id: z.string().uuid(),
   test_id: z.string().uuid(),
   test_version_id: z.string().uuid(),
+  test_session_id: z.string().uuid().nullable().optional(),
   test_title: z.string(),
   version_number: z.number().int(),
   module: z.enum(["READING", "LISTENING", "WRITING"]),
@@ -18,6 +19,7 @@ const historyItemSchema = z.object({
   raw_score: z.number().int().nullable(),
   max_score: z.number().int().nullable(),
   band_score: z.number().nullable(),
+  review_available: z.boolean().optional(),
 });
 
 const historyGroupSchema = z.object({
@@ -34,11 +36,13 @@ const historyGroupSchema = z.object({
 const historySchema = z.object({
   items: z.array(historyItemSchema),
   groups: z.array(historyGroupSchema),
+  sessions: z.array(z.object({ session_id: z.string().uuid(), test_version_id: z.string().uuid(), test_title: z.string(), version_number: z.number().int(), status: z.enum(["IN_PROGRESS", "COMPLETED", "ABANDONED"]), started_at: z.string(), finished_at: z.string().nullable(), reading: historyItemSchema.nullable(), listening: historyItemSchema.nullable(), writing: historyItemSchema.nullable(), overall_band_score: z.number().nullable() })).optional(),
   total: z.number().int(),
 });
 export type HistoryItem = z.infer<typeof historyItemSchema>;
 export type HistoryGroup = z.infer<typeof historyGroupSchema>;
 export type HistoryResponse = z.infer<typeof historySchema>;
+export type MockHistoryGroup = NonNullable<HistoryResponse["sessions"]>[number];
 
 export async function getHistory(): Promise<HistoryResponse> {
   return historySchema.parse(await apiRequest<unknown>("/history"));

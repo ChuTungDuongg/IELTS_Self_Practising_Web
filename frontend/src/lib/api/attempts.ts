@@ -6,6 +6,8 @@ export type TimerMode = "COUNTDOWN" | "COUNT_UP";
 export const attemptResponseSchema = z.object({
   attempt_id: z.string().uuid(),
   test_version_id: z.string().uuid(),
+  test_session_id: z.string().uuid().nullable().optional(),
+  attempt_context: z.enum(["STANDALONE", "FULL_MOCK"]).optional(),
   module: z.enum(["READING", "LISTENING", "WRITING"]),
   status: z.enum(["IN_PROGRESS", "PAUSED", "SUBMITTED", "AUTO_SUBMITTED", "INTERRUPTED", "ABANDONED"]),
   finished_reason: z.string().nullable(),
@@ -57,6 +59,17 @@ export function recordActivity(attemptId: string) {
   return apiRequest(`/attempts/${attemptId}/activity`, {
     method: "POST",
     body: JSON.stringify({ client_observed_at: new Date().toISOString() }),
+  });
+}
+
+export function recordNavigation(
+  attemptId: string,
+  kind: "PASSAGE" | "LISTENING_PART" | "WRITING_TASK" | "QUESTION",
+  targetId: string,
+) {
+  return apiRequest(`/attempts/${attemptId}/navigation`, {
+    method: "POST",
+    body: JSON.stringify({ kind, target_id: targetId }),
   });
 }
 

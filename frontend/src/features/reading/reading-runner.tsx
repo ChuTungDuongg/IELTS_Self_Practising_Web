@@ -10,7 +10,7 @@ import { QuestionGroupInstruction } from "@/features/questions/question-group-in
 import { SelectableText, type HighlightController } from "@/features/highlighting/selectable-text";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
-import { recordActivity, saveAnswer } from "@/lib/api/attempts";
+import { recordActivity, recordNavigation, saveAnswer } from "@/lib/api/attempts";
 import { createHighlight, deleteAllHighlights, deleteHighlight, getExam, saveFlag, submitAttempt, type ExamPassage, type ExamPayload, type HighlightCreate } from "@/lib/api/exam";
 
 export function ReadingRunner({ initial }: { initial: ExamPayload }) {
@@ -117,13 +117,16 @@ export function ReadingRunner({ initial }: { initial: ExamPayload }) {
   }, [passageIndex]);
 
   const seconds = initial.attempt.timer_mode === "COUNTDOWN" && initial.attempt.deadline_at ? remainingSeconds(initial.attempt.deadline_at, offset, clock) : elapsedFromSnapshot(initial.attempt.elapsed_seconds, initial.attempt.server_time, offset, clock);
+  const completionPath = initial.attempt.test_session_id ? `/test-session/${initial.attempt.test_session_id}` : `/review/${attemptId}`;
+  useEffect(() => { const passage = passages[passageIndex]; if (passage) void recordNavigation(attemptId, "PASSAGE", passage.id).catch(() => undefined); }, [attemptId, passageIndex, passages]);
+  useEffect(() => { if (activeQuestionId) void recordNavigation(attemptId, "QUESTION", activeQuestionId).catch(() => undefined); }, [activeQuestionId, attemptId]);
   useEffect(() => {
     if (initial.attempt.timer_mode === "COUNTDOWN" && seconds === 0 && !finalized.current) {
-      finalized.current = true; void flush().finally(() => submitAttempt(attemptId).finally(() => router.push(`/review/${attemptId}`)));
+      finalized.current = true; void flush().finally(() => submitAttempt(attemptId).finally(() => router.push(completionPath)));
     }
-  }, [attemptId, flush, initial.attempt.timer_mode, router, seconds]);
+  }, [attemptId, completionPath, flush, initial.attempt.timer_mode, router, seconds]);
 
-  async function submit() { await flush(); await submitAttempt(attemptId); router.push(`/review/${attemptId}`); }
+  async function submit() { await flush(); await submitAttempt(attemptId); router.push(completionPath); }
   const passage = passages[passageIndex];
   if (!passage) return <p>No Reading passage is available.</p>;
 

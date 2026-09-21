@@ -3,8 +3,10 @@ import { z } from "zod";
 import {
   MatchingEditor,
   MatchingHeadingsEditor,
+  MatchingInformationEditor,
   MultipleChoiceEditor,
   MultipleChoiceMultipleEditor,
+  SummaryWordListEditor,
   StructuredCompletionEditor,
   TextCompletionEditor,
   TrueFalseNotGivenEditor,
@@ -14,9 +16,11 @@ import {
 } from "./editors";
 import {
   MatchingHeadingsRenderer,
+  MatchingInformationRenderer,
   MatchingRenderer,
   MultipleChoiceMultipleRenderer,
   MultipleChoiceRenderer,
+  SummaryWordListRenderer,
   StructuredCompletionRenderer,
   TextCompletionRenderer,
   TrueFalseNotGivenRenderer,
@@ -121,26 +125,48 @@ const definitions: QuestionTypeDefinition[] = [
     responseSchema: z.string(), configSchema: z.object({}), instruction: staticInstruction("Match each prompt with the correct option."),
     createDefault: (number) => { const options = newOptions(); return { question_type: "matching", instruction: "", config: { options }, order_index: 0, questions: [{ id: crypto.randomUUID(), number, prompt: "Item to match", config: {}, answer_key: { kind: "SINGLE_OPTION", value: options[0].id }, order_index: 0 }] }; },
   },
+  {
+    id: "matching_information", label: "Matching Information", category: "reading",
+    BuilderEditor: MatchingInformationEditor, AnswerKeyEditor: MatchingInformationEditor, ExamRenderer: MatchingInformationRenderer, ReviewRenderer: MatchingInformationRenderer,
+    responseSchema: z.string().uuid(), configSchema: z.object({ allow_option_reuse: z.boolean().default(true) }), instruction: staticInstruction("Which paragraph contains the following information? Choose the correct paragraph letter."),
+    createDefault: (number) => ({ question_type: "matching_information", instruction: "", config: { allow_option_reuse: true }, order_index: 0, questions: [{ id: crypto.randomUUID(), number, prompt: "Information statement", config: {}, answer_key: { kind: "SINGLE_OPTION", value: "" }, order_index: 0 }] }),
+  },
+  ...([[
+    "matching_features", "Matching Features", "Match each statement with the correct person, place, or category."
+  ], [
+    "matching_sentence_endings", "Matching Sentence Endings", "Choose the correct ending for each sentence beginning."
+  ]] as const).map(([id, label, intro]) => ({
+    id, label, category: "reading" as const,
+    BuilderEditor: MatchingEditor, AnswerKeyEditor: MatchingEditor, ExamRenderer: MatchingRenderer, ReviewRenderer: MatchingRenderer,
+    responseSchema: z.string().uuid(), configSchema: z.object({ options: z.array(optionSchema).min(2), allow_option_reuse: z.boolean().default(false) }), instruction: staticInstruction(intro),
+    createDefault: (number: number) => { const options = newOptions(); return { question_type: id, instruction: "", config: { options, allow_option_reuse: id === "matching_features" }, order_index: 0, questions: [{ id: crypto.randomUUID(), number, prompt: id === "matching_sentence_endings" ? "Sentence beginning…" : "Statement", config: {}, answer_key: { kind: "SINGLE_OPTION", value: options[0].id }, order_index: 0 }] }; },
+  })),
+  {
+    id: "summary_completion_word_list", label: "Summary Completion — Word List", category: "reading",
+    BuilderEditor: SummaryWordListEditor, AnswerKeyEditor: SummaryWordListEditor, ExamRenderer: SummaryWordListRenderer, ReviewRenderer: SummaryWordListRenderer,
+    responseSchema: z.string().uuid(), configSchema: z.object({ mode: z.enum(["SENTENCE", "PASSAGE"]), options: z.array(optionSchema).min(2), blocks: z.array(z.object({ id: z.string().uuid(), segments: z.array(z.object({ id: z.string().uuid(), type: z.enum(["TEXT", "GAP"]), text: z.string().optional(), question_id: z.string().uuid().optional() })) })) }), instruction: staticInstruction("Complete the summary using the list of words or phrases below."),
+    createDefault: (number) => { const options = newOptions(); const question = { id: crypto.randomUUID(), number, prompt: "Summary gap", config: {}, answer_key: { kind: "SINGLE_OPTION", value: options[0].id }, order_index: 0 }; return { question_type: "summary_completion_word_list", instruction: "", config: { mode: "PASSAGE", options, blocks: [{ id: crypto.randomUUID(), segments: [{ id: crypto.randomUUID(), type: "TEXT" as const, text: "Complete the summary: " }, { id: crypto.randomUUID(), type: "GAP" as const, question_id: question.id }] }] }, order_index: 0, questions: [question] }; },
+  },
 ];
 
-for (const [id, label] of [["plan_labelling", "Plan Labelling"], ["map_labelling", "Map Labelling"], ["diagram_labelling", "Diagram Labelling"]] as const) {
+for (const [id, label] of [["plan_labelling", "Plan Labelling"], ["map_labelling", "Map Labelling"], ["diagram_labelling", "Diagram Label Completion"]] as const) {
   definitions.push({
-    id, label, category: "listening", BuilderEditor: VisualLabellingEditor, AnswerKeyEditor: VisualLabellingEditor, ExamRenderer: VisualLabellingRenderer, ReviewRenderer: VisualLabellingRenderer,
+    id, label, category: id === "diagram_labelling" ? "shared" : "listening", BuilderEditor: VisualLabellingEditor, AnswerKeyEditor: VisualLabellingEditor, ExamRenderer: VisualLabellingRenderer, ReviewRenderer: VisualLabellingRenderer,
     responseSchema: z.string(), configSchema: z.object({}), instruction: staticInstruction(`Label the ${label.split(" ")[0].toLowerCase()} using the options provided.`),
     createDefault: (number) => { const options = newOptions(); const questionId = crypto.randomUUID(); return { question_type: id, instruction: "", config: { options, markers: [{ id: crypto.randomUUID(), question_id: questionId, x: 0.5, y: 0.5 }] }, order_index: 0, questions: [{ id: questionId, number, prompt: "Choose the correct label.", config: {}, answer_key: { kind: "SINGLE_OPTION", value: options[0].id }, order_index: 0 }] }; },
   });
 }
 
-for (const [id, label, kind] of [["form_completion", "Form Completion", "FORM"], ["note_completion", "Note Completion", "NOTE"], ["table_completion", "Table Completion", "TABLE"], ["flow_chart_completion", "Flow-chart Completion", "FLOW_CHART"], ["summary_completion", "Summary Completion", "SUMMARY"], ["sentence_completion", "Sentence Completion", "SENTENCE"]] as const) {
+for (const [id, label, kind] of [["form_completion", "Form Completion", "FORM"], ["note_completion", "Note Completion", "NOTE"], ["table_completion", "Table Completion", "TABLE"], ["flow_chart_completion", "Flow-chart Completion", "FLOW_CHART"], ["summary_completion", "Summary Completion — Text", "SUMMARY"], ["sentence_completion", "Sentence Completion", "SENTENCE"]] as const) {
   definitions.push({
-    id, label, category: "listening", BuilderEditor: StructuredCompletionEditor, AnswerKeyEditor: StructuredCompletionEditor, ExamRenderer: StructuredCompletionRenderer, ReviewRenderer: StructuredCompletionRenderer,
+    id, label, category: id === "form_completion" ? "listening" : "shared", BuilderEditor: StructuredCompletionEditor, AnswerKeyEditor: StructuredCompletionEditor, ExamRenderer: StructuredCompletionRenderer, ReviewRenderer: StructuredCompletionRenderer,
     responseSchema: z.string(), configSchema: z.object({}), instruction: (group) => ({ intro: `Complete the ${label.replace(" Completion", "").toLowerCase()} below. ${limitInstruction(group)}` }),
     createDefault: (number) => { const question = textQuestion(number); const gap = { id: crypto.randomUUID(), type: "GAP" as const, text: "", question_id: question.id }; const layout = kind === "TABLE" ? { kind, columns: [{ id: crypto.randomUUID(), label: "Item" }, { id: crypto.randomUUID(), label: "Answer" }], rows: [{ id: crypto.randomUUID(), cells: [{ id: crypto.randomUUID(), type: "TEXT" as const, text: "Label" }, gap] }], nodes: [] } : { kind, columns: [], rows: [], nodes: [{ id: crypto.randomUUID(), type: "TEXT" as const, text: "Context", level: 0 }, { ...gap, level: 0 }] }; return { question_type: id, instruction: "", config: { layout }, order_index: 0, questions: [question] }; },
   });
 }
 
 definitions.push({
-  id: "short_answer", label: "Short Answer", category: "listening", BuilderEditor: TextCompletionEditor, AnswerKeyEditor: TextCompletionEditor, ExamRenderer: TextCompletionRenderer, ReviewRenderer: TextCompletionRenderer,
+  id: "short_answer", label: "Short Answer", category: "shared", BuilderEditor: TextCompletionEditor, AnswerKeyEditor: TextCompletionEditor, ExamRenderer: TextCompletionRenderer, ReviewRenderer: TextCompletionRenderer,
   responseSchema: z.string(), configSchema: z.object({}), instruction: (group) => ({ intro: `Answer the questions below. ${limitInstruction(group)}` }),
   createDefault: (number) => ({ question_type: "short_answer", instruction: "", config: {}, order_index: 0, questions: [textQuestion(number)] }),
 });

@@ -168,7 +168,7 @@ function PassageEditor({ passage, orderIndex, onSave, onCancel }: { passage?: Bu
   }
 
   function removeBlock(id: string) {
-    const references = passage?.question_groups.flatMap((group) => group.question_type === "matching_headings" ? group.questions.filter((question) => question.config.target_block_id === id).map((question) => question.number) : []) ?? [];
+    const references = passage?.question_groups.flatMap((group) => group.question_type === "matching_headings" ? group.questions.filter((question) => question.config.target_block_id === id).map((question) => question.number) : group.question_type === "matching_information" ? group.questions.filter((question) => question.answer_key.value === id).map((question) => question.number) : []) ?? [];
     setDeletedReferences((current) => [...new Set([...current, ...references])]);
     setBlocks(blocks.filter((block) => block.id !== id));
   }

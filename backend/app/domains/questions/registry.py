@@ -129,6 +129,19 @@ class MatchingGroupConfig(MatchingHeadingsGroupConfig):
     pass
 
 
+class MatchingInformationGroupConfig(BaseModel):
+    allow_option_reuse: bool = True
+
+
+class WordListCompletionGroupConfig(TextCompletionGroupConfig):
+    options: list[Option] = Field(min_length=2)
+
+    @model_validator(mode="after")
+    def validate_options(self) -> WordListCompletionGroupConfig:
+        _validate_option_identity(self.options)
+        return self
+
+
 class VisualMarker(BaseModel):
     id: str = Field(min_length=1, max_length=80)
     question_id: str = Field(min_length=1, max_length=80)
@@ -499,6 +512,40 @@ question_registry.register(
     "matching",
     RegisteredQuestionType(
         group_config_model=MatchingGroupConfig,
+        question_config_model=EmptyConfig,
+        response_model=StringResponse,
+        answer_key_model=SingleOptionAnswerKey,
+        evaluator=_choice_evaluator,
+    ),
+)
+
+question_registry.register(
+    "matching_information",
+    RegisteredQuestionType(
+        group_config_model=MatchingInformationGroupConfig,
+        question_config_model=EmptyConfig,
+        response_model=StringResponse,
+        answer_key_model=SingleOptionAnswerKey,
+        evaluator=_choice_evaluator,
+    ),
+)
+
+for matching_type in ("matching_features", "matching_sentence_endings"):
+    question_registry.register(
+        matching_type,
+        RegisteredQuestionType(
+            group_config_model=MatchingGroupConfig,
+            question_config_model=EmptyConfig,
+            response_model=StringResponse,
+            answer_key_model=SingleOptionAnswerKey,
+            evaluator=_choice_evaluator,
+        ),
+    )
+
+question_registry.register(
+    "summary_completion_word_list",
+    RegisteredQuestionType(
+        group_config_model=WordListCompletionGroupConfig,
         question_config_model=EmptyConfig,
         response_model=StringResponse,
         answer_key_model=SingleOptionAnswerKey,
