@@ -165,6 +165,52 @@ class VisualLabellingGroupConfig(BaseModel):
         return self
 
 
+class DiagramBoxGeometry(BaseModel):
+    x: float = Field(ge=0, le=1)
+    y: float = Field(ge=0, le=1)
+    width: float = Field(ge=0.12, le=0.8)
+
+    @model_validator(mode="after")
+    def validate_horizontal_bounds(self) -> DiagramBoxGeometry:
+        if self.x + self.width > 1:
+            raise ValueError("Diagram label boxes must remain inside the canvas")
+        return self
+
+
+class DiagramArrowGeometry(BaseModel):
+    start_x: float = Field(ge=0, le=1)
+    start_y: float = Field(ge=0, le=1)
+    end_x: float = Field(ge=0, le=1)
+    end_y: float = Field(ge=0, le=1)
+
+
+class DiagramCanvasItem(BaseModel):
+    id: str = Field(min_length=1, max_length=80)
+    question_id: str = Field(min_length=1, max_length=80)
+    box: DiagramBoxGeometry
+    arrow: DiagramArrowGeometry
+
+    @field_validator("id", "question_id")
+    @classmethod
+    def validate_uuid_identity(cls, value: str) -> str:
+        uuid.UUID(value)
+        return value
+
+
+class DiagramLabellingGroupConfig(BaseModel):
+    items: list[DiagramCanvasItem] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def validate_identity(self) -> DiagramLabellingGroupConfig:
+        item_ids = [item.id for item in self.items]
+        if len(item_ids) != len(set(item_ids)):
+            raise ValueError("Diagram item IDs must be unique")
+        question_ids = [item.question_id for item in self.items]
+        if len(question_ids) != len(set(question_ids)):
+            raise ValueError("Each diagram question must have exactly one canvas item")
+        return self
+
+
 class LayoutCell(BaseModel):
     id: str = Field(min_length=1, max_length=80)
     type: Literal["TEXT", "GAP"]
@@ -553,7 +599,7 @@ question_registry.register(
     ),
 )
 
-for visual_type in ("plan_labelling", "map_labelling", "diagram_labelling"):
+for visual_type in ("plan_labelling", "map_labelling"):
     question_registry.register(
         visual_type,
         RegisteredQuestionType(
@@ -564,6 +610,17 @@ for visual_type in ("plan_labelling", "map_labelling", "diagram_labelling"):
             evaluator=_choice_evaluator,
         ),
     )
+
+question_registry.register(
+    "diagram_labelling",
+    RegisteredQuestionType(
+        group_config_model=DiagramLabellingGroupConfig,
+        question_config_model=TextCompletionConfig,
+        response_model=StringResponse,
+        answer_key_model=TextAnswerKey,
+        evaluator=_text_evaluator,
+    ),
+)
 
 for completion_type in (
     "form_completion",

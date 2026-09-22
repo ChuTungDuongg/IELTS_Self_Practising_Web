@@ -17,6 +17,11 @@ type BuilderLifecycleValue = {
 };
 
 const BuilderLifecycleContext = createContext<BuilderLifecycleValue | null>(null);
+const standaloneAutosaveLifecycle = {
+  registerAutosave: () => () => undefined,
+  runMutation: async <T,>(action: () => Promise<T>) => action(),
+  setAutosaveState: () => undefined,
+};
 
 export function BuilderLifecycleProvider({ children }: { children: React.ReactNode }) {
   const pending = useRef(new Set<Promise<unknown>>());
@@ -73,10 +78,10 @@ export function BuilderLifecycleProvider({ children }: { children: React.ReactNo
 
   const beginDelete = useCallback(async <T,>(action: () => Promise<T>): Promise<T> => {
     if (deletingRef.current) throw new Error("Draft deletion is already in progress.");
-    await flushAutosaves();
-    deletingRef.current = true;
     setDeleting(true);
     try {
+      await flushAutosaves();
+      deletingRef.current = true;
       await Promise.allSettled([...pending.current]);
       return await action();
     } catch (error) {
@@ -108,7 +113,8 @@ export function useBuilderAutosave<T>({ resourceKey, value, save, valid = true, 
   enabled?: boolean;
   delay?: number;
 }) {
-  const { registerAutosave, runMutation, setAutosaveState } = useBuilderLifecycle();
+  const lifecycle = useOptionalBuilderLifecycle();
+  const { registerAutosave, runMutation, setAutosaveState } = lifecycle ?? standaloneAutosaveLifecycle;
   const serialized = JSON.stringify(value);
   const baseline = useRef(serialized);
   const generation = useRef(0);

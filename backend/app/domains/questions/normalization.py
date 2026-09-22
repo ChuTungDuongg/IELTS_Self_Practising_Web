@@ -108,6 +108,103 @@ def _normalize_multiple_options_key(
     }
 
 
+def _normalize_text_key(answer_key: dict[str, Any]) -> dict[str, Any]:
+    accepted = [
+        str(candidate).strip()
+        for candidate in answer_key.get("accepted", [])
+        if str(candidate).strip()
+    ]
+    return {
+        "kind": "TEXT",
+        "accepted": accepted,
+        "case_sensitive": bool(answer_key.get("case_sensitive", False)),
+    }
+
+
+def _diagram_prompt(prompt: str) -> str:
+    if prompt.count("{{gap}}"):
+        return prompt
+    marker = re.search(r"_{2,}", prompt)
+    if marker:
+        return f"{prompt[: marker.start()]}{{{{gap}}}}{prompt[marker.end() :]}"
+    return f"{prompt.rstrip()} {{{{gap}}}}".strip()
+
+
+def _legacy_diagram_answer(
+    answer_key: dict[str, Any],
+    raw_options: list[dict[str, Any]],
+    normalized_options: list[dict[str, str]],
+) -> dict[str, Any]:
+    if answer_key.get("kind") == "TEXT" or isinstance(answer_key.get("accepted"), list):
+        if answer_key.get("kind") == "TEXT":
+            return _normalize_text_key(answer_key)
+    value = answer_key.get("value")
+    if value is None:
+        accepted = answer_key.get("accepted")
+        value = accepted[0] if isinstance(accepted, list) and accepted else ""
+    selected = str(value)
+    matches = {
+        str(normalized.get("text") or "").strip()
+        for raw, normalized in zip(raw_options, normalized_options, strict=False)
+        if selected
+        in {
+            str(raw.get("id") or ""),
+            str(raw.get("label") or ""),
+            str(normalized.get("id") or ""),
+        }
+        and str(normalized.get("text") or "").strip()
+    }
+    return {
+        "kind": "TEXT",
+        "accepted": [next(iter(matches))] if len(matches) == 1 else [],
+        "case_sensitive": False,
+    }
+
+
+def _legacy_diagram_items(
+    *,
+    group_id: uuid.UUID | str,
+    questions: list[dict[str, Any]],
+    markers: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    markers_by_question: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for marker in markers:
+        markers_by_question[str(marker.get("question_id") or "")].append(marker)
+    positional_fallback = len(markers) == len(questions)
+    for index, question in enumerate(questions):
+        question_id = str(question["id"])
+        matches = markers_by_question.get(question_id, [])
+        marker = matches[0] if len(matches) == 1 else markers[index] if positional_fallback else {}
+        end_x = _legacy_coordinate(marker.get("x"))
+        end_y = _legacy_coordinate(marker.get("y"))
+        width = 0.3
+        box_x = 0.04 if end_x >= 0.5 else 1 - width - 0.04
+        box_y = min(0.84, 0.06 + (index % 7) * 0.12)
+        marker_id = marker.get("id") or question_id
+        items.append(
+            {
+                "id": _stable_uuid(f"group:{group_id}:diagram-item", marker_id, index),
+                "question_id": question_id,
+                "box": {"x": box_x, "y": box_y, "width": width},
+                "arrow": {
+                    "start_x": box_x + width if box_x < end_x else box_x,
+                    "start_y": min(1.0, box_y + 0.05),
+                    "end_x": end_x,
+                    "end_y": end_y,
+                },
+            }
+        )
+    return items
+
+
+def _legacy_coordinate(value: Any) -> float:
+    try:
+        return min(1.0, max(0.0, float(value)))
+    except (TypeError, ValueError):
+        return 0.5
+
+
 def normalize_question_group_payload(
     *,
     question_type: str,
@@ -125,14 +222,16 @@ def normalize_question_group_payload(
     config = deepcopy(group_config)
     normalized_questions = deepcopy(questions)
 
+    for index, question in enumerate(normalized_questions):
+        question["id"] = str(
+            question.get("id")
+            or _stable_uuid(f"group:{group_id}:question", question.get("number"), index)
+        )
+
     if question_type in {"text_completion", "summary_completion_word_list"} and "blocks" not in config:
         blocks: list[dict[str, Any]] = []
         for index, question in enumerate(normalized_questions):
-            question_id = str(
-                question.get("id")
-                or _stable_uuid(f"group:{group_id}:question", question.get("number"), index)
-            )
-            question["id"] = question_id
+            question_id = str(question["id"])
             prompt = str(question.get("prompt") or "")
             marker = re.search(r"_{2,}", prompt)
             before = prompt[: marker.start()] if marker else prompt
@@ -170,6 +269,26 @@ def normalize_question_group_payload(
             )
         config = {"mode": "SENTENCE", "blocks": blocks}
 
+    if question_type == "diagram_labelling" and "items" not in config:
+        raw_options = list(config.get("options") or [])
+        normalized_options, _ = _normalize_options(
+            raw_options, f"group:{group_id}:diagram-option"
+        )
+        config = {
+            "items": _legacy_diagram_items(
+                group_id=group_id,
+                questions=normalized_questions,
+                markers=list(config.get("markers") or []),
+            )
+        }
+        for question in normalized_questions:
+            question["prompt"] = _diagram_prompt(str(question.get("prompt") or ""))
+            question["answer_key"] = _legacy_diagram_answer(
+                dict(question.get("answer_key") or {}), raw_options, normalized_options
+            )
+    elif question_type == "diagram_labelling":
+        config = {"items": list(config.get("items") or [])}
+
     group_option_ids: dict[str, list[str]] | None = None
     if question_type in {
         "matching_headings",
@@ -179,7 +298,6 @@ def normalize_question_group_payload(
         "summary_completion_word_list",
         "plan_labelling",
         "map_labelling",
-        "diagram_labelling",
     }:
         options, group_option_ids = _normalize_options(
             list(config.get("options") or []), f"group:{group_id}:heading"
@@ -222,7 +340,6 @@ def normalize_question_group_payload(
             "summary_completion_word_list",
             "plan_labelling",
             "map_labelling",
-            "diagram_labelling",
         }:
             question_config = dict(question.get("config") or {})
             if question_type == "matching_headings":
@@ -255,18 +372,10 @@ def normalize_question_group_payload(
             normalized_key = _normalize_single_option_key(dict(question.get("answer_key") or {}))
             normalized_key["value"] = _normalize_agreement_value(normalized_key["value"])
             question["answer_key"] = normalized_key
-        elif question_type == "text_completion":
-            raw_key = dict(question.get("answer_key") or {})
-            accepted = [
-                str(candidate).strip()
-                for candidate in raw_key.get("accepted", [])
-                if str(candidate).strip()
-            ]
-            question["answer_key"] = {
-                "kind": "TEXT",
-                "accepted": accepted,
-                "case_sensitive": bool(raw_key.get("case_sensitive", False)),
-            }
+        elif question_type in {"text_completion", "diagram_labelling"}:
+            question["answer_key"] = _normalize_text_key(
+                dict(question.get("answer_key") or {})
+            )
 
     return config, normalized_questions
 
@@ -298,7 +407,6 @@ def normalize_response_value(
         "summary_completion_word_list",
         "plan_labelling",
         "map_labelling",
-        "diagram_labelling",
     }:
         raw_options = list(raw_group_config.get("options") or [])
         normalized_options = list(normalized_group_config.get("options") or [])

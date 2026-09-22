@@ -3,12 +3,16 @@ from uuid import uuid4
 import pytest
 from pydantic import ValidationError
 
+from app.core.exceptions import AppError
 from app.domains.questions.normalization import (
     normalize_passage_blocks,
     normalize_question_group_payload,
     normalize_response_value,
+    remap_question_references,
 )
 from app.domains.questions.registry import TextAnswerKey, normalize_text, question_registry
+from app.schemas.content import QuestionGroupWrite
+from app.services.reading import ReadingService
 
 
 def test_text_evaluation_normalizes_case_and_whitespace() -> None:
@@ -349,3 +353,168 @@ def test_yes_no_not_given_normalizes_visible_not_given_value() -> None:
         normalized_question_config={},
     )
     assert normalized == "NOT_GIVEN"
+
+
+def _diagram_config(question_id: str) -> dict:
+    return {
+        "items": [
+            {
+                "id": str(uuid4()),
+                "question_id": question_id,
+                "box": {"x": 0.08, "y": 0.12, "width": 0.3},
+                "arrow": {
+                    "start_x": 0.38,
+                    "start_y": 0.18,
+                    "end_x": 0.52,
+                    "end_y": 0.47,
+                },
+            }
+        ]
+    }
+
+
+def _diagram_body(*, prompt: str = "A pair of {{gap}} are lifted.", image: bool = True) -> QuestionGroupWrite:
+    question_id = uuid4()
+    return QuestionGroupWrite.model_validate(
+        {
+            "question_type": "diagram_labelling",
+            "instruction": "",
+            "config": _diagram_config(str(question_id)),
+            "order_index": 0,
+            "image_asset_id": str(uuid4()) if image else None,
+            "questions": [
+                {
+                    "id": str(question_id),
+                    "number": 20,
+                    "prompt": prompt,
+                    "config": {"max_words": 2, "max_numbers": 1},
+                    "answer_key": {
+                        "kind": "TEXT",
+                        "accepted": ["gates"],
+                        "case_sensitive": False,
+                    },
+                    "order_index": 0,
+                }
+            ],
+        }
+    )
+
+
+def test_diagram_labelling_uses_text_config_key_and_evaluator() -> None:
+    body = _diagram_body()
+    ReadingService._validate_group_body(body, [])
+    question = body.questions[0]
+    assert question_registry.evaluate(
+        "diagram_labelling", question.answer_key, " Gates ", question.config
+    )
+    assert not question_registry.evaluate(
+        "diagram_labelling", question.answer_key, "locks", question.config
+    )
+
+
+def test_diagram_labelling_rejects_duplicate_or_missing_question_refs() -> None:
+    body = _diagram_body()
+    duplicate = body.model_copy(
+        update={
+            "config": {
+                "items": [body.config["items"][0], {**body.config["items"][0], "id": str(uuid4())}]
+            }
+        }
+    )
+    with pytest.raises(AppError, match="exactly one"):
+        ReadingService._validate_group_body(duplicate, [])
+    missing = body.model_copy(update={"config": {"items": []}})
+    with pytest.raises(AppError, match="at least 1 item"):
+        ReadingService._validate_group_body(missing, [])
+
+
+def test_diagram_labelling_rejects_invalid_geometry() -> None:
+    body = _diagram_body()
+    body.config["items"][0]["box"]["x"] = 0.9
+    with pytest.raises(AppError, match="inside the canvas"):
+        ReadingService._validate_group_body(body, [])
+
+
+def test_diagram_labelling_requires_image_and_exactly_one_gap() -> None:
+    with pytest.raises(AppError, match="require an image asset"):
+        ReadingService._validate_group_body(_diagram_body(image=False), [])
+    with pytest.raises(AppError, match="exactly one"):
+        ReadingService._validate_group_body(_diagram_body(prompt="No answer gap here."), [])
+    with pytest.raises(AppError, match="exactly one"):
+        ReadingService._validate_group_body(
+            _diagram_body(prompt="{{gap}} and another {{gap}}"), []
+        )
+
+
+def test_legacy_diagram_options_and_markers_normalize_to_text_canvas() -> None:
+    question_id = str(uuid4())
+    marker_id = str(uuid4())
+    config, questions = normalize_question_group_payload(
+        question_type="diagram_labelling",
+        group_config={
+            "options": [
+                {"id": "A", "label": "gates"},
+                {"id": "B", "label": "locks"},
+            ],
+            "markers": [
+                {"id": marker_id, "question_id": question_id, "x": 0.48, "y": 0.45}
+            ],
+        },
+        questions=[
+            {
+                "id": question_id,
+                "number": 20,
+                "prompt": "A pair of ______ are lifted.",
+                "config": {},
+                "answer_key": {"kind": "SINGLE_OPTION", "value": "A"},
+                "order_index": 0,
+            }
+        ],
+        group_id=uuid4(),
+        passage_blocks=[],
+    )
+    assert set(config) == {"items"}
+    assert config["items"][0]["question_id"] == question_id
+    assert config["items"][0]["arrow"]["end_x"] == 0.48
+    assert questions[0]["prompt"] == "A pair of {{gap}} are lifted."
+    assert questions[0]["answer_key"] == {
+        "kind": "TEXT",
+        "accepted": ["gates"],
+        "case_sensitive": False,
+    }
+
+
+def test_plan_and_map_labelling_remain_option_based() -> None:
+    question_id = str(uuid4())
+    option_ids = [str(uuid4()), str(uuid4())]
+    config = {
+        "options": [
+            {"id": option_ids[0], "label": "A", "text": "Entrance"},
+            {"id": option_ids[1], "label": "B", "text": "Exit"},
+        ],
+        "markers": [
+            {"id": str(uuid4()), "question_id": question_id, "x": 0.4, "y": 0.6}
+        ],
+    }
+    for question_type in ("plan_labelling", "map_labelling"):
+        question_registry.validate(
+            question_type,
+            config,
+            {},
+            {"kind": "SINGLE_OPTION", "value": option_ids[0]},
+        )
+        assert question_registry.evaluate(
+            question_type,
+            {"kind": "SINGLE_OPTION", "value": option_ids[0]},
+            option_ids[0],
+            {},
+        )
+
+
+def test_transfer_remapper_updates_diagram_item_question_ids() -> None:
+    old_question_id = str(uuid4())
+    new_question_id = str(uuid4())
+    remapped = remap_question_references(
+        _diagram_config(old_question_id), {old_question_id: new_question_id}
+    )
+    assert remapped["items"][0]["question_id"] == new_question_id

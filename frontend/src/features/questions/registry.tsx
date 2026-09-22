@@ -29,6 +29,9 @@ import {
   type RendererProps,
 } from "./renderers";
 import type { QuestionGroupModel, QuestionType } from "./types";
+import { DiagramLabellingEditor } from "./diagram-labelling-editor";
+import { DiagramLabellingRenderer } from "./diagram-labelling-renderer";
+import { createDiagramCanvasItem } from "./diagram-labelling";
 
 export type QuestionInstruction = {
   intro: string;
@@ -149,13 +152,43 @@ const definitions: QuestionTypeDefinition[] = [
   },
 ];
 
-for (const [id, label] of [["plan_labelling", "Plan Labelling"], ["map_labelling", "Map Labelling"], ["diagram_labelling", "Diagram Label Completion"]] as const) {
+for (const [id, label] of [["plan_labelling", "Plan Labelling"], ["map_labelling", "Map Labelling"]] as const) {
   definitions.push({
-    id, label, category: id === "diagram_labelling" ? "shared" : "listening", BuilderEditor: VisualLabellingEditor, AnswerKeyEditor: VisualLabellingEditor, ExamRenderer: VisualLabellingRenderer, ReviewRenderer: VisualLabellingRenderer,
+    id, label, category: "listening", BuilderEditor: VisualLabellingEditor, AnswerKeyEditor: VisualLabellingEditor, ExamRenderer: VisualLabellingRenderer, ReviewRenderer: VisualLabellingRenderer,
     responseSchema: z.string(), configSchema: z.object({}), instruction: staticInstruction(`Label the ${label.split(" ")[0].toLowerCase()} using the options provided.`),
     createDefault: (number) => { const options = newOptions(); const questionId = crypto.randomUUID(); return { question_type: id, instruction: "", config: { options, markers: [{ id: crypto.randomUUID(), question_id: questionId, x: 0.5, y: 0.5 }] }, order_index: 0, questions: [{ id: questionId, number, prompt: "Choose the correct label.", config: {}, answer_key: { kind: "SINGLE_OPTION", value: options[0].id }, order_index: 0 }] }; },
   });
 }
+
+definitions.push({
+  id: "diagram_labelling",
+  label: "Diagram Label Completion",
+  category: "shared",
+  BuilderEditor: DiagramLabellingEditor,
+  AnswerKeyEditor: DiagramLabellingEditor,
+  ExamRenderer: DiagramLabellingRenderer,
+  ReviewRenderer: DiagramLabellingRenderer,
+  responseSchema: z.string(),
+  configSchema: z.object({
+    items: z.array(z.object({
+      id: z.string().uuid(),
+      question_id: z.string().uuid(),
+      box: z.object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1), width: z.number().min(0.12).max(0.8) }),
+      arrow: z.object({ start_x: z.number().min(0).max(1), start_y: z.number().min(0).max(1), end_x: z.number().min(0).max(1), end_y: z.number().min(0).max(1) }),
+    })).min(1),
+  }),
+  instruction: (group) => ({ intro: `Label the diagram below. ${limitInstruction(group)}` }),
+  createDefault: (number) => {
+    const question = { ...textQuestion(number), prompt: "Diagram label {{gap}}" };
+    return {
+      question_type: "diagram_labelling",
+      instruction: "",
+      config: { items: [createDiagramCanvasItem(question.id, 0)] },
+      order_index: 0,
+      questions: [question],
+    };
+  },
+});
 
 for (const [id, label, kind] of [["form_completion", "Form Completion", "FORM"], ["note_completion", "Note Completion", "NOTE"], ["table_completion", "Table Completion", "TABLE"], ["flow_chart_completion", "Flow-chart Completion", "FLOW_CHART"], ["summary_completion", "Summary Completion — Text", "SUMMARY"], ["sentence_completion", "Sentence Completion", "SENTENCE"]] as const) {
   definitions.push({

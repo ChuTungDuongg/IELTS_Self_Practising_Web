@@ -72,6 +72,30 @@ export type TextCompletionLayout = {
   blocks: TextCompletionBlock[];
 };
 
+export type DiagramBoxGeometry = {
+  x: number;
+  y: number;
+  width: number;
+};
+
+export type DiagramArrowGeometry = {
+  start_x: number;
+  start_y: number;
+  end_x: number;
+  end_y: number;
+};
+
+export type DiagramCanvasItem = {
+  id: string;
+  question_id: string;
+  box: DiagramBoxGeometry;
+  arrow: DiagramArrowGeometry;
+};
+
+export type DiagramLabellingConfig = {
+  items: DiagramCanvasItem[];
+};
+
 export type ExamQuestion = Omit<QuestionModel, "answer_key"> & {
   id: string;
   value?: unknown;

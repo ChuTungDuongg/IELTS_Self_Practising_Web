@@ -10,6 +10,7 @@ const completionQuestionTypes = new Set<QuestionType>([
   "form_completion",
   "table_completion",
   "flow_chart_completion",
+  "diagram_labelling",
 ]);
 
 export function isCompletionQuestionType(questionType: QuestionType): boolean {

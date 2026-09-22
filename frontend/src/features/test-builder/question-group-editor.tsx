@@ -6,7 +6,9 @@ import type { ExamGroup, PassageBlock, QuestionGroupModel, TextCompletionLayout 
 import { isCompletionQuestionType, QuestionGroupInstruction, resolveQuestionGroupInstruction } from "@/features/questions/question-group-instruction";
 import { textCompletionIntegrityErrors } from "@/features/questions/text-completion-integrity";
 import { normalizeTextCompletionOrder } from "@/features/questions/text-completion-canvas";
+import { diagramLabellingErrors, migrateLegacyDiagramGroup } from "@/features/questions/diagram-labelling";
 import { useBuilderAutosave } from "./builder-lifecycle";
+import { QuestionImageAttachment } from "./question-image-attachment";
 
 export function QuestionGroupEditor({
   initial,
@@ -17,6 +19,7 @@ export function QuestionGroupEditor({
   baseQuestionNumber: requestedBaseQuestionNumber,
   passageBlocks,
   passageNumber,
+  testVersionId,
 }: {
   initial: QuestionGroupModel;
   onSave: (group: QuestionGroupModel) => Promise<void>;
@@ -26,8 +29,9 @@ export function QuestionGroupEditor({
   baseQuestionNumber?: number;
   passageBlocks: PassageBlock[];
   passageNumber?: number;
+  testVersionId?: string;
 }) {
-  const [group, setGroup] = useState(initial);
+  const [group, setGroup] = useState(() => migrateLegacyDiagramGroup(initial));
   const [preview, setPreview] = useState(false);
   const [pending, setPending] = useState(false);
   const definition = questionRegistry[group.question_type];
@@ -40,7 +44,8 @@ export function QuestionGroupEditor({
     ? normalizeTextCompletionOrder(group, group.config as unknown as TextCompletionLayout, baseQuestionNumber)
     : group;
   const integrityErrors = group.question_type === "text_completion" ? textCompletionIntegrityErrors(group) : [];
-  const structurallyValid = integrityErrors.length === 0 && questionGroupIsValid(presentedGroup, passageBlocks);
+  const diagramErrors = diagramLabellingErrors(presentedGroup);
+  const structurallyValid = integrityErrors.length === 0 && diagramErrors.length === 0 && questionGroupIsValid(presentedGroup, passageBlocks);
   const { saveNow } = useBuilderAutosave({
     resourceKey: `question-group:${initial.id ?? "new"}`,
     value: presentedGroup,
@@ -73,7 +78,7 @@ export function QuestionGroupEditor({
         value: String((group.config.options as Array<{ id: string }>)[0]?.id ?? ""),
       };
     }
-    if (["plan_labelling", "map_labelling", "diagram_labelling"].includes(group.question_type)) {
+    if (["plan_labelling", "map_labelling"].includes(group.question_type)) {
       const marker = (template.config.markers as Array<Record<string, unknown>>)[0];
       config = { ...group.config, markers: [...(group.config.markers as Array<Record<string, unknown>>), marker] };
       next.answer_key = { kind: "SINGLE_OPTION", value: String((group.config.options as Array<{ id: string }>)[0]?.id ?? "") };
@@ -125,10 +130,11 @@ export function QuestionGroupEditor({
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={() => setPreview(!preview)} className="btn btn-secondary">{preview ? "Back to edit" : "Preview"}</button>
           <button type="button" onClick={() => { if (initial.id && onAutosave) void saveNow().then((saved) => { if (saved) onCancel(); }); else onCancel(); }} className="btn btn-ghost">{initial.id ? "Close" : "Cancel"}</button>
-          <button type="button" disabled={pending || !structurallyValid} onClick={async () => { setPending(true); try { if (initial.id && onAutosave) await saveNow(); else await onSave(presentedGroup); } finally { setPending(false); } }} className="btn btn-primary">{pending ? "Saving…" : initial.id ? "Save now" : "Create group"}</button>
+          <button type="button" disabled={pending || !structurallyValid} onClick={async () => { setPending(true); try { if (initial.id && onAutosave) await saveNow(); else await onSave(presentedGroup); } finally { setPending(false); } }} className="btn btn-primary">{pending ? "Saving…" : initial.id ? "Save now" : "Save group"}</button>
         </div>
       </div>
       {integrityErrors.length ? <div role="alert" className="notice notice-warning">{integrityErrors.map((message) => <p key={message}>{message}</p>)}</div> : null}
+      {diagramErrors.length && preview ? <div role="alert" className="notice notice-warning">{diagramErrors.map((message) => <p key={message}>{message}</p>)}</div> : null}
       {preview ? (
         <div className="group-preview">
           <p className="mb-2 text-xs font-bold uppercase tracking-wider text-[var(--muted)]">Candidate preview</p>
@@ -137,8 +143,9 @@ export function QuestionGroupEditor({
         </div>
       ) : (
         <>
+          {testVersionId && ["plan_labelling", "map_labelling", "diagram_labelling"].includes(group.question_type) ? <QuestionImageAttachment group={group} testVersionId={testVersionId} onChange={setGroup} /> : null}
           <Editor group={group} onChange={setGroup} passageBlocks={passageBlocks} baseQuestionNumber={baseQuestionNumber} />
-          {group.question_type !== "text_completion" ? <button type="button" onClick={addQuestion} className="btn btn-secondary mt-4">+ Add question</button> : null}
+          {!["text_completion", "diagram_labelling"].includes(group.question_type) ? <button type="button" onClick={addQuestion} className="btn btn-secondary mt-4">+ Add question</button> : null}
         </>
       )}
     </div>
@@ -167,10 +174,11 @@ function questionGroupIsValid(group: QuestionGroupModel, passageBlocks: PassageB
   })) return false;
 
   const questionIds = new Set(ids.map(String));
-  if (["plan_labelling", "map_labelling", "diagram_labelling"].includes(group.question_type)) {
+  if (["plan_labelling", "map_labelling"].includes(group.question_type)) {
     const markerIds = new Set(((group.config.markers as Array<{ question_id?: string }> | undefined) ?? []).map((marker) => String(marker.question_id ?? "")));
     if (markerIds.size !== questionIds.size || [...questionIds].some((id) => !markerIds.has(id))) return false;
   }
+  if (group.question_type === "diagram_labelling" && diagramLabellingErrors(group).length) return false;
   if (["form_completion", "note_completion", "table_completion", "flow_chart_completion", "summary_completion", "sentence_completion"].includes(group.question_type)) {
     const layout = (group.config.layout ?? {}) as { rows?: Array<{ cells?: Array<{ type?: string; question_id?: string }> }>; nodes?: Array<{ type?: string; question_id?: string }> };
     const gaps = [...(layout.rows ?? []).flatMap((row) => row.cells ?? []), ...(layout.nodes ?? [])].filter((item) => item.type === "GAP").map((item) => String(item.question_id ?? ""));

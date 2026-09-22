@@ -12,6 +12,7 @@ from app.domains.questions.normalization import (
     normalize_question_group_payload,
 )
 from app.models import (
+    Asset,
     ListeningPart,
     Question,
     QuestionGroup,
@@ -20,7 +21,7 @@ from app.models import (
     TestVersion,
     WritingTask,
 )
-from app.models.enums import ModuleType, VersionStatus
+from app.models.enums import AssetType, ModuleType, VersionStatus
 from app.repositories.tests import TestRepository
 from app.schemas.assets import AssetResponse
 from app.schemas.content import (
@@ -140,6 +141,7 @@ class ReadingService:
     ) -> BuilderQuestionGroup:
         async with self.session.begin():
             passage = await self._draft_passage(passage_id)
+            await self._validate_image_asset(passage.module.test_version_id, body)
             passage_blocks = normalize_passage_blocks(passage.content_json, passage.id)
             group_id = uuid.uuid4()
             body = self._normalize_group_body(body, group_id, passage_blocks)
@@ -179,6 +181,7 @@ class ReadingService:
         async with self.session.begin():
             group = await self._draft_group(group_id)
             previous_image_asset_id = group.image_asset_id
+            await self._validate_image_asset(group.module.test_version_id, body)
             passage_blocks = (
                 normalize_passage_blocks(group.passage.content_json, group.passage.id)
                 if group.passage
@@ -406,6 +409,36 @@ class ReadingService:
         if len(numbers) != len(set(numbers)):
             raise AppError("DUPLICATE_QUESTION_NUMBER", "Question numbers must be unique.", 422)
 
+    async def _validate_image_asset(
+        self, version_id: uuid.UUID, body: QuestionGroupWrite
+    ) -> None:
+        visual = body.question_type in {
+            "plan_labelling",
+            "map_labelling",
+            "diagram_labelling",
+        }
+        if not visual and body.image_asset_id is not None:
+            raise AppError(
+                "INVALID_IMAGE_ASSET",
+                "Only visual labelling groups can attach a question image.",
+                422,
+            )
+        if not visual or body.image_asset_id is None:
+            return
+        asset = await self.session.scalar(
+            select(Asset).where(
+                Asset.id == body.image_asset_id,
+                Asset.test_version_id == version_id,
+                Asset.asset_type == AssetType.QUESTION_IMAGE,
+            )
+        )
+        if asset is None:
+            raise AppError(
+                "INVALID_IMAGE_ASSET",
+                "The question image does not belong to this draft version.",
+                422,
+            )
+
     async def _ensure_numbers_available(
         self, module_id: uuid.UUID, body: QuestionGroupWrite, excluded_group_id: uuid.UUID | None
     ) -> None:
@@ -475,20 +508,36 @@ class ReadingService:
                     transient_group, transient, passage_blocks=passage_blocks
                 )
             question_ids = {str(question.id) for question in body.questions if question.id}
-            if body.question_type in {
-                "plan_labelling",
-                "map_labelling",
-                "diagram_labelling",
-            }:
-                marker_question_ids = {
+            if body.question_type in {"plan_labelling", "map_labelling"}:
+                marker_question_ids = [
                     str(marker["question_id"]) for marker in body.config.get("markers", [])
-                }
-                if marker_question_ids != question_ids:
+                ]
+                if (
+                    len(marker_question_ids) != len(set(marker_question_ids))
+                    or set(marker_question_ids) != question_ids
+                ):
                     raise ValueError(
                         "Visual markers must reference every group question exactly once"
                     )
                 if body.image_asset_id is None:
                     raise ValueError("Visual labelling groups require an image asset")
+            if body.question_type == "diagram_labelling":
+                item_question_ids = [
+                    str(item["question_id"]) for item in body.config.get("items", [])
+                ]
+                if (
+                    len(item_question_ids) != len(set(item_question_ids))
+                    or set(item_question_ids) != question_ids
+                ):
+                    raise ValueError(
+                        "Diagram items must reference every group question exactly once"
+                    )
+                if body.image_asset_id is None:
+                    raise ValueError("Diagram labelling groups require an image asset")
+                if any(question.prompt.count("{{gap}}") != 1 for question in body.questions):
+                    raise ValueError(
+                        "Every diagram question prompt must contain exactly one {{gap}} marker"
+                    )
             if body.question_type in {
                 "form_completion",
                 "note_completion",

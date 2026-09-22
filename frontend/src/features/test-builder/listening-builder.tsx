@@ -26,8 +26,6 @@ import { useBuilderAutosave, useBuilderLifecycle } from "./builder-lifecycle";
 import { AutosaveLink } from "./autosave-link";
 import { QuestionGroupEditor } from "./question-group-editor";
 
-const visualTypes: QuestionType[] = ["plan_labelling", "map_labelling", "diagram_labelling"];
-
 export function ListeningBuilder({ version }: { version: BuilderVersion }) {
   const router = useRouter();
   const { deleting, runMutation } = useBuilderLifecycle();
@@ -70,18 +68,6 @@ export function ListeningBuilder({ version }: { version: BuilderVersion }) {
     try {
       const asset = await uploadAsset("audio", version.id, file);
       await run(() => attachListeningAudio(listening.id, asset.id));
-    } finally {
-      setUploading(false);
-    }
-  }
-
-  async function uploadImage(file: File) {
-    setUploading(true);
-    try {
-      const asset = await uploadAsset("question-images", version.id, file);
-      setEditing((current) => current ? { ...current, image_asset_id: asset.id, image_asset: asset } : current);
-    } catch (error) {
-      setMessage(error instanceof ApiError ? error.message : "The image could not be uploaded.");
     } finally {
       setUploading(false);
     }
@@ -145,8 +131,7 @@ export function ListeningBuilder({ version }: { version: BuilderVersion }) {
               })}
               {editing ? (
                 <div>
-                  {visualTypes.includes(editing.question_type) ? <div className="visual-upload-row"><label className="btn btn-secondary">{editing.image_asset ? "Replace image" : "Upload question image"}<input type="file" className="sr-only" accept="image/png,image/jpeg,image/webp" onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadImage(file); }} /></label>{editing.image_asset ? <button className="btn btn-danger-ghost" onClick={() => setEditing({ ...editing, image_asset: null, image_asset_id: null })}>Remove image</button> : null}</div> : null}
-                  <QuestionGroupEditor initial={editing} nextQuestionNumber={nextNumber} baseQuestionNumber={canonicalListeningGroupStart(parts, editing)} passageBlocks={[]} onCancel={() => setEditing(null)} onSave={(body) => run(() => editing.id ? updateListeningQuestionGroup(editing.id, body) : createListeningQuestionGroup(part.id, body))} onAutosave={editing.id ? (body) => updateListeningQuestionGroup(editing.id!, body) : undefined} />
+                  <QuestionGroupEditor initial={editing} nextQuestionNumber={nextNumber} baseQuestionNumber={canonicalListeningGroupStart(parts, editing)} passageBlocks={[]} testVersionId={version.id} onCancel={() => setEditing(null)} onSave={(body) => run(() => editing.id ? updateListeningQuestionGroup(editing.id, body) : createListeningQuestionGroup(part.id, body))} onAutosave={editing.id ? (body) => updateListeningQuestionGroup(editing.id!, body) : undefined} />
                 </div>
               ) : (
                 <div className="new-group-row"><label className="field-label flex-1">Listening template<select className="select-field" value={type} onChange={(event) => setType(event.target.value as QuestionType)}>{listeningQuestionTypeOptions.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label><button className="btn btn-listening" onClick={createGroup}><PlusIcon className="size-4" /> Add question group</button></div>

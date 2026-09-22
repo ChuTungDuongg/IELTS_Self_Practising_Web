@@ -882,7 +882,6 @@ class TestService:
             "summary_completion_word_list",
             "plan_labelling",
             "map_labelling",
-            "diagram_labelling",
         }:
             option_ids = {str(option["id"]) for option in resolved_group_config["options"]}
             if resolved_answer_key["value"] not in option_ids:
@@ -895,11 +894,7 @@ class TestService:
         normalized_questions: list[dict],
     ) -> None:
         question_ids = {str(question["id"]) for question in normalized_questions}
-        if group.question_type in {
-            "plan_labelling",
-            "map_labelling",
-            "diagram_labelling",
-        }:
+        if group.question_type in {"plan_labelling", "map_labelling"}:
             if (
                 group.image_asset is None
                 or group.image_asset.asset_type != AssetType.QUESTION_IMAGE
@@ -910,6 +905,29 @@ class TestService:
             }
             if marker_question_ids != question_ids:
                 raise ValueError("Visual markers must reference every group question exactly once")
+        if group.question_type == "diagram_labelling":
+            if (
+                group.image_asset is None
+                or group.image_asset.asset_type != AssetType.QUESTION_IMAGE
+            ):
+                raise ValueError("Diagram labelling requires an available question image")
+            item_question_ids = [
+                str(item["question_id"]) for item in group_config.get("items", [])
+            ]
+            if (
+                len(item_question_ids) != len(set(item_question_ids))
+                or set(item_question_ids) != question_ids
+            ):
+                raise ValueError(
+                    "Diagram items must reference every group question exactly once"
+                )
+            if any(
+                str(question.get("prompt") or "").count("{{gap}}") != 1
+                for question in normalized_questions
+            ):
+                raise ValueError(
+                    "Every diagram question prompt must contain exactly one {{gap}} marker"
+                )
         if group.question_type in {
             "form_completion",
             "note_completion",

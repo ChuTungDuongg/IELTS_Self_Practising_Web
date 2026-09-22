@@ -780,6 +780,57 @@ input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--mute
 .visual-marker { position: absolute; z-index: 2; display: grid; width: 30px; height: 30px; place-items: center; translate: -50% -50%; border: 2px solid var(--surface-raised); border-radius: 999px; background: var(--listening); color: var(--accent-contrast); font-size: 12px; font-weight: 800; box-shadow: var(--shadow-sm); }
 .visual-marker-selected { outline: 3px solid var(--warning); outline-offset: 2px; }
 .visual-marker-hitarea { position: absolute; z-index: 1; inset: 0; cursor: crosshair; background: transparent; }
+.question-image-attachment { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; border: 1px dashed color-mix(in srgb, var(--accent) 42%, var(--line)); border-radius: 12px; background: color-mix(in srgb, var(--accent) 5%, var(--surface)); padding: 13px 14px; }
+.question-image-meta { display: grid; gap: 2px; min-width: 0; }
+.question-image-meta strong { overflow: hidden; max-width: 36rem; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.question-image-meta span { color: var(--muted); font-size: 12px; }
+.question-image-error { flex-basis: 100%; margin: 0; }
+.diagram-authoring { display: grid; gap: 18px; }
+.diagram-validation { display: grid; gap: 3px; }
+.diagram-canvas-shell, .diagram-candidate-shell { overflow-x: auto; border-radius: 14px; }
+.diagram-canvas { position: relative; overflow: hidden; width: min(100%, 980px); min-width: 560px; margin-inline: auto; border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--line)); border-radius: 14px; background-color: #fff; background-image: linear-gradient(45deg, #f3f4f6 25%, transparent 25%), linear-gradient(-45deg, #f3f4f6 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #f3f4f6 75%), linear-gradient(-45deg, transparent 75%, #f3f4f6 75%); background-position: 0 0, 0 8px, 8px -8px, -8px 0; background-size: 16px 16px; box-shadow: inset 0 0 0 1px rgb(255 255 255 / .55); touch-action: none; }
+.diagram-canvas > img { display: block; width: 100%; height: auto; user-select: none; -webkit-user-drag: none; }
+.diagram-arrows { position: absolute; z-index: 1; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.diagram-arrow { stroke: #20252b; stroke-width: 3.5; vector-effect: non-scaling-stroke; pointer-events: stroke; cursor: pointer; }
+.diagram-arrow.is-selected { stroke: var(--accent); stroke-width: 5; }
+.diagram-arrow-head { fill: #20252b; }
+.diagram-label { position: absolute; z-index: 2; box-sizing: border-box; color: #15181c; background: rgb(255 255 255 / .94); font-size: clamp(10px, 1.25vw, 14px); line-height: 1.35; }
+.diagram-label-editor { min-height: 42px; border: 1px solid rgb(31 41 55 / .38); border-radius: 7px; padding: 8px 9px 8px 22px; box-shadow: 0 3px 12px rgb(15 23 42 / .12); cursor: grab; user-select: none; touch-action: none; }
+.diagram-label-editor:active, .diagram-canvas.is-dragging .diagram-label-editor.is-selected { cursor: grabbing; }
+.diagram-label-editor.is-selected { border-color: var(--accent); outline: 3px solid color-mix(in srgb, var(--accent) 23%, transparent); }
+.diagram-drag-grip { position: absolute; top: 6px; left: 5px; color: #64748b; font-size: 13px; }
+.diagram-label-copy { white-space: pre-wrap; }
+.diagram-label-copy > b, .diagram-question-number { margin-right: 3px; color: var(--accent); font-weight: 850; }
+.diagram-gap-placeholder { display: inline-block; min-width: 4.8em; margin-inline: 3px; border-bottom: 2px solid var(--accent); color: var(--accent); font-size: .82em; font-weight: 750; text-align: center; }
+.diagram-handles { position: absolute; z-index: 4; inset: 0; pointer-events: none; }
+.diagram-arrow-handle { position: absolute; width: 17px; height: 17px; translate: -50% -50%; border: 2px solid #fff; border-radius: 999px; box-shadow: 0 1px 5px rgb(15 23 42 / .35); pointer-events: auto; touch-action: none; }
+.diagram-arrow-start { background: var(--accent); cursor: move; }
+.diagram-arrow-end { background: #ef4444; cursor: crosshair; }
+.diagram-arrow-handle:focus-visible { outline: 3px solid var(--warning); outline-offset: 2px; }
+.diagram-empty-state { display: grid; min-height: 210px; place-content: center; border: 1px dashed var(--line); border-radius: 14px; background: var(--surface-soft); padding: 24px; text-align: center; }
+.diagram-empty-state p { font-weight: 700; }
+.diagram-empty-state span { margin-top: 4px; color: var(--muted); font-size: 13px; }
+.diagram-add-question { justify-self: start; }
+.diagram-inspector { display: grid; gap: 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-raised); padding: 17px; }
+.diagram-inspector-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.diagram-inspector-heading h3 { margin-top: 2px; font-size: 18px; font-weight: 750; }
+.diagram-inspector-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.diagram-alternatives { display: grid; gap: 8px; }
+.diagram-alternative-row { display: flex; gap: 8px; }
+.diagram-case-toggle { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.diagram-position-fields { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; border-top: 1px solid var(--line); padding-top: 12px; }
+.diagram-position-fields legend { grid-column: 1 / -1; margin-bottom: 5px; color: var(--muted); font-size: 11px; font-weight: 750; letter-spacing: .06em; text-transform: uppercase; }
+.diagram-position-fields .field { min-width: 0; padding-inline: 7px; }
+.diagram-candidate-shell { margin-inline: auto; }
+.diagram-candidate-canvas { min-width: 620px; border-color: var(--exam-border, var(--line)); background: #fff; box-shadow: none; touch-action: auto; }
+.diagram-candidate-label { border: 0; border-radius: 3px; padding: 4px 5px; box-shadow: 0 1px 4px rgb(15 23 42 / .08); }
+.diagram-gap-input { display: inline-block; box-sizing: border-box; width: clamp(4.6rem, 8vw, 7.5rem); min-height: 28px; margin-inline: 3px; border: 0; border-bottom: 2px solid var(--exam-accent, var(--accent)); border-radius: 2px 2px 0 0; padding: 2px 5px; color: #111827; background: rgb(255 255 255 / .96); font: inherit; vertical-align: baseline; }
+.diagram-gap-input:focus-visible { outline: 3px solid color-mix(in srgb, var(--exam-accent, var(--accent)) 24%, transparent); outline-offset: 1px; }
+.diagram-gap-input:disabled { opacity: .82; }
+@media (max-width: 720px) {
+  .diagram-inspector-grid { grid-template-columns: 1fr; }
+  .diagram-position-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 .structured-table { display: grid; gap: 8px; }
 .structured-row { display: grid; grid-auto-columns: minmax(120px, 1fr); grid-auto-flow: column; gap: 8px; }
 .structured-row-wrap { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; }

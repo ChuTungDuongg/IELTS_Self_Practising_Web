@@ -16,7 +16,7 @@ export type RendererProps = {
   activeQuestionId?: string | null;
 };
 
-function questionTarget(question: ExamQuestion, activeQuestionId?: string | null, className = "") {
+export function questionTarget(question: ExamQuestion, activeQuestionId?: string | null, className = "") {
   return {
     id: `question-${question.id}`,
     "data-question-id": question.id,
