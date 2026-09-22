@@ -125,6 +125,109 @@ describe("note completion", () => {
     expect(screen.queryByRole("button", { name: "+ Add question" })).not.toBeInTheDocument();
   });
 
+  it("focuses the editable text when the empty Note content surface is clicked", () => {
+    render(<EditorHarness />);
+    const editor = screen.getByRole("textbox", { name: "Note block 1 text segment 1" });
+
+    fireEvent.click(screen.getByLabelText("Note block 1 content"));
+
+    expect(editor).toHaveFocus();
+    expect(window.getSelection()?.anchorOffset).toBe(0);
+  });
+
+  it("updates the initially empty text segment after focusing the content surface", () => {
+    render(<EditorHarness />);
+    fireEvent.click(screen.getByLabelText("Note block 1 content"));
+
+    typeEditable(screen.getByRole("textbox", { name: "Note block 1 text segment 1" }), "Example");
+
+    expect(currentLayout().blocks[0].segments).toMatchObject([{ type: "TEXT", text: "Example" }]);
+  });
+
+  it("adds and focuses a valid empty block without requiring another click", () => {
+    render(<EditorHarness />);
+
+    fireEvent.click(screen.getByRole("button", { name: "+ Add block" }));
+
+    expect(currentLayout().blocks[1].segments).toMatchObject([{ type: "TEXT", text: "" }]);
+    expect(screen.getByRole("textbox", { name: "Note block 2 text segment 1" })).toHaveFocus();
+  });
+
+  it("keeps an empty block editable after its style changes", () => {
+    render(<EditorHarness />);
+    fireEvent.click(screen.getByRole("button", { name: "+ Add block" }));
+    fireEvent.change(screen.getByLabelText("Block 2 style"), { target: { value: "HEADING" } });
+
+    fireEvent.click(screen.getByLabelText("Note block 2 content"));
+    const editor = screen.getByRole("textbox", { name: "Note block 2 text segment 1" });
+    expect(editor).toHaveFocus();
+    typeEditable(editor, "Room and cost");
+    expect(currentLayout().blocks[1]).toMatchObject({
+      style: "HEADING",
+      segments: [{ type: "TEXT", text: "Room and cost" }],
+    });
+  });
+
+  it("does not move text focus when a toolbar control is used", () => {
+    render(<EditorHarness />);
+    const style = screen.getByLabelText("Block 1 style");
+    style.focus();
+
+    fireEvent.change(style, { target: { value: "EXAMPLE" } });
+
+    expect(style).toHaveFocus();
+    expect(screen.getByRole("textbox", { name: "Note block 1 text segment 1" })).not.toHaveFocus();
+  });
+
+  it("converts a gap shortcut typed into an initially empty block", () => {
+    render(<EditorHarness />);
+    fireEvent.click(screen.getByLabelText("Note block 1 content"));
+
+    typeEditable(screen.getByRole("textbox", { name: "Note block 1 text segment 1" }), "the {{gap}} Room – seats 100");
+
+    expect(currentLayout().blocks[0].segments).toMatchObject([
+      { type: "TEXT", text: "the " },
+      { type: "GAP" },
+      { type: "TEXT", text: " Room – seats 100" },
+    ]);
+    expect(screen.getByRole("button", { name: "Note gap question 11" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Question 11 note gap inspector")).toBeInTheDocument();
+  });
+
+  it("keeps sequential shortcut gaps inline and gives the cost gap the next question number", () => {
+    render(<EditorHarness baseQuestionNumber={1} />);
+    typeEditable(screen.getByRole("textbox", { name: "Note block 1 text segment 1" }), "the {{gap}} Room – seats 100");
+    fireEvent.click(screen.getByRole("button", { name: "+ Add block" }));
+
+    typeEditable(
+      screen.getByRole("textbox", { name: "Note block 2 text segment 1" }),
+      "Cost of Main Hall for Saturday evening: £{{gap}}",
+    );
+
+    expect(currentLayout().blocks[1].segments).toMatchObject([
+      { type: "TEXT", text: "Cost of Main Hall for Saturday evening: £" },
+      { type: "GAP", question_id: currentGroup().questions[1].id },
+      { type: "TEXT", text: "" },
+    ]);
+    expect(screen.getByRole("button", { name: "Note gap question 2" })).toBeInTheDocument();
+  });
+
+  it("creates and focuses one trailing text segment when blank space after a terminal gap is clicked", () => {
+    const initial = noteGroup();
+    const layout = initial.config.layout as TestNoteLayout;
+    layout.blocks = [{ ...layout.blocks[1], segments: layout.blocks[1].segments.slice(0, 2) }];
+    initial.questions = initial.questions.slice(0, 1);
+    render(<EditorHarness initial={initial} />);
+
+    fireEvent.click(screen.getByLabelText("Note block 1 content"));
+
+    expect(currentLayout().blocks[0].segments.map((segment) => segment.type)).toEqual(["TEXT", "GAP", "TEXT"]);
+    expect(screen.getByRole("textbox", { name: "Note block 1 text segment 3" })).toHaveFocus();
+
+    fireEvent.click(screen.getByLabelText("Note block 1 content"));
+    expect(currentLayout().blocks[0].segments.map((segment) => segment.type)).toEqual(["TEXT", "GAP", "TEXT"]);
+  });
+
   it("keeps autosave disabled while a Note block is empty", () => {
     const group = questionRegistry.note_completion.createDefault(11);
     group.id = crypto.randomUUID();
@@ -132,6 +235,19 @@ describe("note completion", () => {
 
     expect(screen.getByRole("button", { name: "Save now" })).toBeDisabled();
     expect(screen.getByRole("alert")).toHaveTextContent("Note blocks cannot be empty when saved.");
+  });
+
+  it("clears the empty-block validation as soon as the author enters text", () => {
+    const group = questionRegistry.note_completion.createDefault(11);
+    render(<QuestionGroupEditor initial={group} nextQuestionNumber={11} passageBlocks={[]} onCancel={vi.fn()} onSave={vi.fn()} />);
+
+    fireEvent.click(screen.getByLabelText("Note block 1 content"));
+    const editor = screen.getByRole("textbox", { name: "Note block 1 text segment 1" });
+    typeEditable(editor, "Example");
+
+    expect(screen.queryByText("Note blocks cannot be empty when saved.")).not.toBeInTheDocument();
+    typeEditable(editor, "Example {{gap}}");
+    expect(screen.getByRole("button", { name: "Save group" })).toBeEnabled();
   });
 
   it("renders the optional title and mixed text gaps inline for Candidate", () => {

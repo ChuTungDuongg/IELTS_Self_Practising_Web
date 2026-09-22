@@ -1,6 +1,6 @@
 "use client";
 
-import { useLayoutEffect, useRef, useState, type ComponentProps } from "react";
+import { useLayoutEffect, useRef, useState, type ComponentProps, type MouseEvent as ReactMouseEvent } from "react";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import type { EditorProps } from "./editors";
 import { normalizeNoteCompletionOrder } from "./note-completion";
@@ -113,6 +113,50 @@ export function NoteCompletionEditor({ group, onChange, baseQuestionNumber }: Ed
     };
     setActiveBlockId(blockId);
     if (clearGapSelection) setSelectedGapId("");
+  }
+
+  function focusTextSegment(blockId: string, segmentId: string, offset: number) {
+    const element = [...(canvas.current?.querySelectorAll<HTMLElement>("[data-note-text-segment]") ?? [])]
+      .find((item) => item.dataset.noteTextSegment === segmentId);
+    if (!element) return;
+    element.focus();
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    range.collapse(false);
+    const node = element.firstChild;
+    if (node?.nodeType === Node.TEXT_NODE) {
+      range.setStart(node, Math.min(offset, node.textContent?.length ?? 0));
+      range.collapse(true);
+    }
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    activeCaret.current = { blockId, segmentId, offset };
+    setActiveBlockId(blockId);
+    setSelectedGapId("");
+  }
+
+  function focusBlockContent(event: ReactMouseEvent<HTMLDivElement>, block: NoteCompletionBlock) {
+    const target = event.target as Element;
+    if (target.closest("[data-note-text-segment], .completion-gap-token")) return;
+
+    setActiveBlockId(block.id);
+    setSelectedGapId("");
+    const last = block.segments.at(-1);
+    if (last?.type !== "TEXT") {
+      const segmentId = crypto.randomUUID();
+      pendingFocus.current = { segmentId, offset: 0 };
+      commit({
+        ...layout,
+        blocks: layout.blocks.map((item) => item.id === block.id ? {
+          ...item,
+          segments: [...item.segments, { id: segmentId, type: "TEXT", text: "" }],
+        } : item),
+      });
+      return;
+    }
+
+    focusTextSegment(block.id, last.id, last.text.length);
   }
 
   function createQuestion(offset: number): QuestionModel {
@@ -354,9 +398,16 @@ export function NoteCompletionEditor({ group, onChange, baseQuestionNumber }: Ed
                 <button type="button" className="icon-button" aria-label={`Move block ${blockIndex + 1} down`} disabled={blockIndex === layout.blocks.length - 1} onClick={() => moveBlock(blockIndex, 1)}>↓</button>
                 <button type="button" className="btn btn-danger-ghost" aria-label={`Delete block ${blockIndex + 1}`} disabled={layout.blocks.length === 1} onClick={() => requestBlockRemoval(block)}>Delete block</button>
               </div>
-              <div className="note-authoring-line" onClick={() => setActiveBlockId(block.id)}>
+              <div
+                className="note-authoring-line"
+                aria-label={`Note block ${blockIndex + 1} content`}
+                onClick={(event) => focusBlockContent(event, block)}
+              >
                 {block.style === "BULLET" ? <span className="note-completion-marker" aria-hidden="true">•</span> : null}
-                <div className="note-authoring-content">
+                <div
+                  className="note-authoring-content"
+                  data-empty={block.segments.every((segment) => segment.type === "TEXT" && segment.text.length === 0) || undefined}
+                >
                   {block.segments.map((segment, segmentIndex) => segment.type === "TEXT" ? (
                     <EditableText
                       key={segment.id}

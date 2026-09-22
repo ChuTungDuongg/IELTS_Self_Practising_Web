@@ -915,10 +915,14 @@ input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--mute
 .note-block-toolbar select { min-height: 28px; border: 1px solid var(--line); border-radius: 6px; color: var(--ink); background: var(--surface); padding: 2px 6px; font-size: 11px; text-transform: none; }
 .note-block-toolbar .icon-button { width: 28px; min-height: 28px; }
 .note-block-toolbar .btn { min-height: 28px; margin-left: auto; padding-inline: 8px; font-size: 10px; }
-.note-authoring-line { display: flex; min-height: 34px; align-items: baseline; gap: 9px; line-height: 2; cursor: text; }
-.note-authoring-content { min-width: 0; flex: 1; }
+.note-authoring-line { display: flex; min-height: 48px; align-items: baseline; gap: 9px; line-height: 2; cursor: text; }
+.note-authoring-content { position: relative; min-width: 0; min-height: 48px; flex: 1; cursor: text; }
+.note-authoring-content[data-empty="true"]::before { position: absolute; inset: 0 auto auto 0; color: var(--muted); content: "Type note text\2026"; font-style: normal; font-weight: 400; opacity: .72; pointer-events: none; }
 .note-editable-text { min-width: .35rem; border-radius: 3px; outline: 0; white-space: pre-wrap; }
 .note-editable-text:empty::before { content: "\200b"; }
+.note-editable-text:only-child { display: inline-block; min-width: 100%; min-height: 48px; }
+.note-authoring-content:hover { background: color-mix(in srgb, var(--accent) 3%, transparent); }
+.note-authoring-content:focus-within { background: color-mix(in srgb, var(--accent) 5%, transparent); }
 .note-editable-text:focus { background: color-mix(in srgb, var(--accent) 6%, transparent); box-shadow: 0 1px 0 var(--accent); }
 .note-layout-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 14px; }
 .note-layout-actions span { color: var(--muted); font-size: 12px; }
