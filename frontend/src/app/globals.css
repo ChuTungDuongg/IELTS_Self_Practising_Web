@@ -885,9 +885,55 @@ input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--mute
 .table-completion-answer-input { box-sizing: border-box; width: clamp(6rem, 13vw, 9rem); min-height: 31px; border: 1px solid var(--exam-border, var(--line)); border-radius: 6px; color: var(--exam-control-text, var(--ink)); background: var(--exam-control-bg, var(--surface)); padding: 4px 8px; font: inherit; }
 .table-completion-answer-input:focus-visible { border-color: var(--exam-accent, var(--accent)); outline: 3px solid color-mix(in srgb, var(--exam-accent, var(--accent)) 24%, transparent); outline-offset: 1px; }
 .table-completion-answer-input:disabled { cursor: default; opacity: .82; }
+.note-completion-document { color: var(--exam-text, var(--ink)); }
+.note-completion-title { margin: 0 0 20px; font-size: clamp(18px, 2.3vw, 23px); font-weight: 850; letter-spacing: .015em; text-align: center; }
+.note-completion-blocks { display: grid; gap: 9px; }
+.note-completion-block { display: flex; min-width: 0; align-items: baseline; gap: 9px; line-height: 1.9; }
+.note-completion-line { min-width: 0; }
+.note-completion-marker { flex: 0 0 auto; font-weight: 900; }
+.note-style-heading { margin-top: 10px; font-weight: 850; }
+.note-style-example { font-style: italic; font-weight: 650; }
+.note-indent-1 { margin-left: 28px; }
+.note-indent-2 { margin-left: 56px; }
+.note-indent-3 { margin-left: 84px; }
+.note-completion-answer { display: inline-flex; align-items: center; gap: 5px; margin: 0 4px; vertical-align: middle; white-space: nowrap; }
+.note-completion-question-number { color: var(--exam-accent, var(--accent)); font-size: 12px; font-weight: 850; }
+.note-completion-answer-input { box-sizing: border-box; width: clamp(6rem, 13vw, 9rem); min-height: 31px; border: 1px solid var(--exam-border, var(--line)); border-radius: 6px; color: var(--exam-control-text, var(--ink)); background: var(--exam-control-bg, var(--surface)); padding: 4px 8px; font: inherit; }
+.note-completion-answer-input:focus-visible { border-color: var(--exam-accent, var(--accent)); outline: 3px solid color-mix(in srgb, var(--exam-accent, var(--accent)) 24%, transparent); outline-offset: 1px; }
+.note-completion-answer-input:disabled { cursor: default; opacity: .82; }
+.note-completion-authoring { display: grid; gap: 16px; }
+.note-title-field { display: grid; max-width: 680px; gap: 7px; margin-top: 16px; }
+.note-completion-builder-title { margin: 18px 0 8px; }
+.note-authoring-canvas { display: grid; gap: 8px; margin-top: 16px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); padding: clamp(12px, 2vw, 20px); }
+.note-authoring-block { position: relative; min-width: 0; border: 1px solid transparent; border-radius: 10px; padding: 34px 10px 9px; transition: border-color .15s, background .15s, box-shadow .15s; }
+.note-authoring-block:hover { border-color: color-mix(in srgb, var(--accent) 28%, var(--line)); background: color-mix(in srgb, var(--accent) 3%, var(--surface)); }
+.note-authoring-block.is-selected { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent); }
+.note-authoring-canvas.is-dragging .note-authoring-block { border-color: color-mix(in srgb, var(--listening) 42%, var(--line)); }
+.note-block-toolbar { position: absolute; inset: 4px 6px auto; display: flex; min-width: 0; align-items: center; gap: 5px; opacity: .62; transition: opacity .15s; }
+.note-authoring-block:hover .note-block-toolbar, .note-authoring-block.is-selected .note-block-toolbar, .note-block-toolbar:focus-within { opacity: 1; }
+.note-block-toolbar label { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); font-size: 10px; font-weight: 750; text-transform: uppercase; }
+.note-block-toolbar select { min-height: 28px; border: 1px solid var(--line); border-radius: 6px; color: var(--ink); background: var(--surface); padding: 2px 6px; font-size: 11px; text-transform: none; }
+.note-block-toolbar .icon-button { width: 28px; min-height: 28px; }
+.note-block-toolbar .btn { min-height: 28px; margin-left: auto; padding-inline: 8px; font-size: 10px; }
+.note-authoring-line { display: flex; min-height: 34px; align-items: baseline; gap: 9px; line-height: 2; cursor: text; }
+.note-authoring-content { min-width: 0; flex: 1; }
+.note-editable-text { min-width: .35rem; border-radius: 3px; outline: 0; white-space: pre-wrap; }
+.note-editable-text:empty::before { content: "\200b"; }
+.note-editable-text:focus { background: color-mix(in srgb, var(--accent) 6%, transparent); box-shadow: 0 1px 0 var(--accent); }
+.note-layout-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 14px; }
+.note-layout-actions span { color: var(--muted); font-size: 12px; }
+.note-gap-inspector { display: grid; gap: 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-raised); padding: 17px; }
+.note-gap-inspector-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.note-gap-inspector-heading h3 { margin-top: 2px; font-size: 18px; font-weight: 800; }
+.note-gap-inspector-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 @media (max-width: 720px) {
-  .table-gap-inspector-grid { grid-template-columns: 1fr; }
+  .table-gap-inspector-grid, .note-gap-inspector-grid { grid-template-columns: 1fr; }
   .table-completion-builder-table, .table-completion-candidate-table { min-width: 540px; }
+  .note-indent-1 { margin-left: 18px; }
+  .note-indent-2 { margin-left: 36px; }
+  .note-indent-3 { margin-left: 54px; }
+  .note-block-toolbar { position: static; flex-wrap: wrap; margin-bottom: 5px; }
+  .note-authoring-block { padding-top: 9px; }
 }
 .listening-player { display: grid; grid-template-columns: auto auto auto minmax(120px, 1fr) auto auto auto auto minmax(70px, 100px); align-items: center; gap: 10px; border-bottom: 1px solid var(--exam-border); color: var(--exam-text); background: linear-gradient(100deg, color-mix(in srgb, var(--exam-accent) 7%, var(--exam-surface)), var(--exam-surface) 42%); padding: 12px 18px; box-shadow: 0 7px 20px color-mix(in srgb, var(--exam-bg) 22%, transparent); }
 .listening-player input[type="range"] { min-width: 0; accent-color: var(--exam-accent, var(--listening)); }

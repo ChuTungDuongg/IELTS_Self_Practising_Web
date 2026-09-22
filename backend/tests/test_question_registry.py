@@ -658,6 +658,199 @@ def test_table_completion_bounds_title_and_row_shape_without_affecting_note_layo
     )
 
 
+def _note_completion_body() -> QuestionGroupWrite:
+    question_id = str(uuid4())
+    return QuestionGroupWrite.model_validate(
+        {
+            "question_type": "note_completion",
+            "instruction": "Complete the notes.",
+            "config": {
+                "layout": {
+                    "kind": "NOTE",
+                    "title": "HIRING A PUBLIC ROOM",
+                    "columns": [],
+                    "rows": [],
+                    "nodes": [],
+                    "blocks": [
+                        {
+                            "id": str(uuid4()),
+                            "style": "HEADING",
+                            "indent": 0,
+                            "segments": [
+                                {"id": str(uuid4()), "type": "TEXT", "text": "Room and cost"}
+                            ],
+                        },
+                        {
+                            "id": str(uuid4()),
+                            "style": "BULLET",
+                            "indent": 1,
+                            "segments": [
+                                {"id": str(uuid4()), "type": "TEXT", "text": "the "},
+                                {
+                                    "id": str(uuid4()),
+                                    "type": "GAP",
+                                    "question_id": question_id,
+                                },
+                                {"id": str(uuid4()), "type": "TEXT", "text": " Room"},
+                            ],
+                        },
+                    ],
+                }
+            },
+            "order_index": 0,
+            "questions": [
+                {
+                    "id": question_id,
+                    "number": 11,
+                    "prompt": "Note gap",
+                    "config": {"max_words": 2, "max_numbers": 1},
+                    "answer_key": {
+                        "kind": "TEXT",
+                        "accepted": ["small"],
+                        "case_sensitive": False,
+                    },
+                    "order_index": 0,
+                }
+            ],
+        }
+    )
+
+
+def test_note_completion_supports_title_semantic_blocks_and_inline_segments() -> None:
+    body = _note_completion_body()
+    ReadingService._validate_group_body(body, [])
+    parsed = question_registry.validate_group("note_completion", body.config)
+
+    assert parsed.layout.title == "HIRING A PUBLIC ROOM"
+    assert [block.style for block in parsed.layout.blocks] == ["HEADING", "BULLET"]
+    assert parsed.layout.blocks[1].indent == 1
+    assert [segment.type for segment in parsed.layout.blocks[1].segments] == [
+        "TEXT",
+        "GAP",
+        "TEXT",
+    ]
+    assert question_registry.evaluate(
+        "note_completion",
+        body.questions[0].answer_key,
+        " Small ",
+        body.questions[0].config,
+    )
+
+
+def test_note_completion_rejects_duplicate_unknown_and_orphan_question_refs() -> None:
+    duplicate = _note_completion_body()
+    gap = duplicate.config["layout"]["blocks"][1]["segments"][1]
+    duplicate.config["layout"]["blocks"][0]["segments"].append(
+        {**gap, "id": str(uuid4())}
+    )
+    with pytest.raises(AppError, match="exactly one gap"):
+        ReadingService._validate_group_body(duplicate, [])
+
+    unknown = _note_completion_body()
+    unknown.config["layout"]["blocks"][1]["segments"][1]["question_id"] = str(uuid4())
+    with pytest.raises(AppError, match="exactly one gap"):
+        ReadingService._validate_group_body(unknown, [])
+
+    orphan = _note_completion_body()
+    orphan.questions.append(
+        orphan.questions[0].model_copy(
+            update={"id": uuid4(), "number": 12, "order_index": 1}
+        )
+    )
+    with pytest.raises(AppError, match="exactly one gap"):
+        ReadingService._validate_group_body(orphan, [])
+
+
+def test_note_completion_validates_uuid_indent_style_and_non_empty_blocks() -> None:
+    invalid_indent = _note_completion_body()
+    invalid_indent.config["layout"]["blocks"][0]["indent"] = 4
+    with pytest.raises(AppError, match="less than or equal to 3"):
+        ReadingService._validate_group_body(invalid_indent, [])
+
+    invalid_style = _note_completion_body()
+    invalid_style.config["layout"]["blocks"][0]["style"] = "CALLOUT"
+    with pytest.raises(AppError, match="HEADING"):
+        ReadingService._validate_group_body(invalid_style, [])
+
+    invalid_uuid = _note_completion_body()
+    invalid_uuid.config["layout"]["blocks"][0]["segments"][0]["id"] = "segment-one"
+    with pytest.raises(AppError, match="UUID"):
+        ReadingService._validate_group_body(invalid_uuid, [])
+
+    empty = _note_completion_body()
+    empty.config["layout"]["blocks"][0]["segments"][0]["text"] = ""
+    with pytest.raises(AppError, match="cannot be empty"):
+        ReadingService._validate_group_body(empty, [])
+
+
+def test_legacy_note_nodes_normalize_to_stable_separate_blocks() -> None:
+    group_id = uuid4()
+    question_id = str(uuid4())
+    legacy = {
+        "layout": {
+            "kind": "NOTE",
+            "title": "  Existing note  ",
+            "columns": [],
+            "rows": [],
+            "nodes": [
+                {"id": "legacy-text", "type": "TEXT", "text": "Context", "level": 0},
+                {
+                    "id": "legacy-gap",
+                    "type": "GAP",
+                    "text": "",
+                    "question_id": question_id,
+                    "level": 2,
+                },
+                {"id": "legacy-tail", "type": "TEXT", "text": "After", "level": 1},
+                {"id": "legacy-deep", "type": "TEXT", "text": "Deep", "level": 4},
+            ],
+        }
+    }
+    questions = [
+        {
+            "id": question_id,
+            "number": 11,
+            "prompt": "Note gap",
+            "config": {"max_words": 2, "max_numbers": 1},
+            "answer_key": {"kind": "TEXT", "accepted": ["answer"]},
+            "order_index": 0,
+        }
+    ]
+
+    first, first_questions = normalize_question_group_payload(
+        question_type="note_completion",
+        group_config=legacy,
+        questions=questions,
+        group_id=group_id,
+        passage_blocks=[],
+    )
+    second, _ = normalize_question_group_payload(
+        question_type="note_completion",
+        group_config=legacy,
+        questions=questions,
+        group_id=group_id,
+        passage_blocks=[],
+    )
+
+    assert first == second
+    assert first["layout"]["title"] == "Existing note"
+    assert first["layout"]["nodes"] == []
+    assert len(first["layout"]["blocks"]) == 4
+    assert [block["indent"] for block in first["layout"]["blocks"]] == [0, 2, 1, 3]
+    assert [block["segments"][0]["type"] for block in first["layout"]["blocks"]] == [
+        "TEXT",
+        "GAP",
+        "TEXT",
+        "TEXT",
+    ]
+    assert first_questions[0]["answer_key"] == {
+        "kind": "TEXT",
+        "accepted": ["answer"],
+        "case_sensitive": False,
+    }
+    question_registry.validate_group("note_completion", first)
+
+
 def test_legacy_diagram_options_and_markers_normalize_to_text_canvas() -> None:
     question_id = str(uuid4())
     marker_id = str(uuid4())

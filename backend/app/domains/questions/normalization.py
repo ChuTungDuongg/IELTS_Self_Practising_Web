@@ -282,6 +282,82 @@ def _normalize_table_layout(config: dict[str, Any], group_id: uuid.UUID | str) -
     return {**config, "layout": normalized_layout}
 
 
+def _normalize_note_layout(config: dict[str, Any], group_id: uuid.UUID | str) -> dict[str, Any]:
+    layout = dict(config.get("layout") or {})
+    raw_blocks = layout.get("blocks")
+    if not isinstance(raw_blocks, list) or not raw_blocks:
+        def legacy_indent(value: Any) -> int:
+            try:
+                return min(3, max(0, int(value)))
+            except (TypeError, ValueError):
+                return 0
+
+        raw_blocks = [
+            {
+                "id": node.get("id"),
+                "style": "TEXT",
+                "indent": legacy_indent(node.get("level", 0)),
+                "segments": [
+                    {
+                        "id": node.get("id"),
+                        "type": node.get("type", "TEXT"),
+                        "text": node.get("text", ""),
+                        "question_id": node.get("question_id"),
+                    }
+                ],
+            }
+            for node in layout.get("nodes") or []
+            if isinstance(node, dict)
+        ]
+
+    blocks: list[dict[str, Any]] = []
+    for block_index, raw_block in enumerate(raw_blocks):
+        block = dict(raw_block or {})
+        block_id = _stable_uuid(
+            f"group:{group_id}:note-block", block.get("id"), block_index
+        )
+        segments: list[dict[str, Any]] = []
+        for segment_index, raw_segment in enumerate(block.get("segments") or []):
+            segment = dict(raw_segment or {})
+            segment_type = segment.get("type", "TEXT")
+            normalized_segment: dict[str, Any] = {
+                "id": _stable_uuid(
+                    f"group:{group_id}:note-block:{block_id}:segment",
+                    segment.get("id"),
+                    segment_index,
+                ),
+                "type": segment_type,
+            }
+            if segment_type == "GAP":
+                question_id = segment.get("question_id")
+                normalized_segment["question_id"] = (
+                    str(question_id) if question_id is not None else None
+                )
+            else:
+                normalized_segment["text"] = str(segment.get("text") or "")
+                if segment.get("question_id") is not None:
+                    normalized_segment["question_id"] = str(segment["question_id"])
+            segments.append(normalized_segment)
+        blocks.append(
+            {
+                "id": block_id,
+                "style": block.get("style", "TEXT"),
+                "indent": block.get("indent", 0),
+                "segments": segments,
+            }
+        )
+
+    normalized_layout = {
+        "kind": "NOTE",
+        "title": str(layout.get("title") or "").strip(),
+        "columns": [],
+        "rows": [],
+        "nodes": [],
+        "blocks": blocks,
+    }
+    return {**config, "layout": normalized_layout}
+
+
 def normalize_question_group_payload(
     *,
     question_type: str,
@@ -307,6 +383,8 @@ def normalize_question_group_payload(
 
     if question_type == "table_completion":
         config = _normalize_table_layout(config, group_id)
+    if question_type == "note_completion":
+        config = _normalize_note_layout(config, group_id)
 
     if question_type in {"text_completion", "summary_completion_word_list"} and "blocks" not in config:
         blocks: list[dict[str, Any]] = []
@@ -452,7 +530,12 @@ def normalize_question_group_payload(
             normalized_key = _normalize_single_option_key(dict(question.get("answer_key") or {}))
             normalized_key["value"] = _normalize_agreement_value(normalized_key["value"])
             question["answer_key"] = normalized_key
-        elif question_type in {"text_completion", "diagram_labelling", "table_completion"}:
+        elif question_type in {
+            "text_completion",
+            "diagram_labelling",
+            "table_completion",
+            "note_completion",
+        }:
             question["answer_key"] = _normalize_text_key(
                 dict(question.get("answer_key") or {})
             )

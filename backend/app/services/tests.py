@@ -941,9 +941,20 @@ class TestService:
                 raise ValueError(
                     "Every table completion question must map to exactly one layout gap"
                 )
+        if group.question_type == "note_completion":
+            layout = group_config.get("layout", {})
+            gap_ids = [
+                str(segment.get("question_id"))
+                for block in layout.get("blocks", [])
+                for segment in block.get("segments", [])
+                if segment.get("type") == "GAP"
+            ]
+            if len(gap_ids) != len(set(gap_ids)) or set(gap_ids) != question_ids:
+                raise ValueError(
+                    "Every note completion question must map to exactly one layout gap"
+                )
         if group.question_type in {
             "form_completion",
-            "note_completion",
             "flow_chart_completion",
             "summary_completion",
             "sentence_completion",

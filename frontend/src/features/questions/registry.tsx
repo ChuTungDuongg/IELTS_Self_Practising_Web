@@ -34,6 +34,8 @@ import { DiagramLabellingRenderer } from "./diagram-labelling-renderer";
 import { createDiagramCanvasItem } from "./diagram-labelling";
 import { TableCompletionEditor } from "./table-completion-editor";
 import { TableCompletionRenderer } from "./table-completion-renderer";
+import { NoteCompletionRenderer } from "./note-completion-renderer";
+import { NoteCompletionEditor } from "./note-completion-editor";
 
 export type QuestionInstruction = {
   intro: string;
@@ -253,7 +255,53 @@ definitions.push({
   },
 });
 
-for (const [id, label, kind] of [["form_completion", "Form Completion", "FORM"], ["note_completion", "Note Completion", "NOTE"], ["flow_chart_completion", "Flow-chart Completion", "FLOW_CHART"], ["summary_completion", "Summary Completion — Text", "SUMMARY"], ["sentence_completion", "Sentence Completion", "SENTENCE"]] as const) {
+definitions.push({
+  id: "note_completion",
+  label: "Note Completion",
+  category: "shared",
+  BuilderEditor: NoteCompletionEditor,
+  AnswerKeyEditor: NoteCompletionEditor,
+  ExamRenderer: NoteCompletionRenderer,
+  ReviewRenderer: NoteCompletionRenderer,
+  responseSchema: z.string(),
+  configSchema: z.object({
+    layout: z.object({
+      kind: z.literal("NOTE"),
+      title: z.string().max(300).optional(),
+      blocks: z.array(z.object({
+        id: z.string().uuid(),
+        style: z.enum(["HEADING", "TEXT", "BULLET", "EXAMPLE"]),
+        indent: z.number().int().min(0).max(3),
+        segments: z.array(z.discriminatedUnion("type", [
+          z.object({ id: z.string().uuid(), type: z.literal("TEXT"), text: z.string().max(10_000) }),
+          z.object({ id: z.string().uuid(), type: z.literal("GAP"), question_id: z.string().uuid() }),
+        ])).min(1),
+      })).min(1),
+      columns: z.tuple([]),
+      rows: z.tuple([]),
+      nodes: z.tuple([]),
+    }),
+  }),
+  instruction: (group) => ({ intro: `Complete the note below. ${limitInstruction(group)}` }),
+  createDefault: () => ({
+    question_type: "note_completion",
+    instruction: "",
+    config: {
+      layout: {
+        kind: "NOTE",
+        title: "",
+        blocks: [{ id: crypto.randomUUID(), style: "TEXT", indent: 0, segments: [{ id: crypto.randomUUID(), type: "TEXT", text: "" }] }],
+        columns: [],
+        rows: [],
+        nodes: [],
+      },
+    },
+    order_index: 0,
+    questions: [],
+  }),
+});
+
+for (const [id, label, kind] of [["form_completion", "Form Completion", "FORM"], ["flow_chart_completion", "Flow-chart Completion", "FLOW_CHART"], ["summary_completion", "Summary Completion — Text", "SUMMARY"], ["sentence_completion", "Sentence Completion", "SENTENCE"]] as const) {
   definitions.push({
     id, label, category: id === "form_completion" ? "listening" : "shared", BuilderEditor: StructuredCompletionEditor, AnswerKeyEditor: StructuredCompletionEditor, ExamRenderer: StructuredCompletionRenderer, ReviewRenderer: StructuredCompletionRenderer,
     responseSchema: z.string(), configSchema: z.object({}), instruction: (group) => ({ intro: `Complete the ${label.replace(" Completion", "").toLowerCase()} below. ${limitInstruction(group)}` }),

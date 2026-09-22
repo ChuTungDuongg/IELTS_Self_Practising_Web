@@ -1218,7 +1218,7 @@ class AttemptService:
                 .options(selectinload(QuestionGroup.questions))
                 .where(
                     QuestionGroup.id == body.target_id,
-                    QuestionGroup.question_type == "text_completion",
+                    QuestionGroup.question_type.in_(("text_completion", "note_completion")),
                     TestModule.test_version_id == attempt.test_version_id,
                     TestModule.module_type == attempt.module_type,
                 )
@@ -1226,7 +1226,7 @@ class AttemptService:
             if group is None:
                 raise AppError(
                     "INVALID_HIGHLIGHT",
-                    "The text completion group does not belong to this attempt.",
+                    "The completion group does not belong to this attempt.",
                     422,
                 )
             normalized, _ = normalize_question_group_payload(
@@ -1246,7 +1246,12 @@ class AttemptService:
                 group_id=group.id,
                 passage_blocks=[],
             )
-            for block in normalized.get("blocks", []):
+            blocks = (
+                (normalized.get("layout") or {}).get("blocks", [])
+                if group.question_type == "note_completion"
+                else normalized.get("blocks", [])
+            )
+            for block in blocks:
                 for segment in block.get("segments", []):
                     if segment.get("type") == "TEXT" and str(segment.get("id")) == str(
                         body.segment_id

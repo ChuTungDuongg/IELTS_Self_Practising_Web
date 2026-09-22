@@ -2,10 +2,11 @@
 
 import { useState } from "react";
 import { questionRegistry } from "@/features/questions/registry";
-import type { ExamGroup, PassageBlock, QuestionGroupModel, TableCompletionLayout, TextCompletionLayout } from "@/features/questions/types";
+import type { ExamGroup, NoteCompletionLayout, PassageBlock, QuestionGroupModel, TableCompletionLayout, TextCompletionLayout } from "@/features/questions/types";
 import { isCompletionQuestionType, QuestionGroupInstruction, resolveQuestionGroupInstruction } from "@/features/questions/question-group-instruction";
 import { textCompletionIntegrityErrors } from "@/features/questions/text-completion-integrity";
 import { normalizeTextCompletionOrder } from "@/features/questions/text-completion-canvas";
+import { normalizeNoteCompletionOrder, noteCompletionIntegrityErrors } from "@/features/questions/note-completion";
 import { diagramLabellingErrors, migrateLegacyDiagramGroup } from "@/features/questions/diagram-labelling";
 import { useBuilderAutosave } from "./builder-lifecycle";
 import { QuestionImageAttachment } from "./question-image-attachment";
@@ -42,6 +43,11 @@ export function QuestionGroupEditor({
     : nextQuestionNumber);
   const presentedGroup = group.question_type === "text_completion"
     ? normalizeTextCompletionOrder(group, group.config as unknown as TextCompletionLayout, baseQuestionNumber)
+    : group.question_type === "note_completion"
+      ? normalizeNoteCompletionOrder(group, {
+          ...(group.config.layout as NoteCompletionLayout),
+          title: (group.config.layout as NoteCompletionLayout).title?.trim() ?? "",
+        }, baseQuestionNumber)
     : group.question_type === "table_completion"
       ? {
           ...group,
@@ -54,7 +60,11 @@ export function QuestionGroupEditor({
           },
         }
       : group;
-  const integrityErrors = group.question_type === "text_completion" ? textCompletionIntegrityErrors(group) : [];
+  const integrityErrors = group.question_type === "text_completion"
+    ? textCompletionIntegrityErrors(group)
+    : group.question_type === "note_completion"
+      ? noteCompletionIntegrityErrors(group)
+      : [];
   const diagramErrors = diagramLabellingErrors(presentedGroup);
   const structurallyValid = integrityErrors.length === 0 && diagramErrors.length === 0 && questionGroupIsValid(presentedGroup, passageBlocks);
   const { saveNow } = useBuilderAutosave({
@@ -94,7 +104,7 @@ export function QuestionGroupEditor({
       config = { ...group.config, markers: [...(group.config.markers as Array<Record<string, unknown>>), marker] };
       next.answer_key = { kind: "SINGLE_OPTION", value: String((group.config.options as Array<{ id: string }>)[0]?.id ?? "") };
     }
-    if (["form_completion", "note_completion", "flow_chart_completion", "summary_completion", "sentence_completion"].includes(group.question_type)) {
+    if (["form_completion", "flow_chart_completion", "summary_completion", "sentence_completion"].includes(group.question_type)) {
       const layout = group.config.layout as { kind: string; columns?: unknown[]; rows?: unknown[]; nodes?: unknown[] };
       const templateLayout = template.config.layout as typeof layout;
       config = { ...group.config, layout: { ...layout, nodes: [...(layout.nodes ?? []), ...(templateLayout.nodes ?? []).filter((_, index) => index > 0)] } };
@@ -154,7 +164,7 @@ export function QuestionGroupEditor({
         <>
           {testVersionId && ["plan_labelling", "map_labelling", "diagram_labelling"].includes(group.question_type) ? <QuestionImageAttachment group={group} testVersionId={testVersionId} onChange={setGroup} /> : null}
           <Editor group={group} onChange={setGroup} passageBlocks={passageBlocks} baseQuestionNumber={baseQuestionNumber} />
-          {!["text_completion", "diagram_labelling", "table_completion"].includes(group.question_type) ? <button type="button" onClick={addQuestion} className="btn btn-secondary mt-4">+ Add question</button> : null}
+          {!["text_completion", "diagram_labelling", "table_completion", "note_completion"].includes(group.question_type) ? <button type="button" onClick={addQuestion} className="btn btn-secondary mt-4">+ Add question</button> : null}
         </>
       )}
     </div>
@@ -208,7 +218,14 @@ function questionGroupIsValid(group: QuestionGroupModel, passageBlocks: PassageB
       .map((segment) => String(segment.question_id ?? ""));
     if (gaps.length !== questionIds.size || new Set(gaps).size !== gaps.length || gaps.some((id) => !questionIds.has(id))) return false;
   }
-  if (["form_completion", "note_completion", "flow_chart_completion", "summary_completion", "sentence_completion"].includes(group.question_type)) {
+  if (group.question_type === "note_completion") {
+    const layout = group.config.layout as NoteCompletionLayout;
+    const gaps = layout.blocks.flatMap((block) => block.segments)
+      .filter((segment) => segment.type === "GAP")
+      .map((segment) => segment.question_id);
+    if (gaps.length !== questionIds.size || new Set(gaps).size !== gaps.length || gaps.some((id) => !questionIds.has(id))) return false;
+  }
+  if (["form_completion", "flow_chart_completion", "summary_completion", "sentence_completion"].includes(group.question_type)) {
     const layout = (group.config.layout ?? {}) as { rows?: Array<{ cells?: Array<{ type?: string; question_id?: string }> }>; nodes?: Array<{ type?: string; question_id?: string }> };
     const gaps = [...(layout.rows ?? []).flatMap((row) => row.cells ?? []), ...(layout.nodes ?? [])].filter((item) => item.type === "GAP").map((item) => String(item.question_id ?? ""));
     if (gaps.length !== questionIds.size || new Set(gaps).size !== gaps.length || gaps.some((id) => !questionIds.has(id))) return false;

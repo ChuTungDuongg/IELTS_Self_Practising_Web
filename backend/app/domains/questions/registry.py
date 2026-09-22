@@ -274,6 +274,61 @@ class TableRow(BaseModel):
         return value
 
 
+class NoteSegment(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(min_length=1, max_length=80)
+    type: Literal["TEXT", "GAP"]
+    text: str | None = Field(default=None, max_length=10_000)
+    question_id: str | None = Field(default=None, max_length=80)
+
+    @field_validator("id", "question_id")
+    @classmethod
+    def validate_uuid_identity(cls, value: str | None) -> str | None:
+        if value is not None:
+            uuid.UUID(value)
+        return value
+
+    @model_validator(mode="after")
+    def validate_segment(self) -> NoteSegment:
+        if self.type == "GAP":
+            if not self.question_id:
+                raise ValueError("Note gap segments must reference a question")
+            if self.text is not None:
+                raise ValueError("Note gap segments cannot contain text")
+        else:
+            if self.text is None:
+                raise ValueError("Note text segments require text, which may be empty")
+            if self.question_id is not None:
+                raise ValueError("Note text segments cannot reference a question")
+        return self
+
+
+class NoteBlock(BaseModel):
+    id: str = Field(min_length=1, max_length=80)
+    style: Literal["HEADING", "TEXT", "BULLET", "EXAMPLE"]
+    indent: int = Field(default=0, ge=0, le=3)
+    segments: list[NoteSegment] = Field(min_length=1)
+
+    @field_validator("id")
+    @classmethod
+    def validate_uuid_identity(cls, value: str) -> str:
+        uuid.UUID(value)
+        return value
+
+    @model_validator(mode="after")
+    def validate_content(self) -> NoteBlock:
+        if not any(
+            segment.type == "GAP" or bool((segment.text or "").strip())
+            for segment in self.segments
+        ):
+            raise ValueError("Persisted note blocks cannot be empty")
+        segment_ids = [segment.id for segment in self.segments]
+        if len(segment_ids) != len(set(segment_ids)):
+            raise ValueError("Note segment IDs must be unique")
+        return self
+
+
 class LayoutNode(BaseModel):
     id: str = Field(min_length=1, max_length=80)
     type: Literal["TEXT", "GAP"]
@@ -296,6 +351,7 @@ class StructuredLayout(BaseModel):
     columns: list[LayoutColumn] = Field(default_factory=list)
     rows: list[TableRow] = Field(default_factory=list)
     nodes: list[LayoutNode] = Field(default_factory=list)
+    blocks: list[NoteBlock] = Field(default_factory=list)
 
     @field_validator("title", mode="before")
     @classmethod
@@ -339,6 +395,23 @@ class StructuredLayout(BaseModel):
                 raise ValueError("Each table question may be referenced by only one gap")
             if self.nodes:
                 raise ValueError("Table layouts cannot contain completion nodes")
+        elif self.kind == "NOTE" and self.blocks:
+            block_ids = [block.id for block in self.blocks]
+            segment_ids = [segment.id for block in self.blocks for segment in block.segments]
+            gap_ids = [
+                segment.question_id
+                for block in self.blocks
+                for segment in block.segments
+                if segment.type == "GAP"
+            ]
+            if len(block_ids) != len(set(block_ids)):
+                raise ValueError("Note block IDs must be unique")
+            if len(segment_ids) != len(set(segment_ids)):
+                raise ValueError("Note segment IDs must be unique")
+            if len(gap_ids) != len(set(gap_ids)):
+                raise ValueError("Each note question must be referenced by exactly one gap")
+            if self.nodes:
+                raise ValueError("Modern note layouts cannot contain legacy completion nodes")
         elif not self.nodes:
             raise ValueError("This completion layout requires at least one node")
         return self

@@ -96,6 +96,35 @@ export type TableCompletionLayout = {
   nodes: [];
 };
 
+export type NoteCompletionTextSegment = {
+  id: string;
+  type: "TEXT";
+  text: string;
+};
+
+export type NoteCompletionGapSegment = {
+  id: string;
+  type: "GAP";
+  question_id: string;
+};
+
+export type NoteCompletionSegment = NoteCompletionTextSegment | NoteCompletionGapSegment;
+export type NoteBlockStyle = "HEADING" | "TEXT" | "BULLET" | "EXAMPLE";
+export type NoteCompletionBlock = {
+  id: string;
+  style: NoteBlockStyle;
+  indent: number;
+  segments: NoteCompletionSegment[];
+};
+export type NoteCompletionLayout = {
+  kind: "NOTE";
+  title?: string;
+  blocks: NoteCompletionBlock[];
+  columns: [];
+  rows: [];
+  nodes: [];
+};
+
 export type DiagramBoxGeometry = {
   x: number;
   y: number;

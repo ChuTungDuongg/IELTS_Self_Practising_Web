@@ -101,6 +101,52 @@ async def test_generic_highlights_and_bulk_delete(db_session: AsyncSession) -> N
     completion_group.questions.append(completion_question)
     module.passages[0].question_groups.append(completion_group)
     module.question_groups.append(completion_group)
+    note_question = Question(
+        id=uuid4(),
+        number=3,
+        prompt="Note gap",
+        config={"max_words": 2},
+        answer_key={"kind": "TEXT", "accepted": ["meetings"]},
+        order_index=0,
+    )
+    note_segment_id = uuid4()
+    note_group = QuestionGroup(
+        id=uuid4(),
+        question_type="note_completion",
+        instruction="Complete the note",
+        order_index=2,
+        config={
+            "layout": {
+                "kind": "NOTE",
+                "title": "Venue",
+                "columns": [],
+                "rows": [],
+                "nodes": [],
+                "blocks": [
+                    {
+                        "id": str(uuid4()),
+                        "style": "TEXT",
+                        "indent": 0,
+                        "segments": [
+                            {
+                                "id": str(note_segment_id),
+                                "type": "TEXT",
+                                "text": "Room supports meetings",
+                            },
+                            {
+                                "id": str(uuid4()),
+                                "type": "GAP",
+                                "question_id": str(note_question.id),
+                            },
+                        ],
+                    }
+                ],
+            }
+        },
+    )
+    note_group.questions.append(note_question)
+    module.passages[0].question_groups.append(note_group)
+    module.question_groups.append(note_group)
     heading_option_id = uuid4()
     other_option_id = uuid4()
     target_block_id = module.passages[0].content_json[0]["id"]
@@ -108,7 +154,7 @@ async def test_generic_highlights_and_bulk_delete(db_session: AsyncSession) -> N
         id=uuid4(),
         question_type="matching_headings",
         instruction="Match headings",
-        order_index=2,
+        order_index=3,
         config={
             "options": [
                 {
@@ -122,7 +168,7 @@ async def test_generic_highlights_and_bulk_delete(db_session: AsyncSession) -> N
     )
     heading_group.questions.append(
         Question(
-            number=3,
+                number=4,
             prompt="Paragraph A",
             config={"target_block_id": target_block_id},
             answer_key={"kind": "SINGLE_OPTION", "value": str(heading_option_id)},
@@ -133,7 +179,7 @@ async def test_generic_highlights_and_bulk_delete(db_session: AsyncSession) -> N
         id=uuid4(),
         question_type="matching_headings",
         instruction="Other headings",
-        order_index=3,
+        order_index=4,
         config={
             "options": [
                 {"id": str(other_option_id), "label": "i", "text": "Other group option"},
@@ -143,7 +189,7 @@ async def test_generic_highlights_and_bulk_delete(db_session: AsyncSession) -> N
     )
     other_group.questions.append(
         Question(
-            number=4,
+                number=5,
             prompt="Paragraph A",
             config={"target_block_id": target_block_id},
             answer_key={"kind": "SINGLE_OPTION", "value": str(other_option_id)},
@@ -196,6 +242,17 @@ async def test_generic_highlights_and_bulk_delete(db_session: AsyncSession) -> N
             selected_text="supports",
         ),
     )
+    note_highlight = await AttemptService(db_session).create_highlight(
+        attempt.attempt_id,
+        HighlightCreate(
+            target_kind="TEXT_COMPLETION_SEGMENT",
+            target_id=note_group.id,
+            segment_id=note_segment_id,
+            start_offset=5,
+            end_offset=13,
+            selected_text="supports",
+        ),
+    )
     heading_highlight = await AttemptService(db_session).create_highlight(
         attempt.attempt_id,
         HighlightCreate(
@@ -210,6 +267,7 @@ async def test_generic_highlights_and_bulk_delete(db_session: AsyncSession) -> N
     assert passage_highlight.target_kind == "PASSAGE_BLOCK"
     assert question_highlight.target_kind == "QUESTION_PROMPT"
     assert completion_highlight.target_kind == "TEXT_COMPLETION_SEGMENT"
+    assert note_highlight.target_kind == "TEXT_COMPLETION_SEGMENT"
     assert heading_highlight.target_kind == "QUESTION_GROUP_OPTION"
 
     reloaded = await AttemptService(db_session).exam(attempt.attempt_id)
