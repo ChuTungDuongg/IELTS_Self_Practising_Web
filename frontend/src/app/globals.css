@@ -609,7 +609,7 @@ input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--mute
 .exam-footer { position: sticky; z-index: 20; bottom: 0; display: flex; min-height: 92px; align-items: flex-end; gap: 14px; border-top: 1px solid var(--exam-border); padding: 10px 20px; color: var(--exam-muted); background: var(--exam-surface); box-shadow: 0 -8px 24px color-mix(in srgb, var(--exam-bg) 18%, transparent); }
 .exam-footer > div:not(.exam-footer-navigation) { display: flex; min-width: 0; flex: 1; gap: 7px; }
 .exam-footer-navigation { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 8px; }
-.exam-passage-navigation { display: flex; flex-wrap: nowrap; gap: 7px; overflow-x: auto; }
+.exam-passage-navigation, .exam-section-navigation { display: flex; min-width: 0; flex-wrap: nowrap; gap: 7px; overflow-x: auto; }
 .exam-question-strip { display: flex; min-width: 0; flex-wrap: nowrap; gap: 6px; overflow-x: auto; overflow-y: hidden; padding: 1px 1px 5px; scrollbar-color: var(--exam-border) transparent; scrollbar-width: thin; }
 .exam-footer button { min-height: 38px; border: 1px solid var(--exam-border); border-radius: 8px; padding: 0 13px; color: var(--exam-muted); background: var(--exam-control-bg); font-size: 12px; font-weight: 700; }
 .exam-footer button.active, .exam-passage-navigation button.active { border-color: var(--exam-accent); color: var(--accent-contrast); background: var(--exam-accent); }
@@ -625,10 +625,6 @@ input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--mute
 .exam-question-chip.current .exam-question-number { color: var(--accent-contrast); background: var(--exam-accent); }
 .exam-footer .exam-submit { flex: none; min-height: 42px; border-color: var(--exam-accent); color: var(--accent-contrast); background: var(--exam-accent); padding-inline: 20px; }
 .exam-preview-note { align-self: center; white-space: nowrap; }
-.listening-exam .exam-flags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 15px; }
-.listening-exam .exam-flags button { border: 1px solid var(--exam-border); border-radius: 6px; padding: 4px 7px; color: var(--exam-muted); background: var(--exam-control-bg); font-size: 10px; }
-.listening-exam .exam-flags button.flagged { border-color: var(--warning); color: var(--exam-text); background: color-mix(in srgb, var(--warning) 18%, var(--exam-control-bg)); }
-
 @media (max-width: 900px) {
   .exam-runner { height: auto; min-height: 100vh; }
   .exam-runner > .grid { grid-template-columns: 1fr; }
