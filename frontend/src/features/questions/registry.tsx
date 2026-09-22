@@ -32,6 +32,8 @@ import type { QuestionGroupModel, QuestionType } from "./types";
 import { DiagramLabellingEditor } from "./diagram-labelling-editor";
 import { DiagramLabellingRenderer } from "./diagram-labelling-renderer";
 import { createDiagramCanvasItem } from "./diagram-labelling";
+import { TableCompletionEditor } from "./table-completion-editor";
+import { TableCompletionRenderer } from "./table-completion-renderer";
 
 export type QuestionInstruction = {
   intro: string;
@@ -190,11 +192,72 @@ definitions.push({
   },
 });
 
-for (const [id, label, kind] of [["form_completion", "Form Completion", "FORM"], ["note_completion", "Note Completion", "NOTE"], ["table_completion", "Table Completion", "TABLE"], ["flow_chart_completion", "Flow-chart Completion", "FLOW_CHART"], ["summary_completion", "Summary Completion — Text", "SUMMARY"], ["sentence_completion", "Sentence Completion", "SENTENCE"]] as const) {
+definitions.push({
+  id: "table_completion",
+  label: "Table Completion",
+  category: "shared",
+  BuilderEditor: TableCompletionEditor,
+  AnswerKeyEditor: TableCompletionEditor,
+  ExamRenderer: TableCompletionRenderer,
+  ReviewRenderer: TableCompletionRenderer,
+  responseSchema: z.string(),
+  configSchema: z.object({
+    layout: z.object({
+      kind: z.literal("TABLE"),
+      title: z.string().max(300).optional(),
+      columns: z.array(z.object({ id: z.string().uuid(), label: z.string().min(1).max(200) })).min(1),
+      rows: z.array(z.object({
+        id: z.string().uuid(),
+        cells: z.array(z.object({
+          id: z.string().uuid(),
+          segments: z.array(z.discriminatedUnion("type", [
+            z.object({ id: z.string().uuid(), type: z.literal("TEXT"), text: z.string().max(10_000) }),
+            z.object({ id: z.string().uuid(), type: z.literal("GAP"), question_id: z.string().uuid() }),
+          ])).min(1),
+        })).min(1),
+      })).min(1),
+      nodes: z.tuple([]),
+    }),
+  }),
+  instruction: (group) => ({ intro: `Complete the table below. ${limitInstruction(group)}` }),
+  createDefault: (number) => {
+    const question = textQuestion(number);
+    return {
+      question_type: "table_completion",
+      instruction: "",
+      config: {
+        layout: {
+          kind: "TABLE",
+          title: "",
+          columns: [
+            { id: crypto.randomUUID(), label: "Item" },
+            { id: crypto.randomUUID(), label: "Details" },
+          ],
+          rows: [{
+            id: crypto.randomUUID(),
+            cells: [
+              { id: crypto.randomUUID(), segments: [{ id: crypto.randomUUID(), type: "TEXT", text: "" }] },
+              { id: crypto.randomUUID(), segments: [
+                { id: crypto.randomUUID(), type: "TEXT", text: "" },
+                { id: crypto.randomUUID(), type: "GAP", question_id: question.id! },
+                { id: crypto.randomUUID(), type: "TEXT", text: "" },
+              ] },
+            ],
+          }],
+          nodes: [],
+        },
+      },
+      order_index: 0,
+      questions: [question],
+    };
+  },
+});
+
+for (const [id, label, kind] of [["form_completion", "Form Completion", "FORM"], ["note_completion", "Note Completion", "NOTE"], ["flow_chart_completion", "Flow-chart Completion", "FLOW_CHART"], ["summary_completion", "Summary Completion — Text", "SUMMARY"], ["sentence_completion", "Sentence Completion", "SENTENCE"]] as const) {
   definitions.push({
     id, label, category: id === "form_completion" ? "listening" : "shared", BuilderEditor: StructuredCompletionEditor, AnswerKeyEditor: StructuredCompletionEditor, ExamRenderer: StructuredCompletionRenderer, ReviewRenderer: StructuredCompletionRenderer,
     responseSchema: z.string(), configSchema: z.object({}), instruction: (group) => ({ intro: `Complete the ${label.replace(" Completion", "").toLowerCase()} below. ${limitInstruction(group)}` }),
-    createDefault: (number) => { const question = textQuestion(number); const gap = { id: crypto.randomUUID(), type: "GAP" as const, text: "", question_id: question.id }; const layout = kind === "TABLE" ? { kind, columns: [{ id: crypto.randomUUID(), label: "Item" }, { id: crypto.randomUUID(), label: "Answer" }], rows: [{ id: crypto.randomUUID(), cells: [{ id: crypto.randomUUID(), type: "TEXT" as const, text: "Label" }, gap] }], nodes: [] } : { kind, columns: [], rows: [], nodes: [{ id: crypto.randomUUID(), type: "TEXT" as const, text: "Context", level: 0 }, { ...gap, level: 0 }] }; return { question_type: id, instruction: "", config: { layout }, order_index: 0, questions: [question] }; },
+    createDefault: (number) => { const question = textQuestion(number); const gap = { id: crypto.randomUUID(), type: "GAP" as const, text: "", question_id: question.id }; const layout = { kind, columns: [], rows: [], nodes: [{ id: crypto.randomUUID(), type: "TEXT" as const, text: "Context", level: 0 }, { ...gap, level: 0 }] }; return { question_type: id, instruction: "", config: { layout }, order_index: 0, questions: [question] }; },
   });
 }
 

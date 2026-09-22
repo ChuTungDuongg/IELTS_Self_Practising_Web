@@ -72,6 +72,30 @@ export type TextCompletionLayout = {
   blocks: TextCompletionBlock[];
 };
 
+export type TableCompletionTextSegment = {
+  id: string;
+  type: "TEXT";
+  text: string;
+};
+
+export type TableCompletionGapSegment = {
+  id: string;
+  type: "GAP";
+  question_id: string;
+};
+
+export type TableCompletionSegment = TableCompletionTextSegment | TableCompletionGapSegment;
+export type TableCompletionCell = { id: string; segments: TableCompletionSegment[] };
+export type TableCompletionRow = { id: string; cells: TableCompletionCell[] };
+export type TableCompletionColumn = { id: string; label: string };
+export type TableCompletionLayout = {
+  kind: "TABLE";
+  title?: string;
+  columns: TableCompletionColumn[];
+  rows: TableCompletionRow[];
+  nodes: [];
+};
+
 export type DiagramBoxGeometry = {
   x: number;
   y: number;

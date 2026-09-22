@@ -446,6 +446,218 @@ def test_diagram_labelling_requires_image_and_exactly_one_gap() -> None:
         )
 
 
+def _table_completion_body() -> QuestionGroupWrite:
+    question_id = str(uuid4())
+    return QuestionGroupWrite.model_validate(
+        {
+            "question_type": "table_completion",
+            "instruction": "Complete the table.",
+            "config": {
+                "layout": {
+                    "kind": "TABLE",
+                    "title": "GEO-ENGINEERING PROJECTS",
+                    "columns": [
+                        {"id": str(uuid4()), "label": "Procedure"},
+                        {"id": str(uuid4()), "label": "Aim"},
+                    ],
+                    "rows": [
+                        {
+                            "id": str(uuid4()),
+                            "cells": [
+                                {
+                                    "id": str(uuid4()),
+                                    "segments": [
+                                        {
+                                            "id": str(uuid4()),
+                                            "type": "TEXT",
+                                            "text": "place material in the sea",
+                                        }
+                                    ],
+                                },
+                                {
+                                    "id": str(uuid4()),
+                                    "segments": [
+                                        {
+                                            "id": str(uuid4()),
+                                            "type": "TEXT",
+                                            "text": "to create a ",
+                                        },
+                                        {
+                                            "id": str(uuid4()),
+                                            "type": "GAP",
+                                            "question_id": question_id,
+                                        },
+                                        {
+                                            "id": str(uuid4()),
+                                            "type": "TEXT",
+                                            "text": " that reduces light",
+                                        },
+                                    ],
+                                },
+                            ],
+                        }
+                    ],
+                    "nodes": [],
+                }
+            },
+            "order_index": 0,
+            "questions": [
+                {
+                    "id": question_id,
+                    "number": 30,
+                    "prompt": "Table gap",
+                    "config": {"max_words": 1, "max_numbers": 0},
+                    "answer_key": {
+                        "kind": "TEXT",
+                        "accepted": ["sunshade"],
+                        "case_sensitive": False,
+                    },
+                    "order_index": 0,
+                }
+            ],
+        }
+    )
+
+
+def test_table_completion_supports_title_mixed_segments_and_text_evaluation() -> None:
+    body = _table_completion_body()
+    ReadingService._validate_group_body(body, [])
+    parsed = question_registry.validate_group("table_completion", body.config)
+
+    assert parsed.layout.title == "GEO-ENGINEERING PROJECTS"
+    assert [segment.type for segment in parsed.layout.rows[0].cells[1].segments] == [
+        "TEXT",
+        "GAP",
+        "TEXT",
+    ]
+    assert question_registry.evaluate(
+        "table_completion",
+        body.questions[0].answer_key,
+        " Sunshade ",
+        body.questions[0].config,
+    )
+
+
+def test_legacy_table_cells_normalize_to_stable_segments_without_merging_rows() -> None:
+    group_id = uuid4()
+    question_id = str(uuid4())
+    legacy = {
+        "layout": {
+            "kind": "TABLE",
+            "title": "  Existing table  ",
+            "columns": [
+                {"id": "legacy-column-a", "label": "Item"},
+                {"id": "legacy-column-b", "label": "Answer"},
+            ],
+            "rows": [
+                {
+                    "id": "fake-row-30",
+                    "cells": [
+                        {"id": "legacy-text", "type": "TEXT", "text": "Question 30"},
+                        {
+                            "id": "legacy-gap",
+                            "type": "GAP",
+                            "question_id": question_id,
+                        },
+                    ],
+                },
+                {
+                    "id": "preserved-row",
+                    "cells": [
+                        {"id": "empty-a", "type": "TEXT", "text": "Another row"},
+                        {"id": "empty-b", "type": "TEXT", "text": "kept intact"},
+                    ],
+                },
+            ],
+            "nodes": [],
+        }
+    }
+    questions = [
+        {
+            "id": question_id,
+            "number": 30,
+            "prompt": "Table gap",
+            "config": {},
+            "answer_key": {"kind": "TEXT", "accepted": ["answer"]},
+            "order_index": 0,
+        }
+    ]
+
+    first, _ = normalize_question_group_payload(
+        question_type="table_completion",
+        group_config=legacy,
+        questions=questions,
+        group_id=group_id,
+        passage_blocks=[],
+    )
+    second, _ = normalize_question_group_payload(
+        question_type="table_completion",
+        group_config=legacy,
+        questions=questions,
+        group_id=group_id,
+        passage_blocks=[],
+    )
+
+    assert first == second
+    assert first["layout"]["title"] == "Existing table"
+    assert len(first["layout"]["rows"]) == 2
+    assert first["layout"]["rows"][0]["cells"][0]["segments"][0]["text"] == "Question 30"
+    assert first["layout"]["rows"][0]["cells"][1]["segments"][0]["question_id"] == question_id
+    question_registry.validate_group("table_completion", first)
+
+
+def test_table_completion_rejects_duplicate_unknown_and_orphan_question_refs() -> None:
+    body = _table_completion_body()
+    gap = body.config["layout"]["rows"][0]["cells"][1]["segments"][1]
+    body.config["layout"]["rows"][0]["cells"][0]["segments"].append(
+        {**gap, "id": str(uuid4())}
+    )
+    with pytest.raises(AppError, match="only one gap"):
+        ReadingService._validate_group_body(body, [])
+
+    orphan = _table_completion_body()
+    orphan.questions.append(
+        orphan.questions[0].model_copy(
+            update={"id": uuid4(), "number": 31, "order_index": 1}
+        )
+    )
+    with pytest.raises(AppError, match="exactly one gap"):
+        ReadingService._validate_group_body(orphan, [])
+
+    unknown = _table_completion_body()
+    unknown.config["layout"]["rows"][0]["cells"][1]["segments"][1][
+        "question_id"
+    ] = str(uuid4())
+    with pytest.raises(AppError, match="exactly one gap"):
+        ReadingService._validate_group_body(unknown, [])
+
+
+def test_table_completion_bounds_title_and_row_shape_without_affecting_note_layouts() -> None:
+    body = _table_completion_body()
+    body.config["layout"]["title"] = "x" * 301
+    with pytest.raises(AppError, match="at most 300"):
+        ReadingService._validate_group_body(body, [])
+
+    mismatched = _table_completion_body()
+    mismatched.config["layout"]["rows"][0]["cells"].pop()
+    with pytest.raises(AppError, match="column count"):
+        ReadingService._validate_group_body(mismatched, [])
+
+    question_registry.validate_group(
+        "note_completion",
+        {
+            "layout": {
+                "kind": "NOTE",
+                "columns": [],
+                "rows": [],
+                "nodes": [
+                    {"id": str(uuid4()), "type": "TEXT", "text": "Existing note", "level": 0}
+                ],
+            }
+        },
+    )
+
+
 def test_legacy_diagram_options_and_markers_normalize_to_text_canvas() -> None:
     question_id = str(uuid4())
     marker_id = str(uuid4())

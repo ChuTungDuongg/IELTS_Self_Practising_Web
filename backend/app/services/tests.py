@@ -928,10 +928,22 @@ class TestService:
                 raise ValueError(
                     "Every diagram question prompt must contain exactly one {{gap}} marker"
                 )
+        if group.question_type == "table_completion":
+            layout = group_config.get("layout", {})
+            gap_ids = [
+                str(segment.get("question_id"))
+                for row in layout.get("rows", [])
+                for cell in row.get("cells", [])
+                for segment in cell.get("segments", [])
+                if segment.get("type") == "GAP"
+            ]
+            if len(gap_ids) != len(set(gap_ids)) or set(gap_ids) != question_ids:
+                raise ValueError(
+                    "Every table completion question must map to exactly one layout gap"
+                )
         if group.question_type in {
             "form_completion",
             "note_completion",
-            "table_completion",
             "flow_chart_completion",
             "summary_completion",
             "sentence_completion",

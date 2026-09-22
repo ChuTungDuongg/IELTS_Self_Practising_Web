@@ -205,6 +205,83 @@ def _legacy_coordinate(value: Any) -> float:
         return 0.5
 
 
+def _normalize_table_layout(config: dict[str, Any], group_id: uuid.UUID | str) -> dict[str, Any]:
+    layout = dict(config.get("layout") or {})
+    columns: list[dict[str, Any]] = []
+    for column_index, raw_column in enumerate(layout.get("columns") or []):
+        column = dict(raw_column or {})
+        columns.append(
+            {
+                "id": _stable_uuid(
+                    f"group:{group_id}:table-column", column.get("id"), column_index
+                ),
+                "label": str(column.get("label") or ""),
+            }
+        )
+
+    rows: list[dict[str, Any]] = []
+    for row_index, raw_row in enumerate(layout.get("rows") or []):
+        row = dict(raw_row or {})
+        row_id = _stable_uuid(f"group:{group_id}:table-row", row.get("id"), row_index)
+        cells: list[dict[str, Any]] = []
+        for cell_index, raw_cell in enumerate(row.get("cells") or []):
+            cell = dict(raw_cell or {})
+            cell_id = _stable_uuid(
+                f"group:{group_id}:table-row:{row_id}:cell", cell.get("id"), cell_index
+            )
+            raw_segments = cell.get("segments")
+            if not isinstance(raw_segments, list) or not raw_segments:
+                legacy_type = cell.get("type", "TEXT")
+                legacy_segment: dict[str, Any] = {
+                    "id": _stable_uuid(
+                        f"group:{group_id}:table-cell:{cell_id}:segment",
+                        f"legacy-{legacy_type}",
+                        0,
+                    ),
+                    "type": legacy_type,
+                }
+                if legacy_type == "GAP":
+                    legacy_segment["question_id"] = cell.get("question_id")
+                else:
+                    legacy_segment["text"] = str(cell.get("text") or "")
+                raw_segments = [legacy_segment]
+
+            segments: list[dict[str, Any]] = []
+            for segment_index, raw_segment in enumerate(raw_segments):
+                segment = dict(raw_segment or {})
+                segment_type = segment.get("type", "TEXT")
+                normalized_segment: dict[str, Any] = {
+                    "id": _stable_uuid(
+                        f"group:{group_id}:table-cell:{cell_id}:segment",
+                        segment.get("id"),
+                        segment_index,
+                    ),
+                    "type": segment_type,
+                }
+                if segment_type == "GAP":
+                    question_id = segment.get("question_id")
+                    normalized_segment["question_id"] = (
+                        str(question_id) if question_id is not None else None
+                    )
+                else:
+                    normalized_segment["text"] = str(segment.get("text") or "")
+                    if segment.get("question_id") is not None:
+                        normalized_segment["question_id"] = str(segment["question_id"])
+                segments.append(normalized_segment)
+            cells.append({"id": cell_id, "segments": segments})
+        rows.append({"id": row_id, "cells": cells})
+
+    normalized_layout: dict[str, Any] = {
+        "kind": layout.get("kind", "TABLE"),
+        "columns": columns,
+        "rows": rows,
+        "nodes": list(layout.get("nodes") or []),
+    }
+    if "title" in layout:
+        normalized_layout["title"] = str(layout.get("title") or "").strip()
+    return {**config, "layout": normalized_layout}
+
+
 def normalize_question_group_payload(
     *,
     question_type: str,
@@ -227,6 +304,9 @@ def normalize_question_group_payload(
             question.get("id")
             or _stable_uuid(f"group:{group_id}:question", question.get("number"), index)
         )
+
+    if question_type == "table_completion":
+        config = _normalize_table_layout(config, group_id)
 
     if question_type in {"text_completion", "summary_completion_word_list"} and "blocks" not in config:
         blocks: list[dict[str, Any]] = []
@@ -372,7 +452,7 @@ def normalize_question_group_payload(
             normalized_key = _normalize_single_option_key(dict(question.get("answer_key") or {}))
             normalized_key["value"] = _normalize_agreement_value(normalized_key["value"])
             question["answer_key"] = normalized_key
-        elif question_type in {"text_completion", "diagram_labelling"}:
+        elif question_type in {"text_completion", "diagram_labelling", "table_completion"}:
             question["answer_key"] = _normalize_text_key(
                 dict(question.get("answer_key") or {})
             )

@@ -211,18 +211,33 @@ class DiagramLabellingGroupConfig(BaseModel):
         return self
 
 
-class LayoutCell(BaseModel):
+class TableCellSegment(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     id: str = Field(min_length=1, max_length=80)
     type: Literal["TEXT", "GAP"]
-    text: str = Field(default="", max_length=1000)
+    text: str | None = Field(default=None, max_length=10_000)
     question_id: str | None = Field(default=None, max_length=80)
 
+    @field_validator("id", "question_id")
+    @classmethod
+    def validate_uuid_identity(cls, value: str | None) -> str | None:
+        if value is not None:
+            uuid.UUID(value)
+        return value
+
     @model_validator(mode="after")
-    def validate_cell(self) -> LayoutCell:
-        if self.type == "GAP" and not self.question_id:
-            raise ValueError("Gap cells must reference a question")
-        if self.type == "TEXT" and not self.text.strip():
-            raise ValueError("Text cells cannot be empty")
+    def validate_segment(self) -> TableCellSegment:
+        if self.type == "GAP":
+            if not self.question_id:
+                raise ValueError("Table gap segments must reference a question")
+            if self.text is not None:
+                raise ValueError("Table gap segments cannot contain text")
+        else:
+            if self.text is None:
+                raise ValueError("Table text segments require text, which may be empty")
+            if self.question_id is not None:
+                raise ValueError("Table text segments cannot reference a question")
         return self
 
 
@@ -230,10 +245,33 @@ class LayoutColumn(BaseModel):
     id: str = Field(min_length=1, max_length=80)
     label: str = Field(min_length=1, max_length=200)
 
+    @field_validator("id")
+    @classmethod
+    def validate_uuid_identity(cls, value: str) -> str:
+        uuid.UUID(value)
+        return value
 
-class LayoutRow(BaseModel):
+
+class TableCell(BaseModel):
     id: str = Field(min_length=1, max_length=80)
-    cells: list[LayoutCell] = Field(min_length=1)
+    segments: list[TableCellSegment] = Field(min_length=1)
+
+    @field_validator("id")
+    @classmethod
+    def validate_uuid_identity(cls, value: str) -> str:
+        uuid.UUID(value)
+        return value
+
+
+class TableRow(BaseModel):
+    id: str = Field(min_length=1, max_length=80)
+    cells: list[TableCell] = Field(min_length=1)
+
+    @field_validator("id")
+    @classmethod
+    def validate_uuid_identity(cls, value: str) -> str:
+        uuid.UUID(value)
+        return value
 
 
 class LayoutNode(BaseModel):
@@ -254,9 +292,17 @@ class LayoutNode(BaseModel):
 
 class StructuredLayout(BaseModel):
     kind: Literal["FORM", "NOTE", "TABLE", "FLOW_CHART", "SUMMARY", "SENTENCE"]
+    title: str | None = Field(default=None, max_length=300)
     columns: list[LayoutColumn] = Field(default_factory=list)
-    rows: list[LayoutRow] = Field(default_factory=list)
+    rows: list[TableRow] = Field(default_factory=list)
     nodes: list[LayoutNode] = Field(default_factory=list)
+
+    @field_validator("title", mode="before")
+    @classmethod
+    def normalize_title(cls, value: Any) -> str | None:
+        if value is None:
+            return None
+        return str(value).strip()
 
     @model_validator(mode="after")
     def validate_shape(self) -> StructuredLayout:
@@ -265,6 +311,34 @@ class StructuredLayout(BaseModel):
                 raise ValueError("Table layouts require columns and rows")
             if any(len(row.cells) != len(self.columns) for row in self.rows):
                 raise ValueError("Every table row must match the column count")
+            column_ids = [column.id for column in self.columns]
+            row_ids = [row.id for row in self.rows]
+            cell_ids = [cell.id for row in self.rows for cell in row.cells]
+            segment_ids = [
+                segment.id
+                for row in self.rows
+                for cell in row.cells
+                for segment in cell.segments
+            ]
+            gap_ids = [
+                segment.question_id
+                for row in self.rows
+                for cell in row.cells
+                for segment in cell.segments
+                if segment.type == "GAP"
+            ]
+            for label, identities in (
+                ("column", column_ids),
+                ("row", row_ids),
+                ("cell", cell_ids),
+                ("segment", segment_ids),
+            ):
+                if len(identities) != len(set(identities)):
+                    raise ValueError(f"Table {label} IDs must be unique")
+            if len(gap_ids) != len(set(gap_ids)):
+                raise ValueError("Each table question may be referenced by only one gap")
+            if self.nodes:
+                raise ValueError("Table layouts cannot contain completion nodes")
         elif not self.nodes:
             raise ValueError("This completion layout requires at least one node")
         return self
