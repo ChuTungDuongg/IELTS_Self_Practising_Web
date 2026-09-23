@@ -44,9 +44,12 @@ export function MatchingRenderer({ group, values, disabled, onAnswer, highlighti
 
 export function VisualLabellingRenderer(props: RendererProps) {
   const { group } = props;
-  const markers = group.config.markers as Array<{ id: string; question_id: string; x: number; y: number }>;
+  const markers = Array.isArray(group.config.markers)
+    ? group.config.markers as Array<{ id: string; question_id: string; x: number; y: number }>
+    : null;
   const image = group.image_asset ?? (group.config.image_asset as typeof group.image_asset);
-  return <div className="space-y-5">{image ? <div className="visual-question"><img src={assetContentUrl(image)} alt="Listening plan, map, or diagram" />{markers.map((marker) => <span key={marker.id} className="visual-marker" style={{ left: `${marker.x * 100}%`, top: `${marker.y * 100}%` }}>{group.questions.find((item) => item.id === marker.question_id)?.number ?? "?"}</span>)}</div> : null}<MatchingRenderer {...props} /></div>;
+  const noun = group.question_type === "map_labelling" ? "map" : "plan";
+  return <div className="space-y-5">{image ? <div className="visual-question"><img src={assetContentUrl(image)} alt={`${markers ? "Reading" : "Listening"} ${noun}`} />{markers?.map((marker) => <span key={marker.id} className="visual-marker" style={{ left: `${marker.x * 100}%`, top: `${marker.y * 100}%` }}>{group.questions.find((item) => item.id === marker.question_id)?.number ?? "?"}</span>)}</div> : null}<MatchingRenderer {...props} /></div>;
 }
 
 export function StructuredCompletionRenderer(props: RendererProps) {

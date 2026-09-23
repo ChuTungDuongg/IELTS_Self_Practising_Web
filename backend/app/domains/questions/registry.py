@@ -151,11 +151,13 @@ class VisualMarker(BaseModel):
 
 class VisualLabellingGroupConfig(BaseModel):
     options: list[Option] = Field(min_length=2)
-    markers: list[VisualMarker] = Field(min_length=1)
+    markers: list[VisualMarker] | None = None
 
     @model_validator(mode="after")
     def validate_identity(self) -> VisualLabellingGroupConfig:
         _validate_option_identity(self.options)
+        if self.markers is None:
+            return self
         marker_ids = [marker.id for marker in self.markers]
         if len(marker_ids) != len(set(marker_ids)):
             raise ValueError("Marker IDs must be unique")
@@ -319,8 +321,7 @@ class NoteBlock(BaseModel):
     @model_validator(mode="after")
     def validate_content(self) -> NoteBlock:
         if not any(
-            segment.type == "GAP" or bool((segment.text or "").strip())
-            for segment in self.segments
+            segment.type == "GAP" or bool((segment.text or "").strip()) for segment in self.segments
         ):
             raise ValueError("Persisted note blocks cannot be empty")
         segment_ids = [segment.id for segment in self.segments]
@@ -371,10 +372,7 @@ class StructuredLayout(BaseModel):
             row_ids = [row.id for row in self.rows]
             cell_ids = [cell.id for row in self.rows for cell in row.cells]
             segment_ids = [
-                segment.id
-                for row in self.rows
-                for cell in row.cells
-                for segment in cell.segments
+                segment.id for row in self.rows for cell in row.cells for segment in cell.segments
             ]
             gap_ids = [
                 segment.question_id

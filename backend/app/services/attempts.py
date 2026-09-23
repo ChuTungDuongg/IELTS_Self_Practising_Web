@@ -275,6 +275,7 @@ class AttemptService:
                 ],
                 group_id=group.id,
                 passage_blocks=passage_blocks,
+                module_type=attempt.module_type,
             )
             normalized_question = normalized_questions[0]
             normalized_value = normalize_response_value(
@@ -449,7 +450,7 @@ class AttemptService:
                 409,
             )
         answer_rows = [
-            self._present_review_answer(answer)
+            self._present_review_answer(answer, attempt.module_type)
             for answer in sorted(attempt.answers, key=lambda item: item.question.number)
         ]
         writing_rows: list[WritingReview] = []
@@ -653,7 +654,9 @@ class AttemptService:
         return response
 
     @staticmethod
-    def _present_review_answer(answer: AttemptAnswer) -> ReviewAnswer:
+    def _present_review_answer(
+        answer: AttemptAnswer, module_type: ModuleType = ModuleType.READING
+    ) -> ReviewAnswer:
         question = answer.question
         group = question.question_group
         passage_blocks = (
@@ -677,6 +680,7 @@ class AttemptService:
             ],
             group_id=group.id,
             passage_blocks=passage_blocks,
+            module_type=module_type,
         )
         normalized_question = normalized_questions[0]
         normalized_value = normalize_response_value(
@@ -804,9 +808,7 @@ class AttemptService:
         mock_groups: list[MockHistoryGroup] = []
         for test_session in session_rows:
             session_items = {
-                item.module: item
-                for item in items
-                if item.test_session_id == test_session.id
+                item.module: item for item in items if item.test_session_id == test_session.id
             }
             mock_groups.append(
                 MockHistoryGroup(
@@ -821,9 +823,15 @@ class AttemptService:
                     listening=session_items.get(ModuleType.LISTENING),
                     writing=session_items.get(ModuleType.WRITING),
                     overall_band_score=project_overall_band(
-                        session_items.get(ModuleType.READING).band_score if session_items.get(ModuleType.READING) else None,
-                        session_items.get(ModuleType.LISTENING).band_score if session_items.get(ModuleType.LISTENING) else None,
-                        session_items.get(ModuleType.WRITING).band_score if session_items.get(ModuleType.WRITING) else None,
+                        session_items.get(ModuleType.READING).band_score
+                        if session_items.get(ModuleType.READING)
+                        else None,
+                        session_items.get(ModuleType.LISTENING).band_score
+                        if session_items.get(ModuleType.LISTENING)
+                        else None,
+                        session_items.get(ModuleType.WRITING).band_score
+                        if session_items.get(ModuleType.WRITING)
+                        else None,
                     ),
                 )
             )
@@ -852,7 +860,13 @@ class AttemptService:
                         title=part.title,
                         order_index=part.order_index,
                         question_groups=[
-                            self._present_exam_group(group, answer_values, flags, [])
+                            self._present_exam_group(
+                                group,
+                                answer_values,
+                                flags,
+                                [],
+                                module_type=ModuleType.LISTENING,
+                            )
                             for group in sorted(
                                 part.question_groups, key=lambda item: item.order_index
                             )
@@ -928,6 +942,8 @@ class AttemptService:
         answer_values: dict[uuid.UUID, Any],
         flags: dict[uuid.UUID, bool],
         passage_blocks: list[dict[str, Any]],
+        *,
+        module_type: ModuleType = ModuleType.READING,
     ) -> ExamQuestionGroup:
         source_questions = sorted(group.questions, key=lambda item: item.order_index)
         question_rows = [
@@ -948,6 +964,7 @@ class AttemptService:
             questions=question_rows,
             group_id=group.id,
             passage_blocks=passage_blocks,
+            module_type=module_type,
         )
         exam_questions: list[ExamQuestion] = []
         for source, question in zip(source_questions, normalized_questions, strict=True):
@@ -1245,6 +1262,7 @@ class AttemptService:
                 ],
                 group_id=group.id,
                 passage_blocks=[],
+                module_type=attempt.module_type,
             )
             blocks = (
                 (normalized.get("layout") or {}).get("blocks", [])
@@ -1296,6 +1314,7 @@ class AttemptService:
                 ],
                 group_id=group.id,
                 passage_blocks=passage_blocks,
+                module_type=attempt.module_type,
             )
             for option in normalized.get("options", []):
                 if str(option.get("id")) == str(body.segment_id):

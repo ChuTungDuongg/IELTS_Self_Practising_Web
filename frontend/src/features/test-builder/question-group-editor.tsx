@@ -21,6 +21,7 @@ export function QuestionGroupEditor({
   passageBlocks,
   passageNumber,
   testVersionId,
+  moduleType,
 }: {
   initial: QuestionGroupModel;
   onSave: (group: QuestionGroupModel) => Promise<void>;
@@ -31,8 +32,18 @@ export function QuestionGroupEditor({
   passageBlocks: PassageBlock[];
   passageNumber?: number;
   testVersionId?: string;
+  moduleType?: "READING" | "LISTENING";
 }) {
-  const [group, setGroup] = useState(() => migrateLegacyDiagramGroup(initial));
+  const [group, setGroup] = useState(() => {
+    const migrated = migrateLegacyDiagramGroup(initial);
+    if (
+      moduleType === "LISTENING"
+      && ["plan_labelling", "map_labelling"].includes(migrated.question_type)
+    ) {
+      return { ...migrated, config: { options: migrated.config.options } };
+    }
+    return migrated;
+  });
   const [preview, setPreview] = useState(false);
   const [pending, setPending] = useState(false);
   const definition = questionRegistry[group.question_type];
@@ -66,7 +77,7 @@ export function QuestionGroupEditor({
       ? noteCompletionIntegrityErrors(group)
       : [];
   const diagramErrors = diagramLabellingErrors(presentedGroup);
-  const structurallyValid = integrityErrors.length === 0 && diagramErrors.length === 0 && questionGroupIsValid(presentedGroup, passageBlocks);
+  const structurallyValid = integrityErrors.length === 0 && diagramErrors.length === 0 && questionGroupIsValid(presentedGroup, passageBlocks, moduleType);
   const { saveNow } = useBuilderAutosave({
     resourceKey: `question-group:${initial.id ?? "new"}`,
     value: presentedGroup,
@@ -81,7 +92,7 @@ export function QuestionGroupEditor({
       nextQuestionNumber,
       Math.max(0, ...group.questions.map((question) => question.number)) + 1,
     );
-    const template = definition.createDefault(nextNumber);
+    const template = definition.createDefault(nextNumber, { moduleType });
     const next = template.questions[0];
     let config = group.config;
     if (group.question_type === "matching_headings") {
@@ -100,8 +111,10 @@ export function QuestionGroupEditor({
       };
     }
     if (["plan_labelling", "map_labelling"].includes(group.question_type)) {
-      const marker = (template.config.markers as Array<Record<string, unknown>>)[0];
-      config = { ...group.config, markers: [...(group.config.markers as Array<Record<string, unknown>>), marker] };
+      if (Array.isArray(group.config.markers) && Array.isArray(template.config.markers)) {
+        const marker = (template.config.markers as Array<Record<string, unknown>>)[0];
+        config = { ...group.config, markers: [...group.config.markers, marker] };
+      }
       next.answer_key = { kind: "SINGLE_OPTION", value: String((group.config.options as Array<{ id: string }>)[0]?.id ?? "") };
     }
     if (["form_completion", "flow_chart_completion", "summary_completion", "sentence_completion"].includes(group.question_type)) {
@@ -171,7 +184,7 @@ export function QuestionGroupEditor({
   );
 }
 
-function questionGroupIsValid(group: QuestionGroupModel, passageBlocks: PassageBlock[]): boolean {
+function questionGroupIsValid(group: QuestionGroupModel, passageBlocks: PassageBlock[], moduleType?: "READING" | "LISTENING"): boolean {
   if (!group.questions.length || group.instruction.length > 4000) return false;
   const ids = group.questions.map((question) => question.id).filter(Boolean);
   const numbers = group.questions.map((question) => question.number);
@@ -193,7 +206,7 @@ function questionGroupIsValid(group: QuestionGroupModel, passageBlocks: PassageB
   })) return false;
 
   const questionIds = new Set(ids.map(String));
-  if (["plan_labelling", "map_labelling"].includes(group.question_type)) {
+  if (["plan_labelling", "map_labelling"].includes(group.question_type) && moduleType !== "LISTENING") {
     const markerIds = new Set(((group.config.markers as Array<{ question_id?: string }> | undefined) ?? []).map((marker) => String(marker.question_id ?? "")));
     if (markerIds.size !== questionIds.size || [...questionIds].some((id) => !markerIds.has(id))) return false;
   }

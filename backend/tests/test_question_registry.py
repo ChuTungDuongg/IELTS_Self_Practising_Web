@@ -11,6 +11,7 @@ from app.domains.questions.normalization import (
     remap_question_references,
 )
 from app.domains.questions.registry import TextAnswerKey, normalize_text, question_registry
+from app.models.enums import ModuleType
 from app.schemas.content import QuestionGroupWrite
 from app.services.reading import ReadingService
 
@@ -913,6 +914,111 @@ def test_plan_and_map_labelling_remain_option_based() -> None:
             {"kind": "SINGLE_OPTION", "value": option_ids[0]},
             option_ids[0],
             {},
+        )
+
+
+def test_plan_and_map_normalization_drops_legacy_markers_idempotently() -> None:
+    group_id = uuid4()
+    question_id = str(uuid4())
+    option_ids = [str(uuid4()), str(uuid4())]
+    legacy_config = {
+        "options": [
+            {"id": option_ids[0], "label": "A", "text": "Entrance"},
+            {"id": option_ids[1], "label": "B", "text": "Exit"},
+        ],
+        "markers": [
+            {"id": str(uuid4()), "question_id": question_id, "x": 0.4, "y": 0.6}
+        ],
+    }
+    raw_questions = [
+        {
+            "id": question_id,
+            "number": 16,
+            "prompt": "Scarecrow",
+            "config": {},
+            "answer_key": {"kind": "SINGLE_OPTION", "value": option_ids[1]},
+            "order_index": 0,
+        }
+    ]
+
+    for question_type in ("plan_labelling", "map_labelling"):
+        first_config, first_questions = normalize_question_group_payload(
+            question_type=question_type,
+            group_config=legacy_config,
+            questions=raw_questions,
+            group_id=group_id,
+            passage_blocks=[],
+            module_type="LISTENING",
+        )
+        second_config, second_questions = normalize_question_group_payload(
+            question_type=question_type,
+            group_config=first_config,
+            questions=first_questions,
+            group_id=group_id,
+            passage_blocks=[],
+            module_type="LISTENING",
+        )
+
+        assert first_config == {"options": legacy_config["options"]}
+        assert second_config == first_config
+        assert second_questions == first_questions
+        assert first_questions[0]["id"] == question_id
+        assert first_questions[0]["answer_key"]["value"] == option_ids[1]
+        question_registry.validate_group(question_type, first_config)
+
+
+def test_reading_plan_and_map_normalization_and_marker_validation_are_preserved() -> None:
+    question_id = str(uuid4())
+    option_ids = [str(uuid4()), str(uuid4())]
+    marker = {
+        "id": str(uuid4()),
+        "question_id": question_id,
+        "x": 0.4,
+        "y": 0.6,
+    }
+    config = {
+        "options": [
+            {"id": option_ids[0], "label": "A", "text": "Entrance"},
+            {"id": option_ids[1], "label": "B", "text": "Exit"},
+        ],
+        "markers": [marker],
+    }
+    questions = [
+        {
+            "id": question_id,
+            "number": 1,
+            "prompt": "Gate",
+            "config": {},
+            "answer_key": {"kind": "SINGLE_OPTION", "value": option_ids[0]},
+            "order_index": 0,
+        }
+    ]
+    normalized, normalized_questions = normalize_question_group_payload(
+        question_type="map_labelling",
+        group_config=config,
+        questions=questions,
+        group_id=uuid4(),
+        passage_blocks=[],
+        module_type="READING",
+    )
+
+    assert normalized["markers"] == [marker]
+    body = QuestionGroupWrite.model_validate(
+        {
+            "question_type": "map_labelling",
+            "instruction": "Choose a letter.",
+            "config": normalized,
+            "order_index": 0,
+            "questions": normalized_questions,
+            "image_asset_id": uuid4(),
+        }
+    )
+    ReadingService._validate_group_body(body, [], module_type=ModuleType.READING)
+
+    without_marker = body.model_copy(update={"config": {"options": normalized["options"]}})
+    with pytest.raises(AppError, match="Visual markers must reference"):
+        ReadingService._validate_group_body(
+            without_marker, [], module_type=ModuleType.READING
         )
 
 

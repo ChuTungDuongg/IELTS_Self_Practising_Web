@@ -18,50 +18,77 @@ class WritingService:
 
     async def update_task(self, task_id: uuid.UUID, body: WritingTaskWrite) -> BuilderWritingTask:
         deleted_path: str | None = None
-        async with self.session.begin():
-            task = await self.session.scalar(
-                self._task_query().where(WritingTask.id == task_id).with_for_update()
-            )
-            if task is None or task.module.module_type != ModuleType.WRITING:
-                raise AppError("WRITING_TASK_NOT_FOUND", "The Writing task does not exist.", 404)
-            if task.module.test_version.status != VersionStatus.DRAFT:
-                raise AppError(
-                    "TEST_VERSION_IMMUTABLE", "Published versions cannot be changed.", 409
+        copied_path: str | None = None
+        try:
+            async with self.session.begin():
+                task = await self.session.scalar(
+                    self._task_query().where(WritingTask.id == task_id).with_for_update()
                 )
-            if task.task_number == 2 and body.image_asset_id is not None:
-                raise AppError(
-                    "WRITING_TASK_IMAGE_NOT_ALLOWED",
-                    "Writing Task 2 cannot have an image attachment.",
-                    422,
-                )
-            asset: Asset | None = None
-            if body.image_asset_id is not None:
-                asset = await self.session.scalar(
-                    select(Asset).where(
-                        Asset.id == body.image_asset_id,
-                        Asset.test_version_id == task.module.test_version_id,
-                        Asset.asset_type == AssetType.WRITING_TASK_IMAGE,
-                        Asset.mime_type.in_(LocalAssetStorage.IMAGE_TYPES),
-                    )
-                )
-                if asset is None:
+                if task is None or task.module.module_type != ModuleType.WRITING:
                     raise AppError(
-                        "INVALID_WRITING_TASK_IMAGE",
-                        "The Writing image is invalid or does not belong to this draft version.",
+                        "WRITING_TASK_NOT_FOUND", "The Writing task does not exist.", 404
+                    )
+                if task.module.test_version.status != VersionStatus.DRAFT:
+                    raise AppError(
+                        "TEST_VERSION_IMMUTABLE", "Published versions cannot be changed.", 409
+                    )
+                if task.task_number == 2 and body.image_asset_id is not None:
+                    raise AppError(
+                        "WRITING_TASK_IMAGE_NOT_ALLOWED",
+                        "Writing Task 2 cannot have an image attachment.",
                         422,
                     )
-            previous_asset_id = task.image_asset_id
-            task.prompt = body.prompt.strip()
-            task.image_asset = asset
-            task.minimum_recommended_words = body.minimum_recommended_words
-            task.recommended_duration_seconds = body.recommended_duration_seconds
-            await self.session.flush()
-            if previous_asset_id is not None and previous_asset_id != task.image_asset_id:
+                asset: Asset | None = None
+                if body.image_asset_id is not None:
+                    from app.services.tests import TestService
+
+                    repaired, copied_path = await TestService(
+                        self.session
+                    ).resolve_owned_or_inherited_asset(
+                        target_version=task.module.test_version,
+                        requested_asset_id=body.image_asset_id,
+                        current_asset_id=task.image_asset_id,
+                        asset_type=AssetType.WRITING_TASK_IMAGE,
+                    )
+                    asset = (
+                        repaired
+                        if (
+                            repaired is not None
+                            and repaired.mime_type in LocalAssetStorage.IMAGE_TYPES
+                        )
+                        else await self.session.scalar(
+                            select(Asset).where(
+                                Asset.id == body.image_asset_id,
+                                Asset.test_version_id == task.module.test_version_id,
+                                Asset.asset_type == AssetType.WRITING_TASK_IMAGE,
+                                Asset.mime_type.in_(LocalAssetStorage.IMAGE_TYPES),
+                            )
+                        )
+                    )
+                    if asset is None:
+                        raise AppError(
+                            "INVALID_WRITING_TASK_IMAGE",
+                            "The Writing image is invalid or does not belong to this draft version.",
+                            422,
+                        )
+                previous_asset_id = task.image_asset_id
+                task.prompt = body.prompt.strip()
+                task.image_asset = asset
+                task.minimum_recommended_words = body.minimum_recommended_words
+                task.recommended_duration_seconds = body.recommended_duration_seconds
+                await self.session.flush()
+                if previous_asset_id is not None and previous_asset_id != task.image_asset_id:
+                    from app.services.tests import TestService
+
+                    deleted_path = await TestService(self.session).cleanup_asset_if_unreferenced(
+                        previous_asset_id
+                    )
+        except BaseException:
+            if copied_path:
                 from app.services.tests import TestService
 
-                deleted_path = await TestService(self.session).cleanup_asset_if_unreferenced(
-                    previous_asset_id
-                )
+                TestService._delete_files([copied_path])
+            raise
         if deleted_path:
             from app.services.tests import TestService
 

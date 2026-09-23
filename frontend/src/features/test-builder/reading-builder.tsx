@@ -134,7 +134,7 @@ export function ReadingBuilder({ version }: { version: BuilderVersion }) {
                   <GroupSummary key={group.id} group={group} passageNumber={passage.order_index + 1} onMove={(offset) => moveGroup(passage.id, group.id, offset)} onEdit={() => setEditingGroup({ passageId: passage.id, group })} onDelete={() => run(() => deleteQuestionGroup(group.id))} />
                 ))}
                 {editingGroup?.passageId === passage.id ? (
-                  <QuestionGroupEditor initial={editingGroup.group} nextQuestionNumber={nextNumber} baseQuestionNumber={canonicalReadingGroupStart(reading.passages, editingGroup.group)} passageBlocks={passage.blocks} passageNumber={passage.order_index + 1} testVersionId={version.id} onCancel={() => setEditingGroup(null)} onSave={(body) => run(() => editingGroup.group.id ? updateQuestionGroup(editingGroup.group.id, body) : createQuestionGroup(passage.id, body))} onAutosave={editingGroup.group.id ? (body) => updateQuestionGroup(editingGroup.group.id!, body) : undefined} />
+                  <QuestionGroupEditor initial={editingGroup.group} moduleType="READING" nextQuestionNumber={nextNumber} baseQuestionNumber={canonicalReadingGroupStart(reading.passages, editingGroup.group)} passageBlocks={passage.blocks} passageNumber={passage.order_index + 1} testVersionId={version.id} onCancel={() => setEditingGroup(null)} onSave={(body) => run(() => editingGroup.group.id ? updateQuestionGroup(editingGroup.group.id, body) : createQuestionGroup(passage.id, body))} onAutosave={editingGroup.group.id ? (body) => updateQuestionGroup(editingGroup.group.id!, body) : undefined} />
                 ) : (
                   <NewGroupButton nextNumber={nextNumber} orderIndex={nextGroupOrder} passageBlocks={passage.blocks} onCreate={(group) => setEditingGroup({ passageId: passage.id, group })} />
                 )}
@@ -233,7 +233,7 @@ function GroupSummary({ group, passageNumber, onMove, onEdit, onDelete }: { grou
 function NewGroupButton({ nextNumber, orderIndex, passageBlocks, onCreate }: { nextNumber: number; orderIndex: number; passageBlocks: TextBlock[]; onCreate: (group: QuestionGroupModel) => void }) {
   const [type, setType] = useState<QuestionType>("multiple_choice");
   function create() {
-    const group = { ...questionRegistry[type].createDefault(nextNumber), order_index: orderIndex };
+    const group = { ...questionRegistry[type].createDefault(nextNumber, { moduleType: "READING" }), order_index: orderIndex };
     if (type === "matching_headings") group.questions[0].config = { target_block_id: passageBlocks.find((block) => block.type === "paragraph")?.id ?? "" };
     onCreate(group);
   }

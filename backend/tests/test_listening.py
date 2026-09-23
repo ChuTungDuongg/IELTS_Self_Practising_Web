@@ -1,7 +1,6 @@
 from uuid import uuid4
 
 import pytest
-from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,6 +13,7 @@ from app.models.enums import AssetType, ModuleType, VersionStatus
 from app.schemas.content import ListeningModuleAudioWrite, ListeningPartWrite, QuestionGroupWrite
 from app.services.attempts import AttemptService
 from app.services.listening import ListeningService
+from app.services.reading import ReadingService
 from app.services.tests import TestService as VersionService
 
 
@@ -51,18 +51,76 @@ def test_multiple_choice_multiple_evaluates_as_an_unordered_set() -> None:
     assert not question_registry.evaluate("multiple_choice_multiple", key, ["a", "b"], config)
 
 
-def test_visual_markers_require_normalized_coordinates() -> None:
-    with pytest.raises(ValidationError):
-        question_registry.validate_group(
-            "map_labelling",
+def test_plan_and_map_group_validation_requires_options_without_markers() -> None:
+    image_asset_id = uuid4()
+    option_ids = [str(uuid4()), str(uuid4())]
+    for question_type in ("plan_labelling", "map_labelling"):
+        body = QuestionGroupWrite.model_validate(
             {
-                "options": [
-                    {"id": "a", "label": "A", "text": "One"},
-                    {"id": "b", "label": "B", "text": "Two"},
+                "question_type": question_type,
+                "instruction": "Choose the correct letter.",
+                "config": {
+                    "options": [
+                        {"id": option_ids[0], "label": "A", "text": "Entrance"},
+                        {"id": option_ids[1], "label": "B", "text": "Exit"},
+                    ]
+                },
+                "order_index": 0,
+                "questions": [
+                    {
+                        "id": uuid4(),
+                        "number": 16,
+                        "prompt": "Scarecrow",
+                        "config": {},
+                        "answer_key": {"kind": "SINGLE_OPTION", "value": option_ids[0]},
+                        "order_index": 0,
+                    }
                 ],
-                "markers": [{"id": "m", "question_id": "q", "x": 1.1, "y": 0.5}],
-            },
+                "image_asset_id": image_asset_id,
+            }
         )
+
+        ReadingService._validate_group_body(body, [], module_type=ModuleType.LISTENING)
+
+
+def test_publish_validation_accepts_map_without_marker_references() -> None:
+    version = VersionRecord(version_number=1, status=VersionStatus.DRAFT)
+    module = ModuleRecord(module_type=ModuleType.LISTENING, order_index=0)
+    part = ListeningPart(title="Section 1", order_index=0)
+    options = [
+        {"id": str(uuid4()), "label": "A", "text": "Entrance"},
+        {"id": str(uuid4()), "label": "B", "text": "Exit"},
+    ]
+    image = Asset(
+        asset_type=AssetType.QUESTION_IMAGE,
+        relative_path=f"images/{uuid4()}.png",
+        mime_type="image/png",
+        original_name="fictional-map.png",
+        file_size=10,
+    )
+    group = QuestionGroup(
+        question_type="map_labelling",
+        instruction="Choose the correct letter.",
+        config={"options": options},
+        order_index=0,
+        image_asset=image,
+    )
+    group.questions.append(
+        Question(
+            number=1,
+            prompt="Scarecrow",
+            config={},
+            answer_key={"kind": "SINGLE_OPTION", "value": options[0]["id"]},
+            order_index=0,
+        )
+    )
+    part.question_groups.append(group)
+    module.listening_parts.append(part)
+    module.question_groups.append(group)
+    version.modules.append(module)
+    version.assets.append(image)
+
+    assert VersionService.validate_version(version).valid
 
 
 def test_active_exam_group_never_contains_answer_keys() -> None:
@@ -275,3 +333,98 @@ async def test_listening_part_crud_and_group_numbering_use_stable_part_ids(
     await service.delete_part(second_id)
     await db_session.rollback()
     assert await db_session.get(ListeningPart, second_id) is None
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("question_type", ["plan_labelling", "map_labelling"])
+async def test_listening_visual_group_builder_dto_round_trips_through_update(
+    db_session: AsyncSession, question_type: str
+) -> None:
+    test = DomainTest(title=f"Listening {question_type} round trip")
+    version = VersionRecord(version_number=1, status=VersionStatus.DRAFT)
+    module = ModuleRecord(module_type=ModuleType.LISTENING, order_index=0)
+    part = ListeningPart(title="Section 1", order_index=0)
+    test.versions.append(version)
+    version.modules.append(module)
+    module.listening_parts.append(part)
+    image = Asset(
+        asset_type=AssetType.QUESTION_IMAGE,
+        relative_path=f"images/{uuid4()}.png",
+        mime_type="image/png",
+        original_name="fictional-map.png",
+        file_size=10,
+    )
+    version.assets.append(image)
+    option_ids = [str(uuid4()), str(uuid4())]
+    question_id = uuid4()
+    marker_id = uuid4()
+    async with db_session.begin():
+        db_session.add(test)
+        await db_session.flush()
+
+    body = QuestionGroupWrite.model_validate(
+        {
+            "question_type": question_type,
+            "instruction": "Choose the correct letter.",
+            "config": {
+                "options": [
+                    {"id": option_ids[0], "label": "A", "text": "Entrance"},
+                    {"id": option_ids[1], "label": "B", "text": "Exit"},
+                ],
+                "markers": [
+                    {
+                        "id": str(marker_id),
+                        "question_id": str(question_id),
+                        "x": 0.5,
+                        "y": 0.5,
+                    }
+                ],
+            },
+            "order_index": 0,
+            "questions": [
+                {
+                    "id": question_id,
+                    "number": 16,
+                    "prompt": "Scarecrow",
+                    "config": {},
+                    "answer_key": {"kind": "SINGLE_OPTION", "value": option_ids[0]},
+                    "order_index": 0,
+                }
+            ],
+            "image_asset_id": image.id,
+        }
+    )
+    service = ListeningService(db_session)
+    created = await service.create_group(part.id, body)
+    group_id = created.id
+    image_id = image.id
+    await db_session.rollback()
+
+    persisted = await service.get_group(group_id)
+    assert persisted.config == {"options": body.config["options"]}
+    persisted_body = QuestionGroupWrite.model_validate(persisted.model_dump(mode="json"))
+    await db_session.rollback()
+    unchanged = await service.update_group(
+        group_id,
+        persisted_body,
+    )
+    assert unchanged.questions[0].id == question_id
+    assert unchanged.image_asset_id == image_id
+    assert unchanged.questions[0].answer_key["value"] == option_ids[0]
+    await db_session.rollback()
+
+    edited_body = QuestionGroupWrite.model_validate(unchanged.model_dump(mode="json"))
+    edited_body.config["options"][0]["text"] = "Edited entrance"
+    edited_body.questions[0].prompt = "Edited scarecrow"
+    edited = await service.update_group(group_id, edited_body)
+
+    assert edited.config == {
+        "options": [
+            {"id": option_ids[0], "label": "A", "text": "Edited entrance"},
+            {"id": option_ids[1], "label": "B", "text": "Exit"},
+        ]
+    }
+    assert edited.questions[0].id == question_id
+    assert edited.questions[0].prompt == "Edited scarecrow"
+    assert edited.questions[0].answer_key["value"] == option_ids[0]
+    assert edited.image_asset_id == image_id

@@ -86,7 +86,7 @@ export function ListeningBuilder({ version }: { version: BuilderVersion }) {
   }
 
   function createGroup() {
-    setEditing({ ...questionRegistry[type].createDefault(nextNumber), order_index: nextOrder });
+    setEditing({ ...questionRegistry[type].createDefault(nextNumber, { moduleType: "LISTENING" }), order_index: nextOrder });
   }
 
   function moveGroup(groupId: string, offset: number) {
@@ -131,7 +131,7 @@ export function ListeningBuilder({ version }: { version: BuilderVersion }) {
               })}
               {editing ? (
                 <div>
-                  <QuestionGroupEditor initial={editing} nextQuestionNumber={nextNumber} baseQuestionNumber={canonicalListeningGroupStart(parts, editing)} passageBlocks={[]} testVersionId={version.id} onCancel={() => setEditing(null)} onSave={(body) => run(() => editing.id ? updateListeningQuestionGroup(editing.id, body) : createListeningQuestionGroup(part.id, body))} onAutosave={editing.id ? (body) => updateListeningQuestionGroup(editing.id!, body) : undefined} />
+                  <QuestionGroupEditor initial={editing} moduleType="LISTENING" nextQuestionNumber={nextNumber} baseQuestionNumber={canonicalListeningGroupStart(parts, editing)} passageBlocks={[]} testVersionId={version.id} onCancel={() => setEditing(null)} onSave={(body) => run(() => editing.id ? updateListeningQuestionGroup(editing.id, body) : createListeningQuestionGroup(part.id, body))} onAutosave={editing.id ? (body) => updateListeningQuestionGroup(editing.id!, body) : undefined} />
                 </div>
               ) : (
                 <div className="new-group-row"><label className="field-label flex-1">Listening template<select className="select-field" value={type} onChange={(event) => setType(event.target.value as QuestionType)}>{listeningQuestionTypeOptions.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label><button className="btn btn-listening" onClick={createGroup}><PlusIcon className="size-4" /> Add question group</button></div>

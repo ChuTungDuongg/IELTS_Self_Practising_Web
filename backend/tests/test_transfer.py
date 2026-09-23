@@ -3,7 +3,7 @@ import tempfile
 import zipfile
 from datetime import UTC, datetime
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from pydantic import ValidationError
@@ -332,13 +332,21 @@ async def test_transfer_round_trip_remaps_ids_assets_and_can_import_twice(
         if group.question_type == "form_completion"
     )
     assert completion.config["layout"]["nodes"][1]["question_id"] == str(completion.questions[0].id)
-    marker_group = next(
+    map_group = next(
         group
         for module in imported.modules
         for group in module.question_groups
         if group.question_type == "map_labelling"
     )
-    assert marker_group.config["markers"][0]["question_id"] == str(marker_group.questions[0].id)
+    map_options = map_group.config["options"]
+    assert [
+        {"label": option["label"], "text": option["text"]} for option in map_options
+    ] == [
+        {"label": "A", "text": "Library"},
+        {"label": "B", "text": "Cafe"},
+    ]
+    assert all(UUID(option["id"]) for option in map_options)
+    assert map_group.questions[0].answer_key["value"] == map_options[0]["id"]
     imported_assets = {asset.asset_type: asset for asset in imported.assets}
     for asset_type, (source_id, source_path, source_bytes) in source_asset_data.items():
         restored = imported_assets[asset_type]

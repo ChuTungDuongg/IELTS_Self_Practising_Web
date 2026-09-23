@@ -66,34 +66,52 @@ class ListeningService:
         self, module_id: uuid.UUID, body: ListeningModuleAudioWrite
     ) -> BuilderModule:
         deleted_path: str | None = None
-        async with self.session.begin():
-            module = await self._draft_module(module_id)
-            previous_asset_id = module.audio_asset_id
-            if body.asset_id is None:
-                module.audio_asset_id = None
-            else:
-                asset = await self.session.scalar(
-                    select(Asset).where(
-                        Asset.id == body.asset_id,
-                        Asset.test_version_id == module.test_version_id,
-                        Asset.asset_type == AssetType.LISTENING_AUDIO,
+        copied_path: str | None = None
+        try:
+            async with self.session.begin():
+                module = await self._draft_module(module_id)
+                previous_asset_id = module.audio_asset_id
+                if body.asset_id is None:
+                    module.audio_asset_id = None
+                else:
+                    from app.services.tests import TestService
+
+                    repaired, copied_path = await TestService(
+                        self.session
+                    ).resolve_owned_or_inherited_asset(
+                        target_version=module.test_version,
+                        requested_asset_id=body.asset_id,
+                        current_asset_id=module.audio_asset_id,
+                        asset_type=AssetType.LISTENING_AUDIO,
                     )
-                )
-                if asset is None:
-                    raise AppError(
-                        "INVALID_AUDIO_ASSET",
-                        "The audio asset does not belong to this draft version.",
-                        422,
+                    asset = repaired or await self.session.scalar(
+                        select(Asset).where(
+                            Asset.id == body.asset_id,
+                            Asset.test_version_id == module.test_version_id,
+                            Asset.asset_type == AssetType.LISTENING_AUDIO,
+                        )
                     )
-                module.audio_asset_id = asset.id
-            await self.session.flush()
-            if previous_asset_id is not None and previous_asset_id != module.audio_asset_id:
+                    if asset is None:
+                        raise AppError(
+                            "INVALID_AUDIO_ASSET",
+                            "The audio asset does not belong to this draft version.",
+                            422,
+                        )
+                    module.audio_asset_id = asset.id
+                await self.session.flush()
+                if previous_asset_id is not None and previous_asset_id != module.audio_asset_id:
+                    from app.services.tests import TestService
+
+                    deleted_path = await TestService(self.session).cleanup_asset_if_unreferenced(
+                        previous_asset_id
+                    )
+                version_id = module.test_version_id
+        except BaseException:
+            if copied_path:
                 from app.services.tests import TestService
 
-                deleted_path = await TestService(self.session).cleanup_asset_if_unreferenced(
-                    previous_asset_id
-                )
-            version_id = module.test_version_id
+                TestService._delete_files([copied_path])
+            raise
         if deleted_path:
             from app.services.tests import TestService
 
@@ -108,8 +126,10 @@ class ListeningService:
             part = await self._draft_part(part_id)
             await self._validate_image_asset(part.module.test_version_id, body)
             group_id = uuid.uuid4()
-            body = self.shared._normalize_group_body(body, group_id, [])
-            self.shared._validate_group_body(body, [])
+            body = self.shared._normalize_group_body(
+                body, group_id, [], module_type=ModuleType.LISTENING
+            )
+            self.shared._validate_group_body(body, [], module_type=ModuleType.LISTENING)
             await self.shared._ensure_numbers_available(part.module_id, body, None)
             group = QuestionGroup(
                 id=group_id,
@@ -131,44 +151,67 @@ class ListeningService:
         self, group_id: uuid.UUID, body: QuestionGroupWrite
     ) -> BuilderQuestionGroup:
         deleted_path: str | None = None
-        async with self.session.begin():
-            group = await self._draft_group(group_id)
-            previous_image_asset_id = group.image_asset_id
-            await self._validate_image_asset(group.module.test_version_id, body)
-            body = self.shared._normalize_group_body(body, group.id, [])
-            self.shared._validate_group_body(body, [])
-            await self.shared._ensure_numbers_available(group.module_id, body, group.id)
-            group.question_type = body.question_type
-            group.instruction = body.instruction
-            group.config = body.config
-            group.image_asset_id = body.image_asset_id
-            group.order_index = body.order_index
-            existing = {item.id: item for item in group.questions}
-            for temporary_index, question in enumerate(existing.values(), start=1):
-                question.number = -temporary_index
-                question.order_index = -temporary_index
-            await self.session.flush()
-            retained: set[uuid.UUID] = set()
-            for item in body.questions:
-                if item.id is not None and item.id in existing:
-                    question = existing[item.id]
-                    self._apply_question(question, item)
-                    retained.add(item.id)
-                else:
-                    question = Question(id=item.id or uuid.uuid4())
-                    self._apply_question(question, item)
-                    group.questions.append(question)
-            for question_id, question in existing.items():
-                if question_id not in retained:
-                    group.questions.remove(question)
-            await self.session.flush()
-            await self.shared._canonicalize_module(group.module_id)
-            if previous_image_asset_id and previous_image_asset_id != group.image_asset_id:
+        copied_path: str | None = None
+        try:
+            async with self.session.begin():
+                group = await self._draft_group(group_id)
+                previous_image_asset_id = group.image_asset_id
+                if body.image_asset_id is not None:
+                    from app.services.tests import TestService
+
+                    repaired, copied_path = await TestService(
+                        self.session
+                    ).resolve_owned_or_inherited_asset(
+                        target_version=group.module.test_version,
+                        requested_asset_id=body.image_asset_id,
+                        current_asset_id=group.image_asset_id,
+                        asset_type=AssetType.QUESTION_IMAGE,
+                    )
+                    if repaired is not None:
+                        body = body.model_copy(update={"image_asset_id": repaired.id})
+                await self._validate_image_asset(group.module.test_version_id, body)
+                body = self.shared._normalize_group_body(
+                    body, group.id, [], module_type=ModuleType.LISTENING
+                )
+                self.shared._validate_group_body(body, [], module_type=ModuleType.LISTENING)
+                await self.shared._ensure_numbers_available(group.module_id, body, group.id)
+                group.question_type = body.question_type
+                group.instruction = body.instruction
+                group.config = body.config
+                group.image_asset_id = body.image_asset_id
+                group.order_index = body.order_index
+                existing = {item.id: item for item in group.questions}
+                for temporary_index, question in enumerate(existing.values(), start=1):
+                    question.number = -temporary_index
+                    question.order_index = -temporary_index
+                await self.session.flush()
+                retained: set[uuid.UUID] = set()
+                for item in body.questions:
+                    if item.id is not None and item.id in existing:
+                        question = existing[item.id]
+                        self._apply_question(question, item)
+                        retained.add(item.id)
+                    else:
+                        question = Question(id=item.id or uuid.uuid4())
+                        self._apply_question(question, item)
+                        group.questions.append(question)
+                for question_id, question in existing.items():
+                    if question_id not in retained:
+                        group.questions.remove(question)
+                await self.session.flush()
+                await self.shared._canonicalize_module(group.module_id)
+                if previous_image_asset_id and previous_image_asset_id != group.image_asset_id:
+                    from app.services.tests import TestService
+
+                    deleted_path = await TestService(self.session).cleanup_asset_if_unreferenced(
+                        previous_image_asset_id
+                    )
+        except BaseException:
+            if copied_path:
                 from app.services.tests import TestService
 
-                deleted_path = await TestService(self.session).cleanup_asset_if_unreferenced(
-                    previous_image_asset_id
-                )
+                TestService._delete_files([copied_path])
+            raise
         if deleted_path:
             from app.services.tests import TestService
 
@@ -192,7 +235,7 @@ class ListeningService:
         )
         if group is None or group.listening_part_id is None:
             raise AppError("QUESTION_GROUP_NOT_FOUND", "The question group does not exist.", 404)
-        return ReadingService._present_group(group, [])
+        return ReadingService._present_group(group, [], module_type=ModuleType.LISTENING)
 
     async def _draft_module_for_version(self, version_id: uuid.UUID) -> TestModule:
         version = await self.session.scalar(

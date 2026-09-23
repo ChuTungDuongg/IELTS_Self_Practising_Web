@@ -739,6 +739,7 @@ class TransferService:
                         questions=rows,
                         group_id=group.id,
                         passage_blocks=blocks_by_passage.get(passage_id, []),
+                        module_type=module.module_type,
                     )
                     for question, normalized in zip(group.questions, questions, strict=True):
                         question_registry.validate(
@@ -755,7 +756,9 @@ class TransferService:
                             answer_key=normalized["answer_key"],
                             passage_blocks=blocks_by_passage.get(passage_id, []),
                         )
-                    TestService._validate_group_references(group, config, questions)
+                    TestService._validate_group_references(
+                        group, config, questions, module_type=module.module_type
+                    )
                     group.config = config
                     for question, normalized in zip(group.questions, questions, strict=True):
                         question.config = normalized["config"]

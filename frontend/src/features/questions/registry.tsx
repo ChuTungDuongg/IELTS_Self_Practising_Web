@@ -43,6 +43,7 @@ export type QuestionInstruction = {
 };
 
 export type InstructionContext = { passageNumber?: number };
+export type QuestionCreationContext = { moduleType?: "READING" | "LISTENING" };
 export type InstructionGroup = Pick<QuestionGroupModel, "question_type" | "instruction" | "config"> & {
   questions: Array<{ config: Record<string, unknown> }>;
 };
@@ -58,7 +59,7 @@ export type QuestionTypeDefinition = {
   responseSchema: z.ZodType;
   configSchema: z.ZodType;
   instruction: (group: InstructionGroup, context: InstructionContext) => QuestionInstruction;
-  createDefault: (number: number) => QuestionGroupModel;
+  createDefault: (number: number, context?: QuestionCreationContext) => QuestionGroupModel;
 };
 
 const optionSchema = z.object({ id: z.string().uuid(), label: z.string().min(1), text: z.string().min(1) });
@@ -159,8 +160,23 @@ const definitions: QuestionTypeDefinition[] = [
 for (const [id, label] of [["plan_labelling", "Plan Labelling"], ["map_labelling", "Map Labelling"]] as const) {
   definitions.push({
     id, label, category: "listening", BuilderEditor: VisualLabellingEditor, AnswerKeyEditor: VisualLabellingEditor, ExamRenderer: VisualLabellingRenderer, ReviewRenderer: VisualLabellingRenderer,
-    responseSchema: z.string(), configSchema: z.object({}), instruction: staticInstruction(`Label the ${label.split(" ")[0].toLowerCase()} using the options provided.`),
-    createDefault: (number) => { const options = newOptions(); const questionId = crypto.randomUUID(); return { question_type: id, instruction: "", config: { options, markers: [{ id: crypto.randomUUID(), question_id: questionId, x: 0.5, y: 0.5 }] }, order_index: 0, questions: [{ id: questionId, number, prompt: "Choose the correct label.", config: {}, answer_key: { kind: "SINGLE_OPTION", value: options[0].id }, order_index: 0 }] }; },
+    responseSchema: z.string(), configSchema: z.object({
+      options: z.array(optionSchema).min(2),
+      markers: z.array(z.object({
+        id: z.string().uuid(),
+        question_id: z.string().uuid(),
+        x: z.number().min(0).max(1),
+        y: z.number().min(0).max(1),
+      })).optional(),
+    }), instruction: staticInstruction(`Label the ${label.split(" ")[0].toLowerCase()} using the options provided.`),
+    createDefault: (number, context) => {
+      const options = newOptions();
+      const questionId = crypto.randomUUID();
+      const config = context?.moduleType === "LISTENING"
+        ? { options }
+        : { options, markers: [{ id: crypto.randomUUID(), question_id: questionId, x: 0.5, y: 0.5 }] };
+      return { question_type: id, instruction: "", config, order_index: 0, questions: [{ id: questionId, number, prompt: "Choose the correct label.", config: {}, answer_key: { kind: "SINGLE_OPTION", value: options[0].id }, order_index: 0 }] };
+    },
   });
 }
 

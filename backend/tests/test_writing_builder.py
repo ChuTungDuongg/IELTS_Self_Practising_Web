@@ -1,3 +1,5 @@
+from pathlib import Path
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -199,11 +201,23 @@ async def test_writing_module_delete_removes_tasks(db_session: AsyncSession) -> 
 
 
 @pytest.mark.integration
-async def test_clone_preserves_writing_tasks_and_shared_image_reference(
-    db_session: AsyncSession,
+async def test_clone_preserves_writing_tasks_with_an_independent_image_copy(
+    db_session: AsyncSession, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.setattr(
+        "app.services.tests.get_settings",
+        lambda: SimpleNamespace(
+            resolved_storage_root=tmp_path,
+            max_image_upload_mb=10,
+            max_audio_upload_mb=100,
+        ),
+    )
     test, source = await _persist_version(db_session, status=VersionStatus.PUBLISHED)
     image = _asset(source.id)
+    source_file = tmp_path / image.relative_path
+    source_file.parent.mkdir(parents=True, exist_ok=True)
+    source_file.write_bytes(b"fictional writing chart")
+    image.file_size = source_file.stat().st_size
     module = DomainModule(module_type=ModuleType.WRITING, order_index=0)
     task_one = WritingTask(
         task_number=1,
@@ -237,9 +251,13 @@ async def test_clone_preserves_writing_tasks_and_shared_image_reference(
         "Describe fictional data.",
         "Discuss a fictional proposition.",
     ]
-    assert writing.writing_tasks[0].image_asset_id == image.id
+    assert writing.writing_tasks[0].image_asset_id != image.id
     assert writing.writing_tasks[0].image_asset is not None
-    assert writing.writing_tasks[0].image_asset.id == image.id
+    assert writing.writing_tasks[0].image_asset.test_version_id == clone.id
+    assert writing.writing_tasks[0].image_asset.relative_path != image.relative_path
+    assert (tmp_path / writing.writing_tasks[0].image_asset.relative_path).read_bytes() == (
+        source_file.read_bytes()
+    )
 
 
 def test_partial_writing_module_is_valid_with_readiness_warning() -> None:

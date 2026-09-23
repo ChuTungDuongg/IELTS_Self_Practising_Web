@@ -218,6 +218,102 @@ class TestService:
         await self.session.flush()
         return path
 
+    async def resolve_owned_or_inherited_asset(
+        self,
+        *,
+        target_version: TestVersion,
+        requested_asset_id: uuid.UUID,
+        current_asset_id: uuid.UUID | None,
+        asset_type: AssetType,
+    ) -> tuple[Asset | None, str | None]:
+        owned = await self.session.scalar(
+            select(Asset).where(
+                Asset.id == requested_asset_id,
+                Asset.test_version_id == target_version.id,
+                Asset.asset_type == asset_type,
+            )
+        )
+        if owned is not None:
+            return owned, None
+        if requested_asset_id != current_asset_id:
+            return None, None
+
+        inherited = await self.session.scalar(
+            select(Asset)
+            .join(TestVersion, Asset.test_version_id == TestVersion.id)
+            .where(
+                Asset.id == requested_asset_id,
+                Asset.asset_type == asset_type,
+                TestVersion.test_id == target_version.test_id,
+                TestVersion.version_number < target_version.version_number,
+                TestVersion.status.in_({VersionStatus.PUBLISHED, VersionStatus.ARCHIVED}),
+            )
+        )
+        if inherited is None:
+            return None, None
+
+        if asset_type == AssetType.LISTENING_AUDIO:
+            inherited_reference = await self.session.scalar(
+                select(TestModule.id)
+                .where(
+                    TestModule.test_version_id == inherited.test_version_id,
+                    TestModule.audio_asset_id == inherited.id,
+                )
+                .limit(1)
+            )
+        elif asset_type == AssetType.QUESTION_IMAGE:
+            inherited_reference = await self.session.scalar(
+                select(QuestionGroup.id)
+                .join(TestModule, QuestionGroup.module_id == TestModule.id)
+                .where(
+                    TestModule.test_version_id == inherited.test_version_id,
+                    QuestionGroup.image_asset_id == inherited.id,
+                )
+                .limit(1)
+            )
+        else:
+            inherited_reference = await self.session.scalar(
+                select(WritingTask.id)
+                .join(TestModule, WritingTask.module_id == TestModule.id)
+                .where(
+                    TestModule.test_version_id == inherited.test_version_id,
+                    WritingTask.image_asset_id == inherited.id,
+                )
+                .limit(1)
+            )
+        if inherited_reference is None:
+            return None, None
+
+        settings = get_settings()
+        storage = LocalAssetStorage(settings.resolved_storage_root)
+        is_audio = asset_type == AssetType.LISTENING_AUDIO
+        stored = storage.store_file(
+            category="audio" if is_audio else "images",
+            mime_type=inherited.mime_type,
+            original_name=inherited.original_name,
+            source=storage.resolve(inherited.relative_path),
+            max_bytes=(settings.max_audio_upload_mb if is_audio else settings.max_image_upload_mb)
+            * 1024
+            * 1024,
+        )
+        try:
+            copy = Asset(
+                id=uuid.uuid4(),
+                test_version_id=target_version.id,
+                asset_type=inherited.asset_type,
+                relative_path=stored.relative_path,
+                mime_type=inherited.mime_type,
+                original_name=inherited.original_name,
+                file_size=stored.size,
+                created_at=datetime.now(UTC),
+            )
+            self.session.add(copy)
+            await self.session.flush()
+        except BaseException:
+            storage.delete(stored.relative_path)
+            raise
+        return copy, stored.relative_path
+
     @staticmethod
     def _delete_files(paths: list[str]) -> None:
         storage = LocalAssetStorage(get_settings().resolved_storage_root)
@@ -342,53 +438,112 @@ class TestService:
         return version
 
     async def create_version(self, test_id: uuid.UUID, data: VersionCreate) -> TestVersion:
-        async with self.session.begin():
-            test = await self.session.scalar(
-                select(Test).where(Test.id == test_id).with_for_update()
-            )
-            if test is None:
-                raise AppError("TEST_NOT_FOUND", "The requested test does not exist.", 404)
-            if test.archived_at is not None:
-                raise AppError("TEST_ARCHIVED", "Restore this test before editing it.", 409)
-            existing_draft_id = await self.session.scalar(
-                select(TestVersion.id).where(
-                    TestVersion.test_id == test_id,
-                    TestVersion.status == VersionStatus.DRAFT,
+        created_paths: list[str] = []
+        try:
+            async with self.session.begin():
+                test = await self.session.scalar(
+                    select(Test).where(Test.id == test_id).with_for_update()
                 )
-            )
-            if existing_draft_id is not None:
-                version_id = existing_draft_id
-            else:
-                number = await self.repository.next_version_number(test_id)
-                version = TestVersion(
-                    test_id=test_id,
-                    version_number=number,
-                    status=VersionStatus.DRAFT,
-                    modules=[],
+                if test is None:
+                    raise AppError("TEST_NOT_FOUND", "The requested test does not exist.", 404)
+                if test.archived_at is not None:
+                    raise AppError("TEST_ARCHIVED", "Restore this test before editing it.", 409)
+                existing_draft_id = await self.session.scalar(
+                    select(TestVersion.id).where(
+                        TestVersion.test_id == test_id,
+                        TestVersion.status == VersionStatus.DRAFT,
+                    )
                 )
-                self.session.add(version)
-                if data.source_version_id is not None:
-                    source = await self.repository.get_version(data.source_version_id)
-                    if source is None or source.test_id != test_id:
-                        raise AppError(
-                            "TEST_VERSION_NOT_FOUND",
-                            "The source version does not belong to this test.",
-                            404,
-                        )
-                    self._clone_content(source, version)
-                await self.session.flush()
-                version_id = version.id
+                if existing_draft_id is not None:
+                    version_id = existing_draft_id
+                else:
+                    number = await self.repository.next_version_number(test_id)
+                    version = TestVersion(
+                        test_id=test_id,
+                        version_number=number,
+                        status=VersionStatus.DRAFT,
+                        modules=[],
+                        assets=[],
+                    )
+                    self.session.add(version)
+                    if data.source_version_id is not None:
+                        source = await self.repository.get_version(data.source_version_id)
+                        if source is None or source.test_id != test_id:
+                            raise AppError(
+                                "TEST_VERSION_NOT_FOUND",
+                                "The source version does not belong to this test.",
+                                404,
+                            )
+                        asset_map = self._clone_referenced_assets(source, version, created_paths)
+                        self._clone_content(source, version, asset_map)
+                    await self.session.flush()
+                    version_id = version.id
+        except BaseException:
+            self._delete_files(created_paths)
+            raise
         return await self.get_version(version_id)
 
     @staticmethod
-    def _clone_content(source: TestVersion, target: TestVersion) -> None:
+    def _clone_referenced_assets(
+        source: TestVersion,
+        target: TestVersion,
+        created_paths: list[str],
+    ) -> dict[uuid.UUID, Asset]:
+        referenced: dict[uuid.UUID, Asset] = {}
+        for module in source.modules:
+            if module.audio_asset is not None:
+                referenced[module.audio_asset.id] = module.audio_asset
+            for task in module.writing_tasks:
+                if task.image_asset is not None:
+                    referenced[task.image_asset.id] = task.image_asset
+            for group in module.question_groups:
+                if group.image_asset is not None:
+                    referenced[group.image_asset.id] = group.image_asset
+
+        settings = get_settings()
+        storage = LocalAssetStorage(settings.resolved_storage_root)
+        cloned: dict[uuid.UUID, Asset] = {}
+        for asset_id, asset in referenced.items():
+            is_audio = asset.asset_type == AssetType.LISTENING_AUDIO
+            stored = storage.store_file(
+                category="audio" if is_audio else "images",
+                mime_type=asset.mime_type,
+                original_name=asset.original_name,
+                source=storage.resolve(asset.relative_path),
+                max_bytes=(
+                    settings.max_audio_upload_mb if is_audio else settings.max_image_upload_mb
+                )
+                * 1024
+                * 1024,
+            )
+            created_paths.append(stored.relative_path)
+            copy = Asset(
+                id=uuid.uuid4(),
+                asset_type=asset.asset_type,
+                relative_path=stored.relative_path,
+                mime_type=asset.mime_type,
+                original_name=asset.original_name,
+                file_size=stored.size,
+                created_at=datetime.now(UTC),
+            )
+            target.assets.append(copy)
+            cloned[asset_id] = copy
+        return cloned
+
+    @staticmethod
+    def _clone_content(
+        source: TestVersion,
+        target: TestVersion,
+        asset_map: dict[uuid.UUID, Asset] | None = None,
+    ) -> None:
+        asset_map = asset_map or {}
         for module in source.modules:
             new_module = TestModule(
                 module_type=module.module_type,
                 title=module.title,
                 recommended_duration_seconds=module.recommended_duration_seconds,
                 order_index=module.order_index,
-                audio_asset_id=module.audio_asset_id,
+                audio_asset=asset_map.get(module.audio_asset_id),
             )
             target.modules.append(new_module)
             passage_map: dict[uuid.UUID, ReadingPassage] = {}
@@ -414,7 +569,7 @@ class TestService:
                     WritingTask(
                         task_number=task.task_number,
                         prompt=task.prompt,
-                        image_asset_id=task.image_asset_id,
+                        image_asset=asset_map.get(task.image_asset_id),
                         minimum_recommended_words=task.minimum_recommended_words,
                         recommended_duration_seconds=task.recommended_duration_seconds,
                         order_index=task.order_index,
@@ -425,7 +580,7 @@ class TestService:
                 new_group = QuestionGroup(
                     passage=passage_map.get(group.passage_id),
                     listening_part=part_map.get(group.listening_part_id),
-                    image_asset_id=group.image_asset_id,
+                    image_asset=asset_map.get(group.image_asset_id),
                     section_reference=group.section_reference,
                     question_type=group.question_type,
                     instruction=group.instruction,
@@ -538,6 +693,17 @@ class TestService:
                         message="IELTS readiness: Listening has no audio attached.",
                     )
                 )
+            elif module.module_type == ModuleType.LISTENING and (
+                module.audio_asset is None
+                or module.audio_asset.asset_type != AssetType.LISTENING_AUDIO
+                or module.audio_asset.test_version_id != module.test_version_id
+            ):
+                issues.append(
+                    ValidationIssue(
+                        path="listening.audio",
+                        message="Listening audio must belong to this test version.",
+                    )
+                )
             if module.module_type == ModuleType.WRITING:
                 task_numbers = [task.task_number for task in module.writing_tasks]
                 task_orders = [task.order_index for task in module.writing_tasks]
@@ -602,6 +768,7 @@ class TestService:
                             task.image_asset is None
                             or task.image_asset.asset_type != AssetType.WRITING_TASK_IMAGE
                             or task.image_asset.mime_type not in LocalAssetStorage.IMAGE_TYPES
+                            or task.image_asset.test_version_id != module.test_version_id
                         ):
                             issues.append(
                                 ValidationIssue(
@@ -741,6 +908,7 @@ class TestService:
                         questions=question_rows,
                         group_id=group.id,
                         passage_blocks=passage_blocks,
+                        module_type=module.module_type,
                     )
                 except (AttributeError, KeyError, TypeError, ValidationError, ValueError) as exc:
                     issues.append(
@@ -778,6 +946,7 @@ class TestService:
                         group,
                         normalized_config,
                         normalized_questions,
+                        module_type=module.module_type,
                     )
                 except (ValidationError, KeyError, ValueError) as exc:
                     issues.append(
@@ -892,35 +1061,42 @@ class TestService:
         group: QuestionGroup,
         group_config: dict,
         normalized_questions: list[dict],
+        *,
+        module_type: ModuleType = ModuleType.READING,
     ) -> None:
         question_ids = {str(question["id"]) for question in normalized_questions}
         if group.question_type in {"plan_labelling", "map_labelling"}:
             if (
                 group.image_asset is None
                 or group.image_asset.asset_type != AssetType.QUESTION_IMAGE
+                or group.image_asset.test_version_id != group.module.test_version_id
             ):
-                raise ValueError("Visual labelling requires an available question image")
-            marker_question_ids = {
-                str(marker["question_id"]) for marker in group_config.get("markers", [])
-            }
-            if marker_question_ids != question_ids:
-                raise ValueError("Visual markers must reference every group question exactly once")
+                raise ValueError(
+                    "Visual labelling requires a question image owned by this test version"
+                )
+            if module_type == ModuleType.READING:
+                marker_question_ids = {
+                    str(marker["question_id"]) for marker in group_config.get("markers", [])
+                }
+                if marker_question_ids != question_ids:
+                    raise ValueError(
+                        "Visual markers must reference every group question exactly once"
+                    )
         if group.question_type == "diagram_labelling":
             if (
                 group.image_asset is None
                 or group.image_asset.asset_type != AssetType.QUESTION_IMAGE
+                or group.image_asset.test_version_id != group.module.test_version_id
             ):
-                raise ValueError("Diagram labelling requires an available question image")
-            item_question_ids = [
-                str(item["question_id"]) for item in group_config.get("items", [])
-            ]
+                raise ValueError(
+                    "Diagram labelling requires a question image owned by this test version"
+                )
+            item_question_ids = [str(item["question_id"]) for item in group_config.get("items", [])]
             if (
                 len(item_question_ids) != len(set(item_question_ids))
                 or set(item_question_ids) != question_ids
             ):
-                raise ValueError(
-                    "Diagram items must reference every group question exactly once"
-                )
+                raise ValueError("Diagram items must reference every group question exactly once")
             if any(
                 str(question.get("prompt") or "").count("{{gap}}") != 1
                 for question in normalized_questions
@@ -1071,6 +1247,7 @@ class TestService:
                     questions=question_rows,
                     group_id=group.id,
                     passage_blocks=passage_blocks.get(group.passage_id, []),
+                    module_type=module.module_type,
                 )
                 group.config = config
                 for question, normalized in zip(group.questions, normalized_questions, strict=True):

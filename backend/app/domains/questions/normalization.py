@@ -286,6 +286,7 @@ def _normalize_note_layout(config: dict[str, Any], group_id: uuid.UUID | str) ->
     layout = dict(config.get("layout") or {})
     raw_blocks = layout.get("blocks")
     if not isinstance(raw_blocks, list) or not raw_blocks:
+
         def legacy_indent(value: Any) -> int:
             try:
                 return min(3, max(0, int(value)))
@@ -313,9 +314,7 @@ def _normalize_note_layout(config: dict[str, Any], group_id: uuid.UUID | str) ->
     blocks: list[dict[str, Any]] = []
     for block_index, raw_block in enumerate(raw_blocks):
         block = dict(raw_block or {})
-        block_id = _stable_uuid(
-            f"group:{group_id}:note-block", block.get("id"), block_index
-        )
+        block_id = _stable_uuid(f"group:{group_id}:note-block", block.get("id"), block_index)
         segments: list[dict[str, Any]] = []
         for segment_index, raw_segment in enumerate(block.get("segments") or []):
             segment = dict(raw_segment or {})
@@ -365,6 +364,7 @@ def normalize_question_group_payload(
     questions: list[dict[str, Any]],
     group_id: uuid.UUID | str,
     passage_blocks: list[dict[str, Any]],
+    module_type: object | None = None,
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     """Normalize legacy draft JSON without guessing ambiguous references.
 
@@ -386,7 +386,10 @@ def normalize_question_group_payload(
     if question_type == "note_completion":
         config = _normalize_note_layout(config, group_id)
 
-    if question_type in {"text_completion", "summary_completion_word_list"} and "blocks" not in config:
+    if (
+        question_type in {"text_completion", "summary_completion_word_list"}
+        and "blocks" not in config
+    ):
         blocks: list[dict[str, Any]] = []
         for index, question in enumerate(normalized_questions):
             question_id = str(question["id"])
@@ -429,9 +432,7 @@ def normalize_question_group_payload(
 
     if question_type == "diagram_labelling" and "items" not in config:
         raw_options = list(config.get("options") or [])
-        normalized_options, _ = _normalize_options(
-            raw_options, f"group:{group_id}:diagram-option"
-        )
+        normalized_options, _ = _normalize_options(raw_options, f"group:{group_id}:diagram-option")
         config = {
             "items": _legacy_diagram_items(
                 group_id=group_id,
@@ -460,7 +461,10 @@ def normalize_question_group_payload(
         options, group_option_ids = _normalize_options(
             list(config.get("options") or []), f"group:{group_id}:heading"
         )
-        config["options"] = options
+        listening_plan_or_map = getattr(
+            module_type, "value", module_type
+        ) == "LISTENING" and question_type in {"plan_labelling", "map_labelling"}
+        config = {"options": options} if listening_plan_or_map else {**config, "options": options}
 
     block_ids: dict[str, list[str]] = defaultdict(list)
     for block in passage_blocks:
@@ -536,9 +540,7 @@ def normalize_question_group_payload(
             "table_completion",
             "note_completion",
         }:
-            question["answer_key"] = _normalize_text_key(
-                dict(question.get("answer_key") or {})
-            )
+            question["answer_key"] = _normalize_text_key(dict(question.get("answer_key") or {}))
 
     return config, normalized_questions
 

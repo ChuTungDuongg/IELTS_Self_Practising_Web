@@ -178,60 +178,81 @@ class ReadingService:
         self, group_id: uuid.UUID, body: QuestionGroupWrite
     ) -> BuilderQuestionGroup:
         deleted_path: str | None = None
-        async with self.session.begin():
-            group = await self._draft_group(group_id)
-            previous_image_asset_id = group.image_asset_id
-            await self._validate_image_asset(group.module.test_version_id, body)
-            passage_blocks = (
-                normalize_passage_blocks(group.passage.content_json, group.passage.id)
-                if group.passage
-                else []
-            )
-            body = self._normalize_group_body(body, group.id, passage_blocks)
-            self._validate_group_body(body, passage_blocks)
-            self._validate_local_question_numbers(body)
-            group.question_type = body.question_type
-            group.instruction = body.instruction
-            group.config = body.config
-            group.image_asset_id = body.image_asset_id
-            existing = {item.id: item for item in group.questions}
-            for temporary_index, question in enumerate(existing.values(), start=1):
-                question.number = -temporary_index
-                question.order_index = -temporary_index
-            await self.session.flush()
-            retained: set[uuid.UUID] = set()
-            for item in body.questions:
-                if item.id is not None and item.id in existing:
-                    question = existing[item.id]
-                    question.number = item.number
-                    question.prompt = item.prompt
-                    question.config = item.config
-                    question.answer_key = item.answer_key
-                    question.explanation = item.explanation
-                    question.order_index = item.order_index
-                    retained.add(item.id)
-                else:
-                    question = Question(
-                        id=item.id or uuid.uuid4(),
-                        number=item.number,
-                        prompt=item.prompt,
-                        config=item.config,
-                        answer_key=item.answer_key,
-                        explanation=item.explanation,
-                        order_index=item.order_index,
+        copied_path: str | None = None
+        try:
+            async with self.session.begin():
+                group = await self._draft_group(group_id)
+                previous_image_asset_id = group.image_asset_id
+                if body.image_asset_id is not None:
+                    from app.services.tests import TestService
+
+                    repaired, copied_path = await TestService(
+                        self.session
+                    ).resolve_owned_or_inherited_asset(
+                        target_version=group.module.test_version,
+                        requested_asset_id=body.image_asset_id,
+                        current_asset_id=group.image_asset_id,
+                        asset_type=AssetType.QUESTION_IMAGE,
                     )
-                    group.questions.append(question)
-            for question_id, question in existing.items():
-                if question_id not in retained:
-                    group.questions.remove(question)
-            await self.session.flush()
-            await self._canonicalize_module(group.module_id)
-            if previous_image_asset_id and previous_image_asset_id != group.image_asset_id:
+                    if repaired is not None:
+                        body = body.model_copy(update={"image_asset_id": repaired.id})
+                await self._validate_image_asset(group.module.test_version_id, body)
+                passage_blocks = (
+                    normalize_passage_blocks(group.passage.content_json, group.passage.id)
+                    if group.passage
+                    else []
+                )
+                body = self._normalize_group_body(body, group.id, passage_blocks)
+                self._validate_group_body(body, passage_blocks)
+                self._validate_local_question_numbers(body)
+                group.question_type = body.question_type
+                group.instruction = body.instruction
+                group.config = body.config
+                group.image_asset_id = body.image_asset_id
+                existing = {item.id: item for item in group.questions}
+                for temporary_index, question in enumerate(existing.values(), start=1):
+                    question.number = -temporary_index
+                    question.order_index = -temporary_index
+                await self.session.flush()
+                retained: set[uuid.UUID] = set()
+                for item in body.questions:
+                    if item.id is not None and item.id in existing:
+                        question = existing[item.id]
+                        question.number = item.number
+                        question.prompt = item.prompt
+                        question.config = item.config
+                        question.answer_key = item.answer_key
+                        question.explanation = item.explanation
+                        question.order_index = item.order_index
+                        retained.add(item.id)
+                    else:
+                        question = Question(
+                            id=item.id or uuid.uuid4(),
+                            number=item.number,
+                            prompt=item.prompt,
+                            config=item.config,
+                            answer_key=item.answer_key,
+                            explanation=item.explanation,
+                            order_index=item.order_index,
+                        )
+                        group.questions.append(question)
+                for question_id, question in existing.items():
+                    if question_id not in retained:
+                        group.questions.remove(question)
+                await self.session.flush()
+                await self._canonicalize_module(group.module_id)
+                if previous_image_asset_id and previous_image_asset_id != group.image_asset_id:
+                    from app.services.tests import TestService
+
+                    deleted_path = await TestService(self.session).cleanup_asset_if_unreferenced(
+                        previous_image_asset_id
+                    )
+        except BaseException:
+            if copied_path:
                 from app.services.tests import TestService
 
-                deleted_path = await TestService(self.session).cleanup_asset_if_unreferenced(
-                    previous_image_asset_id
-                )
+                TestService._delete_files([copied_path])
+            raise
         if deleted_path:
             from app.services.tests import TestService
 
@@ -409,9 +430,7 @@ class ReadingService:
         if len(numbers) != len(set(numbers)):
             raise AppError("DUPLICATE_QUESTION_NUMBER", "Question numbers must be unique.", 422)
 
-    async def _validate_image_asset(
-        self, version_id: uuid.UUID, body: QuestionGroupWrite
-    ) -> None:
+    async def _validate_image_asset(self, version_id: uuid.UUID, body: QuestionGroupWrite) -> None:
         visual = body.question_type in {
             "plan_labelling",
             "map_labelling",
@@ -469,6 +488,8 @@ class ReadingService:
         body: QuestionGroupWrite,
         group_id: uuid.UUID,
         passage_blocks: list[dict[str, object]],
+        *,
+        module_type: ModuleType = ModuleType.READING,
     ) -> QuestionGroupWrite:
         config, questions = normalize_question_group_payload(
             question_type=body.question_type,
@@ -476,6 +497,7 @@ class ReadingService:
             questions=[item.model_dump(mode="json") for item in body.questions],
             group_id=group_id,
             passage_blocks=passage_blocks,
+            module_type=module_type,
         )
         return body.model_copy(
             update={
@@ -486,7 +508,10 @@ class ReadingService:
 
     @staticmethod
     def _validate_group_body(
-        body: QuestionGroupWrite, passage_blocks: list[dict[str, object]]
+        body: QuestionGroupWrite,
+        passage_blocks: list[dict[str, object]],
+        *,
+        module_type: ModuleType = ModuleType.READING,
     ) -> None:
         if not question_registry.supports(body.question_type):
             raise AppError("UNSUPPORTED_QUESTION_TYPE", "This question type is not supported.", 422)
@@ -509,16 +534,17 @@ class ReadingService:
                 )
             question_ids = {str(question.id) for question in body.questions if question.id}
             if body.question_type in {"plan_labelling", "map_labelling"}:
-                marker_question_ids = [
-                    str(marker["question_id"]) for marker in body.config.get("markers", [])
-                ]
-                if (
-                    len(marker_question_ids) != len(set(marker_question_ids))
-                    or set(marker_question_ids) != question_ids
-                ):
-                    raise ValueError(
-                        "Visual markers must reference every group question exactly once"
-                    )
+                if module_type == ModuleType.READING:
+                    marker_question_ids = [
+                        str(marker["question_id"]) for marker in body.config.get("markers", [])
+                    ]
+                    if (
+                        len(marker_question_ids) != len(set(marker_question_ids))
+                        or set(marker_question_ids) != question_ids
+                    ):
+                        raise ValueError(
+                            "Visual markers must reference every group question exactly once"
+                        )
                 if body.image_asset_id is None:
                     raise ValueError("Visual labelling groups require an image asset")
             if body.question_type == "diagram_labelling":
@@ -548,9 +574,7 @@ class ReadingService:
                     if segment.get("type") == "GAP"
                 ]
                 if len(gap_ids) != len(set(gap_ids)) or set(gap_ids) != question_ids:
-                    raise ValueError(
-                        "Every table completion question must map to exactly one gap"
-                    )
+                    raise ValueError("Every table completion question must map to exactly one gap")
             if body.question_type == "note_completion":
                 layout = body.config.get("layout", {})
                 gap_ids = [
@@ -560,9 +584,7 @@ class ReadingService:
                     if segment.get("type") == "GAP"
                 ]
                 if len(gap_ids) != len(set(gap_ids)) or set(gap_ids) != question_ids:
-                    raise ValueError(
-                        "Every note completion question must map to exactly one gap"
-                    )
+                    raise ValueError("Every note completion question must map to exactly one gap")
             if body.question_type in {
                 "form_completion",
                 "flow_chart_completion",
@@ -682,7 +704,10 @@ class ReadingService:
 
     @staticmethod
     def _present_group(
-        group: QuestionGroup, passage_blocks: list[dict[str, object]]
+        group: QuestionGroup,
+        passage_blocks: list[dict[str, object]],
+        *,
+        module_type: ModuleType = ModuleType.READING,
     ) -> BuilderQuestionGroup:
         question_rows = [
             {
@@ -702,6 +727,7 @@ class ReadingService:
             questions=question_rows,
             group_id=group.id,
             passage_blocks=passage_blocks,
+            module_type=module_type,
         )
         return BuilderQuestionGroup(
             id=group.id,
@@ -725,7 +751,7 @@ class ReadingService:
             title=part.title,
             order_index=part.order_index,
             question_groups=[
-                cls._present_group(group, [])
+                cls._present_group(group, [], module_type=ModuleType.LISTENING)
                 for group in sorted(part.question_groups, key=lambda item: item.order_index)
             ],
         )

@@ -1,12 +1,103 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { questionRegistry } from "@/features/questions/registry";
-import { MatchingHeadingsEditor, MultipleChoiceEditor, TextCompletionEditor } from "@/features/questions/editors";
+import { MatchingHeadingsEditor, MultipleChoiceEditor, TextCompletionEditor, VisualLabellingEditor } from "@/features/questions/editors";
 import { QuestionGroupEditor } from "@/features/test-builder/question-group-editor";
 import { QuestionGroupInstruction, resolveQuestionGroupInstruction } from "@/features/questions/question-group-instruction";
 import type { ExamGroup } from "@/features/questions/types";
 
 describe("question registry", () => {
+  const imageAsset = {
+    id: crypto.randomUUID(),
+    original_name: "fictional-map.png",
+    mime_type: "image/png",
+    file_size: 128,
+    content_url: "/assets/fictional-map.png",
+  };
+
+  it.each([
+    ["map_labelling", "map"],
+    ["plan_labelling", "plan"],
+  ] as const)("renders a Listening %s as a clean image with no question markers", (questionType, noun) => {
+    const group = questionRegistry[questionType].createDefault(16, { moduleType: "LISTENING" }) as ExamGroup;
+    group.id = crypto.randomUUID();
+    group.image_asset_id = imageAsset.id;
+    group.image_asset = imageAsset;
+    const Renderer = questionRegistry[questionType].ExamRenderer;
+
+    const view = render(<Renderer group={group} values={{}} onAnswer={vi.fn()} />);
+
+    expect(group.config).toEqual({ options: expect.any(Array) });
+    expect(screen.getByRole("img", { name: `Listening ${noun}` })).toBeInTheDocument();
+    expect(view.container.querySelector(".visual-marker")).not.toBeInTheDocument();
+    expect(view.container.querySelector(".visual-marker-hitarea")).not.toBeInTheDocument();
+  });
+
+  it("adds and removes Listening map questions without creating marker state", async () => {
+    const group = questionRegistry.map_labelling.createDefault(16, { moduleType: "LISTENING" });
+    group.image_asset_id = imageAsset.id;
+    group.image_asset = imageAsset;
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const view = render(
+      <QuestionGroupEditor
+        initial={group}
+        moduleType="LISTENING"
+        nextQuestionNumber={17}
+        passageBlocks={[]}
+        onCancel={vi.fn()}
+        onSave={onSave}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "+ Add question" }));
+    expect(within(view.container).getAllByRole("button", { name: "Remove" })).toHaveLength(2);
+    fireEvent.click(within(view.container).getAllByRole("button", { name: "Remove" })[1]);
+    fireEvent.click(screen.getByRole("button", { name: "Save group" }));
+
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    expect(onSave.mock.calls[0][0].config).toEqual({ options: expect.any(Array) });
+    expect(onSave.mock.calls[0][0].questions).toHaveLength(1);
+  });
+
+  it("preserves Reading visual markers in the candidate renderer", () => {
+    const group = questionRegistry.map_labelling.createDefault(6, { moduleType: "READING" }) as ExamGroup;
+    group.id = crypto.randomUUID();
+    group.image_asset_id = imageAsset.id;
+    group.image_asset = imageAsset;
+    const Renderer = questionRegistry.map_labelling.ExamRenderer;
+
+    const view = render(<Renderer group={group} values={{}} onAnswer={vi.fn()} />);
+
+    expect(view.container.querySelectorAll(".visual-marker")).toHaveLength(1);
+    expect(view.container.querySelector(".visual-marker")).toHaveTextContent("6");
+  });
+
+  it("preserves Reading marker selection and placement editing", () => {
+    const group = questionRegistry.plan_labelling.createDefault(9, { moduleType: "READING" });
+    group.image_asset_id = imageAsset.id;
+    group.image_asset = imageAsset;
+    const onChange = vi.fn();
+    render(<VisualLabellingEditor group={group} onChange={onChange} />);
+    const hitarea = screen.getByRole("button", { name: "Place selected marker" });
+    vi.spyOn(hitarea, "getBoundingClientRect").mockReturnValue({
+      x: 10,
+      y: 20,
+      left: 10,
+      top: 20,
+      right: 210,
+      bottom: 120,
+      width: 200,
+      height: 100,
+      toJSON: () => ({}),
+    });
+
+    fireEvent.click(hitarea, { clientX: 170, clientY: 45 });
+
+    const marker = onChange.mock.calls.at(-1)?.[0].config.markers[0];
+    expect(marker.x).toBeCloseTo(0.8);
+    expect(marker.y).toBeCloseTo(0.25);
+  });
+
   it("creates a structured MCQ with an inline answer key", () => {
     const group = questionRegistry.multiple_choice.createDefault(7);
     const options = group.questions[0].config.options as Array<{ id: string }>;
