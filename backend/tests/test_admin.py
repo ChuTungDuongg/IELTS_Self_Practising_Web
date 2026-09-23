@@ -144,7 +144,7 @@ async def test_admin_can_access_admin_and_builder_boundaries_without_secret_fiel
         email="learner@example.com",
         display_name="Learner",
         city="Fictional City",
-        target_band=7.5,
+        target_band=None,
         target_listening_band=8.0,
         target_reading_band=7.5,
         target_writing_band=7.0,

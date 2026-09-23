@@ -53,15 +53,15 @@ describe("profile", () => {
   });
 
   it("saves only changed fields and refreshes the header identity", async () => {
-    vi.mocked(updateProfile).mockResolvedValue({ ...base, display_name: "New Name", city: "Hanoi", target_band: 7.5 });
+    vi.mocked(updateProfile).mockResolvedValue({ ...base, display_name: "New Name", city: "Hanoi", target_listening_band: 8 });
     vi.mocked(getCurrentUser).mockResolvedValueOnce(base).mockResolvedValueOnce({ ...base, display_name: "New Name" });
     view();
     await screen.findByLabelText("City");
     fireEvent.change(screen.getByLabelText("Display name"), { target: { value: "New Name" } });
     fireEvent.change(screen.getByLabelText("City"), { target: { value: "Hanoi" } });
-    fireEvent.change(screen.getByLabelText("Overall target band"), { target: { value: "7.5" } });
+    fireEvent.change(screen.getByLabelText("Listening"), { target: { value: "8" } });
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
-    await waitFor(() => expect(updateProfile).toHaveBeenCalledWith({ display_name: "New Name", city: "Hanoi", target_band: 7.5 }));
+    await waitFor(() => expect(updateProfile).toHaveBeenCalledWith({ display_name: "New Name", city: "Hanoi", target_listening_band: 8 }));
     expect(await screen.findByRole("status")).toHaveTextContent("Profile saved.");
     expect(await screen.findByRole("link", { name: /New Name/ })).toHaveAttribute("href", "/profile");
     expect(getCurrentUser).toHaveBeenCalledTimes(2);
@@ -74,8 +74,11 @@ describe("profile", () => {
       target_test_date: "2026-12-05",
     });
     view();
+    expect(await screen.findByText("Overall target band")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Overall target band")).not.toBeInTheDocument();
+    expect(screen.getByText("Overall target band").parentElement).toHaveTextContent("7.5");
     for (const [label, value] of [
-      ["Overall target band", 7.5], ["Listening", 8], ["Reading", 7.5],
+      ["Listening", 8], ["Reading", 7.5],
       ["Writing", 7], ["Speaking", 7],
     ] as const) {
       const input = await screen.findByLabelText(label);
@@ -88,8 +91,33 @@ describe("profile", () => {
     expect(screen.getByLabelText("Target test date")).toHaveValue("2026-12-05");
   });
 
+  it("shows backend-derived Overall and updates it from the saved response", async () => {
+    const goals = {
+      ...base, target_band: 7, target_listening_band: 6, target_reading_band: 6.5,
+      target_writing_band: 7.5, target_speaking_band: 8.5,
+    };
+    vi.mocked(getProfile).mockResolvedValue(goals);
+    vi.mocked(updateProfile).mockResolvedValue({ ...goals, target_band: 7.5, target_listening_band: 8 });
+    view();
+    const overall = (await screen.findByText("Overall target band")).parentElement;
+    expect(overall).toHaveTextContent("7.0");
+    expect(screen.queryByLabelText("Overall target band")).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Listening"), { target: { value: "8" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() => expect(updateProfile).toHaveBeenCalledWith({ target_listening_band: 8 }));
+    await waitFor(() => expect(overall).toHaveTextContent("7.5"));
+  });
+
+  it("shows no Overall until all four skill targets exist", async () => {
+    vi.mocked(getProfile).mockResolvedValue({ ...base, target_listening_band: 8, target_reading_band: 7.5, target_writing_band: 7 });
+    view();
+    const overall = (await screen.findByText("Overall target band")).parentElement;
+    expect(overall).toHaveTextContent("—");
+    expect(screen.getByLabelText("Speaking")).toHaveValue(null);
+  });
+
   it("sends only one edited skill, then null when that skill is cleared", async () => {
-    const goals = { ...base, target_band: 7.5, target_listening_band: 8, target_reading_band: 7.5 };
+    const goals = { ...base, target_listening_band: 8, target_reading_band: 7.5 };
     vi.mocked(getProfile).mockResolvedValue(goals);
     vi.mocked(updateProfile).mockResolvedValueOnce({ ...goals, target_reading_band: 8 }).mockResolvedValueOnce({ ...goals, target_reading_band: null });
     view();

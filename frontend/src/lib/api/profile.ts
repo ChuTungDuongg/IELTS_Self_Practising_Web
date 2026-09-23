@@ -24,7 +24,7 @@ export const profileSchema = profileFieldsSchema.extend({ has_password: z.boolea
 export type Profile = z.infer<typeof profileSchema>;
 export type ProfileUpdate = Partial<Pick<Profile,
   "display_name" | "phone_number" | "date_of_birth" | "country" | "city" |
-  "occupation" | "institution" | "target_band" | "target_listening_band" |
+  "occupation" | "institution" | "target_listening_band" |
   "target_reading_band" | "target_writing_band" | "target_speaking_band" | "target_test_date" | "bio"
 >>;
 

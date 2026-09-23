@@ -18,6 +18,16 @@
 - ✅ Backend kiểm tra deadline, AFK 5 phút và trạng thái attempt
 - ✅ Light/Dark mode theo hệ điều hành, có nút chuyển trên header 🌙☀️
 
+### Tài khoản, mục tiêu và quản trị
+
+- ✅ Đăng ký/đăng nhập tài khoản local với phiên đăng nhập; hỗ trợ cấu hình Google OAuth
+- ✅ `/profile`: thông tin cá nhân tùy chọn, ngày thi mục tiêu và band mục tiêu Listening, Reading, Writing, Speaking
+- ✅ Overall **mục tiêu** tự tính từ đủ bốn band kỹ năng; không nhập Overall riêng
+- ✅ Đổi mật khẩu cho tài khoản dùng mật khẩu local
+- ✅ ADMIN: Builder, Transfer ZIP, thống kê nền tảng và danh sách tài khoản đang hoạt động/đã vô hiệu hóa
+- ✅ ADMIN có thể nâng/hạ quyền, vô hiệu hóa/kích hoạt lại và xóa vĩnh viễn tài khoản đã vô hiệu hóa
+- ✅ Draft Import CLI chuyển JSON có cấu trúc do OCR/ChatGPT chuẩn bị bên ngoài thành Builder DRAFT để quản trị viên rà soát
+
 ### Luyện thi và Full Mock
 
 - ✅ Reading, Listening và Writing Builder/runner/review hoàn chỉnh
@@ -53,6 +63,39 @@ Các dạng câu hỏi Reading hiện có:
 5. Diagram Label Completion và Short Answer
 
 Các family dùng chung editor/renderer/evaluator khi data shape giống nhau; key và chấm điểm vẫn do backend quản lý.
+
+### Profile và IELTS goals
+
+Đăng ký không yêu cầu hoàn tất profile. Tại `/profile`, người dùng có thể lưu thông tin cá nhân, bốn band mục tiêu và ngày thi dự kiến; hiện không có ảnh đại diện. Tài khoản dùng mật khẩu local có thể đổi mật khẩu; tài khoản chỉ dùng Google hiện không dùng chức năng Change Password.
+
+Overall **mục tiêu cá nhân** = trung bình của **đủ bốn** band mục tiêu Listening, Reading, Writing, Speaking, rồi làm tròn đến band 0,5 gần nhất (mốc giữa làm tròn lên). Thiếu bất kỳ kỹ năng nào thì Overall mục tiêu chưa có. Ví dụ `6.0 + 6.5 + 7.5 + 8.5` cho Overall mục tiêu `7.0`. Giá trị này không phải điểm bài làm. Điểm thực tế hiện dựa trên Reading, Listening và Writing theo logic chấm hiện có; Speaking chỉ là trường **mục tiêu** trong profile, không có module luyện/chấm Speaking.
+
+### Draft Import
+
+OCR/ChatGPT chuẩn bị JSON có cấu trúc **bên ngoài** ứng dụng; ứng dụng không tự thực hiện OCR. Từ thư mục `backend/`:
+
+```powershell
+Set-Location backend
+uv run python -m app.import_draft path/to/manifest.json
+```
+
+Kết quả luôn là phiên bản `DRAFT`. ADMIN mở trong Builder để kiểm tra, chỉnh sửa và Publish theo quy trình thường. Định dạng và manifest hư cấu: [docs/draft-import-format.md](docs/draft-import-format.md).
+
+### Giao diện minh họa
+
+Ảnh chụp từ giao diện local với tài khoản và mục tiêu hư cấu. Overall `7.0` được tính từ bốn mục tiêu `6.0 / 6.5 / 7.5 / 8.5`.
+
+**Trang chủ (desktop)**
+
+![Trang chủ với IELTS goals](docs/screenshots/homepage-goals-desktop.png)
+
+**Profile: chỉnh mục tiêu từng kỹ năng**
+
+![Profile với Overall target được tính tự động](docs/screenshots/profile-goals.png)
+
+**IELTS goals trên màn hình nhỏ**
+
+![IELTS goals trên màn hình điện thoại](docs/screenshots/homepage-goals-mobile.png)
 
 ## 🧭 Kiến trúc
 
@@ -126,6 +169,8 @@ Giá trị mặc định dùng cho local:
 | `MAX_TRANSFER_FILES` | Giới hạn số file trong ZIP | `5000` |
 | `NEXT_PUBLIC_API_BASE_URL` | API URL phía frontend | `http://localhost:8000/api/v1` |
 
+Google OAuth là tùy chọn: đặt `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` và `GOOGLE_REDIRECT_URI` theo `backend/.env.example` khi cần. Không đưa client secret hoặc JWT secret thật vào repository.
+
 Giữ cùng hostname `localhost` cho frontend và backend. Cookie phiên đăng nhập được gắn với hostname, nên `127.0.0.1:8000` không dùng chung cookie với `localhost:3000`. Sau khi đổi `.env.local`, khởi động lại Next.js.
 
 ### 2. Khởi động PostgreSQL 🐘
@@ -168,6 +213,8 @@ Sau khi chạy:
 
 `app.seed` có thể chạy lại an toàn; script bỏ qua seed nếu dữ liệu mẫu đã tồn tại.
 
+Để tạo ADMIN local lần đầu, đặt `INITIAL_ADMIN_EMAIL`, `INITIAL_ADMIN_PASSWORD` và `INITIAL_ADMIN_NAME` trong `backend/.env`, rồi chạy `uv run python -m app.bootstrap_admin` từ `backend/`.
+
 ### 4. Chạy frontend 🎨
 
 Mở terminal thứ hai:
@@ -182,7 +229,7 @@ Mở [http://localhost:3000](http://localhost:3000).
 
 ### 5. Luồng dùng thử đề xuất
 
-1. Vào **Builder** → **New test**.
+1. Đăng ký/đăng nhập; có thể đặt mục tiêu tại **Profile**. ADMIN vào **Builder** → **New test**.
 2. Mở Version 1 → tạo Reading, Listening và Writing module cùng thời lượng khuyến nghị.
 3. Thêm passage, Listening parts/audio và Writing tasks.
 4. Thêm question group bằng registry loại câu hỏi dùng chung.
@@ -252,7 +299,31 @@ Frontend chỉ vẽ đồng hồ. Thời gian thật được suy ra từ `start
 
 Binary không nằm trong PostgreSQL. Backend kiểm tra MIME, đuôi file, kích thước, tạo tên UUID và chỉ ghi vào `storage/audio` hoặc `storage/images`.
 
+### Quản trị tài khoản
+
+ADMIN xem thống kê nền tảng, danh sách USER/ADMIN đang hoạt động hoặc đã vô hiệu hóa, nâng/hạ quyền và kích hoạt lại tài khoản. Xóa vĩnh viễn chỉ thực hiện sau khi vô hiệu hóa; thao tác xóa lịch sử học cá nhân của tài khoản đó (attempt và test session), không xóa nội dung đề dùng chung đã được tạo trong Builder.
+
 ## 🔌 API chính
+
+### Xác thực và Profile
+
+- `POST /api/v1/auth/register`
+- `POST /api/v1/auth/login`
+- `POST /api/v1/auth/refresh`
+- `POST /api/v1/auth/logout`
+- `GET /api/v1/auth/me`
+- `GET /api/v1/auth/profile`
+- `PATCH /api/v1/auth/profile`
+- `POST /api/v1/auth/change-password`
+- `GET /api/v1/auth/oauth/google/start` và callback Google OAuth (khi đã cấu hình)
+
+### ADMIN
+
+- `GET /api/v1/admin/stats`
+- `GET /api/v1/admin/users`
+- `GET /api/v1/admin/users/{id}`
+- `PATCH /api/v1/admin/users/{id}`
+- `DELETE /api/v1/admin/users/{id}`
 
 ### Test và Builder
 
@@ -298,8 +369,8 @@ Lỗi ứng dụng có cấu trúc ổn định:
 
 ## 🛣️ Trạng thái phát triển
 
-- **Hiện có:** Reading/Listening/Writing, Full Mock, pause/resume, manual Writing grading + criterion feedback, Builder autosave, Test Transfer ZIP, History và Analytics.
+- **Hiện có:** Reading/Listening/Writing, Full Mock, pause/resume, chấm Writing thủ công, Builder autosave, Transfer ZIP, Draft Import CLI, History/Analytics, xác thực, Profile/mục tiêu IELTS và quản trị tài khoản.
 - **Tiếp theo:** tăng độ sâu của analytics, accessibility và độ bền của Builder workflow.
-- **Cố ý không làm:** Speaking, thanh toán và AI Writing scoring.
+- **Cố ý không làm:** module luyện/chấm Speaking (chỉ có Speaking target trong Profile), OCR tích hợp, thanh toán và AI Writing scoring.
 
 Xem checklist chi tiết tại [docs/ROADMAP.md](docs/ROADMAP.md). 💫

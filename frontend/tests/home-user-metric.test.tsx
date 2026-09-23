@@ -77,12 +77,24 @@ describe("homepage metrics and personal IELTS goals", () => {
   });
 
   it("shows dashes for unset parts of a partial goal", async () => {
-    vi.mocked(getProfile).mockResolvedValue({ ...profile, target_listening_band: null, target_writing_band: null, target_speaking_band: null, target_test_date: null });
+    vi.mocked(getProfile).mockResolvedValue({ ...profile, target_band: null, target_listening_band: null, target_writing_band: null, target_speaking_band: null, target_test_date: null });
     render(await DashboardPage());
     const goals = screen.getByRole("region", { name: "IELTS goals" });
     expect(within(goals).getByText("Listening target").parentElement).toHaveTextContent("—");
     expect(within(goals).getByText("Reading target").parentElement).toHaveTextContent("7.5");
+    expect(within(goals).getByText("Overall target band").parentElement).toHaveTextContent("—");
     expect(goals).toHaveTextContent("Target test —");
+  });
+
+  it("renders the derived 7.0 Overall returned for four saved skill targets", async () => {
+    vi.mocked(getProfile).mockResolvedValue({
+      ...profile, target_band: 7, target_listening_band: 6,
+      target_reading_band: 6.5, target_writing_band: 7.5, target_speaking_band: 8.5,
+    });
+    render(await DashboardPage());
+    const goals = screen.getByRole("region", { name: "IELTS goals" });
+    expect(within(goals).getByText("Overall target band").parentElement).toHaveTextContent("7.0");
+    expect(within(goals).getByRole("link", { name: /Edit goals/ })).toHaveAttribute("href", "/profile");
   });
 
   it("shows a compact setup invitation when every goal is unset", async () => {

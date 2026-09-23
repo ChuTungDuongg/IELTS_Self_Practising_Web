@@ -2,8 +2,9 @@ from datetime import date, datetime
 from decimal import Decimal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
+from app.domains.profile_targets import calculate_profile_target_band
 from app.models.enums import UserRole
 
 
@@ -36,6 +37,16 @@ class ProfileFieldsResponse(UserResponse):
     target_test_date: date | None
     bio: str | None
 
+    @model_validator(mode="after")
+    def derive_overall_target(self) -> "ProfileFieldsResponse":
+        self.target_band = calculate_profile_target_band(
+            self.target_listening_band,
+            self.target_reading_band,
+            self.target_writing_band,
+            self.target_speaking_band,
+        )
+        return self
+
 
 class ProfileResponse(ProfileFieldsResponse):
     has_password: bool
@@ -58,7 +69,6 @@ class ProfileUpdate(BaseModel):
     city: str | None = Field(default=None, max_length=120)
     occupation: str | None = Field(default=None, max_length=160)
     institution: str | None = Field(default=None, max_length=200)
-    target_band: Decimal | None = None
     target_listening_band: Decimal | None = None
     target_reading_band: Decimal | None = None
     target_writing_band: Decimal | None = None
@@ -88,7 +98,6 @@ class ProfileUpdate(BaseModel):
         return value
 
     @field_validator(
-        "target_band",
         "target_listening_band",
         "target_reading_band",
         "target_writing_band",

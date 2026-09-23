@@ -8,7 +8,7 @@ import { formatProjectDateTime } from "@/lib/date-time";
 import { changePassword } from "@/lib/api/auth";
 import { getProfile, updateProfile, type Profile, type ProfileUpdate } from "@/lib/api/profile";
 
-const bandFields = ["target_band", "target_listening_band", "target_reading_band", "target_writing_band", "target_speaking_band"] as const;
+const bandFields = ["target_listening_band", "target_reading_band", "target_writing_band", "target_speaking_band"] as const;
 const editable = ["display_name", "phone_number", "date_of_birth", "country", "city", "occupation", "institution", ...bandFields, "target_test_date", "bio"] as const;
 type Editable = (typeof editable)[number];
 type FormValues = Record<Editable, string>;
@@ -119,14 +119,15 @@ export default function ProfilePage() {
         {field("occupation", "Occupation", "text", 160)}
         {field("institution", "Institution", "text", 200)}
       </div></section>
-      <section className="surface-card profile-card"><h2 className="section-title">IELTS goals</h2><div className="profile-grid profile-goals-grid">
-        {field("target_band", "Overall target band", "number")}
-        {field("target_listening_band", "Listening", "number")}
-        {field("target_reading_band", "Reading", "number")}
-        {field("target_writing_band", "Writing", "number")}
-        {field("target_speaking_band", "Speaking", "number")}
-        {field("target_test_date", "Target test date", "date")}
-      </div></section>
+      <section className="surface-card profile-card"><h2 className="section-title">IELTS goals</h2>
+        <div className="profile-overall-target"><div><span>Overall target band</span><strong>{profile.target_band === null ? "—" : profile.target_band.toFixed(1)}</strong></div><p>Calculated from all four skill targets. Save changes to update Overall.</p></div>
+        <div className="profile-grid profile-goals-grid">
+          {field("target_listening_band", "Listening", "number")}
+          {field("target_reading_band", "Reading", "number")}
+          {field("target_writing_band", "Writing", "number")}
+          {field("target_speaking_band", "Speaking", "number")}
+          {field("target_test_date", "Target test date", "date")}
+        </div></section>
       <section className="surface-card profile-card"><h2 className="section-title">About</h2><label className="field-label">Bio<textarea className="textarea-field" maxLength={1000} value={values.bio} onChange={(event) => setValues({ ...values, bio: event.target.value })} /></label></section>
       {error ? <p className="notice" role="alert">{error}</p> : null}
       {success ? <p className="notice" role="status">Profile saved.</p> : null}

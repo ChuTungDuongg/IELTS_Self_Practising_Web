@@ -9,6 +9,7 @@ from app.api.dependencies import CurrentUser
 from app.core.config import Settings, get_settings
 from app.core.database import get_session
 from app.core.exceptions import AppError
+from app.domains.profile_targets import calculate_profile_target_band
 from app.models import User
 from app.schemas.auth import (
     AuthSessionResponse,
@@ -152,6 +153,20 @@ async def update_profile(
             raise AppError("USER_NOT_FOUND", "The account no longer exists.", 404)
         for field in body.model_fields_set:
             setattr(account, field, getattr(body, field))
+        if body.model_fields_set.intersection(
+            {
+                "target_listening_band",
+                "target_reading_band",
+                "target_writing_band",
+                "target_speaking_band",
+            }
+        ):
+            account.target_band = calculate_profile_target_band(
+                account.target_listening_band,
+                account.target_reading_band,
+                account.target_writing_band,
+                account.target_speaking_band,
+            )
         await session.flush()
         await session.refresh(account, attribute_names=["updated_at"])
         result = _profile_response(account)

@@ -198,7 +198,13 @@ input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--mute
 .profile-form > .btn { justify-self: start; }
 .profile-card { display: grid; gap: 18px; padding: 24px; }
 .profile-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 18px; }
-.profile-goals-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.profile-goals-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: 640px; }
+.profile-goals-grid > :last-child { grid-column: 1 / -1; max-width: 320px; }
+.profile-overall-target { display: flex; align-items: center; gap: 24px; border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; background: var(--accent-soft); }
+.profile-overall-target > div { display: grid; gap: 4px; min-width: 130px; }
+.profile-overall-target span { color: var(--ink-soft); font-size: 12px; font-weight: 750; }
+.profile-overall-target strong { color: var(--accent); font-size: 30px; line-height: 1.1; }
+.profile-overall-target p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
 .profile-detail { display: grid; gap: 6px; }
 .profile-detail span { color: var(--muted); font-size: 12px; }
 .profile-detail strong { font-size: 14px; overflow-wrap: anywhere; }
@@ -1105,6 +1111,7 @@ input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--mute
   .home-goals-skills { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
   .home-goals-empty { align-items: flex-start; flex-direction: column; }
   .profile-goals-grid { grid-template-columns: 1fr; }
+  .profile-overall-target { align-items: flex-start; flex-direction: column; gap: 10px; }
   .learning-path-grid { grid-template-columns: 1fr; }
   .learning-path-card { min-height: 190px; }
   .home-foundation { align-items: flex-start; flex-wrap: wrap; }
