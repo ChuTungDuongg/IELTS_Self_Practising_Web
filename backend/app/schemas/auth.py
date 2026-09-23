@@ -1,7 +1,8 @@
-from datetime import datetime
+from datetime import date, datetime
+from decimal import Decimal
 from uuid import UUID
 
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 from app.models.enums import UserRole
 
@@ -17,6 +18,78 @@ class UserResponse(BaseModel):
     last_login_at: datetime | None
 
     model_config = {"from_attributes": True}
+
+
+class ProfileFieldsResponse(UserResponse):
+    email_verified: bool
+    phone_number: str | None
+    date_of_birth: date | None
+    country: str | None
+    city: str | None
+    occupation: str | None
+    institution: str | None
+    target_band: Decimal | None
+    target_test_date: date | None
+    bio: str | None
+
+
+class ProfileResponse(ProfileFieldsResponse):
+    has_password: bool
+
+
+class ChangePasswordRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    current_password: str = Field(min_length=1, max_length=256)
+    new_password: str = Field(min_length=8, max_length=256)
+
+
+class ProfileUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    display_name: str | None = Field(default=None, max_length=160)
+    phone_number: str | None = Field(default=None, max_length=32)
+    date_of_birth: date | None = None
+    country: str | None = Field(default=None, max_length=120)
+    city: str | None = Field(default=None, max_length=120)
+    occupation: str | None = Field(default=None, max_length=160)
+    institution: str | None = Field(default=None, max_length=200)
+    target_band: Decimal | None = None
+    target_test_date: date | None = None
+    bio: str | None = Field(default=None, max_length=1000)
+
+    @field_validator("display_name", mode="before")
+    @classmethod
+    def normalize_name(cls, value: str | None) -> str:
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError("Display name is required")
+        return value.strip()
+
+    @field_validator(
+        "phone_number", "country", "city", "occupation", "institution", "bio", mode="before"
+    )
+    @classmethod
+    def normalize_optional_text(cls, value: str | None) -> str | None:
+        return value.strip() or None if isinstance(value, str) else value
+
+    @field_validator("date_of_birth")
+    @classmethod
+    def validate_birth_date(cls, value: date | None) -> date | None:
+        if value is not None and value > date.today():
+            raise ValueError("Date of birth cannot be in the future")
+        return value
+
+    @field_validator("target_band")
+    @classmethod
+    def validate_band(cls, value: Decimal | None) -> Decimal | None:
+        if value is not None and (
+            not value.is_finite()
+            or value < 0
+            or value > 9
+            or value * 2 != (value * 2).to_integral_value()
+        ):
+            raise ValueError("Target band must be 0–9 in half-band increments")
+        return value
 
 
 class RegisterRequest(BaseModel):

@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import secrets
 import urllib.parse
+import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -79,6 +80,12 @@ class AuthService:
         return user
 
     async def issue_session(self, user: User) -> IssuedSession:
+        async with self.session.begin():
+            issued = self._record_session(user)
+        return issued
+
+    def _record_session(self, user: User) -> IssuedSession:
+        """Mint cookies and stage their refresh row in the caller's transaction."""
         secret = self._secret()
         now = datetime.now(UTC)
         jwt_id = secrets.token_urlsafe(32)
@@ -104,15 +111,50 @@ class AuthService:
             jwt_id=jwt_id,
             now=now,
         )
-        async with self.session.begin():
-            self.session.add(
-                RefreshSession(
-                    user_id=user.id,
-                    token_hash=token_fingerprint(jwt_id),
-                    expires_at=now + refresh_lifetime,
-                )
+        self.session.add(
+            RefreshSession(
+                user_id=user.id,
+                token_hash=token_fingerprint(jwt_id),
+                expires_at=now + refresh_lifetime,
             )
+        )
         return IssuedSession(access_token, refresh_token, now + access_lifetime)
+
+    async def change_password(
+        self, user_id: uuid.UUID, current_password: str, new_password: str
+    ) -> tuple[User, IssuedSession]:
+        async with self.session.begin():
+            user = await self.session.scalar(
+                select(User).where(User.id == user_id).with_for_update()
+            )
+            if user is None or not user.is_active:
+                raise AppError("USER_NOT_FOUND", "The account is unavailable.", 404)
+            if user.password_hash is None:
+                raise AppError(
+                    "PASSWORD_NOT_AVAILABLE",
+                    "This account does not have a local password to change.",
+                    409,
+                )
+            if not verify_password(current_password, user.password_hash):
+                raise AppError(
+                    "CURRENT_PASSWORD_INVALID", "The current password is incorrect.", 400
+                )
+            if new_password == current_password:
+                raise AppError(
+                    "PASSWORD_UNCHANGED",
+                    "Choose a password different from your current password.",
+                    400,
+                )
+            user.password_hash = hash_password(new_password)
+            await self.session.execute(
+                update(RefreshSession)
+                .where(RefreshSession.user_id == user.id, RefreshSession.revoked_at.is_(None))
+                .values(revoked_at=datetime.now(UTC))
+            )
+            issued = self._record_session(user)
+            await self.session.flush()
+            await self.session.refresh(user)
+        return user, issued
 
     async def rotate_refresh_token(self, token: str) -> tuple[User, IssuedSession]:
         claims = self._decode_refresh(token)

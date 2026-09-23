@@ -143,6 +143,9 @@ async def test_admin_can_access_admin_and_builder_boundaries_without_secret_fiel
     learner = User(
         email="learner@example.com",
         display_name="Learner",
+        city="Fictional City",
+        target_band=7.5,
+        bio="Optional profile note",
         role=UserRole.USER,
         is_active=True,
     )
@@ -203,6 +206,10 @@ async def test_admin_can_access_admin_and_builder_boundaries_without_secret_fiel
     assert detail.status_code == 200
     assert detail.json()["history"]["total"] == 2
     assert detail.json()["analytics"]["total_finalized_attempts"] == 1
+    assert detail.json()["user"]["city"] == "Fictional City"
+    assert detail.json()["user"]["target_band"] in ("7.5", 7.5)
+    assert detail.json()["user"]["bio"] == "Optional profile note"
+    assert "has_password" not in detail.json()["user"]
     sensitive = str(detail.json()).lower()
     assert "password_hash" not in sensitive
     assert "token" not in sensitive

@@ -1,0 +1,80 @@
+{
+  "format": "ielts-draft-import-v1",
+  "title": "Fictional River Town Practice",
+  "description": "Entirely invented practice material.",
+  "modules": [
+    {
+      "type": "READING",
+      "passages": [
+        {
+          "title": "The Imaginary River Town",
+          "blocks": [
+            { "type": "heading", "text": "A town made for a story" },
+            { "type": "paragraph", "label": "A", "text": "River Town is a fictional place beside a blue canal. Its library opened in 2012." },
+            { "type": "paragraph", "label": "B", "text": "Residents use small boats to visit the library after sunset." }
+          ],
+          "question_groups": [
+            {
+              "question_type": "true_false_not_given",
+              "instruction": "Do the statements agree with the passage?",
+              "questions": [
+                { "number": 1, "prompt": "River Town is a real city.", "answer": "FALSE" },
+                { "number": 2, "prompt": "The library opened in 2012.", "answer": "TRUE" }
+              ]
+            },
+            {
+              "question_type": "matching_headings",
+              "instruction": "Match each paragraph to a heading.",
+              "options": [
+                { "key": "i", "text": "The town and its library" },
+                { "key": "ii", "text": "Evening journeys" }
+              ],
+              "questions": [
+                { "number": 3, "target": "Paragraph A", "answer": "i" },
+                { "number": 4, "target": "Paragraph B", "answer": "ii" }
+              ]
+            },
+            {
+              "question_type": "note_completion",
+              "instruction": "Complete the notes.",
+              "content": ["Library opened in {{gap}}", "Residents travel by {{gap}}"],
+              "answers": ["2012", "boat"]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "LISTENING",
+      "sections": [
+        {
+          "title": "Section 1",
+          "question_groups": [
+            {
+              "question_type": "multiple_choice",
+              "instruction": "Choose one answer.",
+              "questions": [
+                {
+                  "number": 1,
+                  "prompt": "Where will the fictional meeting take place?",
+                  "options": [
+                    { "key": "A", "text": "The library" },
+                    { "key": "B", "text": "The canal bridge" }
+                  ],
+                  "answer": "A"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "WRITING",
+      "tasks": [
+        { "task_number": 1, "prompt": "Describe a fictional chart showing library visits in River Town.", "minimum_recommended_words": 150 },
+        { "task_number": 2, "prompt": "Discuss whether an imagined town should add more boat routes.", "minimum_recommended_words": 250 }
+      ]
+    }
+  ]
+}

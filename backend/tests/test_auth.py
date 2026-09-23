@@ -6,7 +6,7 @@ import pytest
 import pytest_asyncio
 from sqlalchemy import select
 
-from app.api.dependencies import get_auth_session
+from app.api.dependencies import get_auth_session, get_current_user
 from app.bootstrap_admin import bootstrap_admin
 from app.core.config import Settings, get_settings
 from app.core.database import get_session
@@ -159,6 +159,169 @@ async def test_registration_login_me_refresh_and_logout(client, db_session) -> N
 
 
 @pytest.mark.asyncio
+async def test_change_password_rotates_session_and_rejects_invalid_requests(
+    client, db_session
+) -> None:
+    async with db_session.begin():
+        other = User(
+            email="other-password-user@example.com",
+            display_name="Other User",
+            password_hash=hash_password("other-password"),
+            role=UserRole.USER,
+            is_active=True,
+            email_verified=False,
+        )
+        db_session.add(other)
+        await db_session.flush()
+        other_id = other.id
+    created = await client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": "password-change@example.com",
+            "display_name": "Local User",
+            "password": "first-password",
+        },
+    )
+    assert created.status_code == 201
+    old_refresh = client.cookies.get("ielts_refresh")
+    assert old_refresh
+    profile = await client.get("/api/v1/auth/profile")
+    assert profile.status_code == 200
+    assert profile.json()["has_password"] is True
+    assert "password_hash" not in profile.json()
+    await db_session.rollback()
+    current_user_id = uuid.UUID(created.json()["user"]["id"])
+    app.dependency_overrides[get_current_user] = lambda: User(id=current_user_id)
+
+    wrong = await client.post(
+        "/api/v1/auth/change-password",
+        json={
+            "current_password": "wrong-password",
+            "new_password": "second-password",
+        },
+    )
+    assert wrong.status_code == 400
+    assert wrong.json()["code"] == "CURRENT_PASSWORD_INVALID"
+    assert (
+        await client.post(
+            "/api/v1/auth/login",
+            json={"email": "password-change@example.com", "password": "first-password"},
+        )
+    ).status_code == 200
+    unchanged = await client.post(
+        "/api/v1/auth/change-password",
+        json={
+            "current_password": "first-password",
+            "new_password": "first-password",
+        },
+    )
+    assert unchanged.status_code == 400
+    assert unchanged.json()["code"] == "PASSWORD_UNCHANGED"
+    assert (
+        await client.post(
+            "/api/v1/auth/change-password",
+            json={
+                "current_password": "first-password",
+                "new_password": "short",
+            },
+        )
+    ).status_code == 422
+    assert (
+        await client.post(
+            "/api/v1/auth/change-password",
+            json={
+                "current_password": "first-password",
+                "new_password": "second-password",
+                "user_id": str(other_id),
+            },
+        )
+    ).status_code == 422
+
+    changed = await client.post(
+        "/api/v1/auth/change-password",
+        json={
+            "current_password": "first-password",
+            "new_password": "second-password",
+        },
+    )
+    assert changed.status_code == 200, changed.text
+    assert "password_hash" not in changed.json()
+    assert changed.json()["user"]["email"] == "password-change@example.com"
+    new_refresh = client.cookies.get("ielts_refresh")
+    assert new_refresh and new_refresh != old_refresh
+    app.dependency_overrides.pop(get_current_user, None)
+    assert (await client.get("/api/v1/auth/me")).status_code == 200
+    await db_session.rollback()
+    assert (
+        await client.post(
+            "/api/v1/auth/login",
+            json={"email": "password-change@example.com", "password": "first-password"},
+        )
+    ).status_code == 401
+    assert (
+        await client.post(
+            "/api/v1/auth/login",
+            json={"email": "password-change@example.com", "password": "second-password"},
+        )
+    ).status_code == 200
+
+    client.cookies.set("ielts_refresh", old_refresh, path="/")
+    assert (await client.post("/api/v1/auth/refresh")).status_code == 401
+    client.cookies.set("ielts_refresh", new_refresh, path="/")
+    client.cookies.delete("ielts_access", path="/")
+    assert (await client.post("/api/v1/auth/refresh")).status_code == 200
+
+    account = await db_session.scalar(
+        select(User).where(User.email == "password-change@example.com")
+    )
+    assert account is not None
+    assert account.password_hash != "second-password"
+    assert verify_password("second-password", account.password_hash)
+    sessions = list(
+        await db_session.scalars(select(RefreshSession).where(RefreshSession.user_id == account.id))
+    )
+    assert sum(row.revoked_at is not None for row in sessions) >= 2
+    other_account = await db_session.get(User, other_id)
+    assert other_account is not None
+    assert verify_password("other-password", other_account.password_hash)
+
+
+@pytest.mark.asyncio
+async def test_google_only_password_change_is_unavailable_and_auth_is_required(client, test_user):
+    unauthorized = await client.post(
+        "/api/v1/auth/change-password",
+        json={
+            "current_password": "anything",
+            "new_password": "new-password",
+        },
+    )
+    assert unauthorized.status_code == 401
+    token = create_token(
+        subject=test_user.id,
+        token_type="access",
+        secret=SECRET,
+        issuer=get_settings().jwt_issuer,
+        audience=get_settings().jwt_audience,
+        lifetime=timedelta(minutes=5),
+        role="USER",
+    )
+    client.cookies.set("ielts_access", token, path="/")
+    profile = await client.get("/api/v1/auth/profile")
+    assert profile.status_code == 200
+    assert profile.json()["has_password"] is False
+    assert "password_hash" not in profile.json()
+    response = await client.post(
+        "/api/v1/auth/change-password",
+        json={
+            "current_password": "anything",
+            "new_password": "new-password",
+        },
+    )
+    assert response.status_code == 409
+    assert response.json()["code"] == "PASSWORD_NOT_AVAILABLE"
+
+
+@pytest.mark.asyncio
 async def test_registration_rejects_client_supplied_admin_role(client, db_session) -> None:
     response = await client.post(
         "/api/v1/auth/register",
@@ -211,7 +374,15 @@ async def test_bootstrap_requires_complete_config_and_never_promotes_existing_us
     db_session,
 ) -> None:
     with pytest.raises(AppError) as missing:
-        await bootstrap_admin(db_session, Settings(jwt_secret=SECRET))
+        await bootstrap_admin(
+            db_session,
+            Settings(
+                jwt_secret=SECRET,
+                initial_admin_email=None,
+                initial_admin_password=None,
+                initial_admin_name=None,
+            ),
+        )
     assert missing.value.code == "ADMIN_BOOTSTRAP_CONFIG_REQUIRED"
 
     async with db_session.begin():

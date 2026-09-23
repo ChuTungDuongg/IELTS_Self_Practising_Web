@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -9,6 +9,7 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     Enum,
     ForeignKey,
@@ -52,6 +53,15 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     email_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    phone_number: Mapped[str | None] = mapped_column(String(32))
+    date_of_birth: Mapped[date | None] = mapped_column(Date())
+    country: Mapped[str | None] = mapped_column(String(120))
+    city: Mapped[str | None] = mapped_column(String(120))
+    occupation: Mapped[str | None] = mapped_column(String(160))
+    institution: Mapped[str | None] = mapped_column(String(200))
+    target_band: Mapped[Decimal | None] = mapped_column(Numeric(3, 1))
+    target_test_date: Mapped[date | None] = mapped_column(Date())
+    bio: Mapped[str | None] = mapped_column(String(1000))
 
     oauth_accounts: Mapped[list[OAuthAccount]] = relationship(
         back_populates="user", cascade="all, delete-orphan"

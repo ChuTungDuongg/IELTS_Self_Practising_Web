@@ -14,7 +14,7 @@ from app.schemas.admin import (
     AdminUserListItem,
     AdminUserUpdate,
 )
-from app.schemas.auth import UserResponse
+from app.schemas.auth import ProfileFieldsResponse, UserResponse
 from app.services.analytics import AnalyticsService
 from app.services.attempts import AttemptService
 
@@ -134,7 +134,7 @@ class AdminService:
         if user is None:
             raise AppError("USER_NOT_FOUND", "The requested user does not exist.", 404)
         return AdminUserDetail(
-            user=UserResponse.model_validate(user),
+            user=ProfileFieldsResponse.model_validate(user),
             history=await AttemptService(self.session, user.id).history(),
             analytics=await AnalyticsService(self.session, user.id).dashboard(),
         )

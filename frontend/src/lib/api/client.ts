@@ -18,7 +18,7 @@ export type ApiRequester = <T>(path: string, init?: RequestInit) => Promise<T>;
 let refreshInFlight: Promise<boolean> | null = null;
 
 function canRefresh(path: string): boolean {
-  return path === "/auth/me" || !path.startsWith("/auth/");
+  return path === "/auth/me" || path === "/auth/profile" || path === "/auth/change-password" || !path.startsWith("/auth/");
 }
 
 async function refreshAccessSession(): Promise<boolean> {

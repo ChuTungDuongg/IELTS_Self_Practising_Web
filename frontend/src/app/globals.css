@@ -194,6 +194,14 @@ input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--mute
 .field-label .field, .field-label .select-field { margin-top: 7px; color: var(--ink); font-size: 14px; font-weight: 400; }
 .field-help { margin-top: 6px; color: var(--muted); font-size: 11px; line-height: 1.5; }
 .surface-card { border: 1px solid var(--line); border-radius: 16px; background: var(--surface); box-shadow: var(--shadow-sm); }
+.profile-form { display: grid; gap: 18px; max-width: 920px; }
+.profile-form > .btn { justify-self: start; }
+.profile-card { display: grid; gap: 18px; padding: 24px; }
+.profile-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 18px; }
+.profile-detail { display: grid; gap: 6px; }
+.profile-detail span { color: var(--muted); font-size: 12px; }
+.profile-detail strong { font-size: 14px; overflow-wrap: anywhere; }
+.profile-security { max-width: 920px; margin-top: 18px; }
 .section-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; }
 .section-title { margin: 0; font-size: 18px; font-weight: 760; letter-spacing: -0.02em; }
 .section-description { margin: 5px 0 0; color: var(--muted); font-size: 13px; line-height: 1.55; }

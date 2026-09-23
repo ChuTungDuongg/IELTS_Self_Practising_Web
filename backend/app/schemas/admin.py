@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field, model_validator
 from app.models.enums import ModuleType, UserRole
 from app.schemas.analytics import AnalyticsDashboard
 from app.schemas.attempts import AttemptList
-from app.schemas.auth import UserResponse
+from app.schemas.auth import ProfileFieldsResponse
 
 
 class AdminUserListItem(BaseModel):
@@ -40,7 +40,7 @@ class AdminStats(BaseModel):
 
 
 class AdminUserDetail(BaseModel):
-    user: UserResponse
+    user: ProfileFieldsResponse
     history: AttemptList
     analytics: AnalyticsDashboard
 

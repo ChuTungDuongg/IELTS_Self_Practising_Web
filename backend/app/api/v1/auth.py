@@ -2,16 +2,22 @@ import secrets
 
 from fastapi import APIRouter, Depends, Query, Request, Response, status
 from fastapi.responses import RedirectResponse
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import CurrentUser
 from app.core.config import Settings, get_settings
 from app.core.database import get_session
 from app.core.exceptions import AppError
+from app.models import User
 from app.schemas.auth import (
     AuthSessionResponse,
+    ChangePasswordRequest,
     LoginRequest,
     LogoutResponse,
+    ProfileFieldsResponse,
+    ProfileResponse,
+    ProfileUpdate,
     RegisterRequest,
     UserResponse,
 )
@@ -57,6 +63,13 @@ def _session_response(user, issued: IssuedSession) -> AuthSessionResponse:
     return AuthSessionResponse(
         user=UserResponse.model_validate(user),
         access_expires_at=issued.access_expires_at,
+    )
+
+
+def _profile_response(user: User) -> ProfileResponse:
+    fields = ProfileFieldsResponse.model_validate(user)
+    return ProfileResponse.model_validate(
+        {**fields.model_dump(mode="python"), "has_password": user.password_hash is not None}
     )
 
 
@@ -120,6 +133,44 @@ async def logout(
 @router.get("/me", response_model=UserResponse)
 async def me(user: CurrentUser) -> UserResponse:
     return UserResponse.model_validate(user)
+
+
+@router.get("/profile", response_model=ProfileResponse)
+async def get_profile(user: CurrentUser) -> ProfileResponse:
+    return _profile_response(user)
+
+
+@router.patch("/profile", response_model=ProfileResponse)
+async def update_profile(
+    body: ProfileUpdate,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+) -> ProfileResponse:
+    async with session.begin():
+        account = await session.scalar(select(User).where(User.id == user.id).with_for_update())
+        if account is None:
+            raise AppError("USER_NOT_FOUND", "The account no longer exists.", 404)
+        for field in body.model_fields_set:
+            setattr(account, field, getattr(body, field))
+        await session.flush()
+        await session.refresh(account, attribute_names=["updated_at"])
+        result = _profile_response(account)
+    return result
+
+
+@router.post("/change-password", response_model=AuthSessionResponse)
+async def change_password(
+    body: ChangePasswordRequest,
+    response: Response,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+) -> AuthSessionResponse:
+    settings = get_settings()
+    account, issued = await AuthService(session, settings).change_password(
+        user.id, body.current_password, body.new_password
+    )
+    _set_session_cookies(response, issued, settings)
+    return _session_response(account, issued)
 
 
 @router.get("/oauth/google/start")

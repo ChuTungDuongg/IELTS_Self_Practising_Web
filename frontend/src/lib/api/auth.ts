@@ -39,4 +39,11 @@ export async function getCurrentUser() {
   return userSchema.parse(await apiRequest("/auth/me"));
 }
 
+export async function changePassword(input: { current_password: string; new_password: string }) {
+  return sessionSchema.parse(await apiRequest("/auth/change-password", {
+    method: "POST",
+    body: JSON.stringify(input),
+  }));
+}
+
 export const googleLoginUrl = `${API_BASE_URL}/auth/oauth/google/start`;

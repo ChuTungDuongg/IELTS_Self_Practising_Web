@@ -51,7 +51,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
         <div className="header-actions">
           {sessionError ? <p role="alert" className="notice">{sessionError}</p> : null}
-          {!loading && user ? <><span className="auth-user-label">{user.display_name}<small>{user.role}</small></span><button type="button" className="btn btn-ghost" onClick={() => void logout()}>Logout</button></> : !loading && !sessionError ? <><Link href="/login" className="btn btn-ghost">Login</Link><Link href="/register" className="btn btn-primary">Register</Link></> : null}
+          {!loading && user ? <><Link href="/profile" className="auth-user-label">{user.display_name}<small>{user.role}</small></Link><button type="button" className="btn btn-ghost" onClick={() => void logout()}>Logout</button></> : !loading && !sessionError ? <><Link href="/login" className="btn btn-ghost">Login</Link><Link href="/register" className="btn btn-primary">Register</Link></> : null}
           <ThemeToggle />
         </div>
       </header>

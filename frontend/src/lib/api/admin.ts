@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { userSchema } from "./auth";
+import { profileFieldsSchema } from "./profile";
 import { analyticsSchema, type AnalyticsDashboard } from "./analytics";
 import type { HistoryResponse } from "./history";
 import { apiRequest, type ApiRequester } from "./client";
@@ -25,7 +26,7 @@ const userListSchema = z.object({
 
 export type AdminStats = z.infer<typeof statsSchema>;
 export type AdminUserList = z.infer<typeof userListSchema>;
-export type AdminUserDetail = { user: z.infer<typeof userSchema>; history: HistoryResponse; analytics: AnalyticsDashboard };
+export type AdminUserDetail = { user: z.infer<typeof profileFieldsSchema>; history: HistoryResponse; analytics: AnalyticsDashboard };
 
 export async function getAdminStats(request: ApiRequester = apiRequest) {
   return statsSchema.parse(await request<unknown>("/admin/stats"));
@@ -46,7 +47,7 @@ export async function getAdminUsers(
 export async function getAdminUser(userId: string, request: ApiRequester = apiRequest): Promise<AdminUserDetail> {
   const data = await request<Record<string, unknown>>(`/admin/users/${encodeURIComponent(userId)}`);
   return {
-    user: userSchema.parse(data.user),
+    user: profileFieldsSchema.parse(data.user),
     history: data.history as HistoryResponse,
     analytics: analyticsSchema.parse(data.analytics),
   };
