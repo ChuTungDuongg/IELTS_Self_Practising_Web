@@ -24,6 +24,8 @@ async def test_registration_still_needs_only_account_fields(db_session):
     account = await AuthService(db_session, get_settings()).register(request)
     assert account.phone_number is None
     assert account.target_band is None
+    for field in ("target_listening_band", "target_reading_band", "target_writing_band", "target_speaking_band"):
+        assert getattr(account, field) is None
     assert account.bio is None
     with pytest.raises(ValidationError):
         RegisterRequest(
@@ -69,6 +71,8 @@ async def test_profile_patch_partial_clear_and_security(db_session, test_user):
             assert initial.json()["email"] == test_user.email
             assert initial.json()["has_password"] is False
             assert "password_hash" not in initial.json()
+            for field in ("target_listening_band", "target_reading_band", "target_writing_band", "target_speaking_band"):
+                assert initial.json()[field] is None
             update = await client.patch(
                 "/api/v1/auth/profile",
                 json={
@@ -80,6 +84,10 @@ async def test_profile_patch_partial_clear_and_security(db_session, test_user):
                     "occupation": "Student",
                     "institution": "Fictional University",
                     "target_band": 7.5,
+                    "target_listening_band": 8.0,
+                    "target_reading_band": 7.5,
+                    "target_writing_band": 7.0,
+                    "target_speaking_band": 7.0,
                     "target_test_date": "2027-01-01",
                     "bio": "  Preparing for a test.  ",
                 },
@@ -87,10 +95,32 @@ async def test_profile_patch_partial_clear_and_security(db_session, test_user):
             assert update.status_code == 200, update.text
             assert update.json()["display_name"] == "New Name"
             assert update.json()["target_band"] in ("7.5", 7.5)
+            for field, expected in (
+                ("target_listening_band", 8.0),
+                ("target_reading_band", 7.5),
+                ("target_writing_band", 7.0),
+                ("target_speaking_band", 7.0),
+            ):
+                assert float(update.json()[field]) == expected
             assert update.json()["bio"] == "Preparing for a test."
             patch = await client.patch("/api/v1/auth/profile", json={"city": "Hanoi"})
             assert patch.status_code == 200
             assert patch.json()["country"] == "Vietnam"
+            assert float(patch.json()["target_listening_band"]) == 8.0
+            assert float(patch.json()["target_speaking_band"]) == 7.0
+            cleared_skill = await client.patch("/api/v1/auth/profile", json={"target_listening_band": None})
+            assert cleared_skill.status_code == 200
+            assert cleared_skill.json()["target_listening_band"] is None
+            assert float(cleared_skill.json()["target_reading_band"]) == 7.5
+            cleared_skills = await client.patch(
+                "/api/v1/auth/profile",
+                json={field: None for field in (
+                    "target_reading_band", "target_writing_band", "target_speaking_band"
+                )},
+            )
+            assert cleared_skills.status_code == 200
+            for field in ("target_listening_band", "target_reading_band", "target_writing_band", "target_speaking_band"):
+                assert cleared_skills.json()[field] is None
             cleared = await client.patch("/api/v1/auth/profile", json={"bio": None})
             assert cleared.status_code == 200
             assert cleared.json()["bio"] is None
@@ -104,8 +134,10 @@ async def test_profile_patch_partial_clear_and_security(db_session, test_user):
             ):
                 response = await client.patch("/api/v1/auth/profile", json={field: value})
                 assert response.status_code == 422
-            invalid_band = await client.patch("/api/v1/auth/profile", json={"target_band": 7.3})
-            assert invalid_band.status_code == 422
+            for field in ("target_band", "target_listening_band", "target_reading_band", "target_writing_band", "target_speaking_band"):
+                for invalid in (7.3, -1, 9.5):
+                    invalid_band = await client.patch("/api/v1/auth/profile", json={field: invalid})
+                    assert invalid_band.status_code == 422, (field, invalid)
             future = await client.patch(
                 "/api/v1/auth/profile",
                 json={"date_of_birth": str(date.today() + timedelta(days=1))},

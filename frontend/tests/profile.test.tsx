@@ -22,7 +22,8 @@ const base = {
   display_name: "Student", role: "USER" as const, is_active: true, email_verified: true,
   created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z", last_login_at: null,
   phone_number: null, date_of_birth: null, country: null, city: null, occupation: null,
-  institution: null, target_band: null, target_test_date: null, bio: null,
+  institution: null, target_band: null, target_listening_band: null, target_reading_band: null,
+  target_writing_band: null, target_speaking_band: null, target_test_date: null, bio: null,
   has_password: true,
 };
 
@@ -58,12 +59,48 @@ describe("profile", () => {
     await screen.findByLabelText("City");
     fireEvent.change(screen.getByLabelText("Display name"), { target: { value: "New Name" } });
     fireEvent.change(screen.getByLabelText("City"), { target: { value: "Hanoi" } });
-    fireEvent.change(screen.getByLabelText("Target band"), { target: { value: "7.5" } });
+    fireEvent.change(screen.getByLabelText("Overall target band"), { target: { value: "7.5" } });
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
     await waitFor(() => expect(updateProfile).toHaveBeenCalledWith({ display_name: "New Name", city: "Hanoi", target_band: 7.5 }));
     expect(await screen.findByRole("status")).toHaveTextContent("Profile saved.");
     expect(await screen.findByRole("link", { name: /New Name/ })).toHaveAttribute("href", "/profile");
     expect(getCurrentUser).toHaveBeenCalledTimes(2);
+  });
+
+  it("shows all IELTS goals with saved values and half-band input limits", async () => {
+    vi.mocked(getProfile).mockResolvedValue({
+      ...base, target_band: 7.5, target_listening_band: 8,
+      target_reading_band: 7.5, target_writing_band: 7, target_speaking_band: 7,
+      target_test_date: "2026-12-05",
+    });
+    view();
+    for (const [label, value] of [
+      ["Overall target band", 7.5], ["Listening", 8], ["Reading", 7.5],
+      ["Writing", 7], ["Speaking", 7],
+    ] as const) {
+      const input = await screen.findByLabelText(label);
+      expect(input).toHaveValue(value);
+      expect(input).toHaveAttribute("type", "number");
+      expect(input).toHaveAttribute("min", "0");
+      expect(input).toHaveAttribute("max", "9");
+      expect(input).toHaveAttribute("step", "0.5");
+    }
+    expect(screen.getByLabelText("Target test date")).toHaveValue("2026-12-05");
+  });
+
+  it("sends only one edited skill, then null when that skill is cleared", async () => {
+    const goals = { ...base, target_band: 7.5, target_listening_band: 8, target_reading_band: 7.5 };
+    vi.mocked(getProfile).mockResolvedValue(goals);
+    vi.mocked(updateProfile).mockResolvedValueOnce({ ...goals, target_reading_band: 8 }).mockResolvedValueOnce({ ...goals, target_reading_band: null });
+    view();
+    const reading = await screen.findByLabelText("Reading");
+    fireEvent.change(reading, { target: { value: "8" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() => expect(updateProfile).toHaveBeenNthCalledWith(1, { target_reading_band: 8 }));
+    fireEvent.change(reading, { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() => expect(updateProfile).toHaveBeenNthCalledWith(2, { target_reading_band: null }));
+    expect(changePassword).not.toHaveBeenCalled();
   });
 
   it("reports an API failure", async () => {

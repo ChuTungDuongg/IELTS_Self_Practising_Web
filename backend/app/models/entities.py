@@ -60,6 +60,10 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     occupation: Mapped[str | None] = mapped_column(String(160))
     institution: Mapped[str | None] = mapped_column(String(200))
     target_band: Mapped[Decimal | None] = mapped_column(Numeric(3, 1))
+    target_listening_band: Mapped[Decimal | None] = mapped_column(Numeric(3, 1))
+    target_reading_band: Mapped[Decimal | None] = mapped_column(Numeric(3, 1))
+    target_writing_band: Mapped[Decimal | None] = mapped_column(Numeric(3, 1))
+    target_speaking_band: Mapped[Decimal | None] = mapped_column(Numeric(3, 1))
     target_test_date: Mapped[date | None] = mapped_column(Date())
     bio: Mapped[str | None] = mapped_column(String(1000))
 

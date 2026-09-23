@@ -8,6 +8,8 @@ import { AdminOnly } from "@/features/auth/admin-only";
 import { getAdminStats } from "@/lib/api/admin";
 import { userSchema } from "@/lib/api/auth";
 import { ApiError } from "@/lib/api/client";
+import { getProfile, type Profile } from "@/lib/api/profile";
+import { formatProjectDate } from "@/lib/date-time";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +19,10 @@ export default async function DashboardPage() {
     getHistory(serverApiRequest).catch(() => ({ items: [], groups: [], total: 0 })),
     getHomepageUser(),
   ]);
-  const adminStats = user?.role === "ADMIN" ? await getAdminStats(serverApiRequest) : null;
+  const [adminStats, profile] = await Promise.all([
+    user?.role === "ADMIN" ? getAdminStats(serverApiRequest) : null,
+    user ? getHomepageProfile() : null,
+  ]);
   const published = tests.flatMap((test) => test.versions).filter((item) => item.status === "PUBLISHED");
   const inProgress = history.items.filter((item) => item.status === "IN_PROGRESS" || item.status === "PAUSED");
   const pathways = [
@@ -42,7 +47,7 @@ export default async function DashboardPage() {
         <InteractivePlanet />
       </section>
 
-      <section className="home-metrics" aria-label="Workspace summary">
+      <section className={`home-metrics${user?.role === "ADMIN" ? " home-metrics-admin" : ""}`} aria-label="Workspace summary">
         {[
           ["Published", String(published.length), "Ready to practice", "/library"],
           ["Resumable", String(inProgress.length), "Saved attempts", "/history"],
@@ -53,9 +58,11 @@ export default async function DashboardPage() {
             <ArrowIcon className="size-4" />
           </Link>
         ))}
-        <AdminOnly><Link href="/admin/tests" className="home-metric"><span className="home-metric-value">{tests.length}</span><span><strong>Builder tests</strong><small>Authoring workspace</small></span><ArrowIcon className="size-4" /></Link></AdminOnly>
+        {user?.role === "ADMIN" ? <Link href="/admin/tests" className="home-metric"><span className="home-metric-value">{tests.length}</span><span><strong>Builder tests</strong><small>Authoring workspace</small></span><ArrowIcon className="size-4" /></Link> : null}
         {adminStats ? <Link href="/admin" className="home-metric"><span className="home-metric-value">{adminStats.total_users}</span><span><strong>Users</strong><small>{adminStats.active_users} active</small></span><ArrowIcon className="size-4" /></Link> : null}
       </section>
+
+      {profile ? <IeltsGoals profile={profile} /> : null}
 
       <section className="home-learning" aria-labelledby="learning-paths-title">
         <div className="section-header">
@@ -80,6 +87,45 @@ export default async function DashboardPage() {
       </section>
     </div>
   );
+}
+
+async function getHomepageProfile() {
+  try {
+    return await getProfile(serverApiRequest);
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 401) return null;
+    throw error;
+  }
+}
+
+function IeltsGoals({ profile }: { profile: Profile }) {
+  const skills = [
+    ["Listening", profile.target_listening_band],
+    ["Reading", profile.target_reading_band],
+    ["Writing", profile.target_writing_band],
+    ["Speaking", profile.target_speaking_band],
+  ] as const;
+  const hasGoals = profile.target_band !== null || skills.some(([, value]) => value !== null) || profile.target_test_date !== null;
+
+  return <section className={`surface-card home-goals${hasGoals ? "" : " home-goals-empty"}`} aria-labelledby="home-goals-title">
+    {hasGoals ? <>
+      <div className="home-goals-heading"><p className="page-eyebrow">Personal targets</p><h2 id="home-goals-title" className="section-title">IELTS goals</h2></div>
+      <div className="home-goals-body">
+        <div className="home-goals-overall"><span>Overall target band</span><strong>{formatTarget(profile.target_band)}</strong></div>
+        <div className="home-goals-skills">
+          {skills.map(([label, value]) => <div className="home-goals-skill" key={label}><span>{label} target</span><strong>{formatTarget(value)}</strong></div>)}
+        </div>
+      </div>
+      <div className="home-goals-footer"><p>Target test <strong>{profile.target_test_date ? formatProjectDate(profile.target_test_date) : "—"}</strong></p><Link href="/profile" className="btn btn-ghost">Edit goals <ArrowIcon className="size-4" /></Link></div>
+    </> : <>
+      <div><p className="page-eyebrow">Personal targets</p><h2 id="home-goals-title" className="section-title">Set your IELTS goal</h2><p className="section-description">Add target bands for each skill to keep your practice focused.</p></div>
+      <Link href="/profile" className="btn btn-secondary">Set goals <ArrowIcon className="size-4" /></Link>
+    </>}
+  </section>;
+}
+
+function formatTarget(value: number | null): string {
+  return value === null ? "—" : value.toFixed(1);
 }
 
 async function getHomepageUser() {

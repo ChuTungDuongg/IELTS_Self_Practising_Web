@@ -145,6 +145,10 @@ async def test_admin_can_access_admin_and_builder_boundaries_without_secret_fiel
         display_name="Learner",
         city="Fictional City",
         target_band=7.5,
+        target_listening_band=8.0,
+        target_reading_band=7.5,
+        target_writing_band=7.0,
+        target_speaking_band=7.0,
         bio="Optional profile note",
         role=UserRole.USER,
         is_active=True,
@@ -208,6 +212,13 @@ async def test_admin_can_access_admin_and_builder_boundaries_without_secret_fiel
     assert detail.json()["analytics"]["total_finalized_attempts"] == 1
     assert detail.json()["user"]["city"] == "Fictional City"
     assert detail.json()["user"]["target_band"] in ("7.5", 7.5)
+    for field, expected in (
+        ("target_listening_band", 8.0),
+        ("target_reading_band", 7.5),
+        ("target_writing_band", 7.0),
+        ("target_speaking_band", 7.0),
+    ):
+        assert float(detail.json()["user"][field]) == expected
     assert detail.json()["user"]["bio"] == "Optional profile note"
     assert "has_password" not in detail.json()["user"]
     sensitive = str(detail.json()).lower()

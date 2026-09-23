@@ -198,6 +198,7 @@ input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--mute
 .profile-form > .btn { justify-self: start; }
 .profile-card { display: grid; gap: 18px; padding: 24px; }
 .profile-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 18px; }
+.profile-goals-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .profile-detail { display: grid; gap: 6px; }
 .profile-detail span { color: var(--muted); font-size: 12px; }
 .profile-detail strong { font-size: 14px; overflow-wrap: anywhere; }
@@ -298,7 +299,8 @@ input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--mute
   0%, 100% { opacity: .62; transform: scale(.88); }
   50% { opacity: 1; transform: scale(1.12); }
 }
-.home-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.home-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.home-metrics-admin { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .home-metric { display: grid; min-width: 0; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 14px; border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px; background: var(--surface); box-shadow: var(--shadow-sm); transition: border-color 170ms ease, transform 170ms ease, box-shadow 170ms ease; }
 .home-metric:hover { border-color: color-mix(in srgb, var(--accent) 32%, var(--line)); box-shadow: var(--shadow-md); transform: translateY(-2px); }
 .home-metric-value { display: grid; min-width: 44px; height: 44px; place-items: center; border-radius: 11px; color: var(--accent); background: var(--accent-soft); font-size: 21px; font-weight: 800; }
@@ -307,6 +309,20 @@ input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--mute
 .home-metric small { margin-top: 3px; color: var(--muted); font-size: 10px; }
 .home-metric > svg { color: var(--muted); transition: transform 170ms ease; }
 .home-metric:hover > svg { color: var(--accent); transform: translateX(2px); }
+.home-goals { display: grid; gap: 18px; padding: 24px; }
+.home-goals-heading .page-eyebrow { margin-bottom: 5px; }
+.home-goals-body { display: grid; grid-template-columns: minmax(160px, 1fr) minmax(0, 3fr); gap: 24px; align-items: stretch; }
+.home-goals-overall { display: grid; align-content: center; gap: 7px; border-right: 1px solid var(--line); padding-right: 20px; }
+.home-goals-overall span, .home-goals-skill span { color: var(--muted); font-size: 11px; font-weight: 650; }
+.home-goals-overall strong { color: var(--accent); font-size: 40px; line-height: 1; }
+.home-goals-skills { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.home-goals-skill { display: grid; align-content: center; gap: 8px; min-width: 0; }
+.home-goals-skill strong { font-size: 23px; line-height: 1; }
+.home-goals-footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; border-top: 1px solid var(--line); padding-top: 14px; }
+.home-goals-footer p { margin: 0; color: var(--muted); font-size: 12px; }
+.home-goals-footer strong { margin-left: 6px; color: var(--ink); font-size: 13px; }
+.home-goals-empty { display: flex; align-items: center; justify-content: space-between; gap: 18px; }
+.home-goals-empty .page-eyebrow { margin-bottom: 5px; }
 .home-learning { padding-top: 12px; }
 .home-learning .section-title { font-size: clamp(24px, 2.5vw, 32px); }
 .learning-path-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-top: 20px; }
@@ -1065,10 +1081,14 @@ input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--mute
 }
 
 @media (max-width: 1180px) {
+  .home-metrics-admin { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .learning-path-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 920px) {
+  .home-goals-body { grid-template-columns: 1fr; gap: 18px; }
+  .home-goals-overall { border-right: 0; border-bottom: 1px solid var(--line); padding: 0 0 16px; }
+  .profile-goals-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .home-hero { min-height: auto; grid-template-columns: 1fr; }
   .home-orbit { position: absolute; top: -52px; right: -38px; width: 260px; opacity: .42; }
   .home-hero-content { padding-right: min(18vw, 120px); }
@@ -1081,7 +1101,10 @@ input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--mute
   .home-hero-content { padding-right: 0; }
   .home-orbit { display: none; }
   .home-hero h1 { font-size: clamp(38px, 12vw, 56px); }
-  .home-metrics { grid-template-columns: 1fr; }
+  .home-metrics, .home-metrics-admin { grid-template-columns: 1fr; }
+  .home-goals-skills { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+  .home-goals-empty { align-items: flex-start; flex-direction: column; }
+  .profile-goals-grid { grid-template-columns: 1fr; }
   .learning-path-grid { grid-template-columns: 1fr; }
   .learning-path-card { min-height: 190px; }
   .home-foundation { align-items: flex-start; flex-wrap: wrap; }

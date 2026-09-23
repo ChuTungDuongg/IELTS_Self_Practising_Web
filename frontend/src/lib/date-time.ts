@@ -14,3 +14,13 @@ export function formatProjectDateTime(value: string | Date): string {
   if (Number.isNaN(date.getTime())) return "Invalid date";
   return projectDateTimeFormatter.format(date);
 }
+
+const projectDateFormatter = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "UTC", day: "2-digit", month: "short", year: "numeric",
+});
+
+export function formatProjectDate(value: string): string {
+  const date = new Date(`${value}T00:00:00Z`);
+  if (Number.isNaN(date.getTime())) return "Invalid date";
+  return projectDateFormatter.format(date);
+}

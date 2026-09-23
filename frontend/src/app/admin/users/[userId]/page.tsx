@@ -21,7 +21,11 @@ export default async function AdminUserPage({ params }: { params: Promise<{ user
       <ProfileDetail label="City" value={detail.user.city} />
       <ProfileDetail label="Occupation" value={detail.user.occupation} />
       <ProfileDetail label="Institution" value={detail.user.institution} />
-      <ProfileDetail label="Target band" value={detail.user.target_band} />
+      <ProfileDetail label="Overall target band" value={detail.user.target_band} />
+      <ProfileDetail label="Listening target band" value={detail.user.target_listening_band} />
+      <ProfileDetail label="Reading target band" value={detail.user.target_reading_band} />
+      <ProfileDetail label="Writing target band" value={detail.user.target_writing_band} />
+      <ProfileDetail label="Speaking target band" value={detail.user.target_speaking_band} />
       <ProfileDetail label="Target test date" value={detail.user.target_test_date} />
       <ProfileDetail label="Bio" value={detail.user.bio} />
     </div></section>

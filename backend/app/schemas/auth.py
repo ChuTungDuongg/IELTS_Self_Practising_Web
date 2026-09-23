@@ -29,6 +29,10 @@ class ProfileFieldsResponse(UserResponse):
     occupation: str | None
     institution: str | None
     target_band: Decimal | None
+    target_listening_band: Decimal | None
+    target_reading_band: Decimal | None
+    target_writing_band: Decimal | None
+    target_speaking_band: Decimal | None
     target_test_date: date | None
     bio: str | None
 
@@ -55,6 +59,10 @@ class ProfileUpdate(BaseModel):
     occupation: str | None = Field(default=None, max_length=160)
     institution: str | None = Field(default=None, max_length=200)
     target_band: Decimal | None = None
+    target_listening_band: Decimal | None = None
+    target_reading_band: Decimal | None = None
+    target_writing_band: Decimal | None = None
+    target_speaking_band: Decimal | None = None
     target_test_date: date | None = None
     bio: str | None = Field(default=None, max_length=1000)
 
@@ -79,7 +87,13 @@ class ProfileUpdate(BaseModel):
             raise ValueError("Date of birth cannot be in the future")
         return value
 
-    @field_validator("target_band")
+    @field_validator(
+        "target_band",
+        "target_listening_band",
+        "target_reading_band",
+        "target_writing_band",
+        "target_speaking_band",
+    )
     @classmethod
     def validate_band(cls, value: Decimal | None) -> Decimal | None:
         if value is not None and (

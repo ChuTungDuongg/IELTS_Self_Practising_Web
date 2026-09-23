@@ -8,9 +8,14 @@ import { formatProjectDateTime } from "@/lib/date-time";
 import { changePassword } from "@/lib/api/auth";
 import { getProfile, updateProfile, type Profile, type ProfileUpdate } from "@/lib/api/profile";
 
-const editable = ["display_name", "phone_number", "date_of_birth", "country", "city", "occupation", "institution", "target_band", "target_test_date", "bio"] as const;
+const bandFields = ["target_band", "target_listening_band", "target_reading_band", "target_writing_band", "target_speaking_band"] as const;
+const editable = ["display_name", "phone_number", "date_of_birth", "country", "city", "occupation", "institution", ...bandFields, "target_test_date", "bio"] as const;
 type Editable = (typeof editable)[number];
 type FormValues = Record<Editable, string>;
+
+function isBandField(key: Editable): key is (typeof bandFields)[number] {
+  return (bandFields as readonly string[]).includes(key);
+}
 
 function valuesFromProfile(profile: Profile): FormValues {
   return Object.fromEntries(editable.map((key) => [key, profile[key] === null ? "" : String(profile[key])])) as FormValues;
@@ -45,7 +50,7 @@ export default function ProfilePage() {
   }, [user?.id]);
 
   function field(key: Editable, label: string, type = "text", maxLength?: number) {
-    return <label className="field-label" key={key}>{label}<input className="field" type={type} maxLength={maxLength} step={key === "target_band" ? "0.5" : undefined} min={key === "target_band" ? "0" : undefined} max={key === "target_band" ? "9" : undefined} value={values?.[key] ?? ""} onChange={(event) => setValues((current) => current ? { ...current, [key]: event.target.value } : current)} /></label>;
+    return <label className="field-label" key={key}>{label}<input className="field" type={type} maxLength={maxLength} step={type === "number" ? "0.5" : undefined} min={type === "number" ? "0" : undefined} max={type === "number" ? "9" : undefined} value={values?.[key] ?? ""} onChange={(event) => setValues((current) => current ? { ...current, [key]: event.target.value } : current)} /></label>;
   }
 
   async function save(event: FormEvent<HTMLFormElement>) {
@@ -57,7 +62,7 @@ export default function ProfilePage() {
       const raw = values[key].trim();
       const previous = profile[key] === null ? "" : String(profile[key]);
       if (raw === previous) continue;
-      if (key === "target_band") update.target_band = raw ? Number(raw) : null;
+      if (isBandField(key)) update[key] = raw ? Number(raw) : null;
       else if (key === "display_name") update.display_name = raw;
       else update[key] = raw || null;
     }
@@ -114,8 +119,12 @@ export default function ProfilePage() {
         {field("occupation", "Occupation", "text", 160)}
         {field("institution", "Institution", "text", 200)}
       </div></section>
-      <section className="surface-card profile-card"><h2 className="section-title">IELTS goals</h2><div className="profile-grid">
-        {field("target_band", "Target band", "number")}
+      <section className="surface-card profile-card"><h2 className="section-title">IELTS goals</h2><div className="profile-grid profile-goals-grid">
+        {field("target_band", "Overall target band", "number")}
+        {field("target_listening_band", "Listening", "number")}
+        {field("target_reading_band", "Reading", "number")}
+        {field("target_writing_band", "Writing", "number")}
+        {field("target_speaking_band", "Speaking", "number")}
         {field("target_test_date", "Target test date", "date")}
       </div></section>
       <section className="surface-card profile-card"><h2 className="section-title">About</h2><label className="field-label">Bio<textarea className="textarea-field" maxLength={1000} value={values.bio} onChange={(event) => setValues({ ...values, bio: event.target.value })} /></label></section>
