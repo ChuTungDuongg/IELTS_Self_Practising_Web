@@ -1,11 +1,11 @@
 import logging
 import uuid
 
-from sqlalchemy import distinct, func, or_, select
+from sqlalchemy import delete, distinct, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import AppError
-from app.models import Attempt, TestSession, User
+from app.models import Attempt, OAuthAccount, RefreshSession, TestSession, User
 from app.models.enums import AttemptStatus, ModuleType, TestSessionStatus, UserRole
 from app.schemas.admin import (
     AdminStats,
@@ -75,7 +75,9 @@ class AdminService:
             attempts_by_skill=by_skill,
         )
 
-    async def users(self, *, search: str | None, offset: int, limit: int) -> AdminUserList:
+    async def users(
+        self, *, search: str | None, is_active: bool | None, offset: int, limit: int
+    ) -> AdminUserList:
         normalized = search.strip().casefold() if search else None
         filters = []
         if normalized:
@@ -86,6 +88,8 @@ class AdminService:
                     func.lower(User.display_name).like(pattern),
                 )
             )
+        if is_active is not None:
+            filters.append(User.is_active.is_(is_active))
         count_statement = select(func.count(User.id))
         if filters:
             count_statement = count_statement.where(*filters)
@@ -186,3 +190,53 @@ class AdminService:
             next_active,
         )
         return response
+
+    async def delete_user(self, actor_id: uuid.UUID, user_id: uuid.UUID) -> None:
+        async with self.session.begin():
+            user = await self.session.scalar(
+                select(User).where(User.id == user_id).with_for_update()
+            )
+            if user is None:
+                raise AppError("USER_NOT_FOUND", "The requested user does not exist.", 404)
+            if user.id == actor_id:
+                raise AppError("CANNOT_DELETE_SELF", "You cannot delete your own account.", 409)
+            if user.is_active:
+                raise AppError(
+                    "USER_DELETE_REQUIRES_DEACTIVATION",
+                    "Deactivate this user before deleting the account.",
+                    409,
+                )
+
+            oauth_count = int(
+                await self.session.scalar(
+                    select(func.count(OAuthAccount.id)).where(OAuthAccount.user_id == user_id)
+                )
+                or 0
+            )
+            refresh_count = int(
+                await self.session.scalar(
+                    select(func.count(RefreshSession.id)).where(RefreshSession.user_id == user_id)
+                )
+                or 0
+            )
+            attempts = await self.session.execute(
+                delete(Attempt).where(Attempt.user_id == user_id).returning(Attempt.id)
+            )
+            attempt_count = len(attempts.scalars().all())
+            test_sessions = await self.session.execute(
+                delete(TestSession).where(TestSession.user_id == user_id).returning(TestSession.id)
+            )
+            test_session_count = len(test_sessions.scalars().all())
+            await self.session.delete(user)
+            await self.session.flush()
+
+        logger.info(
+            "admin_user_deleted actor_id=%s target_id=%s attempts=%s test_sessions=%s "
+            "oauth_accounts=%s refresh_sessions=%s",
+            actor_id,
+            user_id,
+            attempt_count,
+            test_session_count,
+            oauth_count,
+            refresh_count,
+        )

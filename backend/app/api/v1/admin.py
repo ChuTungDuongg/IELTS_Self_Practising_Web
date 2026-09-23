@@ -21,11 +21,14 @@ async def stats(_: AdminUser, session: AsyncSession = Depends(get_session)) -> A
 async def users(
     _: AdminUser,
     search: str | None = Query(default=None, max_length=160),
+    is_active: bool | None = Query(default=None),
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=25, ge=1, le=100),
     session: AsyncSession = Depends(get_session),
 ) -> AdminUserList:
-    return await AdminService(session).users(search=search, offset=offset, limit=limit)
+    return await AdminService(session).users(
+        search=search, is_active=is_active, offset=offset, limit=limit
+    )
 
 
 @router.get("/users/{user_id}", response_model=AdminUserDetail)
@@ -43,3 +46,10 @@ async def update_user(
     session: AsyncSession = Depends(get_session),
 ) -> UserResponse:
     return await AdminService(session).update_user(admin.id, user_id, body)
+
+
+@router.delete("/users/{user_id}", status_code=204)
+async def delete_user(
+    user_id: UUID, admin: AdminUser, session: AsyncSession = Depends(get_session)
+) -> None:
+    await AdminService(session).delete_user(admin.id, user_id)

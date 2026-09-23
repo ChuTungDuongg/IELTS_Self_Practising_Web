@@ -973,6 +973,16 @@ input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--mute
 .admin-user-row small { color: var(--muted); }
 .admin-user-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 .admin-user-actions .notice { flex-basis: 100%; }
+.admin-users .segmented-control { margin-top: 16px; }
+.admin-user-management-row { grid-template-columns: minmax(180px, 1.4fr) minmax(70px, .45fr) minmax(100px, .5fr) minmax(220px, 1.3fr); }
+.admin-user-row-inactive { border-radius: 10px; background: var(--surface-soft); }
+.admin-user-management-row .status-badge { justify-self: start; margin-top: 6px; }
+  .admin-user-management-row .admin-user-actions { justify-content: flex-start; }
+  .admin-user-pagination { display: flex; align-items: center; justify-content: flex-end; gap: 12px; margin-top: 18px; color: var(--muted); }
+@media (max-width: 720px) {
+  .admin-user-management-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .admin-user-management-row .admin-user-actions { grid-column: 1 / -1; }
+}
 .reading-review, .listening-review { display: grid; gap: 20px; }
 .review-header { margin-bottom: 4px; }
 .review-header h1 { margin: 5px 0 0; font-size: clamp(28px, 3vw, 40px); letter-spacing: -.035em; }

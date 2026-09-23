@@ -31,9 +31,16 @@ export async function getAdminStats(request: ApiRequester = apiRequest) {
   return statsSchema.parse(await request<unknown>("/admin/stats"));
 }
 
-export async function getAdminUsers(search = "", request: ApiRequester = apiRequest) {
-  const query = search ? `?search=${encodeURIComponent(search)}` : "";
-  return userListSchema.parse(await request<unknown>(`/admin/users${query}`));
+export async function getAdminUsers(
+  options: { search?: string; isActive?: boolean; offset?: number } = {},
+  request: ApiRequester = apiRequest,
+) {
+  const query = new URLSearchParams();
+  if (options.isActive !== undefined) query.set("is_active", String(options.isActive));
+  if (options.search?.trim()) query.set("search", options.search.trim());
+  if (options.offset && options.offset > 0) query.set("offset", String(options.offset));
+  const suffix = query.size ? `?${query.toString().replace(/\+/g, "%20")}` : "";
+  return userListSchema.parse(await request<unknown>(`/admin/users${suffix}`));
 }
 
 export async function getAdminUser(userId: string, request: ApiRequester = apiRequest): Promise<AdminUserDetail> {
@@ -53,4 +60,8 @@ export async function updateAdminUser(
     method: "PATCH",
     body: JSON.stringify(update),
   }));
+}
+
+export async function deleteAdminUser(userId: string): Promise<void> {
+  await apiRequest<unknown>(`/admin/users/${encodeURIComponent(userId)}`, { method: "DELETE" });
 }
