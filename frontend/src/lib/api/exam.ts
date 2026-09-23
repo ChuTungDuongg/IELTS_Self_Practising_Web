@@ -1,15 +1,17 @@
 import { z } from "zod";
 import { attemptResponseSchema } from "./attempts";
-import { apiRequest } from "./client";
+import { apiRequest, type ApiRequester } from "./client";
 
 const questionSchema = z.object({
   id: z.string().uuid(), number: z.number(), prompt: z.string(),
   config: z.record(z.string(), z.unknown()), order_index: z.number(),
   value: z.unknown().nullable().optional(), flagged: z.boolean(),
 });
+const assetSchema = z.object({ id: z.string().uuid(), original_name: z.string(), mime_type: z.string(), file_size: z.number(), content_url: z.string() });
 const groupSchema = z.object({
   id: z.string().uuid(), question_type: z.string(), instruction: z.string(),
   config: z.record(z.string(), z.unknown()), order_index: z.number(),
+  image_asset_id: z.string().uuid().nullable().optional(), image_asset: assetSchema.nullable().optional(),
   questions: z.array(questionSchema),
 });
 const passageSchema = z.object({
@@ -17,7 +19,6 @@ const passageSchema = z.object({
   blocks: z.array(z.object({ id: z.string().uuid(), type: z.enum(["paragraph", "heading"]), label: z.string().nullable().optional(), text: z.string() })),
   question_groups: z.array(groupSchema),
 });
-const assetSchema = z.object({ id: z.string().uuid(), original_name: z.string(), mime_type: z.string(), file_size: z.number(), content_url: z.string() });
 const listeningPartSchema = z.object({ id: z.string().uuid(), title: z.string(), order_index: z.number(), question_groups: z.array(groupSchema) });
 const writingTaskSchema = z.object({
   id: z.string().uuid(),
@@ -46,8 +47,8 @@ export type Highlight = z.infer<typeof highlightSchema>;
 export type HighlightTarget = Pick<Highlight, "target_kind" | "target_id" | "segment_id">;
 export type HighlightCreate = HighlightTarget & Pick<Highlight, "start_offset" | "end_offset" | "selected_text">;
 
-export async function getExam(attemptId: string): Promise<ExamPayload> {
-  return examSchema.parse(await apiRequest<unknown>(`/attempts/${attemptId}/exam`));
+export async function getExam(attemptId: string, request: ApiRequester = apiRequest): Promise<ExamPayload> {
+  return examSchema.parse(await request<unknown>(`/attempts/${attemptId}/exam`));
 }
 
 export function submitAttempt(attemptId: string) {
@@ -70,8 +71,8 @@ export function deleteAllHighlights(attemptId: string) {
   return apiRequest(`/attempts/${attemptId}/highlights`, { method: "DELETE" });
 }
 
-export async function getReadingReview(attemptId: string) {
-  return apiRequest<{
+export async function getReadingReview(attemptId: string, request: ApiRequester = apiRequest) {
+  return request<{
     review: {
       attempt: z.infer<typeof attemptResponseSchema>;
       test_title: string;
@@ -89,8 +90,8 @@ export async function getReadingReview(attemptId: string) {
   }>(`/attempts/${attemptId}/reading-review`);
 }
 
-export async function getListeningReview(attemptId: string) {
-  return apiRequest<{
+export async function getListeningReview(attemptId: string, request: ApiRequester = apiRequest) {
+  return request<{
     review: { attempt: z.infer<typeof attemptResponseSchema>; test_title: string; answers: Array<{ question_id: string; question_number: number; prompt: string; value: unknown; answer_key: Record<string, unknown>; is_correct: boolean | null; explanation: string | null }> };
     audio_asset: z.infer<typeof assetSchema> | null;
     parts: Array<{ id: string; title: string; order_index: number; question_groups: Array<{ id: string; question_type: string; instruction: string; config: Record<string, unknown>; image_asset?: z.infer<typeof assetSchema> | null; order_index: number; questions: Array<{ id: string; number: number; prompt: string; config: Record<string, unknown>; answer_key: Record<string, unknown>; explanation: string | null; order_index: number }> }> }>;
@@ -138,9 +139,9 @@ const writingReviewSchema = z.object({
 
 export type WritingReviewPayload = z.infer<typeof writingReviewSchema>;
 
-export async function getWritingReview(attemptId: string): Promise<WritingReviewPayload> {
+export async function getWritingReview(attemptId: string, request: ApiRequester = apiRequest): Promise<WritingReviewPayload> {
   return writingReviewSchema.parse(
-    await apiRequest<unknown>(`/attempts/${attemptId}/writing-review`),
+    await request<unknown>(`/attempts/${attemptId}/writing-review`),
   );
 }
 

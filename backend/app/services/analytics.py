@@ -39,8 +39,11 @@ NAVIGATION_EVENTS = {
 
 
 class AnalyticsService:
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(self, session: AsyncSession, user_id: uuid.UUID | None = None) -> None:
         self.session = session
+        self.user_id = user_id or session.info.get("current_user_id")
+        if not isinstance(self.user_id, uuid.UUID):
+            raise ValueError("AnalyticsService requires an authenticated user id")
 
     async def dashboard(self, skill: ModuleType | None = None) -> AnalyticsDashboard:
         attempts = await self._attempts()
@@ -50,7 +53,11 @@ class AnalyticsService:
         band_attempts = [item for item in filtered if item.band_score is not None]
         bands: dict[str, SkillBandSummary] = {}
         for module in ModuleType:
-            candidates = [item for item in finalized if item.module_type == module and item.band_score is not None]
+            candidates = [
+                item
+                for item in finalized
+                if item.module_type == module and item.band_score is not None
+            ]
             candidates.sort(key=lambda item: item.finished_at or item.started_at)
             values = [float(item.band_score) for item in candidates if item.band_score is not None]
             bands[module.value] = SkillBandSummary(
@@ -60,7 +67,9 @@ class AnalyticsService:
             )
         question_types = self._question_type_accuracy(filtered)
         sessions = await self._sessions()
-        completed_sessions = [item for item in sessions if item.status == TestSessionStatus.COMPLETED]
+        completed_sessions = [
+            item for item in sessions if item.status == TestSessionStatus.COMPLETED
+        ]
         latest_mock = self._latest_mock(completed_sessions)
         trends = [
             BandTrendPoint(
@@ -86,7 +95,11 @@ class AnalyticsService:
             trends=trends,
             question_types=question_types,
             weak_areas=sorted(
-                [item for item in question_types if item.attempted >= 5 and item.accuracy is not None],
+                [
+                    item
+                    for item in question_types
+                    if item.attempted >= 5 and item.accuracy is not None
+                ],
                 key=lambda item: item.accuracy or 0,
             ),
             attempts=[
@@ -97,13 +110,17 @@ class AnalyticsService:
                     band_score=float(item.band_score) if item.band_score is not None else None,
                     finished_at=item.finished_at or item.started_at,
                 )
-                for item in sorted(filtered, key=lambda row: row.finished_at or row.started_at, reverse=True)
+                for item in sorted(
+                    filtered, key=lambda row: row.finished_at or row.started_at, reverse=True
+                )
             ],
             content_timing=self._content_timing(filtered),
         )
 
     async def compare(self, left_id: uuid.UUID, right_id: uuid.UUID) -> AttemptComparison:
-        attempts = {item.id: item for item in await self._attempts() if item.status not in ACTIVE_STATUSES}
+        attempts = {
+            item.id: item for item in await self._attempts() if item.status not in ACTIVE_STATUSES
+        }
         left = attempts.get(left_id)
         right = attempts.get(right_id)
         if left is None or right is None:
@@ -122,6 +139,7 @@ class AnalyticsService:
     async def _attempts(self) -> list[Attempt]:
         rows = await self.session.scalars(
             select(Attempt)
+            .where(Attempt.user_id == self.user_id)
             .options(
                 selectinload(Attempt.test_version).selectinload(TestVersion.test),
                 selectinload(Attempt.answers)
@@ -137,6 +155,7 @@ class AnalyticsService:
     async def _sessions(self) -> list[TestSession]:
         rows = await self.session.scalars(
             select(TestSession)
+            .where(TestSession.user_id == self.user_id)
             .options(
                 selectinload(TestSession.attempts),
                 selectinload(TestSession.test_version).selectinload(TestVersion.test),
@@ -214,7 +233,9 @@ class AnalyticsService:
                 latest[ModuleType.WRITING].band_score if latest[ModuleType.WRITING] else None,
             )
             if overall is not None:
-                candidates.append((max(item.finished_at or item.started_at for item in rows), float(overall)))
+                candidates.append(
+                    (max(item.finished_at or item.started_at for item in rows), float(overall))
+                )
         return max(candidates, key=lambda item: item[0])[1] if candidates else None
 
     @staticmethod
@@ -224,15 +245,23 @@ class AnalyticsService:
         item = max(sessions, key=lambda row: row.finished_at or row.started_at)
         bands = {attempt.module_type: attempt.band_score for attempt in item.attempts}
         overall = project_overall_band(
-            bands.get(ModuleType.READING), bands.get(ModuleType.LISTENING), bands.get(ModuleType.WRITING)
+            bands.get(ModuleType.READING),
+            bands.get(ModuleType.LISTENING),
+            bands.get(ModuleType.WRITING),
         )
         return LatestMockSummary(
             session_id=item.id,
             test_title=item.test_version.test.title,
             finished_at=item.finished_at or item.started_at,
-            reading_band=float(bands[ModuleType.READING]) if bands.get(ModuleType.READING) is not None else None,
-            listening_band=float(bands[ModuleType.LISTENING]) if bands.get(ModuleType.LISTENING) is not None else None,
-            writing_band=float(bands[ModuleType.WRITING]) if bands.get(ModuleType.WRITING) is not None else None,
+            reading_band=float(bands[ModuleType.READING])
+            if bands.get(ModuleType.READING) is not None
+            else None,
+            listening_band=float(bands[ModuleType.LISTENING])
+            if bands.get(ModuleType.LISTENING) is not None
+            else None,
+            writing_band=float(bands[ModuleType.WRITING])
+            if bands.get(ModuleType.WRITING) is not None
+            else None,
             overall_band=float(overall) if overall is not None else None,
         )
 

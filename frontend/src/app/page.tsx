@@ -3,13 +3,15 @@ import { InteractivePlanet } from "@/components/home/interactive-planet";
 import { ArrowIcon, BuilderIcon, HeadphonesIcon, HistoryIcon, LibraryIcon, ReadingIcon, SparkleIcon } from "@/components/ui/icons";
 import { getHistory } from "@/lib/api/history";
 import { getTests } from "@/lib/api/tests";
+import { serverApiRequest } from "@/lib/api/server-client";
+import { AdminOnly } from "@/features/auth/admin-only";
 
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
   const [tests, history] = await Promise.all([
-    getTests().catch(() => []),
-    getHistory().catch(() => ({ items: [], groups: [], total: 0 })),
+    getTests(undefined, serverApiRequest).catch(() => []),
+    getHistory(serverApiRequest).catch(() => ({ items: [], groups: [], total: 0 })),
   ]);
   const published = tests.flatMap((test) => test.versions).filter((item) => item.status === "PUBLISHED");
   const inProgress = history.items.filter((item) => item.status === "IN_PROGRESS" || item.status === "PAUSED");
@@ -29,7 +31,7 @@ export default async function DashboardPage() {
           <p className="home-hero-description">A private IELTS workspace where structured authoring, calm exam practice, and meaningful review stay connected from first draft to final answer.</p>
           <div className="home-hero-actions">
             <Link href="/library" className="btn btn-primary">Start practicing <ArrowIcon className="size-4" /></Link>
-            <Link href="/admin/tests" className="btn btn-secondary"><BuilderIcon className="size-4" /> Open Builder</Link>
+            <AdminOnly><Link href="/admin/tests" className="btn btn-secondary"><BuilderIcon className="size-4" /> Open Builder</Link></AdminOnly>
           </div>
         </div>
         <InteractivePlanet />
@@ -39,7 +41,6 @@ export default async function DashboardPage() {
         {[
           ["Published", String(published.length), "Ready to practice", "/library"],
           ["Resumable", String(inProgress.length), "Saved attempts", "/history"],
-          ["Builder tests", String(tests.length), "Authoring workspace", "/admin/tests"],
         ].map(([label, value, detail, href]) => (
           <Link key={label} href={href} className="home-metric">
             <span className="home-metric-value">{value}</span>
@@ -47,6 +48,7 @@ export default async function DashboardPage() {
             <ArrowIcon className="size-4" />
           </Link>
         ))}
+        <AdminOnly><Link href="/admin/tests" className="home-metric"><span className="home-metric-value">{tests.length}</span><span><strong>Builder tests</strong><small>Authoring workspace</small></span><ArrowIcon className="size-4" /></Link></AdminOnly>
       </section>
 
       <section className="home-learning" aria-labelledby="learning-paths-title">

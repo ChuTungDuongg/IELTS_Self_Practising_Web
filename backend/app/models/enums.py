@@ -1,6 +1,15 @@
 from enum import StrEnum
 
 
+class UserRole(StrEnum):
+    USER = "USER"
+    ADMIN = "ADMIN"
+
+
+class OAuthProvider(StrEnum):
+    GOOGLE = "GOOGLE"
+
+
 class VersionStatus(StrEnum):
     DRAFT = "DRAFT"
     PUBLISHED = "PUBLISHED"

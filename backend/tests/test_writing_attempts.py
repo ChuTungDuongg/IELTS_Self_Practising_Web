@@ -286,6 +286,7 @@ async def test_writing_criterion_grading_recomputes_band_and_history(
 @pytest.mark.integration
 async def test_writing_task_score_endpoint_returns_authoritative_summary(
     db_session: AsyncSession,
+    authenticated_admin,
 ) -> None:
     version_id, task_one_id, _, _ = await _persist_writing_test(db_session)
     attempt_id = await _start(db_session, version_id, ModuleType.WRITING)

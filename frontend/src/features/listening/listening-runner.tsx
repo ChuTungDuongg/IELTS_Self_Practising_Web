@@ -24,7 +24,7 @@ export function ListeningRunner({ initial }: { initial: ExamPayload }) {
     .sort((left, right) => left.order_index - right.order_index)
     .flatMap((group) => [...group.questions]
       .sort((left, right) => left.order_index - right.order_index)
-      .map((question) => ({ ...question, partIndex })))), [parts]);
+      .map((question) => ({ ...question, partIndex, groupId: group.id })))), [parts]);
   const [partIndex, setPartIndex] = useState(0);
   const [values, setValues] = useState<Record<string, unknown>>(() => Object.fromEntries(questions.map((question) => [question.id, question.value])));
   const [flags, setFlags] = useState<Record<string, boolean>>(() => Object.fromEntries(questions.map((question) => [question.id, question.flagged])));
@@ -114,7 +114,7 @@ export function ListeningRunner({ initial }: { initial: ExamPayload }) {
     const questionId = pendingQuestion.current;
     pendingQuestion.current = null;
     scrollToQuestion(questionId);
-  }, [partIndex, scrollToQuestion]);
+  }, [partIndex, activeQuestionId, scrollToQuestion]);
 
   useEffect(() => {
     if (!activeQuestionId) return;
@@ -145,13 +145,19 @@ export function ListeningRunner({ initial }: { initial: ExamPayload }) {
     }, { root: pane, threshold: [0.35, 0.65] });
     pane.querySelectorAll(".exam-question-target[data-question-id]").forEach((target) => observer.observe(target));
     return () => observer.disconnect();
-  }, [partIndex]);
+  }, [partIndex, activeQuestionId]);
 
   const seconds = initial.attempt.timer_mode === "COUNTDOWN" && initial.attempt.deadline_at
     ? remainingSeconds(initial.attempt.deadline_at, offset, clock)
     : elapsedFromSnapshot(initial.attempt.elapsed_seconds, initial.attempt.server_time, offset, clock);
   const completionPath = initial.attempt.test_session_id ? `/test-session/${initial.attempt.test_session_id}` : `/review/${attemptId}`;
   const part = parts[partIndex];
+  const partGroups = useMemo(
+    () => part ? [...part.question_groups].sort((left, right) => left.order_index - right.order_index) : [],
+    [part],
+  );
+  const activeGroup = partGroups.find((group) => group.questions.some((question) => question.id === activeQuestionId)) ?? partGroups[0];
+  const visualGroup = activeGroup ? ["map_labelling", "plan_labelling", "diagram_labelling"].includes(activeGroup.question_type) : false;
 
   useEffect(() => {
     if (part) void recordNavigation(attemptId, "LISTENING_PART", part.id).catch(() => undefined);
@@ -188,32 +194,34 @@ export function ListeningRunner({ initial }: { initial: ExamPayload }) {
   }
 
   function navigateToQuestion(questionId: string, ownerPartIndex: number) {
+    const target = questions.find((question) => question.id === questionId);
+    const currentGroupId = activeGroup?.id;
+    if (ownerPartIndex !== partIndex || target?.groupId !== currentGroupId) pendingQuestion.current = questionId;
     setActiveQuestionId(questionId);
     if (ownerPartIndex !== partIndex) {
-      pendingQuestion.current = questionId;
       setPartIndex(ownerPartIndex);
       return;
     }
-    scrollToQuestion(questionId);
+    if (target?.groupId === currentGroupId) scrollToQuestion(questionId);
   }
 
   return <div className="exam-runner listening-exam">
     <header className="exam-header"><div><p>LISTENING · SECTION {part.order_index + 1}</p><h1>{initial.test_title}</h1></div><div className="exam-header-tools"><PauseAttemptControl attemptId={attemptId} beforePause={flush} /><ThemeToggle /><div className="exam-header-status"><span className={`exam-timer ${initial.attempt.timer_mode === "COUNTDOWN" && seconds < 300 ? "exam-timer-warning" : ""}`}>{formatDuration(seconds)}</span><span className={`exam-save-state exam-save-${saveState}`}>{saveState === "saving" ? "Saving…" : saveState === "error" ? "Save failed" : "Saved"}</span></div></div></header>
     {initial.listening_audio_asset ? <><ListeningAudioPlayer src={assetContentUrl(initial.listening_audio_asset)} policy={{ allowSeeking: initial.audio_policy?.allow_seeking ?? true, allowSpeed: initial.audio_policy?.allow_speed ?? true }} />{initial.audio_policy?.allow_seeking === false ? <p className="exam-mode-label">Exam mode · Seeking locked</p> : null}</> : <p className="notice m-4">This Listening test has no audio recording attached.</p>}
-    <main ref={questionPane} className="listening-question-pane" onFocusCapture={(event) => {
+    <main ref={questionPane} className={`listening-question-pane ${visualGroup ? "listening-question-pane-visual" : ""}`} onFocusCapture={(event) => {
       const target = (event.target as HTMLElement).closest<HTMLElement>(".exam-question-target[data-question-id]");
       if (target?.dataset.questionId) setActiveQuestionId(target.dataset.questionId);
     }}>
-      <div className="listening-question-heading"><div><p>Listening · Section {part.order_index + 1}</p><h2>{part.title}</h2></div><span>{part.question_groups.flatMap((group) => group.questions).length} questions</span></div>
-      {[...part.question_groups].sort((left, right) => left.order_index - right.order_index).map((group) => {
-        const definition = questionRegistry[group.question_type as keyof typeof questionRegistry];
+      <div className="listening-question-heading"><div><p>Listening · Section {part.order_index + 1}</p><h2>{part.title}</h2></div><span>{activeGroup ? `Questions ${Math.min(...activeGroup.questions.map((question) => question.number))}–${Math.max(...activeGroup.questions.map((question) => question.number))}` : "No questions"}</span></div>
+      {activeGroup ? (() => {
+        const definition = questionRegistry[activeGroup.question_type as keyof typeof questionRegistry];
         if (!definition) return null;
         const Renderer = definition.ExamRenderer;
-        return <section key={group.id} className="exam-question-group">
-          <QuestionGroupInstruction group={group as ExamGroup} />
-          <Renderer group={{ ...group, questions: [...group.questions].sort((left, right) => left.order_index - right.order_index) } as ExamGroup} values={values} onAnswer={answer} activeQuestionId={activeQuestionId} />
+        return <section key={activeGroup.id} data-question-group-id={activeGroup.id} className={`exam-question-group ${visualGroup ? "listening-visual-question-group" : ""}`}>
+          <QuestionGroupInstruction group={activeGroup as ExamGroup} />
+          <Renderer group={{ ...activeGroup, questions: [...activeGroup.questions].sort((left, right) => left.order_index - right.order_index) } as ExamGroup} values={values} onAnswer={answer} activeQuestionId={activeQuestionId} presentation={visualGroup ? "listening-visual" : "default"} />
         </section>;
-      })}
+      })() : <p className="notice">This Section has no question groups.</p>}
     </main>
     <footer className="exam-footer listening-exam-footer">
       <div className="exam-footer-navigation">

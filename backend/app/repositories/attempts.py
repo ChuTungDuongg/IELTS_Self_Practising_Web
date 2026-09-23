@@ -22,7 +22,13 @@ class AttemptRepository:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
-    async def get(self, attempt_id: uuid.UUID, *, for_update: bool = False) -> Attempt | None:
+    async def get(
+        self,
+        attempt_id: uuid.UUID,
+        *,
+        user_id: uuid.UUID | None = None,
+        for_update: bool = False,
+    ) -> Attempt | None:
         statement = (
             select(Attempt)
             .where(Attempt.id == attempt_id)
@@ -45,13 +51,16 @@ class AttemptRepository:
                 .selectinload(WritingTask.image_asset),
             )
         )
+        if user_id is not None:
+            statement = statement.where(Attempt.user_id == user_id)
         if for_update:
             statement = statement.with_for_update()
         return await self.session.scalar(statement)
 
-    async def list_history(self) -> list[Attempt]:
+    async def list_history(self, user_id: uuid.UUID) -> list[Attempt]:
         result = await self.session.scalars(
             select(Attempt)
+            .where(Attempt.user_id == user_id)
             .options(selectinload(Attempt.test_version).selectinload(TestVersion.test))
             .options(selectinload(Attempt.test_session))
             .order_by(Attempt.started_at.desc())

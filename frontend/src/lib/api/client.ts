@@ -13,12 +13,43 @@ export class ApiError extends Error {
   }
 }
 
+export type ApiRequester = <T>(path: string, init?: RequestInit) => Promise<T>;
+
+let refreshInFlight: Promise<boolean> | null = null;
+
+function canRefresh(path: string): boolean {
+  return path === "/auth/me" || !path.startsWith("/auth/");
+}
+
+async function refreshAccessSession(): Promise<boolean> {
+  if (typeof window === "undefined") return false;
+  if (!refreshInFlight) {
+    refreshInFlight = fetch(`${API_BASE_URL}/auth/refresh`, {
+      method: "POST",
+      cache: "no-store",
+      credentials: "include",
+    }).then((response) => response.ok).catch(() => false).finally(() => {
+      refreshInFlight = null;
+    });
+  }
+  return refreshInFlight;
+}
+
+function announceSessionExpired() {
+  if (typeof window !== "undefined") window.dispatchEvent(new Event("ielts:session-expired"));
+}
+
 export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
+  return request<T>(path, init, true);
+}
+
+async function request<T>(path: string, init: RequestInit | undefined, allowRefresh: boolean): Promise<T> {
   let response: Response;
   try {
     response = await fetch(`${API_BASE_URL}${path}`, {
       ...init,
       cache: "no-store",
+      credentials: "include",
       headers: {
         ...(init?.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
         ...init?.headers,
@@ -27,8 +58,17 @@ export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T
   } catch (error) {
     throw new ApiError("NETWORK_ERROR", "The API is not reachable.", 0, error);
   }
+  if (
+    response.status === 401
+    && allowRefresh
+    && canRefresh(path)
+    && await refreshAccessSession()
+  ) {
+    return request<T>(path, init, false);
+  }
   const body = await response.json().catch(() => null);
   if (!response.ok) {
+    if (response.status === 401 && canRefresh(path)) announceSessionExpired();
     throw new ApiError(
       body?.code ?? "API_ERROR",
       body?.message ?? `Request failed with status ${response.status}.`,
@@ -37,4 +77,8 @@ export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T
     );
   }
   return body as T;
+}
+
+export function resetAuthRequestStateForTests() {
+  refreshInFlight = null;
 }

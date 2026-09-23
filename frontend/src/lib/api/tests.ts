@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { apiRequest } from "./client";
+import { apiRequest, type ApiRequester } from "./client";
 import { testSchema, versionDetailSchema, type TestSummary, type VersionDetail } from "./schema";
 
 const createTestInput = z.object({
@@ -7,13 +7,13 @@ const createTestInput = z.object({
   description: z.string().trim().max(4000).optional(),
 });
 
-export async function getTests(options?: { archived?: boolean }): Promise<TestSummary[]> {
+export async function getTests(options?: { archived?: boolean }, request: ApiRequester = apiRequest): Promise<TestSummary[]> {
   const query = options?.archived ? "?archived=true" : "";
-  return z.array(testSchema).parse(await apiRequest<unknown>(`/tests${query}`));
+  return z.array(testSchema).parse(await request<unknown>(`/tests${query}`));
 }
 
-export async function getTest(testId: string): Promise<TestSummary> {
-  return testSchema.parse(await apiRequest<unknown>(`/tests/${testId}`));
+export async function getTest(testId: string, request: ApiRequester = apiRequest): Promise<TestSummary> {
+  return testSchema.parse(await request<unknown>(`/tests/${testId}`));
 }
 
 export async function createTest(input: z.infer<typeof createTestInput>): Promise<TestSummary> {
@@ -26,8 +26,8 @@ export async function createTest(input: z.infer<typeof createTestInput>): Promis
   );
 }
 
-export async function getVersion(versionId: string): Promise<VersionDetail> {
-  return versionDetailSchema.parse(await apiRequest<unknown>(`/test-versions/${versionId}`));
+export async function getVersion(versionId: string, request: ApiRequester = apiRequest): Promise<VersionDetail> {
+  return versionDetailSchema.parse(await request<unknown>(`/test-versions/${versionId}`));
 }
 
 export async function cloneVersion(testId: string, sourceVersionId: string): Promise<VersionDetail> {

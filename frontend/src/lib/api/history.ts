@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { apiRequest } from "./client";
+import { apiRequest, type ApiRequester } from "./client";
 
 const historyItemSchema = z.object({
   attempt_id: z.string().uuid(),
@@ -44,6 +44,6 @@ export type HistoryGroup = z.infer<typeof historyGroupSchema>;
 export type HistoryResponse = z.infer<typeof historySchema>;
 export type MockHistoryGroup = NonNullable<HistoryResponse["sessions"]>[number];
 
-export async function getHistory(): Promise<HistoryResponse> {
-  return historySchema.parse(await apiRequest<unknown>("/history"));
+export async function getHistory(request: ApiRequester = apiRequest): Promise<HistoryResponse> {
+  return historySchema.parse(await request<unknown>("/history"));
 }

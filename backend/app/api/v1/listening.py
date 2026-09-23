@@ -3,6 +3,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.dependencies import require_admin
 from app.core.database import get_session
 from app.schemas.content import (
     BuilderListeningPart,
@@ -14,7 +15,7 @@ from app.schemas.content import (
 )
 from app.services.listening import ListeningService
 
-router = APIRouter(tags=["listening-builder"])
+router = APIRouter(tags=["listening-builder"], dependencies=[Depends(require_admin)])
 
 
 @router.post(

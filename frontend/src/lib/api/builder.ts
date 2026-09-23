@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { QuestionGroupModel } from "@/features/questions/types";
-import { apiRequest } from "./client";
+import { apiRequest, type ApiRequester } from "./client";
 
 const blockSchema = z.object({
   id: z.string().uuid(),
@@ -85,9 +85,9 @@ export function parseBuilderVersion(value: unknown): BuilderVersion {
   return builderVersionSchema.parse(value);
 }
 
-export async function getBuilderVersion(versionId: string): Promise<BuilderVersion> {
+export async function getBuilderVersion(versionId: string, request: ApiRequester = apiRequest): Promise<BuilderVersion> {
   return parseBuilderVersion(
-    await apiRequest<unknown>(`/test-versions/${versionId}/builder`),
+    await request<unknown>(`/test-versions/${versionId}/builder`),
   );
 }
 

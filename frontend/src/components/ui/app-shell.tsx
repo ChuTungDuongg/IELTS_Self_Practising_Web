@@ -6,24 +6,30 @@ import { AppLogo } from "./app-logo";
 import { AnalyticsIcon, BuilderIcon, HistoryIcon, HomeIcon, LibraryIcon, TransferIcon } from "./icons";
 import { ThemeToggle } from "./theme-toggle";
 import { TRANSFER_ROUTE } from "@/lib/routes";
+import { useAuth } from "@/features/auth/auth-provider";
 
 const navigation = [
   { label: "Overview", href: "/", icon: HomeIcon },
   { label: "Test library", href: "/library", icon: LibraryIcon },
-  { label: "Builder", href: "/admin/tests", icon: BuilderIcon },
   { label: "Attempt history", href: "/history", icon: HistoryIcon },
   { label: "Analytics", href: "/analytics", icon: AnalyticsIcon },
+] as const;
+const adminNavigation = [
+  { label: "Admin", href: "/admin", icon: BuilderIcon },
+  { label: "Builder", href: "/admin/tests", icon: BuilderIcon },
   { label: "Transfer", href: TRANSFER_ROUTE, icon: TransferIcon },
 ] as const;
 
 function isCurrent(pathname: string, href: string) {
-  return href === "/" ? pathname === href : pathname.startsWith(href);
+  return href === "/" || href === "/admin" ? pathname === href : pathname.startsWith(href);
 }
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() ?? "/";
+  const { user, loading, logout } = useAuth();
   const isExam = pathname.startsWith("/attempt/");
-  const current = navigation.find((item) => isCurrent(pathname, item.href));
+  const visibleNavigation = user ? [...navigation, ...(user.role === "ADMIN" ? adminNavigation : [])] : [navigation[0]];
+  const current = visibleNavigation.find((item) => isCurrent(pathname, item.href));
 
   if (isExam) {
     return <main className="exam-shell">{children}</main>;
@@ -44,7 +50,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <span>{current?.label ?? "IELTS Studio"}</span>
         </div>
         <div className="header-actions">
-          <span className="local-badge"><span aria-hidden="true" /> Local workspace</span>
+          {!loading && user ? <><span className="auth-user-label">{user.display_name}<small>{user.role}</small></span><button type="button" className="btn btn-ghost" onClick={() => void logout()}>Logout</button></> : !loading ? <><Link href="/login" className="btn btn-ghost">Login</Link><Link href="/register" className="btn btn-primary">Register</Link></> : null}
           <ThemeToggle />
         </div>
       </header>
@@ -52,7 +58,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <aside className="app-sidebar">
         <nav aria-label="Primary" className="sidebar-nav">
           <p className="sidebar-label">Workspace</p>
-          {navigation.map((item) => {
+          {visibleNavigation.map((item) => {
             const Icon = item.icon;
             const active = isCurrent(pathname, item.href);
             return (

@@ -33,8 +33,11 @@ FINAL_STATUSES = {
 
 
 class TestSessionService:
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(self, session: AsyncSession, user_id: uuid.UUID | None = None) -> None:
         self.session = session
+        self.user_id = user_id or session.info.get("current_user_id")
+        if not isinstance(self.user_id, uuid.UUID):
+            raise ValueError("TestSessionService requires an authenticated user id")
 
     async def start(self, test_version_id: uuid.UUID) -> TestSessionStartResponse:
         now = TimerService.now()
@@ -68,6 +71,7 @@ class TestSessionService:
                     422,
                 )
             test_session = TestSession(
+                user_id=self.user_id,
                 test_version_id=version.id,
                 status=TestSessionStatus.IN_PROGRESS,
                 started_at=now,
@@ -122,12 +126,18 @@ class TestSessionService:
                     return await self._present(test_session)
                 next_module = MODULE_ORDER[current_index + 1]
             existing = next(
-                (attempt for attempt in test_session.attempts if attempt.module_type == next_module),
+                (
+                    attempt
+                    for attempt in test_session.attempts
+                    if attempt.module_type == next_module
+                ),
                 None,
             )
             if existing is None:
                 module = next(
-                    item for item in test_session.test_version.modules if item.module_type == next_module
+                    item
+                    for item in test_session.test_version.modules
+                    if item.module_type == next_module
                 )
                 existing = self._new_attempt(test_session, module, now)
                 self.session.add(existing)
@@ -143,23 +153,26 @@ class TestSessionService:
             .where(TestVersion.id == version_id, Test.archived_at.is_(None))
             .options(
                 selectinload(TestVersion.test),
-                selectinload(TestVersion.modules).selectinload(TestModule.question_groups).selectinload(QuestionGroup.questions),
+                selectinload(TestVersion.modules)
+                .selectinload(TestModule.question_groups)
+                .selectinload(QuestionGroup.questions),
             )
         )
         if for_update:
             statement = statement.with_for_update()
         return await self.session.scalar(statement)
 
-    async def _require(
-        self, session_id: uuid.UUID, *, for_update: bool = False
-    ) -> TestSession:
+    async def _require(self, session_id: uuid.UUID, *, for_update: bool = False) -> TestSession:
         statement = (
             select(TestSession)
-            .where(TestSession.id == session_id)
+            .where(TestSession.id == session_id, TestSession.user_id == self.user_id)
             .options(
                 selectinload(TestSession.attempts),
                 selectinload(TestSession.test_version).selectinload(TestVersion.test),
-                selectinload(TestSession.test_version).selectinload(TestVersion.modules).selectinload(TestModule.question_groups).selectinload(QuestionGroup.questions),
+                selectinload(TestSession.test_version)
+                .selectinload(TestVersion.modules)
+                .selectinload(TestModule.question_groups)
+                .selectinload(QuestionGroup.questions),
             )
         )
         if for_update:
@@ -170,10 +183,9 @@ class TestSessionService:
         return result
 
     @staticmethod
-    def _new_attempt(
-        test_session: TestSession, module: TestModule, now
-    ) -> Attempt:
+    def _new_attempt(test_session: TestSession, module: TestModule, now) -> Attempt:
         return Attempt(
+            user_id=test_session.user_id,
             test_version_id=test_session.test_version_id,
             test_session=test_session,
             module_type=module.module_type,
@@ -193,7 +205,9 @@ class TestSessionService:
     async def _synchronize_timeout(self, attempt: Attempt) -> None:
         from app.services.attempts import AttemptService
 
-        await AttemptService(self.session)._synchronize_state(attempt, TimerService.now())
+        await AttemptService(self.session, self.user_id)._synchronize_state(
+            attempt, TimerService.now()
+        )
 
     @staticmethod
     def _attempt_response(attempt: Attempt, now=None) -> AttemptResponse:
@@ -210,8 +224,16 @@ class TestSessionService:
             if current_final and current_index + 1 < len(MODULE_ORDER)
             else None
         )
-        current_module = None if test_session.status == TestSessionStatus.COMPLETED else (
-            next_module if current_final else current.module_type if current is not None else ModuleType.LISTENING
+        current_module = (
+            None
+            if test_session.status == TestSessionStatus.COMPLETED
+            else (
+                next_module
+                if current_final
+                else current.module_type
+                if current is not None
+                else ModuleType.LISTENING
+            )
         )
         bands = {attempt.module_type: attempt.band_score for attempt in test_session.attempts}
         overall = project_overall_band(
@@ -228,7 +250,9 @@ class TestSessionService:
                 warnings.append(
                     f"{module.module_type.value.title()} has {count} questions. An official band will not be calculated."
                 )
-        attempts = sorted(test_session.attempts, key=lambda item: MODULE_ORDER.index(item.module_type))
+        attempts = sorted(
+            test_session.attempts, key=lambda item: MODULE_ORDER.index(item.module_type)
+        )
         return TestSessionResponse(
             session_id=test_session.id,
             test_version_id=test_session.test_version_id,

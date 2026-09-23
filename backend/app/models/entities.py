@@ -32,10 +32,71 @@ from app.models.enums import (
     EventType,
     FinishedReason,
     ModuleType,
+    OAuthProvider,
     TestSessionStatus,
     TimerMode,
+    UserRole,
     VersionStatus,
 )
+
+
+class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "users"
+
+    email: Mapped[str] = mapped_column(String(320), unique=True, index=True, nullable=False)
+    display_name: Mapped[str] = mapped_column(String(160), nullable=False)
+    password_hash: Mapped[str | None] = mapped_column(Text)
+    role: Mapped[UserRole] = mapped_column(
+        Enum(UserRole, name="user_role"), default=UserRole.USER, nullable=False
+    )
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    email_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    oauth_accounts: Mapped[list[OAuthAccount]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    refresh_sessions: Mapped[list[RefreshSession]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    attempts: Mapped[list[Attempt]] = relationship(back_populates="user")
+    test_sessions: Mapped[list[TestSession]] = relationship(back_populates="user")
+
+
+class OAuthAccount(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "oauth_accounts"
+    __table_args__ = (
+        UniqueConstraint("provider", "provider_subject"),
+        UniqueConstraint("user_id", "provider"),
+    )
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    provider: Mapped[OAuthProvider] = mapped_column(
+        Enum(OAuthProvider, name="oauth_provider"), nullable=False
+    )
+    provider_subject: Mapped[str] = mapped_column(String(255), nullable=False)
+
+    user: Mapped[User] = relationship(back_populates="oauth_accounts")
+
+
+class RefreshSession(UUIDPrimaryKeyMixin, Base):
+    __tablename__ = "refresh_sessions"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), index=True, nullable=False
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    user: Mapped[User] = relationship(back_populates="refresh_sessions")
 
 
 class Test(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -124,6 +185,9 @@ class TestModule(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 class TestSession(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "test_sessions"
 
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), index=True
+    )
     test_version_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("test_versions.id", ondelete="RESTRICT"), index=True
     )
@@ -136,6 +200,7 @@ class TestSession(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     test_version: Mapped[TestVersion] = relationship()
+    user: Mapped[User] = relationship(back_populates="test_sessions")
     attempts: Mapped[list[Attempt]] = relationship(
         back_populates="test_session", order_by="Attempt.started_at"
     )
@@ -252,6 +317,9 @@ class Attempt(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         ),
     )
 
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), index=True
+    )
     test_version_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("test_versions.id", ondelete="RESTRICT"), index=True
     )
@@ -284,6 +352,7 @@ class Attempt(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     band_score: Mapped[Decimal | None] = mapped_column(Numeric(2, 1))
 
     test_version: Mapped[TestVersion] = relationship()
+    user: Mapped[User] = relationship(back_populates="attempts")
     test_session: Mapped[TestSession | None] = relationship(back_populates="attempts")
     answers: Mapped[list[AttemptAnswer]] = relationship(
         back_populates="attempt", cascade="all, delete-orphan"

@@ -14,6 +14,7 @@ export type RendererProps = {
   passageBlocks?: PassageBlock[];
   highlighting?: HighlightController;
   activeQuestionId?: string | null;
+  presentation?: "default" | "listening-visual";
 };
 
 export function questionTarget(question: ExamQuestion, activeQuestionId?: string | null, className = "") {
@@ -49,6 +50,12 @@ export function VisualLabellingRenderer(props: RendererProps) {
     : null;
   const image = group.image_asset ?? (group.config.image_asset as typeof group.image_asset);
   const noun = group.question_type === "map_labelling" ? "map" : "plan";
+  if (props.presentation === "listening-visual") {
+    return <div className="listening-visual-layout">
+      <div className="listening-visual-pane">{image ? <div className="visual-question"><img src={assetContentUrl(image)} alt={`Listening ${noun}`} /></div> : <p className="notice">The {noun} image is unavailable.</p>}</div>
+      <div className="listening-visual-answer-pane"><MatchingRenderer {...props} presentation="default" /></div>
+    </div>;
+  }
   return <div className="space-y-5">{image ? <div className="visual-question"><img src={assetContentUrl(image)} alt={`${markers ? "Reading" : "Listening"} ${noun}`} />{markers?.map((marker) => <span key={marker.id} className="visual-marker" style={{ left: `${marker.x * 100}%`, top: `${marker.y * 100}%` }}>{group.questions.find((item) => item.id === marker.question_id)?.number ?? "?"}</span>)}</div> : null}<MatchingRenderer {...props} /></div>;
 }
 

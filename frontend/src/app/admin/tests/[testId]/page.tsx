@@ -6,13 +6,14 @@ import { ArrowIcon } from "@/components/ui/icons";
 import { getTest } from "@/lib/api/tests";
 import { builderEditPath } from "@/lib/routes";
 import { formatProjectDateTime } from "@/lib/date-time";
+import { serverApiRequest } from "@/lib/api/server-client";
 
 export const dynamic = "force-dynamic";
 
 export default async function TestDetailPage({ params, searchParams }: { params: Promise<{ testId: string }>; searchParams?: Promise<{ builder?: string }> }) {
   const { testId } = await params;
   const builderState = (await searchParams)?.builder;
-  const test = await getTest(testId).catch(() => null);
+  const test = await getTest(testId, serverApiRequest).catch(() => null);
   if (!test) notFound();
   return (
     <>

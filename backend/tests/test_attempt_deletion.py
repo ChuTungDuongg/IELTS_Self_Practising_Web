@@ -186,7 +186,7 @@ async def _delete(session: AsyncSession, attempt_id: UUID) -> httpx.Response:
     ],
 )
 async def test_delete_attempt_removes_owned_data_but_preserves_shared_content(
-    db_session: AsyncSession, attempt_status: AttemptStatus
+    db_session: AsyncSession, attempt_status: AttemptStatus, authenticated_admin
 ) -> None:
     seeded = await _seed_attempt_with_owned_data(db_session, attempt_status)
 
@@ -214,7 +214,9 @@ async def test_delete_attempt_removes_owned_data_but_preserves_shared_content(
 
 
 @pytest.mark.integration
-async def test_delete_attempt_returns_normal_not_found_error(db_session: AsyncSession) -> None:
+async def test_delete_attempt_returns_normal_not_found_error(
+    db_session: AsyncSession, authenticated_admin
+) -> None:
     response = await _delete(db_session, uuid4())
 
     assert response.status_code == 404

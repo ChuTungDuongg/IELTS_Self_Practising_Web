@@ -5,6 +5,7 @@ import { ModuleBadge } from "@/components/ui/module-badge";
 import { StartAttempt } from "@/features/exam/start-attempt";
 import { StartFullMock } from "@/features/exam/start-full-mock";
 import { getTest, getVersion } from "@/lib/api/tests";
+import { serverApiRequest } from "@/lib/api/server-client";
 
 export const dynamic = "force-dynamic";
 
@@ -13,9 +14,9 @@ const moduleLabel = { READING: "Reading", LISTENING: "Listening", WRITING: "Writ
 
 export default async function TestVersionLibraryPage({ params }: { params: Promise<{ versionId: string }> }) {
   const { versionId } = await params;
-  const version = await getVersion(versionId).catch(() => null);
+  const version = await getVersion(versionId, serverApiRequest).catch(() => null);
   if (!version || version.status !== "PUBLISHED") notFound();
-  const test = await getTest(version.test_id).catch(() => null);
+  const test = await getTest(version.test_id, serverApiRequest).catch(() => null);
   if (!test) notFound();
   const modules = [...version.modules].sort((left, right) => moduleOrder[left.module_type] - moduleOrder[right.module_type]);
   const missing = (["LISTENING", "READING", "WRITING"] as const).find((type) => !modules.some((item) => item.module_type === type));

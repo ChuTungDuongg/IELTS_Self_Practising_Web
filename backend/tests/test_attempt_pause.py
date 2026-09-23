@@ -233,7 +233,9 @@ async def test_pause_and_resume_reject_finalized_attempt(
 
 @pytest.mark.integration
 async def test_pause_and_resume_endpoints_keep_the_same_attempt_id(
-    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    authenticated_admin,
 ) -> None:
     now = datetime(2026, 9, 20, tzinfo=UTC)
     attempt = await _persist_attempt(db_session, started_at=now, last_active_at=now)

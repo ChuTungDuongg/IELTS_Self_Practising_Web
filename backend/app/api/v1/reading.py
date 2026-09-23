@@ -3,6 +3,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.dependencies import require_admin
 from app.core.database import get_session
 from app.schemas.content import (
     BuilderModule,
@@ -16,7 +17,7 @@ from app.schemas.content import (
 )
 from app.services.reading import ReadingService
 
-router = APIRouter(tags=["builder"])
+router = APIRouter(tags=["builder"], dependencies=[Depends(require_admin)])
 
 
 @router.get("/test-versions/{version_id}/builder", response_model=BuilderVersion)

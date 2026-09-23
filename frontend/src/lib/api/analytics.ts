@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { apiRequest } from "./client";
+import { apiRequest, type ApiRequester } from "./client";
 
 const skillSchema = z.enum(["READING", "LISTENING", "WRITING"]);
 const accuracySchema = z.object({ question_type: z.string(), attempted: z.number().int(), correct: z.number().int(), incorrect: z.number().int(), accuracy: z.number().nullable() });
@@ -18,8 +18,8 @@ const comparisonSchema = z.object({ same_skill: z.boolean(), same_test_version: 
 export type AnalyticsDashboard = z.infer<typeof analyticsSchema>;
 export type AttemptComparison = z.infer<typeof comparisonSchema>;
 
-export async function getAnalytics(skill?: "READING" | "LISTENING" | "WRITING"): Promise<AnalyticsDashboard> {
-  return analyticsSchema.parse(await apiRequest<unknown>(`/analytics${skill ? `?skill=${skill}` : ""}`));
+export async function getAnalytics(skill?: "READING" | "LISTENING" | "WRITING", request: ApiRequester = apiRequest): Promise<AnalyticsDashboard> {
+  return analyticsSchema.parse(await request<unknown>(`/analytics${skill ? `?skill=${skill}` : ""}`));
 }
 export async function compareAttempts(left: string, right: string): Promise<AttemptComparison> {
   return comparisonSchema.parse(await apiRequest<unknown>(`/analytics/compare?left=${encodeURIComponent(left)}&right=${encodeURIComponent(right)}`));

@@ -388,6 +388,7 @@ async def test_restore_active_test_returns_conflict(db_session: AsyncSession) ->
 @pytest.mark.integration
 async def test_delete_and_restore_endpoints_return_structured_results(
     db_session: AsyncSession,
+    authenticated_admin,
 ) -> None:
     test = DomainTest(title="API lifecycle")
     version = DomainVersion(version_number=1, status=VersionStatus.PUBLISHED)
@@ -427,6 +428,7 @@ async def test_delete_and_restore_endpoints_return_structured_results(
 @pytest.mark.integration
 async def test_delete_draft_endpoint_rejects_published_version(
     db_session: AsyncSession,
+    authenticated_admin,
 ) -> None:
     test = DomainTest(title="API draft lifecycle")
     version = DomainVersion(version_number=1, status=VersionStatus.PUBLISHED)

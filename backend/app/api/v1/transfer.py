@@ -7,13 +7,14 @@ from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.background import BackgroundTask
 
+from app.api.dependencies import require_admin
 from app.core.config import get_settings
 from app.core.database import get_session
 from app.core.exceptions import AppError
 from app.schemas.transfer import TransferExportRequest, TransferImportResult
 from app.services.transfer import TransferService
 
-router = APIRouter(prefix="/transfer", tags=["transfer"])
+router = APIRouter(prefix="/transfer", tags=["transfer"], dependencies=[Depends(require_admin)])
 
 
 def _remove(path: Path) -> None:

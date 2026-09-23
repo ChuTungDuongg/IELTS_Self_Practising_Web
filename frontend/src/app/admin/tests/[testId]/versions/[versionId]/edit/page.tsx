@@ -12,6 +12,7 @@ import { ModuleBadge } from "@/components/ui/module-badge";
 import { ApiError } from "@/lib/api/client";
 import { getTest } from "@/lib/api/tests";
 import { builderEditPath } from "@/lib/routes";
+import { serverApiRequest } from "@/lib/api/server-client";
 
 export const dynamic = "force-dynamic";
 
@@ -21,10 +22,10 @@ export default async function VersionEditorPage({ params, searchParams }: { para
   const workspace: BuilderWorkspace = typeof requestedWorkspace === "string" && ["overview", "reading", "listening", "writing"].includes(requestedWorkspace) ? requestedWorkspace as BuilderWorkspace : "overview";
   let version;
   try {
-    version = await getBuilderVersion(versionId);
+    version = await getBuilderVersion(versionId, serverApiRequest);
   } catch (error) {
     if (error instanceof ApiError && error.status === 404) {
-      const test = await getTest(testId).catch(() => null);
+      const test = await getTest(testId, serverApiRequest).catch(() => null);
       if (!test) redirect("/admin/tests");
       const currentDraft = [...test.versions]
         .filter((item) => item.status === "DRAFT")

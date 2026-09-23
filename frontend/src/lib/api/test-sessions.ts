@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { attemptResponseSchema } from "./attempts";
-import { apiRequest } from "./client";
+import { apiRequest, type ApiRequester } from "./client";
 
 const moduleSchema = z.enum(["LISTENING", "READING", "WRITING"]);
 const sessionAttemptSchema = z.object({
@@ -21,8 +21,8 @@ export async function startTestSession(testVersionId: string) {
   const result = await apiRequest<unknown>("/test-sessions", { method: "POST", body: JSON.stringify({ test_version_id: testVersionId }) });
   return z.object({ session: testSessionSchema, current_attempt: attemptResponseSchema }).parse(result);
 }
-export async function getTestSession(sessionId: string): Promise<TestSession> {
-  return testSessionSchema.parse(await apiRequest<unknown>(`/test-sessions/${sessionId}`));
+export async function getTestSession(sessionId: string, request: ApiRequester = apiRequest): Promise<TestSession> {
+  return testSessionSchema.parse(await request<unknown>(`/test-sessions/${sessionId}`));
 }
 export async function advanceTestSession(sessionId: string): Promise<TestSession> {
   return testSessionSchema.parse(await apiRequest<unknown>(`/test-sessions/${sessionId}/advance`, { method: "POST" }));

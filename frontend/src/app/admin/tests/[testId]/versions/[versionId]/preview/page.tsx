@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { DraftPreview } from "@/features/test-builder/draft-preview";
 import { getBuilderVersion } from "@/lib/api/builder";
+import { serverApiRequest } from "@/lib/api/server-client";
 
 export const dynamic = "force-dynamic";
 
@@ -8,7 +9,7 @@ export default async function PreviewPage({ params, searchParams }: { params: Pr
   const { testId, versionId } = await params;
   const requested = (await searchParams).module;
   const moduleType = requested === "listening" ? "LISTENING" : requested === "reading" ? "READING" : requested === "writing" ? "WRITING" : null;
-  const version = await getBuilderVersion(versionId).catch(() => null);
+  const version = await getBuilderVersion(versionId, serverApiRequest).catch(() => null);
   if (!version || version.test_id !== testId || version.status !== "DRAFT" || !moduleType) notFound();
   return <DraftPreview version={version} moduleType={moduleType} />;
 }

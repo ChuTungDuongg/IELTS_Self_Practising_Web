@@ -89,8 +89,18 @@ from app.services.reading import ReadingService
 
 
 class AttemptService:
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(
+        self,
+        session: AsyncSession,
+        user_id: uuid.UUID | None = None,
+        *,
+        allow_any_user: bool = False,
+    ) -> None:
         self.session = session
+        self.user_id = user_id or session.info.get("current_user_id")
+        if not isinstance(self.user_id, uuid.UUID):
+            raise ValueError("AttemptService requires an authenticated user id")
+        self.allow_any_user = allow_any_user
         self.repository = AttemptRepository(session)
 
     async def start(self, data: AttemptCreate) -> AttemptResponse:
@@ -114,6 +124,7 @@ class AttemptService:
                     422,
                 )
             attempt = Attempt(
+                user_id=self.user_id,
                 test_version_id=data.test_version_id,
                 module_type=data.module,
                 timer_mode=data.timer.mode,
@@ -702,7 +713,7 @@ class AttemptService:
         )
 
     async def history(self) -> AttemptList:
-        attempts = await self.repository.list_history()
+        attempts = await self.repository.list_history(self.user_id)
         history_now = TimerService.now()
         items: list[HistoryItem] = []
         for item in attempts:
@@ -1133,7 +1144,11 @@ class AttemptService:
             await self.session.delete(attempt)
 
     async def _require(self, attempt_id: uuid.UUID, *, for_update: bool = False) -> Attempt:
-        attempt = await self.repository.get(attempt_id, for_update=for_update)
+        attempt = await self.repository.get(
+            attempt_id,
+            user_id=None if self.allow_any_user else self.user_id,
+            for_update=for_update,
+        )
         if attempt is None:
             raise AppError("ATTEMPT_NOT_FOUND", "The requested attempt does not exist.", 404)
         return attempt

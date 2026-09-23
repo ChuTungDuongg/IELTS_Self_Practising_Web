@@ -1,11 +1,12 @@
 import { PageHeading } from "@/components/ui/page-heading";
 import { AttemptHistoryList } from "@/features/history/attempt-history-list";
 import { getHistory } from "@/lib/api/history";
+import { serverApiRequest } from "@/lib/api/server-client";
 
 export const dynamic = "force-dynamic";
 
 export default async function HistoryPage() {
-  const history = await getHistory().catch(() => ({ items: [], groups: [], sessions: [], total: 0 }));
+  const history = await getHistory(serverApiRequest).catch(() => ({ items: [], groups: [], sessions: [], total: 0 }));
   return (
     <>
       <PageHeading eyebrow="Practice record" eyebrowClassName="history-eyebrow" title="Attempt history" description="Every attempt remains attached to its exact frozen test version." />

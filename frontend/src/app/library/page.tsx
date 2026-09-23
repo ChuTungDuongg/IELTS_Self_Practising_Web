@@ -5,20 +5,21 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { ModuleBadge } from "@/components/ui/module-badge";
 import { ArrowIcon } from "@/components/ui/icons";
 import { getTests, getVersion } from "@/lib/api/tests";
+import { serverApiRequest } from "@/lib/api/server-client";
 
 export const dynamic = "force-dynamic";
 
 const moduleOrder = { READING: 0, LISTENING: 1, WRITING: 2 } as const;
 
 export default async function LibraryPage() {
-  const tests = await getTests().catch(() => []);
+  const tests = await getTests(undefined, serverApiRequest).catch(() => []);
   const published = tests.flatMap((test) => {
     const version = [...test.versions].reverse().find((item) => item.status === "PUBLISHED");
     return version ? [{ test, version }] : [];
   });
   const available = (await Promise.all(published.map(async (item) => ({
     ...item,
-    detail: await getVersion(item.version.id).catch(() => null),
+    detail: await getVersion(item.version.id, serverApiRequest).catch(() => null),
   })))).filter((item) => item.detail);
 
   return <>

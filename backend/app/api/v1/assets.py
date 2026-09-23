@@ -7,6 +7,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.dependencies import CurrentUser, require_admin
 from app.core.config import get_settings
 from app.core.database import get_session
 from app.core.exceptions import AppError
@@ -59,7 +60,12 @@ async def _upload(
     return response
 
 
-@router.post("/images", response_model=AssetResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/images",
+    response_model=AssetResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_admin)],
+)
 async def upload_image(
     test_version_id: UUID = Form(),
     file: UploadFile = File(),
@@ -74,7 +80,12 @@ async def upload_image(
     )
 
 
-@router.post("/question-images", response_model=AssetResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/question-images",
+    response_model=AssetResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_admin)],
+)
 async def upload_question_image(
     test_version_id: UUID = Form(),
     file: UploadFile = File(),
@@ -89,7 +100,12 @@ async def upload_question_image(
     )
 
 
-@router.post("/audio", response_model=AssetResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/audio",
+    response_model=AssetResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_admin)],
+)
 async def upload_audio(
     test_version_id: UUID = Form(),
     file: UploadFile = File(),
@@ -106,11 +122,20 @@ async def upload_audio(
 
 @router.get("/{asset_id}/content", response_class=FileResponse)
 async def get_asset_content(
-    asset_id: UUID, session: AsyncSession = Depends(get_session)
+    asset_id: UUID, user: CurrentUser, session: AsyncSession = Depends(get_session)
 ) -> FileResponse:
     asset = await session.scalar(select(Asset).where(Asset.id == asset_id))
     if asset is None:
         raise AppError("ASSET_NOT_FOUND", "The asset does not exist.", 404)
+    if user.role.value != "ADMIN":
+        from app.models import TestVersion
+        from app.models.enums import VersionStatus
+
+        version_status = await session.scalar(
+            select(TestVersion.status).where(TestVersion.id == asset.test_version_id)
+        )
+        if version_status != VersionStatus.PUBLISHED:
+            raise AppError("ASSET_NOT_FOUND", "The asset does not exist.", 404)
     path = LocalAssetStorage(get_settings().resolved_storage_root).resolve(asset.relative_path)
     return FileResponse(
         path,
