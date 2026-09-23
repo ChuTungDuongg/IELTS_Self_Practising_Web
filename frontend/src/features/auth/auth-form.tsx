@@ -10,7 +10,7 @@ import { useAuth } from "./auth-provider";
 export function AuthForm({ mode }: { mode: "login" | "register" }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { setAuthenticatedUser } = useAuth();
+  const { confirmSession } = useAuth();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -25,14 +25,16 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
       return;
     }
     try {
-      const session = mode === "login"
-        ? await login({ email: String(data.get("email") ?? ""), password: String(data.get("password") ?? "") })
-        : await register({
+      if (mode === "login") {
+        await login({ email: String(data.get("email") ?? ""), password: String(data.get("password") ?? "") });
+      } else {
+        await register({
           email: String(data.get("email") ?? ""),
           display_name: String(data.get("display_name") ?? ""),
           password: String(data.get("password") ?? ""),
         });
-      setAuthenticatedUser(session.user);
+      }
+      await confirmSession();
       const next = searchParams.get("next");
       router.push(next?.startsWith("/") && !next.startsWith("//") ? next : "/");
     } catch (caught) {

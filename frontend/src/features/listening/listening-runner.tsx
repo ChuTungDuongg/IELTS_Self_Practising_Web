@@ -1,9 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { PauseAttemptControl } from "@/features/exam/pause-attempt-control";
+import { AttemptStoppedError, useAttemptLifecycle } from "@/features/exam/attempt-lifecycle";
 import { elapsedFromSnapshot, estimateServerOffset, formatDuration, remainingSeconds } from "@/features/exam/timer";
 import { QuestionGroupInstruction } from "@/features/questions/question-group-instruction";
 import { questionRegistry } from "@/features/questions/registry";
@@ -14,7 +14,6 @@ import { getExam, saveFlag, submitAttempt, type ExamPayload } from "@/lib/api/ex
 import { ListeningAudioPlayer } from "./audio-player";
 
 export function ListeningRunner({ initial }: { initial: ExamPayload }) {
-  const router = useRouter();
   const attemptId = initial.attempt.attempt_id;
   const parts = useMemo(
     () => [...initial.listening_parts].sort((left, right) => left.order_index - right.order_index),
@@ -40,66 +39,75 @@ export function ListeningRunner({ initial }: { initial: ExamPayload }) {
   const questionChips = useRef(new Map<string, HTMLButtonElement>());
   const pendingQuestion = useRef<string | null>(null);
   const offset = useMemo(() => estimateServerOffset(initial.attempt.server_time), [initial.attempt.server_time]);
+  const { stopped, ended, accept, runMutation } = useAttemptLifecycle(attemptId, () => {
+    timers.current.forEach(clearTimeout);
+    timers.current.clear();
+  });
 
   const persist = useCallback(async (id: string, value: unknown) => {
+    if (stopped.current) throw new AttemptStoppedError();
     setSaveState("saving");
     try {
-      await saveAnswer(attemptId, id, value);
+      await runMutation(() => saveAnswer(attemptId, id, value));
       dirty.current.delete(id);
       setSaveState("saved");
       return true;
-    } catch {
+    } catch (error) {
+      if (error instanceof AttemptStoppedError) throw error;
       setSaveState("error");
       return false;
     }
-  }, [attemptId]);
+  }, [attemptId, runMutation, stopped]);
 
   function answer(id: string, value: string | string[]) {
+    if (stopped.current) return;
     setValues((current) => ({ ...current, [id]: value }));
     setActiveQuestionId(id);
     dirty.current.set(id, value);
     const timer = timers.current.get(id);
     if (timer) clearTimeout(timer);
-    timers.current.set(id, setTimeout(() => persist(id, value), 400));
+    timers.current.set(id, setTimeout(() => { void persist(id, value).catch(() => undefined); }, 400));
   }
 
   const flush = useCallback(async () => {
+    if (stopped.current) throw new AttemptStoppedError();
     timers.current.forEach(clearTimeout);
     timers.current.clear();
     const saved = await Promise.all([...dirty.current].map(([id, value]) => persist(id, value)));
     if (saved.some((result) => !result)) throw new Error("Pending answers could not be saved.");
-  }, [persist]);
+  }, [persist, stopped]);
 
   useEffect(() => {
     const timerMap = timers.current;
-    const interval = window.setInterval(() => void flush(), 10_000);
+    const interval = window.setInterval(() => { if (!stopped.current) void flush().catch(() => undefined); }, 10_000);
     const ticker = window.setInterval(() => setClock(Date.now()), 1000);
     return () => {
       clearInterval(interval);
       clearInterval(ticker);
       timerMap.forEach(clearTimeout);
     };
-  }, [flush]);
+  }, [flush, stopped]);
 
   useEffect(() => {
     const meaningful = () => {
+      if (stopped.current) return;
       const now = Date.now();
       lastActivity.current = now;
       if (now - lastHeartbeat.current > 20_000) {
         lastHeartbeat.current = now;
-        void recordActivity(attemptId);
+        void runMutation(() => recordActivity(attemptId)).catch((error) => { if (!(error instanceof AttemptStoppedError)) setSaveState("error"); });
       }
     };
     const events: Array<keyof WindowEventMap> = ["keydown", "click", "touchstart", "scroll"];
     events.forEach((event) => window.addEventListener(event, meaningful, { passive: true }));
     const afk = window.setInterval(() => {
-      if (Date.now() - lastActivity.current > 300_000) void getExam(attemptId).finally(() => router.refresh());
+      if (!stopped.current && Date.now() - lastActivity.current > 300_000) void getExam(attemptId).then((exam) => accept(exam.attempt)).catch(() => setSaveState("error"));
     }, 5000);
     return () => {
       events.forEach((event) => window.removeEventListener(event, meaningful));
       clearInterval(afk);
     };
-  }, [attemptId, router]);
+  }, [accept, attemptId, runMutation, stopped]);
 
   const scrollToQuestion = useCallback((questionId: string) => {
     const target = [...(questionPane.current?.querySelectorAll<HTMLElement>(".exam-question-target[data-question-id]") ?? [])]
@@ -150,7 +158,6 @@ export function ListeningRunner({ initial }: { initial: ExamPayload }) {
   const seconds = initial.attempt.timer_mode === "COUNTDOWN" && initial.attempt.deadline_at
     ? remainingSeconds(initial.attempt.deadline_at, offset, clock)
     : elapsedFromSnapshot(initial.attempt.elapsed_seconds, initial.attempt.server_time, offset, clock);
-  const completionPath = initial.attempt.test_session_id ? `/test-session/${initial.attempt.test_session_id}` : `/review/${attemptId}`;
   const part = parts[partIndex];
   const partGroups = useMemo(
     () => part ? [...part.question_groups].sort((left, right) => left.order_index - right.order_index) : [],
@@ -160,30 +167,32 @@ export function ListeningRunner({ initial }: { initial: ExamPayload }) {
   const visualGroup = activeGroup ? ["map_labelling", "plan_labelling", "diagram_labelling"].includes(activeGroup.question_type) : false;
 
   useEffect(() => {
-    if (part) void recordNavigation(attemptId, "LISTENING_PART", part.id).catch(() => undefined);
-  }, [attemptId, part]);
+    if (part && !stopped.current) void runMutation(() => recordNavigation(attemptId, "LISTENING_PART", part.id)).catch((error) => { if (!(error instanceof AttemptStoppedError)) setSaveState("error"); });
+  }, [attemptId, part, runMutation, stopped]);
   useEffect(() => {
-    if (activeQuestionId) void recordNavigation(attemptId, "QUESTION", activeQuestionId).catch(() => undefined);
-  }, [activeQuestionId, attemptId]);
+    if (activeQuestionId && !stopped.current) void runMutation(() => recordNavigation(attemptId, "QUESTION", activeQuestionId)).catch((error) => { if (!(error instanceof AttemptStoppedError)) setSaveState("error"); });
+  }, [activeQuestionId, attemptId, runMutation, stopped]);
   useEffect(() => {
-    if (initial.attempt.timer_mode === "COUNTDOWN" && seconds === 0 && !finalized.current) {
+    if (initial.attempt.timer_mode === "COUNTDOWN" && seconds === 0 && !finalized.current && !stopped.current) {
       finalized.current = true;
-      void flush().finally(() => submitAttempt(attemptId).finally(() => router.push(completionPath)));
+      void submit();
     }
-  }, [attemptId, completionPath, flush, initial.attempt.timer_mode, router, seconds]);
+  });
 
+  if (ended) return <p role="status">Attempt finished. Opening your result…</p>;
   if (!part) return <p>No Listening part is available.</p>;
 
   async function toggleFlag(id: string) {
+    if (stopped.current) return;
     const next = !flags[id];
     setFlags((current) => ({ ...current, [id]: next }));
-    await saveFlag(attemptId, id, next);
+    try { await runMutation(() => saveFlag(attemptId, id, next)); } catch (error) { if (!(error instanceof AttemptStoppedError)) setSaveState("error"); }
   }
 
   async function submit() {
-    await flush();
-    await submitAttempt(attemptId);
-    router.push(completionPath);
+    if (stopped.current) return;
+    try { await flush(); await runMutation(() => submitAttempt(attemptId)); accept({ ...initial.attempt, status: "SUBMITTED" }); }
+    catch (error) { if (!(error instanceof AttemptStoppedError)) setSaveState("error"); }
   }
 
   function selectPart(index: number) {

@@ -26,7 +26,7 @@ function isCurrent(pathname: string, href: string) {
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() ?? "/";
-  const { user, loading, logout } = useAuth();
+  const { user, loading, sessionError, logout } = useAuth();
   const isExam = pathname.startsWith("/attempt/");
   const visibleNavigation = user ? [...navigation, ...(user.role === "ADMIN" ? adminNavigation : [])] : [navigation[0]];
   const current = visibleNavigation.find((item) => isCurrent(pathname, item.href));
@@ -50,7 +50,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <span>{current?.label ?? "IELTS Studio"}</span>
         </div>
         <div className="header-actions">
-          {!loading && user ? <><span className="auth-user-label">{user.display_name}<small>{user.role}</small></span><button type="button" className="btn btn-ghost" onClick={() => void logout()}>Logout</button></> : !loading ? <><Link href="/login" className="btn btn-ghost">Login</Link><Link href="/register" className="btn btn-primary">Register</Link></> : null}
+          {sessionError ? <p role="alert" className="notice">{sessionError}</p> : null}
+          {!loading && user ? <><span className="auth-user-label">{user.display_name}<small>{user.role}</small></span><button type="button" className="btn btn-ghost" onClick={() => void logout()}>Logout</button></> : !loading && !sessionError ? <><Link href="/login" className="btn btn-ghost">Login</Link><Link href="/register" className="btn btn-primary">Register</Link></> : null}
           <ThemeToggle />
         </div>
       </header>

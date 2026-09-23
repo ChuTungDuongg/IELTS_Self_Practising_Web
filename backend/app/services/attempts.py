@@ -208,14 +208,13 @@ class AttemptService:
             attempt = await self._require(attempt_id, for_update=True)
             now = TimerService.now()
             await self._synchronize_state(attempt, now)
-            if attempt.status == AttemptStatus.AUTO_SUBMITTED:
-                return self._to_response(attempt, now)
-            AttemptStateMachine.ensure_transition(attempt.status, AttemptStatus.PAUSED)
-            attempt.status = AttemptStatus.PAUSED
-            attempt.paused_at = now
-            attempt.last_active_at = now
-            attempt.finished_at = None
-            attempt.finished_reason = None
+            if attempt.status == AttemptStatus.IN_PROGRESS:
+                AttemptStateMachine.ensure_transition(attempt.status, AttemptStatus.PAUSED)
+                attempt.status = AttemptStatus.PAUSED
+                attempt.paused_at = now
+                attempt.last_active_at = now
+                attempt.finished_at = None
+                attempt.finished_reason = None
             response = self._to_response(attempt, now)
         return response
 

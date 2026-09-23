@@ -106,7 +106,7 @@ Lockfile hiện tại được tạo bằng Python 3.14 và Node.js 24, nhưng b
 Tại thư mục gốc của repository:
 
 ```powershell
-Copy-Item .env.example backend/.env
+Copy-Item backend/.env.example backend/.env
 Copy-Item .env.example frontend/.env.local
 ```
 
@@ -116,6 +116,8 @@ Giá trị mặc định dùng cho local:
 | --- | --- | --- |
 | `DATABASE_URL` | PostgreSQL URL cho SQLAlchemy async | `postgresql+asyncpg://ielts:ielts@localhost:5432/ielts` |
 | `FRONTEND_ORIGIN` | Origin được CORS cho phép | `http://localhost:3000` |
+| `JWT_SECRET` | Secret bắt buộc cho xác thực trong `backend/.env`; ít nhất 32 ký tự, không commit | Tự tạo |
+| `AUTH_COOKIE_SECURE` / `AUTH_COOKIE_SAMESITE` | Cookie local trên HTTP | `false` / `lax` |
 | `STORAGE_ROOT` | Nơi lưu binary asset | `../storage` |
 | `MAX_IMAGE_UPLOAD_MB` | Giới hạn hình ảnh | `10` |
 | `MAX_AUDIO_UPLOAD_MB` | Giới hạn audio | `100` |
@@ -123,6 +125,8 @@ Giá trị mặc định dùng cho local:
 | `MAX_TRANSFER_UNCOMPRESSED_MB` | Giới hạn tổng dung lượng giải nén | `600` |
 | `MAX_TRANSFER_FILES` | Giới hạn số file trong ZIP | `5000` |
 | `NEXT_PUBLIC_API_BASE_URL` | API URL phía frontend | `http://localhost:8000/api/v1` |
+
+Giữ cùng hostname `localhost` cho frontend và backend. Cookie phiên đăng nhập được gắn với hostname, nên `127.0.0.1:8000` không dùng chung cookie với `localhost:3000`. Sau khi đổi `.env.local`, khởi động lại Next.js.
 
 ### 2. Khởi động PostgreSQL 🐘
 
@@ -220,6 +224,8 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
+Kiểm tra riêng phiên đăng nhập: tạo admin local bằng `uv run python -m app.bootstrap_admin` từ `backend/` với các giá trị `INITIAL_ADMIN_*` trong `backend/.env`. Sau đó đặt `E2E_ADMIN_EMAIL` và `E2E_ADMIN_PASSWORD` tương ứng trong terminal chạy frontend và dùng `npx playwright test tests/e2e/auth-session.spec.ts`. Spec tự tạo USER thử nghiệm; không commit mật khẩu hoặc JWT secret.
+
 ## 🔐 Nguyên tắc dữ liệu quan trọng
 
 ### Version bất biến
@@ -294,6 +300,6 @@ Lỗi ứng dụng có cấu trúc ổn định:
 
 - **Hiện có:** Reading/Listening/Writing, Full Mock, pause/resume, manual Writing grading + criterion feedback, Builder autosave, Test Transfer ZIP, History và Analytics.
 - **Tiếp theo:** tăng độ sâu của analytics, accessibility và độ bền của Builder workflow.
-- **Cố ý không làm:** Speaking, authentication, thanh toán và AI Writing scoring.
+- **Cố ý không làm:** Speaking, thanh toán và AI Writing scoring.
 
 Xem checklist chi tiết tại [docs/ROADMAP.md](docs/ROADMAP.md). 💫

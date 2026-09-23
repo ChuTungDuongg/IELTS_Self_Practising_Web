@@ -6,6 +6,7 @@ import { AuthForm } from "@/features/auth/auth-form";
 import { AuthProvider } from "@/features/auth/auth-provider";
 import { apiRequest, resetAuthRequestStateForTests } from "@/lib/api/client";
 import { getCurrentUser, login, logout, register } from "@/lib/api/auth";
+import { ApiError } from "@/lib/api/client";
 
 const navigation = vi.hoisted(() => ({ pathname: "/", push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }));
 
@@ -32,13 +33,13 @@ const baseUser = {
 
 describe("authentication UI", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     navigation.pathname = "/";
     vi.mocked(logout).mockResolvedValue(undefined);
   });
 
   it("shows login actions while logged out", async () => {
-    vi.mocked(getCurrentUser).mockRejectedValue(new Error("unauthenticated"));
+    vi.mocked(getCurrentUser).mockRejectedValue(new ApiError("AUTHENTICATION_REQUIRED", "Sign in", 401));
     render(<AuthProvider><AppShell><p>Content</p></AppShell></AuthProvider>);
     expect(await screen.findByRole("link", { name: "Login" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Register" })).toBeInTheDocument();
@@ -67,6 +68,19 @@ describe("authentication UI", () => {
     expect(screen.queryByText("Secret admin workspace")).not.toBeInTheDocument();
   });
 
+  it("allows an ADMIN through the client guard", async () => {
+    vi.mocked(getCurrentUser).mockResolvedValue({ ...baseUser, role: "ADMIN" });
+    render(<AuthProvider><AdminGuard><p>Secret admin workspace</p></AdminGuard></AuthProvider>);
+    expect(await screen.findByText("Secret admin workspace")).toBeInTheDocument();
+  });
+
+  it("shows a session check error in the admin guard without redirecting", async () => {
+    vi.mocked(getCurrentUser).mockRejectedValue(new ApiError("API_ERROR", "Backend failed", 500));
+    render(<AuthProvider><AdminGuard><p>Secret admin workspace</p></AdminGuard></AuthProvider>);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Backend failed");
+    expect(navigation.replace).not.toHaveBeenCalled();
+  });
+
   it("logout clears the authenticated shell state", async () => {
     vi.mocked(getCurrentUser).mockResolvedValue(baseUser);
     render(<AuthProvider><AppShell><p>Content</p></AppShell></AuthProvider>);
@@ -77,7 +91,9 @@ describe("authentication UI", () => {
   });
 
   it("updates the application shell after a successful login", async () => {
-    vi.mocked(getCurrentUser).mockRejectedValue(new Error("unauthenticated"));
+    vi.mocked(getCurrentUser)
+      .mockRejectedValueOnce(new ApiError("AUTHENTICATION_REQUIRED", "Sign in", 401))
+      .mockResolvedValueOnce(baseUser);
     vi.mocked(login).mockResolvedValue({ user: baseUser, access_expires_at: new Date().toISOString() });
     render(<AuthProvider><AuthForm mode="login" /><AppShell><p>Content</p></AppShell></AuthProvider>);
 
@@ -88,6 +104,28 @@ describe("authentication UI", () => {
 
     expect(await screen.findByText("Student")).toBeInTheDocument();
     expect(login).toHaveBeenCalledWith({ email: "student@example.com", password: "safe-password" });
+    expect(getCurrentUser).toHaveBeenCalledTimes(2);
+    expect(navigation.push).toHaveBeenCalledWith("/");
+  });
+
+  it("does not accept a login response when the cookie-backed session cannot be read", async () => {
+    vi.mocked(getCurrentUser).mockRejectedValue(new ApiError("AUTHENTICATION_REQUIRED", "Sign in", 401));
+    vi.mocked(login).mockResolvedValue({ user: baseUser, access_expires_at: new Date().toISOString() });
+    render(<AuthProvider><AuthForm mode="login" /><AppShell><p>Content</p></AppShell></AuthProvider>);
+    await screen.findByRole("link", { name: "Login" });
+    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "student@example.com" } });
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "safe-password" } });
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(screen.queryByText("Student")).not.toBeInTheDocument();
+    expect(navigation.push).not.toHaveBeenCalled();
+  });
+
+  it("surfaces non-401 session errors without showing a logged-out shell", async () => {
+    vi.mocked(getCurrentUser).mockRejectedValue(new ApiError("API_ERROR", "Backend failed", 500));
+    render(<AuthProvider><AppShell><p>Content</p></AppShell></AuthProvider>);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Backend failed");
+    expect(screen.queryByRole("link", { name: "Login" })).not.toBeInTheDocument();
   });
 
   it("requires matching registration passwords and never offers a role choice", async () => {
@@ -125,7 +163,7 @@ describe("API refresh coordination", () => {
     const attempts = new Map<string, number>();
     let resolveRefresh!: (response: Response) => void;
     const refreshResponse = new Promise<Response>((resolve) => { resolveRefresh = resolve; });
-    const fetchMock = vi.fn((input: string | URL | Request) => {
+    const fetchMock = vi.fn((input: string | URL | Request, _init?: RequestInit) => {
       const url = String(input);
       if (url.endsWith("/auth/refresh")) return refreshResponse;
       const count = (attempts.get(url) ?? 0) + 1;

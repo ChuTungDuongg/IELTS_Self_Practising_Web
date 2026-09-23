@@ -40,10 +40,15 @@ function announceSessionExpired() {
 }
 
 export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
-  return request<T>(path, init, true);
+  const response = await apiResponse(path, init);
+  return await response.json().catch(() => null) as T;
 }
 
-async function request<T>(path: string, init: RequestInit | undefined, allowRefresh: boolean): Promise<T> {
+export async function apiResponse(path: string, init?: RequestInit): Promise<Response> {
+  return requestResponse(path, init, true);
+}
+
+async function requestResponse(path: string, init: RequestInit | undefined, allowRefresh: boolean): Promise<Response> {
   let response: Response;
   try {
     response = await fetch(`${API_BASE_URL}${path}`, {
@@ -64,10 +69,10 @@ async function request<T>(path: string, init: RequestInit | undefined, allowRefr
     && canRefresh(path)
     && await refreshAccessSession()
   ) {
-    return request<T>(path, init, false);
+    return requestResponse(path, init, false);
   }
-  const body = await response.json().catch(() => null);
   if (!response.ok) {
+    const body = await response.json().catch(() => null);
     if (response.status === 401 && canRefresh(path)) announceSessionExpired();
     throw new ApiError(
       body?.code ?? "API_ERROR",
@@ -76,7 +81,7 @@ async function request<T>(path: string, init: RequestInit | undefined, allowRefr
       body,
     );
   }
-  return body as T;
+  return response;
 }
 
 export function resetAuthRequestStateForTests() {

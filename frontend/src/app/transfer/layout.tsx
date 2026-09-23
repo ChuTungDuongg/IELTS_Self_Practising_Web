@@ -1,10 +1,16 @@
 import { redirect } from "next/navigation";
 import { userSchema } from "@/lib/api/auth";
 import { serverApiRequest } from "@/lib/api/server-client";
+import { ApiError } from "@/lib/api/client";
 
 export default async function TransferLayout({ children }: { children: React.ReactNode }) {
-  const user = await serverApiRequest<unknown>("/auth/me").then(userSchema.parse).catch(() => null);
-  if (!user) redirect("/login?next=/transfer");
+  let user;
+  try {
+    user = userSchema.parse(await serverApiRequest<unknown>("/auth/me"));
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 401) redirect("/login?next=/transfer");
+    throw error;
+  }
   if (user.role !== "ADMIN") return <section className="empty-state"><h1>Forbidden</h1><p>This workspace is available to administrators only.</p></section>;
   return children;
 }

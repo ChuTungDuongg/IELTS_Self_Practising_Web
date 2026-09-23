@@ -1,7 +1,8 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ReadingRunner } from "@/features/reading/reading-runner";
-import { saveAnswer } from "@/lib/api/attempts";
+import { getAttempt, recordActivity, saveAnswer } from "@/lib/api/attempts";
+import { ApiError } from "@/lib/api/client";
 import type { ExamPayload } from "@/lib/api/exam";
 import { saveFlag, submitAttempt } from "@/lib/api/exam";
 
@@ -10,7 +11,7 @@ const push = vi.fn();
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn(), push }) }));
 vi.mock("@/lib/api/attempts", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api/attempts")>();
-  return { ...actual, recordActivity: vi.fn(), saveAnswer: vi.fn() };
+  return { ...actual, getAttempt: vi.fn(), recordActivity: vi.fn(), saveAnswer: vi.fn() };
 });
 vi.mock("@/lib/api/exam", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api/exam")>();
@@ -88,6 +89,7 @@ describe("Reading footer navigation", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(saveAnswer).mockResolvedValue(undefined);
     scrolledElements.length = 0;
     Object.defineProperty(Element.prototype, "scrollIntoView", {
       configurable: true,
@@ -170,5 +172,30 @@ describe("Reading footer navigation", () => {
     fireEvent.click(within(question as HTMLElement).getByRole("radio", { name: "FALSE" }));
 
     await waitFor(() => expect(saveAnswer).toHaveBeenCalledWith("22222222-2222-4222-8222-222222222222", q1, "FALSE"), { timeout: 1200 });
+  });
+
+  it("reconciles a finalized autosave and stops further answer writes", async () => {
+    const initial = payload();
+    vi.mocked(saveAnswer).mockRejectedValueOnce(new ApiError("ATTEMPT_FINALIZED", "finalized", 409));
+    vi.mocked(getAttempt).mockResolvedValue({ ...initial.attempt, status: "INTERRUPTED" });
+    const view = render(<ReadingRunner initial={initial} />);
+    const question = view.container.querySelector(`[data-question-id="${q1}"]`)!;
+    fireEvent.click(within(question as HTMLElement).getByRole("radio", { name: "FALSE" }));
+    await waitFor(() => expect(push).toHaveBeenCalledWith(`/review/${initial.attempt.attempt_id}`), { timeout: 1500 });
+    expect(getAttempt).toHaveBeenCalledWith(initial.attempt.attempt_id);
+    expect(screen.getByRole("status")).toHaveTextContent("Attempt finished");
+    expect(screen.queryByText("Save failed")).not.toBeInTheDocument();
+    expect(saveAnswer).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops heartbeat after the backend finalizes the attempt", async () => {
+    const initial = payload();
+    vi.mocked(recordActivity).mockRejectedValueOnce(new ApiError("ATTEMPT_FINALIZED", "finalized", 409));
+    vi.mocked(getAttempt).mockResolvedValue({ ...initial.attempt, status: "INTERRUPTED" });
+    render(<ReadingRunner initial={initial} />);
+    fireEvent.click(window);
+    await waitFor(() => expect(push).toHaveBeenCalledWith(`/review/${initial.attempt.attempt_id}`));
+    fireEvent.click(window);
+    expect(recordActivity).toHaveBeenCalledTimes(1);
   });
 });

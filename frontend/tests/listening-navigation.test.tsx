@@ -1,7 +1,8 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ListeningRunner } from "@/features/listening/listening-runner";
-import { recordNavigation, saveAnswer } from "@/lib/api/attempts";
+import { getAttempt, recordNavigation, saveAnswer } from "@/lib/api/attempts";
+import { ApiError } from "@/lib/api/client";
 import type { ExamPayload } from "@/lib/api/exam";
 import { saveFlag } from "@/lib/api/exam";
 
@@ -10,7 +11,7 @@ const push = vi.fn();
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn(), push }) }));
 vi.mock("@/lib/api/attempts", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api/attempts")>();
-  return { ...actual, recordActivity: vi.fn(), recordNavigation: vi.fn(), saveAnswer: vi.fn() };
+  return { ...actual, getAttempt: vi.fn(), recordActivity: vi.fn(), recordNavigation: vi.fn(), saveAnswer: vi.fn() };
 });
 vi.mock("@/lib/api/exam", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api/exam")>();
@@ -302,5 +303,18 @@ describe("Listening footer navigation", () => {
     expect(screen.getByText("Section Two")).toBeInTheDocument();
     expect(pane.scrollTop).toBe(0);
     expect(screen.getByRole("button", { name: "Go to question 15" })).toHaveAttribute("aria-current", "true");
+  });
+
+  it("reconciles a finalized Listening autosave without showing Save failed", async () => {
+    const initial = payload();
+    vi.mocked(saveAnswer).mockRejectedValueOnce(new ApiError("ATTEMPT_EXPIRED", "expired", 409));
+    vi.mocked(getAttempt).mockResolvedValue({ ...initial.attempt, status: "AUTO_SUBMITTED" });
+    const view = render(<ListeningRunner initial={initial} />);
+    const target = view.container.querySelector(`.exam-question-target[data-question-id="${q2}"]`)!;
+    fireEvent.click(within(target as HTMLElement).getByRole("radio", { name: "FALSE" }));
+    await waitFor(() => expect(push).toHaveBeenCalledWith(`/review/${attemptId}`), { timeout: 1500 });
+    expect(screen.getByRole("status")).toHaveTextContent("Attempt finished");
+    expect(screen.queryByText("Save failed")).not.toBeInTheDocument();
+    expect(saveAnswer).toHaveBeenCalledTimes(1);
   });
 });

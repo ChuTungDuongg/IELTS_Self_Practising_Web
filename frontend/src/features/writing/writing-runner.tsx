@@ -2,10 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { elapsedFromSnapshot, estimateServerOffset, formatDuration, remainingSeconds } from "@/features/exam/timer";
 import { PauseAttemptControl } from "@/features/exam/pause-attempt-control";
+import { AttemptStoppedError, useAttemptLifecycle } from "@/features/exam/attempt-lifecycle";
 import { countWords } from "@/features/writing/word-count";
 import { recordActivity, recordNavigation, saveWritingResponse } from "@/lib/api/attempts";
 import { assetContentUrl } from "@/lib/api/assets";
@@ -14,7 +14,6 @@ import { submitAttempt, type ExamPayload } from "@/lib/api/exam";
 type SaveState = "saved" | "saving" | "error";
 
 export function WritingRunner({ initial }: { initial: ExamPayload }) {
-  const router = useRouter();
   const attemptId = initial.attempt.attempt_id;
   const tasks = useMemo(
     () => [...initial.writing_tasks].sort((left, right) => left.order_index - right.order_index),
@@ -35,30 +34,35 @@ export function WritingRunner({ initial }: { initial: ExamPayload }) {
   const lastActivity = useRef(0);
   const lastHeartbeat = useRef(0);
   const finalized = useRef(false);
+  const { stopped, ended, accept, runMutation, isStopped } = useAttemptLifecycle(attemptId, () => {
+    timers.current.forEach(clearTimeout);
+    timers.current.clear();
+  });
   const offset = useMemo(
     () => estimateServerOffset(initial.attempt.server_time),
     [initial.attempt.server_time],
   );
   const task = tasks[taskIndex];
-  const completionPath = initial.attempt.test_session_id ? `/test-session/${initial.attempt.test_session_id}` : `/review/${attemptId}`;
-  useEffect(() => { if (task) void recordNavigation(attemptId, "WRITING_TASK", task.id).catch(() => undefined); }, [attemptId, task]);
+  useEffect(() => { if (task && !stopped.current) void runMutation(() => recordNavigation(attemptId, "WRITING_TASK", task.id)).catch((error) => { if (!(error instanceof AttemptStoppedError)) setSaveError("Your activity could not be recorded. Please try again."); }); }, [attemptId, runMutation, stopped, task]);
 
   const persist = useCallback(async (taskId: string, revision: number) => {
+    if (isStopped()) throw new AttemptStoppedError();
     const content = contentsRef.current[taskId] ?? "";
     setSaveState("saving");
     setSaveError(null);
     try {
-      await saveWritingResponse(attemptId, taskId, content);
+      await runMutation(() => saveWritingResponse(attemptId, taskId, content));
       if (revisions.current.get(taskId) === revision) {
         savedRevisions.current.set(taskId, revision);
         setSaveState("saved");
       }
     } catch (error) {
+      if (error instanceof AttemptStoppedError) throw error;
       setSaveState("error");
       setSaveError("Your response could not be saved. Retry before submitting.");
       throw error;
     }
-  }, [attemptId]);
+  }, [attemptId, isStopped, runMutation]);
 
   const saveTask = useCallback(async (taskId: string) => {
     const timer = timers.current.get(taskId);
@@ -68,6 +72,7 @@ export function WritingRunner({ initial }: { initial: ExamPayload }) {
   }, [persist]);
 
   function updateContent(taskId: string, content: string) {
+    if (stopped.current) return;
     const revision = (revisions.current.get(taskId) ?? 0) + 1;
     revisions.current.set(taskId, revision);
     contentsRef.current = { ...contentsRef.current, [taskId]: content };
@@ -83,6 +88,7 @@ export function WritingRunner({ initial }: { initial: ExamPayload }) {
   }
 
   const flushForSubmission = useCallback(async () => {
+    if (isStopped()) throw new AttemptStoppedError();
     timers.current.forEach(clearTimeout);
     timers.current.clear();
     const currentTask = tasks[taskIndex];
@@ -95,19 +101,22 @@ export function WritingRunner({ initial }: { initial: ExamPayload }) {
         await persist(candidate.id, revisions.current.get(candidate.id) ?? 0);
       }
     }
-  }, [persist, taskIndex, tasks]);
+  }, [isStopped, persist, taskIndex, tasks]);
 
   const finish = useCallback(async () => {
-    if (submitting) return;
+    if (submitting || isStopped()) return;
     setSubmitting(true);
+    let saving = true;
     try {
       await flushForSubmission();
-      await submitAttempt(attemptId);
-      router.push(completionPath);
-    } catch {
+      saving = false;
+      await runMutation(() => submitAttempt(attemptId));
+      accept({ ...initial.attempt, status: "SUBMITTED" });
+    } catch (error) {
+      if (!(error instanceof AttemptStoppedError) && !saving) setSaveError("Submission could not be completed. Please try again.");
       setSubmitting(false);
     }
-  }, [attemptId, completionPath, flushForSubmission, router, submitting]);
+  }, [accept, attemptId, flushForSubmission, initial.attempt, isStopped, runMutation, submitting]);
 
   useEffect(() => {
     const timerMap = timers.current;
@@ -121,29 +130,31 @@ export function WritingRunner({ initial }: { initial: ExamPayload }) {
   useEffect(() => {
     lastActivity.current = Date.now();
     const meaningful = () => {
+      if (stopped.current) return;
       const now = Date.now();
       lastActivity.current = now;
       if (now - lastHeartbeat.current >= 20_000) {
         lastHeartbeat.current = now;
-        void recordActivity(attemptId);
+        void runMutation(() => recordActivity(attemptId)).catch((error) => { if (!(error instanceof AttemptStoppedError)) setSaveError("Your activity could not be recorded. Please try again."); });
       }
     };
     const events: Array<keyof WindowEventMap> = ["keydown", "click", "touchstart", "scroll"];
     events.forEach((event) => window.addEventListener(event, meaningful, { passive: true }));
     return () => events.forEach((event) => window.removeEventListener(event, meaningful));
-  }, [attemptId]);
+  }, [attemptId, runMutation, stopped]);
 
   const seconds = initial.attempt.timer_mode === "COUNTDOWN" && initial.attempt.deadline_at
     ? remainingSeconds(initial.attempt.deadline_at, offset, clock)
     : elapsedFromSnapshot(initial.attempt.elapsed_seconds, initial.attempt.server_time, offset, clock);
 
   useEffect(() => {
-    if (initial.attempt.timer_mode === "COUNTDOWN" && seconds === 0 && !finalized.current) {
+    if (initial.attempt.timer_mode === "COUNTDOWN" && seconds === 0 && !finalized.current && !stopped.current) {
       finalized.current = true;
       void finish();
     }
-  }, [finish, initial.attempt.timer_mode, seconds]);
+  }, [finish, initial.attempt.timer_mode, seconds, stopped]);
 
+  if (ended) return <p role="status">Attempt finished. Opening your result…</p>;
   if (!task) return <p>No Writing tasks are available.</p>;
   const content = contents[task.id] ?? "";
 

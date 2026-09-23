@@ -5,6 +5,10 @@ import { API_BASE_URL, ApiError } from "./client";
 
 export async function serverApiRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const cookieStore = await cookies();
+  const sessionCookies = cookieStore.getAll()
+    .filter(({ name }) => name === "ielts_access" || name === "ielts_refresh")
+    .map(({ name, value }) => `${name}=${encodeURIComponent(value)}`)
+    .join("; ");
   let response: Response;
   try {
     response = await fetch(`${API_BASE_URL}${path}`, {
@@ -12,8 +16,8 @@ export async function serverApiRequest<T>(path: string, init?: RequestInit): Pro
       cache: "no-store",
       headers: {
         ...(init?.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
-        Cookie: cookieStore.toString(),
         ...init?.headers,
+        ...(sessionCookies ? { Cookie: sessionCookies } : {}),
       },
     });
   } catch (error) {

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { API_BASE_URL } from "@/lib/api/client";
+import { API_BASE_URL, ApiError } from "@/lib/api/client";
 
 const protectedRoutes = [
   "/admin",
@@ -18,26 +18,32 @@ export async function proxy(request: NextRequest) {
   }
 
   const incomingCookies = request.headers.get("cookie") ?? "";
-  let authenticated = await checkSession(incomingCookies);
+  let session = await checkSession(incomingCookies);
   let refreshedCookies: string[] = [];
 
-  if (!authenticated) {
-    const refresh = await fetch(`${API_BASE_URL}/auth/refresh`, {
+  if (session.status === 401) {
+    const refresh = await authFetch(`${API_BASE_URL}/auth/refresh`, {
       method: "POST",
       cache: "no-store",
       headers: incomingCookies ? { Cookie: incomingCookies } : undefined,
-    }).catch(() => null);
-    if (refresh?.ok) {
+    });
+    if (refresh.ok) {
       refreshedCookies = refresh.headers.getSetCookie();
-      authenticated = await checkSession(mergeCookieHeader(incomingCookies, refreshedCookies));
+      if (!refreshedCookies.some((cookie) => cookie.startsWith("ielts_access=") && !cookie.startsWith("ielts_access=;"))) {
+        throw new ApiError("REFRESH_COOKIES_MISSING", "The API did not return refreshed session cookies.", 502);
+      }
+      session = await checkSession(mergeCookieHeader(incomingCookies, refreshedCookies));
+    } else if (refresh.status !== 401) {
+      throw await responseError(refresh);
     }
   }
 
-  if (!authenticated) {
+  if (session.status === 401) {
     const login = new URL("/login", request.url);
     login.searchParams.set("next", `${request.nextUrl.pathname}${request.nextUrl.search}`);
     return NextResponse.redirect(login);
   }
+  if (!session.ok) throw await responseError(session);
 
   const requestHeaders = new Headers(request.headers);
   if (refreshedCookies.length) {
@@ -48,12 +54,24 @@ export async function proxy(request: NextRequest) {
   return response;
 }
 
-async function checkSession(cookieHeader: string): Promise<boolean> {
-  const response = await fetch(`${API_BASE_URL}/auth/me`, {
+async function checkSession(cookieHeader: string): Promise<Response> {
+  return authFetch(`${API_BASE_URL}/auth/me`, {
     cache: "no-store",
     headers: cookieHeader ? { Cookie: cookieHeader } : undefined,
-  }).catch(() => null);
-  return response?.ok === true;
+  });
+}
+
+async function authFetch(url: string, init: RequestInit): Promise<Response> {
+  try {
+    return await fetch(url, init);
+  } catch (error) {
+    throw new ApiError("NETWORK_ERROR", "The API is not reachable.", 0, error);
+  }
+}
+
+async function responseError(response: Response): Promise<ApiError> {
+  const body = await response.json().catch(() => null);
+  return new ApiError(body?.code ?? "API_ERROR", body?.message ?? `Request failed with status ${response.status}.`, response.status, body);
 }
 
 export function mergeCookieHeader(current: string, setCookies: string[]): string {

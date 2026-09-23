@@ -1,14 +1,15 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WritingRunner } from "@/features/writing/writing-runner";
-import { pauseAttempt, saveWritingResponse } from "@/lib/api/attempts";
+import { getAttempt, pauseAttempt, recordActivity, saveWritingResponse } from "@/lib/api/attempts";
+import { ApiError } from "@/lib/api/client";
 import { submitAttempt, type ExamPayload } from "@/lib/api/exam";
 
 const push = vi.fn();
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push, refresh: vi.fn() }) }));
 vi.mock("@/lib/api/attempts", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api/attempts")>();
-  return { ...actual, recordActivity: vi.fn(), saveWritingResponse: vi.fn(), pauseAttempt: vi.fn() };
+  return { ...actual, getAttempt: vi.fn(), recordActivity: vi.fn(), saveWritingResponse: vi.fn(), pauseAttempt: vi.fn() };
 });
 vi.mock("@/lib/api/exam", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api/exam")>();
@@ -162,5 +163,21 @@ describe("WritingRunner", () => {
       vi.mocked(pauseAttempt).mock.invocationCallOrder[0],
     );
     expect(push).toHaveBeenCalledWith("/history");
+  });
+
+  it("reconciles finalized Writing autosave and stops retries and heartbeat", async () => {
+    const initial = payload();
+    vi.mocked(saveWritingResponse).mockRejectedValueOnce(new ApiError("ATTEMPT_FINALIZED", "finalized", 409));
+    vi.mocked(getAttempt).mockResolvedValue({ ...initial.attempt, status: "INTERRUPTED" });
+    render(<WritingRunner initial={initial} />);
+    fireEvent.change(screen.getByLabelText("Response for Task 1"), { target: { value: "Client-only text" } });
+    await act(async () => vi.advanceTimersByTime(750));
+    expect(push).toHaveBeenCalledWith(`/review/${attemptId}`);
+    expect(screen.getByRole("status")).toHaveTextContent("Attempt finished");
+    expect(screen.queryByText("Your response could not be saved")).not.toBeInTheDocument();
+    fireEvent.click(window);
+    await act(async () => vi.advanceTimersByTime(30_000));
+    expect(saveWritingResponse).toHaveBeenCalledTimes(1);
+    expect(recordActivity).not.toHaveBeenCalled();
   });
 });

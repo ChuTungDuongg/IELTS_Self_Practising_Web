@@ -1,9 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import { elapsedFromSnapshot, formatDuration, estimateServerOffset, remainingSeconds } from "@/features/exam/timer";
 import { PauseAttemptControl } from "@/features/exam/pause-attempt-control";
+import { AttemptStoppedError, useAttemptLifecycle } from "@/features/exam/attempt-lifecycle";
 import { questionRegistry } from "@/features/questions/registry";
 import type { ExamGroup } from "@/features/questions/types";
 import { QuestionGroupInstruction } from "@/features/questions/question-group-instruction";
@@ -14,7 +14,6 @@ import { recordActivity, recordNavigation, saveAnswer } from "@/lib/api/attempts
 import { createHighlight, deleteAllHighlights, deleteHighlight, getExam, saveFlag, submitAttempt, type ExamPassage, type ExamPayload, type HighlightCreate } from "@/lib/api/exam";
 
 export function ReadingRunner({ initial }: { initial: ExamPayload }) {
-  const router = useRouter();
   const attemptId = initial.attempt.attempt_id;
   const passages = useMemo(() => [...initial.passages].sort((left, right) => left.order_index - right.order_index), [initial.passages]);
   const questions = useMemo(() => passages.flatMap((passage, passageIndex) => [...passage.question_groups]
@@ -41,47 +40,55 @@ export function ReadingRunner({ initial }: { initial: ExamPayload }) {
   const questionChips = useRef(new Map<string, HTMLButtonElement>());
   const pendingQuestion = useRef<string | null>(null);
   const offset = useMemo(() => estimateServerOffset(initial.attempt.server_time), [initial.attempt.server_time]);
+  const { stopped, ended, accept, runMutation } = useAttemptLifecycle(attemptId, () => {
+    timers.current.forEach(clearTimeout);
+    timers.current.clear();
+  });
 
   const persist = useCallback(async (questionId: string, value: unknown) => {
+    if (stopped.current) throw new AttemptStoppedError();
     setSaveState("saving");
-    try { await saveAnswer(attemptId, questionId, value); dirty.current.delete(questionId); setSaveState("saved"); return true; }
-    catch { setSaveState("error"); return false; }
-  }, [attemptId]);
+    try { await runMutation(() => saveAnswer(attemptId, questionId, value)); dirty.current.delete(questionId); setSaveState("saved"); return true; }
+    catch (error) { if (error instanceof AttemptStoppedError) throw error; setSaveState("error"); return false; }
+  }, [attemptId, runMutation, stopped]);
 
   function answer(questionId: string, value: string | string[]) {
+    if (stopped.current) return;
     setValues((current) => ({ ...current, [questionId]: value }));
     setActiveQuestionId(questionId);
     dirty.current.set(questionId, value);
     const currentTimer = timers.current.get(questionId);
     if (currentTimer) clearTimeout(currentTimer);
-    timers.current.set(questionId, setTimeout(() => persist(questionId, value), 400));
+    timers.current.set(questionId, setTimeout(() => { void persist(questionId, value).catch(() => undefined); }, 400));
   }
 
   const flush = useCallback(async () => {
+    if (stopped.current) throw new AttemptStoppedError();
     timers.current.forEach(clearTimeout);
     timers.current.clear();
     const saved = await Promise.all([...dirty.current].map(([id, value]) => persist(id, value)));
     if (saved.some((result) => !result)) throw new Error("Pending answers could not be saved.");
-  }, [persist]);
+  }, [persist, stopped]);
 
   useEffect(() => {
     const pendingTimers = timers.current;
-    const interval = window.setInterval(() => { setClock(Date.now()); void flush(); }, 10_000);
+    const interval = window.setInterval(() => { if (!stopped.current) void flush().catch(() => undefined); }, 10_000);
     const clockInterval = window.setInterval(() => setClock(Date.now()), 1000);
     return () => { window.clearInterval(interval); window.clearInterval(clockInterval); pendingTimers.forEach(clearTimeout); };
-  }, [flush]);
+  }, [flush, stopped]);
 
   useEffect(() => {
     lastActivity.current = Date.now();
     const meaningful = () => {
+      if (stopped.current) return;
       const now = Date.now(); lastActivity.current = now;
-      if (now - lastHeartbeat.current >= 20_000) { lastHeartbeat.current = now; void recordActivity(attemptId); }
+      if (now - lastHeartbeat.current >= 20_000) { lastHeartbeat.current = now; void runMutation(() => recordActivity(attemptId)).catch((error) => { if (!(error instanceof AttemptStoppedError)) setSaveState("error"); }); }
     };
     const events: Array<keyof WindowEventMap> = ["keydown", "click", "touchstart", "scroll"];
     events.forEach((event) => window.addEventListener(event, meaningful, { passive: true }));
-    const afk = window.setInterval(() => { if (Date.now() - lastActivity.current >= 300_000) { void getExam(attemptId).finally(() => router.refresh()); } }, 5000);
+    const afk = window.setInterval(() => { if (!stopped.current && Date.now() - lastActivity.current >= 300_000) { void getExam(attemptId).then((exam) => accept(exam.attempt)).catch(() => setSaveState("error")); } }, 5000);
     return () => { events.forEach((event) => window.removeEventListener(event, meaningful)); window.clearInterval(afk); };
-  }, [attemptId, router]);
+  }, [accept, attemptId, runMutation, stopped]);
 
   const scrollToQuestion = useCallback((questionId: string) => {
     const target = [...(questionPane.current?.querySelectorAll<HTMLElement>(".exam-question-target[data-question-id]") ?? [])]
@@ -117,20 +124,24 @@ export function ReadingRunner({ initial }: { initial: ExamPayload }) {
   }, [passageIndex]);
 
   const seconds = initial.attempt.timer_mode === "COUNTDOWN" && initial.attempt.deadline_at ? remainingSeconds(initial.attempt.deadline_at, offset, clock) : elapsedFromSnapshot(initial.attempt.elapsed_seconds, initial.attempt.server_time, offset, clock);
-  const completionPath = initial.attempt.test_session_id ? `/test-session/${initial.attempt.test_session_id}` : `/review/${attemptId}`;
-  useEffect(() => { const passage = passages[passageIndex]; if (passage) void recordNavigation(attemptId, "PASSAGE", passage.id).catch(() => undefined); }, [attemptId, passageIndex, passages]);
-  useEffect(() => { if (activeQuestionId) void recordNavigation(attemptId, "QUESTION", activeQuestionId).catch(() => undefined); }, [activeQuestionId, attemptId]);
+  useEffect(() => { const passage = passages[passageIndex]; if (passage && !stopped.current) void runMutation(() => recordNavigation(attemptId, "PASSAGE", passage.id)).catch((error) => { if (!(error instanceof AttemptStoppedError)) setSaveState("error"); }); }, [attemptId, passageIndex, passages, runMutation, stopped]);
+  useEffect(() => { if (activeQuestionId && !stopped.current) void runMutation(() => recordNavigation(attemptId, "QUESTION", activeQuestionId)).catch((error) => { if (!(error instanceof AttemptStoppedError)) setSaveState("error"); }); }, [activeQuestionId, attemptId, runMutation, stopped]);
   useEffect(() => {
-    if (initial.attempt.timer_mode === "COUNTDOWN" && seconds === 0 && !finalized.current) {
-      finalized.current = true; void flush().finally(() => submitAttempt(attemptId).finally(() => router.push(completionPath)));
+    if (initial.attempt.timer_mode === "COUNTDOWN" && seconds === 0 && !finalized.current && !stopped.current) {
+      finalized.current = true; void submit();
     }
-  }, [attemptId, completionPath, flush, initial.attempt.timer_mode, router, seconds]);
+  });
 
-  async function submit() { await flush(); await submitAttempt(attemptId); router.push(completionPath); }
+  async function submit() {
+    if (stopped.current) return;
+    try { await flush(); await runMutation(() => submitAttempt(attemptId)); accept({ ...initial.attempt, status: "SUBMITTED" }); }
+    catch (error) { if (!(error instanceof AttemptStoppedError)) setSaveState("error"); }
+  }
   const passage = passages[passageIndex];
+  if (ended) return <p role="status">Attempt finished. Opening your result…</p>;
   if (!passage) return <p>No Reading passage is available.</p>;
 
-  async function toggleFlag(questionId: string) { const next = !flags[questionId]; setFlags((current) => ({ ...current, [questionId]: next })); await saveFlag(attemptId, questionId, next); }
+  async function toggleFlag(questionId: string) { if (stopped.current) return; const next = !flags[questionId]; setFlags((current) => ({ ...current, [questionId]: next })); try { await runMutation(() => saveFlag(attemptId, questionId, next)); } catch (error) { if (!(error instanceof AttemptStoppedError)) setSaveState("error"); } }
   function selectPassage(index: number) {
     setPassageIndex(index);
     setActiveQuestionId(questions.find((question) => question.passageIndex === index)?.id ?? null);
@@ -145,12 +156,13 @@ export function ReadingRunner({ initial }: { initial: ExamPayload }) {
     }
     scrollToQuestion(questionId);
   }
-  async function addHighlight(body: HighlightCreate) { const created = await createHighlight(attemptId, body); setHighlights((current) => [...current, created]); }
-  async function removeHighlight(id: string) { await deleteHighlight(attemptId, id); setHighlights((current) => current.filter((item) => item.id !== id)); }
+  async function addHighlight(body: HighlightCreate) { if (stopped.current) return; try { const created = await runMutation(() => createHighlight(attemptId, body)); setHighlights((current) => [...current, created]); } catch (error) { if (!(error instanceof AttemptStoppedError)) setHighlightError("Could not save the highlight. Please try again."); } }
+  async function removeHighlight(id: string) { if (stopped.current) return; try { await runMutation(() => deleteHighlight(attemptId, id)); setHighlights((current) => current.filter((item) => item.id !== id)); } catch (error) { if (!(error instanceof AttemptStoppedError)) setHighlightError("Could not delete the highlight. Please try again."); } }
   const highlighting: HighlightController = { highlights, onCreate: addHighlight, onDelete: removeHighlight };
 
   return <div className="exam-runner">
     <header className="exam-header"><div><p>READING</p><h1>{initial.test_title}</h1></div><div className="exam-header-tools"><PauseAttemptControl attemptId={attemptId} beforePause={flush} /><ThemeToggle /><div className="exam-highlight-toolbar" aria-label="Highlight management"><span>{highlights.length} {highlights.length === 1 ? "highlight" : "highlights"}</span>{highlights.length ? <button type="button" onClick={() => { setHighlightError(""); setConfirmDeleteAll(true); }}>Delete all</button> : null}</div><div className="exam-header-status"><span className={`exam-timer ${initial.attempt.timer_mode === "COUNTDOWN" && seconds < 300 ? "exam-timer-warning" : ""}`}>{initial.attempt.timer_mode === "COUNT_UP" ? "Time used " : ""}{formatDuration(seconds)}</span><span className={`exam-save-state exam-save-${saveState}`}>{saveState === "saving" ? "Saving…" : saveState === "error" ? "Save failed" : "Saved"}</span></div></div></header>
+    {highlightError && !confirmDeleteAll ? <p role="alert" className="notice notice-error">{highlightError}</p> : null}
     <div className="grid min-h-0 flex-1 lg:grid-cols-2">
       <PassagePane passage={passage} highlighting={highlighting} />
       <div ref={questionPane} className="exam-questions" onFocusCapture={(event) => { const target = (event.target as HTMLElement).closest<HTMLElement>(".exam-question-target[data-question-id]"); if (target?.dataset.questionId) setActiveQuestionId(target.dataset.questionId); }}><div className="exam-question-panel-heading"><p>Reading · Passage {passage.order_index + 1}</p><h2>Questions</h2></div>{[...passage.question_groups].sort((left, right) => left.order_index - right.order_index).map((group) => { const definition = questionRegistry[group.question_type as keyof typeof questionRegistry]; if (!definition) return null; const Renderer = definition.ExamRenderer; return <section key={group.id} className="exam-question-group"><QuestionGroupInstruction group={group as ExamGroup} passageNumber={passage.order_index + 1} /><Renderer group={{ ...group, questions: [...group.questions].sort((left, right) => left.order_index - right.order_index) } as ExamGroup} values={values} passageBlocks={passage.blocks} onAnswer={answer} highlighting={highlighting} activeQuestionId={activeQuestionId} /></section>; })}</div>
@@ -170,7 +182,7 @@ export function ReadingRunner({ initial }: { initial: ExamPayload }) {
       </div>
       <button type="button" onClick={submit} className="exam-submit">Submit answers</button>
     </footer>
-    <ConfirmDialog open={confirmDeleteAll} title="Delete all highlights?" description="All highlights in this attempt will be removed. This action cannot be undone." confirmLabel="Delete all highlights" pending={deletingAll} errorMessage={highlightError} onCancel={() => { setConfirmDeleteAll(false); setHighlightError(""); }} onConfirm={() => { setDeletingAll(true); setHighlightError(""); void deleteAllHighlights(attemptId).then(() => { setHighlights([]); setConfirmDeleteAll(false); }).catch(() => setHighlightError("Could not delete the highlights. Please try again.")).finally(() => setDeletingAll(false)); }} />
+    <ConfirmDialog open={confirmDeleteAll} title="Delete all highlights?" description="All highlights in this attempt will be removed. This action cannot be undone." confirmLabel="Delete all highlights" pending={deletingAll} errorMessage={highlightError} onCancel={() => { setConfirmDeleteAll(false); setHighlightError(""); }} onConfirm={() => { if (stopped.current) return; setDeletingAll(true); setHighlightError(""); void runMutation(() => deleteAllHighlights(attemptId)).then(() => { setHighlights([]); setConfirmDeleteAll(false); }).catch((error) => { if (!(error instanceof AttemptStoppedError)) setHighlightError("Could not delete the highlights. Please try again."); }).finally(() => setDeletingAll(false)); }} />
   </div>;
 }
 

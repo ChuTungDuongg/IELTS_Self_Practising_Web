@@ -29,6 +29,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["Content-Disposition"],
 )
 app.add_exception_handler(AppError, app_error_handler)  # type: ignore[arg-type]
 app.include_router(api_router, prefix=settings.api_v1_prefix)

@@ -1,12 +1,21 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AppShell } from "@/components/ui/app-shell";
+import { AuthProvider } from "@/features/auth/auth-provider";
 import TransferPage from "@/app/transfer/page";
 import { TransferPortal } from "@/features/transfer/transfer-portal";
 import { exportTests, importTests } from "@/lib/api/transfer";
 import { getTests } from "@/lib/api/tests";
+import { getCurrentUser } from "@/lib/api/auth";
 
-vi.mock("next/navigation", () => ({ usePathname: () => "/transfer" }));
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/transfer",
+  useRouter: () => ({ refresh: vi.fn() }),
+}));
+vi.mock("@/lib/api/auth", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/api/auth")>();
+  return { ...actual, getCurrentUser: vi.fn() };
+});
 vi.mock("@/lib/api/transfer", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api/transfer")>();
   return { ...actual, exportTests: vi.fn(), importTests: vi.fn() };
@@ -22,13 +31,23 @@ const options = [{ id: testId, title: "Fictional portable test", latestVersion: 
 describe("Test transfer portal", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(getCurrentUser).mockResolvedValue({
+      id: testId,
+      email: "admin@example.com",
+      display_name: "E2E Administrator",
+      role: "ADMIN",
+      is_active: true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      last_login_at: null,
+    });
     vi.stubGlobal("URL", { createObjectURL: vi.fn(() => "blob:test"), revokeObjectURL: vi.fn() });
     vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
   });
 
-  it("adds Transfer to primary navigation", () => {
-    render(<AppShell><p>content</p></AppShell>);
-    expect(screen.getByRole("link", { name: "Transfer" })).toHaveAttribute("href", "/transfer");
+  it("adds Transfer to authenticated ADMIN navigation", async () => {
+    render(<AuthProvider><AppShell><p>content</p></AppShell></AuthProvider>);
+    expect(await screen.findByRole("link", { name: "Transfer" })).toHaveAttribute("href", "/transfer");
   });
 
   it("renders the /transfer page", async () => {

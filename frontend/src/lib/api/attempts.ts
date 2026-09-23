@@ -37,6 +37,10 @@ const writingResponseSchema = z.object({
 export type AttemptResponse = z.infer<typeof attemptResponseSchema>;
 export type WritingResponse = z.infer<typeof writingResponseSchema>;
 
+export async function getAttempt(attemptId: string): Promise<AttemptResponse> {
+  return attemptResponseSchema.parse(await apiRequest<unknown>(`/attempts/${attemptId}`));
+}
+
 export async function startAttempt(input: {
   test_version_id: string;
   module: "READING" | "LISTENING" | "WRITING";

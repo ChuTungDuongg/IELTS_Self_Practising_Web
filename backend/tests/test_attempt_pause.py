@@ -12,7 +12,7 @@ from app.models import Attempt, AttemptWritingResponse, WritingTask
 from app.models import Test as DomainTest
 from app.models import TestModule as DomainModule
 from app.models import TestVersion as DomainVersion
-from app.models.enums import AttemptStatus, ModuleType, TimerMode, VersionStatus
+from app.models.enums import AttemptStatus, FinishedReason, ModuleType, TimerMode, VersionStatus
 from app.services.attempts import AttemptService
 
 
@@ -146,6 +146,48 @@ async def test_expired_countdown_auto_submits_before_pause(
 
 
 @pytest.mark.integration
+async def test_pause_at_afk_threshold_returns_persisted_interrupted_state(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    now = datetime(2026, 9, 20, 2, tzinfo=UTC)
+    last_active = now - timedelta(minutes=5)
+    attempt = await _persist_attempt(
+        db_session,
+        started_at=now - timedelta(minutes=10),
+        last_active_at=last_active,
+    )
+    monkeypatch.setattr(TimerService, "now", staticmethod(lambda: now))
+
+    response = await AttemptService(db_session).pause(attempt.id)
+
+    assert response.status == AttemptStatus.INTERRUPTED
+    assert response.finished_reason == FinishedReason.AFK_TIMEOUT
+    assert response.finished_at == now
+    assert response.paused_at is None
+    assert response.last_active_at == last_active
+    assert (await AttemptService(db_session).get(attempt.id)).status == AttemptStatus.INTERRUPTED
+
+
+@pytest.mark.integration
+async def test_repeated_pause_returns_original_paused_state(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    now = datetime(2026, 9, 20, 2, tzinfo=UTC)
+    attempt = await _persist_attempt(db_session, started_at=now, last_active_at=now)
+    service = AttemptService(db_session)
+    monkeypatch.setattr(TimerService, "now", staticmethod(lambda: now))
+    first = await service.pause(attempt.id)
+    monkeypatch.setattr(TimerService, "now", staticmethod(lambda: now + timedelta(hours=1)))
+
+    second = await service.pause(attempt.id)
+
+    assert second.status == AttemptStatus.PAUSED
+    assert second.paused_at == first.paused_at == now
+    assert second.last_active_at == first.last_active_at == now
+    assert second.remaining_seconds == first.remaining_seconds
+
+
+@pytest.mark.integration
 async def test_paused_attempt_rejects_activity_submit_and_review(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -215,7 +257,7 @@ async def test_pause_retains_writing_response_and_history_uses_frozen_timer(
 
 
 @pytest.mark.integration
-async def test_pause_and_resume_reject_finalized_attempt(
+async def test_pause_returns_submitted_state_but_resume_rejects_it(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     now = datetime(2026, 9, 20, tzinfo=UTC)
@@ -225,10 +267,48 @@ async def test_pause_and_resume_reject_finalized_attempt(
     monkeypatch.setattr(TimerService, "now", staticmethod(lambda: now + timedelta(minutes=1)))
     await service.submit(attempt_id)
 
-    for action in (service.pause, service.resume):
-        with pytest.raises(AppError) as caught:
-            await action(attempt_id)
-        assert caught.value.code == "INVALID_ATTEMPT_TRANSITION"
+    submitted = await service.get(attempt_id)
+    paused = await service.pause(attempt_id)
+    assert paused.status == AttemptStatus.SUBMITTED
+    assert paused.finished_at == submitted.finished_at
+    assert paused.finished_reason == submitted.finished_reason
+    assert paused.paused_at is None
+
+    with pytest.raises(AppError) as caught:
+        await service.resume(attempt_id)
+    assert caught.value.code == "INVALID_ATTEMPT_TRANSITION"
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("status", [AttemptStatus.AUTO_SUBMITTED, AttemptStatus.INTERRUPTED, AttemptStatus.ABANDONED])
+async def test_pause_preserves_existing_terminal_attempt_and_mutations_still_reject(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, status: AttemptStatus
+) -> None:
+    now = datetime(2026, 9, 20, 2, tzinfo=UTC)
+    attempt = await _persist_attempt(db_session, started_at=now, last_active_at=now)
+    reason = {
+        AttemptStatus.AUTO_SUBMITTED: FinishedReason.TIME_EXPIRED,
+        AttemptStatus.INTERRUPTED: FinishedReason.AFK_TIMEOUT,
+        AttemptStatus.ABANDONED: FinishedReason.USER_EXIT,
+    }[status]
+    async with db_session.begin():
+        attempt.status = status
+        attempt.finished_at = now
+        attempt.finished_reason = reason
+    monkeypatch.setattr(TimerService, "now", staticmethod(lambda: now + timedelta(minutes=1)))
+    service = AttemptService(db_session)
+
+    response = await service.pause(attempt.id)
+
+    assert response.status == status
+    assert response.finished_at == now
+    assert response.finished_reason == reason
+    assert response.paused_at is None
+    with pytest.raises(AppError) as caught:
+        await service.record_activity(attempt.id)
+    assert caught.value.code == (
+        "ATTEMPT_EXPIRED" if status == AttemptStatus.AUTO_SUBMITTED else "ATTEMPT_FINALIZED"
+    )
 
 
 @pytest.mark.integration
@@ -260,3 +340,33 @@ async def test_pause_and_resume_endpoints_keep_the_same_attempt_id(
     assert resumed.status_code == 200
     assert resumed.json()["attempt_id"] == str(attempt_id)
     assert resumed.json()["status"] == "IN_PROGRESS"
+
+
+@pytest.mark.integration
+async def test_pause_endpoint_returns_interrupted_at_afk_threshold(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    authenticated_admin,
+) -> None:
+    now = datetime(2026, 9, 20, 2, tzinfo=UTC)
+    attempt = await _persist_attempt(
+        db_session,
+        started_at=now - timedelta(minutes=10),
+        last_active_at=now - timedelta(minutes=5),
+    )
+    monkeypatch.setattr(TimerService, "now", staticmethod(lambda: now))
+
+    async def override_session():
+        yield db_session
+
+    app.dependency_overrides[get_session] = override_session
+    try:
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.post(f"/api/v1/attempts/{attempt.id}/pause")
+    finally:
+        app.dependency_overrides.pop(get_session, None)
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "INTERRUPTED"
+    assert response.json()["finished_reason"] == "AFK_TIMEOUT"
