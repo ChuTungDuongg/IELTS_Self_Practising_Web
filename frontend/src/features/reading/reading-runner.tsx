@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { elapsedFromSnapshot, formatDuration, estimateServerOffset, remainingSeconds } from "@/features/exam/timer";
 import { PauseAttemptControl } from "@/features/exam/pause-attempt-control";
 import { AttemptStoppedError, useAttemptLifecycle } from "@/features/exam/attempt-lifecycle";
+import { revealQuestionChip, scrollQuestionIntoPane } from "@/features/exam/question-navigation";
 import { questionRegistry } from "@/features/questions/registry";
 import type { ExamGroup } from "@/features/questions/types";
 import { QuestionGroupInstruction } from "@/features/questions/question-group-instruction";
@@ -37,8 +38,10 @@ export function ReadingRunner({ initial }: { initial: ExamPayload }) {
   const lastHeartbeat = useRef(0);
   const finalized = useRef(false);
   const questionPane = useRef<HTMLDivElement>(null);
+  const questionStrip = useRef<HTMLElement>(null);
   const questionChips = useRef(new Map<string, HTMLButtonElement>());
   const pendingQuestion = useRef<string | null>(null);
+  const programmaticNavigation = useRef<string | null>(null);
   const offset = useMemo(() => estimateServerOffset(initial.attempt.server_time), [initial.attempt.server_time]);
   const { stopped, ended, accept, runMutation } = useAttemptLifecycle(attemptId, () => {
     timers.current.forEach(clearTimeout);
@@ -54,6 +57,7 @@ export function ReadingRunner({ initial }: { initial: ExamPayload }) {
 
   function answer(questionId: string, value: string | string[]) {
     if (stopped.current) return;
+    programmaticNavigation.current = null;
     setValues((current) => ({ ...current, [questionId]: value }));
     setActiveQuestionId(questionId);
     dirty.current.set(questionId, value);
@@ -90,34 +94,53 @@ export function ReadingRunner({ initial }: { initial: ExamPayload }) {
     return () => { events.forEach((event) => window.removeEventListener(event, meaningful)); window.clearInterval(afk); };
   }, [accept, attemptId, runMutation, stopped]);
 
-  const scrollToQuestion = useCallback((questionId: string) => {
-    const target = [...(questionPane.current?.querySelectorAll<HTMLElement>(".exam-question-target[data-question-id]") ?? [])]
+  const holdNavigation = useCallback((questionId: string | null) => {
+    // Observer entries queued by a jump can arrive after the pane has settled.
+    // Manual pane interaction releases this guard before visibility tracking resumes.
+    programmaticNavigation.current = questionId;
+  }, []);
+
+  const scrollToQuestion = useCallback((questionId: string): boolean => {
+    const pane = questionPane.current;
+    const target = [...(pane?.querySelectorAll<HTMLElement>(".exam-question-target[data-question-id]") ?? [])]
       .find((element) => element.dataset.questionId === questionId);
-    if (!target) return;
-    target.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
-    target.focus({ preventScroll: true });
+    if (!pane || !target) return false;
+    scrollQuestionIntoPane(pane, target);
+    return true;
   }, []);
 
   useEffect(() => {
+    const pane = questionPane.current;
+    if (!pane || !pendingQuestion.current) return;
+    const complete = () => {
+      const questionId = pendingQuestion.current;
+      if (questionId && scrollToQuestion(questionId)) {
+        pendingQuestion.current = null;
+        holdNavigation(questionId);
+        observer.disconnect();
+      }
+    };
+    const observer = new MutationObserver(complete);
+    complete();
     if (!pendingQuestion.current) return;
-    const questionId = pendingQuestion.current;
-    pendingQuestion.current = null;
-    scrollToQuestion(questionId);
-  }, [passageIndex, scrollToQuestion]);
+    observer.observe(pane, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [activeQuestionId, holdNavigation, passageIndex, scrollToQuestion]);
 
   useEffect(() => {
-    if (!activeQuestionId) return;
+    if (!activeQuestionId || !questionStrip.current) return;
     const chip = questionChips.current.get(activeQuestionId);
-    if (chip && typeof chip.scrollIntoView === "function") chip.scrollIntoView({ block: "nearest", inline: "nearest" });
+    if (chip) revealQuestionChip(questionStrip.current, chip);
   }, [activeQuestionId]);
 
   useEffect(() => {
     const pane = questionPane.current;
     if (!pane || typeof IntersectionObserver === "undefined") return;
     const observer = new IntersectionObserver((entries) => {
+      if (programmaticNavigation.current || pendingQuestion.current) return;
       const visible = entries.filter((entry) => entry.isIntersecting).sort((left, right) => right.intersectionRatio - left.intersectionRatio)[0];
       const questionId = (visible?.target as HTMLElement | undefined)?.dataset.questionId;
-      if (questionId) setActiveQuestionId(questionId);
+      if (questionId && pane.contains(visible.target)) setActiveQuestionId(questionId);
     }, { root: pane, threshold: [0.35, 0.65] });
     pane.querySelectorAll(".exam-question-target[data-question-id]").forEach((target) => observer.observe(target));
     return () => observer.disconnect();
@@ -143,18 +166,22 @@ export function ReadingRunner({ initial }: { initial: ExamPayload }) {
 
   async function toggleFlag(questionId: string) { if (stopped.current) return; const next = !flags[questionId]; setFlags((current) => ({ ...current, [questionId]: next })); try { await runMutation(() => saveFlag(attemptId, questionId, next)); } catch (error) { if (!(error instanceof AttemptStoppedError)) setSaveState("error"); } }
   function selectPassage(index: number) {
+    pendingQuestion.current = null;
+    const firstQuestionId = questions.find((question) => question.passageIndex === index)?.id ?? null;
+    holdNavigation(firstQuestionId);
     setPassageIndex(index);
-    setActiveQuestionId(questions.find((question) => question.passageIndex === index)?.id ?? null);
+    setActiveQuestionId(firstQuestionId);
     if (questionPane.current) questionPane.current.scrollTop = 0;
   }
   function navigateToQuestion(questionId: string, ownerPassageIndex: number) {
+    holdNavigation(questionId);
     setActiveQuestionId(questionId);
     if (ownerPassageIndex !== passageIndex) {
       pendingQuestion.current = questionId;
       setPassageIndex(ownerPassageIndex);
       return;
     }
-    scrollToQuestion(questionId);
+    if (!scrollToQuestion(questionId)) pendingQuestion.current = questionId;
   }
   async function addHighlight(body: HighlightCreate) { if (stopped.current) return; try { const created = await runMutation(() => createHighlight(attemptId, body)); setHighlights((current) => [...current, created]); } catch (error) { if (!(error instanceof AttemptStoppedError)) setHighlightError("Could not save the highlight. Please try again."); } }
   async function removeHighlight(id: string) { if (stopped.current) return; try { await runMutation(() => deleteHighlight(attemptId, id)); setHighlights((current) => current.filter((item) => item.id !== id)); } catch (error) { if (!(error instanceof AttemptStoppedError)) setHighlightError("Could not delete the highlight. Please try again."); } }
@@ -165,12 +192,12 @@ export function ReadingRunner({ initial }: { initial: ExamPayload }) {
     {highlightError && !confirmDeleteAll ? <p role="alert" className="notice notice-error">{highlightError}</p> : null}
     <div className="grid min-h-0 flex-1 lg:grid-cols-2">
       <PassagePane passage={passage} highlighting={highlighting} />
-      <div ref={questionPane} className="exam-questions" onFocusCapture={(event) => { const target = (event.target as HTMLElement).closest<HTMLElement>(".exam-question-target[data-question-id]"); if (target?.dataset.questionId) setActiveQuestionId(target.dataset.questionId); }}><div className="exam-question-panel-heading"><p>Reading · Passage {passage.order_index + 1}</p><h2>Questions</h2></div>{[...passage.question_groups].sort((left, right) => left.order_index - right.order_index).map((group) => { const definition = questionRegistry[group.question_type as keyof typeof questionRegistry]; if (!definition) return null; const Renderer = definition.ExamRenderer; return <section key={group.id} className="exam-question-group"><QuestionGroupInstruction group={group as ExamGroup} passageNumber={passage.order_index + 1} /><Renderer group={{ ...group, questions: [...group.questions].sort((left, right) => left.order_index - right.order_index) } as ExamGroup} values={values} passageBlocks={passage.blocks} onAnswer={answer} highlighting={highlighting} activeQuestionId={activeQuestionId} /></section>; })}</div>
+      <div ref={questionPane} className="exam-questions" onWheelCapture={() => { programmaticNavigation.current = null; }} onTouchStartCapture={() => { programmaticNavigation.current = null; }} onPointerDownCapture={() => { programmaticNavigation.current = null; }} onKeyDownCapture={() => { programmaticNavigation.current = null; }} onFocusCapture={(event) => { const target = (event.target as HTMLElement).closest<HTMLElement>(".exam-question-target[data-question-id]"); if (target?.dataset.questionId) { programmaticNavigation.current = null; setActiveQuestionId(target.dataset.questionId); } }}><div className="exam-question-panel-heading"><p>Reading · Passage {passage.order_index + 1}</p><h2>Questions</h2></div>{[...passage.question_groups].sort((left, right) => left.order_index - right.order_index).map((group) => { const definition = questionRegistry[group.question_type as keyof typeof questionRegistry]; if (!definition) return null; const Renderer = definition.ExamRenderer; return <section key={group.id} className="exam-question-group"><QuestionGroupInstruction group={group as ExamGroup} passageNumber={passage.order_index + 1} /><Renderer group={{ ...group, questions: [...group.questions].sort((left, right) => left.order_index - right.order_index) } as ExamGroup} values={values} passageBlocks={passage.blocks} onAnswer={answer} highlighting={highlighting} activeQuestionId={activeQuestionId} /></section>; })}</div>
     </div>
     <footer className="exam-footer reading-exam-footer">
       <div className="exam-footer-navigation">
         <nav className="exam-passage-navigation" aria-label="Passage navigation">{passages.map((item, index) => <button key={item.id} type="button" onClick={() => selectPassage(index)} className={index === passageIndex ? "active" : ""} aria-current={index === passageIndex ? "page" : undefined}>Passage {item.order_index + 1}</button>)}</nav>
-        <nav className="exam-question-strip" aria-label="Question navigation">{questions.map((question) => {
+        <nav ref={questionStrip} className="exam-question-strip" aria-label="Question navigation">{questions.map((question) => {
           const answered = isAnswered(values[question.id]);
           const flagged = Boolean(flags[question.id]);
           const current = activeQuestionId === question.id;

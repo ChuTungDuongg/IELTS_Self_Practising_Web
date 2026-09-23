@@ -1,7 +1,7 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ReadingRunner } from "@/features/reading/reading-runner";
-import { getAttempt, recordActivity, saveAnswer } from "@/lib/api/attempts";
+import { getAttempt, recordActivity, recordNavigation, saveAnswer } from "@/lib/api/attempts";
 import { ApiError } from "@/lib/api/client";
 import type { ExamPayload } from "@/lib/api/exam";
 import { saveFlag, submitAttempt } from "@/lib/api/exam";
@@ -11,7 +11,7 @@ const push = vi.fn();
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn(), push }) }));
 vi.mock("@/lib/api/attempts", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api/attempts")>();
-  return { ...actual, getAttempt: vi.fn(), recordActivity: vi.fn(), saveAnswer: vi.fn() };
+  return { ...actual, getAttempt: vi.fn(), recordActivity: vi.fn(), recordNavigation: vi.fn(), saveAnswer: vi.fn() };
 });
 vi.mock("@/lib/api/exam", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api/exam")>();
@@ -85,16 +85,37 @@ function payload(): ExamPayload {
 }
 
 describe("Reading footer navigation", () => {
-  const scrolledElements: Element[] = [];
+  const scrolls: Array<{ element: HTMLElement; options: ScrollToOptions }> = [];
+  let intersectionCallback: IntersectionObserverCallback = () => undefined;
 
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(saveAnswer).mockResolvedValue(undefined);
-    scrolledElements.length = 0;
+    vi.mocked(recordNavigation).mockResolvedValue(undefined);
+    scrolls.length = 0;
+    Object.defineProperty(HTMLElement.prototype, "scrollTo", {
+      configurable: true,
+      value: vi.fn(function (this: HTMLElement, options: ScrollToOptions) {
+        scrolls.push({ element: this, options });
+        if (options.top !== undefined) this.scrollTop = options.top;
+        if (options.left !== undefined) this.scrollLeft = options.left;
+      }),
+    });
     Object.defineProperty(Element.prototype, "scrollIntoView", {
       configurable: true,
-      value: vi.fn(function (this: Element) { scrolledElements.push(this); }),
+      value: vi.fn(),
     });
+    class MockIntersectionObserver {
+      readonly root = null;
+      readonly rootMargin = "0px";
+      readonly thresholds = [0.35, 0.65];
+      constructor(callback: IntersectionObserverCallback) { intersectionCallback = callback; }
+      disconnect() {}
+      observe() {}
+      takeRecords(): IntersectionObserverEntry[] { return []; }
+      unobserve() {}
+    }
+    vi.stubGlobal("IntersectionObserver", MockIntersectionObserver);
   });
 
   it("renders canonical passage and question rows without per-group flag controls", () => {
@@ -128,7 +149,7 @@ describe("Reading footer navigation", () => {
 
   it("switches passage and scrolls to the stable UUID target", async () => {
     const view = render(<ReadingRunner initial={payload()} />);
-    scrolledElements.length = 0;
+    scrolls.length = 0;
 
     fireEvent.click(screen.getByRole("button", { name: "Go to question 19" }));
 
@@ -138,10 +159,61 @@ describe("Reading footer navigation", () => {
       expect(element).toBeInTheDocument();
       return element!;
     });
-    await waitFor(() => expect(scrolledElements).toContain(target));
+    const pane = view.container.querySelector(".exam-questions")!;
+    await waitFor(() => expect(scrolls.some((item) => item.element === pane && item.options.top !== undefined)).toBe(true));
     expect(target.id).toBe(`question-${q19}`);
     expect(target).toHaveClass("is-navigation-target");
-    expect(document.activeElement).toBe(target);
+    expect(screen.getByRole("button", { name: "Go to question 19" })).toHaveAttribute("aria-current", "true");
+    expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled();
+  });
+
+  it("scrolls the local pane within a passage and ignores an intermediate observer result", () => {
+    const view = render(<ReadingRunner initial={payload()} />);
+    scrolls.length = 0;
+    fireEvent.click(screen.getByRole("button", { name: "Go to question 2" }));
+    expect(scrolls.some((item) => item.element === view.container.querySelector(".exam-questions"))).toBe(true);
+    const first = view.container.querySelector(`.exam-question-target[data-question-id="${q1}"]`)!;
+    act(() => intersectionCallback([{ target: first, isIntersecting: true, intersectionRatio: 0.9 } as IntersectionObserverEntry], {} as IntersectionObserver));
+    expect(screen.getByRole("button", { name: "Go to question 2" })).toHaveAttribute("aria-current", "true");
+    expect(vi.mocked(recordNavigation).mock.calls.filter((call) => call[1] === "QUESTION").map((call) => call[2])).toEqual([q1, q2]);
+    fireEvent.wheel(view.container.querySelector(".exam-questions")!);
+    act(() => intersectionCallback([{ target: first, isIntersecting: true, intersectionRatio: 0.9 } as IntersectionObserverEntry], {} as IntersectionObserver));
+    expect(screen.getByRole("button", { name: "Go to question 1" })).toHaveAttribute("aria-current", "true");
+    expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled();
+  });
+
+  it("keeps a missing target pending until its DOM anchor appears", async () => {
+    const view = render(<ReadingRunner initial={payload()} />);
+    const pane = view.container.querySelector(".exam-questions")!;
+    const target = pane.querySelector(`.exam-question-target[data-question-id="${q2}"]`)!;
+    target.remove();
+    scrolls.length = 0;
+    fireEvent.click(screen.getByRole("button", { name: "Go to question 2" }));
+    expect(scrolls.some((item) => item.element === pane)).toBe(false);
+    pane.appendChild(target);
+    await waitFor(() => expect(scrolls.some((item) => item.element === pane)).toBe(true));
+  });
+
+  it("reveals a distant chip by scrolling only the footer strip horizontally", () => {
+    const view = render(<ReadingRunner initial={payload()} />);
+    const strip = view.container.querySelector(".exam-question-strip") as HTMLElement;
+    const chip = screen.getByRole("button", { name: "Go to question 19" });
+    strip.getBoundingClientRect = () => ({ left: 100, right: 300 } as DOMRect);
+    chip.getBoundingClientRect = () => ({ left: 400, right: 440 } as DOMRect);
+    scrolls.length = 0;
+    fireEvent.click(chip);
+    expect(scrolls.some((item) => item.element === strip && item.options.left === 140 && item.options.top === undefined)).toBe(true);
+    expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled();
+  });
+
+  it("tracks manual visibility and keeps passage tabs usable", () => {
+    const view = render(<ReadingRunner initial={payload()} />);
+    const target = view.container.querySelector(`.exam-question-target[data-question-id="${q2}"]`)!;
+    act(() => intersectionCallback([{ target, isIntersecting: true, intersectionRatio: 0.9 } as IntersectionObserverEntry], {} as IntersectionObserver));
+    expect(screen.getByRole("button", { name: "Go to question 2" })).toHaveAttribute("aria-current", "true");
+    fireEvent.click(screen.getByRole("button", { name: "Passage 2" }));
+    expect(screen.getByText("Passage Two")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Go to question 19" })).toHaveAttribute("aria-current", "true");
   });
 
   it("toggles a footer flag without navigating", async () => {

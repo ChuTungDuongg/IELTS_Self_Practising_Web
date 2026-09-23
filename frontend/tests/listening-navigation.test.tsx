@@ -106,26 +106,31 @@ function payload(): ExamPayload {
 }
 
 describe("Listening footer navigation", () => {
-  const scrolled: Array<{ element: Element; options?: ScrollIntoViewOptions }> = [];
+  const scrolled: Array<{ element: HTMLElement; options: ScrollToOptions }> = [];
   let intersectionCallback: IntersectionObserverCallback = () => undefined;
+  let observerCount = 0;
 
   beforeEach(() => {
     vi.clearAllMocks();
     scrolled.length = 0;
+    observerCount = 0;
     vi.mocked(saveAnswer).mockResolvedValue(undefined);
     vi.mocked(saveFlag).mockResolvedValue(undefined);
     vi.mocked(recordNavigation).mockResolvedValue(undefined);
-    Object.defineProperty(Element.prototype, "scrollIntoView", {
+    Object.defineProperty(HTMLElement.prototype, "scrollTo", {
       configurable: true,
-      value: vi.fn(function (this: Element, options?: ScrollIntoViewOptions) {
+      value: vi.fn(function (this: HTMLElement, options: ScrollToOptions) {
         scrolled.push({ element: this, options });
+        if (options.top !== undefined) this.scrollTop = options.top;
+        if (options.left !== undefined) this.scrollLeft = options.left;
       }),
     });
+    Object.defineProperty(Element.prototype, "scrollIntoView", { configurable: true, value: vi.fn() });
     class MockIntersectionObserver {
       readonly root = null;
       readonly rootMargin = "0px";
       readonly thresholds = [0.35, 0.65];
-      constructor(callback: IntersectionObserverCallback) { intersectionCallback = callback; }
+      constructor(callback: IntersectionObserverCallback) { intersectionCallback = callback; observerCount += 1; }
       disconnect() {}
       observe() {}
       takeRecords(): IntersectionObserverEntry[] { return []; }
@@ -155,16 +160,17 @@ describe("Listening footer navigation", () => {
     expect(view.container.querySelector(`[data-nav-question-id="${q25}"]`)).toHaveClass("unanswered", "flagged");
   });
 
-  it("navigates within the current Section and focuses the stable question target", () => {
+  it("navigates within the current Section using only the question pane", () => {
     const view = render(<ListeningRunner initial={payload()} />);
     scrolled.length = 0;
 
     fireEvent.click(screen.getByRole("button", { name: "Go to question 2" }));
 
     const target = view.container.querySelector(`.exam-question-target[data-question-id="${q2}"]`)!;
-    expect(scrolled.some((item) => item.element === target && item.options?.block === "center")).toBe(true);
-    expect(target).toHaveFocus();
+    expect(scrolled.some((item) => item.element === view.container.querySelector(".listening-question-pane") && item.options.top !== undefined)).toBe(true);
+    expect(target).toHaveClass("is-navigation-target");
     expect(screen.getByRole("button", { name: "Go to question 2" })).toHaveAttribute("aria-current", "true");
+    expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled();
   });
 
   it("renders only the active group and switches groups from question navigation", async () => {
@@ -179,6 +185,7 @@ describe("Listening footer navigation", () => {
     await waitFor(() => expect(view.container.querySelector(`[data-question-id="${q3}"]`)).toBeInTheDocument());
     expect(view.container.querySelector(`[data-question-id="${q1}"]`)).not.toBeInTheDocument();
     expect(view.container.querySelectorAll("[data-question-group-id]")).toHaveLength(1);
+    expect(scrolled.some((item) => item.element === view.container.querySelector(".listening-question-pane") && item.options.top !== undefined)).toBe(true);
   });
 
   it("keeps the same group and audio DOM mounted for navigation inside a group", () => {
@@ -220,6 +227,10 @@ describe("Listening footer navigation", () => {
     expect(view.container.querySelector(".listening-visual-layout")).toBeInTheDocument();
     expect(view.container.querySelector(".listening-visual-pane")).toBeInTheDocument();
     expect(view.container.querySelector(".listening-visual-answer-pane")).toBeInTheDocument();
+    scrolled.length = 0;
+    fireEvent.click(screen.getByRole("button", { name: "Go to question 2" }));
+    expect(view.container.querySelector(`.listening-visual-answer-pane [data-question-id="${q2}"]`)).toHaveClass("is-navigation-target");
+    expect(scrolled.some((item) => item.element === view.container.querySelector(".listening-question-pane"))).toBe(true);
   });
 
   it("keeps non-visual groups in the normal layout", () => {
@@ -240,8 +251,8 @@ describe("Listening footer navigation", () => {
       expect(element).toBeInTheDocument();
       return element!;
     });
-    await waitFor(() => expect(scrolled.some((item) => item.element === target)).toBe(true));
-    expect(target).toHaveFocus();
+    await waitFor(() => expect(scrolled.some((item) => item.element === view.container.querySelector(".listening-question-pane") && item.options.top !== undefined)).toBe(true));
+    expect(target).toHaveClass("is-navigation-target");
     expect(screen.getByRole("button", { name: "Go to question 15" })).toHaveAttribute("aria-current", "true");
     await waitFor(() => expect(recordNavigation).toHaveBeenCalledWith(attemptId, "LISTENING_PART", part2));
     expect(recordNavigation).toHaveBeenCalledWith(attemptId, "QUESTION", q15);
@@ -269,7 +280,7 @@ describe("Listening footer navigation", () => {
     expect(screen.getByRole("button", { name: "Unflag question 2" })).toHaveAttribute("aria-pressed", "true");
   });
 
-  it("tracks the current question from focus and auto-scrolls its footer chip", () => {
+  it("tracks the current question from focus without page-level scrolling", () => {
     const view = render(<ListeningRunner initial={payload()} />);
     scrolled.length = 0;
     const target = view.container.querySelector(`.exam-question-target[data-question-id="${q2}"]`)!;
@@ -278,7 +289,7 @@ describe("Listening footer navigation", () => {
 
     const chipButton = screen.getByRole("button", { name: "Go to question 2" });
     expect(chipButton).toHaveAttribute("aria-current", "true");
-    expect(scrolled).toContainEqual({ element: chipButton, options: { block: "nearest", inline: "nearest" } });
+    expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled();
   });
 
   it("tracks the most visible question with the Reading IntersectionObserver thresholds", () => {
@@ -291,6 +302,43 @@ describe("Listening footer navigation", () => {
     ));
 
     expect(screen.getByRole("button", { name: "Go to question 2" })).toHaveAttribute("aria-current", "true");
+    expect(observerCount).toBe(1);
+  });
+
+  it("does not let an intermediate observer callback switch the requested group", () => {
+    const view = render(<ListeningRunner initial={payload()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Go to question 3" }));
+    const oldTarget = document.createElement("div");
+    oldTarget.dataset.questionId = q1;
+    act(() => intersectionCallback([{ target: oldTarget, isIntersecting: true, intersectionRatio: 0.9 } as unknown as IntersectionObserverEntry], {} as IntersectionObserver));
+    expect(view.container.querySelector(`[data-question-id="${q3}"]`)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Go to question 3" })).toHaveAttribute("aria-current", "true");
+    expect(observerCount).toBe(2);
+  });
+
+  it("keeps a same-group navigator choice through an intermediate observer callback", () => {
+    const view = render(<ListeningRunner initial={payload()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Go to question 2" }));
+    const first = view.container.querySelector(`.exam-question-target[data-question-id="${q1}"]`)!;
+    act(() => intersectionCallback([{ target: first, isIntersecting: true, intersectionRatio: 0.9 } as IntersectionObserverEntry], {} as IntersectionObserver));
+    expect(screen.getByRole("button", { name: "Go to question 2" })).toHaveAttribute("aria-current", "true");
+    expect(vi.mocked(recordNavigation).mock.calls.filter((call) => call[1] === "QUESTION").map((call) => call[2])).toEqual([q1, q2]);
+    fireEvent.wheel(view.container.querySelector(".listening-question-pane")!);
+    act(() => intersectionCallback([{ target: first, isIntersecting: true, intersectionRatio: 0.9 } as IntersectionObserverEntry], {} as IntersectionObserver));
+    expect(screen.getByRole("button", { name: "Go to question 1" })).toHaveAttribute("aria-current", "true");
+    expect(observerCount).toBe(1);
+  });
+
+  it("reveals a distant chip through the horizontal strip only", () => {
+    const view = render(<ListeningRunner initial={payload()} />);
+    const strip = view.container.querySelector(".exam-question-strip") as HTMLElement;
+    const chip = screen.getByRole("button", { name: "Go to question 40" });
+    strip.getBoundingClientRect = () => ({ left: 100, right: 300 } as DOMRect);
+    chip.getBoundingClientRect = () => ({ left: 420, right: 470 } as DOMRect);
+    scrolled.length = 0;
+    fireEvent.click(chip);
+    expect(scrolled.some((item) => item.element === strip && item.options.left === 170 && item.options.top === undefined)).toBe(true);
+    expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled();
   });
 
   it("manual Section navigation selects its first question and resets pane scroll", () => {

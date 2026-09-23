@@ -662,7 +662,8 @@ input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--mute
   .exam-runner { height: auto; min-height: 100vh; }
   .exam-runner > .grid { grid-template-columns: 1fr; }
   .exam-runner > .grid > article { max-height: 55vh; }
-  .exam-questions { border-top: 1px solid var(--exam-border); border-left: 0; }
+  .exam-questions { min-height: 320px; max-height: 65vh; border-top: 1px solid var(--exam-border); border-left: 0; }
+  .listening-question-pane { min-height: 320px; max-height: 65vh; }
   .exam-footer { align-items: stretch; flex-direction: column; }
   .exam-footer .exam-submit { align-self: flex-end; }
   .exam-preview-note { align-self: flex-start; }

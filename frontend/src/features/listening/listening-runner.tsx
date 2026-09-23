@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { PauseAttemptControl } from "@/features/exam/pause-attempt-control";
 import { AttemptStoppedError, useAttemptLifecycle } from "@/features/exam/attempt-lifecycle";
+import { revealQuestionChip, scrollQuestionIntoPane } from "@/features/exam/question-navigation";
 import { elapsedFromSnapshot, estimateServerOffset, formatDuration, remainingSeconds } from "@/features/exam/timer";
 import { QuestionGroupInstruction } from "@/features/questions/question-group-instruction";
 import { questionRegistry } from "@/features/questions/registry";
@@ -36,8 +37,10 @@ export function ListeningRunner({ initial }: { initial: ExamPayload }) {
   const lastActivity = useRef(0);
   const lastHeartbeat = useRef(0);
   const questionPane = useRef<HTMLElement>(null);
+  const questionStrip = useRef<HTMLElement>(null);
   const questionChips = useRef(new Map<string, HTMLButtonElement>());
   const pendingQuestion = useRef<string | null>(null);
+  const programmaticNavigation = useRef<string | null>(null);
   const offset = useMemo(() => estimateServerOffset(initial.attempt.server_time), [initial.attempt.server_time]);
   const { stopped, ended, accept, runMutation } = useAttemptLifecycle(attemptId, () => {
     timers.current.forEach(clearTimeout);
@@ -61,6 +64,7 @@ export function ListeningRunner({ initial }: { initial: ExamPayload }) {
 
   function answer(id: string, value: string | string[]) {
     if (stopped.current) return;
+    programmaticNavigation.current = null;
     setValues((current) => ({ ...current, [id]: value }));
     setActiveQuestionId(id);
     dirty.current.set(id, value);
@@ -109,31 +113,61 @@ export function ListeningRunner({ initial }: { initial: ExamPayload }) {
     };
   }, [accept, attemptId, runMutation, stopped]);
 
-  const scrollToQuestion = useCallback((questionId: string) => {
-    const target = [...(questionPane.current?.querySelectorAll<HTMLElement>(".exam-question-target[data-question-id]") ?? [])]
+  const holdNavigation = useCallback((questionId: string | null) => {
+    // Keep late observer entries from replacing a deliberate navigator choice.
+    // Manual pane interaction releases the guard before visibility tracking resumes.
+    programmaticNavigation.current = questionId;
+  }, []);
+
+  const scrollToQuestion = useCallback((questionId: string): boolean => {
+    const pane = questionPane.current;
+    const target = [...(pane?.querySelectorAll<HTMLElement>(".exam-question-target[data-question-id]") ?? [])]
       .find((element) => element.dataset.questionId === questionId);
-    if (!target) return;
-    target.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
-    target.focus({ preventScroll: true });
+    if (!pane || !target) return false;
+    scrollQuestionIntoPane(pane, target);
+    return true;
   }, []);
 
   useEffect(() => {
-    if (!pendingQuestion.current) return;
-    const questionId = pendingQuestion.current;
-    pendingQuestion.current = null;
-    scrollToQuestion(questionId);
-  }, [partIndex, activeQuestionId, scrollToQuestion]);
+    if (!activeQuestionId || !questionStrip.current) return;
+    const chip = questionChips.current.get(activeQuestionId);
+    if (chip) revealQuestionChip(questionStrip.current, chip);
+  }, [activeQuestionId]);
+
+  const seconds = initial.attempt.timer_mode === "COUNTDOWN" && initial.attempt.deadline_at
+    ? remainingSeconds(initial.attempt.deadline_at, offset, clock)
+    : elapsedFromSnapshot(initial.attempt.elapsed_seconds, initial.attempt.server_time, offset, clock);
+  const part = parts[partIndex];
+  const partGroups = useMemo(
+    () => part ? [...part.question_groups].sort((left, right) => left.order_index - right.order_index) : [],
+    [part],
+  );
+  const activeGroup = partGroups.find((group) => group.questions.some((question) => question.id === activeQuestionId)) ?? partGroups[0];
+  const visualGroup = activeGroup ? ["map_labelling", "plan_labelling", "diagram_labelling"].includes(activeGroup.question_type) : false;
 
   useEffect(() => {
-    if (!activeQuestionId) return;
-    const chip = questionChips.current.get(activeQuestionId);
-    if (chip && typeof chip.scrollIntoView === "function") chip.scrollIntoView({ block: "nearest", inline: "nearest" });
-  }, [activeQuestionId]);
+    const pane = questionPane.current;
+    if (!pane || !pendingQuestion.current) return;
+    const complete = () => {
+      const questionId = pendingQuestion.current;
+      if (questionId && scrollToQuestion(questionId)) {
+        pendingQuestion.current = null;
+        holdNavigation(questionId);
+        observer.disconnect();
+      }
+    };
+    const observer = new MutationObserver(complete);
+    complete();
+    if (!pendingQuestion.current) return;
+    observer.observe(pane, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [activeGroup?.id, holdNavigation, partIndex, scrollToQuestion]);
 
   useEffect(() => {
     const pane = questionPane.current;
     if (!pane || typeof IntersectionObserver === "undefined") return;
     const observer = new IntersectionObserver((entries) => {
+      if (programmaticNavigation.current || pendingQuestion.current) return;
       const paneRect = pane.getBoundingClientRect();
       const paneCenter = paneRect.top + paneRect.height / 2;
       const centered = paneRect.height > 0
@@ -146,25 +180,14 @@ export function ListeningRunner({ initial }: { initial: ExamPayload }) {
           ))[0]?.target
         : undefined;
       const visible = entries
-        .filter((entry) => entry.isIntersecting)
+        .filter((entry) => entry.isIntersecting && pane.contains(entry.target))
         .sort((left, right) => right.intersectionRatio - left.intersectionRatio)[0]?.target as HTMLElement | undefined;
       const questionId = (centered ?? visible)?.dataset.questionId;
       if (questionId) setActiveQuestionId(questionId);
     }, { root: pane, threshold: [0.35, 0.65] });
     pane.querySelectorAll(".exam-question-target[data-question-id]").forEach((target) => observer.observe(target));
     return () => observer.disconnect();
-  }, [partIndex, activeQuestionId]);
-
-  const seconds = initial.attempt.timer_mode === "COUNTDOWN" && initial.attempt.deadline_at
-    ? remainingSeconds(initial.attempt.deadline_at, offset, clock)
-    : elapsedFromSnapshot(initial.attempt.elapsed_seconds, initial.attempt.server_time, offset, clock);
-  const part = parts[partIndex];
-  const partGroups = useMemo(
-    () => part ? [...part.question_groups].sort((left, right) => left.order_index - right.order_index) : [],
-    [part],
-  );
-  const activeGroup = partGroups.find((group) => group.questions.some((question) => question.id === activeQuestionId)) ?? partGroups[0];
-  const visualGroup = activeGroup ? ["map_labelling", "plan_labelling", "diagram_labelling"].includes(activeGroup.question_type) : false;
+  }, [activeGroup?.id, partIndex]);
 
   useEffect(() => {
     if (part && !stopped.current) void runMutation(() => recordNavigation(attemptId, "LISTENING_PART", part.id)).catch((error) => { if (!(error instanceof AttemptStoppedError)) setSaveState("error"); });
@@ -197,29 +220,32 @@ export function ListeningRunner({ initial }: { initial: ExamPayload }) {
 
   function selectPart(index: number) {
     pendingQuestion.current = null;
+    const firstQuestionId = questions.find((question) => question.partIndex === index)?.id ?? null;
+    holdNavigation(firstQuestionId);
     setPartIndex(index);
-    setActiveQuestionId(questions.find((question) => question.partIndex === index)?.id ?? null);
+    setActiveQuestionId(firstQuestionId);
     if (questionPane.current) questionPane.current.scrollTop = 0;
   }
 
   function navigateToQuestion(questionId: string, ownerPartIndex: number) {
     const target = questions.find((question) => question.id === questionId);
     const currentGroupId = activeGroup?.id;
+    holdNavigation(questionId);
     if (ownerPartIndex !== partIndex || target?.groupId !== currentGroupId) pendingQuestion.current = questionId;
     setActiveQuestionId(questionId);
     if (ownerPartIndex !== partIndex) {
       setPartIndex(ownerPartIndex);
       return;
     }
-    if (target?.groupId === currentGroupId) scrollToQuestion(questionId);
+    if (target?.groupId === currentGroupId && !scrollToQuestion(questionId)) pendingQuestion.current = questionId;
   }
 
   return <div className="exam-runner listening-exam">
     <header className="exam-header"><div><p>LISTENING · SECTION {part.order_index + 1}</p><h1>{initial.test_title}</h1></div><div className="exam-header-tools"><PauseAttemptControl attemptId={attemptId} beforePause={flush} /><ThemeToggle /><div className="exam-header-status"><span className={`exam-timer ${initial.attempt.timer_mode === "COUNTDOWN" && seconds < 300 ? "exam-timer-warning" : ""}`}>{formatDuration(seconds)}</span><span className={`exam-save-state exam-save-${saveState}`}>{saveState === "saving" ? "Saving…" : saveState === "error" ? "Save failed" : "Saved"}</span></div></div></header>
     {initial.listening_audio_asset ? <><ListeningAudioPlayer src={assetContentUrl(initial.listening_audio_asset)} policy={{ allowSeeking: initial.audio_policy?.allow_seeking ?? true, allowSpeed: initial.audio_policy?.allow_speed ?? true }} />{initial.audio_policy?.allow_seeking === false ? <p className="exam-mode-label">Exam mode · Seeking locked</p> : null}</> : <p className="notice m-4">This Listening test has no audio recording attached.</p>}
-    <main ref={questionPane} className={`listening-question-pane ${visualGroup ? "listening-question-pane-visual" : ""}`} onFocusCapture={(event) => {
+    <main ref={questionPane} className={`listening-question-pane ${visualGroup ? "listening-question-pane-visual" : ""}`} onWheelCapture={() => { programmaticNavigation.current = null; }} onTouchStartCapture={() => { programmaticNavigation.current = null; }} onPointerDownCapture={() => { programmaticNavigation.current = null; }} onKeyDownCapture={() => { programmaticNavigation.current = null; }} onFocusCapture={(event) => {
       const target = (event.target as HTMLElement).closest<HTMLElement>(".exam-question-target[data-question-id]");
-      if (target?.dataset.questionId) setActiveQuestionId(target.dataset.questionId);
+      if (target?.dataset.questionId) { programmaticNavigation.current = null; setActiveQuestionId(target.dataset.questionId); }
     }}>
       <div className="listening-question-heading"><div><p>Listening · Section {part.order_index + 1}</p><h2>{part.title}</h2></div><span>{activeGroup ? `Questions ${Math.min(...activeGroup.questions.map((question) => question.number))}–${Math.max(...activeGroup.questions.map((question) => question.number))}` : "No questions"}</span></div>
       {activeGroup ? (() => {
@@ -235,7 +261,7 @@ export function ListeningRunner({ initial }: { initial: ExamPayload }) {
     <footer className="exam-footer listening-exam-footer">
       <div className="exam-footer-navigation">
         <nav className="exam-section-navigation" aria-label="Section navigation">{parts.map((item, index) => <button key={item.id} type="button" onClick={() => selectPart(index)} className={index === partIndex ? "active" : ""} aria-current={index === partIndex ? "page" : undefined}>Section {item.order_index + 1}</button>)}</nav>
-        <nav className="exam-question-strip" aria-label="Question navigation">{questions.map((question) => {
+        <nav ref={questionStrip} className="exam-question-strip" aria-label="Question navigation">{questions.map((question) => {
           const answered = isAnswered(values[question.id]);
           const flagged = Boolean(flags[question.id]);
           const current = activeQuestionId === question.id;
