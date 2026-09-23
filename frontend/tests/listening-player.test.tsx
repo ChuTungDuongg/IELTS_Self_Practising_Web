@@ -1,12 +1,12 @@
-import { fireEvent, render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ListeningAudioPlayer } from "@/features/listening/audio-player";
 import { listeningQuestionTypeOptions, questionRegistry } from "@/features/questions/registry";
 import { ListeningBuilder } from "@/features/test-builder/listening-builder";
 import { ListeningRunner } from "@/features/listening/listening-runner";
 import { ListeningReviewView } from "@/features/listening/listening-review";
 import { BuilderLifecycleProvider } from "@/features/test-builder/builder-lifecycle";
-import type { BuilderVersion } from "@/lib/api/builder";
+import { createListeningQuestionGroup, updateListeningQuestionGroup, type BuilderQuestionGroup, type BuilderVersion } from "@/lib/api/builder";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }) }));
 vi.mock("@/lib/api/attempts", async (importOriginal) => {
@@ -17,6 +17,35 @@ vi.mock("@/lib/api/exam", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api/exam")>();
   return { ...actual, getExam: vi.fn(), saveFlag: vi.fn(), submitAttempt: vi.fn() };
 });
+vi.mock("@/lib/api/builder", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/api/builder")>();
+  return { ...actual, createListeningQuestionGroup: vi.fn(), updateListeningQuestionGroup: vi.fn() };
+});
+
+function listeningBuilderVersion(questionGroups: BuilderQuestionGroup[]): BuilderVersion {
+  return {
+    id: crypto.randomUUID(),
+    test_id: crypto.randomUUID(),
+    test_title: "Practice",
+    version_number: 1,
+    status: "DRAFT",
+    modules: [{
+      id: crypto.randomUUID(),
+      module_type: "LISTENING",
+      title: "Listening",
+      recommended_duration_seconds: 1800,
+      audio_asset: null,
+      passages: [],
+      listening_parts: Array.from({ length: 4 }, (_, index) => ({
+        id: crypto.randomUUID(),
+        title: `Section ${index + 1}`,
+        order_index: index,
+        question_groups: index === 0 ? questionGroups : [],
+      })),
+      writing_tasks: [],
+    }],
+  };
+}
 
 describe("Listening audio and templates", () => {
   beforeEach(() => {
@@ -25,6 +54,7 @@ describe("Listening audio and templates", () => {
     Object.defineProperty(HTMLMediaElement.prototype, "pause", { configurable: true, value: vi.fn() });
     Object.defineProperty(HTMLMediaElement.prototype, "load", { configurable: true, value: vi.fn() });
   });
+  afterEach(() => vi.useRealTimers());
 
   it("offers required practice playback speeds and updates playbackRate", () => {
     const { container } = render(<ListeningAudioPlayer src="/part-1.mp3" />);
@@ -66,6 +96,86 @@ describe("Listening audio and templates", () => {
     fireEvent.click(screen.getByRole("tab", { name: /Section 2/ }));
     expect(screen.getByText("No recording attached")).toBeInTheDocument();
     expect(screen.getAllByText(/Shared Listening audio/)).toHaveLength(1);
+  });
+
+  it("autosaves an existing Listening group through UPDATE without creating a duplicate", async () => {
+    vi.useFakeTimers();
+    const persisted = {
+      ...questionRegistry.multiple_choice.createDefault(1),
+      id: crypto.randomUUID(),
+      image_asset_id: null,
+      image_asset: null,
+    } as BuilderQuestionGroup;
+    vi.mocked(updateListeningQuestionGroup).mockResolvedValue(persisted);
+    render(<BuilderLifecycleProvider><ListeningBuilder version={listeningBuilderVersion([persisted])} /></BuilderLifecycleProvider>);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+      await Promise.resolve();
+    });
+    fireEvent.change(screen.getByLabelText("Prompt"), { target: { value: "Latest persisted prompt" } });
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+
+    expect(updateListeningQuestionGroup).toHaveBeenCalledTimes(1);
+    expect(updateListeningQuestionGroup).toHaveBeenCalledWith(
+      persisted.id,
+      expect.objectContaining({ questions: [expect.objectContaining({ prompt: "Latest persisted prompt" })] }),
+    );
+    expect(createListeningQuestionGroup).not.toHaveBeenCalled();
+  });
+
+  it("switches persisted group editors without carrying the previous group's local draft", async () => {
+    const first = {
+      ...questionRegistry.multiple_choice.createDefault(1),
+      id: crypto.randomUUID(),
+      image_asset_id: null,
+      image_asset: null,
+    } as BuilderQuestionGroup;
+    first.questions[0].prompt = "First group prompt";
+    const second = {
+      ...questionRegistry.multiple_choice.createDefault(2),
+      id: crypto.randomUUID(),
+      order_index: 1,
+      image_asset_id: null,
+      image_asset: null,
+    } as BuilderQuestionGroup;
+    second.questions[0].prompt = "Second group prompt";
+    render(<BuilderLifecycleProvider><ListeningBuilder version={listeningBuilderVersion([first, second])} /></BuilderLifecycleProvider>);
+
+    await act(async () => {
+      fireEvent.click(screen.getAllByRole("button", { name: "Edit" })[0]);
+      await Promise.resolve();
+    });
+    expect(screen.getByLabelText("Prompt")).toHaveValue("First group prompt");
+
+    await act(async () => {
+      fireEvent.click(screen.getAllByRole("button", { name: "Edit" })[1]);
+      await Promise.resolve();
+    });
+    expect(screen.getByLabelText("Prompt")).toHaveValue("Second group prompt");
+  });
+
+  it("creates a new Listening group with one POST and waits for server identity", async () => {
+    const version = listeningBuilderVersion([]);
+    const created = {
+      ...questionRegistry.multiple_choice.createDefault(1),
+      id: crypto.randomUUID(),
+      image_asset_id: null,
+      image_asset: null,
+    } as BuilderQuestionGroup;
+    vi.mocked(createListeningQuestionGroup).mockResolvedValue(created);
+    render(<BuilderLifecycleProvider><ListeningBuilder version={version} /></BuilderLifecycleProvider>);
+
+    fireEvent.click(screen.getByRole("button", { name: "Add question group" }));
+    fireEvent.change(screen.getByLabelText("Prompt"), { target: { value: "Edited before first save" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save group" }));
+
+    await waitFor(() => expect(createListeningQuestionGroup).toHaveBeenCalledTimes(1));
+    expect(createListeningQuestionGroup).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ questions: [expect.objectContaining({ prompt: "Edited before first save" })] }),
+    );
+    expect(updateListeningQuestionGroup).not.toHaveBeenCalled();
   });
 
   it("mounts one shared player while navigating Listening sections", () => {

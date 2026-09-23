@@ -15,7 +15,7 @@ type ValidationResult = { valid: boolean; errors: ValidationIssue[]; warnings: V
 
 export function VersionActions({ testId, version }: { testId: string; version: BuilderVersion }) {
   const router = useRouter();
-  const { beginDelete, deleting, flushAutosaves } = useBuilderLifecycle();
+  const { beginDelete, deleting, mutating, transitioning, runTransition } = useBuilderLifecycle();
   const [message, setMessage] = useState<string | null>(null);
   const [validation, setValidation] = useState<ValidationResult | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -34,30 +34,31 @@ export function VersionActions({ testId, version }: { testId: string; version: B
     setMessage(null);
     setActionError(null);
     try {
-      if (!(await flushAutosaves())) {
+      const transition = await runTransition(async () => {
+        if (action === "validate" || action === "publish") {
+          const result = await validateVersion(versionId);
+          setValidation(result);
+          if (!result.valid) {
+            focusValidationPanel();
+            return;
+          }
+          if (action === "publish") {
+            await publishVersion(versionId);
+            setMessage("Version published and frozen.");
+            router.refresh();
+          } else {
+            setMessage("Validation complete.");
+            focusValidationPanel();
+          }
+        } else {
+          const clone = await cloneVersion(testId, versionId);
+          router.push(builderEditPath(testId, clone.id));
+          router.refresh();
+        }
+      });
+      if (!transition.ready) {
         setActionError("Fix invalid draft fields or retry the failed save before continuing.");
         focusValidationPanel();
-        return;
-      }
-      if (action === "validate" || action === "publish") {
-        const result = await validateVersion(versionId);
-        setValidation(result);
-        if (!result.valid) {
-          focusValidationPanel();
-          return;
-        }
-        if (action === "publish") {
-          await publishVersion(versionId);
-          setMessage("Version published and frozen.");
-          router.refresh();
-        } else {
-          setMessage("Validation complete.");
-          focusValidationPanel();
-        }
-      } else {
-        const clone = await cloneVersion(testId, versionId);
-        router.push(builderEditPath(testId, clone.id));
-        router.refresh();
       }
     } catch (caught) {
       setActionError(caught instanceof ApiError ? caught.message : "The action failed.");
@@ -89,17 +90,17 @@ export function VersionActions({ testId, version }: { testId: string; version: B
       <div className="builder-toolbar">
         <div><BuilderAutosaveStatus />{message ? <p role="status">{message}</p> : null}{pending || deleting ? <p role="status">Working…</p> : published ? <p>Published · frozen</p> : null}</div>
         <div className="flex flex-wrap items-center gap-2">
-          <button onClick={() => act("validate")} disabled={pending || deleting} className="btn btn-secondary">Validate</button>
+          <button onClick={() => act("validate")} disabled={pending || deleting || mutating || transitioning} className="btn btn-secondary">Validate</button>
           {published ? (
-            <button onClick={() => act("clone")} disabled={pending || deleting} className="btn btn-primary">Edit</button>
+            <button onClick={() => act("clone")} disabled={pending || deleting || mutating || transitioning} className="btn btn-primary">Edit</button>
           ) : status === "DRAFT" ? (
-            <button onClick={() => act("publish")} disabled={pending || deleting} className="btn btn-primary">Publish version</button>
+            <button onClick={() => act("publish")} disabled={pending || deleting || mutating || transitioning} className="btn btn-primary">Publish version</button>
           ) : null}
           {status === "DRAFT" ? (
             <button
               type="button"
               onClick={() => setConfirmingDelete(true)}
-              disabled={pending || deleting}
+              disabled={pending || deleting || mutating || transitioning}
               className="btn btn-danger-ghost ml-2"
             >
               Delete draft

@@ -506,7 +506,7 @@ input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--mute
 .reading-inline-empty p { margin: 0; font-weight: 750; }
 .reading-inline-empty span { display: block; margin-top: 5px; color: var(--muted); font-size: 12px; }
 
-.passage-editor { margin-top: 20px; border: 1px solid color-mix(in srgb, var(--reading) 36%, var(--line)); border-radius: 16px; padding: 24px; background: var(--surface); box-shadow: 0 18px 50px color-mix(in srgb, var(--reading) 8%, transparent); }
+.passage-editor { min-width: 0; margin-top: 20px; border: 1px solid color-mix(in srgb, var(--reading) 36%, var(--line)); border-radius: 16px; padding: 24px; background: var(--surface); box-shadow: 0 18px 50px color-mix(in srgb, var(--reading) 8%, transparent); }
 .passage-editor h3 { margin: 0; font-size: 20px; letter-spacing: -.025em; }
 .block-list { display: flex; flex-direction: column; gap: 12px; margin-top: 20px; }
 .content-block { display: grid; grid-template-columns: 54px minmax(0, 1fr); overflow: hidden; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-raised); }
@@ -524,7 +524,7 @@ input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--mute
 .subheading-block { border-color: color-mix(in srgb, var(--listening) 24%, var(--line)); }
 .subheading-block .content-block-side { background: color-mix(in srgb, var(--listening) 5%, var(--surface-soft)); }
 .passage-editor-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--line); }
-.group-editor { border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--line)); border-radius: 15px; padding: 22px; background: var(--surface); box-shadow: 0 18px 46px color-mix(in srgb, var(--accent) 8%, transparent); }
+.group-editor { min-width: 0; border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--line)); border-radius: 15px; padding: 22px; background: var(--surface); box-shadow: 0 18px 46px color-mix(in srgb, var(--accent) 8%, transparent); }
 .group-editor-header { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 20px; padding-bottom: 18px; border-bottom: 1px solid var(--line); }
 .group-preview { border: 1px solid var(--line); border-radius: 13px; padding: 20px; background: var(--surface-soft); }
 .question-editor-card { border: 1px solid var(--line); border-radius: 14px; padding: 16px; background: var(--surface-raised); }
@@ -536,6 +536,9 @@ input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--mute
 .option-editor-list { display: flex; flex-direction: column; gap: 8px; margin-top: 15px; }
 .answer-key-label { margin: 0; color: var(--muted); font-size: 10px; font-weight: 750; letter-spacing: .06em; text-transform: uppercase; }
 .option-editor-row { display: grid; grid-template-columns: auto 64px minmax(0, 1fr); align-items: center; gap: 8px; border: 1px solid transparent; border-radius: 11px; padding: 7px 9px; }
+.option-editor-row-removable { grid-template-columns: auto 64px minmax(0, 1fr) 34px; }
+.option-remove-button { color: var(--danger); }
+.option-remove-button:disabled { opacity: .32; }
 .option-editor-correct { border-color: color-mix(in srgb, var(--success) 30%, var(--line)); background: color-mix(in srgb, var(--success) 7%, transparent); }
 .option-label-field { text-align: center; font-weight: 800; }
 .answer-choice-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }

@@ -1,7 +1,9 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   BuilderLifecycleProvider,
+  useBuilderAutosave,
   useBuilderLifecycle,
 } from "@/features/test-builder/builder-lifecycle";
 import { VersionActions } from "@/features/test-builder/version-actions";
@@ -76,6 +78,39 @@ function renderActions(status: "DRAFT" | "PUBLISHED" | "ARCHIVED") {
   );
 }
 
+function PendingAutosave({ save }: { save: (value: string) => Promise<unknown> }) {
+  const [value, setValue] = useState("initial");
+  useBuilderAutosave({ resourceKey: "pending-fixture", value, save });
+  return <button type="button" onClick={() => setValue("latest")}>Edit pending draft</button>;
+}
+
+function UnsavedCreateFixture() {
+  const [value, setValue] = useState("initial");
+  useBuilderAutosave({
+    resourceKey: "new-resource",
+    value,
+    save: vi.fn(),
+    enabled: false,
+  });
+  return <button type="button" onClick={() => setValue("edited")}>Edit new resource</button>;
+}
+
+function PendingMutation({ mutate }: { mutate: () => Promise<unknown> }) {
+  const lifecycle = useBuilderLifecycle();
+  return <button type="button" onClick={() => { void lifecycle.runMutation(mutate).catch(() => undefined); }}>Start mutation</button>;
+}
+
+function TransitionAwareInput() {
+  const { transitioning } = useBuilderLifecycle();
+  const [value, setValue] = useState("initial");
+  return <input aria-label="Builder field" disabled={transitioning} value={value} onChange={(event) => setValue(event.target.value)} />;
+}
+
+function TransitionHarness({ ready }: { ready: () => void }) {
+  const lifecycle = useBuilderLifecycle();
+  return <button type="button" onClick={() => { void lifecycle.runTransition(async () => ready()); }}>Begin transition</button>;
+}
+
 describe("VersionActions draft deletion", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -117,6 +152,114 @@ describe("VersionActions draft deletion", () => {
     expect(screen.getByText("Reading contains 1 / 40 questions.")).toBeInTheDocument();
     expect(screen.getByText("These recommendations do not block publishing.")).toBeInTheDocument();
     expect(refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["Validate", "Publish version"])("flushes pending changes before %s", async (actionLabel) => {
+    let resolveSave!: () => void;
+    const save = vi.fn(() => new Promise<void>((resolve) => { resolveSave = resolve; }));
+    vi.mocked(validateVersion).mockResolvedValue({ valid: true, errors: [], warnings: [] });
+    vi.mocked(publishVersion).mockResolvedValue(undefined as never);
+    render(
+      <BuilderLifecycleProvider>
+        <PendingAutosave save={save} />
+        <VersionActions testId="11111111-1111-4111-8111-111111111111" version={builderVersion("DRAFT")} />
+      </BuilderLifecycleProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit pending draft" }));
+    fireEvent.click(screen.getByRole("button", { name: actionLabel }));
+
+    expect(save).toHaveBeenCalledWith("latest");
+    expect(validateVersion).not.toHaveBeenCalled();
+    expect(publishVersion).not.toHaveBeenCalled();
+    resolveSave();
+
+    await waitFor(() => expect(validateVersion).toHaveBeenCalledTimes(1));
+    if (actionLabel === "Publish version") await waitFor(() => expect(publishVersion).toHaveBeenCalledTimes(1));
+    else expect(publishVersion).not.toHaveBeenCalled();
+  });
+
+  it("waits for an already-running explicit mutation before validation", async () => {
+    let resolveMutation!: () => void;
+    const mutate = vi.fn(() => new Promise<void>((resolve) => { resolveMutation = resolve; }));
+    vi.mocked(validateVersion).mockResolvedValue({ valid: true, errors: [], warnings: [] });
+    render(
+      <BuilderLifecycleProvider>
+        <PendingMutation mutate={mutate} />
+        <VersionActions testId="11111111-1111-4111-8111-111111111111" version={builderVersion("DRAFT")} />
+      </BuilderLifecycleProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Start mutation" }));
+    expect(screen.getByRole("button", { name: "Validate" })).toBeDisabled();
+
+    expect(mutate).toHaveBeenCalledTimes(1);
+    expect(validateVersion).not.toHaveBeenCalled();
+    resolveMutation();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Validate" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Validate" }));
+    await waitFor(() => expect(validateVersion).toHaveBeenCalledTimes(1));
+  });
+
+  it("re-flushes edits made while an explicit mutation is still running", async () => {
+    let resolveMutation!: () => void;
+    let resolveSave!: () => void;
+    const mutate = vi.fn(() => new Promise<void>((resolve) => { resolveMutation = resolve; }));
+    const save = vi.fn(() => new Promise<void>((resolve) => { resolveSave = resolve; }));
+    const ready = vi.fn();
+    render(
+      <BuilderLifecycleProvider>
+        <PendingAutosave save={save} />
+        <PendingMutation mutate={mutate} />
+        <TransitionHarness ready={ready} />
+      </BuilderLifecycleProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Start mutation" }));
+    fireEvent.click(screen.getByRole("button", { name: "Begin transition" }));
+    fireEvent.click(screen.getByRole("button", { name: "Edit pending draft" }));
+    resolveMutation();
+
+    await waitFor(() => expect(save).toHaveBeenCalledWith("latest"));
+    expect(ready).not.toHaveBeenCalled();
+    resolveSave();
+    await waitFor(() => expect(ready).toHaveBeenCalledTimes(1));
+  });
+
+  it("blocks transitions that would discard an edited not-yet-created resource", async () => {
+    render(
+      <BuilderLifecycleProvider>
+        <UnsavedCreateFixture />
+        <VersionActions testId="11111111-1111-4111-8111-111111111111" version={builderVersion("DRAFT")} />
+      </BuilderLifecycleProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit new resource" }));
+    fireEvent.click(screen.getByRole("button", { name: "Validate" }));
+
+    expect(validateVersion).not.toHaveBeenCalled();
+    expect(await screen.findByText("Fix invalid draft fields or retry the failed save before continuing.")).toBeInTheDocument();
+    expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
+  });
+
+  it("locks Builder editing until validation and publish both finish", async () => {
+    let resolvePublish!: () => void;
+    vi.mocked(validateVersion).mockResolvedValue({ valid: true, errors: [], warnings: [] });
+    vi.mocked(publishVersion).mockImplementation(() => new Promise<void>((resolve) => { resolvePublish = resolve; }) as never);
+    render(
+      <BuilderLifecycleProvider>
+        <TransitionAwareInput />
+        <VersionActions testId="11111111-1111-4111-8111-111111111111" version={builderVersion("DRAFT")} />
+      </BuilderLifecycleProvider>,
+    );
+
+    const field = screen.getByLabelText("Builder field");
+    fireEvent.click(screen.getByRole("button", { name: "Publish version" }));
+    await waitFor(() => expect(publishVersion).toHaveBeenCalledTimes(1));
+    expect(field).toBeDisabled();
+
+    resolvePublish();
+    await waitFor(() => expect(field).toBeEnabled());
   });
 
   it("blocks publish and renders a complete contextual error outside the compact status", async () => {

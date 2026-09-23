@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -52,7 +52,7 @@ function toPayload(draft: TaskDraft): WritingTaskUpdate {
 
 export function WritingBuilder({ version }: { version: BuilderVersion }) {
   const router = useRouter();
-  const { beginDelete, deleting, runMutation } = useBuilderLifecycle();
+  const { beginDelete, deleting, transitioning, flushAutosaves, runAutosave, runMutation } = useBuilderLifecycle();
   const writing = version.modules.find((item) => item.module_type === "WRITING");
   const tasks = useMemo(
     () => [...(writing?.writing_tasks ?? [])].sort((a, b) => a.order_index - b.order_index),
@@ -61,6 +61,8 @@ export function WritingBuilder({ version }: { version: BuilderVersion }) {
   const [drafts, setDrafts] = useState<Record<string, TaskDraft>>(() =>
     Object.fromEntries(tasks.map((task) => [task.id, toDraft(task)])),
   );
+  const draftsRef = useRef(drafts);
+  useLayoutEffect(() => { draftsRef.current = drafts; }, [drafts]);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [uploadingTaskId, setUploadingTaskId] = useState<string | null>(null);
@@ -68,8 +70,9 @@ export function WritingBuilder({ version }: { version: BuilderVersion }) {
   const draftsValid = Object.values(drafts).every((draft) => draft.prompt.length <= 20_000
     && (draft.minimumWords === null || (draft.minimumWords >= 1 && draft.minimumWords <= 5000))
     && (draft.durationMinutes === null || (draft.durationMinutes >= 1 && draft.durationMinutes <= 240)));
+  const autosaveKey = `writing-module:${writing?.id ?? "new"}`;
   const { saveNow } = useBuilderAutosave({
-    resourceKey: `writing-module:${writing?.id ?? "new"}`,
+    resourceKey: autosaveKey,
     value: drafts,
     enabled: Boolean(writing),
     valid: draftsValid,
@@ -85,6 +88,7 @@ export function WritingBuilder({ version }: { version: BuilderVersion }) {
     setError(null);
     setMessage(null);
     try {
+      if (!(await flushAutosaves())) throw new Error("Unsaved draft changes must be resolved before continuing.");
       await runMutation(action);
       setMessage(success);
       router.refresh();
@@ -101,7 +105,7 @@ export function WritingBuilder({ version }: { version: BuilderVersion }) {
       <p>Create the fixed IELTS Task 1 and Task 2 structure. Prompts and guidance can be completed afterward.</p>
       <button
         className="btn btn-writing mt-5"
-        disabled={deleting}
+        disabled={deleting || transitioning}
         onClick={() => void mutate(() => createWritingModule(version.id), "Writing module created.")}
       ><PlusIcon className="size-4" /> Create Writing module</button>
       {error ? <p role="alert" className="notice notice-error mt-4">{error}</p> : null}
@@ -109,18 +113,25 @@ export function WritingBuilder({ version }: { version: BuilderVersion }) {
   }
   const writingModule = writing;
 
-  function updateDraft(taskId: string, change: Partial<TaskDraft>) {
-    setDrafts((current) => ({
-      ...current,
-      [taskId]: { ...current[taskId], ...change },
-    }));
+  function updateDraft(taskId: string, change: Partial<TaskDraft>): TaskDraft {
+    const nextDraft = { ...draftsRef.current[taskId], ...change };
+    const nextDrafts = { ...draftsRef.current, [taskId]: nextDraft };
+    draftsRef.current = nextDrafts;
+    setDrafts(nextDrafts);
+    return nextDraft;
   }
 
-  async function save(task: BuilderWritingTask, nextDraft = drafts[task.id]) {
-    await mutate(
-      () => updateWritingTask(task.id, toPayload(nextDraft)),
-      `Task ${task.task_number} saved.`,
-    );
+  async function save(task: BuilderWritingTask, nextDraft = draftsRef.current[task.id]) {
+    setError(null);
+    setMessage(null);
+    try {
+      await runAutosave(autosaveKey, () => updateWritingTask(task.id, toPayload(nextDraft)));
+      setMessage(`Task ${task.task_number} saved.`);
+      router.refresh();
+    } catch (reason) {
+      setError(reason instanceof ApiError ? reason.message : "The Writing task could not be saved.");
+      throw reason;
+    }
   }
 
   async function upload(task: BuilderWritingTask, file: File) {
@@ -128,12 +139,10 @@ export function WritingBuilder({ version }: { version: BuilderVersion }) {
     setError(null);
     try {
       const asset = await uploadAsset("images", version.id, file);
-      const nextDraft = {
-        ...drafts[task.id],
+      const nextDraft = updateDraft(task.id, {
         imageAssetId: asset.id,
         imageAsset: asset,
-      };
-      updateDraft(task.id, nextDraft);
+      });
       await save(task, nextDraft);
     } catch (reason) {
       setError(reason instanceof ApiError ? reason.message : "The Writing image could not be uploaded.");
@@ -143,16 +152,18 @@ export function WritingBuilder({ version }: { version: BuilderVersion }) {
   }
 
   async function removeImage(task: BuilderWritingTask) {
-    const nextDraft = {
-      ...drafts[task.id],
+    const previousImage = {
+      imageAssetId: draftsRef.current[task.id].imageAssetId,
+      imageAsset: draftsRef.current[task.id].imageAsset,
+    };
+    const nextDraft = updateDraft(task.id, {
       imageAssetId: null,
       imageAsset: null,
-    };
-    updateDraft(task.id, nextDraft);
+    });
     try {
       await save(task, nextDraft);
     } catch {
-      updateDraft(task.id, drafts[task.id]);
+      updateDraft(task.id, previousImage);
     }
   }
 
@@ -167,7 +178,7 @@ export function WritingBuilder({ version }: { version: BuilderVersion }) {
     }
   }
 
-  return <fieldset disabled={deleting} className="contents">
+  return <fieldset disabled={deleting || transitioning} className="contents">
     <section className="writing-builder">
       <div className="section-header">
         <div><p className="page-eyebrow writing-eyebrow">Writing module</p><h2>Writing Builder</h2><p>Two fixed tasks with server-owned structure and optional visual material for Task 1.</p></div>

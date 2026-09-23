@@ -78,7 +78,7 @@ export function QuestionGroupEditor({
       : [];
   const diagramErrors = diagramLabellingErrors(presentedGroup);
   const structurallyValid = integrityErrors.length === 0 && diagramErrors.length === 0 && questionGroupIsValid(presentedGroup, passageBlocks, moduleType);
-  const { saveNow } = useBuilderAutosave({
+  const { markSaved, saveNow } = useBuilderAutosave({
     resourceKey: `question-group:${initial.id ?? "new"}`,
     value: presentedGroup,
     save: (value) => (onAutosave ?? onSave)(value),
@@ -130,7 +130,7 @@ export function QuestionGroupEditor({
   }
 
   return (
-    <div className="group-editor">
+    <fieldset className="group-editor" disabled={pending} aria-busy={pending}>
       <div className="group-editor-header">
         <div className="min-w-0 flex-1">
           <p className="page-eyebrow">Question group · {definition.label}</p>
@@ -160,9 +160,9 @@ export function QuestionGroupEditor({
           )}
         </div>
         <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={() => setPreview(!preview)} className="btn btn-secondary">{preview ? "Back to edit" : "Preview"}</button>
+          <button type="button" onClick={() => { if (preview || !initial.id || !onAutosave) setPreview(!preview); else void saveNow().then((saved) => { if (saved) setPreview(true); }); }} className="btn btn-secondary">{preview ? "Back to edit" : "Preview"}</button>
           <button type="button" onClick={() => { if (initial.id && onAutosave) void saveNow().then((saved) => { if (saved) onCancel(); }); else onCancel(); }} className="btn btn-ghost">{initial.id ? "Close" : "Cancel"}</button>
-          <button type="button" disabled={pending || !structurallyValid} onClick={async () => { setPending(true); try { if (initial.id && onAutosave) await saveNow(); else await onSave(presentedGroup); } finally { setPending(false); } }} className="btn btn-primary">{pending ? "Saving…" : initial.id ? "Save now" : "Save group"}</button>
+          <button type="button" disabled={pending || !structurallyValid} onClick={async () => { setPending(true); try { if (initial.id && onAutosave) await saveNow(); else { await onSave(presentedGroup); markSaved(); } } finally { setPending(false); } }} className="btn btn-primary">{pending ? "Saving…" : initial.id ? "Save now" : "Save group"}</button>
         </div>
       </div>
       {integrityErrors.length ? <div role="alert" className="notice notice-warning">{integrityErrors.map((message) => <p key={message}>{message}</p>)}</div> : null}
@@ -176,11 +176,11 @@ export function QuestionGroupEditor({
       ) : (
         <>
           {testVersionId && ["plan_labelling", "map_labelling", "diagram_labelling"].includes(group.question_type) ? <QuestionImageAttachment group={group} testVersionId={testVersionId} onChange={setGroup} /> : null}
-          <Editor group={group} onChange={setGroup} passageBlocks={passageBlocks} baseQuestionNumber={baseQuestionNumber} />
+          <Editor group={group} onChange={setGroup} passageBlocks={passageBlocks} baseQuestionNumber={baseQuestionNumber} moduleType={moduleType} />
           {!["text_completion", "diagram_labelling", "table_completion", "note_completion"].includes(group.question_type) ? <button type="button" onClick={addQuestion} className="btn btn-secondary mt-4">+ Add question</button> : null}
         </>
       )}
-    </div>
+    </fieldset>
   );
 }
 
@@ -203,6 +203,12 @@ function questionGroupIsValid(group: QuestionGroupModel, passageBlocks: PassageB
     return options.length < 2 || optionIds.some((id) => !id) || labels.some((label) => !label)
       || options.some((option) => !String(option.text ?? "").trim())
       || new Set(optionIds).size !== optionIds.length || new Set(labels).size !== labels.length;
+  })) return false;
+
+  if (group.question_type === "multiple_choice" && group.questions.some((question) => {
+    const options = (question.config.options as Array<{ id?: unknown }> | undefined) ?? [];
+    const optionIds = new Set(options.map((option) => String(option.id ?? "")));
+    return !optionIds.has(String(question.answer_key.value ?? ""));
   })) return false;
 
   const questionIds = new Set(ids.map(String));

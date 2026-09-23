@@ -9,6 +9,29 @@ function Harness({ save }: { save: (value: string) => Promise<unknown> }) {
   return <><input aria-label="Draft value" value={value} onChange={(event) => setValue(event.target.value)} /><BuilderAutosaveStatus /></>;
 }
 
+function DualHarness({ saveFirst, saveSecond }: {
+  saveFirst: (value: string) => Promise<unknown>;
+  saveSecond: (value: string) => Promise<unknown>;
+}) {
+  const [first, setFirst] = useState("first-initial");
+  const [second, setSecond] = useState("second-initial");
+  useBuilderAutosave({ resourceKey: "first", value: first, save: saveFirst });
+  useBuilderAutosave({ resourceKey: "second", value: second, save: saveSecond });
+  return <>
+    <input aria-label="First draft" value={first} onChange={(event) => setFirst(event.target.value)} />
+    <input aria-label="Second draft" value={second} onChange={(event) => setSecond(event.target.value)} />
+  </>;
+}
+
+function ExplicitFlushHarness({ save }: { save: (value: string) => Promise<unknown> }) {
+  const [value, setValue] = useState("initial");
+  const { saveNow } = useBuilderAutosave({ resourceKey: "fixture", value, save });
+  return <>
+    <input aria-label="Draft value" value={value} onChange={(event) => setValue(event.target.value)} />
+    <button type="button" onClick={() => { void saveNow(); void saveNow(); }}>Flush twice</button>
+  </>;
+}
+
 function setup(save: (value: string) => Promise<unknown>) {
   render(<BuilderLifecycleProvider><Harness save={save} /></BuilderLifecycleProvider>);
 }
@@ -41,6 +64,18 @@ describe("Builder autosave", () => {
     expect(save).toHaveBeenCalledWith("repaired");
   });
 
+  it("returns to Saved when an invalid edit is reverted to the server baseline", () => {
+    const save = vi.fn().mockResolvedValue(undefined);
+    setup(save);
+
+    fireEvent.change(screen.getByLabelText("Draft value"), { target: { value: "invalid" } });
+    expect(screen.getByText("Unsaved — fix validation issues")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Draft value"), { target: { value: "initial" } });
+
+    expect(screen.getByText("Saved")).toBeInTheDocument();
+    expect(save).not.toHaveBeenCalled();
+  });
+
   it("does not let an older response mark a newer edit as saved", async () => {
     let resolveFirst!: () => void;
     const first = new Promise<void>((resolve) => { resolveFirst = resolve; });
@@ -54,6 +89,57 @@ describe("Builder autosave", () => {
     await act(async () => { resolveFirst(); await first; });
     expect(save).toHaveBeenLastCalledWith("second");
     expect(screen.getByText("Saved")).toBeInTheDocument();
+  });
+
+  it("persists a reversion made while an older save is in flight", async () => {
+    let resolveFirst!: () => void;
+    const first = new Promise<void>((resolve) => { resolveFirst = resolve; });
+    const save = vi.fn().mockReturnValueOnce(first).mockResolvedValueOnce(undefined);
+    setup(save);
+
+    fireEvent.change(screen.getByLabelText("Draft value"), { target: { value: "temporary" } });
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    fireEvent.change(screen.getByLabelText("Draft value"), { target: { value: "initial" } });
+    expect(screen.getByLabelText("Draft value")).toHaveValue("initial");
+
+    await act(async () => { resolveFirst(); await first; });
+
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(save).toHaveBeenNthCalledWith(2, "initial");
+    expect(screen.getByText("Saved")).toBeInTheDocument();
+  });
+
+  it("lets unrelated resources save independently", async () => {
+    let resolveFirst!: () => void;
+    const saveFirst = vi.fn(() => new Promise<void>((resolve) => { resolveFirst = resolve; }));
+    const saveSecond = vi.fn().mockResolvedValue(undefined);
+    render(<BuilderLifecycleProvider><DualHarness saveFirst={saveFirst} saveSecond={saveSecond} /></BuilderLifecycleProvider>);
+
+    fireEvent.change(screen.getByLabelText("First draft"), { target: { value: "first-latest" } });
+    fireEvent.change(screen.getByLabelText("Second draft"), { target: { value: "second-latest" } });
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+
+    expect(saveFirst).toHaveBeenCalledWith("first-latest");
+    expect(saveSecond).toHaveBeenCalledWith("second-latest");
+    resolveFirst();
+    await act(async () => { await Promise.resolve(); });
+  });
+
+  it("shares one per-resource drain across repeated flush requests", async () => {
+    let resolveFirst!: () => void;
+    const first = new Promise<void>((resolve) => { resolveFirst = resolve; });
+    const save = vi.fn().mockReturnValueOnce(first).mockResolvedValue(undefined);
+    render(<BuilderLifecycleProvider><ExplicitFlushHarness save={save} /></BuilderLifecycleProvider>);
+
+    fireEvent.change(screen.getByLabelText("Draft value"), { target: { value: "first" } });
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    fireEvent.change(screen.getByLabelText("Draft value"), { target: { value: "latest" } });
+    fireEvent.click(screen.getByRole("button", { name: "Flush twice" }));
+
+    await act(async () => { resolveFirst(); await first; });
+
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(save).toHaveBeenLastCalledWith("latest");
   });
 
   it("preserves a failed edit and retries it on demand", async () => {

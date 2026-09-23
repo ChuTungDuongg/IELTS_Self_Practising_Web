@@ -82,3 +82,7 @@ export function AlertIcon(props: IconProps) {
 export function ArchiveIcon(props: IconProps) {
   return <IconBase {...props}><path d="M4 7h16v13H4zM3 3h18v4H3zM9 11h6" /></IconBase>;
 }
+
+export function TrashIcon(props: IconProps) {
+  return <IconBase {...props}><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5" /></IconBase>;
+}

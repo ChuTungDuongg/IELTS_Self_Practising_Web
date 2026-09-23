@@ -1,12 +1,14 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { questionRegistry } from "@/features/questions/registry";
 import { MatchingHeadingsEditor, MultipleChoiceEditor, TextCompletionEditor, VisualLabellingEditor } from "@/features/questions/editors";
 import { QuestionGroupEditor } from "@/features/test-builder/question-group-editor";
+import { BuilderLifecycleProvider } from "@/features/test-builder/builder-lifecycle";
 import { QuestionGroupInstruction, resolveQuestionGroupInstruction } from "@/features/questions/question-group-instruction";
 import type { ExamGroup } from "@/features/questions/types";
 
 describe("question registry", () => {
+  afterEach(() => vi.useRealTimers());
   const imageAsset = {
     id: crypto.randomUUID(),
     original_name: "fictional-map.png",
@@ -105,6 +107,160 @@ describe("question registry", () => {
     expect(options).toHaveLength(2);
     expect(group.questions[0].answer_key.value).toBe(options[0].id);
     expect(options[0].id).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  it("adds and removes only Listening MC options with stable IDs and sequential labels", () => {
+    const group = questionRegistry.multiple_choice.createDefault(7);
+    group.id = crypto.randomUUID();
+    group.questions[0].prompt = "Prompt must survive option edits";
+    const firstId = String((group.questions[0].config.options as Array<{ id: string }>)[0].id);
+    const secondId = String((group.questions[0].config.options as Array<{ id: string }>)[1].id);
+    const onChange = vi.fn();
+    const view = render(<MultipleChoiceEditor group={group} moduleType="LISTENING" onChange={onChange} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "+ Add option" }));
+    let updated = onChange.mock.calls.at(-1)?.[0];
+    const addedId = updated.questions[0].config.options[2].id;
+    expect(updated.questions[0].config.options.map((option: { label: string }) => option.label)).toEqual(["A", "B", "C"]);
+
+    view.rerender(<MultipleChoiceEditor group={updated} moduleType="LISTENING" onChange={onChange} />);
+    fireEvent.click(screen.getByRole("button", { name: "Remove option B" }));
+    updated = onChange.mock.calls.at(-1)?.[0];
+    expect(updated.questions[0].config.options).toEqual([
+      expect.objectContaining({ id: firstId, label: "A" }),
+      expect.objectContaining({ id: addedId, label: "B" }),
+    ]);
+    expect(updated.questions[0].config.options.some((option: { id: string }) => option.id === secondId)).toBe(false);
+    expect(updated.questions[0].answer_key.value).toBe(firstId);
+    expect(updated.questions[0].prompt).toBe("Prompt must survive option edits");
+    expect(group.questions[0].config.options).toHaveLength(2);
+
+    view.rerender(<MultipleChoiceEditor group={updated} moduleType="LISTENING" onChange={onChange} />);
+    expect(screen.getAllByRole("button", { name: /Remove option/ })).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: /Remove option/ }).every((button) => (button as HTMLButtonElement).disabled)).toBe(true);
+  });
+
+  it("clears a removed Listening MC correct answer instead of selecting a replacement", () => {
+    const group = questionRegistry.multiple_choice.createDefault(7);
+    const options = group.questions[0].config.options as Array<{ id: string; label: string; text: string }>;
+    const third = { id: crypto.randomUUID(), label: "C", text: "Third" };
+    group.questions[0].config = { options: [...options, third] };
+    group.questions[0].answer_key = { kind: "SINGLE_OPTION", value: third.id };
+    const onChange = vi.fn();
+    render(<MultipleChoiceEditor group={group} moduleType="LISTENING" onChange={onChange} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove option C" }));
+
+    const updated = onChange.mock.calls.at(-1)?.[0];
+    expect(updated.questions[0].answer_key).toEqual({ kind: "SINGLE_OPTION", value: "" });
+    expect(updated.questions[0].config.options.map((option: { id: string }) => option.id)).toEqual(options.map((option) => option.id));
+  });
+
+  it("does not add option deletion controls to Reading Multiple Choice", () => {
+    const group = questionRegistry.multiple_choice.createDefault(7);
+    render(<MultipleChoiceEditor group={group} moduleType="READING" onChange={vi.fn()} />);
+    expect(screen.queryByRole("button", { name: /Remove option/ })).not.toBeInTheDocument();
+  });
+
+  it("keeps a cleared Listening MC answer local until a new valid key is selected", async () => {
+    vi.useFakeTimers();
+    const group = questionRegistry.multiple_choice.createDefault(7);
+    group.id = crypto.randomUUID();
+    group.questions[0].prompt = "Persisted prompt";
+    const options = group.questions[0].config.options as Array<{ id: string; label: string; text: string }>;
+    const third = { id: crypto.randomUUID(), label: "C", text: "Third" };
+    group.questions[0].config = { options: [...options, third] };
+    group.questions[0].answer_key = { kind: "SINGLE_OPTION", value: third.id };
+    const onAutosave = vi.fn().mockResolvedValue(undefined);
+    render(
+      <BuilderLifecycleProvider>
+        <QuestionGroupEditor initial={group} moduleType="LISTENING" nextQuestionNumber={8} passageBlocks={[]} onCancel={vi.fn()} onSave={vi.fn()} onAutosave={onAutosave} />
+      </BuilderLifecycleProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove option C" }));
+    expect(screen.getByRole("button", { name: "Save now" })).toBeDisabled();
+    await act(async () => { await vi.advanceTimersByTimeAsync(1500); });
+    expect(onAutosave).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByLabelText("Mark A correct"));
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    expect(onAutosave).toHaveBeenCalledTimes(1);
+    expect(onAutosave.mock.calls[0][0].questions[0].answer_key.value).toBe(options[0].id);
+  });
+
+  it("coalesces rapid Listening MC removal, text, and answer edits into the final autosave", async () => {
+    vi.useFakeTimers();
+    const group = questionRegistry.multiple_choice.createDefault(7);
+    group.id = crypto.randomUUID();
+    group.questions[0].prompt = "Persisted prompt";
+    const options = group.questions[0].config.options as Array<{ id: string; label: string; text: string }>;
+    group.questions[0].config = { options: [...options, { id: crypto.randomUUID(), label: "C", text: "Remove me" }] };
+    const onAutosave = vi.fn().mockResolvedValue(undefined);
+    const onSave = vi.fn();
+    render(
+      <BuilderLifecycleProvider>
+        <QuestionGroupEditor initial={group} moduleType="LISTENING" nextQuestionNumber={8} passageBlocks={[]} onCancel={vi.fn()} onSave={onSave} onAutosave={onAutosave} />
+      </BuilderLifecycleProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove option C" }));
+    const optionText = screen.getByLabelText("Option 2 text");
+    optionText.focus();
+    fireEvent.change(optionText, { target: { value: "Latest B text" } });
+    fireEvent.click(screen.getByLabelText("Mark B correct"));
+    expect(screen.getByLabelText("Option 2 text")).toHaveValue("Latest B text");
+    expect(screen.queryByRole("button", { name: "Remove option C" })).not.toBeInTheDocument();
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+
+    expect(onAutosave).toHaveBeenCalledTimes(1);
+    expect(onSave).not.toHaveBeenCalled();
+    const saved = onAutosave.mock.calls[0][0];
+    expect(saved.questions[0].config.options).toHaveLength(2);
+    expect(saved.questions[0].config.options[1]).toEqual(expect.objectContaining({ id: options[1].id, label: "B", text: "Latest B text" }));
+    expect(saved.questions[0].answer_key.value).toBe(options[1].id);
+    expect(saved.questions[0].prompt).toBe("Persisted prompt");
+    expect(document.activeElement).toBe(optionText);
+  });
+
+  it("flushes the latest persisted-group edit before opening Preview", async () => {
+    const group = questionRegistry.multiple_choice.createDefault(7);
+    group.id = crypto.randomUUID();
+    const onAutosave = vi.fn().mockResolvedValue(undefined);
+    render(
+      <BuilderLifecycleProvider>
+        <QuestionGroupEditor initial={group} moduleType="LISTENING" nextQuestionNumber={8} passageBlocks={[]} onCancel={vi.fn()} onSave={vi.fn()} onAutosave={onAutosave} />
+      </BuilderLifecycleProvider>,
+    );
+
+    fireEvent.change(screen.getByLabelText("Prompt"), { target: { value: "Newest local prompt" } });
+    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+
+    await waitFor(() => expect(onAutosave).toHaveBeenCalledTimes(1));
+    expect(onAutosave.mock.calls[0][0].questions[0].prompt).toBe("Newest local prompt");
+    expect(await screen.findByText("Newest local prompt")).toBeInTheDocument();
+  });
+
+  it("creates a new group once and does not start update autosave before identity reconciliation", async () => {
+    vi.useFakeTimers();
+    const group = questionRegistry.multiple_choice.createDefault(7);
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const onAutosave = vi.fn().mockResolvedValue(undefined);
+    render(
+      <BuilderLifecycleProvider>
+        <QuestionGroupEditor initial={group} moduleType="LISTENING" nextQuestionNumber={8} passageBlocks={[]} onCancel={vi.fn()} onSave={onSave} onAutosave={onAutosave} />
+      </BuilderLifecycleProvider>,
+    );
+
+    fireEvent.change(screen.getByLabelText("Prompt"), { target: { value: "New group prompt" } });
+    await act(async () => { await vi.advanceTimersByTimeAsync(1500); });
+    expect(onAutosave).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Save group" }));
+    await act(async () => { await Promise.resolve(); });
+
+    expect(onSave).toHaveBeenCalledTimes(1);
+    expect(onSave.mock.calls[0][0].questions[0].prompt).toBe("New group prompt");
   });
 
   it("routes exam answers through the registered renderer", () => {

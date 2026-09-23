@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { BuilderLifecycleProvider } from "@/features/test-builder/builder-lifecycle";
 import { WritingBuilder } from "@/features/test-builder/writing-builder";
@@ -167,5 +167,75 @@ describe("WritingBuilder", () => {
     await waitFor(() =>
       expect(deleteModule).toHaveBeenCalledWith("55555555-5555-4555-8555-555555555555"),
     );
+  });
+
+  it("serializes image persistence with newer prompt edits on the same task", async () => {
+    const asset = {
+      id: "66666666-6666-4666-8666-666666666666",
+      original_name: "chart.png",
+      mime_type: "image/png",
+      file_size: 10,
+      content_url: "/assets/chart.png",
+    };
+    let resolveUpload!: (value: typeof asset) => void;
+    let resolveImageWrite!: () => void;
+    vi.mocked(uploadAsset).mockImplementation(() => new Promise((resolve) => { resolveUpload = resolve; }));
+    vi.mocked(updateWritingTask)
+      .mockImplementationOnce(() => new Promise((resolve) => {
+        resolveImageWrite = () => resolve(version().modules[0].writing_tasks[0]);
+      }))
+      .mockResolvedValue(version().modules[0].writing_tasks[0]);
+    renderBuilder(version());
+    const taskOne = screen.getByRole("group", { name: "Writing Task 1" });
+    const prompt = within(taskOne).getByLabelText("Prompt");
+    const file = new File(["image"], "chart.png", { type: "image/png" });
+
+    fireEvent.change(within(taskOne).getByLabelText("Task image"), { target: { files: [file] } });
+    fireEvent.change(prompt, { target: { value: "Prompt edited while upload is running." } });
+    await act(async () => { resolveUpload(asset); });
+
+    await waitFor(() => expect(updateWritingTask).toHaveBeenCalledTimes(1));
+    expect(updateWritingTask).toHaveBeenNthCalledWith(1, taskOneId, expect.objectContaining({
+      prompt: "Prompt edited while upload is running.",
+      image_asset_id: asset.id,
+    }));
+
+    fireEvent.change(prompt, { target: { value: "Newest prompt while image write is running." } });
+    fireEvent.click(within(taskOne).getByRole("button", { name: "Save Task 1" }));
+    expect(updateWritingTask).toHaveBeenCalledTimes(1);
+    await act(async () => { resolveImageWrite(); });
+
+    await waitFor(() => expect(updateWritingTask).toHaveBeenCalledTimes(3));
+    const taskOneWrites = vi.mocked(updateWritingTask).mock.calls.filter(([taskId]) => taskId === taskOneId);
+    expect(taskOneWrites).toHaveLength(2);
+    expect(taskOneWrites.at(-1)).toEqual([taskOneId, expect.objectContaining({
+      prompt: "Newest prompt while image write is running.",
+      image_asset_id: asset.id,
+    })]);
+  });
+
+  it("restores only image fields after a failed removal and preserves newer text", async () => {
+    const asset = {
+      id: "66666666-6666-4666-8666-666666666666",
+      original_name: "chart.png",
+      mime_type: "image/png",
+      file_size: 10,
+      content_url: "/assets/chart.png",
+    };
+    const value = version();
+    value.modules[0].writing_tasks[0].image_asset_id = asset.id;
+    value.modules[0].writing_tasks[0].image_asset = asset;
+    let rejectRemoval!: (reason: Error) => void;
+    vi.mocked(updateWritingTask).mockImplementationOnce(() => new Promise((_, reject) => { rejectRemoval = reject; }));
+    renderBuilder(value);
+    const taskOne = screen.getByRole("group", { name: "Writing Task 1" });
+
+    fireEvent.click(within(taskOne).getByRole("button", { name: "Remove image" }));
+    await waitFor(() => expect(updateWritingTask).toHaveBeenCalledTimes(1));
+    fireEvent.change(within(taskOne).getByLabelText("Prompt"), { target: { value: "New text entered during failed removal." } });
+    await act(async () => { rejectRemoval(new Error("remove failed")); });
+
+    expect(await within(taskOne).findByAltText("Writing Task 1 reference")).toBeInTheDocument();
+    expect(within(taskOne).getByLabelText("Prompt")).toHaveValue("New text entered during failed removal.");
   });
 });

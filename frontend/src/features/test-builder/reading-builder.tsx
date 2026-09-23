@@ -30,7 +30,7 @@ import { AutosaveLink } from "./autosave-link";
 
 export function ReadingBuilder({ version }: { version: BuilderVersion }) {
   const router = useRouter();
-  const { deleting, runMutation } = useBuilderLifecycle();
+  const { deleting, transitioning, flushAutosaves, runMutation } = useBuilderLifecycle();
   const reading = version.modules.find((item) => item.module_type === "READING");
   const [editingPassage, setEditingPassage] = useState<BuilderPassage | "new" | null>(null);
   const [editingGroup, setEditingGroup] = useState<{ passageId: string; group: QuestionGroupModel } | null>(null);
@@ -59,9 +59,13 @@ export function ReadingBuilder({ version }: { version: BuilderVersion }) {
     void run(() => reorderQuestionGroups(reading.id, orderedIds));
   }
 
-  async function run(action: () => Promise<unknown>) {
+  async function run(action: () => Promise<unknown>, excludeAutosaveKey?: string) {
     setMessage(null);
     try {
+      if (!(await flushAutosaves(excludeAutosaveKey))) {
+        setMessage("Fix invalid draft fields or retry the failed save before continuing.");
+        return;
+      }
       await runMutation(action);
       setEditingPassage(null);
       setEditingGroup(null);
@@ -71,9 +75,25 @@ export function ReadingBuilder({ version }: { version: BuilderVersion }) {
     }
   }
 
+  async function editPassage(passage: BuilderPassage | "new") {
+    if (!(await flushAutosaves())) {
+      setMessage("Fix invalid draft fields or retry the failed save before switching editors.");
+      return;
+    }
+    setEditingPassage(passage);
+  }
+
+  async function editGroup(passageId: string, group: QuestionGroupModel) {
+    if (!(await flushAutosaves())) {
+      setMessage("Fix invalid draft fields or retry the failed save before switching groups.");
+      return;
+    }
+    setEditingGroup({ passageId, group });
+  }
+
   if (!reading) {
     return (
-      <fieldset disabled={deleting} className="contents">
+      <fieldset disabled={deleting || transitioning} className="contents">
         <section aria-busy={deleting} className="reading-empty">
           <div className="empty-state-icon"><ReadingIcon className="size-6" /></div>
           <h2>Build the Reading module</h2>
@@ -86,7 +106,7 @@ export function ReadingBuilder({ version }: { version: BuilderVersion }) {
   }
 
   return (
-    <fieldset disabled={deleting} className="contents">
+    <fieldset disabled={deleting || transitioning} className="contents">
       <section aria-busy={deleting} className="reading-builder">
         <div className="section-header reading-builder-header">
           <div>
@@ -94,7 +114,7 @@ export function ReadingBuilder({ version }: { version: BuilderVersion }) {
             <h2>Reading Builder</h2>
             <p>Build passage blocks, arrange question groups, and keep answer keys next to each question.</p>
           </div>
-          <div className="flex flex-wrap gap-2"><AutosaveLink href={builderPreviewPath(version.test_id, version.id, "reading")} className="btn btn-secondary">Preview Reading</AutosaveLink><button onClick={() => setEditingPassage("new")} className="btn btn-primary"><PlusIcon className="size-4" /> Add passage</button><button onClick={() => setConfirmingModuleDelete(true)} className="btn btn-danger-ghost">Delete module</button></div>
+          <div className="flex flex-wrap gap-2"><AutosaveLink href={builderPreviewPath(version.test_id, version.id, "reading")} className="btn btn-secondary">Preview Reading</AutosaveLink><button onClick={() => void editPassage("new")} className="btn btn-primary"><PlusIcon className="size-4" /> Add passage</button><button onClick={() => setConfirmingModuleDelete(true)} className="btn btn-danger-ghost">Delete module</button></div>
         </div>
 
         {duplicateQuestionNumbers.length ? <p role="alert" className="notice notice-error mt-4"><AlertIcon className="mt-0.5 size-4 shrink-0" /> Duplicate displayed question numbers: {duplicateQuestionNumbers.join(", ")}. Renumber before publishing.</p> : null}
@@ -102,10 +122,11 @@ export function ReadingBuilder({ version }: { version: BuilderVersion }) {
 
         {editingPassage ? (
           <PassageEditor
+            key={editingPassage === "new" ? "new-reading-passage" : editingPassage.id}
             passage={editingPassage === "new" ? undefined : editingPassage}
             orderIndex={reading.passages.length}
             onCancel={() => setEditingPassage(null)}
-            onSave={(body) => run(() => editingPassage === "new" ? createPassage(version.id, body) : updatePassage(editingPassage.id, body))}
+            onSave={(body) => run(() => editingPassage === "new" ? createPassage(version.id, body) : updatePassage(editingPassage.id, body), editingPassage === "new" ? "passage:new" : undefined)}
             onAutosave={editingPassage === "new" ? undefined : (body) => updatePassage(editingPassage.id, body)}
           />
         ) : null}
@@ -124,19 +145,19 @@ export function ReadingBuilder({ version }: { version: BuilderVersion }) {
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <button onClick={() => setEditingPassage(passage)} className="btn btn-secondary">Edit passage</button>
+                  <button onClick={() => void editPassage(passage)} className="btn btn-secondary">Edit passage</button>
                   <button onClick={() => run(() => deletePassage(passage.id))} className="btn btn-danger-ghost">Delete</button>
                 </div>
               </div>
 
               <div className="question-group-list">
                 {passage.question_groups.map((group) => (
-                  <GroupSummary key={group.id} group={group} passageNumber={passage.order_index + 1} onMove={(offset) => moveGroup(passage.id, group.id, offset)} onEdit={() => setEditingGroup({ passageId: passage.id, group })} onDelete={() => run(() => deleteQuestionGroup(group.id))} />
+                  <GroupSummary key={group.id} group={group} passageNumber={passage.order_index + 1} onMove={(offset) => moveGroup(passage.id, group.id, offset)} onEdit={() => void editGroup(passage.id, group)} onDelete={() => run(() => deleteQuestionGroup(group.id))} />
                 ))}
                 {editingGroup?.passageId === passage.id ? (
-                  <QuestionGroupEditor initial={editingGroup.group} moduleType="READING" nextQuestionNumber={nextNumber} baseQuestionNumber={canonicalReadingGroupStart(reading.passages, editingGroup.group)} passageBlocks={passage.blocks} passageNumber={passage.order_index + 1} testVersionId={version.id} onCancel={() => setEditingGroup(null)} onSave={(body) => run(() => editingGroup.group.id ? updateQuestionGroup(editingGroup.group.id, body) : createQuestionGroup(passage.id, body))} onAutosave={editingGroup.group.id ? (body) => updateQuestionGroup(editingGroup.group.id!, body) : undefined} />
+                  <QuestionGroupEditor key={editingGroup.group.id ?? editingGroup.group.questions[0]?.id ?? "new-reading-group"} initial={editingGroup.group} moduleType="READING" nextQuestionNumber={nextNumber} baseQuestionNumber={canonicalReadingGroupStart(reading.passages, editingGroup.group)} passageBlocks={passage.blocks} passageNumber={passage.order_index + 1} testVersionId={version.id} onCancel={() => setEditingGroup(null)} onSave={(body) => run(() => editingGroup.group.id ? updateQuestionGroup(editingGroup.group.id, body) : createQuestionGroup(passage.id, body), editingGroup.group.id ? undefined : "question-group:new")} onAutosave={editingGroup.group.id ? (body) => updateQuestionGroup(editingGroup.group.id!, body) : undefined} />
                 ) : (
-                  <NewGroupButton nextNumber={nextNumber} orderIndex={nextGroupOrder} passageBlocks={passage.blocks} onCreate={(group) => setEditingGroup({ passageId: passage.id, group })} />
+                  <NewGroupButton nextNumber={nextNumber} orderIndex={nextGroupOrder} passageBlocks={passage.blocks} onCreate={(group) => void editGroup(passage.id, group)} />
                 )}
               </div>
             </article>
@@ -153,10 +174,11 @@ function PassageEditor({ passage, orderIndex, onSave, onAutosave, onCancel }: { 
   const [title, setTitle] = useState(passage?.title ?? "New reading passage");
   const [blocks, setBlocks] = useState<TextBlock[]>(passage?.blocks ?? [{ id: crypto.randomUUID(), type: "paragraph", label: "A", text: "Passage paragraph" }]);
   const [deletedReferences, setDeletedReferences] = useState<number[]>([]);
+  const [pending, setPending] = useState(false);
   const duplicateLabels = duplicateValues(blocks.filter((block) => block.type === "paragraph").map((block) => block.label ?? ""));
   const invalid = !title || !blocks.length || blocks.some((item) => !item.text || (item.type === "paragraph" && !item.label)) || duplicateLabels.length > 0;
   const payload = { title, order_index: passage?.order_index ?? orderIndex, blocks };
-  const { saveNow } = useBuilderAutosave({ resourceKey: `passage:${passage?.id ?? "new"}`, value: payload, save: (value) => (onAutosave ?? onSave)(value), valid: !invalid, enabled: Boolean(passage && onAutosave) });
+  const { markSaved, saveNow } = useBuilderAutosave({ resourceKey: `passage:${passage?.id ?? "new"}`, value: payload, save: (value) => (onAutosave ?? onSave)(value), valid: !invalid, enabled: Boolean(passage && onAutosave) });
 
   function updateBlock(id: string, patch: Partial<TextBlock>) {
     setBlocks(blocks.map((block) => block.id === id ? { ...block, ...patch } : block));
@@ -177,7 +199,7 @@ function PassageEditor({ passage, orderIndex, onSave, onAutosave, onCancel }: { 
   }
 
   return (
-    <div className="passage-editor">
+    <fieldset className="passage-editor" disabled={pending} aria-busy={pending}>
       <div className="section-header">
         <div><p className="page-eyebrow">{passage ? "Edit passage" : "New passage"}</p><h3>{passage ? passage.title : "Create a reading passage"}</h3></div>
       </div>
@@ -212,9 +234,9 @@ function PassageEditor({ passage, orderIndex, onSave, onAutosave, onCancel }: { 
           <button type="button" onClick={() => setBlocks([...blocks, { id: crypto.randomUUID(), type: "paragraph", label: nextParagraphLabel(blocks), text: "New paragraph" }])} className="btn btn-secondary"><PlusIcon className="size-4" /> Add paragraph</button>
           <button type="button" onClick={() => setBlocks([...blocks, { id: crypto.randomUUID(), type: "heading", label: null, text: "New subheading" }])} className="btn btn-secondary"><PlusIcon className="size-4" /> Add subheading</button>
         </div>
-        <div className="flex gap-2"><button type="button" onClick={() => { if (passage) void saveNow().then((saved) => { if (saved) onCancel(); }); else onCancel(); }} className="btn btn-ghost">{passage ? "Close" : "Cancel"}</button><button type="button" disabled={invalid} onClick={() => void (passage ? saveNow() : onSave(payload))} className="btn btn-primary">{passage ? "Save now" : "Create passage"}</button></div>
+        <div className="flex gap-2"><button type="button" onClick={() => { if (passage) void saveNow().then((saved) => { if (saved) onCancel(); }); else onCancel(); }} className="btn btn-ghost">{passage ? "Close" : "Cancel"}</button><button type="button" disabled={invalid || pending} onClick={async () => { setPending(true); try { if (passage) await saveNow(); else { await onSave(payload); markSaved(); } } finally { setPending(false); } }} className="btn btn-primary">{pending ? "Saving…" : passage ? "Save now" : "Create passage"}</button></div>
       </div>
-    </div>
+    </fieldset>
   );
 }
 

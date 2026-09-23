@@ -28,7 +28,7 @@ import { QuestionGroupEditor } from "./question-group-editor";
 
 export function ListeningBuilder({ version }: { version: BuilderVersion }) {
   const router = useRouter();
-  const { deleting, runMutation } = useBuilderLifecycle();
+  const { deleting, transitioning, flushAutosaves, runMutation } = useBuilderLifecycle();
   const listening = version.modules.find((item) => item.module_type === "LISTENING");
   const parts = useMemo(() => [...(listening?.listening_parts ?? [])].sort((a, b) => a.order_index - b.order_index), [listening]);
   const [partIndex, setPartIndex] = useState(0);
@@ -41,9 +41,13 @@ export function ListeningBuilder({ version }: { version: BuilderVersion }) {
   const nextNumber = Math.max(0, ...parts.flatMap((item) => item.question_groups.flatMap((group) => group.questions.map((question) => question.number)))) + 1;
   const nextOrder = Math.max(-1, ...parts.flatMap((item) => item.question_groups.map((group) => group.order_index))) + 1;
 
-  async function run(action: () => Promise<unknown>) {
+  async function run(action: () => Promise<unknown>, excludeAutosaveKey?: string) {
     setMessage(null);
     try {
+      if (!(await flushAutosaves(excludeAutosaveKey))) {
+        setMessage("Fix invalid draft fields or retry the failed save before continuing.");
+        return;
+      }
       await runMutation(action);
       setEditing(null);
       router.refresh();
@@ -75,18 +79,35 @@ export function ListeningBuilder({ version }: { version: BuilderVersion }) {
 
   if (!listening || parts.length < 4) {
     return (
-      <section className="reading-empty listening-empty">
+      <fieldset disabled={deleting || transitioning} className="contents"><section className="reading-empty listening-empty">
         <div className="listening-orb" />
         <h2>{listening ? "Complete the four-section structure" : "Build the Listening module"}</h2>
         <p>Create stable Section 1–4 records. Shared audio is optional and can be attached later.</p>
         <button disabled={deleting} onClick={initialize} className="btn btn-listening mt-5"><PlusIcon className="size-4" /> {listening ? "Add missing sections" : "Create Listening module"}</button>
         {message ? <p className="notice notice-error mt-4">{message}</p> : null}
-      </section>
+      </section></fieldset>
     );
   }
 
   function createGroup() {
     setEditing({ ...questionRegistry[type].createDefault(nextNumber, { moduleType: "LISTENING" }), order_index: nextOrder });
+  }
+
+  async function switchPart(index: number) {
+    if (!(await flushAutosaves())) {
+      setMessage("Fix invalid draft fields or retry the failed save before switching sections.");
+      return;
+    }
+    setPartIndex(index);
+    setEditing(null);
+  }
+
+  async function editGroup(group: QuestionGroupModel) {
+    if (!(await flushAutosaves())) {
+      setMessage("Fix invalid draft fields or retry the failed save before switching groups.");
+      return;
+    }
+    setEditing(group);
   }
 
   function moveGroup(groupId: string, offset: number) {
@@ -101,7 +122,7 @@ export function ListeningBuilder({ version }: { version: BuilderVersion }) {
   }
 
   return (
-    <fieldset disabled={deleting} className="contents">
+    <fieldset disabled={deleting || transitioning} className="contents">
       <section className="listening-builder">
         <div className="section-header">
           <div><p className="page-eyebrow listening-eyebrow">Listening module</p><h2>Listening Builder</h2><p>Four stable sections, globally numbered questions, and one optional shared recording.</p></div>
@@ -109,7 +130,7 @@ export function ListeningBuilder({ version }: { version: BuilderVersion }) {
         </div>
 
         <div className="listening-part-tabs" role="tablist">
-          {parts.map((item, index) => <button key={item.id} role="tab" aria-selected={index === partIndex} onClick={() => { setPartIndex(index); setEditing(null); }} className={index === partIndex ? "active" : ""}><b>Section {item.order_index + 1}</b><span>{item.question_groups.flatMap((group) => group.questions).length} questions</span></button>)}
+          {parts.map((item, index) => <button key={item.id} role="tab" aria-selected={index === partIndex} onClick={() => void switchPart(index)} className={index === partIndex ? "active" : ""}><b>Section {item.order_index + 1}</b><span>{item.question_groups.flatMap((group) => group.questions).length} questions</span></button>)}
         </div>
 
         {message ? <p className="notice notice-error mt-4">{message}</p> : null}
@@ -127,11 +148,11 @@ export function ListeningBuilder({ version }: { version: BuilderVersion }) {
             <div className="question-group-list mt-5">
               {part.question_groups.map((group) => {
                 const numbers = group.questions.map((item) => item.number);
-                return <div key={group.id} className="question-group-card listening-group-card"><span className="question-range">{numbers.length ? `Q${Math.min(...numbers)}–${Math.max(...numbers)}` : "—"}</span><div className="min-w-0 flex-1"><p>{questionRegistry[group.question_type].label}</p><span>{resolveQuestionGroupInstruction(group).intro}</span></div><div className="group-actions"><button className="icon-button" onClick={() => moveGroup(group.id, -1)}>↑</button><button className="icon-button" onClick={() => moveGroup(group.id, 1)}>↓</button><button className="btn btn-secondary" onClick={() => setEditing(group)}>Edit</button><button className="btn btn-danger-ghost" onClick={() => run(() => deleteQuestionGroup(group.id))}>Delete</button></div></div>;
+                return <div key={group.id} className="question-group-card listening-group-card"><span className="question-range">{numbers.length ? `Q${Math.min(...numbers)}–${Math.max(...numbers)}` : "—"}</span><div className="min-w-0 flex-1"><p>{questionRegistry[group.question_type].label}</p><span>{resolveQuestionGroupInstruction(group).intro}</span></div><div className="group-actions"><button className="icon-button" onClick={() => moveGroup(group.id, -1)}>↑</button><button className="icon-button" onClick={() => moveGroup(group.id, 1)}>↓</button><button className="btn btn-secondary" onClick={() => void editGroup(group)}>Edit</button><button className="btn btn-danger-ghost" onClick={() => run(() => deleteQuestionGroup(group.id))}>Delete</button></div></div>;
               })}
               {editing ? (
                 <div>
-                  <QuestionGroupEditor initial={editing} moduleType="LISTENING" nextQuestionNumber={nextNumber} baseQuestionNumber={canonicalListeningGroupStart(parts, editing)} passageBlocks={[]} testVersionId={version.id} onCancel={() => setEditing(null)} onSave={(body) => run(() => editing.id ? updateListeningQuestionGroup(editing.id, body) : createListeningQuestionGroup(part.id, body))} onAutosave={editing.id ? (body) => updateListeningQuestionGroup(editing.id!, body) : undefined} />
+                  <QuestionGroupEditor key={editing.id ?? editing.questions[0]?.id ?? "new-listening-group"} initial={editing} moduleType="LISTENING" nextQuestionNumber={nextNumber} baseQuestionNumber={canonicalListeningGroupStart(parts, editing)} passageBlocks={[]} testVersionId={version.id} onCancel={() => setEditing(null)} onSave={(body) => run(() => editing.id ? updateListeningQuestionGroup(editing.id, body) : createListeningQuestionGroup(part.id, body), editing.id ? undefined : "question-group:new")} onAutosave={editing.id ? (body) => updateListeningQuestionGroup(editing.id!, body) : undefined} />
                 </div>
               ) : (
                 <div className="new-group-row"><label className="field-label flex-1">Listening template<select className="select-field" value={type} onChange={(event) => setType(event.target.value as QuestionType)}>{listeningQuestionTypeOptions.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label><button className="btn btn-listening" onClick={createGroup}><PlusIcon className="size-4" /> Add question group</button></div>

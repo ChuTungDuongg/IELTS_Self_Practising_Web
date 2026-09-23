@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { Option, PassageBlock, QuestionGroupModel, QuestionModel, TextCompletionLayout } from "./types";
 import { assetContentUrl } from "@/lib/api/assets";
 import { normalizeTextCompletionOrder, TextCompletionCanvas } from "./text-completion-canvas";
+import { TrashIcon } from "@/components/ui/icons";
 
 /* eslint-disable @next/next/no-img-element -- builder previews preserve uploaded image aspect ratios */
 
@@ -12,6 +13,7 @@ export type EditorProps = {
   onChange: (group: QuestionGroupModel) => void;
   passageBlocks?: PassageBlock[];
   baseQuestionNumber?: number;
+  moduleType?: "READING" | "LISTENING";
 };
 
 function updateQuestion(group: QuestionGroupModel, index: number, patch: Partial<QuestionModel>): QuestionGroupModel {
@@ -81,21 +83,33 @@ function QuestionFrame({ group, index, onChange, children }: EditorProps & { ind
 
 export function MultipleChoiceEditor(props: EditorProps) {
   const { group, onChange } = props;
+  const canRemoveOptions = props.moduleType === "LISTENING";
   return (
     <div className="space-y-4">
       {group.questions.map((question, index) => {
         const options = question.config.options as Option[];
         const accepted = singleOptionValue(question);
-        const setOptions = (next: Option[]) => onChange(updateQuestion(group, index, { config: { options: next } }));
+        const setOptions = (next: Option[]) => onChange(updateQuestion(group, index, { config: { ...question.config, options: next } }));
+        const removeOption = (optionId: string) => {
+          if (options.length <= 2) return;
+          const next = options
+            .filter((option) => option.id !== optionId)
+            .map((option, nextIndex) => ({ ...option, label: String.fromCharCode(65 + nextIndex) }));
+          onChange(updateQuestion(group, index, {
+            config: { ...question.config, options: next },
+            answer_key: accepted === optionId ? singleOptionKey("") : question.answer_key,
+          }));
+        };
         return (
           <QuestionFrame key={question.id} {...props} index={index}>
             <div className="option-editor-list">
               <p className="answer-key-label">Select the correct answer</p>
               {options.map((option, optionIndex) => (
-                <div key={option.id} className={`option-editor-row ${accepted === option.id ? "option-editor-correct" : ""}`}>
+                <div key={option.id} className={`option-editor-row ${canRemoveOptions ? "option-editor-row-removable" : ""} ${accepted === option.id ? "option-editor-correct" : ""}`}>
                   <input type="radio" name={`key-${question.id}`} checked={accepted === option.id} onChange={() => onChange(updateQuestion(group, index, { answer_key: singleOptionKey(option.id) }))} aria-label={`Mark ${option.label} correct`} />
                   <input value={option.label} onChange={(event) => setOptions(options.map((item) => item.id === option.id ? { ...item, label: event.target.value } : item))} aria-label={`Option ${optionIndex + 1} label`} className="field option-label-field" />
                   <input value={option.text} onChange={(event) => setOptions(options.map((item) => item.id === option.id ? { ...item, text: event.target.value } : item))} aria-label={`Option ${optionIndex + 1} text`} className="field" />
+                  {canRemoveOptions ? <button type="button" className="icon-button option-remove-button" disabled={options.length <= 2} aria-label={`Remove option ${option.label}`} onClick={() => removeOption(option.id)}><TrashIcon className="size-4" /></button> : null}
                 </div>
               ))}
               <button type="button" className="btn btn-secondary mt-1" onClick={() => setOptions([...options, { id: crypto.randomUUID(), label: String.fromCharCode(65 + options.length), text: "New option" }])}>+ Add option</button>
