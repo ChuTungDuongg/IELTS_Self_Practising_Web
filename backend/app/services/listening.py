@@ -6,7 +6,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.exceptions import AppError
 from app.models import Asset, ListeningPart, Question, QuestionGroup, TestModule, TestVersion
-from app.models.enums import AssetType, ModuleType, VersionStatus
+from app.models.enums import AssetType, ModuleType
 from app.schemas.content import (
     BuilderListeningPart,
     BuilderModule,
@@ -238,16 +238,16 @@ class ListeningService:
         return ReadingService._present_group(group, [], module_type=ModuleType.LISTENING)
 
     async def _draft_module_for_version(self, version_id: uuid.UUID) -> TestModule:
+        from app.services.tests import TestService
+
+        await TestService(self.session).ensure_draft(version_id)
         version = await self.session.scalar(
             select(TestVersion)
             .where(TestVersion.id == version_id)
             .options(selectinload(TestVersion.modules).selectinload(TestModule.listening_parts))
-            .with_for_update()
+            .execution_options(populate_existing=True)
         )
-        if version is None:
-            raise AppError("TEST_VERSION_NOT_FOUND", "The test version does not exist.", 404)
-        if version.status != VersionStatus.DRAFT:
-            raise AppError("TEST_VERSION_IMMUTABLE", "Published versions cannot be changed.", 409)
+        assert version is not None
         module = next(
             (item for item in version.modules if item.module_type == ModuleType.LISTENING), None
         )
@@ -256,31 +256,59 @@ class ListeningService:
         return module
 
     async def _draft_module(self, module_id: uuid.UUID) -> TestModule:
+        version_id = await self.session.scalar(
+            select(TestModule.test_version_id).where(
+                TestModule.id == module_id, TestModule.module_type == ModuleType.LISTENING
+            )
+        )
+        if version_id is None:
+            raise AppError(
+                "LISTENING_MODULE_NOT_FOUND", "The Listening module does not exist.", 404
+            )
+        from app.services.tests import TestService
+
+        await TestService(self.session).ensure_draft(version_id)
         module = await self.session.scalar(
             select(TestModule)
             .where(TestModule.id == module_id, TestModule.module_type == ModuleType.LISTENING)
             .options(selectinload(TestModule.test_version))
             .with_for_update()
         )
-        if module is None:
+        if module is None or module.test_version_id != version_id:
             raise AppError(
                 "LISTENING_MODULE_NOT_FOUND", "The Listening module does not exist.", 404
             )
-        if module.test_version.status != VersionStatus.DRAFT:
-            raise AppError("TEST_VERSION_IMMUTABLE", "Published versions cannot be changed.", 409)
         return module
 
     async def _draft_part(self, part_id: uuid.UUID) -> ListeningPart:
+        version_id = await self.session.scalar(
+            select(TestModule.test_version_id)
+            .join(ListeningPart, ListeningPart.module_id == TestModule.id)
+            .where(ListeningPart.id == part_id)
+        )
+        if version_id is None:
+            raise AppError("LISTENING_PART_NOT_FOUND", "The Listening part does not exist.", 404)
+        from app.services.tests import TestService
+
+        await TestService(self.session).ensure_draft(version_id)
         part = await self.session.scalar(
             self._part_query().where(ListeningPart.id == part_id).with_for_update()
         )
-        if part is None:
+        if part is None or part.module.test_version_id != version_id:
             raise AppError("LISTENING_PART_NOT_FOUND", "The Listening part does not exist.", 404)
-        if part.module.test_version.status != VersionStatus.DRAFT:
-            raise AppError("TEST_VERSION_IMMUTABLE", "Published versions cannot be changed.", 409)
         return part
 
     async def _draft_group(self, group_id: uuid.UUID) -> QuestionGroup:
+        version_id = await self.session.scalar(
+            select(TestModule.test_version_id)
+            .join(QuestionGroup, QuestionGroup.module_id == TestModule.id)
+            .where(QuestionGroup.id == group_id, QuestionGroup.listening_part_id.is_not(None))
+        )
+        if version_id is None:
+            raise AppError("QUESTION_GROUP_NOT_FOUND", "The question group does not exist.", 404)
+        from app.services.tests import TestService
+
+        await TestService(self.session).ensure_draft(version_id)
         group = await self.session.scalar(
             select(QuestionGroup)
             .where(QuestionGroup.id == group_id)
@@ -291,10 +319,12 @@ class ListeningService:
             )
             .with_for_update()
         )
-        if group is None or group.listening_part_id is None:
+        if (
+            group is None
+            or group.listening_part_id is None
+            or group.module.test_version_id != version_id
+        ):
             raise AppError("QUESTION_GROUP_NOT_FOUND", "The question group does not exist.", 404)
-        if group.module.test_version.status != VersionStatus.DRAFT:
-            raise AppError("TEST_VERSION_IMMUTABLE", "Published versions cannot be changed.", 409)
         return group
 
     async def _validate_image_asset(self, version_id: uuid.UUID, body: QuestionGroupWrite) -> None:

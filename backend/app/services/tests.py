@@ -154,6 +154,12 @@ class TestService:
     async def delete_module(self, module_id: uuid.UUID) -> None:
         deleted_paths: list[str] = []
         async with self.session.begin():
+            version_id = await self.session.scalar(
+                select(TestModule.test_version_id).where(TestModule.id == module_id)
+            )
+            if version_id is None:
+                raise AppError("TEST_MODULE_NOT_FOUND", "The test module does not exist.", 404)
+            await self.ensure_draft(version_id)
             module = await self.session.scalar(
                 select(TestModule)
                 .where(TestModule.id == module_id)
@@ -164,14 +170,8 @@ class TestService:
                 )
                 .with_for_update()
             )
-            if module is None:
+            if module is None or module.test_version_id != version_id:
                 raise AppError("TEST_MODULE_NOT_FOUND", "The test module does not exist.", 404)
-            if module.test_version.status != VersionStatus.DRAFT:
-                raise AppError(
-                    "TEST_VERSION_IMMUTABLE",
-                    "Only Draft modules can be deleted.",
-                    409,
-                )
             asset_ids = {
                 asset_id
                 for asset_id in [
@@ -1186,7 +1186,10 @@ class TestService:
             if test.archived_at is not None:
                 raise AppError("TEST_ARCHIVED", "Restore this test before publishing.", 409)
             version = await self.session.scalar(
-                version_detail_query().where(TestVersion.id == version_id).with_for_update()
+                version_detail_query()
+                .where(TestVersion.id == version_id)
+                .execution_options(populate_existing=True)
+                .with_for_update()
             )
             if version is None:
                 raise AppError(
@@ -1256,7 +1259,10 @@ class TestService:
 
     async def ensure_draft(self, version_id: uuid.UUID) -> TestVersion:
         version = await self.session.scalar(
-            select(TestVersion).where(TestVersion.id == version_id).with_for_update()
+            select(TestVersion)
+            .where(TestVersion.id == version_id)
+            .execution_options(populate_existing=True)
+            .with_for_update()
         )
         if version is None:
             raise AppError(

@@ -6,7 +6,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.exceptions import AppError
 from app.models import Asset, TestModule, WritingTask
-from app.models.enums import AssetType, ModuleType, VersionStatus
+from app.models.enums import AssetType, ModuleType
 from app.schemas.content import BuilderWritingTask, WritingTaskWrite
 from app.services.reading import ReadingService
 from app.storage import LocalAssetStorage
@@ -21,16 +21,31 @@ class WritingService:
         copied_path: str | None = None
         try:
             async with self.session.begin():
-                task = await self.session.scalar(
-                    self._task_query().where(WritingTask.id == task_id).with_for_update()
+                version_id = await self.session.scalar(
+                    select(TestModule.test_version_id)
+                    .join(WritingTask, WritingTask.module_id == TestModule.id)
+                    .where(
+                        WritingTask.id == task_id,
+                        TestModule.module_type == ModuleType.WRITING,
+                    )
                 )
-                if task is None or task.module.module_type != ModuleType.WRITING:
+                if version_id is None:
                     raise AppError(
                         "WRITING_TASK_NOT_FOUND", "The Writing task does not exist.", 404
                     )
-                if task.module.test_version.status != VersionStatus.DRAFT:
+                from app.services.tests import TestService
+
+                await TestService(self.session).ensure_draft(version_id)
+                task = await self.session.scalar(
+                    self._task_query().where(WritingTask.id == task_id).with_for_update()
+                )
+                if (
+                    task is None
+                    or task.module.module_type != ModuleType.WRITING
+                    or task.module.test_version_id != version_id
+                ):
                     raise AppError(
-                        "TEST_VERSION_IMMUTABLE", "Published versions cannot be changed.", 409
+                        "WRITING_TASK_NOT_FOUND", "The Writing task does not exist.", 404
                     )
                 if task.task_number == 2 and body.image_asset_id is not None:
                     raise AppError(

@@ -808,6 +808,7 @@ class AttemptService:
         session_rows = list(
             await self.session.scalars(
                 select(TestSession)
+                .where(TestSession.user_id == self.user_id)
                 .options(
                     selectinload(TestSession.attempts),
                     selectinload(TestSession.test_version).selectinload(TestVersion.test),

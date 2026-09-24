@@ -281,6 +281,14 @@ class ReadingService:
 
     async def reorder_groups(self, module_id: uuid.UUID, body: QuestionGroupOrderWrite) -> None:
         async with self.session.begin():
+            version_id = await self.session.scalar(
+                select(TestModule.test_version_id).where(TestModule.id == module_id)
+            )
+            if version_id is None:
+                raise AppError("TEST_MODULE_NOT_FOUND", "The test module does not exist.", 404)
+            from app.services.tests import TestService
+
+            await TestService(self.session).ensure_draft(version_id)
             module = await self.session.scalar(
                 select(TestModule)
                 .where(TestModule.id == module_id)
@@ -290,12 +298,8 @@ class ReadingService:
                 )
                 .with_for_update()
             )
-            if module is None:
+            if module is None or module.test_version_id != version_id:
                 raise AppError("TEST_MODULE_NOT_FOUND", "The test module does not exist.", 404)
-            if module.test_version.status != VersionStatus.DRAFT:
-                raise AppError(
-                    "TEST_VERSION_IMMUTABLE", "Published versions cannot be changed.", 409
-                )
             groups = {group.id: group for group in module.question_groups}
             if set(body.group_ids) != set(groups):
                 raise AppError(
@@ -389,16 +393,34 @@ class ReadingService:
         return version
 
     async def _draft_passage(self, passage_id: uuid.UUID) -> ReadingPassage:
+        version_id = await self.session.scalar(
+            select(TestModule.test_version_id)
+            .join(ReadingPassage, ReadingPassage.module_id == TestModule.id)
+            .where(ReadingPassage.id == passage_id)
+        )
+        if version_id is None:
+            raise AppError("PASSAGE_NOT_FOUND", "The passage does not exist.", 404)
+        from app.services.tests import TestService
+
+        await TestService(self.session).ensure_draft(version_id)
         passage = await self.session.scalar(
             self._passage_query().where(ReadingPassage.id == passage_id).with_for_update()
         )
-        if passage is None:
+        if passage is None or passage.module.test_version_id != version_id:
             raise AppError("PASSAGE_NOT_FOUND", "The passage does not exist.", 404)
-        if passage.module.test_version.status != VersionStatus.DRAFT:
-            raise AppError("TEST_VERSION_IMMUTABLE", "Published versions cannot be changed.", 409)
         return passage
 
     async def _draft_group(self, group_id: uuid.UUID) -> QuestionGroup:
+        version_id = await self.session.scalar(
+            select(TestModule.test_version_id)
+            .join(QuestionGroup, QuestionGroup.module_id == TestModule.id)
+            .where(QuestionGroup.id == group_id)
+        )
+        if version_id is None:
+            raise AppError("QUESTION_GROUP_NOT_FOUND", "The question group does not exist.", 404)
+        from app.services.tests import TestService
+
+        await TestService(self.session).ensure_draft(version_id)
         group = await self.session.scalar(
             select(QuestionGroup)
             .where(QuestionGroup.id == group_id)
@@ -411,10 +433,8 @@ class ReadingService:
             )
             .with_for_update()
         )
-        if group is None:
+        if group is None or group.module.test_version_id != version_id:
             raise AppError("QUESTION_GROUP_NOT_FOUND", "The question group does not exist.", 404)
-        if group.module.test_version.status != VersionStatus.DRAFT:
-            raise AppError("TEST_VERSION_IMMUTABLE", "Published versions cannot be changed.", 409)
         return group
 
     @staticmethod

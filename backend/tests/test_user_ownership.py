@@ -71,7 +71,7 @@ async def test_attempt_history_analytics_and_session_access_are_user_scoped(
             role=UserRole.USER,
             is_active=True,
         )
-        test = IeltsTest(title="Ownership test")
+        test = IeltsTest(title="Owner's test")
         version = VersionRecord(
             version_number=1,
             status=VersionStatus.PUBLISHED,
@@ -81,7 +81,14 @@ async def test_attempt_history_analytics_and_session_access_are_user_scoped(
             IeltsModule(module_type=ModuleType.READING, title="Reading", order_index=0)
         )
         test.versions.append(version)
-        db_session.add_all((owner, other, test))
+        other_test = IeltsTest(title="Other user's test")
+        other_version = VersionRecord(
+            version_number=1,
+            status=VersionStatus.PUBLISHED,
+            published_at=datetime.now(UTC),
+        )
+        other_test.versions.append(other_version)
+        db_session.add_all((owner, other, test, other_test))
         await db_session.flush()
         owner_id = owner.id
         other_id = other.id
@@ -92,9 +99,17 @@ async def test_attempt_history_analytics_and_session_access_are_user_scoped(
             status=SessionStatus.IN_PROGRESS,
             started_at=datetime.now(UTC),
         )
-        db_session.add(test_session)
+        other_session = FullMockSession(
+            user_id=other.id,
+            test_version_id=other_version.id,
+            status=SessionStatus.COMPLETED,
+            started_at=datetime.now(UTC),
+            finished_at=datetime.now(UTC),
+        )
+        db_session.add_all((test_session, other_session))
         await db_session.flush()
         session_id = test_session.id
+        other_session_id = other_session.id
 
     owner_identity = User(
         id=owner_id,
@@ -124,6 +139,11 @@ async def test_attempt_history_analytics_and_session_access_are_user_scoped(
     owner_history = await client.get("/api/v1/history")
     assert owner_history.status_code == 200
     assert [item["attempt_id"] for item in owner_history.json()["items"]] == [attempt_id]
+    assert [item["session_id"] for item in owner_history.json()["sessions"]] == [str(session_id)]
+    assert owner_history.json()["sessions"][0]["test_title"] == "Owner's test"
+    assert owner_history.json()["sessions"][0]["status"] == "IN_PROGRESS"
+    assert str(other_session_id) not in str(owner_history.json())
+    assert "Other user's test" not in str(owner_history.json())
 
     app.dependency_overrides[get_current_user] = lambda: other_identity
     assert (await client.get(f"/api/v1/attempts/{attempt_id}")).status_code == 404
@@ -131,6 +151,13 @@ async def test_attempt_history_analytics_and_session_access_are_user_scoped(
     other_history = await client.get("/api/v1/history")
     assert other_history.status_code == 200
     assert other_history.json()["items"] == []
+    assert [item["session_id"] for item in other_history.json()["sessions"]] == [
+        str(other_session_id)
+    ]
+    assert other_history.json()["sessions"][0]["test_title"] == "Other user's test"
+    assert other_history.json()["sessions"][0]["status"] == "COMPLETED"
+    assert str(session_id) not in str(other_history.json())
+    assert "Owner's test" not in str(other_history.json())
     other_analytics = await client.get("/api/v1/analytics")
     assert other_analytics.status_code == 200
     assert other_analytics.json()["attempts"] == []
