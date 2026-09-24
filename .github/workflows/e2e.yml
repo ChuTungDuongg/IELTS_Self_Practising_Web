@@ -36,7 +36,7 @@ jobs:
       FRONTEND_ORIGIN: http://localhost:3000
       AUTH_COOKIE_SECURE: 'false'
       AUTH_COOKIE_SAMESITE: lax
-      STORAGE_ROOT: ${{ runner.temp }}/ielts-storage
+      STORAGE_ROOT: /tmp/ielts-storage
       NEXT_PUBLIC_API_BASE_URL: http://localhost:8000/api/v1
       E2E_ADMIN_EMAIL: e2e-admin@example.com
       E2E_ADMIN_PASSWORD: ci-only-fictional-golden-path-admin-password-2026

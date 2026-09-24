@@ -34,7 +34,7 @@ jobs:
       TEST_DATABASE_URL: postgresql+asyncpg://ielts:ielts@localhost:5432/ielts_test
       JWT_SECRET: ci-only-fictional-backend-test-jwt-secret-2026
       FRONTEND_ORIGIN: http://localhost:3000
-      STORAGE_ROOT: ${{ runner.temp }}/ielts-storage
+      STORAGE_ROOT: /tmp/ielts-storage
     defaults:
       run:
         working-directory: backend
