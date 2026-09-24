@@ -1,0 +1,116 @@
+name: Golden path E2E
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  golden-path:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: ielts_e2e
+          POSTGRES_USER: ielts
+          POSTGRES_PASSWORD: ielts
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ielts -d ielts_e2e"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql+asyncpg://ielts:ielts@localhost:5432/ielts_e2e
+      JWT_SECRET: ci-only-fictional-golden-path-jwt-secret-2026
+      FRONTEND_ORIGIN: http://localhost:3000
+      AUTH_COOKIE_SECURE: 'false'
+      AUTH_COOKIE_SAMESITE: lax
+      STORAGE_ROOT: ${{ runner.temp }}/ielts-storage
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:8000/api/v1
+      E2E_ADMIN_EMAIL: e2e-admin@example.com
+      E2E_ADMIN_PASSWORD: ci-only-fictional-golden-path-admin-password-2026
+      INITIAL_ADMIN_EMAIL: e2e-admin@example.com
+      INITIAL_ADMIN_PASSWORD: ci-only-fictional-golden-path-admin-password-2026
+      INITIAL_ADMIN_NAME: CI Golden Path Administrator
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.14'
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+          cache-suffix: backend-e2e
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install locked backend dependencies
+        working-directory: backend
+        run: uv sync --locked --group dev
+      - name: Upgrade fresh database
+        working-directory: backend
+        run: uv run alembic upgrade head
+      - name: Bootstrap fictional CI administrator
+        working-directory: backend
+        run: uv run python -m app.bootstrap_admin
+      - name: Start FastAPI
+        working-directory: backend
+        run: |
+          nohup uv run fastapi run app/main.py --host 0.0.0.0 --port 8000 > "$RUNNER_TEMP/backend.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/backend.pid"
+      - name: Wait for FastAPI health
+        run: |
+          for attempt in {1..30}; do
+            if curl --fail --silent --output /dev/null http://localhost:8000/api/v1/health; then
+              exit 0
+            fi
+            if ! kill -0 "$(cat "$RUNNER_TEMP/backend.pid")" 2>/dev/null; then
+              break
+            fi
+            sleep 2
+          done
+          echo "FastAPI did not become healthy. Backend log:"
+          cat "$RUNNER_TEMP/backend.log"
+          exit 1
+      - name: Install locked frontend dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Install Chromium and system dependencies
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+      - name: Run three golden-path browser specs
+        working-directory: frontend
+        run: |
+          npx playwright test \
+            tests/e2e/listening-workflow.spec.ts \
+            tests/e2e/writing-workflow.spec.ts \
+            tests/e2e/full-mock-workflow.spec.ts
+      - name: Redact authentication data from failure artifacts
+        if: failure()
+        id: redact
+        run: python .github/scripts/redact-e2e-artifacts.py
+      - name: Upload E2E diagnostics on failure
+        if: failure() && steps.redact.outcome == 'success'
+        uses: actions/upload-artifact@v7
+        with:
+          name: golden-path-e2e-failure
+          path: |
+            frontend/playwright-report/
+            frontend/test-results/
+            ${{ runner.temp }}/backend.log
+          if-no-files-found: ignore
+          retention-days: 7

@@ -1,0 +1,89 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: ielts_test
+          POSTGRES_USER: ielts
+          POSTGRES_PASSWORD: ielts
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ielts -d ielts_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql+asyncpg://ielts:ielts@localhost:5432/ielts_test
+      TEST_DATABASE_URL: postgresql+asyncpg://ielts:ielts@localhost:5432/ielts_test
+      JWT_SECRET: ci-only-fictional-backend-test-jwt-secret-2026
+      FRONTEND_ORIGIN: http://localhost:3000
+      STORAGE_ROOT: ${{ runner.temp }}/ielts-storage
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.14'
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+          cache-suffix: backend-ci
+      - name: Install locked backend dependencies
+        run: uv sync --locked --group dev
+      - name: Ruff lint
+        run: uv run ruff check .
+      - name: Ruff format
+        id: format
+        continue-on-error: true
+        run: uv run ruff format --check .
+      - name: Upgrade fresh database
+        run: uv run alembic upgrade head
+      - name: Verify one Alembic head
+        run: |
+          uv run python -c 'from alembic.config import Config; from alembic.script import ScriptDirectory; heads = ScriptDirectory.from_config(Config("alembic.ini")).get_heads(); print(heads); assert len(heads) == 1, f"Expected one Alembic head, got {heads}"'
+      - name: Backend tests
+        run: uv run pytest -q
+      - name: Enforce Ruff format result
+        if: always() && steps.format.outcome == 'failure'
+        run: exit 1
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install locked frontend dependencies
+        run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: ESLint
+        run: npm run lint
+      - name: Frontend unit tests
+        run: npm test
