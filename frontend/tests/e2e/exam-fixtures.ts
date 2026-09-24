@@ -78,7 +78,7 @@ export async function createPublishedExam(request: APIRequestContext, modules: M
           });
           await post(request, `/listening/parts/${part.id}/question-groups`, {
             question_type: "true_false_not_given", instruction: "Choose an answer to the fictional statement.",
-            config: {}, order_index: 0,
+            config: {}, order_index: index,
             questions: [{ id: randomUUID(), number: index + 1, prompt: `Fictional sound statement ${index + 1}.`,
               config: {}, answer_key: { kind: "SINGLE_OPTION", value: "TRUE" }, order_index: 0 }],
           });
