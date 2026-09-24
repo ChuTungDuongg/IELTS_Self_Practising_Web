@@ -54,11 +54,11 @@ export function WritingRunner({ initial }: { initial: ExamPayload }) {
     await flushForSubmission();
     await Promise.allSettled([...telemetryInFlight.current]);
   }, [flushForSubmission]);
-  const { submit: finish, submitting, finalizing, submitError, isFinalizing } = useExamSubmit({
+  const { submit: finish, submitting, finalizing, submitError, isFinalizing, isSubmitting } = useExamSubmit({
     attemptId, initialAttempt: initial.attempt, flush: flushBeforeSubmit, runMutation, accept, isStopped,
   });
   const task = tasks[taskIndex];
-  useEffect(() => { if (task && !stopped.current && !isFinalizing()) void trackTelemetry(runMutation(() => recordNavigation(attemptId, "WRITING_TASK", task.id))).catch((error) => { if (!(error instanceof AttemptStoppedError)) setActivityError("Your activity could not be recorded. Please try again."); }); }, [attemptId, isFinalizing, runMutation, stopped, task, trackTelemetry]);
+  useEffect(() => { if (task && !stopped.current && !isSubmitting()) void trackTelemetry(runMutation(() => recordNavigation(attemptId, "WRITING_TASK", task.id))).catch((error) => { if (!(error instanceof AttemptStoppedError)) setActivityError("Your activity could not be recorded. Please try again."); }); }, [attemptId, isSubmitting, runMutation, stopped, task, trackTelemetry]);
 
   const saveTask = useCallback(async (taskId: string) => {
     await autosave.saveNow(taskId);
@@ -85,7 +85,7 @@ export function WritingRunner({ initial }: { initial: ExamPayload }) {
   useEffect(() => {
     lastActivity.current = Date.now();
     const meaningful = () => {
-      if (stopped.current || isFinalizing()) return;
+      if (stopped.current || isSubmitting()) return;
       const now = Date.now();
       lastActivity.current = now;
       if (now - lastHeartbeat.current >= 20_000) {
@@ -96,7 +96,7 @@ export function WritingRunner({ initial }: { initial: ExamPayload }) {
     const events: Array<keyof WindowEventMap> = ["keydown", "click", "touchstart", "scroll"];
     events.forEach((event) => window.addEventListener(event, meaningful, { passive: true }));
     return () => events.forEach((event) => window.removeEventListener(event, meaningful));
-  }, [attemptId, isFinalizing, runMutation, stopped, trackTelemetry]);
+  }, [attemptId, isSubmitting, runMutation, stopped, trackTelemetry]);
 
   const seconds = initial.attempt.timer_mode === "COUNTDOWN" && initial.attempt.deadline_at
     ? remainingSeconds(initial.attempt.deadline_at, offset, clock)

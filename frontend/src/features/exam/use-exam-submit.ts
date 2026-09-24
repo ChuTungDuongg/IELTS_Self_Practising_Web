@@ -29,14 +29,14 @@ export function useExamSubmit({
   const submit = useCallback(async () => {
     if (pending.current || isStopped()) return;
     pending.current = true;
-    finalizingRef.current = true;
     setSubmitting(true);
-    setFinalizing(true);
     setSubmitError(null);
     let flushed = false;
     try {
       await flush();
       flushed = true;
+      finalizingRef.current = true;
+      setFinalizing(true);
       await runMutation(() => submitAttempt(attemptId));
       accept({ ...initialAttempt, status: "SUBMITTED" });
     } catch (error) {
@@ -58,5 +58,6 @@ export function useExamSubmit({
   }, [accept, attemptId, flush, initialAttempt, isStopped, runMutation]);
 
   const isFinalizing = useCallback(() => finalizingRef.current, []);
-  return { submit, submitting, finalizing, submitError, isFinalizing };
+  const isSubmitting = useCallback(() => pending.current, []);
+  return { submit, submitting, finalizing, submitError, isFinalizing, isSubmitting };
 }
