@@ -1,10 +1,10 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ListeningRunner } from "@/features/listening/listening-runner";
 import { getAttempt, recordNavigation, saveAnswer } from "@/lib/api/attempts";
 import { ApiError } from "@/lib/api/client";
 import type { ExamPayload } from "@/lib/api/exam";
-import { saveFlag } from "@/lib/api/exam";
+import { saveFlag, submitAttempt } from "@/lib/api/exam";
 
 const push = vi.fn();
 
@@ -27,6 +27,12 @@ const q3 = "11111111-1111-4111-8111-111111111103";
 const q15 = "11111111-1111-4111-8111-111111111115";
 const q25 = "11111111-1111-4111-8111-111111111125";
 const q40 = "11111111-1111-4111-8111-111111111140";
+
+function deferred() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((done) => { resolve = done; });
+  return { promise, resolve };
+}
 
 function group(id: string, orderIndex: number, questions: Array<{ id: string; number: number; value: unknown; flagged: boolean }>) {
   return {
@@ -138,6 +144,8 @@ describe("Listening footer navigation", () => {
     }
     vi.stubGlobal("IntersectionObserver", MockIntersectionObserver);
   });
+
+  afterEach(() => vi.useRealTimers());
 
   it("renders canonical global navigation in the footer and no in-content flag row", () => {
     const view = render(<ListeningRunner initial={payload()} />);
@@ -266,6 +274,44 @@ describe("Listening footer navigation", () => {
 
     expect(view.container.querySelector(`[data-nav-question-id="${q2}"]`)).toHaveClass("answered", "current");
     await waitFor(() => expect(saveAnswer).toHaveBeenCalledWith(attemptId, q2, "FALSE"), { timeout: 1200 });
+  });
+
+  it("keeps an edited answer across navigation and waits for its latest save before Submit", async () => {
+    vi.useFakeTimers();
+    const first = deferred();
+    const latest = deferred();
+    vi.mocked(saveAnswer).mockReturnValueOnce(first.promise).mockReturnValueOnce(latest.promise);
+    const view = render(<ListeningRunner initial={payload()} />);
+    const target = view.container.querySelector(`[data-question-id="${q2}"]`) as HTMLElement;
+    fireEvent.click(within(target).getByRole("radio", { name: "FALSE" }));
+    await act(async () => { vi.advanceTimersByTime(400); });
+    fireEvent.click(within(target).getByRole("radio", { name: "TRUE" }));
+    fireEvent.click(screen.getByRole("button", { name: "Section 2" }));
+    expect(screen.getByText("Section Two")).toBeInTheDocument();
+    expect(screen.queryByText("Saved")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Submit answers" }));
+    expect(submitAttempt).not.toHaveBeenCalled();
+    first.resolve();
+    await act(async () => { await Promise.resolve(); });
+    expect(saveAnswer).toHaveBeenLastCalledWith(attemptId, q2, "TRUE");
+    expect(submitAttempt).not.toHaveBeenCalled();
+    latest.resolve();
+    await act(async () => { await Promise.resolve(); });
+    expect(submitAttempt).toHaveBeenCalledTimes(1);
+  });
+
+  it("blocks Submit on a failed latest answer and offers Retry", async () => {
+    vi.mocked(saveAnswer).mockRejectedValueOnce(new ApiError("NETWORK_ERROR", "offline", 0));
+    const view = render(<ListeningRunner initial={payload()} />);
+    const target = view.container.querySelector(`[data-question-id="${q2}"]`) as HTMLElement;
+    fireEvent.click(within(target).getByRole("radio", { name: "FALSE" }));
+    expect(screen.getByText("Unsaved")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Submit answers" }));
+    await waitFor(() => expect(screen.getByText("Save failed")).toBeInTheDocument());
+    expect(submitAttempt).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Retry save" }));
+    await waitFor(() => expect(screen.getByText("Saved")).toBeInTheDocument());
+    expect(saveAnswer).toHaveBeenLastCalledWith(attemptId, q2, "FALSE");
   });
 
   it("toggles a footer flag without navigating", async () => {

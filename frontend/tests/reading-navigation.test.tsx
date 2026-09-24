@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ReadingRunner } from "@/features/reading/reading-runner";
 import { getAttempt, recordActivity, recordNavigation, saveAnswer } from "@/lib/api/attempts";
 import { ApiError } from "@/lib/api/client";
@@ -21,6 +21,12 @@ vi.mock("@/lib/api/exam", async (importOriginal) => {
 const q1 = "11111111-1111-4111-8111-111111111101";
 const q2 = "11111111-1111-4111-8111-111111111102";
 const q19 = "11111111-1111-4111-8111-111111111119";
+
+function deferred() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((done) => { resolve = done; });
+  return { promise, resolve };
+}
 
 function group(id: string, orderIndex: number, questions: Array<{ id: string; number: number; value: unknown; flagged: boolean }>) {
   return {
@@ -90,6 +96,8 @@ describe("Reading footer navigation", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(getAttempt).mockReset();
+    vi.mocked(submitAttempt).mockReset();
     vi.mocked(saveAnswer).mockResolvedValue(undefined);
     vi.mocked(recordNavigation).mockResolvedValue(undefined);
     scrolls.length = 0;
@@ -117,6 +125,8 @@ describe("Reading footer navigation", () => {
     }
     vi.stubGlobal("IntersectionObserver", MockIntersectionObserver);
   });
+
+  afterEach(() => vi.useRealTimers());
 
   it("renders canonical passage and question rows without per-group flag controls", () => {
     const view = render(<ReadingRunner initial={payload()} />);
@@ -244,6 +254,113 @@ describe("Reading footer navigation", () => {
     fireEvent.click(within(question as HTMLElement).getByRole("radio", { name: "FALSE" }));
 
     await waitFor(() => expect(saveAnswer).toHaveBeenCalledWith("22222222-2222-4222-8222-222222222222", q1, "FALSE"), { timeout: 1200 });
+  });
+
+  it("keeps the newest answer unsaved until acknowledged and submits only after both writes", async () => {
+    vi.useFakeTimers();
+    const first = deferred();
+    const latest = deferred();
+    vi.mocked(saveAnswer).mockReturnValueOnce(first.promise).mockReturnValueOnce(latest.promise);
+    const view = render(<ReadingRunner initial={payload()} />);
+    const question = view.container.querySelector(`[data-question-id="${q1}"]`) as HTMLElement;
+    fireEvent.click(within(question).getByRole("radio", { name: "FALSE" }));
+    expect(screen.getByText("Unsaved")).toBeInTheDocument();
+    await act(async () => { vi.advanceTimersByTime(400); });
+    expect(saveAnswer).toHaveBeenCalledWith(payload().attempt.attempt_id, q1, "FALSE");
+    fireEvent.click(screen.getByRole("button", { name: "Submit answers" }));
+    expect(screen.getByRole("button", { name: "Submitting…" })).toBeDisabled();
+    fireEvent.click(within(question).getByRole("radio", { name: "TRUE" }));
+    expect(within(question).getByRole("radio", { name: "TRUE" })).toBeChecked();
+    expect(submitAttempt).not.toHaveBeenCalled();
+    first.resolve();
+    await act(async () => { await Promise.resolve(); });
+    expect(saveAnswer).toHaveBeenLastCalledWith(payload().attempt.attempt_id, q1, "TRUE");
+    expect(screen.queryByText("Saved")).not.toBeInTheDocument();
+    expect(submitAttempt).not.toHaveBeenCalled();
+    latest.resolve();
+    await act(async () => { await Promise.resolve(); });
+    expect(submitAttempt).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a failed answer retryable and retries the latest value on the periodic flush", async () => {
+    vi.useFakeTimers();
+    vi.mocked(saveAnswer).mockRejectedValueOnce(new ApiError("NETWORK_ERROR", "offline", 0));
+    const view = render(<ReadingRunner initial={payload()} />);
+    const question = view.container.querySelector(`[data-question-id="${q1}"]`) as HTMLElement;
+    fireEvent.click(within(question).getByRole("radio", { name: "FALSE" }));
+    await act(async () => { vi.advanceTimersByTime(400); });
+    expect(screen.getByText("Save failed")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Retry save" })).toBeInTheDocument();
+    await act(async () => { vi.advanceTimersByTime(10_000); });
+    expect(saveAnswer).toHaveBeenCalledTimes(2);
+    expect(saveAnswer).toHaveBeenLastCalledWith(payload().attempt.attempt_id, q1, "FALSE");
+    expect(screen.getByText("Saved")).toBeInTheDocument();
+  });
+
+  it("blocks Submit after a failed flush and warns before leaving only while unsaved", async () => {
+    vi.mocked(saveAnswer).mockRejectedValueOnce(new ApiError("NETWORK_ERROR", "offline", 0));
+    const view = render(<ReadingRunner initial={payload()} />);
+    const question = view.container.querySelector(`[data-question-id="${q1}"]`) as HTMLElement;
+    const cleanLeave = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(cleanLeave);
+    expect(cleanLeave.defaultPrevented).toBe(false);
+    fireEvent.click(within(question).getByRole("radio", { name: "FALSE" }));
+    const dirtyLeave = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(dirtyLeave);
+    expect(dirtyLeave.defaultPrevented).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Submit answers" }));
+    await waitFor(() => expect(screen.getByText("Save failed")).toBeInTheDocument());
+    expect(submitAttempt).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Retry save" }));
+    await waitFor(() => expect(screen.getByText("Saved")).toBeInTheDocument());
+    const savedLeave = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(savedLeave);
+    expect(savedLeave.defaultPrevented).toBe(false);
+  });
+
+  it("routes the authoritative attempt after a lost Submit response", async () => {
+    const initial = payload();
+    vi.mocked(submitAttempt).mockRejectedValueOnce(new ApiError("NETWORK_ERROR", "offline", 0));
+    vi.mocked(getAttempt).mockResolvedValue({ ...initial.attempt, status: "SUBMITTED" });
+    render(<ReadingRunner initial={initial} />);
+    fireEvent.click(screen.getByRole("button", { name: "Submit answers" }));
+    await waitFor(() => expect(push).toHaveBeenCalledWith(`/review/${initial.attempt.attempt_id}`));
+    expect(getAttempt).toHaveBeenCalledWith(initial.attempt.attempt_id);
+  });
+
+  it("leaves an active attempt retryable when Submit failed before commit", async () => {
+    const initial = payload();
+    vi.mocked(submitAttempt).mockRejectedValueOnce(new ApiError("NETWORK_ERROR", "offline", 0));
+    vi.mocked(getAttempt).mockResolvedValue({ ...initial.attempt, status: "IN_PROGRESS" });
+    render(<ReadingRunner initial={initial} />);
+    fireEvent.click(screen.getByRole("button", { name: "Submit answers" }));
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("Please try again"));
+    expect(screen.getByRole("button", { name: "Submit answers" })).toBeEnabled();
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it("keeps the answer visible and reports an unknown Submit outcome when status cannot be fetched", async () => {
+    const initial = payload();
+    vi.mocked(submitAttempt).mockRejectedValueOnce(new ApiError("NETWORK_ERROR", "offline", 0));
+    vi.mocked(getAttempt).mockRejectedValueOnce(new ApiError("NETWORK_ERROR", "offline", 0));
+    const view = render(<ReadingRunner initial={initial} />);
+    const question = view.container.querySelector(`[data-question-id="${q1}"]`) as HTMLElement;
+    fireEvent.click(within(question).getByRole("radio", { name: "FALSE" }));
+    fireEvent.click(screen.getByRole("button", { name: "Submit answers" }));
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("couldn't confirm"));
+    expect(within(question).getByRole("radio", { name: "FALSE" })).toBeChecked();
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it("routes the backend auto-finalized attempt when the countdown reaches zero", async () => {
+    const initial = payload();
+    initial.attempt.timer_mode = "COUNTDOWN";
+    initial.attempt.deadline_at = new Date(Date.now() - 1000).toISOString();
+    vi.mocked(submitAttempt).mockRejectedValueOnce(new ApiError("ATTEMPT_EXPIRED", "expired", 409));
+    vi.mocked(getAttempt).mockResolvedValue({ ...initial.attempt, status: "AUTO_SUBMITTED" });
+    render(<ReadingRunner initial={initial} />);
+    await waitFor(() => expect(push).toHaveBeenCalledWith(`/review/${initial.attempt.attempt_id}`));
+    expect(submitAttempt).toHaveBeenCalledTimes(1);
   });
 
   it("reconciles a finalized autosave and stops further answer writes", async () => {

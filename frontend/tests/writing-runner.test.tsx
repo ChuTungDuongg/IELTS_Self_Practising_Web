@@ -20,6 +20,13 @@ const attemptId = "11111111-1111-4111-8111-111111111111";
 const taskOneId = "22222222-2222-4222-8222-222222222222";
 const taskTwoId = "33333333-3333-4333-8333-333333333333";
 
+function deferred() {
+  let resolve!: (value: never) => void;
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<never>((done, fail) => { resolve = done; reject = fail; });
+  return { promise, resolve, reject };
+}
+
 function payload(): ExamPayload {
   const now = new Date().toISOString();
   return {
@@ -117,6 +124,70 @@ describe("WritingRunner", () => {
       taskOneId,
       "It’s a city's plan for Đà Nẵng.",
     );
+  });
+
+  it("keeps a newer revision authoritative after an older save fails", async () => {
+    const old = deferred();
+    vi.mocked(saveWritingResponse).mockReturnValueOnce(old.promise);
+    render(<WritingRunner initial={payload()} />);
+    const textarea = screen.getByLabelText("Response for Task 1");
+    fireEvent.change(textarea, { target: { value: "Old draft" } });
+    expect(screen.getByText("Unsaved")).toBeInTheDocument();
+    await act(async () => { vi.advanceTimersByTime(750); });
+    fireEvent.change(textarea, { target: { value: "Newest draft" } });
+    old.reject(new Error("old request failed"));
+    await act(async () => { await Promise.resolve(); });
+    expect(saveWritingResponse).toHaveBeenLastCalledWith(attemptId, taskOneId, "Newest draft");
+    expect(screen.queryByText("Save failed")).not.toBeInTheDocument();
+    expect(screen.getByText("Saved")).toBeInTheDocument();
+  });
+
+  it("retains a failed current revision and retries its latest content", async () => {
+    vi.mocked(saveWritingResponse).mockRejectedValueOnce(new Error("offline"));
+    render(<WritingRunner initial={payload()} />);
+    fireEvent.change(screen.getByLabelText("Response for Task 1"), { target: { value: "Retry this draft" } });
+    await act(async () => { vi.advanceTimersByTime(750); });
+    expect(screen.getByText("Save failed")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Retry save" }));
+    await act(async () => { await Promise.resolve(); });
+    expect(saveWritingResponse).toHaveBeenLastCalledWith(attemptId, taskOneId, "Retry this draft");
+    expect(screen.getByText("Saved")).toBeInTheDocument();
+  });
+
+  it("flushes both dirty tasks before Submit and prevents a second Submit", async () => {
+    const first = deferred();
+    const second = deferred();
+    vi.mocked(saveWritingResponse).mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    render(<WritingRunner initial={payload()} />);
+    fireEvent.change(screen.getByLabelText("Response for Task 1"), { target: { value: "Task one latest" } });
+    fireEvent.click(screen.getByRole("tab", { name: /Task 2/ }));
+    fireEvent.change(screen.getByLabelText("Response for Task 2"), { target: { value: "Task two latest" } });
+    fireEvent.click(screen.getByRole("button", { name: "Submit Writing" }));
+    expect(screen.getByRole("button", { name: "Submitting…" })).toBeDisabled();
+    expect(saveWritingResponse).toHaveBeenCalledWith(attemptId, taskOneId, "Task one latest");
+    expect(saveWritingResponse).toHaveBeenCalledWith(attemptId, taskTwoId, "Task two latest");
+    expect(submitAttempt).not.toHaveBeenCalled();
+    first.resolve({} as never);
+    await act(async () => { await Promise.resolve(); });
+    expect(submitAttempt).not.toHaveBeenCalled();
+    second.resolve({} as never);
+    await act(async () => { await Promise.resolve(); });
+    expect(submitAttempt).toHaveBeenCalledTimes(1);
+  });
+
+  it("warns before leaving only while a Writing revision is unsaved", async () => {
+    render(<WritingRunner initial={payload()} />);
+    const clean = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(clean);
+    expect(clean.defaultPrevented).toBe(false);
+    fireEvent.change(screen.getByLabelText("Response for Task 1"), { target: { value: "Pending draft" } });
+    const dirty = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(dirty);
+    expect(dirty.defaultPrevented).toBe(true);
+    await act(async () => { vi.advanceTimersByTime(750); });
+    const saved = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(saved);
+    expect(saved.defaultPrevented).toBe(false);
   });
 
   it("saves immediately and saves successfully before submitting", async () => {

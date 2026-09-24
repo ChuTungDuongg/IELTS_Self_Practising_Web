@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { PauseAttemptControl } from "@/features/exam/pause-attempt-control";
 import { AttemptStoppedError, useAttemptLifecycle } from "@/features/exam/attempt-lifecycle";
+import { RevisionAutosaveQueue, useRevisionAutosave } from "@/features/exam/revision-autosave";
+import { useExamSubmit } from "@/features/exam/use-exam-submit";
 import { revealQuestionChip, scrollQuestionIntoPane } from "@/features/exam/question-navigation";
 import { elapsedFromSnapshot, estimateServerOffset, formatDuration, remainingSeconds } from "@/features/exam/timer";
 import { QuestionGroupInstruction } from "@/features/questions/question-group-instruction";
@@ -11,7 +13,7 @@ import { questionRegistry } from "@/features/questions/registry";
 import type { ExamGroup } from "@/features/questions/types";
 import { recordActivity, recordNavigation, saveAnswer } from "@/lib/api/attempts";
 import { assetContentUrl } from "@/lib/api/assets";
-import { getExam, saveFlag, submitAttempt, type ExamPayload } from "@/lib/api/exam";
+import { getExam, saveFlag, type ExamPayload } from "@/lib/api/exam";
 import { ListeningAudioPlayer } from "./audio-player";
 
 export function ListeningRunner({ initial }: { initial: ExamPayload }) {
@@ -29,10 +31,9 @@ export function ListeningRunner({ initial }: { initial: ExamPayload }) {
   const [values, setValues] = useState<Record<string, unknown>>(() => Object.fromEntries(questions.map((question) => [question.id, question.value])));
   const [flags, setFlags] = useState<Record<string, boolean>>(() => Object.fromEntries(questions.map((question) => [question.id, question.flagged])));
   const [activeQuestionId, setActiveQuestionId] = useState<string | null>(() => questions[0]?.id ?? null);
-  const [saveState, setSaveState] = useState<"saved" | "saving" | "error">("saved");
+  const [actionError, setActionError] = useState("");
   const [clock, setClock] = useState(() => Date.now());
-  const dirty = useRef(new Map<string, unknown>());
-  const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const autosaveRef = useRef<RevisionAutosaveQueue<unknown> | null>(null);
   const finalized = useRef(false);
   const lastActivity = useRef(0);
   const lastHeartbeat = useRef(0);
@@ -42,53 +43,36 @@ export function ListeningRunner({ initial }: { initial: ExamPayload }) {
   const pendingQuestion = useRef<string | null>(null);
   const programmaticNavigation = useRef<string | null>(null);
   const offset = useMemo(() => estimateServerOffset(initial.attempt.server_time), [initial.attempt.server_time]);
-  const { stopped, ended, accept, runMutation } = useAttemptLifecycle(attemptId, () => {
-    timers.current.forEach(clearTimeout);
-    timers.current.clear();
+  const { stopped, ended, accept, runMutation, isStopped } = useAttemptLifecycle(attemptId, () => {
+    autosaveRef.current?.stop();
+  });
+  const sendAnswer = useCallback(
+    (id: string, value: unknown) => runMutation(() => saveAnswer(attemptId, id, value)),
+    [attemptId, runMutation],
+  );
+  const { queue: autosave, status: saveState } = useRevisionAutosave<unknown>(
+    sendAnswer, 400,
+  );
+  useEffect(() => { autosaveRef.current = autosave; }, [autosave]);
+  const flush = useCallback(() => autosave.flush(), [autosave]);
+  const { submit, submitting, finalizing, submitError, isFinalizing } = useExamSubmit({
+    attemptId, initialAttempt: initial.attempt, flush, runMutation, accept, isStopped,
   });
 
-  const persist = useCallback(async (id: string, value: unknown) => {
-    if (stopped.current) throw new AttemptStoppedError();
-    setSaveState("saving");
-    try {
-      await runMutation(() => saveAnswer(attemptId, id, value));
-      dirty.current.delete(id);
-      setSaveState("saved");
-      return true;
-    } catch (error) {
-      if (error instanceof AttemptStoppedError) throw error;
-      setSaveState("error");
-      return false;
-    }
-  }, [attemptId, runMutation, stopped]);
-
   function answer(id: string, value: string | string[]) {
-    if (stopped.current) return;
+    if (stopped.current || isFinalizing()) return;
     programmaticNavigation.current = null;
     setValues((current) => ({ ...current, [id]: value }));
     setActiveQuestionId(id);
-    dirty.current.set(id, value);
-    const timer = timers.current.get(id);
-    if (timer) clearTimeout(timer);
-    timers.current.set(id, setTimeout(() => { void persist(id, value).catch(() => undefined); }, 400));
+    autosave.markDirty(id, value);
   }
 
-  const flush = useCallback(async () => {
-    if (stopped.current) throw new AttemptStoppedError();
-    timers.current.forEach(clearTimeout);
-    timers.current.clear();
-    const saved = await Promise.all([...dirty.current].map(([id, value]) => persist(id, value)));
-    if (saved.some((result) => !result)) throw new Error("Pending answers could not be saved.");
-  }, [persist, stopped]);
-
   useEffect(() => {
-    const timerMap = timers.current;
     const interval = window.setInterval(() => { if (!stopped.current) void flush().catch(() => undefined); }, 10_000);
     const ticker = window.setInterval(() => setClock(Date.now()), 1000);
     return () => {
       clearInterval(interval);
       clearInterval(ticker);
-      timerMap.forEach(clearTimeout);
     };
   }, [flush, stopped]);
 
@@ -99,13 +83,13 @@ export function ListeningRunner({ initial }: { initial: ExamPayload }) {
       lastActivity.current = now;
       if (now - lastHeartbeat.current > 20_000) {
         lastHeartbeat.current = now;
-        void runMutation(() => recordActivity(attemptId)).catch((error) => { if (!(error instanceof AttemptStoppedError)) setSaveState("error"); });
+        void runMutation(() => recordActivity(attemptId)).catch(() => undefined);
       }
     };
     const events: Array<keyof WindowEventMap> = ["keydown", "click", "touchstart", "scroll"];
     events.forEach((event) => window.addEventListener(event, meaningful, { passive: true }));
     const afk = window.setInterval(() => {
-      if (!stopped.current && Date.now() - lastActivity.current > 300_000) void getExam(attemptId).then((exam) => accept(exam.attempt)).catch(() => setSaveState("error"));
+      if (!stopped.current && Date.now() - lastActivity.current > 300_000) void getExam(attemptId).then((exam) => accept(exam.attempt)).catch(() => undefined);
     }, 5000);
     return () => {
       events.forEach((event) => window.removeEventListener(event, meaningful));
@@ -190,10 +174,10 @@ export function ListeningRunner({ initial }: { initial: ExamPayload }) {
   }, [activeGroup?.id, partIndex]);
 
   useEffect(() => {
-    if (part && !stopped.current) void runMutation(() => recordNavigation(attemptId, "LISTENING_PART", part.id)).catch((error) => { if (!(error instanceof AttemptStoppedError)) setSaveState("error"); });
+    if (part && !stopped.current) void runMutation(() => recordNavigation(attemptId, "LISTENING_PART", part.id)).catch(() => undefined);
   }, [attemptId, part, runMutation, stopped]);
   useEffect(() => {
-    if (activeQuestionId && !stopped.current) void runMutation(() => recordNavigation(attemptId, "QUESTION", activeQuestionId)).catch((error) => { if (!(error instanceof AttemptStoppedError)) setSaveState("error"); });
+    if (activeQuestionId && !stopped.current) void runMutation(() => recordNavigation(attemptId, "QUESTION", activeQuestionId)).catch(() => undefined);
   }, [activeQuestionId, attemptId, runMutation, stopped]);
   useEffect(() => {
     if (initial.attempt.timer_mode === "COUNTDOWN" && seconds === 0 && !finalized.current && !stopped.current) {
@@ -209,13 +193,7 @@ export function ListeningRunner({ initial }: { initial: ExamPayload }) {
     if (stopped.current) return;
     const next = !flags[id];
     setFlags((current) => ({ ...current, [id]: next }));
-    try { await runMutation(() => saveFlag(attemptId, id, next)); } catch (error) { if (!(error instanceof AttemptStoppedError)) setSaveState("error"); }
-  }
-
-  async function submit() {
-    if (stopped.current) return;
-    try { await flush(); await runMutation(() => submitAttempt(attemptId)); accept({ ...initial.attempt, status: "SUBMITTED" }); }
-    catch (error) { if (!(error instanceof AttemptStoppedError)) setSaveState("error"); }
+    try { await runMutation(() => saveFlag(attemptId, id, next)); } catch (error) { if (!(error instanceof AttemptStoppedError)) setActionError("Could not save the flag. Please try again."); }
   }
 
   function selectPart(index: number) {
@@ -241,9 +219,11 @@ export function ListeningRunner({ initial }: { initial: ExamPayload }) {
   }
 
   return <div className="exam-runner listening-exam">
-    <header className="exam-header"><div><p>LISTENING · SECTION {part.order_index + 1}</p><h1>{initial.test_title}</h1></div><div className="exam-header-tools"><PauseAttemptControl attemptId={attemptId} beforePause={flush} /><ThemeToggle /><div className="exam-header-status"><span className={`exam-timer ${initial.attempt.timer_mode === "COUNTDOWN" && seconds < 300 ? "exam-timer-warning" : ""}`}>{formatDuration(seconds)}</span><span className={`exam-save-state exam-save-${saveState}`}>{saveState === "saving" ? "Saving…" : saveState === "error" ? "Save failed" : "Saved"}</span></div></div></header>
+    <header className="exam-header"><div><p>LISTENING · SECTION {part.order_index + 1}</p><h1>{initial.test_title}</h1></div><div className="exam-header-tools"><PauseAttemptControl attemptId={attemptId} beforePause={flush} /><ThemeToggle /><div className="exam-header-status"><span className={`exam-timer ${initial.attempt.timer_mode === "COUNTDOWN" && seconds < 300 ? "exam-timer-warning" : ""}`}>{formatDuration(seconds)}</span><span className={`exam-save-state exam-save-${saveState}`}>{saveState === "saving" ? "Saving…" : saveState === "error" ? "Save failed" : saveState === "dirty" ? "Unsaved" : "Saved"}</span>{saveState === "error" ? <button type="button" onClick={() => void flush().catch(() => undefined)}>Retry save</button> : null}</div></div></header>
+    {submitError ? <p role="alert" className="notice notice-error">{submitError}</p> : null}
+    {actionError ? <p role="alert" className="notice notice-error">{actionError}</p> : null}
     {initial.listening_audio_asset ? <><ListeningAudioPlayer src={assetContentUrl(initial.listening_audio_asset)} policy={{ allowSeeking: initial.audio_policy?.allow_seeking ?? true, allowSpeed: initial.audio_policy?.allow_speed ?? true }} />{initial.audio_policy?.allow_seeking === false ? <p className="exam-mode-label">Exam mode · Seeking locked</p> : null}</> : <p className="notice m-4">This Listening test has no audio recording attached.</p>}
-    <main ref={questionPane} className={`listening-question-pane ${visualGroup ? "listening-question-pane-visual" : ""}`} onWheelCapture={() => { programmaticNavigation.current = null; }} onTouchStartCapture={() => { programmaticNavigation.current = null; }} onPointerDownCapture={() => { programmaticNavigation.current = null; }} onKeyDownCapture={() => { programmaticNavigation.current = null; }} onFocusCapture={(event) => {
+    <main ref={questionPane} inert={finalizing} className={`listening-question-pane ${visualGroup ? "listening-question-pane-visual" : ""}`} onWheelCapture={() => { programmaticNavigation.current = null; }} onTouchStartCapture={() => { programmaticNavigation.current = null; }} onPointerDownCapture={() => { programmaticNavigation.current = null; }} onKeyDownCapture={() => { programmaticNavigation.current = null; }} onFocusCapture={(event) => {
       const target = (event.target as HTMLElement).closest<HTMLElement>(".exam-question-target[data-question-id]");
       if (target?.dataset.questionId) { programmaticNavigation.current = null; setActiveQuestionId(target.dataset.questionId); }
     }}>
@@ -271,7 +251,7 @@ export function ListeningRunner({ initial }: { initial: ExamPayload }) {
           </div>;
         })}</nav>
       </div>
-      <button type="button" onClick={() => void submit()} className="exam-submit">Submit answers</button>
+      <button type="button" onClick={() => void submit()} disabled={submitting} className="exam-submit">{submitting ? "Submitting…" : "Submit answers"}</button>
     </footer>
   </div>;
 }

@@ -9,6 +9,8 @@ export { attemptDestination } from "@/features/exam/attempt-destination";
 
 const lifecycleCodes = new Set(["ATTEMPT_FINALIZED", "ATTEMPT_EXPIRED", "ATTEMPT_PAUSED"]);
 const isLifecycleError = (error: unknown) => error instanceof ApiError && lifecycleCodes.has(error.code);
+const isAmbiguousSubmitError = (error: unknown) => error instanceof ApiError
+  && (error.code === "NETWORK_ERROR" || error.status >= 500);
 
 export class AttemptStoppedError extends Error {
   constructor() { super("This attempt is no longer active."); }
@@ -24,6 +26,22 @@ export async function reconcileAttemptError(
   if (attempt.status === "IN_PROGRESS") return false;
   onStopped(attempt);
   return true;
+}
+
+export async function reconcileAmbiguousSubmit(
+  error: unknown,
+  attemptId: string,
+  onStopped: (attempt: AttemptResponse) => void,
+): Promise<"terminal" | "active" | "unknown" | "not-ambiguous"> {
+  if (!isAmbiguousSubmitError(error)) return "not-ambiguous";
+  try {
+    const attempt = await getAttempt(attemptId);
+    if (attempt.status === "IN_PROGRESS") return "active";
+    onStopped(attempt);
+    return "terminal";
+  } catch {
+    return "unknown";
+  }
 }
 
 export function useAttemptLifecycle(attemptId: string, onStopped?: () => void) {

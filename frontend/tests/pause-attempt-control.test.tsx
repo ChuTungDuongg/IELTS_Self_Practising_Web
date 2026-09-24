@@ -43,6 +43,33 @@ describe("PauseAttemptControl", () => {
     expect(push).not.toHaveBeenCalled();
   });
 
+  it("waits for beforePause and blocks duplicate Pause requests", async () => {
+    let release!: () => void;
+    const pendingSave = new Promise<void>((resolve) => { release = resolve; });
+    const beforePause = vi.fn(() => pendingSave);
+    vi.mocked(pauseAttempt).mockResolvedValue({ attempt_id: attemptId, status: "PAUSED" } as never);
+    render(<PauseAttemptControl attemptId={attemptId} beforePause={beforePause} />);
+    fireEvent.click(screen.getByRole("button", { name: "Pause & exit" }));
+    const confirm = within(screen.getByRole("dialog")).getByRole("button", { name: "Pause & exit" });
+    fireEvent.click(confirm);
+    expect(pauseAttempt).not.toHaveBeenCalled();
+    expect(confirm).toBeDisabled();
+    fireEvent.click(confirm);
+    expect(beforePause).toHaveBeenCalledTimes(1);
+    release();
+    await waitFor(() => expect(pauseAttempt).toHaveBeenCalledTimes(1));
+  });
+
+  it("does not pause when the latest answer cannot be flushed", async () => {
+    const beforePause = vi.fn().mockRejectedValue(new Error("save failed"));
+    render(<PauseAttemptControl attemptId={attemptId} beforePause={beforePause} />);
+    fireEvent.click(screen.getByRole("button", { name: "Pause & exit" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Pause & exit" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("could not be saved and paused");
+    expect(pauseAttempt).not.toHaveBeenCalled();
+    expect(push).not.toHaveBeenCalled();
+  });
+
   it("reconciles a finalized beforePause write without sending a second pause", async () => {
     const beforePause = vi.fn().mockRejectedValue(new ApiError("ATTEMPT_FINALIZED", "finalized", 409));
     vi.mocked(getAttempt).mockResolvedValue({ attempt_id: attemptId, status: "INTERRUPTED" } as never);

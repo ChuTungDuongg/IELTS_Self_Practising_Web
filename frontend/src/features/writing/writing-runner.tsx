@@ -6,12 +6,12 @@ import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { elapsedFromSnapshot, estimateServerOffset, formatDuration, remainingSeconds } from "@/features/exam/timer";
 import { PauseAttemptControl } from "@/features/exam/pause-attempt-control";
 import { AttemptStoppedError, useAttemptLifecycle } from "@/features/exam/attempt-lifecycle";
+import { RevisionAutosaveQueue, useRevisionAutosave } from "@/features/exam/revision-autosave";
+import { useExamSubmit } from "@/features/exam/use-exam-submit";
 import { countWords } from "@/features/writing/word-count";
 import { recordActivity, recordNavigation, saveWritingResponse } from "@/lib/api/attempts";
 import { assetContentUrl } from "@/lib/api/assets";
-import { submitAttempt, type ExamPayload } from "@/lib/api/exam";
-
-type SaveState = "saved" | "saving" | "error";
+import { type ExamPayload } from "@/lib/api/exam";
 
 export function WritingRunner({ initial }: { initial: ExamPayload }) {
   const attemptId = initial.attempt.attempt_id;
@@ -23,107 +23,48 @@ export function WritingRunner({ initial }: { initial: ExamPayload }) {
   const [contents, setContents] = useState<Record<string, string>>(() =>
     Object.fromEntries(tasks.map((task) => [task.id, task.content])),
   );
-  const [saveState, setSaveState] = useState<SaveState>("saved");
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  const [activityError, setActivityError] = useState<string | null>(null);
   const [clock, setClock] = useState(() => Date.now());
-  const contentsRef = useRef(contents);
-  const revisions = useRef(new Map(tasks.map((task) => [task.id, 0])));
-  const savedRevisions = useRef(new Map(tasks.map((task) => [task.id, 0])));
-  const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const autosaveRef = useRef<RevisionAutosaveQueue<string> | null>(null);
   const lastActivity = useRef(0);
   const lastHeartbeat = useRef(0);
   const finalized = useRef(false);
   const { stopped, ended, accept, runMutation, isStopped } = useAttemptLifecycle(attemptId, () => {
-    timers.current.forEach(clearTimeout);
-    timers.current.clear();
+    autosaveRef.current?.stop();
+  });
+  const sendResponse = useCallback(
+    (taskId: string, content: string) => runMutation(() => saveWritingResponse(attemptId, taskId, content)),
+    [attemptId, runMutation],
+  );
+  const { queue: autosave, status: saveState } = useRevisionAutosave<string>(
+    sendResponse, 750,
+  );
+  useEffect(() => { autosaveRef.current = autosave; }, [autosave]);
+  const flushForSubmission = useCallback(() => autosave.flush(), [autosave]);
+  const { submit: finish, submitting, finalizing, submitError, isFinalizing } = useExamSubmit({
+    attemptId, initialAttempt: initial.attempt, flush: flushForSubmission, runMutation, accept, isStopped,
   });
   const offset = useMemo(
     () => estimateServerOffset(initial.attempt.server_time),
     [initial.attempt.server_time],
   );
   const task = tasks[taskIndex];
-  useEffect(() => { if (task && !stopped.current) void runMutation(() => recordNavigation(attemptId, "WRITING_TASK", task.id)).catch((error) => { if (!(error instanceof AttemptStoppedError)) setSaveError("Your activity could not be recorded. Please try again."); }); }, [attemptId, runMutation, stopped, task]);
-
-  const persist = useCallback(async (taskId: string, revision: number) => {
-    if (isStopped()) throw new AttemptStoppedError();
-    const content = contentsRef.current[taskId] ?? "";
-    setSaveState("saving");
-    setSaveError(null);
-    try {
-      await runMutation(() => saveWritingResponse(attemptId, taskId, content));
-      if (revisions.current.get(taskId) === revision) {
-        savedRevisions.current.set(taskId, revision);
-        setSaveState("saved");
-      }
-    } catch (error) {
-      if (error instanceof AttemptStoppedError) throw error;
-      setSaveState("error");
-      setSaveError("Your response could not be saved. Retry before submitting.");
-      throw error;
-    }
-  }, [attemptId, isStopped, runMutation]);
+  useEffect(() => { if (task && !stopped.current) void runMutation(() => recordNavigation(attemptId, "WRITING_TASK", task.id)).catch((error) => { if (!(error instanceof AttemptStoppedError)) setActivityError("Your activity could not be recorded. Please try again."); }); }, [attemptId, runMutation, stopped, task]);
 
   const saveTask = useCallback(async (taskId: string) => {
-    const timer = timers.current.get(taskId);
-    if (timer) clearTimeout(timer);
-    timers.current.delete(taskId);
-    await persist(taskId, revisions.current.get(taskId) ?? 0);
-  }, [persist]);
+    await autosave.saveNow(taskId);
+  }, [autosave]);
 
   function updateContent(taskId: string, content: string) {
-    if (stopped.current) return;
-    const revision = (revisions.current.get(taskId) ?? 0) + 1;
-    revisions.current.set(taskId, revision);
-    contentsRef.current = { ...contentsRef.current, [taskId]: content };
-    setContents(contentsRef.current);
-    setSaveState("saving");
-    setSaveError(null);
-    const timer = timers.current.get(taskId);
-    if (timer) clearTimeout(timer);
-    timers.current.set(taskId, setTimeout(() => {
-      timers.current.delete(taskId);
-      void persist(taskId, revision).catch(() => undefined);
-    }, 750));
+    if (stopped.current || isFinalizing()) return;
+    setContents((current) => ({ ...current, [taskId]: content }));
+    autosave.markDirty(taskId, content);
   }
 
-  const flushForSubmission = useCallback(async () => {
-    if (isStopped()) throw new AttemptStoppedError();
-    timers.current.forEach(clearTimeout);
-    timers.current.clear();
-    const currentTask = tasks[taskIndex];
-    if (currentTask) {
-      await persist(currentTask.id, revisions.current.get(currentTask.id) ?? 0);
-    }
-    for (const candidate of tasks) {
-      if (candidate.id === currentTask?.id) continue;
-      if ((revisions.current.get(candidate.id) ?? 0) !== (savedRevisions.current.get(candidate.id) ?? 0)) {
-        await persist(candidate.id, revisions.current.get(candidate.id) ?? 0);
-      }
-    }
-  }, [isStopped, persist, taskIndex, tasks]);
-
-  const finish = useCallback(async () => {
-    if (submitting || isStopped()) return;
-    setSubmitting(true);
-    let saving = true;
-    try {
-      await flushForSubmission();
-      saving = false;
-      await runMutation(() => submitAttempt(attemptId));
-      accept({ ...initial.attempt, status: "SUBMITTED" });
-    } catch (error) {
-      if (!(error instanceof AttemptStoppedError) && !saving) setSaveError("Submission could not be completed. Please try again.");
-      setSubmitting(false);
-    }
-  }, [accept, attemptId, flushForSubmission, initial.attempt, isStopped, runMutation, submitting]);
-
   useEffect(() => {
-    const timerMap = timers.current;
     const ticker = window.setInterval(() => setClock(Date.now()), 1000);
     return () => {
       window.clearInterval(ticker);
-      timerMap.forEach(clearTimeout);
     };
   }, []);
 
@@ -135,7 +76,7 @@ export function WritingRunner({ initial }: { initial: ExamPayload }) {
       lastActivity.current = now;
       if (now - lastHeartbeat.current >= 20_000) {
         lastHeartbeat.current = now;
-        void runMutation(() => recordActivity(attemptId)).catch((error) => { if (!(error instanceof AttemptStoppedError)) setSaveError("Your activity could not be recorded. Please try again."); });
+        void runMutation(() => recordActivity(attemptId)).catch((error) => { if (!(error instanceof AttemptStoppedError)) setActivityError("Your activity could not be recorded. Please try again."); });
       }
     };
     const events: Array<keyof WindowEventMap> = ["keydown", "click", "touchstart", "scroll"];
@@ -161,12 +102,14 @@ export function WritingRunner({ initial }: { initial: ExamPayload }) {
   return <div className="exam-runner writing-exam">
     <header className="exam-header">
       <div><p>WRITING · TASK {task.task_number}</p><h1>{initial.test_title}</h1></div>
-      <div className="exam-header-tools"><PauseAttemptControl attemptId={attemptId} beforePause={flushForSubmission} /><ThemeToggle /><div className="exam-header-status"><span className={`exam-timer ${initial.attempt.timer_mode === "COUNTDOWN" && seconds < 300 ? "exam-timer-warning" : ""}`}>{initial.attempt.timer_mode === "COUNT_UP" ? "Time used " : ""}{formatDuration(seconds)}</span><span className={`exam-save-state exam-save-${saveState}`}>{saveState === "saving" ? "Saving…" : saveState === "error" ? "Save failed" : "Saved"}</span></div></div>
+      <div className="exam-header-tools"><PauseAttemptControl attemptId={attemptId} beforePause={flushForSubmission} /><ThemeToggle /><div className="exam-header-status"><span className={`exam-timer ${initial.attempt.timer_mode === "COUNTDOWN" && seconds < 300 ? "exam-timer-warning" : ""}`}>{initial.attempt.timer_mode === "COUNT_UP" ? "Time used " : ""}{formatDuration(seconds)}</span><span className={`exam-save-state exam-save-${saveState}`}>{saveState === "saving" ? "Saving…" : saveState === "error" ? "Save failed" : saveState === "dirty" ? "Unsaved" : "Saved"}</span></div></div>
     </header>
     <div className="writing-task-tabs" role="tablist" aria-label="Writing tasks">
       {tasks.map((item, index) => <button key={item.id} type="button" role="tab" aria-selected={index === taskIndex} className={index === taskIndex ? "active" : ""} onClick={() => setTaskIndex(index)}><b>Task {item.task_number}</b><span>{countWords(contents[item.id] ?? "")} words</span></button>)}
     </div>
-    {saveError ? <div role="alert" className="notice notice-error writing-save-error"><span>{saveError}</span><button type="button" className="btn btn-secondary" onClick={() => void saveTask(task.id).catch(() => undefined)}>Retry save</button></div> : null}
+    {saveState === "error" ? <div role="alert" className="notice notice-error writing-save-error"><span>Your response could not be saved. Retry before submitting.</span><button type="button" className="btn btn-secondary" onClick={() => void flushForSubmission().catch(() => undefined)}>Retry save</button></div> : null}
+    {submitError ? <p role="alert" className="notice notice-error">{submitError}</p> : null}
+    {activityError ? <p role="alert" className="notice notice-error">{activityError}</p> : null}
     <main className="writing-runner-layout">
       <article className="writing-task-prompt">
         <p className="writing-task-kicker">Writing Task {task.task_number}</p>
@@ -178,8 +121,8 @@ export function WritingRunner({ initial }: { initial: ExamPayload }) {
       <section className="writing-response-pane">
         <div className="writing-response-heading"><div><p>Your response</p><h2>Task {task.task_number}</h2></div><span>{countWords(content)} words</span></div>
         <label className="sr-only" htmlFor={`writing-response-${task.id}`}>Response for Task {task.task_number}</label>
-        <textarea id={`writing-response-${task.id}`} value={content} onChange={(event) => updateContent(task.id, event.target.value)} spellCheck className="writing-response-textarea" />
-        <button type="button" className="btn btn-writing" onClick={() => void saveTask(task.id).catch(() => undefined)}>Save Task {task.task_number}</button>
+        <textarea id={`writing-response-${task.id}`} value={content} onChange={(event) => updateContent(task.id, event.target.value)} disabled={finalizing} spellCheck className="writing-response-textarea" />
+        <button type="button" disabled={finalizing} className="btn btn-writing" onClick={() => void saveTask(task.id).catch(() => undefined)}>Save Task {task.task_number}</button>
       </section>
     </main>
     <footer className="exam-footer"><span className="exam-preview-note">Your work is saved automatically.</span><button type="button" onClick={() => void finish()} disabled={submitting} className="exam-submit">{submitting ? "Submitting…" : "Submit Writing"}</button></footer>

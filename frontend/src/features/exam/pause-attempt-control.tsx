@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { pauseAttempt } from "@/lib/api/attempts";
@@ -17,10 +17,12 @@ export function PauseAttemptControl({
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState(false);
+  const pendingRef = useRef(false);
   const [error, setError] = useState<string>();
 
   async function confirm() {
-    if (pending) return;
+    if (pendingRef.current) return;
+    pendingRef.current = true;
     setPending(true);
     setError(undefined);
     try {
@@ -35,6 +37,7 @@ export function PauseAttemptControl({
         caught = reconcileError;
       }
       setError(caught instanceof ApiError ? caught.message : "Your work could not be saved and paused. Please try again.");
+      pendingRef.current = false;
       setPending(false);
     }
   }

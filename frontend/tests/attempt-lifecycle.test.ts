@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/lib/api/client";
 import { getAttempt, type AttemptResponse } from "@/lib/api/attempts";
-import { attemptDestination, reconcileAttemptError } from "@/features/exam/attempt-lifecycle";
+import { attemptDestination, reconcileAmbiguousSubmit, reconcileAttemptError } from "@/features/exam/attempt-lifecycle";
 
 vi.mock("@/lib/api/attempts", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api/attempts")>();
@@ -46,5 +46,27 @@ describe("attempt lifecycle reconciliation", () => {
     expect(attemptDestination(attempt("PAUSED"))).toBe("/history");
     expect(attemptDestination(attempt("INTERRUPTED"))).toBe(`/review/${attemptId}`);
     expect(attemptDestination(attempt("AUTO_SUBMITTED", "22222222-2222-4222-8222-222222222222"))).toBe("/test-session/22222222-2222-4222-8222-222222222222");
+  });
+
+  it("accepts the authoritative terminal attempt after a lost Submit response", async () => {
+    const terminal = attempt("SUBMITTED");
+    vi.mocked(getAttempt).mockResolvedValue(terminal);
+    const accept = vi.fn();
+    expect(await reconcileAmbiguousSubmit(new ApiError("NETWORK_ERROR", "offline", 0), attemptId, accept)).toBe("terminal");
+    expect(accept).toHaveBeenCalledWith(terminal);
+  });
+
+  it("keeps an active attempt retryable after a lost Submit response", async () => {
+    vi.mocked(getAttempt).mockResolvedValue(attempt("IN_PROGRESS"));
+    const accept = vi.fn();
+    expect(await reconcileAmbiguousSubmit(new ApiError("NETWORK_ERROR", "offline", 0), attemptId, accept)).toBe("active");
+    expect(accept).not.toHaveBeenCalled();
+  });
+
+  it("reports an unknown Submit outcome when reconciliation also loses network", async () => {
+    vi.mocked(getAttempt).mockRejectedValue(new ApiError("NETWORK_ERROR", "offline", 0));
+    expect(await reconcileAmbiguousSubmit(new ApiError("NETWORK_ERROR", "offline", 0), attemptId, vi.fn())).toBe("unknown");
+    expect(await reconcileAmbiguousSubmit(new ApiError("INVALID_INPUT", "bad", 422), attemptId, vi.fn())).toBe("not-ambiguous");
+    expect(getAttempt).toHaveBeenCalledTimes(1);
   });
 });
