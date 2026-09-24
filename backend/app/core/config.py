@@ -8,7 +8,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     app_name: str = "DevWebLocalforIELTS API"
     api_v1_prefix: str = "/api/v1"
-    database_url: str = "postgresql+asyncpg://ielts:ielts@localhost:5432/ielts"
+    database_url: str = "postgresql+asyncpg://ielts:ielts@localhost:5433/ielts"
     frontend_origin: str = "http://localhost:3000"
     storage_root: Path = Path("../storage")
     max_image_upload_mb: int = Field(default=10, gt=0)

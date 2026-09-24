@@ -35,6 +35,7 @@
 - ✅ Full Mock dùng thời lượng khuyến nghị của module; review/key chỉ mở khi toàn bộ mock hoàn tất
 - ✅ Listening practice cho seek, ±10 giây và tốc độ; Full Mock khóa seek và tốc độ bằng policy từ backend
 - ✅ Pause/Resume giữ nguyên attempt và thời gian active; History nhóm theo skill, test version và Full Mock
+- ✅ Autosave có revision/concurrency check; bản nháp chưa lưu có thể khôi phục sau reload hoặc mất mạng ngắn hạn
 - ✅ Writing lưu riêng từng task, đếm từ và chấm thủ công theo TA/CC/LR/GRA, kèm feedback tùy chọn cho từng tiêu chí
 - ✅ Band khách quan chỉ chính thức khi module có 40 câu; overall dùng Reading + Listening + Writing
 - ✅ Analytics: tổng thời gian active, band trend, độ chính xác theo loại câu, weak areas, so sánh attempt và timing theo nội dung
@@ -130,6 +131,7 @@ storage/images/       File hình ảnh cục bộ, không commit binary
 docs/ROADMAP.md       Lộ trình và phạm vi từng phase
 docker-compose.yml    PostgreSQL cho môi trường local
 .env.example          Mẫu cấu hình
+scripts/              Backup/restore PostgreSQL + local asset storage
 AGENTS.md             Các nguyên tắc kiến trúc bắt buộc
 ```
 
@@ -150,14 +152,14 @@ Tại thư mục gốc của repository:
 
 ```powershell
 Copy-Item backend/.env.example backend/.env
-Copy-Item .env.example frontend/.env.local
+Set-Content frontend/.env.local 'NEXT_PUBLIC_API_BASE_URL=http://localhost:8000/api/v1'
 ```
 
 Giá trị mặc định dùng cho local:
 
 | Biến | Ý nghĩa | Giá trị mẫu |
 | --- | --- | --- |
-| `DATABASE_URL` | PostgreSQL URL cho SQLAlchemy async | `postgresql+asyncpg://ielts:ielts@localhost:5432/ielts` |
+| `DATABASE_URL` | PostgreSQL URL cho SQLAlchemy async khi dùng Docker Compose | `postgresql+asyncpg://ielts:ielts@localhost:5433/ielts` |
 | `FRONTEND_ORIGIN` | Origin được CORS cho phép | `http://localhost:3000` |
 | `JWT_SECRET` | Secret bắt buộc cho xác thực trong `backend/.env`; ít nhất 32 ký tự, không commit | Tự tạo |
 | `AUTH_COOKIE_SECURE` / `AUTH_COOKIE_SAMESITE` | Cookie local trên HTTP | `false` / `lax` |
@@ -180,7 +182,7 @@ docker compose up -d postgres
 docker compose ps
 ```
 
-PostgreSQL chạy ở `localhost:5432`. Dữ liệu được giữ trong Docker named volume.
+Docker Compose mở PostgreSQL ở `localhost:5433` (cổng `5432` bên trong container). Dữ liệu được giữ trong Docker named volume. GitHub Actions dùng PostgreSQL riêng trên cổng `5432`.
 
 ### 3. Chạy backend ⚡
 
@@ -245,8 +247,8 @@ Mở [http://localhost:3000](http://localhost:3000).
 
 ```powershell
 Set-Location backend
-uv run ruff check .
-uv run ruff format --check .
+uv run ruff check . ../scripts
+uv run ruff format --check app tests ../scripts
 uv run pytest -q
 uv run alembic upgrade head --sql
 ```
@@ -272,6 +274,27 @@ npm run test:e2e
 ```
 
 Kiểm tra riêng phiên đăng nhập: tạo admin local bằng `uv run python -m app.bootstrap_admin` từ `backend/` với các giá trị `INITIAL_ADMIN_*` trong `backend/.env`. Sau đó đặt `E2E_ADMIN_EMAIL` và `E2E_ADMIN_PASSWORD` tương ứng trong terminal chạy frontend và dùng `npx playwright test tests/e2e/auth-session.spec.ts`. Spec tự tạo USER thử nghiệm; không commit mật khẩu hoặc JWT secret.
+
+GitHub Actions chạy backend lint/format, Alembic và pytest; frontend typecheck, lint và Vitest. Workflow **Golden path E2E** build Next.js ở production mode và chạy ba luồng Listening, Writing, Full Mock trên Chromium. Các gate này đã pass tại commit `06e3ae7`; xem trạng thái mới nhất trên GitHub Actions.
+
+## 💾 Backup & Restore
+
+Backup đầy đủ cần **cả PostgreSQL và `STORAGE_ROOT`**: database giữ tài khoản, đề, attempt/history và metadata/đường dẫn asset; file audio/hình nằm ngoài database. Công cụ này dùng mô hình **maintenance/offline**: dừng FastAPI hoặc ngăn mọi ghi dữ liệu, tạo dump, lưu storage, ghi manifest/checksum, rồi mới cho ứng dụng ghi trở lại. Dump và archive filesystem không phải snapshot nguyên tử khi ứng dụng vẫn đang ghi.
+
+Cần `pg_dump` và `pg_restore` trên `PATH`, cùng `DATABASE_URL` trong `backend/.env` hoặc biến môi trường. Từ thư mục `backend/`:
+
+```powershell
+uv run python ../scripts/backup.py
+# Kết quả: ../backups/<UTC-timestamp>-<suffix>/
+
+uv run python ../scripts/restore.py ../backups/<UTC-timestamp>-<suffix> --confirm-destructive
+```
+
+Backup gồm `database.dump` (PostgreSQL custom format), `storage.tar.gz` (nội dung bên trong `STORAGE_ROOT`) và `manifest.json` với SHA-256 cho cả hai file. Restore xác minh checksum và đường dẫn archive trước khi thay thế. Thiếu `--confirm-destructive` thì restore từ chối và cho biết đích sẽ bị thay. **Dừng mọi ghi trong suốt restore.** Database được phục hồi bằng `pg_restore --clean --if-exists --no-owner` trong một transaction; storage được giải nén vào thư mục tạm trước khi đổi chỗ với thư mục hiện có. Hai tài nguyên không thể thay thế nguyên tử cùng lúc; nếu bước storage thất bại sau khi database đã phục hồi, giữ ứng dụng offline và chạy lại restore từ cùng backup. Một thư mục storage cũ có thể được giữ lại nếu không dọn được; CLI sẽ in vị trí để kiểm tra.
+
+Restore giữ đúng schema đã lưu, không tự chạy migration. Nếu phục hồi backup cũ bằng phiên bản ứng dụng mới hơn, chạy `uv run alembic upgrade head` từ `backend/` sau restore và trước khi khởi động backend. Backup **không được mã hóa** bởi công cụ này và chứa dữ liệu riêng tư như tài khoản, lịch sử, đáp án, feedback và asset: giữ kín, bảo vệ như database, không commit/chia sẻ tùy tiện. `backups/` đã được gitignore.
+
+Transfer ZIP chỉ mang **nội dung đề được chọn** để nhập/xuất, không có users hay attempt/history. Backup là cơ chế **khôi phục toàn ứng dụng** gồm PostgreSQL và binary storage; hai định dạng không thay thế cho nhau.
 
 ## 🔐 Nguyên tắc dữ liệu quan trọng
 

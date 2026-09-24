@@ -69,8 +69,18 @@ exam renderer, backend evaluator, review renderer và tests.
 
 Chi tiết contract ZIP: [TEST_TRANSFER_FORMAT.md](TEST_TRANSFER_FORMAT.md).
 
+## ✅ MVP engineering baseline
+
+- Reading, Listening, Writing và Full Mock; authentication/phiên đăng nhập liên tục giữa các tab, Profile và quản trị tài khoản đã triển khai.
+- Published version bất biến; historical asset access; autosave/revision và xử lý xung đột, khôi phục draft sau reload/mất mạng ngắn hạn.
+- Transfer ZIP cho nội dung đề; backup/restore offline cho toàn bộ PostgreSQL và binary storage.
+- Pytest, Vitest, Playwright golden paths và GitHub Actions CI/E2E là các gate kiểm thử hiện có.
+
+Mốc này là baseline kỹ thuật của MVP, **không đồng nghĩa sẵn sàng vận hành thương mại hoặc cloud production**.
+
 ## ⏳ Tiếp theo
 
 - Mở rộng drill-down analytics và bộ lọc ngày/test version.
 - Tiếp tục cải thiện accessibility, keyboard navigation và Builder ergonomics.
-- Speaking, authentication và AI Writing scoring vẫn ngoài phạm vi hiện tại.
+- Triển khai cloud/observability và bảo vệ backup khi có nhu cầu vận hành production.
+- Luyện/chấm Speaking và AI Writing scoring vẫn ngoài phạm vi hiện tại; authentication/Profile/admin đã có.
