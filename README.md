@@ -281,7 +281,7 @@ GitHub Actions chạy backend lint/format, Alembic và pytest; frontend typechec
 
 Backup đầy đủ cần **cả PostgreSQL và `STORAGE_ROOT`**: database giữ tài khoản, đề, attempt/history và metadata/đường dẫn asset; file audio/hình nằm ngoài database. Công cụ này dùng mô hình **maintenance/offline**: dừng FastAPI hoặc ngăn mọi ghi dữ liệu, tạo dump, lưu storage, ghi manifest/checksum, rồi mới cho ứng dụng ghi trở lại. Dump và archive filesystem không phải snapshot nguyên tử khi ứng dụng vẫn đang ghi.
 
-Cần `pg_dump` và `pg_restore` trên `PATH`, cùng `DATABASE_URL` trong `backend/.env` hoặc biến môi trường. Từ thư mục `backend/`:
+Cần `DATABASE_URL` trong `backend/.env` hoặc biến môi trường. CLI ưu tiên `pg_dump`/`pg_restore` trên `PATH`; với PostgreSQL local theo Docker Compose, nếu thiếu công cụ trên host, CLI tự dùng công cụ trong container `postgres` đang chạy. Khởi động bằng `docker compose up -d postgres` từ thư mục gốc repository. Sau đó, từ `backend/`:
 
 ```powershell
 uv run python ../scripts/backup.py

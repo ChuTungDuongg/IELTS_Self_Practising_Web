@@ -3,18 +3,23 @@ import json
 import tarfile
 from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from app.backup_restore import (
     APPLICATION,
     BackupError,
+    PostgresToolSelection,
     archive_storage,
     create_backup,
     extract_validated_archive,
     normalize_database_url,
     read_manifest,
+    resolve_postgres_tool_mode,
     restore_backup,
+    run_pg_dump,
+    run_pg_restore,
     sha256_file,
     validated_archive_members,
     verify_backup_files,
@@ -167,7 +172,7 @@ def test_restore_requires_explicit_confirmation_before_mutation(
     storage.mkdir()
     (storage / "existing.txt").write_text("keep", encoding="utf-8")
     called = []
-    monkeypatch.setattr("app.backup_restore.run_postgres_tool", lambda *args: called.append(args))
+    monkeypatch.setattr("app.backup_restore.run_pg_restore", lambda *args: called.append(args))
     with pytest.raises(BackupError, match="--confirm-destructive"):
         restore_backup(backup, "postgresql://fictional@localhost/example", storage, False)
     assert called == []
@@ -182,7 +187,7 @@ def test_corrupt_backup_never_starts_restore(
     storage.mkdir()
     (backup / "database.dump").write_bytes(b"corrupt")
     called = []
-    monkeypatch.setattr("app.backup_restore.run_postgres_tool", lambda *args: called.append(args))
+    monkeypatch.setattr("app.backup_restore.run_pg_restore", lambda *args: called.append(args))
     with pytest.raises(BackupError, match="Checksum mismatch"):
         restore_backup(backup, "postgresql://fictional@localhost/example", storage, True)
     assert called == []
@@ -200,7 +205,7 @@ def test_unsafe_archive_never_starts_restore(
     manifest["storage_sha256"] = sha256_file(backup / "storage.tar.gz")
     (backup / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     called = []
-    monkeypatch.setattr("app.backup_restore.run_postgres_tool", lambda *args: called.append(args))
+    monkeypatch.setattr("app.backup_restore.run_pg_restore", lambda *args: called.append(args))
     with pytest.raises(BackupError, match="Unsafe archive entry"):
         restore_backup(
             backup, "postgresql://fictional@localhost/example", tmp_path / "storage", True
@@ -218,7 +223,169 @@ def test_failed_backup_leaves_no_completed_directory(
     def fail_dump(*_args: object) -> None:
         raise BackupError("pg_dump failed")
 
-    monkeypatch.setattr("app.backup_restore.run_postgres_tool", fail_dump)
+    monkeypatch.setattr("app.backup_restore.run_pg_dump", fail_dump)
     with pytest.raises(BackupError, match="pg_dump failed"):
         create_backup("postgresql://fictional@localhost/example", storage, destination)
     assert list(destination.iterdir()) == []
+
+
+def test_host_tool_is_preferred(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[str, list[str]]] = []
+    monkeypatch.setattr("app.backup_restore.shutil.which", lambda tool: f"/tools/{tool}")
+    monkeypatch.setattr(
+        "app.backup_restore.run_postgres_tool",
+        lambda tool, args: calls.append((tool, args)),
+    )
+    url = "postgresql://fictional:private@localhost:5433/example"
+    assert resolve_postgres_tool_mode("pg_dump", url).mode == "HOST"
+    run_pg_dump(url, tmp_path / "database.dump")
+    assert calls == [
+        (
+            "pg_dump",
+            ["--format=custom", f"--file={tmp_path / 'database.dump'}", f"--dbname={url}"],
+        )
+    ]
+
+
+def mock_running_compose(monkeypatch: pytest.MonkeyPatch) -> list[list[str]]:
+    commands: list[list[str]] = []
+    monkeypatch.setattr(
+        "app.backup_restore.shutil.which",
+        lambda tool: "/tools/docker" if tool == "docker" else None,
+    )
+
+    def run(command: list[str], **_kwargs: object) -> SimpleNamespace:
+        commands.append(command)
+        if "config" in command:
+            output = json.dumps(
+                {
+                    "services": {
+                        "postgres": {
+                            "environment": {"POSTGRES_USER": "ielts", "POSTGRES_DB": "ielts"},
+                            "ports": [{"target": 5432, "published": "5433", "protocol": "tcp"}],
+                        }
+                    }
+                }
+            )
+        elif "ps" in command:
+            output = "postgres\n"
+        else:
+            output = "Docker version\n"
+        return SimpleNamespace(returncode=0, stdout=output, stderr="")
+
+    monkeypatch.setattr("app.backup_restore.subprocess.run", run)
+    return commands
+
+
+def test_missing_host_tool_selects_running_local_compose(monkeypatch: pytest.MonkeyPatch) -> None:
+    commands = mock_running_compose(monkeypatch)
+    selection = resolve_postgres_tool_mode(
+        "pg_dump", "postgresql://ielts:private@localhost:5433/fictional_smoke"
+    )
+    assert selection.mode == "DOCKER_COMPOSE"
+    assert selection.username == "ielts"
+    assert selection.database == "fictional_smoke"
+    assert any("config" in command for command in commands)
+    assert any("ps" in command for command in commands)
+
+
+def test_no_host_tools_or_docker_gives_actionable_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("app.backup_restore.shutil.which", lambda _tool: None)
+    with pytest.raises(BackupError, match="Docker Compose is unavailable"):
+        resolve_postgres_tool_mode("pg_dump", "postgresql://ielts@localhost:5433/ielts")
+    with pytest.raises(BackupError, match="other servers"):
+        resolve_postgres_tool_mode("pg_dump", "postgresql://ielts@db.example.test/ielts")
+
+
+def test_stopped_compose_postgres_gives_start_command(monkeypatch: pytest.MonkeyPatch) -> None:
+    mock_running_compose(monkeypatch)
+    monkeypatch.setattr(
+        "app.backup_restore.docker_text_command",
+        lambda args: (
+            ""
+            if "ps" in args
+            else json.dumps(
+                {
+                    "services": {
+                        "postgres": {
+                            "environment": {"POSTGRES_USER": "ielts", "POSTGRES_DB": "ielts"},
+                            "ports": [{"target": 5432, "published": "5433", "protocol": "tcp"}],
+                        }
+                    }
+                }
+            )
+        ),
+    )
+    with pytest.raises(BackupError, match="docker compose up -d postgres"):
+        resolve_postgres_tool_mode("pg_dump", "postgresql://ielts@localhost:5433/ielts")
+
+
+def test_docker_dump_streams_binary_stdout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "app.backup_restore.resolve_postgres_tool_mode",
+        lambda *_args: PostgresToolSelection("DOCKER_COMPOSE", "ielts", "ielts"),
+    )
+    payload = b"PGDMP\x00\xff\x80fictional"
+
+    def stream(command: list[str], **kwargs: object) -> SimpleNamespace:
+        assert command[:2] == ["docker", "compose"]
+        assert all("private" not in token for token in command)
+        assert command[command.index("exec") + 1 : command.index("exec") + 4] == [
+            "-T",
+            "postgres",
+            "pg_dump",
+        ]
+        assert "--format=custom" in command
+        assert "--dbname=ielts" in command
+        output = kwargs["stdout"]
+        output.write(payload)
+        return SimpleNamespace(returncode=0, stderr=b"")
+
+    monkeypatch.setattr("app.backup_restore.subprocess.run", stream)
+    destination = tmp_path / "database.dump"
+    run_pg_dump("postgresql://ielts:private@localhost:5433/ielts", destination)
+    assert destination.read_bytes() == payload
+
+
+def test_docker_restore_streams_binary_stdin(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "app.backup_restore.resolve_postgres_tool_mode",
+        lambda *_args: PostgresToolSelection("DOCKER_COMPOSE", "ielts", "ielts"),
+    )
+    payload = b"PGDMP\x00\xff\x80fictional"
+    source = tmp_path / "database.dump"
+    source.write_bytes(payload)
+
+    def stream(command: list[str], **kwargs: object) -> SimpleNamespace:
+        assert command[command.index("exec") + 1 : command.index("exec") + 4] == [
+            "-T",
+            "postgres",
+            "pg_restore",
+        ]
+        assert "--clean" in command
+        assert "--single-transaction" in command
+        assert kwargs["stdin"].read() == payload
+        return SimpleNamespace(returncode=0, stderr=b"")
+
+    monkeypatch.setattr("app.backup_restore.subprocess.run", stream)
+    run_pg_restore("postgresql://ielts:private@localhost:5433/ielts", source)
+
+
+def test_docker_failure_never_leaks_database_password(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "app.backup_restore.resolve_postgres_tool_mode",
+        lambda *_args: PostgresToolSelection("DOCKER_COMPOSE", "ielts", "ielts"),
+    )
+
+    def fail(_command: list[str], **_kwargs: object) -> SimpleNamespace:
+        return SimpleNamespace(returncode=1, stderr=b"postgresql://ielts:private@localhost")
+
+    monkeypatch.setattr("app.backup_restore.subprocess.run", fail)
+    with pytest.raises(BackupError) as caught:
+        run_pg_dump("postgresql://ielts:private@localhost:5433/ielts", tmp_path / "database.dump")
+    assert "private" not in str(caught.value)
+    assert "postgresql://" not in str(caught.value)

@@ -9,8 +9,10 @@ import shutil
 import subprocess
 import tarfile
 import tempfile
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from urllib.parse import unquote, urlsplit
 from uuid import uuid4
 
 from sqlalchemy import text
@@ -25,10 +27,18 @@ MANIFEST_FILE = "manifest.json"
 FORMAT_VERSION = 1
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SHA256 = re.compile(r"[0-9a-f]{64}\Z")
+COMPOSE_SERVICE = "postgres"
 
 
 class BackupError(Exception):
     """An operator-facing backup or restore failure."""
+
+
+@dataclass(frozen=True)
+class PostgresToolSelection:
+    mode: str
+    username: str | None = None
+    database: str | None = None
 
 
 def normalize_database_url(url: str) -> str:
@@ -79,8 +89,6 @@ def require_direct_child(path: Path, parent: Path) -> None:
 
 
 def run_postgres_tool(tool: str, arguments: list[str]) -> None:
-    if shutil.which(tool) is None:
-        raise BackupError(f"{tool} not found on PATH; install PostgreSQL client tools.")
     try:
         completed = subprocess.run([tool, *arguments], capture_output=True, text=True, check=False)
     except OSError as error:
@@ -91,6 +99,157 @@ def run_postgres_tool(tool: str, arguments: list[str]) -> None:
             f"{tool} failed (exit {completed.returncode}); check the database connection "
             "and PostgreSQL client/server compatibility."
         )
+
+
+def compose_prefix() -> list[str]:
+    return [
+        "docker",
+        "compose",
+        "--project-directory",
+        str(REPO_ROOT),
+        "-f",
+        str(REPO_ROOT / "docker-compose.yml"),
+    ]
+
+
+def docker_text_command(arguments: list[str]) -> str:
+    try:
+        completed = subprocess.run(arguments, capture_output=True, text=True, check=False)
+    except OSError as error:
+        raise BackupError(
+            "Docker Compose is unavailable; install PostgreSQL client tools or start Docker."
+        ) from error
+    if completed.returncode != 0:
+        # Compose config and PostgreSQL diagnostics may contain credentials.
+        raise BackupError(
+            "PostgreSQL client tools are not on PATH and Docker Compose postgres is not running. "
+            "Start it with 'docker compose up -d postgres' or install host PostgreSQL tools."
+        )
+    return completed.stdout
+
+
+def resolve_postgres_tool_mode(tool: str, database_url: str) -> PostgresToolSelection:
+    if shutil.which(tool) is not None:
+        return PostgresToolSelection("HOST")
+    try:
+        parsed = urlsplit(database_url)
+        hostname = parsed.hostname
+    except ValueError as error:
+        raise BackupError("DATABASE_URL is invalid.") from error
+    if hostname not in {"localhost", "127.0.0.1", "::1"} or parsed.query:
+        raise BackupError(
+            f"{tool} is not on PATH; Docker fallback only supports the local Compose DATABASE_URL. "
+            "Install PostgreSQL client tools for other servers."
+        )
+    if shutil.which("docker") is None:
+        raise BackupError(
+            f"{tool} is not on PATH and Docker Compose is unavailable. "
+            "Install PostgreSQL client tools or start Docker Compose postgres."
+        )
+    docker_text_command(["docker", "--version"])
+    docker_text_command(["docker", "compose", "version"])
+    try:
+        config = json.loads(docker_text_command([*compose_prefix(), "config", "--format", "json"]))
+        service = config["services"][COMPOSE_SERVICE]
+        environment = service["environment"]
+        compose_user = environment["POSTGRES_USER"]
+        compose_database = environment["POSTGRES_DB"]
+        port_matches = any(
+            int(port["target"]) == 5432
+            and int(port["published"]) == parsed.port
+            and port.get("protocol", "tcp") == "tcp"
+            for port in service["ports"]
+        )
+        username = unquote(parsed.username or "")
+        database = unquote(parsed.path.lstrip("/")) or compose_database
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
+        raise BackupError("Docker Compose postgres configuration could not be verified.") from error
+    if not port_matches or username != compose_user:
+        raise BackupError(
+            f"{tool} is not on PATH and DATABASE_URL does not match the local Compose "
+            "postgres service; install host PostgreSQL client tools."
+        )
+    running = docker_text_command(
+        [*compose_prefix(), "ps", "--status", "running", "--services", COMPOSE_SERVICE]
+    )
+    if COMPOSE_SERVICE not in running.splitlines():
+        raise BackupError(
+            "PostgreSQL client tools are not on PATH and Docker Compose postgres is not running. "
+            "Start it with 'docker compose up -d postgres'."
+        )
+    return PostgresToolSelection("DOCKER_COMPOSE", username, database)
+
+
+def run_docker_postgres_tool(
+    tool: str,
+    selection: PostgresToolSelection,
+    arguments: list[str],
+    *,
+    source: Path | None = None,
+    destination: Path | None = None,
+) -> None:
+    command = [
+        *compose_prefix(),
+        "exec",
+        "-T",
+        COMPOSE_SERVICE,
+        tool,
+        f"--username={selection.username}",
+        f"--dbname={selection.database}",
+        *arguments,
+    ]
+    try:
+        if destination is not None:
+            with destination.open("wb") as output:
+                completed = subprocess.run(
+                    command, stdout=output, stderr=subprocess.PIPE, check=False
+                )
+        elif source is not None:
+            with source.open("rb") as input_file:
+                completed = subprocess.run(
+                    command,
+                    stdin=input_file,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.PIPE,
+                    check=False,
+                )
+        else:
+            raise BackupError("Docker PostgreSQL stream target is missing.")
+    except OSError as error:
+        raise BackupError(f"Docker Compose {tool} could not start or stream the backup.") from error
+    if completed.returncode != 0:
+        # stderr can include connection details; keep the operator message credential-free.
+        raise BackupError(
+            f"Docker Compose {tool} failed (exit {completed.returncode}); "
+            "check that postgres is running and the configured database exists."
+        )
+
+
+def run_pg_dump(database_url: str, destination: Path) -> None:
+    selection = resolve_postgres_tool_mode("pg_dump", database_url)
+    if selection.mode == "HOST":
+        run_postgres_tool(
+            "pg_dump",
+            ["--format=custom", f"--file={destination}", f"--dbname={database_url}"],
+        )
+    else:
+        run_docker_postgres_tool("pg_dump", selection, ["--format=custom"], destination=destination)
+
+
+def run_pg_restore(database_url: str, source: Path) -> None:
+    selection = resolve_postgres_tool_mode("pg_restore", database_url)
+    arguments = [
+        "--clean",
+        "--if-exists",
+        "--no-owner",
+        "--no-acl",
+        "--single-transaction",
+        "--exit-on-error",
+    ]
+    if selection.mode == "HOST":
+        run_postgres_tool("pg_restore", [*arguments, f"--dbname={database_url}", str(source)])
+    else:
+        run_docker_postgres_tool("pg_restore", selection, arguments, source=source)
 
 
 def archive_storage(storage_root: Path, destination: Path) -> None:
@@ -126,10 +285,7 @@ def create_backup(database_url: str, storage_root: Path, backup_root: Path) -> P
     backup_root.mkdir(parents=True, exist_ok=True, mode=0o700)
     stage = Path(tempfile.mkdtemp(prefix=".backup-incomplete-", dir=backup_root))
     try:
-        run_postgres_tool(
-            "pg_dump",
-            ["--format=custom", f"--file={stage / DATABASE_FILE}", f"--dbname={database_url}"],
-        )
+        run_pg_dump(database_url, stage / DATABASE_FILE)
         archive_storage(storage_root, stage / STORAGE_FILE)
         created_at = datetime.now(UTC)
         manifest = {
@@ -324,19 +480,7 @@ def restore_backup(backup_dir: Path, database_url: str, storage_root: Path, conf
             members = validated_archive_members(archive)
             stage = Path(tempfile.mkdtemp(prefix=".storage-restore-", dir=storage_root.parent))
             extract_validated_archive(archive, members, stage)
-        run_postgres_tool(
-            "pg_restore",
-            [
-                "--clean",
-                "--if-exists",
-                "--no-owner",
-                "--no-acl",
-                "--single-transaction",
-                "--exit-on-error",
-                f"--dbname={database_url}",
-                str(backup_dir / DATABASE_FILE),
-            ],
-        )
+        run_pg_restore(database_url, backup_dir / DATABASE_FILE)
         database_restored = True
         try:
             revision = asyncio.run(alembic_revision(database_url))
