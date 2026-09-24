@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WritingRunner } from "@/features/writing/writing-runner";
+import { ExamDraftStore } from "@/features/exam/exam-draft-recovery";
 import { getAttempt, pauseAttempt, recordActivity, saveWritingResponse } from "@/lib/api/attempts";
 import { ApiError } from "@/lib/api/client";
 import { submitAttempt, type ExamPayload } from "@/lib/api/exam";
@@ -89,6 +90,7 @@ function payload(): ExamPayload {
 
 describe("WritingRunner", () => {
   beforeEach(() => {
+    sessionStorage.clear();
     vi.useFakeTimers();
     vi.clearAllMocks();
     vi.mocked(saveWritingResponse).mockImplementation(async (_attempt, taskId, content, expectedRevision) => ({ writing_task_id: taskId, content, word_count: 0, saved_at: new Date().toISOString(), revision: expectedRevision + 1 }));
@@ -127,6 +129,32 @@ describe("WritingRunner", () => {
       "It’s a city's plan for Đà Nẵng.",
       1,
     );
+  });
+
+  it("restores one Writing task while preserving a different task's stale draft for a choice", async () => {
+    const initial = payload();
+    const store = new ExamDraftStore(initial.attempt);
+    const recoveredOne = "Fictional chart sales rose through the first period.";
+    const recoveredTwo = "Fictional proposal: I would support the change for two reasons.";
+    store.saveEntry(taskOneId, recoveredOne, 1);
+    store.saveEntry(taskTwoId, recoveredTwo, 0);
+    render(<WritingRunner initial={initial} />);
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.getByLabelText("Response for Task 1")).toHaveValue(recoveredOne);
+    expect(screen.getByText(/Recovered draft conflict for Task 2/)).toBeInTheDocument();
+    await act(async () => { vi.advanceTimersByTime(750); });
+    expect(saveWritingResponse).toHaveBeenCalledWith(attemptId, taskOneId, recoveredOne, 1);
+    expect(saveWritingResponse).not.toHaveBeenCalledWith(attemptId, taskTwoId, expect.anything(), expect.anything());
+    expect(store.load()?.entries[taskTwoId]).toEqual({
+      kind: "writing", content: recoveredTwo, base_server_revision: 0,
+    });
+    fireEvent.click(screen.getByRole("tab", { name: /Task 2/ }));
+    expect(screen.getByLabelText("Response for Task 2")).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Restore my unsaved response" }));
+    expect(screen.getByLabelText("Response for Task 2")).toHaveValue(recoveredTwo);
+    await act(async () => { vi.advanceTimersByTime(750); });
+    expect(saveWritingResponse).toHaveBeenCalledWith(attemptId, taskTwoId, recoveredTwo, 1);
+    expect(store.load()).toBeNull();
   });
 
   it("keeps a newer revision authoritative after an older save fails", async () => {

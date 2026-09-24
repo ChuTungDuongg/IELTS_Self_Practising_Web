@@ -4,7 +4,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { elapsedFromSnapshot, formatDuration, estimateServerOffset, remainingSeconds } from "@/features/exam/timer";
 import { PauseAttemptControl } from "@/features/exam/pause-attempt-control";
 import { AttemptStoppedError, useAttemptLifecycle } from "@/features/exam/attempt-lifecycle";
-import { RevisionAutosaveQueue, useRevisionAutosave } from "@/features/exam/revision-autosave";
+import { RevisionAutosaveQueue } from "@/features/exam/revision-autosave";
+import { useExamDraftAutosave } from "@/features/exam/use-exam-draft-autosave";
+import { DraftRecoveryNotices } from "@/features/exam/draft-recovery-notices";
 import { useExamSubmit } from "@/features/exam/use-exam-submit";
 import { revealQuestionChip, scrollQuestionIntoPane } from "@/features/exam/question-navigation";
 import { questionRegistry } from "@/features/questions/registry";
@@ -25,7 +27,7 @@ export function ReadingRunner({ initial }: { initial: ExamPayload }) {
       .sort((left, right) => left.order_index - right.order_index)
       .map((question) => ({ ...question, passageIndex })))), [passages]);
   const [passageIndex, setPassageIndex] = useState(0);
-  const [values, setValues] = useState<Record<string, unknown>>(() => Object.fromEntries(initial.passages.flatMap((passage) => passage.question_groups.flatMap((group) => group.questions.map((question) => [question.id, question.value])))));
+  const initialResponses = useMemo(() => questions.map((question) => ({ id: question.id, value: question.value, revision: question.answer_revision })), [questions]);
   const [flags, setFlags] = useState<Record<string, boolean>>(() => Object.fromEntries(initial.passages.flatMap((passage) => passage.question_groups.flatMap((group) => group.questions.map((question) => [question.id, question.flagged])))));
   const [activeQuestionId, setActiveQuestionId] = useState<string | null>(() => questions[0]?.id ?? null);
   const [highlights, setHighlights] = useState(initial.highlights);
@@ -35,7 +37,6 @@ export function ReadingRunner({ initial }: { initial: ExamPayload }) {
   const [actionError, setActionError] = useState("");
   const [clock, setClock] = useState(() => Date.now());
   const autosaveRef = useRef<RevisionAutosaveQueue<unknown> | null>(null);
-  const answerRevisions = useRef<Record<string, number>>(Object.fromEntries(questions.map((question) => [question.id, question.answer_revision])));
   const lastActivity = useRef(0);
   const lastHeartbeat = useRef(0);
   const finalized = useRef(false);
@@ -49,17 +50,13 @@ export function ReadingRunner({ initial }: { initial: ExamPayload }) {
     autosaveRef.current?.stop();
   });
   const sendAnswer = useCallback(
-    async (questionId: string, value: unknown) => {
-      const response = await runMutation(() => saveAnswer(attemptId, questionId, value, answerRevisions.current[questionId] ?? 0));
-      answerRevisions.current[questionId] = response.revision;
-    },
+    (questionId: string, value: unknown, revision: number) => runMutation(() => saveAnswer(attemptId, questionId, value, revision)),
     [attemptId, runMutation],
   );
-  const { queue: autosave, status: saveState } = useRevisionAutosave<unknown>(
-    sendAnswer, 400,
-  );
+  const { queue: autosave, status: saveState, offline, values, conflicts, edit, resolveConflict, flush } = useExamDraftAutosave<unknown>({
+    attempt: initial.attempt, initialResponses, save: sendAnswer, debounceMs: 400,
+  });
   useEffect(() => { autosaveRef.current = autosave; }, [autosave]);
-  const flush = useCallback(() => autosave.flush(), [autosave]);
   const { submit, submitting, finalizing, submitError, isFinalizing } = useExamSubmit({
     attemptId, initialAttempt: initial.attempt, flush, runMutation, accept, isStopped,
   });
@@ -67,9 +64,8 @@ export function ReadingRunner({ initial }: { initial: ExamPayload }) {
   function answer(questionId: string, value: string | string[]) {
     if (stopped.current || isFinalizing()) return;
     programmaticNavigation.current = null;
-    setValues((current) => ({ ...current, [questionId]: value }));
+    if (!edit(questionId, value)) return;
     setActiveQuestionId(questionId);
-    autosave.markDirty(questionId, value);
   }
 
   useEffect(() => {
@@ -182,6 +178,7 @@ export function ReadingRunner({ initial }: { initial: ExamPayload }) {
   return <div className="exam-runner">
     <header className="exam-header"><div><p>READING</p><h1>{initial.test_title}</h1></div><div className="exam-header-tools"><PauseAttemptControl attemptId={attemptId} beforePause={flush} /><ThemeToggle /><div className="exam-highlight-toolbar" aria-label="Highlight management"><span>{highlights.length} {highlights.length === 1 ? "highlight" : "highlights"}</span>{highlights.length ? <button type="button" onClick={() => { setHighlightError(""); setConfirmDeleteAll(true); }}>Delete all</button> : null}</div><div className="exam-header-status"><span className={`exam-timer ${initial.attempt.timer_mode === "COUNTDOWN" && seconds < 300 ? "exam-timer-warning" : ""}`}>{initial.attempt.timer_mode === "COUNT_UP" ? "Time used " : ""}{formatDuration(seconds)}</span><span className={`exam-save-state exam-save-${saveState}`}>{saveState === "saving" ? "Saving…" : saveState === "conflict" ? "This response changed in another tab or session." : saveState === "error" ? "Save failed" : saveState === "dirty" ? "Unsaved" : "Saved"}</span>{saveState === "error" ? <button type="button" onClick={() => void flush().catch(() => undefined)}>Retry save</button> : null}{saveState === "conflict" ? <button type="button" onClick={() => window.location.reload()}>Reload latest</button> : null}</div></div></header>
     {submitError ? <p role="alert" className="notice notice-error">{submitError}</p> : null}
+    <DraftRecoveryNotices offline={offline} conflicts={conflicts} labelFor={(id) => `question ${questions.find((question) => question.id === id)?.number ?? id}`} onResolve={resolveConflict} />
     {actionError ? <p role="alert" className="notice notice-error">{actionError}</p> : null}
     {highlightError && !confirmDeleteAll ? <p role="alert" className="notice notice-error">{highlightError}</p> : null}
     <div className="grid min-h-0 flex-1 lg:grid-cols-2">

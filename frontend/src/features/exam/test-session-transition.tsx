@@ -2,15 +2,20 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { TestSession } from "@/lib/api/test-sessions";
 import { advanceTestSession } from "@/lib/api/test-sessions";
+import { clearAttemptDraft, isTerminalAttempt } from "./exam-draft-recovery";
 
 export function TestSessionTransition({ initial }: { initial: TestSession }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string>();
   const last = initial.attempts.at(-1);
+  useEffect(() => {
+    initial.attempts.filter((attempt) => isTerminalAttempt(attempt.status))
+      .forEach((attempt) => clearAttemptDraft(attempt.attempt_id));
+  }, [initial.attempts]);
   async function advance() {
     setPending(true); setError(undefined);
     try {

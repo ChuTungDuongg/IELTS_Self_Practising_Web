@@ -4,7 +4,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { PauseAttemptControl } from "@/features/exam/pause-attempt-control";
 import { AttemptStoppedError, useAttemptLifecycle } from "@/features/exam/attempt-lifecycle";
-import { RevisionAutosaveQueue, useRevisionAutosave } from "@/features/exam/revision-autosave";
+import { RevisionAutosaveQueue } from "@/features/exam/revision-autosave";
+import { useExamDraftAutosave } from "@/features/exam/use-exam-draft-autosave";
+import { DraftRecoveryNotices } from "@/features/exam/draft-recovery-notices";
 import { useExamSubmit } from "@/features/exam/use-exam-submit";
 import { revealQuestionChip, scrollQuestionIntoPane } from "@/features/exam/question-navigation";
 import { elapsedFromSnapshot, estimateServerOffset, formatDuration, remainingSeconds } from "@/features/exam/timer";
@@ -28,13 +30,12 @@ export function ListeningRunner({ initial }: { initial: ExamPayload }) {
       .sort((left, right) => left.order_index - right.order_index)
       .map((question) => ({ ...question, partIndex, groupId: group.id })))), [parts]);
   const [partIndex, setPartIndex] = useState(0);
-  const [values, setValues] = useState<Record<string, unknown>>(() => Object.fromEntries(questions.map((question) => [question.id, question.value])));
+  const initialResponses = useMemo(() => questions.map((question) => ({ id: question.id, value: question.value, revision: question.answer_revision })), [questions]);
   const [flags, setFlags] = useState<Record<string, boolean>>(() => Object.fromEntries(questions.map((question) => [question.id, question.flagged])));
   const [activeQuestionId, setActiveQuestionId] = useState<string | null>(() => questions[0]?.id ?? null);
   const [actionError, setActionError] = useState("");
   const [clock, setClock] = useState(() => Date.now());
   const autosaveRef = useRef<RevisionAutosaveQueue<unknown> | null>(null);
-  const answerRevisions = useRef<Record<string, number>>(Object.fromEntries(questions.map((question) => [question.id, question.answer_revision])));
   const finalized = useRef(false);
   const lastActivity = useRef(0);
   const lastHeartbeat = useRef(0);
@@ -48,17 +49,13 @@ export function ListeningRunner({ initial }: { initial: ExamPayload }) {
     autosaveRef.current?.stop();
   });
   const sendAnswer = useCallback(
-    async (id: string, value: unknown) => {
-      const response = await runMutation(() => saveAnswer(attemptId, id, value, answerRevisions.current[id] ?? 0));
-      answerRevisions.current[id] = response.revision;
-    },
+    (id: string, value: unknown, revision: number) => runMutation(() => saveAnswer(attemptId, id, value, revision)),
     [attemptId, runMutation],
   );
-  const { queue: autosave, status: saveState } = useRevisionAutosave<unknown>(
-    sendAnswer, 400,
-  );
+  const { queue: autosave, status: saveState, offline, values, conflicts, edit, resolveConflict, flush } = useExamDraftAutosave<unknown>({
+    attempt: initial.attempt, initialResponses, save: sendAnswer, debounceMs: 400,
+  });
   useEffect(() => { autosaveRef.current = autosave; }, [autosave]);
-  const flush = useCallback(() => autosave.flush(), [autosave]);
   const { submit, submitting, finalizing, submitError, isFinalizing } = useExamSubmit({
     attemptId, initialAttempt: initial.attempt, flush, runMutation, accept, isStopped,
   });
@@ -66,9 +63,8 @@ export function ListeningRunner({ initial }: { initial: ExamPayload }) {
   function answer(id: string, value: string | string[]) {
     if (stopped.current || isFinalizing()) return;
     programmaticNavigation.current = null;
-    setValues((current) => ({ ...current, [id]: value }));
+    if (!edit(id, value)) return;
     setActiveQuestionId(id);
-    autosave.markDirty(id, value);
   }
 
   useEffect(() => {
@@ -225,6 +221,7 @@ export function ListeningRunner({ initial }: { initial: ExamPayload }) {
   return <div className="exam-runner listening-exam">
     <header className="exam-header"><div><p>LISTENING · SECTION {part.order_index + 1}</p><h1>{initial.test_title}</h1></div><div className="exam-header-tools"><PauseAttemptControl attemptId={attemptId} beforePause={flush} /><ThemeToggle /><div className="exam-header-status"><span className={`exam-timer ${initial.attempt.timer_mode === "COUNTDOWN" && seconds < 300 ? "exam-timer-warning" : ""}`}>{formatDuration(seconds)}</span><span className={`exam-save-state exam-save-${saveState}`}>{saveState === "saving" ? "Saving…" : saveState === "conflict" ? "This response changed in another tab or session." : saveState === "error" ? "Save failed" : saveState === "dirty" ? "Unsaved" : "Saved"}</span>{saveState === "error" ? <button type="button" onClick={() => void flush().catch(() => undefined)}>Retry save</button> : null}{saveState === "conflict" ? <button type="button" onClick={() => window.location.reload()}>Reload latest</button> : null}</div></div></header>
     {submitError ? <p role="alert" className="notice notice-error">{submitError}</p> : null}
+    <DraftRecoveryNotices offline={offline} conflicts={conflicts} labelFor={(id) => `question ${questions.find((question) => question.id === id)?.number ?? id}`} onResolve={resolveConflict} />
     {actionError ? <p role="alert" className="notice notice-error">{actionError}</p> : null}
     {initial.listening_audio_asset ? <><ListeningAudioPlayer src={assetContentUrl(initial.listening_audio_asset)} policy={{ allowSeeking: initial.audio_policy?.allow_seeking ?? true, allowSpeed: initial.audio_policy?.allow_speed ?? true }} />{initial.audio_policy?.allow_seeking === false ? <p className="exam-mode-label">Exam mode · Seeking locked</p> : null}</> : <p className="notice m-4">This Listening test has no audio recording attached.</p>}
     <main ref={questionPane} inert={finalizing} className={`listening-question-pane ${visualGroup ? "listening-question-pane-visual" : ""}`} onWheelCapture={() => { programmaticNavigation.current = null; }} onTouchStartCapture={() => { programmaticNavigation.current = null; }} onPointerDownCapture={() => { programmaticNavigation.current = null; }} onKeyDownCapture={() => { programmaticNavigation.current = null; }} onFocusCapture={(event) => {

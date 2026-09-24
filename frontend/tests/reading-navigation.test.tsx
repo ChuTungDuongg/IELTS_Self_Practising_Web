@@ -1,7 +1,8 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ReadingRunner } from "@/features/reading/reading-runner";
-import { getAttempt, recordActivity, recordNavigation, saveAnswer } from "@/lib/api/attempts";
+import { ExamDraftStore, draftStorageKey } from "@/features/exam/exam-draft-recovery";
+import { getAttempt, pauseAttempt, recordActivity, recordNavigation, saveAnswer } from "@/lib/api/attempts";
 import { ApiError } from "@/lib/api/client";
 import type { ExamPayload } from "@/lib/api/exam";
 import { saveFlag, submitAttempt } from "@/lib/api/exam";
@@ -11,7 +12,7 @@ const push = vi.fn();
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn(), push }) }));
 vi.mock("@/lib/api/attempts", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api/attempts")>();
-  return { ...actual, getAttempt: vi.fn(), recordActivity: vi.fn(), recordNavigation: vi.fn(), saveAnswer: vi.fn() };
+  return { ...actual, getAttempt: vi.fn(), pauseAttempt: vi.fn(), recordActivity: vi.fn(), recordNavigation: vi.fn(), saveAnswer: vi.fn() };
 });
 vi.mock("@/lib/api/exam", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api/exam")>();
@@ -95,10 +96,13 @@ describe("Reading footer navigation", () => {
   let intersectionCallback: IntersectionObserverCallback = () => undefined;
 
   beforeEach(() => {
+    sessionStorage.clear();
+    Object.defineProperty(navigator, "onLine", { configurable: true, value: true });
     vi.clearAllMocks();
     vi.mocked(getAttempt).mockReset();
     vi.mocked(submitAttempt).mockReset();
     vi.mocked(saveAnswer).mockImplementation(async (_attempt, questionId, value, expectedRevision) => ({ question_id: questionId, value, is_correct: null, saved_at: new Date().toISOString(), revision: expectedRevision + 1 }));
+    vi.mocked(pauseAttempt).mockResolvedValue({ status: "PAUSED" } as never);
     vi.mocked(recordNavigation).mockResolvedValue(undefined);
     scrolls.length = 0;
     Object.defineProperty(HTMLElement.prototype, "scrollTo", {
@@ -256,6 +260,96 @@ describe("Reading footer navigation", () => {
     await waitFor(() => expect(saveAnswer).toHaveBeenCalledWith("22222222-2222-4222-8222-222222222222", q1, "FALSE", 1), { timeout: 1200 });
   });
 
+  it("restores a safe Reading draft and saves with its original server revision", async () => {
+    const initial = payload();
+    const store = new ExamDraftStore(initial.attempt);
+    store.saveEntry(q1, "FALSE", 1);
+    const view = render(<ReadingRunner initial={initial} />);
+    const question = view.container.querySelector(`[data-question-id="${q1}"]`) as HTMLElement;
+    await waitFor(() => expect(within(question).getByRole("radio", { name: "FALSE" })).toBeChecked());
+    await waitFor(() => expect(saveAnswer).toHaveBeenCalledWith(initial.attempt.attempt_id, q1, "FALSE", 1));
+    await waitFor(() => expect(sessionStorage.getItem(draftStorageKey(initial.attempt.attempt_id))).toBeNull());
+    expect(view.container.querySelector(`[data-nav-question-id="${q1}"]`)).toHaveClass("answered");
+  });
+
+  it("recovers an answer after a same-tab reload while the first view was offline", async () => {
+    Object.defineProperty(navigator, "onLine", { configurable: true, value: false });
+    const initial = payload();
+    const first = render(<ReadingRunner initial={initial} />);
+    const question = first.container.querySelector(`[data-question-id="${q2}"]`) as HTMLElement;
+    fireEvent.click(within(question).getByRole("radio", { name: "FALSE" }));
+    expect(new ExamDraftStore(initial.attempt).load()?.entries[q2]).toBeDefined();
+    expect(saveAnswer).not.toHaveBeenCalled();
+    first.unmount();
+
+    Object.defineProperty(navigator, "onLine", { configurable: true, value: true });
+    const second = render(<ReadingRunner initial={initial} />);
+    const restored = second.container.querySelector(`[data-question-id="${q2}"]`) as HTMLElement;
+    await waitFor(() => expect(within(restored).getByRole("radio", { name: "FALSE" })).toBeChecked());
+    await waitFor(() => expect(saveAnswer).toHaveBeenCalledWith(initial.attempt.attempt_id, q2, "FALSE", 0));
+    await waitFor(() => expect(new ExamDraftStore(initial.attempt).load()).toBeNull());
+  });
+
+  it("drops a Reading draft already acknowledged before reload without resaving", async () => {
+    const initial = payload();
+    const store = new ExamDraftStore(initial.attempt);
+    store.saveEntry(q1, "TRUE", 0);
+    const view = render(<ReadingRunner initial={initial} />);
+    await waitFor(() => expect(store.load()).toBeNull());
+    const question = view.container.querySelector(`[data-question-id="${q1}"]`) as HTMLElement;
+    expect(within(question).getByRole("radio", { name: "TRUE" })).toBeChecked();
+    expect(saveAnswer).not.toHaveBeenCalled();
+  });
+
+  it("requires an explicit choice before a stale Reading draft can overwrite revision one", async () => {
+    const initial = payload();
+    const store = new ExamDraftStore(initial.attempt);
+    store.saveEntry(q1, "FALSE", 0);
+    const first = render(<ReadingRunner initial={initial} />);
+    await screen.findByText(/Recovered draft conflict for question 1/);
+    expect(saveAnswer).not.toHaveBeenCalled();
+    expect(store.load()?.entries[q1]).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Use saved response" }));
+    expect(store.load()).toBeNull();
+    expect(within(first.container.querySelector(`[data-question-id="${q1}"]`) as HTMLElement).getByRole("radio", { name: "TRUE" })).toBeChecked();
+    first.unmount();
+
+    store.saveEntry(q1, "FALSE", 0);
+    const second = render(<ReadingRunner initial={initial} />);
+    await screen.findByText(/Recovered draft conflict for question 1/);
+    fireEvent.click(screen.getByRole("button", { name: "Restore my unsaved response" }));
+    expect(within(second.container.querySelector(`[data-question-id="${q1}"]`) as HTMLElement).getByRole("radio", { name: "FALSE" })).toBeChecked();
+    await waitFor(() => expect(saveAnswer).toHaveBeenCalledWith(initial.attempt.attempt_id, q1, "FALSE", 1));
+  });
+
+  it("keeps edits local while offline and flushes once when the browser comes online", async () => {
+    vi.useFakeTimers();
+    Object.defineProperty(navigator, "onLine", { configurable: true, value: false });
+    const initial = payload();
+    const view = render(<ReadingRunner initial={initial} />);
+    const question = view.container.querySelector(`[data-question-id="${q2}"]`) as HTMLElement;
+    fireEvent.click(within(question).getByRole("radio", { name: "FALSE" }));
+    expect(screen.getByText("Offline — changes are kept in this tab.")).toBeInTheDocument();
+    expect(new ExamDraftStore(initial.attempt).load()?.entries[q2]).toEqual({
+      kind: "answer", value: "FALSE", base_server_revision: 0,
+    });
+    await act(async () => { vi.advanceTimersByTime(10_000); });
+    expect(saveAnswer).not.toHaveBeenCalled();
+    expect(submitAttempt).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Pause & exit" }));
+    await act(async () => {
+      fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Pause & exit" }));
+      await Promise.resolve();
+    });
+    expect(pauseAttempt).not.toHaveBeenCalled();
+    expect(new ExamDraftStore(initial.attempt).load()?.entries[q2]).toBeDefined();
+    Object.defineProperty(navigator, "onLine", { configurable: true, value: true });
+    await act(async () => { fireEvent(window, new Event("online")); await Promise.resolve(); });
+    expect(saveAnswer).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("Saved")).toBeInTheDocument();
+    expect(new ExamDraftStore(initial.attempt).load()).toBeNull();
+  });
+
   it("keeps the newest answer unsaved until acknowledged and submits only after both writes", async () => {
     vi.useFakeTimers();
     const first = deferred();
@@ -275,11 +369,15 @@ describe("Reading footer navigation", () => {
     first.resolve();
     await act(async () => { await Promise.resolve(); });
     expect(saveAnswer).toHaveBeenLastCalledWith(payload().attempt.attempt_id, q1, "TRUE", 2);
+    expect(new ExamDraftStore(payload().attempt).load()?.entries[q1]).toEqual({
+      kind: "answer", value: "TRUE", base_server_revision: 2,
+    });
     expect(screen.queryByText("Saved")).not.toBeInTheDocument();
     expect(submitAttempt).not.toHaveBeenCalled();
     latest.resolve();
     await act(async () => { await Promise.resolve(); });
     expect(submitAttempt).toHaveBeenCalledTimes(1);
+    expect(new ExamDraftStore(payload().attempt).load()).toBeNull();
   });
 
   it("keeps a failed answer retryable and retries the latest value on the periodic flush", async () => {
@@ -405,6 +503,7 @@ describe("Reading footer navigation", () => {
     await waitFor(() => expect(push).toHaveBeenCalledWith(`/review/${initial.attempt.attempt_id}`), { timeout: 1500 });
     expect(getAttempt).toHaveBeenCalledWith(initial.attempt.attempt_id);
     expect(screen.getByRole("status")).toHaveTextContent("Attempt finished");
+    expect(new ExamDraftStore(initial.attempt).load()).toBeNull();
     expect(screen.queryByText("Save failed")).not.toBeInTheDocument();
     expect(saveAnswer).toHaveBeenCalledTimes(1);
   });

@@ -15,14 +15,21 @@ type Entry<Value> = {
   worker: Promise<void> | null;
 };
 
+export type AutosaveCallbacks<Value> = {
+  onDirty?: (key: string, value: Value) => void;
+  onAcknowledged?: (key: string, currentValue: Value, isLatest: boolean, result: unknown) => void;
+};
+
 export class RevisionAutosaveQueue<Value> {
   private readonly entries = new Map<string, Entry<Value>>();
   private readonly listeners = new Set<(status: AutosaveStatus) => void>();
   private stopped = false;
+  private offline = false;
 
   constructor(
     private readonly send: (key: string, value: Value) => Promise<unknown>,
     private readonly debounceMs: number,
+    private readonly callbacks: AutosaveCallbacks<Value> = {},
   ) {}
 
   get status(): AutosaveStatus {
@@ -63,7 +70,8 @@ export class RevisionAutosaveQueue<Value> {
     if (!entry.conflictError) entry.failed = false;
     this.entries.set(key, entry);
     if (entry.timer) clearTimeout(entry.timer);
-    if (!entry.conflictError) {
+    this.callbacks.onDirty?.(key, value);
+    if (!entry.conflictError && !this.offline) {
       entry.timer = setTimeout(() => {
         entry.timer = null;
         void this.saveNow(key).catch(() => undefined);
@@ -80,6 +88,7 @@ export class RevisionAutosaveQueue<Value> {
     entry.timer = null;
     if (entry.worker) return entry.worker;
     if (entry.revision === entry.savedRevision) return;
+    if (this.offline) throw new ApiError("NETWORK_ERROR", "Offline — changes are kept in this tab.", 0);
 
     const worker = this.drain(key, entry);
     entry.worker = worker;
@@ -101,6 +110,7 @@ export class RevisionAutosaveQueue<Value> {
       const conflict = [...this.entries.values()].find((entry) => entry.conflictError)?.conflictError;
       if (conflict) throw conflict;
       if (!this.hasUnsaved) return;
+      if (this.offline) throw new ApiError("NETWORK_ERROR", "Offline — changes are kept in this tab.", 0);
       const pending = [...this.entries]
         .filter(([, entry]) => entry.worker || entry.revision > entry.savedRevision)
         .map(([key]) => this.saveNow(key));
@@ -125,15 +135,27 @@ export class RevisionAutosaveQueue<Value> {
     }
   }
 
+  setOffline(offline: boolean): void {
+    this.offline = offline;
+    if (offline) {
+      for (const entry of this.entries.values()) {
+        if (entry.timer) clearTimeout(entry.timer);
+        entry.timer = null;
+      }
+    }
+  }
+
   private async drain(key: string, entry: Entry<Value>): Promise<void> {
     while (!this.stopped && entry.revision > entry.savedRevision) {
+      if (this.offline) return;
       const revision = entry.revision;
       const value = entry.value;
       entry.failed = false;
       this.notify();
       try {
-        await this.send(key, value);
+        const result = await this.send(key, value);
         entry.savedRevision = Math.max(entry.savedRevision, revision);
+        if (!this.stopped) this.callbacks.onAcknowledged?.(key, entry.value, entry.revision === revision, result);
       } catch (error) {
         if (error instanceof ApiError && error.code === "ATTEMPT_RESPONSE_CONFLICT") {
           entry.conflictError = error;
@@ -142,13 +164,14 @@ export class RevisionAutosaveQueue<Value> {
           this.notify();
           throw error;
         }
-        if (entry.revision !== revision && error instanceof ApiError
+        if (!this.stopped && !this.offline && entry.revision !== revision && error instanceof ApiError
           && (error.code === "NETWORK_ERROR" || error.status >= 500)) {
           // The server may have committed the older value. A same-payload replay
           // obtains its revision before the newer local value is sent.
           try {
-            await this.send(key, value);
+            const result = await this.send(key, value);
             entry.savedRevision = Math.max(entry.savedRevision, revision);
+            if (!this.stopped) this.callbacks.onAcknowledged?.(key, entry.value, entry.revision === revision, result);
             this.notify();
             continue;
           } catch (retryError) {
@@ -183,15 +206,37 @@ export class RevisionAutosaveQueue<Value> {
 export function useRevisionAutosave<Value>(
   send: (key: string, value: Value) => Promise<unknown>,
   debounceMs: number,
+  callbacks?: AutosaveCallbacks<Value>,
+  pauseWhileOffline = false,
 ) {
-  const queue = useMemo(() => new RevisionAutosaveQueue<Value>(send, debounceMs), [send, debounceMs]);
+  const queue = useMemo(() => {
+    const created = new RevisionAutosaveQueue<Value>(send, debounceMs, callbacks);
+    if (pauseWhileOffline && typeof navigator !== "undefined") created.setOffline(navigator.onLine === false);
+    return created;
+  }, [send, debounceMs, callbacks, pauseWhileOffline]);
   const pendingStop = useRef<{
     queue: RevisionAutosaveQueue<Value>;
     timer: ReturnType<typeof setTimeout>;
   } | null>(null);
   const [status, setStatus] = useState<AutosaveStatus>(queue.status);
+  const [offline, setOffline] = useState(() => pauseWhileOffline && typeof navigator !== "undefined" && navigator.onLine === false);
 
   useEffect(() => queue.subscribe(setStatus), [queue]);
+  useEffect(() => {
+    if (!pauseWhileOffline) return;
+    const wentOffline = () => { queue.setOffline(true); setOffline(true); };
+    const wentOnline = () => {
+      queue.setOffline(false);
+      setOffline(false);
+      void queue.flush().catch(() => undefined);
+    };
+    window.addEventListener("offline", wentOffline);
+    window.addEventListener("online", wentOnline);
+    return () => {
+      window.removeEventListener("offline", wentOffline);
+      window.removeEventListener("online", wentOnline);
+    };
+  }, [pauseWhileOffline, queue]);
   useEffect(() => {
     if (pendingStop.current?.queue === queue) {
       clearTimeout(pendingStop.current.timer);
@@ -213,5 +258,5 @@ export function useRevisionAutosave<Value>(
     return () => window.removeEventListener("beforeunload", warn);
   }, [queue, status]);
 
-  return { queue, status };
+  return { queue, status, offline };
 }

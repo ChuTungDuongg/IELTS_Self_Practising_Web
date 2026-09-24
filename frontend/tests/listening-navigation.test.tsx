@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ListeningRunner } from "@/features/listening/listening-runner";
+import { ExamDraftStore } from "@/features/exam/exam-draft-recovery";
 import { getAttempt, recordNavigation, saveAnswer } from "@/lib/api/attempts";
 import { ApiError } from "@/lib/api/client";
 import type { ExamPayload } from "@/lib/api/exam";
@@ -118,6 +119,7 @@ describe("Listening footer navigation", () => {
   let observerCount = 0;
 
   beforeEach(() => {
+    sessionStorage.clear();
     vi.clearAllMocks();
     scrolled.length = 0;
     observerCount = 0;
@@ -275,6 +277,18 @@ describe("Listening footer navigation", () => {
 
     expect(view.container.querySelector(`[data-nav-question-id="${q2}"]`)).toHaveClass("answered", "current");
     await waitFor(() => expect(saveAnswer).toHaveBeenCalledWith(attemptId, q2, "FALSE", 0), { timeout: 1200 });
+  });
+
+  it("restores a Listening answer into navigation and saves with its base revision", async () => {
+    const initial = payload();
+    const store = new ExamDraftStore(initial.attempt);
+    store.saveEntry(q2, "FALSE", 0);
+    const view = render(<ListeningRunner initial={initial} />);
+    const target = view.container.querySelector(`[data-question-id="${q2}"]`) as HTMLElement;
+    await waitFor(() => expect(within(target).getByRole("radio", { name: "FALSE" })).toBeChecked());
+    expect(view.container.querySelector(`[data-nav-question-id="${q2}"]`)).toHaveClass("answered");
+    await waitFor(() => expect(saveAnswer).toHaveBeenCalledWith(attemptId, q2, "FALSE", 0));
+    await waitFor(() => expect(store.load()).toBeNull());
   });
 
   it("keeps an edited answer across navigation and waits for its latest save before Submit", async () => {

@@ -47,6 +47,38 @@ describe("RevisionAutosaveQueue", () => {
     queue.stop();
   });
 
+  it("does not retry an in-flight failure while offline and sends the latest edit once online", async () => {
+    const first = deferred<void>();
+    const send = vi.fn().mockReturnValueOnce(first.promise).mockResolvedValue(undefined);
+    const queue = new RevisionAutosaveQueue<string>(send, 400);
+    queue.markDirty("q1", "older");
+    const saving = queue.saveNow("q1");
+    queue.markDirty("q1", "newer");
+    queue.setOffline(true);
+    first.reject(new ApiError("NETWORK_ERROR", "connection lost", 0));
+    await saving;
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(queue.hasUnsaved).toBe(true);
+    queue.setOffline(false);
+    await queue.flush();
+    expect(send.mock.calls).toEqual([["q1", "older"], ["q1", "newer"]]);
+    queue.stop();
+  });
+
+  it("ignores a late acknowledgement after the queue stops", async () => {
+    const pending = deferred<void>();
+    const onAcknowledged = vi.fn();
+    const queue = new RevisionAutosaveQueue<string>(
+      vi.fn().mockReturnValue(pending.promise), 400, { onAcknowledged },
+    );
+    queue.markDirty("q1", "answer");
+    const saving = queue.saveNow("q1");
+    queue.stop();
+    pending.resolve();
+    await saving;
+    expect(onAcknowledged).not.toHaveBeenCalled();
+  });
+
   it("keeps a newer edit dirty until its own acknowledgement and coalesces intermediate edits", async () => {
     vi.useFakeTimers();
     const first = deferred<void>();

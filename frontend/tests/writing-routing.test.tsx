@@ -5,11 +5,13 @@ import ReviewShellPage from "@/app/review/[attemptId]/page";
 import { StartAttempt } from "@/features/exam/start-attempt";
 import { resumeAttempt, startAttempt } from "@/lib/api/attempts";
 import { getExam, getWritingReview } from "@/lib/api/exam";
+import { ExamDraftStore, draftStorageKey } from "@/features/exam/exam-draft-recovery";
 
 const push = vi.fn();
+const replace = vi.fn();
 vi.mock("next/navigation", () => ({
   notFound: vi.fn(),
-  useRouter: () => ({ push, refresh: vi.fn() }),
+  useRouter: () => ({ push, replace, refresh: vi.fn() }),
 }));
 vi.mock("@/lib/api/attempts", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api/attempts")>();
@@ -31,6 +33,7 @@ const versionId = "22222222-2222-4222-8222-222222222222";
 
 describe("Writing routing", () => {
   beforeEach(() => {
+    sessionStorage.clear();
     vi.clearAllMocks();
   });
 
@@ -50,39 +53,55 @@ describe("Writing routing", () => {
   });
 
   it("routes Writing attempts to the Writing runner", async () => {
-    vi.mocked(getExam).mockResolvedValue({ attempt: { module: "WRITING" } } as never);
+    vi.mocked(getExam).mockResolvedValue({ attempt: { module: "WRITING", status: "IN_PROGRESS" } } as never);
     render(await AttemptShellPage({ params: Promise.resolve({ attemptId }) }));
     expect(screen.getByText("Writing runner selected")).toBeInTheDocument();
   });
 
   it("gates a paused attempt until it is resumed", async () => {
     const now = "2026-09-20T00:00:00Z";
+    const taskId = "33333333-3333-4333-8333-333333333333";
+    const attempt = {
+      attempt_id: attemptId, test_version_id: versionId, module: "WRITING" as const, status: "PAUSED" as const,
+      finished_reason: null, timer_mode: "COUNT_UP" as const, timer_limit_seconds: null,
+      started_at: now, paused_at: now, total_paused_seconds: 30, deadline_at: null,
+      last_active_at: now, finished_at: null, elapsed_seconds: 125, remaining_seconds: null,
+      raw_score: null, max_score: null, band_score: null, server_time: now,
+    };
+    const store = new ExamDraftStore(attempt);
+    store.saveEntry(taskId, "Recovered fictional Writing paragraph.", 1);
     vi.mocked(getExam).mockResolvedValue({
       test_title: "Paused fictional test",
-      attempt: {
-        attempt_id: attemptId, test_version_id: versionId, module: "WRITING", status: "PAUSED",
-        finished_reason: null, timer_mode: "COUNT_UP", timer_limit_seconds: null,
-        started_at: now, paused_at: now, total_paused_seconds: 30, deadline_at: null,
-        last_active_at: now, finished_at: null, elapsed_seconds: 125, remaining_seconds: null,
-        raw_score: null, max_score: null, band_score: null, server_time: now,
-      },
+      attempt,
+      writing_tasks: [{ id: taskId, task_number: 1, content: "Saved text", response_revision: 1 }],
     } as never);
     vi.mocked(resumeAttempt).mockResolvedValue({} as never);
 
     render(await AttemptShellPage({ params: Promise.resolve({ attemptId }) }));
     expect(screen.getByRole("heading", { name: "Attempt paused" })).toBeInTheDocument();
     expect(screen.getByText("Practice time: 02:05")).toBeInTheDocument();
+    expect(await screen.findByText(/Recovered fictional Writing paragraph/)).toBeInTheDocument();
+    expect(store.load()?.entries[taskId]).toBeDefined();
     expect(screen.queryByText("Writing runner selected")).not.toBeInTheDocument();
     expect(resumeAttempt).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Resume attempt" }));
     await waitFor(() => expect(resumeAttempt).toHaveBeenCalledWith(attemptId));
+    expect(store.load()?.entries[taskId]).toBeDefined();
   });
 
   it("loads the Writing-specific review before rendering", async () => {
     vi.mocked(getExam).mockResolvedValue({ attempt: { module: "WRITING" } } as never);
     vi.mocked(getWritingReview).mockResolvedValue({ tasks: [] } as never);
     render(await ReviewShellPage({ params: Promise.resolve({ attemptId }) }));
-    expect(getWritingReview).toHaveBeenCalledWith(attemptId);
+    expect(getWritingReview).toHaveBeenCalledWith(attemptId, expect.any(Function));
     expect(screen.getByText("Writing review selected")).toBeInTheDocument();
+  });
+
+  it("clears a direct Writing review's finalized attempt draft", async () => {
+    sessionStorage.setItem(draftStorageKey(attemptId), "fictional unsaved response");
+    vi.mocked(getExam).mockResolvedValue({ attempt: { module: "WRITING", status: "SUBMITTED" } } as never);
+    vi.mocked(getWritingReview).mockResolvedValue({ tasks: [] } as never);
+    render(await ReviewShellPage({ params: Promise.resolve({ attemptId }) }));
+    await waitFor(() => expect(sessionStorage.getItem(draftStorageKey(attemptId))).toBeNull());
   });
 });

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { getAttempt, type AttemptResponse } from "@/lib/api/attempts";
 import { ApiError } from "@/lib/api/client";
 import { attemptDestination } from "@/features/exam/attempt-destination";
+import { clearAttemptDraft, isTerminalAttempt } from "@/features/exam/exam-draft-recovery";
 export { attemptDestination } from "@/features/exam/attempt-destination";
 
 const lifecycleCodes = new Set(["ATTEMPT_FINALIZED", "ATTEMPT_EXPIRED", "ATTEMPT_PAUSED"]);
@@ -57,6 +58,7 @@ export function useAttemptLifecycle(attemptId: string, onStopped?: () => void) {
 
   const accept = useCallback((attempt: AttemptResponse) => {
     if (attempt.status === "IN_PROGRESS" || stopped.current) return;
+    if (isTerminalAttempt(attempt.status)) clearAttemptDraft(attempt.attempt_id);
     stopped.current = true;
     setEnded(true);
     onStoppedRef.current?.();

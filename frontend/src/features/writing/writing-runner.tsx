@@ -6,7 +6,9 @@ import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { elapsedFromSnapshot, estimateServerOffset, formatDuration, remainingSeconds } from "@/features/exam/timer";
 import { PauseAttemptControl } from "@/features/exam/pause-attempt-control";
 import { AttemptStoppedError, useAttemptLifecycle } from "@/features/exam/attempt-lifecycle";
-import { RevisionAutosaveQueue, useRevisionAutosave } from "@/features/exam/revision-autosave";
+import { RevisionAutosaveQueue } from "@/features/exam/revision-autosave";
+import { useExamDraftAutosave } from "@/features/exam/use-exam-draft-autosave";
+import { DraftRecoveryNotices } from "@/features/exam/draft-recovery-notices";
 import { useExamSubmit } from "@/features/exam/use-exam-submit";
 import { countWords } from "@/features/writing/word-count";
 import { recordActivity, recordNavigation, saveWritingResponse } from "@/lib/api/attempts";
@@ -20,13 +22,10 @@ export function WritingRunner({ initial }: { initial: ExamPayload }) {
     [initial.writing_tasks],
   );
   const [taskIndex, setTaskIndex] = useState(0);
-  const [contents, setContents] = useState<Record<string, string>>(() =>
-    Object.fromEntries(tasks.map((task) => [task.id, task.content])),
-  );
+  const initialResponses = useMemo(() => tasks.map((task) => ({ id: task.id, value: task.content, revision: task.response_revision })), [tasks]);
   const [activityError, setActivityError] = useState<string | null>(null);
   const [clock, setClock] = useState(() => Date.now());
   const autosaveRef = useRef<RevisionAutosaveQueue<string> | null>(null);
-  const responseRevisions = useRef<Record<string, number>>(Object.fromEntries(tasks.map((task) => [task.id, task.response_revision])));
   const lastActivity = useRef(0);
   const lastHeartbeat = useRef(0);
   const finalized = useRef(false);
@@ -34,17 +33,13 @@ export function WritingRunner({ initial }: { initial: ExamPayload }) {
     autosaveRef.current?.stop();
   });
   const sendResponse = useCallback(
-    async (taskId: string, content: string) => {
-      const response = await runMutation(() => saveWritingResponse(attemptId, taskId, content, responseRevisions.current[taskId] ?? 0));
-      responseRevisions.current[taskId] = response.revision;
-    },
+    (taskId: string, content: string, revision: number) => runMutation(() => saveWritingResponse(attemptId, taskId, content, revision)),
     [attemptId, runMutation],
   );
-  const { queue: autosave, status: saveState } = useRevisionAutosave<string>(
-    sendResponse, 750,
-  );
+  const { queue: autosave, status: saveState, offline, values: contents, conflicts, edit, resolveConflict, flush: flushForSubmission } = useExamDraftAutosave<string>({
+    attempt: initial.attempt, initialResponses, save: sendResponse, debounceMs: 750,
+  });
   useEffect(() => { autosaveRef.current = autosave; }, [autosave]);
-  const flushForSubmission = useCallback(() => autosave.flush(), [autosave]);
   const { submit: finish, submitting, finalizing, submitError, isFinalizing } = useExamSubmit({
     attemptId, initialAttempt: initial.attempt, flush: flushForSubmission, runMutation, accept, isStopped,
   });
@@ -61,8 +56,7 @@ export function WritingRunner({ initial }: { initial: ExamPayload }) {
 
   function updateContent(taskId: string, content: string) {
     if (stopped.current || isFinalizing()) return;
-    setContents((current) => ({ ...current, [taskId]: content }));
-    autosave.markDirty(taskId, content);
+    edit(taskId, content);
   }
 
   useEffect(() => {
@@ -113,6 +107,7 @@ export function WritingRunner({ initial }: { initial: ExamPayload }) {
     </div>
     {saveState === "error" ? <div role="alert" className="notice notice-error writing-save-error"><span>Your response could not be saved. Retry before submitting.</span><button type="button" className="btn btn-secondary" onClick={() => void flushForSubmission().catch(() => undefined)}>Retry save</button></div> : null}
     {saveState === "conflict" ? <div role="alert" className="notice notice-error writing-save-error"><span>This response changed in another tab or session. Reload to see the latest saved version.</span><button type="button" className="btn btn-secondary" onClick={() => window.location.reload()}>Reload latest</button></div> : null}
+    <DraftRecoveryNotices offline={offline} conflicts={conflicts} labelFor={(id) => `Task ${tasks.find((item) => item.id === id)?.task_number ?? id}`} onResolve={resolveConflict} />
     {submitError ? <p role="alert" className="notice notice-error">{submitError}</p> : null}
     {activityError ? <p role="alert" className="notice notice-error">{activityError}</p> : null}
     <main className="writing-runner-layout">
@@ -126,7 +121,7 @@ export function WritingRunner({ initial }: { initial: ExamPayload }) {
       <section className="writing-response-pane">
         <div className="writing-response-heading"><div><p>Your response</p><h2>Task {task.task_number}</h2></div><span>{countWords(content)} words</span></div>
         <label className="sr-only" htmlFor={`writing-response-${task.id}`}>Response for Task {task.task_number}</label>
-        <textarea id={`writing-response-${task.id}`} value={content} onChange={(event) => updateContent(task.id, event.target.value)} disabled={finalizing} spellCheck className="writing-response-textarea" />
+        <textarea id={`writing-response-${task.id}`} value={content} onChange={(event) => updateContent(task.id, event.target.value)} disabled={finalizing || Boolean(conflicts[task.id])} spellCheck className="writing-response-textarea" />
         <button type="button" disabled={finalizing} className="btn btn-writing" onClick={() => void saveTask(task.id).catch(() => undefined)}>Save Task {task.task_number}</button>
       </section>
     </main>
