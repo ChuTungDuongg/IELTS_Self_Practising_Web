@@ -189,22 +189,31 @@ async def test_refresh_rotation_rolls_back_when_replacement_flush_fails(
         select(RefreshSession).where(RefreshSession.token_hash == original_hash)
     )
     assert old_row is not None and old_row.revoked_at is None
-    assert len(list(await db_session.scalars(
-        select(RefreshSession).where(RefreshSession.user_id == user_id)
-    ))) == 1
+    assert (
+        len(
+            list(
+                await db_session.scalars(
+                    select(RefreshSession).where(RefreshSession.user_id == user_id)
+                )
+            )
+        )
+        == 1
+    )
     await db_session.rollback()
 
     _, replacement = await service.rotate_refresh_token(original.refresh_token)
     assert replacement.refresh_token != original.refresh_token
-    rows = list(await db_session.scalars(
-        select(RefreshSession).where(RefreshSession.user_id == user_id)
-    ))
+    rows = list(
+        await db_session.scalars(select(RefreshSession).where(RefreshSession.user_id == user_id))
+    )
     assert len(rows) == 2
     assert sum(row.revoked_at is None for row in rows) == 1
 
 
 @pytest.mark.asyncio
-async def test_deactivated_user_rejects_existing_access_and_refresh(client, db_session, test_user) -> None:
+async def test_deactivated_user_rejects_existing_access_and_refresh(
+    client, db_session, test_user
+) -> None:
     user_id = test_user.id
     issued = await AuthService(db_session, Settings(jwt_secret=SECRET)).issue_session(test_user)
     client.cookies.set("ielts_access", issued.access_token, path="/")
@@ -218,9 +227,9 @@ async def test_deactivated_user_rejects_existing_access_and_refresh(client, db_s
     refresh = await client.post("/api/v1/auth/refresh")
     assert refresh.status_code == 401
     assert refresh.json()["code"] == "INVALID_REFRESH_TOKEN"
-    rows = list(await db_session.scalars(
-        select(RefreshSession).where(RefreshSession.user_id == user_id)
-    ))
+    rows = list(
+        await db_session.scalars(select(RefreshSession).where(RefreshSession.user_id == user_id))
+    )
     assert len(rows) == 1
 
 

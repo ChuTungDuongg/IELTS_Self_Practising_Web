@@ -274,7 +274,9 @@ async def test_last_active_admin_cannot_be_demoted_or_deactivated(client, db_ses
 
 
 @pytest.mark.asyncio
-async def test_user_list_filters_active_state_with_search_and_pagination(client, db_session) -> None:
+async def test_user_list_filters_active_state_with_search_and_pagination(
+    client, db_session
+) -> None:
     admin = current_user(UserRole.ADMIN, "filter-admin@example.com")
     app.dependency_overrides[get_current_user] = lambda: admin
     async with db_session.begin():
@@ -315,9 +317,7 @@ async def test_delete_user_rejects_missing_active_and_self(client, db_session) -
     actor = db_session.info["current_user_identity"]
     app.dependency_overrides[get_current_user] = lambda: actor
     async with db_session.begin():
-        active_user = User(
-            email="delete-active@example.com", display_name="Active", is_active=True
-        )
+        active_user = User(email="delete-active@example.com", display_name="Active", is_active=True)
         db_session.add(active_user)
         await db_session.flush()
         active_user_id = active_user.id
@@ -368,16 +368,12 @@ async def test_delete_inactive_user_removes_owned_records_and_preserves_test_con
     caplog.set_level(logging.INFO, logger="app.services.admin")
     now = datetime.now(UTC)
     async with db_session.begin():
-        target = User(
-            email="delete-target@example.com", display_name="Target", is_active=False
-        )
+        target = User(email="delete-target@example.com", display_name="Target", is_active=False)
         survivor = User(
             email="delete-survivor@example.com", display_name="Survivor", is_active=True
         )
         test = DomainTest(title="Fictional retained test")
-        version = DomainVersion(
-            version_number=1, status=VersionStatus.PUBLISHED, published_at=now
-        )
+        version = DomainVersion(version_number=1, status=VersionStatus.PUBLISHED, published_at=now)
         test.versions.append(version)
         reading_module = DomainModule(module_type=ModuleType.READING, order_index=0)
         writing_module = DomainModule(module_type=ModuleType.WRITING, order_index=1)
@@ -519,14 +515,22 @@ async def test_delete_inactive_user_removes_owned_records_and_preserves_test_con
         Highlight,
         AttemptEvent,
     ):
-        assert await db_session.scalar(
-            select(func.count()).select_from(model).where(model.attempt_id == attempt_id)
-        ) == 0
+        assert (
+            await db_session.scalar(
+                select(func.count()).select_from(model).where(model.attempt_id == attempt_id)
+            )
+            == 0
+        )
     for model in (OAuthAccount, RefreshSession):
-        assert await db_session.scalar(
-            select(func.count()).select_from(model).where(model.user_id == target_id)
-        ) == 0
-    audit_records = [record.message for record in caplog.records if "admin_user_deleted" in record.message]
+        assert (
+            await db_session.scalar(
+                select(func.count()).select_from(model).where(model.user_id == target_id)
+            )
+            == 0
+        )
+    audit_records = [
+        record.message for record in caplog.records if "admin_user_deleted" in record.message
+    ]
     assert len(audit_records) == 1
     assert str(actor.id) in audit_records[0]
     assert str(target_id) in audit_records[0]

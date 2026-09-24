@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WritingRunner } from "@/features/writing/writing-runner";
 import { ExamDraftStore } from "@/features/exam/exam-draft-recovery";
-import { getAttempt, pauseAttempt, recordActivity, saveWritingResponse } from "@/lib/api/attempts";
+import { getAttempt, pauseAttempt, recordActivity, recordNavigation, saveWritingResponse } from "@/lib/api/attempts";
 import { ApiError } from "@/lib/api/client";
 import { submitAttempt, type ExamPayload } from "@/lib/api/exam";
 
@@ -10,7 +10,7 @@ const push = vi.fn();
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push, refresh: vi.fn() }) }));
 vi.mock("@/lib/api/attempts", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api/attempts")>();
-  return { ...actual, getAttempt: vi.fn(), recordActivity: vi.fn(), saveWritingResponse: vi.fn(), pauseAttempt: vi.fn() };
+  return { ...actual, getAttempt: vi.fn(), recordActivity: vi.fn(), recordNavigation: vi.fn(), saveWritingResponse: vi.fn(), pauseAttempt: vi.fn() };
 });
 vi.mock("@/lib/api/exam", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api/exam")>();
@@ -96,6 +96,8 @@ describe("WritingRunner", () => {
     vi.mocked(saveWritingResponse).mockImplementation(async (_attempt, taskId, content, expectedRevision) => ({ writing_task_id: taskId, content, word_count: 0, saved_at: new Date().toISOString(), revision: expectedRevision + 1 }));
     vi.mocked(submitAttempt).mockResolvedValue({});
     vi.mocked(pauseAttempt).mockResolvedValue({ status: "PAUSED" } as never);
+    vi.mocked(recordActivity).mockResolvedValue({} as never);
+    vi.mocked(recordNavigation).mockResolvedValue({} as never);
   });
 
   afterEach(() => {
@@ -204,6 +206,25 @@ describe("WritingRunner", () => {
     second.resolve({} as never);
     await act(async () => { await Promise.resolve(); });
     expect(submitAttempt).toHaveBeenCalledTimes(1);
+  });
+
+  it("waits for in-flight navigation and starts no activity after Submit begins", async () => {
+    const navigation = deferred();
+    vi.mocked(recordNavigation).mockReturnValueOnce(navigation.promise);
+    render(<WritingRunner initial={payload()} />);
+    expect(recordNavigation).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "Submit Writing" }));
+    fireEvent.click(window);
+    await act(async () => { await Promise.resolve(); });
+    expect(recordActivity).not.toHaveBeenCalled();
+    expect(recordNavigation).toHaveBeenCalledTimes(1);
+    expect(submitAttempt).not.toHaveBeenCalled();
+
+    navigation.resolve({} as never);
+    await act(async () => { await Promise.resolve(); });
+    expect(submitAttempt).toHaveBeenCalledTimes(1);
+    expect(recordActivity).not.toHaveBeenCalled();
   });
 
   it("warns before leaving only while a Writing revision is unsaved", async () => {

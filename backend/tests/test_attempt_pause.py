@@ -280,7 +280,9 @@ async def test_pause_returns_submitted_state_but_resume_rejects_it(
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize("status", [AttemptStatus.AUTO_SUBMITTED, AttemptStatus.INTERRUPTED, AttemptStatus.ABANDONED])
+@pytest.mark.parametrize(
+    "status", [AttemptStatus.AUTO_SUBMITTED, AttemptStatus.INTERRUPTED, AttemptStatus.ABANDONED]
+)
 async def test_pause_preserves_existing_terminal_attempt_and_mutations_still_reject(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, status: AttemptStatus
 ) -> None:

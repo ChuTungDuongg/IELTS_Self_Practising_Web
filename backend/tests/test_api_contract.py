@@ -81,9 +81,10 @@ def test_active_exam_normalizes_legacy_content_without_exposing_answer_keys() ->
     )
     group.questions.append(question)
     passage.question_groups.append(group)
+    answer = AttemptAnswer(question_id=question.id, question=question, value="ii", revision=4)
 
     payload = AttemptService._present_exam_passage(
-        passage, {question.id: "ii"}, {question.id: True}
+        passage, {question.id: answer}, {question.id: True}
     ).model_dump(mode="json")
     assert payload["blocks"][0]["label"] == "A"
     assert (
@@ -97,6 +98,7 @@ def test_active_exam_normalizes_legacy_content_without_exposing_answer_keys() ->
         == payload["question_groups"][0]["config"]["options"][1]["id"]
     )
     assert payload["question_groups"][0]["questions"][0]["flagged"] is True
+    assert payload["question_groups"][0]["questions"][0]["answer_revision"] == 4
     AttemptService._validate_highlight(
         passage,
         HighlightCreate(
@@ -179,19 +181,21 @@ def test_yes_no_not_given_round_trips_canonical_values_without_active_key_leak()
         order_index=0,
     )
     group.questions.append(question)
-
-    active = AttemptService._present_exam_group(
-        group, {question.id: "not given"}, {question.id: False}, []
-    ).model_dump(mode="json")
-    assert active["questions"][0]["value"] == "NOT_GIVEN"
-    assert "answer_key" not in active["questions"][0]
-
     answer = AttemptAnswer(
         question_id=question.id,
         question=question,
         value="not given",
+        revision=3,
         is_correct=True,
     )
+
+    active = AttemptService._present_exam_group(
+        group, {question.id: answer}, {question.id: False}, []
+    ).model_dump(mode="json")
+    assert active["questions"][0]["value"] == "NOT_GIVEN"
+    assert active["questions"][0]["answer_revision"] == 3
+    assert "answer_key" not in active["questions"][0]
+
     review = AttemptService._present_review_answer(answer).model_dump(mode="json")
     assert review["value"] == "NOT_GIVEN"
     assert review["answer_key"]["value"] == "NOT_GIVEN"

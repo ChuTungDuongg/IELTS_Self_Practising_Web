@@ -6,7 +6,12 @@ import pytest
 
 
 def load_migration_module():
-    path = Path(__file__).parents[1] / "alembic" / "versions" / "20260919_0004_shared_listening_audio.py"
+    path = (
+        Path(__file__).parents[1]
+        / "alembic"
+        / "versions"
+        / "20260919_0004_shared_listening_audio.py"
+    )
     spec = importlib.util.spec_from_file_location("shared_listening_audio_migration", path)
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)

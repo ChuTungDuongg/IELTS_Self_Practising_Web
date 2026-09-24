@@ -41,13 +41,21 @@ def test_partial_reading_with_one_valid_question_is_publishable_with_warnings() 
     passage = ReadingPassage(
         title="Fictional passage",
         order_index=0,
-        content_json=[
-            {"id": str(uuid4()), "type": "paragraph", "label": "A", "text": "Text"}
-        ],
+        content_json=[{"id": str(uuid4()), "type": "paragraph", "label": "A", "text": "Text"}],
         plain_text="Text",
     )
-    group = QuestionGroup(question_type="true_false_not_given", instruction="Choose", config={}, order_index=0)
-    group.questions.append(Question(number=1, prompt="Statement", config={}, answer_key={"kind": "SINGLE_OPTION", "value": "TRUE"}, order_index=0))
+    group = QuestionGroup(
+        question_type="true_false_not_given", instruction="Choose", config={}, order_index=0
+    )
+    group.questions.append(
+        Question(
+            number=1,
+            prompt="Statement",
+            config={},
+            answer_key={"kind": "SINGLE_OPTION", "value": "TRUE"},
+            order_index=0,
+        )
+    )
     passage.question_groups.append(group)
     module.passages.append(passage)
     module.question_groups.append(group)

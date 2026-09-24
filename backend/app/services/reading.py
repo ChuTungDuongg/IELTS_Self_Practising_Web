@@ -286,7 +286,9 @@ class ReadingService:
 
             TestService._delete_files([deleted_path])
 
-    async def reorder_groups(self, module_id: uuid.UUID, body: QuestionGroupOrderWrite) -> BuilderModule:
+    async def reorder_groups(
+        self, module_id: uuid.UUID, body: QuestionGroupOrderWrite
+    ) -> BuilderModule:
         async with self.session.begin():
             version_id = await self.session.scalar(
                 select(TestModule.test_version_id).where(TestModule.id == module_id)
@@ -359,7 +361,9 @@ class ReadingService:
         original = {
             group.id: (
                 group.order_index,
-                tuple((question.id, question.number, question.order_index) for question in questions),
+                tuple(
+                    (question.id, question.number, question.order_index) for question in questions
+                ),
             )
             for group, questions in group_questions
         }
@@ -381,7 +385,9 @@ class ReadingService:
         for group, questions in group_questions:
             current = (
                 group.order_index,
-                tuple((question.id, question.number, question.order_index) for question in questions),
+                tuple(
+                    (question.id, question.number, question.order_index) for question in questions
+                ),
             )
             if current != original[group.id] and group.id not in skipped:
                 group.revision += 1

@@ -313,6 +313,12 @@ async def test_transfer_round_trip_remaps_ids_assets_and_can_import_twice(
     with pytest.raises(AppError) as immutable:
         await LifecycleService(db_session).ensure_draft(imported.id)
     assert immutable.value.code == "TEST_VERSION_IMMUTABLE"
+    imported = await db_session.scalar(
+        version_detail_query()
+        .where(DomainVersion.id == imported.id)
+        .execution_options(populate_existing=True)
+    )
+    assert imported is not None
     assert [module.module_type for module in imported.modules] == [
         ModuleType.READING,
         ModuleType.LISTENING,
@@ -339,9 +345,7 @@ async def test_transfer_round_trip_remaps_ids_assets_and_can_import_twice(
         if group.question_type == "map_labelling"
     )
     map_options = map_group.config["options"]
-    assert [
-        {"label": option["label"], "text": option["text"]} for option in map_options
-    ] == [
+    assert [{"label": option["label"], "text": option["text"]} for option in map_options] == [
         {"label": "A", "text": "Library"},
         {"label": "B", "text": "Cafe"},
     ]

@@ -53,9 +53,7 @@ jobs:
       - name: Ruff lint
         run: uv run ruff check .
       - name: Ruff format
-        id: format
-        continue-on-error: true
-        run: uv run ruff format --check .
+        run: uv run ruff format --check app tests
       - name: Upgrade fresh database
         run: uv run alembic upgrade head
       - name: Verify one Alembic head
@@ -63,10 +61,6 @@ jobs:
           uv run python -c 'from alembic.config import Config; from alembic.script import ScriptDirectory; heads = ScriptDirectory.from_config(Config("alembic.ini")).get_heads(); print(heads); assert len(heads) == 1, f"Expected one Alembic head, got {heads}"'
       - name: Backend tests
         run: uv run pytest -q
-      - name: Enforce Ruff format result
-        if: always() && steps.format.outcome == 'failure'
-        run: exit 1
-
   frontend:
     runs-on: ubuntu-latest
     defaults:

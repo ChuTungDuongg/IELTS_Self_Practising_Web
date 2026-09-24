@@ -11,6 +11,11 @@ vi.mock("@/lib/api/tests", () => ({
   getTests: vi.fn().mockResolvedValue([]),
 }));
 
+vi.mock("@/lib/api/server-client", async () => {
+  const { ApiError } = await import("@/lib/api/client");
+  return { serverApiRequest: vi.fn().mockRejectedValue(new ApiError("UNAUTHENTICATED", "Fictional guest session.", 401)) };
+});
+
 type MediaQueryOptions = {
   reducedMotion?: boolean;
   finePointer?: boolean;
@@ -100,11 +105,11 @@ describe("InteractivePlanet", () => {
     expect(orbit.style.getPropertyValue("--planet-shift-y")).toBe("0.000px");
   });
 
-  it("is rendered by the server homepage without changing its actions", async () => {
+  it("is rendered by the server homepage with the guest practice action", async () => {
     render(await DashboardPage());
 
     expect(document.querySelector(".home-orbit-interactive")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /start practicing/i })).toHaveAttribute("href", "/library");
-    expect(screen.getByRole("link", { name: /open builder/i })).toHaveAttribute("href", "/admin/tests");
+    expect(screen.queryByRole("link", { name: /open builder/i })).not.toBeInTheDocument();
   });
 });

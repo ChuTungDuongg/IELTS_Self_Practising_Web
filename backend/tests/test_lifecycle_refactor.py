@@ -168,7 +168,7 @@ async def test_generic_highlights_and_bulk_delete(db_session: AsyncSession) -> N
     )
     heading_group.questions.append(
         Question(
-                number=4,
+            number=4,
             prompt="Paragraph A",
             config={"target_block_id": target_block_id},
             answer_key={"kind": "SINGLE_OPTION", "value": str(heading_option_id)},
@@ -189,7 +189,7 @@ async def test_generic_highlights_and_bulk_delete(db_session: AsyncSession) -> N
     )
     other_group.questions.append(
         Question(
-                number=5,
+            number=5,
             prompt="Paragraph A",
             config={"target_block_id": target_block_id},
             answer_key={"kind": "SINGLE_OPTION", "value": str(other_option_id)},

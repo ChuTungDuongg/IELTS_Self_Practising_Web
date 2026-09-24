@@ -156,9 +156,7 @@ def test_complete_listening_structure_validates_four_parts_and_global_numbering(
     )
     module.audio_asset = asset
     for part_index in range(4):
-        part = ListeningPart(
-            id=uuid4(), title=f"Section {part_index + 1}", order_index=part_index
-        )
+        part = ListeningPart(id=uuid4(), title=f"Section {part_index + 1}", order_index=part_index)
         group = QuestionGroup(
             id=uuid4(),
             question_type="short_answer",
@@ -203,8 +201,19 @@ def test_partial_listening_with_one_section_and_question_is_publishable() -> Non
     version = VersionRecord(version_number=1, status=VersionStatus.DRAFT)
     module = ModuleRecord(module_type=ModuleType.LISTENING, order_index=0)
     part = ListeningPart(id=uuid4(), title="Section 1", order_index=0)
-    group = QuestionGroup(id=uuid4(), question_type="short_answer", instruction="Answer", config={}, order_index=0)
-    group.questions.append(Question(id=uuid4(), number=1, prompt="Prompt", config={"max_words": 2, "max_numbers": 1}, answer_key={"kind": "TEXT", "accepted": ["answer"], "case_sensitive": False}, order_index=0))
+    group = QuestionGroup(
+        id=uuid4(), question_type="short_answer", instruction="Answer", config={}, order_index=0
+    )
+    group.questions.append(
+        Question(
+            id=uuid4(),
+            number=1,
+            prompt="Prompt",
+            config={"max_words": 2, "max_numbers": 1},
+            answer_key={"kind": "TEXT", "accepted": ["answer"], "case_sensitive": False},
+            order_index=0,
+        )
+    )
     part.question_groups.append(group)
     module.listening_parts.append(part)
     module.question_groups.append(group)
@@ -226,15 +235,42 @@ async def test_shared_audio_replace_and_remove_preserves_sections_and_questions(
     version = VersionRecord(id=uuid4(), version_number=1, status=VersionStatus.DRAFT)
     module = ModuleRecord(id=uuid4(), module_type=ModuleType.LISTENING, order_index=0)
     part = ListeningPart(id=uuid4(), title="Section 1", order_index=0)
-    group = QuestionGroup(id=uuid4(), question_type="short_answer", instruction="", config={}, order_index=0)
-    group.questions.append(Question(id=uuid4(), number=1, prompt="Prompt", config={"max_words": 2}, answer_key={"kind": "TEXT", "accepted": ["answer"], "case_sensitive": False}, order_index=0))
+    group = QuestionGroup(
+        id=uuid4(), question_type="short_answer", instruction="", config={}, order_index=0
+    )
+    group.questions.append(
+        Question(
+            id=uuid4(),
+            number=1,
+            prompt="Prompt",
+            config={"max_words": 2},
+            answer_key={"kind": "TEXT", "accepted": ["answer"], "case_sensitive": False},
+            order_index=0,
+        )
+    )
     part.question_groups.append(group)
     module.listening_parts.append(part)
     module.question_groups.append(group)
     test.versions.append(version)
     version.modules.append(module)
-    first = Asset(id=uuid4(), test_version_id=version.id, asset_type=AssetType.LISTENING_AUDIO, relative_path="audio/first.mp3", mime_type="audio/mpeg", original_name="first.mp3", file_size=10)
-    second = Asset(id=uuid4(), test_version_id=version.id, asset_type=AssetType.LISTENING_AUDIO, relative_path="audio/second.mp3", mime_type="audio/mpeg", original_name="second.mp3", file_size=10)
+    first = Asset(
+        id=uuid4(),
+        test_version_id=version.id,
+        asset_type=AssetType.LISTENING_AUDIO,
+        relative_path="audio/first.mp3",
+        mime_type="audio/mpeg",
+        original_name="first.mp3",
+        file_size=10,
+    )
+    second = Asset(
+        id=uuid4(),
+        test_version_id=version.id,
+        asset_type=AssetType.LISTENING_AUDIO,
+        relative_path="audio/second.mp3",
+        mime_type="audio/mpeg",
+        original_name="second.mp3",
+        file_size=10,
+    )
     async with db_session.begin():
         db_session.add_all([test, first, second])
         await db_session.flush()
@@ -245,11 +281,17 @@ async def test_shared_audio_replace_and_remove_preserves_sections_and_questions(
     second_id = second.id
     part_id = part.id
     question_id = group.questions[0].id
-    await service.attach_audio(module_id, ListeningModuleAudioWrite(expected_revision=1, asset_id=first_id))
+    await service.attach_audio(
+        module_id, ListeningModuleAudioWrite(expected_revision=1, asset_id=first_id)
+    )
     await db_session.rollback()
-    await service.attach_audio(module_id, ListeningModuleAudioWrite(expected_revision=2, asset_id=second_id))
+    await service.attach_audio(
+        module_id, ListeningModuleAudioWrite(expected_revision=2, asset_id=second_id)
+    )
     await db_session.rollback()
-    await service.attach_audio(module_id, ListeningModuleAudioWrite(expected_revision=3, asset_id=None))
+    await service.attach_audio(
+        module_id, ListeningModuleAudioWrite(expected_revision=3, asset_id=None)
+    )
     await db_session.rollback()
 
     stored_module = await db_session.get(ModuleRecord, module_id)
@@ -416,7 +458,9 @@ async def test_listening_visual_group_builder_dto_round_trips_through_update(
     edited_body = QuestionGroupWrite.model_validate(unchanged.model_dump(mode="json"))
     edited_body.config["options"][0]["text"] = "Edited entrance"
     edited_body.questions[0].prompt = "Edited scarecrow"
-    edited = await service.update_group(group_id, edited_body.model_copy(update={"expected_revision": unchanged.revision}))
+    edited = await service.update_group(
+        group_id, edited_body.model_copy(update={"expected_revision": unchanged.revision})
+    )
 
     assert edited.config == {
         "options": [

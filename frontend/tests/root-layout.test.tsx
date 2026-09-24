@@ -1,7 +1,12 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { Children, type ReactElement, type ReactNode } from "react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import RootLayout, { themeInitializationScript } from "@/app/layout";
+
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/",
+  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
+}));
 
 describe("RootLayout theme initialization", () => {
   it("renders a deterministic server theme and a trusted inline bootstrap script", () => {

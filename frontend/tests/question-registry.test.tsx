@@ -227,7 +227,7 @@ describe("question registry", () => {
   it("flushes the latest persisted-group edit before opening Preview", async () => {
     const group = questionRegistry.multiple_choice.createDefault(7);
     group.id = crypto.randomUUID();
-    const onAutosave = vi.fn().mockResolvedValue(undefined);
+    const onAutosave = vi.fn().mockImplementation(async (value: typeof group) => ({ ...value, revision: 2 }));
     render(
       <BuilderLifecycleProvider>
         <QuestionGroupEditor initial={group} moduleType="LISTENING" nextQuestionNumber={8} passageBlocks={[]} onCancel={vi.fn()} onSave={vi.fn()} onAutosave={onAutosave} />
@@ -239,6 +239,7 @@ describe("question registry", () => {
 
     await waitFor(() => expect(onAutosave).toHaveBeenCalledTimes(1));
     expect(onAutosave.mock.calls[0][0].questions[0].prompt).toBe("Newest local prompt");
+    expect(await screen.findByText("Candidate preview")).toBeInTheDocument();
     expect(await screen.findByText("Newest local prompt")).toBeInTheDocument();
   });
 

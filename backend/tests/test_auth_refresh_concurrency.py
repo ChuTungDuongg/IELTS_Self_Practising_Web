@@ -27,7 +27,9 @@ async def test_concurrent_refresh_rotates_once(monkeypatch: pytest.MonkeyPatch) 
 
     engine = create_async_engine(url, poolclass=NullPool)
     factory = async_sessionmaker(engine, expire_on_commit=False)
-    settings = Settings(database_url=url, jwt_secret="targeted-test-secret-value-with-32-characters")
+    settings = Settings(
+        database_url=url, jwt_secret="targeted-test-secret-value-with-32-characters"
+    )
     user_id = None
     try:
         async with factory() as setup:
@@ -81,7 +83,10 @@ async def test_concurrent_refresh_rotates_once(monkeypatch: pytest.MonkeyPatch) 
                 assert successor.refresh_token != issued.refresh_token
                 with pytest.raises(AppError) as losing:
                     await asyncio.wait_for(second_task, 10)
-                assert (losing.value.code, losing.value.status_code) == ("INVALID_REFRESH_TOKEN", 401)
+                assert (losing.value.code, losing.value.status_code) == (
+                    "INVALID_REFRESH_TOKEN",
+                    401,
+                )
             finally:
                 release_first.set()
                 for task in (first_task, second_task):
@@ -90,9 +95,11 @@ async def test_concurrent_refresh_rotates_once(monkeypatch: pytest.MonkeyPatch) 
                         await asyncio.gather(task, return_exceptions=True)
 
         async with factory() as verify:
-            rows = list(await verify.scalars(
-                select(RefreshSession).where(RefreshSession.user_id == user_id)
-            ))
+            rows = list(
+                await verify.scalars(
+                    select(RefreshSession).where(RefreshSession.user_id == user_id)
+                )
+            )
             assert len(rows) == 2
             assert sum(row.revoked_at is not None for row in rows) == 1
             assert sum(row.revoked_at is None for row in rows) == 1

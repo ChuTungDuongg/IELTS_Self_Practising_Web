@@ -38,9 +38,7 @@ def truth_group(*, order_index: int, number: int, prompt: str) -> QuestionGroupW
     )
 
 
-def text_completion_group(
-    *, order_index: int, number: int, question_id=None
-) -> QuestionGroupWrite:
+def text_completion_group(*, order_index: int, number: int, question_id=None) -> QuestionGroupWrite:
     resolved_question_id = question_id or uuid4()
     return QuestionGroupWrite(
         question_type="text_completion",
@@ -97,9 +95,7 @@ async def create_reading_draft(db_session: AsyncSession) -> tuple[ReadingService
     return service, version_id
 
 
-async def add_passage(
-    service: ReadingService, version_id, *, title: str, order_index: int
-):
+async def add_passage(service: ReadingService, version_id, *, title: str, order_index: int):
     passage = await service.create_passage(
         version_id,
         PassageWrite(
@@ -144,7 +140,11 @@ async def test_adding_a_second_passage_remains_publishable(db_session: AsyncSess
 
     db_session.expire_all()
     reloaded = await reading.builder_version(version_id)
-    assert [group.questions[0].number for passage in reloaded.modules[0].passages for group in passage.question_groups] == [1, 2]
+    assert [
+        group.questions[0].number
+        for passage in reloaded.modules[0].passages
+        for group in passage.question_groups
+    ] == [1, 2]
 
     validation = await LifecycleService(db_session).validate(version_id)
     assert validation.valid, [(issue.path, issue.message) for issue in validation.errors]

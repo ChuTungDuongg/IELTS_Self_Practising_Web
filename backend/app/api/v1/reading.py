@@ -96,9 +96,7 @@ async def delete_question_group(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.put(
-    "/test-modules/{module_id}/question-groups/order", response_model=BuilderModule
-)
+@router.put("/test-modules/{module_id}/question-groups/order", response_model=BuilderModule)
 async def reorder_question_groups(
     module_id: UUID,
     body: QuestionGroupOrderWrite,

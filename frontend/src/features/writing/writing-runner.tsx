@@ -24,8 +24,10 @@ export function WritingRunner({ initial }: { initial: ExamPayload }) {
   const [taskIndex, setTaskIndex] = useState(0);
   const initialResponses = useMemo(() => tasks.map((task) => ({ id: task.id, value: task.content, revision: task.response_revision })), [tasks]);
   const [activityError, setActivityError] = useState<string | null>(null);
-  const [clock, setClock] = useState(() => Date.now());
+  const [clock, setClock] = useState(() => new Date(initial.attempt.server_time).getTime());
+  const [offset, setOffset] = useState(0);
   const autosaveRef = useRef<RevisionAutosaveQueue<string> | null>(null);
+  const telemetryInFlight = useRef(new Set<Promise<unknown>>());
   const lastActivity = useRef(0);
   const lastHeartbeat = useRef(0);
   const finalized = useRef(false);
@@ -40,15 +42,23 @@ export function WritingRunner({ initial }: { initial: ExamPayload }) {
     attempt: initial.attempt, initialResponses, save: sendResponse, debounceMs: 750,
   });
   useEffect(() => { autosaveRef.current = autosave; }, [autosave]);
+  const trackTelemetry = useCallback(<T,>(request: Promise<T>): Promise<T> => {
+    telemetryInFlight.current.add(request);
+    void request.then(
+      () => { telemetryInFlight.current.delete(request); },
+      () => { telemetryInFlight.current.delete(request); },
+    );
+    return request;
+  }, []);
+  const flushBeforeSubmit = useCallback(async () => {
+    await flushForSubmission();
+    await Promise.allSettled([...telemetryInFlight.current]);
+  }, [flushForSubmission]);
   const { submit: finish, submitting, finalizing, submitError, isFinalizing } = useExamSubmit({
-    attemptId, initialAttempt: initial.attempt, flush: flushForSubmission, runMutation, accept, isStopped,
+    attemptId, initialAttempt: initial.attempt, flush: flushBeforeSubmit, runMutation, accept, isStopped,
   });
-  const offset = useMemo(
-    () => estimateServerOffset(initial.attempt.server_time),
-    [initial.attempt.server_time],
-  );
   const task = tasks[taskIndex];
-  useEffect(() => { if (task && !stopped.current) void runMutation(() => recordNavigation(attemptId, "WRITING_TASK", task.id)).catch((error) => { if (!(error instanceof AttemptStoppedError)) setActivityError("Your activity could not be recorded. Please try again."); }); }, [attemptId, runMutation, stopped, task]);
+  useEffect(() => { if (task && !stopped.current && !isFinalizing()) void trackTelemetry(runMutation(() => recordNavigation(attemptId, "WRITING_TASK", task.id))).catch((error) => { if (!(error instanceof AttemptStoppedError)) setActivityError("Your activity could not be recorded. Please try again."); }); }, [attemptId, isFinalizing, runMutation, stopped, task, trackTelemetry]);
 
   const saveTask = useCallback(async (taskId: string) => {
     await autosave.saveNow(taskId);
@@ -60,27 +70,33 @@ export function WritingRunner({ initial }: { initial: ExamPayload }) {
   }
 
   useEffect(() => {
+    const synchronize = window.setTimeout(() => {
+      const now = Date.now();
+      setOffset(estimateServerOffset(initial.attempt.server_time, now));
+      setClock(now);
+    }, 0);
     const ticker = window.setInterval(() => setClock(Date.now()), 1000);
     return () => {
+      window.clearTimeout(synchronize);
       window.clearInterval(ticker);
     };
-  }, []);
+  }, [initial.attempt.server_time]);
 
   useEffect(() => {
     lastActivity.current = Date.now();
     const meaningful = () => {
-      if (stopped.current) return;
+      if (stopped.current || isFinalizing()) return;
       const now = Date.now();
       lastActivity.current = now;
       if (now - lastHeartbeat.current >= 20_000) {
         lastHeartbeat.current = now;
-        void runMutation(() => recordActivity(attemptId)).catch((error) => { if (!(error instanceof AttemptStoppedError)) setActivityError("Your activity could not be recorded. Please try again."); });
+        void trackTelemetry(runMutation(() => recordActivity(attemptId))).catch((error) => { if (!(error instanceof AttemptStoppedError)) setActivityError("Your activity could not be recorded. Please try again."); });
       }
     };
     const events: Array<keyof WindowEventMap> = ["keydown", "click", "touchstart", "scroll"];
     events.forEach((event) => window.addEventListener(event, meaningful, { passive: true }));
     return () => events.forEach((event) => window.removeEventListener(event, meaningful));
-  }, [attemptId, runMutation, stopped]);
+  }, [attemptId, isFinalizing, runMutation, stopped, trackTelemetry]);
 
   const seconds = initial.attempt.timer_mode === "COUNTDOWN" && initial.attempt.deadline_at
     ? remainingSeconds(initial.attempt.deadline_at, offset, clock)

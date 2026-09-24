@@ -132,7 +132,12 @@ async def _draft_with_assets(
         title="Fictional passage",
         order_index=0,
         content_json=[
-            {"id": str(uuid4()), "type": "paragraph", "label": "A", "text": "Fictional passage text."}
+            {
+                "id": str(uuid4()),
+                "type": "paragraph",
+                "label": "A",
+                "text": "Fictional passage text.",
+            }
         ],
         plain_text="Fictional passage text.",
     )
@@ -226,7 +231,9 @@ async def asset_client(db_session: AsyncSession, tmp_path: Path, monkeypatch: py
             app.dependency_overrides[get_current_user] = previous_user
 
 
-async def _request_as(client: httpx.AsyncClient, current: dict, user: User, method: str, path: str, **kwargs):
+async def _request_as(
+    client: httpx.AsyncClient, current: dict, user: User, method: str, path: str, **kwargs
+):
     session: AsyncSession = current["session"]
     if session.in_transaction():
         await session.rollback()
@@ -257,9 +264,7 @@ async def _start(
 
 
 async def _content(client: httpx.AsyncClient, current: dict, user: User, asset_id: UUID):
-    return await _request_as(
-        client, current, user, "GET", f"/api/v1/assets/{asset_id}/content"
-    )
+    return await _request_as(client, current, user, "GET", f"/api/v1/assets/{asset_id}/content")
 
 
 @pytest.mark.integration
@@ -276,7 +281,9 @@ async def test_published_then_archived_assets_follow_owned_module_attempts(
     # Current published assets retain the existing authenticated USER behavior.
     assert (await _content(client, current, users["stranger"], assets["audio"])).status_code == 200
 
-    listening_attempt = await _start(client, current, users["owner"], version_id, ModuleType.LISTENING)
+    listening_attempt = await _start(
+        client, current, users["owner"], version_id, ModuleType.LISTENING
+    )
     reading_attempt = await _start(client, current, users["owner"], version_id, ModuleType.READING)
     await _start(client, current, users["reader"], version_id, ModuleType.READING)
     writing_attempt = await _start(client, current, users["writer"], version_id, ModuleType.WRITING)
@@ -319,7 +326,9 @@ async def test_published_then_archived_assets_follow_owned_module_attempts(
         response = await _content(client, current, users["owner"], assets[name])
         assert response.status_code == 200, (name, response.text)
     assert (await _content(client, current, users["owner"], assets["writing"])).status_code == 404
-    assert (await _content(client, current, users["owner"], assets["unreferenced"])).status_code == 404
+    assert (
+        await _content(client, current, users["owner"], assets["unreferenced"])
+    ).status_code == 404
     writing_image = await _content(client, current, users["writer"], assets["writing"])
     assert writing_image.status_code == 200
     assert writing_image.content == b"fictional image"
@@ -413,7 +422,9 @@ async def test_historical_asset_status_full_mock_draft_and_admin_boundaries(
             )
         )
     assert (await _content(client, current, users["reader"], assets["audio"])).status_code == 200
-    assert (await _content(client, current, users["reader"], assets["listening"])).status_code == 200
+    assert (
+        await _content(client, current, users["reader"], assets["listening"])
+    ).status_code == 200
     assert (await _content(client, current, users["reader"], assets["writing"])).status_code == 404
 
     # Admin access remains independent of references and Attempt ownership.

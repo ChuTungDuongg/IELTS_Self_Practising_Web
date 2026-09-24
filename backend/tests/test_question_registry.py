@@ -63,9 +63,7 @@ def test_reading_matching_aliases_and_word_list_use_stable_option_ids() -> None:
             "blocks": [
                 {
                     "id": str(uuid4()),
-                    "segments": [
-                        {"id": str(uuid4()), "type": "GAP", "question_id": question_id}
-                    ],
+                    "segments": [{"id": str(uuid4()), "type": "GAP", "question_id": question_id}],
                 }
             ],
         },
@@ -374,7 +372,9 @@ def _diagram_config(question_id: str) -> dict:
     }
 
 
-def _diagram_body(*, prompt: str = "A pair of {{gap}} are lifted.", image: bool = True) -> QuestionGroupWrite:
+def _diagram_body(
+    *, prompt: str = "A pair of {{gap}} are lifted.", image: bool = True
+) -> QuestionGroupWrite:
     question_id = uuid4()
     return QuestionGroupWrite.model_validate(
         {
@@ -442,9 +442,7 @@ def test_diagram_labelling_requires_image_and_exactly_one_gap() -> None:
     with pytest.raises(AppError, match="exactly one"):
         ReadingService._validate_group_body(_diagram_body(prompt="No answer gap here."), [])
     with pytest.raises(AppError, match="exactly one"):
-        ReadingService._validate_group_body(
-            _diagram_body(prompt="{{gap}} and another {{gap}}"), []
-        )
+        ReadingService._validate_group_body(_diagram_body(prompt="{{gap}} and another {{gap}}"), [])
 
 
 def _table_completion_body() -> QuestionGroupWrite:
@@ -610,25 +608,19 @@ def test_legacy_table_cells_normalize_to_stable_segments_without_merging_rows() 
 def test_table_completion_rejects_duplicate_unknown_and_orphan_question_refs() -> None:
     body = _table_completion_body()
     gap = body.config["layout"]["rows"][0]["cells"][1]["segments"][1]
-    body.config["layout"]["rows"][0]["cells"][0]["segments"].append(
-        {**gap, "id": str(uuid4())}
-    )
+    body.config["layout"]["rows"][0]["cells"][0]["segments"].append({**gap, "id": str(uuid4())})
     with pytest.raises(AppError, match="only one gap"):
         ReadingService._validate_group_body(body, [])
 
     orphan = _table_completion_body()
     orphan.questions.append(
-        orphan.questions[0].model_copy(
-            update={"id": uuid4(), "number": 31, "order_index": 1}
-        )
+        orphan.questions[0].model_copy(update={"id": uuid4(), "number": 31, "order_index": 1})
     )
     with pytest.raises(AppError, match="exactly one gap"):
         ReadingService._validate_group_body(orphan, [])
 
     unknown = _table_completion_body()
-    unknown.config["layout"]["rows"][0]["cells"][1]["segments"][1][
-        "question_id"
-    ] = str(uuid4())
+    unknown.config["layout"]["rows"][0]["cells"][1]["segments"][1]["question_id"] = str(uuid4())
     with pytest.raises(AppError, match="exactly one gap"):
         ReadingService._validate_group_body(unknown, [])
 
@@ -741,9 +733,7 @@ def test_note_completion_supports_title_semantic_blocks_and_inline_segments() ->
 def test_note_completion_rejects_duplicate_unknown_and_orphan_question_refs() -> None:
     duplicate = _note_completion_body()
     gap = duplicate.config["layout"]["blocks"][1]["segments"][1]
-    duplicate.config["layout"]["blocks"][0]["segments"].append(
-        {**gap, "id": str(uuid4())}
-    )
+    duplicate.config["layout"]["blocks"][0]["segments"].append({**gap, "id": str(uuid4())})
     with pytest.raises(AppError, match="exactly one gap"):
         ReadingService._validate_group_body(duplicate, [])
 
@@ -754,9 +744,7 @@ def test_note_completion_rejects_duplicate_unknown_and_orphan_question_refs() ->
 
     orphan = _note_completion_body()
     orphan.questions.append(
-        orphan.questions[0].model_copy(
-            update={"id": uuid4(), "number": 12, "order_index": 1}
-        )
+        orphan.questions[0].model_copy(update={"id": uuid4(), "number": 12, "order_index": 1})
     )
     with pytest.raises(AppError, match="exactly one gap"):
         ReadingService._validate_group_body(orphan, [])
@@ -862,9 +850,7 @@ def test_legacy_diagram_options_and_markers_normalize_to_text_canvas() -> None:
                 {"id": "A", "label": "gates"},
                 {"id": "B", "label": "locks"},
             ],
-            "markers": [
-                {"id": marker_id, "question_id": question_id, "x": 0.48, "y": 0.45}
-            ],
+            "markers": [{"id": marker_id, "question_id": question_id, "x": 0.48, "y": 0.45}],
         },
         questions=[
             {
@@ -898,9 +884,7 @@ def test_plan_and_map_labelling_remain_option_based() -> None:
             {"id": option_ids[0], "label": "A", "text": "Entrance"},
             {"id": option_ids[1], "label": "B", "text": "Exit"},
         ],
-        "markers": [
-            {"id": str(uuid4()), "question_id": question_id, "x": 0.4, "y": 0.6}
-        ],
+        "markers": [{"id": str(uuid4()), "question_id": question_id, "x": 0.4, "y": 0.6}],
     }
     for question_type in ("plan_labelling", "map_labelling"):
         question_registry.validate(
@@ -926,9 +910,7 @@ def test_plan_and_map_normalization_drops_legacy_markers_idempotently() -> None:
             {"id": option_ids[0], "label": "A", "text": "Entrance"},
             {"id": option_ids[1], "label": "B", "text": "Exit"},
         ],
-        "markers": [
-            {"id": str(uuid4()), "question_id": question_id, "x": 0.4, "y": 0.6}
-        ],
+        "markers": [{"id": str(uuid4()), "question_id": question_id, "x": 0.4, "y": 0.6}],
     }
     raw_questions = [
         {
@@ -1017,9 +999,7 @@ def test_reading_plan_and_map_normalization_and_marker_validation_are_preserved(
 
     without_marker = body.model_copy(update={"config": {"options": normalized["options"]}})
     with pytest.raises(AppError, match="Visual markers must reference"):
-        ReadingService._validate_group_body(
-            without_marker, [], module_type=ModuleType.READING
-        )
+        ReadingService._validate_group_body(without_marker, [], module_type=ModuleType.READING)
 
 
 def test_transfer_remapper_updates_diagram_item_question_ids() -> None:

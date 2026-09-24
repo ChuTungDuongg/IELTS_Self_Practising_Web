@@ -234,7 +234,9 @@ async def test_unrelated_passages_keep_independent_revisions(
             PassageWrite(
                 title="Second passage",
                 order_index=1,
-                blocks=[TextBlock(id=uuid4(), type="paragraph", label="A", text="Second fictional text")],
+                blocks=[
+                    TextBlock(id=uuid4(), type="paragraph", label="A", text="Second fictional text")
+                ],
             ),
         )
         assert second.revision == 1
@@ -245,12 +247,15 @@ async def test_unrelated_passages_keep_independent_revisions(
         assert first.revision == 2
     async with independent_sessions() as second_editor:
         saved_second = await ReadingService(second_editor).update_passage(
-            second.id, PassageUpdate(
+            second.id,
+            PassageUpdate(
                 expected_revision=1,
                 title="Second passage edited",
                 order_index=1,
-                blocks=[TextBlock(id=uuid4(), type="paragraph", label="A", text="Second fictional text")],
-            )
+                blocks=[
+                    TextBlock(id=uuid4(), type="paragraph", label="A", text="Second fictional text")
+                ],
+            ),
         )
         assert saved_second.revision == 2
 
@@ -318,18 +323,24 @@ async def test_reading_group_revision_protects_child_question(
 ) -> None:
     _, _, passage_id, _, _ = await independent_sessions.create_draft()
     async with independent_sessions() as read:
-        group = await read.scalar(select(QuestionGroup).where(QuestionGroup.passage_id == passage_id))
+        group = await read.scalar(
+            select(QuestionGroup).where(QuestionGroup.passage_id == passage_id)
+        )
         assert group is not None
         question = await read.scalar(select(Question).where(Question.question_group_id == group.id))
         assert question is not None
         group_id, question_id = group.id, question.id
 
     async with independent_sessions() as editor:
-        saved = await ReadingService(editor).update_group(group_id, group_body("Admin A question", question_id))
+        saved = await ReadingService(editor).update_group(
+            group_id, group_body("Admin A question", question_id)
+        )
         assert saved.revision == 2
     async with independent_sessions() as stale_editor:
         with pytest.raises(AppError) as error:
-            await ReadingService(stale_editor).update_group(group_id, group_body("Stale question", question_id))
+            await ReadingService(stale_editor).update_group(
+                group_id, group_body("Stale question", question_id)
+            )
         assert error.value.code == "DRAFT_REVISION_CONFLICT"
     async with independent_sessions() as verify:
         question = await verify.get(Question, question_id)
@@ -356,17 +367,25 @@ async def test_listening_part_and_group_reject_stale_updates(
             )
         assert error.value.code == "DRAFT_REVISION_CONFLICT"
 
-    new_group = group_body("Original Listening question", uuid4()).model_dump(exclude={"expected_revision"})
+    new_group = group_body("Original Listening question", uuid4()).model_dump(
+        exclude={"expected_revision"}
+    )
     async with independent_sessions() as creator:
-        created = await ListeningService(creator).create_group(part_id, QuestionGroupWrite.model_validate(new_group))
+        created = await ListeningService(creator).create_group(
+            part_id, QuestionGroupWrite.model_validate(new_group)
+        )
         assert created.revision == 1
         group_id, question_id = created.id, created.questions[0].id
     async with independent_sessions() as editor:
-        saved = await ListeningService(editor).update_group(group_id, group_body("Admin A Listening question", question_id))
+        saved = await ListeningService(editor).update_group(
+            group_id, group_body("Admin A Listening question", question_id)
+        )
         assert saved.revision == 2
     async with independent_sessions() as stale_editor:
         with pytest.raises(AppError) as error:
-            await ListeningService(stale_editor).update_group(group_id, group_body("Stale Listening question", question_id))
+            await ListeningService(stale_editor).update_group(
+                group_id, group_body("Stale Listening question", question_id)
+            )
         assert error.value.code == "DRAFT_REVISION_CONFLICT"
     async with independent_sessions() as verify:
         part = await verify.get(ListeningPart, part_id)
@@ -385,7 +404,11 @@ async def test_writing_task_revision_is_independent_per_task(
     assert task_id is not None
     async with independent_sessions() as read:
         task_two = await read.scalar(
-            select(WritingTask).where(WritingTask.module_id == select(WritingTask.module_id).where(WritingTask.id == task_id).scalar_subquery(), WritingTask.task_number == 2)
+            select(WritingTask).where(
+                WritingTask.module_id
+                == select(WritingTask.module_id).where(WritingTask.id == task_id).scalar_subquery(),
+                WritingTask.task_number == 2,
+            )
         )
         assert task_two is not None
         task_two_id = task_two.id
@@ -447,16 +470,16 @@ async def test_module_audio_and_group_order_use_module_revision(
         new_group = await ReadingService(creator).create_group(
             passage_id,
             QuestionGroupWrite.model_validate(
-                group_body("Second reading group", uuid4()).model_dump(exclude={"expected_revision"})
+                group_body("Second reading group", uuid4()).model_dump(
+                    exclude={"expected_revision"}
+                )
             ),
         )
         assert new_group.revision == 1
     async with independent_sessions() as editor:
         ordered = await ReadingService(editor).reorder_groups(
             reading_module_id,
-            QuestionGroupOrderWrite(
-                expected_revision=1, group_ids=[new_group.id, first_group_id]
-            ),
+            QuestionGroupOrderWrite(expected_revision=1, group_ids=[new_group.id, first_group_id]),
         )
         assert ordered.revision == 2
     async with independent_sessions() as stale_editor:
@@ -606,7 +629,8 @@ async def test_each_skill_edits_draft_and_rejects_published_version(
         await ReadingService(session).update_passage(passage_id, passage_body("Draft reading edit"))
         await session.rollback()
         await ListeningService(session).update_part(
-            part_id, ListeningPartUpdate(expected_revision=1, title="Draft listening edit", order_index=0)
+            part_id,
+            ListeningPartUpdate(expected_revision=1, title="Draft listening edit", order_index=0),
         )
         await session.rollback()
         await WritingService(session).update_task(
@@ -620,7 +644,10 @@ async def test_each_skill_edits_draft_and_rejects_published_version(
         for edit in (
             ReadingService(session).update_passage(passage_id, passage_body("Stale reading edit")),
             ListeningService(session).update_part(
-                part_id, ListeningPartUpdate(expected_revision=1, title="Stale listening edit", order_index=0)
+                part_id,
+                ListeningPartUpdate(
+                    expected_revision=1, title="Stale listening edit", order_index=0
+                ),
             ),
             WritingService(session).update_task(
                 task_id, WritingTaskUpdate(expected_revision=1, prompt="Stale writing edit")
