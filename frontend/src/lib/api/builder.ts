@@ -21,6 +21,7 @@ const questionSchema = z.object({
 
 const groupSchema = z.object({
   id: z.string().uuid(),
+  revision: z.number().int().positive(),
   question_type: z.enum(["multiple_choice", "multiple_choice_multiple", "true_false_not_given", "yes_no_not_given", "text_completion", "matching_headings", "matching", "matching_information", "matching_features", "matching_sentence_endings", "summary_completion_word_list", "plan_labelling", "map_labelling", "diagram_labelling", "form_completion", "note_completion", "table_completion", "flow_chart_completion", "summary_completion", "sentence_completion", "short_answer"]),
   instruction: z.string(),
   config: z.record(z.string(), z.unknown()),
@@ -32,6 +33,7 @@ const groupSchema = z.object({
 
 const passageSchema = z.object({
   id: z.string().uuid(),
+  revision: z.number().int().positive(),
   title: z.string(),
   order_index: z.number().int(),
   blocks: z.array(blockSchema),
@@ -40,11 +42,12 @@ const passageSchema = z.object({
 
 const assetSchema = z.object({ id: z.string().uuid(), original_name: z.string(), mime_type: z.string(), file_size: z.number(), content_url: z.string() });
 const listeningPartSchema = z.object({
-  id: z.string().uuid(), title: z.string().nullable(), order_index: z.number().int(),
+  id: z.string().uuid(), revision: z.number().int().positive(), title: z.string().nullable(), order_index: z.number().int(),
   question_groups: z.array(groupSchema),
 });
 const builderWritingTaskSchema = z.object({
   id: z.string().uuid(),
+  revision: z.number().int().positive(),
   task_number: z.number().int(),
   prompt: z.string(),
   image_asset_id: z.string().uuid().nullable().default(null),
@@ -63,6 +66,7 @@ const builderVersionSchema = z.object({
   modules: z.array(
     z.object({
       id: z.string().uuid(),
+      revision: z.number().int().positive(),
       module_type: z.enum(["READING", "LISTENING", "WRITING"]),
       title: z.string().nullable(),
       recommended_duration_seconds: z.number().int().nullable(),
@@ -118,6 +122,7 @@ export function createWritingModule(versionId: string) {
 }
 
 export type WritingTaskUpdate = {
+  expected_revision: number;
   prompt: string;
   image_asset_id: string | null;
   minimum_recommended_words: number | null;
@@ -139,22 +144,22 @@ export function createListeningPart(versionId: string, body: { title: string; or
   return apiRequest<BuilderListeningPart>(`/test-versions/${versionId}/listening/parts`, { method: "POST", body: JSON.stringify(body) });
 }
 
-export function updateListeningPart(partId: string, body: { title: string | null; order_index: number }) {
+export function updateListeningPart(partId: string, body: { expected_revision: number; title: string | null; order_index: number }) {
   return apiRequest<BuilderListeningPart>(`/listening/parts/${partId}`, { method: "PUT", body: JSON.stringify(body) });
 }
 
 export function deleteListeningPart(partId: string) { return apiRequest(`/listening/parts/${partId}`, { method: "DELETE" }); }
 
-export function attachListeningAudio(moduleId: string, assetId: string | null) {
-  return apiRequest(`/listening/modules/${moduleId}/audio`, { method: "PUT", body: JSON.stringify({ asset_id: assetId }) });
+export function attachListeningAudio(moduleId: string, assetId: string | null, expectedRevision: number) {
+  return apiRequest<BuilderVersion["modules"][number]>(`/listening/modules/${moduleId}/audio`, { method: "PUT", body: JSON.stringify({ asset_id: assetId, expected_revision: expectedRevision }) });
 }
 
 export function createListeningQuestionGroup(partId: string, body: QuestionGroupModel) {
   return apiRequest<BuilderQuestionGroup>(`/listening/parts/${partId}/question-groups`, { method: "POST", body: JSON.stringify(body) });
 }
 
-export function updateListeningQuestionGroup(groupId: string, body: QuestionGroupModel) {
-  return apiRequest<BuilderQuestionGroup>(`/listening/question-groups/${groupId}`, { method: "PUT", body: JSON.stringify(body) });
+export function updateListeningQuestionGroup(groupId: string, body: QuestionGroupModel, expectedRevision: number) {
+  return apiRequest<BuilderQuestionGroup>(`/listening/question-groups/${groupId}`, { method: "PUT", body: JSON.stringify({ ...body, expected_revision: expectedRevision }) });
 }
 
 export async function createPassage(
@@ -171,7 +176,7 @@ export async function createPassage(
 
 export async function updatePassage(
   passageId: string,
-  body: { title: string; order_index: number; blocks: TextBlock[] },
+  body: { expected_revision: number; title: string; order_index: number; blocks: TextBlock[] },
 ) {
   return passageSchema.parse(
     await apiRequest<unknown>(`/reading/passages/${passageId}`, {
@@ -196,11 +201,12 @@ export async function createQuestionGroup(
 export async function updateQuestionGroup(
   groupId: string,
   body: QuestionGroupModel,
+  expectedRevision: number,
 ) {
   return groupSchema.parse(
     await apiRequest<unknown>(`/question-groups/${groupId}`, {
       method: "PUT",
-      body: JSON.stringify(body),
+      body: JSON.stringify({ ...body, expected_revision: expectedRevision }),
     }),
   );
 }
@@ -213,9 +219,9 @@ export function deletePassage(passageId: string) {
   return apiRequest(`/reading/passages/${passageId}`, { method: "DELETE" });
 }
 
-export function reorderQuestionGroups(moduleId: string, groupIds: string[]) {
-  return apiRequest(`/test-modules/${moduleId}/question-groups/order`, {
+export function reorderQuestionGroups(moduleId: string, groupIds: string[], expectedRevision: number) {
+  return apiRequest<BuilderVersion["modules"][number]>(`/test-modules/${moduleId}/question-groups/order`, {
     method: "PUT",
-    body: JSON.stringify({ group_ids: groupIds }),
+    body: JSON.stringify({ group_ids: groupIds, expected_revision: expectedRevision }),
   });
 }

@@ -1,17 +1,17 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useState } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { questionRegistry } from "@/features/questions/registry";
-import { BuilderLifecycleProvider, useBuilderAutosave } from "@/features/test-builder/builder-lifecycle";
+import { BuilderAutosaveStatus, BuilderLifecycleProvider, useBuilderAutosave } from "@/features/test-builder/builder-lifecycle";
 import { ReadingBuilder } from "@/features/test-builder/reading-builder";
 import { VersionActions } from "@/features/test-builder/version-actions";
-import { createPassage, createQuestionGroup, type BuilderPassage, type BuilderQuestionGroup, type BuilderVersion } from "@/lib/api/builder";
+import { createPassage, createQuestionGroup, updatePassage, type BuilderPassage, type BuilderQuestionGroup, type BuilderVersion } from "@/lib/api/builder";
 import { validateVersion } from "@/lib/api/tests";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }) }));
 vi.mock("@/lib/api/builder", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api/builder")>();
-  return { ...actual, createPassage: vi.fn(), createQuestionGroup: vi.fn() };
+  return { ...actual, createPassage: vi.fn(), createQuestionGroup: vi.fn(), updatePassage: vi.fn() };
 });
 vi.mock("@/lib/api/tests", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api/tests")>();
@@ -28,6 +28,7 @@ function group(number: number, prompt: string): BuilderQuestionGroup {
   const value = {
     ...questionRegistry.multiple_choice.createDefault(number),
     id: crypto.randomUUID(),
+    revision: 1,
     order_index: number - 1,
     image_asset_id: null,
     image_asset: null,
@@ -39,6 +40,7 @@ function group(number: number, prompt: string): BuilderQuestionGroup {
 function passage(orderIndex: number, title: string, groups: BuilderQuestionGroup[]): BuilderPassage {
   return {
     id: crypto.randomUUID(),
+    revision: 1,
     title,
     order_index: orderIndex,
     blocks: [{ id: crypto.randomUUID(), type: "paragraph", label: "A", text: `${title} text` }],
@@ -55,6 +57,7 @@ function version(passages: BuilderPassage[]): BuilderVersion {
     status: "DRAFT",
     modules: [{
       id: crypto.randomUUID(),
+      revision: 1,
       module_type: "READING",
       title: "Reading",
       recommended_duration_seconds: 3600,
@@ -68,6 +71,25 @@ function version(passages: BuilderPassage[]): BuilderVersion {
 
 describe("Reading Builder editor identity", () => {
   beforeEach(() => vi.clearAllMocks());
+  afterEach(() => vi.useRealTimers());
+
+  it("uses each acknowledged passage revision for the next autosave", async () => {
+    vi.useFakeTimers();
+    const initial = passage(0, "First passage", []);
+    vi.mocked(updatePassage)
+      .mockResolvedValueOnce({ ...initial, title: "First edit", revision: 2 })
+      .mockResolvedValueOnce({ ...initial, title: "Second edit", revision: 3 });
+    render(<BuilderLifecycleProvider><ReadingBuilder version={version([initial])} /><BuilderAutosaveStatus /></BuilderLifecycleProvider>);
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Edit passage" })); await Promise.resolve(); });
+    fireEvent.change(screen.getByLabelText("Passage title"), { target: { value: "First edit" } });
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    expect(updatePassage).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("Saved")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Passage title"), { target: { value: "Second edit" } });
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    expect(updatePassage).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(updatePassage).mock.calls.map(([, body]) => body.expected_revision)).toEqual([1, 2]);
+  });
 
   it("switches persisted passage editors without carrying local state", async () => {
     render(

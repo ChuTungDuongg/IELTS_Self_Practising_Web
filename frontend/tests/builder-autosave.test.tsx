@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BuilderAutosaveStatus, BuilderLifecycleProvider, useBuilderAutosave } from "@/features/test-builder/builder-lifecycle";
+import { ApiError } from "@/lib/api/client";
 
 function Harness({ save }: { save: (value: string) => Promise<unknown> }) {
   const [value, setValue] = useState("initial");
@@ -153,5 +154,29 @@ describe("Builder autosave", () => {
     await act(async () => { await Promise.resolve(); });
     expect(save).toHaveBeenLastCalledWith("keep me");
     expect(screen.getByText("Saved")).toBeInTheDocument();
+  });
+
+  it("blocks stale conflict retries until the editor is reloaded", async () => {
+    const save = vi.fn().mockRejectedValue(new ApiError("DRAFT_REVISION_CONFLICT", "Reload latest", 409));
+    setup(save);
+    fireEvent.change(screen.getByLabelText("Draft value"), { target: { value: "stale edit" } });
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+
+    expect(screen.getByText(/changed in another tab or by another admin/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Reload latest" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Draft value"), { target: { value: "more stale edits" } });
+    await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+    expect(save).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not classify another 409 code as a draft revision conflict", async () => {
+    const save = vi.fn().mockRejectedValue(new ApiError("TEST_VERSION_IMMUTABLE", "Published", 409));
+    setup(save);
+    fireEvent.change(screen.getByLabelText("Draft value"), { target: { value: "edit" } });
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    expect(screen.getByText("Save failed")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Reload latest" })).not.toBeInTheDocument();
   });
 });

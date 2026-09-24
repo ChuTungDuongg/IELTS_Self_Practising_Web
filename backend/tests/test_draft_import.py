@@ -8,7 +8,7 @@ from app.core.exceptions import AppError
 from app.models import Asset
 from app.models import Test as ExamTest
 from app.models.enums import VersionStatus
-from app.schemas.content import PassageWrite, QuestionGroupWrite
+from app.schemas.content import PassageUpdate, QuestionGroupUpdate
 from app.schemas.draft_import import DraftImportManifest
 from app.services.draft_import import DraftImportService, load_manifest
 from app.services.reading import ReadingService
@@ -63,7 +63,8 @@ async def test_simple_reading_import_builder_round_trip(db_session):
     await db_session.rollback()
     await ReadingService(db_session).update_passage(
         passage.id,
-        PassageWrite(
+        PassageUpdate(
+            expected_revision=passage.revision,
             title=passage.title,
             order_index=passage.order_index,
             blocks=passage.blocks,
@@ -180,7 +181,8 @@ async def test_gap_shapes_and_save_round_trip(db_session, kind):
     await db_session.rollback()
     await ReadingService(db_session).update_group(
         item.id,
-        QuestionGroupWrite(
+        QuestionGroupUpdate(
+            expected_revision=item.revision,
             question_type=item.question_type,
             instruction=item.instruction,
             config=item.config,
@@ -336,7 +338,8 @@ async def test_image_and_audio_assets_and_failed_copy_cleanup(db_session, tmp_pa
     await db_session.rollback()
     await ReadingService(db_session).update_group(
         saved_group.id,
-        QuestionGroupWrite(
+        QuestionGroupUpdate(
+            expected_revision=saved_group.revision,
             question_type=saved_group.question_type,
             instruction=saved_group.instruction,
             config=saved_group.config,

@@ -2,8 +2,9 @@
 
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { CheckIcon } from "@/components/ui/icons";
+import { ApiError } from "@/lib/api/client";
 
-export type AutosaveState = "SAVED" | "DIRTY" | "SAVING" | "ERROR" | "INVALID";
+export type AutosaveState = "SAVED" | "DIRTY" | "SAVING" | "ERROR" | "INVALID" | "CONFLICT";
 type AutosaveController = { flush: () => Promise<boolean> };
 
 type BuilderLifecycleValue = {
@@ -44,7 +45,7 @@ export function BuilderLifecycleProvider({ children }: { children: React.ReactNo
 
   const recomputeState = useCallback(() => {
     const states = [...resourceStates.current.values()];
-    const priority: AutosaveState[] = ["ERROR", "INVALID", "SAVING", "DIRTY", "SAVED"];
+    const priority: AutosaveState[] = ["CONFLICT", "ERROR", "INVALID", "SAVING", "DIRTY", "SAVED"];
     setAggregateState(priority.find((state) => states.includes(state)) ?? "SAVED");
   }, []);
 
@@ -190,6 +191,7 @@ export function useBuilderAutosave<T>({ resourceKey, value, save, valid = true, 
   const baseline = useRef(serialized);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const drain = useRef<Promise<boolean> | null>(null);
+  const conflicted = useRef(false);
   const registered = useRef(false);
   const valueRef = useRef(value);
   const serializedRef = useRef(serialized);
@@ -205,6 +207,7 @@ export function useBuilderAutosave<T>({ resourceKey, value, save, valid = true, 
   }, [enabled, save, serialized, valid, value]);
 
   const flush = useCallback((): Promise<boolean> => {
+    if (conflicted.current) return Promise.resolve(false);
     if (drain.current) return drain.current;
     const operation = (async (): Promise<boolean> => {
       while (true) {
@@ -228,7 +231,12 @@ export function useBuilderAutosave<T>({ resourceKey, value, save, valid = true, 
         try {
           await runAutosave(resourceKey, () => saveRef.current(savingValue));
           baseline.current = savingSerialized;
-        } catch {
+        } catch (error) {
+          if (error instanceof ApiError && error.code === "DRAFT_REVISION_CONFLICT") {
+            conflicted.current = true;
+            setAutosaveState(resourceKey, "CONFLICT");
+            return false;
+          }
           if (serializedRef.current !== savingSerialized) continue;
           setAutosaveState(resourceKey, "ERROR");
           return false;
@@ -255,6 +263,12 @@ export function useBuilderAutosave<T>({ resourceKey, value, save, valid = true, 
   }, [flush, registerAutosave, resourceKey]);
 
   useEffect(() => {
+    if (conflicted.current) {
+      if (timer.current) clearTimeout(timer.current);
+      timer.current = null;
+      setAutosaveState(resourceKey, "CONFLICT");
+      return;
+    }
     if (serialized === baseline.current) {
       if (timer.current) clearTimeout(timer.current);
       timer.current = null;
@@ -287,6 +301,6 @@ export function useBuilderAutosave<T>({ resourceKey, value, save, valid = true, 
 
 export function BuilderAutosaveStatus() {
   const { autosaveState, flushAutosaves } = useBuilderLifecycle();
-  const labels: Record<AutosaveState, string> = { SAVED: "Saved", DIRTY: "Unsaved changes", SAVING: "Saving…", ERROR: "Save failed", INVALID: "Unsaved — fix validation issues" };
-  return <div className="save-status" role="status" aria-live="polite"><span className={autosaveState === "ERROR" || autosaveState === "INVALID" ? "save-status-error" : ""}><CheckIcon className="size-4" /> {labels[autosaveState]}</span>{autosaveState === "ERROR" || autosaveState === "DIRTY" ? <button type="button" className="btn btn-ghost" onClick={() => void flushAutosaves()}>{autosaveState === "ERROR" ? "Retry" : "Save now"}</button> : null}</div>;
+  const labels: Record<AutosaveState, string> = { SAVED: "Saved", DIRTY: "Unsaved changes", SAVING: "Saving…", ERROR: "Save failed", INVALID: "Unsaved — fix validation issues", CONFLICT: "This content changed in another tab or by another admin. Reload the latest version before continuing." };
+  return <div className="save-status" role="status" aria-live="polite"><span className={autosaveState === "ERROR" || autosaveState === "INVALID" || autosaveState === "CONFLICT" ? "save-status-error" : ""}><CheckIcon className="size-4" /> {labels[autosaveState]}</span>{autosaveState === "ERROR" || autosaveState === "DIRTY" ? <button type="button" className="btn btn-ghost" onClick={() => void flushAutosaves()}>{autosaveState === "ERROR" ? "Retry" : "Save now"}</button> : null}{autosaveState === "CONFLICT" ? <button type="button" className="btn btn-ghost" onClick={() => window.location.reload()}>Reload latest</button> : null}</div>;
 }

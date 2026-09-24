@@ -42,6 +42,10 @@ class PassageWrite(BaseModel):
         return self
 
 
+class PassageUpdate(PassageWrite):
+    expected_revision: int = Field(ge=1)
+
+
 class QuestionWrite(BaseModel):
     id: UUID | None = None
     number: int = Field(ge=1)
@@ -71,7 +75,12 @@ class QuestionGroupWrite(BaseModel):
         return self
 
 
+class QuestionGroupUpdate(QuestionGroupWrite):
+    expected_revision: int = Field(ge=1)
+
+
 class QuestionGroupOrderWrite(BaseModel):
+    expected_revision: int = Field(ge=1)
     group_ids: list[UUID] = Field(min_length=1)
 
     @model_validator(mode="after")
@@ -93,6 +102,7 @@ class BuilderQuestion(BaseModel):
 
 class BuilderQuestionGroup(BaseModel):
     id: UUID
+    revision: int
     question_type: str
     instruction: str
     config: dict[str, Any]
@@ -104,6 +114,7 @@ class BuilderQuestionGroup(BaseModel):
 
 class BuilderPassage(BaseModel):
     id: UUID
+    revision: int
     title: str
     order_index: int
     blocks: list[TextBlock]
@@ -115,12 +126,18 @@ class ListeningPartWrite(BaseModel):
     order_index: int = Field(ge=0, le=3)
 
 
+class ListeningPartUpdate(ListeningPartWrite):
+    expected_revision: int = Field(ge=1)
+
+
 class ListeningModuleAudioWrite(BaseModel):
+    expected_revision: int = Field(ge=1)
     asset_id: UUID | None = None
 
 
 class BuilderListeningPart(BaseModel):
     id: UUID
+    revision: int
     title: str
     order_index: int
     question_groups: list[BuilderQuestionGroup]
@@ -133,8 +150,13 @@ class WritingTaskWrite(BaseModel):
     recommended_duration_seconds: int | None = Field(default=None, ge=1, le=14_400)
 
 
+class WritingTaskUpdate(WritingTaskWrite):
+    expected_revision: int = Field(ge=1)
+
+
 class BuilderWritingTask(BaseModel):
     id: UUID
+    revision: int
     task_number: int
     prompt: str
     image_asset_id: UUID | None = None
@@ -146,6 +168,7 @@ class BuilderWritingTask(BaseModel):
 
 class BuilderModule(BaseModel):
     id: UUID
+    revision: int
     module_type: ModuleType
     title: str | None
     recommended_duration_seconds: int | None

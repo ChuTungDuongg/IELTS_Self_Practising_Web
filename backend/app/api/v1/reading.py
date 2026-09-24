@@ -11,8 +11,10 @@ from app.schemas.content import (
     BuilderQuestionGroup,
     BuilderVersion,
     ModuleCreate,
+    PassageUpdate,
     PassageWrite,
     QuestionGroupOrderWrite,
+    QuestionGroupUpdate,
     QuestionGroupWrite,
 )
 from app.services.reading import ReadingService
@@ -51,7 +53,7 @@ async def create_passage(
 
 @router.put("/reading/passages/{passage_id}", response_model=BuilderPassage)
 async def update_passage(
-    passage_id: UUID, body: PassageWrite, session: AsyncSession = Depends(get_session)
+    passage_id: UUID, body: PassageUpdate, session: AsyncSession = Depends(get_session)
 ) -> BuilderPassage:
     return await ReadingService(session).update_passage(passage_id, body)
 
@@ -80,7 +82,7 @@ async def create_question_group(
 @router.put("/question-groups/{group_id}", response_model=BuilderQuestionGroup)
 async def update_question_group(
     group_id: UUID,
-    body: QuestionGroupWrite,
+    body: QuestionGroupUpdate,
     session: AsyncSession = Depends(get_session),
 ) -> BuilderQuestionGroup:
     return await ReadingService(session).update_group(group_id, body)
@@ -95,12 +97,11 @@ async def delete_question_group(
 
 
 @router.put(
-    "/test-modules/{module_id}/question-groups/order", status_code=status.HTTP_204_NO_CONTENT
+    "/test-modules/{module_id}/question-groups/order", response_model=BuilderModule
 )
 async def reorder_question_groups(
     module_id: UUID,
     body: QuestionGroupOrderWrite,
     session: AsyncSession = Depends(get_session),
-) -> Response:
-    await ReadingService(session).reorder_groups(module_id, body)
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+) -> BuilderModule:
+    return await ReadingService(session).reorder_groups(module_id, body)

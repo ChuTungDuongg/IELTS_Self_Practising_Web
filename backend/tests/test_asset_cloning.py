@@ -374,7 +374,9 @@ async def test_legacy_cloned_listening_group_repairs_only_its_inherited_image(
     broken = await VersionService(db_session).get_version(draft_id)
     assert not VersionService.validate_version(broken).valid
     await db_session.rollback()
-    updated = await service.update_group(group_id, body)
+    updated = await service.update_group(
+        group_id, body.model_copy(update={"expected_revision": persisted.revision})
+    )
 
     assert updated.image_asset_id != inherited_id
     assert updated.config == {"options": persisted.config["options"]}
@@ -392,7 +394,9 @@ async def test_legacy_cloned_listening_group_repairs_only_its_inherited_image(
     second_body = QuestionGroupWrite.model_validate(updated.model_dump(mode="json"))
     second_body.questions[0].prompt = "Edited scarecrow"
     await db_session.rollback()
-    second = await service.update_group(group_id, second_body)
+    second = await service.update_group(
+        group_id, second_body.model_copy(update={"expected_revision": updated.revision})
+    )
     assert second.image_asset_id == repaired.id
     assert second.questions[0].id == question_id
     assert second.questions[0].prompt == "Edited scarecrow"
@@ -468,7 +472,9 @@ async def test_legacy_repair_rejects_an_unrelated_cross_version_image(
     await db_session.rollback()
 
     with pytest.raises(AppError) as caught:
-        await ListeningService(db_session).update_group(group_id, body)
+        await ListeningService(db_session).update_group(
+            group_id, body.model_copy(update={"expected_revision": persisted.revision})
+        )
 
     assert caught.value.code == "INVALID_IMAGE_ASSET"
     assert body.image_asset_id == unrelated_id

@@ -33,6 +33,7 @@ function builderVersion(status: "DRAFT" | "PUBLISHED" | "ARCHIVED"): BuilderVers
     status,
     modules: [{
       id: "44444444-4444-4444-8444-444444444444",
+      revision: 1,
       module_type: "READING",
       title: "Reading",
       recommended_duration_seconds: 3600,
@@ -41,11 +42,13 @@ function builderVersion(status: "DRAFT" | "PUBLISHED" | "ARCHIVED"): BuilderVers
       writing_tasks: [],
       passages: [{
         id: "55555555-5555-4555-8555-555555555555",
+        revision: 1,
         title: "Urban foxes",
         order_index: 0,
         blocks: [],
         question_groups: [{
           id: groupId,
+          revision: 1,
           question_type: "multiple_choice",
           instruction: "",
           config: {},

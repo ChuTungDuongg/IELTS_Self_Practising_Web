@@ -118,7 +118,9 @@ async def test_completion_create_update_refetch_preserves_identity(db_session: A
     addition.questions[0].order_index = 1
     body.questions += addition.questions
     body.config["blocks"] += addition.config["blocks"]
-    updated = await service.update_group(created.id, body)
+    updated = await service.update_group(
+        created.id, body.model_copy(update={"expected_revision": created.revision})
+    )
     assert_links(updated, body)
     await db_session.rollback()
     db_session.expire_all()
@@ -130,7 +132,12 @@ async def test_completion_create_update_refetch_preserves_identity(db_session: A
     for index, question in enumerate(body.questions):
         question.number = index + 1
         question.order_index = index
-    assert_links(await service.update_group(created.id, body), body)
+    assert_links(
+        await service.update_group(
+            created.id, body.model_copy(update={"expected_revision": updated.revision})
+        ),
+        body,
+    )
 
 
 def test_version_clone_remaps_gaps_without_touching_source():

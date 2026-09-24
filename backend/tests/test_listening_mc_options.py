@@ -69,7 +69,9 @@ async def test_listening_multiple_choice_option_deletion_round_trips_through_upd
     update.questions[0].config["options"][1]["label"] = "B"
     await db_session.rollback()
 
-    updated = await service.update_group(group_id, update)
+    updated = await service.update_group(
+        group_id, update.model_copy(update={"expected_revision": persisted.revision})
+    )
     await db_session.rollback()
     reloaded = await service.get_group(group_id)
 

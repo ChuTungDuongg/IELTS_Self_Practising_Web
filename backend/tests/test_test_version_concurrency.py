@@ -31,7 +31,18 @@ from app.models import (
     TestVersion as VersionRecord,
 )
 from app.models.enums import ModuleType, VersionStatus
-from app.schemas.content import ListeningPartWrite, PassageWrite, TextBlock, WritingTaskWrite
+from app.schemas.content import (
+    ListeningModuleAudioWrite,
+    ListeningPartUpdate,
+    PassageUpdate,
+    PassageWrite,
+    QuestionGroupOrderWrite,
+    QuestionGroupUpdate,
+    QuestionGroupWrite,
+    QuestionWrite,
+    TextBlock,
+    WritingTaskUpdate,
+)
 from app.services.listening import ListeningService
 from app.services.reading import ReadingService
 from app.services.tests import TestService as VersionService
@@ -143,11 +154,32 @@ async def independent_sessions() -> AsyncIterator[IndependentSessions]:
         await engine.dispose()
 
 
-def passage_body(title: str) -> PassageWrite:
-    return PassageWrite(
+def passage_body(title: str, expected_revision: int = 1) -> PassageUpdate:
+    return PassageUpdate(
+        expected_revision=expected_revision,
         title=title,
         order_index=0,
         blocks=[TextBlock(id=uuid4(), type="paragraph", label="A", text="Fictional text")],
+    )
+
+
+def group_body(prompt: str, question_id: UUID, expected_revision: int = 1) -> QuestionGroupUpdate:
+    return QuestionGroupUpdate(
+        expected_revision=expected_revision,
+        question_type="true_false_not_given",
+        instruction="Choose TRUE, FALSE, or NOT GIVEN.",
+        config={},
+        order_index=0,
+        questions=[
+            QuestionWrite(
+                id=question_id,
+                number=1,
+                prompt=prompt,
+                config={},
+                answer_key={"kind": "SINGLE_OPTION", "value": "TRUE"},
+                order_index=0,
+            )
+        ],
     )
 
 
@@ -156,6 +188,291 @@ def locks_version(statement: object) -> bool:
         getattr(statement, "_for_update_arg", None) is not None
         and statement.column_descriptions[0]["entity"] is VersionRecord
     )
+
+
+@pytest.mark.integration
+async def test_stale_passage_save_preserves_first_admin_edit(
+    independent_sessions: IndependentSessions,
+) -> None:
+    _, _, passage_id, _, _ = await independent_sessions.create_draft()
+    first = passage_body("Admin A edit")
+    stale = passage_body("Admin B stale edit")
+
+    async with independent_sessions() as admin_a, independent_sessions() as admin_b:
+        saved = await ReadingService(admin_a).update_passage(passage_id, first)
+        assert saved.revision == 2
+        with pytest.raises(AppError) as error:
+            await ReadingService(admin_b).update_passage(passage_id, stale)
+        assert error.value.code == "DRAFT_REVISION_CONFLICT"
+        assert error.value.status_code == 409
+
+    async with independent_sessions() as verify:
+        passage = await verify.get(ReadingPassage, passage_id)
+        assert passage is not None
+        assert passage.title == "Admin A edit"
+        assert passage.revision == 2
+
+    async with independent_sessions() as reloader:
+        latest = await reloader.get(ReadingPassage, passage_id)
+        assert latest is not None
+        latest_revision = latest.revision
+    async with independent_sessions() as admin_b:
+        recovered = await ReadingService(admin_b).update_passage(
+            passage_id, passage_body("Admin B after reload", latest_revision)
+        )
+        assert recovered.revision == 3
+
+
+@pytest.mark.integration
+async def test_unrelated_passages_keep_independent_revisions(
+    independent_sessions: IndependentSessions,
+) -> None:
+    _, version_id, first_id, _, _ = await independent_sessions.create_draft()
+    async with independent_sessions() as creator:
+        second = await ReadingService(creator).create_passage(
+            version_id,
+            PassageWrite(
+                title="Second passage",
+                order_index=1,
+                blocks=[TextBlock(id=uuid4(), type="paragraph", label="A", text="Second fictional text")],
+            ),
+        )
+        assert second.revision == 1
+    async with independent_sessions() as first_editor:
+        first = await ReadingService(first_editor).update_passage(
+            first_id, passage_body("First passage edited")
+        )
+        assert first.revision == 2
+    async with independent_sessions() as second_editor:
+        saved_second = await ReadingService(second_editor).update_passage(
+            second.id, PassageUpdate(
+                expected_revision=1,
+                title="Second passage edited",
+                order_index=1,
+                blocks=[TextBlock(id=uuid4(), type="paragraph", label="A", text="Second fictional text")],
+            )
+        )
+        assert saved_second.revision == 2
+
+
+@pytest.mark.integration
+async def test_overlapping_passage_saves_only_one_can_advance_revision_one(
+    independent_sessions: IndependentSessions, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, _, passage_id, _, _ = await independent_sessions.create_draft()
+    first_locked = asyncio.Event()
+    second_waiting = asyncio.Event()
+    release_first = asyncio.Event()
+
+    async with independent_sessions() as first_session, independent_sessions() as second_session:
+        first_scalar = first_session.scalar
+        second_scalar = second_session.scalar
+
+        async def pause_first(statement, *args, **kwargs):
+            result = await first_scalar(statement, *args, **kwargs)
+            if locks_version(statement):
+                first_locked.set()
+                await release_first.wait()
+            return result
+
+        async def observe_second(statement, *args, **kwargs):
+            if locks_version(statement):
+                second_waiting.set()
+            return await second_scalar(statement, *args, **kwargs)
+
+        monkeypatch.setattr(first_session, "scalar", pause_first)
+        monkeypatch.setattr(second_session, "scalar", observe_second)
+        first_task = asyncio.create_task(
+            ReadingService(first_session).update_passage(passage_id, passage_body("First"))
+        )
+        second_task = None
+        try:
+            await asyncio.wait_for(first_locked.wait(), 10)
+            second_task = asyncio.create_task(
+                ReadingService(second_session).update_passage(passage_id, passage_body("Second"))
+            )
+            await asyncio.wait_for(second_waiting.wait(), 10)
+            assert not second_task.done()
+            release_first.set()
+            first = await asyncio.wait_for(first_task, 10)
+            assert first.revision == 2
+            with pytest.raises(AppError) as error:
+                await asyncio.wait_for(second_task, 10)
+            assert error.value.code == "DRAFT_REVISION_CONFLICT"
+        finally:
+            release_first.set()
+            for task in (first_task, second_task):
+                if task is not None and not task.done():
+                    task.cancel()
+                    await asyncio.gather(task, return_exceptions=True)
+
+    async with independent_sessions() as verify:
+        passage = await verify.get(ReadingPassage, passage_id)
+        assert passage is not None
+        assert (passage.title, passage.revision) == ("First", 2)
+
+
+@pytest.mark.integration
+async def test_reading_group_revision_protects_child_question(
+    independent_sessions: IndependentSessions,
+) -> None:
+    _, _, passage_id, _, _ = await independent_sessions.create_draft()
+    async with independent_sessions() as read:
+        group = await read.scalar(select(QuestionGroup).where(QuestionGroup.passage_id == passage_id))
+        assert group is not None
+        question = await read.scalar(select(Question).where(Question.question_group_id == group.id))
+        assert question is not None
+        group_id, question_id = group.id, question.id
+
+    async with independent_sessions() as editor:
+        saved = await ReadingService(editor).update_group(group_id, group_body("Admin A question", question_id))
+        assert saved.revision == 2
+    async with independent_sessions() as stale_editor:
+        with pytest.raises(AppError) as error:
+            await ReadingService(stale_editor).update_group(group_id, group_body("Stale question", question_id))
+        assert error.value.code == "DRAFT_REVISION_CONFLICT"
+    async with independent_sessions() as verify:
+        question = await verify.get(Question, question_id)
+        group = await verify.get(QuestionGroup, group_id)
+        assert question is not None and group is not None
+        assert (question.prompt, group.revision) == ("Admin A question", 2)
+
+
+@pytest.mark.integration
+async def test_listening_part_and_group_reject_stale_updates(
+    independent_sessions: IndependentSessions,
+) -> None:
+    _, _, _, part_id, _ = await independent_sessions.create_draft(with_other_skills=True)
+    assert part_id is not None
+    async with independent_sessions() as editor:
+        saved_part = await ListeningService(editor).update_part(
+            part_id, ListeningPartUpdate(expected_revision=1, title="Admin A part", order_index=0)
+        )
+        assert saved_part.revision == 2
+    async with independent_sessions() as stale_editor:
+        with pytest.raises(AppError) as error:
+            await ListeningService(stale_editor).update_part(
+                part_id, ListeningPartUpdate(expected_revision=1, title="Stale part", order_index=0)
+            )
+        assert error.value.code == "DRAFT_REVISION_CONFLICT"
+
+    new_group = group_body("Original Listening question", uuid4()).model_dump(exclude={"expected_revision"})
+    async with independent_sessions() as creator:
+        created = await ListeningService(creator).create_group(part_id, QuestionGroupWrite.model_validate(new_group))
+        assert created.revision == 1
+        group_id, question_id = created.id, created.questions[0].id
+    async with independent_sessions() as editor:
+        saved = await ListeningService(editor).update_group(group_id, group_body("Admin A Listening question", question_id))
+        assert saved.revision == 2
+    async with independent_sessions() as stale_editor:
+        with pytest.raises(AppError) as error:
+            await ListeningService(stale_editor).update_group(group_id, group_body("Stale Listening question", question_id))
+        assert error.value.code == "DRAFT_REVISION_CONFLICT"
+    async with independent_sessions() as verify:
+        part = await verify.get(ListeningPart, part_id)
+        group = await verify.get(QuestionGroup, group_id)
+        question = await verify.get(Question, question_id)
+        assert part is not None and group is not None and question is not None
+        assert (part.title, part.revision) == ("Admin A part", 2)
+        assert (question.prompt, group.revision) == ("Admin A Listening question", 2)
+
+
+@pytest.mark.integration
+async def test_writing_task_revision_is_independent_per_task(
+    independent_sessions: IndependentSessions,
+) -> None:
+    _, _, _, _, task_id = await independent_sessions.create_draft(with_other_skills=True)
+    assert task_id is not None
+    async with independent_sessions() as read:
+        task_two = await read.scalar(
+            select(WritingTask).where(WritingTask.module_id == select(WritingTask.module_id).where(WritingTask.id == task_id).scalar_subquery(), WritingTask.task_number == 2)
+        )
+        assert task_two is not None
+        task_two_id = task_two.id
+    async with independent_sessions() as editor:
+        saved = await WritingService(editor).update_task(
+            task_id, WritingTaskUpdate(expected_revision=1, prompt="Admin A prompt")
+        )
+        assert saved.revision == 2
+    async with independent_sessions() as stale_editor:
+        with pytest.raises(AppError) as error:
+            await WritingService(stale_editor).update_task(
+                task_id, WritingTaskUpdate(expected_revision=1, prompt="Stale prompt")
+            )
+        assert error.value.code == "DRAFT_REVISION_CONFLICT"
+    async with independent_sessions() as other_task_editor:
+        saved_two = await WritingService(other_task_editor).update_task(
+            task_two_id, WritingTaskUpdate(expected_revision=1, prompt="Independent Task 2 prompt")
+        )
+        assert saved_two.revision == 2
+    async with independent_sessions() as verify:
+        first = await verify.get(WritingTask, task_id)
+        second = await verify.get(WritingTask, task_two_id)
+        assert first is not None and second is not None
+        assert (first.prompt, first.revision) == ("Admin A prompt", 2)
+        assert (second.prompt, second.revision) == ("Independent Task 2 prompt", 2)
+
+
+@pytest.mark.integration
+async def test_module_audio_and_group_order_use_module_revision(
+    independent_sessions: IndependentSessions,
+) -> None:
+    _, _, passage_id, part_id, _ = await independent_sessions.create_draft(with_other_skills=True)
+    assert part_id is not None
+    async with independent_sessions() as read:
+        reading_module_id = await read.scalar(
+            select(ReadingPassage.module_id).where(ReadingPassage.id == passage_id)
+        )
+        listening_module_id = await read.scalar(
+            select(ListeningPart.module_id).where(ListeningPart.id == part_id)
+        )
+        first_group_id = await read.scalar(
+            select(QuestionGroup.id).where(QuestionGroup.passage_id == passage_id)
+        )
+        assert reading_module_id and listening_module_id and first_group_id
+
+    async with independent_sessions() as editor:
+        audio = await ListeningService(editor).attach_audio(
+            listening_module_id, ListeningModuleAudioWrite(expected_revision=1, asset_id=None)
+        )
+        assert audio.revision == 2
+    async with independent_sessions() as stale_editor:
+        with pytest.raises(AppError) as error:
+            await ListeningService(stale_editor).attach_audio(
+                listening_module_id, ListeningModuleAudioWrite(expected_revision=1, asset_id=None)
+            )
+        assert error.value.code == "DRAFT_REVISION_CONFLICT"
+
+    async with independent_sessions() as creator:
+        new_group = await ReadingService(creator).create_group(
+            passage_id,
+            QuestionGroupWrite.model_validate(
+                group_body("Second reading group", uuid4()).model_dump(exclude={"expected_revision"})
+            ),
+        )
+        assert new_group.revision == 1
+    async with independent_sessions() as editor:
+        ordered = await ReadingService(editor).reorder_groups(
+            reading_module_id,
+            QuestionGroupOrderWrite(
+                expected_revision=1, group_ids=[new_group.id, first_group_id]
+            ),
+        )
+        assert ordered.revision == 2
+    async with independent_sessions() as stale_editor:
+        with pytest.raises(AppError) as error:
+            await ReadingService(stale_editor).reorder_groups(
+                reading_module_id,
+                QuestionGroupOrderWrite(
+                    expected_revision=1, group_ids=[first_group_id, new_group.id]
+                ),
+            )
+        assert error.value.code == "DRAFT_REVISION_CONFLICT"
+    async with independent_sessions() as verify:
+        first = await verify.get(QuestionGroup, first_group_id)
+        second = await verify.get(QuestionGroup, new_group.id)
+        assert first is not None and second is not None
+        assert (first.revision, second.revision) == (2, 2)
 
 
 @pytest.mark.integration
@@ -289,11 +606,11 @@ async def test_each_skill_edits_draft_and_rejects_published_version(
         await ReadingService(session).update_passage(passage_id, passage_body("Draft reading edit"))
         await session.rollback()
         await ListeningService(session).update_part(
-            part_id, ListeningPartWrite(title="Draft listening edit", order_index=0)
+            part_id, ListeningPartUpdate(expected_revision=1, title="Draft listening edit", order_index=0)
         )
         await session.rollback()
         await WritingService(session).update_task(
-            task_id, WritingTaskWrite(prompt="Draft writing edit")
+            task_id, WritingTaskUpdate(expected_revision=1, prompt="Draft writing edit")
         )
         await session.rollback()
         published = await VersionService(session).publish(version_id)
@@ -303,10 +620,10 @@ async def test_each_skill_edits_draft_and_rejects_published_version(
         for edit in (
             ReadingService(session).update_passage(passage_id, passage_body("Stale reading edit")),
             ListeningService(session).update_part(
-                part_id, ListeningPartWrite(title="Stale listening edit", order_index=0)
+                part_id, ListeningPartUpdate(expected_revision=1, title="Stale listening edit", order_index=0)
             ),
             WritingService(session).update_task(
-                task_id, WritingTaskWrite(prompt="Stale writing edit")
+                task_id, WritingTaskUpdate(expected_revision=1, prompt="Stale writing edit")
             ),
         ):
             with pytest.raises(AppError) as error:

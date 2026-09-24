@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { PlusIcon } from "@/components/ui/icons";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -18,6 +18,7 @@ import {
   reorderQuestionGroups,
   updateListeningPart,
   updateListeningQuestionGroup,
+  type BuilderListeningPart,
   type BuilderVersion,
 } from "@/lib/api/builder";
 import { builderPreviewPath } from "@/lib/routes";
@@ -30,11 +31,15 @@ export function ListeningBuilder({ version }: { version: BuilderVersion }) {
   const router = useRouter();
   const { deleting, transitioning, flushAutosaves, runMutation } = useBuilderLifecycle();
   const listening = version.modules.find((item) => item.module_type === "LISTENING");
+  const moduleRevision = useRef(listening?.revision ?? 1);
+  const serverModuleRevision = listening?.revision;
+  useEffect(() => { if (serverModuleRevision) moduleRevision.current = serverModuleRevision; }, [serverModuleRevision]);
   const parts = useMemo(() => [...(listening?.listening_parts ?? [])].sort((a, b) => a.order_index - b.order_index), [listening]);
   const [partIndex, setPartIndex] = useState(0);
   const [editing, setEditing] = useState<QuestionGroupModel | null>(null);
   const [type, setType] = useState<QuestionType>("multiple_choice");
   const [message, setMessage] = useState<string | null>(null);
+  const [conflict, setConflict] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [confirmingModuleDelete, setConfirmingModuleDelete] = useState(false);
   const part = parts[partIndex];
@@ -42,16 +47,18 @@ export function ListeningBuilder({ version }: { version: BuilderVersion }) {
   const nextOrder = Math.max(-1, ...parts.flatMap((item) => item.question_groups.map((group) => group.order_index))) + 1;
 
   async function run(action: () => Promise<unknown>, excludeAutosaveKey?: string) {
+    if (conflict) return;
     setMessage(null);
     try {
       if (!(await flushAutosaves(excludeAutosaveKey))) {
-        setMessage("Fix invalid draft fields or retry the failed save before continuing.");
+        setMessage("Resolve unsaved draft changes before continuing.");
         return;
       }
       await runMutation(action);
       setEditing(null);
       router.refresh();
     } catch (error) {
+      if (error instanceof ApiError && error.code === "DRAFT_REVISION_CONFLICT") setConflict(true);
       setMessage(error instanceof ApiError ? error.message : "The Listening change could not be saved.");
     }
   }
@@ -71,7 +78,10 @@ export function ListeningBuilder({ version }: { version: BuilderVersion }) {
     setUploading(true);
     try {
       const asset = await uploadAsset("audio", version.id, file);
-      await run(() => attachListeningAudio(listening.id, asset.id));
+      await run(async () => {
+        const saved = await attachListeningAudio(listening.id, asset.id, moduleRevision.current);
+        moduleRevision.current = saved.revision;
+      });
     } finally {
       setUploading(false);
     }
@@ -95,7 +105,7 @@ export function ListeningBuilder({ version }: { version: BuilderVersion }) {
 
   async function switchPart(index: number) {
     if (!(await flushAutosaves())) {
-      setMessage("Fix invalid draft fields or retry the failed save before switching sections.");
+      setMessage("Resolve unsaved draft changes before switching sections.");
       return;
     }
     setPartIndex(index);
@@ -104,7 +114,7 @@ export function ListeningBuilder({ version }: { version: BuilderVersion }) {
 
   async function editGroup(group: QuestionGroupModel) {
     if (!(await flushAutosaves())) {
-      setMessage("Fix invalid draft fields or retry the failed save before switching groups.");
+      setMessage("Resolve unsaved draft changes before switching groups.");
       return;
     }
     setEditing(group);
@@ -118,7 +128,10 @@ export function ListeningBuilder({ version }: { version: BuilderVersion }) {
     if (index < 0 || target < 0 || target >= local.length) return;
     [local[index], local[target]] = [local[target], local[index]];
     const ids = parts.flatMap((item) => item.id === part.id ? local : [...item.question_groups].sort((a, b) => a.order_index - b.order_index)).map((item) => item.id);
-    void run(() => reorderQuestionGroups(listening.id, ids));
+    void run(async () => {
+      const saved = await reorderQuestionGroups(listening.id, ids, moduleRevision.current);
+      moduleRevision.current = saved.revision;
+    });
   }
 
   return (
@@ -134,11 +147,12 @@ export function ListeningBuilder({ version }: { version: BuilderVersion }) {
         </div>
 
         {message ? <p className="notice notice-error mt-4">{message}</p> : null}
+        {conflict ? <button type="button" className="btn btn-secondary mt-2" onClick={() => window.location.reload()}>Reload latest</button> : null}
         <div className="audio-attachment mt-5">
           <div><p className="page-eyebrow">Shared Listening audio</p><h3>{listening.audio_asset?.original_name ?? "No recording attached"}</h3><span>{listening.audio_asset ? `${(listening.audio_asset.file_size / 1024 / 1024).toFixed(1)} MB · ${listening.audio_asset.mime_type}` : "Optional · used by all four sections"}</span></div>
           <div className="flex flex-wrap gap-2">
             <label className="btn btn-listening">{uploading ? "Uploading…" : listening.audio_asset ? "Replace" : "Upload audio"}<input type="file" className="sr-only" accept="audio/mpeg,audio/mp4,audio/x-m4a,audio/aac,audio/wav,audio/ogg" disabled={uploading} onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadAudio(file); }} /></label>
-            {listening.audio_asset ? <button className="btn btn-danger-ghost" onClick={() => run(() => attachListeningAudio(listening.id, null))}>Remove</button> : null}
+            {listening.audio_asset ? <button className="btn btn-danger-ghost" onClick={() => run(async () => { const saved = await attachListeningAudio(listening.id, null, moduleRevision.current); moduleRevision.current = saved.revision; })}>Remove</button> : null}
           </div>
         </div>
 
@@ -152,7 +166,7 @@ export function ListeningBuilder({ version }: { version: BuilderVersion }) {
               })}
               {editing ? (
                 <div>
-                  <QuestionGroupEditor key={editing.id ?? editing.questions[0]?.id ?? "new-listening-group"} initial={editing} moduleType="LISTENING" nextQuestionNumber={nextNumber} baseQuestionNumber={canonicalListeningGroupStart(parts, editing)} passageBlocks={[]} testVersionId={version.id} onCancel={() => setEditing(null)} onSave={(body) => run(() => editing.id ? updateListeningQuestionGroup(editing.id, body) : createListeningQuestionGroup(part.id, body), editing.id ? undefined : "question-group:new")} onAutosave={editing.id ? (body) => updateListeningQuestionGroup(editing.id!, body) : undefined} />
+                  <QuestionGroupEditor key={editing.id ?? editing.questions[0]?.id ?? "new-listening-group"} initial={editing} moduleType="LISTENING" nextQuestionNumber={nextNumber} baseQuestionNumber={canonicalListeningGroupStart(parts, editing)} passageBlocks={[]} testVersionId={version.id} onCancel={() => setEditing(null)} onSave={(body) => run(() => createListeningQuestionGroup(part.id, body), "question-group:new")} onAutosave={editing.id ? (body, expectedRevision) => updateListeningQuestionGroup(editing.id!, body, expectedRevision) : undefined} />
                 </div>
               ) : (
                 <div className="new-group-row"><label className="field-label flex-1">Listening template<select className="select-field" value={type} onChange={(event) => setType(event.target.value as QuestionType)}>{listeningQuestionTypeOptions.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label><button className="btn btn-listening" onClick={createGroup}><PlusIcon className="size-4" /> Add question group</button></div>
@@ -166,9 +180,13 @@ export function ListeningBuilder({ version }: { version: BuilderVersion }) {
   );
 }
 
-function ListeningPartTitle({ part }: { part: { id: string; title: string | null; order_index: number } }) {
+function ListeningPartTitle({ part }: { part: BuilderListeningPart }) {
   const [title, setTitle] = useState(part.title ?? `Section ${part.order_index + 1}`);
-  useBuilderAutosave({ resourceKey: `listening-part:${part.id}`, value: { title, order_index: part.order_index }, save: (value) => updateListeningPart(part.id, value), valid: title.trim().length > 0 && title.length <= 240 });
+  const revision = useRef(part.revision);
+  useBuilderAutosave({ resourceKey: `listening-part:${part.id}`, value: { title, order_index: part.order_index }, save: async (value) => {
+    const saved = await updateListeningPart(part.id, { ...value, expected_revision: revision.current });
+    revision.current = saved.revision;
+  }, valid: title.trim().length > 0 && title.length <= 240 });
   return <label className="field-label mb-4 block">Section title / internal label<input className="field mt-2" value={title} onChange={(event) => setTitle(event.target.value)} /></label>;
 }
 

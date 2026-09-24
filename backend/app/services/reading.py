@@ -33,11 +33,14 @@ from app.schemas.content import (
     BuilderVersion,
     BuilderWritingTask,
     ModuleCreate,
+    PassageUpdate,
     PassageWrite,
     QuestionGroupOrderWrite,
+    QuestionGroupUpdate,
     QuestionGroupWrite,
     QuestionWrite,
 )
+from app.services.draft_revisions import advance_revision
 
 
 class ReadingService:
@@ -107,15 +110,17 @@ class ReadingService:
             passage_id = passage.id
         return await self.get_passage(passage_id)
 
-    async def update_passage(self, passage_id: uuid.UUID, body: PassageWrite) -> BuilderPassage:
+    async def update_passage(self, passage_id: uuid.UUID, body: PassageUpdate) -> BuilderPassage:
         async with self.session.begin():
             passage = await self._draft_passage(passage_id)
+            advance_revision(passage, body.expected_revision)
             passage.title = body.title.strip()
             passage.order_index = body.order_index
             passage.content_json = [item.model_dump(mode="json") for item in body.blocks]
             passage.plain_text = "\n\n".join(item.text for item in body.blocks)
             await self._canonicalize_module(passage.module_id)
-        return await self.get_passage(passage_id)
+            saved = await self.get_passage(passage_id)
+        return saved
 
     async def delete_passage(self, passage_id: uuid.UUID) -> None:
         async with self.session.begin():
@@ -170,18 +175,19 @@ class ReadingService:
             self._apply_questions(group, body)
             self.session.add(group)
             await self.session.flush()
-            await self._canonicalize_module(passage.module_id)
+            await self._canonicalize_module(passage.module_id, already_advanced={group.id})
             group_id = group.id
         return await self.get_group(group_id)
 
     async def update_group(
-        self, group_id: uuid.UUID, body: QuestionGroupWrite
+        self, group_id: uuid.UUID, body: QuestionGroupUpdate
     ) -> BuilderQuestionGroup:
         deleted_path: str | None = None
         copied_path: str | None = None
         try:
             async with self.session.begin():
                 group = await self._draft_group(group_id)
+                advance_revision(group, body.expected_revision)
                 previous_image_asset_id = group.image_asset_id
                 if body.image_asset_id is not None:
                     from app.services.tests import TestService
@@ -240,13 +246,14 @@ class ReadingService:
                     if question_id not in retained:
                         group.questions.remove(question)
                 await self.session.flush()
-                await self._canonicalize_module(group.module_id)
+                await self._canonicalize_module(group.module_id, already_advanced={group.id})
                 if previous_image_asset_id and previous_image_asset_id != group.image_asset_id:
                     from app.services.tests import TestService
 
                     deleted_path = await TestService(self.session).cleanup_asset_if_unreferenced(
                         previous_image_asset_id
                     )
+                saved = await self.get_group(group_id)
         except BaseException:
             if copied_path:
                 from app.services.tests import TestService
@@ -257,7 +264,7 @@ class ReadingService:
             from app.services.tests import TestService
 
             TestService._delete_files([deleted_path])
-        return await self.get_group(group_id)
+        return saved
 
     async def delete_group(self, group_id: uuid.UUID) -> None:
         deleted_path: str | None = None
@@ -279,7 +286,7 @@ class ReadingService:
 
             TestService._delete_files([deleted_path])
 
-    async def reorder_groups(self, module_id: uuid.UUID, body: QuestionGroupOrderWrite) -> None:
+    async def reorder_groups(self, module_id: uuid.UUID, body: QuestionGroupOrderWrite) -> BuilderModule:
         async with self.session.begin():
             version_id = await self.session.scalar(
                 select(TestModule.test_version_id).where(TestModule.id == module_id)
@@ -300,6 +307,7 @@ class ReadingService:
             )
             if module is None or module.test_version_id != version_id:
                 raise AppError("TEST_MODULE_NOT_FOUND", "The test module does not exist.", 404)
+            advance_revision(module, body.expected_revision)
             groups = {group.id: group for group in module.question_groups}
             if set(body.group_ids) != set(groups):
                 raise AppError(
@@ -313,8 +321,13 @@ class ReadingService:
             for order_index, group_id in enumerate(body.group_ids):
                 groups[group_id].order_index = order_index
             await self._canonicalize_module(module_id)
+            version = await self.builder_version(version_id)
+            saved = next(item for item in version.modules if item.id == module_id)
+        return saved
 
-    async def _canonicalize_module(self, module_id: uuid.UUID) -> None:
+    async def _canonicalize_module(
+        self, module_id: uuid.UUID, *, already_advanced: set[uuid.UUID] | None = None
+    ) -> None:
         module = await self.session.scalar(
             select(TestModule)
             .where(TestModule.id == module_id)
@@ -343,6 +356,13 @@ class ReadingService:
             for group in ordered_groups
         ]
         all_questions = [question for _, questions in group_questions for question in questions]
+        original = {
+            group.id: (
+                group.order_index,
+                tuple((question.id, question.number, question.order_index) for question in questions),
+            )
+            for group, questions in group_questions
+        }
         for temporary_index, group in enumerate(ordered_groups, start=1):
             group.order_index = -temporary_index
         for temporary_number, question in enumerate(all_questions, start=1):
@@ -357,6 +377,14 @@ class ReadingService:
                 question.number = next_number
                 question.order_index = order_index
                 next_number += 1
+        skipped = already_advanced or set()
+        for group, questions in group_questions:
+            current = (
+                group.order_index,
+                tuple((question.id, question.number, question.order_index) for question in questions),
+            )
+            if current != original[group.id] and group.id not in skipped:
+                group.revision += 1
 
     async def get_group(self, group_id: uuid.UUID) -> BuilderQuestionGroup:
         group = await self.session.scalar(
@@ -671,6 +699,7 @@ class ReadingService:
             modules=[
                 BuilderModule(
                     id=module.id,
+                    revision=module.revision,
                     module_type=module.module_type,
                     title=module.title,
                     recommended_duration_seconds=module.recommended_duration_seconds,
@@ -695,6 +724,7 @@ class ReadingService:
     def _present_writing_task(task: WritingTask) -> BuilderWritingTask:
         return BuilderWritingTask(
             id=task.id,
+            revision=task.revision,
             task_number=task.task_number,
             prompt=task.prompt,
             image_asset_id=task.image_asset_id,
@@ -713,6 +743,7 @@ class ReadingService:
         blocks = normalize_passage_blocks(passage.content_json, passage.id)
         return BuilderPassage(
             id=passage.id,
+            revision=passage.revision,
             title=passage.title,
             order_index=passage.order_index,
             blocks=blocks,
@@ -751,6 +782,7 @@ class ReadingService:
         )
         return BuilderQuestionGroup(
             id=group.id,
+            revision=group.revision,
             question_type=group.question_type,
             instruction=group.instruction,
             config=config,
@@ -768,6 +800,7 @@ class ReadingService:
     def _present_listening_part(cls, part: ListeningPart) -> BuilderListeningPart:
         return BuilderListeningPart(
             id=part.id,
+            revision=part.revision,
             title=part.title,
             order_index=part.order_index,
             question_groups=[

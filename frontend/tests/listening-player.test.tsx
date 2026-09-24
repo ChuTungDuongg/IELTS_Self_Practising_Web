@@ -5,8 +5,9 @@ import { listeningQuestionTypeOptions, questionRegistry } from "@/features/quest
 import { ListeningBuilder } from "@/features/test-builder/listening-builder";
 import { ListeningRunner } from "@/features/listening/listening-runner";
 import { ListeningReviewView } from "@/features/listening/listening-review";
-import { BuilderLifecycleProvider } from "@/features/test-builder/builder-lifecycle";
-import { createListeningQuestionGroup, updateListeningQuestionGroup, type BuilderQuestionGroup, type BuilderVersion } from "@/lib/api/builder";
+import { BuilderAutosaveStatus, BuilderLifecycleProvider } from "@/features/test-builder/builder-lifecycle";
+import { ApiError } from "@/lib/api/client";
+import { createListeningQuestionGroup, updateListeningPart, updateListeningQuestionGroup, type BuilderQuestionGroup, type BuilderVersion } from "@/lib/api/builder";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }) }));
 vi.mock("@/lib/api/attempts", async (importOriginal) => {
@@ -19,7 +20,7 @@ vi.mock("@/lib/api/exam", async (importOriginal) => {
 });
 vi.mock("@/lib/api/builder", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api/builder")>();
-  return { ...actual, createListeningQuestionGroup: vi.fn(), updateListeningQuestionGroup: vi.fn() };
+  return { ...actual, createListeningQuestionGroup: vi.fn(), updateListeningQuestionGroup: vi.fn(), updateListeningPart: vi.fn() };
 });
 
 function listeningBuilderVersion(questionGroups: BuilderQuestionGroup[]): BuilderVersion {
@@ -31,6 +32,7 @@ function listeningBuilderVersion(questionGroups: BuilderQuestionGroup[]): Builde
     status: "DRAFT",
     modules: [{
       id: crypto.randomUUID(),
+      revision: 1,
       module_type: "LISTENING",
       title: "Listening",
       recommended_duration_seconds: 1800,
@@ -38,6 +40,7 @@ function listeningBuilderVersion(questionGroups: BuilderQuestionGroup[]): Builde
       passages: [],
       listening_parts: Array.from({ length: 4 }, (_, index) => ({
         id: crypto.randomUUID(),
+        revision: 1,
         title: `Section ${index + 1}`,
         order_index: index,
         question_groups: index === 0 ? questionGroups : [],
@@ -89,7 +92,7 @@ describe("Listening audio and templates", () => {
   });
 
   it("opens all four stable sections with one optional shared audio", () => {
-    const version = { id: crypto.randomUUID(), test_id: crypto.randomUUID(), test_title: "Practice", version_number: 1, status: "DRAFT", modules: [{ id: crypto.randomUUID(), module_type: "LISTENING", title: "Listening", recommended_duration_seconds: 1800, audio_asset: null, passages: [], listening_parts: Array.from({ length: 4 }, (_, index) => ({ id: crypto.randomUUID(), title: `Section ${index + 1}`, order_index: index, question_groups: [] })), writing_tasks: [] }] } as BuilderVersion;
+    const version = { id: crypto.randomUUID(), test_id: crypto.randomUUID(), test_title: "Practice", version_number: 1, status: "DRAFT", modules: [{ id: crypto.randomUUID(), revision: 1, module_type: "LISTENING", title: "Listening", recommended_duration_seconds: 1800, audio_asset: null, passages: [], listening_parts: Array.from({ length: 4 }, (_, index) => ({ id: crypto.randomUUID(), revision: 1, title: `Section ${index + 1}`, order_index: index, question_groups: [] })), writing_tasks: [] }] } as BuilderVersion;
     render(<BuilderLifecycleProvider><ListeningBuilder version={version} /></BuilderLifecycleProvider>);
     expect(screen.getByRole("tab", { name: /Section 1/ })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByText("No recording attached")).toBeInTheDocument();
@@ -103,6 +106,7 @@ describe("Listening audio and templates", () => {
     const persisted = {
       ...questionRegistry.multiple_choice.createDefault(1),
       id: crypto.randomUUID(),
+      revision: 1,
       image_asset_id: null,
       image_asset: null,
     } as BuilderQuestionGroup;
@@ -120,8 +124,54 @@ describe("Listening audio and templates", () => {
     expect(updateListeningQuestionGroup).toHaveBeenCalledWith(
       persisted.id,
       expect.objectContaining({ questions: [expect.objectContaining({ prompt: "Latest persisted prompt" })] }),
+      1,
     );
     expect(createListeningQuestionGroup).not.toHaveBeenCalled();
+  });
+
+  it("uses acknowledged revisions for repeated Listening group autosaves", async () => {
+    vi.useFakeTimers();
+    const persisted = { ...questionRegistry.multiple_choice.createDefault(1), id: crypto.randomUUID(), revision: 5, image_asset_id: null, image_asset: null } as BuilderQuestionGroup;
+    vi.mocked(updateListeningQuestionGroup)
+      .mockResolvedValueOnce({ ...persisted, revision: 6 })
+      .mockResolvedValueOnce({ ...persisted, revision: 7 });
+    render(<BuilderLifecycleProvider><ListeningBuilder version={listeningBuilderVersion([persisted])} /></BuilderLifecycleProvider>);
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Edit" })); await Promise.resolve(); });
+    fireEvent.change(screen.getByLabelText("Prompt"), { target: { value: "First edit" } });
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    fireEvent.change(screen.getByLabelText("Prompt"), { target: { value: "Second edit" } });
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    expect(vi.mocked(updateListeningQuestionGroup).mock.calls.map(([, , expected]) => expected)).toEqual([5, 6]);
+  });
+
+  it("stops Listening group autosave after a stale conflict", async () => {
+    vi.useFakeTimers();
+    const persisted = { ...questionRegistry.multiple_choice.createDefault(1), id: crypto.randomUUID(), revision: 5, image_asset_id: null, image_asset: null } as BuilderQuestionGroup;
+    vi.mocked(updateListeningQuestionGroup).mockRejectedValue(new ApiError("DRAFT_REVISION_CONFLICT", "Reload latest", 409));
+    render(<BuilderLifecycleProvider><ListeningBuilder version={listeningBuilderVersion([persisted])} /><BuilderAutosaveStatus /></BuilderLifecycleProvider>);
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Edit" })); await Promise.resolve(); });
+    fireEvent.change(screen.getByLabelText("Prompt"), { target: { value: "Stale edit" } });
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    expect(screen.getByRole("button", { name: "Reload latest" })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Prompt"), { target: { value: "More stale edits" } });
+    await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+    expect(updateListeningQuestionGroup).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses acknowledged revisions for repeated Listening part title autosaves", async () => {
+    vi.useFakeTimers();
+    const value = listeningBuilderVersion([]);
+    const part = value.modules[0].listening_parts[0];
+    part.revision = 4;
+    vi.mocked(updateListeningPart)
+      .mockResolvedValueOnce({ ...part, title: "First title", revision: 5 })
+      .mockResolvedValueOnce({ ...part, title: "Second title", revision: 6 });
+    render(<BuilderLifecycleProvider><ListeningBuilder version={value} /></BuilderLifecycleProvider>);
+    fireEvent.change(screen.getByLabelText("Section title / internal label"), { target: { value: "First title" } });
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    fireEvent.change(screen.getByLabelText("Section title / internal label"), { target: { value: "Second title" } });
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    expect(vi.mocked(updateListeningPart).mock.calls.map(([, body]) => body.expected_revision)).toEqual([4, 5]);
   });
 
   it("switches persisted group editors without carrying the previous group's local draft", async () => {

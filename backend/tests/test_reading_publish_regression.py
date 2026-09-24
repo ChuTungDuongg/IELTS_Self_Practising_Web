@@ -8,7 +8,9 @@ from app.models import TestVersion as DomainVersion
 from app.models.enums import ModuleType, VersionStatus
 from app.schemas.content import (
     ModuleCreate,
+    PassageUpdate,
     PassageWrite,
+    QuestionGroupUpdate,
     QuestionGroupWrite,
     QuestionWrite,
     TextBlock,
@@ -217,7 +219,8 @@ async def test_new_text_completion_gap_keeps_its_question_uuid_after_reload(
     new_question_id = uuid4()
     await reading.update_group(
         completion.id,
-        QuestionGroupWrite(
+        QuestionGroupUpdate(
+            expected_revision=completion.revision,
             question_type="text_completion",
             instruction=completion.instruction,
             config={
@@ -375,7 +378,8 @@ async def test_stale_matching_heading_target_still_blocks_publish(
     )
     await reading.update_passage(
         passage.id,
-        PassageWrite(
+        PassageUpdate(
+            expected_revision=passage.revision,
             title=passage.title,
             order_index=passage.order_index,
             blocks=[

@@ -39,7 +39,7 @@ function toDraft(task: BuilderWritingTask): TaskDraft {
   };
 }
 
-function toPayload(draft: TaskDraft): WritingTaskUpdate {
+function toPayload(draft: TaskDraft): Omit<WritingTaskUpdate, "expected_revision"> {
   return {
     prompt: draft.prompt,
     image_asset_id: draft.imageAssetId,
@@ -62,15 +62,36 @@ export function WritingBuilder({ version }: { version: BuilderVersion }) {
     Object.fromEntries(tasks.map((task) => [task.id, toDraft(task)])),
   );
   const draftsRef = useRef(drafts);
+  const revisions = useRef<Record<string, number>>(Object.fromEntries(tasks.map((task) => [task.id, task.revision])));
+  const savedPayloads = useRef<Record<string, string>>(Object.fromEntries(tasks.map((task) => [task.id, JSON.stringify(toPayload(toDraft(task)))])));
+  const conflictRef = useRef(false);
   useLayoutEffect(() => { draftsRef.current = drafts; }, [drafts]);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [conflict, setConflict] = useState(false);
   const [uploadingTaskId, setUploadingTaskId] = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const draftsValid = Object.values(drafts).every((draft) => draft.prompt.length <= 20_000
     && (draft.minimumWords === null || (draft.minimumWords >= 1 && draft.minimumWords <= 5000))
     && (draft.durationMinutes === null || (draft.durationMinutes >= 1 && draft.durationMinutes <= 240)));
   const autosaveKey = `writing-module:${writing?.id ?? "new"}`;
+  async function persistTask(task: BuilderWritingTask, draft: TaskDraft) {
+    if (conflictRef.current) throw new ApiError("DRAFT_REVISION_CONFLICT", "Reload the latest version before saving.", 409);
+    const content = toPayload(draft);
+    const serialized = JSON.stringify(content);
+    if (savedPayloads.current[task.id] === serialized) return;
+    try {
+      const saved = await updateWritingTask(task.id, { ...content, expected_revision: revisions.current[task.id] });
+      revisions.current[task.id] = saved.revision;
+      savedPayloads.current[task.id] = serialized;
+    } catch (reason) {
+      if (reason instanceof ApiError && reason.code === "DRAFT_REVISION_CONFLICT") {
+        conflictRef.current = true;
+        setConflict(true);
+      }
+      throw reason;
+    }
+  }
   const { saveNow } = useBuilderAutosave({
     resourceKey: autosaveKey,
     value: drafts,
@@ -79,7 +100,7 @@ export function WritingBuilder({ version }: { version: BuilderVersion }) {
     save: async (values) => {
       if (!writing) return;
       for (const task of tasks) {
-        await updateWritingTask(task.id, toPayload(values[task.id] ?? toDraft(task)));
+        await persistTask(task, values[task.id] ?? toDraft(task));
       }
     },
   });
@@ -125,7 +146,7 @@ export function WritingBuilder({ version }: { version: BuilderVersion }) {
     setError(null);
     setMessage(null);
     try {
-      await runAutosave(autosaveKey, () => updateWritingTask(task.id, toPayload(nextDraft)));
+      await runAutosave(autosaveKey, () => persistTask(task, nextDraft));
       setMessage(`Task ${task.task_number} saved.`);
       router.refresh();
     } catch (reason) {
@@ -186,6 +207,7 @@ export function WritingBuilder({ version }: { version: BuilderVersion }) {
       </div>
       {message ? <p role="status" className="notice mt-4">{message}</p> : null}
       {error ? <p role="alert" className="notice notice-error mt-4">{error}</p> : null}
+      {conflict ? <p role="alert" className="notice notice-error mt-4">This content changed in another tab or by another admin. <button type="button" className="btn btn-ghost" onClick={() => window.location.reload()}>Reload latest</button></p> : null}
       <div className="writing-task-grid">
         {tasks.map((task) => {
           const draft = drafts[task.id] ?? toDraft(task);
@@ -201,7 +223,7 @@ export function WritingBuilder({ version }: { version: BuilderVersion }) {
               <div>{draft.imageAsset ? <Image unoptimized width={720} height={420} src={assetContentUrl(draft.imageAsset)} alt="Writing Task 1 reference" /> : <p>No Task 1 image attached.</p>}</div>
               <div className="flex flex-wrap gap-2"><label className="btn btn-secondary">{uploadingTaskId === task.id ? "Uploading…" : draft.imageAsset ? "Replace image" : "Upload image"}<input aria-label="Task image" type="file" className="sr-only" accept="image/png,image/jpeg,image/webp" disabled={uploadingTaskId === task.id} onChange={(event) => { const file = event.target.files?.[0]; if (file) void upload(task, file); }} /></label>{draft.imageAsset ? <button type="button" className="btn btn-danger-ghost" onClick={() => void removeImage(task)}>Remove image</button> : null}</div>
             </div> : null}
-            <button type="button" className="btn btn-writing" disabled={!draftsValid} onClick={() => void saveNow()}>Save Task {task.task_number}</button>
+            <button type="button" className="btn btn-writing" disabled={!draftsValid || conflict} onClick={() => void saveNow()}>Save Task {task.task_number}</button>
           </fieldset>;
         })}
       </div>

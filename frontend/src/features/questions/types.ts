@@ -19,6 +19,7 @@ export type QuestionModel = {
 
 export type QuestionGroupModel = {
   id?: string;
+  revision?: number;
   question_type: QuestionType;
   instruction: string;
   config: Record<string, unknown>;

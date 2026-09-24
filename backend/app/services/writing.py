@@ -7,7 +7,8 @@ from sqlalchemy.orm import selectinload
 from app.core.exceptions import AppError
 from app.models import Asset, TestModule, WritingTask
 from app.models.enums import AssetType, ModuleType
-from app.schemas.content import BuilderWritingTask, WritingTaskWrite
+from app.schemas.content import BuilderWritingTask, WritingTaskUpdate
+from app.services.draft_revisions import advance_revision
 from app.services.reading import ReadingService
 from app.storage import LocalAssetStorage
 
@@ -16,7 +17,7 @@ class WritingService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
-    async def update_task(self, task_id: uuid.UUID, body: WritingTaskWrite) -> BuilderWritingTask:
+    async def update_task(self, task_id: uuid.UUID, body: WritingTaskUpdate) -> BuilderWritingTask:
         deleted_path: str | None = None
         copied_path: str | None = None
         try:
@@ -47,6 +48,7 @@ class WritingService:
                     raise AppError(
                         "WRITING_TASK_NOT_FOUND", "The Writing task does not exist.", 404
                     )
+                advance_revision(task, body.expected_revision)
                 if task.task_number == 2 and body.image_asset_id is not None:
                     raise AppError(
                         "WRITING_TASK_IMAGE_NOT_ALLOWED",
@@ -98,6 +100,7 @@ class WritingService:
                     deleted_path = await TestService(self.session).cleanup_asset_if_unreferenced(
                         previous_asset_id
                     )
+                saved = await self.get_task(task_id)
         except BaseException:
             if copied_path:
                 from app.services.tests import TestService
@@ -108,7 +111,7 @@ class WritingService:
             from app.services.tests import TestService
 
             TestService._delete_files([deleted_path])
-        return await self.get_task(task_id)
+        return saved
 
     async def get_task(self, task_id: uuid.UUID) -> BuilderWritingTask:
         task = await self.session.scalar(self._task_query().where(WritingTask.id == task_id))

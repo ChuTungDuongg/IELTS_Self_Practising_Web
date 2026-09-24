@@ -11,6 +11,7 @@ const version: BuilderVersion = {
   status: "DRAFT",
   modules: [{
     id: "33333333-3333-4333-8333-333333333333",
+    revision: 1,
     module_type: "READING",
     title: "Reading",
     recommended_duration_seconds: 3600,
@@ -19,11 +20,13 @@ const version: BuilderVersion = {
     writing_tasks: [],
     passages: [{
       id: "44444444-4444-4444-8444-444444444444",
+      revision: 1,
       title: "Passage",
       order_index: 0,
       blocks: [{ id: "55555555-5555-4555-8555-555555555555", type: "paragraph", label: "A", text: "Preview text" }],
       question_groups: [{
         id: "66666666-6666-4666-8666-666666666666",
+        revision: 1,
         question_type: "true_false_not_given",
         instruction: "",
         config: {},
@@ -54,7 +57,7 @@ describe("DraftPreview", () => {
         module_type: "LISTENING" as const,
         title: "Listening",
         passages: [],
-        listening_parts: [{ id: crypto.randomUUID(), title: "Section 1", order_index: 0, question_groups: [] }],
+        listening_parts: [{ id: crypto.randomUUID(), revision: 1, title: "Section 1", order_index: 0, question_groups: [] }],
       }],
     } satisfies BuilderVersion;
 
@@ -74,8 +77,8 @@ describe("DraftPreview", () => {
         passages: [],
         listening_parts: [],
         writing_tasks: [
-          { id: crypto.randomUUID(), task_number: 1, prompt: "Describe fictional data.", image_asset_id: crypto.randomUUID(), image_asset: { id: crypto.randomUUID(), original_name: "chart.png", mime_type: "image/png", file_size: 12, content_url: "/assets/chart.png" }, minimum_recommended_words: 150, recommended_duration_seconds: 1200, order_index: 0 },
-          { id: crypto.randomUUID(), task_number: 2, prompt: "Discuss a fictional proposition.", image_asset_id: null, image_asset: null, minimum_recommended_words: 250, recommended_duration_seconds: 2400, order_index: 1 },
+          { id: crypto.randomUUID(), revision: 1, task_number: 1, prompt: "Describe fictional data.", image_asset_id: crypto.randomUUID(), image_asset: { id: crypto.randomUUID(), original_name: "chart.png", mime_type: "image/png", file_size: 12, content_url: "/assets/chart.png" }, minimum_recommended_words: 150, recommended_duration_seconds: 1200, order_index: 0 },
+          { id: crypto.randomUUID(), revision: 1, task_number: 2, prompt: "Discuss a fictional proposition.", image_asset_id: null, image_asset: null, minimum_recommended_words: 250, recommended_duration_seconds: 2400, order_index: 1 },
         ],
       }],
     } satisfies BuilderVersion;
@@ -93,6 +96,7 @@ describe("DraftPreview", () => {
     const completionVersion = structuredClone(version);
     completionVersion.modules[0].passages[0].question_groups = [{
       id: "99999999-9999-4999-8999-999999999999",
+      revision: 1,
       question_type: "text_completion",
       instruction: "Complete the notes below.\nUse words from the passage.",
       config: { mode: "SENTENCE", blocks: [

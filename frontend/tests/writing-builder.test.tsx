@@ -9,6 +9,7 @@ import {
   updateWritingTask,
   type BuilderVersion,
 } from "@/lib/api/builder";
+import { ApiError } from "@/lib/api/client";
 
 const refresh = vi.fn();
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh }) }));
@@ -41,6 +42,7 @@ function version(withModule = true): BuilderVersion {
     modules: withModule
       ? [{
           id: "55555555-5555-4555-8555-555555555555",
+          revision: 1,
           module_type: "WRITING",
           title: "Writing",
           recommended_duration_seconds: 3600,
@@ -50,6 +52,7 @@ function version(withModule = true): BuilderVersion {
           writing_tasks: [
             {
               id: taskOneId,
+              revision: 1,
               task_number: 1,
               prompt: "Describe fictional data.",
               image_asset_id: null,
@@ -60,6 +63,7 @@ function version(withModule = true): BuilderVersion {
             },
             {
               id: taskTwoId,
+              revision: 1,
               task_number: 2,
               prompt: "Discuss a fictional proposition.",
               image_asset_id: null,
@@ -118,12 +122,45 @@ describe("WritingBuilder", () => {
 
     await waitFor(() =>
       expect(updateWritingTask).toHaveBeenCalledWith(taskOneId, {
+        expected_revision: 1,
         prompt: "Describe the updated fictional chart.",
         image_asset_id: null,
         minimum_recommended_words: 175,
         recommended_duration_seconds: 1500,
       }),
     );
+  });
+
+  it("keeps Writing Task 1 and Task 2 revisions independent", async () => {
+    const value = version();
+    value.modules[0].writing_tasks[0].revision = 2;
+    value.modules[0].writing_tasks[1].revision = 8;
+    vi.mocked(updateWritingTask).mockImplementation(async (taskId) => taskId === taskOneId
+      ? { ...value.modules[0].writing_tasks[0], revision: 3 }
+      : { ...value.modules[0].writing_tasks[1], revision: 9 });
+    renderBuilder(value);
+    const taskOne = screen.getByRole("group", { name: "Writing Task 1" });
+    const taskTwo = screen.getByRole("group", { name: "Writing Task 2" });
+    fireEvent.change(within(taskOne).getByLabelText("Prompt"), { target: { value: "Task 1 updated" } });
+    fireEvent.click(within(taskOne).getByRole("button", { name: "Save Task 1" }));
+    await waitFor(() => expect(updateWritingTask).toHaveBeenCalledTimes(1));
+    fireEvent.change(within(taskTwo).getByLabelText("Prompt"), { target: { value: "Task 2 updated" } });
+    fireEvent.click(within(taskTwo).getByRole("button", { name: "Save Task 2" }));
+    await waitFor(() => expect(updateWritingTask).toHaveBeenCalledTimes(2));
+    expect(vi.mocked(updateWritingTask).mock.calls.map(([taskId, body]) => [taskId, body.expected_revision])).toEqual([
+      [taskOneId, 2], [taskTwoId, 8],
+    ]);
+  });
+
+  it("blocks another Writing save after a stale conflict", async () => {
+    vi.mocked(updateWritingTask).mockRejectedValue(new ApiError("DRAFT_REVISION_CONFLICT", "Reload latest", 409));
+    renderBuilder(version());
+    const taskOne = screen.getByRole("group", { name: "Writing Task 1" });
+    fireEvent.change(within(taskOne).getByLabelText("Prompt"), { target: { value: "Stale prompt" } });
+    fireEvent.click(within(taskOne).getByRole("button", { name: "Save Task 1" }));
+    expect(await screen.findByRole("button", { name: "Reload latest" })).toBeInTheDocument();
+    expect(within(taskOne).getByRole("button", { name: "Save Task 1" })).toBeDisabled();
+    expect(updateWritingTask).toHaveBeenCalledTimes(1);
   });
 
   it("uploads, previews, removes Task 1 images, and confirms module deletion", async () => {
@@ -205,7 +242,7 @@ describe("WritingBuilder", () => {
     expect(updateWritingTask).toHaveBeenCalledTimes(1);
     await act(async () => { resolveImageWrite(); });
 
-    await waitFor(() => expect(updateWritingTask).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(updateWritingTask).toHaveBeenCalledTimes(2));
     const taskOneWrites = vi.mocked(updateWritingTask).mock.calls.filter(([taskId]) => taskId === taskOneId);
     expect(taskOneWrites).toHaveLength(2);
     expect(taskOneWrites.at(-1)).toEqual([taskOneId, expect.objectContaining({

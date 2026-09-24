@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { questionRegistry } from "@/features/questions/registry";
 import type { ExamGroup, NoteCompletionLayout, PassageBlock, QuestionGroupModel, TableCompletionLayout, TextCompletionLayout } from "@/features/questions/types";
 import { isCompletionQuestionType, QuestionGroupInstruction, resolveQuestionGroupInstruction } from "@/features/questions/question-group-instruction";
@@ -10,6 +10,7 @@ import { normalizeNoteCompletionOrder, noteCompletionIntegrityErrors } from "@/f
 import { diagramLabellingErrors, migrateLegacyDiagramGroup } from "@/features/questions/diagram-labelling";
 import { useBuilderAutosave } from "./builder-lifecycle";
 import { QuestionImageAttachment } from "./question-image-attachment";
+import type { BuilderQuestionGroup } from "@/lib/api/builder";
 
 export function QuestionGroupEditor({
   initial,
@@ -25,7 +26,7 @@ export function QuestionGroupEditor({
 }: {
   initial: QuestionGroupModel;
   onSave: (group: QuestionGroupModel) => Promise<void>;
-  onAutosave?: (group: QuestionGroupModel) => Promise<unknown>;
+  onAutosave?: (group: QuestionGroupModel, expectedRevision: number) => Promise<BuilderQuestionGroup>;
   onCancel: () => void;
   nextQuestionNumber: number;
   baseQuestionNumber?: number;
@@ -78,10 +79,15 @@ export function QuestionGroupEditor({
       : [];
   const diagramErrors = diagramLabellingErrors(presentedGroup);
   const structurallyValid = integrityErrors.length === 0 && diagramErrors.length === 0 && questionGroupIsValid(presentedGroup, passageBlocks, moduleType);
+  const revision = useRef(initial.revision ?? 1);
   const { markSaved, saveNow } = useBuilderAutosave({
     resourceKey: `question-group:${initial.id ?? "new"}`,
     value: presentedGroup,
-    save: (value) => (onAutosave ?? onSave)(value),
+    save: async (value) => {
+      if (!onAutosave) return onSave(value);
+      const saved = await onAutosave(value, revision.current);
+      revision.current = saved.revision;
+    },
     valid: structurallyValid,
     enabled: Boolean(initial.id && onAutosave),
   });

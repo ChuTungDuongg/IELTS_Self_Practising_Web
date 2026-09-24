@@ -245,11 +245,11 @@ async def test_shared_audio_replace_and_remove_preserves_sections_and_questions(
     second_id = second.id
     part_id = part.id
     question_id = group.questions[0].id
-    await service.attach_audio(module_id, ListeningModuleAudioWrite(asset_id=first_id))
+    await service.attach_audio(module_id, ListeningModuleAudioWrite(expected_revision=1, asset_id=first_id))
     await db_session.rollback()
-    await service.attach_audio(module_id, ListeningModuleAudioWrite(asset_id=second_id))
+    await service.attach_audio(module_id, ListeningModuleAudioWrite(expected_revision=2, asset_id=second_id))
     await db_session.rollback()
-    await service.attach_audio(module_id, ListeningModuleAudioWrite(asset_id=None))
+    await service.attach_audio(module_id, ListeningModuleAudioWrite(expected_revision=3, asset_id=None))
     await db_session.rollback()
 
     stored_module = await db_session.get(ModuleRecord, module_id)
@@ -406,7 +406,7 @@ async def test_listening_visual_group_builder_dto_round_trips_through_update(
     await db_session.rollback()
     unchanged = await service.update_group(
         group_id,
-        persisted_body,
+        persisted_body.model_copy(update={"expected_revision": persisted.revision}),
     )
     assert unchanged.questions[0].id == question_id
     assert unchanged.image_asset_id == image_id
@@ -416,7 +416,7 @@ async def test_listening_visual_group_builder_dto_round_trips_through_update(
     edited_body = QuestionGroupWrite.model_validate(unchanged.model_dump(mode="json"))
     edited_body.config["options"][0]["text"] = "Edited entrance"
     edited_body.questions[0].prompt = "Edited scarecrow"
-    edited = await service.update_group(group_id, edited_body)
+    edited = await service.update_group(group_id, edited_body.model_copy(update={"expected_revision": unchanged.revision}))
 
     assert edited.config == {
         "options": [

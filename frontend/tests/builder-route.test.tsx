@@ -11,6 +11,10 @@ import { getTest } from "@/lib/api/tests";
 import { BUILDER_EDIT_ROUTE, builderEditPath } from "@/lib/routes";
 
 vi.mock("next/navigation", () => ({ usePathname: () => "/", useRouter: () => ({ refresh: vi.fn() }) }));
+vi.mock("@/features/auth/auth-provider", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/features/auth/auth-provider")>();
+  return { ...actual, useAuth: () => ({ user: { role: "ADMIN", display_name: "Fictional admin" }, loading: false, sessionError: null, logout: vi.fn() }) };
+});
 vi.mock("@/lib/api/tests", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api/tests")>();
   return { ...actual, getTest: vi.fn() };
@@ -60,6 +64,7 @@ describe("canonical Builder edit route", () => {
       status: "DRAFT",
       modules: [{
         id: "33333333-3333-4333-8333-333333333333",
+        revision: 1,
         module_type: "READING",
         title: "Reading",
         recommended_duration_seconds: 3600,
@@ -80,12 +85,13 @@ describe("canonical Builder edit route", () => {
       status: "DRAFT",
       modules: [{
         id: "33333333-3333-4333-8333-333333333333",
+        revision: 1,
         module_type: "LISTENING",
         title: "Listening",
         recommended_duration_seconds: 1800,
         audio_asset: audio,
         passages: [],
-        listening_parts: [{ id: "55555555-5555-4555-8555-555555555555", title: "Section 1", order_index: 0, question_groups: [{ id: "66666666-6666-4666-8666-666666666666", question_type: "yes_no_not_given", instruction: "", config: {}, order_index: 0, questions: [{ id: "77777777-7777-4777-8777-777777777777", number: 1, prompt: "Claim", config: {}, answer_key: { kind: "SINGLE_OPTION", value: "YES" }, explanation: null, order_index: 0 }] }] }],
+        listening_parts: [{ id: "55555555-5555-4555-8555-555555555555", revision: 1, title: "Section 1", order_index: 0, question_groups: [{ id: "66666666-6666-4666-8666-666666666666", revision: 1, question_type: "yes_no_not_given", instruction: "", config: {}, order_index: 0, questions: [{ id: "77777777-7777-4777-8777-777777777777", number: 1, prompt: "Claim", config: {}, answer_key: { kind: "SINGLE_OPTION", value: "YES" }, explanation: null, order_index: 0 }] }] }],
       }],
     });
     expect(parsed.modules[0].audio_asset?.id).toBe(audio.id);

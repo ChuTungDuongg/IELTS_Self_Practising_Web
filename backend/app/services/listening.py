@@ -12,10 +12,13 @@ from app.schemas.content import (
     BuilderModule,
     BuilderQuestionGroup,
     ListeningModuleAudioWrite,
+    ListeningPartUpdate,
     ListeningPartWrite,
+    QuestionGroupUpdate,
     QuestionGroupWrite,
     QuestionWrite,
 )
+from app.services.draft_revisions import advance_revision
 from app.services.reading import ReadingService
 
 
@@ -42,14 +45,16 @@ class ListeningService:
         return await self.get_part(part_id)
 
     async def update_part(
-        self, part_id: uuid.UUID, body: ListeningPartWrite
+        self, part_id: uuid.UUID, body: ListeningPartUpdate
     ) -> BuilderListeningPart:
         async with self.session.begin():
             part = await self._draft_part(part_id)
+            advance_revision(part, body.expected_revision)
             part.title = body.title.strip()
             part.order_index = body.order_index
             await self.shared._canonicalize_module(part.module_id)
-        return await self.get_part(part_id)
+            saved = await self.get_part(part_id)
+        return saved
 
     async def delete_part(self, part_id: uuid.UUID) -> None:
         async with self.session.begin():
@@ -70,6 +75,7 @@ class ListeningService:
         try:
             async with self.session.begin():
                 module = await self._draft_module(module_id)
+                advance_revision(module, body.expected_revision)
                 previous_asset_id = module.audio_asset_id
                 if body.asset_id is None:
                     module.audio_asset_id = None
@@ -106,6 +112,8 @@ class ListeningService:
                         previous_asset_id
                     )
                 version_id = module.test_version_id
+                version = await self.shared.builder_version(version_id)
+                saved = next(item for item in version.modules if item.id == module_id)
         except BaseException:
             if copied_path:
                 from app.services.tests import TestService
@@ -116,8 +124,7 @@ class ListeningService:
             from app.services.tests import TestService
 
             TestService._delete_files([deleted_path])
-        version = await self.shared.builder_version(version_id)
-        return next(item for item in version.modules if item.id == module_id)
+        return saved
 
     async def create_group(
         self, part_id: uuid.UUID, body: QuestionGroupWrite
@@ -144,17 +151,18 @@ class ListeningService:
             self.shared._apply_questions(group, body)
             self.session.add(group)
             await self.session.flush()
-            await self.shared._canonicalize_module(part.module_id)
+            await self.shared._canonicalize_module(part.module_id, already_advanced={group.id})
         return await self.get_group(group_id)
 
     async def update_group(
-        self, group_id: uuid.UUID, body: QuestionGroupWrite
+        self, group_id: uuid.UUID, body: QuestionGroupUpdate
     ) -> BuilderQuestionGroup:
         deleted_path: str | None = None
         copied_path: str | None = None
         try:
             async with self.session.begin():
                 group = await self._draft_group(group_id)
+                advance_revision(group, body.expected_revision)
                 previous_image_asset_id = group.image_asset_id
                 if body.image_asset_id is not None:
                     from app.services.tests import TestService
@@ -199,13 +207,14 @@ class ListeningService:
                     if question_id not in retained:
                         group.questions.remove(question)
                 await self.session.flush()
-                await self.shared._canonicalize_module(group.module_id)
+                await self.shared._canonicalize_module(group.module_id, already_advanced={group.id})
                 if previous_image_asset_id and previous_image_asset_id != group.image_asset_id:
                     from app.services.tests import TestService
 
                     deleted_path = await TestService(self.session).cleanup_asset_if_unreferenced(
                         previous_image_asset_id
                     )
+                saved = await self.get_group(group_id)
         except BaseException:
             if copied_path:
                 from app.services.tests import TestService
@@ -216,7 +225,7 @@ class ListeningService:
             from app.services.tests import TestService
 
             TestService._delete_files([deleted_path])
-        return await self.get_group(group_id)
+        return saved
 
     async def get_part(self, part_id: uuid.UUID) -> BuilderListeningPart:
         part = await self.session.scalar(self._part_query().where(ListeningPart.id == part_id))

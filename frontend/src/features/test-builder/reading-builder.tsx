@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertIcon, PlusIcon, ReadingIcon } from "@/components/ui/icons";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ApiError } from "@/lib/api/client";
@@ -32,9 +32,13 @@ export function ReadingBuilder({ version }: { version: BuilderVersion }) {
   const router = useRouter();
   const { deleting, transitioning, flushAutosaves, runMutation } = useBuilderLifecycle();
   const reading = version.modules.find((item) => item.module_type === "READING");
+  const moduleRevision = useRef(reading?.revision ?? 1);
+  const serverModuleRevision = reading?.revision;
+  useEffect(() => { if (serverModuleRevision) moduleRevision.current = serverModuleRevision; }, [serverModuleRevision]);
   const [editingPassage, setEditingPassage] = useState<BuilderPassage | "new" | null>(null);
   const [editingGroup, setEditingGroup] = useState<{ passageId: string; group: QuestionGroupModel } | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [conflict, setConflict] = useState(false);
   const [confirmingModuleDelete, setConfirmingModuleDelete] = useState(false);
   const nextNumber = useMemo(() => Math.max(0, ...(reading?.passages.flatMap((passage) => passage.question_groups.flatMap((group) => group.questions.map((question) => question.number))) ?? [])) + 1, [reading]);
   const nextGroupOrder = useMemo(() => Math.max(-1, ...(reading?.passages.flatMap((passage) => passage.question_groups.map((group) => group.order_index)) ?? [])) + 1, [reading]);
@@ -56,14 +60,18 @@ export function ReadingBuilder({ version }: { version: BuilderVersion }) {
       .sort((a, b) => a.order_index - b.order_index)
       .flatMap((item) => item.id === passageId ? passageGroups : [...item.question_groups].sort((a, b) => a.order_index - b.order_index))
       .map((group) => group.id);
-    void run(() => reorderQuestionGroups(reading.id, orderedIds));
+    void run(async () => {
+      const saved = await reorderQuestionGroups(reading.id, orderedIds, moduleRevision.current);
+      moduleRevision.current = saved.revision;
+    });
   }
 
   async function run(action: () => Promise<unknown>, excludeAutosaveKey?: string) {
+    if (conflict) return;
     setMessage(null);
     try {
       if (!(await flushAutosaves(excludeAutosaveKey))) {
-        setMessage("Fix invalid draft fields or retry the failed save before continuing.");
+        setMessage("Resolve unsaved draft changes before continuing.");
         return;
       }
       await runMutation(action);
@@ -71,13 +79,14 @@ export function ReadingBuilder({ version }: { version: BuilderVersion }) {
       setEditingGroup(null);
       router.refresh();
     } catch (error) {
+      if (error instanceof ApiError && error.code === "DRAFT_REVISION_CONFLICT") setConflict(true);
       setMessage(error instanceof ApiError ? error.message : "The builder change could not be saved.");
     }
   }
 
   async function editPassage(passage: BuilderPassage | "new") {
     if (!(await flushAutosaves())) {
-      setMessage("Fix invalid draft fields or retry the failed save before switching editors.");
+      setMessage("Resolve unsaved draft changes before switching editors.");
       return;
     }
     setEditingPassage(passage);
@@ -85,7 +94,7 @@ export function ReadingBuilder({ version }: { version: BuilderVersion }) {
 
   async function editGroup(passageId: string, group: QuestionGroupModel) {
     if (!(await flushAutosaves())) {
-      setMessage("Fix invalid draft fields or retry the failed save before switching groups.");
+      setMessage("Resolve unsaved draft changes before switching groups.");
       return;
     }
     setEditingGroup({ passageId, group });
@@ -119,6 +128,7 @@ export function ReadingBuilder({ version }: { version: BuilderVersion }) {
 
         {duplicateQuestionNumbers.length ? <p role="alert" className="notice notice-error mt-4"><AlertIcon className="mt-0.5 size-4 shrink-0" /> Duplicate displayed question numbers: {duplicateQuestionNumbers.join(", ")}. Renumber before publishing.</p> : null}
         {message ? <p role="alert" className="notice notice-error mt-4"><AlertIcon className="mt-0.5 size-4 shrink-0" /> {message}</p> : null}
+        {conflict ? <button type="button" className="btn btn-secondary mt-2" onClick={() => window.location.reload()}>Reload latest</button> : null}
 
         {editingPassage ? (
           <PassageEditor
@@ -126,7 +136,7 @@ export function ReadingBuilder({ version }: { version: BuilderVersion }) {
             passage={editingPassage === "new" ? undefined : editingPassage}
             orderIndex={reading.passages.length}
             onCancel={() => setEditingPassage(null)}
-            onSave={(body) => run(() => editingPassage === "new" ? createPassage(version.id, body) : updatePassage(editingPassage.id, body), editingPassage === "new" ? "passage:new" : undefined)}
+            onSave={(body) => run(() => createPassage(version.id, body), "passage:new")}
             onAutosave={editingPassage === "new" ? undefined : (body) => updatePassage(editingPassage.id, body)}
           />
         ) : null}
@@ -155,7 +165,7 @@ export function ReadingBuilder({ version }: { version: BuilderVersion }) {
                   <GroupSummary key={group.id} group={group} passageNumber={passage.order_index + 1} onMove={(offset) => moveGroup(passage.id, group.id, offset)} onEdit={() => void editGroup(passage.id, group)} onDelete={() => run(() => deleteQuestionGroup(group.id))} />
                 ))}
                 {editingGroup?.passageId === passage.id ? (
-                  <QuestionGroupEditor key={editingGroup.group.id ?? editingGroup.group.questions[0]?.id ?? "new-reading-group"} initial={editingGroup.group} moduleType="READING" nextQuestionNumber={nextNumber} baseQuestionNumber={canonicalReadingGroupStart(reading.passages, editingGroup.group)} passageBlocks={passage.blocks} passageNumber={passage.order_index + 1} testVersionId={version.id} onCancel={() => setEditingGroup(null)} onSave={(body) => run(() => editingGroup.group.id ? updateQuestionGroup(editingGroup.group.id, body) : createQuestionGroup(passage.id, body), editingGroup.group.id ? undefined : "question-group:new")} onAutosave={editingGroup.group.id ? (body) => updateQuestionGroup(editingGroup.group.id!, body) : undefined} />
+                  <QuestionGroupEditor key={editingGroup.group.id ?? editingGroup.group.questions[0]?.id ?? "new-reading-group"} initial={editingGroup.group} moduleType="READING" nextQuestionNumber={nextNumber} baseQuestionNumber={canonicalReadingGroupStart(reading.passages, editingGroup.group)} passageBlocks={passage.blocks} passageNumber={passage.order_index + 1} testVersionId={version.id} onCancel={() => setEditingGroup(null)} onSave={(body) => run(() => createQuestionGroup(passage.id, body), "question-group:new")} onAutosave={editingGroup.group.id ? (body, expectedRevision) => updateQuestionGroup(editingGroup.group.id!, body, expectedRevision) : undefined} />
                 ) : (
                   <NewGroupButton nextNumber={nextNumber} orderIndex={nextGroupOrder} passageBlocks={passage.blocks} onCreate={(group) => void editGroup(passage.id, group)} />
                 )}
@@ -170,7 +180,7 @@ export function ReadingBuilder({ version }: { version: BuilderVersion }) {
   );
 }
 
-function PassageEditor({ passage, orderIndex, onSave, onAutosave, onCancel }: { passage?: BuilderPassage; orderIndex: number; onSave: (body: { title: string; order_index: number; blocks: TextBlock[] }) => Promise<void>; onAutosave?: (body: { title: string; order_index: number; blocks: TextBlock[] }) => Promise<unknown>; onCancel: () => void }) {
+function PassageEditor({ passage, orderIndex, onSave, onAutosave, onCancel }: { passage?: BuilderPassage; orderIndex: number; onSave: (body: { title: string; order_index: number; blocks: TextBlock[] }) => Promise<void>; onAutosave?: (body: { expected_revision: number; title: string; order_index: number; blocks: TextBlock[] }) => Promise<BuilderPassage>; onCancel: () => void }) {
   const [title, setTitle] = useState(passage?.title ?? "New reading passage");
   const [blocks, setBlocks] = useState<TextBlock[]>(passage?.blocks ?? [{ id: crypto.randomUUID(), type: "paragraph", label: "A", text: "Passage paragraph" }]);
   const [deletedReferences, setDeletedReferences] = useState<number[]>([]);
@@ -178,7 +188,12 @@ function PassageEditor({ passage, orderIndex, onSave, onAutosave, onCancel }: { 
   const duplicateLabels = duplicateValues(blocks.filter((block) => block.type === "paragraph").map((block) => block.label ?? ""));
   const invalid = !title || !blocks.length || blocks.some((item) => !item.text || (item.type === "paragraph" && !item.label)) || duplicateLabels.length > 0;
   const payload = { title, order_index: passage?.order_index ?? orderIndex, blocks };
-  const { markSaved, saveNow } = useBuilderAutosave({ resourceKey: `passage:${passage?.id ?? "new"}`, value: payload, save: (value) => (onAutosave ?? onSave)(value), valid: !invalid, enabled: Boolean(passage && onAutosave) });
+  const revision = useRef(passage?.revision ?? 1);
+  const { markSaved, saveNow } = useBuilderAutosave({ resourceKey: `passage:${passage?.id ?? "new"}`, value: payload, save: async (value) => {
+    if (!onAutosave) return onSave(value);
+    const saved = await onAutosave({ ...value, expected_revision: revision.current });
+    revision.current = saved.revision;
+  }, valid: !invalid, enabled: Boolean(passage && onAutosave) });
 
   function updateBlock(id: string, patch: Partial<TextBlock>) {
     setBlocks(blocks.map((block) => block.id === id ? { ...block, ...patch } : block));

@@ -10,7 +10,9 @@ from app.schemas.content import (
     BuilderModule,
     BuilderQuestionGroup,
     ListeningModuleAudioWrite,
+    ListeningPartUpdate,
     ListeningPartWrite,
+    QuestionGroupUpdate,
     QuestionGroupWrite,
 )
 from app.services.listening import ListeningService
@@ -34,7 +36,7 @@ async def create_listening_part(
 @router.put("/listening/parts/{part_id}", response_model=BuilderListeningPart)
 async def update_listening_part(
     part_id: UUID,
-    body: ListeningPartWrite,
+    body: ListeningPartUpdate,
     session: AsyncSession = Depends(get_session),
 ) -> BuilderListeningPart:
     return await ListeningService(session).update_part(part_id, body)
@@ -73,7 +75,7 @@ async def create_listening_group(
 @router.put("/listening/question-groups/{group_id}", response_model=BuilderQuestionGroup)
 async def update_listening_group(
     group_id: UUID,
-    body: QuestionGroupWrite,
+    body: QuestionGroupUpdate,
     session: AsyncSession = Depends(get_session),
 ) -> BuilderQuestionGroup:
     return await ListeningService(session).update_group(group_id, body)

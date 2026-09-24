@@ -176,6 +176,7 @@ class TestModule(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     title: Mapped[str | None] = mapped_column(String(240))
     recommended_duration_seconds: Mapped[int | None] = mapped_column(Integer)
     order_index: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    revision: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     audio_asset_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("assets.id", ondelete="SET NULL")
     )
@@ -227,6 +228,7 @@ class ReadingPassage(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     module_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("test_modules.id", ondelete="CASCADE"))
     title: Mapped[str] = mapped_column(String(240), nullable=False)
     order_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    revision: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     content_json: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False)
     plain_text: Mapped[str] = mapped_column(Text, nullable=False)
 
@@ -243,6 +245,7 @@ class ListeningPart(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     module_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("test_modules.id", ondelete="CASCADE"))
     title: Mapped[str] = mapped_column(String(240), nullable=False)
     order_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    revision: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     module: Mapped[TestModule] = relationship(back_populates="listening_parts")
     question_groups: Mapped[list[QuestionGroup]] = relationship(
         back_populates="listening_part", order_by="QuestionGroup.order_index"
@@ -262,6 +265,7 @@ class WritingTask(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     minimum_recommended_words: Mapped[int | None] = mapped_column(Integer)
     recommended_duration_seconds: Mapped[int | None] = mapped_column(Integer)
     order_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    revision: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
 
     module: Mapped[TestModule] = relationship(back_populates="writing_tasks")
     image_asset: Mapped[Asset | None] = relationship(foreign_keys=[image_asset_id])
@@ -287,6 +291,7 @@ class QuestionGroup(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     instruction: Mapped[str] = mapped_column(Text, nullable=False)
     config: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
     order_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    revision: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
 
     module: Mapped[TestModule] = relationship(back_populates="question_groups")
     passage: Mapped[ReadingPassage | None] = relationship(back_populates="question_groups")

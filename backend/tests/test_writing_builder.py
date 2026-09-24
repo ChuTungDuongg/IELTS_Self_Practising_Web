@@ -11,7 +11,7 @@ from app.models import Test as DomainTest
 from app.models import TestModule as DomainModule
 from app.models import TestVersion as DomainVersion
 from app.models.enums import AssetType, ModuleType, VersionStatus
-from app.schemas.content import ModuleCreate, WritingTaskWrite
+from app.schemas.content import ModuleCreate, WritingTaskUpdate
 from app.schemas.tests import VersionCreate
 from app.services.reading import ReadingService
 from app.services.tests import TestService as ContentTestService
@@ -91,7 +91,8 @@ async def test_task_one_update_accepts_owned_writing_image_and_removal(
 
     updated = await WritingService(db_session).update_task(
         module.writing_tasks[0].id,
-        WritingTaskWrite(
+        WritingTaskUpdate(
+            expected_revision=1,
             prompt="Describe the fictional chart.",
             image_asset_id=image.id,
             minimum_recommended_words=175,
@@ -108,7 +109,8 @@ async def test_task_one_update_accepts_owned_writing_image_and_removal(
 
     removed = await WritingService(db_session).update_task(
         updated.id,
-        WritingTaskWrite(
+        WritingTaskUpdate(
+            expected_revision=updated.revision,
             prompt=updated.prompt,
             image_asset_id=None,
             minimum_recommended_words=updated.minimum_recommended_words,
@@ -153,7 +155,8 @@ async def test_writing_task_image_rules_are_enforced_server_side(
     with pytest.raises(AppError) as caught:
         await WritingService(db_session).update_task(
             task.id,
-            WritingTaskWrite(
+            WritingTaskUpdate(
+                expected_revision=1,
                 prompt="Fictional prompt",
                 image_asset_id=image.id,
                 minimum_recommended_words=150,
@@ -178,7 +181,8 @@ async def test_published_writing_task_is_immutable(db_session: AsyncSession) -> 
     with pytest.raises(AppError) as caught:
         await WritingService(db_session).update_task(
             task.id,
-            WritingTaskWrite(
+            WritingTaskUpdate(
+                expected_revision=1,
                 prompt="Changed",
                 minimum_recommended_words=150,
                 recommended_duration_seconds=1200,
