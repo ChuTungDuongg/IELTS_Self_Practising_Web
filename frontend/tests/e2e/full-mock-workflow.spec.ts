@@ -23,7 +23,7 @@ test("completes fictional Full Mock in Listening, Reading, Writing order and unl
     await page.getByRole("button", { name: "Start Full Mock" }).click();
     await expect(page).toHaveURL(/\/attempt\/[0-9a-f-]+$/);
     const listeningId = page.url().split("/").at(-1)!;
-    await expect(page.getByText("LISTENING · SECTION 1")).toBeVisible();
+    await expect(page.getByText("LISTENING · SECTION 1", { exact: true })).toBeVisible();
     await expect(page.getByLabel("Listening audio player").getByLabel("Audio seek")).toBeDisabled();
     await expect(page.getByLabel("Listening audio player").getByLabel("Playback speed")).toBeDisabled();
     const firstAttempt = await page.request.get(`${apiBase}/attempts/${listeningId}`);
@@ -68,7 +68,7 @@ test("completes fictional Full Mock in Listening, Reading, Writing order and unl
 
     await page.getByRole("button", { name: "Continue to Writing" }).click();
     await expect(page).toHaveURL(/\/attempt\/[0-9a-f-]+$/);
-    await expect(page.getByText("WRITING · TASK 1")).toBeVisible();
+    await expect(page.getByText("WRITING · TASK 1", { exact: true })).toBeVisible();
     expect((await sessionState()).attempts.map((attempt) => attempt.module)).toEqual(["LISTENING", "READING", "WRITING"]);
     await page.getByRole("textbox", { name: "Response for Task 1" }).fill("The fictional chart shows a steady rise in library visitors.");
     await page.getByRole("tab", { name: /Task 2/ }).click();

@@ -9,7 +9,7 @@ from zipfile import ZipFile
 JWT = re.compile(rb"eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}")
 COOKIE = re.compile(rb"(?i)(ielts_(?:access|refresh|oauth_state)=)[^;\s\"\\]+")
 HEADER = re.compile(
-    rb'(?i)("name"\s*:\s*"(?:cookie|set-cookie|authorization)"\s*,\s*"value"\s*:\s*")[^"]*'
+    rb'(?i)("name"\s*:\s*"(?:cookie|set-cookie|authorization)"\s*,\s*"value"\s*:\s*")(?:\\.|[^"\\])*'
 )
 PASSWORD = os.environ["E2E_ADMIN_PASSWORD"].encode()
 ROOTS = (Path("frontend/playwright-report"), Path("frontend/test-results"))
