@@ -35,6 +35,7 @@ export function ReadingRunner({ initial }: { initial: ExamPayload }) {
   const [actionError, setActionError] = useState("");
   const [clock, setClock] = useState(() => Date.now());
   const autosaveRef = useRef<RevisionAutosaveQueue<unknown> | null>(null);
+  const answerRevisions = useRef<Record<string, number>>(Object.fromEntries(questions.map((question) => [question.id, question.answer_revision])));
   const lastActivity = useRef(0);
   const lastHeartbeat = useRef(0);
   const finalized = useRef(false);
@@ -48,7 +49,10 @@ export function ReadingRunner({ initial }: { initial: ExamPayload }) {
     autosaveRef.current?.stop();
   });
   const sendAnswer = useCallback(
-    (questionId: string, value: unknown) => runMutation(() => saveAnswer(attemptId, questionId, value)),
+    async (questionId: string, value: unknown) => {
+      const response = await runMutation(() => saveAnswer(attemptId, questionId, value, answerRevisions.current[questionId] ?? 0));
+      answerRevisions.current[questionId] = response.revision;
+    },
     [attemptId, runMutation],
   );
   const { queue: autosave, status: saveState } = useRevisionAutosave<unknown>(
@@ -176,7 +180,7 @@ export function ReadingRunner({ initial }: { initial: ExamPayload }) {
   const highlighting: HighlightController = { highlights, onCreate: addHighlight, onDelete: removeHighlight };
 
   return <div className="exam-runner">
-    <header className="exam-header"><div><p>READING</p><h1>{initial.test_title}</h1></div><div className="exam-header-tools"><PauseAttemptControl attemptId={attemptId} beforePause={flush} /><ThemeToggle /><div className="exam-highlight-toolbar" aria-label="Highlight management"><span>{highlights.length} {highlights.length === 1 ? "highlight" : "highlights"}</span>{highlights.length ? <button type="button" onClick={() => { setHighlightError(""); setConfirmDeleteAll(true); }}>Delete all</button> : null}</div><div className="exam-header-status"><span className={`exam-timer ${initial.attempt.timer_mode === "COUNTDOWN" && seconds < 300 ? "exam-timer-warning" : ""}`}>{initial.attempt.timer_mode === "COUNT_UP" ? "Time used " : ""}{formatDuration(seconds)}</span><span className={`exam-save-state exam-save-${saveState}`}>{saveState === "saving" ? "Saving…" : saveState === "error" ? "Save failed" : saveState === "dirty" ? "Unsaved" : "Saved"}</span>{saveState === "error" ? <button type="button" onClick={() => void flush().catch(() => undefined)}>Retry save</button> : null}</div></div></header>
+    <header className="exam-header"><div><p>READING</p><h1>{initial.test_title}</h1></div><div className="exam-header-tools"><PauseAttemptControl attemptId={attemptId} beforePause={flush} /><ThemeToggle /><div className="exam-highlight-toolbar" aria-label="Highlight management"><span>{highlights.length} {highlights.length === 1 ? "highlight" : "highlights"}</span>{highlights.length ? <button type="button" onClick={() => { setHighlightError(""); setConfirmDeleteAll(true); }}>Delete all</button> : null}</div><div className="exam-header-status"><span className={`exam-timer ${initial.attempt.timer_mode === "COUNTDOWN" && seconds < 300 ? "exam-timer-warning" : ""}`}>{initial.attempt.timer_mode === "COUNT_UP" ? "Time used " : ""}{formatDuration(seconds)}</span><span className={`exam-save-state exam-save-${saveState}`}>{saveState === "saving" ? "Saving…" : saveState === "conflict" ? "This response changed in another tab or session." : saveState === "error" ? "Save failed" : saveState === "dirty" ? "Unsaved" : "Saved"}</span>{saveState === "error" ? <button type="button" onClick={() => void flush().catch(() => undefined)}>Retry save</button> : null}{saveState === "conflict" ? <button type="button" onClick={() => window.location.reload()}>Reload latest</button> : null}</div></div></header>
     {submitError ? <p role="alert" className="notice notice-error">{submitError}</p> : null}
     {actionError ? <p role="alert" className="notice notice-error">{actionError}</p> : null}
     {highlightError && !confirmDeleteAll ? <p role="alert" className="notice notice-error">{highlightError}</p> : null}

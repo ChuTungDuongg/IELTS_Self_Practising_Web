@@ -30,7 +30,7 @@ const q40 = "11111111-1111-4111-8111-111111111140";
 
 function deferred() {
   let resolve!: () => void;
-  const promise = new Promise<void>((done) => { resolve = done; });
+  const promise = new Promise<Awaited<ReturnType<typeof saveAnswer>>>((done) => { resolve = () => done({ question_id: q2, value: "TRUE", is_correct: true, saved_at: new Date().toISOString(), revision: 1 }); });
   return { promise, resolve };
 }
 
@@ -46,6 +46,7 @@ function group(id: string, orderIndex: number, questions: Array<{ id: string; nu
       prompt: `Statement ${question.number}`,
       config: {},
       order_index: index,
+      answer_revision: question.value === null ? 0 : 1,
     })),
   };
 }
@@ -120,7 +121,7 @@ describe("Listening footer navigation", () => {
     vi.clearAllMocks();
     scrolled.length = 0;
     observerCount = 0;
-    vi.mocked(saveAnswer).mockResolvedValue(undefined);
+    vi.mocked(saveAnswer).mockImplementation(async (_attempt, questionId, value, expectedRevision) => ({ question_id: questionId, value, is_correct: null, saved_at: new Date().toISOString(), revision: expectedRevision + 1 }));
     vi.mocked(saveFlag).mockResolvedValue(undefined);
     vi.mocked(recordNavigation).mockResolvedValue(undefined);
     Object.defineProperty(HTMLElement.prototype, "scrollTo", {
@@ -273,7 +274,7 @@ describe("Listening footer navigation", () => {
     fireEvent.click(within(target as HTMLElement).getByRole("radio", { name: "FALSE" }));
 
     expect(view.container.querySelector(`[data-nav-question-id="${q2}"]`)).toHaveClass("answered", "current");
-    await waitFor(() => expect(saveAnswer).toHaveBeenCalledWith(attemptId, q2, "FALSE"), { timeout: 1200 });
+    await waitFor(() => expect(saveAnswer).toHaveBeenCalledWith(attemptId, q2, "FALSE", 0), { timeout: 1200 });
   });
 
   it("keeps an edited answer across navigation and waits for its latest save before Submit", async () => {
@@ -293,7 +294,7 @@ describe("Listening footer navigation", () => {
     expect(submitAttempt).not.toHaveBeenCalled();
     first.resolve();
     await act(async () => { await Promise.resolve(); });
-    expect(saveAnswer).toHaveBeenLastCalledWith(attemptId, q2, "TRUE");
+    expect(saveAnswer).toHaveBeenLastCalledWith(attemptId, q2, "TRUE", 1);
     expect(submitAttempt).not.toHaveBeenCalled();
     latest.resolve();
     await act(async () => { await Promise.resolve(); });
@@ -311,7 +312,30 @@ describe("Listening footer navigation", () => {
     expect(submitAttempt).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Retry save" }));
     await waitFor(() => expect(screen.getByText("Saved")).toBeInTheDocument());
-    expect(saveAnswer).toHaveBeenLastCalledWith(attemptId, q2, "FALSE");
+    expect(saveAnswer).toHaveBeenLastCalledWith(attemptId, q2, "FALSE", 0);
+  });
+
+  it("advances the Listening answer token after the first save", async () => {
+    const view = render(<ListeningRunner initial={payload()} />);
+    const target = view.container.querySelector(`[data-question-id="${q2}"]`) as HTMLElement;
+    fireEvent.click(within(target).getByRole("radio", { name: "FALSE" }));
+    await waitFor(() => expect(saveAnswer).toHaveBeenCalledWith(attemptId, q2, "FALSE", 0));
+    await waitFor(() => expect(screen.getByText("Saved")).toBeInTheDocument());
+    fireEvent.click(within(target).getByRole("radio", { name: "TRUE" }));
+    await waitFor(() => expect(saveAnswer).toHaveBeenLastCalledWith(attemptId, q2, "TRUE", 1));
+  });
+
+  it("does not retry a conflicted Listening answer on periodic flush", async () => {
+    vi.useFakeTimers();
+    vi.mocked(saveAnswer).mockRejectedValueOnce(new ApiError("ATTEMPT_RESPONSE_CONFLICT", "Changed in another tab", 409));
+    const view = render(<ListeningRunner initial={payload()} />);
+    const target = view.container.querySelector(`[data-question-id="${q2}"]`) as HTMLElement;
+    fireEvent.click(within(target).getByRole("radio", { name: "FALSE" }));
+    await act(async () => { vi.advanceTimersByTime(400); });
+    expect(screen.getByRole("button", { name: "Reload latest" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Retry save" })).not.toBeInTheDocument();
+    await act(async () => { vi.advanceTimersByTime(10_000); });
+    expect(saveAnswer).toHaveBeenCalledTimes(1);
   });
 
   it("toggles a footer flag without navigating", async () => {

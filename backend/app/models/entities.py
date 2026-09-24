@@ -401,6 +401,7 @@ class AttemptAnswer(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     question_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("questions.id", ondelete="RESTRICT"))
     value: Mapped[Any] = mapped_column(JSONB, nullable=False)
     is_correct: Mapped[bool | None] = mapped_column(Boolean)
+    revision: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
 
     attempt: Mapped[Attempt] = relationship(back_populates="answers")
     question: Mapped[Question] = relationship()
@@ -416,6 +417,7 @@ class AttemptWritingResponse(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     content: Mapped[str] = mapped_column(Text, default="", nullable=False)
     word_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    revision: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
 
     attempt: Mapped[Attempt] = relationship(back_populates="writing_responses")
     writing_task: Mapped[WritingTask] = relationship()

@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { RevisionAutosaveQueue, useRevisionAutosave } from "@/features/exam/revision-autosave";
+import { ApiError } from "@/lib/api/client";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -12,6 +13,38 @@ function deferred<T>() {
 
 describe("RevisionAutosaveQueue", () => {
   afterEach(() => vi.useRealTimers());
+
+  it("blocks a conflicted key and submission flush while other keys can save", async () => {
+    const conflict = new ApiError("ATTEMPT_RESPONSE_CONFLICT", "Changed elsewhere", 409);
+    const send = vi.fn((key: string) => key === "q1" ? Promise.reject(conflict) : Promise.resolve());
+    const queue = new RevisionAutosaveQueue<string>(send, 400);
+    queue.markDirty("q1", "local answer");
+    await expect(queue.saveNow("q1")).rejects.toBe(conflict);
+    expect(queue.status).toBe("conflict");
+    queue.markDirty("q1", "newer local answer");
+    await expect(queue.flush()).rejects.toBe(conflict);
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(queue.hasUnsaved).toBe(true);
+    queue.markDirty("q2", "independent answer");
+    await queue.saveNow("q2");
+    expect(send).toHaveBeenCalledWith("q2", "independent answer");
+    expect(queue.status).toBe("conflict");
+    queue.stop();
+  });
+
+  it("replays an ambiguously failed value before sending a newer local edit", async () => {
+    const first = deferred<void>();
+    const send = vi.fn().mockReturnValueOnce(first.promise).mockResolvedValue(undefined);
+    const queue = new RevisionAutosaveQueue<string>(send, 400);
+    queue.markDirty("q1", "older");
+    const saving = queue.saveNow("q1");
+    queue.markDirty("q1", "newer");
+    first.reject(new ApiError("NETWORK_ERROR", "response lost", 0));
+    await saving;
+    expect(send.mock.calls).toEqual([["q1", "older"], ["q1", "older"], ["q1", "newer"]]);
+    expect(queue.status).toBe("saved");
+    queue.stop();
+  });
 
   it("keeps a newer edit dirty until its own acknowledgement and coalesces intermediate edits", async () => {
     vi.useFakeTimers();

@@ -68,6 +68,7 @@ function payload(): ExamPayload {
         order_index: 0,
         content: "Restored Task One",
         word_count: 3,
+        response_revision: 1,
       },
       {
         id: taskTwoId,
@@ -80,6 +81,7 @@ function payload(): ExamPayload {
         order_index: 1,
         content: "Restored Task Two",
         word_count: 3,
+        response_revision: 1,
       },
     ],
   };
@@ -89,7 +91,7 @@ describe("WritingRunner", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.clearAllMocks();
-    vi.mocked(saveWritingResponse).mockResolvedValue({ writing_task_id: taskOneId, content: "", word_count: 0, saved_at: new Date().toISOString() });
+    vi.mocked(saveWritingResponse).mockImplementation(async (_attempt, taskId, content, expectedRevision) => ({ writing_task_id: taskId, content, word_count: 0, saved_at: new Date().toISOString(), revision: expectedRevision + 1 }));
     vi.mocked(submitAttempt).mockResolvedValue({});
     vi.mocked(pauseAttempt).mockResolvedValue({ status: "PAUSED" } as never);
   });
@@ -123,6 +125,7 @@ describe("WritingRunner", () => {
       attemptId,
       taskOneId,
       "It’s a city's plan for Đà Nẵng.",
+      1,
     );
   });
 
@@ -137,7 +140,7 @@ describe("WritingRunner", () => {
     fireEvent.change(textarea, { target: { value: "Newest draft" } });
     old.reject(new Error("old request failed"));
     await act(async () => { await Promise.resolve(); });
-    expect(saveWritingResponse).toHaveBeenLastCalledWith(attemptId, taskOneId, "Newest draft");
+    expect(saveWritingResponse).toHaveBeenLastCalledWith(attemptId, taskOneId, "Newest draft", 1);
     expect(screen.queryByText("Save failed")).not.toBeInTheDocument();
     expect(screen.getByText("Saved")).toBeInTheDocument();
   });
@@ -150,7 +153,7 @@ describe("WritingRunner", () => {
     expect(screen.getByText("Save failed")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Retry save" }));
     await act(async () => { await Promise.resolve(); });
-    expect(saveWritingResponse).toHaveBeenLastCalledWith(attemptId, taskOneId, "Retry this draft");
+    expect(saveWritingResponse).toHaveBeenLastCalledWith(attemptId, taskOneId, "Retry this draft", 1);
     expect(screen.getByText("Saved")).toBeInTheDocument();
   });
 
@@ -164,8 +167,8 @@ describe("WritingRunner", () => {
     fireEvent.change(screen.getByLabelText("Response for Task 2"), { target: { value: "Task two latest" } });
     fireEvent.click(screen.getByRole("button", { name: "Submit Writing" }));
     expect(screen.getByRole("button", { name: "Submitting…" })).toBeDisabled();
-    expect(saveWritingResponse).toHaveBeenCalledWith(attemptId, taskOneId, "Task one latest");
-    expect(saveWritingResponse).toHaveBeenCalledWith(attemptId, taskTwoId, "Task two latest");
+    expect(saveWritingResponse).toHaveBeenCalledWith(attemptId, taskOneId, "Task one latest", 1);
+    expect(saveWritingResponse).toHaveBeenCalledWith(attemptId, taskTwoId, "Task two latest", 1);
     expect(submitAttempt).not.toHaveBeenCalled();
     first.resolve({} as never);
     await act(async () => { await Promise.resolve(); });
@@ -201,6 +204,7 @@ describe("WritingRunner", () => {
     fireEvent.change(textarea, { target: { value: "Final saved content" } });
     fireEvent.click(screen.getByRole("button", { name: "Submit Writing" }));
     await act(async () => undefined);
+    expect(saveWritingResponse).toHaveBeenLastCalledWith(attemptId, taskOneId, "Final saved content", 2);
     expect(submitAttempt).toHaveBeenCalledWith(attemptId);
     expect(vi.mocked(saveWritingResponse).mock.invocationCallOrder.at(-1)).toBeLessThan(
       vi.mocked(submitAttempt).mock.invocationCallOrder[0],
@@ -222,6 +226,23 @@ describe("WritingRunner", () => {
     expect(within(screen.getByRole("alert")).getByRole("button", { name: "Retry save" })).toBeInTheDocument();
   });
 
+  it("blocks Submit and Pause on a Writing conflict and offers Reload latest", async () => {
+    vi.mocked(saveWritingResponse).mockRejectedValueOnce(new ApiError("ATTEMPT_RESPONSE_CONFLICT", "Changed in another tab", 409));
+    render(<WritingRunner initial={payload()} />);
+    fireEvent.change(screen.getByLabelText("Response for Task 1"), { target: { value: "Local text" } });
+    await act(async () => { vi.advanceTimersByTime(750); });
+    expect(screen.getByRole("button", { name: "Reload latest" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Retry save" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Submit Writing" }));
+    await act(async () => { await Promise.resolve(); });
+    expect(submitAttempt).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Pause & exit" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Pause & exit" }));
+    await act(async () => { await Promise.resolve(); });
+    expect(pauseAttempt).not.toHaveBeenCalled();
+    expect(saveWritingResponse).toHaveBeenCalledTimes(1);
+  });
+
   it("saves the current response before pausing and exits to history", async () => {
     render(<WritingRunner initial={payload()} />);
     fireEvent.change(screen.getByLabelText("Response for Task 1"), { target: { value: "Pause-safe draft" } });
@@ -229,7 +250,7 @@ describe("WritingRunner", () => {
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Pause & exit" }));
     await act(async () => undefined);
 
-    expect(saveWritingResponse).toHaveBeenCalledWith(attemptId, taskOneId, "Pause-safe draft");
+    expect(saveWritingResponse).toHaveBeenCalledWith(attemptId, taskOneId, "Pause-safe draft", 1);
     expect(vi.mocked(saveWritingResponse).mock.invocationCallOrder.at(-1)).toBeLessThan(
       vi.mocked(pauseAttempt).mock.invocationCallOrder[0],
     );

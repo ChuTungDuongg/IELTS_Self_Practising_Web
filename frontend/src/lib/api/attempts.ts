@@ -32,6 +32,15 @@ const writingResponseSchema = z.object({
   content: z.string(),
   word_count: z.number().int().nonnegative(),
   saved_at: z.string(),
+  revision: z.number().int().positive(),
+});
+
+const answerResponseSchema = z.object({
+  question_id: z.string().uuid(),
+  value: z.unknown(),
+  is_correct: z.boolean().nullable(),
+  saved_at: z.string(),
+  revision: z.number().int().positive(),
 });
 
 export type AttemptResponse = z.infer<typeof attemptResponseSchema>;
@@ -52,11 +61,11 @@ export async function startAttempt(input: {
   }));
 }
 
-export function saveAnswer(attemptId: string, questionId: string, value: unknown) {
-  return apiRequest(`/attempts/${attemptId}/answers/${questionId}`, {
+export async function saveAnswer(attemptId: string, questionId: string, value: unknown, expectedRevision: number) {
+  return answerResponseSchema.parse(await apiRequest<unknown>(`/attempts/${attemptId}/answers/${questionId}`, {
     method: "PUT",
-    body: JSON.stringify({ value }),
-  });
+    body: JSON.stringify({ value, expected_revision: expectedRevision }),
+  }));
 }
 
 export function recordActivity(attemptId: string) {
@@ -81,11 +90,12 @@ export async function saveWritingResponse(
   attemptId: string,
   writingTaskId: string,
   content: string,
+  expectedRevision: number,
 ): Promise<WritingResponse> {
   return writingResponseSchema.parse(
     await apiRequest<unknown>(`/attempts/${attemptId}/writing/${writingTaskId}`, {
       method: "PUT",
-      body: JSON.stringify({ content }),
+      body: JSON.stringify({ content, expected_revision: expectedRevision }),
     }),
   );
 }

@@ -96,7 +96,9 @@ async def save_answer(
     user: CurrentUser,
     session: AsyncSession = Depends(get_session),
 ) -> AnswerResponse:
-    return await AttemptService(session, user.id).save_answer(attempt_id, question_id, body.value)
+    return await AttemptService(session, user.id).save_answer(
+        attempt_id, question_id, body.value, body.expected_revision
+    )
 
 
 @router.put(
@@ -111,7 +113,7 @@ async def save_writing_response(
     session: AsyncSession = Depends(get_session),
 ) -> WritingResponse:
     return await AttemptService(session, user.id).save_writing_response(
-        attempt_id, writing_task_id, body.content
+        attempt_id, writing_task_id, body.content, body.expected_revision
     )
 
 

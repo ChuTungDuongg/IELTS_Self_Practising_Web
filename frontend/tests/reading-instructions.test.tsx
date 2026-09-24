@@ -33,7 +33,7 @@ describe("Reading question group instructions", () => {
   it("renders one registry instruction in the candidate interface using actual passage order", () => {
     const initial = {
       attempt, test_title: "Practice", highlights: [], listening_audio_asset: null, listening_parts: [], writing_tasks: [],
-      passages: [{ id: passageId, title: "Passage", order_index: 2, blocks: [{ id: "44444444-4444-4444-8444-444444444444", type: "paragraph", label: "A", text: "Fictional text." }], question_groups: [{ id: groupId, question_type: "true_false_not_given", instruction: "", config: {}, order_index: 0, questions: [{ id: questionId, number: 1, prompt: "Statement", config: {}, order_index: 0, value: null, flagged: false }] }] }],
+      passages: [{ id: passageId, title: "Passage", order_index: 2, blocks: [{ id: "44444444-4444-4444-8444-444444444444", type: "paragraph", label: "A", text: "Fictional text." }], question_groups: [{ id: groupId, question_type: "true_false_not_given", instruction: "", config: {}, order_index: 0, questions: [{ id: questionId, number: 1, prompt: "Statement", config: {}, order_index: 0, value: null, flagged: false, answer_revision: 0 }] }] }],
     } as ExamPayload;
 
     render(<ReadingRunner initial={initial} />);
@@ -45,7 +45,7 @@ describe("Reading question group instructions", () => {
     document.documentElement.dataset.theme = "light";
     const initial = {
       attempt, test_title: "Practice", highlights: [], listening_audio_asset: null, listening_parts: [], writing_tasks: [],
-      passages: [{ id: passageId, title: "Passage", order_index: 2, blocks: [{ id: "44444444-4444-4444-8444-444444444444", type: "paragraph", label: "A", text: "Fictional text." }], question_groups: [{ id: groupId, question_type: "true_false_not_given", instruction: "", config: {}, order_index: 0, questions: [{ id: questionId, number: 1, prompt: "Statement", config: {}, order_index: 0, value: null, flagged: false }] }] }],
+      passages: [{ id: passageId, title: "Passage", order_index: 2, blocks: [{ id: "44444444-4444-4444-8444-444444444444", type: "paragraph", label: "A", text: "Fictional text." }], question_groups: [{ id: groupId, question_type: "true_false_not_given", instruction: "", config: {}, order_index: 0, questions: [{ id: questionId, number: 1, prompt: "Statement", config: {}, order_index: 0, value: null, flagged: false, answer_revision: 0 }] }] }],
     } as ExamPayload;
 
     render(<ReadingRunner initial={initial} />);
@@ -79,8 +79,8 @@ describe("Reading question group instructions", () => {
     const initial = {
       attempt, test_title: "Practice", highlights: [], listening_audio_asset: null, listening_parts: [], writing_tasks: [],
       passages: [{ id: passageId, title: "Passage", order_index: 0, blocks: [{ id: "44444444-4444-4444-8444-444444444444", type: "paragraph", label: "A", text: "Fictional text." }], question_groups: [{ id: groupId, question_type: "text_completion", instruction: completionInstruction, config: completionConfig, order_index: 0, questions: [
-        { id: questionId, number: 1, prompt: "", config: { max_words: 2, max_numbers: 0 }, order_index: 0, value: null, flagged: false },
-        { id: secondQuestionId, number: 2, prompt: "", config: { max_words: 2, max_numbers: 0 }, order_index: 1, value: null, flagged: false },
+        { id: questionId, number: 1, prompt: "", config: { max_words: 2, max_numbers: 0 }, order_index: 0, value: null, flagged: false, answer_revision: 0 },
+        { id: secondQuestionId, number: 2, prompt: "", config: { max_words: 2, max_numbers: 0 }, order_index: 1, value: null, flagged: false, answer_revision: 0 },
       ] }] }],
     } as ExamPayload;
     const candidate = render(<ReadingRunner initial={initial} />);
@@ -113,7 +113,7 @@ describe("Reading question group instructions", () => {
     const initial = {
       attempt, test_title: "Practice", listening_audio_asset: null, listening_parts: [], writing_tasks: [],
       highlights: [{ id: "33333333-3333-4333-8333-333333333333", target_kind: "QUESTION_PROMPT", target_id: questionId, segment_id: null, passage_id: null, start_block_id: null, end_block_id: null, start_offset: 0, end_offset: 9, selected_text: "Statement", created_at: new Date().toISOString() }],
-      passages: [{ id: passageId, title: "Passage", order_index: 0, blocks: [{ id: "44444444-4444-4444-8444-444444444444", type: "paragraph", label: "A", text: "Fictional text." }], question_groups: [{ id: groupId, question_type: "true_false_not_given", instruction: "", config: {}, order_index: 0, questions: [{ id: questionId, number: 1, prompt: "Statement", config: {}, order_index: 0, value: null, flagged: false }] }] }],
+      passages: [{ id: passageId, title: "Passage", order_index: 0, blocks: [{ id: "44444444-4444-4444-8444-444444444444", type: "paragraph", label: "A", text: "Fictional text." }], question_groups: [{ id: groupId, question_type: "true_false_not_given", instruction: "", config: {}, order_index: 0, questions: [{ id: questionId, number: 1, prompt: "Statement", config: {}, order_index: 0, value: null, flagged: false, answer_revision: 0 }] }] }],
     } as ExamPayload;
     render(<ReadingRunner initial={initial} />);
     expect(screen.getByText("1 highlight")).toBeInTheDocument();
@@ -131,7 +131,7 @@ describe("Reading question group instructions", () => {
     const initial = {
       attempt, test_title: "Practice", listening_audio_asset: null, listening_parts: [], writing_tasks: [],
       highlights: [{ id: "33333333-3333-4333-8333-333333333333", target_kind: "QUESTION_PROMPT", target_id: questionId, segment_id: null, passage_id: null, start_block_id: null, end_block_id: null, start_offset: 0, end_offset: 9, selected_text: "Statement", created_at: new Date().toISOString() }],
-      passages: [{ id: passageId, title: "Passage", order_index: 0, blocks: [{ id: "44444444-4444-4444-8444-444444444444", type: "paragraph", label: "A", text: "Fictional text." }], question_groups: [{ id: groupId, question_type: "true_false_not_given", instruction: "", config: {}, order_index: 0, questions: [{ id: questionId, number: 1, prompt: "Statement", config: {}, order_index: 0, value: null, flagged: false }] }] }],
+      passages: [{ id: passageId, title: "Passage", order_index: 0, blocks: [{ id: "44444444-4444-4444-8444-444444444444", type: "paragraph", label: "A", text: "Fictional text." }], question_groups: [{ id: groupId, question_type: "true_false_not_given", instruction: "", config: {}, order_index: 0, questions: [{ id: questionId, number: 1, prompt: "Statement", config: {}, order_index: 0, value: null, flagged: false, answer_revision: 0 }] }] }],
     } as ExamPayload;
     render(<ReadingRunner initial={initial} />);
 

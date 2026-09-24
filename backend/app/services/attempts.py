@@ -238,7 +238,11 @@ class AttemptService:
         return response
 
     async def save_answer(
-        self, attempt_id: uuid.UUID, question_id: uuid.UUID, value: Any
+        self,
+        attempt_id: uuid.UUID,
+        question_id: uuid.UUID,
+        value: Any,
+        expected_revision: int,
     ) -> AnswerResponse:
         async with self.session.begin():
             attempt = await self._require(attempt_id, for_update=True)
@@ -311,24 +315,42 @@ class AttemptService:
                 if question_registry.supports(group.question_type)
                 else None
             )
-            statement = insert(AttemptAnswer).values(
-                id=uuid.uuid4(),
-                attempt_id=attempt.id,
-                question_id=question.id,
-                value=validated_value,
-                is_correct=is_correct,
-                created_at=now,
-                updated_at=now,
+            answer = await self.session.scalar(
+                select(AttemptAnswer).where(
+                    AttemptAnswer.attempt_id == attempt.id,
+                    AttemptAnswer.question_id == question.id,
+                )
             )
-            statement = statement.on_conflict_do_update(
-                index_elements=[AttemptAnswer.attempt_id, AttemptAnswer.question_id],
-                set_={
-                    "value": validated_value,
-                    "is_correct": is_correct,
-                    "updated_at": now,
-                },
-            )
-            await self.session.execute(statement)
+            if answer is not None and answer.value == validated_value:
+                return AnswerResponse(
+                    question_id=question_id,
+                    value=answer.value,
+                    is_correct=answer.is_correct,
+                    saved_at=answer.updated_at,
+                    revision=answer.revision,
+                )
+            if (answer.revision if answer else 0) != expected_revision:
+                raise AppError(
+                    "ATTEMPT_RESPONSE_CONFLICT",
+                    "This response changed in another tab or session. Reload the attempt.",
+                    409,
+                )
+            if answer is None:
+                answer = AttemptAnswer(
+                    attempt_id=attempt.id,
+                    question_id=question.id,
+                    value=validated_value,
+                    is_correct=is_correct,
+                    revision=1,
+                    created_at=now,
+                    updated_at=now,
+                )
+                self.session.add(answer)
+            else:
+                answer.value = validated_value
+                answer.is_correct = is_correct
+                answer.revision += 1
+                answer.updated_at = now
             self.session.add(
                 AttemptEvent(
                     attempt_id=attempt.id,
@@ -344,10 +366,15 @@ class AttemptService:
             value=validated_value,
             is_correct=is_correct,
             saved_at=now,
+            revision=answer.revision,
         )
 
     async def save_writing_response(
-        self, attempt_id: uuid.UUID, writing_task_id: uuid.UUID, content: str
+        self,
+        attempt_id: uuid.UUID,
+        writing_task_id: uuid.UUID,
+        content: str,
+        expected_revision: int,
     ) -> WritingResponse:
         async with self.session.begin():
             attempt = await self._require(attempt_id, for_update=True)
@@ -375,28 +402,42 @@ class AttemptService:
                     422,
                 )
             word_count = count_words(content)
-            statement = insert(AttemptWritingResponse).values(
-                id=uuid.uuid4(),
-                attempt_id=attempt.id,
-                writing_task_id=task.id,
-                content=content,
-                word_count=word_count,
-                created_at=now,
-                updated_at=now,
-            )
-            await self.session.execute(
-                statement.on_conflict_do_update(
-                    index_elements=[
-                        AttemptWritingResponse.attempt_id,
-                        AttemptWritingResponse.writing_task_id,
-                    ],
-                    set_={
-                        "content": content,
-                        "word_count": word_count,
-                        "updated_at": now,
-                    },
+            response_row = await self.session.scalar(
+                select(AttemptWritingResponse).where(
+                    AttemptWritingResponse.attempt_id == attempt.id,
+                    AttemptWritingResponse.writing_task_id == task.id,
                 )
             )
+            if response_row is not None and response_row.content == content:
+                return WritingResponse(
+                    writing_task_id=writing_task_id,
+                    content=response_row.content,
+                    word_count=response_row.word_count,
+                    saved_at=response_row.updated_at,
+                    revision=response_row.revision,
+                )
+            if (response_row.revision if response_row else 0) != expected_revision:
+                raise AppError(
+                    "ATTEMPT_RESPONSE_CONFLICT",
+                    "This response changed in another tab or session. Reload the attempt.",
+                    409,
+                )
+            if response_row is None:
+                response_row = AttemptWritingResponse(
+                    attempt_id=attempt.id,
+                    writing_task_id=task.id,
+                    content=content,
+                    word_count=word_count,
+                    revision=1,
+                    created_at=now,
+                    updated_at=now,
+                )
+                self.session.add(response_row)
+            else:
+                response_row.content = content
+                response_row.word_count = word_count
+                response_row.revision += 1
+                response_row.updated_at = now
             self.session.add(
                 AttemptEvent(
                     attempt_id=attempt.id,
@@ -411,6 +452,7 @@ class AttemptService:
             content=content,
             word_count=word_count,
             saved_at=now,
+            revision=response_row.revision,
         )
 
     async def submit(self, attempt_id: uuid.UUID) -> AttemptResponse:
@@ -853,7 +895,7 @@ class AttemptService:
         attempt = await self._require(attempt_id)
         version = await TestRepository(self.session).get_version(attempt.test_version_id)
         assert version is not None
-        answer_values = {item.question_id: item.value for item in attempt.answers}
+        answer_values = {item.question_id: item for item in attempt.answers}
         flags = {item.question_id: item.flagged for item in attempt.flags}
         module = next(
             (item for item in version.modules if item.module_type == attempt.module_type), None
@@ -905,6 +947,7 @@ class AttemptService:
                         order_index=task.order_index,
                         content=response.content if response else "",
                         word_count=response.word_count if response else 0,
+                        response_revision=response.revision if response else 0,
                     )
                 )
         return AttemptExam(
@@ -931,7 +974,7 @@ class AttemptService:
     @staticmethod
     def _present_exam_passage(
         passage: ReadingPassage,
-        answer_values: dict[uuid.UUID, Any],
+        answer_values: dict[uuid.UUID, AttemptAnswer],
         flags: dict[uuid.UUID, bool],
     ) -> ExamPassage:
         blocks = normalize_passage_blocks(passage.content_json, passage.id)
@@ -950,7 +993,7 @@ class AttemptService:
     @staticmethod
     def _present_exam_group(
         group: QuestionGroup,
-        answer_values: dict[uuid.UUID, Any],
+        answer_values: dict[uuid.UUID, AttemptAnswer],
         flags: dict[uuid.UUID, bool],
         passage_blocks: list[dict[str, Any]],
         *,
@@ -981,7 +1024,7 @@ class AttemptService:
         for source, question in zip(source_questions, normalized_questions, strict=True):
             stored_value = normalize_response_value(
                 question_type=group.question_type,
-                value=answer_values.get(source.id),
+                value=answer_values[source.id].value if source.id in answer_values else None,
                 raw_group_config=group.config,
                 raw_question_config=source.config,
                 normalized_group_config=normalized_config,
@@ -995,6 +1038,9 @@ class AttemptService:
                     config=question["config"],
                     order_index=question["order_index"],
                     value=stored_value,
+                    answer_revision=(
+                        answer_values[source.id].revision if source.id in answer_values else 0
+                    ),
                     flagged=flags.get(source.id, False),
                 )
             )

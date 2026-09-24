@@ -5,7 +5,7 @@ import { apiRequest, type ApiRequester } from "./client";
 const questionSchema = z.object({
   id: z.string().uuid(), number: z.number(), prompt: z.string(),
   config: z.record(z.string(), z.unknown()), order_index: z.number(),
-  value: z.unknown().nullable().optional(), flagged: z.boolean(),
+  value: z.unknown().nullable().optional(), flagged: z.boolean(), answer_revision: z.number().int().nonnegative(),
 });
 const assetSchema = z.object({ id: z.string().uuid(), original_name: z.string(), mime_type: z.string(), file_size: z.number(), content_url: z.string() });
 const groupSchema = z.object({
@@ -31,6 +31,7 @@ const writingTaskSchema = z.object({
   order_index: z.number().int(),
   content: z.string(),
   word_count: z.number().int().nonnegative(),
+  response_revision: z.number().int().nonnegative(),
 });
 const highlightSchema = z.object({
   id: z.string().uuid(), target_kind: z.enum(["PASSAGE_BLOCK", "QUESTION_PROMPT", "TEXT_COMPLETION_SEGMENT", "QUESTION_GROUP_OPTION"]), target_id: z.string().uuid(), segment_id: z.string().uuid().nullable().optional(),

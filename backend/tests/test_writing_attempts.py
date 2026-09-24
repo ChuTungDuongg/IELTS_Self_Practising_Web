@@ -100,16 +100,19 @@ async def test_writing_response_upsert_resume_submit_and_review(
         attempt_id,
         task_one_id,
         "It’s a city's plan for Đà Nẵng.",
+        0,
     )
     second = await service.save_writing_response(
         attempt_id,
         task_two_id,
         "A fictional second response.",
+        0,
     )
     updated = await service.save_writing_response(
         attempt_id,
         task_one_id,
         "Updated response with four words.",
+        1,
     )
 
     assert first.word_count == 7
@@ -165,16 +168,16 @@ async def test_writing_response_rejects_wrong_attempt_task_and_finalized_state(
     service = AttemptService(db_session)
 
     with pytest.raises(AppError) as objective_error:
-        await service.save_writing_response(objective_attempt_id, task_id, "No")
+        await service.save_writing_response(objective_attempt_id, task_id, "No", 0)
     assert objective_error.value.code == "WRITING_ATTEMPT_REQUIRED"
 
     with pytest.raises(AppError) as task_error:
-        await service.save_writing_response(writing_attempt_id, other_task_id, "No")
+        await service.save_writing_response(writing_attempt_id, other_task_id, "No", 0)
     assert task_error.value.code == "INVALID_WRITING_TASK"
 
     await service.submit(writing_attempt_id)
     with pytest.raises(AppError) as finalized_error:
-        await service.save_writing_response(writing_attempt_id, task_id, "Too late")
+        await service.save_writing_response(writing_attempt_id, task_id, "Too late", 0)
     assert finalized_error.value.code == "ATTEMPT_FINALIZED"
     assert other_version_id != version_id
 

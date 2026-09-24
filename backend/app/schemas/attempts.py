@@ -48,6 +48,7 @@ class NavigationRequest(BaseModel):
 
 class AnswerUpdate(BaseModel):
     value: str | list[str] | dict[str, str]
+    expected_revision: int = Field(ge=0)
 
 
 class AnswerResponse(BaseModel):
@@ -55,10 +56,12 @@ class AnswerResponse(BaseModel):
     value: Any
     is_correct: bool | None
     saved_at: datetime
+    revision: int
 
 
 class WritingResponseUpdate(BaseModel):
     content: str = Field(max_length=100_000)
+    expected_revision: int = Field(ge=0)
 
 
 class WritingResponse(BaseModel):
@@ -66,6 +69,7 @@ class WritingResponse(BaseModel):
     content: str
     word_count: int = Field(ge=0)
     saved_at: datetime
+    revision: int
 
 
 class WritingTaskScoreUpdate(BaseModel):

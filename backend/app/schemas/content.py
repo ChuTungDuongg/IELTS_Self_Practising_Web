@@ -194,6 +194,7 @@ class ExamQuestion(BaseModel):
     config: dict[str, Any]
     order_index: int
     value: Any | None = None
+    answer_revision: int = Field(ge=0)
     flagged: bool = False
 
 
@@ -232,6 +233,7 @@ class ExamWritingTask(BaseModel):
     order_index: int
     content: str
     word_count: int = Field(ge=0)
+    response_revision: int = Field(ge=0)
 
 
 class HighlightResponse(BaseModel):

@@ -24,7 +24,7 @@ const q19 = "11111111-1111-4111-8111-111111111119";
 
 function deferred() {
   let resolve!: () => void;
-  const promise = new Promise<void>((done) => { resolve = done; });
+  const promise = new Promise<Awaited<ReturnType<typeof saveAnswer>>>((done) => { resolve = () => done({ question_id: q1, value: "TRUE", is_correct: true, saved_at: new Date().toISOString(), revision: 2 }); });
   return { promise, resolve };
 }
 
@@ -35,7 +35,7 @@ function group(id: string, orderIndex: number, questions: Array<{ id: string; nu
     instruction: "",
     config: {},
     order_index: orderIndex,
-    questions: questions.map((question, index) => ({ ...question, prompt: `Statement ${question.number}`, config: {}, order_index: index })),
+    questions: questions.map((question, index) => ({ ...question, prompt: `Statement ${question.number}`, config: {}, order_index: index, answer_revision: question.value === null ? 0 : 1 })),
   };
 }
 
@@ -98,7 +98,7 @@ describe("Reading footer navigation", () => {
     vi.clearAllMocks();
     vi.mocked(getAttempt).mockReset();
     vi.mocked(submitAttempt).mockReset();
-    vi.mocked(saveAnswer).mockResolvedValue(undefined);
+    vi.mocked(saveAnswer).mockImplementation(async (_attempt, questionId, value, expectedRevision) => ({ question_id: questionId, value, is_correct: null, saved_at: new Date().toISOString(), revision: expectedRevision + 1 }));
     vi.mocked(recordNavigation).mockResolvedValue(undefined);
     scrolls.length = 0;
     Object.defineProperty(HTMLElement.prototype, "scrollTo", {
@@ -253,7 +253,7 @@ describe("Reading footer navigation", () => {
     const question = view.container.querySelector(`[data-question-id="${q1}"]`)!;
     fireEvent.click(within(question as HTMLElement).getByRole("radio", { name: "FALSE" }));
 
-    await waitFor(() => expect(saveAnswer).toHaveBeenCalledWith("22222222-2222-4222-8222-222222222222", q1, "FALSE"), { timeout: 1200 });
+    await waitFor(() => expect(saveAnswer).toHaveBeenCalledWith("22222222-2222-4222-8222-222222222222", q1, "FALSE", 1), { timeout: 1200 });
   });
 
   it("keeps the newest answer unsaved until acknowledged and submits only after both writes", async () => {
@@ -266,7 +266,7 @@ describe("Reading footer navigation", () => {
     fireEvent.click(within(question).getByRole("radio", { name: "FALSE" }));
     expect(screen.getByText("Unsaved")).toBeInTheDocument();
     await act(async () => { vi.advanceTimersByTime(400); });
-    expect(saveAnswer).toHaveBeenCalledWith(payload().attempt.attempt_id, q1, "FALSE");
+    expect(saveAnswer).toHaveBeenCalledWith(payload().attempt.attempt_id, q1, "FALSE", 1);
     fireEvent.click(screen.getByRole("button", { name: "Submit answers" }));
     expect(screen.getByRole("button", { name: "Submitting…" })).toBeDisabled();
     fireEvent.click(within(question).getByRole("radio", { name: "TRUE" }));
@@ -274,7 +274,7 @@ describe("Reading footer navigation", () => {
     expect(submitAttempt).not.toHaveBeenCalled();
     first.resolve();
     await act(async () => { await Promise.resolve(); });
-    expect(saveAnswer).toHaveBeenLastCalledWith(payload().attempt.attempt_id, q1, "TRUE");
+    expect(saveAnswer).toHaveBeenLastCalledWith(payload().attempt.attempt_id, q1, "TRUE", 2);
     expect(screen.queryByText("Saved")).not.toBeInTheDocument();
     expect(submitAttempt).not.toHaveBeenCalled();
     latest.resolve();
@@ -293,8 +293,40 @@ describe("Reading footer navigation", () => {
     expect(screen.getByRole("button", { name: "Retry save" })).toBeInTheDocument();
     await act(async () => { vi.advanceTimersByTime(10_000); });
     expect(saveAnswer).toHaveBeenCalledTimes(2);
-    expect(saveAnswer).toHaveBeenLastCalledWith(payload().attempt.attempt_id, q1, "FALSE");
+    expect(saveAnswer).toHaveBeenLastCalledWith(payload().attempt.attempt_id, q1, "FALSE", 1);
     expect(screen.getByText("Saved")).toBeInTheDocument();
+  });
+
+  it("acknowledges a lost response retry and advances the token for the next edit", async () => {
+    vi.mocked(saveAnswer).mockRejectedValueOnce(new ApiError("NETWORK_ERROR", "response lost", 0));
+    const view = render(<ReadingRunner initial={payload()} />);
+    const question = view.container.querySelector(`[data-question-id="${q2}"]`) as HTMLElement;
+    fireEvent.click(within(question).getByRole("radio", { name: "TRUE" }));
+    await waitFor(() => expect(screen.getByText("Save failed")).toBeInTheDocument());
+    expect(saveAnswer).toHaveBeenCalledWith(payload().attempt.attempt_id, q2, "TRUE", 0);
+    fireEvent.click(screen.getByRole("button", { name: "Retry save" }));
+    await waitFor(() => expect(screen.getByText("Saved")).toBeInTheDocument());
+    expect(saveAnswer).toHaveBeenLastCalledWith(payload().attempt.attempt_id, q2, "TRUE", 0);
+    fireEvent.click(within(question).getByRole("radio", { name: "FALSE" }));
+    await waitFor(() => expect(saveAnswer).toHaveBeenLastCalledWith(payload().attempt.attempt_id, q2, "FALSE", 1));
+    expect(screen.queryByRole("button", { name: "Reload latest" })).not.toBeInTheDocument();
+  });
+
+  it("shows Reload latest and stops periodic retries after a response conflict", async () => {
+    vi.useFakeTimers();
+    vi.mocked(saveAnswer).mockRejectedValueOnce(new ApiError("ATTEMPT_RESPONSE_CONFLICT", "Changed in another tab", 409));
+    const view = render(<ReadingRunner initial={payload()} />);
+    const question = view.container.querySelector(`[data-question-id="${q1}"]`) as HTMLElement;
+    fireEvent.click(within(question).getByRole("radio", { name: "FALSE" }));
+    await act(async () => { vi.advanceTimersByTime(400); });
+    expect(screen.getByText("This response changed in another tab or session.")).toBeInTheDocument();
+    expect(within(question).getByRole("radio", { name: "FALSE" })).toBeChecked();
+    expect(screen.getByRole("button", { name: "Reload latest" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Retry save" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Submit answers" }));
+    await act(async () => { await Promise.resolve(); vi.advanceTimersByTime(10_000); });
+    expect(saveAnswer).toHaveBeenCalledTimes(1);
+    expect(submitAttempt).not.toHaveBeenCalled();
   });
 
   it("blocks Submit after a failed flush and warns before leaving only while unsaved", async () => {

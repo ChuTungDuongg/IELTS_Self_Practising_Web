@@ -26,6 +26,7 @@ export function WritingRunner({ initial }: { initial: ExamPayload }) {
   const [activityError, setActivityError] = useState<string | null>(null);
   const [clock, setClock] = useState(() => Date.now());
   const autosaveRef = useRef<RevisionAutosaveQueue<string> | null>(null);
+  const responseRevisions = useRef<Record<string, number>>(Object.fromEntries(tasks.map((task) => [task.id, task.response_revision])));
   const lastActivity = useRef(0);
   const lastHeartbeat = useRef(0);
   const finalized = useRef(false);
@@ -33,7 +34,10 @@ export function WritingRunner({ initial }: { initial: ExamPayload }) {
     autosaveRef.current?.stop();
   });
   const sendResponse = useCallback(
-    (taskId: string, content: string) => runMutation(() => saveWritingResponse(attemptId, taskId, content)),
+    async (taskId: string, content: string) => {
+      const response = await runMutation(() => saveWritingResponse(attemptId, taskId, content, responseRevisions.current[taskId] ?? 0));
+      responseRevisions.current[taskId] = response.revision;
+    },
     [attemptId, runMutation],
   );
   const { queue: autosave, status: saveState } = useRevisionAutosave<string>(
@@ -102,12 +106,13 @@ export function WritingRunner({ initial }: { initial: ExamPayload }) {
   return <div className="exam-runner writing-exam">
     <header className="exam-header">
       <div><p>WRITING · TASK {task.task_number}</p><h1>{initial.test_title}</h1></div>
-      <div className="exam-header-tools"><PauseAttemptControl attemptId={attemptId} beforePause={flushForSubmission} /><ThemeToggle /><div className="exam-header-status"><span className={`exam-timer ${initial.attempt.timer_mode === "COUNTDOWN" && seconds < 300 ? "exam-timer-warning" : ""}`}>{initial.attempt.timer_mode === "COUNT_UP" ? "Time used " : ""}{formatDuration(seconds)}</span><span className={`exam-save-state exam-save-${saveState}`}>{saveState === "saving" ? "Saving…" : saveState === "error" ? "Save failed" : saveState === "dirty" ? "Unsaved" : "Saved"}</span></div></div>
+      <div className="exam-header-tools"><PauseAttemptControl attemptId={attemptId} beforePause={flushForSubmission} /><ThemeToggle /><div className="exam-header-status"><span className={`exam-timer ${initial.attempt.timer_mode === "COUNTDOWN" && seconds < 300 ? "exam-timer-warning" : ""}`}>{initial.attempt.timer_mode === "COUNT_UP" ? "Time used " : ""}{formatDuration(seconds)}</span><span className={`exam-save-state exam-save-${saveState}`}>{saveState === "saving" ? "Saving…" : saveState === "conflict" ? "Changed in another tab" : saveState === "error" ? "Save failed" : saveState === "dirty" ? "Unsaved" : "Saved"}</span></div></div>
     </header>
     <div className="writing-task-tabs" role="tablist" aria-label="Writing tasks">
       {tasks.map((item, index) => <button key={item.id} type="button" role="tab" aria-selected={index === taskIndex} className={index === taskIndex ? "active" : ""} onClick={() => setTaskIndex(index)}><b>Task {item.task_number}</b><span>{countWords(contents[item.id] ?? "")} words</span></button>)}
     </div>
     {saveState === "error" ? <div role="alert" className="notice notice-error writing-save-error"><span>Your response could not be saved. Retry before submitting.</span><button type="button" className="btn btn-secondary" onClick={() => void flushForSubmission().catch(() => undefined)}>Retry save</button></div> : null}
+    {saveState === "conflict" ? <div role="alert" className="notice notice-error writing-save-error"><span>This response changed in another tab or session. Reload to see the latest saved version.</span><button type="button" className="btn btn-secondary" onClick={() => window.location.reload()}>Reload latest</button></div> : null}
     {submitError ? <p role="alert" className="notice notice-error">{submitError}</p> : null}
     {activityError ? <p role="alert" className="notice notice-error">{activityError}</p> : null}
     <main className="writing-runner-layout">
