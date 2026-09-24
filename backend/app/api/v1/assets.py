@@ -12,8 +12,9 @@ from app.core.config import get_settings
 from app.core.database import get_session
 from app.core.exceptions import AppError
 from app.models import Asset
-from app.models.enums import AssetType
+from app.models.enums import AssetType, UserRole
 from app.schemas.assets import AssetResponse
+from app.services.asset_access import can_user_read_asset
 from app.services.tests import TestService
 from app.storage import LocalAssetStorage
 
@@ -127,15 +128,8 @@ async def get_asset_content(
     asset = await session.scalar(select(Asset).where(Asset.id == asset_id))
     if asset is None:
         raise AppError("ASSET_NOT_FOUND", "The asset does not exist.", 404)
-    if user.role.value != "ADMIN":
-        from app.models import TestVersion
-        from app.models.enums import VersionStatus
-
-        version_status = await session.scalar(
-            select(TestVersion.status).where(TestVersion.id == asset.test_version_id)
-        )
-        if version_status != VersionStatus.PUBLISHED:
-            raise AppError("ASSET_NOT_FOUND", "The asset does not exist.", 404)
+    if user.role != UserRole.ADMIN and not await can_user_read_asset(session, user.id, asset):
+        raise AppError("ASSET_NOT_FOUND", "The asset does not exist.", 404)
     path = LocalAssetStorage(get_settings().resolved_storage_root).resolve(asset.relative_path)
     return FileResponse(
         path,
