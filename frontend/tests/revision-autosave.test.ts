@@ -2,7 +2,8 @@ import { StrictMode } from "react";
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { RevisionAutosaveQueue, useRevisionAutosave } from "@/features/exam/revision-autosave";
-import { ApiError } from "@/lib/api/client";
+import { saveAnswer } from "@/lib/api/attempts";
+import { ApiError, resetAuthRequestStateForTests } from "@/lib/api/client";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -152,5 +153,41 @@ describe("RevisionAutosaveQueue", () => {
     expect(send).toHaveBeenCalledWith("q1", "latest");
     unmount();
     await act(async () => { vi.advanceTimersByTime(0); });
+  });
+
+  it("saves the same answer after an access-token refresh", async () => {
+    resetAuthRequestStateForTests();
+    const attemptId = "11111111-1111-4111-8111-111111111111";
+    const questionId = "22222222-2222-4222-8222-222222222222";
+    let saves = 0;
+    const fetchMock = vi.fn((input: string | URL | Request, _init?: RequestInit) => {
+      void _init;
+      if (String(input).endsWith("/auth/refresh")) return Promise.resolve(new Response(null, { status: 204 }));
+      saves += 1;
+      return Promise.resolve(saves === 1
+        ? new Response(JSON.stringify({ code: "TOKEN_EXPIRED" }), { status: 401 })
+        : new Response(JSON.stringify({
+          question_id: questionId, value: "TRUE", is_correct: null,
+          saved_at: new Date().toISOString(), revision: 1,
+        })));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const queue = new RevisionAutosaveQueue<string>(
+      (_key, answer) => saveAnswer(attemptId, questionId, answer, 0), 400,
+    );
+    try {
+      queue.markDirty(questionId, "TRUE");
+      await queue.saveNow(questionId);
+      expect(queue.status).toBe("saved");
+      expect(queue.hasUnsaved).toBe(false);
+      expect(saves).toBe(2);
+      const writes = fetchMock.mock.calls.filter(([url]) => String(url).includes("/answers/"));
+      expect(writes).toHaveLength(2);
+      expect(writes[0][1]?.body).toBe(writes[1][1]?.body);
+      expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith("/auth/refresh"))).toHaveLength(1);
+    } finally {
+      queue.stop();
+      vi.unstubAllGlobals();
+    }
   });
 });

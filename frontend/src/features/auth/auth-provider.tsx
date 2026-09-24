@@ -44,7 +44,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       })
       .catch((error) => {
         if (active && version === sessionVersion.current) {
-          if (error instanceof ApiError && error.status === 401) setUser(null);
+          if (error instanceof ApiError && (error.status === 401 || error.code === "ACCOUNT_INACTIVE")) {
+            setUser(null);
+            setSessionError(null);
+          }
           else setSessionError(sessionErrorMessage(error));
         }
       })
@@ -52,7 +55,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => { active = false; };
   }, []);
   useEffect(() => {
-    const expired = () => { setUser(null); setSessionError(null); setLoading(false); };
+    const expired = () => {
+      sessionVersion.current += 1;
+      setUser(null);
+      setSessionError(null);
+      setLoading(false);
+    };
     window.addEventListener("ielts:session-expired", expired);
     return () => window.removeEventListener("ielts:session-expired", expired);
   }, []);
@@ -69,7 +77,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     } catch (error) {
       if (version === sessionVersion.current) {
-        if (error instanceof ApiError && error.status === 401) setUser(null);
+        if (error instanceof ApiError && (error.status === 401 || error.code === "ACCOUNT_INACTIVE")) {
+          setUser(null);
+          setSessionError(null);
+        }
         else setSessionError(sessionErrorMessage(error));
       }
       throw error;

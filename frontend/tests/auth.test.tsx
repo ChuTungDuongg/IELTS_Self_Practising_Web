@@ -157,6 +157,7 @@ describe("API refresh coordination", () => {
     resetAuthRequestStateForTests();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+    Object.defineProperty(navigator, "locks", { configurable: true, value: undefined });
   });
 
   it("uses one refresh for concurrent 401 responses and retries both requests once", async () => {
@@ -164,6 +165,7 @@ describe("API refresh coordination", () => {
     let resolveRefresh!: (response: Response) => void;
     const refreshResponse = new Promise<Response>((resolve) => { resolveRefresh = resolve; });
     const fetchMock = vi.fn((input: string | URL | Request, _init?: RequestInit) => {
+      void _init;
       const url = String(input);
       if (url.endsWith("/auth/refresh")) return refreshResponse;
       const count = (attempts.get(url) ?? 0) + 1;
@@ -197,6 +199,159 @@ describe("API refresh coordination", () => {
     await expect(apiRequest("/protected")).rejects.toMatchObject({ status: 401 });
     expect(expired).toHaveBeenCalledOnce();
     window.removeEventListener("ielts:session-expired", expired);
+  });
+
+  it("uses a cross-tab lock and skips rotation after another tab recovers the cookies", async () => {
+    const request = vi.fn(async (_name: string, callback: () => Promise<boolean>) => callback());
+    Object.defineProperty(navigator, "locks", { configurable: true, value: { request } });
+    let protectedCalls = 0;
+    const fetchMock = vi.fn((input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith("/auth/me")) return Promise.resolve(new Response(JSON.stringify(baseUser)));
+      if (url.endsWith("/auth/refresh")) throw new Error("rotation should be skipped");
+      protectedCalls += 1;
+      return Promise.resolve(protectedCalls === 1
+        ? new Response(JSON.stringify({ code: "TOKEN_EXPIRED" }), { status: 401 })
+        : new Response(JSON.stringify({ saved: true })));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(apiRequest("/protected")).resolves.toEqual({ saved: true });
+    expect(request).toHaveBeenCalledWith("ielts-auth-refresh", expect.any(Function));
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith("/auth/refresh"))).toHaveLength(0);
+    expect(protectedCalls).toBe(2);
+  });
+
+  it("recovers a losing refresh request when another tab has already updated cookies", async () => {
+    const expired = vi.fn();
+    window.addEventListener("ielts:session-expired", expired);
+    let protectedCalls = 0;
+    const fetchMock = vi.fn((input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith("/auth/refresh")) return Promise.resolve(new Response(null, { status: 401 }));
+      if (url.endsWith("/auth/me")) return Promise.resolve(new Response(JSON.stringify(baseUser)));
+      protectedCalls += 1;
+      return Promise.resolve(protectedCalls === 1
+        ? new Response(JSON.stringify({ code: "TOKEN_EXPIRED" }), { status: 401 })
+        : new Response(JSON.stringify({ saved: true })));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      await expect(apiRequest("/protected")).resolves.toEqual({ saved: true });
+      expect(expired).not.toHaveBeenCalled();
+      expect(protectedCalls).toBe(2);
+    } finally {
+      window.removeEventListener("ielts:session-expired", expired);
+    }
+  });
+
+  it("announces real expiration once after the lock probe and failure reconciliation", async () => {
+    const request = vi.fn(async (_name: string, callback: () => Promise<boolean>) => callback());
+    Object.defineProperty(navigator, "locks", { configurable: true, value: { request } });
+    const expired = vi.fn();
+    window.addEventListener("ielts:session-expired", expired);
+    const fetchMock = vi.fn(() => Promise.resolve(new Response(
+      JSON.stringify({ code: "AUTHENTICATION_REQUIRED", message: "Sign in" }), { status: 401 },
+    )));
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      await expect(apiRequest("/protected")).rejects.toMatchObject({ status: 401 });
+      expect(expired).toHaveBeenCalledOnce();
+      expect(fetchMock).toHaveBeenCalledTimes(4);
+    } finally {
+      window.removeEventListener("ielts:session-expired", expired);
+    }
+  });
+
+  it("keeps a refresh network failure retryable when reconciliation also loses the network", async () => {
+    const expired = vi.fn();
+    window.addEventListener("ielts:session-expired", expired);
+    const fetchMock = vi.fn((input: string | URL | Request) => {
+      if (String(input).endsWith("/protected")) {
+        return Promise.resolve(new Response(JSON.stringify({ code: "TOKEN_EXPIRED" }), { status: 401 }));
+      }
+      return Promise.reject(new TypeError("offline"));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      await expect(apiRequest("/protected")).rejects.toMatchObject({ code: "NETWORK_ERROR", status: 0 });
+      expect(expired).not.toHaveBeenCalled();
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+    } finally {
+      window.removeEventListener("ielts:session-expired", expired);
+    }
+  });
+
+  it("recovers when refresh loses its response but the shared cookies are valid", async () => {
+    const expired = vi.fn();
+    window.addEventListener("ielts:session-expired", expired);
+    let protectedCalls = 0;
+    const fetchMock = vi.fn((input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith("/auth/refresh")) return Promise.reject(new TypeError("connection lost"));
+      if (url.endsWith("/auth/me")) return Promise.resolve(new Response(JSON.stringify(baseUser)));
+      protectedCalls += 1;
+      return Promise.resolve(protectedCalls === 1
+        ? new Response(JSON.stringify({ code: "TOKEN_EXPIRED" }), { status: 401 })
+        : new Response(JSON.stringify({ saved: true })));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      await expect(apiRequest("/protected")).resolves.toEqual({ saved: true });
+      expect(expired).not.toHaveBeenCalled();
+      expect(protectedCalls).toBe(2);
+    } finally {
+      window.removeEventListener("ielts:session-expired", expired);
+    }
+  });
+
+  it("clears provider state on ACCOUNT_INACTIVE without refreshing", async () => {
+    vi.mocked(getCurrentUser).mockResolvedValue(baseUser);
+    render(<AuthProvider><AppShell><p>Content</p></AppShell></AuthProvider>);
+    await screen.findByText("Student");
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      code: "ACCOUNT_INACTIVE", message: "This account is inactive.",
+    }), { status: 403 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(apiRequest("/protected")).rejects.toMatchObject({ code: "ACCOUNT_INACTIVE", status: 403 });
+    expect(await screen.findByRole("link", { name: "Login" })).toBeInTheDocument();
+    expect(screen.queryByText("Student")).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it("leaves ADMIN_REQUIRED as a plain 403 without refreshing", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      code: "ADMIN_REQUIRED", message: "Administrator access is required.",
+    }), { status: 403 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(apiRequest("/admin/tests")).rejects.toMatchObject({ code: "ADMIN_REQUIRED", status: 403 });
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it("does not expire a valid session when a retried resource still returns 401", async () => {
+    const expired = vi.fn();
+    window.addEventListener("ielts:session-expired", expired);
+    const fetchMock = vi.fn((input: string | URL | Request) => Promise.resolve(
+      String(input).endsWith("/auth/me")
+        ? new Response(JSON.stringify(baseUser))
+        : String(input).endsWith("/auth/refresh")
+          ? new Response(null, { status: 204 })
+          : new Response(JSON.stringify({ code: "RESOURCE_DENIED" }), { status: 401 }),
+    ));
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      await expect(apiRequest("/protected")).rejects.toMatchObject({ code: "RESOURCE_DENIED", status: 401 });
+      expect(expired).not.toHaveBeenCalled();
+      expect(fetchMock).toHaveBeenCalledTimes(4);
+    } finally {
+      window.removeEventListener("ielts:session-expired", expired);
+    }
   });
 
   it("refreshes an expired auth/me request before hydrating the session", async () => {

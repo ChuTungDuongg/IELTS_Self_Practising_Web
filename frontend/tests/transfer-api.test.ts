@@ -69,7 +69,7 @@ describe("Transfer API authentication", () => {
         name: "ApiError", code: "AUTHENTICATION_REQUIRED", status: 401,
       } satisfies Partial<ApiError>);
       expect(onExpired).toHaveBeenCalledOnce();
-      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(fetchMock).toHaveBeenCalledTimes(3);
     } finally {
       window.removeEventListener("ielts:session-expired", onExpired);
     }

@@ -11,7 +11,13 @@ from app.bootstrap_admin import bootstrap_admin
 from app.core.config import Settings, get_settings
 from app.core.database import get_session
 from app.core.exceptions import AppError
-from app.core.security import create_token, decode_token, hash_password, verify_password
+from app.core.security import (
+    create_token,
+    decode_token,
+    hash_password,
+    token_fingerprint,
+    verify_password,
+)
 from app.main import app
 from app.models import OAuthAccount, RefreshSession, User
 from app.models.enums import UserRole
@@ -156,6 +162,66 @@ async def test_registration_login_me_refresh_and_logout(client, db_session) -> N
     assert (await client.get("/api/v1/auth/me")).status_code == 401
     client.cookies.set("ielts_refresh", current_refresh, path="/")
     assert (await client.post("/api/v1/auth/refresh")).status_code == 401
+    assert (await client.post("/api/v1/auth/logout")).status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_refresh_rotation_rolls_back_when_replacement_flush_fails(
+    db_session, test_user, monkeypatch
+) -> None:
+    service = AuthService(db_session, Settings(jwt_secret=SECRET))
+    user_id = test_user.id
+    original = await service.issue_session(test_user)
+    claims = service._decode_refresh(original.refresh_token)
+    original_hash = token_fingerprint(claims.jwt_id)
+    original_flush = db_session.flush
+
+    async def fail_after_flush(*args, **kwargs):
+        await original_flush(*args, **kwargs)
+        raise RuntimeError("replacement persistence failed")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(db_session, "flush", fail_after_flush)
+        with pytest.raises(RuntimeError, match="replacement persistence failed"):
+            await service.rotate_refresh_token(original.refresh_token)
+
+    old_row = await db_session.scalar(
+        select(RefreshSession).where(RefreshSession.token_hash == original_hash)
+    )
+    assert old_row is not None and old_row.revoked_at is None
+    assert len(list(await db_session.scalars(
+        select(RefreshSession).where(RefreshSession.user_id == user_id)
+    ))) == 1
+    await db_session.rollback()
+
+    _, replacement = await service.rotate_refresh_token(original.refresh_token)
+    assert replacement.refresh_token != original.refresh_token
+    rows = list(await db_session.scalars(
+        select(RefreshSession).where(RefreshSession.user_id == user_id)
+    ))
+    assert len(rows) == 2
+    assert sum(row.revoked_at is None for row in rows) == 1
+
+
+@pytest.mark.asyncio
+async def test_deactivated_user_rejects_existing_access_and_refresh(client, db_session, test_user) -> None:
+    user_id = test_user.id
+    issued = await AuthService(db_session, Settings(jwt_secret=SECRET)).issue_session(test_user)
+    client.cookies.set("ielts_access", issued.access_token, path="/")
+    client.cookies.set("ielts_refresh", issued.refresh_token, path="/")
+    async with db_session.begin():
+        test_user.is_active = False
+
+    access = await client.get("/api/v1/auth/me")
+    assert access.status_code == 403
+    assert access.json()["code"] == "ACCOUNT_INACTIVE"
+    refresh = await client.post("/api/v1/auth/refresh")
+    assert refresh.status_code == 401
+    assert refresh.json()["code"] == "INVALID_REFRESH_TOKEN"
+    rows = list(await db_session.scalars(
+        select(RefreshSession).where(RefreshSession.user_id == user_id)
+    ))
+    assert len(rows) == 1
 
 
 @pytest.mark.asyncio

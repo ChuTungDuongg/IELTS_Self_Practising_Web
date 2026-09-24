@@ -178,7 +178,9 @@ class AuthService:
                 raise AppError("INVALID_REFRESH_TOKEN", "The refresh session is invalid.", 401)
             refresh.revoked_at = now
             user = refresh.user
-        return user, await self.issue_session(user)
+            issued = self._record_session(user)
+            await self.session.flush()
+        return user, issued
 
     async def revoke_refresh_token(self, token: str | None) -> None:
         if not token:
