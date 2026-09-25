@@ -86,6 +86,17 @@ describe("fantasy galaxy visual system", () => {
     expect(css).toMatch(/@media \(max-width:\s*700px\)[\s\S]*?\.history-group-skill\s*\{[^}]*grid-template-columns:\s*1fr/);
   });
 
+  it("gives Full Mock sessions a padded section and footer across screen sizes", () => {
+    expect(css).toMatch(/\.history-session-section\s*\{[^}]*padding:\s*22px/);
+    expect(css).toMatch(/\.history-section-header\s*\{[^}]*border-bottom:/);
+    expect(css).toMatch(/\.history-session-grid\s*\{[^}]*padding:\s*0/);
+    expect(css).toMatch(/\.history-group-footer\s*\{[^}]*border-top:[^}]*padding:/);
+    expect(css).toMatch(/@media \(max-width:\s*920px\)[\s\S]*?\.history-row\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) auto/);
+    expect(css).toMatch(/@media \(max-width:\s*700px\)[\s\S]*?\.history-row\s*\{[^}]*grid-template-columns:\s*1fr/);
+    expect(css).toMatch(/@media \(max-width:\s*700px\)[\s\S]*?\.history-group-skill\s*\{[^}]*grid-template-columns:\s*1fr/);
+    expect(css).toMatch(/@media \(max-width:\s*700px\)[\s\S]*?\.history-group-footer \.btn\s*\{[^}]*width:\s*100%/);
+  });
+
   it("uses readable contextual label and criterion assessment classes", () => {
     for (const selector of [
       ".authoring-eyebrow",

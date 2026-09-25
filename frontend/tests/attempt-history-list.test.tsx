@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AttemptHistoryList } from "@/features/history/attempt-history-list";
 import { ApiError } from "@/lib/api/client";
 import { deleteAttempt, resumeAttempt } from "@/lib/api/attempts";
-import type { HistoryGroup, HistoryItem, HistoryResponse } from "@/lib/api/history";
+import type { HistoryGroup, HistoryItem, HistoryResponse, MockHistoryGroup } from "@/lib/api/history";
 
 const refresh = vi.fn();
 const push = vi.fn();
@@ -89,8 +89,22 @@ const completeGroup: HistoryGroup = {
   overall_band_score: 8.0,
 };
 
-function history(items: HistoryItem[], groups: HistoryGroup[] = []): HistoryResponse {
-  return { items, groups, total: items.length };
+const activeSession: MockHistoryGroup = {
+  session_id: "99999999-9999-4999-8999-999999999999",
+  test_version_id: submitted.test_version_id,
+  test_title: "Cambridge 11 Test 2",
+  version_number: 4,
+  status: "IN_PROGRESS",
+  started_at: "2026-09-20T00:00:00Z",
+  finished_at: null,
+  listening: null,
+  reading: null,
+  writing: null,
+  overall_band_score: null,
+};
+
+function history(items: HistoryItem[], groups: HistoryGroup[] = [], sessions: MockHistoryGroup[] = []): HistoryResponse {
+  return { items, groups, sessions, total: items.length };
 }
 
 describe("AttemptHistoryList", () => {
@@ -116,6 +130,46 @@ describe("AttemptHistoryList", () => {
     expect(screen.getByRole("button", { name: "Delete Fictional active attempt" })).toHaveClass(
       "btn-danger-ghost",
     );
+  });
+
+  it("groups an active Full Mock header, skills, and Resume action into one card", () => {
+    const { container } = render(<AttemptHistoryList initialHistory={history([inProgress], [], [activeSession])} />);
+    const section = container.querySelector(".history-session-section")!;
+    const card = section.querySelector(".history-session-card")!;
+
+    expect(within(section as HTMLElement).getByRole("heading", { name: "Full Mock sessions" })).toBeInTheDocument();
+    expect(within(card as HTMLElement).getByText("Full Mock")).toBeInTheDocument();
+    expect(within(card as HTMLElement).getByText("Cambridge 11 Test 2")).toBeInTheDocument();
+    expect(within(card as HTMLElement).getByText("Version 4")).toBeInTheDocument();
+    expect(within(card as HTMLElement).getByText("In progress")).toBeInTheDocument();
+    const skills = card.querySelector(".history-group-skills")!;
+    expect(within(skills as HTMLElement).getByText("Listening")).toBeInTheDocument();
+    expect(within(skills as HTMLElement).getByText("Reading")).toBeInTheDocument();
+    expect(within(skills as HTMLElement).getByText("Writing")).toBeInTheDocument();
+    expect(within(skills as HTMLElement).getAllByText("No finalized attempt")).toHaveLength(3);
+    expect(within(card.querySelector(".history-group-footer") as HTMLElement).getByRole("link", { name: "Resume Full Mock" }))
+      .toHaveAttribute("href", `/test-session/${activeSession.session_id}`);
+    expect(screen.getByRole("tab", { name: "By skill" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("link", { name: "Continue" })).toHaveAttribute("href", `/attempt/${inProgress.attempt_id}`);
+    expect(screen.getByRole("button", { name: "Delete Fictional active attempt" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "By test" }));
+    expect(screen.getByRole("tab", { name: "By test" })).toHaveAttribute("aria-selected", "true");
+    expect(card).toBeInTheDocument();
+  });
+
+  it("shows completed Full Mock results without an empty Resume footer", () => {
+    const { container } = render(<AttemptHistoryList initialHistory={history(
+      [submitted, listening, writing],
+      [],
+      [{ ...activeSession, status: "COMPLETED", finished_at: "2026-09-20T01:00:00Z", reading: submitted, listening, writing, overall_band_score: 8.0 }],
+    )} />);
+    const card = container.querySelector(".history-session-card")!;
+    expect(within(card as HTMLElement).getByText("Overall band 8.0")).toBeInTheDocument();
+    expect(card.querySelector(".history-group-footer")).not.toBeInTheDocument();
+    expect(within(card as HTMLElement).queryByRole("link", { name: "Resume Full Mock" })).not.toBeInTheDocument();
+    expect(within(card as HTMLElement).getByRole("link", { name: "Review Listening" })).toBeInTheDocument();
+    expect(within(card as HTMLElement).getByRole("link", { name: "Review Reading" })).toBeInTheDocument();
+    expect(within(card as HTMLElement).getByRole("link", { name: "Review Writing" })).toBeInTheDocument();
   });
 
   it("resumes a paused row through the backend before navigating", async () => {

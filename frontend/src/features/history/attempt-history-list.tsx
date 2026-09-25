@@ -58,7 +58,18 @@ export function AttemptHistoryList({ initialHistory }: { initialHistory: History
     <>
       {items.length ? (
         <>
-          {initialHistory.sessions?.length ? <section className="mb-6"><h2 className="mb-3">Full Mock sessions</h2><ul className="history-group-grid">{initialHistory.sessions.map((session) => <MockSessionCard key={session.session_id} session={session} />)}</ul></section> : null}
+          {initialHistory.sessions?.length ? (
+            <section className="history-session-section" aria-labelledby="history-sessions-heading">
+              <div className="history-section-header">
+                <h2 id="history-sessions-heading">Full Mock sessions</h2>
+              </div>
+              <ul className="history-group-grid history-session-grid">
+                {initialHistory.sessions.map((session) => (
+                  <MockSessionCard key={session.session_id} session={session} />
+                ))}
+              </ul>
+            </section>
+          ) : null}
           <div className="history-tabs" role="tablist" aria-label="History view">
             <button
               type="button"
@@ -271,5 +282,32 @@ function HistoryGroupSkill({ label, item }: { label: string; item: HistoryItem |
 }
 
 function MockSessionCard({ session }: { session: MockHistoryGroup }) {
-  return <li className="history-group-card"><div className="history-group-heading"><div><p className="practice-module-kicker">Full Mock</p><p className="history-record-title">{session.test_title}</p><p className="history-record-date">Version {session.version_number}</p></div><strong>{session.status === "COMPLETED" ? `Overall band ${session.overall_band_score?.toFixed(1) ?? "—"}` : "In progress"}</strong></div><ul className="history-group-skills"><HistoryGroupSkill label="Listening" item={session.listening} /><HistoryGroupSkill label="Reading" item={session.reading} /><HistoryGroupSkill label="Writing" item={session.writing} /></ul>{session.status === "IN_PROGRESS" ? <Link href={`/test-session/${session.session_id}`} className="btn btn-primary mt-3">Resume Full Mock</Link> : null}</li>;
+  return (
+    <li className="history-group-card history-session-card">
+      <div className="history-group-heading">
+        <div>
+          <p className="history-session-kicker">Full Mock</p>
+          <p className="history-record-title">{session.test_title}</p>
+          <p className="history-record-date">Version {session.version_number}</p>
+        </div>
+        <strong>
+          {session.status === "COMPLETED"
+            ? `Overall band ${session.overall_band_score?.toFixed(1) ?? "—"}`
+            : "In progress"}
+        </strong>
+      </div>
+      <ul className="history-group-skills">
+        <HistoryGroupSkill label="Listening" item={session.listening} />
+        <HistoryGroupSkill label="Reading" item={session.reading} />
+        <HistoryGroupSkill label="Writing" item={session.writing} />
+      </ul>
+      {session.status === "IN_PROGRESS" ? (
+        <div className="history-group-footer">
+          <Link href={`/test-session/${session.session_id}`} className="btn btn-primary">
+            Resume Full Mock
+          </Link>
+        </div>
+      ) : null}
+    </li>
+  );
 }
