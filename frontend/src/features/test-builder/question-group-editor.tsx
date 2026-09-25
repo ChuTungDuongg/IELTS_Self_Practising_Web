@@ -119,13 +119,7 @@ export function QuestionGroupEditor({
       };
       next.answer_key = {
         kind: "SINGLE_OPTION",
-        value: String((group.config.options as Array<{ id: string }>)[0]?.id ?? ""),
-      };
-    }
-    if (group.question_type === "matching") {
-      next.answer_key = {
-        kind: "SINGLE_OPTION",
-        value: String((group.config.options as Array<{ id: string }>)[0]?.id ?? ""),
+        value: "",
       };
     }
     if (["plan_labelling", "map_labelling"].includes(group.question_type)) {
@@ -133,7 +127,7 @@ export function QuestionGroupEditor({
         const marker = (template.config.markers as Array<Record<string, unknown>>)[0];
         config = { ...group.config, markers: [...group.config.markers, marker] };
       }
-      next.answer_key = { kind: "SINGLE_OPTION", value: String((group.config.options as Array<{ id: string }>)[0]?.id ?? "") };
+      next.answer_key = { kind: "SINGLE_OPTION", value: "" };
     }
     if (["form_completion", "flow_chart_completion", "summary_completion", "sentence_completion"].includes(group.question_type)) {
       const layout = group.config.layout as { kind: string; columns?: unknown[]; rows?: unknown[]; nodes?: unknown[] };

@@ -1,4 +1,5 @@
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 
@@ -97,6 +98,65 @@ async def test_empty_and_incremental_single_option_keys_remain_draft_saveable(db
     with pytest.raises(AppError) as caught:
         await LifecycleService(db_session).publish(version_id)
     assert caught.value.code == "VALIDATION_FAILED"
+
+
+@pytest.mark.integration
+async def test_matching_q8_key_persists_and_clears_its_publish_validation_issue(db_session):
+    version_id, group = await import_group(
+        db_session,
+        {
+            "question_type": "matching",
+            "options": [
+                {"key": "A", "text": "Fictional date one"},
+                {"key": "B", "text": "Fictional date two"},
+            ],
+            "questions": [
+                {"prompt": f"Fictional event {number}", **({"answer": "A"} if number < 8 else {})}
+                for number in range(1, 9)
+            ],
+        },
+    )
+    assert group.questions[7].answer_key == {"kind": "SINGLE_OPTION", "value": ""}
+    before = await LifecycleService(db_session).validate(version_id)
+    assert any(
+        issue.path == "reading.questions.8" and issue.message == "Answer key is incomplete."
+        for issue in before.errors
+    )
+    option_id = group.config["options"][1]["id"]
+    question_ids = [question.id for question in group.questions]
+    saved = await save_group(
+        db_session,
+        group,
+        keys=[
+            *(question.answer_key for question in group.questions[:7]),
+            {"kind": "SINGLE_OPTION", "value": option_id},
+        ],
+    )
+    assert [question.id for question in saved.questions] == question_ids
+    assert saved.questions[7].answer_key == {"kind": "SINGLE_OPTION", "value": option_id}
+    await db_session.rollback()
+    reopened = (
+        (await ReadingService(db_session).builder_version(version_id))
+        .modules[0]
+        .passages[0]
+        .question_groups[0]
+    )
+    assert reopened.questions[7].answer_key["value"] == option_id
+    after = await LifecycleService(db_session).validate(version_id)
+    assert not any(issue.path == "reading.questions.8" for issue in after.errors)
+    stale = await save_group(
+        db_session,
+        reopened,
+        keys=[
+            *(question.answer_key for question in reopened.questions[:7]),
+            {"kind": "SINGLE_OPTION", "value": str(uuid4())},
+        ],
+    )
+    assert stale.questions[7].answer_key["value"] not in {
+        option["id"] for option in stale.config["options"]
+    }
+    stale_validation = await LifecycleService(db_session).validate(version_id)
+    assert any(issue.path == "reading.questions.8" for issue in stale_validation.errors)
 
 
 @pytest.mark.integration

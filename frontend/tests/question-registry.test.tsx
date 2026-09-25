@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { questionRegistry } from "@/features/questions/registry";
-import { MatchingHeadingsEditor, MultipleChoiceEditor, TextCompletionEditor, VisualLabellingEditor } from "@/features/questions/editors";
+import { MatchingEditor, MatchingHeadingsEditor, MatchingInformationEditor, MultipleChoiceEditor, SummaryWordListEditor, TextCompletionEditor, VisualLabellingEditor } from "@/features/questions/editors";
 import { QuestionGroupEditor } from "@/features/test-builder/question-group-editor";
 import { BuilderLifecycleProvider } from "@/features/test-builder/builder-lifecycle";
 import { QuestionGroupInstruction, resolveQuestionGroupInstruction } from "@/features/questions/question-group-instruction";
@@ -13,6 +13,58 @@ describe("question registry", () => {
     for (const type of ["text_completion", "table_completion", "form_completion", "flow_chart_completion", "summary_completion", "sentence_completion", "short_answer", "diagram_labelling"] as const) {
       expect(questionRegistry[type].createDefault(31).questions[0].answer_key).toEqual({ kind: "TEXT", accepted: [], case_sensitive: false });
     }
+  });
+
+  it.each(["matching", "matching_features", "matching_sentence_endings", "plan_labelling", "map_labelling"] as const)("starts %s without selecting a fabricated matching answer", (type) => {
+    const group = questionRegistry[type].createDefault(8);
+    const options = group.config.options as Array<{ id: string }>;
+    expect(options[0].id).toBeTruthy();
+    expect(group.questions[0].answer_key).toEqual({ kind: "SINGLE_OPTION", value: "" });
+    render(<MatchingEditor group={group} onChange={vi.fn()} />);
+    const select = screen.getByRole("combobox", { name: "Question 8 correct option" }) as HTMLSelectElement;
+    expect(select).toHaveValue("");
+    expect(select.selectedOptions[0]).toHaveTextContent("Choose option");
+  });
+
+  it("shows an unavailable matching key instead of disguising it as the first option", () => {
+    const group = questionRegistry.matching.createDefault(8);
+    group.questions[0].answer_key = { kind: "SINGLE_OPTION", value: crypto.randomUUID() };
+    render(<MatchingEditor group={group} onChange={vi.fn()} />);
+    expect((screen.getByRole("combobox", { name: "Question 8 correct option" }) as HTMLSelectElement).selectedOptions[0]).toHaveTextContent("Unavailable option");
+  });
+
+  it("saves the selected stable matching option ID into local group state", () => {
+    const group = questionRegistry.matching.createDefault(8);
+    const target = (group.config.options as Array<{ id: string }>)[1].id;
+    const onChange = vi.fn();
+    render(<MatchingEditor group={group} onChange={onChange} />);
+    fireEvent.change(screen.getByRole("combobox", { name: "Question 8 correct option" }), { target: { value: target } });
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({
+      questions: [expect.objectContaining({ answer_key: { kind: "SINGLE_OPTION", value: target } })],
+    }));
+  });
+
+  it("shows an empty word-list key as Choose option and keeps headings' own placeholder", () => {
+    const summary = questionRegistry.summary_completion_word_list.createDefault(31);
+    expect(summary.questions[0].answer_key).toEqual({ kind: "SINGLE_OPTION", value: "" });
+    const view = render(<SummaryWordListEditor group={summary} onChange={vi.fn()} />);
+    const wordSelect = screen.getByRole("combobox", { name: "Question 31 correct option" }) as HTMLSelectElement;
+    expect(wordSelect).toHaveValue("");
+    expect(wordSelect.selectedOptions[0]).toHaveTextContent("Choose option");
+    view.unmount();
+    const heading = questionRegistry.matching_headings.createDefault(1);
+    const block = { id: crypto.randomUUID(), type: "paragraph" as const, label: "A", text: "Fictional content." };
+    render(<MatchingHeadingsEditor group={heading} onChange={vi.fn()} passageBlocks={[block]} />);
+    expect((screen.getByRole("combobox", { name: "Question 1 correct heading" }) as HTMLSelectElement).selectedOptions[0]).toHaveTextContent("Choose heading");
+  });
+
+  it("keeps Matching Information's empty paragraph placeholder", () => {
+    const group = questionRegistry.matching_information.createDefault(12);
+    const block = { id: crypto.randomUUID(), type: "paragraph" as const, label: "A", text: "Fictional passage." };
+    render(<MatchingInformationEditor group={group} onChange={vi.fn()} passageBlocks={[block]} />);
+    const select = screen.getByRole("combobox") as HTMLSelectElement;
+    expect(select).toHaveValue("");
+    expect(select.selectedOptions[0]).toHaveTextContent("Choose paragraph");
   });
   const imageAsset = {
     id: crypto.randomUUID(),
@@ -572,6 +624,7 @@ describe("question registry", () => {
 
   it("blocks deleting a heading while an assignment references it", () => {
     const group = questionRegistry.matching_headings.createDefault(1);
+    group.questions[0].answer_key = { kind: "SINGLE_OPTION", value: (group.config.options as Array<{ id: string }>)[0].id };
     const view = render(<MatchingHeadingsEditor group={group} onChange={vi.fn()} passageBlocks={[]} />);
     const removeButtons = within(view.container).getAllByRole("button", { name: "Remove" });
     expect(removeButtons[0]).toBeDisabled();

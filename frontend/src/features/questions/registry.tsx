@@ -125,13 +125,13 @@ const definitions: QuestionTypeDefinition[] = [
     id: "matching_headings", label: "Matching Headings", category: "reading",
     BuilderEditor: MatchingHeadingsEditor, AnswerKeyEditor: MatchingHeadingsEditor, ExamRenderer: MatchingHeadingsRenderer, ReviewRenderer: MatchingHeadingsRenderer,
     responseSchema: z.string(), configSchema: z.object({}), instruction: staticInstruction("Choose the correct heading for each paragraph from the list of headings below."),
-    createDefault: (number) => { const options = [{ id: crypto.randomUUID(), label: "i", text: "First heading" }, { id: crypto.randomUUID(), label: "ii", text: "Second heading" }]; return { question_type: "matching_headings", instruction: "", config: { options, allow_option_reuse: false }, order_index: 0, questions: [{ id: crypto.randomUUID(), number, prompt: "Choose a heading.", config: { target_block_id: "" }, answer_key: { kind: "SINGLE_OPTION", value: options[0].id }, order_index: 0 }] }; },
+    createDefault: (number) => { const options = [{ id: crypto.randomUUID(), label: "i", text: "First heading" }, { id: crypto.randomUUID(), label: "ii", text: "Second heading" }]; return { question_type: "matching_headings", instruction: "", config: { options, allow_option_reuse: false }, order_index: 0, questions: [{ id: crypto.randomUUID(), number, prompt: "Choose a heading.", config: { target_block_id: "" }, answer_key: { kind: "SINGLE_OPTION", value: "" }, order_index: 0 }] }; },
   },
   {
     id: "matching", label: "Matching", category: "shared",
     BuilderEditor: MatchingEditor, AnswerKeyEditor: MatchingEditor, ExamRenderer: MatchingRenderer, ReviewRenderer: MatchingRenderer,
     responseSchema: z.string(), configSchema: z.object({}), instruction: staticInstruction("Match each prompt with the correct option."),
-    createDefault: (number) => { const options = newOptions(); return { question_type: "matching", instruction: "", config: { options }, order_index: 0, questions: [{ id: crypto.randomUUID(), number, prompt: "Item to match", config: {}, answer_key: { kind: "SINGLE_OPTION", value: options[0].id }, order_index: 0 }] }; },
+    createDefault: (number) => { const options = newOptions(); return { question_type: "matching", instruction: "", config: { options }, order_index: 0, questions: [{ id: crypto.randomUUID(), number, prompt: "Item to match", config: {}, answer_key: { kind: "SINGLE_OPTION", value: "" }, order_index: 0 }] }; },
   },
   {
     id: "matching_information", label: "Matching Information", category: "reading",
@@ -147,13 +147,13 @@ const definitions: QuestionTypeDefinition[] = [
     id, label, category: "reading" as const,
     BuilderEditor: MatchingEditor, AnswerKeyEditor: MatchingEditor, ExamRenderer: MatchingRenderer, ReviewRenderer: MatchingRenderer,
     responseSchema: z.string().uuid(), configSchema: z.object({ options: z.array(optionSchema).min(2), allow_option_reuse: z.boolean().default(false) }), instruction: staticInstruction(intro),
-    createDefault: (number: number) => { const options = newOptions(); return { question_type: id, instruction: "", config: { options, allow_option_reuse: id === "matching_features" }, order_index: 0, questions: [{ id: crypto.randomUUID(), number, prompt: id === "matching_sentence_endings" ? "Sentence beginning…" : "Statement", config: {}, answer_key: { kind: "SINGLE_OPTION", value: options[0].id }, order_index: 0 }] }; },
+    createDefault: (number: number) => { const options = newOptions(); return { question_type: id, instruction: "", config: { options, allow_option_reuse: id === "matching_features" }, order_index: 0, questions: [{ id: crypto.randomUUID(), number, prompt: id === "matching_sentence_endings" ? "Sentence beginning…" : "Statement", config: {}, answer_key: { kind: "SINGLE_OPTION", value: "" }, order_index: 0 }] }; },
   })),
   {
     id: "summary_completion_word_list", label: "Summary Completion — Word List", category: "reading",
     BuilderEditor: SummaryWordListEditor, AnswerKeyEditor: SummaryWordListEditor, ExamRenderer: SummaryWordListRenderer, ReviewRenderer: SummaryWordListRenderer,
     responseSchema: z.string().uuid(), configSchema: z.object({ mode: z.enum(["SENTENCE", "PASSAGE"]), title: z.string().max(300).optional(), options: z.array(optionSchema).min(2), blocks: z.array(z.object({ id: z.string().uuid(), segments: z.array(z.object({ id: z.string().uuid(), type: z.enum(["TEXT", "GAP"]), text: z.string().optional(), question_id: z.string().uuid().optional() })) })) }), instruction: staticInstruction("Complete the summary using the list of words or phrases below."),
-    createDefault: (number) => { const options = newOptions(); const question = { id: crypto.randomUUID(), number, prompt: "Summary gap", config: {}, answer_key: { kind: "SINGLE_OPTION", value: options[0].id }, order_index: 0 }; return { question_type: "summary_completion_word_list", instruction: "", config: { mode: "PASSAGE", options, blocks: [{ id: crypto.randomUUID(), segments: [{ id: crypto.randomUUID(), type: "TEXT" as const, text: "Complete the summary: " }, { id: crypto.randomUUID(), type: "GAP" as const, question_id: question.id }] }] }, order_index: 0, questions: [question] }; },
+    createDefault: (number) => { const options = newOptions(); const question = { id: crypto.randomUUID(), number, prompt: "Summary gap", config: {}, answer_key: { kind: "SINGLE_OPTION", value: "" }, order_index: 0 }; return { question_type: "summary_completion_word_list", instruction: "", config: { mode: "PASSAGE", options, blocks: [{ id: crypto.randomUUID(), segments: [{ id: crypto.randomUUID(), type: "TEXT" as const, text: "Complete the summary: " }, { id: crypto.randomUUID(), type: "GAP" as const, question_id: question.id }] }] }, order_index: 0, questions: [question] }; },
   },
 ];
 
@@ -175,7 +175,7 @@ for (const [id, label] of [["plan_labelling", "Plan Labelling"], ["map_labelling
       const config = context?.moduleType === "LISTENING"
         ? { options }
         : { options, markers: [{ id: crypto.randomUUID(), question_id: questionId, x: 0.5, y: 0.5 }] };
-      return { question_type: id, instruction: "", config, order_index: 0, questions: [{ id: questionId, number, prompt: "Choose the correct label.", config: {}, answer_key: { kind: "SINGLE_OPTION", value: options[0].id }, order_index: 0 }] };
+      return { question_type: id, instruction: "", config, order_index: 0, questions: [{ id: questionId, number, prompt: "Choose the correct label.", config: {}, answer_key: { kind: "SINGLE_OPTION", value: "" }, order_index: 0 }] };
     },
   });
 }

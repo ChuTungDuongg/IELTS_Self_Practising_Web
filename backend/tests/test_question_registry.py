@@ -865,7 +865,9 @@ def test_legacy_diagram_options_and_markers_normalize_to_text_canvas() -> None:
         group_id=uuid4(),
         passage_blocks=[],
     )
-    assert set(config) == {"items"}
+    assert config["title"] == ""
+    assert config["annotations"] == []
+    assert "items" in config
     assert config["items"][0]["question_id"] == question_id
     assert config["items"][0]["arrow"]["end_x"] == 0.48
     assert questions[0]["prompt"] == "A pair of {{gap}} are lifted."
@@ -874,6 +876,44 @@ def test_legacy_diagram_options_and_markers_normalize_to_text_canvas() -> None:
         "accepted": ["gates"],
         "case_sensitive": False,
     }
+    assert questions[0]["id"] == question_id
+    assert questions[0]["number"] == 20
+
+
+def test_modern_diagram_title_and_static_annotations_survive_normalization() -> None:
+    body = _diagram_body()
+    annotations = [
+        {
+            "id": str(uuid4()),
+            "kind": "ARROW_LABEL",
+            "text": "Fictional hook",
+            "label_x": 0.2,
+            "label_y": 0.3,
+            "target_x": 0.6,
+            "target_y": 0.7,
+        },
+        {
+            "id": str(uuid4()),
+            "kind": "NOTE",
+            "text": "Fictional hull",
+            "label_x": 0.4,
+            "label_y": 0.5,
+        },
+    ]
+    config = {**body.config, "title": "Fictional lifting stages", "annotations": annotations}
+    normalized_config, questions = normalize_question_group_payload(
+        question_type="diagram_labelling",
+        group_config=config,
+        questions=[question.model_dump(mode="json") for question in body.questions],
+        group_id=uuid4(),
+        passage_blocks=[],
+    )
+    assert normalized_config["title"] == "Fictional lifting stages"
+    assert normalized_config["annotations"] == annotations
+    assert len(normalized_config["items"]) == len(questions) == 1
+    assert questions[0]["id"] == str(body.questions[0].id)
+    assert questions[0]["number"] == 20
+    ReadingService._validate_group_body(body.model_copy(update={"config": normalized_config}), [])
 
 
 def test_plan_and_map_labelling_remain_option_based() -> None:

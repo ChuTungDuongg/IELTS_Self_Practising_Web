@@ -132,6 +132,56 @@ describe("Reading Builder editor identity", () => {
     expect(screen.getByLabelText("Prompt")).toHaveValue("Server prompt");
   });
 
+  it("autosaves a Q8 matching option, reopens from parent state, and validates the persisted key", async () => {
+    vi.useFakeTimers();
+    const initial = {
+      ...questionRegistry.matching.createDefault(5),
+      id: crypto.randomUUID(),
+      revision: 1,
+      image_asset_id: null,
+      image_asset: null,
+    } as BuilderQuestionGroup;
+    const options = initial.config.options as Array<{ id: string }>;
+    initial.questions = Array.from({ length: 4 }, (_, index) => ({
+      ...initial.questions[0],
+      id: crypto.randomUUID(),
+      number: index + 5,
+      order_index: index,
+      prompt: `Fictional matching prompt ${index + 5}`,
+      answer_key: { kind: "SINGLE_OPTION", value: index < 3 ? options[0].id : "" },
+    }));
+    let persisted = initial;
+    vi.mocked(updateQuestionGroup).mockImplementation(async (_id, body, expectedRevision) => {
+      persisted = { ...persisted, ...body, revision: expectedRevision + 1 } as BuilderQuestionGroup;
+      return persisted;
+    });
+    vi.mocked(validateVersion).mockImplementation(async () => ({
+      valid: Boolean(persisted.questions[3].answer_key.value),
+      errors: persisted.questions[3].answer_key.value ? [] : [{ path: "reading.questions.8", message: "Answer key is incomplete." }],
+      warnings: [],
+    }));
+    const builderVersion = version([passage(0, "Fictional passage", [initial])]);
+    render(<BuilderLifecycleProvider><VersionActions testId={builderVersion.test_id} version={builderVersion} /><ReadingBuilder version={builderVersion} /></BuilderLifecycleProvider>);
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Edit / Preview" })); await Promise.resolve(); });
+    const select = screen.getByRole("combobox", { name: "Question 8 correct option" }) as HTMLSelectElement;
+    expect(select).toHaveValue("");
+    expect(select.selectedOptions[0]).toHaveTextContent("Choose option");
+    fireEvent.change(select, { target: { value: options[1].id } });
+    expect(select).toHaveValue(options[1].id);
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    expect(updateQuestionGroup).toHaveBeenCalledWith(initial.id, expect.objectContaining({
+      questions: expect.arrayContaining([expect.objectContaining({ number: 8, answer_key: { kind: "SINGLE_OPTION", value: options[1].id } })]),
+    }), 1);
+    expect(persisted.questions[3].answer_key.value).toBe(options[1].id);
+    vi.useRealTimers();
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Close" })); await Promise.resolve(); });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Edit / Preview" })); await Promise.resolve(); });
+    expect(screen.getByRole("combobox", { name: "Question 8 correct option" })).toHaveValue(options[1].id);
+    fireEvent.click(screen.getByRole("button", { name: "Validate" }));
+    await waitFor(() => expect(validateVersion).toHaveBeenCalledOnce());
+    expect(await screen.findByText("Validation complete.")).toBeInTheDocument();
+  });
+
   it("uses the returned module order immediately after moving a group", async () => {
     const first = group(1, "First prompt");
     const second = group(2, "Second prompt");
