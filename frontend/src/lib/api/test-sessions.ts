@@ -24,6 +24,9 @@ export async function startTestSession(testVersionId: string) {
 export async function getTestSession(sessionId: string, request: ApiRequester = apiRequest): Promise<TestSession> {
   return testSessionSchema.parse(await request<unknown>(`/test-sessions/${sessionId}`));
 }
+export async function deleteTestSession(sessionId: string, request: ApiRequester = apiRequest): Promise<void> {
+  await request(`/test-sessions/${sessionId}`, { method: "DELETE" });
+}
 export async function advanceTestSession(sessionId: string): Promise<TestSession> {
   return testSessionSchema.parse(await apiRequest<unknown>(`/test-sessions/${sessionId}/advance`, { method: "POST" }));
 }

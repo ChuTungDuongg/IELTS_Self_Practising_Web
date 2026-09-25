@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import CurrentUser
@@ -27,6 +27,14 @@ async def get_test_session(
     session_id: UUID, user: CurrentUser, session: AsyncSession = Depends(get_session)
 ) -> TestSessionResponse:
     return await TestSessionService(session, user.id).get(session_id)
+
+
+@router.delete("/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_test_session(
+    session_id: UUID, user: CurrentUser, session: AsyncSession = Depends(get_session)
+) -> Response:
+    await TestSessionService(session, user.id).delete(session_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post("/{session_id}/advance", response_model=TestSessionResponse)

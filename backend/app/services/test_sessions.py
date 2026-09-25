@@ -1,11 +1,12 @@
 import uuid
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.exceptions import AppError
+from app.domains.questions.numbering import group_slots
 from app.domains.scoring import project_overall_band
 from app.domains.timers import TimerService
 from app.models import Attempt, QuestionGroup, Test, TestModule, TestSession, TestVersion
@@ -102,6 +103,18 @@ class TestSessionService:
                 test_session.status = TestSessionStatus.COMPLETED
                 test_session.finished_at = current.finished_at or TimerService.now()
             return await self._present(test_session)
+
+    async def delete(self, session_id: uuid.UUID) -> None:
+        async with self.session.begin():
+            deleted_id = await self.session.scalar(
+                delete(TestSession)
+                .where(TestSession.id == session_id, TestSession.user_id == self.user_id)
+                .returning(TestSession.id)
+            )
+            if deleted_id is None:
+                raise AppError(
+                    "TEST_SESSION_NOT_FOUND", "The Full Mock session does not exist.", 404
+                )
 
     async def advance(self, session_id: uuid.UUID) -> TestSessionResponse:
         now = TimerService.now()
@@ -246,7 +259,10 @@ class TestSessionService:
         for module in test_session.test_version.modules:
             if module.module_type not in {ModuleType.READING, ModuleType.LISTENING}:
                 continue
-            count = sum(len(group.questions) for group in module.question_groups)
+            count = sum(
+                len(group_slots(group.question_type, group.questions))
+                for group in module.question_groups
+            )
             if count != 40:
                 warnings.append(
                     f"{module.module_type.value.title()} has {count} questions. An official band will not be calculated."

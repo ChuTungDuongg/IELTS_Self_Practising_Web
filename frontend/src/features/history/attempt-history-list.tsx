@@ -12,6 +12,7 @@ import { formatDuration } from "@/features/exam/timer";
 import { deleteAttempt, resumeAttempt } from "@/lib/api/attempts";
 import { ApiError } from "@/lib/api/client";
 import type { HistoryGroup, HistoryItem, HistoryResponse, MockHistoryGroup } from "@/lib/api/history";
+import { deleteTestSession } from "@/lib/api/test-sessions";
 import { formatProjectDateTime } from "@/lib/date-time";
 
 type HistoryMode = "skill" | "test";
@@ -20,34 +21,59 @@ export function AttemptHistoryList({ initialHistory }: { initialHistory: History
   const router = useRouter();
   const [mode, setMode] = useState<HistoryMode>("skill");
   const [deletedAttemptIds, setDeletedAttemptIds] = useState<Set<string>>(() => new Set());
+  const [deletedSessionIds, setDeletedSessionIds] = useState<Set<string>>(() => new Set());
   const [selected, setSelected] = useState<HistoryItem | null>(null);
+  const [selectedSession, setSelectedSession] = useState<MockHistoryGroup | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string>();
-  const items = initialHistory.items.filter((item) => !deletedAttemptIds.has(item.attempt_id));
+  const items = initialHistory.items.filter((item) =>
+    !deletedAttemptIds.has(item.attempt_id)
+    && (!item.test_session_id || !deletedSessionIds.has(item.test_session_id)),
+  );
+  const sessions = (initialHistory.sessions ?? []).filter((session) => !deletedSessionIds.has(session.session_id));
+  const groups = initialHistory.groups.filter((group) =>
+    ![group.listening, group.reading, group.writing].some(
+      (item) => item?.test_session_id && deletedSessionIds.has(item.test_session_id),
+    ),
+  );
 
   function chooseAttempt(item: HistoryItem) {
     setSelected(item);
+    setSelectedSession(null);
+    setError(undefined);
+  }
+
+  function chooseSession(session: MockHistoryGroup) {
+    setSelectedSession(session);
+    setSelected(null);
     setError(undefined);
   }
 
   function cancelDelete() {
     if (pending) return;
     setSelected(null);
+    setSelectedSession(null);
     setError(undefined);
   }
 
   async function confirmDelete() {
-    if (!selected || pending) return;
+    if ((!selected && !selectedSession) || pending) return;
     setPending(true);
     setError(undefined);
     try {
-      await deleteAttempt(selected.attempt_id);
-      setDeletedAttemptIds((current) => new Set(current).add(selected.attempt_id));
+      if (selectedSession) {
+        await deleteTestSession(selectedSession.session_id);
+        setDeletedSessionIds((current) => new Set(current).add(selectedSession.session_id));
+      } else if (selected) {
+        await deleteAttempt(selected.attempt_id);
+        setDeletedAttemptIds((current) => new Set(current).add(selected.attempt_id));
+      }
       setSelected(null);
+      setSelectedSession(null);
       router.refresh();
     } catch (caught) {
       setError(
-        caught instanceof ApiError ? caught.message : "The attempt could not be deleted. Please try again.",
+        caught instanceof ApiError ? caught.message : "The history entry could not be deleted. Please try again.",
       );
     } finally {
       setPending(false);
@@ -56,16 +82,16 @@ export function AttemptHistoryList({ initialHistory }: { initialHistory: History
 
   return (
     <>
-      {items.length ? (
+      {items.length || sessions.length ? (
         <>
-          {initialHistory.sessions?.length ? (
+          {sessions.length ? (
             <section className="history-session-section" aria-labelledby="history-sessions-heading">
               <div className="history-section-header">
                 <h2 id="history-sessions-heading">Full Mock sessions</h2>
               </div>
               <ul className="history-group-grid history-session-grid">
-                {initialHistory.sessions.map((session) => (
-                  <MockSessionCard key={session.session_id} session={session} />
+                {sessions.map((session) => (
+                  <MockSessionCard key={session.session_id} session={session} pending={pending} onDelete={chooseSession} />
                 ))}
               </ul>
             </section>
@@ -95,17 +121,25 @@ export function AttemptHistoryList({ initialHistory }: { initialHistory: History
 
           {mode === "skill" ? (
             <div id="history-by-skill" role="tabpanel">
-              <ul className="history-list">
-                {items.map((item) => (
-                  <HistoryRow key={item.attempt_id} item={item} pending={pending} onDelete={chooseAttempt} />
-                ))}
-              </ul>
+              {items.length ? (
+                <ul className="history-list">
+                  {items.map((item) => (
+                    <HistoryRow key={item.attempt_id} item={item} pending={pending} onDelete={chooseAttempt} />
+                  ))}
+                </ul>
+              ) : (
+                <EmptyState
+                  icon={<HistoryIcon className="size-6" />}
+                  title="No skill attempts yet"
+                  description="This Full Mock has no saved skill attempts yet."
+                />
+              )}
             </div>
           ) : (
             <div id="history-by-test" role="tabpanel">
-              {initialHistory.groups.length ? (
+              {groups.length ? (
                 <ul className="history-group-grid">
-                  {initialHistory.groups.map((group) => (
+                  {groups.map((group) => (
                     <HistoryGroupCard key={group.test_version_id} group={group} />
                   ))}
                 </ul>
@@ -128,10 +162,12 @@ export function AttemptHistoryList({ initialHistory }: { initialHistory: History
       )}
 
       <ConfirmDialog
-        open={selected !== null}
-        title="Delete this attempt?"
-        description={`${selected?.status === "IN_PROGRESS" || selected?.status === "PAUSED" ? "This attempt is not finalized. " : ""}This will permanently remove this attempt and its saved answers, highlights, flags and activity history. The test itself will not be deleted.`}
-        confirmLabel="Delete attempt"
+        open={selected !== null || selectedSession !== null}
+        title={selectedSession ? "Delete this Full Mock?" : "Delete this attempt?"}
+        description={selectedSession
+          ? "This permanently deletes this Full Mock session and its Listening, Reading and Writing attempts, including saved answers and review history. The published test itself will not be deleted."
+          : `${selected?.status === "IN_PROGRESS" || selected?.status === "PAUSED" ? "This attempt is not finalized. " : ""}This will permanently remove this attempt and its saved answers, highlights, flags and activity history. The test itself will not be deleted.`}
+        confirmLabel={selectedSession ? "Delete Full Mock" : "Delete attempt"}
         pending={pending}
         errorMessage={error}
         onCancel={cancelDelete}
@@ -202,7 +238,7 @@ function HistoryRow({
             Continue
           </Link>
         ) : item.test_session_id ? <Link href={`/test-session/${item.test_session_id}`} className="btn btn-secondary">Resume Full Mock</Link> : null}
-        <button
+        {item.test_session_id ? null : <button
           type="button"
           disabled={pending}
           aria-label={`Delete ${item.test_title}`}
@@ -210,7 +246,7 @@ function HistoryRow({
           className="btn btn-danger-ghost"
         >
           Delete
-        </button>
+        </button>}
         {resumeError ? <span role="alert" className="history-action-error">{resumeError}</span> : null}
       </div>
     </li>
@@ -269,7 +305,7 @@ function HistoryGroupSkill({ label, item }: { label: string; item: HistoryItem |
   return (
     <li className="history-group-skill">
       <span>{label}</span>
-      <span>{item?.band_score === null || !item ? "—" : item.band_score.toFixed(1)}</span>
+      <span>{!item ? "—" : item.band_score === null ? label === "Writing" ? "Not graded" : "—" : item.band_score.toFixed(1)}</span>
       {item && item.review_available !== false ? (
         <Link href={`/review/${item.attempt_id}`} className="btn btn-secondary">
           Review {label}
@@ -281,7 +317,11 @@ function HistoryGroupSkill({ label, item }: { label: string; item: HistoryItem |
   );
 }
 
-function MockSessionCard({ session }: { session: MockHistoryGroup }) {
+function MockSessionCard({ session, pending, onDelete }: {
+  session: MockHistoryGroup;
+  pending: boolean;
+  onDelete: (session: MockHistoryGroup) => void;
+}) {
   return (
     <li className="history-group-card history-session-card">
       <div className="history-group-heading">
@@ -301,13 +341,16 @@ function MockSessionCard({ session }: { session: MockHistoryGroup }) {
         <HistoryGroupSkill label="Reading" item={session.reading} />
         <HistoryGroupSkill label="Writing" item={session.writing} />
       </ul>
-      {session.status === "IN_PROGRESS" ? (
-        <div className="history-group-footer">
+      <div className="history-group-footer">
+        {session.status === "IN_PROGRESS" ? (
           <Link href={`/test-session/${session.session_id}`} className="btn btn-primary">
             Resume Full Mock
           </Link>
-        </div>
-      ) : null}
+        ) : null}
+        <button type="button" className="btn btn-danger-ghost" disabled={pending} onClick={() => onDelete(session)}>
+          Delete Full Mock
+        </button>
+      </div>
     </li>
   );
 }

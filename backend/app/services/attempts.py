@@ -827,12 +827,51 @@ class AttemptService:
             )
             return items_by_id[selected.id]
 
+        session_rows = list(
+            await self.session.scalars(
+                select(TestSession)
+                .where(TestSession.user_id == self.user_id)
+                .options(
+                    selectinload(TestSession.attempts),
+                    selectinload(TestSession.test_version).selectinload(TestVersion.test),
+                )
+                .order_by(TestSession.started_at.desc())
+            )
+        )
+        completed_by_version: dict[uuid.UUID, TestSession] = {}
+        for test_session in session_rows:
+            if test_session.status != TestSessionStatus.COMPLETED:
+                continue
+            previous = completed_by_version.get(test_session.test_version_id)
+            if previous is None or (
+                test_session.finished_at or test_session.started_at,
+                test_session.started_at,
+                test_session.id.int,
+            ) > (
+                previous.finished_at or previous.started_at,
+                previous.started_at,
+                previous.id.int,
+            ):
+                completed_by_version[test_session.test_version_id] = test_session
+
         groups: list[HistoryGroup] = []
         for version_attempts in by_version.values():
             version = version_attempts[0].test_version
-            reading = latest_finalized(version_attempts, ModuleType.READING)
-            listening = latest_finalized(version_attempts, ModuleType.LISTENING)
-            writing = latest_finalized(version_attempts, ModuleType.WRITING)
+            completed_session = completed_by_version.get(version.id)
+            if completed_session is None:
+                reading = latest_finalized(version_attempts, ModuleType.READING)
+                listening = latest_finalized(version_attempts, ModuleType.LISTENING)
+                writing = latest_finalized(version_attempts, ModuleType.WRITING)
+            else:
+                session_items = {
+                    attempt.module_type: items_by_id[attempt.id]
+                    for attempt in completed_session.attempts
+                    if attempt.id in items_by_id
+                    and attempt.status not in {AttemptStatus.IN_PROGRESS, AttemptStatus.PAUSED}
+                }
+                reading = session_items.get(ModuleType.READING)
+                listening = session_items.get(ModuleType.LISTENING)
+                writing = session_items.get(ModuleType.WRITING)
             groups.append(
                 HistoryGroup(
                     test_id=version.test_id,
@@ -854,17 +893,6 @@ class AttemptService:
             for version_id, version_attempts in by_version.items()
         }
         groups.sort(key=lambda item: group_recency[item.test_version_id], reverse=True)
-        session_rows = list(
-            await self.session.scalars(
-                select(TestSession)
-                .where(TestSession.user_id == self.user_id)
-                .options(
-                    selectinload(TestSession.attempts),
-                    selectinload(TestSession.test_version).selectinload(TestVersion.test),
-                )
-                .order_by(TestSession.started_at.desc())
-            )
-        )
         mock_groups: list[MockHistoryGroup] = []
         for test_session in session_rows:
             session_items = {
@@ -1194,6 +1222,12 @@ class AttemptService:
     async def delete_attempt(self, attempt_id: uuid.UUID) -> None:
         async with self.session.begin():
             attempt = await self._require(attempt_id, for_update=True)
+            if attempt.test_session_id is not None:
+                raise AppError(
+                    "FULL_MOCK_ATTEMPT_DELETE_FORBIDDEN",
+                    "Delete the Full Mock session instead of an individual module attempt.",
+                    409,
+                )
             await self.session.delete(attempt)
 
     async def _require(self, attempt_id: uuid.UUID, *, for_update: bool = False) -> Attempt:
