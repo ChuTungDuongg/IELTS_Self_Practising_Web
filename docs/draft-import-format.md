@@ -25,6 +25,8 @@ Asset paths are relative to the directory containing `manifest.json`. Keep them 
 
 `modules` contains any combination of one `READING`, one `LISTENING`, and one `WRITING` module. The importer rejects duplicate module types. Titles are optional on modules. Questions and passage blocks do not need UUIDs; the importer generates them and keeps them stable through Builder fetch and save.
 
+Set `"allow_incomplete": true` only when the source has no answer key or some question numbers cannot yet be represented. In this mode, omitted answers are stored as empty keys, and explicit question-number gaps are kept in the unpublished draft. Other structural validation still applies. The draft remains unpublishable until keys and numbering are resolved. The default is `false`.
+
 ### Reading
 
 Reading has `passages`. Each passage has a `title`, one or more `blocks`, and zero or more `question_groups`. A block is a `heading` or `paragraph` with `text`. Paragraph `label` is optional; missing labels are generated A, B, C, and so on. A supplied label is preserved. Matching Headings targets use `"Paragraph A"` or `"A"` and must resolve to exactly one paragraph.
@@ -43,11 +45,11 @@ Use the exact `question_type` names from the current question registry:
 
 `multiple_choice`, `multiple_choice_multiple`, `true_false_not_given`, `yes_no_not_given`, `text_completion`, `matching_headings`, `matching`, `matching_information`, `matching_features`, `matching_sentence_endings`, `summary_completion_word_list`, `plan_labelling`, `map_labelling`, `diagram_labelling`, `form_completion`, `note_completion`, `table_completion`, `flow_chart_completion`, `summary_completion`, `sentence_completion`, and `short_answer`.
 
-Each group may have an `instruction`. Missing instructions are allowed with a warning. For ordinary questions, supply `questions` with `prompt` and `answer`. A `number` is optional; missing numbers are assigned in order within the module. Explicit numbers are preserved, but the complete module must number questions exactly 1 through N, without gaps or duplicates, and must stay within 1–40. Ambiguous or invalid numbering is fatal.
+Each group may have an `instruction`. Missing instructions are allowed with a warning. For ordinary questions, supply `questions` with `prompt` and `answer`. A `number` is optional; missing numbers are assigned in order within the module. Explicit numbers are preserved, but the complete module must number questions exactly 1 through N, without gaps or duplicates, and must stay within 1–40. Ambiguous or invalid numbering is fatal unless `allow_incomplete` is true; duplicates are always fatal.
 
 For `true_false_not_given`, answers are `TRUE`, `FALSE`, or `NOT_GIVEN`; for `yes_no_not_given`, they are `YES`, `NO`, or `NOT_GIVEN`. Case and simple whitespace variants are normalized by the existing question system. Invalid values are fatal.
 
-For `multiple_choice`, each question has `options` such as `[{"key":"A","text":"River"},{"key":"B","text":"Hill"}]`, and its `answer` is a key such as `"A"`. `multiple_choice_multiple` uses an array, for example `"answer": ["A", "B"]`. Optional `min_selections` and `max_selections` can set selection limits; otherwise both equal the answer count.
+For `multiple_choice`, each question has `options` such as `[{"key":"A","text":"River"},{"key":"B","text":"Hill"}]`, and its `answer` is a key such as `"A"`. `multiple_choice_multiple` uses an array, for example `"answer": ["A", "B"]`. A shared multi-select question consumes one IELTS number per required selection. Set equal `min_selections` and `max_selections` when the answer is omitted, or provide `number` and inclusive `end_number` (for example 13 and 14); the importer validates that the range and selection count agree. The next question starts after that range. Candidate answers are unordered.
 
 For `matching_headings`, put `options` at group level and give each question a `target` such as `"Paragraph A"` and an `answer` option key. `matching`, `matching_features`, and `matching_sentence_endings` use group options and question answers the same way. `matching_information` uses a paragraph label such as `"A"` as the answer and resolves it to its block ID. `allow_option_reuse` is available on matching groups.
 

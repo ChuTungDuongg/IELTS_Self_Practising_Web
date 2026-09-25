@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models.enums import ModuleType, VersionStatus
 
@@ -13,6 +13,22 @@ class TestCreate(BaseModel):
     source_label: str | None = Field(default=None, max_length=160)
     test_number: int | None = Field(default=None, ge=1)
     create_initial_draft: bool = True
+
+    @field_validator("title", mode="before")
+    @classmethod
+    def validate_title(cls, value: str) -> str:
+        if not isinstance(value, str):
+            raise ValueError("Title must be text")
+        title = value.strip()
+        if not title:
+            raise ValueError("Title cannot be blank")
+        return title
+
+
+class TestUpdate(BaseModel):
+    title: str = Field(min_length=1, max_length=240)
+
+    _validate_title = field_validator("title", mode="before")(TestCreate.validate_title.__func__)
 
 
 class VersionCreate(BaseModel):

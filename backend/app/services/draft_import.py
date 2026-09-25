@@ -16,6 +16,7 @@ from app.core.config import get_settings
 from app.core.exceptions import AppError
 from app.domains.questions import question_registry
 from app.domains.questions.normalization import normalize_passage_blocks
+from app.domains.questions.numbering import question_span
 from app.models import (
     Asset,
     ListeningPart,
@@ -110,8 +111,12 @@ def _options(options: list[ImportOption] | None, path: str) -> list[dict[str, st
     return [{"id": item.key, "label": item.text} for item in options]
 
 
-def _answer_key(question_type: str, answer: str | list[str] | None, path: str) -> dict[str, Any]:
+def _answer_key(
+    question_type: str, answer: str | list[str] | None, path: str, *, allow_incomplete: bool
+) -> dict[str, Any]:
     if answer is None or answer == "" or answer == []:
+        if allow_incomplete:
+            return {}
         raise _invalid(path, "An answer is required")
     if question_type == "multiple_choice_multiple":
         if not isinstance(answer, list):
@@ -230,6 +235,7 @@ def _compile_group(
     module_type: ModuleType,
     image_asset_id: uuid.UUID | None,
     group_id: uuid.UUID,
+    allow_incomplete: bool = False,
 ) -> tuple[QuestionGroupWrite, int]:
     kind = source.question_type
     if not question_registry.supports(kind):
@@ -274,17 +280,32 @@ def _compile_group(
         number = item.number if item.number is not None else next_number
         if number < 1 or number > 40:
             raise _invalid(f"{path}.questions[{index}]", "Question number must be 1–40")
-        next_number = number + 1
         question_path = f"{path}.questions[{index}]"
         config: dict[str, Any] = {}
         if kind in {"multiple_choice", "multiple_choice_multiple"}:
             config["options"] = _options(item.options or source.options, question_path)
             if kind == "multiple_choice_multiple":
-                count = len(item.answer) if isinstance(item.answer, list) else 2
-                config.update(
-                    min_selections=item.min_selections or count,
-                    max_selections=item.max_selections or count,
+                count = (
+                    len(item.answer)
+                    if isinstance(item.answer, list)
+                    else item.end_number - number + 1
+                    if item.end_number is not None
+                    else 2
                 )
+                required = item.min_selections or item.max_selections or count
+                config.update(
+                    min_selections=item.min_selections or required,
+                    max_selections=item.max_selections or required,
+                )
+                if item.end_number is not None and item.end_number != number + config["max_selections"] - 1:
+                    raise _invalid(question_path, "Explicit range does not match the required selection count")
+            elif item.end_number is not None and item.end_number != number:
+                raise _invalid(question_path, "Only a multi-select question may span multiple numbers")
+        elif item.end_number is not None and item.end_number != number:
+            raise _invalid(question_path, "Only a multi-select question may span multiple numbers")
+        next_number = number + question_span(kind, config)
+        if next_number > 41:
+            raise _invalid(question_path, "Question range must end by 40")
         elif kind == "matching_headings":
             if not item.target:
                 raise _invalid(question_path, "A paragraph target is required")
@@ -316,7 +337,9 @@ def _compile_group(
                 number=number,
                 prompt=prompt,
                 config=config,
-                answer_key=_answer_key(kind, answer, question_path),
+                answer_key=_answer_key(
+                    kind, answer, question_path, allow_incomplete=allow_incomplete
+                ),
                 explanation=item.explanation,
                 order_index=index,
             )
@@ -371,7 +394,12 @@ def _compile_group(
         body, group_id, passage_blocks, module_type=module_type
     )
     ReadingService._validate_local_question_numbers(body)
-    ReadingService._validate_group_body(body, passage_blocks, module_type=module_type)
+    ReadingService._validate_group_body(
+        body,
+        passage_blocks,
+        module_type=module_type,
+        allow_missing_answers=allow_incomplete,
+    )
     return body, next_number
 
 
@@ -481,6 +509,7 @@ class DraftImportService:
                     )
                     version.modules.append(module)
                     next_number = 1
+                    question_total = 0
                     group_order = 0
                     unit_count = 0
                     if source.type == "LISTENING" and source.audio:
@@ -543,7 +572,9 @@ class DraftImportService:
                                 module_type,
                                 image.id if image else None,
                                 group_id,
+                                allow_incomplete=manifest.allow_incomplete,
                             )
+                            question_total += sum(question_span(body.question_type, item.config) for item in body.questions)
                             if not body.instruction.strip():
                                 extra_warnings.append(f"{path}: instruction is missing")
                             group = QuestionGroup(
@@ -598,7 +629,7 @@ class DraftImportService:
                                     "Writing Task 1 has no image attached; review whether the source needs one"
                                 )
                         unit_count = len(supplied)
-                    counts[source.type] = (unit_count, group_order, next_number - 1)
+                    counts[source.type] = (unit_count, group_order, question_total)
                 await self.session.flush()
                 loaded = await TestRepository(self.session).get_version(version.id)
                 assert loaded is not None
@@ -610,8 +641,49 @@ class DraftImportService:
                     and issue.message
                     == "Add at least one usable module with valid question content."
                 ]
+                incomplete_key_paths = {
+                    f"{module.module_type.value.lower()}.questions.{question.number}"
+                    for module in loaded.modules
+                    for group in module.question_groups
+                    for question in group.questions
+                    if not any(
+                        question.answer_key.get(field)
+                        for field in ("value", "values", "accepted")
+                    )
+                    or (
+                        group.question_type == "multiple_choice_multiple"
+                        and len(question.answer_key.get("values", []))
+                        < question.config.get("min_selections", 2)
+                    )
+                }
+                incomplete_number_paths = {
+                    f"{module.module_type.value.lower()}.questions"
+                    for module in loaded.modules
+                    if module.module_type in {ModuleType.READING, ModuleType.LISTENING}
+                }
+                expected_incomplete = [
+                    issue
+                    for issue in validation.errors
+                    if manifest.allow_incomplete
+                    and (
+                        (
+                            issue.path in incomplete_key_paths
+                            and (
+                                issue.message == "Answer key is incomplete."
+                                or issue.message.startswith("Select exactly ")
+                            )
+                        )
+                        or (
+                            issue.path in incomplete_number_paths
+                            and issue.message
+                            == "Question numbers must form the canonical sequence 1 through N."
+                        )
+                    )
+                ]
                 fatal_errors = [
-                    issue for issue in validation.errors if issue not in readiness_errors
+                    issue
+                    for issue in validation.errors
+                    if issue not in readiness_errors and issue not in expected_incomplete
                 ]
                 if fatal_errors:
                     raise _invalid(
@@ -621,6 +693,13 @@ class DraftImportService:
                 warnings = [
                     issue.message for issue in validation.warnings + readiness_errors
                 ] + extra_warnings
+                if expected_incomplete:
+                    details: list[str] = []
+                    if incomplete_key_paths:
+                        details.append(f"{len(incomplete_key_paths)} questions have incomplete answer keys")
+                    if any(issue.path in incomplete_number_paths for issue in expected_incomplete):
+                        details.append("question-number gaps require review")
+                    warnings.append("Incomplete draft: " + "; ".join(details) + " before publishing.")
         except BaseException:
             for relative_path in created:
                 self.storage.delete(relative_path)

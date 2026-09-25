@@ -12,6 +12,7 @@ import { revealQuestionChip, scrollQuestionIntoPane } from "@/features/exam/ques
 import { elapsedFromSnapshot, estimateServerOffset, formatDuration, remainingSeconds } from "@/features/exam/timer";
 import { QuestionGroupInstruction } from "@/features/questions/question-group-instruction";
 import { questionRegistry } from "@/features/questions/registry";
+import { completedQuestionSlots, groupQuestionRange, questionSpan } from "@/features/questions/numbering";
 import type { ExamGroup } from "@/features/questions/types";
 import { recordActivity, recordNavigation, saveAnswer } from "@/lib/api/attempts";
 import { assetContentUrl } from "@/lib/api/assets";
@@ -28,7 +29,11 @@ export function ListeningRunner({ initial }: { initial: ExamPayload }) {
     .sort((left, right) => left.order_index - right.order_index)
     .flatMap((group) => [...group.questions]
       .sort((left, right) => left.order_index - right.order_index)
-      .map((question) => ({ ...question, partIndex, groupId: group.id })))), [parts]);
+      .map((question) => ({ ...question, partIndex, groupId: group.id, questionType: group.question_type })))), [parts]);
+  const navigationSlots = useMemo(() => questions.flatMap((question) => Array.from(
+    { length: questionSpan(question.questionType, question.config) },
+    (_, slotIndex) => ({ ...question, number: question.number + slotIndex, slotIndex }),
+  )), [questions]);
   const [partIndex, setPartIndex] = useState(0);
   const initialResponses = useMemo(() => questions.map((question) => ({ id: question.id, value: question.value, revision: question.answer_revision })), [questions]);
   const [flags, setFlags] = useState<Record<string, boolean>>(() => Object.fromEntries(questions.map((question) => [question.id, question.flagged])));
@@ -228,7 +233,7 @@ export function ListeningRunner({ initial }: { initial: ExamPayload }) {
       const target = (event.target as HTMLElement).closest<HTMLElement>(".exam-question-target[data-question-id]");
       if (target?.dataset.questionId) { programmaticNavigation.current = null; setActiveQuestionId(target.dataset.questionId); }
     }}>
-      <div className="listening-question-heading"><div><p>Listening · Section {part.order_index + 1}</p><h2>{part.title}</h2></div><span>{activeGroup ? `Questions ${Math.min(...activeGroup.questions.map((question) => question.number))}–${Math.max(...activeGroup.questions.map((question) => question.number))}` : "No questions"}</span></div>
+      <div className="listening-question-heading"><div><p>Listening · Section {part.order_index + 1}</p><h2>{part.title}</h2></div><span>{activeGroup ? groupQuestionRange(activeGroup).replace(/^Q/, "Questions ") : "No questions"}</span></div>
       {activeGroup ? (() => {
         const definition = questionRegistry[activeGroup.question_type as keyof typeof questionRegistry];
         if (!definition) return null;
@@ -242,12 +247,12 @@ export function ListeningRunner({ initial }: { initial: ExamPayload }) {
     <footer className="exam-footer listening-exam-footer">
       <div className="exam-footer-navigation">
         <nav className="exam-section-navigation" aria-label="Section navigation">{parts.map((item, index) => <button key={item.id} type="button" onClick={() => selectPart(index)} className={index === partIndex ? "active" : ""} aria-current={index === partIndex ? "page" : undefined}>Section {item.order_index + 1}</button>)}</nav>
-        <nav ref={questionStrip} className="exam-question-strip" aria-label="Question navigation">{questions.map((question) => {
-          const answered = isAnswered(values[question.id]);
+        <nav ref={questionStrip} className="exam-question-strip" aria-label="Question navigation">{navigationSlots.map((question) => {
+          const answered = completedQuestionSlots(question.questionType, question.config, values[question.id]) > question.slotIndex;
           const flagged = Boolean(flags[question.id]);
           const current = activeQuestionId === question.id;
-          return <div key={question.id} data-nav-question-id={question.id} className={`exam-question-chip ${answered ? "answered" : "unanswered"} ${flagged ? "flagged" : ""} ${current ? "current" : ""}`}>
-            <button ref={(element) => { if (element) questionChips.current.set(question.id, element); else questionChips.current.delete(question.id); }} type="button" className="exam-question-number" onClick={() => navigateToQuestion(question.id, question.partIndex)} aria-label={`Go to question ${question.number}`} aria-current={current ? "true" : undefined}>{question.number}</button>
+          return <div key={`${question.id}:${question.slotIndex}`} data-nav-question-id={question.id} className={`exam-question-chip ${answered ? "answered" : "unanswered"} ${flagged ? "flagged" : ""} ${current ? "current" : ""}`}>
+            <button ref={question.slotIndex === 0 ? (element) => { if (element) questionChips.current.set(question.id, element); else questionChips.current.delete(question.id); } : undefined} type="button" className="exam-question-number" onClick={() => navigateToQuestion(question.id, question.partIndex)} aria-label={`Go to question ${question.number}`} aria-current={current ? "true" : undefined}>{question.number}</button>
             <button type="button" className="exam-question-flag" onClick={() => void toggleFlag(question.id)} aria-label={`${flagged ? "Unflag" : "Flag"} question ${question.number}`} aria-pressed={flagged}><span aria-hidden="true">{flagged ? "⚑" : "⚐"}</span></button>
           </div>;
         })}</nav>
@@ -255,9 +260,4 @@ export function ListeningRunner({ initial }: { initial: ExamPayload }) {
       <button type="button" onClick={() => void submit()} disabled={submitting} className="exam-submit">{submitting ? "Submitting…" : "Submit answers"}</button>
     </footer>
   </div>;
-}
-
-function isAnswered(value: unknown): boolean {
-  if (Array.isArray(value)) return value.length > 0;
-  return value !== null && value !== undefined && value !== "";
 }

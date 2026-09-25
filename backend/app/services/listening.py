@@ -136,7 +136,7 @@ class ListeningService:
             body = self.shared._normalize_group_body(
                 body, group_id, [], module_type=ModuleType.LISTENING
             )
-            self.shared._validate_group_body(body, [], module_type=ModuleType.LISTENING)
+            self.shared._validate_group_body(body, [], module_type=ModuleType.LISTENING, allow_missing_answers=True)
             await self.shared._ensure_numbers_available(part.module_id, body, None)
             group = QuestionGroup(
                 id=group_id,
@@ -181,7 +181,7 @@ class ListeningService:
                 body = self.shared._normalize_group_body(
                     body, group.id, [], module_type=ModuleType.LISTENING
                 )
-                self.shared._validate_group_body(body, [], module_type=ModuleType.LISTENING)
+                self.shared._validate_group_body(body, [], module_type=ModuleType.LISTENING, allow_missing_answers=True)
                 await self.shared._ensure_numbers_available(group.module_id, body, group.id)
                 group.question_type = body.question_type
                 group.instruction = body.instruction

@@ -3,6 +3,7 @@
 import type { ExamGroup, ExamQuestion, Option, PassageBlock, TextCompletionLayout } from "./types";
 import { assetContentUrl } from "@/lib/api/assets";
 import { SelectableText, type HighlightController } from "@/features/highlighting/selectable-text";
+import { questionSpan } from "./numbering";
 
 /* eslint-disable @next/next/no-img-element -- exam assets have dynamic dimensions and must retain intrinsic ratio */
 
@@ -26,8 +27,8 @@ export function questionTarget(question: ExamQuestion, activeQuestionId?: string
   };
 }
 
-function QuestionHeader({ question, highlighting }: { question: ExamQuestion; highlighting?: HighlightController }) {
-  return <p className="font-medium"><span className="mr-2 text-[var(--accent)]">{question.number}</span><SelectableText text={question.prompt} target={{ target_kind: "QUESTION_PROMPT", target_id: question.id }} controller={highlighting} /></p>;
+function QuestionHeader({ question, highlighting, numberLabel }: { question: ExamQuestion; highlighting?: HighlightController; numberLabel?: string }) {
+  return <p className="font-medium"><span className="mr-2 text-[var(--accent)]">{numberLabel ?? question.number}</span><SelectableText text={question.prompt} target={{ target_kind: "QUESTION_PROMPT", target_id: question.id }} controller={highlighting} /></p>;
 }
 
 export function MultipleChoiceRenderer({ group, values, disabled, onAnswer, highlighting, activeQuestionId }: RendererProps) {
@@ -35,7 +36,7 @@ export function MultipleChoiceRenderer({ group, values, disabled, onAnswer, high
 }
 
 export function MultipleChoiceMultipleRenderer({ group, values, disabled, onAnswer, highlighting, activeQuestionId }: RendererProps) {
-  return <div className="space-y-5">{group.questions.map((question) => { const selected = new Set(Array.isArray(values[question.id]) ? values[question.id] as string[] : []); return <fieldset key={question.id} {...questionTarget(question, activeQuestionId)}><QuestionHeader question={question} highlighting={highlighting} /><div className="mt-2 space-y-2">{(question.config.options as Option[]).map((option) => <label key={option.id} className="flex items-start gap-2"><input type="checkbox" disabled={disabled} checked={selected.has(option.id)} onChange={() => onAnswer?.(question.id, selected.has(option.id) ? [...selected].filter((id) => id !== option.id) : [...selected, option.id])} /><span><b>{option.label}.</b> {option.text}</span></label>)}</div></fieldset>; })}</div>;
+  return <div className="space-y-5">{group.questions.map((question) => { const selected = new Set(Array.isArray(values[question.id]) ? values[question.id] as string[] : []); const required = questionSpan(group.question_type, question.config); const end = question.number + required - 1; return <fieldset key={question.id} {...questionTarget(question, activeQuestionId)}><QuestionHeader question={question} highlighting={highlighting} numberLabel={end === question.number ? String(question.number) : `${question.number}–${end}`} /><div className="mt-2 space-y-2">{(question.config.options as Option[]).map((option) => <label key={option.id} className="flex items-start gap-2"><input type="checkbox" disabled={disabled || (!selected.has(option.id) && selected.size >= required)} checked={selected.has(option.id)} onChange={() => onAnswer?.(question.id, selected.has(option.id) ? [...selected].filter((id) => id !== option.id) : [...selected, option.id])} /><span><b>{option.label}.</b> {option.text}</span></label>)}</div></fieldset>; })}</div>;
 }
 
 export function MatchingRenderer({ group, values, disabled, onAnswer, highlighting, activeQuestionId }: RendererProps) {

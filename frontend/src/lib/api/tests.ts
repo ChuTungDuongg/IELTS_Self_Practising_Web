@@ -6,6 +6,7 @@ const createTestInput = z.object({
   title: z.string().trim().min(1).max(240),
   description: z.string().trim().max(4000).optional(),
 });
+const updateTestInput = createTestInput.pick({ title: true });
 
 export async function getTests(options?: { archived?: boolean }, request: ApiRequester = apiRequest): Promise<TestSummary[]> {
   const query = options?.archived ? "?archived=true" : "";
@@ -24,6 +25,14 @@ export async function createTest(input: z.infer<typeof createTestInput>): Promis
       body: JSON.stringify({ ...body, create_initial_draft: true }),
     }),
   );
+}
+
+export async function updateTest(testId: string, input: z.input<typeof updateTestInput>, request: ApiRequester = apiRequest): Promise<TestSummary> {
+  const body = updateTestInput.parse(input);
+  return testSchema.parse(await request<unknown>(`/tests/${testId}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  }));
 }
 
 export async function getVersion(versionId: string, request: ApiRequester = apiRequest): Promise<VersionDetail> {

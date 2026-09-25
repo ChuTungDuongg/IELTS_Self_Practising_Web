@@ -162,7 +162,7 @@ describe("question registry", () => {
     expect(screen.queryByRole("button", { name: /Remove option/ })).not.toBeInTheDocument();
   });
 
-  it("keeps a cleared Listening MC answer local until a new valid key is selected", async () => {
+  it("autosaves a cleared Listening MC answer as an incomplete draft key", async () => {
     vi.useFakeTimers();
     const group = questionRegistry.multiple_choice.createDefault(7);
     group.id = crypto.randomUUID();
@@ -179,14 +179,15 @@ describe("question registry", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Remove option C" }));
-    expect(screen.getByRole("button", { name: "Save now" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Save now" })).toBeEnabled();
     await act(async () => { await vi.advanceTimersByTimeAsync(1500); });
-    expect(onAutosave).not.toHaveBeenCalled();
+    expect(onAutosave).toHaveBeenCalledTimes(1);
+    expect(onAutosave.mock.calls[0][0].questions[0].answer_key.value).toBe("");
 
     fireEvent.click(screen.getByLabelText("Mark A correct"));
     await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
-    expect(onAutosave).toHaveBeenCalledTimes(1);
-    expect(onAutosave.mock.calls[0][0].questions[0].answer_key.value).toBe(options[0].id);
+    expect(onAutosave).toHaveBeenCalledTimes(2);
+    expect(onAutosave.mock.calls[1][0].questions[0].answer_key.value).toBe(options[0].id);
   });
 
   it("coalesces rapid Listening MC removal, text, and answer edits into the final autosave", async () => {

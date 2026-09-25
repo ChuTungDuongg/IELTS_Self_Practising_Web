@@ -80,6 +80,39 @@ def _attempt(
 
 
 @pytest.mark.integration
+async def test_grouped_multi_select_scores_numbered_slots_without_click_order(
+    db_session: AsyncSession,
+) -> None:
+    test = DomainTest(title="Fictional grouped scoring")
+    version = DomainVersion(version_number=1, status=VersionStatus.PUBLISHED)
+    module = DomainModule(module_type=ModuleType.READING, order_index=0)
+    passage = ReadingPassage(title="Fictional passage", order_index=0, content_json=[{"id": str(uuid4()), "type": "paragraph", "label": "A", "text": "Fictional text."}], plain_text="Fictional text.")
+    option_ids = [str(uuid4()) for _ in range(4)]
+    group = QuestionGroup(question_type="multiple_choice_multiple", instruction="Choose two.", config={}, order_index=0)
+    question = Question(number=13, prompt="Choose fictional options", config={"options": [{"id": identifier, "label": chr(65 + index), "text": f"Option {index}"} for index, identifier in enumerate(option_ids)], "min_selections": 2, "max_selections": 2}, answer_key={"kind": "MULTIPLE_OPTIONS", "values": [option_ids[1], option_ids[3]], "order_matters": False}, order_index=0)
+    group.questions.append(question)
+    passage.question_groups.append(group)
+    module.passages.append(passage)
+    module.question_groups.append(group)
+    version.modules.append(module)
+    test.versions.append(version)
+    now = datetime.now(UTC)
+    partial = _attempt(version, module=ModuleType.READING, started_at=now)
+    reversed_pair = _attempt(version, module=ModuleType.READING, started_at=now)
+    partial.answers.append(AttemptAnswer(question=question, value=[option_ids[1], option_ids[0]], is_correct=False))
+    reversed_pair.answers.append(AttemptAnswer(question=question, value=[option_ids[3], option_ids[1]], is_correct=True))
+    async with db_session.begin():
+        db_session.add_all([test, partial, reversed_pair])
+        await db_session.flush()
+
+    service = AttemptService(db_session)
+    await service._score(partial)
+    await service._score(reversed_pair)
+    assert (partial.raw_score, partial.max_score) == (1, 2)
+    assert (reversed_pair.raw_score, reversed_pair.max_score) == (2, 2)
+
+
+@pytest.mark.integration
 async def test_submit_writes_band_and_serializes_it_to_review_and_history(
     db_session: AsyncSession,
 ) -> None:
