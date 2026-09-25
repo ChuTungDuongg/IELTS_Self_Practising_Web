@@ -47,3 +47,7 @@ export type MockHistoryGroup = NonNullable<HistoryResponse["sessions"]>[number];
 export async function getHistory(request: ApiRequester = apiRequest): Promise<HistoryResponse> {
   return historySchema.parse(await request<unknown>("/history"));
 }
+
+export async function deleteStandaloneTestHistory(testVersionId: string, request: ApiRequester = apiRequest): Promise<void> {
+  await request(`/history/test-versions/${testVersionId}/standalone-attempts`, { method: "DELETE" });
+}

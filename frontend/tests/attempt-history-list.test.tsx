@@ -4,6 +4,7 @@ import { AttemptHistoryList } from "@/features/history/attempt-history-list";
 import { ApiError } from "@/lib/api/client";
 import { deleteAttempt, resumeAttempt } from "@/lib/api/attempts";
 import { deleteTestSession } from "@/lib/api/test-sessions";
+import { deleteStandaloneTestHistory } from "@/lib/api/history";
 import type { HistoryGroup, HistoryItem, HistoryResponse, MockHistoryGroup } from "@/lib/api/history";
 
 const refresh = vi.fn();
@@ -20,6 +21,10 @@ vi.mock("@/lib/api/attempts", async (importOriginal) => {
 vi.mock("@/lib/api/test-sessions", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api/test-sessions")>();
   return { ...actual, deleteTestSession: vi.fn() };
+});
+vi.mock("@/lib/api/history", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/api/history")>();
+  return { ...actual, deleteStandaloneTestHistory: vi.fn() };
 });
 
 const submitted: HistoryItem = {
@@ -139,10 +144,11 @@ describe("AttemptHistoryList", () => {
 
   it("groups an active Full Mock header, skills, and Resume action into one card", () => {
     const { container } = render(<AttemptHistoryList initialHistory={history([inProgress], [], [activeSession])} />);
-    const section = container.querySelector(".history-session-section")!;
-    const card = section.querySelector(".history-session-card")!;
+    expect(screen.getAllByRole("tab")).toHaveLength(3);
+    expect(screen.queryByText("Cambridge 11 Test 2")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "By mock test" }));
+    const card = container.querySelector(".history-session-card")!;
 
-    expect(within(section as HTMLElement).getByRole("heading", { name: "Full Mock sessions" })).toBeInTheDocument();
     expect(within(card as HTMLElement).getByText("Full Mock")).toBeInTheDocument();
     expect(within(card as HTMLElement).getByText("Cambridge 11 Test 2")).toBeInTheDocument();
     expect(within(card as HTMLElement).getByText("Version 4")).toBeInTheDocument();
@@ -154,12 +160,13 @@ describe("AttemptHistoryList", () => {
     expect(within(skills as HTMLElement).getAllByText("No finalized attempt")).toHaveLength(3);
     expect(within(card.querySelector(".history-group-footer") as HTMLElement).getByRole("link", { name: "Resume Full Mock" }))
       .toHaveAttribute("href", `/test-session/${activeSession.session_id}`);
-    expect(screen.getByRole("tab", { name: "By skill" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "By mock test" })).toHaveAttribute("aria-selected", "true");
+    fireEvent.click(screen.getByRole("tab", { name: "By skill" }));
     expect(screen.getByRole("link", { name: "Continue" })).toHaveAttribute("href", `/attempt/${inProgress.attempt_id}`);
     expect(screen.getByRole("button", { name: "Delete Fictional active attempt" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("tab", { name: "By test" }));
     expect(screen.getByRole("tab", { name: "By test" })).toHaveAttribute("aria-selected", "true");
-    expect(card).toBeInTheDocument();
+    expect(screen.queryByText("Cambridge 11 Test 2")).not.toBeInTheDocument();
   });
 
   it("shows completed Full Mock results without an empty Resume footer", () => {
@@ -168,6 +175,7 @@ describe("AttemptHistoryList", () => {
       [],
       [{ ...activeSession, status: "COMPLETED", finished_at: "2026-09-20T01:00:00Z", reading: submitted, listening, writing, overall_band_score: 8.0 }],
     )} />);
+    fireEvent.click(screen.getByRole("tab", { name: "By mock test" }));
     const card = container.querySelector(".history-session-card")!;
     expect(within(card as HTMLElement).getByText("Overall band 8.0")).toBeInTheDocument();
     expect(within(card.querySelector(".history-group-footer") as HTMLElement).getByRole("button", { name: "Delete Full Mock" })).toBeInTheDocument();
@@ -177,12 +185,20 @@ describe("AttemptHistoryList", () => {
     expect(within(card as HTMLElement).getByRole("link", { name: "Review Writing" })).toBeInTheDocument();
   });
 
-  it("confirms Full Mock deletion and removes its session, child rows, and test group without F5", async () => {
-    vi.mocked(deleteTestSession).mockResolvedValue(undefined);
-    const child = { ...submitted, test_session_id: activeSession.session_id };
-    const group = { ...completeGroup, reading: child, listening: null, writing: null };
-    render(<AttemptHistoryList initialHistory={history([child, paused], [group], [activeSession])} />);
+  it("shows abandoned Full Mock status and keeps session deletion available", () => {
+    render(<AttemptHistoryList initialHistory={history([], [], [{ ...activeSession, status: "ABANDONED" }])} />);
+    fireEvent.click(screen.getByRole("tab", { name: "By mock test" }));
+    expect(screen.getByText("Abandoned")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Delete Full Mock" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Resume Full Mock" })).not.toBeInTheDocument();
+  });
 
+  it("confirms Full Mock deletion and preserves standalone test history without F5", async () => {
+    vi.mocked(deleteTestSession).mockResolvedValue(undefined);
+    const child = { ...submitted, attempt_id: "55555555-5555-4555-8555-555555555555", test_session_id: activeSession.session_id };
+    render(<AttemptHistoryList initialHistory={history([child, paused, submitted], [completeGroup], [activeSession])} />);
+
+    fireEvent.click(screen.getByRole("tab", { name: "By mock test" }));
     const card = screen.getByText("Cambridge 11 Test 2").closest(".history-session-card")!;
     fireEvent.click(within(card as HTMLElement).getByRole("button", { name: "Delete Full Mock" }));
     const dialog = screen.getByRole("dialog");
@@ -194,13 +210,97 @@ describe("AttemptHistoryList", () => {
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Delete Full Mock" }));
 
     await waitFor(() => expect(deleteTestSession).toHaveBeenCalledWith(activeSession.session_id));
-    expect(screen.queryByText("Cambridge 11 Test 2")).not.toBeInTheDocument();
-    expect(screen.queryByText("Fictional submitted attempt")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "No Full Mock history yet" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "By skill" }));
+    expect(screen.getAllByText("Fictional submitted attempt")).toHaveLength(1);
     expect(screen.getByText("Fictional paused attempt")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("tab", { name: "By test" }));
-    expect(screen.getByRole("heading", { name: "No finalized test groups yet" })).toBeInTheDocument();
+    expect(screen.getByText("Overall band 8.0")).toBeInTheDocument();
     expect(refresh).toHaveBeenCalledOnce();
     expect(deleteAttempt).not.toHaveBeenCalled();
+  });
+
+  it("deletes all visible standalone history for one version while retaining another version and Full Mock", async () => {
+    vi.mocked(deleteStandaloneTestHistory).mockResolvedValue(undefined);
+    const otherVersionId = "77777777-7777-4777-8777-777777777777";
+    const otherReading = {
+      ...submitted,
+      attempt_id: "66666666-6666-4666-8666-666666666666",
+      test_version_id: otherVersionId,
+      version_number: 2,
+    };
+    const olderReading = { ...submitted, attempt_id: "55555555-5555-4555-8555-555555555555" };
+    const child = {
+      ...submitted,
+      attempt_id: "99999999-9999-4999-8999-999999999998",
+      test_session_id: activeSession.session_id,
+    };
+    const otherGroup = {
+      ...completeGroup,
+      test_version_id: otherVersionId,
+      version_number: 2,
+      reading: otherReading,
+      listening: null,
+      writing: null,
+      overall_band_score: null,
+    };
+    render(<AttemptHistoryList initialHistory={history(
+      [submitted, olderReading, listening, writing, child, otherReading],
+      [completeGroup, otherGroup],
+      [{ ...activeSession, reading: child }],
+    )} />);
+
+    fireEvent.click(screen.getByRole("tab", { name: "By test" }));
+    expect(screen.getAllByRole("button", { name: "Delete test history" })).toHaveLength(2);
+    const card = screen.getByText("Version 1").closest(".history-group-card")!;
+    fireEvent.click(within(card as HTMLElement).getByRole("button", { name: "Delete test history" }));
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toHaveTextContent("Delete this test history?");
+    expect(dialog).toHaveTextContent("Fictional submitted attempt, Version 1");
+    expect(dialog).toHaveTextContent("Full Mock sessions and the published test will not be deleted");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(deleteStandaloneTestHistory).not.toHaveBeenCalled();
+
+    fireEvent.click(within(card as HTMLElement).getByRole("button", { name: "Delete test history" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Delete history" }));
+    await waitFor(() => expect(deleteStandaloneTestHistory).toHaveBeenCalledWith(submitted.test_version_id));
+    expect(screen.queryByText("Version 1")).not.toBeInTheDocument();
+    expect(screen.getByText("Version 2")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "By skill" }));
+    expect(screen.getAllByText("Fictional submitted attempt")).toHaveLength(2);
+    expect(screen.getByText("Full Mock")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "By mock test" }));
+    expect(screen.getByText("Cambridge 11 Test 2")).toBeInTheDocument();
+    expect(refresh).toHaveBeenCalledOnce();
+    expect(deleteTestSession).not.toHaveBeenCalled();
+  });
+
+  it("keeps a By-test card and shows the API error when grouped deletion fails", async () => {
+    vi.mocked(deleteStandaloneTestHistory).mockRejectedValue(new ApiError("DELETE_FAILED", "Could not delete history.", 500));
+    render(<AttemptHistoryList initialHistory={history([submitted], [completeGroup])} />);
+    fireEvent.click(screen.getByRole("tab", { name: "By test" }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete test history" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Delete history" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not delete history.");
+    expect(screen.getByText("Version 1")).toBeInTheDocument();
+    expect(refresh).not.toHaveBeenCalled();
+  });
+
+  it("accepts fresh standalone history for the same version after server reconciliation", async () => {
+    vi.mocked(deleteStandaloneTestHistory).mockResolvedValue(undefined);
+    const { rerender } = render(<AttemptHistoryList initialHistory={history([submitted], [completeGroup])} />);
+    fireEvent.click(screen.getByRole("tab", { name: "By test" }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete test history" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Delete history" }));
+    await waitFor(() => expect(screen.getByRole("heading", { name: "No standalone test history yet" })).toBeInTheDocument());
+
+    rerender(<AttemptHistoryList initialHistory={history([])} />);
+    const fresh = { ...submitted, attempt_id: "55555555-5555-4555-8555-555555555555" };
+    rerender(<AttemptHistoryList initialHistory={history([fresh], [{ ...completeGroup, reading: fresh }])} />);
+    expect(screen.getByText("Version 1")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Review Reading" })).toHaveAttribute("href", `/review/${fresh.attempt_id}`);
   });
 
   it("hides standalone Delete for Full Mock children but keeps it for standalone attempts", () => {
@@ -210,25 +310,26 @@ describe("AttemptHistoryList", () => {
     ], [], [activeSession])} />);
     expect(screen.queryByRole("button", { name: "Delete Fictional submitted attempt" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Delete Fictional paused attempt" })).toBeInTheDocument();
+    expect(screen.getByText("Full Mock")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "By mock test" }));
     expect(screen.getByRole("button", { name: "Delete Full Mock" })).toBeInTheDocument();
   });
 
-  it("retains ungraded Writing and its review link in a completed Full Mock and By test", () => {
+  it("retains ungraded Writing in By mock test without a standalone By-test group", () => {
     const childWriting = { ...writing, band_score: null, test_session_id: activeSession.session_id };
     const childReading = { ...submitted, test_session_id: activeSession.session_id };
     const childListening = { ...listening, test_session_id: activeSession.session_id };
     render(<AttemptHistoryList initialHistory={history(
       [childWriting, childReading, childListening],
-      [{ ...completeGroup, reading: childReading, listening: childListening, writing: childWriting, overall_band_score: null }],
+      [],
       [{ ...activeSession, status: "COMPLETED", finished_at: "2026-09-20T01:00:00Z", reading: childReading, listening: childListening, writing: childWriting }],
     )} />);
+    fireEvent.click(screen.getByRole("tab", { name: "By mock test" }));
     const card = screen.getByText("Cambridge 11 Test 2").closest(".history-session-card")!;
     expect(within(card as HTMLElement).getByText("Not graded")).toBeInTheDocument();
     expect(within(card as HTMLElement).getByRole("link", { name: "Review Writing" })).toHaveAttribute("href", `/review/${writing.attempt_id}`);
     fireEvent.click(screen.getByRole("tab", { name: "By test" }));
-    expect(screen.getAllByText("Overall band —")).toHaveLength(2);
-    expect(screen.getAllByText("Not graded")).toHaveLength(2);
-    expect(screen.getAllByRole("link", { name: "Review Writing" })).toHaveLength(2);
+    expect(screen.getByRole("heading", { name: "No standalone test history yet" })).toBeInTheDocument();
   });
 
   it("resumes a paused row through the backend before navigating", async () => {
@@ -259,6 +360,10 @@ describe("AttemptHistoryList", () => {
 
     expect(screen.getByRole("heading", { name: "No practice attempts yet" })).toBeInTheDocument();
     expect(container.querySelector(".empty-state")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "By test" }));
+    expect(screen.getByRole("heading", { name: "No standalone test history yet" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "By mock test" }));
+    expect(screen.getByRole("heading", { name: "No Full Mock history yet" })).toBeInTheDocument();
   });
 
   it("opens the confirmation dialog and cancellation sends no request", () => {
@@ -398,6 +503,35 @@ describe("AttemptHistoryList", () => {
       "href",
       `/review/${writing.attempt_id}`,
     );
+  });
+
+  it("keeps Cambridge Test 2 versions 5 and 6 distinct from its Version 6 Full Mock", () => {
+    const version5Id = "55555555-5555-4555-8555-555555555555";
+    const version6 = {
+      ...completeGroup,
+      test_title: "IELTS Cambridge 11 Test 2",
+      version_number: 6,
+    };
+    const version5 = {
+      ...completeGroup,
+      test_version_id: version5Id,
+      test_title: "IELTS Cambridge 11 Test 2",
+      version_number: 5,
+    };
+    render(<AttemptHistoryList initialHistory={history(
+      [submitted],
+      [version6, version5],
+      [{ ...activeSession, test_title: "IELTS Cambridge 11 Test 2", version_number: 6 }],
+    )} />);
+
+    fireEvent.click(screen.getByRole("tab", { name: "By test" }));
+    expect(screen.getAllByText("IELTS Cambridge 11 Test 2")).toHaveLength(2);
+    expect(screen.getByText("Version 5")).toBeInTheDocument();
+    expect(screen.getByText("Version 6")).toBeInTheDocument();
+    expect(screen.queryByText("Full Mock")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "By mock test" }));
+    expect(screen.getAllByText("IELTS Cambridge 11 Test 2")).toHaveLength(1);
+    expect(screen.getByText("Full Mock")).toBeInTheDocument();
   });
 
   it("replaces group selection and overall when refreshed server props arrive", () => {

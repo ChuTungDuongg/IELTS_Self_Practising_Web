@@ -86,10 +86,10 @@ describe("fantasy galaxy visual system", () => {
     expect(css).toMatch(/@media \(max-width:\s*700px\)[\s\S]*?\.history-group-skill\s*\{[^}]*grid-template-columns:\s*1fr/);
   });
 
-  it("gives Full Mock sessions a padded section and footer across screen sizes", () => {
-    expect(css).toMatch(/\.history-session-section\s*\{[^}]*padding:\s*22px/);
-    expect(css).toMatch(/\.history-section-header\s*\{[^}]*border-bottom:/);
-    expect(css).toMatch(/\.history-session-grid\s*\{[^}]*padding:\s*0/);
+  it("keeps all three History panels padded and their card footers usable across screen sizes", () => {
+    expect(css).toMatch(/\.history-tabs\s*\{[^}]*flex-wrap:\s*wrap/);
+    expect(css).toMatch(/\.history-group-grid\s*\{[^}]*padding:\s*20px 22px/);
+    expect(css).toMatch(/\.history-context-badge\s*\{[^}]*border:/);
     expect(css).toMatch(/\.history-group-footer\s*\{[^}]*border-top:[^}]*padding:/);
     expect(css).toMatch(/@media \(max-width:\s*920px\)[\s\S]*?\.history-row\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) auto/);
     expect(css).toMatch(/@media \(max-width:\s*700px\)[\s\S]*?\.history-row\s*\{[^}]*grid-template-columns:\s*1fr/);

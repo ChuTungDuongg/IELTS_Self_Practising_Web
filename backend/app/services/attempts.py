@@ -805,7 +805,8 @@ class AttemptService:
         items_by_id = {item.attempt_id: item for item in items}
         by_version: dict[uuid.UUID, list[Attempt]] = {}
         for attempt in attempts:
-            by_version.setdefault(attempt.test_version_id, []).append(attempt)
+            if attempt.test_session_id is None:
+                by_version.setdefault(attempt.test_version_id, []).append(attempt)
 
         def latest_finalized(
             version_attempts: list[Attempt], module: ModuleType
@@ -838,40 +839,12 @@ class AttemptService:
                 .order_by(TestSession.started_at.desc())
             )
         )
-        completed_by_version: dict[uuid.UUID, TestSession] = {}
-        for test_session in session_rows:
-            if test_session.status != TestSessionStatus.COMPLETED:
-                continue
-            previous = completed_by_version.get(test_session.test_version_id)
-            if previous is None or (
-                test_session.finished_at or test_session.started_at,
-                test_session.started_at,
-                test_session.id.int,
-            ) > (
-                previous.finished_at or previous.started_at,
-                previous.started_at,
-                previous.id.int,
-            ):
-                completed_by_version[test_session.test_version_id] = test_session
-
         groups: list[HistoryGroup] = []
         for version_attempts in by_version.values():
             version = version_attempts[0].test_version
-            completed_session = completed_by_version.get(version.id)
-            if completed_session is None:
-                reading = latest_finalized(version_attempts, ModuleType.READING)
-                listening = latest_finalized(version_attempts, ModuleType.LISTENING)
-                writing = latest_finalized(version_attempts, ModuleType.WRITING)
-            else:
-                session_items = {
-                    attempt.module_type: items_by_id[attempt.id]
-                    for attempt in completed_session.attempts
-                    if attempt.id in items_by_id
-                    and attempt.status not in {AttemptStatus.IN_PROGRESS, AttemptStatus.PAUSED}
-                }
-                reading = session_items.get(ModuleType.READING)
-                listening = session_items.get(ModuleType.LISTENING)
-                writing = session_items.get(ModuleType.WRITING)
+            reading = latest_finalized(version_attempts, ModuleType.READING)
+            listening = latest_finalized(version_attempts, ModuleType.LISTENING)
+            writing = latest_finalized(version_attempts, ModuleType.WRITING)
             groups.append(
                 HistoryGroup(
                     test_id=version.test_id,
@@ -1229,6 +1202,24 @@ class AttemptService:
                     409,
                 )
             await self.session.delete(attempt)
+
+    async def delete_standalone_history(self, test_version_id: uuid.UUID) -> None:
+        async with self.session.begin():
+            deleted_id = await self.session.scalar(
+                delete(Attempt)
+                .where(
+                    Attempt.user_id == self.user_id,
+                    Attempt.test_version_id == test_version_id,
+                    Attempt.test_session_id.is_(None),
+                )
+                .returning(Attempt.id)
+            )
+            if deleted_id is None:
+                raise AppError(
+                    "STANDALONE_HISTORY_NOT_FOUND",
+                    "Standalone history for this test version does not exist.",
+                    404,
+                )
 
     async def _require(self, attempt_id: uuid.UUID, *, for_update: bool = False) -> Attempt:
         attempt = await self.repository.get(
