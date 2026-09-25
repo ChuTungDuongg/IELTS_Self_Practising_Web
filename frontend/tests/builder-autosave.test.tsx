@@ -33,6 +33,22 @@ function ExplicitFlushHarness({ save }: { save: (value: string) => Promise<unkno
   </>;
 }
 
+function CanonicalHarness({ save }: { save: (value: string) => Promise<string> }) {
+  const [value, setValue] = useState("initial");
+  useBuilderAutosave({
+    resourceKey: "canonical-fixture",
+    value,
+    save,
+    onSaved: (saved, _submitted, unchanged) => {
+      if (unchanged) {
+        setValue(saved);
+        return saved;
+      }
+    },
+  });
+  return <><input aria-label="Canonical draft" value={value} onChange={(event) => setValue(event.target.value)} /><BuilderAutosaveStatus /></>;
+}
+
 function setup(save: (value: string) => Promise<unknown>) {
   render(<BuilderLifecycleProvider><Harness save={save} /></BuilderLifecycleProvider>);
 }
@@ -50,6 +66,32 @@ describe("Builder autosave", () => {
     expect(save).not.toHaveBeenCalled();
     await act(async () => { await vi.advanceTimersByTimeAsync(1); });
     expect(save).toHaveBeenCalledWith("latest");
+    expect(screen.getByText("Saved")).toBeInTheDocument();
+  });
+
+  it("shows the canonical server response without scheduling a duplicate save", async () => {
+    const save = vi.fn(async (value: string) => value.trim());
+    render(<BuilderLifecycleProvider><CanonicalHarness save={save} /></BuilderLifecycleProvider>);
+    fireEvent.change(screen.getByLabelText("Canonical draft"), { target: { value: "  edited  " } });
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    expect(screen.getByLabelText("Canonical draft")).toHaveValue("edited");
+    expect(screen.getByText("Saved")).toBeInTheDocument();
+    await act(async () => { await vi.advanceTimersByTimeAsync(1500); });
+    expect(save).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps newer typing when an older canonical response arrives", async () => {
+    let resolveFirst!: (value: string) => void;
+    const save = vi.fn()
+      .mockImplementationOnce(() => new Promise<string>((resolve) => { resolveFirst = resolve; }))
+      .mockResolvedValueOnce("SECOND");
+    render(<BuilderLifecycleProvider><CanonicalHarness save={save} /></BuilderLifecycleProvider>);
+    fireEvent.change(screen.getByLabelText("Canonical draft"), { target: { value: "first" } });
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    fireEvent.change(screen.getByLabelText("Canonical draft"), { target: { value: "second" } });
+    await act(async () => { resolveFirst("FIRST"); await Promise.resolve(); });
+    expect(save).toHaveBeenLastCalledWith("second");
+    expect(screen.getByLabelText("Canonical draft")).toHaveValue("SECOND");
     expect(screen.getByText("Saved")).toBeInTheDocument();
   });
 

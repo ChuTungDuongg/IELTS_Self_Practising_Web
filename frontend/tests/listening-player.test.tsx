@@ -143,6 +143,38 @@ describe("Listening audio and templates", () => {
     expect(createListeningQuestionGroup).not.toHaveBeenCalled();
   });
 
+  it("shows the saved Listening group and section title without F5", async () => {
+    vi.useFakeTimers();
+    const persisted = {
+      ...questionRegistry.multiple_choice.createDefault(1),
+      id: crypto.randomUUID(), revision: 1, image_asset_id: null, image_asset: null,
+      instruction: "Original instruction",
+    } as BuilderQuestionGroup;
+    const builderVersion = listeningBuilderVersion([persisted]);
+    const part = builderVersion.modules[0].listening_parts[0];
+    vi.mocked(updateListeningPart).mockResolvedValue({ ...part, revision: 2, title: "Server section" });
+    vi.mocked(updateListeningQuestionGroup).mockResolvedValue({
+      ...persisted,
+      revision: 2,
+      instruction: "Server instruction",
+      questions: persisted.questions.map((question) => ({ ...question, prompt: "Server prompt" })),
+    });
+    render(<BuilderLifecycleProvider><ListeningBuilder version={builderVersion} /><BuilderAutosaveStatus /></BuilderLifecycleProvider>);
+    fireEvent.change(screen.getByLabelText("Section title / internal label"), { target: { value: "Client section" } });
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    expect(screen.getByLabelText("Section title / internal label")).toHaveValue("Server section");
+    await act(async () => { fireEvent.click(screen.getByRole("tab", { name: /Section 2/ })); await Promise.resolve(); });
+    await act(async () => { fireEvent.click(screen.getByRole("tab", { name: /Section 1/ })); await Promise.resolve(); });
+    expect(screen.getByLabelText("Section title / internal label")).toHaveValue("Server section");
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Edit" })); await Promise.resolve(); });
+    fireEvent.change(screen.getByLabelText("Group instruction"), { target: { value: "Client instruction" } });
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    expect(screen.getByLabelText("Group instruction")).toHaveValue("Server instruction");
+    expect(screen.getByLabelText("Prompt")).toHaveValue("Server prompt");
+    expect(screen.getByText("Server instruction")).toBeInTheDocument();
+    expect(screen.getByText("Saved")).toBeInTheDocument();
+  });
+
   it("uses acknowledged revisions for repeated Listening group autosaves", async () => {
     vi.useFakeTimers();
     const persisted = { ...questionRegistry.multiple_choice.createDefault(1), id: crypto.randomUUID(), revision: 5, image_asset_id: null, image_asset: null } as BuilderQuestionGroup;

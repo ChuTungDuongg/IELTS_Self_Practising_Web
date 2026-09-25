@@ -536,17 +536,21 @@ class ReadingService:
         """
         self._validate_local_question_numbers(body)
         numbers = set(group_slots(body.question_type, body.questions))
-        groups = list(await self.session.scalars(
-            select(QuestionGroup)
-            .where(QuestionGroup.module_id == module_id)
-            .options(selectinload(QuestionGroup.questions))
-        ))
-        existing = sorted(numbers.intersection(
-            number
-            for group in groups
-            if group.id != excluded_group_id
-            for number in group_slots(group.question_type, group.questions)
-        ))
+        groups = list(
+            await self.session.scalars(
+                select(QuestionGroup)
+                .where(QuestionGroup.module_id == module_id)
+                .options(selectinload(QuestionGroup.questions))
+            )
+        )
+        existing = sorted(
+            numbers.intersection(
+                number
+                for group in groups
+                if group.id != excluded_group_id
+                for number in group_slots(group.question_type, group.questions)
+            )
+        )
         if existing:
             raise AppError(
                 "DUPLICATE_QUESTION_NUMBER",
@@ -612,9 +616,7 @@ class ReadingService:
                 if body.question_type == "matching_headings" and str(
                     question.config.get("target_block_id")
                 ) not in {
-                    str(block["id"])
-                    for block in passage_blocks
-                    if block.get("type") == "paragraph"
+                    str(block["id"]) for block in passage_blocks if block.get("type") == "paragraph"
                 }:
                     raise ValueError("Heading target must reference a passage paragraph")
             question_ids = {str(question.id) for question in body.questions if question.id}

@@ -49,7 +49,9 @@ async def test_rename_test_updates_only_parent_metadata(db_session: AsyncSession
     await persist(db_session, test)
     test_id, draft_id = test.id, draft.id
 
-    updated = await LifecycleService(db_session).update_test(test_id, UpdatePayload(title="  Renamed test  "))
+    updated = await LifecycleService(db_session).update_test(
+        test_id, UpdatePayload(title="  Renamed test  ")
+    )
 
     assert updated.id == test_id
     assert updated.title == "Renamed test"
@@ -82,7 +84,9 @@ async def test_rename_endpoint_validates_title_and_requires_admin(
     try:
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-            renamed = await client.patch(f"/api/v1/tests/{test_id}", json={"title": "  Renamed test  "})
+            renamed = await client.patch(
+                f"/api/v1/tests/{test_id}", json={"title": "  Renamed test  "}
+            )
             detail = await client.get(f"/api/v1/tests/{test_id}")
             blank = await client.patch(f"/api/v1/tests/{test_id}", json={"title": "   "})
             too_long = await client.patch(f"/api/v1/tests/{test_id}", json={"title": "x" * 241})

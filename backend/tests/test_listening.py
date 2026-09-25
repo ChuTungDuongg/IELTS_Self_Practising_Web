@@ -59,15 +59,25 @@ def test_multiple_choice_multiple_evaluates_as_an_unordered_set() -> None:
 def test_multiple_choice_number_slots_follow_required_selection_count() -> None:
     assert question_span("multiple_choice", {"max_selections": 3}) == 1
     assert list(question_slots("multiple_choice", 21, {})) == [21]
-    assert list(question_slots("multiple_choice_multiple", 13, {"min_selections": 2, "max_selections": 2})) == [13, 14]
-    assert list(question_slots("multiple_choice_multiple", 21, {"min_selections": 3, "max_selections": 3})) == [21, 22, 23]
+    assert list(
+        question_slots("multiple_choice_multiple", 13, {"min_selections": 2, "max_selections": 2})
+    ) == [13, 14]
+    assert list(
+        question_slots("multiple_choice_multiple", 21, {"min_selections": 3, "max_selections": 3})
+    ) == [21, 22, 23]
     groups = [
         ("multiple_choice_multiple", 11, 2),
         ("multiple_choice_multiple", 13, 2),
         ("multiple_choice_multiple", 15, 2),
         ("multiple_choice", 17, 1),
     ]
-    slots = [number for kind, start, count in groups for number in question_slots(kind, start, {"min_selections": count, "max_selections": count})]
+    slots = [
+        number
+        for kind, start, count in groups
+        for number in question_slots(
+            kind, start, {"min_selections": count, "max_selections": count}
+        )
+    ]
     assert slots == list(range(11, 18))
 
 

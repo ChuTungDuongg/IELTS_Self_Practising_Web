@@ -90,7 +90,24 @@ describe("WritingBuilder", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(createWritingModule).mockResolvedValue({});
-    vi.mocked(updateWritingTask).mockResolvedValue(version().modules[0].writing_tasks[0]);
+    vi.mocked(updateWritingTask).mockImplementation(async (taskId, body) => {
+      const task = version().modules[0].writing_tasks.find((item) => item.id === taskId)!;
+      return {
+        ...task,
+        revision: task.revision + 1,
+        prompt: body.prompt,
+        image_asset_id: body.image_asset_id,
+        image_asset: body.image_asset_id ? {
+          id: body.image_asset_id,
+          original_name: "chart.png",
+          mime_type: "image/png",
+          file_size: 10,
+          content_url: "/assets/chart.png",
+        } : null,
+        minimum_recommended_words: body.minimum_recommended_words,
+        recommended_duration_seconds: body.recommended_duration_seconds,
+      };
+    });
     vi.mocked(deleteModule).mockResolvedValue({});
   });
 
@@ -99,6 +116,19 @@ describe("WritingBuilder", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create Writing module" }));
     await waitFor(() => expect(createWritingModule).toHaveBeenCalledWith(versionId));
     expect(refresh).toHaveBeenCalled();
+  });
+
+  it("hydrates task drafts when the newly created module arrives through refreshed props", async () => {
+    const view = renderBuilder(version(false));
+    view.rerender(<BuilderLifecycleProvider><WritingBuilder version={version()} /></BuilderLifecycleProvider>);
+    const taskOne = await screen.findByRole("group", { name: "Writing Task 1" });
+    fireEvent.change(within(taskOne).getByLabelText("Prompt"), { target: { value: "New fictional prompt" } });
+    fireEvent.click(within(taskOne).getByRole("button", { name: "Save Task 1" }));
+    await waitFor(() => expect(updateWritingTask).toHaveBeenCalledWith(taskOneId, expect.objectContaining({
+      prompt: "New fictional prompt",
+      minimum_recommended_words: 150,
+      recommended_duration_seconds: 1200,
+    })));
   });
 
   it("edits fixed tasks and sends a complete task payload", async () => {
@@ -129,6 +159,25 @@ describe("WritingBuilder", () => {
         recommended_duration_seconds: 1500,
       }),
     );
+  });
+
+  it("shows the canonical saved Writing task immediately after Save", async () => {
+    const original = version().modules[0].writing_tasks[0];
+    vi.mocked(updateWritingTask).mockResolvedValue({
+      ...original,
+      revision: 2,
+      prompt: "Server normalized prompt",
+      minimum_recommended_words: 180,
+      recommended_duration_seconds: 900,
+    });
+    renderBuilder(version());
+    const taskOne = screen.getByRole("group", { name: "Writing Task 1" });
+    fireEvent.change(within(taskOne).getByLabelText("Prompt"), { target: { value: "Client prompt" } });
+    fireEvent.click(within(taskOne).getByRole("button", { name: "Save Task 1" }));
+    await waitFor(() => expect(within(taskOne).getByLabelText("Prompt")).toHaveValue("Server normalized prompt"));
+    expect(within(taskOne).getByLabelText("Minimum recommended words")).toHaveValue(180);
+    expect(within(taskOne).getByLabelText("Recommended time (minutes)")).toHaveValue(15);
+    expect(refresh).toHaveBeenCalled();
   });
 
   it("keeps Writing Task 1 and Task 2 revisions independent", async () => {

@@ -32,7 +32,30 @@ import { AutosaveLink } from "./autosave-link";
 export function ReadingBuilder({ version }: { version: BuilderVersion }) {
   const router = useRouter();
   const { deleting, transitioning, flushAutosaves, runMutation } = useBuilderLifecycle();
-  const reading = version.modules.find((item) => item.module_type === "READING");
+  const sourceReading = version.modules.find((item) => item.module_type === "READING");
+  const [savedModule, setSavedModule] = useState<BuilderVersion["modules"][number] | null>(null);
+  const [savedPassages, setSavedPassages] = useState<Record<string, BuilderPassage>>({});
+  const [savedGroups, setSavedGroups] = useState<Record<string, BuilderQuestionGroup>>({});
+  const reading = useMemo(() => {
+    if (!sourceReading) return undefined;
+    const currentModule = savedModule && savedModule.revision > sourceReading.revision ? savedModule : sourceReading;
+    return {
+      ...currentModule,
+      passages: currentModule.passages.map((item) => {
+        const savedPassage = savedPassages[item.id];
+        const passage = savedPassage && savedPassage.revision > item.revision
+          ? { ...savedPassage, question_groups: item.question_groups }
+          : item;
+        return {
+          ...passage,
+          question_groups: passage.question_groups.map((group) => {
+            const savedGroup = savedGroups[group.id];
+            return savedGroup && savedGroup.revision > group.revision ? savedGroup : group;
+          }),
+        };
+      }),
+    };
+  }, [sourceReading, savedModule, savedPassages, savedGroups]);
   const moduleRevision = useRef(reading?.revision ?? 1);
   const serverModuleRevision = reading?.revision;
   useEffect(() => { if (serverModuleRevision) moduleRevision.current = serverModuleRevision; }, [serverModuleRevision]);
@@ -64,6 +87,7 @@ export function ReadingBuilder({ version }: { version: BuilderVersion }) {
     void run(async () => {
       const saved = await reorderQuestionGroups(reading.id, orderedIds, moduleRevision.current);
       moduleRevision.current = saved.revision;
+      setSavedModule(saved);
     });
   }
 
@@ -139,6 +163,7 @@ export function ReadingBuilder({ version }: { version: BuilderVersion }) {
             onCancel={() => setEditingPassage(null)}
             onSave={(body) => run(() => createPassage(version.id, body), "passage:new")}
             onAutosave={editingPassage === "new" ? undefined : (body) => updatePassage(editingPassage.id, body)}
+            onPersisted={(saved) => { setSavedPassages((current) => ({ ...current, [saved.id]: saved })); setEditingPassage(saved); router.refresh(); }}
           />
         ) : null}
 
@@ -166,7 +191,7 @@ export function ReadingBuilder({ version }: { version: BuilderVersion }) {
                   <GroupSummary key={group.id} group={group} passageNumber={passage.order_index + 1} onMove={(offset) => moveGroup(passage.id, group.id, offset)} onEdit={() => void editGroup(passage.id, group)} onDelete={() => run(() => deleteQuestionGroup(group.id))} />
                 ))}
                 {editingGroup?.passageId === passage.id ? (
-                  <QuestionGroupEditor key={editingGroup.group.id ?? editingGroup.group.questions[0]?.id ?? "new-reading-group"} initial={editingGroup.group} moduleType="READING" nextQuestionNumber={nextNumber} baseQuestionNumber={canonicalReadingGroupStart(reading.passages, editingGroup.group)} passageBlocks={passage.blocks} passageNumber={passage.order_index + 1} testVersionId={version.id} onCancel={() => setEditingGroup(null)} onSave={(body) => run(() => createQuestionGroup(passage.id, body), "question-group:new")} onAutosave={editingGroup.group.id ? (body, expectedRevision) => updateQuestionGroup(editingGroup.group.id!, body, expectedRevision) : undefined} />
+                  <QuestionGroupEditor key={editingGroup.group.id ?? editingGroup.group.questions[0]?.id ?? "new-reading-group"} initial={editingGroup.group} moduleType="READING" nextQuestionNumber={nextNumber} baseQuestionNumber={canonicalReadingGroupStart(reading.passages, editingGroup.group)} passageBlocks={passage.blocks} passageNumber={passage.order_index + 1} testVersionId={version.id} onCancel={() => setEditingGroup(null)} onSave={(body) => run(() => createQuestionGroup(passage.id, body), "question-group:new")} onAutosave={editingGroup.group.id ? (body, expectedRevision) => updateQuestionGroup(editingGroup.group.id!, body, expectedRevision) : undefined} onPersisted={(saved) => { setSavedGroups((current) => ({ ...current, [saved.id]: saved })); setEditingGroup((current) => current?.group.id === saved.id ? { ...current, group: saved } : current); router.refresh(); }} />
                 ) : (
                   <NewGroupButton nextNumber={nextNumber} orderIndex={nextGroupOrder} passageBlocks={passage.blocks} onCreate={(group) => void editGroup(passage.id, group)} />
                 )}
@@ -181,7 +206,7 @@ export function ReadingBuilder({ version }: { version: BuilderVersion }) {
   );
 }
 
-function PassageEditor({ passage, orderIndex, onSave, onAutosave, onCancel }: { passage?: BuilderPassage; orderIndex: number; onSave: (body: { title: string; order_index: number; blocks: TextBlock[] }) => Promise<void>; onAutosave?: (body: { expected_revision: number; title: string; order_index: number; blocks: TextBlock[] }) => Promise<BuilderPassage>; onCancel: () => void }) {
+function PassageEditor({ passage, orderIndex, onSave, onAutosave, onPersisted, onCancel }: { passage?: BuilderPassage; orderIndex: number; onSave: (body: { title: string; order_index: number; blocks: TextBlock[] }) => Promise<void>; onAutosave?: (body: { expected_revision: number; title: string; order_index: number; blocks: TextBlock[] }) => Promise<BuilderPassage>; onPersisted?: (passage: BuilderPassage) => void; onCancel: () => void }) {
   const [title, setTitle] = useState(passage?.title ?? "New reading passage");
   const [blocks, setBlocks] = useState<TextBlock[]>(passage?.blocks ?? [{ id: crypto.randomUUID(), type: "paragraph", label: "A", text: "Passage paragraph" }]);
   const [deletedReferences, setDeletedReferences] = useState<number[]>([]);
@@ -191,9 +216,18 @@ function PassageEditor({ passage, orderIndex, onSave, onAutosave, onCancel }: { 
   const payload = { title, order_index: passage?.order_index ?? orderIndex, blocks };
   const revision = useRef(passage?.revision ?? 1);
   const { markSaved, saveNow } = useBuilderAutosave({ resourceKey: `passage:${passage?.id ?? "new"}`, value: payload, save: async (value) => {
-    if (!onAutosave) return onSave(value);
+    if (!onAutosave) { await onSave(value); return; }
     const saved = await onAutosave({ ...value, expected_revision: revision.current });
     revision.current = saved.revision;
+    return saved;
+  }, onSaved: (saved, _submitted, unchanged) => {
+    if (!saved) return;
+    onPersisted?.(saved);
+    if (unchanged) {
+      setTitle(saved.title);
+      setBlocks(saved.blocks);
+      return { title: saved.title, order_index: saved.order_index, blocks: saved.blocks };
+    }
   }, valid: !invalid, enabled: Boolean(passage && onAutosave) });
 
   function updateBlock(id: string, patch: Partial<TextBlock>) {

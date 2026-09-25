@@ -177,10 +177,11 @@ export function useOptionalBuilderLifecycle(): BuilderLifecycleValue | null {
   return useContext(BuilderLifecycleContext);
 }
 
-export function useBuilderAutosave<T>({ resourceKey, value, save, valid = true, enabled = true, delay = 1000 }: {
+export function useBuilderAutosave<T, Saved = unknown>({ resourceKey, value, save, onSaved, valid = true, enabled = true, delay = 1000 }: {
   resourceKey: string;
   value: T;
-  save: (value: T) => Promise<unknown>;
+  save: (value: T) => Promise<Saved>;
+  onSaved?: (saved: Saved, submitted: T, unchanged: boolean) => T | void;
   valid?: boolean;
   enabled?: boolean;
   delay?: number;
@@ -198,13 +199,15 @@ export function useBuilderAutosave<T>({ resourceKey, value, save, valid = true, 
   const validRef = useRef(valid);
   const enabledRef = useRef(enabled);
   const saveRef = useRef(save);
+  const onSavedRef = useRef(onSaved);
   useLayoutEffect(() => {
     valueRef.current = value;
     serializedRef.current = serialized;
     validRef.current = valid;
     enabledRef.current = enabled;
     saveRef.current = save;
-  }, [enabled, save, serialized, valid, value]);
+    onSavedRef.current = onSaved;
+  }, [enabled, onSaved, save, serialized, valid, value]);
 
   const flush = useCallback((): Promise<boolean> => {
     if (conflicted.current) return Promise.resolve(false);
@@ -229,8 +232,14 @@ export function useBuilderAutosave<T>({ resourceKey, value, save, valid = true, 
         const savingSerialized = serializedRef.current;
         setAutosaveState(resourceKey, "SAVING");
         try {
-          await runAutosave(resourceKey, () => saveRef.current(savingValue));
-          baseline.current = savingSerialized;
+          const saved = await runAutosave(resourceKey, () => saveRef.current(savingValue));
+          const unchanged = serializedRef.current === savingSerialized;
+          const canonical = onSavedRef.current?.(saved, savingValue, unchanged);
+          baseline.current = canonical === undefined ? savingSerialized : JSON.stringify(canonical);
+          if (unchanged && canonical !== undefined) {
+            valueRef.current = canonical;
+            serializedRef.current = baseline.current;
+          }
         } catch (error) {
           if (error instanceof ApiError && error.code === "DRAFT_REVISION_CONFLICT") {
             conflicted.current = true;
@@ -241,7 +250,7 @@ export function useBuilderAutosave<T>({ resourceKey, value, save, valid = true, 
           setAutosaveState(resourceKey, "ERROR");
           return false;
         }
-        if (serializedRef.current !== savingSerialized) continue;
+        if (serializedRef.current !== baseline.current) continue;
         setAutosaveState(resourceKey, "SAVED");
         return true;
       }

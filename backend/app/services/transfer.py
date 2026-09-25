@@ -748,9 +748,13 @@ class TransferService:
                     for question, normalized in zip(group.questions, questions, strict=True):
                         key = normalized["answer_key"]
                         if version.status == VersionStatus.DRAFT:
-                            question_registry.validate_draft(group.question_type, config, normalized["config"], key)
+                            question_registry.validate_draft(
+                                group.question_type, config, normalized["config"], key
+                            )
                         else:
-                            question_registry.validate(group.question_type, config, normalized["config"], key)
+                            question_registry.validate(
+                                group.question_type, config, normalized["config"], key
+                            )
                             TestService._validate_references(
                                 group,
                                 question,

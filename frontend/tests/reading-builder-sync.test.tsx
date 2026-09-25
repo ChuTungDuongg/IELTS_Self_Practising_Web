@@ -5,13 +5,13 @@ import { questionRegistry } from "@/features/questions/registry";
 import { BuilderAutosaveStatus, BuilderLifecycleProvider, useBuilderAutosave } from "@/features/test-builder/builder-lifecycle";
 import { ReadingBuilder } from "@/features/test-builder/reading-builder";
 import { VersionActions } from "@/features/test-builder/version-actions";
-import { createPassage, createQuestionGroup, updatePassage, type BuilderPassage, type BuilderQuestionGroup, type BuilderVersion } from "@/lib/api/builder";
+import { createPassage, createQuestionGroup, reorderQuestionGroups, updatePassage, updateQuestionGroup, type BuilderPassage, type BuilderQuestionGroup, type BuilderVersion } from "@/lib/api/builder";
 import { validateVersion } from "@/lib/api/tests";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }) }));
 vi.mock("@/lib/api/builder", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api/builder")>();
-  return { ...actual, createPassage: vi.fn(), createQuestionGroup: vi.fn(), updatePassage: vi.fn() };
+  return { ...actual, createPassage: vi.fn(), createQuestionGroup: vi.fn(), reorderQuestionGroups: vi.fn(), updatePassage: vi.fn(), updateQuestionGroup: vi.fn() };
 });
 vi.mock("@/lib/api/tests", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api/tests")>();
@@ -89,6 +89,73 @@ describe("Reading Builder editor identity", () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
     expect(updatePassage).toHaveBeenCalledTimes(2);
     expect(vi.mocked(updatePassage).mock.calls.map(([, body]) => body.expected_revision)).toEqual([1, 2]);
+  });
+
+  it("shows the saved passage response in both editor and summary without a reload", async () => {
+    vi.useFakeTimers();
+    const initial = passage(0, "Original passage", []);
+    const builderVersion = version([initial]);
+    vi.mocked(updatePassage).mockResolvedValue({ ...initial, revision: 2, title: "Server passage" });
+    const { rerender } = render(<BuilderLifecycleProvider><ReadingBuilder version={builderVersion} /><BuilderAutosaveStatus /></BuilderLifecycleProvider>);
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Edit passage" })); await Promise.resolve(); });
+    fireEvent.change(screen.getByLabelText("Passage title"), { target: { value: "Client passage" } });
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    expect(screen.getByLabelText("Passage title")).toHaveValue("Server passage");
+    expect(screen.getAllByText("Server passage").length).toBeGreaterThan(0);
+    expect(screen.getByText("Saved")).toBeInTheDocument();
+    rerender(<BuilderLifecycleProvider><ReadingBuilder version={{ ...builderVersion }} /><BuilderAutosaveStatus /></BuilderLifecycleProvider>);
+    expect(screen.getByLabelText("Passage title")).toHaveValue("Server passage");
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Close" })); await Promise.resolve(); });
+    expect(screen.getByRole("heading", { name: "Server passage" })).toBeInTheDocument();
+  });
+
+  it("shows the saved group response in its editor and card without a reload", async () => {
+    vi.useFakeTimers();
+    const initial = group(13, "Original prompt");
+    initial.instruction = "Original instruction";
+    vi.mocked(updateQuestionGroup).mockResolvedValue({
+      ...initial,
+      revision: 2,
+      instruction: "Server instruction",
+      questions: initial.questions.map((question) => ({ ...question, prompt: "Server prompt" })),
+    });
+    render(<BuilderLifecycleProvider><ReadingBuilder version={version([passage(0, "Passage", [initial])])} /><BuilderAutosaveStatus /></BuilderLifecycleProvider>);
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Edit / Preview" })); await Promise.resolve(); });
+    fireEvent.change(screen.getByLabelText("Group instruction"), { target: { value: "Client instruction" } });
+    await act(async () => { fireEvent.click(screen.getAllByRole("button", { name: "Save now" })[0]); await Promise.resolve(); });
+    expect(screen.getByLabelText("Group instruction")).toHaveValue("Server instruction");
+    expect(screen.getByLabelText("Prompt")).toHaveValue("Server prompt");
+    expect(screen.getByText(/Server instruction/)).toBeInTheDocument();
+    expect(screen.getByText("Saved")).toBeInTheDocument();
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Close" })); await Promise.resolve(); });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Edit / Preview" })); await Promise.resolve(); });
+    expect(screen.getByLabelText("Prompt")).toHaveValue("Server prompt");
+  });
+
+  it("uses the returned module order immediately after moving a group", async () => {
+    const first = group(1, "First prompt");
+    const second = group(2, "Second prompt");
+    const originalPassage = passage(0, "Passage", [first, second]);
+    const builderVersion = version([originalPassage]);
+    const readingModule = builderVersion.modules[0];
+    vi.mocked(updatePassage).mockResolvedValue({ ...originalPassage, revision: 2, title: "Saved passage" });
+    vi.mocked(reorderQuestionGroups).mockResolvedValue({
+      ...readingModule,
+      revision: 2,
+      passages: [{
+        ...readingModule.passages[0],
+        question_groups: [{ ...second, order_index: 0 }, { ...first, order_index: 1 }],
+      }],
+    });
+    render(<BuilderLifecycleProvider><ReadingBuilder version={builderVersion} /></BuilderLifecycleProvider>);
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Edit passage" })); await Promise.resolve(); });
+    fireEvent.change(screen.getByLabelText("Passage title"), { target: { value: "Client passage" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save now" }));
+    await waitFor(() => expect(screen.getByLabelText("Passage title")).toHaveValue("Saved passage"));
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Close" })); await Promise.resolve(); });
+    fireEvent.click(screen.getAllByRole("button", { name: "Move question group down" })[0]);
+    await waitFor(() => expect(reorderQuestionGroups).toHaveBeenCalledOnce());
+    await waitFor(() => expect(screen.getAllByText(/^Q[12]$/).map((element) => element.textContent)).toEqual(["Q2", "Q1"]));
   });
 
   it("switches persisted passage editors without carrying local state", async () => {

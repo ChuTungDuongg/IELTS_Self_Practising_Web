@@ -940,15 +940,17 @@ class TestService:
                     if group.question_type == "multiple_choice_multiple":
                         required = normalized["config"].get("min_selections", 2)
                         if len(key.get("values", [])) != required:
-                            issues.append(ValidationIssue(
-                                path=question_path,
-                                message=f"Select exactly {required} official answers before publishing.",
-                            ))
+                            issues.append(
+                                ValidationIssue(
+                                    path=question_path,
+                                    message=f"Select exactly {required} official answers before publishing.",
+                                )
+                            )
                             continue
                     elif not any(key.get(field) for field in ("value", "accepted")):
-                        issues.append(ValidationIssue(
-                            path=question_path, message="Answer key is incomplete."
-                        ))
+                        issues.append(
+                            ValidationIssue(path=question_path, message="Answer key is incomplete.")
+                        )
                         continue
                     try:
                         question_registry.validate(

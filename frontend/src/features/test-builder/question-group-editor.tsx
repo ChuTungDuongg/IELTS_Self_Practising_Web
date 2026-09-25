@@ -16,6 +16,7 @@ export function QuestionGroupEditor({
   initial,
   onSave,
   onAutosave,
+  onPersisted,
   onCancel,
   nextQuestionNumber,
   baseQuestionNumber: requestedBaseQuestionNumber,
@@ -27,6 +28,7 @@ export function QuestionGroupEditor({
   initial: QuestionGroupModel;
   onSave: (group: QuestionGroupModel) => Promise<void>;
   onAutosave?: (group: QuestionGroupModel, expectedRevision: number) => Promise<BuilderQuestionGroup>;
+  onPersisted?: (group: BuilderQuestionGroup) => void;
   onCancel: () => void;
   nextQuestionNumber: number;
   baseQuestionNumber?: number;
@@ -85,9 +87,18 @@ export function QuestionGroupEditor({
     resourceKey: `question-group:${initial.id ?? "new"}`,
     value: presentedGroup,
     save: async (value) => {
-      if (!onAutosave) return onSave(value);
+      if (!onAutosave) { await onSave(value); return; }
       const saved = await onAutosave(value, revision.current);
       revision.current = saved.revision;
+      return saved;
+    },
+    onSaved: (saved, _submitted, unchanged) => {
+      if (!saved) return;
+      onPersisted?.(saved);
+      if (unchanged) {
+        setGroup(saved);
+        return saved;
+      }
     },
     valid: structurallyValid,
     enabled: Boolean(initial.id && onAutosave),

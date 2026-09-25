@@ -297,10 +297,17 @@ def _compile_group(
                     min_selections=item.min_selections or required,
                     max_selections=item.max_selections or required,
                 )
-                if item.end_number is not None and item.end_number != number + config["max_selections"] - 1:
-                    raise _invalid(question_path, "Explicit range does not match the required selection count")
+                if (
+                    item.end_number is not None
+                    and item.end_number != number + config["max_selections"] - 1
+                ):
+                    raise _invalid(
+                        question_path, "Explicit range does not match the required selection count"
+                    )
             elif item.end_number is not None and item.end_number != number:
-                raise _invalid(question_path, "Only a multi-select question may span multiple numbers")
+                raise _invalid(
+                    question_path, "Only a multi-select question may span multiple numbers"
+                )
         elif item.end_number is not None and item.end_number != number:
             raise _invalid(question_path, "Only a multi-select question may span multiple numbers")
         next_number = number + question_span(kind, config)
@@ -574,7 +581,10 @@ class DraftImportService:
                                 group_id,
                                 allow_incomplete=manifest.allow_incomplete,
                             )
-                            question_total += sum(question_span(body.question_type, item.config) for item in body.questions)
+                            question_total += sum(
+                                question_span(body.question_type, item.config)
+                                for item in body.questions
+                            )
                             if not body.instruction.strip():
                                 extra_warnings.append(f"{path}: instruction is missing")
                             group = QuestionGroup(
@@ -647,8 +657,7 @@ class DraftImportService:
                     for group in module.question_groups
                     for question in group.questions
                     if not any(
-                        question.answer_key.get(field)
-                        for field in ("value", "values", "accepted")
+                        question.answer_key.get(field) for field in ("value", "values", "accepted")
                     )
                     or (
                         group.question_type == "multiple_choice_multiple"
@@ -696,10 +705,14 @@ class DraftImportService:
                 if expected_incomplete:
                     details: list[str] = []
                     if incomplete_key_paths:
-                        details.append(f"{len(incomplete_key_paths)} questions have incomplete answer keys")
+                        details.append(
+                            f"{len(incomplete_key_paths)} questions have incomplete answer keys"
+                        )
                     if any(issue.path in incomplete_number_paths for issue in expected_incomplete):
                         details.append("question-number gaps require review")
-                    warnings.append("Incomplete draft: " + "; ".join(details) + " before publishing.")
+                    warnings.append(
+                        "Incomplete draft: " + "; ".join(details) + " before publishing."
+                    )
         except BaseException:
             for relative_path in created:
                 self.storage.delete(relative_path)

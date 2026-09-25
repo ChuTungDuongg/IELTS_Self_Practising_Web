@@ -668,9 +668,7 @@ class QuestionRegistry:
         if name == "multiple_choice_multiple" and parsed_key.order_matters:
             raise ValueError("IELTS multiple-choice answers are unordered")
 
-    def validate_response(
-        self, name: str, value: Any, config: dict[str, Any] | None = None
-    ) -> Any:
+    def validate_response(self, name: str, value: Any, config: dict[str, Any] | None = None) -> Any:
         parsed = self._types[name].response_model.model_validate(value).root
         if name == "multiple_choice_multiple" and config is not None:
             parsed_config = MultipleChoiceMultipleConfig.model_validate(config)
@@ -683,7 +681,9 @@ class QuestionRegistry:
                 raise ValueError("Select distinct available options within the selection limit")
         return parsed
 
-    def score(self, name: str, answer_key: dict[str, Any], value: Any, config: dict[str, Any]) -> int:
+    def score(
+        self, name: str, answer_key: dict[str, Any], value: Any, config: dict[str, Any]
+    ) -> int:
         if name == "multiple_choice_multiple":
             key = MultipleOptionsAnswerKey.model_validate(answer_key)
             MultipleChoiceMultipleConfig.model_validate(config)

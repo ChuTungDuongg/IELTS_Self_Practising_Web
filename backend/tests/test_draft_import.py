@@ -128,7 +128,12 @@ async def test_incomplete_draft_keeps_missing_keys_and_source_numbers(db_session
     ]
     assert result.counts["READING"] == (1, 2, 3)
     assert [question.number for question in questions] == [1, 3]
-    assert all(not question.answer_key.get("value") and not question.answer_key.get("accepted") and not question.answer_key.get("values") for question in questions)
+    assert all(
+        not question.answer_key.get("value")
+        and not question.answer_key.get("accepted")
+        and not question.answer_key.get("values")
+        for question in questions
+    )
     assert builder.status == VersionStatus.DRAFT
     assert any("incomplete answer keys" in warning for warning in result.warnings)
 
@@ -136,23 +141,35 @@ async def test_incomplete_draft_keeps_missing_keys_and_source_numbers(db_session
 @pytest.mark.asyncio
 @pytest.mark.parametrize("first,count", [(13, 2), (21, 3), (27, 2)])
 async def test_multi_select_import_preserves_explicit_or_derived_span(db_session, first, count):
-    options = [{"key": chr(65 + index), "text": f"Fictional place {index}"} for index in range(count + 2)]
-    source = DraftImportManifest.model_validate({
-        "format": "ielts-draft-import-v1",
-        "title": "Fictional grouped choices",
-        "allow_incomplete": True,
-        "modules": [reading([{
-            "question_type": "multiple_choice_multiple",
-            "questions": [{
-                "number": first,
-                "end_number": first + count - 1 if first == 27 else None,
-                "prompt": "Choose fictional places",
-                "options": options,
-                "min_selections": count if first != 27 else None,
-                "max_selections": count if first != 27 else None,
-            }],
-        }])],
-    })
+    options = [
+        {"key": chr(65 + index), "text": f"Fictional place {index}"} for index in range(count + 2)
+    ]
+    source = DraftImportManifest.model_validate(
+        {
+            "format": "ielts-draft-import-v1",
+            "title": "Fictional grouped choices",
+            "allow_incomplete": True,
+            "modules": [
+                reading(
+                    [
+                        {
+                            "question_type": "multiple_choice_multiple",
+                            "questions": [
+                                {
+                                    "number": first,
+                                    "end_number": first + count - 1 if first == 27 else None,
+                                    "prompt": "Choose fictional places",
+                                    "options": options,
+                                    "min_selections": count if first != 27 else None,
+                                    "max_selections": count if first != 27 else None,
+                                }
+                            ],
+                        }
+                    ]
+                )
+            ],
+        }
+    )
     result = await DraftImportService(db_session).import_manifest(source, Path.cwd())
     builder = await ReadingService(db_session).builder_version(result.version_id)
     group = builder.modules[0].passages[0].question_groups[0]
@@ -165,58 +182,91 @@ async def test_multi_select_import_preserves_explicit_or_derived_span(db_session
 
 @pytest.mark.asyncio
 async def test_multi_select_import_rejects_conflicting_explicit_range(db_session):
-    source = DraftImportManifest.model_validate({
-        "format": "ielts-draft-import-v1",
-        "title": "Fictional mismatch",
-        "allow_incomplete": True,
-        "modules": [reading([{
-            "question_type": "multiple_choice_multiple",
-            "questions": [{
-                "number": 27,
-                "end_number": 29,
-                "prompt": "Choose fictional places",
-                "options": [{"key": key, "text": key} for key in "ABCDE"],
-                "min_selections": 2,
-                "max_selections": 2,
-            }],
-        }])],
-    })
+    source = DraftImportManifest.model_validate(
+        {
+            "format": "ielts-draft-import-v1",
+            "title": "Fictional mismatch",
+            "allow_incomplete": True,
+            "modules": [
+                reading(
+                    [
+                        {
+                            "question_type": "multiple_choice_multiple",
+                            "questions": [
+                                {
+                                    "number": 27,
+                                    "end_number": 29,
+                                    "prompt": "Choose fictional places",
+                                    "options": [{"key": key, "text": key} for key in "ABCDE"],
+                                    "min_selections": 2,
+                                    "max_selections": 2,
+                                }
+                            ],
+                        }
+                    ]
+                )
+            ],
+        }
+    )
     with pytest.raises(AppError, match="Explicit range"):
         await DraftImportService(db_session).import_manifest(source, Path.cwd())
 
 
 @pytest.mark.asyncio
 async def test_multi_select_draft_edit_round_trip_keeps_span_and_following_number(db_session):
-    source = DraftImportManifest.model_validate({
-        "format": "ielts-draft-import-v1",
-        "title": "Fictional edit round trip",
-        "allow_incomplete": True,
-        "modules": [reading([
-            {"question_type": "true_false_not_given", "questions": [
-                {"number": number, "prompt": f"Fictional statement {number}"}
-                for number in range(1, 13)
-            ]},
-            {"question_type": "multiple_choice_multiple", "questions": [{
-                "number": 13, "end_number": 14, "prompt": "Choose fictional places",
-                "options": [{"key": key, "text": key} for key in "ABCDE"],
-            }]},
-            {"question_type": "true_false_not_given", "questions": [
-                {"number": 15, "prompt": "Following statement"}
-            ]},
-        ])],
-    })
+    source = DraftImportManifest.model_validate(
+        {
+            "format": "ielts-draft-import-v1",
+            "title": "Fictional edit round trip",
+            "allow_incomplete": True,
+            "modules": [
+                reading(
+                    [
+                        {
+                            "question_type": "true_false_not_given",
+                            "questions": [
+                                {"number": number, "prompt": f"Fictional statement {number}"}
+                                for number in range(1, 13)
+                            ],
+                        },
+                        {
+                            "question_type": "multiple_choice_multiple",
+                            "questions": [
+                                {
+                                    "number": 13,
+                                    "end_number": 14,
+                                    "prompt": "Choose fictional places",
+                                    "options": [{"key": key, "text": key} for key in "ABCDE"],
+                                }
+                            ],
+                        },
+                        {
+                            "question_type": "true_false_not_given",
+                            "questions": [{"number": 15, "prompt": "Following statement"}],
+                        },
+                    ]
+                )
+            ],
+        }
+    )
     result = await DraftImportService(db_session).import_manifest(source, Path.cwd())
     builder = await ReadingService(db_session).builder_version(result.version_id)
     group = builder.modules[0].passages[0].question_groups[1]
     await db_session.rollback()
     saved = await ReadingService(db_session).update_group(
         group.id,
-        QuestionGroupUpdate.model_validate({**group.model_dump(), "expected_revision": group.revision}),
+        QuestionGroupUpdate.model_validate(
+            {**group.model_dump(), "expected_revision": group.revision}
+        ),
     )
     refreshed = await ReadingService(db_session).builder_version(result.version_id)
     groups = refreshed.modules[0].passages[0].question_groups
     assert group_slots(saved.question_type, saved.questions) == [13, 14]
-    assert [groups[0].questions[-1].number, groups[1].questions[0].number, groups[2].questions[0].number] == [12, 13, 15]
+    assert [
+        groups[0].questions[-1].number,
+        groups[1].questions[0].number,
+        groups[2].questions[0].number,
+    ] == [12, 13, 15]
     assert not saved.questions[0].answer_key.get("values")
 
 
@@ -224,7 +274,12 @@ async def test_multi_select_draft_edit_round_trip_keeps_span_and_following_numbe
 async def test_missing_answer_still_rejected_by_default(db_session):
     source = manifest(
         reading(
-            [{"question_type": "true_false_not_given", "questions": [{"prompt": "Fictional statement."}]}]
+            [
+                {
+                    "question_type": "true_false_not_given",
+                    "questions": [{"prompt": "Fictional statement."}],
+                }
+            ]
         )
     )
     with pytest.raises(AppError, match="An answer is required"):

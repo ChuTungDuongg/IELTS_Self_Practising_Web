@@ -20,6 +20,7 @@ import {
   updateListeningPart,
   updateListeningQuestionGroup,
   type BuilderListeningPart,
+  type BuilderQuestionGroup,
   type BuilderVersion,
 } from "@/lib/api/builder";
 import { builderPreviewPath } from "@/lib/routes";
@@ -31,7 +32,30 @@ import { QuestionGroupEditor } from "./question-group-editor";
 export function ListeningBuilder({ version }: { version: BuilderVersion }) {
   const router = useRouter();
   const { deleting, transitioning, flushAutosaves, runMutation } = useBuilderLifecycle();
-  const listening = version.modules.find((item) => item.module_type === "LISTENING");
+  const sourceListening = version.modules.find((item) => item.module_type === "LISTENING");
+  const [savedModule, setSavedModule] = useState<BuilderVersion["modules"][number] | null>(null);
+  const [savedParts, setSavedParts] = useState<Record<string, BuilderListeningPart>>({});
+  const [savedGroups, setSavedGroups] = useState<Record<string, BuilderQuestionGroup>>({});
+  const listening = useMemo(() => {
+    if (!sourceListening) return undefined;
+    const currentModule = savedModule && savedModule.revision > sourceListening.revision ? savedModule : sourceListening;
+    return {
+      ...currentModule,
+      listening_parts: currentModule.listening_parts.map((item) => {
+        const savedPart = savedParts[item.id];
+        const part = savedPart && savedPart.revision > item.revision
+          ? { ...savedPart, question_groups: item.question_groups }
+          : item;
+        return {
+          ...part,
+          question_groups: part.question_groups.map((group) => {
+            const savedGroup = savedGroups[group.id];
+            return savedGroup && savedGroup.revision > group.revision ? savedGroup : group;
+          }),
+        };
+      }),
+    };
+  }, [sourceListening, savedModule, savedParts, savedGroups]);
   const moduleRevision = useRef(listening?.revision ?? 1);
   const serverModuleRevision = listening?.revision;
   useEffect(() => { if (serverModuleRevision) moduleRevision.current = serverModuleRevision; }, [serverModuleRevision]);
@@ -82,6 +106,7 @@ export function ListeningBuilder({ version }: { version: BuilderVersion }) {
       await run(async () => {
         const saved = await attachListeningAudio(listening.id, asset.id, moduleRevision.current);
         moduleRevision.current = saved.revision;
+        setSavedModule(saved);
       });
     } finally {
       setUploading(false);
@@ -132,6 +157,7 @@ export function ListeningBuilder({ version }: { version: BuilderVersion }) {
     void run(async () => {
       const saved = await reorderQuestionGroups(listening.id, ids, moduleRevision.current);
       moduleRevision.current = saved.revision;
+      setSavedModule(saved);
     });
   }
 
@@ -153,20 +179,20 @@ export function ListeningBuilder({ version }: { version: BuilderVersion }) {
           <div><p className="page-eyebrow">Shared Listening audio</p><h3>{listening.audio_asset?.original_name ?? "No recording attached"}</h3><span>{listening.audio_asset ? `${(listening.audio_asset.file_size / 1024 / 1024).toFixed(1)} MB · ${listening.audio_asset.mime_type}` : "Optional · used by all four sections"}</span></div>
           <div className="flex flex-wrap gap-2">
             <label className="btn btn-listening">{uploading ? "Uploading…" : listening.audio_asset ? "Replace" : "Upload audio"}<input type="file" className="sr-only" accept="audio/mpeg,audio/mp4,audio/x-m4a,audio/aac,audio/wav,audio/ogg" disabled={uploading} onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadAudio(file); }} /></label>
-            {listening.audio_asset ? <button className="btn btn-danger-ghost" onClick={() => run(async () => { const saved = await attachListeningAudio(listening.id, null, moduleRevision.current); moduleRevision.current = saved.revision; })}>Remove</button> : null}
+            {listening.audio_asset ? <button className="btn btn-danger-ghost" onClick={() => run(async () => { const saved = await attachListeningAudio(listening.id, null, moduleRevision.current); moduleRevision.current = saved.revision; setSavedModule(saved); })}>Remove</button> : null}
           </div>
         </div>
 
         {part ? (
           <div className="listening-part-panel">
-            <ListeningPartTitle key={part.id} part={part} />
+            <ListeningPartTitle key={part.id} part={part} onPersisted={(saved) => { setSavedParts((current) => ({ ...current, [saved.id]: saved })); router.refresh(); }} />
             <div className="question-group-list mt-5">
               {part.question_groups.map((group) => {
                 return <div key={group.id} className="question-group-card listening-group-card"><span className="question-range">{groupQuestionRange(group)}</span><div className="min-w-0 flex-1"><p>{questionRegistry[group.question_type].label}</p><span>{resolveQuestionGroupInstruction(group).intro}</span></div><div className="group-actions"><button className="icon-button" onClick={() => moveGroup(group.id, -1)}>↑</button><button className="icon-button" onClick={() => moveGroup(group.id, 1)}>↓</button><button className="btn btn-secondary" onClick={() => void editGroup(group)}>Edit</button><button className="btn btn-danger-ghost" onClick={() => run(() => deleteQuestionGroup(group.id))}>Delete</button></div></div>;
               })}
               {editing ? (
                 <div>
-                  <QuestionGroupEditor key={editing.id ?? editing.questions[0]?.id ?? "new-listening-group"} initial={editing} moduleType="LISTENING" nextQuestionNumber={nextNumber} baseQuestionNumber={canonicalListeningGroupStart(parts, editing)} passageBlocks={[]} testVersionId={version.id} onCancel={() => setEditing(null)} onSave={(body) => run(() => createListeningQuestionGroup(part.id, body), "question-group:new")} onAutosave={editing.id ? (body, expectedRevision) => updateListeningQuestionGroup(editing.id!, body, expectedRevision) : undefined} />
+                  <QuestionGroupEditor key={editing.id ?? editing.questions[0]?.id ?? "new-listening-group"} initial={editing} moduleType="LISTENING" nextQuestionNumber={nextNumber} baseQuestionNumber={canonicalListeningGroupStart(parts, editing)} passageBlocks={[]} testVersionId={version.id} onCancel={() => setEditing(null)} onSave={(body) => run(() => createListeningQuestionGroup(part.id, body), "question-group:new")} onAutosave={editing.id ? (body, expectedRevision) => updateListeningQuestionGroup(editing.id!, body, expectedRevision) : undefined} onPersisted={(saved) => { setSavedGroups((current) => ({ ...current, [saved.id]: saved })); setEditing(saved); router.refresh(); }} />
                 </div>
               ) : (
                 <div className="new-group-row"><label className="field-label flex-1">Listening template<select className="select-field" value={type} onChange={(event) => setType(event.target.value as QuestionType)}>{listeningQuestionTypeOptions.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label><button className="btn btn-listening" onClick={createGroup}><PlusIcon className="size-4" /> Add question group</button></div>
@@ -180,12 +206,20 @@ export function ListeningBuilder({ version }: { version: BuilderVersion }) {
   );
 }
 
-function ListeningPartTitle({ part }: { part: BuilderListeningPart }) {
+function ListeningPartTitle({ part, onPersisted }: { part: BuilderListeningPart; onPersisted: (part: BuilderListeningPart) => void }) {
   const [title, setTitle] = useState(part.title ?? `Section ${part.order_index + 1}`);
   const revision = useRef(part.revision);
   useBuilderAutosave({ resourceKey: `listening-part:${part.id}`, value: { title, order_index: part.order_index }, save: async (value) => {
     const saved = await updateListeningPart(part.id, { ...value, expected_revision: revision.current });
     revision.current = saved.revision;
+    return saved;
+  }, onSaved: (saved, _submitted, unchanged) => {
+    onPersisted(saved);
+    if (unchanged) {
+      const canonical = saved.title ?? `Section ${saved.order_index + 1}`;
+      setTitle(canonical);
+      return { title: canonical, order_index: saved.order_index };
+    }
   }, valid: title.trim().length > 0 && title.length <= 240 });
   return <label className="field-label mb-4 block">Section title / internal label<input className="field mt-2" value={title} onChange={(event) => setTitle(event.target.value)} /></label>;
 }

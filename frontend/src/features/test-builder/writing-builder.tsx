@@ -54,9 +54,14 @@ export function WritingBuilder({ version }: { version: BuilderVersion }) {
   const router = useRouter();
   const { beginDelete, deleting, transitioning, flushAutosaves, runAutosave, runMutation } = useBuilderLifecycle();
   const writing = version.modules.find((item) => item.module_type === "WRITING");
+  const [savedTasks, setSavedTasks] = useState<Record<string, BuilderWritingTask>>({});
+  const savedTasksRef = useRef(savedTasks);
   const tasks = useMemo(
-    () => [...(writing?.writing_tasks ?? [])].sort((a, b) => a.order_index - b.order_index),
-    [writing],
+    () => [...(writing?.writing_tasks ?? [])].map((task) => {
+      const saved = savedTasks[task.id];
+      return saved && saved.revision > task.revision ? saved : task;
+    }).sort((a, b) => a.order_index - b.order_index),
+    [writing, savedTasks],
   );
   const [drafts, setDrafts] = useState<Record<string, TaskDraft>>(() =>
     Object.fromEntries(tasks.map((task) => [task.id, toDraft(task)])),
@@ -66,6 +71,18 @@ export function WritingBuilder({ version }: { version: BuilderVersion }) {
   const savedPayloads = useRef<Record<string, string>>(Object.fromEntries(tasks.map((task) => [task.id, JSON.stringify(toPayload(toDraft(task)))])));
   const conflictRef = useRef(false);
   useLayoutEffect(() => { draftsRef.current = drafts; }, [drafts]);
+  useLayoutEffect(() => {
+    let nextDrafts = draftsRef.current;
+    for (const task of tasks) {
+      if (!(task.id in nextDrafts)) nextDrafts = { ...nextDrafts, [task.id]: toDraft(task) };
+      if (!(task.id in revisions.current)) revisions.current[task.id] = task.revision;
+      if (!(task.id in savedPayloads.current)) savedPayloads.current[task.id] = JSON.stringify(toPayload(toDraft(task)));
+    }
+    if (nextDrafts !== draftsRef.current) {
+      draftsRef.current = nextDrafts;
+      setDrafts(nextDrafts);
+    }
+  }, [tasks]);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [conflict, setConflict] = useState(false);
@@ -75,15 +92,18 @@ export function WritingBuilder({ version }: { version: BuilderVersion }) {
     && (draft.minimumWords === null || (draft.minimumWords >= 1 && draft.minimumWords <= 5000))
     && (draft.durationMinutes === null || (draft.durationMinutes >= 1 && draft.durationMinutes <= 240)));
   const autosaveKey = `writing-module:${writing?.id ?? "new"}`;
-  async function persistTask(task: BuilderWritingTask, draft: TaskDraft) {
+  async function persistTask(task: BuilderWritingTask, draft: TaskDraft): Promise<BuilderWritingTask> {
     if (conflictRef.current) throw new ApiError("DRAFT_REVISION_CONFLICT", "Reload the latest version before saving.", 409);
     const content = toPayload(draft);
     const serialized = JSON.stringify(content);
-    if (savedPayloads.current[task.id] === serialized) return;
+    if (savedPayloads.current[task.id] === serialized) return savedTasksRef.current[task.id] ?? task;
     try {
       const saved = await updateWritingTask(task.id, { ...content, expected_revision: revisions.current[task.id] });
       revisions.current[task.id] = saved.revision;
-      savedPayloads.current[task.id] = serialized;
+      savedPayloads.current[task.id] = JSON.stringify(toPayload(toDraft(saved)));
+      savedTasksRef.current = { ...savedTasksRef.current, [saved.id]: saved };
+      setSavedTasks(savedTasksRef.current);
+      return saved;
     } catch (reason) {
       if (reason instanceof ApiError && reason.code === "DRAFT_REVISION_CONFLICT") {
         conflictRef.current = true;
@@ -98,9 +118,19 @@ export function WritingBuilder({ version }: { version: BuilderVersion }) {
     enabled: Boolean(writing),
     valid: draftsValid,
     save: async (values) => {
-      if (!writing) return;
+      if (!writing) return values;
+      const canonical = { ...values };
       for (const task of tasks) {
-        await persistTask(task, values[task.id] ?? toDraft(task));
+        canonical[task.id] = toDraft(await persistTask(task, values[task.id] ?? toDraft(task)));
+      }
+      return canonical;
+    },
+    onSaved: (canonical, _submitted, unchanged) => {
+      router.refresh();
+      if (unchanged) {
+        draftsRef.current = canonical;
+        setDrafts(canonical);
+        return canonical;
       }
     },
   });
@@ -146,7 +176,10 @@ export function WritingBuilder({ version }: { version: BuilderVersion }) {
     setError(null);
     setMessage(null);
     try {
-      await runAutosave(autosaveKey, () => persistTask(task, nextDraft));
+      const saved = await runAutosave(autosaveKey, () => persistTask(task, nextDraft));
+      if (JSON.stringify(toPayload(draftsRef.current[task.id])) === JSON.stringify(toPayload(nextDraft))) {
+        updateDraft(task.id, toDraft(saved));
+      }
       setMessage(`Task ${task.task_number} saved.`);
       router.refresh();
     } catch (reason) {

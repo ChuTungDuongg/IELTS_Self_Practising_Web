@@ -273,17 +273,64 @@ async def test_transfer_round_trip_preserves_shared_multi_select_question_span(
     test = DomainTest(title="Fictional grouped draft")
     version = DomainVersion(version_number=1, status=VersionStatus.DRAFT)
     module = DomainModule(module_type=ModuleType.READING, order_index=0)
-    passage = ReadingPassage(title="Fictional passage", order_index=0, content_json=[{"id": str(uuid4()), "type": "paragraph", "label": "A", "text": "Fictional content."}], plain_text="Fictional content.")
+    passage = ReadingPassage(
+        title="Fictional passage",
+        order_index=0,
+        content_json=[
+            {"id": str(uuid4()), "type": "paragraph", "label": "A", "text": "Fictional content."}
+        ],
+        plain_text="Fictional content.",
+    )
     version.modules.append(module)
     module.passages.append(passage)
     test.versions.append(version)
-    filler = QuestionGroup(question_type="true_false_not_given", instruction="Decide.", config={}, order_index=0, passage=passage)
-    filler.questions.extend(Question(number=number, prompt=f"Statement {number}", config={}, answer_key={}, order_index=number - 1) for number in range(1, 13))
-    options = [{"id": str(uuid4()), "label": letter, "text": f"Fictional option {letter}"} for letter in "ABCDE"]
-    multi = QuestionGroup(question_type="multiple_choice_multiple", instruction="Choose two.", config={}, order_index=1, passage=passage)
-    multi.questions.append(Question(number=13, prompt="Choose fictional options", config={"options": options, "min_selections": 2, "max_selections": 2}, answer_key={}, order_index=0))
-    following = QuestionGroup(question_type="true_false_not_given", instruction="Decide.", config={}, order_index=2, passage=passage)
-    following.questions.append(Question(number=15, prompt="Following statement", config={}, answer_key={}, order_index=0))
+    filler = QuestionGroup(
+        question_type="true_false_not_given",
+        instruction="Decide.",
+        config={},
+        order_index=0,
+        passage=passage,
+    )
+    filler.questions.extend(
+        Question(
+            number=number,
+            prompt=f"Statement {number}",
+            config={},
+            answer_key={},
+            order_index=number - 1,
+        )
+        for number in range(1, 13)
+    )
+    options = [
+        {"id": str(uuid4()), "label": letter, "text": f"Fictional option {letter}"}
+        for letter in "ABCDE"
+    ]
+    multi = QuestionGroup(
+        question_type="multiple_choice_multiple",
+        instruction="Choose two.",
+        config={},
+        order_index=1,
+        passage=passage,
+    )
+    multi.questions.append(
+        Question(
+            number=13,
+            prompt="Choose fictional options",
+            config={"options": options, "min_selections": 2, "max_selections": 2},
+            answer_key={},
+            order_index=0,
+        )
+    )
+    following = QuestionGroup(
+        question_type="true_false_not_given",
+        instruction="Decide.",
+        config={},
+        order_index=2,
+        passage=passage,
+    )
+    following.questions.append(
+        Question(number=15, prompt="Following statement", config={}, answer_key={}, order_index=0)
+    )
     module.question_groups.extend([filler, multi, following])
     async with db_session.begin():
         db_session.add(test)
@@ -296,14 +343,18 @@ async def test_transfer_round_trip_preserves_shared_multi_select_question_span(
     with tempfile.TemporaryDirectory(dir=tmp_path) as staging:
         package = TransferService(db_session, settings).validate_archive(archive, Path(staging))
         result = await TransferService(db_session, settings).import_package(package)
-    imported = await db_session.scalar(version_detail_query().where(DomainVersion.test_id == result.imported_tests[0].test_id))
+    imported = await db_session.scalar(
+        version_detail_query().where(DomainVersion.test_id == result.imported_tests[0].test_id)
+    )
     assert imported is not None
     groups = imported.modules[0].passages[0].question_groups
     shared = next(group for group in groups if group.question_type == "multiple_choice_multiple")
     assert group_slots(shared.question_type, shared.questions) == [13, 14]
     assert shared.questions[0].config["min_selections"] == 2
     assert not shared.questions[0].answer_key.get("values")
-    assert sorted(slot for group in groups for slot in group_slots(group.question_type, group.questions)) == list(range(1, 16))
+    assert sorted(
+        slot for group in groups for slot in group_slots(group.question_type, group.questions)
+    ) == list(range(1, 16))
 
 
 @pytest.mark.integration
