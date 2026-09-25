@@ -10,6 +10,7 @@ import { DraftRecoveryNotices } from "@/features/exam/draft-recovery-notices";
 import { useExamSubmit } from "@/features/exam/use-exam-submit";
 import { revealQuestionChip, scrollQuestionIntoPane } from "@/features/exam/question-navigation";
 import { questionRegistry } from "@/features/questions/registry";
+import { completedQuestionSlots, questionSpan } from "@/features/questions/numbering";
 import type { ExamGroup } from "@/features/questions/types";
 import { QuestionGroupInstruction } from "@/features/questions/question-group-instruction";
 import { SelectableText, type HighlightController } from "@/features/highlighting/selectable-text";
@@ -25,7 +26,11 @@ export function ReadingRunner({ initial }: { initial: ExamPayload }) {
     .sort((left, right) => left.order_index - right.order_index)
     .flatMap((group) => [...group.questions]
       .sort((left, right) => left.order_index - right.order_index)
-      .map((question) => ({ ...question, passageIndex })))), [passages]);
+      .map((question) => ({ ...question, passageIndex, questionType: group.question_type })))), [passages]);
+  const navigationSlots = useMemo(() => questions.flatMap((question) => Array.from(
+    { length: questionSpan(question.questionType, question.config) },
+    (_, slotIndex) => ({ ...question, number: question.number + slotIndex, slotIndex }),
+  )), [questions]);
   const [passageIndex, setPassageIndex] = useState(0);
   const initialResponses = useMemo(() => questions.map((question) => ({ id: question.id, value: question.value, revision: question.answer_revision })), [questions]);
   const [flags, setFlags] = useState<Record<string, boolean>>(() => Object.fromEntries(initial.passages.flatMap((passage) => passage.question_groups.flatMap((group) => group.questions.map((question) => [question.id, question.flagged])))));
@@ -188,12 +193,12 @@ export function ReadingRunner({ initial }: { initial: ExamPayload }) {
     <footer className="exam-footer reading-exam-footer">
       <div className="exam-footer-navigation">
         <nav className="exam-passage-navigation" aria-label="Passage navigation">{passages.map((item, index) => <button key={item.id} type="button" onClick={() => selectPassage(index)} className={index === passageIndex ? "active" : ""} aria-current={index === passageIndex ? "page" : undefined}>Passage {item.order_index + 1}</button>)}</nav>
-        <nav ref={questionStrip} className="exam-question-strip" aria-label="Question navigation">{questions.map((question) => {
-          const answered = isAnswered(values[question.id]);
+        <nav ref={questionStrip} className="exam-question-strip" aria-label="Question navigation">{navigationSlots.map((question) => {
+          const answered = completedQuestionSlots(question.questionType, question.config, values[question.id]) > question.slotIndex;
           const flagged = Boolean(flags[question.id]);
           const current = activeQuestionId === question.id;
-          return <div key={question.id} data-nav-question-id={question.id} className={`exam-question-chip ${answered ? "answered" : "unanswered"} ${flagged ? "flagged" : ""} ${current ? "current" : ""}`}>
-            <button ref={(element) => { if (element) questionChips.current.set(question.id, element); else questionChips.current.delete(question.id); }} type="button" className="exam-question-number" onClick={() => navigateToQuestion(question.id, question.passageIndex)} aria-label={`Go to question ${question.number}`} aria-current={current ? "true" : undefined}>{question.number}</button>
+          return <div key={`${question.id}:${question.slotIndex}`} data-nav-question-id={question.id} className={`exam-question-chip ${answered ? "answered" : "unanswered"} ${flagged ? "flagged" : ""} ${current ? "current" : ""}`}>
+            <button ref={question.slotIndex === 0 ? (element) => { if (element) questionChips.current.set(question.id, element); else questionChips.current.delete(question.id); } : undefined} type="button" className="exam-question-number" onClick={() => navigateToQuestion(question.id, question.passageIndex)} aria-label={`Go to question ${question.number}`} aria-current={current ? "true" : undefined}>{question.number}</button>
             <button type="button" className="exam-question-flag" onClick={() => void toggleFlag(question.id)} aria-label={`${flagged ? "Unflag" : "Flag"} question ${question.number}`} aria-pressed={flagged}><span aria-hidden="true">{flagged ? "⚑" : "⚐"}</span></button>
           </div>;
         })}</nav>
@@ -202,11 +207,6 @@ export function ReadingRunner({ initial }: { initial: ExamPayload }) {
     </footer>
     <ConfirmDialog open={confirmDeleteAll} title="Delete all highlights?" description="All highlights in this attempt will be removed. This action cannot be undone." confirmLabel="Delete all highlights" pending={deletingAll} errorMessage={highlightError} onCancel={() => { setConfirmDeleteAll(false); setHighlightError(""); }} onConfirm={() => { if (stopped.current) return; setDeletingAll(true); setHighlightError(""); void runMutation(() => deleteAllHighlights(attemptId)).then(() => { setHighlights([]); setConfirmDeleteAll(false); }).catch((error) => { if (!(error instanceof AttemptStoppedError)) setHighlightError("Could not delete the highlights. Please try again."); }).finally(() => setDeletingAll(false)); }} />
   </div>;
-}
-
-function isAnswered(value: unknown): boolean {
-  if (Array.isArray(value)) return value.length > 0;
-  return value !== null && value !== undefined && value !== "";
 }
 
 function PassagePane({ passage, highlighting }: { passage: ExamPassage; highlighting: HighlightController }) {

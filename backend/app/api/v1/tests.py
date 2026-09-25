@@ -11,6 +11,7 @@ from app.schemas.tests import (
     TestCreate,
     TestDeleteResult,
     TestSummary,
+    TestUpdate,
     VersionCreate,
     VersionDetail,
 )
@@ -60,6 +61,13 @@ async def get_test(
 
         raise AppError("TEST_NOT_FOUND", "The requested test does not exist.", 404)
     return summary.model_copy(update={"versions": published})
+
+
+@router.patch("/tests/{test_id}", response_model=TestSummary)
+async def update_test(
+    test_id: UUID, body: TestUpdate, _: AdminUser, session: AsyncSession = Depends(get_session)
+) -> TestSummary:
+    return TestSummary.model_validate(await TestService(session).update_test(test_id, body))
 
 
 @router.delete("/tests/{test_id}", response_model=TestDeleteResult)

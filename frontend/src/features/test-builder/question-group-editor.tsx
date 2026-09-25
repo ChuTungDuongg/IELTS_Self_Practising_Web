@@ -79,6 +79,7 @@ export function QuestionGroupEditor({
       : [];
   const diagramErrors = diagramLabellingErrors(presentedGroup);
   const structurallyValid = integrityErrors.length === 0 && diagramErrors.length === 0 && questionGroupIsValid(presentedGroup, passageBlocks, moduleType);
+  const saveIssue = structurallyValid ? null : integrityErrors[0] ?? diagramErrors[0] ?? questionGroupSaveIssue(presentedGroup);
   const revision = useRef(initial.revision ?? 1);
   const { markSaved, saveNow } = useBuilderAutosave({
     resourceKey: `question-group:${initial.id ?? "new"}`,
@@ -173,6 +174,7 @@ export function QuestionGroupEditor({
       </div>
       {integrityErrors.length ? <div role="alert" className="notice notice-warning">{integrityErrors.map((message) => <p key={message}>{message}</p>)}</div> : null}
       {diagramErrors.length && preview ? <div role="alert" className="notice notice-warning">{diagramErrors.map((message) => <p key={message}>{message}</p>)}</div> : null}
+      {saveIssue && !integrityErrors.length && !diagramErrors.length ? <p role="alert" className="notice notice-warning">{saveIssue}</p> : null}
       {preview ? (
         <div className="group-preview">
           <p className="mb-2 text-xs font-bold uppercase tracking-wider text-[var(--muted)]">Candidate preview</p>
@@ -183,7 +185,7 @@ export function QuestionGroupEditor({
         <>
           {testVersionId && ["plan_labelling", "map_labelling", "diagram_labelling"].includes(group.question_type) ? <QuestionImageAttachment group={group} testVersionId={testVersionId} onChange={setGroup} /> : null}
           <Editor group={group} onChange={setGroup} passageBlocks={passageBlocks} baseQuestionNumber={baseQuestionNumber} moduleType={moduleType} />
-          {!["text_completion", "diagram_labelling", "table_completion", "note_completion"].includes(group.question_type) ? <button type="button" onClick={addQuestion} className="btn btn-secondary mt-4">+ Add question</button> : null}
+          {!["text_completion", "diagram_labelling", "table_completion", "note_completion", "multiple_choice_multiple"].includes(group.question_type) ? <button type="button" onClick={addQuestion} className="btn btn-secondary mt-4">+ Add question</button> : null}
         </>
       )}
     </fieldset>
@@ -196,7 +198,12 @@ function questionGroupIsValid(group: QuestionGroupModel, passageBlocks: PassageB
   const numbers = group.questions.map((question) => question.number);
   const orders = group.questions.map((question) => question.order_index);
   if (ids.length !== group.questions.length || new Set(ids).size !== ids.length || new Set(numbers).size !== numbers.length || new Set(orders).size !== orders.length) return false;
-  if (group.questions.some((question) => question.number < 1 || question.order_index < 0 || !question.prompt.trim() || question.prompt.length > 5000 || !Object.keys(question.answer_key).length)) return false;
+  if (group.questions.some((question) => question.number < 1 || question.order_index < 0 || !question.prompt.trim() || question.prompt.length > 5000)) return false;
+  if (group.question_type === "multiple_choice_multiple" && group.questions.some((question) => {
+    const minimum = Number(question.config.min_selections);
+    const maximum = Number(question.config.max_selections);
+    return !Number.isInteger(minimum) || minimum < 1 || minimum !== maximum || question.number + maximum - 1 > 40;
+  })) return false;
 
   const optionLists: Array<Array<{ id?: unknown; label?: unknown; text?: unknown }>> = [];
   for (const value of [group.config, ...group.questions.map((question) => question.config)]) {
@@ -209,12 +216,6 @@ function questionGroupIsValid(group: QuestionGroupModel, passageBlocks: PassageB
     return options.length < 2 || optionIds.some((id) => !id) || labels.some((label) => !label)
       || options.some((option) => !String(option.text ?? "").trim())
       || new Set(optionIds).size !== optionIds.length || new Set(labels).size !== labels.length;
-  })) return false;
-
-  if (group.question_type === "multiple_choice" && group.questions.some((question) => {
-    const options = (question.config.options as Array<{ id?: unknown }> | undefined) ?? [];
-    const optionIds = new Set(options.map((option) => String(option.id ?? "")));
-    return !optionIds.has(String(question.answer_key.value ?? ""));
   })) return false;
 
   const questionIds = new Set(ids.map(String));
@@ -260,4 +261,23 @@ function questionGroupIsValid(group: QuestionGroupModel, passageBlocks: PassageB
     if (group.questions.some((question) => !paragraphIds.has(String(question.config.target_block_id ?? "")))) return false;
   }
   return true;
+}
+
+function questionGroupSaveIssue(group: QuestionGroupModel): string {
+  if (!group.questions.length) return "Add at least one question before saving this group.";
+  if (group.instruction.length > 4000) return "Group instructions must be 4,000 characters or fewer.";
+  const ids = group.questions.map((question) => question.id);
+  if (ids.some((id) => !id) || new Set(ids).size !== ids.length) return "Question IDs must be present and unique.";
+  const numbers = group.questions.map((question) => question.number);
+  if (new Set(numbers).size !== numbers.length) return "Question numbers are duplicated.";
+  if (group.questions.some((question) => !question.prompt.trim())) return "Each question needs prompt text before it can be saved.";
+  for (const config of [group.config, ...group.questions.map((question) => question.config)]) {
+    const options = config.options as Array<{ id?: string; label?: string; text?: string }> | undefined;
+    if (!Array.isArray(options)) continue;
+    const labels = options.map((option) => String(option.label ?? "").trim().toLocaleLowerCase());
+    if (new Set(labels).size !== labels.length) return "Option labels must be unique.";
+    if (options.some((option) => !option.id || !String(option.label ?? "").trim() || !String(option.text ?? "").trim())) return "Every option needs a label, text, and stable ID.";
+  }
+  if (group.question_type === "multiple_choice_multiple") return "Required selections and the numbered question range must be valid.";
+  return "This group has an invalid layout or question reference. Check its gaps, markers, and linked questions.";
 }

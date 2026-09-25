@@ -66,13 +66,13 @@ function QuestionActions({ group, index, onChange }: EditorProps & { index: numb
   );
 }
 
-function QuestionFrame({ group, index, onChange, children }: EditorProps & { index: number; children: React.ReactNode }) {
+function QuestionFrame({ group, index, onChange, children, numberLabel }: EditorProps & { index: number; children: React.ReactNode; numberLabel?: string }) {
   const question = group.questions[index];
   return (
     <fieldset className="question-editor-card" aria-label={`Question ${question.number} editor`}>
       <div className="question-editor-header">
-        <span className="question-number">Q{question.number}</span>
-        <p>Question {question.number}</p>
+        <span className="question-number">Q{numberLabel ?? question.number}</span>
+        <p>Question {numberLabel ?? question.number}</p>
         <QuestionActions group={group} index={index} onChange={onChange} />
       </div>
       <label className="field-label">Prompt<input value={question.prompt} onChange={(event) => onChange(updateQuestion(group, index, { prompt: event.target.value }))} className="field" /></label>
@@ -126,8 +126,10 @@ export function MultipleChoiceMultipleEditor(props: EditorProps) {
   return <div className="space-y-4">{group.questions.map((question, index) => {
     const options = question.config.options as Option[];
     const selected = new Set((question.answer_key.values as string[] | undefined) ?? []);
+    const required = Number(question.config.min_selections) || 2;
+    const numberLabel = required > 1 ? `${question.number}–${question.number + required - 1}` : String(question.number);
     const setOptions = (next: Option[]) => onChange(updateQuestion(group, index, { config: { ...question.config, options: next } }));
-    return <QuestionFrame key={question.id} {...props} index={index}><p className="answer-key-label">Select every correct answer</p><div className="option-editor-list">{options.map((option, optionIndex) => <div key={option.id} className={`option-editor-row ${selected.has(option.id) ? "option-editor-correct" : ""}`}><input type="checkbox" checked={selected.has(option.id)} onChange={() => { const next = selected.has(option.id) ? [...selected].filter((id) => id !== option.id) : [...selected, option.id]; onChange(updateQuestion(group, index, { answer_key: { kind: "MULTIPLE_OPTIONS", values: next, order_matters: false } })); }} aria-label={`Mark ${option.label} correct`} /><input value={option.label} onChange={(event) => setOptions(options.map((item) => item.id === option.id ? { ...item, label: event.target.value } : item))} aria-label={`Option ${optionIndex + 1} label`} className="field option-label-field" /><input value={option.text} onChange={(event) => setOptions(options.map((item) => item.id === option.id ? { ...item, text: event.target.value } : item))} aria-label={`Option ${optionIndex + 1} text`} className="field" /></div>)}</div><button type="button" className="btn btn-secondary mt-3" onClick={() => setOptions([...options, { id: crypto.randomUUID(), label: String.fromCharCode(65 + options.length), text: "New option" }])}>+ Add option</button></QuestionFrame>;
+    return <QuestionFrame key={question.id} {...props} index={index} numberLabel={numberLabel}><label className="field-label">Required selections<select aria-label="Required selections" className="select-field mt-2" value={required} onChange={(event) => { const count = Number(event.target.value); onChange(updateQuestion(group, index, { config: { ...question.config, min_selections: count, max_selections: count } })); }}>{Array.from({ length: Math.min(options.length, 10) }, (_, offset) => offset + 1).map((count) => <option key={count} value={count}>{count}</option>)}</select></label><p className="answer-key-label mt-3">Select every correct answer</p><div className="option-editor-list">{options.map((option, optionIndex) => <div key={option.id} className={`option-editor-row ${selected.has(option.id) ? "option-editor-correct" : ""}`}><input type="checkbox" disabled={!selected.has(option.id) && selected.size >= required} checked={selected.has(option.id)} onChange={() => { const next = selected.has(option.id) ? [...selected].filter((id) => id !== option.id) : [...selected, option.id]; onChange(updateQuestion(group, index, { answer_key: { kind: "MULTIPLE_OPTIONS", values: next, order_matters: false } })); }} aria-label={`Mark ${option.label} correct`} /><input value={option.label} onChange={(event) => setOptions(options.map((item) => item.id === option.id ? { ...item, label: event.target.value } : item))} aria-label={`Option ${optionIndex + 1} label`} className="field option-label-field" /><input value={option.text} onChange={(event) => setOptions(options.map((item) => item.id === option.id ? { ...item, text: event.target.value } : item))} aria-label={`Option ${optionIndex + 1} text`} className="field" /></div>)}</div><button type="button" className="btn btn-secondary mt-3" onClick={() => setOptions([...options, { id: crypto.randomUUID(), label: String.fromCharCode(65 + options.length), text: "New option" }])}>+ Add option</button></QuestionFrame>;
   })}</div>;
 }
 

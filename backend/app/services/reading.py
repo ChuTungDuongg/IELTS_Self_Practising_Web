@@ -11,6 +11,7 @@ from app.domains.questions.normalization import (
     normalize_passage_blocks,
     normalize_question_group_payload,
 )
+from app.domains.questions.numbering import group_slots, question_span
 from app.models import (
     Asset,
     ListeningPart,
@@ -150,7 +151,7 @@ class ReadingService:
             passage_blocks = normalize_passage_blocks(passage.content_json, passage.id)
             group_id = uuid.uuid4()
             body = self._normalize_group_body(body, group_id, passage_blocks)
-            self._validate_group_body(body, passage_blocks)
+            self._validate_group_body(body, passage_blocks, allow_missing_answers=True)
             self._validate_local_question_numbers(body)
             # QuestionGroup.order_index is module-global. New Builder groups are
             # appended safely, then canonicalized into passage presentation order.
@@ -209,13 +210,25 @@ class ReadingService:
                     else []
                 )
                 body = self._normalize_group_body(body, group.id, passage_blocks)
-                self._validate_group_body(body, passage_blocks)
+                self._validate_group_body(body, passage_blocks, allow_missing_answers=True)
                 self._validate_local_question_numbers(body)
+                existing = {item.id: item for item in group.questions}
+                preserve_numbers = (
+                    body.question_type == group.question_type
+                    and len(body.questions) == len(existing)
+                    and all(
+                        item.id in existing
+                        and item.number == existing[item.id].number
+                        and item.order_index == existing[item.id].order_index
+                        and question_span(body.question_type, item.config)
+                        == question_span(group.question_type, existing[item.id].config)
+                        for item in body.questions
+                    )
+                )
                 group.question_type = body.question_type
                 group.instruction = body.instruction
                 group.config = body.config
                 group.image_asset_id = body.image_asset_id
-                existing = {item.id: item for item in group.questions}
                 for temporary_index, question in enumerate(existing.values(), start=1):
                     question.number = -temporary_index
                     question.order_index = -temporary_index
@@ -246,7 +259,8 @@ class ReadingService:
                     if question_id not in retained:
                         group.questions.remove(question)
                 await self.session.flush()
-                await self._canonicalize_module(group.module_id, already_advanced={group.id})
+                if not preserve_numbers:
+                    await self._canonicalize_module(group.module_id, already_advanced={group.id})
                 if previous_image_asset_id and previous_image_asset_id != group.image_asset_id:
                     from app.services.tests import TestService
 
@@ -376,11 +390,11 @@ class ReadingService:
         for order_index, group in enumerate(ordered_groups):
             group.order_index = order_index
         next_number = 1
-        for _, questions in group_questions:
+        for group, questions in group_questions:
             for order_index, question in enumerate(questions):
                 question.number = next_number
                 question.order_index = order_index
-                next_number += 1
+                next_number += question_span(group.question_type, question.config)
         skipped = already_advanced or set()
         for group, questions in group_questions:
             current = (
@@ -480,7 +494,7 @@ class ReadingService:
 
     @staticmethod
     def _validate_local_question_numbers(body: QuestionGroupWrite) -> None:
-        numbers = [item.number for item in body.questions]
+        numbers = group_slots(body.question_type, body.questions)
         if len(numbers) != len(set(numbers)):
             raise AppError("DUPLICATE_QUESTION_NUMBER", "Question numbers must be unique.", 422)
 
@@ -521,15 +535,18 @@ class ReadingService:
         their module-wide display numbers are reassigned passage-first after every write.
         """
         self._validate_local_question_numbers(body)
-        numbers = [item.number for item in body.questions]
-        statement = (
-            select(Question.number)
-            .join(QuestionGroup)
-            .where(QuestionGroup.module_id == module_id, Question.number.in_(numbers))
-        )
-        if excluded_group_id is not None:
-            statement = statement.where(QuestionGroup.id != excluded_group_id)
-        existing = list(await self.session.scalars(statement))
+        numbers = set(group_slots(body.question_type, body.questions))
+        groups = list(await self.session.scalars(
+            select(QuestionGroup)
+            .where(QuestionGroup.module_id == module_id)
+            .options(selectinload(QuestionGroup.questions))
+        ))
+        existing = sorted(numbers.intersection(
+            number
+            for group in groups
+            if group.id != excluded_group_id
+            for number in group_slots(group.question_type, group.questions)
+        ))
         if existing:
             raise AppError(
                 "DUPLICATE_QUESTION_NUMBER",
@@ -566,26 +583,40 @@ class ReadingService:
         passage_blocks: list[dict[str, object]],
         *,
         module_type: ModuleType = ModuleType.READING,
+        allow_missing_answers: bool = False,
     ) -> None:
         if not question_registry.supports(body.question_type):
             raise AppError("UNSUPPORTED_QUESTION_TYPE", "This question type is not supported.", 422)
         try:
             for question in body.questions:
-                question_registry.validate(
-                    body.question_type, body.config, question.config, question.answer_key
-                )
-                transient = Question(config=question.config, answer_key=question.answer_key)
-                transient_group = QuestionGroup(
-                    question_type=body.question_type,
-                    config=body.config,
-                    instruction="",
-                    order_index=0,
-                )
-                from app.services.tests import TestService
+                if allow_missing_answers:
+                    question_registry.validate_draft(
+                        body.question_type, body.config, question.config, question.answer_key
+                    )
+                else:
+                    question_registry.validate(
+                        body.question_type, body.config, question.config, question.answer_key
+                    )
+                    transient = Question(config=question.config, answer_key=question.answer_key)
+                    transient_group = QuestionGroup(
+                        question_type=body.question_type,
+                        config=body.config,
+                        instruction="",
+                        order_index=0,
+                    )
+                    from app.services.tests import TestService
 
-                TestService._validate_references(
-                    transient_group, transient, passage_blocks=passage_blocks
-                )
+                    TestService._validate_references(
+                        transient_group, transient, passage_blocks=passage_blocks
+                    )
+                if body.question_type == "matching_headings" and str(
+                    question.config.get("target_block_id")
+                ) not in {
+                    str(block["id"])
+                    for block in passage_blocks
+                    if block.get("type") == "paragraph"
+                }:
+                    raise ValueError("Heading target must reference a passage paragraph")
             question_ids = {str(question.id) for question in body.questions if question.id}
             if body.question_type in {"plan_labelling", "map_labelling"}:
                 if module_type == ModuleType.READING:

@@ -9,6 +9,7 @@ import { ApiError } from "@/lib/api/client";
 import type { ExamPayload } from "@/lib/api/exam";
 import { useExamDraftAutosave } from "./use-exam-draft-autosave";
 import { DraftRecoveryNotices } from "./draft-recovery-notices";
+import { questionSpan } from "@/features/questions/numbering";
 
 const pausedSave = async (): Promise<never> => { throw new Error("Resume before saving responses."); };
 
@@ -20,8 +21,8 @@ export function PausedAttemptGate({ exam }: { exam: ExamPayload }) {
   const responseLabels = useMemo(() => {
     const labels = new Map<string, string>();
     for (const task of exam.writing_tasks ?? []) labels.set(task.id, `Task ${task.task_number}`);
-    for (const passage of exam.passages ?? []) for (const group of passage.question_groups) for (const question of group.questions) labels.set(question.id, `Question ${question.number}`);
-    for (const part of exam.listening_parts ?? []) for (const group of part.question_groups) for (const question of group.questions) labels.set(question.id, `Question ${question.number}`);
+    for (const passage of exam.passages ?? []) for (const group of passage.question_groups) for (const question of group.questions) labels.set(question.id, questionLabel(group.question_type, question.number, question.config));
+    for (const part of exam.listening_parts ?? []) for (const group of part.question_groups) for (const question of group.questions) labels.set(question.id, questionLabel(group.question_type, question.number, question.config));
     return labels;
   }, [exam]);
   const initialResponses = useMemo(() => [
@@ -68,4 +69,9 @@ export function PausedAttemptGate({ exam }: { exam: ExamPayload }) {
       <Link href="/history" className="btn btn-secondary">Back to history</Link>
     </div>
   </main>;
+}
+
+function questionLabel(type: string, start: number, config: Record<string, unknown>): string {
+  const end = start + questionSpan(type, config) - 1;
+  return end === start ? `Question ${start}` : `Questions ${start}–${end}`;
 }

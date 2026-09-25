@@ -101,6 +101,20 @@ describe("Listening audio and templates", () => {
     expect(screen.getAllByText(/Shared Listening audio/)).toHaveLength(1);
   });
 
+  it("shows and edits the full range for one shared multi select group in the Builder", async () => {
+    const persisted = {
+      ...questionRegistry.multiple_choice_multiple.createDefault(13),
+      id: crypto.randomUUID(), revision: 1, image_asset_id: null, image_asset: null,
+    } as BuilderQuestionGroup;
+    render(<BuilderLifecycleProvider><ListeningBuilder version={listeningBuilderVersion([persisted])} /></BuilderLifecycleProvider>);
+    expect(screen.getByText("Q13–14")).toBeInTheDocument();
+    expect(screen.getByText("2 / 40 questions")).toBeInTheDocument();
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Edit" })); await Promise.resolve(); });
+    expect(screen.getByRole("combobox", { name: "Required selections" })).toHaveValue("2");
+    fireEvent.change(screen.getByRole("combobox", { name: "Required selections" }), { target: { value: "3" } });
+    expect(screen.getByText("Q13–15")).toBeInTheDocument();
+  });
+
   it("autosaves an existing Listening group through UPDATE without creating a duplicate", async () => {
     vi.useFakeTimers();
     const persisted = {

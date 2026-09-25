@@ -91,7 +91,7 @@ const definitions: QuestionTypeDefinition[] = [
     id: "multiple_choice_multiple", label: "Multiple Choice — Multiple", category: "shared",
     BuilderEditor: MultipleChoiceMultipleEditor, AnswerKeyEditor: MultipleChoiceMultipleEditor, ExamRenderer: MultipleChoiceMultipleRenderer, ReviewRenderer: MultipleChoiceMultipleRenderer,
     responseSchema: z.array(z.string()), configSchema: z.object({}), instruction: staticInstruction("Choose the correct letters."),
-    createDefault: (number) => { const options = newOptions(); return { question_type: "multiple_choice_multiple", instruction: "", config: {}, order_index: 0, questions: [{ id: crypto.randomUUID(), number, prompt: "Question prompt", config: { options, min_selections: 2, max_selections: 2 }, answer_key: { kind: "MULTIPLE_OPTIONS", values: options.slice(0, 2).map((item) => item.id), order_matters: false }, order_index: 0 }] }; },
+    createDefault: (number) => { const options = newOptions(); return { question_type: "multiple_choice_multiple", instruction: "", config: {}, order_index: 0, questions: [{ id: crypto.randomUUID(), number, prompt: "Question prompt", config: { options, min_selections: 2, max_selections: 2 }, answer_key: { kind: "MULTIPLE_OPTIONS", values: [], order_matters: false }, order_index: 0 }] }; },
   },
   {
     id: "true_false_not_given", label: "True / False / Not Given", category: "reading",

@@ -23,6 +23,7 @@ import {
 import { builderPreviewPath } from "@/lib/routes";
 import { questionRegistry, readingQuestionTypeOptions } from "@/features/questions/registry";
 import type { QuestionGroupModel, QuestionType } from "@/features/questions/types";
+import { groupQuestionCount, groupQuestionRange, questionNumbers } from "@/features/questions/numbering";
 import { QuestionGroupEditor } from "./question-group-editor";
 import { resolveQuestionGroupInstruction } from "@/features/questions/question-group-instruction";
 import { useBuilderAutosave, useBuilderLifecycle } from "./builder-lifecycle";
@@ -40,10 +41,10 @@ export function ReadingBuilder({ version }: { version: BuilderVersion }) {
   const [message, setMessage] = useState<string | null>(null);
   const [conflict, setConflict] = useState(false);
   const [confirmingModuleDelete, setConfirmingModuleDelete] = useState(false);
-  const nextNumber = useMemo(() => Math.max(0, ...(reading?.passages.flatMap((passage) => passage.question_groups.flatMap((group) => group.questions.map((question) => question.number))) ?? [])) + 1, [reading]);
+  const nextNumber = useMemo(() => Math.max(0, ...(reading?.passages.flatMap((passage) => passage.question_groups.flatMap(questionNumbers)) ?? [])) + 1, [reading]);
   const nextGroupOrder = useMemo(() => Math.max(-1, ...(reading?.passages.flatMap((passage) => passage.question_groups.map((group) => group.order_index)) ?? [])) + 1, [reading]);
   const duplicateQuestionNumbers = useMemo(() => {
-    const numbers = reading?.passages.flatMap((passage) => passage.question_groups.flatMap((group) => group.questions.map((question) => question.number))) ?? [];
+    const numbers = reading?.passages.flatMap((passage) => passage.question_groups.flatMap(questionNumbers)) ?? [];
     return [...new Set(numbers.filter((number, index) => numbers.indexOf(number) !== index))].sort((a, b) => a - b);
   }, [reading]);
 
@@ -256,12 +257,11 @@ function PassageEditor({ passage, orderIndex, onSave, onAutosave, onCancel }: { 
 }
 
 function GroupSummary({ group, passageNumber, onMove, onEdit, onDelete }: { group: BuilderQuestionGroup; passageNumber: number; onMove: (offset: number) => void; onEdit: () => void; onDelete: () => void }) {
-  const numbers = group.questions.map((item) => item.number);
-  const range = numbers.length > 1 ? `Q${Math.min(...numbers)}–${Math.max(...numbers)}` : `Q${numbers[0] ?? "—"}`;
+  const range = groupQuestionRange(group);
   return (
     <div className="question-group-card">
       <span className="question-range">{range}</span>
-      <div className="min-w-0 flex-1"><p>{questionRegistry[group.question_type].label}</p><span>{group.questions.length} question{group.questions.length === 1 ? "" : "s"} · {resolveQuestionGroupInstruction(group, { passageNumber }).intro}</span></div>
+      <div className="min-w-0 flex-1"><p>{questionRegistry[group.question_type].label}</p><span>{groupQuestionCount(group)} question{groupQuestionCount(group) === 1 ? "" : "s"} · {resolveQuestionGroupInstruction(group, { passageNumber }).intro}</span></div>
       <div className="group-actions"><button type="button" onClick={() => onMove(-1)} aria-label="Move question group up" className="icon-button">↑</button><button type="button" onClick={() => onMove(1)} aria-label="Move question group down" className="icon-button">↓</button><button onClick={onEdit} className="btn btn-secondary">Edit / Preview</button><button onClick={onDelete} className="btn btn-danger-ghost">Delete</button></div>
     </div>
   );
@@ -298,8 +298,8 @@ function canonicalReadingGroupStart(passages: BuilderPassage[], target: Question
   let number = 1;
   for (const passage of [...passages].sort((a, b) => a.order_index - b.order_index)) {
     for (const group of [...passage.question_groups].sort((a, b) => a.order_index - b.order_index)) {
-      if (group.id === target.id) return number;
-      number += group.questions.length;
+      if (group.id === target.id) return target.questions.length ? Math.min(...target.questions.map((question) => question.number)) : number;
+      number += groupQuestionCount(group);
     }
   }
   return target.questions.length ? Math.min(...target.questions.map((question) => question.number)) : number;

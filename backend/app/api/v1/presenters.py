@@ -1,3 +1,4 @@
+from app.domains.questions.numbering import group_slots
 from app.models import TestVersion
 from app.schemas.tests import ModuleSummary, VersionDetail
 
@@ -20,7 +21,10 @@ def present_version(version: TestVersion) -> VersionDetail:
                 passage_count=len(module.passages),
                 listening_part_count=len(module.listening_parts),
                 writing_task_count=len(module.writing_tasks),
-                question_count=sum(len(group.questions) for group in module.question_groups),
+                question_count=sum(
+                    len(group_slots(group.question_type, group.questions))
+                    for group in module.question_groups
+                ),
             )
             for module in version.modules
         ],

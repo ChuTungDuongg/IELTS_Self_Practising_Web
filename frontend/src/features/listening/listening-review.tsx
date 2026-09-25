@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ListeningAudioPlayer } from "./audio-player";
 import { questionRegistry } from "@/features/questions/registry";
+import { groupQuestionCount, groupQuestionRange } from "@/features/questions/numbering";
 import type { ExamGroup } from "@/features/questions/types";
 import { QuestionGroupInstruction } from "@/features/questions/question-group-instruction";
 import { assetContentUrl } from "@/lib/api/assets";
@@ -36,7 +37,7 @@ export function ListeningReviewView({ data }: { data: ReviewData }) {
         {data.parts.map((item, index) => (
           <button key={item.id} type="button" className={index === partIndex ? "active" : ""} onClick={() => setPartIndex(index)}>
             <b>Section {item.order_index + 1}</b>
-            <span>{item.question_groups.flatMap((group) => group.questions).length} questions</span>
+            <span>{item.question_groups.reduce((count, group) => count + groupQuestionCount(group), 0)} questions</span>
           </button>
         ))}
       </div>
@@ -64,7 +65,7 @@ export function ListeningReviewView({ data }: { data: ReviewData }) {
                   return (
                     <div key={question.id} className={answer?.is_correct ? "review-answer-correct" : "review-answer-wrong"}>
                       <div className="review-answer-heading">
-                        <b>Question {question.number}</b>
+                        <b>{group.question_type === "multiple_choice_multiple" ? groupQuestionRange(group).replace(/^Q/, "Questions ") : `Question ${question.number}`}</b>
                         <span>{answer?.is_correct ? "Correct" : "Needs review"}</span>
                       </div>
                       <div className="review-answer-details">

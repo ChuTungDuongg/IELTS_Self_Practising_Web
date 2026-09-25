@@ -132,6 +132,25 @@ describe("Reading Builder editor identity", () => {
     expect(screen.getByLabelText("Prompt")).toHaveValue("Second group prompt");
   });
 
+  it("opens an imported Reading completion group at its persisted number after a gap", async () => {
+    const first = group(1, "First prompt");
+    const later = {
+      ...questionRegistry.summary_completion.createDefault(14),
+      id: crypto.randomUUID(),
+      revision: 1,
+      order_index: 1,
+      image_asset_id: null,
+      image_asset: null,
+    } as BuilderQuestionGroup;
+    render(<BuilderLifecycleProvider><ReadingBuilder version={version([passage(0, "Passage", [first, later])])} /></BuilderLifecycleProvider>);
+
+    await act(async () => {
+      fireEvent.click(screen.getAllByRole("button", { name: "Edit / Preview" })[1]);
+      await Promise.resolve();
+    });
+    expect(screen.getByRole("group", { name: "Question 14 answer editor" })).toBeInTheDocument();
+  });
+
   it("creates an edited new passage without its own draft blocking the POST", async () => {
     let resolveOtherSave!: () => void;
     const saveOther = vi.fn(() => new Promise<void>((resolve) => { resolveOtherSave = resolve; }));

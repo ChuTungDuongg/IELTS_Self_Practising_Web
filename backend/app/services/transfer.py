@@ -21,6 +21,7 @@ from app.domains.questions.normalization import (
     normalize_question_group_payload,
     remap_question_references,
 )
+from app.domains.questions.numbering import group_slots
 from app.domains.questions.registry import question_registry
 from app.models import (
     Asset,
@@ -33,7 +34,7 @@ from app.models import (
     TestVersion,
     WritingTask,
 )
-from app.models.enums import AssetType, ModuleType
+from app.models.enums import AssetType, ModuleType, VersionStatus
 from app.repositories.tests import version_detail_query
 from app.schemas.transfer import (
     TRANSFER_FORMAT,
@@ -503,11 +504,14 @@ class TransferService:
                         for question in group.questions:
                             TransferService._remember(seen["questions"], question.id, "question")
                     question_numbers = [
-                        question.number
+                        number
                         for group in sorted(
                             module.question_groups, key=lambda item: item.order_index
                         )
-                        for question in sorted(group.questions, key=lambda item: item.order_index)
+                        for number in group_slots(
+                            group.question_type,
+                            sorted(group.questions, key=lambda item: item.order_index),
+                        )
                     ]
                     if question_numbers != list(range(1, len(question_numbers) + 1)):
                         raise TransferService._invalid(
@@ -742,20 +746,19 @@ class TransferService:
                         module_type=module.module_type,
                     )
                     for question, normalized in zip(group.questions, questions, strict=True):
-                        question_registry.validate(
-                            group.question_type,
-                            config,
-                            normalized["config"],
-                            normalized["answer_key"],
-                        )
-                        TestService._validate_references(
-                            group,
-                            question,
-                            group_config=config,
-                            question_config=normalized["config"],
-                            answer_key=normalized["answer_key"],
-                            passage_blocks=blocks_by_passage.get(passage_id, []),
-                        )
+                        key = normalized["answer_key"]
+                        if version.status == VersionStatus.DRAFT:
+                            question_registry.validate_draft(group.question_type, config, normalized["config"], key)
+                        else:
+                            question_registry.validate(group.question_type, config, normalized["config"], key)
+                            TestService._validate_references(
+                                group,
+                                question,
+                                group_config=config,
+                                question_config=normalized["config"],
+                                answer_key=key,
+                                passage_blocks=blocks_by_passage.get(passage_id, []),
+                            )
                     TestService._validate_group_references(
                         group, config, questions, module_type=module.module_type
                     )

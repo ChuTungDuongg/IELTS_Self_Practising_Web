@@ -539,6 +539,11 @@ def normalize_question_group_payload(
             "diagram_labelling",
             "table_completion",
             "note_completion",
+            "form_completion",
+            "flow_chart_completion",
+            "summary_completion",
+            "sentence_completion",
+            "short_answer",
         }:
             question["answer_key"] = _normalize_text_key(dict(question.get("answer_key") or {}))
 

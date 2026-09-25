@@ -16,6 +16,7 @@ class ImportOption(ImportModel):
 
 class ImportQuestion(ImportModel):
     number: int | None = Field(default=None, ge=1, le=40)
+    end_number: int | None = Field(default=None, ge=1, le=40)
     prompt: str | None = Field(default=None, max_length=5000)
     answer: str | list[str] | None = None
     target: str | None = None
@@ -98,6 +99,7 @@ class DraftImportManifest(ImportModel):
     format: Literal["ielts-draft-import-v1"]
     title: str = Field(min_length=1, max_length=240)
     description: str | None = None
+    allow_incomplete: bool = False
     modules: list[ImportModule] = Field(min_length=1)
 
     @model_validator(mode="after")

@@ -3,7 +3,8 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import delete, func, select
+from pydantic import ValidationError
+from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -16,6 +17,7 @@ from app.domains.questions.normalization import (
     normalize_question_group_payload,
     normalize_response_value,
 )
+from app.domains.questions.numbering import question_span
 from app.domains.scoring import (
     calculate_final_writing_band,
     calculate_task_overall,
@@ -300,11 +302,16 @@ class AttemptService:
                 normalized_group_config=normalized_group_config,
                 normalized_question_config=normalized_question["config"],
             )
-            validated_value = (
-                question_registry.validate_response(group.question_type, normalized_value)
-                if question_registry.supports(group.question_type)
-                else normalized_value
-            )
+            try:
+                validated_value = (
+                    question_registry.validate_response(
+                        group.question_type, normalized_value, normalized_question["config"]
+                    )
+                    if question_registry.supports(group.question_type)
+                    else normalized_value
+                )
+            except (ValidationError, ValueError) as exc:
+                raise AppError("INVALID_ANSWER", str(exc), 422) from exc
             is_correct = (
                 question_registry.evaluate(
                     group.question_type,
@@ -1499,6 +1506,7 @@ class AttemptService:
                 select(Question)
                 .join(QuestionGroup)
                 .join(TestModule)
+                .options(selectinload(Question.question_group))
                 .where(
                     TestModule.test_version_id == attempt.test_version_id,
                     TestModule.module_type == attempt.module_type,
@@ -1510,15 +1518,27 @@ class AttemptService:
             attempt.max_score = None
             attempt.band_score = None
             return
-        attempt.max_score = len(questions)
-        attempt.raw_score = int(
-            await self.session.scalar(
-                select(func.count(AttemptAnswer.id)).where(
-                    AttemptAnswer.attempt_id == attempt.id,
-                    AttemptAnswer.is_correct.is_(True),
-                )
+        answers = {
+            answer.question_id: answer
+            for answer in await self.session.scalars(
+                select(AttemptAnswer).where(AttemptAnswer.attempt_id == attempt.id)
             )
-            or 0
+        }
+        attempt.max_score = sum(
+            question_span(question.question_group.question_type, question.config)
+            for question in questions
+        )
+        attempt.raw_score = sum(
+            question_registry.score(
+                question.question_group.question_type,
+                question.answer_key,
+                answers[question.id].value,
+                question.config,
+            )
+            if question.question_group.question_type == "multiple_choice_multiple"
+            else int(bool(answers[question.id].is_correct))
+            for question in questions
+            if question.id in answers
         )
         converter = (
             reading_raw_to_band

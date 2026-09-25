@@ -14,6 +14,7 @@ from app.domains.questions.normalization import (
     normalize_question_group_payload,
     remap_question_references,
 )
+from app.domains.questions.numbering import group_slots
 from app.models import (
     Asset,
     Attempt,
@@ -30,7 +31,7 @@ from app.models.enums import AssetType, ModuleType, VersionStatus
 from app.repositories.tests import TestRepository, version_detail_query
 from app.schemas.common import ValidationIssue, ValidationResult
 from app.schemas.content import TextBlock
-from app.schemas.tests import TestCreate, TestDeleteResult, VersionCreate
+from app.schemas.tests import TestCreate, TestDeleteResult, TestUpdate, VersionCreate
 from app.storage import LocalAssetStorage
 
 
@@ -61,6 +62,18 @@ class TestService:
                 test.versions.append(TestVersion(version_number=1, status=VersionStatus.DRAFT))
             await self.session.flush()
         return test
+
+    async def update_test(self, test_id: uuid.UUID, data: TestUpdate) -> Test:
+        async with self.session.begin():
+            test = await self.session.scalar(
+                select(Test).where(Test.id == test_id).with_for_update()
+            )
+            if test is None:
+                raise AppError("TEST_NOT_FOUND", "The requested test does not exist.", 404)
+            test.title = data.title
+            await self.session.flush()
+            await self.session.refresh(test, attribute_names=["updated_at"])
+        return await self.get_test(test_id)
 
     async def delete_test(self, test_id: uuid.UUID) -> TestDeleteResult:
         deleted_paths: list[str] = []
@@ -642,9 +655,12 @@ class TestService:
             else:
                 ordered_groups = sorted(module.question_groups, key=lambda item: item.order_index)
             question_numbers = [
-                question.number
+                number
                 for group in ordered_groups
-                for question in sorted(group.questions, key=lambda item: item.order_index)
+                for number in group_slots(
+                    group.question_type,
+                    sorted(group.questions, key=lambda item: item.order_index),
+                )
             ]
             duplicate_numbers = sorted(
                 number for number in set(question_numbers) if question_numbers.count(number) > 1
@@ -919,6 +935,21 @@ class TestService:
                     )
                     continue
                 for question, normalized in zip(group.questions, normalized_questions, strict=True):
+                    key = normalized["answer_key"]
+                    question_path = f"{prefix}.questions.{question.number}"
+                    if group.question_type == "multiple_choice_multiple":
+                        required = normalized["config"].get("min_selections", 2)
+                        if len(key.get("values", [])) != required:
+                            issues.append(ValidationIssue(
+                                path=question_path,
+                                message=f"Select exactly {required} official answers before publishing.",
+                            ))
+                            continue
+                    elif not any(key.get(field) for field in ("value", "accepted")):
+                        issues.append(ValidationIssue(
+                            path=question_path, message="Answer key is incomplete."
+                        ))
+                        continue
                     try:
                         question_registry.validate(
                             group.question_type,
@@ -937,7 +968,7 @@ class TestService:
                     except (ValidationError, KeyError, ValueError) as exc:
                         issues.append(
                             ValidationIssue(
-                                path=f"{prefix}.questions.{question.number}",
+                                path=question_path,
                                 message=f"Invalid question configuration: {exc}",
                             )
                         )

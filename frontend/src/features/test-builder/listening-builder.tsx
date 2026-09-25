@@ -7,6 +7,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { resolveQuestionGroupInstruction } from "@/features/questions/question-group-instruction";
 import { listeningQuestionTypeOptions, questionRegistry } from "@/features/questions/registry";
 import type { QuestionGroupModel, QuestionType } from "@/features/questions/types";
+import { groupQuestionCount, groupQuestionRange, questionNumbers } from "@/features/questions/numbering";
 import { uploadAsset } from "@/lib/api/assets";
 import {
   attachListeningAudio,
@@ -43,7 +44,7 @@ export function ListeningBuilder({ version }: { version: BuilderVersion }) {
   const [uploading, setUploading] = useState(false);
   const [confirmingModuleDelete, setConfirmingModuleDelete] = useState(false);
   const part = parts[partIndex];
-  const nextNumber = Math.max(0, ...parts.flatMap((item) => item.question_groups.flatMap((group) => group.questions.map((question) => question.number)))) + 1;
+  const nextNumber = Math.max(0, ...parts.flatMap((item) => item.question_groups.flatMap(questionNumbers))) + 1;
   const nextOrder = Math.max(-1, ...parts.flatMap((item) => item.question_groups.map((group) => group.order_index))) + 1;
 
   async function run(action: () => Promise<unknown>, excludeAutosaveKey?: string) {
@@ -139,11 +140,11 @@ export function ListeningBuilder({ version }: { version: BuilderVersion }) {
       <section className="listening-builder">
         <div className="section-header">
           <div><p className="page-eyebrow listening-eyebrow">Listening module</p><h2>Listening Builder</h2><p>Four stable sections, globally numbered questions, and one optional shared recording.</p></div>
-          <div className="flex flex-wrap gap-2"><AutosaveLink href={builderPreviewPath(version.test_id, version.id, "listening")} className="btn btn-secondary">Preview Listening</AutosaveLink><span className="module-state">{parts.flatMap((item) => item.question_groups.flatMap((group) => group.questions)).length} / 40 questions</span><button onClick={() => setConfirmingModuleDelete(true)} className="btn btn-danger-ghost">Delete module</button></div>
+          <div className="flex flex-wrap gap-2"><AutosaveLink href={builderPreviewPath(version.test_id, version.id, "listening")} className="btn btn-secondary">Preview Listening</AutosaveLink><span className="module-state">{parts.reduce((total, item) => total + item.question_groups.reduce((count, group) => count + groupQuestionCount(group), 0), 0)} / 40 questions</span><button onClick={() => setConfirmingModuleDelete(true)} className="btn btn-danger-ghost">Delete module</button></div>
         </div>
 
         <div className="listening-part-tabs" role="tablist">
-          {parts.map((item, index) => <button key={item.id} role="tab" aria-selected={index === partIndex} onClick={() => void switchPart(index)} className={index === partIndex ? "active" : ""}><b>Section {item.order_index + 1}</b><span>{item.question_groups.flatMap((group) => group.questions).length} questions</span></button>)}
+          {parts.map((item, index) => <button key={item.id} role="tab" aria-selected={index === partIndex} onClick={() => void switchPart(index)} className={index === partIndex ? "active" : ""}><b>Section {item.order_index + 1}</b><span>{item.question_groups.reduce((count, group) => count + groupQuestionCount(group), 0)} questions</span></button>)}
         </div>
 
         {message ? <p className="notice notice-error mt-4">{message}</p> : null}
@@ -161,8 +162,7 @@ export function ListeningBuilder({ version }: { version: BuilderVersion }) {
             <ListeningPartTitle key={part.id} part={part} />
             <div className="question-group-list mt-5">
               {part.question_groups.map((group) => {
-                const numbers = group.questions.map((item) => item.number);
-                return <div key={group.id} className="question-group-card listening-group-card"><span className="question-range">{numbers.length ? `Q${Math.min(...numbers)}–${Math.max(...numbers)}` : "—"}</span><div className="min-w-0 flex-1"><p>{questionRegistry[group.question_type].label}</p><span>{resolveQuestionGroupInstruction(group).intro}</span></div><div className="group-actions"><button className="icon-button" onClick={() => moveGroup(group.id, -1)}>↑</button><button className="icon-button" onClick={() => moveGroup(group.id, 1)}>↓</button><button className="btn btn-secondary" onClick={() => void editGroup(group)}>Edit</button><button className="btn btn-danger-ghost" onClick={() => run(() => deleteQuestionGroup(group.id))}>Delete</button></div></div>;
+                return <div key={group.id} className="question-group-card listening-group-card"><span className="question-range">{groupQuestionRange(group)}</span><div className="min-w-0 flex-1"><p>{questionRegistry[group.question_type].label}</p><span>{resolveQuestionGroupInstruction(group).intro}</span></div><div className="group-actions"><button className="icon-button" onClick={() => moveGroup(group.id, -1)}>↑</button><button className="icon-button" onClick={() => moveGroup(group.id, 1)}>↓</button><button className="btn btn-secondary" onClick={() => void editGroup(group)}>Edit</button><button className="btn btn-danger-ghost" onClick={() => run(() => deleteQuestionGroup(group.id))}>Delete</button></div></div>;
               })}
               {editing ? (
                 <div>
@@ -198,7 +198,7 @@ function canonicalListeningGroupStart(
   for (const part of [...parts].sort((a, b) => a.order_index - b.order_index)) {
     for (const group of [...part.question_groups].sort((a, b) => a.order_index - b.order_index)) {
       if (group.id === target.id) return number;
-      number += group.questions.length;
+      number += groupQuestionCount(group);
     }
   }
   return target.questions.length ? Math.min(...target.questions.map((question) => question.number)) : number;

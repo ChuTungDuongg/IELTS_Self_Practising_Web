@@ -47,8 +47,8 @@ class MultipleChoiceMultipleConfig(MultipleChoiceConfig):
 
     @model_validator(mode="after")
     def validate_selection_range(self) -> MultipleChoiceMultipleConfig:
-        if self.min_selections > self.max_selections:
-            raise ValueError("Minimum selections cannot exceed maximum selections")
+        if self.min_selections != self.max_selections:
+            raise ValueError("IELTS multiple-choice groups require an exact selection count")
         if self.max_selections > len(self.options):
             raise ValueError("Maximum selections cannot exceed the option count")
         return self
@@ -567,7 +567,7 @@ def _multiple_choice_evaluator(key: BaseModel, value: Any, _: BaseModel) -> bool
     parsed = MultipleOptionsAnswerKey.model_validate(key)
     if not isinstance(value, list):
         return False
-    return value == parsed.values if parsed.order_matters else set(value) == set(parsed.values)
+    return set(value) == set(parsed.values)
 
 
 def normalize_text(value: str, *, case_sensitive: bool) -> str:
@@ -609,6 +609,51 @@ class QuestionRegistry:
     def validate_group(self, name: str, config: dict[str, Any]) -> BaseModel:
         return self._types[name].group_config_model.model_validate(config)
 
+    def validate_structure(
+        self, name: str, group_config: dict[str, Any], question_config: dict[str, Any]
+    ) -> None:
+        definition = self._types[name]
+        definition.group_config_model.model_validate(group_config)
+        definition.question_config_model.model_validate(question_config)
+
+    def validate_draft(
+        self,
+        name: str,
+        group_config: dict[str, Any],
+        question_config: dict[str, Any],
+        answer_key: dict[str, Any],
+    ) -> None:
+        """Check draft persistence shape without requiring a complete grading key."""
+        self.validate_structure(name, group_config, question_config)
+        model = self._types[name].answer_key_model
+        if model is MultipleOptionsAnswerKey:
+            values = answer_key.get("values")
+            if (
+                answer_key.get("kind") != "MULTIPLE_OPTIONS"
+                or not isinstance(values, list)
+                or any(not isinstance(value, str) for value in values)
+                or len(values) != len(set(values))
+                or answer_key.get("order_matters") is not False
+            ):
+                raise ValueError("Multi-select draft keys must contain distinct unordered options")
+        elif model is TextAnswerKey:
+            accepted = answer_key.get("accepted")
+            if (
+                answer_key.get("kind") != "TEXT"
+                or not isinstance(accepted, list)
+                or any(not isinstance(value, str) for value in accepted)
+                or not isinstance(answer_key.get("case_sensitive"), bool)
+            ):
+                raise ValueError("Text draft keys must contain a text answer list")
+        else:
+            value = answer_key.get("value")
+            if (
+                answer_key.get("kind") != "SINGLE_OPTION"
+                or not isinstance(value, str)
+                or len(value) > 80
+            ):
+                raise ValueError("Single-option draft keys must contain a text value")
+
     def validate(
         self,
         name: str,
@@ -619,10 +664,33 @@ class QuestionRegistry:
         definition = self._types[name]
         definition.group_config_model.model_validate(group_config)
         definition.question_config_model.model_validate(question_config)
-        definition.answer_key_model.model_validate(answer_key)
+        parsed_key = definition.answer_key_model.model_validate(answer_key)
+        if name == "multiple_choice_multiple" and parsed_key.order_matters:
+            raise ValueError("IELTS multiple-choice answers are unordered")
 
-    def validate_response(self, name: str, value: Any) -> Any:
-        return self._types[name].response_model.model_validate(value).root
+    def validate_response(
+        self, name: str, value: Any, config: dict[str, Any] | None = None
+    ) -> Any:
+        parsed = self._types[name].response_model.model_validate(value).root
+        if name == "multiple_choice_multiple" and config is not None:
+            parsed_config = MultipleChoiceMultipleConfig.model_validate(config)
+            option_ids = {option.id for option in parsed_config.options}
+            if (
+                len(parsed) != len(set(parsed))
+                or len(parsed) > parsed_config.max_selections
+                or not set(parsed).issubset(option_ids)
+            ):
+                raise ValueError("Select distinct available options within the selection limit")
+        return parsed
+
+    def score(self, name: str, answer_key: dict[str, Any], value: Any, config: dict[str, Any]) -> int:
+        if name == "multiple_choice_multiple":
+            key = MultipleOptionsAnswerKey.model_validate(answer_key)
+            MultipleChoiceMultipleConfig.model_validate(config)
+            if not isinstance(value, list):
+                return 0
+            return len(set(value).intersection(key.values))
+        return int(self.evaluate(name, answer_key, value, config))
 
     def evaluate(
         self, name: str, answer_key: dict[str, Any], value: Any, config: dict[str, Any]

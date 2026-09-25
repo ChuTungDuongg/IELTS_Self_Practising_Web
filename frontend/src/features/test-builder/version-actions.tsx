@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { questionRegistry } from "@/features/questions/registry";
+import { groupQuestionRange, questionNumbers } from "@/features/questions/numbering";
 import { ApiError } from "@/lib/api/client";
 import type { BuilderVersion } from "@/lib/api/builder";
 import { cloneVersion, deleteDraft, publishVersion, validateVersion } from "@/lib/api/tests";
@@ -183,11 +184,11 @@ function resolveValidationContext(path: string, version: BuilderVersion): { loca
 
   for (const [passageIndex, passage] of passages.entries()) {
     const group = passage.question_groups.find((item) => item.id === groupId)
-      ?? passage.question_groups.find((item) => item.questions.some((question) => question.number === questionNumber));
+      ?? passage.question_groups.find((item) => questionNumbers(item).includes(questionNumber));
     if (group) {
       return {
         location: `Reading Passage ${passageIndex + 1} · ${passage.title}`,
-        subject: `${questionRegistry[group.question_type].label} · ${questionRange(group.questions.map((question) => question.number))}`,
+        subject: `${questionRegistry[group.question_type].label} · ${groupQuestionRange(group)}`,
       };
     }
     if (passage.id === passageId) {
@@ -195,16 +196,18 @@ function resolveValidationContext(path: string, version: BuilderVersion): { loca
     }
   }
 
+  for (const [partIndex, part] of [...builderModule.listening_parts].sort((a, b) => a.order_index - b.order_index).entries()) {
+    const group = part.question_groups.find((item) => item.id === groupId)
+      ?? part.question_groups.find((item) => questionNumbers(item).includes(questionNumber));
+    if (group) return {
+      location: `Listening Section ${partIndex + 1} · ${part.title}`,
+      subject: `${questionRegistry[group.question_type].label} · ${groupQuestionRange(group)}`,
+    };
+  }
+
   if (moduleName === "reading") return { location: "Reading module", subject: humanizePath(path) };
   if (moduleName === "listening") return { location: "Listening module", subject: humanizePath(path) };
   return { location: humanizePath(path) };
-}
-
-function questionRange(numbers: number[]): string {
-  if (!numbers.length) return "No questions";
-  const minimum = Math.min(...numbers);
-  const maximum = Math.max(...numbers);
-  return minimum === maximum ? `Q${minimum}` : `Q${minimum}–${maximum}`;
 }
 
 function humanizePath(path: string): string {

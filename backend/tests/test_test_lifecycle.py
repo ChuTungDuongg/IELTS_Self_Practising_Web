@@ -6,6 +6,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.dependencies import get_current_user
 from app.core.database import get_session
 from app.core.exceptions import AppError
 from app.main import app
@@ -17,6 +18,7 @@ from app.models import (
     Question,
     QuestionGroup,
     ReadingPassage,
+    User,
 )
 from app.models import (
     Test as DomainTest,
@@ -32,9 +34,73 @@ from app.models.enums import (
     AttemptStatus,
     ModuleType,
     TimerMode,
+    UserRole,
     VersionStatus,
 )
+from app.schemas.tests import TestUpdate as UpdatePayload
 from app.services.tests import TestService as LifecycleService
+
+
+@pytest.mark.integration
+async def test_rename_test_updates_only_parent_metadata(db_session: AsyncSession) -> None:
+    test = DomainTest(title="Original")
+    draft = DomainVersion(version_number=1, status=VersionStatus.DRAFT)
+    test.versions.append(draft)
+    await persist(db_session, test)
+    test_id, draft_id = test.id, draft.id
+
+    updated = await LifecycleService(db_session).update_test(test_id, UpdatePayload(title="  Renamed test  "))
+
+    assert updated.id == test_id
+    assert updated.title == "Renamed test"
+    assert [item.id for item in updated.versions] == [draft_id]
+    await db_session.rollback()
+    with pytest.raises(AppError) as caught:
+        await LifecycleService(db_session).update_test(uuid4(), UpdatePayload(title="Missing"))
+    assert caught.value.code == "TEST_NOT_FOUND"
+
+
+@pytest.mark.integration
+async def test_rename_endpoint_validates_title_and_requires_admin(
+    db_session: AsyncSession, authenticated_admin, test_user
+) -> None:
+    test = DomainTest(title="Original")
+    draft = DomainVersion(version_number=1, status=VersionStatus.DRAFT)
+    test.versions.append(draft)
+    await persist(db_session, test)
+    test_id, draft_id = test.id, draft.id
+    user_identity = User(id=test_user.id, role=UserRole.USER)
+
+    async def override_session():
+        try:
+            yield db_session
+        finally:
+            if db_session.in_transaction():
+                await db_session.rollback()
+
+    app.dependency_overrides[get_session] = override_session
+    try:
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            renamed = await client.patch(f"/api/v1/tests/{test_id}", json={"title": "  Renamed test  "})
+            detail = await client.get(f"/api/v1/tests/{test_id}")
+            blank = await client.patch(f"/api/v1/tests/{test_id}", json={"title": "   "})
+            too_long = await client.patch(f"/api/v1/tests/{test_id}", json={"title": "x" * 241})
+            missing = await client.patch(f"/api/v1/tests/{uuid4()}", json={"title": "Missing"})
+            app.dependency_overrides[get_current_user] = lambda: user_identity
+            forbidden = await client.patch(f"/api/v1/tests/{test_id}", json={"title": "Forbidden"})
+    finally:
+        app.dependency_overrides.clear()
+
+    assert renamed.status_code == 200
+    assert renamed.json()["title"] == "Renamed test"
+    assert renamed.json()["id"] == str(test_id)
+    assert [item["id"] for item in renamed.json()["versions"]] == [str(draft_id)]
+    assert detail.status_code == 200 and detail.json()["title"] == "Renamed test"
+    assert blank.status_code == 422
+    assert too_long.status_code == 422
+    assert missing.status_code == 404 and missing.json()["code"] == "TEST_NOT_FOUND"
+    assert forbidden.status_code == 403
 
 
 async def persist(session: AsyncSession, *records: object) -> None:
