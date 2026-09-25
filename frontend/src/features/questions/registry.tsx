@@ -118,7 +118,7 @@ const definitions: QuestionTypeDefinition[] = [
   {
     id: "text_completion", label: "Text Completion", category: "shared",
     BuilderEditor: TextCompletionEditor, AnswerKeyEditor: TextCompletionEditor, ExamRenderer: TextCompletionRenderer, ReviewRenderer: TextCompletionRenderer,
-    responseSchema: z.string(), configSchema: z.object({ mode: z.enum(["SENTENCE", "PASSAGE"]), blocks: z.array(z.object({ id: z.string().uuid(), segments: z.array(z.object({ id: z.string().uuid(), type: z.enum(["TEXT", "GAP"]), text: z.string().optional(), question_id: z.string().uuid().optional() })).min(1) })).min(1) }), instruction: (group) => ({ intro: `Complete the text below. ${limitInstruction(group)}` }),
+    responseSchema: z.string(), configSchema: z.object({ mode: z.enum(["SENTENCE", "PASSAGE"]), title: z.string().max(300).optional(), blocks: z.array(z.object({ id: z.string().uuid(), segments: z.array(z.object({ id: z.string().uuid(), type: z.enum(["TEXT", "GAP"]), text: z.string().optional(), question_id: z.string().uuid().optional() })).min(1) })).min(1) }), instruction: (group) => ({ intro: `Complete the text below. ${limitInstruction(group)}` }),
     createDefault: (number) => { const question = textQuestion(number); return { question_type: "text_completion", instruction: "", config: { mode: "SENTENCE", blocks: [{ id: crypto.randomUUID(), segments: [{ id: crypto.randomUUID(), type: "TEXT", text: "Complete the sentence: " }, { id: crypto.randomUUID(), type: "GAP", question_id: question.id }] }] }, order_index: 0, questions: [question] }; },
   },
   {
@@ -152,7 +152,7 @@ const definitions: QuestionTypeDefinition[] = [
   {
     id: "summary_completion_word_list", label: "Summary Completion — Word List", category: "reading",
     BuilderEditor: SummaryWordListEditor, AnswerKeyEditor: SummaryWordListEditor, ExamRenderer: SummaryWordListRenderer, ReviewRenderer: SummaryWordListRenderer,
-    responseSchema: z.string().uuid(), configSchema: z.object({ mode: z.enum(["SENTENCE", "PASSAGE"]), options: z.array(optionSchema).min(2), blocks: z.array(z.object({ id: z.string().uuid(), segments: z.array(z.object({ id: z.string().uuid(), type: z.enum(["TEXT", "GAP"]), text: z.string().optional(), question_id: z.string().uuid().optional() })) })) }), instruction: staticInstruction("Complete the summary using the list of words or phrases below."),
+    responseSchema: z.string().uuid(), configSchema: z.object({ mode: z.enum(["SENTENCE", "PASSAGE"]), title: z.string().max(300).optional(), options: z.array(optionSchema).min(2), blocks: z.array(z.object({ id: z.string().uuid(), segments: z.array(z.object({ id: z.string().uuid(), type: z.enum(["TEXT", "GAP"]), text: z.string().optional(), question_id: z.string().uuid().optional() })) })) }), instruction: staticInstruction("Complete the summary using the list of words or phrases below."),
     createDefault: (number) => { const options = newOptions(); const question = { id: crypto.randomUUID(), number, prompt: "Summary gap", config: {}, answer_key: { kind: "SINGLE_OPTION", value: options[0].id }, order_index: 0 }; return { question_type: "summary_completion_word_list", instruction: "", config: { mode: "PASSAGE", options, blocks: [{ id: crypto.randomUUID(), segments: [{ id: crypto.randomUUID(), type: "TEXT" as const, text: "Complete the summary: " }, { id: crypto.randomUUID(), type: "GAP" as const, question_id: question.id }] }] }, order_index: 0, questions: [question] }; },
   },
 ];
@@ -190,6 +190,19 @@ definitions.push({
   ReviewRenderer: DiagramLabellingRenderer,
   responseSchema: z.string(),
   configSchema: z.object({
+    title: z.string().max(300).optional(),
+    annotations: z.array(z.object({
+      id: z.string().uuid(),
+      kind: z.enum(["ARROW_LABEL", "NOTE"]),
+      text: z.string().trim().min(1).max(300),
+      label_x: z.number().min(0).max(1),
+      label_y: z.number().min(0).max(1),
+      target_x: z.number().min(0).max(1).optional(),
+      target_y: z.number().min(0).max(1).optional(),
+    }).superRefine((annotation, context) => {
+      if (annotation.kind === "ARROW_LABEL" && (annotation.target_x === undefined || annotation.target_y === undefined)) context.addIssue({ code: "custom", message: "Arrow labels require a target." });
+      if (annotation.kind === "NOTE" && (annotation.target_x !== undefined || annotation.target_y !== undefined)) context.addIssue({ code: "custom", message: "Notes cannot have an arrow target." });
+    })).optional(),
     items: z.array(z.object({
       id: z.string().uuid(),
       question_id: z.string().uuid(),

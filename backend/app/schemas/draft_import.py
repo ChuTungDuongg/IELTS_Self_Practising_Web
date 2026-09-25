@@ -32,6 +32,26 @@ class ImportQuestion(ImportModel):
     explanation: str | None = None
 
 
+class ImportDiagramAnnotation(ImportModel):
+    id: str | None = None
+    kind: Literal["ARROW_LABEL", "NOTE"]
+    text: str = Field(min_length=1, max_length=300)
+    label_x: float = Field(ge=0, le=1)
+    label_y: float = Field(ge=0, le=1)
+    target_x: float | None = Field(default=None, ge=0, le=1)
+    target_y: float | None = Field(default=None, ge=0, le=1)
+
+    @model_validator(mode="after")
+    def validate_target(self) -> "ImportDiagramAnnotation":
+        if not self.text.strip():
+            raise ValueError("Diagram annotation text is required")
+        if self.kind == "ARROW_LABEL" and (self.target_x is None or self.target_y is None):
+            raise ValueError("Arrow labels require target coordinates")
+        if self.kind == "NOTE" and (self.target_x is not None or self.target_y is not None):
+            raise ValueError("Plain notes cannot have arrow targets")
+        return self
+
+
 class ImportGroup(ImportModel):
     question_type: str = Field(min_length=1, max_length=80)
     instruction: str = Field(default="", max_length=4000)
@@ -45,6 +65,7 @@ class ImportGroup(ImportModel):
     image: str | None = None
     allow_option_reuse: bool | None = None
     title: str | None = None
+    annotations: list[ImportDiagramAnnotation] | None = None
 
 
 class ImportBlock(ImportModel):

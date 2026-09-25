@@ -187,6 +187,7 @@ def _simple_content(group: ImportGroup, ids: list[str], path: str) -> dict[str, 
     if group.question_type in {"text_completion", "summary_completion_word_list"}:
         return {
             "mode": group.mode,
+            "title": group.title or "",
             "blocks": [
                 {"id": _uuid(), "segments": _segments(line, ids, position, text_gap=True)}
                 for line in content
@@ -388,7 +389,14 @@ def _compile_group(
                     "arrow": item.arrow,
                 }
             )
-        config = {"items": items}
+        config = {
+            "title": source.title or "",
+            "items": items,
+            "annotations": [
+                {**annotation.model_dump(exclude_none=True), "id": annotation.id or _uuid()}
+                for annotation in source.annotations or []
+            ],
+        }
     body = QuestionGroupWrite(
         question_type=kind,
         instruction=source.instruction,

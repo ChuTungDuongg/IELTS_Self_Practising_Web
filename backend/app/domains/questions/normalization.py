@@ -428,17 +428,19 @@ def normalize_question_group_payload(
                     "segments": segments,
                 }
             )
-        config = {"mode": "SENTENCE", "blocks": blocks}
+        config = {"mode": "SENTENCE", "title": config.get("title", ""), "blocks": blocks}
 
     if question_type == "diagram_labelling" and "items" not in config:
         raw_options = list(config.get("options") or [])
         normalized_options, _ = _normalize_options(raw_options, f"group:{group_id}:diagram-option")
         config = {
+            "title": config.get("title", ""),
+            "annotations": list(config.get("annotations") or []),
             "items": _legacy_diagram_items(
                 group_id=group_id,
                 questions=normalized_questions,
                 markers=list(config.get("markers") or []),
-            )
+            ),
         }
         for question in normalized_questions:
             question["prompt"] = _diagram_prompt(str(question.get("prompt") or ""))
@@ -446,7 +448,11 @@ def normalize_question_group_payload(
                 dict(question.get("answer_key") or {}), raw_options, normalized_options
             )
     elif question_type == "diagram_labelling":
-        config = {"items": list(config.get("items") or [])}
+        config = {
+            "title": config.get("title", ""),
+            "annotations": list(config.get("annotations") or []),
+            "items": list(config.get("items") or []),
+        }
 
     group_option_ids: dict[str, list[str]] | None = None
     if question_type in {

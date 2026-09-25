@@ -43,6 +43,7 @@ export function DiagramLabellingRenderer({
   }
   return (
     <div className="diagram-candidate-shell">
+      {config.title?.trim() ? <h3 className="diagram-completion-title">{config.title.trim()}</h3> : null}
       <div className="diagram-canvas diagram-candidate-canvas">
         <img src={assetContentUrl(image)} alt="Diagram to label" />
         <svg className="diagram-arrows" viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-hidden="true">
@@ -62,6 +63,7 @@ export function DiagramLabellingRenderer({
               markerEnd={`url(#candidate-diagram-arrow-${group.id})`}
             />
           ))}
+          <AnnotationLines config={config} markerId={`candidate-diagram-arrow-${group.id}`} />
         </svg>
         {(config.items ?? []).map((item) => {
           const question = group.questions.find((candidate) => candidate.id === item.question_id);
@@ -87,6 +89,7 @@ export function DiagramLabellingRenderer({
             </label>
           );
         })}
+        <AnnotationLabels config={config} />
       </div>
     </div>
   );
@@ -105,6 +108,7 @@ function DiagramCanvas({
 }) {
   return (
     <div className="diagram-candidate-shell">
+      {config.title?.trim() ? <h3 className="diagram-completion-title">{config.title.trim()}</h3> : null}
       <div className="diagram-canvas diagram-candidate-canvas">
         <img src={assetContentUrl(image)} alt="Diagram to label" />
         <svg className="diagram-arrows" viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-hidden="true">
@@ -114,13 +118,23 @@ function DiagramCanvas({
             </marker>
           </defs>
           {(config.items ?? []).map((item) => <line key={item.id} x1={item.arrow.start_x * 1000} y1={item.arrow.start_y * 1000} x2={item.arrow.end_x * 1000} y2={item.arrow.end_y * 1000} className="diagram-arrow" markerEnd={`url(#candidate-diagram-arrow-static-${group.id})`} />)}
+          <AnnotationLines config={config} markerId={`candidate-diagram-arrow-static-${group.id}`} />
         </svg>
         {(config.items ?? []).map((item) => {
           const question = group.questions.find((candidate) => candidate.id === item.question_id);
           if (!question) return null;
           return <span key={item.id} className={`diagram-label diagram-candidate-label ${activeQuestionId === question.id ? "exam-question-active" : ""}`} style={{ left: diagramPercent(item.box.x), top: diagramPercent(item.box.y), width: diagramPercent(item.box.width) }}><b className="diagram-question-number">{question.number}</b></span>;
         })}
+        <AnnotationLabels config={config} />
       </div>
     </div>
   );
+}
+
+function AnnotationLines({ config, markerId }: { config: DiagramLabellingConfig; markerId: string }) {
+  return <>{(config.annotations ?? []).filter((annotation) => annotation.kind === "ARROW_LABEL").map((annotation) => <line key={annotation.id} x1={annotation.label_x * 1000} y1={annotation.label_y * 1000} x2={annotation.target_x! * 1000} y2={annotation.target_y! * 1000} className="diagram-arrow diagram-static-arrow" markerEnd={`url(#${markerId})`} />)}</>;
+}
+
+function AnnotationLabels({ config }: { config: DiagramLabellingConfig }) {
+  return <>{(config.annotations ?? []).map((annotation) => <span key={annotation.id} className="diagram-label diagram-static-annotation diagram-candidate-annotation" style={{ left: diagramPercent(annotation.label_x), top: diagramPercent(annotation.label_y) }} aria-label={`Diagram annotation ${annotation.text}`}>{annotation.text}</span>)}</>;
 }

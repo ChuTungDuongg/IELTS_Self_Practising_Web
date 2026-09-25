@@ -2,6 +2,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState, type ComponentProps } from "react";
 import { textCompletionIntegrityErrors } from "./text-completion-integrity";
+import { GAP_MARKER, splitGapMarkers } from "./gap-markers";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import type {
   QuestionGroupModel,
@@ -95,6 +96,20 @@ export function normalizeTextCompletionOrder(
   };
 }
 
+function createGapQuestion(questionId: string, group: QuestionGroupModel, baseQuestionNumber: number | undefined, offset: number): QuestionModel {
+  const wordList = group.question_type === "summary_completion_word_list";
+  return {
+    id: questionId,
+    number: (baseQuestionNumber ?? 1) + group.questions.length + offset,
+    prompt: wordList ? "Summary gap" : "Answer",
+    config: wordList ? {} : { max_words: 2, max_numbers: 1 },
+    answer_key: wordList
+      ? { kind: "SINGLE_OPTION", value: "" }
+      : { kind: "TEXT", accepted: [], case_sensitive: false },
+    order_index: group.questions.length + offset,
+  };
+}
+
 export function TextCompletionCanvas({
   group,
   onChange,
@@ -179,14 +194,67 @@ export function TextCompletionCanvas({
   }
 
   function updateText(segmentId: string, text: string) {
+    const parts = splitGapMarkers(text);
+    if (parts.length > 1) {
+      const starterBlock = layout.blocks.length === 1 ? layout.blocks[0] : undefined;
+      const starterText = starterBlock?.segments[0];
+      const starterGap = starterBlock?.segments[1];
+      const reuseStarter = group.questions.length === 1
+        && starterBlock?.segments.length === 2
+        && starterText?.id === segmentId && starterText.type === "TEXT"
+        && ["Complete the sentence: ", "Complete the summary: "].includes(starterText.text ?? "")
+        && starterGap?.type === "GAP" && starterGap.question_id === group.questions[0].id;
+      const newQuestions: QuestionModel[] = [];
+      const replacement: TextCompletionSegment[] = [{ id: segmentId, type: "TEXT", text: parts[0] }];
+      for (const [index, part] of parts.slice(1).entries()) {
+        const questionId = reuseStarter && index === 0 ? group.questions[0].id! : crypto.randomUUID();
+        if (!(reuseStarter && index === 0)) newQuestions.push(createGapQuestion(questionId, group, baseQuestionNumber, newQuestions.length));
+        const gap = { id: crypto.randomUUID(), type: "GAP" as const, question_id: questionId };
+        replacement.push(gap, { id: crypto.randomUUID(), type: "TEXT", text: part });
+        setSelectedGapId(gap.id);
+      }
+      pendingFocusSegmentId.current = replacement.at(-1)!.id;
+      commit({
+        ...layout,
+        blocks: layout.blocks.map((block) => ({
+          ...block,
+          segments: block.segments.flatMap((segment) => segment.id === segmentId ? replacement : reuseStarter && segment.id === starterGap?.id ? [] : [segment]),
+        })),
+      }, [...group.questions, ...newQuestions]);
+      return;
+    }
     const blocks = layout.blocks.map((block) => ({
       ...block,
       segments: block.segments.map((segment) =>
         segment.id === segmentId ? { ...segment, text } : segment,
       ),
     }));
-    // Typing changes text only: no merging, ID allocation, or order normalization.
+    // Plain typing preserves the current segment and linked question identities.
     onChange({ ...group, config: { ...layout, blocks } });
+  }
+
+  function pasteWithGaps(element: HTMLElement, segment: TextCompletionSegment, pasted: string) {
+    const selection = window.getSelection();
+    const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
+    const starter = group.questions.length === 1 && layout.blocks.length === 1
+      && layout.blocks[0].segments.length === 2
+      && layout.blocks[0].segments[0].id === segment.id
+      && ["Complete the sentence: ", "Complete the summary: "].includes(segment.text ?? "")
+      && layout.blocks[0].segments[1].type === "GAP"
+      && layout.blocks[0].segments[1].question_id === group.questions[0].id;
+    const source = starter ? "" : segment.text ?? "";
+    let start = source.length;
+    let end = source.length;
+    if (!starter && range && element.contains(range.startContainer) && element.contains(range.endContainer)) {
+      const before = document.createRange();
+      before.selectNodeContents(element);
+      before.setEnd(range.startContainer, range.startOffset);
+      start = before.toString().length;
+      before.setEnd(range.endContainer, range.endOffset);
+      end = before.toString().length;
+    }
+    const inserted = layout.mode === "SENTENCE" ? pasted.replace(/[\r\n]+/g, " ") : pasted;
+    updateText(segment.id, source.slice(0, start) + inserted + source.slice(end));
   }
 
   function insertGap() {
@@ -197,14 +265,7 @@ export function TextCompletionCanvas({
       segment.id === activeCaret.current?.segmentId && segment.type === "TEXT",
     ) ?? [...targetBlock.segments].reverse().find((segment) => segment.type === "TEXT");
     const questionId = crypto.randomUUID();
-    const question: QuestionModel = {
-      id: questionId,
-      number: (baseQuestionNumber ?? 1) + group.questions.length,
-      prompt: "Answer",
-      config: { max_words: 2, max_numbers: 1 },
-      answer_key: { kind: "TEXT", accepted: [], case_sensitive: false },
-      order_index: group.questions.length,
-    };
+    const question = createGapQuestion(questionId, group, baseQuestionNumber, 0);
     const gap: TextCompletionSegment = {
       id: crypto.randomUUID(),
       type: "GAP",
@@ -421,6 +482,8 @@ export function TextCompletionCanvas({
         <div><h3>Completion text</h3><p>Edit the text inline. Gaps remain stable tokens linked to question UUIDs.</p></div>
         <label className="field-label">Mode<select className="select-field" value={layout.mode} onChange={(event) => commit({ ...layout, mode: event.target.value as TextCompletionLayout["mode"] })}><option value="SENTENCE">Sentence</option><option value="PASSAGE">Passage</option></select></label>
       </div>
+      {layout.mode === "PASSAGE" ? <label className="field-label mt-3 block">Completion headline <span className="font-normal text-[var(--muted)]">(optional)</span><input aria-label="Completion headline" className="field mt-2" maxLength={300} value={layout.title ?? ""} onChange={(event) => commit({ ...layout, title: event.target.value })} onBlur={(event) => commit({ ...layout, title: event.target.value.trim() })} /></label> : null}
+      {layout.mode === "PASSAGE" && layout.title?.trim() ? <h3 className="completion-content-title">{layout.title.trim()}</h3> : null}
       {legacyState === "ambiguous" ? <p role="alert" className="notice notice-warning mt-3">This sentence contains legacy line breaks mixed with gaps or multiple segments. It was left unchanged to protect linked questions. Split it into separate sentences manually.</p> : null}
       <div ref={canvas} className={`completion-canvas-list ${draggedGapId ? "is-dragging" : ""}`}>
         {layout.blocks.map((block, blockIndex) => <div key={block.id} data-completion-block={block.id} className={`completion-canvas-block ${layout.mode === "SENTENCE" ? "completion-sentence-item" : ""}`} onDragOver={(event) => {
@@ -475,6 +538,12 @@ export function TextCompletionCanvas({
               }}
               onKeyUp={(event) => rememberCaret(block.id, segment.id, event.currentTarget)}
               onMouseUp={(event) => rememberCaret(block.id, segment.id, event.currentTarget)}
+              onPaste={(event) => {
+                const pasted = event.clipboardData.getData("text/plain");
+                if (!pasted.includes(GAP_MARKER)) return;
+                event.preventDefault();
+                pasteWithGaps(event.currentTarget, segment, pasted);
+              }}
               onInput={(event) => {
                 rememberCaret(block.id, segment.id, event.currentTarget);
                 const rawText = event.currentTarget.textContent ?? "";
@@ -527,14 +596,7 @@ export function TextCompletionCanvas({
         <p className="text-sm">If the original answer is no longer available, create a new answer and configure it before saving.</p>
         <button type="button" className="btn btn-secondary" onClick={() => {
           const questionId = crypto.randomUUID();
-          const question: QuestionModel = {
-            id: questionId,
-            number: (baseQuestionNumber ?? 1) + group.questions.length,
-            prompt: "Answer",
-            config: { max_words: 2, max_numbers: 1 },
-            answer_key: { kind: "TEXT", accepted: [""], case_sensitive: false },
-            order_index: group.questions.length,
-          };
+          const question = createGapQuestion(questionId, group, baseQuestionNumber, 0);
           commit({ ...layout, blocks: layout.blocks.map((block) => ({ ...block, segments: block.segments.map((segment) => segment.id === selectedGap.id ? { ...segment, question_id: questionId } : segment) })) }, [...group.questions, question]);
         }}>Create answer for this gap</button>
       </div> : null}

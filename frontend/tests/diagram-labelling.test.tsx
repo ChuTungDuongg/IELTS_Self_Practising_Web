@@ -3,6 +3,7 @@ import { useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DiagramLabellingEditor } from "@/features/questions/diagram-labelling-editor";
 import { DiagramLabellingRenderer } from "@/features/questions/diagram-labelling-renderer";
+import { diagramLabellingErrors } from "@/features/questions/diagram-labelling";
 import { questionRegistry, readingQuestionTypeOptions } from "@/features/questions/registry";
 import type { ExamGroup, QuestionGroupModel } from "@/features/questions/types";
 import { BuilderLifecycleProvider } from "@/features/test-builder/builder-lifecycle";
@@ -141,6 +142,70 @@ describe("diagram label completion", () => {
     expect(state.questions[0].answer_key).toMatchObject({ kind: "TEXT", accepted: ["axles"] });
   });
 
+  it("authors a headline and static arrow without adding a question or answer key", () => {
+    const initial = diagramGroup();
+    initial.questions[0].answer_key = { kind: "TEXT", accepted: [], case_sensitive: false };
+    const view = render(<EditorHarness initial={initial} />);
+    fireEvent.change(screen.getByLabelText("Diagram headline"), { target: { value: "Fictional lifting stages" } });
+    fireEvent.click(screen.getByRole("button", { name: "+ Add arrow label" }));
+    fireEvent.change(screen.getByLabelText("Annotation text"), { target: { value: "Crane hook" } });
+    fireEvent.change(screen.getByLabelText("Annotation label X"), { target: { value: "0.27" } });
+    fireEvent.change(screen.getByLabelText("Annotation target Y"), { target: { value: "0.76" } });
+    const canvas = view.container.querySelector(".diagram-canvas") as HTMLElement;
+    vi.spyOn(canvas, "getBoundingClientRect").mockReturnValue({ x: 0, y: 0, left: 0, top: 0, right: 1000, bottom: 500, width: 1000, height: 500, toJSON: () => ({}) });
+    const label = view.container.querySelector(".diagram-static-annotation") as HTMLElement;
+    fireEvent.pointerDown(label, { pointerId: 3, clientX: 100, clientY: 100 });
+    fireEvent.pointerMove(label, { pointerId: 3, clientX: 200, clientY: 150 });
+    fireEvent.pointerUp(label, { pointerId: 3, clientX: 200, clientY: 150 });
+    const target = screen.getByRole("button", { name: "Move annotation arrow target" });
+    fireEvent.pointerDown(target, { pointerId: 4, clientX: 500, clientY: 250 });
+    fireEvent.pointerMove(target, { pointerId: 4, clientX: 800, clientY: 400 });
+    fireEvent.pointerUp(target, { pointerId: 4, clientX: 800, clientY: 400 });
+    const saved = JSON.parse(screen.getByTestId("state").textContent ?? "{}") as QuestionGroupModel;
+    expect(saved.config.title).toBe("Fictional lifting stages");
+    expect(saved.config.annotations).toMatchObject([{ kind: "ARROW_LABEL", text: "Crane hook", label_x: 0.37, target_y: 0.8 }]);
+    expect(saved.questions).toEqual(initial.questions);
+    expect(diagramLabellingErrors(saved)).toEqual([]);
+    view.unmount();
+    render(<EditorHarness initial={saved} />);
+    expect(screen.getByLabelText("Diagram headline")).toHaveValue("Fictional lifting stages");
+    expect(screen.getByText("Crane hook")).toBeInTheDocument();
+  });
+
+  it("authors, moves, and removes a plain note independently of numbered labels", () => {
+    render(<EditorHarness />);
+    fireEvent.click(screen.getByRole("button", { name: "+ Add note label" }));
+    fireEvent.change(screen.getByLabelText("Annotation text"), { target: { value: "Hull of vessel" } });
+    fireEvent.change(screen.getByLabelText("Annotation label Y"), { target: { value: "0.61" } });
+    let saved = JSON.parse(screen.getByTestId("state").textContent ?? "{}") as QuestionGroupModel;
+    expect(saved.config.annotations).toMatchObject([{ kind: "NOTE", text: "Hull of vessel", label_y: 0.61 }]);
+    expect((saved.config.annotations as Array<{ target_x?: number }>)[0]).not.toHaveProperty("target_x");
+    expect(saved.questions).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "Remove annotation" }));
+    saved = JSON.parse(screen.getByTestId("state").textContent ?? "{}") as QuestionGroupModel;
+    expect(saved.config.annotations).toEqual([]);
+    expect(saved.questions).toHaveLength(1);
+  });
+
+  it("shows the title and static annotations alongside the numbered answer in exam rendering", () => {
+    const group = diagramGroup() as ExamGroup;
+    group.config = {
+      ...group.config,
+      title: "Fictional lifting stages",
+      annotations: [
+        { id: crypto.randomUUID(), kind: "ARROW_LABEL", text: "Crane hook", label_x: 0.2, label_y: 0.3, target_x: 0.5, target_y: 0.6 },
+        { id: crypto.randomUUID(), kind: "NOTE", text: "Hull of vessel", label_x: 0.7, label_y: 0.4 },
+      ],
+    };
+    const view = render(<DiagramLabellingRenderer group={group} values={{}} onAnswer={vi.fn()} />);
+    expect(screen.getByRole("heading", { name: "Fictional lifting stages" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Question 20")).toBeInTheDocument();
+    expect(screen.getByLabelText("Diagram annotation Crane hook")).toBeInTheDocument();
+    expect(screen.getByLabelText("Diagram annotation Hull of vessel")).toBeInTheDocument();
+    expect(view.container.querySelectorAll(".diagram-static-arrow")).toHaveLength(1);
+    expect(view.container.querySelectorAll(".diagram-candidate-label")).toHaveLength(1);
+  });
+
   it("renders the authored position with an inline input and no matching select", () => {
     const group = diagramGroup() as ExamGroup;
     const item = (group.config.items as Array<{ box: { x: number; y: number; width: number } }>)[0];
@@ -160,8 +225,12 @@ describe("diagram label completion", () => {
     const group = diagramGroup();
     const item = (group.config.items as Array<{ box: { x: number; y: number; width: number } }>)[0];
     item.box = { x: 0.22, y: 0.31, width: 0.28 };
+    group.config.title = "Fictional preview title";
+    group.config.annotations = [{ id: crypto.randomUUID(), kind: "NOTE", text: "Static preview label", label_x: 0.4, label_y: 0.5 }];
     const view = render(<GroupEditorHarness initial={group} />);
     fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    expect(screen.getByRole("heading", { name: "Fictional preview title" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Diagram annotation Static preview label")).toBeInTheDocument();
     expect(view.container.querySelector(".diagram-candidate-label")).toHaveStyle({ left: "22%", top: "31%", width: "28%" });
     expect(view.container.querySelector(".diagram-arrow-handle")).not.toBeInTheDocument();
   });

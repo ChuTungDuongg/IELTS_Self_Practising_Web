@@ -70,6 +70,7 @@ export type TextCompletionSegment = {
 export type TextCompletionBlock = { id: string; segments: TextCompletionSegment[] };
 export type TextCompletionLayout = {
   mode: "SENTENCE" | "PASSAGE";
+  title?: string;
   blocks: TextCompletionBlock[];
 };
 
@@ -146,8 +147,20 @@ export type DiagramCanvasItem = {
   arrow: DiagramArrowGeometry;
 };
 
+export type DiagramAnnotation = {
+  id: string;
+  kind: "ARROW_LABEL" | "NOTE";
+  text: string;
+  label_x: number;
+  label_y: number;
+  target_x?: number;
+  target_y?: number;
+};
+
 export type DiagramLabellingConfig = {
+  title?: string;
   items: DiagramCanvasItem[];
+  annotations?: DiagramAnnotation[];
 };
 
 export type ExamQuestion = Omit<QuestionModel, "answer_key"> & {

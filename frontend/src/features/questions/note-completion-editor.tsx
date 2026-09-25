@@ -4,6 +4,7 @@ import { useLayoutEffect, useRef, useState, type ComponentProps, type MouseEvent
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import type { EditorProps } from "./editors";
 import { GapQuestionNavigator } from "./gap-question-navigator";
+import { splitGapMarkers } from "./gap-markers";
 import { normalizeNoteCompletionOrder } from "./note-completion";
 import type {
   NoteBlockStyle,
@@ -180,7 +181,7 @@ export function NoteCompletionEditor({ group, onChange, baseQuestionNumber }: Ed
   }
 
   function updateText(blockId: string, segmentId: string, text: string) {
-    const parts = text.split("{{gap}}");
+    const parts = splitGapMarkers(text);
     if (parts.length === 1) {
       commit({
         ...layout,

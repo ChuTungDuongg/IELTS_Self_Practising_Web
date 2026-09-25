@@ -11,7 +11,7 @@ import {
   diagramLabellingErrors,
   splitDiagramPrompt,
 } from "./diagram-labelling";
-import type { DiagramCanvasItem, DiagramLabellingConfig, QuestionGroupModel, QuestionModel } from "./types";
+import type { DiagramAnnotation, DiagramCanvasItem, DiagramLabellingConfig, QuestionGroupModel, QuestionModel } from "./types";
 
 /* eslint-disable @next/next/no-img-element -- the authored canvas must preserve the source aspect ratio */
 
@@ -24,21 +24,56 @@ type DragState = {
   maxY: number;
 };
 
+type AnnotationDrag = {
+  kind: "label" | "target";
+  annotation: DiagramAnnotation;
+  pointerId: number;
+  pointerX: number;
+  pointerY: number;
+};
+
 export function DiagramLabellingEditor({ group, onChange, baseQuestionNumber }: EditorProps) {
   const config = group.config as unknown as DiagramLabellingConfig;
   const items = config.items ?? [];
+  const annotations = config.annotations ?? [];
   const [selectedId, setSelectedId] = useState(items[0]?.id ?? "");
+  const [selectedAnnotationId, setSelectedAnnotationId] = useState("");
   const [drag, setDrag] = useState<DragState | null>(null);
+  const [annotationDrag, setAnnotationDrag] = useState<AnnotationDrag | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
 
-  const selectedItem = items.find((item) => item.id === selectedId) ?? items[0];
+  const selectedItem = selectedAnnotationId ? undefined : items.find((item) => item.id === selectedId) ?? items[0];
+  const selectedAnnotation = annotations.find((annotation) => annotation.id === selectedAnnotationId);
   const selectedQuestionIndex = group.questions.findIndex(
     (question) => question.id === selectedItem?.question_id,
   );
   const selectedQuestion = group.questions[selectedQuestionIndex];
 
   function setItems(next: DiagramCanvasItem[]) {
-    onChange({ ...group, config: { items: next } });
+    onChange({ ...group, config: { ...config, items: next } });
+  }
+
+  function setAnnotations(next: DiagramAnnotation[]) {
+    onChange({ ...group, config: { ...config, annotations: next } });
+  }
+
+  function updateAnnotation(annotationId: string, patch: Partial<DiagramAnnotation>) {
+    setAnnotations(annotations.map((annotation) => annotation.id === annotationId ? { ...annotation, ...patch } : annotation));
+  }
+
+  function selectQuestion(itemId: string) {
+    setSelectedAnnotationId("");
+    setSelectedId(itemId);
+  }
+
+  function addAnnotation(kind: DiagramAnnotation["kind"]) {
+    const annotation: DiagramAnnotation = {
+      id: crypto.randomUUID(), kind, text: kind === "NOTE" ? "New note" : "New label",
+      label_x: 0.2, label_y: 0.2,
+      ...(kind === "ARROW_LABEL" ? { target_x: 0.5, target_y: 0.5 } : {}),
+    };
+    setSelectedAnnotationId(annotation.id);
+    setAnnotations([...annotations, annotation]);
   }
 
   function updateItem(itemId: string, update: (item: DiagramCanvasItem) => DiagramCanvasItem) {
@@ -65,7 +100,7 @@ export function DiagramLabellingEditor({ group, onChange, baseQuestionNumber }: 
     const canvasRect = canvas.getBoundingClientRect();
     const label = canvas.querySelector<HTMLElement>(`[data-diagram-item-id="${item.id}"]`);
     const labelHeight = label ? label.getBoundingClientRect().height / canvasRect.height : 0.1;
-    setSelectedId(item.id);
+    selectQuestion(item.id);
     setDrag({
       kind,
       item,
@@ -113,6 +148,38 @@ export function DiagramLabellingEditor({ group, onChange, baseQuestionNumber }: 
     if (drag?.pointerId === event.pointerId) setDrag(null);
   }
 
+  function beginAnnotationDrag(event: React.PointerEvent<HTMLElement>, annotation: DiagramAnnotation, kind: AnnotationDrag["kind"]) {
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    setSelectedAnnotationId(annotation.id);
+    setAnnotationDrag({ kind, annotation, pointerId: event.pointerId, pointerX: event.clientX, pointerY: event.clientY });
+  }
+
+  function moveAnnotationDrag(event: React.PointerEvent<HTMLElement>) {
+    if (!annotationDrag || event.pointerId !== annotationDrag.pointerId || !canvasRef.current) return;
+    const rect = canvasRef.current.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    event.preventDefault();
+    const dx = (event.clientX - annotationDrag.pointerX) / rect.width;
+    const dy = (event.clientY - annotationDrag.pointerY) / rect.height;
+    if (annotationDrag.kind === "label") {
+      updateAnnotation(annotationDrag.annotation.id, {
+        label_x: clamp(annotationDrag.annotation.label_x + dx),
+        label_y: clamp(annotationDrag.annotation.label_y + dy),
+      });
+    } else {
+      updateAnnotation(annotationDrag.annotation.id, {
+        target_x: clamp((event.clientX - rect.left) / rect.width),
+        target_y: clamp((event.clientY - rect.top) / rect.height),
+      });
+    }
+  }
+
+  function endAnnotationDrag(event: React.PointerEvent<HTMLElement>) {
+    if (annotationDrag?.pointerId === event.pointerId) setAnnotationDrag(null);
+  }
+
   function removeSelected() {
     if (!selectedItem) return;
     const firstNumber = Math.min(...group.questions.map((question) => question.number));
@@ -124,7 +191,7 @@ export function DiagramLabellingEditor({ group, onChange, baseQuestionNumber }: 
     onChange({
       ...group,
       questions,
-      config: { items: nextItems },
+      config: { ...config, items: nextItems },
     });
   }
 
@@ -142,6 +209,7 @@ export function DiagramLabellingEditor({ group, onChange, baseQuestionNumber }: 
       order_index: group.questions.length,
     };
     const next = appendDiagramQuestion(group, question);
+    setSelectedAnnotationId("");
     setSelectedId((next.config as unknown as DiagramLabellingConfig).items.at(-1)?.id ?? "");
     onChange(next);
   }
@@ -150,9 +218,13 @@ export function DiagramLabellingEditor({ group, onChange, baseQuestionNumber }: 
   return (
     <div className="diagram-authoring">
       {errors.length ? <div role="alert" className="notice notice-warning diagram-validation">{errors.map((error) => <p key={error}>{error}</p>)}</div> : null}
+      <label className="field-label">Diagram headline <span className="font-normal text-[var(--muted)]">(optional)</span>
+        <input aria-label="Diagram headline" className="field mt-2" maxLength={300} value={config.title ?? ""} onChange={(event) => onChange({ ...group, config: { ...config, title: event.target.value } })} onBlur={(event) => onChange({ ...group, config: { ...config, title: event.target.value.trim() } })} />
+      </label>
       {group.image_asset ? (
         <div className="diagram-canvas-shell">
-          <div ref={canvasRef} className={`diagram-canvas ${drag ? "is-dragging" : ""}`}>
+          {config.title?.trim() ? <h3 className="diagram-completion-title">{config.title.trim()}</h3> : null}
+          <div ref={canvasRef} className={`diagram-canvas ${drag || annotationDrag ? "is-dragging" : ""}`}>
             <img src={assetContentUrl(group.image_asset)} alt="Diagram being labelled" />
             <svg className="diagram-arrows" viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-label="Diagram callout arrows">
               <defs>
@@ -172,9 +244,12 @@ export function DiagramLabellingEditor({ group, onChange, baseQuestionNumber }: 
                   role="button"
                   tabIndex={0}
                   aria-label={`Select arrow for question ${questionFor(group.questions, item)?.number ?? ""}`}
-                  onClick={() => setSelectedId(item.id)}
-                  onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") setSelectedId(item.id); }}
+                  onClick={() => selectQuestion(item.id)}
+                  onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") selectQuestion(item.id); }}
                 />
+              ))}
+              {annotations.filter((annotation) => annotation.kind === "ARROW_LABEL").map((annotation) => (
+                <line key={annotation.id} x1={annotation.label_x * 1000} y1={annotation.label_y * 1000} x2={annotation.target_x! * 1000} y2={annotation.target_y! * 1000} className={annotation.id === selectedAnnotationId ? "diagram-arrow is-selected" : "diagram-arrow"} markerEnd={`url(#diagram-arrow-${group.id ?? "draft"})`} role="button" tabIndex={0} aria-label={`Select annotation arrow ${annotation.text}`} onClick={() => setSelectedAnnotationId(annotation.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") setSelectedAnnotationId(annotation.id); }} />
               ))}
             </svg>
             {items.map((item) => {
@@ -190,13 +265,17 @@ export function DiagramLabellingEditor({ group, onChange, baseQuestionNumber }: 
                   onPointerMove={moveDrag}
                   onPointerUp={endDrag}
                   onPointerCancel={endDrag}
-                  onClick={() => setSelectedId(item.id)}
+                  onClick={() => selectQuestion(item.id)}
                 >
                   <span className="diagram-drag-grip" aria-hidden="true">⠿</span>
                   <span className="diagram-label-copy"><b>{question?.number ?? "?"}</b> {before}<span className="diagram-gap-placeholder">answer</span>{after}</span>
                 </div>
               );
             })}
+            {annotations.map((annotation) => (
+              <div key={annotation.id} data-diagram-annotation-id={annotation.id} role="button" tabIndex={0} aria-label={`Select annotation ${annotation.text}`} className={`diagram-label diagram-static-annotation ${annotation.id === selectedAnnotationId ? "is-selected" : ""}`} style={{ left: diagramPercent(annotation.label_x), top: diagramPercent(annotation.label_y) }} onClick={() => setSelectedAnnotationId(annotation.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") setSelectedAnnotationId(annotation.id); }} onPointerDown={(event) => beginAnnotationDrag(event, annotation, "label")} onPointerMove={moveAnnotationDrag} onPointerUp={endAnnotationDrag} onPointerCancel={endAnnotationDrag}>{annotation.text}</div>
+            ))}
+            {selectedAnnotation?.kind === "ARROW_LABEL" ? <button type="button" className="diagram-arrow-handle diagram-annotation-target" style={{ left: diagramPercent(selectedAnnotation.target_x!), top: diagramPercent(selectedAnnotation.target_y!) }} aria-label="Move annotation arrow target" onPointerDown={(event) => beginAnnotationDrag(event, selectedAnnotation, "target")} onPointerMove={moveAnnotationDrag} onPointerUp={endAnnotationDrag} onPointerCancel={endAnnotationDrag} /> : null}
             {items.map((item) => item.id === selectedItem?.id ? (
               <div key={`${item.id}-handles`} className="diagram-handles">
                 <button
@@ -227,7 +306,25 @@ export function DiagramLabellingEditor({ group, onChange, baseQuestionNumber }: 
         <div className="diagram-empty-state"><p>Upload a PNG, JPEG, or WEBP diagram to activate the canvas.</p><span>You can still prepare the sentence and answer below.</span></div>
       )}
 
-      <button type="button" className="btn btn-secondary diagram-add-question" onClick={addQuestion}>+ Add question</button>
+      <div className="flex flex-wrap gap-2">
+        <button type="button" className="btn btn-secondary diagram-add-question" onClick={addQuestion}>+ Add question</button>
+        <button type="button" className="btn btn-secondary" onClick={() => addAnnotation("ARROW_LABEL")}>+ Add arrow label</button>
+        <button type="button" className="btn btn-secondary" onClick={() => addAnnotation("NOTE")}>+ Add note label</button>
+      </div>
+      {selectedAnnotation ? (
+        <section className="diagram-inspector" aria-label="Diagram annotation inspector">
+          <div className="diagram-inspector-heading"><div><p className="page-eyebrow">Static annotation</p><h3>{selectedAnnotation.kind === "NOTE" ? "Note label" : "Arrow label"}</h3></div><button type="button" className="btn btn-danger-ghost" onClick={() => { setAnnotations(annotations.filter((annotation) => annotation.id !== selectedAnnotation.id)); setSelectedAnnotationId(""); }}>Remove annotation</button></div>
+          <label className="field-label">Label text<input aria-label="Annotation text" className="field mt-2" maxLength={300} value={selectedAnnotation.text} onChange={(event) => updateAnnotation(selectedAnnotation.id, { text: event.target.value })} /></label>
+          <fieldset className="diagram-position-fields"><legend>Normalized position</legend>
+            <label className="field-label">Label X<input aria-label="Annotation label X" className="field" type="number" min={0} max={1} step={0.01} value={selectedAnnotation.label_x} onChange={(event) => updateAnnotation(selectedAnnotation.id, { label_x: clamp(Number(event.target.value)) })} /></label>
+            <label className="field-label">Label Y<input aria-label="Annotation label Y" className="field" type="number" min={0} max={1} step={0.01} value={selectedAnnotation.label_y} onChange={(event) => updateAnnotation(selectedAnnotation.id, { label_y: clamp(Number(event.target.value)) })} /></label>
+            {selectedAnnotation.kind === "ARROW_LABEL" ? <>
+              <label className="field-label">Target X<input aria-label="Annotation target X" className="field" type="number" min={0} max={1} step={0.01} value={selectedAnnotation.target_x ?? 0} onChange={(event) => updateAnnotation(selectedAnnotation.id, { target_x: clamp(Number(event.target.value)) })} /></label>
+              <label className="field-label">Target Y<input aria-label="Annotation target Y" className="field" type="number" min={0} max={1} step={0.01} value={selectedAnnotation.target_y ?? 0} onChange={(event) => updateAnnotation(selectedAnnotation.id, { target_y: clamp(Number(event.target.value)) })} /></label>
+            </> : null}
+          </fieldset>
+        </section>
+      ) : null}
       {selectedItem && selectedQuestion ? (
         <section className="diagram-inspector" aria-label={`Question ${selectedQuestion.number} diagram inspector`}>
           <div className="diagram-inspector-heading"><div><p className="page-eyebrow">Selected label</p><h3>Question {selectedQuestion.number}</h3></div><button type="button" className="btn btn-danger-ghost" onClick={removeSelected}>Remove question</button></div>
@@ -254,7 +351,7 @@ export function appendDiagramQuestion(group: QuestionGroupModel, question: Quest
   return {
     ...group,
     questions: [...group.questions, { ...question, order_index: group.questions.length }],
-    config: { items: [...(config.items ?? []), createDiagramCanvasItem(question.id!, group.questions.length)] },
+    config: { ...config, items: [...(config.items ?? []), createDiagramCanvasItem(question.id!, group.questions.length)] },
   };
 }
 

@@ -393,6 +393,9 @@ async def test_multiple_passages_and_mixed_modules(db_session):
 async def test_gap_shapes_and_save_round_trip(db_session, kind):
     group = {
         "question_type": kind,
+        "title": "Fictional completion headline"
+        if kind in {"text_completion", "summary_completion"}
+        else None,
         "content": ["{{gap}} before {{gap}}{{gap}} after {{gap}}"],
         "answers": ["one", "two", "three", "four"],
     }
@@ -406,6 +409,7 @@ async def test_gap_shapes_and_save_round_trip(db_session, kind):
     config = item.config
     assert "{{gap}}" not in json.dumps(config)
     if kind == "text_completion":
+        assert config["title"] == "Fictional completion headline"
         segments = config["blocks"][0]["segments"]
         assert segments[0]["type"] == "TEXT" and segments[0]["text"] == ""
         assert segments[-1]["type"] == "TEXT" and segments[-1]["text"] == ""
@@ -679,14 +683,27 @@ async def test_diagram_labelling_and_writing_image(db_session, tmp_path, monkeyp
     (tmp_path / "figure.png").write_bytes(b"\x89PNG\r\n\x1a\nfiction")
     group = {
         "question_type": "diagram_labelling",
+        "title": "Fictional lifting diagram",
         "image": "figure.png",
         "questions": [
             {
-                "prompt": "River source",
-                "answer": "spring",
+                "number": number,
+                "prompt": f"Fictional component {number}",
+                "answer": f"fictional answer {number}",
                 "box": {"x": 0.1, "y": 0.1, "width": 0.3},
                 "arrow": {"start_x": 0.4, "start_y": 0.2, "end_x": 0.7, "end_y": 0.7},
             }
+            for number in range(1, 6)
+        ],
+        "annotations": [
+            {
+                "kind": "ARROW_LABEL" if index < 2 else "NOTE",
+                "text": f"Static feature {index}",
+                "label_x": 0.1 * index,
+                "label_y": 0.2,
+                **({"target_x": 0.6, "target_y": 0.7} if index < 2 else {}),
+            }
+            for index in range(1, 5)
         ],
     }
     writing = {
@@ -699,7 +716,15 @@ async def test_diagram_labelling_and_writing_image(db_session, tmp_path, monkeyp
         manifest(reading([group]), writing), tmp_path
     )
     builder = await ReadingService(db_session).builder_version(result.version_id)
-    assert builder.modules[0].passages[0].question_groups[0].config["items"][0]["question_id"]
+    diagram = builder.modules[0].passages[0].question_groups[0]
+    assert diagram.config["title"] == "Fictional lifting diagram"
+    assert len(diagram.questions) == len(diagram.config["items"]) == 5
+    assert [question.number for question in diagram.questions] == [1, 2, 3, 4, 5]
+    assert len(diagram.questions) == 5
+    assert len(diagram.config["annotations"]) == 4
+    assert len({annotation["id"] for annotation in diagram.config["annotations"]}) == 4
+    assert diagram.config["annotations"][0]["target_x"] == 0.6
+    assert "target_x" not in diagram.config["annotations"][-1]
     assert builder.modules[2 - 1].writing_tasks[0].image_asset_id
 
 

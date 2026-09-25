@@ -828,6 +828,10 @@ input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--mute
 .diagram-label-editor { min-height: 42px; border: 1px solid rgb(31 41 55 / .38); border-radius: 7px; padding: 8px 9px 8px 22px; box-shadow: 0 3px 12px rgb(15 23 42 / .12); cursor: grab; user-select: none; touch-action: none; }
 .diagram-label-editor:active, .diagram-canvas.is-dragging .diagram-label-editor.is-selected { cursor: grabbing; }
 .diagram-label-editor.is-selected { border-color: var(--accent); outline: 3px solid color-mix(in srgb, var(--accent) 23%, transparent); }
+.diagram-static-annotation { max-width: 28%; border: 1px solid rgb(31 41 55 / .38); border-radius: 5px; padding: 4px 7px; box-shadow: 0 1px 4px rgb(15 23 42 / .12); white-space: pre-wrap; cursor: grab; touch-action: none; }
+.diagram-static-annotation.is-selected { border-color: var(--accent); outline: 3px solid color-mix(in srgb, var(--accent) 23%, transparent); }
+.diagram-candidate-annotation { cursor: default; touch-action: auto; }
+.diagram-annotation-target { z-index: 4; background: #ef4444; cursor: crosshair; }
 .diagram-drag-grip { position: absolute; top: 6px; left: 5px; color: #64748b; font-size: 13px; }
 .diagram-label-copy { white-space: pre-wrap; }
 .diagram-label-copy > b, .diagram-question-number { margin-right: 3px; color: var(--accent); font-weight: 850; }
@@ -1168,6 +1172,8 @@ input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--mute
 
 .text-completion-layout { display: block; }
 .text-completion-line { display: block; margin: 0; line-height: 1.85; }
+.text-completion-passage .text-completion-line { white-space: pre-wrap; }
+.completion-content-title, .diagram-completion-title { margin: 14px 0 12px; color: var(--exam-text, var(--ink)); font-size: clamp(17px, 2vw, 22px); font-weight: 800; text-align: center; }
 .text-completion-line + .text-completion-line { margin-top: 10px; }
 .text-completion-passage .text-completion-line + .text-completion-line { margin-top: 14px; }
 .completion-gap-inline { display: inline-flex; align-items: center; gap: 5px; margin: 0 4px; vertical-align: middle; white-space: nowrap; }

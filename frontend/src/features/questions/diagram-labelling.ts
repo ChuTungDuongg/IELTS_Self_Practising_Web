@@ -46,6 +46,7 @@ export function diagramLabellingErrors(group: QuestionGroupModel): string[] {
   const errors: string[] = [];
   const config = group.config as Partial<DiagramLabellingConfig>;
   const items = Array.isArray(config.items) ? config.items : [];
+  const annotations = Array.isArray(config.annotations) ? config.annotations : [];
   const questionIds = group.questions.map((question) => question.id ?? "");
   const itemIds = items.map((item) => item.id);
   const itemQuestionIds = items.map((item) => item.question_id);
@@ -54,6 +55,22 @@ export function diagramLabellingErrors(group: QuestionGroupModel): string[] {
   if (!items.length) errors.push("Add a canvas label for every diagram question.");
   if (itemIds.some((id) => !isUuid(id)) || new Set(itemIds).size !== itemIds.length) {
     errors.push("Diagram canvas items must have unique stable IDs.");
+  }
+  const annotationIds = annotations.map((annotation) => annotation.id);
+  if (annotationIds.some((id) => !isUuid(id)) || new Set([...itemIds, ...annotationIds]).size !== itemIds.length + annotationIds.length) {
+    errors.push("Diagram annotations must have unique stable IDs.");
+  }
+  if (typeof config.title === "string" && config.title.length > 300) {
+    errors.push("Diagram title must be 300 characters or fewer.");
+  }
+  if (annotations.some((annotation) => (
+    !["ARROW_LABEL", "NOTE"].includes(annotation.kind)
+    || !annotation.text.trim() || annotation.text.length > 300
+    || ![annotation.label_x, annotation.label_y].every(normalizedCoordinate)
+    || (annotation.kind === "ARROW_LABEL" && ![annotation.target_x, annotation.target_y].every(normalizedCoordinate))
+    || (annotation.kind === "NOTE" && (annotation.target_x !== undefined || annotation.target_y !== undefined))
+  ))) {
+    errors.push("Diagram annotations need text and valid canvas positions.");
   }
   if (
     items.length !== questionIds.length
@@ -69,13 +86,6 @@ export function diagramLabellingErrors(group: QuestionGroupModel): string[] {
   if (group.questions.some((question) => question.prompt.split(DIAGRAM_GAP_MARKER).length !== 2)) {
     errors.push("Every diagram sentence must contain exactly one {{gap}} marker.");
   }
-  if (group.questions.some((question) => (
-    question.answer_key.kind !== "TEXT"
-    || !Array.isArray(question.answer_key.accepted)
-    || !(question.answer_key.accepted as unknown[]).some((answer) => String(answer).trim())
-  ))) {
-    errors.push("Every diagram question needs at least one accepted text answer.");
-  }
   if (group.questions.some((question) => !textLimitsAreValid(question))) {
     errors.push("Diagram answer limits must use 1–20 words and 0–20 numbers.");
   }
@@ -84,6 +94,7 @@ export function diagramLabellingErrors(group: QuestionGroupModel): string[] {
 
 export function migrateLegacyDiagramGroup(group: QuestionGroupModel): QuestionGroupModel {
   if (group.question_type !== "diagram_labelling" || Array.isArray(group.config.items)) return group;
+  const config = group.config as Partial<DiagramLabellingConfig>;
   const options = Array.isArray(group.config.options) ? group.config.options as Option[] : [];
   const markers = Array.isArray(group.config.markers)
     ? group.config.markers as Array<{ id?: string; question_id?: string; x?: number; y?: number }>
@@ -102,7 +113,11 @@ export function migrateLegacyDiagramGroup(group: QuestionGroupModel): QuestionGr
       arrow: { ...item.arrow, end_x: targetX, end_y: targetY },
     };
   });
-  return { ...group, config: { items }, questions };
+  return { ...group, config: { title: config.title ?? "", items, annotations: config.annotations ?? [] }, questions };
+}
+
+function normalizedCoordinate(value: unknown): boolean {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1;
 }
 
 function migrateLegacyQuestion(question: QuestionModel, options: Option[]): QuestionModel {

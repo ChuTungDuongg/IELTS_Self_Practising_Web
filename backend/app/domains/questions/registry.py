@@ -94,6 +94,7 @@ class TextCompletionBlock(BaseModel):
 
 class TextCompletionGroupConfig(BaseModel):
     mode: Literal["SENTENCE", "PASSAGE"] = "SENTENCE"
+    title: str = Field(default="", max_length=300)
     blocks: list[TextCompletionBlock] = Field(min_length=1)
 
     @model_validator(mode="after")
@@ -199,14 +200,50 @@ class DiagramCanvasItem(BaseModel):
         return value
 
 
+class DiagramAnnotation(BaseModel):
+    id: str
+    kind: Literal["ARROW_LABEL", "NOTE"]
+    text: str = Field(min_length=1, max_length=300)
+    label_x: float = Field(ge=0, le=1)
+    label_y: float = Field(ge=0, le=1)
+    target_x: float | None = Field(default=None, ge=0, le=1)
+    target_y: float | None = Field(default=None, ge=0, le=1)
+
+    @field_validator("id")
+    @classmethod
+    def validate_uuid_identity(cls, value: str) -> str:
+        uuid.UUID(value)
+        return value
+
+    @field_validator("text")
+    @classmethod
+    def validate_text(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Diagram annotation text is required")
+        return value
+
+    @model_validator(mode="after")
+    def validate_target(self) -> DiagramAnnotation:
+        if self.kind == "ARROW_LABEL" and (self.target_x is None or self.target_y is None):
+            raise ValueError("Arrow labels require target coordinates")
+        if self.kind == "NOTE" and (self.target_x is not None or self.target_y is not None):
+            raise ValueError("Plain diagram notes cannot have arrow targets")
+        return self
+
+
 class DiagramLabellingGroupConfig(BaseModel):
+    title: str = Field(default="", max_length=300)
     items: list[DiagramCanvasItem] = Field(min_length=1)
+    annotations: list[DiagramAnnotation] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def validate_identity(self) -> DiagramLabellingGroupConfig:
         item_ids = [item.id for item in self.items]
         if len(item_ids) != len(set(item_ids)):
             raise ValueError("Diagram item IDs must be unique")
+        annotation_ids = [annotation.id for annotation in self.annotations]
+        if len(annotation_ids) != len(set(annotation_ids)) or set(annotation_ids) & set(item_ids):
+            raise ValueError("Diagram annotations must have unique IDs")
         question_ids = [item.question_id for item in self.items]
         if len(question_ids) != len(set(question_ids)):
             raise ValueError("Each diagram question must have exactly one canvas item")

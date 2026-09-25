@@ -37,6 +37,75 @@ function sentenceGroup(): QuestionGroupModel {
 }
 
 describe("text completion canvas", () => {
+  it("turns a pasted four-gap passage into four linked questions and keeps a separate headline", async () => {
+    const group = questionRegistry.text_completion.createDefault(11);
+    group.config.mode = "PASSAGE";
+    const starterId = group.questions[0].id;
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const view = render(<QuestionGroupEditor initial={group} nextQuestionNumber={15} baseQuestionNumber={11} passageBlocks={[]} onCancel={vi.fn()} onSave={onSave} />);
+
+    fireEvent.change(screen.getByLabelText("Completion headline"), { target: { value: "Fictional island study" } });
+    fireEvent.paste(screen.getByRole("textbox", { name: "Paragraph 1 text segment 1" }), {
+      clipboardData: { getData: () => "First {{gap}}, second {{gap}}, third {{gap}}, fourth {{gap}}." },
+    });
+    expect(screen.getAllByRole("button", { name: /Gap question/ }).map((button) => button.textContent)).toEqual(["Q11", "Q12", "Q13", "Q14"]);
+    fireEvent.click(screen.getByRole("button", { name: "Save group" }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    const saved = onSave.mock.calls[0][0] as QuestionGroupModel;
+    const layout = saved.config as unknown as TextCompletionLayout;
+    expect(saved.questions).toHaveLength(4);
+    expect(saved.questions[0].id).toBe(starterId);
+    expect(saved.questions.map((question) => question.answer_key.accepted)).toEqual([[], [], [], []]);
+    expect(layout.blocks[0].segments.filter((segment) => segment.type === "GAP").map((segment) => segment.question_id)).toEqual(saved.questions.map((question) => question.id));
+    expect(layout.title).toBe("Fictional island study");
+    view.unmount();
+    render(<QuestionGroupEditor initial={saved} nextQuestionNumber={15} baseQuestionNumber={11} passageBlocks={[]} onCancel={vi.fn()} onSave={vi.fn()} />);
+    expect(screen.getByLabelText("Completion headline")).toHaveValue("Fictional island study");
+    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    expect(screen.getByRole("heading", { name: "Fictional island study" })).toBeInTheDocument();
+  });
+
+  it("adds another inline marker and removes a token only through the confirmation path", async () => {
+    const group = questionRegistry.text_completion.createDefault(1);
+    group.config.mode = "PASSAGE";
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(<QuestionGroupEditor initial={group} nextQuestionNumber={6} baseQuestionNumber={1} passageBlocks={[]} onCancel={vi.fn()} onSave={onSave} />);
+    fireEvent.paste(screen.getByRole("textbox", { name: "Paragraph 1 text segment 1" }), {
+      clipboardData: { getData: () => "A {{gap}} B {{gap}} C {{gap}} D {{gap}}" },
+    });
+    const tail = screen.getByRole("textbox", { name: "Paragraph 1 text segment 9" });
+    tail.textContent = " D {{gap}}";
+    fireEvent.input(tail);
+    expect(screen.getAllByRole("button", { name: /Gap question/ })).toHaveLength(5);
+
+    fireEvent.click(screen.getByRole("button", { name: "Gap question 3" }));
+    fireEvent.click(within(screen.getByRole("toolbar", { name: "Question 3 gap actions" })).getByRole("button", { name: "Remove gap" }));
+    expect(screen.getAllByRole("button", { name: /Gap question/ })).toHaveLength(5);
+    fireEvent.click(within(screen.getByRole("dialog", { name: "Remove this gap?" })).getByRole("button", { name: "Remove gap" }));
+    expect(screen.getAllByRole("button", { name: /Gap question/ })).toHaveLength(4);
+    fireEvent.click(screen.getByRole("button", { name: "Save group" }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    expect(textCompletionIntegrityErrors(onSave.mock.calls[0][0])).toEqual([]);
+  });
+
+  it("creates blank single-option keys for new word-list summary gaps", async () => {
+    const group = questionRegistry.summary_completion_word_list.createDefault(21);
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(<QuestionGroupEditor initial={group} nextQuestionNumber={24} baseQuestionNumber={21} passageBlocks={[]} onCancel={vi.fn()} onSave={onSave} />);
+    fireEvent.paste(screen.getByRole("textbox", { name: "Paragraph 1 text segment 1" }), {
+      clipboardData: { getData: () => "First {{gap}}, next {{gap}}, last {{gap}}." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save group" }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledOnce());
+    const saved = onSave.mock.calls[0][0] as QuestionGroupModel;
+    expect(saved.questions.map((question) => question.number)).toEqual([21, 22, 23]);
+    expect(saved.questions.slice(1).map((question) => question.answer_key)).toEqual([
+      { kind: "SINGLE_OPTION", value: "" },
+      { kind: "SINGLE_OPTION", value: "" },
+    ]);
+    expect(textCompletionIntegrityErrors(saved)).toEqual([]);
+  });
+
   it("normalizes adjacent TEXT while preserving spaces and punctuation", () => {
     const firstId = crypto.randomUUID();
     expect(normalizeCompletionSegments([

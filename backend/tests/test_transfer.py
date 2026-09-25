@@ -358,6 +358,112 @@ async def test_transfer_round_trip_preserves_shared_multi_select_question_span(
 
 
 @pytest.mark.integration
+async def test_transfer_round_trip_preserves_completion_titles_and_static_diagram_annotations(
+    db_session: AsyncSession, tmp_path: Path
+) -> None:
+    settings = _settings(tmp_path / "storage")
+    source, version, assets = await _portable_fixture(db_session, settings.resolved_storage_root)
+    passage = version.modules[0].passages[0]
+    text_question = Question(
+        id=uuid4(),
+        number=3,
+        prompt="Fictional gap",
+        config={"max_words": 2, "max_numbers": 1},
+        answer_key={"kind": "TEXT", "accepted": ["fictional"], "case_sensitive": False},
+        order_index=0,
+    )
+    text_group = QuestionGroup(
+        question_type="text_completion",
+        instruction="Complete the fictional text.",
+        config={
+            "mode": "PASSAGE",
+            "title": "Fictional passage headline",
+            "blocks": [
+                {
+                    "id": str(uuid4()),
+                    "segments": [
+                        {"id": str(uuid4()), "type": "TEXT", "text": "A "},
+                        {"id": str(uuid4()), "type": "GAP", "question_id": str(text_question.id)},
+                    ],
+                }
+            ],
+        },
+        order_index=2,
+        module=version.modules[0],
+        passage=passage,
+    )
+    text_group.questions.append(text_question)
+    annotations = [
+        {
+            "id": str(uuid4()),
+            "kind": "ARROW_LABEL" if index < 2 else "NOTE",
+            "text": f"Static feature {index}",
+            "label_x": index / 10,
+            "label_y": 0.2,
+            **({"target_x": 0.6, "target_y": 0.7} if index < 2 else {}),
+        }
+        for index in range(1, 5)
+    ]
+    diagram_group = QuestionGroup(
+        question_type="diagram_labelling",
+        instruction="Label the fictional diagram.",
+        image_asset=assets["question_image"],
+        config={
+            "title": "Fictional diagram headline",
+            "items": [],
+            "annotations": annotations,
+        },
+        order_index=3,
+        module=version.modules[0],
+        passage=passage,
+    )
+    for index in range(5):
+        question = Question(
+            id=uuid4(),
+            number=index + 4,
+            prompt=f"Fictional component {index} {{{{gap}}}}",
+            config={"max_words": 2, "max_numbers": 1},
+            answer_key={
+                "kind": "TEXT",
+                "accepted": [f"component {index}"],
+                "case_sensitive": False,
+            },
+            order_index=index,
+        )
+        diagram_group.questions.append(question)
+        diagram_group.config["items"].append(
+            {
+                "id": str(uuid4()),
+                "question_id": str(question.id),
+                "box": {"x": 0.05, "y": index / 10, "width": 0.3},
+                "arrow": {"start_x": 0.35, "start_y": index / 10, "end_x": 0.5, "end_y": 0.5},
+            }
+        )
+    db_session.add_all([text_group, diagram_group])
+    await db_session.flush()
+    await db_session.commit()
+    archive = tmp_path / "completion-titles.zip"
+    await TransferService(db_session, settings).export([source.id], archive)
+    await db_session.rollback()
+
+    with tempfile.TemporaryDirectory(dir=tmp_path) as staging:
+        package = TransferService(db_session, settings).validate_archive(archive, Path(staging))
+        result = await TransferService(db_session, settings).import_package(package)
+    imported = await db_session.scalar(
+        version_detail_query().where(DomainVersion.test_id == result.imported_tests[0].test_id)
+    )
+    assert imported is not None
+    groups = imported.modules[0].passages[0].question_groups
+    text_copy = next(group for group in groups if group.question_type == "text_completion")
+    diagram_copy = next(group for group in groups if group.question_type == "diagram_labelling")
+    assert text_copy.config["title"] == "Fictional passage headline"
+    assert diagram_copy.config["title"] == "Fictional diagram headline"
+    assert diagram_copy.config["annotations"] == annotations
+    assert len(diagram_copy.questions) == len(diagram_copy.config["items"]) == 5
+    assert [question.number for question in diagram_copy.questions] == [4, 5, 6, 7, 8]
+
+
+@pytest.mark.integration
 async def test_transfer_round_trip_remaps_ids_assets_and_can_import_twice(
     db_session: AsyncSession, tmp_path: Path
 ) -> None:
