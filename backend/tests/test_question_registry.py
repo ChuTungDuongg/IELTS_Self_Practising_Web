@@ -84,6 +84,37 @@ def test_reading_matching_aliases_and_word_list_use_stable_option_ids() -> None:
     )
 
 
+def test_modern_matching_q8_option_id_survives_normalization_and_strict_validation() -> None:
+    option_ids = [str(uuid4()) for _ in range(2)]
+    config, questions = normalize_question_group_payload(
+        question_type="matching",
+        group_config={
+            "options": [
+                {"id": option_ids[0], "label": "A", "text": "Fictional first date"},
+                {"id": option_ids[1], "label": "B", "text": "Fictional second date"},
+            ],
+            "allow_option_reuse": True,
+        },
+        questions=[
+            {
+                "id": str(uuid4()),
+                "number": 8,
+                "prompt": "Fictional event",
+                "config": {},
+                "answer_key": {"kind": "SINGLE_OPTION", "value": option_ids[1]},
+                "order_index": 0,
+            }
+        ],
+        group_id=uuid4(),
+        passage_blocks=[],
+    )
+    assert [option["id"] for option in config["options"]] == option_ids
+    assert questions[0]["answer_key"] == {"kind": "SINGLE_OPTION", "value": option_ids[1]}
+    question_registry.validate(
+        "matching", config, questions[0]["config"], questions[0]["answer_key"]
+    )
+
+
 def test_legacy_matching_headings_normalizes_to_stable_ids() -> None:
     passage_id = uuid4()
     block_id = uuid4()

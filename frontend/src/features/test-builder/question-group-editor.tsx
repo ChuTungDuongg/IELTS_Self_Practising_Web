@@ -55,25 +55,7 @@ export function QuestionGroupEditor({
   const baseQuestionNumber = requestedBaseQuestionNumber ?? (group.questions.length
     ? Math.min(...group.questions.map((question) => question.number))
     : nextQuestionNumber);
-  const presentedGroup = group.question_type === "text_completion"
-    ? normalizeTextCompletionOrder(group, group.config as unknown as TextCompletionLayout, baseQuestionNumber)
-    : group.question_type === "note_completion"
-      ? normalizeNoteCompletionOrder(group, {
-          ...(group.config.layout as NoteCompletionLayout),
-          title: (group.config.layout as NoteCompletionLayout).title?.trim() ?? "",
-        }, baseQuestionNumber)
-    : group.question_type === "table_completion"
-      ? {
-          ...group,
-          config: {
-            ...group.config,
-            layout: {
-              ...(group.config.layout as TableCompletionLayout),
-              title: (group.config.layout as TableCompletionLayout).title?.trim() ?? "",
-            },
-          },
-        }
-      : group;
+  const presentedGroup = presentQuestionGroup(group, baseQuestionNumber);
   const integrityErrors = group.question_type === "text_completion"
     ? textCompletionIntegrityErrors(group)
     : group.question_type === "note_completion"
@@ -83,7 +65,7 @@ export function QuestionGroupEditor({
   const structurallyValid = integrityErrors.length === 0 && diagramErrors.length === 0 && questionGroupIsValid(presentedGroup, passageBlocks, moduleType);
   const saveIssue = structurallyValid ? null : integrityErrors[0] ?? diagramErrors[0] ?? questionGroupSaveIssue(presentedGroup);
   const revision = useRef(initial.revision ?? 1);
-  const { markSaved, saveNow } = useBuilderAutosave({
+  const { markSaved, saveNow, stageValue } = useBuilderAutosave({
     resourceKey: `question-group:${initial.id ?? "new"}`,
     value: presentedGroup,
     save: async (value) => {
@@ -104,6 +86,20 @@ export function QuestionGroupEditor({
     enabled: Boolean(initial.id && onAutosave),
   });
   const usesMultilineInstruction = isCompletionQuestionType(group.question_type);
+
+  function updateGroup(next: QuestionGroupModel) {
+    const presented = presentQuestionGroup(next, baseQuestionNumber);
+    const integrity = next.question_type === "text_completion"
+      ? textCompletionIntegrityErrors(next)
+      : next.question_type === "note_completion"
+        ? noteCompletionIntegrityErrors(next)
+        : [];
+    const valid = integrity.length === 0
+      && diagramLabellingErrors(presented).length === 0
+      && questionGroupIsValid(presented, passageBlocks, moduleType);
+    stageValue(presented, valid);
+    setGroup(next);
+  }
 
   function addQuestion() {
     const nextNumber = Math.max(
@@ -134,7 +130,7 @@ export function QuestionGroupEditor({
       const templateLayout = template.config.layout as typeof layout;
       config = { ...group.config, layout: { ...layout, nodes: [...(layout.nodes ?? []), ...(templateLayout.nodes ?? []).filter((_, index) => index > 0)] } };
     }
-    setGroup({
+    updateGroup({
       ...group,
       config,
       questions: [...group.questions, { ...next, order_index: group.questions.length }],
@@ -151,7 +147,7 @@ export function QuestionGroupEditor({
               Candidate instructions
               <textarea
                 value={group.instruction}
-                onChange={(event) => setGroup({ ...group, instruction: event.target.value })}
+                onChange={(event) => updateGroup({ ...group, instruction: event.target.value })}
                 className="field mt-2 min-h-24 resize-y"
                 aria-label="Candidate instructions"
                 placeholder={resolveQuestionGroupInstruction({ ...group, instruction: "" }, { passageNumber }).intro}
@@ -163,7 +159,7 @@ export function QuestionGroupEditor({
               <label className="field-label">Custom candidate instruction <span className="font-normal text-[var(--muted)]">(optional)</span></label>
               <input
                 value={group.instruction}
-                onChange={(event) => setGroup({ ...group, instruction: event.target.value })}
+                onChange={(event) => updateGroup({ ...group, instruction: event.target.value })}
                 className="field mt-2"
                 aria-label="Group instruction"
                 placeholder={resolveQuestionGroupInstruction({ ...group, instruction: "" }, { passageNumber }).intro}
@@ -188,13 +184,31 @@ export function QuestionGroupEditor({
         </div>
       ) : (
         <>
-          {testVersionId && ["plan_labelling", "map_labelling", "diagram_labelling"].includes(group.question_type) ? <QuestionImageAttachment group={group} testVersionId={testVersionId} onChange={setGroup} /> : null}
-          <Editor group={group} onChange={setGroup} passageBlocks={passageBlocks} baseQuestionNumber={baseQuestionNumber} moduleType={moduleType} />
+          {testVersionId && ["plan_labelling", "map_labelling", "diagram_labelling"].includes(group.question_type) ? <QuestionImageAttachment group={group} testVersionId={testVersionId} onChange={updateGroup} /> : null}
+          <Editor group={group} onChange={updateGroup} passageBlocks={passageBlocks} baseQuestionNumber={baseQuestionNumber} moduleType={moduleType} />
           {!["text_completion", "diagram_labelling", "table_completion", "note_completion", "multiple_choice_multiple"].includes(group.question_type) ? <button type="button" onClick={addQuestion} className="btn btn-secondary mt-4">+ Add question</button> : null}
         </>
       )}
     </fieldset>
   );
+}
+
+function presentQuestionGroup(group: QuestionGroupModel, baseQuestionNumber: number): QuestionGroupModel {
+  if (group.question_type === "text_completion") {
+    return normalizeTextCompletionOrder(group, group.config as unknown as TextCompletionLayout, baseQuestionNumber);
+  }
+  if (group.question_type === "note_completion") {
+    const layout = group.config.layout as NoteCompletionLayout;
+    return normalizeNoteCompletionOrder(group, {
+      ...layout,
+      title: layout.title?.trim() ?? "",
+    }, baseQuestionNumber);
+  }
+  if (group.question_type === "table_completion") {
+    const layout = group.config.layout as TableCompletionLayout;
+    return { ...group, config: { ...group.config, layout: { ...layout, title: layout.title?.trim() ?? "" } } };
+  }
+  return group;
 }
 
 function questionGroupIsValid(group: QuestionGroupModel, passageBlocks: PassageBlock[], moduleType?: "READING" | "LISTENING"): boolean {

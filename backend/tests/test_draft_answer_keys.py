@@ -160,6 +160,49 @@ async def test_matching_q8_key_persists_and_clears_its_publish_validation_issue(
 
 
 @pytest.mark.integration
+async def test_matching_q5_to_q8_keys_survive_update_reload_and_lifecycle_validation(db_session):
+    version_id, group = await import_group(
+        db_session,
+        {
+            "question_type": "matching",
+            "options": [
+                {"key": "A", "text": "Fictional first date"},
+                {"key": "B", "text": "Fictional second date"},
+            ],
+            "questions": [
+                {"number": number, "prompt": f"Fictional event {number}"} for number in range(5, 9)
+            ],
+        },
+    )
+    option_ids = [option["id"] for option in group.config["options"]]
+    selected = [option_ids[index % 2] for index in range(4)]
+    ids = [question.id for question in group.questions]
+    saved = await save_group(
+        db_session,
+        group,
+        keys=[{"kind": "SINGLE_OPTION", "value": option_id} for option_id in selected],
+    )
+    assert [question.id for question in saved.questions] == ids
+    assert [question.answer_key["value"] for question in saved.questions] == selected
+    await db_session.rollback()
+    retrieved = await ReadingService(db_session).get_group(group.id)
+    fresh = (
+        (await ReadingService(db_session).builder_version(version_id))
+        .modules[0]
+        .passages[0]
+        .question_groups[0]
+    )
+    assert [question.answer_key["value"] for question in retrieved.questions] == selected
+    assert [question.answer_key["value"] for question in fresh.questions] == selected
+    validation = await LifecycleService(db_session).validate(version_id)
+    assert not any(
+        issue.path in {f"reading.questions.{number}" for number in range(5, 9)}
+        and issue.message == "Answer key is incomplete."
+        for issue in validation.errors
+    )
+
+
+@pytest.mark.integration
 async def test_empty_text_key_survives_draft_update(db_session):
     version_id, group = await import_group(
         db_session,

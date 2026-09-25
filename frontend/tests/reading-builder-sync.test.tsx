@@ -24,6 +24,16 @@ function BlockingAutosave({ save }: { save: (value: string) => Promise<unknown> 
   return <button type="button" onClick={() => setValue("dirty")}>Dirty other resource</button>;
 }
 
+function ImmediateStagedAutosave({ save }: { save: (value: string) => Promise<unknown> }) {
+  const [value, setValue] = useState("old");
+  const { saveNow, stageValue } = useBuilderAutosave({ resourceKey: "immediate-resource", value, save });
+  return <button type="button" onClick={() => {
+    stageValue("new", true);
+    setValue("new");
+    void saveNow();
+  }}>Change and save</button>;
+}
+
 function group(number: number, prompt: string): BuilderQuestionGroup {
   const value = {
     ...questionRegistry.multiple_choice.createDefault(number),
@@ -72,6 +82,13 @@ function version(passages: BuilderPassage[]): BuilderVersion {
 describe("Reading Builder editor identity", () => {
   beforeEach(() => vi.clearAllMocks());
   afterEach(() => vi.useRealTimers());
+
+  it("flushes the staged value before React commits its next render", async () => {
+    const save = vi.fn(async (value: string) => value);
+    render(<BuilderLifecycleProvider><ImmediateStagedAutosave save={save} /></BuilderLifecycleProvider>);
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Change and save" })); await Promise.resolve(); });
+    expect(save).toHaveBeenCalledWith("new");
+  });
 
   it("uses each acknowledged passage revision for the next autosave", async () => {
     vi.useFakeTimers();
@@ -179,6 +196,68 @@ describe("Reading Builder editor identity", () => {
     expect(screen.getByRole("combobox", { name: "Question 8 correct option" })).toHaveValue(options[1].id);
     fireEvent.click(screen.getByRole("button", { name: "Validate" }));
     await waitFor(() => expect(validateVersion).toHaveBeenCalledOnce());
+    expect(await screen.findByText("Validation complete.")).toBeInTheDocument();
+  });
+
+  it("sends the latest matching key when Save now follows selection in the same React batch", async () => {
+    const initial = {
+      ...questionRegistry.matching.createDefault(8),
+      id: crypto.randomUUID(), revision: 1, image_asset_id: null, image_asset: null,
+    } as BuilderQuestionGroup;
+    const optionId = (initial.config.options as Array<{ id: string }>)[1].id;
+    vi.mocked(updateQuestionGroup).mockImplementation(async (_id, body, revision) => ({ ...initial, ...body, revision: revision + 1 } as BuilderQuestionGroup));
+    render(<BuilderLifecycleProvider><ReadingBuilder version={version([passage(0, "Fictional passage", [initial])])} /></BuilderLifecycleProvider>);
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Edit / Preview" })); });
+    await act(async () => {
+      fireEvent.change(screen.getByRole("combobox", { name: "Question 8 correct option" }), { target: { value: optionId } });
+      fireEvent.click(screen.getAllByRole("button", { name: "Save now" })[0]);
+      await Promise.resolve();
+    });
+    expect(updateQuestionGroup).toHaveBeenCalledWith(initial.id, expect.objectContaining({
+      questions: expect.arrayContaining([expect.objectContaining({ number: 8, answer_key: { kind: "SINGLE_OPTION", value: optionId } })]),
+    }), 1);
+  });
+
+  it("flushes a matching key chosen during an in-flight save before Validate", async () => {
+    vi.useFakeTimers();
+    const initial = {
+      ...questionRegistry.matching.createDefault(8),
+      id: crypto.randomUUID(), revision: 1, image_asset_id: null, image_asset: null,
+    } as BuilderQuestionGroup;
+    const optionId = (initial.config.options as Array<{ id: string }>)[1].id;
+    let releaseFirst!: (saved: BuilderQuestionGroup) => void;
+    const first = new Promise<BuilderQuestionGroup>((resolve) => { releaseFirst = resolve; });
+    let persisted = initial;
+    vi.mocked(updateQuestionGroup).mockImplementation(async (_id, body, revision) => {
+      const saved = { ...initial, ...body, revision: revision + 1 } as BuilderQuestionGroup;
+      if (revision === 1) return first;
+      persisted = saved;
+      return saved;
+    });
+    vi.mocked(validateVersion).mockImplementation(async () => ({
+      valid: persisted.questions[0].answer_key.value === optionId,
+      errors: persisted.questions[0].answer_key.value === optionId ? [] : [{ path: "reading.questions.8", message: "Answer key is incomplete." }],
+      warnings: [],
+    }));
+    const builderVersion = version([passage(0, "Fictional passage", [initial])]);
+    render(<BuilderLifecycleProvider><VersionActions testId={builderVersion.test_id} version={builderVersion} /><ReadingBuilder version={builderVersion} /></BuilderLifecycleProvider>);
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Edit / Preview" })); });
+    fireEvent.change(screen.getByLabelText("Group instruction"), { target: { value: "Fictional instruction" } });
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    expect(updateQuestionGroup).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      fireEvent.change(screen.getByRole("combobox", { name: "Question 8 correct option" }), { target: { value: optionId } });
+      fireEvent.click(screen.getByRole("button", { name: "Validate" }));
+      await Promise.resolve();
+    });
+    expect(validateVersion).not.toHaveBeenCalled();
+    await act(async () => { releaseFirst({ ...initial, revision: 2, instruction: "Fictional instruction" }); await Promise.resolve(); });
+    await act(async () => { await Promise.resolve(); });
+    expect(updateQuestionGroup).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(updateQuestionGroup).mock.calls[1][1].questions[0].answer_key.value).toBe(optionId);
+    expect(validateVersion).toHaveBeenCalledOnce();
+    expect(persisted.questions[0].answer_key.value).toBe(optionId);
+    vi.useRealTimers();
     expect(await screen.findByText("Validation complete.")).toBeInTheDocument();
   });
 

@@ -209,6 +209,13 @@ export function useBuilderAutosave<T, Saved = unknown>({ resourceKey, value, sav
     onSavedRef.current = onSaved;
   }, [enabled, onSaved, save, serialized, valid, value]);
 
+  const stageValue = useCallback((nextValue: T, nextValid: boolean) => {
+    // Keep immediate Save/Validate flushes ahead of React's next render.
+    valueRef.current = nextValue;
+    serializedRef.current = JSON.stringify(nextValue);
+    validRef.current = nextValid;
+  }, []);
+
   const flush = useCallback((): Promise<boolean> => {
     if (conflicted.current) return Promise.resolve(false);
     if (drain.current) return drain.current;
@@ -305,7 +312,7 @@ export function useBuilderAutosave<T, Saved = unknown>({ resourceKey, value, sav
     if (registered.current) setAutosaveState(resourceKey, "SAVED");
   }, [resourceKey, setAutosaveState]);
 
-  return { saveNow: flush, markSaved };
+  return { saveNow: flush, markSaved, stageValue };
 }
 
 export function BuilderAutosaveStatus() {
