@@ -11,7 +11,7 @@ ielts-test-bundle.zip
 
 `manifest.json` lists every test JSON file and referenced asset. Asset entries contain the portable package path, source identifiers, asset type, MIME type, original filename, byte size, and SHA-256 checksum. Absolute local storage paths are never included.
 
-The explicit test JSON contract contains logical tests, all version numbers and lifecycle states, modules, Reading passages, Listening parts, Writing tasks, question groups, questions, configurations, and answer keys. Only referenced Listening audio, question images, and Writing Task images are included.
+The explicit test JSON contract contains logical tests, all version numbers and lifecycle states, modules, Reading passages, Listening parts, Writing tasks (including optional structured `task_type` tags), question groups, questions, configurations, and answer keys. Older bundles without `task_type` import those tasks as unclassified. Module durations are preserved; missing legacy durations receive the canonical Reading/Listening/Writing defaults on import. Only referenced Listening audio, question images, and Writing Task images are included.
 
 Attempts, responses, highlights, flags, events, Writing scores or feedback, History, Analytics, and Full Mock sessions are excluded. This is test-content portability, not an application backup.
 

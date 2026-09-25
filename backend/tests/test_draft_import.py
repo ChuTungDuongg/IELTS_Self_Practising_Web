@@ -10,9 +10,15 @@ from app.models import Asset
 from app.models import Test as ExamTest
 from app.models.enums import VersionStatus
 from app.schemas.content import PassageUpdate, QuestionGroupUpdate
-from app.schemas.draft_import import DraftImportManifest
+from app.schemas.draft_import import DraftImportManifest, ImportWritingTask
 from app.services.draft_import import DraftImportService, load_manifest
 from app.services.reading import ReadingService
+
+
+def test_draft_import_writing_type_is_optional_and_task_specific() -> None:
+    assert ImportWritingTask(task_number=1, prompt="Fictional prompt").task_type is None
+    with pytest.raises(ValueError):
+        ImportWritingTask(task_number=1, task_type="OPINION", prompt="Fictional prompt")
 
 
 def reading(groups=None, title="Passage 1"):
@@ -348,8 +354,8 @@ async def test_multiple_passages_and_mixed_modules(db_session):
     writing = {
         "type": "WRITING",
         "tasks": [
-            {"task_number": 1, "prompt": "Describe an invented chart."},
-            {"task_number": 2, "prompt": "Discuss a fictional policy."},
+            {"task_number": 1, "task_type": "PIE_CHART", "prompt": "Describe an invented chart."},
+            {"task_number": 2, "task_type": "OPINION", "prompt": "Discuss a fictional policy."},
         ],
     }
     result = await DraftImportService(db_session).import_manifest(
@@ -374,6 +380,7 @@ async def test_multiple_passages_and_mixed_modules(db_session):
         for q in g.questions
     ] == [1, 2]
     assert len(builder.modules[2].writing_tasks) == 2
+    assert [task.task_type for task in builder.modules[2].writing_tasks] == ["PIE_CHART", "OPINION"]
     assert builder.modules[1].audio_asset is None
     assert any("audio" in warning.lower() for warning in result.warnings)
 

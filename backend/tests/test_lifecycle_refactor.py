@@ -20,6 +20,7 @@ from app.models import TestVersion as DomainVersion
 from app.models.enums import AttemptStatus, ModuleType, TimerMode, VersionStatus
 from app.schemas.attempts import AttemptCreate, TimerRequest
 from app.schemas.content import HighlightCreate, ModuleCreate, QuestionGroupWrite, QuestionWrite
+from app.schemas.tests import TestUpdate as UpdatePayload
 from app.schemas.tests import VersionCreate
 from app.services.attempts import AttemptService
 from app.services.reading import ReadingService
@@ -443,6 +444,59 @@ async def test_publish_archives_previous_current_version_and_keeps_history(
     assert (await db_session.get(DomainVersion, previous.id)).status == VersionStatus.ARCHIVED  # type: ignore[union-attr]
     assert (await db_session.get(DomainVersion, draft.id)).status == VersionStatus.PUBLISHED  # type: ignore[union-attr]
     assert (await db_session.get(Attempt, old_attempt.id)).test_version_id == previous.id  # type: ignore[union-attr]
+
+
+@pytest.mark.integration
+async def test_test_metadata_update_does_not_block_publishing_cloned_version(
+    db_session: AsyncSession,
+) -> None:
+    test = DomainTest(title="Original title", description="Original description")
+    first = DomainVersion(version_number=1, status=VersionStatus.DRAFT)
+    test.versions.append(first)
+    first_reading = add_valid_reading(first)
+    first_reading.recommended_duration_seconds = 3600
+    await persist(db_session, test)
+    first_id = first.id
+    test_id = test.id
+    await LifecycleService(db_session).publish(first_id)
+    await db_session.rollback()
+    historical_attempt = Attempt(
+        test_version_id=first_id,
+        module_type=ModuleType.READING,
+        timer_mode=TimerMode.COUNT_UP,
+        started_at=datetime.now(UTC),
+        last_active_at=datetime.now(UTC),
+        status=AttemptStatus.IN_PROGRESS,
+    )
+    await persist(db_session, historical_attempt)
+    attempt_id = historical_attempt.id
+    second = await LifecycleService(db_session).create_version(
+        test_id, VersionCreate(source_version_id=first_id)
+    )
+    second_id = second.id
+    assert second.modules[0].recommended_duration_seconds == 3600
+    await db_session.rollback()
+    updated = await LifecycleService(db_session).update_test(
+        test_id, UpdatePayload(title="  New title  ", description="  New description  ")
+    )
+    assert updated.title == "New title"
+    assert updated.description == "New description"
+    await db_session.rollback()
+    assert (await LifecycleService(db_session).get_version(second_id)).status == VersionStatus.DRAFT
+    await db_session.rollback()
+    await LifecycleService(db_session).publish(second_id)
+    assert (await LifecycleService(db_session).get_version(second_id)).modules[
+        0
+    ].recommended_duration_seconds == 3600
+    versions = list(
+        await db_session.scalars(select(DomainVersion).where(DomainVersion.test_id == test_id))
+    )
+    assert {item.id: item.status for item in versions} == {
+        first_id: VersionStatus.ARCHIVED,
+        second_id: VersionStatus.PUBLISHED,
+    }
+    assert len([item for item in versions if item.status == VersionStatus.PUBLISHED]) == 1
+    assert (await db_session.get(Attempt, attempt_id)).test_version_id == first_id  # type: ignore[union-attr]
 
 
 @pytest.mark.integration

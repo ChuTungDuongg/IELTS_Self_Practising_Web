@@ -6,6 +6,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import AppError
+from app.domains.writing.task_types import WritingTaskType
 from app.models import Asset, WritingTask
 from app.models import Test as DomainTest
 from app.models import TestModule as DomainModule
@@ -75,6 +76,43 @@ async def test_writing_module_initializes_two_fixed_tasks_atomically(
     assert [task.minimum_recommended_words for task in module.writing_tasks] == [150, 250]
     assert [task.recommended_duration_seconds for task in module.writing_tasks] == [1200, 2400]
     assert all(task.image_asset is None for task in module.writing_tasks)
+    assert all(task.task_type is None for task in module.writing_tasks)
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    ("task_number", "task_type", "allowed"),
+    [
+        (1, WritingTaskType.PIE_CHART, True),
+        (1, WritingTaskType.PROCESS, True),
+        (1, WritingTaskType.MAP_PLAN, True),
+        (1, WritingTaskType.OPINION, False),
+        (2, WritingTaskType.OPINION, True),
+        (2, WritingTaskType.DISCUSS_BOTH_VIEWS, True),
+        (2, WritingTaskType.PROBLEM_SOLUTION, True),
+        (2, WritingTaskType.PIE_CHART, False),
+        (1, None, True),
+        (2, None, True),
+    ],
+)
+async def test_writing_task_type_matches_task_number(
+    db_session: AsyncSession, task_number: int, task_type: WritingTaskType | None, allowed: bool
+) -> None:
+    _, version = await _persist_version(db_session)
+    module = await _initialize_writing(db_session, version.id)
+    task = module.writing_tasks[task_number - 1]
+    body = WritingTaskUpdate(
+        expected_revision=task.revision, prompt="Fictional prompt", task_type=task_type
+    )
+    if not allowed:
+        with pytest.raises(AppError) as caught:
+            await WritingService(db_session).update_task(task.id, body)
+        assert caught.value.code == "INVALID_WRITING_TASK_TYPE"
+        return
+    saved = await WritingService(db_session).update_task(task.id, body)
+    assert saved.task_type == task_type
+    await db_session.rollback()
+    assert (await WritingService(db_session).get_task(task.id)).task_type == task_type
 
 
 @pytest.mark.integration
@@ -225,6 +263,7 @@ async def test_clone_preserves_writing_tasks_with_an_independent_image_copy(
     module = DomainModule(module_type=ModuleType.WRITING, order_index=0)
     task_one = WritingTask(
         task_number=1,
+        task_type=WritingTaskType.PIE_CHART,
         prompt="Describe fictional data.",
         image_asset_id=image.id,
         minimum_recommended_words=150,
@@ -233,6 +272,7 @@ async def test_clone_preserves_writing_tasks_with_an_independent_image_copy(
     )
     task_two = WritingTask(
         task_number=2,
+        task_type=WritingTaskType.OPINION,
         prompt="Discuss a fictional proposition.",
         minimum_recommended_words=250,
         recommended_duration_seconds=2400,
@@ -255,6 +295,7 @@ async def test_clone_preserves_writing_tasks_with_an_independent_image_copy(
         "Describe fictional data.",
         "Discuss a fictional proposition.",
     ]
+    assert [task.task_type for task in writing.writing_tasks] == ["PIE_CHART", "OPINION"]
     assert writing.writing_tasks[0].image_asset_id != image.id
     assert writing.writing_tasks[0].image_asset is not None
     assert writing.writing_tasks[0].image_asset.test_version_id == clone.id
@@ -282,6 +323,7 @@ def test_partial_writing_module_is_valid_with_readiness_warning() -> None:
 
     assert result.valid
     assert any(issue.path == "writing.tasks" for issue in result.warnings)
+    assert any(issue.path == "writing.tasks.1.task_type" for issue in result.warnings)
 
 
 def test_structurally_invalid_writing_tasks_block_publish() -> None:

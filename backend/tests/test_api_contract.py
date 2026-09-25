@@ -1,11 +1,20 @@
+from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 import httpx
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.v1.presenters import present_version
 from app.main import app
-from app.models import AttemptAnswer, Question, QuestionGroup, ReadingPassage
+from app.models import (
+    AttemptAnswer,
+    ListeningPart,
+    Question,
+    QuestionGroup,
+    ReadingPassage,
+    WritingTask,
+)
 from app.models import Test as DomainTest
 from app.models import TestModule as DomainModule
 from app.models import TestVersion as DomainVersion
@@ -49,6 +58,84 @@ async def test_openapi_exposes_phase_one_routes() -> None:
     assert "answer_key" not in exam_question["properties"]
     exam_writing_task = document["components"]["schemas"]["ExamWritingTask"]
     assert "answer_key" not in exam_writing_task["properties"]
+
+
+def test_published_version_summary_contains_safe_content_metadata() -> None:
+    test = DomainTest(id=uuid4(), title="Fictional summary test")
+    version = DomainVersion(
+        id=uuid4(),
+        test_id=test.id,
+        version_number=1,
+        status=VersionStatus.PUBLISHED,
+        created_at=datetime.now(UTC),
+        published_at=datetime.now(UTC),
+    )
+    test.versions.append(version)
+    reading = DomainModule(id=uuid4(), module_type=ModuleType.READING, order_index=0)
+    passage = ReadingPassage(
+        id=uuid4(), title="A fictional ship", order_index=0, content_json=[], plain_text=""
+    )
+    reading_group = QuestionGroup(id=uuid4(), question_type="matching", order_index=0, config={})
+    reading_group.questions.append(
+        Question(
+            id=uuid4(),
+            number=1,
+            prompt="Fictional prompt",
+            config={},
+            answer_key={"kind": "SINGLE_OPTION", "value": "secret"},
+            explanation="Private explanation",
+            order_index=0,
+        )
+    )
+    passage.question_groups.append(reading_group)
+    reading.passages.append(passage)
+    reading.question_groups.append(reading_group)
+    listening = DomainModule(id=uuid4(), module_type=ModuleType.LISTENING, order_index=1)
+    section = ListeningPart(id=uuid4(), title="Fictional tour", order_index=0)
+    listening_group = QuestionGroup(
+        id=uuid4(), question_type="note_completion", order_index=0, config={}
+    )
+    listening_group.questions.append(
+        Question(
+            id=uuid4(),
+            number=1,
+            prompt="Fictional gap",
+            config={},
+            answer_key={"kind": "TEXT", "accepted": ["secret"]},
+            order_index=0,
+        )
+    )
+    section.question_groups.append(listening_group)
+    listening.listening_parts.append(section)
+    listening.question_groups.append(listening_group)
+    writing = DomainModule(id=uuid4(), module_type=ModuleType.WRITING, order_index=2)
+    writing.writing_tasks.append(
+        WritingTask(
+            id=uuid4(),
+            task_number=1,
+            task_type="PIE_CHART",
+            prompt="Describe fictional data.",
+            order_index=0,
+        )
+    )
+    version.modules.extend([reading, listening, writing])
+
+    summary = present_version(version).model_dump(mode="json")
+
+    assert summary["modules"][0]["reading_passages"][0]["title"] == "A fictional ship"
+    assert (
+        summary["modules"][0]["reading_passages"][0]["question_groups"][0]["question_type"]
+        == "matching"
+    )
+    assert summary["modules"][1]["listening_sections"][0]["title"] == "Fictional tour"
+    assert (
+        summary["modules"][1]["listening_sections"][0]["question_groups"][0]["question_type"]
+        == "note_completion"
+    )
+    assert summary["modules"][2]["writing_tasks"][0]["task_type"] == "PIE_CHART"
+    assert "answer_key" not in str(summary)
+    assert "Private explanation" not in str(summary)
+    assert "secret" not in str(summary)
 
 
 def test_active_exam_normalizes_legacy_content_without_exposing_answer_keys() -> None:

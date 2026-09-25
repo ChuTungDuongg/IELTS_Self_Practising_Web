@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { QuestionGroupModel } from "@/features/questions/types";
 import { apiRequest, type ApiRequester } from "./client";
+import { writingTaskTypeSchema, type WritingTaskType } from "@/features/writing/task-types";
 
 const blockSchema = z.object({
   id: z.string().uuid(),
@@ -49,6 +50,7 @@ const builderWritingTaskSchema = z.object({
   id: z.string().uuid(),
   revision: z.number().int().positive(),
   task_number: z.number().int(),
+  task_type: writingTaskTypeSchema.nullable().optional(),
   prompt: z.string(),
   image_asset_id: z.string().uuid().nullable().default(null),
   image_asset: assetSchema.nullable().default(null),
@@ -61,6 +63,7 @@ const builderVersionSchema = z.object({
   id: z.string().uuid(),
   test_id: z.string().uuid(),
   test_title: z.string(),
+  test_description: z.string().nullable().optional(),
   version_number: z.number().int(),
   status: z.enum(["DRAFT", "PUBLISHED", "ARCHIVED"]),
   modules: z.array(
@@ -79,6 +82,7 @@ const builderVersionSchema = z.object({
 });
 
 export type BuilderVersion = z.infer<typeof builderVersionSchema>;
+export type BuilderModule = BuilderVersion["modules"][number];
 export type BuilderPassage = z.infer<typeof passageSchema>;
 export type BuilderQuestionGroup = z.infer<typeof groupSchema>;
 export type BuilderListeningPart = z.infer<typeof listeningPartSchema>;
@@ -101,13 +105,12 @@ export function createReadingModule(versionId: string) {
     body: JSON.stringify({
       module_type: "READING",
       title: "Reading",
-      recommended_duration_seconds: 3600,
     }),
   });
 }
 
 export function createListeningModule(versionId: string) {
-  return apiRequest(`/test-versions/${versionId}/modules`, { method: "POST", body: JSON.stringify({ module_type: "LISTENING", title: "Listening", recommended_duration_seconds: 1800 }) });
+  return apiRequest(`/test-versions/${versionId}/modules`, { method: "POST", body: JSON.stringify({ module_type: "LISTENING", title: "Listening" }) });
 }
 
 export function createWritingModule(versionId: string) {
@@ -116,24 +119,31 @@ export function createWritingModule(versionId: string) {
     body: JSON.stringify({
       module_type: "WRITING",
       title: "Writing",
-      recommended_duration_seconds: 3600,
     }),
   });
+}
+
+export async function updateModuleDuration(moduleId: string, expectedRevision: number, seconds: number | null): Promise<BuilderModule> {
+  return builderVersionSchema.shape.modules.element.parse(await apiRequest<unknown>(`/test-modules/${moduleId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ expected_revision: expectedRevision, recommended_duration_seconds: seconds }),
+  }));
 }
 
 export type WritingTaskUpdate = {
   expected_revision: number;
   prompt: string;
+  task_type: WritingTaskType | null;
   image_asset_id: string | null;
   minimum_recommended_words: number | null;
   recommended_duration_seconds: number | null;
 };
 
-export function updateWritingTask(taskId: string, body: WritingTaskUpdate) {
-  return apiRequest<BuilderWritingTask>(`/writing/tasks/${taskId}`, {
+export async function updateWritingTask(taskId: string, body: WritingTaskUpdate) {
+  return builderWritingTaskSchema.parse(await apiRequest<unknown>(`/writing/tasks/${taskId}`, {
     method: "PUT",
     body: JSON.stringify(body),
-  });
+  }));
 }
 
 export function deleteModule(moduleId: string) {

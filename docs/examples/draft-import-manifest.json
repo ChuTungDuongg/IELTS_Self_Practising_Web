@@ -72,8 +72,8 @@
     {
       "type": "WRITING",
       "tasks": [
-        { "task_number": 1, "prompt": "Describe a fictional chart showing library visits in River Town.", "minimum_recommended_words": 150 },
-        { "task_number": 2, "prompt": "Discuss whether an imagined town should add more boat routes.", "minimum_recommended_words": 250 }
+        { "task_number": 1, "task_type": "PIE_CHART", "prompt": "Describe a fictional chart showing library visits in River Town.", "minimum_recommended_words": 150 },
+        { "task_number": 2, "task_type": "OPINION", "prompt": "Discuss whether an imagined town should add more boat routes.", "minimum_recommended_words": 250 }
       ]
     }
   ]

@@ -6,7 +6,10 @@ const createTestInput = z.object({
   title: z.string().trim().min(1).max(240),
   description: z.string().trim().max(4000).optional(),
 });
-const updateTestInput = createTestInput.pick({ title: true });
+const updateTestInput = z.object({
+  title: z.string().trim().min(1).max(240).optional(),
+  description: z.string().trim().max(4000).nullable().optional().transform((value) => value === "" ? null : value),
+});
 
 export async function getTests(options?: { archived?: boolean }, request: ApiRequester = apiRequest): Promise<TestSummary[]> {
   const query = options?.archived ? "?archived=true" : "";

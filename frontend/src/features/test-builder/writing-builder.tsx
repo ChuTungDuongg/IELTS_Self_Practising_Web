@@ -18,9 +18,12 @@ import { ApiError } from "@/lib/api/client";
 import { builderPreviewPath } from "@/lib/routes";
 import { useBuilderAutosave, useBuilderLifecycle } from "./builder-lifecycle";
 import { AutosaveLink } from "./autosave-link";
+import { ModuleDurationEditor } from "./module-duration-editor";
+import { taskOneTypes, taskTwoTypes, type WritingTaskType } from "@/features/writing/task-types";
 
 type TaskDraft = {
   prompt: string;
+  taskType: WritingTaskType | null;
   imageAssetId: string | null;
   imageAsset: BuilderWritingTask["image_asset"];
   minimumWords: number | null;
@@ -30,6 +33,7 @@ type TaskDraft = {
 function toDraft(task: BuilderWritingTask): TaskDraft {
   return {
     prompt: task.prompt,
+    taskType: task.task_type ?? null,
     imageAssetId: task.image_asset_id,
     imageAsset: task.image_asset,
     minimumWords: task.minimum_recommended_words,
@@ -42,6 +46,7 @@ function toDraft(task: BuilderWritingTask): TaskDraft {
 function toPayload(draft: TaskDraft): Omit<WritingTaskUpdate, "expected_revision"> {
   return {
     prompt: draft.prompt,
+    task_type: draft.taskType,
     image_asset_id: draft.imageAssetId,
     minimum_recommended_words: draft.minimumWords,
     recommended_duration_seconds: draft.durationMinutes === null
@@ -241,12 +246,19 @@ export function WritingBuilder({ version }: { version: BuilderVersion }) {
       {message ? <p role="status" className="notice mt-4">{message}</p> : null}
       {error ? <p role="alert" className="notice notice-error mt-4">{error}</p> : null}
       {conflict ? <p role="alert" className="notice notice-error mt-4">This content changed in another tab or by another admin. <button type="button" className="btn btn-ghost" onClick={() => window.location.reload()}>Reload latest</button></p> : null}
+      <ModuleDurationEditor module={writingModule} />
       <div className="writing-task-grid">
         {tasks.map((task) => {
           const draft = drafts[task.id] ?? toDraft(task);
           return <fieldset key={task.id} aria-label={`Writing Task ${task.task_number}`} className="writing-task-card">
             <legend>Task {task.task_number}</legend>
             <p className="section-description">{task.task_number === 1 ? "Describe visual information. One image may be attached." : "Respond to a point of view, argument, or problem. Images are not allowed."}</p>
+            <label className="field-label">Question type
+              <select className="select-field mt-2" value={draft.taskType ?? ""} onChange={(event) => updateDraft(task.id, { taskType: event.target.value ? event.target.value as WritingTaskType : null })}>
+                <option value="">Unclassified</option>
+                {(task.task_number === 1 ? taskOneTypes : taskTwoTypes).map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+              </select>
+            </label>
             <label className="field-label">Prompt<textarea className="textarea-field mt-2" rows={8} value={draft.prompt} onChange={(event) => updateDraft(task.id, { prompt: event.target.value })} /></label>
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="field-label">Minimum recommended words<input className="field mt-2" type="number" min="1" value={draft.minimumWords ?? ""} onChange={(event) => updateDraft(task.id, { minimumWords: event.target.value ? Number(event.target.value) : null })} /></label>

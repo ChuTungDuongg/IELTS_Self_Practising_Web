@@ -15,6 +15,7 @@ from app.domains.questions.normalization import (
     remap_question_references,
 )
 from app.domains.questions.numbering import group_slots
+from app.domains.writing.task_types import WritingTaskType, validate_task_type
 from app.models import (
     Asset,
     Attempt,
@@ -70,7 +71,11 @@ class TestService:
             )
             if test is None:
                 raise AppError("TEST_NOT_FOUND", "The requested test does not exist.", 404)
-            test.title = data.title
+            if "title" in data.model_fields_set:
+                assert data.title is not None
+                test.title = data.title
+            if "description" in data.model_fields_set:
+                test.description = data.description
             await self.session.flush()
             await self.session.refresh(test, attribute_names=["updated_at"])
         return await self.get_test(test_id)
@@ -581,6 +586,7 @@ class TestService:
                 new_module.writing_tasks.append(
                     WritingTask(
                         task_number=task.task_number,
+                        task_type=task.task_type,
                         prompt=task.prompt,
                         image_asset=asset_map.get(task.image_asset_id),
                         minimum_recommended_words=task.minimum_recommended_words,
@@ -623,6 +629,13 @@ class TestService:
             issues.append(ValidationIssue(path="modules", message="Add at least one module."))
         for module in version.modules:
             prefix = module.module_type.value.lower()
+            if not module.recommended_duration_seconds or module.recommended_duration_seconds <= 0:
+                warnings.append(
+                    ValidationIssue(
+                        path=f"{prefix}.recommended_duration_seconds",
+                        message=f"{module.module_type.value.title()} recommended duration is missing.",
+                    )
+                )
             normalized_passages: dict[uuid.UUID, list[dict]] = {}
             if module.module_type == ModuleType.READING:
                 ordered_groups = [
@@ -799,6 +812,23 @@ class TestService:
                                 message=f"Writing Task {task.task_number} has no prompt yet.",
                             )
                         )
+                    if task.task_type is None:
+                        warnings.append(
+                            ValidationIssue(
+                                path=f"{task_path}.task_type",
+                                message=f"Writing Task {task.task_number} has no question-type tag.",
+                            )
+                        )
+                    else:
+                        try:
+                            validate_task_type(task.task_number, WritingTaskType(task.task_type))
+                        except ValueError:
+                            issues.append(
+                                ValidationIssue(
+                                    path=f"{task_path}.task_type",
+                                    message="Writing question type does not match this task.",
+                                )
+                            )
                     expected = expected_settings.get(identity)
                     if expected and (
                         task.minimum_recommended_words != expected[0]

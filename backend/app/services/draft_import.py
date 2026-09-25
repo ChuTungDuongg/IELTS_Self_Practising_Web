@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.exceptions import AppError
+from app.domains.module_durations import default_module_duration
 from app.domains.questions import question_registry
 from app.domains.questions.normalization import normalize_passage_blocks
 from app.domains.questions.numbering import question_span
@@ -520,6 +521,10 @@ class DraftImportService:
                         id=uuid.uuid4(),
                         module_type=module_type,
                         title=source.title or source.type.title(),
+                        recommended_duration_seconds=(
+                            source.recommended_duration_seconds
+                            or default_module_duration(module_type)
+                        ),
                         order_index=module_index,
                     )
                     version.modules.append(module)
@@ -633,6 +638,7 @@ class DraftImportService:
                                 WritingTask(
                                     id=uuid.uuid4(),
                                     task_number=task_number,
+                                    task_type=item.task_type if item else None,
                                     order_index=task_number - 1,
                                     prompt=item.prompt if item else "",
                                     image_asset=image,

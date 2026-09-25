@@ -61,6 +61,7 @@ class TestSessionService:
                 module.value.title()
                 for module in MODULE_ORDER
                 if not modules[module].recommended_duration_seconds
+                or modules[module].recommended_duration_seconds <= 0
             ]
             if missing_duration:
                 raise AppError(

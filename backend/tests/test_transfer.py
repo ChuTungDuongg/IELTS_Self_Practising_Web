@@ -19,7 +19,7 @@ from app.models import TestModule as DomainModule
 from app.models import TestVersion as DomainVersion
 from app.models.enums import AssetType, ModuleType, VersionStatus
 from app.repositories.tests import version_detail_query
-from app.schemas.transfer import TransferExportRequest
+from app.schemas.transfer import PortableWritingTask, TransferExportRequest
 from app.services.reading import ReadingService
 from app.services.tests import TestService as LifecycleService
 from app.services.transfer import TransferService
@@ -31,6 +31,23 @@ def _settings(storage_root: Path, **overrides: int) -> Settings:
         storage_root=storage_root,
         **overrides,
     )
+
+
+def test_older_portable_writing_task_without_type_remains_importable() -> None:
+    task = PortableWritingTask.model_validate(
+        {"id": str(uuid4()), "task_number": 1, "prompt": "Fictional prompt", "order_index": 0}
+    )
+    assert task.task_type is None
+    with pytest.raises(ValidationError):
+        PortableWritingTask.model_validate(
+            {
+                "id": str(uuid4()),
+                "task_number": 1,
+                "task_type": "OPINION",
+                "prompt": "Fictional prompt",
+                "order_index": 0,
+            }
+        )
 
 
 def _asset(
@@ -230,8 +247,12 @@ async def test_transfer_exports_multiple_tests_and_imported_draft_loads_in_build
     writing = DomainModule(module_type=ModuleType.WRITING, title="Writing", order_index=0)
     writing.writing_tasks.extend(
         [
-            WritingTask(task_number=1, prompt="Draft task one.", order_index=0),
-            WritingTask(task_number=2, prompt="Draft task two.", order_index=1),
+            WritingTask(
+                task_number=1, task_type="MIXED_CHARTS", prompt="Draft task one.", order_index=0
+            ),
+            WritingTask(
+                task_number=2, task_type="PROBLEM_SOLUTION", prompt="Draft task two.", order_index=1
+            ),
         ]
     )
     draft.modules.append(writing)
@@ -262,7 +283,12 @@ async def test_transfer_exports_multiple_tests_and_imported_draft_loads_in_build
     assert imported_draft is not None
     builder = await ReadingService(db_session).builder_version(imported_draft.id)
     assert builder.status == VersionStatus.DRAFT
+    assert builder.modules[0].recommended_duration_seconds == 3600
     assert builder.modules[0].writing_tasks[0].prompt == "Draft task one."
+    assert [task.task_type for task in builder.modules[0].writing_tasks] == [
+        "MIXED_CHARTS",
+        "PROBLEM_SOLUTION",
+    ]
 
 
 @pytest.mark.integration

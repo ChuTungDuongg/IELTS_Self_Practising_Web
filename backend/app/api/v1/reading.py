@@ -11,6 +11,7 @@ from app.schemas.content import (
     BuilderQuestionGroup,
     BuilderVersion,
     ModuleCreate,
+    ModuleUpdate,
     PassageUpdate,
     PassageWrite,
     QuestionGroupOrderWrite,
@@ -38,6 +39,13 @@ async def create_module(
     version_id: UUID, body: ModuleCreate, session: AsyncSession = Depends(get_session)
 ) -> BuilderModule:
     return await ReadingService(session).create_module(version_id, body)
+
+
+@router.patch("/test-modules/{module_id}", response_model=BuilderModule)
+async def update_module(
+    module_id: UUID, body: ModuleUpdate, session: AsyncSession = Depends(get_session)
+) -> BuilderModule:
+    return await ReadingService(session).update_module(module_id, body)
 
 
 @router.post(

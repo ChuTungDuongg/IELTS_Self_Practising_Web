@@ -23,7 +23,7 @@ Asset paths are relative to the directory containing `manifest.json`. Keep them 
 }
 ```
 
-`modules` contains any combination of one `READING`, one `LISTENING`, and one `WRITING` module. The importer rejects duplicate module types. Titles are optional on modules. Questions and passage blocks do not need UUIDs; the importer generates them and keeps them stable through Builder fetch and save.
+`modules` contains any combination of one `READING`, one `LISTENING`, and one `WRITING` module. The importer rejects duplicate module types. Titles are optional on modules. `recommended_duration_seconds` is optional; omitted values default to 3600 for Reading, 1800 for Listening, and 3600 for Writing. Explicit positive values are preserved. Questions and passage blocks do not need UUIDs; the importer generates them and keeps them stable through Builder fetch and save.
 
 Set `"allow_incomplete": true` only when the source has no answer key or some question numbers cannot yet be represented. In this mode, omitted answers are stored as empty keys, and explicit question-number gaps are kept in the unpublished draft. Other structural validation still applies. The draft remains unpublishable until keys and numbering are resolved. The default is `false`.
 
@@ -37,7 +37,7 @@ Listening has up to four `sections`; these become Builder Listening Parts. Each 
 
 ### Writing
 
-Writing has `tasks`, each with `task_number` 1 or 2, `prompt`, and optional `minimum_recommended_words`. Task 1 may contain an `image` path. Task 2 cannot have an image. A missing task is represented by the Builder's fixed empty task slot and reported as a warning. The standard word guidance is 150 for Task 1 and 250 for Task 2 unless supplied otherwise.
+Writing has `tasks`, each with `task_number` 1 or 2, `prompt`, optional `task_type`, and optional `minimum_recommended_words`. `task_type` is a structured authoring tag, not an official IELTS taxonomy. Task 1 accepts `LINE_GRAPH`, `BAR_CHART`, `PIE_CHART`, `TABLE`, `MIXED_CHARTS`, `PROCESS`, `MAP_PLAN`, `OBJECT_SYSTEM_DIAGRAM`, or `OTHER_VISUAL`. Task 2 accepts `OPINION`, `DISCUSS_BOTH_VIEWS`, `DISCUSS_BOTH_VIEWS_AND_OPINION`, `ADVANTAGES_DISADVANTAGES`, `ADVANTAGES_OUTWEIGH_DISADVANTAGES`, `PROBLEM_SOLUTION`, `CAUSE_SOLUTION`, `TWO_PART_QUESTION`, or `OTHER_ESSAY`. Omit `task_type` to leave it unclassified; the importer does not infer it from prompt text. Task 1 may contain an `image` path. Task 2 cannot have an image. A missing task is represented by the Builder's fixed empty task slot and reported as a warning. The standard word guidance is 150 for Task 1 and 250 for Task 2 unless supplied otherwise.
 
 ## Question groups
 
@@ -164,8 +164,8 @@ Save this as `manifest.json` beside `assets/fictional-chart.png` if you want to 
     {
       "type": "WRITING",
       "tasks": [
-        {"task_number": 1, "prompt": "Describe a fictional chart showing library visits in River Town.", "minimum_recommended_words": 150},
-        {"task_number": 2, "prompt": "Discuss whether an imagined town should add more boat routes.", "minimum_recommended_words": 250}
+        {"task_number": 1, "task_type": "PIE_CHART", "prompt": "Describe a fictional chart showing library visits in River Town.", "minimum_recommended_words": 150},
+        {"task_number": 2, "task_type": "OPINION", "prompt": "Discuss whether an imagined town should add more boat routes.", "minimum_recommended_words": 250}
       ]
     }
   ]

@@ -4,6 +4,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, model_validator
 
+from app.domains.writing.task_types import WritingTaskType
 from app.models.enums import ModuleType, VersionStatus
 from app.schemas.assets import AssetResponse
 from app.schemas.attempts import AttemptResponse, AttemptReview, WritingReview
@@ -19,7 +20,12 @@ class TextBlock(BaseModel):
 class ModuleCreate(BaseModel):
     module_type: ModuleType
     title: str | None = Field(default=None, max_length=240)
-    recommended_duration_seconds: int | None = Field(default=None, ge=1)
+    recommended_duration_seconds: int | None = Field(default=None, ge=1, le=14_400)
+
+
+class ModuleUpdate(BaseModel):
+    expected_revision: int = Field(ge=1)
+    recommended_duration_seconds: int | None = Field(ge=1, le=14_400)
 
 
 class PassageWrite(BaseModel):
@@ -145,6 +151,7 @@ class BuilderListeningPart(BaseModel):
 
 class WritingTaskWrite(BaseModel):
     prompt: str = Field(default="", max_length=20_000)
+    task_type: WritingTaskType | None = None
     image_asset_id: UUID | None = None
     minimum_recommended_words: int | None = Field(default=None, ge=1, le=5000)
     recommended_duration_seconds: int | None = Field(default=None, ge=1, le=14_400)
@@ -158,6 +165,7 @@ class BuilderWritingTask(BaseModel):
     id: UUID
     revision: int
     task_number: int
+    task_type: WritingTaskType | None = None
     prompt: str
     image_asset_id: UUID | None = None
     image_asset: AssetResponse | None = None
@@ -182,6 +190,7 @@ class BuilderVersion(BaseModel):
     id: UUID
     test_id: UUID
     test_title: str
+    test_description: str | None = None
     version_number: int
     status: VersionStatus
     modules: list[BuilderModule]

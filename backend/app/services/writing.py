@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.exceptions import AppError
+from app.domains.writing.task_types import validate_task_type
 from app.models import Asset, TestModule, WritingTask
 from app.models.enums import AssetType, ModuleType
 from app.schemas.content import BuilderWritingTask, WritingTaskUpdate
@@ -49,6 +50,11 @@ class WritingService:
                         "WRITING_TASK_NOT_FOUND", "The Writing task does not exist.", 404
                     )
                 advance_revision(task, body.expected_revision)
+                if "task_type" in body.model_fields_set:
+                    try:
+                        validate_task_type(task.task_number, body.task_type)
+                    except ValueError as exc:
+                        raise AppError("INVALID_WRITING_TASK_TYPE", str(exc), 422) from exc
                 if task.task_number == 2 and body.image_asset_id is not None:
                     raise AppError(
                         "WRITING_TASK_IMAGE_NOT_ALLOWED",
@@ -90,6 +96,8 @@ class WritingService:
                         )
                 previous_asset_id = task.image_asset_id
                 task.prompt = body.prompt.strip()
+                if "task_type" in body.model_fields_set:
+                    task.task_type = body.task_type
                 task.image_asset = asset
                 task.minimum_recommended_words = body.minimum_recommended_words
                 task.recommended_duration_seconds = body.recommended_duration_seconds

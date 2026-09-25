@@ -22,9 +22,9 @@ const publishedTest: TestSummary = {
 const detail: VersionDetail = {
   ...publishedTest.versions[0], test_id: testId, test_title: publishedTest.title,
   modules: [
-    { id: "33333333-3333-4333-8333-333333333333", module_type: "WRITING", title: null, recommended_duration_seconds: 3600, passage_count: 0, listening_part_count: 0, writing_task_count: 2, question_count: 0 },
-    { id: "44444444-4444-4444-8444-444444444444", module_type: "READING", title: null, recommended_duration_seconds: 3600, passage_count: 3, listening_part_count: 0, writing_task_count: 0, question_count: 40 },
-    { id: "55555555-5555-4555-8555-555555555555", module_type: "LISTENING", title: null, recommended_duration_seconds: 2400, passage_count: 0, listening_part_count: 4, writing_task_count: 0, question_count: 40 },
+    { id: "33333333-3333-4333-8333-333333333333", module_type: "WRITING", title: null, recommended_duration_seconds: 3600, passage_count: 0, listening_part_count: 0, writing_task_count: 2, question_count: 0, writing_tasks: [{ task_number: 1, task_type: "PIE_CHART", prompt_excerpt: "Describe fictional charts." }, { task_number: 2, task_type: "OPINION", prompt_excerpt: "Discuss a fictional opinion." }] },
+    { id: "44444444-4444-4444-8444-444444444444", module_type: "READING", title: null, recommended_duration_seconds: 3600, passage_count: 3, listening_part_count: 0, writing_task_count: 0, question_count: 40, reading_passages: [{ title: "A fictional ship", order_index: 0, question_groups: [{ question_type: "matching", start_number: 5, end_number: 8 }] }] },
+    { id: "55555555-5555-4555-8555-555555555555", module_type: "LISTENING", title: null, recommended_duration_seconds: 1800, passage_count: 0, listening_part_count: 4, writing_task_count: 0, question_count: 40, listening_sections: [{ title: "A fictional tour", order_index: 0, question_groups: [{ question_type: "note_completion", start_number: 1, end_number: 10 }] }] },
   ],
 };
 
@@ -54,5 +54,23 @@ describe("Practice library", () => {
     expect(screen.getByText("Reading practice")).toHaveClass("practice-module-kicker");
     expect(screen.getByText("Writing practice")).toHaveClass("practice-module-kicker");
     expect(screen.queryByText("SPEAKING")).not.toBeInTheDocument();
+    expect(screen.getByText("A fictional ship")).toBeInTheDocument();
+    expect(screen.getByText("Matching")).toBeInTheDocument();
+    expect(screen.getByText("A fictional tour")).toBeInTheDocument();
+    expect(screen.getByText("Note Completion")).toBeInTheDocument();
+    expect(screen.getByText("Pie chart")).toBeInTheDocument();
+    expect(screen.getByText("Opinion / Agree or disagree")).toBeInTheDocument();
+  });
+
+  it("keeps Full Mock unavailable when a published module has no duration", async () => {
+    vi.mocked(getVersion).mockResolvedValue({
+      ...detail,
+      modules: detail.modules.map((module) => module.module_type === "READING"
+        ? { ...module, recommended_duration_seconds: null }
+        : module),
+    });
+    render(await TestVersionLibraryPage({ params: Promise.resolve({ versionId }) }));
+    expect(screen.getByText("Full Mock unavailable: Reading recommended duration is missing.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Start Full Mock" })).not.toBeInTheDocument();
   });
 });

@@ -16,6 +16,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.config import Settings
 from app.core.exceptions import AppError
+from app.domains.module_durations import default_module_duration
 from app.domains.questions.normalization import (
     normalize_passage_blocks,
     normalize_question_group_payload,
@@ -652,7 +653,10 @@ class TransferService:
                 id=maps["modules"][source_module.id],
                 module_type=source_module.module_type,
                 title=source_module.title,
-                recommended_duration_seconds=source_module.recommended_duration_seconds,
+                recommended_duration_seconds=(
+                    source_module.recommended_duration_seconds
+                    or default_module_duration(source_module.module_type)
+                ),
                 order_index=source_module.order_index,
                 audio_asset=assets.get(source_module.audio_asset_id),
             )
@@ -680,6 +684,7 @@ class TransferService:
                     WritingTask(
                         id=maps["tasks"][item.id],
                         task_number=item.task_number,
+                        task_type=item.task_type,
                         prompt=item.prompt,
                         image_asset=assets.get(item.image_asset_id),
                         minimum_recommended_words=item.minimum_recommended_words,

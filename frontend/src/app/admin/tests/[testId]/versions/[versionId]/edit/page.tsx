@@ -1,4 +1,5 @@
 import { notFound, redirect } from "next/navigation";
+import Link from "next/link";
 import { PageHeading } from "@/components/ui/page-heading";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { VersionActions } from "@/features/test-builder/version-actions";
@@ -7,7 +8,8 @@ import { ReadingBuilder } from "@/features/test-builder/reading-builder";
 import { ListeningBuilder } from "@/features/test-builder/listening-builder";
 import { WritingBuilder } from "@/features/test-builder/writing-builder";
 import { BuilderWorkspaceNavigation, type BuilderWorkspace } from "@/features/test-builder/builder-workspace-navigation";
-import { RenameTestHeading } from "@/features/test-builder/rename-test-control";
+import { TestDetailsHeading } from "@/features/test-builder/test-details-heading";
+import { ContentSummary, builderContentSummary } from "@/features/test-builder/content-summary";
 import { getBuilderVersion } from "@/lib/api/builder";
 import { ModuleBadge } from "@/components/ui/module-badge";
 import { ApiError } from "@/lib/api/client";
@@ -39,7 +41,7 @@ export default async function VersionEditorPage({ params, searchParams }: { para
   if (version.test_id !== testId) notFound();
   return (
     <>
-      {version.status === "DRAFT" ? <RenameTestHeading testId={testId} initialTitle={version.test_title} versionNumber={version.version_number} /> : <PageHeading eyebrow="IELTS Studio · Exam Builder" title={version.test_title} description={`Version ${version.version_number} · Structured authoring workspace`} action={<StatusBadge status={version.status} />} />}
+      {version.status === "DRAFT" ? <TestDetailsHeading testId={testId} initialTitle={version.test_title} initialDescription={version.test_description ?? null} versionNumber={version.version_number} /> : <PageHeading eyebrow="IELTS Studio · Exam Builder" title={version.test_title} description={`Version ${version.version_number} · Structured authoring workspace`} action={<StatusBadge status={version.status} />} />}
       <BuilderLifecycleProvider>
         <VersionActions testId={testId} version={version} />
         <div className="builder-workspace">
@@ -55,6 +57,8 @@ export default async function VersionEditorPage({ params, searchParams }: { para
                     <article key={kind} className={`module-overview-card module-card-${kind.toLowerCase()}`}>
                       <div className="flex items-center justify-between gap-3"><ModuleBadge module={kind} /><span className="module-state">{moduleRecord ? "Active" : "Not created"}</span></div>
                       <dl><div><dt>{kind === "READING" ? "Passages" : kind === "LISTENING" ? "Sections" : "Tasks"}</dt><dd>{kind === "LISTENING" ? moduleRecord?.listening_parts.length ?? 0 : kind === "WRITING" ? moduleRecord?.writing_tasks.length ?? 0 : moduleRecord?.passages.length ?? 0}</dd></div><div><dt>{kind === "WRITING" ? "Prompts ready" : "Groups"}</dt><dd>{kind === "WRITING" ? moduleRecord?.writing_tasks.filter((task) => task.prompt.trim()).length ?? 0 : groups}</dd></div></dl>
+                      {moduleRecord ? <p className="section-description">Recommended time: {moduleRecord.recommended_duration_seconds ? `${moduleRecord.recommended_duration_seconds / 60} min` : "Not set"}{version.status === "DRAFT" ? <> · <Link href={`${builderEditPath(testId, versionId)}?workspace=${kind.toLowerCase()}`}>Edit duration</Link></> : null}</p> : null}
+                      <ContentSummary units={builderContentSummary(moduleRecord)} />
                     </article>
                   );
                 })}

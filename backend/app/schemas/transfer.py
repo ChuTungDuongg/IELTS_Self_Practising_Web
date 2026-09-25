@@ -5,6 +5,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from app.domains.writing.task_types import WritingTaskType, validate_task_type
 from app.models.enums import AssetType, ModuleType, VersionStatus
 
 TRANSFER_FORMAT = "devweblocalforielts-test-bundle"
@@ -63,11 +64,17 @@ class PortableListeningPart(BaseModel):
 class PortableWritingTask(BaseModel):
     id: UUID
     task_number: int = Field(ge=1)
+    task_type: WritingTaskType | None = None
     prompt: str = Field(max_length=20_000)
     image_asset_id: UUID | None = None
     minimum_recommended_words: int | None = Field(default=None, ge=1, le=5000)
     recommended_duration_seconds: int | None = Field(default=None, ge=1, le=14_400)
     order_index: int = Field(ge=0)
+
+    @model_validator(mode="after")
+    def validate_type(self) -> "PortableWritingTask":
+        validate_task_type(self.task_number, self.task_type)
+        return self
 
 
 class PortableModule(BaseModel):

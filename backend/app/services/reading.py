@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.exceptions import AppError
+from app.domains.module_durations import default_module_duration
 from app.domains.questions import question_registry
 from app.domains.questions.normalization import (
     normalize_passage_blocks,
@@ -34,6 +35,7 @@ from app.schemas.content import (
     BuilderVersion,
     BuilderWritingTask,
     ModuleCreate,
+    ModuleUpdate,
     PassageUpdate,
     PassageWrite,
     QuestionGroupOrderWrite,
@@ -62,7 +64,9 @@ class ReadingService:
             module = TestModule(
                 module_type=body.module_type,
                 title=body.title,
-                recommended_duration_seconds=body.recommended_duration_seconds,
+                recommended_duration_seconds=(
+                    body.recommended_duration_seconds or default_module_duration(body.module_type)
+                ),
                 order_index=len(version.modules),
             )
             version.modules.append(module)
@@ -87,6 +91,25 @@ class ReadingService:
                 )
             await self.session.flush()
             module_id = module.id
+        version = await TestRepository(self.session).get_version(version_id)
+        assert version is not None
+        return next(item for item in self._present_version(version).modules if item.id == module_id)
+
+    async def update_module(self, module_id: uuid.UUID, body: ModuleUpdate) -> BuilderModule:
+        async with self.session.begin():
+            version_id = await self.session.scalar(
+                select(TestModule.test_version_id).where(TestModule.id == module_id)
+            )
+            if version_id is None:
+                raise AppError("MODULE_NOT_FOUND", "The module does not exist.", 404)
+            await self._draft_version(version_id)
+            module = await self.session.scalar(
+                select(TestModule).where(TestModule.id == module_id).with_for_update()
+            )
+            assert module is not None
+            advance_revision(module, body.expected_revision)
+            module.recommended_duration_seconds = body.recommended_duration_seconds
+            await self.session.flush()
         version = await TestRepository(self.session).get_version(version_id)
         assert version is not None
         return next(item for item in self._present_version(version).modules if item.id == module_id)
@@ -733,6 +756,7 @@ class ReadingService:
             id=version.id,
             test_id=version.test_id,
             test_title=version.test.title,
+            test_description=version.test.description,
             version_number=version.version_number,
             status=version.status,
             modules=[
@@ -765,6 +789,7 @@ class ReadingService:
             id=task.id,
             revision=task.revision,
             task_number=task.task_number,
+            task_type=task.task_type,
             prompt=task.prompt,
             image_asset_id=task.image_asset_id,
             image_asset=(

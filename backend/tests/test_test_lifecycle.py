@@ -55,7 +55,20 @@ async def test_rename_test_updates_only_parent_metadata(db_session: AsyncSession
 
     assert updated.id == test_id
     assert updated.title == "Renamed test"
+    assert updated.description is None
     assert [item.id for item in updated.versions] == [draft_id]
+    await db_session.rollback()
+    described = await LifecycleService(db_session).update_test(
+        test_id, UpdatePayload(description="  A fictional practice test.  ")
+    )
+    assert described.title == "Renamed test"
+    assert described.description == "A fictional practice test."
+    await db_session.rollback()
+    cleared = await LifecycleService(db_session).update_test(
+        test_id, UpdatePayload(description="   ")
+    )
+    assert cleared.description is None
+    assert [item.id for item in cleared.versions] == [draft_id]
     await db_session.rollback()
     with pytest.raises(AppError) as caught:
         await LifecycleService(db_session).update_test(uuid4(), UpdatePayload(title="Missing"))
@@ -88,8 +101,19 @@ async def test_rename_endpoint_validates_title_and_requires_admin(
                 f"/api/v1/tests/{test_id}", json={"title": "  Renamed test  "}
             )
             detail = await client.get(f"/api/v1/tests/{test_id}")
+            description_only = await client.patch(
+                f"/api/v1/tests/{test_id}", json={"description": "  Fictional summary  "}
+            )
+            both = await client.patch(
+                f"/api/v1/tests/{test_id}",
+                json={"title": "  Combined title  ", "description": "  Combined summary  "},
+            )
+            cleared = await client.patch(f"/api/v1/tests/{test_id}", json={"description": "  "})
             blank = await client.patch(f"/api/v1/tests/{test_id}", json={"title": "   "})
             too_long = await client.patch(f"/api/v1/tests/{test_id}", json={"title": "x" * 241})
+            description_too_long = await client.patch(
+                f"/api/v1/tests/{test_id}", json={"description": "x" * 4001}
+            )
             missing = await client.patch(f"/api/v1/tests/{uuid4()}", json={"title": "Missing"})
             app.dependency_overrides[get_current_user] = lambda: user_identity
             forbidden = await client.patch(f"/api/v1/tests/{test_id}", json={"title": "Forbidden"})
@@ -101,8 +125,15 @@ async def test_rename_endpoint_validates_title_and_requires_admin(
     assert renamed.json()["id"] == str(test_id)
     assert [item["id"] for item in renamed.json()["versions"]] == [str(draft_id)]
     assert detail.status_code == 200 and detail.json()["title"] == "Renamed test"
+    assert description_only.status_code == 200
+    assert description_only.json()["description"] == "Fictional summary"
+    assert both.status_code == 200
+    assert both.json()["title"] == "Combined title"
+    assert both.json()["description"] == "Combined summary"
+    assert cleared.status_code == 200 and cleared.json()["description"] is None
     assert blank.status_code == 422
     assert too_long.status_code == 422
+    assert description_too_long.status_code == 422
     assert missing.status_code == 404 and missing.json()["code"] == "TEST_NOT_FOUND"
     assert forbidden.status_code == 403
 

@@ -28,6 +28,7 @@ import { QuestionGroupEditor } from "./question-group-editor";
 import { resolveQuestionGroupInstruction } from "@/features/questions/question-group-instruction";
 import { useBuilderAutosave, useBuilderLifecycle } from "./builder-lifecycle";
 import { AutosaveLink } from "./autosave-link";
+import { ModuleDurationEditor } from "./module-duration-editor";
 
 export function ReadingBuilder({ version }: { version: BuilderVersion }) {
   const router = useRouter();
@@ -151,6 +152,7 @@ export function ReadingBuilder({ version }: { version: BuilderVersion }) {
           <div className="flex flex-wrap gap-2"><AutosaveLink href={builderPreviewPath(version.test_id, version.id, "reading")} className="btn btn-secondary">Preview Reading</AutosaveLink><button onClick={() => void editPassage("new")} className="btn btn-primary"><PlusIcon className="size-4" /> Add passage</button><button onClick={() => setConfirmingModuleDelete(true)} className="btn btn-danger-ghost">Delete module</button></div>
         </div>
 
+        <ModuleDurationEditor module={reading} onPersisted={(saved) => { moduleRevision.current = saved.revision; setSavedModule(saved); }} />
         {duplicateQuestionNumbers.length ? <p role="alert" className="notice notice-error mt-4"><AlertIcon className="mt-0.5 size-4 shrink-0" /> Duplicate displayed question numbers: {duplicateQuestionNumbers.join(", ")}. Renumber before publishing.</p> : null}
         {message ? <p role="alert" className="notice notice-error mt-4"><AlertIcon className="mt-0.5 size-4 shrink-0" /> {message}</p> : null}
         {conflict ? <button type="button" className="btn btn-secondary mt-2" onClick={() => window.location.reload()}>Reload latest</button> : null}

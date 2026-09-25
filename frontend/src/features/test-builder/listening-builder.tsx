@@ -27,6 +27,7 @@ import { builderPreviewPath } from "@/lib/routes";
 import { ApiError } from "@/lib/api/client";
 import { useBuilderAutosave, useBuilderLifecycle } from "./builder-lifecycle";
 import { AutosaveLink } from "./autosave-link";
+import { ModuleDurationEditor } from "./module-duration-editor";
 import { QuestionGroupEditor } from "./question-group-editor";
 
 export function ListeningBuilder({ version }: { version: BuilderVersion }) {
@@ -169,6 +170,7 @@ export function ListeningBuilder({ version }: { version: BuilderVersion }) {
           <div className="flex flex-wrap gap-2"><AutosaveLink href={builderPreviewPath(version.test_id, version.id, "listening")} className="btn btn-secondary">Preview Listening</AutosaveLink><span className="module-state">{parts.reduce((total, item) => total + item.question_groups.reduce((count, group) => count + groupQuestionCount(group), 0), 0)} / 40 questions</span><button onClick={() => setConfirmingModuleDelete(true)} className="btn btn-danger-ghost">Delete module</button></div>
         </div>
 
+        <ModuleDurationEditor module={listening} onPersisted={(saved) => { moduleRevision.current = saved.revision; setSavedModule(saved); }} />
         <div className="listening-part-tabs" role="tablist">
           {parts.map((item, index) => <button key={item.id} role="tab" aria-selected={index === partIndex} onClick={() => void switchPart(index)} className={index === partIndex ? "active" : ""}><b>Section {item.order_index + 1}</b><span>{item.question_groups.reduce((count, group) => count + groupQuestionCount(group), 0)} questions</span></button>)}
         </div>

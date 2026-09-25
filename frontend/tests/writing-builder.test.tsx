@@ -96,6 +96,7 @@ describe("WritingBuilder", () => {
         ...task,
         revision: task.revision + 1,
         prompt: body.prompt,
+        task_type: body.task_type,
         image_asset_id: body.image_asset_id,
         image_asset: body.image_asset_id ? {
           id: body.image_asset_id,
@@ -115,6 +116,19 @@ describe("WritingBuilder", () => {
     renderBuilder(version(false));
     fireEvent.click(screen.getByRole("button", { name: "Create Writing module" }));
     await waitFor(() => expect(createWritingModule).toHaveBeenCalledWith(versionId));
+    expect(refresh).toHaveBeenCalled();
+  });
+
+  it("autosaves a selected Writing type and keeps it visible without reload", async () => {
+    renderBuilder(version());
+    const first = screen.getByRole("group", { name: "Writing Task 1" });
+    const selector = within(first).getByRole("combobox", { name: "Question type" });
+    expect(selector).toHaveValue("");
+    fireEvent.change(selector, { target: { value: "PIE_CHART" } });
+    expect(selector).toHaveValue("PIE_CHART");
+    await waitFor(() => expect(updateWritingTask).toHaveBeenCalledWith(taskOneId, expect.objectContaining({ task_type: "PIE_CHART" })), { timeout: 3000 });
+    await waitFor(() => expect(selector).toHaveValue("PIE_CHART"));
+    expect(within(first).queryByRole("option", { name: "Opinion / Agree or disagree" })).not.toBeInTheDocument();
     expect(refresh).toHaveBeenCalled();
   });
 
@@ -154,6 +168,7 @@ describe("WritingBuilder", () => {
       expect(updateWritingTask).toHaveBeenCalledWith(taskOneId, {
         expected_revision: 1,
         prompt: "Describe the updated fictional chart.",
+        task_type: null,
         image_asset_id: null,
         minimum_recommended_words: 175,
         recommended_duration_seconds: 1500,

@@ -4,6 +4,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.domains.writing.task_types import WritingTaskType, validate_task_type
+
 
 class ImportModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -87,14 +89,21 @@ class ImportSection(ImportModel):
 
 class ImportWritingTask(ImportModel):
     task_number: Literal[1, 2]
+    task_type: WritingTaskType | None = None
     prompt: str = Field(default="", max_length=20_000)
     minimum_recommended_words: int | None = Field(default=None, ge=1, le=5000)
     image: str | None = None
+
+    @model_validator(mode="after")
+    def validate_type(self) -> "ImportWritingTask":
+        validate_task_type(self.task_number, self.task_type)
+        return self
 
 
 class ImportModule(ImportModel):
     type: Literal["READING", "LISTENING", "WRITING"]
     title: str | None = Field(default=None, max_length=240)
+    recommended_duration_seconds: int | None = Field(default=None, ge=1, le=14_400)
     passages: list[ImportPassage] | None = None
     sections: list[ImportSection] | None = None
     tasks: list[ImportWritingTask] | None = None

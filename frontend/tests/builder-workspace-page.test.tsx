@@ -37,20 +37,23 @@ describe("Builder workspace page", () => {
     expect(screen.getByRole("link", { name: /Listening/ })).toHaveAttribute("aria-current", "page");
   });
 
-  it("renames a draft test from its prefilled title and refreshes", async () => {
-    vi.mocked(getBuilderVersion).mockResolvedValue({ id: versionId, test_id: testId, test_title: "Test 2", version_number: 1, status: "DRAFT", modules: [] });
-    vi.mocked(updateTest).mockResolvedValue({ id: testId, title: "Cambridge 11 Test 2", description: null, source_label: null, test_number: null, archived_at: null, created_at: "2026-09-20T00:00:00Z", updated_at: "2026-09-20T00:00:00Z", versions: [] });
+  it("edits draft test details from persisted values and refreshes", async () => {
+    vi.mocked(getBuilderVersion).mockResolvedValue({ id: versionId, test_id: testId, test_title: "Test 2", test_description: "Original summary", version_number: 1, status: "DRAFT", modules: [] });
+    vi.mocked(updateTest).mockResolvedValue({ id: testId, title: "Cambridge 11 Test 2", description: "Updated summary", source_label: null, test_number: null, archived_at: null, created_at: "2026-09-20T00:00:00Z", updated_at: "2026-09-20T00:00:00Z", versions: [] });
     render(await VersionEditorPage({ params: Promise.resolve({ testId, versionId }) }));
 
-    fireEvent.click(screen.getByRole("button", { name: "Rename test" }));
-    const input = screen.getByRole("textbox", { name: "Test title" });
+    fireEvent.click(screen.getByRole("button", { name: "Edit test details" }));
+    const input = screen.getByRole("textbox", { name: "Test name" });
     expect(input).toHaveValue("Test 2");
+    expect(screen.getByRole("textbox", { name: "Description" })).toHaveValue("Original summary");
     fireEvent.change(input, { target: { value: "   " } });
     expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
     fireEvent.change(input, { target: { value: "  Cambridge 11 Test 2  " } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Description" }), { target: { value: "  Updated summary  " } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    await waitFor(() => expect(updateTest).toHaveBeenCalledWith(testId, { title: "Cambridge 11 Test 2" }));
+    await waitFor(() => expect(updateTest).toHaveBeenCalledWith(testId, { title: "Cambridge 11 Test 2", description: "Updated summary" }));
     await waitFor(() => expect(screen.getByRole("heading", { name: "Cambridge 11 Test 2" })).toBeInTheDocument());
+    expect(screen.getByText("Updated summary")).toBeInTheDocument();
     expect(navigation.refresh).toHaveBeenCalledOnce();
   });
 
@@ -58,21 +61,44 @@ describe("Builder workspace page", () => {
     vi.mocked(getBuilderVersion).mockResolvedValue({ id: versionId, test_id: testId, test_title: "Test 2", version_number: 1, status: "DRAFT", modules: [] });
     vi.mocked(updateTest).mockRejectedValue(new Error("Rename failed"));
     render(await VersionEditorPage({ params: Promise.resolve({ testId, versionId }) }));
-    fireEvent.click(screen.getByRole("button", { name: "Rename test" }));
+    fireEvent.click(screen.getByRole("button", { name: "Edit test details" }));
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(updateTest).not.toHaveBeenCalled();
     expect(screen.getByRole("heading", { name: "Test 2" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Rename test" }));
-    fireEvent.change(screen.getByRole("textbox", { name: "Test title" }), { target: { value: "New title" } });
+    fireEvent.click(screen.getByRole("button", { name: "Edit test details" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Test name" }), { target: { value: "New title" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Rename failed");
     expect(screen.getByRole("heading", { name: "Test 2" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Test name" })).toHaveValue("New title");
   });
 
   it("does not expose rename on a published Builder", async () => {
     vi.mocked(getBuilderVersion).mockResolvedValue({ id: versionId, test_id: testId, test_title: "Published test", version_number: 1, status: "PUBLISHED", modules: [] });
     render(await VersionEditorPage({ params: Promise.resolve({ testId, versionId }) }));
-    expect(screen.queryByRole("button", { name: "Rename test" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit test details" })).not.toBeInTheDocument();
+  });
+
+  it("shows passage, section, question-type, and Writing tags in the overview", async () => {
+    const question = { id: crypto.randomUUID(), number: 1, prompt: "Fictional prompt", config: {}, answer_key: {}, explanation: null, order_index: 0 };
+    const group = { id: crypto.randomUUID(), revision: 1, question_type: "matching" as const, instruction: "", config: {}, order_index: 0, questions: [question], image_asset_id: null, image_asset: null };
+    vi.mocked(getBuilderVersion).mockResolvedValue({
+      id: versionId, test_id: testId, test_title: "Fictional test", version_number: 1, status: "DRAFT",
+      modules: [
+        { id: crypto.randomUUID(), revision: 1, module_type: "READING", title: "Reading", recommended_duration_seconds: 3600, audio_asset: null, passages: [{ id: crypto.randomUUID(), revision: 1, title: "A fictional ship", order_index: 0, blocks: [], question_groups: [group, { ...group, id: crypto.randomUUID(), order_index: 1 }] }], listening_parts: [], writing_tasks: [] },
+        { id: crypto.randomUUID(), revision: 1, module_type: "LISTENING", title: "Listening", recommended_duration_seconds: 1800, audio_asset: null, passages: [], listening_parts: [{ id: crypto.randomUUID(), revision: 1, title: "A fictional tour", order_index: 0, question_groups: [{ ...group, id: crypto.randomUUID(), question_type: "note_completion" }] }], writing_tasks: [] },
+        { id: crypto.randomUUID(), revision: 1, module_type: "WRITING", title: "Writing", recommended_duration_seconds: 3600, audio_asset: null, passages: [], listening_parts: [], writing_tasks: [{ id: crypto.randomUUID(), revision: 1, task_number: 1, task_type: "PIE_CHART", prompt: "Describe fictional data.", image_asset_id: null, image_asset: null, minimum_recommended_words: 150, recommended_duration_seconds: 1200, order_index: 0 }] },
+      ],
+    });
+    render(await VersionEditorPage({ params: Promise.resolve({ testId, versionId }) }));
+    expect(screen.getAllByText(/Recommended time: 60 min/)).toHaveLength(2);
+    expect(screen.getByText(/Recommended time: 30 min/)).toBeInTheDocument();
+    expect(screen.getAllByRole("link", { name: "Edit duration" })).toHaveLength(3);
+    expect(screen.getByText("A fictional ship")).toBeInTheDocument();
+    expect(screen.getAllByText("Matching")).toHaveLength(1);
+    expect(screen.getByText("A fictional tour")).toBeInTheDocument();
+    expect(screen.getByText("Note Completion")).toBeInTheDocument();
+    expect(screen.getByText("Pie chart")).toBeInTheDocument();
   });
 
   it("opens the Writing workspace without a module", async () => {

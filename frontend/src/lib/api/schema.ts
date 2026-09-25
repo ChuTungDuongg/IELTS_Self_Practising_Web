@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { writingTaskTypeSchema } from "@/features/writing/task-types";
 
 export const versionSchema = z.object({
   id: z.string().uuid(),
@@ -29,6 +30,17 @@ export const moduleSchema = z.object({
   listening_part_count: z.number().int(),
   writing_task_count: z.number().int(),
   question_count: z.number().int(),
+  reading_passages: z.array(z.object({
+    title: z.string(), order_index: z.number().int(),
+    question_groups: z.array(z.object({ question_type: z.string(), start_number: z.number().int(), end_number: z.number().int() })),
+  })).optional(),
+  listening_sections: z.array(z.object({
+    title: z.string().nullable(), order_index: z.number().int(),
+    question_groups: z.array(z.object({ question_type: z.string(), start_number: z.number().int(), end_number: z.number().int() })),
+  })).optional(),
+  writing_tasks: z.array(z.object({
+    task_number: z.number().int(), task_type: writingTaskTypeSchema.nullable(), prompt_excerpt: z.string().nullable(),
+  })).optional(),
 });
 
 export const versionDetailSchema = versionSchema.extend({

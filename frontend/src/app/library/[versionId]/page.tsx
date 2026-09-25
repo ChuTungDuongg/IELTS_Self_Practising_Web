@@ -6,6 +6,7 @@ import { StartAttempt } from "@/features/exam/start-attempt";
 import { StartFullMock } from "@/features/exam/start-full-mock";
 import { getTest, getVersion } from "@/lib/api/tests";
 import { serverApiRequest } from "@/lib/api/server-client";
+import { ContentSummary, publishedContentSummary } from "@/features/test-builder/content-summary";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +21,7 @@ export default async function TestVersionLibraryPage({ params }: { params: Promi
   if (!test) notFound();
   const modules = [...version.modules].sort((left, right) => moduleOrder[left.module_type] - moduleOrder[right.module_type]);
   const missing = (["LISTENING", "READING", "WRITING"] as const).find((type) => !modules.some((item) => item.module_type === type));
-  const missingDuration = modules.find((item) => !item.recommended_duration_seconds);
+  const missingDuration = modules.find((item) => !item.recommended_duration_seconds || item.recommended_duration_seconds <= 0);
   const readinessWarnings = modules.filter((item) => (item.module_type === "READING" || item.module_type === "LISTENING") && item.question_count !== 40).map((item) => `${moduleLabel[item.module_type]} has ${item.question_count} questions. An official band will not be calculated.`);
 
   return <>
@@ -38,6 +39,7 @@ export default async function TestVersionLibraryPage({ params }: { params: Promi
             <div><dt>{module.module_type === "WRITING" ? "Tasks" : "Questions"}</dt><dd>{module.module_type === "WRITING" ? module.writing_task_count : module.question_count}</dd></div>
             <div><dt>{module.module_type === "LISTENING" ? "Sections" : module.module_type === "WRITING" ? "Suggested time" : "Passages"}</dt><dd>{module.module_type === "LISTENING" ? module.listening_part_count : module.module_type === "WRITING" ? `${Math.round((module.recommended_duration_seconds ?? 3600) / 60)} min` : module.passage_count}</dd></div>
           </dl>
+          <ContentSummary units={publishedContentSummary(module)} />
           <StartAttempt versionId={version.id} module={module.module_type} />
         </div>
       </article>)}
