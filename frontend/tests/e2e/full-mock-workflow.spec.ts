@@ -49,7 +49,9 @@ test("completes fictional Full Mock in Listening, Reading, Writing order and unl
     const lockedPage = await page.request.get(`${new URL(page.url()).origin}/review/${listeningId}`);
     expect(lockedPage.status()).toBe(404);
     await page.goto("/history");
-    const inProgressCard = page.locator(".history-group-card").filter({ hasText: exam.title });
+    await page.getByRole("tab", { name: "By mock test" }).click();
+    const mockHistory = page.getByRole("tabpanel", { name: "By mock test" });
+    const inProgressCard = mockHistory.locator(".history-group-card").filter({ hasText: exam.title });
     await expect(inProgressCard).toContainText("In progress");
     await expect(inProgressCard.getByRole("link", { name: "Review Listening" })).toHaveCount(0);
     await page.goto(`/test-session/${sessionId}`);
@@ -83,8 +85,8 @@ test("completes fictional Full Mock in Listening, Reading, Writing order and unl
     expect(unlockedPage.ok()).toBe(true);
 
     await page.goto("/history");
-    await expect(page.getByRole("heading", { name: "Full Mock sessions" })).toBeVisible();
-    const completedCard = page.locator(".history-group-card").filter({ hasText: exam.title });
+    await page.getByRole("tab", { name: "By mock test" }).click();
+    const completedCard = mockHistory.locator(".history-group-card").filter({ hasText: exam.title });
     await expect(completedCard).toContainText("Full Mock");
     await expect(completedCard.getByRole("link", { name: "Review Listening" })).toBeVisible();
     await completedCard.getByRole("link", { name: "Review Listening" }).click();
