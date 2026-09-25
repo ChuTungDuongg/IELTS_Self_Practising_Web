@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { questionRegistry } from "@/features/questions/registry";
+import { noteCompletionIntegrityErrors } from "@/features/questions/note-completion";
 import type { ExamGroup, QuestionGroupModel } from "@/features/questions/types";
 import { QuestionGroupEditor } from "@/features/test-builder/question-group-editor";
 
@@ -88,6 +89,31 @@ function noteGroup(): QuestionGroupModel {
   };
 }
 
+function tenGapGroup(): QuestionGroupModel {
+  const group = noteGroup();
+  const layout = group.config.layout as TestNoteLayout;
+  group.questions = Array.from({ length: 10 }, (_, order_index) => ({
+    id: crypto.randomUUID(),
+    number: order_index + 1,
+    prompt: "Note gap",
+    config: { max_words: 2, max_numbers: 1 },
+    answer_key: { kind: "TEXT", accepted: [], case_sensitive: false },
+    order_index,
+  }));
+  layout.title = "Community club enquiry";
+  layout.blocks = [{
+    id: crypto.randomUUID(), style: "TEXT", indent: 0,
+    segments: [
+      { id: crypto.randomUUID(), type: "TEXT", text: "Enquiry " },
+      ...group.questions.flatMap((question) => [
+        { id: crypto.randomUUID(), type: "GAP" as const, question_id: question.id! },
+        { id: crypto.randomUUID(), type: "TEXT" as const, text: " " },
+      ]),
+    ],
+  }];
+  return group;
+}
+
 function EditorHarness({
   initial = questionRegistry.note_completion.createDefault(11),
   baseQuestionNumber = 11,
@@ -111,6 +137,99 @@ function typeEditable(editor: HTMLElement, text: string) {
 }
 
 describe("note completion", () => {
+  it("allows ten blank answer keys while rejecting broken gap references", () => {
+    const group = tenGapGroup();
+    expect(noteCompletionIntegrityErrors(group)).toEqual([]);
+    group.questions[0].answer_key = { kind: "TEXT", accepted: ["fixture"], case_sensitive: false };
+    expect(noteCompletionIntegrityErrors(group)).toEqual([]);
+
+    const layout = group.config.layout as TestNoteLayout;
+    const firstGap = layout.blocks[0].segments.find((segment) => segment.type === "GAP")!;
+    layout.blocks[0].segments.push({ id: crypto.randomUUID(), type: "GAP", question_id: firstGap.type === "GAP" ? firstGap.question_id : "" });
+    expect(noteCompletionIntegrityErrors(group)).toContain("Every Note question must be linked to exactly one gap.");
+  });
+
+  it("saves one answer in a ten-gap draft without requiring the other nine", async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const view = render(<QuestionGroupEditor initial={tenGapGroup()} nextQuestionNumber={11} baseQuestionNumber={1} passageBlocks={[]} onCancel={vi.fn()} onSave={onSave} />);
+
+    expect(screen.getByRole("button", { name: "Save now" })).toBeEnabled();
+    expect(screen.queryByText("Every Note gap needs a valid text answer key.")).not.toBeInTheDocument();
+    fireEvent.change(screen.getByRole("textbox", { name: "Correct answer" }), { target: { value: "fixture" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save now" }));
+
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    expect(onSave.mock.calls[0][0].questions.map((question: { answer_key: { accepted: string[] } }) => question.answer_key.accepted)).toEqual([
+      ["fixture"], [], [], [], [], [], [], [], [], [],
+    ]);
+    view.unmount();
+    render(<EditorHarness initial={onSave.mock.calls[0][0]} baseQuestionNumber={1} />);
+    expect(screen.getByRole("textbox", { name: "Correct answer" })).toHaveValue("fixture");
+  });
+
+  it("blocks saving an unknown gap reference as structural corruption", () => {
+    const group = tenGapGroup();
+    const layout = group.config.layout as TestNoteLayout;
+    const firstGap = layout.blocks[0].segments.find((segment) => segment.type === "GAP")!;
+    if (firstGap.type === "GAP") firstGap.question_id = crypto.randomUUID();
+    render(<QuestionGroupEditor initial={group} nextQuestionNumber={11} baseQuestionNumber={1} passageBlocks={[]} onCancel={vi.fn()} onSave={vi.fn()} />);
+
+    expect(screen.getByRole("button", { name: "Save now" })).toBeDisabled();
+    expect(screen.getByRole("alert")).toHaveTextContent("Every Note question must be linked to exactly one gap.");
+  });
+
+  it("navigates the visual gap order, preserves all questions, and focuses the next answer", () => {
+    const group = tenGapGroup();
+    const layout = group.config.layout as TestNoteLayout;
+    const before = JSON.stringify(group);
+    render(<EditorHarness initial={group} baseQuestionNumber={1} />);
+
+    expect(screen.getByText("Q1 · 1 of 10")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "← Previous" })).toBeDisabled();
+    fireEvent.change(screen.getByRole("textbox", { name: "Correct answer" }), { target: { value: "first" } });
+    fireEvent.click(screen.getByRole("button", { name: "Next →" }));
+    expect(screen.getByText("Q2 · 2 of 10")).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Correct answer" })).toHaveFocus();
+    fireEvent.change(screen.getByRole("textbox", { name: "Correct answer" }), { target: { value: "second" } });
+    expect(currentGroup().questions.slice(0, 2).map((question) => question.answer_key.accepted)).toEqual([["first"], ["second"]]);
+    fireEvent.click(screen.getByRole("button", { name: "← Previous" }));
+    expect(screen.getByText("Q1 · 1 of 10")).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Correct answer" })).toHaveValue("first");
+
+    for (let index = 1; index < 10; index += 1) fireEvent.click(screen.getByRole("button", { name: "Next →" }));
+    expect(screen.getByText("Q10 · 10 of 10")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Next →" })).toBeDisabled();
+    expect(currentGroup().questions.map(({ id, number, order_index }) => ({ id, number, order_index }))).toEqual(group.questions.map(({ id, number, order_index }) => ({ id, number, order_index })));
+    expect(JSON.stringify(layout)).toBe(JSON.stringify((currentGroup().config.layout as TestNoteLayout)));
+    expect(before).toContain("Community club enquiry");
+  });
+
+  it("uses gap traversal rather than input question array order", () => {
+    const group = noteGroup();
+    group.questions = [...group.questions].reverse();
+    render(<EditorHarness initial={group} baseQuestionNumber={11} />);
+    expect(screen.getByText("Q11 · 1 of 2")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Next →" }));
+    expect(screen.getByText("Q12 · 2 of 2")).toBeInTheDocument();
+  });
+
+  it("keeps the selected gap after a successful save response", async () => {
+    const group = tenGapGroup();
+    group.revision = 1;
+    const onAutosave = vi.fn().mockImplementation(async (value: QuestionGroupModel) => ({ ...value, revision: 2 }));
+    render(<QuestionGroupEditor initial={group} nextQuestionNumber={11} baseQuestionNumber={1} passageBlocks={[]} onCancel={vi.fn()} onSave={vi.fn()} onAutosave={onAutosave} />);
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Correct answer" }), { target: { value: "first" } });
+    fireEvent.click(screen.getByRole("button", { name: "Next →" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Correct answer" }), { target: { value: "second" } });
+    fireEvent.click(screen.getByRole("button", { name: "Next →" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save now" }));
+
+    await waitFor(() => expect(onAutosave).toHaveBeenCalledTimes(1));
+    expect(onAutosave.mock.calls[0][0].questions.slice(0, 2).map((question: { answer_key: { accepted: string[] } }) => question.answer_key.accepted)).toEqual([["first"], ["second"]]);
+    expect(screen.getByText("Q3 · 3 of 10")).toBeInTheDocument();
+  });
+
   it("starts as one blank text block with zero questions and hides generic Add question", () => {
     const group = questionRegistry.note_completion.createDefault(11);
     const layout = group.config.layout as TestNoteLayout;
@@ -334,7 +453,7 @@ describe("note completion", () => {
       number: 11,
       order_index: 0,
       config: { max_words: 2, max_numbers: 1 },
-      answer_key: { kind: "TEXT", accepted: ["answer"], case_sensitive: false },
+      answer_key: { kind: "TEXT", accepted: [], case_sensitive: false },
     });
     expect(JSON.stringify(group)).not.toContain("{{gap}}");
     expect(screen.getByLabelText("Question 11 note gap inspector")).toBeInTheDocument();

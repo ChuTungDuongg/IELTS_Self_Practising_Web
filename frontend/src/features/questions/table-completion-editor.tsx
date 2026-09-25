@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
+import { GapQuestionNavigator } from "./gap-question-navigator";
 import type {
   QuestionGroupModel,
   QuestionModel,
@@ -67,11 +68,24 @@ export function TableCompletionEditor({ group, onChange, baseQuestionNumber }: E
   const [insertionPoint, setInsertionPoint] = useState<InsertionPoint>({ cellId: firstCellId });
   const [selectedQuestionId, setSelectedQuestionId] = useState(firstGapId);
   const [draggingSegmentId, setDraggingSegmentId] = useState("");
+  const answerInput = useRef<HTMLInputElement>(null);
+  const focusAnswerOnNavigate = useRef(false);
 
+  useLayoutEffect(() => {
+    if (!focusAnswerOnNavigate.current) return;
+    answerInput.current?.focus();
+    focusAnswerOnNavigate.current = false;
+  }, [selectedQuestionId]);
+
+  const orderedQuestions = layout.rows.flatMap((row) => row.cells)
+    .flatMap((cell) => cell.segments)
+    .filter((segment) => segment.type === "GAP")
+    .flatMap((gap) => {
+      const question = group.questions.find((item) => item.id === gap.question_id);
+      return question ? [question] : [];
+    });
   const selectedQuestion = group.questions.find((question) => question.id === selectedQuestionId);
-  const selectedQuestionIndex = selectedQuestion
-    ? group.questions.findIndex((question) => question.id === selectedQuestion.id)
-    : -1;
+  const selectedQuestionIndex = orderedQuestions.findIndex((question) => question.id === selectedQuestionId);
 
   function commit(nextLayout: TableCompletionLayout, questions = group.questions) {
     onChange({ ...group, config: { ...group.config, layout: nextLayout }, questions });
@@ -131,7 +145,7 @@ export function TableCompletionEditor({ group, onChange, baseQuestionNumber }: E
       number: highestNumber + 1,
       prompt: "Table gap",
       config: { max_words: 2, max_numbers: 1 },
-      answer_key: { kind: "TEXT", accepted: ["sample answer"], case_sensitive: false },
+      answer_key: { kind: "TEXT", accepted: [], case_sensitive: false },
       order_index: group.questions.length,
     };
     setSelectedQuestionId(questionId);
@@ -364,9 +378,18 @@ export function TableCompletionEditor({ group, onChange, baseQuestionNumber }: E
               }}
             >Remove gap</button>
           </div>
+          <GapQuestionNavigator
+            questions={orderedQuestions}
+            selectedQuestionId={selectedQuestion.id!}
+            onSelect={(questionId) => {
+              focusAnswerOnNavigate.current = true;
+              setSelectedQuestionId(questionId);
+            }}
+          />
           <div className="table-gap-inspector-grid">
             <label className="field-label sm:col-span-2">Correct answer
               <input
+                ref={answerInput}
                 aria-label="Correct answer"
                 className="field"
                 value={accepted[0] ?? ""}

@@ -63,7 +63,7 @@ export type QuestionTypeDefinition = {
 };
 
 const optionSchema = z.object({ id: z.string().uuid(), label: z.string().min(1), text: z.string().min(1) });
-const textQuestion = (number: number) => ({ id: crypto.randomUUID(), number, prompt: "Answer", config: { max_words: 2, max_numbers: 1 }, answer_key: { kind: "TEXT", accepted: ["sample answer"], case_sensitive: false }, order_index: 0 });
+const textQuestion = (number: number) => ({ id: crypto.randomUUID(), number, prompt: "Answer", config: { max_words: 2, max_numbers: 1 }, answer_key: { kind: "TEXT", accepted: [] as string[], case_sensitive: false }, order_index: 0 });
 const newOptions = () => [{ id: crypto.randomUUID(), label: "A", text: "Option A" }, { id: crypto.randomUUID(), label: "B", text: "Option B" }, { id: crypto.randomUUID(), label: "C", text: "Option C" }];
 const staticInstruction = (intro: string, options?: QuestionInstruction["options"]) => () => ({ intro, options });
 const readingPassage = ({ passageNumber }: InstructionContext) => passageNumber ? `Reading Passage ${passageNumber}` : "the reading passage";

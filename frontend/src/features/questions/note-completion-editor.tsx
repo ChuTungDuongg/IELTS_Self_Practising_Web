@@ -3,6 +3,7 @@
 import { useLayoutEffect, useRef, useState, type ComponentProps, type MouseEvent as ReactMouseEvent } from "react";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import type { EditorProps } from "./editors";
+import { GapQuestionNavigator } from "./gap-question-navigator";
 import { normalizeNoteCompletionOrder } from "./note-completion";
 import type {
   NoteBlockStyle,
@@ -65,6 +66,14 @@ export function NoteCompletionEditor({ group, onChange, baseQuestionNumber }: Ed
   const [draggedGapId, setDraggedGapId] = useState("");
   const [dropCaret, setDropCaret] = useState<DropCaret | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget>(null);
+  const answerInput = useRef<HTMLInputElement>(null);
+  const focusAnswerOnNavigate = useRef(false);
+
+  useLayoutEffect(() => {
+    if (!focusAnswerOnNavigate.current) return;
+    answerInput.current?.focus();
+    focusAnswerOnNavigate.current = false;
+  }, [selectedGapId]);
 
   useLayoutEffect(() => {
     const target = pendingFocus.current;
@@ -165,7 +174,7 @@ export function NoteCompletionEditor({ group, onChange, baseQuestionNumber }: Ed
       number: (baseQuestionNumber ?? 1) + group.questions.length + offset,
       prompt: "Note gap",
       config: { max_words: 2, max_numbers: 1 },
-      answer_key: { kind: "TEXT", accepted: ["answer"], case_sensitive: false },
+      answer_key: { kind: "TEXT", accepted: [], case_sensitive: false },
       order_index: group.questions.length + offset,
     };
   }
@@ -344,6 +353,12 @@ export function NoteCompletionEditor({ group, onChange, baseQuestionNumber }: Ed
     commit({ ...layout, blocks });
   }
 
+  const visualGaps = layout.blocks.flatMap((block) => block.segments)
+    .filter((segment) => segment.type === "GAP");
+  const orderedQuestions = visualGaps.flatMap((gap) => {
+    const question = group.questions.find((item) => item.id === gap.question_id);
+    return question ? [question] : [];
+  });
   const selectedGap = layout.blocks.flatMap((block) => block.segments)
     .find((segment) => segment.id === selectedGapId && segment.type === "GAP");
   const selectedQuestion = selectedGap?.type === "GAP"
@@ -479,8 +494,18 @@ export function NoteCompletionEditor({ group, onChange, baseQuestionNumber }: Ed
             <div><span className="page-eyebrow">Selected gap</span><h3>Question {selectedQuestion.number}</h3></div>
             <button type="button" className="btn btn-danger-ghost" onClick={() => setDeleteTarget({ kind: "gap", segmentId: selectedGap.id, questionId: selectedQuestion.id! })}>Remove gap</button>
           </div>
+          <GapQuestionNavigator
+            questions={orderedQuestions}
+            selectedQuestionId={selectedQuestion.id!}
+            onSelect={(questionId) => {
+              const gap = visualGaps.find((item) => item.question_id === questionId);
+              if (!gap) return;
+              focusAnswerOnNavigate.current = true;
+              setSelectedGapId(gap.id);
+            }}
+          />
           <div className="note-gap-inspector-grid">
-            <label className="field-label sm:col-span-2">Correct answer<input aria-label="Correct answer" className="field" value={accepted[0] ?? ""} onChange={(event) => updateSelected({ answer_key: { kind: "TEXT", accepted: [event.target.value, ...accepted.slice(1)], case_sensitive: Boolean(selectedQuestion.answer_key.case_sensitive) } })} /></label>
+            <label className="field-label sm:col-span-2">Correct answer<input ref={answerInput} aria-label="Correct answer" className="field" value={accepted[0] ?? ""} onChange={(event) => updateSelected({ answer_key: { kind: "TEXT", accepted: [event.target.value, ...accepted.slice(1)], case_sensitive: Boolean(selectedQuestion.answer_key.case_sensitive) } })} /></label>
             <div className="sm:col-span-2"><p className="field-label">Alternative answers</p>
               {accepted.slice(1).map((answer, index) => <div key={index} className="mt-2 flex gap-2"><input aria-label={`Alternative answer ${index + 1}`} className="field" value={answer} onChange={(event) => { const next = [...accepted]; next[index + 1] = event.target.value; updateSelected({ answer_key: { kind: "TEXT", accepted: next, case_sensitive: Boolean(selectedQuestion.answer_key.case_sensitive) } }); }} /><button type="button" className="btn btn-danger-ghost" onClick={() => updateSelected({ answer_key: { kind: "TEXT", accepted: accepted.filter((_, answerIndex) => answerIndex !== index + 1), case_sensitive: Boolean(selectedQuestion.answer_key.case_sensitive) } })}>Remove</button></div>)}
               <button type="button" className="btn btn-secondary mt-2" onClick={() => updateSelected({ answer_key: { kind: "TEXT", accepted: [...accepted, ""], case_sensitive: Boolean(selectedQuestion.answer_key.case_sensitive) } })}>+ Add alternative answer</button>

@@ -9,6 +9,11 @@ import type { ExamGroup } from "@/features/questions/types";
 
 describe("question registry", () => {
   afterEach(() => vi.useRealTimers());
+  it("starts text-answer completion families without fabricated official answers", () => {
+    for (const type of ["text_completion", "table_completion", "form_completion", "flow_chart_completion", "summary_completion", "sentence_completion", "short_answer", "diagram_labelling"] as const) {
+      expect(questionRegistry[type].createDefault(31).questions[0].answer_key).toEqual({ kind: "TEXT", accepted: [], case_sensitive: false });
+    }
+  });
   const imageAsset = {
     id: crypto.randomUUID(),
     original_name: "fictional-map.png",
@@ -358,6 +363,34 @@ describe("question registry", () => {
     expect(updated.config.blocks[0].segments[2].text).toBe(" of income");
     expect(updated.config.blocks[0].segments[1].question_id).toBe(updated.questions[0].id);
     expect(updated.questions[0].number).toBe(11);
+    expect(updated.questions[0].answer_key.accepted).toEqual([]);
+  });
+
+  it("navigates linked text answer cards and keeps Edit answer available", () => {
+    const group = questionRegistry.text_completion.createDefault(31);
+    const second = { ...questionRegistry.text_completion.createDefault(32).questions[0], order_index: 1 };
+    group.questions.push(second);
+    (group.config.blocks as Array<{ segments: Array<Record<string, unknown>> }>)[0].segments.push(
+      { id: crypto.randomUUID(), type: "TEXT", text: " and " },
+      { id: crypto.randomUUID(), type: "GAP", question_id: second.id },
+    );
+    render(<TextCompletionEditor group={group} onChange={vi.fn()} baseQuestionNumber={31} />);
+
+    const firstEditor = screen.getByLabelText("Question 31 answer editor");
+    const secondEditor = screen.getByLabelText("Question 32 answer editor");
+    expect(within(firstEditor).getByText("Q31 · 1 of 2")).toBeInTheDocument();
+    expect(within(firstEditor).getByRole("button", { name: "← Previous" })).toBeDisabled();
+    fireEvent.click(within(firstEditor).getByRole("button", { name: "Next →" }));
+    expect(within(secondEditor).getByLabelText("Correct answer")).toHaveFocus();
+    expect(within(secondEditor).getByRole("button", { name: "Next →" })).toBeDisabled();
+    fireEvent.click(within(secondEditor).getByRole("button", { name: "← Previous" }));
+    expect(within(firstEditor).getByLabelText("Correct answer")).toHaveFocus();
+    fireEvent.click(screen.getByRole("button", { name: "Gap question 31" }));
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: scrollIntoView });
+    fireEvent.click(screen.getByRole("button", { name: "Edit answer" }));
+    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "center" });
+    Reflect.deleteProperty(HTMLElement.prototype, "scrollIntoView");
   });
 
   it("uses the module-global Q11-Q13 range and preserves it through save and reload", async () => {

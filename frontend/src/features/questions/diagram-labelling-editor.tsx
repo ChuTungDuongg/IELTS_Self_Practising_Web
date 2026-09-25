@@ -138,7 +138,7 @@ export function DiagramLabellingEditor({ group, onChange, baseQuestionNumber }: 
       number,
       prompt: "Diagram label {{gap}}",
       config: { max_words: 2, max_numbers: 1 },
-      answer_key: { kind: "TEXT", accepted: ["sample answer"], case_sensitive: false },
+      answer_key: { kind: "TEXT", accepted: [], case_sensitive: false },
       order_index: group.questions.length,
     };
     const next = appendDiagramQuestion(group, question);

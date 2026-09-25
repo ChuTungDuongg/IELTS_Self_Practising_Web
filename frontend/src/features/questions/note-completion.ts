@@ -40,13 +40,6 @@ export function noteCompletionIntegrityErrors(group: QuestionGroupModel): string
   if (layout.blocks.some((block) => block.indent < 0 || block.indent > 3)) {
     errors.add("Note indentation must be between 0 and 3.");
   }
-  if (group.questions.some((question) => (
-    question.answer_key.kind !== "TEXT"
-    || !Array.isArray(question.answer_key.accepted)
-    || !(question.answer_key.accepted as unknown[]).some((answer) => typeof answer === "string" && answer.trim())
-  ))) {
-    errors.add("Every Note gap needs a valid text answer key.");
-  }
   return [...errors];
 }
 

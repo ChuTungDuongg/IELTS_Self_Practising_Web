@@ -94,9 +94,31 @@ describe("table completion", () => {
     expect(group.questions[1]).toMatchObject({
       number: 31,
       order_index: 1,
-      answer_key: { kind: "TEXT", accepted: ["sample answer"], case_sensitive: false },
+      answer_key: { kind: "TEXT", accepted: [], case_sensitive: false },
     });
     expect(screen.getByLabelText("Question 31 table gap inspector")).toBeInTheDocument();
+  });
+
+  it("navigates table gaps in row and cell order without changing layout", () => {
+    const group = tableGroup();
+    const layout = layoutOf(group);
+    const second = { ...questionRegistry.table_completion.createDefault(31).questions[0], order_index: 1 };
+    const firstGap = layout.rows[0].cells[1].segments.find((segment) => segment.type === "GAP")!;
+    layout.rows[0].cells[0].segments.push({ id: crypto.randomUUID(), type: "GAP", question_id: group.questions[0].id! });
+    if (firstGap.type === "GAP") firstGap.question_id = second.id!;
+    group.questions = [second, group.questions[0]];
+    const originalLayout = JSON.stringify(layout);
+    render(<EditorHarness initial={group} />);
+
+    expect(screen.getByText("Q30 · 1 of 2")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "← Previous" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Next →" }));
+    expect(screen.getByText("Q31 · 2 of 2")).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Correct answer" })).toHaveFocus();
+    expect(screen.getByRole("button", { name: "Next →" })).toBeDisabled();
+    expect(JSON.stringify(layoutOf())).toBe(originalLayout);
+    fireEvent.click(screen.getByRole("button", { name: "← Previous" }));
+    expect(screen.getByText("Q30 · 1 of 2")).toBeInTheDocument();
   });
 
   it("drags a gap to another cell without changing its question UUID or answer key", () => {

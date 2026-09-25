@@ -202,7 +202,7 @@ export function TextCompletionCanvas({
       number: (baseQuestionNumber ?? 1) + group.questions.length,
       prompt: "Answer",
       config: { max_words: 2, max_numbers: 1 },
-      answer_key: { kind: "TEXT", accepted: ["answer"], case_sensitive: false },
+      answer_key: { kind: "TEXT", accepted: [], case_sensitive: false },
       order_index: group.questions.length,
     };
     const gap: TextCompletionSegment = {

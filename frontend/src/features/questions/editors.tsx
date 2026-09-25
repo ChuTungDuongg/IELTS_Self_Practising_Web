@@ -5,6 +5,7 @@ import type { Option, PassageBlock, QuestionGroupModel, QuestionModel, TextCompl
 import { assetContentUrl } from "@/lib/api/assets";
 import { normalizeTextCompletionOrder, TextCompletionCanvas } from "./text-completion-canvas";
 import { TrashIcon } from "@/components/ui/icons";
+import { GapQuestionNavigator } from "./gap-question-navigator";
 
 /* eslint-disable @next/next/no-img-element -- builder previews preserve uploaded image aspect ratios */
 
@@ -209,13 +210,19 @@ export function TextCompletionEditor(props: EditorProps) {
 
 function TextAnswerEditors(props: EditorProps) {
   const { group, onChange } = props;
+  const orderedQuestions = [...group.questions].sort((first, second) => first.order_index - second.order_index);
   return (
     <div className="space-y-4">
       {group.questions.map((question, index) => (
         <fieldset id={`text-answer-${question.id}`} key={question.id} className="question-editor-card scroll-mt-6" aria-label={`Question ${question.number} answer editor`}>
           <div className="question-editor-header"><span className="question-number">Q{question.number}</span><p>Answer key</p></div>
+          <GapQuestionNavigator
+            questions={orderedQuestions}
+            selectedQuestionId={question.id!}
+            onSelect={(questionId) => document.getElementById(`text-answer-${questionId}`)?.querySelector<HTMLInputElement>("[data-correct-answer]")?.focus()}
+          />
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            <label className="field-label sm:col-span-2">Correct answer<input value={String((question.answer_key.accepted as string[] | undefined)?.[0] ?? "")} onChange={(event) => onChange(updateQuestion(group, index, { answer_key: { kind: "TEXT", accepted: [event.target.value, ...((question.answer_key.accepted as string[] | undefined) ?? []).slice(1)], case_sensitive: Boolean(question.answer_key.case_sensitive) } }))} className="field" /></label>
+            <label className="field-label sm:col-span-2">Correct answer<input data-correct-answer value={String((question.answer_key.accepted as string[] | undefined)?.[0] ?? "")} onChange={(event) => onChange(updateQuestion(group, index, { answer_key: { kind: "TEXT", accepted: [event.target.value, ...((question.answer_key.accepted as string[] | undefined) ?? []).slice(1)], case_sensitive: Boolean(question.answer_key.case_sensitive) } }))} className="field" /></label>
             <div className="sm:col-span-2"><p className="field-label">Alternative answers</p>{((question.answer_key.accepted as string[] | undefined) ?? []).slice(1).map((answer, alternativeIndex) => <div key={alternativeIndex} className="mt-2 flex gap-2"><input aria-label={`Alternative answer ${alternativeIndex + 1}`} className="field" value={answer} onChange={(event) => { const accepted = [...(question.answer_key.accepted as string[])]; accepted[alternativeIndex + 1] = event.target.value; onChange(updateQuestion(group, index, { answer_key: { kind: "TEXT", accepted, case_sensitive: Boolean(question.answer_key.case_sensitive) } })); }} /><button type="button" className="btn btn-danger-ghost" onClick={() => onChange(updateQuestion(group, index, { answer_key: { kind: "TEXT", accepted: (question.answer_key.accepted as string[]).filter((_, item) => item !== alternativeIndex + 1), case_sensitive: Boolean(question.answer_key.case_sensitive) } }))}>Remove</button></div>)}<button type="button" className="btn btn-secondary mt-2" onClick={() => onChange(updateQuestion(group, index, { answer_key: { kind: "TEXT", accepted: [...((question.answer_key.accepted as string[] | undefined) ?? []), ""], case_sensitive: Boolean(question.answer_key.case_sensitive) } }))}>+ Add alternative answer</button></div>
             <label className="field-label">Maximum words<input type="number" min={1} value={(question.config.max_words as number | undefined) ?? ""} onChange={(event) => onChange(updateQuestion(group, index, { config: { ...question.config, max_words: event.target.value ? Number(event.target.value) : null } }))} className="field" /></label>
             <label className="field-label">Maximum numbers<input type="number" min={0} value={(question.config.max_numbers as number | undefined) ?? ""} onChange={(event) => onChange(updateQuestion(group, index, { config: { ...question.config, max_numbers: event.target.value ? Number(event.target.value) : null } }))} className="field" /></label>
