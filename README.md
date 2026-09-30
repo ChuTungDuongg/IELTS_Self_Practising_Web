@@ -187,14 +187,13 @@ Docker Compose mở PostgreSQL ở `localhost:5433` (cổng `5432` bên trong co
 ### 3. Cài dependencies và chuẩn bị database
 
 ```powershell
-Set-Location backend
-uv sync --group dev
-uv run alembic upgrade head
-uv run python -m app.seed
-Set-Location ../frontend
 npm install
-Set-Location ..
+uv --directory backend sync --group dev
+uv --directory backend run alembic upgrade head
+uv --directory backend run python -m app.seed
 ```
+
+Chạy các lệnh trên tại thư mục gốc repository. `npm install` cài công cụ chạy song song ở root và cài frontend theo `frontend/package-lock.json`.
 
 `uv` và [`backend/uv.lock`](backend/uv.lock) là workflow phát triển được ưu tiên. Với môi trường triển khai chỉ hỗ trợ `pip`, repository cũng cung cấp bản export runtime đã khóa phiên bản:
 
@@ -209,24 +208,24 @@ python -m pip install -r backend/requirements.txt
 
 `app.seed` có thể chạy lại an toàn; script bỏ qua seed nếu dữ liệu mẫu đã tồn tại.
 
-Để tạo ADMIN local lần đầu, đặt `INITIAL_ADMIN_EMAIL`, `INITIAL_ADMIN_PASSWORD` và `INITIAL_ADMIN_NAME` trong `backend/.env`, rồi chạy `uv run python -m app.bootstrap_admin` từ `backend/`.
+Để tạo ADMIN local lần đầu, đặt `INITIAL_ADMIN_EMAIL`, `INITIAL_ADMIN_PASSWORD` và `INITIAL_ADMIN_NAME` trong `backend/.env`, rồi chạy `uv --directory backend run python -m app.bootstrap_admin` từ thư mục gốc.
 
 ### 4. Local Development
 
 Từ thư mục gốc repository, chạy toàn bộ ứng dụng bằng một lệnh:
 
-```bash
-./dev.sh
+```powershell
+npm run dev
 ```
 
 Hoặc chạy riêng từng dịch vụ:
 
-```bash
-./dev-frontend.sh
-./dev-backend.sh
+```powershell
+npm run dev:frontend
+npm run dev:backend
 ```
 
-Các script tự chuyển vào đúng thư mục, dùng `npm run dev` và `uv run fastapi dev app/main.py`; cả hai server đều hỗ trợ hot reload. `backend/.env` được FastAPI đọc như trước. PostgreSQL phải chạy sẵn (ví dụ `docker compose up -d postgres` ở bước 2); `./dev.sh` chỉ khởi động frontend và backend. Nhấn `Ctrl+C` một lần để dừng cả hai.
+Root npm scripts dùng lệnh `npm run dev` của frontend và `uv --directory backend run fastapi dev app/main.py` của backend; cả hai server đều hỗ trợ hot reload. `backend/.env` được đọc như trước. PostgreSQL phải chạy sẵn (ví dụ `docker compose up -d postgres` ở bước 2). Nhấn `Ctrl+C` một lần để dừng cả hai dịch vụ.
 
 - Frontend: [http://localhost:3000](http://localhost:3000)
 - API: [http://localhost:8000](http://localhost:8000)

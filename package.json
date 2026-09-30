@@ -1,0 +1,13 @@
+{
+  "name": "devweblocalforielts",
+  "private": true,
+  "scripts": {
+    "postinstall": "npm --prefix frontend ci",
+    "dev": "concurrently -k -n frontend,backend \"npm run dev:frontend\" \"npm run dev:backend\"",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "dev:backend": "uv --directory backend run fastapi dev app/main.py"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}

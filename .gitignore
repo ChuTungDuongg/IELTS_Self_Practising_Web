@@ -9,6 +9,7 @@ backups/
 *.py[cod]
 
 frontend/node_modules/
+/node_modules/
 frontend/.next/
 frontend/coverage/
 frontend/playwright-report/
