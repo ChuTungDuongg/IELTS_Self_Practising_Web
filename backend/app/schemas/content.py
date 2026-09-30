@@ -332,6 +332,7 @@ class ListeningReview(BaseModel):
     review: AttemptReview
     audio_asset: AssetResponse | None = None
     parts: list[BuilderListeningPart]
+    highlights: list[HighlightResponse] = Field(default_factory=list)
 
 
 class WritingAttemptReview(BaseModel):

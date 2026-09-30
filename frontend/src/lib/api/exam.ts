@@ -94,6 +94,7 @@ export async function getReadingReview(attemptId: string, request: ApiRequester 
 export async function getListeningReview(attemptId: string, request: ApiRequester = apiRequest) {
   return request<{
     review: { attempt: z.infer<typeof attemptResponseSchema>; test_title: string; answers: Array<{ question_id: string; question_number: number; prompt: string; value: unknown; answer_key: Record<string, unknown>; is_correct: boolean | null; explanation: string | null }> };
+    highlights: z.infer<typeof highlightSchema>[];
     audio_asset: z.infer<typeof assetSchema> | null;
     parts: Array<{ id: string; title: string; order_index: number; question_groups: Array<{ id: string; question_type: string; instruction: string; config: Record<string, unknown>; image_asset?: z.infer<typeof assetSchema> | null; order_index: number; questions: Array<{ id: string; number: number; prompt: string; config: Record<string, unknown>; answer_key: Record<string, unknown>; explanation: string | null; order_index: number }> }> }>;
   }>(`/attempts/${attemptId}/listening-review`);

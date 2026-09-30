@@ -4,8 +4,8 @@ import { ListeningRunner } from "@/features/listening/listening-runner";
 import { ExamDraftStore } from "@/features/exam/exam-draft-recovery";
 import { getAttempt, recordNavigation, saveAnswer } from "@/lib/api/attempts";
 import { ApiError } from "@/lib/api/client";
-import type { ExamPayload } from "@/lib/api/exam";
-import { saveFlag, submitAttempt } from "@/lib/api/exam";
+import type { ExamPayload, Highlight } from "@/lib/api/exam";
+import { createHighlight, deleteAllHighlights, deleteHighlight, saveFlag, submitAttempt } from "@/lib/api/exam";
 
 const push = vi.fn();
 
@@ -16,7 +16,7 @@ vi.mock("@/lib/api/attempts", async (importOriginal) => {
 });
 vi.mock("@/lib/api/exam", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api/exam")>();
-  return { ...actual, getExam: vi.fn(), saveFlag: vi.fn(), submitAttempt: vi.fn() };
+  return { ...actual, createHighlight: vi.fn(), deleteAllHighlights: vi.fn(), deleteHighlight: vi.fn(), getExam: vi.fn(), saveFlag: vi.fn(), submitAttempt: vi.fn() };
 });
 
 const attemptId = "22222222-2222-4222-8222-222222222222";
@@ -28,6 +28,21 @@ const q3 = "11111111-1111-4111-8111-111111111103";
 const q15 = "11111111-1111-4111-8111-111111111115";
 const q25 = "11111111-1111-4111-8111-111111111125";
 const q40 = "11111111-1111-4111-8111-111111111140";
+
+function highlight(questionId = q1): Highlight {
+  return { id: "99999999-9999-4999-8999-999999999999", target_kind: "QUESTION_PROMPT", target_id: questionId, segment_id: null, passage_id: null, start_block_id: null, end_block_id: null, start_offset: 0, end_offset: 9, selected_text: "Statement", created_at: new Date().toISOString() };
+}
+
+function selectStatement(element: HTMLElement) {
+  const range = document.createRange();
+  range.setStart(element.firstChild!, 0);
+  range.setEnd(element.firstChild!, 9);
+  Object.defineProperty(range, "getBoundingClientRect", { value: () => ({ left: 10, top: 20, width: 40, height: 10 }) });
+  const selection = window.getSelection()!;
+  selection.removeAllRanges();
+  selection.addRange(range);
+  fireEvent.mouseUp(element);
+}
 
 function deferred() {
   let resolve!: () => void;
@@ -125,6 +140,8 @@ describe("Listening footer navigation", () => {
     observerCount = 0;
     vi.mocked(saveAnswer).mockImplementation(async (_attempt, questionId, value, expectedRevision) => ({ question_id: questionId, value, is_correct: null, saved_at: new Date().toISOString(), revision: expectedRevision + 1 }));
     vi.mocked(saveFlag).mockResolvedValue(undefined);
+    vi.mocked(deleteHighlight).mockResolvedValue(undefined);
+    vi.mocked(deleteAllHighlights).mockResolvedValue(undefined);
     vi.mocked(recordNavigation).mockResolvedValue(undefined);
     Object.defineProperty(HTMLElement.prototype, "scrollTo", {
       configurable: true,
@@ -208,6 +225,84 @@ describe("Listening footer navigation", () => {
 
     expect(view.container.querySelector("[data-question-group-id]")).toBe(groupBefore);
     expect(view.container.querySelector(".listening-player")).toBe(audioBefore);
+  });
+
+  it("restores saved question highlights across groups and Sections", async () => {
+    const initial = payload();
+    initial.highlights = [highlight()];
+    const view = render(<ListeningRunner initial={initial} />);
+    const audio = view.container.querySelector(".listening-player");
+
+    expect(screen.getByText("1 highlight")).toBeInTheDocument();
+    expect(view.container.querySelector(`[data-question-id="${q1}"] mark`)).toHaveTextContent("Statement");
+    fireEvent.click(screen.getByRole("button", { name: "Go to question 3" }));
+    fireEvent.click(screen.getByRole("button", { name: "Section 2" }));
+    fireEvent.click(screen.getByRole("button", { name: "Section 1" }));
+
+    expect(await waitFor(() => view.container.querySelector(`[data-question-id="${q1}"] mark`))).toHaveTextContent("Statement");
+    expect(screen.getByText("1 highlight")).toBeInTheDocument();
+    expect(view.container.querySelector(".listening-player")).toBe(audio);
+  });
+
+  it("creates a semantic question highlight without remounting audio or changing answers", async () => {
+    const view = render(<ListeningRunner initial={payload()} />);
+    const audio = view.container.querySelector(".listening-player");
+    vi.mocked(createHighlight).mockResolvedValueOnce(highlight());
+    const text = view.container.querySelector(`[data-question-id="${q1}"] [data-highlight-target]`) as HTMLElement;
+    selectStatement(text);
+    fireEvent.click(screen.getByRole("button", { name: "Highlight" }));
+
+    await waitFor(() => expect(createHighlight).toHaveBeenCalledWith(attemptId, {
+      target_kind: "QUESTION_PROMPT", target_id: q1, start_offset: 0, end_offset: 9, selected_text: "Statement",
+    }));
+    expect(await screen.findByText("1 highlight")).toBeInTheDocument();
+    expect(text.querySelector("mark")).toHaveTextContent("Statement");
+    expect(view.container.querySelector(".listening-player")).toBe(audio);
+    fireEvent.click(within(view.container.querySelector(`[data-question-id="${q2}"]`) as HTMLElement).getByRole("radio", { name: "FALSE" }));
+    await waitFor(() => expect(saveAnswer).toHaveBeenCalledWith(attemptId, q2, "FALSE", 0));
+  });
+
+  it("removes one saved highlight only after the delete API succeeds", async () => {
+    const initial = payload();
+    initial.highlights = [highlight()];
+    const view = render(<ListeningRunner initial={initial} />);
+    fireEvent.click(screen.getByRole("button", { name: "Highlight: Statement. Open options" }));
+    fireEvent.click(screen.getByRole("button", { name: "Remove highlight" }));
+
+    await waitFor(() => expect(deleteHighlight).toHaveBeenCalledWith(attemptId, initial.highlights[0].id));
+    expect(await screen.findByText("0 highlights")).toBeInTheDocument();
+    expect(view.container.querySelector(`[data-question-id="${q1}"] mark`)).not.toBeInTheDocument();
+  });
+
+  it("confirms Delete all and clears saved highlights after success", async () => {
+    const initial = payload();
+    initial.highlights = [highlight()];
+    const view = render(<ListeningRunner initial={initial} />);
+    fireEvent.click(screen.getByRole("button", { name: "Delete all" }));
+    expect(screen.getByRole("dialog", { name: "Delete all highlights?" })).toHaveTextContent("All highlights in this attempt will be removed. This action cannot be undone.");
+    expect(deleteAllHighlights).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Delete all highlights" }));
+
+    await waitFor(() => expect(deleteAllHighlights).toHaveBeenCalledWith(attemptId));
+    expect(await screen.findByText("0 highlights")).toBeInTheDocument();
+    expect(view.container.querySelector(`[data-question-id="${q1}"] mark`)).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Delete all highlights?" })).not.toBeInTheDocument();
+  });
+
+  it("keeps highlights and offers retry when Delete all fails", async () => {
+    const initial = payload();
+    initial.highlights = [highlight()];
+    vi.mocked(deleteAllHighlights).mockRejectedValueOnce(new Error("offline"));
+    const view = render(<ListeningRunner initial={initial} />);
+    fireEvent.click(screen.getByRole("button", { name: "Delete all" }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete all highlights" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not delete the highlights");
+    expect(screen.getByText("1 highlight")).toBeInTheDocument();
+    expect(view.container.querySelector(`[data-question-id="${q1}"] mark`)).toHaveTextContent("Statement");
+    fireEvent.click(screen.getByRole("button", { name: "Delete all highlights" }));
+    await waitFor(() => expect(deleteAllHighlights).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText("0 highlights")).toBeInTheDocument();
   });
 
   it("preserves answers and flags while switching question groups", async () => {

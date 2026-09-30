@@ -1113,6 +1113,10 @@ class AttemptService:
                 else None
             ),
             parts=parts,
+            highlights=[
+                HighlightResponse.model_validate(item, from_attributes=True)
+                for item in attempt.highlights
+            ],
         )
 
     async def save_flag(

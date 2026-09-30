@@ -6,6 +6,7 @@ import { questionRegistry } from "@/features/questions/registry";
 import { groupQuestionCount, groupQuestionRange } from "@/features/questions/numbering";
 import type { ExamGroup } from "@/features/questions/types";
 import { QuestionGroupInstruction } from "@/features/questions/question-group-instruction";
+import type { HighlightController } from "@/features/highlighting/selectable-text";
 import { assetContentUrl } from "@/lib/api/assets";
 import type { getListeningReview } from "@/lib/api/exam";
 
@@ -16,6 +17,7 @@ export function ListeningReviewView({ data }: { data: ReviewData }) {
   const part = data.parts[partIndex];
   const answers = new Map(data.review.answers.map((item) => [item.question_id, item]));
   const values = Object.fromEntries(data.review.answers.map((item) => [item.question_id, item.value]));
+  const highlighting: HighlightController = { highlights: data.highlights, readOnly: true };
 
   if (!part) return <p>No Listening review content is available.</p>;
 
@@ -55,7 +57,7 @@ export function ListeningReviewView({ data }: { data: ReviewData }) {
           return (
             <div key={group.id} className="exam-question-group">
               <QuestionGroupInstruction group={group as ExamGroup} />
-              <Renderer group={group as ExamGroup} values={values} disabled />
+              <Renderer group={group as ExamGroup} values={values} disabled highlighting={highlighting} />
               <div className="review-answer-list">
                 {group.questions.map((question) => {
                   const answer = answers.get(question.id);

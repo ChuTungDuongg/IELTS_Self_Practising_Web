@@ -16,7 +16,7 @@ vi.mock("@/lib/api/attempts", async (importOriginal) => {
 });
 vi.mock("@/lib/api/exam", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api/exam")>();
-  return { ...actual, getExam: vi.fn(), saveFlag: vi.fn(), submitAttempt: vi.fn() };
+  return { ...actual, createHighlight: vi.fn(), deleteAllHighlights: vi.fn(), deleteHighlight: vi.fn(), getExam: vi.fn(), saveFlag: vi.fn(), submitAttempt: vi.fn() };
 });
 vi.mock("@/lib/api/builder", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api/builder")>();
@@ -302,6 +302,7 @@ describe("Listening audio and templates", () => {
         answers: [{ question_id: questionId, value: "TRUE", is_correct: true }],
       },
       audio_asset: null,
+      highlights: [{ id: crypto.randomUUID(), target_kind: "QUESTION_PROMPT", target_id: questionId, segment_id: null, passage_id: null, start_block_id: null, end_block_id: null, start_offset: 0, end_offset: 9, selected_text: "Statement", created_at: new Date().toISOString() }],
       parts: [{
         id: crypto.randomUUID(), title: "Section 1", order_index: 0,
         question_groups: [{
@@ -318,5 +319,8 @@ describe("Listening audio and templates", () => {
     expect(screen.getByText("Band 8.0")).toBeInTheDocument();
     expect(screen.getByText("Your answer: TRUE")).toBeInTheDocument();
     expect(view.container.querySelector(".review-answer-correct")).toBeInTheDocument();
+    expect(view.container.querySelector(".review-surface mark")).toHaveTextContent("Statement");
+    expect(screen.queryByRole("button", { name: /Highlight: Statement/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Remove highlight" })).not.toBeInTheDocument();
   });
 });

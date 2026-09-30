@@ -10,8 +10,14 @@ from app.models import Asset, ListeningPart, Question, QuestionGroup
 from app.models import Test as DomainTest
 from app.models import TestModule as ModuleRecord
 from app.models import TestVersion as VersionRecord
-from app.models.enums import AssetType, ModuleType, VersionStatus
-from app.schemas.content import ListeningModuleAudioWrite, ListeningPartWrite, QuestionGroupWrite
+from app.models.enums import AssetType, ModuleType, TimerMode, VersionStatus
+from app.schemas.attempts import AttemptCreate, TimerRequest
+from app.schemas.content import (
+    HighlightCreate,
+    ListeningModuleAudioWrite,
+    ListeningPartWrite,
+    QuestionGroupWrite,
+)
 from app.services.attempts import AttemptService
 from app.services.listening import ListeningService
 from app.services.reading import ReadingService
@@ -170,6 +176,59 @@ def test_active_exam_group_never_contains_answer_keys() -> None:
     dumped = payload.model_dump(mode="json")
     assert "answer_key" not in dumped["questions"][0]
     assert "secret" not in str(dumped)
+
+
+@pytest.mark.integration
+async def test_listening_review_returns_saved_question_highlights(db_session: AsyncSession) -> None:
+    test = DomainTest(title="Fictional Listening highlights")
+    version = VersionRecord(version_number=1, status=VersionStatus.PUBLISHED)
+    module = ModuleRecord(module_type=ModuleType.LISTENING, order_index=0)
+    part = ListeningPart(title="Section 1", order_index=0)
+    group = QuestionGroup(
+        question_type="short_answer", instruction="Answer", config={}, order_index=0
+    )
+    question = Question(
+        number=1,
+        prompt="Fictional prompt",
+        config={"max_words": 2},
+        answer_key={"kind": "TEXT", "accepted": ["answer"]},
+        order_index=0,
+    )
+    group.questions.append(question)
+    part.question_groups.append(group)
+    module.listening_parts.append(part)
+    module.question_groups.append(group)
+    version.modules.append(module)
+    test.versions.append(version)
+    async with db_session.begin():
+        db_session.add(test)
+        await db_session.flush()
+
+    service = AttemptService(db_session)
+    attempt = await service.start(
+        AttemptCreate(
+            test_version_id=version.id,
+            module=ModuleType.LISTENING,
+            timer=TimerRequest(mode=TimerMode.COUNT_UP),
+        )
+    )
+    saved = await service.create_highlight(
+        attempt.attempt_id,
+        HighlightCreate(
+            target_kind="QUESTION_PROMPT",
+            target_id=question.id,
+            start_offset=0,
+            end_offset=9,
+            selected_text="Fictional",
+        ),
+    )
+    await service.submit(attempt.attempt_id)
+
+    review = await service.listening_review(attempt.attempt_id)
+    assert len(review.highlights) == 1
+    assert review.highlights[0].id == saved.id
+    assert review.highlights[0].target_kind == "QUESTION_PROMPT"
+    assert review.highlights[0].target_id == question.id
 
 
 def test_complete_listening_structure_validates_four_parts_and_global_numbering() -> None:

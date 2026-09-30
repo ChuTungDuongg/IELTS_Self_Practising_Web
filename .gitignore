@@ -10,7 +10,7 @@ backups/
 
 frontend/node_modules/
 /node_modules/
-frontend/.next/
+**/.next/
 frontend/coverage/
 frontend/playwright-report/
 frontend/test-results/
