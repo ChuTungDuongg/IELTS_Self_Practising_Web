@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AppShell } from "@/components/ui/app-shell";
 import { AdminGuard } from "@/features/auth/admin-guard";
@@ -81,12 +81,100 @@ describe("authentication UI", () => {
     expect(navigation.replace).not.toHaveBeenCalled();
   });
 
-  it("logout clears the authenticated shell state", async () => {
+  it("confirms logout before clearing the authenticated shell state", async () => {
+    vi.mocked(getCurrentUser).mockResolvedValue(baseUser);
+    render(<AuthProvider><AppShell><p>Content</p></AppShell></AuthProvider>);
+    const logoutButton = await screen.findByRole("button", { name: "Logout" });
+    fireEvent.click(logoutButton);
+
+    const dialog = screen.getByRole("dialog", { name: "Log out?" });
+    expect(dialog).toHaveAttribute("aria-modal", "true");
+    expect(dialog).toHaveAccessibleDescription("Are you sure you want to log out of your account?");
+    expect(logout).not.toHaveBeenCalled();
+    expect(navigation.push).not.toHaveBeenCalled();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(logout).not.toHaveBeenCalled();
+    expect(screen.getByText("Student")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Login" })).not.toBeInTheDocument();
+    expect(navigation.push).not.toHaveBeenCalled();
+    expect(navigation.refresh).not.toHaveBeenCalled();
+
+    fireEvent.click(logoutButton);
+    fireEvent.click(within(screen.getByRole("dialog", { name: "Log out?" })).getByRole("button", { name: "Log out" }));
+    await waitFor(() => expect(logout).toHaveBeenCalledOnce());
+    expect(await screen.findByRole("link", { name: "Login" })).toBeInTheDocument();
+    expect(screen.queryByText("Student")).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(navigation.push).toHaveBeenCalledWith("/login");
+    expect(navigation.refresh).toHaveBeenCalledOnce();
+  });
+
+  it("dismisses logout on the backdrop without changing the session", async () => {
     vi.mocked(getCurrentUser).mockResolvedValue(baseUser);
     render(<AuthProvider><AppShell><p>Content</p></AppShell></AuthProvider>);
     fireEvent.click(await screen.findByRole("button", { name: "Logout" }));
-    await waitFor(() => expect(logout).toHaveBeenCalledOnce());
-    expect(await screen.findByRole("link", { name: "Login" })).toBeInTheDocument();
+    const dialog = screen.getByRole("dialog", { name: "Log out?" });
+
+    fireEvent.mouseDown(dialog);
+    expect(dialog).toBeInTheDocument();
+    fireEvent.mouseDown(dialog.parentElement!);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(logout).not.toHaveBeenCalled();
+    expect(screen.getByText("Student")).toBeInTheDocument();
+    expect(navigation.push).not.toHaveBeenCalled();
+    expect(navigation.refresh).not.toHaveBeenCalled();
+  });
+
+  it("keeps keyboard focus in the logout dialog and restores it after Escape", async () => {
+    vi.mocked(getCurrentUser).mockResolvedValue(baseUser);
+    render(<AuthProvider><AppShell><p>Content</p></AppShell></AuthProvider>);
+    const logoutButton = await screen.findByRole("button", { name: "Logout" });
+    logoutButton.focus();
+    fireEvent.click(logoutButton);
+    const dialog = screen.getByRole("dialog", { name: "Log out?" });
+    const cancel = within(dialog).getByRole("button", { name: "Cancel" });
+    const confirm = within(dialog).getByRole("button", { name: "Log out" });
+
+    expect(cancel).toHaveFocus();
+    fireEvent.keyDown(cancel, { key: "Tab", shiftKey: true });
+    expect(confirm).toHaveFocus();
+    fireEvent.keyDown(confirm, { key: "Tab" });
+    expect(cancel).toHaveFocus();
+    fireEvent.keyDown(cancel, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(logoutButton).toHaveFocus();
+    expect(logout).not.toHaveBeenCalled();
+    expect(screen.getByText("Student")).toBeInTheDocument();
+    expect(navigation.push).not.toHaveBeenCalled();
+  });
+
+  it("prevents repeated logout confirmation while the request is pending", async () => {
+    let resolveLogout!: () => void;
+    vi.mocked(logout).mockReturnValue(new Promise<void>((resolve) => { resolveLogout = resolve; }));
+    vi.mocked(getCurrentUser).mockResolvedValue(baseUser);
+    render(<AuthProvider><AppShell><p>Content</p></AppShell></AuthProvider>);
+    fireEvent.click(await screen.findByRole("button", { name: "Logout" }));
+    const dialog = screen.getByRole("dialog", { name: "Log out?" });
+    const confirm = within(dialog).getByRole("button", { name: "Log out" });
+
+    act(() => {
+      fireEvent.click(confirm);
+      fireEvent.click(confirm);
+    });
+    expect(logout).toHaveBeenCalledOnce();
+    expect(within(dialog).getByRole("button", { name: "Working…" })).toBeDisabled();
+    expect(within(dialog).getByRole("button", { name: "Cancel" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Logout" })).toBeDisabled();
+    fireEvent.mouseDown(dialog.parentElement!);
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    expect(dialog).toBeInTheDocument();
+
+    await act(async () => { resolveLogout(); });
+    expect(logout).toHaveBeenCalledOnce();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Login" })).toBeInTheDocument();
     expect(navigation.push).toHaveBeenCalledWith("/login");
   });
 

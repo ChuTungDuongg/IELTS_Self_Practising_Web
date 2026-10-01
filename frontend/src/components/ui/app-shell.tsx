@@ -1,8 +1,10 @@
 "use client";
 
+import { useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { AppLogo } from "./app-logo";
+import { ConfirmDialog } from "./confirm-dialog";
 import { AnalyticsIcon, BuilderIcon, HistoryIcon, HomeIcon, LibraryIcon, TransferIcon } from "./icons";
 import { ThemeToggle } from "./theme-toggle";
 import { TRANSFER_ROUTE } from "@/lib/routes";
@@ -27,9 +29,25 @@ function isCurrent(pathname: string, href: string) {
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() ?? "/";
   const { user, loading, sessionError, logout } = useAuth();
+  const [confirmingLogout, setConfirmingLogout] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+  const logoutPending = useRef(false);
   const isExam = pathname.startsWith("/attempt/");
   const visibleNavigation = user ? [...navigation, ...(user.role === "ADMIN" ? adminNavigation : [])] : [navigation[0]];
   const current = visibleNavigation.find((item) => isCurrent(pathname, item.href));
+
+  async function confirmLogout() {
+    if (logoutPending.current) return;
+    logoutPending.current = true;
+    setLoggingOut(true);
+    try {
+      await logout();
+    } finally {
+      setConfirmingLogout(false);
+      setLoggingOut(false);
+      logoutPending.current = false;
+    }
+  }
 
   if (isExam) {
     return <main className="exam-shell">{children}</main>;
@@ -51,7 +69,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
         <div className="header-actions">
           {sessionError ? <p role="alert" className="notice">{sessionError}</p> : null}
-          {!loading && user ? <><Link href="/profile" className="auth-user-label">{user.display_name}<small>{user.role}</small></Link><button type="button" className="btn btn-ghost" onClick={() => void logout()}>Logout</button></> : !loading && !sessionError ? <><Link href="/login" className="btn btn-ghost">Login</Link><Link href="/register" className="btn btn-primary">Register</Link></> : null}
+          {!loading && user ? <><Link href="/profile" className="auth-user-label">{user.display_name}<small>{user.role}</small></Link><button type="button" className="btn btn-ghost" disabled={loggingOut} onClick={() => setConfirmingLogout(true)}>Logout</button></> : !loading && !sessionError ? <><Link href="/login" className="btn btn-ghost">Login</Link><Link href="/register" className="btn btn-primary">Register</Link></> : null}
           <ThemeToggle />
         </div>
       </header>
@@ -85,6 +103,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </aside>
 
       <main className="app-content">{children}</main>
+      <ConfirmDialog
+        open={confirmingLogout && user !== null}
+        title="Log out?"
+        description="Are you sure you want to log out of your account?"
+        confirmLabel="Log out"
+        pending={loggingOut}
+        onCancel={() => setConfirmingLogout(false)}
+        onConfirm={() => void confirmLogout()}
+      />
     </div>
   );
 }
