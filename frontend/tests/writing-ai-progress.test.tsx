@@ -19,6 +19,13 @@ it.each([
 });
 
 const criterion = { score: 7.5, feedback: "Lập trường nhất quán.", strengths: [], improvements: [], evidence: [] };
+
+it("restores safe pairwise progress without bank details", () => {
+  const event = aiEventSchema.parse({ sequence: 1, event_type: "anchor.node.started", payload: { criterion: "cc", stage: "pairwise" } });
+  render(<ScoringProgress run={{ ...active, activity: activityFromEvent(event) }} />);
+  expect(screen.getByText("Đang so sánh tiêu chí ngôn ngữ…")).toBeInTheDocument();
+  expect(screen.queryByText("✓ Đã thu thập dẫn chứng")).not.toBeInTheDocument();
+});
 const active: AIWritingRun = {
   id: "11111111-1111-4111-8111-111111111111", attempt_id: "22222222-2222-4222-8222-222222222222", writing_task_id: "33333333-3333-4333-8333-333333333333",
   status: "RUNNING", provider: "fake", model: "fake", prompt_version: "mts-task2-v2",

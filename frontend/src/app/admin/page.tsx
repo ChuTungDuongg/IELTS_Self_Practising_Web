@@ -17,6 +17,7 @@ export default async function AdminDashboardPage({ searchParams }: { searchParam
     getAdminUsers({ search, isActive: status === "active", offset }, serverApiRequest).catch(() => null),
   ]);
   return <>
+    <Link className="btn btn-secondary" href="/admin/writing-anchors">Human Writing anchors</Link>
     <PageHeading eyebrow="Administration" title="Platform dashboard" description="User activity and learning data, with credentials and session secrets excluded." action={<Link className="btn btn-primary" href="/admin/tests">Open Builder</Link>} />
     {stats ? <section className="admin-stat-grid" aria-label="Platform statistics">
       <AdminMetric label="Registered users" value={stats.total_users} />

@@ -1,0 +1,14 @@
+.workspace { display: grid; gap: 1.5rem; min-width: 0; }
+.panel { padding: clamp(1rem, 3vw, 2rem); min-width: 0; color: var(--ink); background: var(--surface); border: 1px solid var(--line); }
+.actions, .filters, .scores { display: flex; flex-wrap: wrap; align-items: end; gap: 1rem; margin-block: 1rem; }
+.form, .form fieldset { display: grid; gap: 1rem; min-width: 0; }
+.form fieldset { border: 1px solid var(--line); padding: 1rem; }
+.workspace label { display: grid; gap: .4rem; min-width: 0; }
+.workspace input, .workspace select, .workspace textarea { border: 1px solid var(--line-strong); border-radius: .5rem; background: var(--surface-soft); color: var(--ink); padding: .6rem; max-width: 100%; }
+.workspace textarea { resize: vertical; white-space: pre-wrap; }
+.scores label { flex: 1 1 8rem; }
+.overflow { overflow-x: auto; }
+.workspace table { width: 100%; border-collapse: collapse; }
+.workspace th, .workspace td { padding: .8rem; text-align: left; border-bottom: 1px solid var(--line); }
+.workspace small { display: block; color: var(--muted); max-width: 28rem; }
+@media (max-width: 640px) { .actions, .filters { align-items: stretch; flex-direction: column; } .workspace select { width: 100%; } }

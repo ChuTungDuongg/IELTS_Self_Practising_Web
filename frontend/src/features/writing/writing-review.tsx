@@ -80,7 +80,7 @@ export function WritingReviewView({ data }: { data: WritingReviewPayload }) {
   function copyAISuggestions(taskId: string, result: AIWritingResult) {
     if (user?.role !== "ADMIN") return;
     setSelections((current) => ({ ...current, [taskId]: Object.fromEntries(aiTraits.map((key) => [key, result.criteria[key].score.toFixed(1)])) as TaskSelection }));
-    setFeedback((current) => ({ ...current, [taskId]: Object.fromEntries(aiTraits.map((key) => [key, presentAIFeedback(result.criteria[key].feedback)])) as TaskFeedback }));
+    setFeedback((current) => ({ ...current, [taskId]: Object.fromEntries(aiTraits.map((key) => [key, result.criteria[key].feedback_status === "UNAVAILABLE" ? current[taskId]?.[key] ?? "" : presentAIFeedback(result.criteria[key].feedback ?? "")])) as TaskFeedback }));
     setMessages((current) => ({ ...current, [taskId]: "AI suggestions copied. Review and save these scores explicitly." }));
   }
 

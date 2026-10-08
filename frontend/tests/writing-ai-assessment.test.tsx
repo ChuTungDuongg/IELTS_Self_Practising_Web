@@ -296,6 +296,19 @@ describe("Writing AI assessment", () => {
     await waitFor(() => expect(saveWritingTaskScore).toHaveBeenCalledWith(attemptId, taskId, expect.objectContaining({ ta: 7, cc: 6, lr: 7, gra: 6, ta_feedback: criterion.feedback })));
   });
 
+  it("preserves human feedback when the AI score has no feedback", async () => {
+    const unavailable = { ...criterion, feedback: null, feedback_status: "UNAVAILABLE" as const, feedback_error_code: "AI_FEEDBACK_UNAVAILABLE" as const, strengths: [], improvements: [], evidence: [] };
+    const partialFeedback = { ...result, criteria: { ...result.criteria, cc: unavailable } };
+    vi.mocked(listAIWritingRuns).mockResolvedValue({ configured: true, items: [{ ...completed, result: partialFeedback, progress: partialFeedback.criteria }] });
+    render(<WritingReviewView data={review()} />);
+    fireEvent.click(screen.getByRole("tab", { name: /Task 2/ }));
+    fireEvent.change(screen.getByLabelText("Task 2 CC feedback"), { target: { value: "Existing human comment." } });
+    fireEvent.click(await screen.findByRole("button", { name: "Chép gợi ý AI vào biểu mẫu" }));
+    expect(screen.getByLabelText("Task 2 CC feedback")).toHaveValue("Existing human comment.");
+    expect(screen.getByLabelText("Task 2 CC")).toHaveValue("6.5");
+    expect(saveWritingTaskScore).not.toHaveBeenCalled();
+  });
+
   it("does not offer copying for a user without manual grading permission", async () => {
     auth.role = "USER";
     vi.mocked(listAIWritingRuns).mockResolvedValue({ configured: true, items: [completed] });

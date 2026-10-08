@@ -19,6 +19,7 @@ const navigation = [
 const adminNavigation = [
   { label: "Admin", href: "/admin", icon: BuilderIcon },
   { label: "Builder", href: "/admin/tests", icon: BuilderIcon },
+  { label: "Writing anchors", href: "/admin/writing-anchors", icon: BuilderIcon },
   { label: "Transfer", href: TRANSFER_ROUTE, icon: TransferIcon },
 ] as const;
 

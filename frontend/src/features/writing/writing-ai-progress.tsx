@@ -10,6 +10,9 @@ export const traitSubtitles = {
 
 export function activityFromEvent(event: AIWritingEvent): AIActivity | null {
   const phases: Partial<Record<AIWritingEvent["event_type"], AIActivity["phase"]>> = {
+    "anchor.search.started": "anchor_search", "anchor.node.started": "anchor_comparing",
+    "anchor.forward.completed": "anchor_comparing", "anchor.reverse.completed": "anchor_comparing",
+    "anchor.node.completed": "anchor_compared", "anchor.bracket.completed": "anchor_bracketed",
     "run.started": "preparing", "provider.starting": "starting_model", "provider.ready": "preparing",
     "criterion.started": "preparing", "evidence.request.started": "collecting_evidence",
     "evidence.validation.started": "validating_evidence", "criterion.evidence.completed": "evidence_collected",
@@ -45,6 +48,10 @@ function StageElapsed({ startedAt }: { startedAt: string }) {
 
 function phaseLabel(activity?: AIActivity | null) {
   switch (activity?.phase) {
+    case "anchor_search": return "Đang chuẩn bị so sánh bài viết…";
+    case "anchor_comparing": return "Đang so sánh tiêu chí ngôn ngữ…";
+    case "anchor_compared": return "Đã hoàn tất bước so sánh";
+    case "anchor_bracketed": return "Đã xác định điểm tiêu chí";
     case "collecting_evidence": return "Đang thu thập dẫn chứng…";
     case "validating_evidence": return "Đang kiểm tra dẫn chứng…";
     case "evidence_collected": return "Đã thu thập dẫn chứng";
@@ -100,7 +107,7 @@ export function ScoringProgress({ run, taskNumber = 2 }: { run: AIWritingRun | n
         const current = active && !completed && !failed && activity?.criterion === trait;
         const state = completed || run?.status === "COMPLETED" ? "COMPLETED" : failed ? "FAILED"
           : current ? activity?.phase === "retrying" ? "RETRYING" : "ACTIVE" : "WAITING";
-        const evidenceCollected = completed || (activity?.criterion === trait && ["scoring", "validating_score", "evidence_collected"].includes(activity.phase))
+        const evidenceCollected = !!completed?.evidence.length || (activity?.criterion === trait && ["evidence_collected"].includes(activity.phase))
           || (activity?.criterion === trait && activity.stage === "scoring");
         return <li key={trait} className={styles.step} data-state={state} aria-label={`Tiến trình ${aiTraitNames[trait]}`}>
           <span aria-hidden="true" className={`${styles.marker} ${current ? styles.activeMarker : ""}`}>{state === "COMPLETED" ? "✓" : state === "FAILED" ? "×" : state === "ACTIVE" || state === "RETRYING" ? "●" : "○"}</span>
