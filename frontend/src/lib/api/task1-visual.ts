@@ -32,13 +32,13 @@ export const task1AnalysisSchema = z.object({
   reference: visualReferenceSchema.nullable(),
   cross_check: z.object({
     specialist_used: z.boolean(), specialist_model: z.string().max(160), specialist_revision: z.string().max(80),
-    status: z.enum(["COMPLETED", "UNAVAILABLE", "PARSE_FAILED"]),
+    status: z.enum(["COMPLETED", "UNAVAILABLE", "PARSE_FAILED", "RECONCILIATION_FAILED"]),
     agreement_count: z.number().int().min(0).max(2000), disagreement_count: z.number().int().min(0).max(2000),
     unmatched_primary_count: z.number().int().min(0).max(2000), unmatched_specialist_count: z.number().int().min(0).max(2000), unknown_count: z.number().int().min(0).max(2000),
-    warnings: z.array(z.enum(["CHART_SPECIALIST_UNAVAILABLE", "CHART_SPECIALIST_PARSE_FAILED", "CHART_DATA_DISAGREEMENT", "CHART_ALIGNMENT_UNCERTAIN", "CHART_CELLS_UNPARSEABLE"])).max(5),
+    warnings: z.array(z.enum(["CHART_SPECIALIST_UNAVAILABLE", "CHART_SPECIALIST_PARSE_FAILED", "CHART_RECONCILIATION_FAILED", "CHART_DATA_DISAGREEMENT", "CHART_ALIGNMENT_UNCERTAIN", "CHART_CELLS_UNPARSEABLE"])).max(6),
   }).nullable().optional(),
   derived_facts: z.array(z.object({ id: z.string().max(40), component_id: z.string().max(40), kind: z.enum(factKinds), subjects: z.array(label).min(1).max(12), category: z.string().max(120).nullable(), end_category: z.string().max(120).nullable(), value: decimal.pipe(z.number().min(-1e24).max(1e24)).nullable(), direction: z.enum(["increase", "decrease", "stable"]).nullable() })).max(1600),
   claims: z.array(z.object({ claim_id: z.string().max(40), source_ids: z.array(z.string().regex(/^P[1-9]\d*S[1-9]\d*$/)).min(1).max(3), quote: z.string().min(1).max(12000), claim: z.string().max(400), verdict: z.enum(["SUPPORTED", "CONTRADICTED", "INSUFFICIENT_EVIDENCE", "NOT_APPLICABLE"]), explanation: z.string().min(1).max(400), evidence: z.array(z.string()).max(8) })).max(20),
-  warnings: z.array(z.enum(["VISUAL_LOW_CONFIDENCE", "VISUAL_GROUNDING_FAILED", "CLAIM_EXTRACTION_FAILED", "CLAIM_VERIFICATION_FAILED", "CHART_SPECIALIST_UNAVAILABLE", "CHART_SPECIALIST_PARSE_FAILED", "CHART_DATA_DISAGREEMENT", "CHART_ALIGNMENT_UNCERTAIN", "CHART_CELLS_UNPARSEABLE"])).max(9),
+  warnings: z.array(z.enum(["VISUAL_LOW_CONFIDENCE", "VISUAL_GROUNDING_FAILED", "DERIVED_FACTS_FAILED", "CLAIM_EXTRACTION_FAILED", "CLAIM_VERIFICATION_FAILED", "CHART_SPECIALIST_UNAVAILABLE", "CHART_SPECIALIST_PARSE_FAILED", "CHART_RECONCILIATION_FAILED", "CHART_DATA_DISAGREEMENT", "CHART_ALIGNMENT_UNCERTAIN", "CHART_CELLS_UNPARSEABLE"])).max(11),
 });
 export type Task1Analysis = z.infer<typeof task1AnalysisSchema>;

@@ -119,7 +119,8 @@ class Task1Analysis(VisualModel):
         | Literal[
             "VISUAL_LOW_CONFIDENCE",
             "VISUAL_GROUNDING_FAILED",
+            "DERIVED_FACTS_FAILED",
             "CLAIM_EXTRACTION_FAILED",
             "CLAIM_VERIFICATION_FAILED",
         ]
-    ] = Field(default_factory=list, max_length=9)
+    ] = Field(default_factory=list, max_length=11)

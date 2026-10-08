@@ -4,7 +4,15 @@ from decimal import Decimal
 from enum import StrEnum
 from typing import Annotated, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    TypeAdapter,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
 Text = Annotated[str, Field(min_length=1, max_length=120)]
 Identifier = Annotated[str, Field(min_length=1, max_length=40)]
@@ -19,6 +27,7 @@ Number = Annotated[
     ),
 ]
 Confidence = Annotated[float, Field(ge=0, le=1, allow_inf_nan=False)]
+_labelled_boolean = TypeAdapter(bool)
 
 
 class GroundingConfidence(StrEnum):
@@ -60,6 +69,18 @@ class Point(VisualModel):
     value: Number | None
     confidence: Confidence
     value_is_labelled: bool | None = None
+
+    @field_validator("value_is_labelled", mode="before")
+    @classmethod
+    def optional_label_metadata(cls, value: object) -> bool | None:
+        # Confidence metadata cannot invalidate an otherwise valid chart point.
+        # Use Pydantic's existing boolean conversions; unknown is not false.
+        if value is None:
+            return None
+        try:
+            return _labelled_boolean.validate_python(value)
+        except ValidationError:
+            return None
 
 
 class Series(VisualModel):

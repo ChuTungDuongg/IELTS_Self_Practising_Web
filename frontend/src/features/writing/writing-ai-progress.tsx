@@ -18,7 +18,7 @@ export function activityFromEvent(event: AIWritingEvent): AIActivity | null {
     "visual_grounding.started": "visual_grounding", "visual_grounding.completed": "visual_grounded",
     "chart_specialist.started": "chart_cross_check", "chart_specialist.completed": "chart_read",
     "chart_specialist.failed": "chart_fallback", "chart_reconciliation.completed": "chart_reconciled",
-    "visual_grounding.failed": "failed", "derived_facts.completed": "deriving_facts",
+    "visual_grounding.failed": "failed", "derived_facts.completed": "deriving_facts", "derived_facts.failed": "derived_facts_failed",
     "claim_extraction.started": "extracting_claims", "claim_extraction.completed": "claims_extracted",
     "claim_extraction.failed": "claim_extraction_failed",
     "claim_verification.started": "verifying_claims", "claim_verification.completed": "claims_verified",
@@ -57,6 +57,7 @@ function phaseLabel(activity?: AIActivity | null) {
     case "visual_grounding": return "Đang phân tích hình…";
     case "visual_grounded": return "Đã đọc thông tin từ hình";
     case "deriving_facts": return "Đã tổng hợp các dữ kiện từ hình";
+    case "derived_facts_failed": return "Chưa tổng hợp đủ dữ kiện; tiếp tục với phân tích hình chính.";
     case "extracting_claims": return "Đang xác định nhận định trong bài viết…";
     case "claims_extracted": return "Đã xác định các nhận định trong bài viết";
     case "verifying_claims": return "Đang đối chiếu nội dung bài viết với hình…";
@@ -85,7 +86,7 @@ export function ScoringProgress({ run, taskNumber = 2 }: { run: AIWritingRun | n
   const summary = run?.status === "FAILED" ? "Chưa thể hoàn tất toàn bộ bài chấm."
     : run?.status === "COMPLETED" ? "Chấm bài hoàn tất"
     : activity?.phase === "starting_model" ? "Đang khởi động mô hình AI…"
-    : active && activity && ["visual_grounding", "visual_grounded", "deriving_facts", "extracting_claims", "claims_extracted", "verifying_claims", "claims_verified", "claim_extraction_failed", "claim_verification_failed", "chart_cross_check", "chart_read", "chart_fallback", "chart_reconciled"].includes(activity.phase) ? phaseLabel(activity)
+    : active && activity && ["visual_grounding", "visual_grounded", "deriving_facts", "derived_facts_failed", "extracting_claims", "claims_extracted", "verifying_claims", "claims_verified", "claim_extraction_failed", "claim_verification_failed", "chart_cross_check", "chart_read", "chart_fallback", "chart_reconciled"].includes(activity.phase) ? phaseLabel(activity)
     : active ? "Đang chấm bài…" : `Sẵn sàng chấm Task ${taskNumber}`;
 
   return <section className={styles.trace} aria-label="Scoring Trace">

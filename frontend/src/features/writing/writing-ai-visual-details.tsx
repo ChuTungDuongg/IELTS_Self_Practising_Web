@@ -31,7 +31,7 @@ export function Task1VisualDetails({ analysis }: { analysis: Task1Analysis }) {
   return <details className={styles.evidence}>
     <summary>Đối chiếu với hình ({analysis.claims.length} nhận định)</summary>
     {analysis.reference?.summary ? <p className={styles.feedback}>{presentAIFeedback(analysis.reference.summary)}</p> : null}
-    {analysis.warnings.some((warning) => warning === "CLAIM_EXTRACTION_FAILED" || warning === "CLAIM_VERIFICATION_FAILED") ? <p className={styles.visualNote}>Một phần đối chiếu chưa hoàn tất. Nhận xét Task Achievement dựa trên thông tin hình đã đọc được; nhận định chưa xác minh không được xem là sai.</p> : null}
+    {analysis.warnings.some((warning) => warning === "DERIVED_FACTS_FAILED" || warning === "CLAIM_EXTRACTION_FAILED" || warning === "CLAIM_VERIFICATION_FAILED") ? <p className={styles.visualNote}>Một phần đối chiếu chưa hoàn tất. Nhận xét Task Achievement dựa trên thông tin hình đã đọc được; nhận định chưa xác minh không được xem là sai.</p> : null}
     {analysis.claims.map((item) => <blockquote key={item.claim_id}>
       <strong className={styles.verdict}>{verdictNames[item.verdict]}</strong>
       <q>{item.quote}</q>

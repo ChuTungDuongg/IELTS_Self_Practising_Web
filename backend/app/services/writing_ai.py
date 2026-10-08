@@ -61,6 +61,7 @@ def persist_activity(run: WritingAIGradingRun, event: EventType, payload: EventP
         "chart_specialist.failed": "chart_fallback",
         "chart_reconciliation.completed": "chart_reconciled",
         "derived_facts.completed": "deriving_facts",
+        "derived_facts.failed": "derived_facts_failed",
         "claim_extraction.started": "extracting_claims",
         "claim_extraction.completed": "claims_extracted",
         "claim_extraction.failed": "claim_extraction_failed",

@@ -1,7 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WritingAIAssessment } from "@/features/writing/writing-ai-assessment";
-import { Task1VisualStatus } from "@/features/writing/writing-ai-visual-details";
+import { Task1VisualDetails, Task1VisualStatus } from "@/features/writing/writing-ai-visual-details";
 import { WritingReviewView } from "@/features/writing/writing-review";
 import { CriterionAssessmentCard } from "@/features/writing/writing-ai-criterion-card";
 import { humanizeSourceReferences, presentAIFeedback } from "@/features/writing/ai-feedback-presentation";
@@ -101,15 +101,26 @@ describe("AI feedback presentation", () => {
 });
 
 describe("Writing AI assessment", () => {
-  it.each(["COMPLETED", "UNAVAILABLE", "PARSE_FAILED"] as const)("shows safe chart cross-check diagnostics and accepts old Task 1 history: %s", (status) => {
+  it.each(["COMPLETED", "UNAVAILABLE", "PARSE_FAILED", "RECONCILIATION_FAILED"] as const)("shows safe chart cross-check diagnostics and accepts old Task 1 history: %s", (status) => {
     const crossCheck = { specialist_used: status === "COMPLETED", specialist_model: "google/deplot", specialist_revision: "pinned", status, agreement_count: 6, disagreement_count: 0, unmatched_primary_count: 0, unmatched_specialist_count: 0, unknown_count: 0, warnings: [] };
-    const analysis = { ...visualAnalysis, visual_family: "chart_table" as const, cross_check: crossCheck };
+    const analysis = { ...visualAnalysis, confidence: "HIGH" as const, visual_family: "chart_table" as const, cross_check: crossCheck };
     const parsed = aiRunSchema.parse({ ...completedTaskOne, task1_analysis: analysis, result: { ...taskOneResult, task1_analysis: analysis } });
     render(<Task1VisualStatus analysis={parsed.task1_analysis!} />);
     expect(screen.getByText("Đối chiếu dữ liệu hình:")).toBeInTheDocument();
     expect(screen.getByText(status === "COMPLETED" ? "6 số liệu đã được xác nhận chéo." : "Không thể dùng bộ đối chiếu chuyên dụng; tiếp tục với phân tích hình chính.")).toBeInTheDocument();
     expect(screen.queryByText(/DePlot|google\/deplot/)).not.toBeInTheDocument();
+    expect(screen.getByText("Độ tin cậy khi đọc hình: Cao")).toBeInTheDocument();
+    expect(screen.queryByText(/Chưa đủ dữ liệu/)).not.toBeInTheDocument();
     expect(aiRunSchema.parse(completedTaskOne).task1_analysis?.cross_check).toBeUndefined();
+  });
+
+  it("accepts fact-stage fallback diagnostics while retaining primary confidence", () => {
+    const analysis = { ...visualAnalysis, confidence: "HIGH" as const, warnings: ["DERIVED_FACTS_FAILED" as const] };
+    const parsed = aiRunSchema.parse({ ...completedTaskOne, task1_analysis: analysis, result: { ...taskOneResult, task1_analysis: analysis } });
+    render(<><Task1VisualStatus analysis={parsed.task1_analysis!} /><Task1VisualDetails analysis={parsed.task1_analysis!} /></>);
+    expect(screen.getByText("Độ tin cậy khi đọc hình: Cao")).toBeInTheDocument();
+    expect(screen.getByText(/Một phần đối chiếu chưa hoàn tất/)).toBeInTheDocument();
+    expect(screen.queryByText(/chưa đọc được hình/)).not.toBeInTheDocument();
   });
 
   it("shows chart disagreement cautiously and suppresses specialist details on non-chart families", () => {

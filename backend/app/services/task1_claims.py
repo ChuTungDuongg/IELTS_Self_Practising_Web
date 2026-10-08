@@ -48,6 +48,7 @@ class Task1ClaimService(Task1StructuredCompletion):
             ],
             ExtractedClaims,
             validate,
+            stage="claim_extraction",
         )
 
     async def verify(
@@ -111,6 +112,7 @@ class Task1ClaimService(Task1StructuredCompletion):
                 SemanticVerification,
                 validate,
                 repair=False,
+                stage="claim_verification",
             )
             for result in output.items:
                 item = next(item for item in analysis.claims if item.claim_id == result.claim_id)

@@ -27,6 +27,14 @@ const active: AIWritingRun = {
   activity: { phase: "collecting_evidence", criterion: "ta", stage: "evidence", started_at: "2026-10-08T00:00:00Z" },
 };
 
+it("keeps Task Achievement active during fact-stage fallback and restores its SSE state", () => {
+  const event = aiEventSchema.parse({ sequence: 1, event_type: "derived_facts.failed", created_at: active.created_at, payload: { criterion: "ta", stage: "derived_facts", error_code: "AI_DERIVED_FACTS_FAILED" } });
+  render(<ScoringProgress taskNumber={1} run={{ ...active, task_number: 1, activity: activityFromEvent(event) }} />);
+  expect(screen.getAllByText("Chưa tổng hợp đủ dữ kiện; tiếp tục với phân tích hình chính.")).toHaveLength(2);
+  expect(screen.getByLabelText("Tiến trình Task Achievement")).toHaveAttribute("data-state", "ACTIVE");
+  expect(screen.queryByText("Không thể hoàn tất tiêu chí này.")).not.toBeInTheDocument();
+});
+
 it("uses elapsed wall time only on active stages and hides ticks from announcements", () => {
   vi.useFakeTimers(); vi.setSystemTime(new Date("2026-10-08T00:00:12Z"));
   const view = render(<ScoringProgress run={active} />);

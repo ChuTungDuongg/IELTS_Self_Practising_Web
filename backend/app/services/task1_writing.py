@@ -1,3 +1,5 @@
+import logging
+
 from app.domains.scoring.ai_writing import aggregate_ai_task_two
 from app.domains.scoring.task1_facts import derive_facts
 from app.domains.scoring.task1_prompts import evidence_prompt, score_prompt
@@ -18,6 +20,8 @@ from app.services.task1_claims import Task1ClaimService
 from app.services.task1_grounding import Task1VisualGroundingService
 from app.services.task1_input import Task1ScoringRequest
 
+logger = logging.getLogger(__name__)
+
 
 class Task1WritingScoringService(MTSWritingScoringService):
     """Independent criteria over one perception result; all score math stays shared."""
@@ -36,29 +40,18 @@ class Task1WritingScoringService(MTSWritingScoringService):
     ) -> Task1WritingResult | None:
         self.usage, self.diagnostics, self.failures = [], [], {}
         analysis = Task1Analysis(visual_family=visual_family(request.task_type).value)
-        grounding = Task1VisualGroundingService(self.provider, self.usage)
-        claim_service = Task1ClaimService(self.provider, self.usage)
+        grounding = Task1VisualGroundingService(self.provider, self.usage, self.diagnostics)
+        claim_service = Task1ClaimService(self.provider, self.usage, self.diagnostics)
         self.current_criterion, self.current_stage = "ta", "visual_grounding"
+        logger.info(
+            "Task1 visual grounding: chart_specialist_enabled=%s",
+            str(request.chart_specialist.enabled).lower(),
+        )
         await trace(
             "visual_grounding.started", EventPayload(criterion="ta", stage="visual_grounding")
         )
         try:
             output = await grounding.ground(request)
-            analysis.reference, analysis.confidence = output.reference, output.reference.confidence
-            if analysis.confidence == "LOW":
-                analysis.warnings.append("VISUAL_LOW_CONFIDENCE")
-            await trace(
-                "visual_grounding.completed",
-                EventPayload(criterion="ta", stage="visual_grounding", task1_analysis=analysis),
-            )
-            await cross_check_chart(
-                request, analysis, self.chart_derenderer, trace, self.chart_timeout
-            )
-            analysis.derived_facts = derive_facts(analysis.reference)
-            await trace(
-                "derived_facts.completed",
-                EventPayload(criterion="ta", stage="visual_grounding", task1_analysis=analysis),
-            )
         except ProviderFailure:
             analysis.warnings.append("VISUAL_GROUNDING_FAILED")
             await trace(
@@ -70,6 +63,41 @@ class Task1WritingScoringService(MTSWritingScoringService):
                     error_code="AI_VISUAL_GROUNDING_FAILED",
                 ),
             )
+        else:
+            analysis.reference, analysis.confidence = output.reference, output.reference.confidence
+            if analysis.confidence == "LOW":
+                analysis.warnings.append("VISUAL_LOW_CONFIDENCE")
+            await trace(
+                "visual_grounding.completed",
+                EventPayload(criterion="ta", stage="visual_grounding", task1_analysis=analysis),
+            )
+            self.current_stage = "chart_cross_check"
+            await cross_check_chart(
+                request, analysis, self.chart_derenderer, trace, self.chart_timeout
+            )
+            self.current_stage = "derived_facts"
+            try:
+                analysis.derived_facts = derive_facts(analysis.reference.model_copy(deep=True))
+            except Exception:
+                # Preserve perception; missing facts cannot establish a contradiction.
+                logger.warning(
+                    "Task1 fact derivation failure: stage=derived_facts reason=DERIVED_FACTS_FAILED"
+                )
+                analysis.warnings.append("DERIVED_FACTS_FAILED")
+                await trace(
+                    "derived_facts.failed",
+                    EventPayload(
+                        criterion="ta",
+                        stage="derived_facts",
+                        task1_analysis=analysis,
+                        error_code="AI_DERIVED_FACTS_FAILED",
+                    ),
+                )
+            else:
+                await trace(
+                    "derived_facts.completed",
+                    EventPayload(criterion="ta", stage="derived_facts", task1_analysis=analysis),
+                )
         if analysis.confidence != "UNUSABLE":
             self.current_stage = "claim_extraction"
             await trace(

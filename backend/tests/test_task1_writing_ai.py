@@ -106,6 +106,71 @@ async def test_task2_ignores_enabled_specialist(db_session, writing, settings):
 pytestmark = pytest.mark.integration
 
 
+async def test_primary_validation_diagnostics_persist_without_leaking_into_api(
+    db_session, task1, settings
+):
+    attempt_id, task_id, _, _ = task1
+    api = service(db_session, settings)
+    created = await api.create(attempt_id, task_id, force=False)
+    await worker(db_session, settings, Task1FakeProvider(malformed_grounding=2)).execute(
+        created.run_id
+    )
+    run, events = await api.snapshot(created.run_id, 0)
+    async with db_session.begin():
+        stored = await db_session.get(WritingAIGradingRun, run.id)
+        diagnostics = stored.usage_json["diagnostics"]
+    assert diagnostics == [
+        {
+            "stage": "visual_grounding",
+            "criterion": "ta",
+            "reason": "SCHEMA_VALIDATION",
+            "attempt": attempt,
+            "finish_reason": "stop",
+            "validation_issues": [{"field": "reference", "validation_type": "missing"}],
+        }
+        for attempt in (1, 2)
+    ]
+    assert run.task1_analysis.confidence == "UNUSABLE" and set(run.progress) == {"cc", "lr", "gra"}
+    public = run.model_dump_json() + "".join(event.model_dump_json() for event in events)
+    assert "validation_issues" not in public and "diagnostics" not in public
+
+
+@pytest.mark.parametrize("stage", ["reconciliation", "derived_facts"])
+async def test_unexpected_optional_failure_persists_safe_analysis_and_completed_ta(
+    db_session, task1, settings, monkeypatch, stage
+):
+    def fail(*_):
+        raise RuntimeError("PRIVATE RAW DATA")
+
+    settings.ai_writing_chart_specialist_enabled = stage == "reconciliation"
+    monkeypatch.setattr(
+        "app.services.task1_chart_cross_check.reconcile_chart"
+        if stage == "reconciliation"
+        else "app.services.task1_writing.derive_facts",
+        fail,
+    )
+    attempt_id, task_id, _, _ = task1
+    api = service(db_session, settings)
+    created = await api.create(attempt_id, task_id, force=False)
+    instance = worker(db_session, settings, Task1FakeProvider())
+    instance.chart_derenderer = FakeSpecialist()
+    await instance.execute(created.run_id)
+    run, events = await api.snapshot(created.run_id, 0)
+    assert run.status == "COMPLETED" and set(run.progress) == {"ta", "cc", "lr", "gra"}
+    assert run.task1_analysis.confidence == "HIGH" and run.task1_analysis.reference is not None
+    if stage == "reconciliation":
+        assert run.task1_analysis.cross_check.status == "RECONCILIATION_FAILED"
+        assert run.task1_analysis.derived_facts
+    else:
+        assert "DERIVED_FACTS_FAILED" in run.task1_analysis.warnings
+        fallback = next(event for event in events if event.event_type == "derived_facts.failed")
+        assert fallback.payload.stage == "derived_facts"
+    assert not any(event.event_type == "visual_grounding.failed" for event in events)
+    assert (await api.get(run.id)).task1_analysis == run.task1_analysis
+    assert (await api.create(attempt_id, task_id, force=False)).cache_hit
+    assert "PRIVATE RAW DATA" not in run.model_dump_json() + str(events)
+
+
 async def test_old_task1_prompt_cache_remains_readable_but_is_not_reused(
     db_session, task1, settings
 ):

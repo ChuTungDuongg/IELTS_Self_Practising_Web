@@ -12,6 +12,7 @@ CHART_CONTRACT_VERSION = "deplot-table-v1:exact-label-decimal-v1"
 ChartWarning = Literal[
     "CHART_SPECIALIST_UNAVAILABLE",
     "CHART_SPECIALIST_PARSE_FAILED",
+    "CHART_RECONCILIATION_FAILED",
     "CHART_DATA_DISAGREEMENT",
     "CHART_ALIGNMENT_UNCERTAIN",
     "CHART_CELLS_UNPARSEABLE",
@@ -45,10 +46,10 @@ class ChartCrossCheckResult(VisualModel):
     specialist_used: bool
     specialist_model: str = Field(max_length=160)
     specialist_revision: str = Field(max_length=80)
-    status: Literal["COMPLETED", "UNAVAILABLE", "PARSE_FAILED"]
+    status: Literal["COMPLETED", "UNAVAILABLE", "PARSE_FAILED", "RECONCILIATION_FAILED"]
     agreement_count: int = Field(default=0, ge=0, le=2000)
     disagreement_count: int = Field(default=0, ge=0, le=2000)
     unmatched_primary_count: int = Field(default=0, ge=0, le=2000)
     unmatched_specialist_count: int = Field(default=0, ge=0, le=2000)
     unknown_count: int = Field(default=0, ge=0, le=2000)
-    warnings: list[ChartWarning] = Field(default_factory=list, max_length=5)
+    warnings: list[ChartWarning] = Field(default_factory=list, max_length=6)
