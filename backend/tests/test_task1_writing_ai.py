@@ -171,8 +171,9 @@ async def test_unexpected_optional_failure_persists_safe_analysis_and_completed_
     assert "PRIVATE RAW DATA" not in run.model_dump_json() + str(events)
 
 
+@pytest.mark.parametrize("old_version", ["mts-task1-visual-v1", "mts-task1-visual-v2"])
 async def test_old_task1_prompt_cache_remains_readable_but_is_not_reused(
-    db_session, task1, settings
+    db_session, task1, settings, old_version
 ):
     attempt_id, task_id, _, _ = task1
     api = service(db_session, settings)
@@ -182,13 +183,13 @@ async def test_old_task1_prompt_cache_remains_readable_but_is_not_reused(
     async with db_session.begin():
         request = await api.input(attempt_id, task_id)
         row = await db_session.get(WritingAIGradingRun, created.run_id)
-        row.prompt_version = "mts-task1-visual-v1"
+        row.prompt_version = old_version
         row.input_fingerprint = input_fingerprint(
             request, row.prompt_version, row.provider, row.model
         )
     upgraded = await api.create(attempt_id, task_id, force=False)
     assert not upgraded.cache_hit and upgraded.run_id != created.run_id
-    assert (await api.get(upgraded.run_id)).prompt_version == "mts-task1-visual-v2"
+    assert (await api.get(upgraded.run_id)).prompt_version == "mts-task1-visual-v3"
     assert (await api.get(created.run_id)).result == old_result
 
 

@@ -2,7 +2,8 @@
 
 import json
 import logging
-from typing import Literal, TypeVar
+from decimal import Decimal, DecimalException
+from typing import Any, Literal, TypeVar
 
 from pydantic import BaseModel, ValidationError
 
@@ -31,6 +32,26 @@ T = TypeVar("T", bound=BaseModel)
 logger = logging.getLogger(__name__)
 
 
+def visual_grounding_provider_schema() -> dict[str, Any]:
+    """Ask for JSON numbers, retaining Decimal serialization for stored/API data.
+
+    Decimal's serialization schema is a patterned string. vLLM removes that
+    pattern, permitting arbitrary strings (e.g. percentage labels). Replace only
+    primary Task 1 point/cell values; shared provider and Task 2 schemas stay as-is.
+    """
+    schema = VisualGroundingOutput.model_json_schema(mode="serialization")
+    validation = VisualGroundingOutput.model_json_schema(mode="validation")
+    for name in ("Point", "TableCell"):
+        value = schema["$defs"][name]["properties"]["value"]
+        number = next(
+            branch
+            for branch in validation["$defs"][name]["properties"]["value"]["anyOf"]
+            if branch.get("type") == "number"
+        )
+        value["anyOf"] = [number, {"type": "null"}]
+    return schema
+
+
 class Task1StructuredCompletion:
     def __init__(
         self,
@@ -48,6 +69,7 @@ class Task1StructuredCompletion:
         validate=None,
         *,
         repair: bool = True,
+        provider_schema: dict[str, Any] | None = None,
         stage: Literal[
             "visual_grounding", "claim_extraction", "claim_verification"
         ] = "visual_grounding",
@@ -56,15 +78,27 @@ class Task1StructuredCompletion:
             reason, kind, issues, finish = "SCHEMA_VALIDATION", "SCHEMA_INVALID", [], None
             try:
                 completion = await self.provider.complete(
-                    messages, schema.model_json_schema(mode="serialization")
+                    messages,
+                    provider_schema
+                    if provider_schema is not None
+                    else schema.model_json_schema(mode="serialization"),
                 )
                 self.usage.append(completion.usage)
                 finish = safe_finish_reason(completion.finish_reason)
                 validate_finish(completion.finish_reason)
-                result = schema.model_validate_json(completion.text)
+                if stage == "visual_grounding":
+                    # JSON numeric lexemes must reach Decimal before rounding.
+                    result = schema.model_validate(json.loads(completion.text, parse_float=Decimal))
+                else:
+                    result = schema.model_validate_json(completion.text)
                 if validate:
                     validate(result)
                 return result
+            except json.JSONDecodeError:
+                reason, kind = "INVALID_JSON", "JSON_INVALID"
+                issues = [ValidationIssue(field="<root>", validation_type="json_invalid")]
+            except DecimalException:
+                issues = [ValidationIssue(field="<root>", validation_type="decimal_parsing")]
             except ValidationError as exc:
                 issues = safe_task1_issues(exc, schema)
                 if any(issue.validation_type == "json_invalid" for issue in issues):
@@ -127,6 +161,7 @@ class Task1VisualGroundingService(Task1StructuredCompletion):
         if request.image is None:
             raise ProviderFailure("AI_PROVIDER_BAD_RESPONSE")
         family = visual_family(request.task_type)
+        provider_schema = visual_grounding_provider_schema()
 
         def validate(output: VisualGroundingOutput) -> None:
             if output.reference.visual_family != family:
@@ -136,7 +171,28 @@ class Task1VisualGroundingService(Task1StructuredCompletion):
             [
                 {
                     "role": "system",
-                    "content": f"{DATA_GUARD} Extract visual information only, never IELTS scores or final feedback. Required family: {family.value}. Use at most 2 components and 10 points/stages/features per component where possible. Include all major features. Never fabricate unreadable numbers: value=null, low point confidence; downgrade overall confidence when coverage is incomplete. For chart points set value_is_labelled=true only for a readable printed numeric label; false for visual estimates, whose confidence should remain below 0.8. Preserve separate components/units/snapshots for mixed charts; tables use headers/cells; pies have no invented axes; ordered_categories=true only for an explicitly ordered/time dimension. Process edges, map states/changes and system connections must reference declared IDs. Map locations are qualitative, no invented coordinates. Schema: {json.dumps(VisualGroundingOutput.model_json_schema(mode='serialization'))}",
+                    "content": (
+                        f"{DATA_GUARD} Extract visual information only, never IELTS scores or final feedback. "
+                        f"Required family: {family.value}. Use the minimum number of logical components "
+                        "that preserves the visual structure, within schema limits. Include all major features. "
+                        "For repeated same-type pie charts sharing a legend and unit, use ONE pie_chart component "
+                        "as a matrix: categories are the exact region/state/time snapshot labels; each series is "
+                        "one legend category with a unique id and name, and its points cover the declared regions/states. "
+                        "Every points.category must exactly match a declared component.categories entry. "
+                        "Do not create a component per pie or truncate a six-pie comparison into partial components. "
+                        "Keep genuinely mixed chart types, different units, unrelated axes or datasets in separate components. "
+                        "For chart points and table cells, emit value as a JSON number or null, never formatted text. "
+                        'For percentage labels, 48% must be JSON numeric value 48 and component unit "%", never 0.48. '
+                        "Do not include percent signs or thousands separators in values. "
+                        "Never fabricate unreadable numbers: value=null, low point confidence; downgrade overall "
+                        "confidence when coverage is incomplete. For chart points set value_is_labelled=true only "
+                        "for a readable printed numeric label; false for visual estimates, whose confidence should "
+                        "remain below 0.8. Tables use declared row_headers/column_headers and cells, never series; "
+                        "charts use series, never cells. Pies have no invented axes; ordered_categories=true only "
+                        "for an explicitly ordered/time dimension. Process edges, map states/changes and system "
+                        "connections must reference declared IDs. Map locations are qualitative, no invented coordinates. "
+                        f"Schema: {json.dumps(provider_schema)}"
+                    ),
                 },
                 {
                     "role": "user",
@@ -154,6 +210,7 @@ class Task1VisualGroundingService(Task1StructuredCompletion):
             ],
             VisualGroundingOutput,
             validate,
+            provider_schema=provider_schema,
         )
         reference = output.reference
         match reference:

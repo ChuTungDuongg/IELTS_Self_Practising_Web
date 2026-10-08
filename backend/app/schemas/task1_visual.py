@@ -6,6 +6,7 @@ from typing import Annotated, Literal, Self
 
 from pydantic import (
     BaseModel,
+    BeforeValidator,
     ConfigDict,
     Field,
     TypeAdapter,
@@ -13,6 +14,9 @@ from pydantic import (
     field_validator,
     model_validator,
 )
+from pydantic_core import PydanticCustomError
+
+from app.schemas.visual_number import parse_visual_number
 
 Text = Annotated[str, Field(min_length=1, max_length=120)]
 Identifier = Annotated[str, Field(min_length=1, max_length=40)]
@@ -25,6 +29,16 @@ Number = Annotated[
         max_digits=24,
         decimal_places=8,
     ),
+]
+VisualValue = Annotated[Number | None, BeforeValidator(parse_visual_number)]
+VisualInvariantError = Literal[
+    "duplicate_visual_identifier",
+    "duplicate_series_name",
+    "duplicate_table_cell",
+    "unknown_chart_category",
+    "unknown_table_header",
+    "table_series_forbidden",
+    "chart_cells_forbidden",
 ]
 Confidence = Annotated[float, Field(ge=0, le=1, allow_inf_nan=False)]
 _labelled_boolean = TypeAdapter(bool)
@@ -41,9 +55,9 @@ class VisualModel(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
 
-def unique(values: list[str]) -> None:
+def unique(values: list[str], code: VisualInvariantError = "duplicate_visual_identifier") -> None:
     if len(values) != len(set(values)):
-        raise ValueError("Duplicate visual identifiers")
+        raise PydanticCustomError(code, "Duplicate visual identity")
 
 
 class VisualBase(VisualModel):
@@ -66,7 +80,7 @@ class VisualBase(VisualModel):
 
 class Point(VisualModel):
     category: Text
-    value: Number | None
+    value: VisualValue
     confidence: Confidence
     value_is_labelled: bool | None = None
 
@@ -97,7 +111,7 @@ class Series(VisualModel):
 class TableCell(VisualModel):
     row: Text
     column: Text
-    value: Number | None
+    value: VisualValue
     label: str | None = Field(default=None, max_length=120)
     confidence: Confidence
 
@@ -128,23 +142,23 @@ class ChartComponent(VisualModel):
         for labels in (self.categories, self.row_headers, self.column_headers):
             unique(labels)
         unique([series.id for series in self.series])
-        unique([series.name for series in self.series])
-        unique([f"{cell.row}\0{cell.column}" for cell in self.cells])
+        unique([series.name for series in self.series], "duplicate_series_name")
+        unique([f"{cell.row}\0{cell.column}" for cell in self.cells], "duplicate_table_cell")
         if any(
             cell.row not in self.row_headers or cell.column not in self.column_headers
             for cell in self.cells
         ):
-            raise ValueError("Unknown table header")
+            raise PydanticCustomError("unknown_table_header", "Undeclared table header")
         if any(
             point.category not in self.categories
             for series in self.series
             for point in series.points
         ):
-            raise ValueError("Unknown chart category")
+            raise PydanticCustomError("unknown_chart_category", "Undeclared chart category")
         if self.kind == "table" and self.series:
-            raise ValueError("Tables use cells, not fake axes/series")
+            raise PydanticCustomError("table_series_forbidden", "Tables must use cells")
         if self.kind != "table" and self.cells:
-            raise ValueError("Chart components use series")
+            raise PydanticCustomError("chart_cells_forbidden", "Charts must use series")
         return self
 
 

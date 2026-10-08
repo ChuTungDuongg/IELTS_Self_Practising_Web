@@ -104,7 +104,7 @@ def test_old_t1a_six_region_shape_still_validates(six_region_pies):
     assert component.x_axis is None and component.y_axis is None
     assert not component.ordered_categories
     assert len([fact for fact in derive_facts(output.reference) if fact.kind == "value"]) == 18
-    assert TASK1_PROMPT_VERSION == "mts-task1-visual-v2"
+    assert TASK1_PROMPT_VERSION == "mts-task1-visual-v3"
 
 
 @pytest.mark.parametrize(

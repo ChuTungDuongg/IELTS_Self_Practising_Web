@@ -5,6 +5,7 @@ from typing import get_args
 from pydantic import BaseModel, ValidationError
 from pydantic_core import ErrorType
 
+from app.schemas.task1_visual import VisualInvariantError
 from app.schemas.writing_ai import ValidationIssue
 
 
@@ -24,7 +25,7 @@ def safe_task1_issues(error: ValidationError, schema: type[BaseModel]) -> list[V
         "comparison",
         "relation",
     }
-    types = get_args(ErrorType)
+    types = {*get_args(ErrorType), *get_args(VisualInvariantError)}
     issues = []
     for item in error.errors(include_url=False, include_context=False, include_input=False)[:8]:
         path = []
