@@ -15,7 +15,8 @@ from app.schemas.chart_cross_check import ChartSpecialistIdentity
 from app.schemas.task1_visual import GroundingConfidence, VisualReference
 from app.schemas.writing_ai import TRAITS, Trait
 
-BENCHMARK_CONTRACT_VERSION = "task1-benchmark-v1"
+BENCHMARK_CONTRACT_VERSION = "task1-benchmark-v2"
+Architecture = Literal["direct", "mts", "direct-self-consistency", "anchor-pairwise"]
 Split = Literal["dev", "holdout"]
 Band = Annotated[Decimal, Field(ge=0, le=9, allow_inf_nan=False)]
 
@@ -88,6 +89,16 @@ class BenchmarkSample(Model):
 
 
 class BenchmarkConfig(Model):
+    architecture: Architecture = "mts"
+    architecture_id: Literal["A0", "A1", "A2", "A3"] = "A1"
+    tree_node_budget: int = Field(default=2, ge=1, le=3)
+    self_consistency_count: int = Field(default=1, ge=1, le=3)
+    anchor_digest: str | None = None
+    anchor_set_id: str | None = None
+    anchor_set_version: int | None = None
+    anchor_density: dict[str, dict[str, int]] = Field(default_factory=dict)
+    pairwise_prompt_version: str | None = None
+    feedback_prompt_version: str | None = None
     max_concurrent_llm_requests: int = Field(default=2, ge=1, le=4)
     label: str = Field(max_length=160)
     scoring_version: Literal["v3", "v5"]
@@ -111,6 +122,12 @@ class BenchmarkConfig(Model):
 
 
 class EvaluationRecord(Model):
+    benchmark_version: Literal["task1-benchmark-v2"] = BENCHMARK_CONTRACT_VERSION
+    architecture: Architecture = "mts"
+    scoring_diagnostics: dict[str, Any] = Field(default_factory=dict)
+    repeats: list[dict[str, Any]] = Field(default_factory=list, max_length=3)
+    repeat_spread: dict[str, float] = Field(default_factory=dict)
+    repeat_variance: dict[str, float] = Field(default_factory=dict)
     sample_id: str
     split: Split
     task_type: WritingTaskType

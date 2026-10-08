@@ -5,6 +5,7 @@ import time
 from collections import Counter
 from decimal import Decimal
 from pathlib import Path
+from statistics import median, pvariance
 from typing import Any
 from uuid import NAMESPACE_URL, uuid5
 
@@ -12,6 +13,7 @@ from pydantic import ValidationError
 
 from app.core.config import Settings
 from app.domains.writing.visual_families import visual_family
+from app.evaluation.task1.anchor_sources import AnchorSource, guard_leakage
 from app.evaluation.task1.legacy_prompts import (
     LEGACY_TASK1_PROMPT_VERSION,
     LEGACY_TASK1_SCORING_PROMPT_VERSION,
@@ -26,12 +28,14 @@ from app.providers.writing_llm import create_provider, provider_identity
 from app.providers.writing_llm.base import Completion, CompletionOptions, Message
 from app.schemas.chart_cross_check import ChartSpecialistIdentity
 from app.schemas.task1_claims import Task1Analysis
+from app.services.task1_direct import Task1DirectScoringService
 from app.services.task1_input import (
     TASK1_PROMPT_VERSION,
     TASK1_SCORING_PROMPT_VERSION,
     TASK1_VISUAL_CONTRACT_VERSION,
     Task1ScoringRequest,
 )
+from app.services.task1_tacs import Task1TACSScoringService
 from app.services.task1_writing import Task1WritingScoringService
 
 
@@ -43,6 +47,9 @@ def implementation_hash() -> str:
         "services/task1*.py",
         "services/mts_writing.py",
         "services/writing_execution.py",
+        "services/writing_pairwise.py",
+        "schemas/tacs.py",
+        "schemas/writing_anchors.py",
         "providers/writing_llm/*.py",
         "providers/chart_derendering/*.py",
         "schemas/task1*.py",
@@ -246,8 +253,14 @@ def classify(status, confidence, perception, disagreements, target, predicted):
 
 
 async def evaluate(
-    item: LoadedSample, config: BenchmarkConfig, provider_factory, specialist_factory
+    item: LoadedSample,
+    config: BenchmarkConfig,
+    provider_factory,
+    specialist_factory,
+    anchor_source=None,
 ) -> EvaluationRecord:
+    if config.architecture == "direct-self-consistency":
+        return await evaluate_repeats(item, config, provider_factory, specialist_factory)
     start = time.perf_counter()
     sample_hash, image_hash, cache_key = fingerprint(item, config)
     sample = item.sample
@@ -255,6 +268,7 @@ async def evaluate(
     analysis = Task1Analysis(visual_family=visual_family(sample.task_type).value)
     perception = {"primary": None, "reconciled": None}
     provider, specialist = None, None
+    scorer = None
 
     async def trace(event, payload):
         nonlocal analysis
@@ -278,7 +292,11 @@ async def evaluate(
             except Exception:
                 specialist = CountedSpecialist(UnavailableSpecialist())
         scorer_type = (
-            LegacyTask1WritingScoringService
+            Task1TACSScoringService
+            if config.architecture == "anchor-pairwise"
+            else Task1DirectScoringService
+            if config.architecture == "direct"
+            else LegacyTask1WritingScoringService
             if config.scoring_version == "v3"
             else Task1WritingScoringService
         )
@@ -287,6 +305,22 @@ async def evaluate(
             specialist,
             chart_timeout=config.specialist_timeout_seconds,
             max_concurrent_requests=config.max_concurrent_llm_requests,
+            **(
+                {
+                    "anchor_snapshot": (anchor_source or AnchorSource()).snapshot,
+                    "target_fingerprint": digest(
+                        {
+                            "prompt": sample.prompt,
+                            "essay": sample.essay,
+                            "image": image_hash,
+                            "task": sample.id,
+                        }
+                    ),
+                    "max_tree_nodes": config.tree_node_budget,
+                }
+                if config.architecture == "anchor-pairwise"
+                else {}
+            ),
         )
         await provider.ensure_ready()
         # Deliberately construct only production inputs; no target/truth/provenance.
@@ -312,6 +346,10 @@ async def evaluate(
     target = sample.human_scores.scores()
     disagreements = analysis.cross_check.disagreement_count if analysis.cross_check else 0
     return EvaluationRecord(
+        architecture=config.architecture,
+        scoring_diagnostics=scorer.scoring_metadata()
+        if scorer and hasattr(scorer, "scoring_metadata")
+        else {},
         sample_id=sample.id,
         split=sample.split,
         task_type=sample.task_type,
@@ -341,6 +379,105 @@ async def evaluate(
     )
 
 
+async def evaluate_repeats(item, config, provider_factory, specialist_factory):
+    start = time.perf_counter()
+    child = config.model_copy(
+        update={"architecture": "direct", "architecture_id": "A0", "self_consistency_count": 1}
+    )
+    records = [await evaluate(item, child, provider_factory, specialist_factory) for _ in range(3)]
+    sample_hash, image_hash, key = fingerprint(item, config)
+    scores = {
+        t: median(r.predicted[t] for r in records)
+        for t in ("ta", "cc", "lr", "gra")
+        if all(t in r.predicted for r in records)
+    }
+    perception = {}
+    for stage in ("primary", "reconciled"):
+        observations = [r.perception[stage] for r in records]
+        if all(o is None for o in observations):
+            perception[stage] = None
+        else:
+            representative = next(o for o in observations if o is not None)
+            perception[stage] = {
+                **representative,
+                "perception_ok": True
+                if all(o is not None and o["perception_ok"] is True for o in observations)
+                else False
+                if any(o and o["perception_ok"] is False for o in observations)
+                else None,
+            }
+    complete = all(r.status == "COMPLETED" for r in records)
+    confidence = (
+        "UNUSABLE"
+        if any(r.confidence == "UNUSABLE" for r in records)
+        else "LOW"
+        if any(r.confidence == "LOW" for r in records)
+        else records[0].confidence
+    )
+    target = records[0].target
+    return EvaluationRecord(
+        sample_id=item.sample.id,
+        split=item.sample.split,
+        task_type=item.sample.task_type,
+        visual_family=records[0].visual_family,
+        architecture=config.architecture,
+        config_key=config.key,
+        input_hash=sample_hash,
+        image_hash=image_hash,
+        cache_key=key,
+        status="COMPLETED" if complete else "FAILED",
+        target=target,
+        predicted=scores,
+        target_overall=overall_score(target),
+        predicted_overall=overall_score(scores),
+        confidence=confidence,
+        perception=perception,
+        specialist_status="COMPLETED"
+        if all(r.specialist_status == "COMPLETED" for r in records)
+        else next(
+            (
+                r.specialist_status
+                for r in records
+                if r.specialist_status not in (None, "COMPLETED")
+            ),
+            None,
+        ),
+        specialist_disagreements=sum(r.specialist_disagreements for r in records),
+        decomposition=classify(
+            "COMPLETED" if complete else "FAILED",
+            confidence,
+            perception,
+            sum(r.specialist_disagreements for r in records),
+            target,
+            scores,
+        ),
+        wall_clock_seconds=time.perf_counter() - start,
+        provider_calls=sum(r.provider_calls for r in records),
+        token_usage=dict(sum((Counter(r.token_usage) for r in records), Counter())),
+        specialist_calls=sum(r.specialist_calls for r in records),
+        specialist_latency_seconds=sum(r.specialist_latency_seconds for r in records),
+        failures={} if complete else {"run": "SELF_CONSISTENCY_REPEAT_FAILED"},
+        repeats=[
+            {
+                "status": r.status,
+                "predicted": {t: float(s) for t, s in r.predicted.items()},
+                "perception": r.perception,
+                "provider_calls": r.provider_calls,
+                "token_usage": r.token_usage,
+                "wall_clock_seconds": r.wall_clock_seconds,
+                "confidence": r.confidence,
+                "specialist_calls": r.specialist_calls,
+            }
+            for r in records
+        ],
+        repeat_spread={
+            t: float(max(r.predicted[t] for r in records) - min(r.predicted[t] for r in records))
+            for t in scores
+        },
+        repeat_variance={t: float(pvariance(r.predicted[t] for r in records)) for t in scores},
+    )
+
+
 async def run_benchmark(
     items,
     configs,
@@ -351,11 +488,19 @@ async def run_benchmark(
     provider_factory=None,
     specialist_factory=None,
     settings=None,
+    anchor_source=None,
 ):
     from app.evaluation.task1.report import build_report, write_report
 
     if not items or not configs or len({config.key for config in configs}) != len(configs):
         raise ValueError("BENCHMARK_CONFIGURATION_INVALID")
+    anchor_source = anchor_source or AnchorSource()
+    guard_leakage(items, anchor_source)
+    if any(
+        c.architecture == "anchor-pairwise" and c.anchor_digest != anchor_source.digest
+        for c in configs
+    ):
+        raise ValueError("BENCHMARK_ANCHOR_IDENTITY_MISMATCH")
     explicit_settings = settings is not None
     if not dry_run and provider_factory is None and not explicit_settings:
         raise ValueError("BENCHMARK_RUNTIME_SETTINGS_REQUIRED")
@@ -422,7 +567,9 @@ async def run_benchmark(
                 path = output / "cache" / f"{key}.json"
                 record = cached_record(path, key, config.key, item.sample.id) if resume else None
                 if record is None:
-                    record = await evaluate(item, config, provider_factory, specialist_factory)
+                    record = await evaluate(
+                        item, config, provider_factory, specialist_factory, anchor_source
+                    )
                     save_attempt(output, record)
                     atomic_write(path, record.model_dump_json(indent=2))
                 records.append(record)
