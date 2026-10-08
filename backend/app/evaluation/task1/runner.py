@@ -5,6 +5,7 @@ import time
 from collections import Counter
 from decimal import Decimal
 from pathlib import Path
+from typing import Any
 from uuid import NAMESPACE_URL, uuid5
 
 from pydantic import ValidationError
@@ -22,6 +23,7 @@ from app.evaluation.task1.models import BenchmarkConfig, EvaluationRecord, diges
 from app.providers.chart_derendering import ChartSpecialistFailure
 from app.providers.chart_derendering.deplot import DePlotChartDerenderingProvider
 from app.providers.writing_llm import create_provider, provider_identity
+from app.providers.writing_llm.base import Completion, CompletionOptions, Message
 from app.schemas.chart_cross_check import ChartSpecialistIdentity
 from app.schemas.task1_claims import Task1Analysis
 from app.services.task1_input import (
@@ -185,9 +187,15 @@ class CountedProvider:
     async def ensure_ready(self):
         await self.provider.ensure_ready()
 
-    async def complete(self, messages, schema):
+    async def complete(
+        self,
+        messages: list[Message],
+        schema: dict[str, Any],
+        *,
+        options: CompletionOptions | None = None,
+    ) -> Completion:
         self.calls += 1
-        completion = await self.provider.complete(messages, schema)
+        completion = await self.provider.complete(messages, schema, options=options)
         # Only known numeric usage counters, never arbitrary provider fields.
         for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
             value = completion.usage.get(key)

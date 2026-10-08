@@ -30,43 +30,40 @@ describe("protected route proxy", () => {
     expect(new Headers(fetchMock.mock.calls[0][1].headers).get("cookie")).toBe("ielts_access=valid; ielts_refresh=refresh");
   });
 
-  it("redirects only after me and refresh both return 401", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("{}", { status: 401 })));
+  it("sends expired access to browser restoration without rotating refresh cookies", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response("{}", { status: 401 }));
+    vi.stubGlobal("fetch", fetchMock);
     const response = await proxy(request("/admin/tests/new?builder=1"));
     expect(response.status).toBe(307);
-    expect(response.headers.get("location")).toBe("http://localhost:3000/login?next=%2Fadmin%2Ftests%2Fnew%3Fbuilder%3D1");
+    expect(response.headers.get("location")).toBe("http://localhost:3000/session/restore?next=%2Fadmin%2Ftests%2Fnew%3Fbuilder%3D1");
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(String(fetchMock.mock.calls[0][0])).toMatch(/\/auth\/me$/);
+    expect(response.headers.getSetCookie()).toHaveLength(0);
+    expect(response.headers.get("cache-control")).toContain("no-store");
   });
 
-  it("forwards rotated cookies to the browser and the server component request", async () => {
-    const access = "ielts_access=new-access; HttpOnly; Max-Age=900; Path=/; SameSite=lax";
-    const refresh = "ielts_refresh=new-refresh; HttpOnly; Max-Age=2592000; Path=/; SameSite=lax";
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce(new Response("{}", { status: 401 }))
-      .mockResolvedValueOnce(new Response("{}", { status: 200, headers: [["Set-Cookie", "ielts_access=; Max-Age=0; Path=/api/v1"], ["Set-Cookie", "ielts_refresh=; Max-Age=0; Path=/api/v1/auth"], ["Set-Cookie", access], ["Set-Cookie", refresh]] }))
-      .mockResolvedValueOnce(new Response("{}", { status: 200 }));
+  it("leaves restoration and public auth pages unguarded", async () => {
+    const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
-    const response = await proxy(request("/admin/tests/123/edit", "ielts_access=old; ielts_refresh=old-refresh"));
-    expect(response.status).toBe(200);
-    expect(response.headers.getSetCookie()).toEqual(expect.arrayContaining([access, refresh]));
-    expect(response.headers.getSetCookie()).toHaveLength(4);
-    expect(new Headers(fetchMock.mock.calls[2][1].headers).get("cookie")).toBe("ielts_access=new-access; ielts_refresh=new-refresh");
-    expect(response.headers.get("x-middleware-request-cookie")).toBe("ielts_access=new-access; ielts_refresh=new-refresh");
+    for (const path of ["/session/restore?next=/library", "/login", "/register", "/"]) {
+      expect((await proxy(request(path))).headers.get("location")).toBeNull();
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("checks a fresh authenticated navigation after an unauthenticated prefetch redirect", async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response("{}", { status: 401 }))
-      .mockResolvedValueOnce(new Response("{}", { status: 401 }))
       .mockResolvedValueOnce(new Response("{}", { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
     const prefetch = request("/library");
     prefetch.headers.set("Next-Router-Prefetch", "1");
-    expect((await proxy(prefetch)).headers.get("location")).toContain("/login?");
+    expect((await proxy(prefetch)).headers.get("location")).toContain("/session/restore?");
     const navigation = await proxy(request("/library", "ielts_access=new-session"));
     expect(navigation.status).toBe(200);
     expect(navigation.headers.get("location")).toBeNull();
-    expect(fetchMock.mock.calls[2][1].cache).toBe("no-store");
-    expect(new Headers(fetchMock.mock.calls[2][1].headers).get("cookie")).toBe("ielts_access=new-session");
+    expect(fetchMock.mock.calls[1][1].cache).toBe("no-store");
+    expect(new Headers(fetchMock.mock.calls[1][1].headers).get("cookie")).toBe("ielts_access=new-session");
   });
 
   it("surfaces backend 500 without trying refresh or redirecting", async () => {
@@ -76,10 +73,10 @@ describe("protected route proxy", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("surfaces refresh backend failures instead of redirecting", async () => {
-    vi.stubGlobal("fetch", vi.fn()
-      .mockResolvedValueOnce(new Response("{}", { status: 401 }))
-      .mockResolvedValueOnce(new Response("{}", { status: 503 })));
-    await expect(proxy(request("/analytics", "ielts_refresh=valid"))).rejects.toMatchObject({ status: 503 });
+  it("surfaces an offline auth check without trying refresh or redirecting", async () => {
+    const fetchMock = vi.fn().mockRejectedValue(new TypeError("offline"));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(proxy(request("/analytics", "ielts_refresh=valid"))).rejects.toMatchObject({ code: "NETWORK_ERROR", status: 0 });
+    expect(fetchMock).toHaveBeenCalledOnce();
   });
 });

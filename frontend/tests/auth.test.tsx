@@ -8,7 +8,7 @@ import { apiRequest, resetAuthRequestStateForTests } from "@/lib/api/client";
 import { getCurrentUser, login, logout, register } from "@/lib/api/auth";
 import { ApiError } from "@/lib/api/client";
 
-const navigation = vi.hoisted(() => ({ pathname: "/", search: "", push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }));
+const navigation = vi.hoisted(() => ({ pathname: "/", search: "", push: vi.fn(), replace: vi.fn(), refresh: vi.fn(), documentReplace: vi.fn() }));
 
 vi.mock("next/navigation", () => ({
   usePathname: () => navigation.pathname,
@@ -31,9 +31,21 @@ const baseUser = {
   last_login_at: null,
 };
 
+vi.mock("next/link", () => ({
+  default: ({ prefetch, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { prefetch?: boolean | null }) =>
+    <a {...props} data-prefetch={prefetch === false ? "disabled" : "automatic"} />,
+}));
+
 describe("authentication UI", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.unstubAllGlobals();
+    const currentWindow = window;
+    vi.stubGlobal("window", new Proxy(currentWindow, {
+      get: (target, property) => property === "location"
+        ? { replace: navigation.documentReplace }
+        : Reflect.get(target, property, target),
+    }));
     navigation.pathname = "/";
     navigation.search = "";
     vi.mocked(logout).mockResolvedValue(undefined);
@@ -60,6 +72,44 @@ describe("authentication UI", () => {
     expect(await screen.findByRole("link", { name: "Admin" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Builder" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Transfer" })).toBeInTheDocument();
+  });
+
+  it("disables speculative prefetch for every protected shell link while preserving Overview", async () => {
+    vi.mocked(getCurrentUser).mockResolvedValue({ ...baseUser, role: "ADMIN" });
+    render(<AuthProvider><AppShell><p>Content</p></AppShell></AuthProvider>);
+    await screen.findByText("Student");
+    for (const href of ["/library", "/history", "/analytics", "/admin", "/admin/tests", "/transfer", "/profile"]) {
+      expect(document.querySelector(`a[href="${href}"]`)).toHaveAttribute("data-prefetch", "disabled");
+    }
+    expect(screen.getByRole("link", { name: "Overview" })).toHaveAttribute("data-prefetch", "automatic");
+  });
+
+  it("does not flash the login form while the initial session check is pending", () => {
+    vi.mocked(getCurrentUser).mockReturnValue(new Promise(() => undefined));
+    render(<AuthProvider><AuthForm mode="login" /></AuthProvider>);
+    expect(screen.queryByLabelText("Email")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Sign in" })).not.toBeInTheDocument();
+    expect(navigation.documentReplace).not.toHaveBeenCalled();
+  });
+
+  it("replaces a stale login route without ever showing a login form for an authenticated user", async () => {
+    navigation.search = "next=%2Fhistory";
+    vi.mocked(getCurrentUser).mockResolvedValue(baseUser);
+    render(<AuthProvider><AppShell><AuthForm mode="login" /></AppShell></AuthProvider>);
+    expect(screen.queryByLabelText("Email")).not.toBeInTheDocument();
+    await waitFor(() => expect(navigation.documentReplace).toHaveBeenCalledWith("/history"));
+    expect(navigation.documentReplace).toHaveBeenCalledOnce();
+    expect(screen.getByText("Student")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Sign in" })).not.toBeInTheDocument();
+    expect(navigation.push).not.toHaveBeenCalled();
+  });
+
+  it("keeps a failed initial session check visible without rendering login or redirecting", async () => {
+    vi.mocked(getCurrentUser).mockRejectedValue(new ApiError("NETWORK_ERROR", "The API is not reachable.", 0));
+    render(<AuthProvider><AuthForm mode="login" /></AuthProvider>);
+    expect(await screen.findByRole("alert")).toHaveTextContent("The API is not reachable.");
+    expect(screen.queryByLabelText("Email")).not.toBeInTheDocument();
+    expect(navigation.documentReplace).not.toHaveBeenCalled();
   });
 
   it("renders Forbidden for a USER admin guard", async () => {
@@ -194,7 +244,10 @@ describe("authentication UI", () => {
     expect(await screen.findByText("Student")).toBeInTheDocument();
     expect(login).toHaveBeenCalledWith({ email: "student@example.com", password: "safe-password" });
     expect(getCurrentUser).toHaveBeenCalledTimes(2);
-    expect(navigation.push).toHaveBeenCalledWith("/");
+    expect(navigation.documentReplace).toHaveBeenCalledWith("/");
+    expect(navigation.documentReplace).toHaveBeenCalledOnce();
+    expect(navigation.push).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "Sign in" })).not.toBeInTheDocument();
   });
 
   it("does not accept a login response when the cookie-backed session cannot be read", async () => {
@@ -214,6 +267,10 @@ describe("authentication UI", () => {
     ["/library?module=WRITING", "/library?module=WRITING"],
     ["//external.example/library", "/"],
     ["https://external.example/library", "/"],
+    ["javascript:alert(1)", "/"],
+    ["/\\external.example/library", "/"],
+    ["/session/restore?next=/library", "/"],
+    ["/login?next=/library", "/"],
   ])("validates login next=%s after confirming the cookie-backed session", async (next, target) => {
     navigation.search = new URLSearchParams({ next }).toString();
     let confirm!: (value: typeof baseUser) => void;
@@ -222,15 +279,19 @@ describe("authentication UI", () => {
       .mockReturnValueOnce(new Promise((resolve) => { confirm = resolve; }));
     vi.mocked(login).mockResolvedValue({ user: baseUser, access_expires_at: new Date().toISOString() });
     render(<AuthProvider><AuthForm mode="login" /></AuthProvider>);
-    await waitFor(() => expect(getCurrentUser).toHaveBeenCalledOnce());
+    await screen.findByLabelText("Email");
     fireEvent.change(screen.getByLabelText("Email"), { target: { value: "student@example.com" } });
     fireEvent.change(screen.getByLabelText("Password"), { target: { value: "safe-password" } });
     fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
     await waitFor(() => expect(getCurrentUser).toHaveBeenCalledTimes(2));
     expect(navigation.push).not.toHaveBeenCalled();
+    expect(navigation.documentReplace).not.toHaveBeenCalled();
     await act(async () => { confirm(baseUser); });
     expect(navigation.refresh).toHaveBeenCalledOnce();
-    expect(navigation.push).toHaveBeenCalledWith(target);
+    expect(navigation.documentReplace).toHaveBeenCalledWith(target);
+    expect(navigation.documentReplace).toHaveBeenCalledOnce();
+    expect(navigation.push).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText("Email")).not.toBeInTheDocument();
   });
 
   it("surfaces non-401 session errors without showing a logged-out shell", async () => {
@@ -241,9 +302,10 @@ describe("authentication UI", () => {
   });
 
   it("requires matching registration passwords and never offers a role choice", async () => {
-    vi.mocked(getCurrentUser).mockRejectedValue(new Error("unauthenticated"));
+    vi.mocked(getCurrentUser).mockRejectedValue(new ApiError("AUTHENTICATION_REQUIRED", "Sign in", 401));
     vi.mocked(register).mockResolvedValue({ user: baseUser, access_expires_at: new Date().toISOString() });
     render(<AuthProvider><AuthForm mode="register" /></AuthProvider>);
+    await screen.findByLabelText("Name");
 
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Student" } });
     fireEvent.change(screen.getByLabelText("Email"), { target: { value: "student@example.com" } });

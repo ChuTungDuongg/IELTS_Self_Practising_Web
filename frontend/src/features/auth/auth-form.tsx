@@ -1,18 +1,27 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { googleLoginUrl, login, register } from "@/lib/api/auth";
 import { ApiError } from "@/lib/api/client";
+import { safeAuthDestination } from "@/lib/auth-destination";
 import { useAuth } from "./auth-provider";
 
 export function AuthForm({ mode }: { mode: "login" | "register" }) {
-  const router = useRouter();
   const searchParams = useSearchParams();
-  const { confirmSession } = useAuth();
+  const { user, loading, sessionError, confirmSession } = useAuth();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const navigating = useRef(false);
+  const destination = safeAuthDestination(searchParams.get("next"));
+
+  useEffect(() => {
+    if (!loading && user && !pending && !navigating.current) {
+      navigating.current = true;
+      window.location.replace(destination);
+    }
+  }, [destination, loading, pending, user]);
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -35,14 +44,18 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
         });
       }
       await confirmSession();
-      const next = searchParams.get("next");
-      router.push(next?.startsWith("/") && !next.startsWith("//") ? next : "/");
+      navigating.current = true;
+      // A document request uses the confirmed cookies without stale prefetched RSC data.
+      window.location.replace(destination);
     } catch (caught) {
       setError(caught instanceof ApiError ? caught.message : "Authentication could not be completed.");
     } finally {
       setPending(false);
     }
   }
+
+  if (loading || user) return <p className="notice" role="status">Checking your session…</p>;
+  if (sessionError) return <p role="alert" className="notice">{sessionError}</p>;
 
   return <section className="auth-card">
     <div><p className="page-eyebrow">IELTS Studio account</p><h1>{mode === "login" ? "Welcome back" : "Create your account"}</h1><p>{mode === "login" ? "Sign in to continue your practice." : "Keep your attempts, History, and Analytics private to you."}</p></div>

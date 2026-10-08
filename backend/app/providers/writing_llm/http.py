@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import re
 from typing import Any
 
 import httpx
@@ -13,6 +14,14 @@ from app.providers.writing_llm.base import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class CompletionContextExceeded(ProviderFailure):
+    """Verified pre-inference rejection; carry only the remaining numeric cap."""
+
+    def __init__(self, available_max_tokens: int) -> None:
+        super().__init__("AI_PROVIDER_ENDPOINT_ERROR")
+        self.available_max_tokens = available_max_tokens
 
 
 def api_base_url(value: str) -> str:
@@ -85,6 +94,12 @@ class ChatCompletionHTTP:
                             raise ProviderFailure("AI_PROVIDER_AUTH_FAILED")
                         if status in {400, 404} and self._missing_model(content):
                             raise ProviderFailure("AI_MODEL_UNAVAILABLE")
+                        if status == 400 and method == "POST" and path == "/chat/completions":
+                            available = self._available_context_tokens(
+                                content, body.get("max_tokens") if body else None
+                            )
+                            if available is not None:
+                                raise CompletionContextExceeded(available)
                         if status in {502, 503}:
                             raise ProviderFailure("AI_MODEL_UNAVAILABLE")
                         if status in {408, 504}:
@@ -104,12 +119,56 @@ class ChatCompletionHTTP:
             raise ProviderFailure("AI_PROVIDER_UNREACHABLE") from None
         except (ValueError, TypeError):
             raise ProviderFailure("AI_PROVIDER_BAD_RESPONSE", reason="INVALID_JSON") from None
+        except CompletionContextExceeded:
+            # The vLLM adapter may lower an explicit cap once, before inference.
+            # Do not log or retain the provider's validation error text.
+            raise
         except ProviderFailure as exc:
             # Only fixed operations/codes/statuses. No URL, headers or response body.
             logger.warning(
                 "AI provider failure: operation=%s code=%s status=%s", path, exc.code, status
             )
             raise
+
+    @staticmethod
+    def _available_context_tokens(content: bytes, requested_max_tokens: object) -> int | None:
+        """Accept only vLLM 0.13's exact context-budget validation and arithmetic.
+
+        Source: vllm/entrypoints/openai/serving_engine.py _validate_input at v0.13.0.
+        Unrelated 400s and input overflow remain failures, never prompt truncation.
+        """
+        if type(requested_max_tokens) is not int or requested_max_tokens <= 0:
+            return None
+        try:
+            error = json.loads(content)["error"]
+            if (
+                error.get("type") != "BadRequestError"
+                or type(error.get("code")) is not int
+                or error["code"] != 400
+                or error.get("param") is not None
+                or not isinstance(error.get("message"), str)
+            ):
+                return None
+            match = re.fullmatch(
+                r"'max_tokens' or 'max_completion_tokens' is too large: "
+                r"(?P<requested>[0-9]{1,8})\. This model's maximum context length is "
+                r"(?P<context>[0-9]{1,8}) tokens and your request has "
+                r"(?P<input>[0-9]{1,8}) input tokens "
+                r"\((?P=requested) > (?P=context) - (?P=input)\)\.",
+                error["message"],
+            )
+            if match is None:
+                return None
+            requested, context, input_tokens = map(
+                int, (match["requested"], match["context"], match["input"])
+            )
+            available = context - input_tokens
+            if requested == requested_max_tokens and 0 < available < requested <= 10_000_000:
+                if input_tokens < context <= 10_000_000:
+                    return available
+        except (ValueError, TypeError, KeyError, AttributeError):
+            pass
+        return None
 
     @staticmethod
     def _missing_model(content: bytes) -> bool:

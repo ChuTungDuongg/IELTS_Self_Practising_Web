@@ -54,9 +54,9 @@ describe("server auth requests and layouts", () => {
   });
 
   it.each([
-    ["admin", AdminLayout, "/login?next=/admin"],
-    ["transfer", TransferLayout, "/login?next=/transfer"],
-  ])("redirects a 401 from %s to login", async (_name, layout, target) => {
+    ["admin", AdminLayout, "/session/restore?next=%2Fadmin"],
+    ["transfer", TransferLayout, "/session/restore?next=%2Ftransfer"],
+  ])("redirects a 401 from %s to browser restoration", async (_name, layout, target) => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ code: "AUTHENTICATION_REQUIRED" }), { status: 401 })));
     await expect(layout({ children: <p>Protected</p> })).rejects.toThrow(`REDIRECT:${target}`);
     expect(redirect).toHaveBeenCalledWith(target);

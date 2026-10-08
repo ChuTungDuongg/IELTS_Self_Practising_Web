@@ -64,7 +64,7 @@ class PieProvider(Task1FakeProvider):
         super().__init__()
         self.outputs, self.image_calls = list(outputs), 0
 
-    async def complete(self, messages, schema):
+    async def complete(self, messages, schema, *, options=None):
         if "reference" in schema["properties"]:
             self.calls.append(messages)
             output = self.outputs[min(self.image_calls, len(self.outputs) - 1)]
@@ -72,7 +72,7 @@ class PieProvider(Task1FakeProvider):
             if isinstance(output, Completion):
                 return output
             return Completion(json.dumps(output), {"total_tokens": 10})
-        return await super().complete(messages, schema)
+        return await super().complete(messages, schema, options=options)
 
 
 def pie_request(enabled=False):

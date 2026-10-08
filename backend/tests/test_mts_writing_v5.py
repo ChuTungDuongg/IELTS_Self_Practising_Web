@@ -29,7 +29,7 @@ class Provider:
         self.lr_score = lr_score
         self.calls = []
 
-    async def complete(self, messages, schema):
+    async def complete(self, messages, schema, *, options=None):
         self.calls.append((messages, schema))
         evidence = "evidence" in schema["properties"]
         lr = "Criterion: Lexical Resource." in messages[0]["content"]

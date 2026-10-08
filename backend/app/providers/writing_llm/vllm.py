@@ -1,8 +1,8 @@
 from typing import Any
 
 from app.core.config import Settings
-from app.providers.writing_llm.base import Completion, Message
-from app.providers.writing_llm.http import ChatCompletionHTTP
+from app.providers.writing_llm.base import Completion, CompletionOptions, Message
+from app.providers.writing_llm.http import ChatCompletionHTTP, CompletionContextExceeded
 from app.providers.writing_llm.messages import serialize_messages
 
 
@@ -48,18 +48,33 @@ class VLLMProvider:
     async def ensure_ready(self) -> None:
         await self.transport.ensure_model(self.model, self.startup_timeout)
 
-    async def complete(self, messages: list[Message], schema: dict[str, Any]) -> Completion:
-        return await self.transport.send(
-            {
-                "model": self.model,
-                "messages": serialize_messages(messages),
-                "stream": False,
-                "temperature": 0.0,
-                "seed": 0,
-                "max_tokens": 1800,
-                "response_format": {
-                    "type": "json_schema",
-                    "json_schema": {"name": "assessment", "schema": guided_json_schema(schema)},
-                },
-            }
-        )
+    async def complete(
+        self,
+        messages: list[Message],
+        schema: dict[str, Any],
+        *,
+        options: CompletionOptions | None = None,
+    ) -> Completion:
+        body = {
+            "model": self.model,
+            "messages": serialize_messages(messages),
+            "stream": False,
+            "temperature": 0.0,
+            "seed": 0,
+            "max_tokens": options.max_tokens
+            if options is not None and options.max_tokens is not None
+            else 1800,
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {"name": "assessment", "schema": guided_json_schema(schema)},
+            },
+        }
+        try:
+            return await self.transport.send(body)
+        except CompletionContextExceeded as exc:
+            if options is None or options.max_tokens is None:
+                raise
+            # One validation-only resubmission. All input and scoring parameters
+            # stay intact; finish=length still belongs to MTS's single repair.
+            body["max_tokens"] = exc.available_max_tokens
+            return await self.transport.send(body)

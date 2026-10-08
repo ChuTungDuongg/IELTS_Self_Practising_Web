@@ -36,6 +36,13 @@ class Completion:
     finish_reason: str = "stop"
 
 
+@dataclass(frozen=True, slots=True)
+class CompletionOptions:
+    """Provider-neutral output cap; omitted values keep the adapter's default."""
+
+    max_tokens: int | None = None
+
+
 SafeFinishReason = Literal[
     "stop",
     "length",
@@ -124,7 +131,13 @@ class ProviderFailure(Exception):
 class LLMProvider(Protocol):
     async def ensure_ready(self) -> None: ...
 
-    async def complete(self, messages: list[Message], schema: dict[str, Any]) -> Completion: ...
+    async def complete(
+        self,
+        messages: list[Message],
+        schema: dict[str, Any],
+        *,
+        options: CompletionOptions | None = None,
+    ) -> Completion: ...
 
 
 def validate_finish(value: object) -> None:

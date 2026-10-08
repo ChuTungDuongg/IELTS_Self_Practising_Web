@@ -38,7 +38,7 @@ class Provider:
     def __init__(self, overrides=None):
         self.overrides, self.calls = overrides or {}, []
 
-    async def complete(self, messages, schema):
+    async def complete(self, messages, schema, *, options=None):
         index = len(self.calls)
         self.calls.append(messages)
         value = self.overrides.get(index)

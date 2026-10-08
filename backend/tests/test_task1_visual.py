@@ -472,7 +472,7 @@ class Task1FakeProvider:
     async def ensure_ready(self):
         pass
 
-    async def complete(self, messages, schema):
+    async def complete(self, messages, schema, *, options=None):
         self.calls.append(messages)
         properties = schema["properties"]
         if "reference" in properties:
@@ -687,7 +687,7 @@ def test_derived_changes_can_exceed_point_bounds_without_failing_the_pipeline():
 
 async def test_empty_perception_cannot_claim_usable_grounding():
     class EmptyProvider:
-        async def complete(self, _messages, _schema):
+        async def complete(self, _messages, _schema, *, options=None):
             return Completion(
                 json.dumps(
                     {

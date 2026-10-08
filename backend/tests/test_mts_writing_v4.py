@@ -32,7 +32,7 @@ class CoreProvider:
         self.overrides = overrides or {}
         self.calls = []
 
-    async def complete(self, messages, schema):
+    async def complete(self, messages, schema, *, options=None):
         index = len(self.calls)
         self.calls.append((messages, schema))
         if index in self.overrides:

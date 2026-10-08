@@ -1,7 +1,7 @@
 from typing import Any
 
 from app.core.config import Settings
-from app.providers.writing_llm.base import Completion, Message
+from app.providers.writing_llm.base import Completion, CompletionOptions, Message
 from app.providers.writing_llm.http import ChatCompletionHTTP
 from app.providers.writing_llm.messages import serialize_messages
 
@@ -24,7 +24,13 @@ class OpenAIProvider:
     async def ensure_ready(self) -> None:
         await self.transport.ensure_model(self.model, self.transport.timeout)
 
-    async def complete(self, messages: list[Message], schema: dict[str, Any]) -> Completion:
+    async def complete(
+        self,
+        messages: list[Message],
+        schema: dict[str, Any],
+        *,
+        options: CompletionOptions | None = None,
+    ) -> Completion:
         # Prompt construction already supplies the schema. The common MTS contract
         # validates JSON mode output identically to vLLM structured output.
         return await self.transport.send(
@@ -32,7 +38,9 @@ class OpenAIProvider:
                 "model": self.model,
                 "messages": serialize_messages(messages),
                 "stream": False,
-                "max_completion_tokens": 4096,
+                "max_completion_tokens": options.max_tokens
+                if options is not None and options.max_tokens is not None
+                else 4096,
                 "response_format": {"type": "json_object"},
             }
         )

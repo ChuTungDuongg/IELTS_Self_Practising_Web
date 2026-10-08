@@ -52,7 +52,7 @@ class FakeProvider:
     async def ensure_ready(self):
         pass
 
-    async def complete(self, messages, schema):
+    async def complete(self, messages, schema, *, options=None):
         index = len(self.calls)
         self.calls.append(messages)
         if index in self.overrides:
@@ -473,10 +473,10 @@ async def test_interruption_after_lr_failure_persists_gra_failure_and_partial_re
     db_session, writing, settings
 ):
     class InterruptedProvider(FakeProvider):
-        async def complete(self, messages, schema):
+        async def complete(self, messages, schema, *, options=None):
             if len(self.calls) == 7:
                 raise asyncio.CancelledError
-            return await super().complete(messages, schema)
+            return await super().complete(messages, schema, options=options)
 
     attempt_id, _, task_id = writing
     api = service(db_session, settings)
@@ -508,7 +508,7 @@ async def test_partial_checkpoint_visible_before_next_trait_and_heartbeat_is_onl
     runner = worker(db_session, settings)
 
     class InspectingProvider(FakeProvider):
-        async def complete(self, messages, schema):
+        async def complete(self, messages, schema, *, options=None):
             if len(self.calls) == 2:
                 before = await api.get(created.run_id)
                 assert set(before.progress) == {"ta"} and before.result is None
@@ -516,7 +516,7 @@ async def test_partial_checkpoint_visible_before_next_trait_and_heartbeat_is_onl
                 await runner._checkpoint(created.run_id, "heartbeat", EventPayload())
                 after = await api.get(created.run_id)
                 assert after.progress == before.progress and after.activity == before.activity
-            return await super().complete(messages, schema)
+            return await super().complete(messages, schema, options=options)
 
     runner.provider = InspectingProvider()
     await runner.execute(created.run_id)
@@ -633,14 +633,14 @@ async def test_verbose_lr_normalizes_persists_live_before_gra_and_replays_withou
     }
 
     class InspectingProvider(FakeProvider):
-        async def complete(self, messages, schema):
+        async def complete(self, messages, schema, *, options=None):
             if len(self.calls) == 6:
                 live = await api.get(created.run_id)
                 assert live.status == WritingAIRunStatus.RUNNING and live.result is None
                 assert set(live.progress) == {"ta", "cc", "lr"} and not live.failures
                 assert live.progress["lr"].score == Decimal("6.5")
                 assert len(live.progress["lr"].feedback) <= 800
-            return await super().complete(messages, schema)
+            return await super().complete(messages, schema, options=options)
 
     provider = InspectingProvider({5: json.dumps(lr)})
     runner = worker(db_session, settings, provider)
@@ -866,11 +866,11 @@ async def test_disconnect_keeps_job_alive_and_shutdown_cancellation_is_retryable
             self.waiting = asyncio.Event()
             self.release = asyncio.Event()
 
-        async def complete(self, messages, schema):
+        async def complete(self, messages, schema, *, options=None):
             if not self.calls:
                 self.waiting.set()
                 await self.release.wait()
-            return await super().complete(messages, schema)
+            return await super().complete(messages, schema, options=options)
 
     attempt_id, _, task_id = writing
     created = await service(db_session, settings).create(attempt_id, task_id, force=False)

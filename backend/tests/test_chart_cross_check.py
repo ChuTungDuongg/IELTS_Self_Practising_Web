@@ -316,14 +316,14 @@ async def test_primary_failure_never_uses_specialist_as_replacement():
 )
 async def test_non_chart_never_calls_specialist(kind, family):
     class NonChartPrimary(Task1FakeProvider):
-        async def complete(self, messages, schema):
+        async def complete(self, messages, schema, *, options=None):
             if "reference" in schema["properties"]:
                 from app.providers.writing_llm.base import Completion
 
                 return Completion(
                     json.dumps({"reference": reference(family).model_dump(mode="json")})
                 )
-            return await super().complete(messages, schema)
+            return await super().complete(messages, schema, options=options)
 
     req = request()
     req.task_type = kind
