@@ -10,6 +10,16 @@ function request(path: string, cookie = "") {
 describe("protected route proxy", () => {
   beforeEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
+  it("uses the internal FastAPI origin when the browser API URL is relative", async () => {
+    vi.stubEnv("API_INTERNAL_BASE_URL", "http://127.0.0.1:9001/api/v1");
+    const fetchMock = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      await proxy(request("/history", "ielts_access=valid"));
+      expect(fetchMock.mock.calls[0][0]).toBe("http://127.0.0.1:9001/api/v1/auth/me");
+    } finally { vi.unstubAllEnvs(); }
+  });
+
   it("keeps an existing cookie-backed session on protected navigation", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);

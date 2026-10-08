@@ -1,0 +1,572 @@
+import asyncio
+import json
+from datetime import UTC, datetime, timedelta
+from decimal import Decimal
+from unittest.mock import Mock
+from uuid import uuid4
+
+import httpx
+import pytest
+import pytest_asyncio
+from pydantic import ValidationError
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import async_sessionmaker
+
+from app.api.dependencies import get_current_user
+from app.api.v1 import writing_ai as routes
+from app.core.config import Settings
+from app.core.database import get_session
+from app.core.exceptions import AppError
+from app.domains.scoring.ai_writing import aggregate_ai_task_two
+from app.domains.scoring.mts_prompts import TRAIT_NAMES
+from app.domains.scoring.writing import WritingScoringProvider, WritingScoringRequest
+from app.main import app
+from app.models import (
+    Attempt,
+    AttemptWritingResponse,
+    AttemptWritingScore,
+    WritingAIGradingEvent,
+    WritingAIGradingRun,
+    WritingTask,
+)
+from app.models import Test as DomainTest
+from app.models import TestModule as DomainModule
+from app.models import TestVersion as DomainVersion
+from app.models.enums import AttemptStatus, ModuleType, TimerMode, VersionStatus, WritingAIRunStatus
+from app.providers.writing_llm import create_provider, is_configured
+from app.providers.writing_llm.base import Completion, ProviderFailure
+from app.schemas.writing_ai import TRAITS, EventPayload, TraitScore
+from app.services.mts_writing import MTSWritingScoringService
+from app.services.writing_ai import WritingAIService, input_fingerprint
+from app.services.writing_ai_worker import WritingAIWorker
+
+ESSAY = "Fictional parks improve city life. However, funding should be transparent."
+
+
+class FakeProvider:
+    def __init__(self, overrides=None):
+        self.calls = []
+        self.overrides = overrides or {}
+        self.scored = 0
+
+    async def complete(self, messages, schema):
+        index = len(self.calls)
+        self.calls.append(messages)
+        if index in self.overrides:
+            output = self.overrides[index]
+            if isinstance(output, Exception):
+                raise output
+            return Completion(output)
+        if "evidence" in schema["properties"]:
+            value = {
+                "evidence": [
+                    {
+                        "quote": "Fictional parks improve city life.",
+                        "assessment": "A clear relevant statement.",
+                    }
+                ]
+            }
+        else:
+            value = {
+                "score": [6.5, 6, 7, 6][self.scored % 4],
+                "feedback": "Develop the supporting details.",
+                "strengths": ["Clear language."],
+                "improvements": ["Add a specific example."],
+            }
+            self.scored += 1
+        return Completion(json.dumps(value), {"total_tokens": 10})
+
+
+@pytest.fixture
+def settings():
+    return Settings(
+        _env_file=None, ai_writing_enabled=True, ai_writing_vllm_base_url="https://llm.example/v1"
+    )
+
+
+@pytest_asyncio.fixture
+async def writing(db_session):
+    now = datetime.now(UTC)
+    test = DomainTest(title=f"Fictional AI writing {uuid4()}")
+    version = DomainVersion(version_number=1, status=VersionStatus.PUBLISHED, published_at=now)
+    module = DomainModule(module_type=ModuleType.WRITING, order_index=0)
+    task_one = WritingTask(task_number=1, prompt="Describe fictional data.", order_index=0)
+    task_two = WritingTask(task_number=2, prompt="Discuss fictional city parks.", order_index=1)
+    test.versions.append(version)
+    version.modules.append(module)
+    module.writing_tasks.extend([task_one, task_two])
+    async with db_session.begin():
+        db_session.add(test)
+        await db_session.flush()
+        attempt = Attempt(
+            user_id=db_session.info["current_user_id"],
+            test_version_id=version.id,
+            module_type=ModuleType.WRITING,
+            status=AttemptStatus.SUBMITTED,
+            timer_mode=TimerMode.COUNT_UP,
+            started_at=now,
+            last_active_at=now,
+            finished_at=now,
+            band_score=Decimal("7.0"),
+        )
+        db_session.add(attempt)
+        await db_session.flush()
+        db_session.add_all(
+            [
+                AttemptWritingResponse(
+                    attempt_id=attempt.id, writing_task_id=task_two.id, content=ESSAY, word_count=12
+                ),
+                AttemptWritingScore(
+                    attempt_id=attempt.id,
+                    writing_task_id=task_two.id,
+                    ta=7,
+                    cc=7,
+                    lr=7,
+                    gra=7,
+                    ta_feedback="Human feedback stays.",
+                ),
+            ]
+        )
+    return attempt.id, task_one.id, task_two.id
+
+
+def service(session, settings, owner=None):
+    return WritingAIService(session, owner or session.info["current_user_id"], settings)
+
+
+def worker(session, settings, provider=None):
+    # Separate worker sessions, same rollback-isolated PostgreSQL test connection.
+    factory = async_sessionmaker(
+        session.bind, expire_on_commit=False, join_transaction_mode="create_savepoint"
+    )
+    return WritingAIWorker(factory, settings, provider or FakeProvider())
+
+
+@pytest.mark.parametrize("score", [Decimal(i) / 2 for i in range(19)])
+def test_ai_half_band_validation(score):
+    assert TraitScore(score=score, feedback="Useful.", strengths=[], improvements=[]).score == score
+
+
+@pytest.mark.parametrize("score", [-0.5, 9.5, 7.25, "NaN", "Infinity", "-Infinity"])
+def test_invalid_ai_scores(score):
+    with pytest.raises(ValidationError):
+        TraitScore(score=score, feedback="Useful.", strengths=[], improvements=[])
+
+
+def test_ai_mean_uses_existing_half_rounding(monkeypatch):
+    import app.domains.scoring.ai_writing as domain
+
+    original = domain.round_to_half
+    spy = Mock(side_effect=original)
+    monkeypatch.setattr(domain, "round_to_half", spy)
+    assert aggregate_ai_task_two(*map(Decimal, ["6.5", "6", "7", "6"])) == (
+        Decimal("6.375"),
+        Decimal("6.5"),
+    )
+    spy.assert_called_once_with(Decimal("6.375"))
+
+
+@pytest.mark.parametrize("changed", ["prompt", "response", "version", "provider", "model"])
+def test_fingerprint_changes_with_each_input(changed):
+    request = WritingScoringRequest(
+        attempt_id=uuid4(), writing_task_id=uuid4(), prompt="Fictional", response=ESSAY
+    )
+    baseline = input_fingerprint(request, "v1", "fake", "model")
+    updated = (
+        request.model_copy(update={changed: "changed"})
+        if changed in {"prompt", "response"}
+        else request
+    )
+    other = input_fingerprint(
+        updated,
+        "v2" if changed == "version" else "v1",
+        "other" if changed == "provider" else "fake",
+        "other" if changed == "model" else "model",
+    )
+    assert len(baseline) == 64 and baseline != other
+    assert baseline == input_fingerprint(request, "v1", "fake", "model")
+
+
+@pytest.mark.integration
+async def test_success_persistence_cache_force_events_and_official_isolation(
+    db_session, writing, settings
+):
+    attempt_id, _, task_id = writing
+    api = service(db_session, settings)
+    created = await api.create(attempt_id, task_id, force=False)
+    duplicate = await api.create(attempt_id, task_id, force=False)
+    assert duplicate.run_id == created.run_id and duplicate.existing_active
+    provider = FakeProvider()
+    runner = worker(db_session, settings, provider)
+    await runner.execute(created.run_id)
+    saved, events = await api.snapshot(created.run_id, 0)
+    assert saved.status == WritingAIRunStatus.COMPLETED
+    assert saved.result.raw_mean == Decimal("6.375")
+    assert saved.result.overall_band == Decimal("6.5")
+    assert len(events) == 18
+    assert [event.sequence for event in events] == list(range(1, 19))
+    assert events[0].event_type == "run.started" and events[-1].event_type == "run.completed"
+    assert len(provider.calls) == 8
+    for index, trait in enumerate(TRAITS):
+        assert TRAIT_NAMES[trait] in provider.calls[index * 2][0]["content"]
+        assert all(
+            TRAIT_NAMES[other] not in provider.calls[index * 2 + 1][0]["content"]
+            for other in TRAITS
+            if other != trait
+        )
+        assert "UNTRUSTED DATA" in provider.calls[index * 2][0]["content"]
+    cached = await api.create(attempt_id, task_id, force=False)
+    assert cached.run_id == created.run_id and cached.cache_hit
+    forced = await api.create(attempt_id, task_id, force=True)
+    assert forced.run_id != created.run_id and not forced.cache_hit
+    history = await api.list(attempt_id, task_id)
+    assert len(history.items) == 2
+    assert history.items[1].result is not None
+    async with db_session.begin():
+        db_session.expire_all()
+        attempt = await db_session.get(Attempt, attempt_id)
+        score = await db_session.scalar(
+            select(AttemptWritingScore).where(AttemptWritingScore.attempt_id == attempt_id)
+        )
+        run = await db_session.get(WritingAIGradingRun, created.run_id)
+        assert run.raw_mean == Decimal("6.375") and run.usage_json == {
+            "calls": [{"total_tokens": 10}] * 8
+        }
+        assert attempt.band_score == Decimal("7.0")
+        assert (score.ta, score.cc, score.lr, score.gra, score.ta_feedback) == (
+            7,
+            7,
+            7,
+            7,
+            "Human feedback stays.",
+        )
+        assert (
+            await db_session.scalar(
+                select(func.count())
+                .select_from(AttemptWritingScore)
+                .where(AttemptWritingScore.attempt_id == attempt_id)
+            )
+            == 1
+        )
+
+
+@pytest.mark.integration
+async def test_ai_does_not_create_manual_score_for_ungraded_attempt(db_session, writing, settings):
+    from sqlalchemy import delete
+
+    attempt_id, _, task_id = writing
+    async with db_session.begin():
+        await db_session.execute(
+            delete(AttemptWritingScore).where(AttemptWritingScore.attempt_id == attempt_id)
+        )
+        attempt = await db_session.get(Attempt, attempt_id)
+        attempt.band_score = None
+    created = await service(db_session, settings).create(attempt_id, task_id, force=False)
+    await worker(db_session, settings).execute(created.run_id)
+    async with db_session.begin():
+        db_session.expire_all()
+        assert (await db_session.get(Attempt, attempt_id)).band_score is None
+        assert (
+            await db_session.scalar(
+                select(func.count())
+                .select_from(AttemptWritingScore)
+                .where(AttemptWritingScore.attempt_id == attempt_id)
+            )
+            == 0
+        )
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "violation,code",
+    [
+        ("task1", "AI_TASK_TWO_ONLY"),
+        ("active", "ATTEMPT_NOT_FINALIZED"),
+        ("paused", "ATTEMPT_NOT_FINALIZED"),
+        ("empty", "AI_EMPTY_ESSAY"),
+        ("missing", "AI_EMPTY_ESSAY"),
+        ("foreign", "INVALID_WRITING_TASK"),
+        ("owner", "ATTEMPT_NOT_FOUND"),
+        ("reading", "WRITING_ATTEMPT_REQUIRED"),
+        ("long", "AI_INPUT_TOO_LONG"),
+    ],
+)
+async def test_ai_scope_enforced(db_session, writing, settings, violation, code):
+    from sqlalchemy import delete
+
+    attempt_id, task_one_id, task_id = writing
+    async with db_session.begin():
+        if violation in {"active", "paused", "reading"}:
+            attempt = await db_session.get(Attempt, attempt_id)
+            if violation == "reading":
+                attempt.module_type = ModuleType.READING
+            else:
+                attempt.status = (
+                    AttemptStatus.PAUSED if violation == "paused" else AttemptStatus.IN_PROGRESS
+                )
+        if violation in {"empty", "long"}:
+            essay = await db_session.scalar(
+                select(AttemptWritingResponse).where(
+                    AttemptWritingResponse.attempt_id == attempt_id
+                )
+            )
+            essay.content = " " if violation == "empty" else "x" * 12_001
+        if violation == "missing":
+            await db_session.execute(
+                delete(AttemptWritingResponse).where(
+                    AttemptWritingResponse.attempt_id == attempt_id
+                )
+            )
+    requested_task = (
+        task_one_id if violation == "task1" else uuid4() if violation == "foreign" else task_id
+    )
+    with pytest.raises(AppError) as error:
+        await service(db_session, settings, uuid4() if violation == "owner" else None).create(
+            attempt_id, requested_task, force=False
+        )
+    assert error.value.code == code
+    async with db_session.begin():
+        assert await db_session.scalar(select(func.count()).select_from(WritingAIGradingRun)) == 0
+
+
+@pytest.mark.integration
+async def test_task_from_other_version_rejected(db_session, writing, settings):
+    attempt_id, _, _ = writing
+    async with db_session.begin():
+        test = DomainTest(title="Foreign fictional version")
+        version = DomainVersion(version_number=1, status=VersionStatus.PUBLISHED)
+        module = DomainModule(module_type=ModuleType.WRITING, order_index=0)
+        task = WritingTask(task_number=2, prompt="Foreign fictional prompt", order_index=0)
+        test.versions.append(version)
+        version.modules.append(module)
+        module.writing_tasks.append(task)
+        db_session.add(test)
+        await db_session.flush()
+        foreign_id = task.id
+    with pytest.raises(AppError, match="INVALID_WRITING_TASK"):
+        await service(db_session, settings).create(attempt_id, foreign_id, force=False)
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "not json",
+        '{"score":7.25,"feedback":"x","strengths":[],"improvements":[]}',
+        '{"score":10,"feedback":"x","strengths":[],"improvements":[]}',
+    ],
+)
+async def test_bad_trait_call_repaired_once(db_session, writing, settings, bad):
+    attempt_id, _, task_id = writing
+    created = await service(db_session, settings).create(attempt_id, task_id, force=False)
+    provider = FakeProvider({1: bad})
+    await worker(db_session, settings, provider).execute(created.run_id)
+    assert (
+        await service(db_session, settings).get(created.run_id)
+    ).status == WritingAIRunStatus.COMPLETED
+    assert len(provider.calls) == 9
+    assert "Correction:" in provider.calls[2][-1]["content"]
+    assert provider.calls[1][0] == provider.calls[2][0]
+
+
+@pytest.mark.integration
+async def test_second_bad_call_fails_and_preserves_partial_progress(db_session, writing, settings):
+    attempt_id, _, task_id = writing
+    created = await service(db_session, settings).create(attempt_id, task_id, force=False)
+    provider = FakeProvider({3: "malformed secret raw text", 4: "still malformed secret raw text"})
+    await worker(db_session, settings, provider).execute(created.run_id)
+    run, events = await service(db_session, settings).snapshot(created.run_id, 0)
+    assert run.status == WritingAIRunStatus.FAILED and run.error_code == "INVALID_PROVIDER_OUTPUT"
+    assert set(run.progress) == {"ta"} and run.result is None
+    assert len(provider.calls) == 5 and events[-1].event_type == "run.failed"
+    assert "secret" not in run.model_dump_json() + str(events)
+    retried = await service(db_session, settings).create(attempt_id, task_id, force=False)
+    assert retried.run_id != run.id
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("code", ["PROVIDER_TIMEOUT", "PROVIDER_HTTP_ERROR"])
+async def test_provider_failure_safe_retryable(db_session, writing, settings, code):
+    attempt_id, _, task_id = writing
+    created = await service(db_session, settings).create(attempt_id, task_id, force=False)
+    await worker(db_session, settings, FakeProvider({0: ProviderFailure(code)})).execute(
+        created.run_id
+    )
+    run, events = await service(db_session, settings).snapshot(created.run_id, 0)
+    assert run.status == WritingAIRunStatus.FAILED and run.error_code == code
+    assert events[-1].event_type == "run.failed"
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("status", [WritingAIRunStatus.PENDING, WritingAIRunStatus.RUNNING])
+async def test_stale_run_recovery_and_no_resurrection(db_session, writing, settings, status):
+    attempt_id, _, task_id = writing
+    api = service(db_session, settings)
+    created = await api.create(attempt_id, task_id, force=False)
+    async with db_session.begin():
+        run = await db_session.get(WritingAIGradingRun, created.run_id)
+        run.status = status
+        run.updated_at = datetime.now(UTC) - timedelta(seconds=100)
+    result, events = await api.snapshot(created.run_id, 0)
+    assert result.status == WritingAIRunStatus.FAILED and result.error_code == "STALE_RUN"
+    assert [item.event_type for item in events] == ["run.failed"]
+    provider = FakeProvider()
+    await worker(db_session, settings, provider).execute(created.run_id)
+    assert provider.calls == []
+    assert (await api.create(attempt_id, task_id, force=False)).run_id != created.run_id
+
+
+@pytest.mark.integration
+async def test_disabled_provider_graceful_and_key_independence(db_session, writing, settings):
+    attempt_id, _, task_id = writing
+    assert is_configured(settings)  # vLLM does not need an OpenAI key.
+    settings.ai_writing_enabled = False
+    assert not (await service(db_session, settings).list(attempt_id, task_id)).configured
+    with pytest.raises(AppError, match="AI_NOT_CONFIGURED"):
+        await service(db_session, settings).create(attempt_id, task_id, force=False)
+    settings.ai_writing_enabled = True
+    settings.ai_writing_provider = "openai"
+    assert not is_configured(settings)
+    with pytest.raises(AppError, match="AI_NOT_CONFIGURED"):
+        create_provider(settings)
+
+
+@pytest.mark.integration
+async def test_sse_api_replay_auth_disconnect_and_no_raw_content(
+    db_session, writing, settings, monkeypatch
+):
+    attempt_id, _, task_id = writing
+    runner = worker(db_session, settings)
+    launches = []
+    monkeypatch.setattr(runner, "launch", launches.append)
+    monkeypatch.setattr(routes, "get_settings", lambda: settings)
+    app.dependency_overrides[routes.get_worker] = lambda: runner
+    app.dependency_overrides[get_current_user] = lambda: db_session.info["current_user_identity"]
+
+    async def session_override():
+        async with runner.sessions() as session:
+            yield session
+
+    app.dependency_overrides[get_session] = session_override
+    try:
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            path = f"/api/v1/attempts/{attempt_id}/writing/{task_id}/ai-grading-runs"
+            created = await client.post(path, json={"force": False})
+            assert created.status_code == 200 and len(launches) == 1
+            duplicate = await client.post(path, json={})
+            assert duplicate.json()["existing_active"] and len(launches) == 1
+            run_id = launches[0]
+            await runner.execute(run_id)
+            url = f"/api/v1/ai-writing-grading-runs/{run_id}"
+            assert (await client.get(url)).json()["result"]["overall_band"] == 6.5
+            stream = await client.get(url + "/events")
+            assert stream.headers["content-type"].startswith("text/event-stream")
+            assert stream.headers["x-accel-buffering"] == "no"
+            assert "id: 1\n" in stream.text and "id: 18\n" in stream.text
+            replay = await client.get(url + "/events?after=3", headers={"Last-Event-ID": "16"})
+            assert "id: 16\n" not in replay.text and "id: 17\n" in replay.text
+            assert "UNTRUSTED DATA" not in stream.text and "usage" not in stream.text
+            assert (
+                await client.get(url + "/events", headers={"Last-Event-ID": "bad"})
+            ).status_code == 422
+            assert (await client.get(url + "/events?after=18")).text == ""
+            assert len((await client.get(path)).json()["items"]) == 1
+            assert (await client.post(path, json={})).json()["cache_hit"]
+            assert (await client.post(path, json={"force": True})).json()["run_id"] != str(run_id)
+            # A disconnected stream exits without cancelling or changing the job.
+            disconnected = Mock()
+
+            async def yes():
+                return True
+
+            disconnected.is_disconnected = yes
+            assert [
+                item
+                async for item in routes.event_stream(
+                    disconnected, run_id, db_session.info["current_user_id"], 0, runner
+                )
+            ] == []
+            foreign = Mock(id=uuid4())
+            app.dependency_overrides[get_current_user] = lambda: foreign
+            assert (await client.get(url)).status_code == 404
+            assert (await client.get(url + "/events")).status_code == 404
+            assert (await client.get(path)).status_code == 404
+            assert (await client.post(path, json={})).status_code == 404
+    finally:
+        app.dependency_overrides.clear()
+
+
+async def test_protocol_adapter_and_unverified_quotation_repair():
+    request = WritingScoringRequest(
+        attempt_id=uuid4(), writing_task_id=uuid4(), prompt="Fictional parks?", response=ESSAY
+    )
+    provider = FakeProvider(
+        {0: '{"evidence":[{"quote":"invented evidence","assessment":"Invalid"}]}'}
+    )
+    scoring: WritingScoringProvider = MTSWritingScoringService(provider)
+    result = await scoring.score(request)
+    assert result.overall_band == 6.5 and len(provider.calls) == 9
+
+
+@pytest.mark.integration
+async def test_worker_heartbeat_is_persisted(db_session, writing, settings):
+    attempt_id, _, task_id = writing
+    created = await service(db_session, settings).create(attempt_id, task_id, force=False)
+    await worker(db_session, settings)._checkpoint(created.run_id, "heartbeat", EventPayload())
+    async with db_session.begin():
+        event = await db_session.scalar(
+            select(WritingAIGradingEvent).where(WritingAIGradingEvent.run_id == created.run_id)
+        )
+        assert event.event_type == "heartbeat" and event.sequence == 1
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("cancel_job", [False, True])
+async def test_disconnect_keeps_job_alive_and_shutdown_cancellation_is_retryable(
+    db_session, writing, settings, cancel_job
+):
+    class WaitingProvider(FakeProvider):
+        def __init__(self):
+            super().__init__()
+            self.waiting = asyncio.Event()
+            self.release = asyncio.Event()
+
+        async def complete(self, messages, schema):
+            if not self.calls:
+                self.waiting.set()
+                await self.release.wait()
+            return await super().complete(messages, schema)
+
+    attempt_id, _, task_id = writing
+    created = await service(db_session, settings).create(attempt_id, task_id, force=False)
+    provider = WaitingProvider()
+    runner = worker(db_session, settings, provider)
+    job = asyncio.create_task(runner.execute(created.run_id))
+    await asyncio.wait_for(provider.waiting.wait(), timeout=5)
+    disconnected = Mock()
+
+    async def yes():
+        return True
+
+    disconnected.is_disconnected = yes
+    assert [
+        item
+        async for item in routes.event_stream(
+            disconnected, created.run_id, db_session.info["current_user_id"], 0, runner
+        )
+    ] == []
+    assert not job.done()
+    if cancel_job:
+        job.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await job
+        run = await service(db_session, settings).get(created.run_id)
+        assert run.status == WritingAIRunStatus.FAILED and run.error_code == "RUN_INTERRUPTED"
+    else:
+        provider.release.set()
+        await job
+        assert (
+            await service(db_session, settings).get(created.run_id)
+        ).status == WritingAIRunStatus.COMPLETED

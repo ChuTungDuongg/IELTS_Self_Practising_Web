@@ -14,6 +14,7 @@ from app.api.v1 import (
     tests,
     transfer,
     writing,
+    writing_ai,
 )
 
 api_router = APIRouter()
@@ -29,4 +30,5 @@ api_router.include_router(assets.router)
 api_router.include_router(reading.router)
 api_router.include_router(listening.router)
 api_router.include_router(writing.router)
+api_router.include_router(writing_ai.router)
 api_router.include_router(transfer.router)

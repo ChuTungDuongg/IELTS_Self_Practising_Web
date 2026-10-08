@@ -6,6 +6,13 @@ class UserRole(StrEnum):
     ADMIN = "ADMIN"
 
 
+class WritingAIRunStatus(StrEnum):
+    PENDING = "PENDING"
+    RUNNING = "RUNNING"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+
+
 class OAuthProvider(StrEnum):
     GOOGLE = "GOOGLE"
 

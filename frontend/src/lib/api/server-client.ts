@@ -11,7 +11,7 @@ export async function serverApiRequest<T>(path: string, init?: RequestInit): Pro
     .join("; ");
   let response: Response;
   try {
-    response = await fetch(`${API_BASE_URL}${path}`, {
+    response = await fetch(`${process.env.API_INTERNAL_BASE_URL ?? API_BASE_URL}${path}`, {
       ...init,
       cache: "no-store",
       headers: {

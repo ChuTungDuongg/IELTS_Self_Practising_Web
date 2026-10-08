@@ -21,8 +21,11 @@ from app.models.entities import (
     User,
     WritingTask,
 )
+from app.models.writing_ai import WritingAIGradingEvent, WritingAIGradingRun
 
 __all__ = [
+    "WritingAIGradingEvent",
+    "WritingAIGradingRun",
     "Asset",
     "Attempt",
     "AttemptAnswer",

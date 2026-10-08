@@ -1,0 +1,21 @@
+.panel { display: grid; gap: 18px; margin-top: 24px; padding: clamp(20px, 3vw, 32px); border: 1px solid color-mix(in srgb, var(--writing) 45%, var(--line)); border-radius: 18px; background: var(--surface); color: var(--ink); }
+.heading, .actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.heading h2 { font-size: 1.35rem; font-weight: 800; }
+.badge { border-radius: 999px; padding: 6px 12px; color: var(--writing); background: color-mix(in srgb, var(--writing) 12%, var(--surface)); font-weight: 700; }
+.actions { justify-content: flex-start; }
+.trace, .history { border: 1px solid var(--line); border-radius: 12px; padding: 16px; background: var(--surface-soft); }
+.panel summary { cursor: pointer; font-weight: 700; }
+.trace ol { display: grid; gap: 14px; padding-top: 16px; list-style: none; }
+.panel blockquote { border-left: 3px solid var(--writing); margin: 12px 0; padding-left: 12px; overflow-wrap: anywhere; }
+.panel blockquote p { color: var(--muted); margin-top: 6px; }
+.overall { padding: 18px; border-radius: 12px; background: color-mix(in srgb, var(--writing) 10%, var(--surface)); font-size: 1.25rem; }
+.overall strong { font-size: 1.75rem; }
+.overall small { display: block; color: var(--muted); font-size: .85rem; }
+.criteria { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.card { display: grid; align-content: start; gap: 12px; padding: 20px; border: 1px solid var(--line); border-radius: 12px; overflow-wrap: anywhere; }
+.card h3 { display: flex; justify-content: space-between; gap: 12px; font-weight: 800; }
+.card h3 strong { color: var(--writing); }
+.card h4 { font-weight: 700; }
+.card ul, .history ul { padding-left: 20px; list-style: disc; }
+.history li { margin-top: 10px; }
+@media (max-width: 720px) { .criteria { grid-template-columns: 1fr; } .actions > button { width: 100%; } }

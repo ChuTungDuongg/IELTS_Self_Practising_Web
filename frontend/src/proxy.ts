@@ -22,7 +22,7 @@ export async function proxy(request: NextRequest) {
   let refreshedCookies: string[] = [];
 
   if (session.status === 401) {
-    const refresh = await authFetch(`${API_BASE_URL}/auth/refresh`, {
+    const refresh = await authFetch(`${process.env.API_INTERNAL_BASE_URL ?? API_BASE_URL}/auth/refresh`, {
       method: "POST",
       cache: "no-store",
       headers: incomingCookies ? { Cookie: incomingCookies } : undefined,
@@ -55,7 +55,7 @@ export async function proxy(request: NextRequest) {
 }
 
 async function checkSession(cookieHeader: string): Promise<Response> {
-  return authFetch(`${API_BASE_URL}/auth/me`, {
+  return authFetch(`${process.env.API_INTERNAL_BASE_URL ?? API_BASE_URL}/auth/me`, {
     cache: "no-store",
     headers: cookieHeader ? { Cookie: cookieHeader } : undefined,
   });

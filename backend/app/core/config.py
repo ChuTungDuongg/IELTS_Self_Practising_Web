@@ -32,6 +32,19 @@ class Settings(BaseSettings):
     initial_admin_email: str | None = None
     initial_admin_password: str | None = None
     initial_admin_name: str | None = None
+    ai_writing_enabled: bool = False
+    ai_writing_provider: str = "vllm"
+    ai_writing_vllm_base_url: str = ""
+    ai_writing_vllm_api_key: str = Field(default="", repr=False)
+    ai_writing_vllm_model: str = "mistralai/Ministral-8B-Instruct-2410"
+    ai_writing_modal_key: str = Field(default="", repr=False)
+    ai_writing_modal_secret: str = Field(default="", repr=False)
+    ai_writing_openai_api_key: str = Field(default="", repr=False)
+    ai_writing_openai_model: str = "gpt-5.6-luna"
+    ai_writing_openai_base_url: str = "https://api.openai.com/v1"
+    ai_writing_request_timeout_seconds: float = Field(default=300, gt=0, le=900)
+    ai_writing_prompt_version: str = Field(default="mts-task2-v1", min_length=1, max_length=80)
+    ai_writing_stale_after_seconds: int = Field(default=90, ge=45)
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

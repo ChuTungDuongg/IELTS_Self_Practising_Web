@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1.router import api_router
 from app.core.config import get_settings
 from app.core.exceptions import AppError, app_error_handler
+from app.services.writing_ai_worker import stop_writing_ai_workers
 
 settings = get_settings()
 
@@ -16,6 +17,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     (settings.resolved_storage_root / "audio").mkdir(parents=True, exist_ok=True)
     (settings.resolved_storage_root / "images").mkdir(parents=True, exist_ok=True)
     yield
+    await stop_writing_ai_workers()
 
 
 app = FastAPI(

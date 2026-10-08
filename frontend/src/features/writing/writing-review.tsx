@@ -2,6 +2,9 @@
 
 import { useState } from "react";
 import Image from "next/image";
+import { useAuth } from "@/features/auth/auth-provider";
+import { WritingAIAssessment } from "./writing-ai-assessment";
+import { aiTraits, type AIWritingResult } from "@/lib/api/writing-ai";
 import { assetContentUrl } from "@/lib/api/assets";
 import {
   saveWritingTaskScore,
@@ -44,6 +47,7 @@ function initialFeedback(data: WritingReviewPayload): Record<string, TaskFeedbac
 }
 
 export function WritingReviewView({ data }: { data: WritingReviewPayload }) {
+  const { user } = useAuth();
   const [reviewData, setReviewData] = useState(data);
   const [taskIndex, setTaskIndex] = useState(0);
   const [selections, setSelections] = useState(() => initialSelections(data));
@@ -69,6 +73,13 @@ export function WritingReviewView({ data }: { data: WritingReviewPayload }) {
       [taskId]: { ...current[taskId], [criterion]: value },
     }));
     setMessages((current) => ({ ...current, [taskId]: "" }));
+  }
+
+  function copyAISuggestions(taskId: string, result: AIWritingResult) {
+    if (user?.role !== "ADMIN") return;
+    setSelections((current) => ({ ...current, [taskId]: Object.fromEntries(aiTraits.map((key) => [key, result.criteria[key].score.toFixed(1)])) as TaskSelection }));
+    setFeedback((current) => ({ ...current, [taskId]: Object.fromEntries(aiTraits.map((key) => [key, result.criteria[key].feedback])) as TaskFeedback }));
+    setMessages((current) => ({ ...current, [taskId]: "AI suggestions copied. Review and save these scores explicitly." }));
   }
 
   async function saveTaskScores(taskId: string, taskNumber: number) {
@@ -125,7 +136,7 @@ export function WritingReviewView({ data }: { data: WritingReviewPayload }) {
         return <section key={scoreTask.writing_task_id} className="writing-assessment-card" aria-label={`Task ${scoreTask.task_number} assessment`}>
           <div className="writing-assessment-card-heading"><div><p className="writing-review-kicker">Writing Task {scoreTask.task_number}</p><h2>Task {scoreTask.task_number} assessment</h2></div><strong>{scoreTask.score ? `Overall ${scoreTask.score.overall.toFixed(2)}` : "Awaiting scores"}</strong></div>
           <div className="writing-criteria-grid">
-            {criteria.map(([key, abbreviation, fullName]) => <div key={key} className="writing-criterion-field"><label><span><b>{abbreviation}</b><small>{fullName}</small></span><select aria-label={`Task ${scoreTask.task_number} ${abbreviation}`} className="select-field" value={selection?.[key] ?? ""} onChange={(event) => updateCriterion(scoreTask.writing_task_id, key, event.target.value)}><option value="">Not scored</option>{bands.map((band) => <option key={band} value={band}>{band}</option>)}</select></label><label className="field-label">{abbreviation} feedback <span className="font-normal text-[var(--muted)]">(optional)</span><textarea aria-label={`Task ${scoreTask.task_number} ${abbreviation} feedback`} className="textarea-field mt-2" rows={3} maxLength={4000} value={feedback[scoreTask.writing_task_id]?.[key] ?? ""} onChange={(event) => updateFeedback(scoreTask.writing_task_id, key, event.target.value)} /></label></div>)}
+            {criteria.map(([key, abbreviation, fullName]) => <div key={key} className="writing-criterion-field"><label><span><b>{abbreviation}</b><small>{key === "ta" && scoreTask.task_number === 2 ? "Task Response" : fullName}</small></span><select aria-label={`Task ${scoreTask.task_number} ${abbreviation}`} className="select-field" value={selection?.[key] ?? ""} onChange={(event) => updateCriterion(scoreTask.writing_task_id, key, event.target.value)}><option value="">Not scored</option>{bands.map((band) => <option key={band} value={band}>{band}</option>)}</select></label><label className="field-label">{abbreviation} feedback <span className="font-normal text-[var(--muted)]">(optional)</span><textarea aria-label={`Task ${scoreTask.task_number} ${abbreviation} feedback`} className="textarea-field mt-2" rows={3} maxLength={4000} value={feedback[scoreTask.writing_task_id]?.[key] ?? ""} onChange={(event) => updateFeedback(scoreTask.writing_task_id, key, event.target.value)} /></label></div>)}
           </div>
           <button type="button" className="btn btn-writing" disabled={!complete || saving} onClick={() => void saveTaskScores(scoreTask.writing_task_id, scoreTask.task_number)}>{saving ? "Saving…" : `Save Task ${scoreTask.task_number} scores`}</button>
           {messages[scoreTask.writing_task_id] ? <p role="status" className="notice notice-success">{messages[scoreTask.writing_task_id]}</p> : null}
@@ -141,6 +152,7 @@ export function WritingReviewView({ data }: { data: WritingReviewPayload }) {
       <article className="writing-task-prompt"><p className="writing-task-kicker">Writing Task {task.task_number}</p><h2>Task {task.task_number}</h2><p>{task.prompt}</p>{task.image_asset ? <Image unoptimized width={720} height={420} src={assetContentUrl(task.image_asset)} alt={`Writing Task ${task.task_number} reference`} /> : null}<div className="writing-task-guidance"><span>Minimum {task.minimum_recommended_words ?? "—"} words</span><span>{task.recommended_duration_seconds ? Math.round(task.recommended_duration_seconds / 60) : "—"} minutes suggested</span></div></article>
       <article className="writing-review-response"><div><p className="writing-response-kicker">Saved response</p><h2>{task.word_count} words</h2></div><p>{task.content || "No response was saved."}</p></article>
     </main>
+    {task.task_number === 2 ? <WritingAIAssessment key={task.writing_task_id} attemptId={reviewData.review.attempt.attempt_id} taskId={task.writing_task_id} hasEssay={Boolean(task.content.trim())} canCopy={user?.role === "ADMIN"} onCopy={(result) => copyAISuggestions(task.writing_task_id, result)} /> : null}
   </div>;
 }
 

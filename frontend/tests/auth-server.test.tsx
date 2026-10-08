@@ -43,6 +43,16 @@ describe("server auth requests and layouts", () => {
     expect(forwarded).toBe("ielts_access=access-token; ielts_refresh=refresh-token");
   });
 
+  it("uses a private API origin for a same-origin Modal frontend", async () => {
+    vi.stubEnv("API_INTERNAL_BASE_URL", "http://127.0.0.1:9001/api/v1");
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(user), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      await serverApiRequest("/auth/me");
+      expect(fetchMock.mock.calls[0][0]).toBe("http://127.0.0.1:9001/api/v1/auth/me");
+    } finally { vi.unstubAllEnvs(); }
+  });
+
   it.each([
     ["admin", AdminLayout, "/login?next=/admin"],
     ["transfer", TransferLayout, "/login?next=/transfer"],
