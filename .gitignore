@@ -20,3 +20,13 @@ storage/audio/*
 storage/images/*
 !storage/audio/.gitkeep
 !storage/images/.gitkeep
+
+# Evaluation datasets/outputs can contain private student or licensed material.
+/benchmarks/writing_task1/private/
+/benchmarks/writing_task1/**/*.jsonl
+/benchmarks/writing_task1/**/*.png
+/benchmarks/writing_task1/**/*.jpg
+/benchmarks/writing_task1/**/*.jpeg
+/benchmarks/writing_task1/**/*.webp
+/benchmarks/writing_task1/reports/*
+!/benchmarks/writing_task1/reports/.gitkeep

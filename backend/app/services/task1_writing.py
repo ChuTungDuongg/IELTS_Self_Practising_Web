@@ -5,14 +5,16 @@ from app.domains.scoring.task1_facts import derive_facts
 from app.domains.scoring.task1_prompts import evidence_prompt, score_prompt
 from app.domains.writing.visual_families import visual_family
 from app.providers.chart_derendering import ChartDerenderingProvider
-from app.providers.writing_llm.base import LLMProvider, ProviderFailure
+from app.providers.writing_llm.base import LLMProvider, Message, ProviderFailure
 from app.schemas.task1_claims import Task1Analysis
 from app.schemas.writing_ai import (
     TRAITS,
     Criteria,
     CriterionFailure,
     EventPayload,
+    EvidenceResult,
     Task1WritingResult,
+    Trait,
 )
 from app.services.mts_writing import MTSWritingScoringService, TraceCallback
 from app.services.task1_chart_cross_check import cross_check_chart
@@ -34,6 +36,20 @@ class Task1WritingScoringService(MTSWritingScoringService):
     ) -> None:
         super().__init__(provider)
         self.chart_derenderer, self.chart_timeout = chart_derenderer, chart_timeout
+
+    def _evidence_prompt(
+        self, request: Task1ScoringRequest, trait: Trait, analysis: Task1Analysis
+    ) -> list[Message]:
+        return evidence_prompt(request, trait, analysis)
+
+    def _score_prompt(
+        self,
+        request: Task1ScoringRequest,
+        trait: Trait,
+        evidence: EvidenceResult,
+        analysis: Task1Analysis,
+    ) -> list[Message]:
+        return score_prompt(request, trait, evidence, analysis)
 
     async def assess(
         self, request: Task1ScoringRequest, trace: TraceCallback
@@ -155,8 +171,10 @@ class Task1WritingScoringService(MTSWritingScoringService):
                     request,
                     trait,
                     trace,
-                    evidence_prompt(request, trait, analysis),
-                    lambda evidence, trait=trait: score_prompt(request, trait, evidence, analysis),
+                    self._evidence_prompt(request, trait, analysis),
+                    lambda evidence, trait=trait: self._score_prompt(
+                        request, trait, evidence, analysis
+                    ),
                 )
                 criteria[trait] = result
                 await trace("criterion.completed", EventPayload(criterion=trait, result=result))

@@ -16,7 +16,9 @@ from app.providers.writing_llm.base import ImagePart
 from app.schemas.chart_cross_check import ChartSpecialistIdentity
 from app.storage import LocalAssetStorage
 
-TASK1_PROMPT_VERSION = "mts-task1-visual-v3"
+TASK1_PROMPT_VERSION = "mts-task1-visual-v4"
+TASK1_VISUAL_CONTRACT_VERSION = "mts-task1-visual-v3"
+TASK1_SCORING_PROMPT_VERSION = "mts-task1-scoring-v4"
 
 
 class Task1ScoringRequest(WritingScoringRequest):

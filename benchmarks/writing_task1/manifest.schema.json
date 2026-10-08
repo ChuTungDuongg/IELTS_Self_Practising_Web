@@ -1,0 +1,1037 @@
+{
+  "$defs": {
+    "ChartComponent": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "maxLength": 40,
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "line_graph",
+            "bar_chart",
+            "pie_chart",
+            "table"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "title": {
+          "default": "",
+          "maxLength": 120,
+          "title": "Title",
+          "type": "string"
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unit"
+        },
+        "state": {
+          "anyOf": [
+            {
+              "maxLength": 120,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "State"
+        },
+        "x_axis": {
+          "anyOf": [
+            {
+              "maxLength": 120,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "X Axis"
+        },
+        "y_axis": {
+          "anyOf": [
+            {
+              "maxLength": 120,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Y Axis"
+        },
+        "ordered_categories": {
+          "default": false,
+          "title": "Ordered Categories",
+          "type": "boolean"
+        },
+        "categories": {
+          "items": {
+            "maxLength": 120,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 30,
+          "title": "Categories",
+          "type": "array"
+        },
+        "legend": {
+          "items": {
+            "maxLength": 120,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 12,
+          "title": "Legend",
+          "type": "array"
+        },
+        "series": {
+          "items": {
+            "$ref": "#/$defs/Series"
+          },
+          "maxItems": 12,
+          "title": "Series",
+          "type": "array"
+        },
+        "row_headers": {
+          "items": {
+            "maxLength": 120,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 30,
+          "title": "Row Headers",
+          "type": "array"
+        },
+        "column_headers": {
+          "items": {
+            "maxLength": 120,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 30,
+          "title": "Column Headers",
+          "type": "array"
+        },
+        "cells": {
+          "items": {
+            "$ref": "#/$defs/TableCell"
+          },
+          "maxItems": 120,
+          "title": "Cells",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "kind"
+      ],
+      "title": "ChartComponent",
+      "type": "object"
+    },
+    "ChartTableVisualReference": {
+      "additionalProperties": false,
+      "properties": {
+        "confidence": {
+          "$ref": "#/$defs/GroundingConfidence"
+        },
+        "summary": {
+          "default": "",
+          "maxLength": 600,
+          "title": "Summary",
+          "type": "string"
+        },
+        "uncertainty": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 4,
+          "title": "Uncertainty",
+          "type": "array"
+        },
+        "visual_family": {
+          "const": "chart_table",
+          "title": "Visual Family",
+          "type": "string"
+        },
+        "components": {
+          "items": {
+            "$ref": "#/$defs/ChartComponent"
+          },
+          "maxItems": 4,
+          "minItems": 1,
+          "title": "Components",
+          "type": "array"
+        }
+      },
+      "required": [
+        "confidence",
+        "visual_family",
+        "components"
+      ],
+      "title": "ChartTableVisualReference",
+      "type": "object"
+    },
+    "Edge": {
+      "additionalProperties": false,
+      "properties": {
+        "source": {
+          "maxLength": 40,
+          "minLength": 1,
+          "title": "Source",
+          "type": "string"
+        },
+        "target": {
+          "maxLength": 40,
+          "minLength": 1,
+          "title": "Target",
+          "type": "string"
+        },
+        "label": {
+          "anyOf": [
+            {
+              "maxLength": 120,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Label"
+        }
+      },
+      "required": [
+        "source",
+        "target"
+      ],
+      "title": "Edge",
+      "type": "object"
+    },
+    "Entity": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "maxLength": 40,
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "label": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "label"
+      ],
+      "title": "Entity",
+      "type": "object"
+    },
+    "GroundingConfidence": {
+      "enum": [
+        "HIGH",
+        "MEDIUM",
+        "LOW",
+        "UNUSABLE"
+      ],
+      "title": "GroundingConfidence",
+      "type": "string"
+    },
+    "HumanScores": {
+      "additionalProperties": false,
+      "description": "Supplied agreed/reference bands; raters is metadata, never model supervision.",
+      "properties": {
+        "ta": {
+          "anyOf": [
+            {
+              "maximum": 9.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            }
+          ],
+          "title": "Ta"
+        },
+        "cc": {
+          "anyOf": [
+            {
+              "maximum": 9.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            }
+          ],
+          "title": "Cc"
+        },
+        "lr": {
+          "anyOf": [
+            {
+              "maximum": 9.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            }
+          ],
+          "title": "Lr"
+        },
+        "gra": {
+          "anyOf": [
+            {
+              "maximum": 9.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            }
+          ],
+          "title": "Gra"
+        }
+      },
+      "required": [
+        "ta",
+        "cc",
+        "lr",
+        "gra"
+      ],
+      "title": "HumanScores",
+      "type": "object"
+    },
+    "MapChange": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "addition",
+            "removal",
+            "replacement",
+            "relocation",
+            "expansion",
+            "unchanged"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "from_state": {
+          "maxLength": 40,
+          "minLength": 1,
+          "title": "From State",
+          "type": "string"
+        },
+        "to_state": {
+          "maxLength": 40,
+          "minLength": 1,
+          "title": "To State",
+          "type": "string"
+        },
+        "before": {
+          "anyOf": [
+            {
+              "maxLength": 40,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Before"
+        },
+        "after": {
+          "anyOf": [
+            {
+              "maxLength": 40,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "After"
+        },
+        "location": {
+          "default": "unspecified",
+          "enum": [
+            "north",
+            "south",
+            "east",
+            "west",
+            "northeast",
+            "northwest",
+            "southeast",
+            "southwest",
+            "centre",
+            "unspecified"
+          ],
+          "title": "Location",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "from_state",
+        "to_state"
+      ],
+      "title": "MapChange",
+      "type": "object"
+    },
+    "MapFeature": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "maxLength": 40,
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "label": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        },
+        "location": {
+          "default": "unspecified",
+          "enum": [
+            "north",
+            "south",
+            "east",
+            "west",
+            "northeast",
+            "northwest",
+            "southeast",
+            "southwest",
+            "centre",
+            "unspecified"
+          ],
+          "title": "Location",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "label"
+      ],
+      "title": "MapFeature",
+      "type": "object"
+    },
+    "MapState": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "maxLength": 40,
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "label": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        },
+        "features": {
+          "items": {
+            "$ref": "#/$defs/MapFeature"
+          },
+          "maxItems": 24,
+          "title": "Features",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "features"
+      ],
+      "title": "MapState",
+      "type": "object"
+    },
+    "MapVisualReference": {
+      "additionalProperties": false,
+      "properties": {
+        "confidence": {
+          "$ref": "#/$defs/GroundingConfidence"
+        },
+        "summary": {
+          "default": "",
+          "maxLength": 600,
+          "title": "Summary",
+          "type": "string"
+        },
+        "uncertainty": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 4,
+          "title": "Uncertainty",
+          "type": "array"
+        },
+        "visual_family": {
+          "const": "map",
+          "title": "Visual Family",
+          "type": "string"
+        },
+        "states": {
+          "items": {
+            "$ref": "#/$defs/MapState"
+          },
+          "maxItems": 4,
+          "minItems": 1,
+          "title": "States",
+          "type": "array"
+        },
+        "changes": {
+          "items": {
+            "$ref": "#/$defs/MapChange"
+          },
+          "maxItems": 24,
+          "title": "Changes",
+          "type": "array"
+        }
+      },
+      "required": [
+        "confidence",
+        "visual_family",
+        "states",
+        "changes"
+      ],
+      "title": "MapVisualReference",
+      "type": "object"
+    },
+    "OtherVisualReference": {
+      "additionalProperties": false,
+      "properties": {
+        "confidence": {
+          "$ref": "#/$defs/GroundingConfidence"
+        },
+        "summary": {
+          "default": "",
+          "maxLength": 600,
+          "title": "Summary",
+          "type": "string"
+        },
+        "uncertainty": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 4,
+          "title": "Uncertainty",
+          "type": "array"
+        },
+        "visual_family": {
+          "const": "other",
+          "title": "Visual Family",
+          "type": "string"
+        },
+        "entities": {
+          "items": {
+            "$ref": "#/$defs/Entity"
+          },
+          "maxItems": 24,
+          "title": "Entities",
+          "type": "array"
+        },
+        "relationships": {
+          "items": {
+            "$ref": "#/$defs/Edge"
+          },
+          "maxItems": 30,
+          "title": "Relationships",
+          "type": "array"
+        },
+        "observations": {
+          "items": {
+            "maxLength": 240,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 8,
+          "title": "Observations",
+          "type": "array"
+        }
+      },
+      "required": [
+        "confidence",
+        "visual_family",
+        "entities",
+        "relationships",
+        "observations"
+      ],
+      "title": "OtherVisualReference",
+      "type": "object"
+    },
+    "Point": {
+      "additionalProperties": false,
+      "properties": {
+        "category": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Category",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "maximum": 1000000000000.0,
+              "minimum": -1000000000000.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,16}|(?=[\\d.]{1,25}0*$)\\d{0,16}\\.\\d{0,8}0*$)",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Value"
+        },
+        "confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "value_is_labelled": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Value Is Labelled"
+        }
+      },
+      "required": [
+        "category",
+        "value",
+        "confidence"
+      ],
+      "title": "Point",
+      "type": "object"
+    },
+    "ProcessVisualReference": {
+      "additionalProperties": false,
+      "properties": {
+        "confidence": {
+          "$ref": "#/$defs/GroundingConfidence"
+        },
+        "summary": {
+          "default": "",
+          "maxLength": 600,
+          "title": "Summary",
+          "type": "string"
+        },
+        "uncertainty": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 4,
+          "title": "Uncertainty",
+          "type": "array"
+        },
+        "visual_family": {
+          "const": "process",
+          "title": "Visual Family",
+          "type": "string"
+        },
+        "process_kind": {
+          "enum": [
+            "linear",
+            "cyclic",
+            "branched",
+            "unknown"
+          ],
+          "title": "Process Kind",
+          "type": "string"
+        },
+        "stages": {
+          "items": {
+            "$ref": "#/$defs/Entity"
+          },
+          "maxItems": 24,
+          "title": "Stages",
+          "type": "array"
+        },
+        "edges": {
+          "items": {
+            "$ref": "#/$defs/Edge"
+          },
+          "maxItems": 40,
+          "title": "Edges",
+          "type": "array"
+        },
+        "starts": {
+          "items": {
+            "maxLength": 40,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 8,
+          "title": "Starts",
+          "type": "array"
+        },
+        "ends": {
+          "items": {
+            "maxLength": 40,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 8,
+          "title": "Ends",
+          "type": "array"
+        }
+      },
+      "required": [
+        "confidence",
+        "visual_family",
+        "process_kind",
+        "stages",
+        "edges"
+      ],
+      "title": "ProcessVisualReference",
+      "type": "object"
+    },
+    "Series": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "maxLength": 40,
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "points": {
+          "items": {
+            "$ref": "#/$defs/Point"
+          },
+          "maxItems": 30,
+          "title": "Points",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "points"
+      ],
+      "title": "Series",
+      "type": "object"
+    },
+    "SystemVisualReference": {
+      "additionalProperties": false,
+      "properties": {
+        "confidence": {
+          "$ref": "#/$defs/GroundingConfidence"
+        },
+        "summary": {
+          "default": "",
+          "maxLength": 600,
+          "title": "Summary",
+          "type": "string"
+        },
+        "uncertainty": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 4,
+          "title": "Uncertainty",
+          "type": "array"
+        },
+        "visual_family": {
+          "const": "system",
+          "title": "Visual Family",
+          "type": "string"
+        },
+        "components": {
+          "items": {
+            "$ref": "#/$defs/Entity"
+          },
+          "maxItems": 24,
+          "title": "Components",
+          "type": "array"
+        },
+        "connections": {
+          "items": {
+            "$ref": "#/$defs/Edge"
+          },
+          "maxItems": 40,
+          "title": "Connections",
+          "type": "array"
+        },
+        "inputs": {
+          "items": {
+            "maxLength": 40,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 8,
+          "title": "Inputs",
+          "type": "array"
+        },
+        "outputs": {
+          "items": {
+            "maxLength": 40,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 8,
+          "title": "Outputs",
+          "type": "array"
+        }
+      },
+      "required": [
+        "confidence",
+        "visual_family",
+        "components",
+        "connections"
+      ],
+      "title": "SystemVisualReference",
+      "type": "object"
+    },
+    "TableCell": {
+      "additionalProperties": false,
+      "properties": {
+        "row": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Row",
+          "type": "string"
+        },
+        "column": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Column",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "maximum": 1000000000000.0,
+              "minimum": -1000000000000.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,16}|(?=[\\d.]{1,25}0*$)\\d{0,16}\\.\\d{0,8}0*$)",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Value"
+        },
+        "label": {
+          "anyOf": [
+            {
+              "maxLength": 120,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Label"
+        },
+        "confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Confidence",
+          "type": "number"
+        }
+      },
+      "required": [
+        "row",
+        "column",
+        "value",
+        "confidence"
+      ],
+      "title": "TableCell",
+      "type": "object"
+    },
+    "WritingTaskType": {
+      "enum": [
+        "LINE_GRAPH",
+        "BAR_CHART",
+        "PIE_CHART",
+        "TABLE",
+        "MIXED_CHARTS",
+        "PROCESS",
+        "MAP_PLAN",
+        "OBJECT_SYSTEM_DIAGRAM",
+        "OTHER_VISUAL",
+        "OPINION",
+        "DISCUSS_BOTH_VIEWS",
+        "DISCUSS_BOTH_VIEWS_AND_OPINION",
+        "ADVANTAGES_DISADVANTAGES",
+        "ADVANTAGES_OUTWEIGH_DISADVANTAGES",
+        "PROBLEM_SOLUTION",
+        "CAUSE_SOLUTION",
+        "TWO_PART_QUESTION",
+        "OTHER_ESSAY"
+      ],
+      "title": "WritingTaskType",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$",
+      "title": "Id",
+      "type": "string"
+    },
+    "split": {
+      "enum": [
+        "dev",
+        "holdout"
+      ],
+      "title": "Split",
+      "type": "string"
+    },
+    "task_type": {
+      "$ref": "#/$defs/WritingTaskType"
+    },
+    "prompt": {
+      "maxLength": 20000,
+      "minLength": 1,
+      "title": "Prompt",
+      "type": "string"
+    },
+    "image_path": {
+      "maxLength": 4096,
+      "minLength": 1,
+      "title": "Image Path",
+      "type": "string"
+    },
+    "essay": {
+      "maxLength": 100000,
+      "minLength": 1,
+      "title": "Essay",
+      "type": "string"
+    },
+    "human_scores": {
+      "$ref": "#/$defs/HumanScores"
+    },
+    "raters": {
+      "default": 1,
+      "maximum": 100,
+      "minimum": 1,
+      "title": "Raters",
+      "type": "integer"
+    },
+    "provenance": {
+      "maxLength": 2000,
+      "minLength": 1,
+      "title": "Provenance",
+      "type": "string"
+    },
+    "redistributable": {
+      "title": "Redistributable",
+      "type": "boolean"
+    },
+    "visual_truth": {
+      "anyOf": [
+        {
+          "discriminator": {
+            "mapping": {
+              "chart_table": "#/$defs/ChartTableVisualReference",
+              "map": "#/$defs/MapVisualReference",
+              "other": "#/$defs/OtherVisualReference",
+              "process": "#/$defs/ProcessVisualReference",
+              "system": "#/$defs/SystemVisualReference"
+            },
+            "propertyName": "visual_family"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/ChartTableVisualReference"
+            },
+            {
+              "$ref": "#/$defs/ProcessVisualReference"
+            },
+            {
+              "$ref": "#/$defs/MapVisualReference"
+            },
+            {
+              "$ref": "#/$defs/SystemVisualReference"
+            },
+            {
+              "$ref": "#/$defs/OtherVisualReference"
+            }
+          ]
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Visual Truth"
+    }
+  },
+  "required": [
+    "schema_version",
+    "id",
+    "split",
+    "task_type",
+    "prompt",
+    "image_path",
+    "essay",
+    "human_scores",
+    "provenance",
+    "redistributable"
+  ],
+  "title": "BenchmarkSample",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

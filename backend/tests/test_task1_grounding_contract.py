@@ -215,9 +215,11 @@ async def test_unrepresentable_json_exponent_has_bounded_repair_and_linguistic_s
         == {"field": "<root>", "validation_type": "decimal_parsing"}
         for diagnostic in scorer.diagnostics
     )
-    assert [
-        payload.criterion for event, payload in events if event == "criterion.completed"
-    ] == ["cc", "lr", "gra"]
+    assert [payload.criterion for event, payload in events if event == "criterion.completed"] == [
+        "cc",
+        "lr",
+        "gra",
+    ]
     assert "reason=GROUNDING_SCHEMA_INVALID" in caplog.text
     assert numeric not in caplog.text
 
