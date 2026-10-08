@@ -22,8 +22,11 @@ from app.models.entities import (
     WritingTask,
 )
 from app.models.writing_ai import WritingAIGradingEvent, WritingAIGradingRun
+from app.models.writing_anchors import WritingAnchorSet, WritingHumanAnchor
 
 __all__ = [
+    "WritingAnchorSet",
+    "WritingHumanAnchor",
     "WritingAIGradingEvent",
     "WritingAIGradingRun",
     "Asset",
