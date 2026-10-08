@@ -1,6 +1,6 @@
 # Advisory AI Academic Writing
 
-CURRENT overview, 2026-10-08. Task 1 defaults to **LCES-inspired Hybrid TACS** (`task1-hybrid-tacs-v1`): grounded Direct TA, plus bounded language-anchor searches for CC/LR/GRA with criterion-local Direct fallback. Task 2 remains the local text-only MTS pipeline, `mts-task2-v7`. The configured provider/model and existing Modal/vLLM function are shared. The visual contract remains `mts-task1-visual-v3`.
+CURRENT overview, 2026-10-08. Task 1 defaults to **LCES-inspired Hybrid TACS** (`task1-hybrid-tacs-v2`): grounded Direct TA, plus bounded language-anchor searches for CC/LR/GRA with criterion-local Direct fallback. Task 2 remains the local text-only MTS pipeline, `mts-task2-v7`. The configured provider/model and existing Modal/vLLM function are shared. The visual contract remains `mts-task1-visual-v3`.
 
 See [the TACS design and operating guide](lces_adapt.md) for tree semantics, reliability boundaries, research limits and all A0–A4 modes. [The latency case study](enhance_latency.md) retains prior synthetic MTS measurements; those are not measured TACS gains.
 
@@ -17,6 +17,8 @@ Administrators curate `/admin/writing-anchors`. All reads/writes under `/api/v1/
 Migration `20261008_0021` adds the initially empty human bank; `20261008_0022` adds nullable run architecture, anchor-set FK, execution config and private diagnostic JSONB. Existing runs are not rewritten. Null execution configuration means legacy MTS. At enqueue, Task 1 pins the architecture/prompts, set ID/version or explicit none, and node budget before fingerprint/cache selection. Workers load only that frozen snapshot, including retired versions; activation while queued cannot change the run. Exact task ID, visual bytes/type, provider/model and execution versions participate in new Task 1 fingerprints. Task 2 fingerprint behavior remains unchanged.
 
 Public results/SSE expose scores, availability and safe stages, never bank IDs/text/labels/pivots/preferences. Private tree/config data stays outside result JSON. Existing cursor replay, heartbeats, partial results and durable checkpoints are retained. AI never mutates official human scores or attempts; explicit human Save remains required.
+
+The scorer rejects unsupported pinned prompt/visual versions with `AI_CONFIGURATION_CHANGED` before provider readiness or inference. It never executes current prompts under an obsolete recorded contract. Legacy null execution records still dispatch MTS and remain readable. Pairwise and feedback v2 prompts include their full output JSON schemas in model messages for both vLLM and OpenAI JSON mode.
 
 ```dotenv
 AI_WRITING_TASK1_SCORER=anchor_pairwise

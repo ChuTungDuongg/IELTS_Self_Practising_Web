@@ -193,6 +193,53 @@ async def test_self_consistency_uses_literal_three_score_median_and_variance(
     assert record["repeat_variance"]["cc"] == pytest.approx(2 / 3)
 
 
+@pytest.mark.parametrize("middle", ["missing", "wrong"])
+async def test_self_consistency_aggregates_all_perception_observations(
+    benchmark_files, monkeypatch, middle
+):
+    from unittest.mock import AsyncMock
+
+    from test_task1_benchmark_metrics import matrix
+
+    from app.evaluation.task1 import runner
+    from app.evaluation.task1.metrics import perception_metrics
+
+    path, _ = benchmark_files
+    item = load_manifest(path, "dev")[0]
+    config = architecture_configurations(Settings(_env_file=None), "direct-self-consistency")[0]
+    direct = architecture_configurations(Settings(_env_file=None), "direct")[0]
+    baseline = await runner.evaluate(item, direct, lambda _: HybridProvider(), None)
+    truth = matrix()
+    wrong = truth.model_copy(deep=True)
+    wrong.components[0].series[0].points[0].value += 1
+    observations = [
+        perception_metrics(truth, truth),
+        perception_metrics(truth, None if middle == "missing" else wrong),
+        perception_metrics(truth, None),
+    ]
+    records = [baseline.model_copy(update={
+        "confidence": "HIGH" if index == 0 else "MEDIUM",
+        "perception": {"primary": observation, "reconciled": observation},
+    }) for index, observation in enumerate(observations)]
+    monkeypatch.setattr(runner, "evaluate", AsyncMock(side_effect=records))
+    repeated = await runner.evaluate_repeats(item, config, None, None)
+    expected_exact = 18 if middle == "missing" else 35
+    for stage in ("primary", "reconciled"):
+        metrics = repeated.perception[stage]
+        assert metrics["labelled_numeric_count"] == metrics["truth_values"] == 54
+        assert metrics["exact_labelled_numeric_count"] == expected_exact
+        assert metrics["exact_labelled_numeric_agreement"] == pytest.approx(expected_exact / 54)
+        assert metrics["missing_values"] == (36 if middle == "missing" else 18)
+        assert metrics["repeat_observation_count"] == 3
+        assert metrics["perception_ok"] is False
+    assert repeated.confidence == "MEDIUM"
+    assert len(repeated.repeats) == 3
+    reported = aggregate([repeated])["perception"]["reconciled"]
+    assert reported["labelled_numeric_count"] == 54
+    assert reported["perception_observation_count"] == 3
+    assert reported["exact_labelled_numeric_agreement"] == pytest.approx(expected_exact / 54)
+
+
 def test_private_manifest_validation_identity_and_density(tmp_path):
     bank = snapshot()
     anchors = [

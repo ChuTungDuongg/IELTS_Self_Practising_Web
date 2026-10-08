@@ -302,3 +302,28 @@ def perception_metrics(
     else:
         result["perception_ok"] = True
     return result
+
+
+def repeated_perception_metrics(observations: Sequence[dict[str, Any] | None]) -> dict[str, Any] | None:
+    """Pool counts across independent perceptions, keeping sample certification strict."""
+    available = [item for item in observations if item is not None]
+    if not available:
+        return None
+    count_keys = {
+        key for item in available for key, value in item.items()
+        if isinstance(value, int) and not isinstance(value, bool)
+    }
+    result = {key: sum(item.get(key, 0) for item in available) for key in count_keys}
+    numeric = result["labelled_numeric_count"]
+    truth_values = result["truth_values"]
+    result.update(
+        exact_labelled_numeric_agreement=result["exact_labelled_numeric_count"] / numeric if numeric else None,
+        value_alignment=result["aligned_values"] / truth_values if truth_values else None,
+        identity_complete=all(item is not None and item["identity_complete"] for item in observations),
+        perception_ok=True
+        if all(item is not None and item["perception_ok"] is True for item in observations)
+        else False if any(item["perception_ok"] is False for item in available) else None,
+        repeat_observation_count=len(available),
+        unavailable_repeat_observation_count=len(observations) - len(available),
+    )
+    return result

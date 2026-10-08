@@ -105,3 +105,59 @@ async def test_private_tree_progress_exists_at_directional_checkpoint():
 
     assert await service.assess(request(), checkpoint) is not None
     assert len(captured) == 3
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("boundary", ["pairwise", "feedback"])
+async def test_openai_messages_supply_comparison_and_feedback_json_contracts(monkeypatch, boundary):
+    import httpx
+
+    from app.core.config import Settings
+    from app.providers.writing_llm.openai import OpenAIProvider
+    from app.schemas.tacs import FeedbackSynthesis, PairwisePreference
+
+    captured = []
+
+    def handler(http_request):
+        body = json.loads(http_request.content)
+        captured.append(body)
+        assert body["response_format"] == {"type": "json_object"}
+        system = body["messages"][0]["content"]
+        user = json.loads(body["messages"][1]["content"])
+        if "response_1" in user:
+            expected = PairwisePreference.model_json_schema()
+            response = {"preference": "COMPARABLE"}
+            check_contract = boundary == "pairwise"
+        else:
+            expected = FeedbackSynthesis.model_json_schema()
+            response = {"criteria": {
+                t: {"feedback": "Diễn đạt rõ.", "strengths": [], "improvements": []}
+                for t in user["criteria"]
+            }}
+            check_contract = boundary == "feedback"
+        if check_contract:
+            assert json.loads(system.split("Required JSON schema:\n", 1)[1]) == expected
+        assert all(key not in user for key in ("anchor_id", "human_scores", "provenance"))
+        return httpx.Response(200, json={"choices": [{
+            "finish_reason": "stop", "message": {"content": json.dumps(response)}
+        }]})
+
+    original = httpx.AsyncClient
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **kwargs: original(
+        transport=httpx.MockTransport(handler), **kwargs
+    ))
+    openai = OpenAIProvider(Settings(_env_file=None, ai_writing_openai_api_key="fictional-key"))
+
+    class Provider(HybridProvider):
+        async def complete(self, messages, schema, *, options=None):
+            if "preference" in schema["properties"] or "criteria" in schema["properties"]:
+                return await openai.complete(messages, schema, options=options)
+            return await super().complete(messages, schema, options=options)
+
+    service = Task1TACSScoringService(
+        Provider(), anchor_snapshot=snapshot(), target_fingerprint="target"
+    )
+    result = await service.assess(request(), no_trace)
+    assert len(captured) == 7
+    assert result is not None
+    assert all(getattr(result.criteria, t).feedback_status == "AVAILABLE" for t in ("cc", "lr", "gra"))

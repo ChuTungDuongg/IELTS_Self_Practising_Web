@@ -20,7 +20,11 @@ from app.evaluation.task1.legacy_prompts import (
     LegacyTask1WritingScoringService,
 )
 from app.evaluation.task1.manifest import LoadedSample
-from app.evaluation.task1.metrics import overall_score, perception_metrics
+from app.evaluation.task1.metrics import (
+    overall_score,
+    perception_metrics,
+    repeated_perception_metrics,
+)
 from app.evaluation.task1.models import BenchmarkConfig, EvaluationRecord, digest
 from app.providers.chart_derendering import ChartSpecialistFailure
 from app.providers.chart_derendering.deplot import DePlotChartDerenderingProvider
@@ -392,28 +396,13 @@ async def evaluate_repeats(item, config, provider_factory, specialist_factory):
         for t in ("ta", "cc", "lr", "gra")
         if all(t in r.predicted for r in records)
     }
-    perception = {}
-    for stage in ("primary", "reconciled"):
-        observations = [r.perception[stage] for r in records]
-        if all(o is None for o in observations):
-            perception[stage] = None
-        else:
-            representative = next(o for o in observations if o is not None)
-            perception[stage] = {
-                **representative,
-                "perception_ok": True
-                if all(o is not None and o["perception_ok"] is True for o in observations)
-                else False
-                if any(o and o["perception_ok"] is False for o in observations)
-                else None,
-            }
+    perception = {
+        stage: repeated_perception_metrics([r.perception[stage] for r in records])
+        for stage in ("primary", "reconciled")
+    }
     complete = all(r.status == "COMPLETED" for r in records)
-    confidence = (
-        "UNUSABLE"
-        if any(r.confidence == "UNUSABLE" for r in records)
-        else "LOW"
-        if any(r.confidence == "LOW" for r in records)
-        else records[0].confidence
+    confidence = min(
+        (r.confidence for r in records), key=("UNUSABLE", "LOW", "MEDIUM", "HIGH").index
     )
     target = records[0].target
     return EvaluationRecord(

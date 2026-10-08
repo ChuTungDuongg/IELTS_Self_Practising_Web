@@ -57,3 +57,28 @@ async def test_enqueue_pins_bank_or_explicit_empty_and_feedback_failure_is_compl
         )
     )
     assert not (await api.create(task1[0], task1[1], force=False)).cache_hit
+
+
+async def test_queued_obsolete_contract_fails_safely_without_provider_calls(
+    db_session, task1, settings, monkeypatch
+):
+    from app.services import task1_scorer
+
+    settings.ai_writing_task1_scorer = "anchor_pairwise"
+    api = service(db_session, settings)
+    created = await api.create(task1[0], task1[1], force=False)
+    monkeypatch.setattr(task1_scorer, "PAIRWISE_PROMPT_VERSION", "future-contract")
+
+    class Provider(HybridProvider):
+        ready_calls = 0
+
+        async def ensure_ready(self):
+            self.ready_calls += 1
+
+    provider = Provider()
+    await worker(db_session, settings, provider).execute(created.run_id)
+    result = await api.get(created.run_id)
+    assert result.status == "FAILED"
+    assert result.error_code == "AI_CONFIGURATION_CHANGED"
+    assert provider.ready_calls == provider.pairwise_calls == provider.feedback_calls == 0
+    assert provider.calls == []

@@ -3,6 +3,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.core.exceptions import AppError
 from app.domains.scoring.direct_writing_prompts import DIRECT_PROMPT_VERSION
 from app.domains.scoring.tacs_prompts import PAIRWISE_PROMPT_VERSION
 from app.schemas.writing_anchors import AnchorSnapshot
@@ -59,6 +60,24 @@ def create_task1_scorer(
     target_fingerprint,
     **kwargs,
 ):
+    if execution is not None:
+        supported = {
+            "prompt_version": {
+                "mts": TASK1_PROMPT_VERSION,
+                "direct": DIRECT_PROMPT_VERSION,
+                "anchor_pairwise": HYBRID_PROMPT_VERSION,
+            }[execution.architecture],
+            "direct_prompt_version": DIRECT_PROMPT_VERSION,
+            "pairwise_prompt_version": PAIRWISE_PROMPT_VERSION,
+            "feedback_prompt_version": FEEDBACK_PROMPT_VERSION,
+            "visual_contract_version": TASK1_VISUAL_CONTRACT_VERSION,
+        }
+        if any(getattr(execution, field) != version for field, version in supported.items()):
+            raise AppError(
+                "AI_CONFIGURATION_CHANGED",
+                "Cấu hình AI đã thay đổi. Bạn có thể thử chấm lại.",
+                409,
+            )
     if execution is None or execution.architecture == "mts":
         service = Task1WritingScoringService
     elif execution.architecture == "direct":

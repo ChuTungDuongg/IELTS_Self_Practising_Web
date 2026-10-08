@@ -4,6 +4,7 @@ from test_tacs_tree import snapshot
 from test_task1_visual import Task1FakeProvider, request
 
 from app.core.config import Settings
+from app.core.exceptions import AppError
 from app.services.task1_scorer import Task1ExecutionConfig, create_task1_scorer
 from app.services.writing_ai import input_fingerprint
 
@@ -55,3 +56,27 @@ def test_fingerprint_includes_execution_and_exact_task_identity():
         )
         != original
     )
+
+
+@pytest.mark.parametrize("architecture", ["mts", "direct", "anchor_pairwise"])
+@pytest.mark.parametrize("field", [
+    "prompt_version", "direct_prompt_version", "pairwise_prompt_version",
+    "feedback_prompt_version", "visual_contract_version",
+])
+def test_unsupported_pinned_contract_is_rejected_before_scoring(architecture, field):
+    execution = Task1ExecutionConfig.pin(architecture, snapshot(), 2)
+    provider = Task1FakeProvider()
+    with pytest.raises(AppError) as error:
+        create_task1_scorer(
+            execution.model_copy(update={field: "unsupported-historical-contract"}),
+            snapshot(), provider, target_fingerprint="test",
+        )
+    assert error.value.code == "AI_CONFIGURATION_CHANGED"
+    assert provider.calls == []
+
+
+def test_null_legacy_execution_still_uses_mts():
+    scorer = create_task1_scorer(
+        None, snapshot(), Task1FakeProvider(), target_fingerprint="legacy"
+    )
+    assert type(scorer).__name__ == "Task1WritingScoringService"

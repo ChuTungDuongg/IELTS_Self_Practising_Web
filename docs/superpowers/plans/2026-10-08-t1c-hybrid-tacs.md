@@ -107,7 +107,7 @@ from `backend/` confirmed `20261008_0020` as the sole starting head.
 
 - `LanguageTrait = Literal['cc','lr','gra']` and strict `PairwisePreference {preference: RESPONSE_1_BETTER | RESPONSE_2_BETTER | COMPARABLE}`.
 - `ComparisonResponse(task_prompt: str, response_text: str)` has no label/anchor metadata field.
-- `pairwise_messages(criterion: LanguageTrait, response_1: ComparisonResponse, response_2: ComparisonResponse) -> list[Message]` only serializes criterion semantics and these two texts/contexts. Version `task1-tacs-pairwise-v1`.
+- `pairwise_messages(criterion: LanguageTrait, response_1: ComparisonResponse, response_2: ComparisonResponse) -> list[Message]` only serializes criterion semantics, the required preference JSON schema, and these two texts/contexts. Version `task1-tacs-pairwise-v2` after independent review verified OpenAI JSON-mode needs the schema in messages.
 - `contiguous_ladder(bands: Iterable[Decimal]) -> tuple[int, ...]`; widest adjacent run, ties by overlap with 6–8, proximity to 7, then ascending stable order; fewer than two adjacent bands -> empty.
 - `representative(snapshot: AnchorSnapshot, anchors: Sequence[AnchorRecord], criterion: LanguageTrait, band: int, target_fingerprint: str) -> AnchorRecord` hashes sorted stable IDs and the supplied stable inputs.
 - `PairwiseComparator(provider).compare(criterion, response_1, response_2) -> PairwisePreference` makes one short validated call without repair.
@@ -131,8 +131,8 @@ from `backend/` confirmed `20261008_0020` as the sole starting head.
 
 - `direct_messages(request: Task1ScoringRequest, trait: Trait, analysis: Task1Analysis | None) -> list[Message]`, version `task1-direct-v1`; only TA gets grounded visual/claim context.
 - `Task1DirectScoringService(provider, chart_derenderer=None, chart_timeout=90, *, max_concurrent_requests=2, latency=None).assess(request, trace) -> Task1WritingResult | None`, sharing the MTS-compatible `usage`, `diagnostics`, `failures`, `latency_summary` worker contract.
-- `Task1TACSScoringService(..., *, anchor_snapshot: AnchorSnapshot, target_fingerprint: str, max_tree_nodes: int = 2, max_concurrent_requests=2, latency=None)` uses composite version `task1-hybrid-tacs-v1` and the same assess/worker contract, adding private `scoring_metadata()`.
-- Strict feedback input/output for only selected CC/LR/GRA. Version `task1-tacs-feedback-v1`; output per trait has feedback/strengths/improvements and no score. Use one request with bounded max_tokens 4096, no feedback repair/rescore path.
+- `Task1TACSScoringService(..., *, anchor_snapshot: AnchorSnapshot, target_fingerprint: str, max_tree_nodes: int = 2, max_concurrent_requests=2, latency=None)` uses composite version `task1-hybrid-tacs-v2` and the same assess/worker contract, adding private `scoring_metadata()`.
+- Strict feedback input/output for only selected CC/LR/GRA. Version `task1-tacs-feedback-v2`; messages include the full output JSON schema and exact selected keys for OpenAI JSON mode. Output per trait has feedback/strengths/improvements and no score. Use one request with bounded max_tokens 4096, no feedback repair/rescore path.
 
 - [ ] Write Direct tests asserting one normal scoring call per criterion, grounded TA analysis is present, other criteria remain text-only, source evidence list is empty, scores validate/normalize through existing helpers, and length repair remains bounded with 3072/4096 caps.
 - [ ] Write explicit TA boundary tests using spies that fail if a TA bank accessor/comparator is called. Assert GROUNDED_DIRECT mode with both empty and populated banks; human TA values do not enter TA prompts or affect its result. Preserve visual-confidence failure behavior.

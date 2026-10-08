@@ -294,6 +294,10 @@ ID/version, node budget, frozen task identity, provider/model, essay, image
 identity, unchanged visual contract, and specialist identity/config. Changing the
 active set invalidates future equivalent cache reuse. Worker validation uses the
 pinned execution contract rather than querying the current active set again.
+The factory rejects unsupported saved prompt/visual contracts before provider
+readiness or inference, using the safe AI_CONFIGURATION_CHANGED error; it never
+executes current prompts under obsolete recorded versions. Null historical
+execution records retain the existing legacy MTS dispatch and remain readable.
 Task 1 presentation must recognize new architecture-specific version prefixes;
 it must not accidentally label non-MTS Task 1 runs as Task 2.
 
@@ -322,6 +326,12 @@ new benchmark contract version so old caches cannot be misread.
   and CC/LR/GRA trees, configurable node budget 1/2/3, actual anchor density,
   strict two-way agreement, and identical fallback rules.
 - `all`: A0/A1/A2/A3. A4 ordinal/TRATES-like remains future work.
+
+A2 pools numeric perception observations across all three repeats, recomputes
+agreement against all labelled truth values, retains conservative sample
+certification and reports independent observation denominators. Independent
+invocations are not a decoding-diversity guarantee: the current vLLM adapter uses
+temperature/seed zero and can produce three identical deterministic A0 results.
 
 Accept either an explicitly selected active PostgreSQL snapshot or a private
 human-labelled anchor manifest with provenance and exact task identity. Never

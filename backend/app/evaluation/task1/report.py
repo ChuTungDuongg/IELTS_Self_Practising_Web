@@ -98,6 +98,12 @@ def _perception(records):
         result[stage] = {
             "count": len(observations),
             "unannotated_count": len(records) - len(observations),
+            "perception_observation_count": sum(item.get("repeat_observation_count", 1) for item in observations),
+            "unavailable_repeat_observation_count": sum(item.get("unavailable_repeat_observation_count", 0) for item in observations),
+            "denominators": {
+                "certification": "evaluated samples; A2 requires all three repeats to be certified",
+                "numeric_agreement": "labelled truth values across all independent perception observations, including missing values",
+            },
             "perception_ok_count": sum(item["perception_ok"] is True for item in observations),
             "perception_error_count": sum(item["perception_ok"] is False for item in observations),
             "perception_unknown_count": sum(item["perception_ok"] is None for item in observations),

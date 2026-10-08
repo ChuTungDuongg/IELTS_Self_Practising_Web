@@ -99,6 +99,8 @@ If synthesis fails or returns a score field, established scores, PAIRWISE mode a
 
 The existing T1-C framework now supports A0 Direct; A1 MTS, including explicit legacy v3/current local v5 comparisons; A2 three independent full A0 runs with per-criterion median; A3 exact production Hybrid; A4 ordinal modelling reserved for future work. A2 records individual score/perception/cost summaries, spread and population variance. Its perception is certified OK only if all repeats are certified OK; missing/failed repeats cannot produce a certified aggregate. No production self-consistency voting is introduced.
 
+A2 pools numeric perception counts from every repeat, recomputes agreement against all labelled truth values and uses the weakest repeat confidence. Sample-level certification and independent observation denominators are explicit. The current vLLM adapter fixes temperature and seed to zero; independent invocations can therefore yield three identical deterministic A0 results. Tests establish separate calls, not decoding diversity or measured gains.
+
 CLI choices are `--architecture direct|mts|direct-self-consistency|anchor-pairwise|all`, default Hybrid, and `--tree-node-budget 1|2|3`. Explicit historical `--scoring-version` retains its MTS-only meaning. See [benchmark instructions](../benchmarks/writing_task1/README.md). No real benchmark is launched by the application.
 
 ## 19. Metrics and reports

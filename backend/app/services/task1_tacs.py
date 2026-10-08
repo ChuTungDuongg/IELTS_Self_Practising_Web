@@ -11,8 +11,8 @@ from app.services.task1_direct import Task1DirectScoringService
 from app.services.writing_execution import TraceFailure
 from app.services.writing_pairwise import PairwiseComparator
 
-HYBRID_PROMPT_VERSION = "task1-hybrid-tacs-v1"
-FEEDBACK_PROMPT_VERSION = "task1-tacs-feedback-v1"
+HYBRID_PROMPT_VERSION = "task1-hybrid-tacs-v2"
+FEEDBACK_PROMPT_VERSION = "task1-tacs-feedback-v2"
 
 
 class Task1TACSScoringService(Task1DirectScoringService):
@@ -60,7 +60,12 @@ class Task1TACSScoringService(Task1DirectScoringService):
                             {
                                 "role": "system",
                                 "content": f"{DATA_GUARD}\nProvide concise Vietnamese feedback for only the requested language criteria. Do not score, revise scores or return score fields. "
-                                + " ".join(criterion_guidance(t) for t in selected),
+                                + " ".join(criterion_guidance(t) for t in selected)
+                                + f"\nReturn one JSON object with a criteria object containing exactly these keys: {', '.join(selected)}. "
+                                "Each criterion requires feedback (1–800 characters), strengths and improvements "
+                                "(at most three strings each, 1–800 characters per string). No extra fields.\n"
+                                "Required JSON schema:\n"
+                                + json.dumps(FeedbackSynthesis.model_json_schema(), ensure_ascii=False),
                             },
                             {
                                 "role": "user",
