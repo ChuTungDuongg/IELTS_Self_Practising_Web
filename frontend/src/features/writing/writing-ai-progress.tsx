@@ -16,6 +16,8 @@ export function activityFromEvent(event: AIWritingEvent): AIActivity | null {
     "criterion.scoring.started": "scoring", "criterion.scoring.validation.started": "validating_score",
     "criterion.retrying": "retrying", "criterion.completed": "completed", "criterion.failed": "failed", "run.failed": "failed", "run.completed": "completed",
     "visual_grounding.started": "visual_grounding", "visual_grounding.completed": "visual_grounded",
+    "chart_specialist.started": "chart_cross_check", "chart_specialist.completed": "chart_read",
+    "chart_specialist.failed": "chart_fallback", "chart_reconciliation.completed": "chart_reconciled",
     "visual_grounding.failed": "failed", "derived_facts.completed": "deriving_facts",
     "claim_extraction.started": "extracting_claims", "claim_extraction.completed": "claims_extracted",
     "claim_extraction.failed": "claim_extraction_failed",
@@ -48,6 +50,10 @@ function phaseLabel(activity?: AIActivity | null) {
     case "evidence_collected": return "Đã thu thập dẫn chứng";
     case "scoring": return "Đang chấm điểm…";
     case "validating_score": return "Đang kiểm tra điểm và nhận xét…";
+    case "chart_cross_check": return "Đang đối chiếu dữ liệu biểu đồ…";
+    case "chart_read": return "Đã đọc dữ liệu bằng bộ đọc biểu đồ chuyên dụng";
+    case "chart_reconciled": return "Đã đối chiếu dữ liệu biểu đồ";
+    case "chart_fallback": return "Không thể dùng bộ đối chiếu chuyên dụng; tiếp tục với phân tích hình chính.";
     case "visual_grounding": return "Đang phân tích hình…";
     case "visual_grounded": return "Đã đọc thông tin từ hình";
     case "deriving_facts": return "Đã tổng hợp các dữ kiện từ hình";
@@ -79,7 +85,7 @@ export function ScoringProgress({ run, taskNumber = 2 }: { run: AIWritingRun | n
   const summary = run?.status === "FAILED" ? "Chưa thể hoàn tất toàn bộ bài chấm."
     : run?.status === "COMPLETED" ? "Chấm bài hoàn tất"
     : activity?.phase === "starting_model" ? "Đang khởi động mô hình AI…"
-    : active && activity && ["visual_grounding", "visual_grounded", "deriving_facts", "extracting_claims", "claims_extracted", "verifying_claims", "claims_verified", "claim_extraction_failed", "claim_verification_failed"].includes(activity.phase) ? phaseLabel(activity)
+    : active && activity && ["visual_grounding", "visual_grounded", "deriving_facts", "extracting_claims", "claims_extracted", "verifying_claims", "claims_verified", "claim_extraction_failed", "claim_verification_failed", "chart_cross_check", "chart_read", "chart_fallback", "chart_reconciled"].includes(activity.phase) ? phaseLabel(activity)
     : active ? "Đang chấm bài…" : `Sẵn sàng chấm Task ${taskNumber}`;
 
   return <section className={styles.trace} aria-label="Scoring Trace">

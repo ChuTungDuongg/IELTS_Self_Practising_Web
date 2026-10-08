@@ -588,9 +588,9 @@ async def test_gra_optional_calibration_completes_persists_and_replays_without_r
 
 @pytest.mark.integration
 @pytest.mark.parametrize(
-    "old_version", ["mts-task2-v1", "mts-task2-v2", "mts-task2-v3", "mts-task2-v4"]
+    "old_version", ["mts-task2-v1", "mts-task2-v2", "mts-task2-v3", "mts-task2-v4", "mts-task2-v5"]
 )
-async def test_old_cache_is_preserved_but_never_reused_for_v5(
+async def test_old_cache_is_preserved_but_never_reused_for_v6(
     db_session, writing, settings, old_version
 ):
     attempt_id, _, task_id = writing
@@ -608,7 +608,7 @@ async def test_old_cache_is_preserved_but_never_reused_for_v5(
     settings.ai_writing_prompt_version = old_version  # Existing deployed secret.
     upgraded = await api.create(attempt_id, task_id, force=False)
     assert upgraded.run_id != legacy.run_id and not upgraded.cache_hit
-    assert (await api.get(upgraded.run_id)).prompt_version == "mts-task2-v5"
+    assert (await api.get(upgraded.run_id)).prompt_version == "mts-task2-v6"
     history = await api.list(attempt_id, task_id)
     assert len(history.items) == 2
     assert history.items[1].prompt_version == old_version and history.items[1].result == old_result

@@ -10,6 +10,7 @@ from uuid import uuid4
 import pytest
 import pytest_asyncio
 from sqlalchemy import func, select
+from test_chart_cross_check import LINE, FakeSpecialist
 from test_task1_visual import ESSAY, PNG, Task1FakeProvider
 from test_writing_ai import service, worker
 from test_writing_ai import settings as settings
@@ -30,8 +31,100 @@ from app.models import TestSession as DomainSession
 from app.models.enums import AssetType, AttemptStatus, ModuleType, WritingAIRunStatus
 from app.models.enums import TestSessionStatus as SessionStatus
 from app.services.task1_input import TASK1_PROMPT_VERSION
+from app.services.writing_ai import input_fingerprint
+
+
+@pytest.mark.parametrize(
+    "error", [None, "CHART_SPECIALIST_UNAVAILABLE", "CHART_SPECIALIST_PARSE_FAILED"]
+)
+async def test_chart_cross_check_restores_diagnostics_sse_and_preserves_human_scores(
+    db_session, task1, writing, settings, error
+):
+    attempt_id, task_id, _, _ = task1
+    task2_id = writing[2]
+    settings.ai_writing_chart_specialist_enabled = True
+    api = service(db_session, settings)
+    created = await api.create(attempt_id, task_id, force=False)
+    specialist = FakeSpecialist(LINE, error)
+    worker_instance = worker(db_session, settings, Task1FakeProvider())
+    worker_instance.chart_derenderer = specialist
+    await worker_instance.execute(created.run_id)
+    run, events = await api.snapshot(created.run_id, 0)
+    assert run.status == "COMPLETED" and run.task1_analysis.cross_check is not None
+    assert len(specialist.calls) == 1
+    assert run.task1_analysis.cross_check.status == (
+        "COMPLETED"
+        if error is None
+        else "PARSE_FAILED"
+        if error.endswith("PARSE_FAILED")
+        else "UNAVAILABLE"
+    )
+    types = [event.event_type for event in events]
+    assert "chart_specialist.started" in types
+    assert (
+        "chart_reconciliation.completed" if error is None else "chart_specialist.failed"
+    ) in types
+    assert (await api.create(attempt_id, task_id, force=False)).cache_hit
+    # Enabling the specialist creates a distinct chart cache, with old runs readable.
+    settings.ai_writing_chart_specialist_enabled = False
+    assert not (await api.create(attempt_id, task_id, force=False)).cache_hit
+    async with db_session.begin():
+        human1 = await db_session.scalar(
+            select(AttemptWritingScore).where(
+                AttemptWritingScore.attempt_id == attempt_id,
+                AttemptWritingScore.writing_task_id == task_id,
+            )
+        )
+        human2 = await db_session.scalar(
+            select(AttemptWritingScore).where(
+                AttemptWritingScore.attempt_id == attempt_id,
+                AttemptWritingScore.writing_task_id == task2_id,
+            )
+        )
+        attempt = await db_session.get(Attempt, attempt_id)
+    assert human1.ta == 6 and human2.ta == 7 and attempt.band_score == 7
+
+
+async def test_task2_ignores_enabled_specialist(db_session, writing, settings):
+    from test_writing_ai import FakeProvider
+
+    attempt_id, _, task2_id = writing
+    settings.ai_writing_chart_specialist_enabled = True
+    specialist = FakeSpecialist()
+    api = service(db_session, settings)
+    created = await api.create(attempt_id, task2_id, force=False)
+    instance = worker(db_session, settings, FakeProvider())
+    instance.chart_derenderer = specialist
+    await instance.execute(created.run_id)
+    run, events = await api.snapshot(created.run_id, 0)
+    assert run.status == "COMPLETED" and len(run.progress) == 4
+    assert not specialist.calls and not any(
+        event.event_type.startswith("chart_") for event in events
+    )
+
 
 pytestmark = pytest.mark.integration
+
+
+async def test_old_task1_prompt_cache_remains_readable_but_is_not_reused(
+    db_session, task1, settings
+):
+    attempt_id, task_id, _, _ = task1
+    api = service(db_session, settings)
+    created = await api.create(attempt_id, task_id, force=False)
+    await worker(db_session, settings, Task1FakeProvider()).execute(created.run_id)
+    old_result = (await api.get(created.run_id)).result
+    async with db_session.begin():
+        request = await api.input(attempt_id, task_id)
+        row = await db_session.get(WritingAIGradingRun, created.run_id)
+        row.prompt_version = "mts-task1-visual-v1"
+        row.input_fingerprint = input_fingerprint(
+            request, row.prompt_version, row.provider, row.model
+        )
+    upgraded = await api.create(attempt_id, task_id, force=False)
+    assert not upgraded.cache_hit and upgraded.run_id != created.run_id
+    assert (await api.get(upgraded.run_id)).prompt_version == "mts-task1-visual-v2"
+    assert (await api.get(created.run_id)).result == old_result
 
 
 @pytest_asyncio.fixture

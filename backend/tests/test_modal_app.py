@@ -12,7 +12,15 @@ ROOT = Path(__file__).resolve().parents[2]
 MODEL = "mistralai/Ministral-3-8B-Instruct-2512"
 
 
-def load_app(monkeypatch, *, local=True, enabled=True, injected_keys=False):
+def load_app(
+    monkeypatch,
+    *,
+    local=True,
+    enabled=True,
+    injected_keys=False,
+    chart_enabled=False,
+    frozen_chart_flag=None,
+):
     modal = MagicMock()
     modal.is_local.return_value = local
     image = MagicMock()
@@ -37,6 +45,19 @@ def load_app(monkeypatch, *, local=True, enabled=True, injected_keys=False):
     llm.serve = MagicMock()
     monkeypatch.setitem(sys.modules, "modal", modal)
     monkeypatch.setitem(sys.modules, "deploy.modal.writing_llm", llm)
+    chart = ModuleType("deploy.modal.chart_derenderer")
+    chart.MODEL, chart.REVISION, chart.app, chart.serve = (
+        "google/deplot",
+        "pinned",
+        object(),
+        MagicMock(),
+    )
+    monkeypatch.setitem(sys.modules, "deploy.modal.chart_derenderer", chart)
+    monkeypatch.setenv("AI_WRITING_CHART_SPECIALIST_ENABLED", str(chart_enabled).lower())
+    if frozen_chart_flag is None:
+        monkeypatch.delenv("IELTS_WEB_CHART_SPECIALIST_ENABLED", raising=False)
+    else:
+        monkeypatch.setenv("IELTS_WEB_CHART_SPECIALIST_ENABLED", str(frozen_chart_flag).lower())
     monkeypatch.setenv("IELTS_MODAL_MODE", "dev")
     monkeypatch.setenv("IELTS_WEB_AI_ENABLED", str(enabled).lower())
     if injected_keys:
@@ -73,3 +94,24 @@ def test_explicit_web_only_does_not_include_gpu(monkeypatch):
     module, modal, _ = load_app(monkeypatch, enabled=False)
     assert not module.AI_ENABLED
     modal.App.return_value.include.assert_not_called()
+
+
+def test_chart_service_is_explicitly_optional_and_separate(monkeypatch):
+    module, modal, llm = load_app(monkeypatch, chart_enabled=True)
+    assert module.CHART_SPECIALIST_ENABLED
+    assert [call.args[0] for call in modal.App.return_value.include.call_args_list] == [
+        llm.app,
+        module.chart_app,
+    ]
+    module, modal, _ = load_app(monkeypatch, enabled=False, chart_enabled=True)
+    assert not module.CHART_SPECIALIST_ENABLED
+    modal.App.return_value.include.assert_not_called()
+
+
+@pytest.mark.parametrize("frozen,secret", [(True, False), (False, True)])
+def test_chart_dependency_graph_uses_frozen_flag_over_remote_secret(monkeypatch, frozen, secret):
+    module, modal, _ = load_app(
+        monkeypatch, local=False, chart_enabled=secret, frozen_chart_flag=frozen
+    )
+    assert module.CHART_SPECIALIST_ENABLED is frozen
+    assert modal.App.return_value.include.call_count == (2 if frozen else 1)

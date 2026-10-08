@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 400"><title>Original synthetic multi-pie fixture</title><rect width="900" height="400" fill="white"/>
+<text x="220" y="30" text-anchor="middle" font-size="24">Region A</text>
+<path d="M 220 170 L 220.00 60.00 A 110 110 0 1 1 155.34 258.99 Z" fill="#4978bf"/>
+<path d="M 220 170 L 155.34 258.99 A 110 110 0 0 1 131.01 105.34 Z" fill="#e39748"/>
+<path d="M 220 170 L 131.01 105.34 A 110 110 0 0 1 220.00 60.00 Z" fill="#62a882"/>
+<text x="110" y="310" font-size="20">Agriculture: 60%</text>
+<text x="110" y="340" font-size="20">Industry: 25%</text>
+<text x="110" y="370" font-size="20">Domestic: 15%</text>
+<text x="660" y="30" text-anchor="middle" font-size="24">Region B</text>
+<path d="M 660 170 L 660.00 60.00 A 110 110 0 0 1 764.62 203.99 Z" fill="#4978bf"/>
+<path d="M 660 170 L 764.62 203.99 A 110 110 0 0 1 555.38 136.01 Z" fill="#e39748"/>
+<path d="M 660 170 L 555.38 136.01 A 110 110 0 0 1 660.00 60.00 Z" fill="#62a882"/>
+<text x="550" y="310" font-size="20">Agriculture: 30%</text>
+<text x="550" y="340" font-size="20">Industry: 50%</text>
+<text x="550" y="370" font-size="20">Domestic: 20%</text>
+</svg>

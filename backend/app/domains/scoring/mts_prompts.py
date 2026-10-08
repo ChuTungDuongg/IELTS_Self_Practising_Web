@@ -11,7 +11,7 @@ from app.domains.scoring.essay_sources import SourceSegment, segment_essay
 from app.providers.writing_llm.base import Message, OutputFailureReason
 from app.schemas.writing_ai import EvidenceResult, EvidenceSelection, ScoringOutput, Trait
 
-AI_WRITING_PROMPT_VERSION = "mts-task2-v5"
+AI_WRITING_PROMPT_VERSION = "mts-task2-v6"
 
 
 def effective_prompt_version(configured: str) -> str:
@@ -25,6 +25,7 @@ def effective_prompt_version(configured: str) -> str:
             "mts-task2-v2",
             "mts-task2-v3",
             "mts-task2-v4",
+            "mts-task2-v5",
             AI_WRITING_PROMPT_VERSION,
         }
         else f"{AI_WRITING_PROMPT_VERSION}:{configured}"[:80]
@@ -36,6 +37,12 @@ TRAIT_NAMES = {
     "cc": "Coherence & Cohesion",
     "lr": "Lexical Resource",
     "gra": "Grammatical Range and Accuracy",
+}
+CALIBRATION_SCOPES = {
+    "ta": "For Task Response assess coverage, position, relevant development and support independently of language sophistication.",
+    "cc": "Assess global progression, logical organisation, paragraphing, cohesion and referencing/substitution; paragraphs or linking words alone do not establish control.",
+    "lr": "Assess sustained range, precision, appropriacy, flexibility, collocation, spelling and word formation, not isolated academic words or idea quality.",
+    "gra": "Assess structural flexibility, grammatical accuracy and punctuation across the response, including the frequency and communicative effect of errors, not a few complex sentences or content quality.",
 }
 # Criterion-specific whole-band summaries preserve both positive features and
 # the extent/impact of limitations. They guide holistic fit, never hard caps.
@@ -108,7 +115,7 @@ def evidence_messages(
     return [
         {
             "role": "system",
-            "content": f"{GUARD}\nCriterion: {TRAIT_NAMES[trait]}. {SCOPES[trait]}\nSelect up to 4 relevant source_id values from the provided allowed IDs, including strengths or weaknesses. Do not return quote text. The source_id is the only evidence identity. Write each assessment in Vietnamese, at most 320 characters and two concise sentences. Optional focus is only a display hint, not an identity. If there is no relevant evidence, return an empty list. JSON schema: {json.dumps(schema)}",
+            "content": f"{GUARD}\nCriterion: {TRAIT_NAMES[trait]}. {SCOPES[trait]}\nSelect up to 4 relevant source_id values from the provided allowed IDs, considering representative strengths and limitations across the whole response. Do not force a fixed number of weaknesses. Do not return quote text. The source_id is the only evidence identity. Write each assessment in Vietnamese, at most 320 characters and two concise sentences. Optional focus is only a display hint, not an identity. If there is no relevant evidence, return an empty list. JSON schema: {json.dumps(schema)}",
         },
         {
             "role": "user",
@@ -145,6 +152,11 @@ def scoring_messages(
                 "then select the final score and Vietnamese feedback/strengths/improvements. "
                 "Half-bands are interpolation between adjacent official whole-band descriptors, not separate rubrics. "
                 "Consider the whole essay and the extent/communicative effect of isolated or recurring weaknesses. "
+                "A few strong sentences do not represent whole-response performance; one isolated weakness does not either. "
+                "Require sustained, affirmative whole-response evidence of the higher descriptor's qualities. "
+                "Do not resolve uncertainty upward by default or automatically choose the lower band. "
+                "A half-band reflects performance between adjacent profiles, never a feeling that the lower band is too low. "
+                f"{CALIBRATION_SCOPES[trait]} "
                 "No cross-criterion penalties, fixed subtraction, error-count rules or hard caps. "
                 "High bands should fit the corresponding descriptor overall, with affirmative evidence; "
                 "intelligibility, paragraphs, ambitious words or absence of obvious faults alone do not establish that fit. "

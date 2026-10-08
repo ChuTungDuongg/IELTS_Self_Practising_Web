@@ -1,9 +1,22 @@
 import { act, cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
-import { ScoringProgress } from "@/features/writing/writing-ai-progress";
-import { type AIWritingRun } from "@/lib/api/writing-ai";
+import { ScoringProgress, activityFromEvent } from "@/features/writing/writing-ai-progress";
+import { aiEventSchema, type AIWritingRun } from "@/lib/api/writing-ai";
 
 afterEach(() => { cleanup(); vi.useRealTimers(); });
+
+it.each([
+  ["chart_specialist.started", "Đang đối chiếu dữ liệu biểu đồ…"],
+  ["chart_specialist.completed", "Đã đọc dữ liệu bằng bộ đọc biểu đồ chuyên dụng"],
+  ["chart_reconciliation.completed", "Đã đối chiếu dữ liệu biểu đồ"],
+  ["chart_specialist.failed", "Không thể dùng bộ đối chiếu chuyên dụng; tiếp tục với phân tích hình chính."],
+] as const)("restores semantic chart progress from SSE: %s", (eventType, label) => {
+  const event = aiEventSchema.parse({ sequence: 1, event_type: eventType, created_at: active.created_at, payload: { criterion: "ta", stage: "chart_cross_check" } });
+  render(<ScoringProgress taskNumber={1} run={{ ...active, task_number: 1, activity: activityFromEvent(event) }} />);
+  expect(screen.getAllByText(label)).toHaveLength(2);
+  expect(screen.getByLabelText("Tiến trình Task Achievement")).toHaveAttribute("data-state", "ACTIVE");
+  expect(screen.queryByText("Không thể hoàn tất tiêu chí này.")).not.toBeInTheDocument();
+});
 
 const criterion = { score: 7.5, feedback: "Lập trường nhất quán.", strengths: [], improvements: [], evidence: [] };
 const active: AIWritingRun = {

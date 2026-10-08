@@ -7,6 +7,10 @@ from pathlib import Path
 from uuid import uuid4
 
 import modal
+from deploy.modal.chart_derenderer import MODEL as DEPLOT_MODEL
+from deploy.modal.chart_derenderer import REVISION as DEPLOT_REVISION
+from deploy.modal.chart_derenderer import app as chart_app
+from deploy.modal.chart_derenderer import serve as chart_serve
 from deploy.modal.writing_llm import MODEL
 from deploy.modal.writing_llm import app as llm_app
 from deploy.modal.writing_llm import serve as llm_serve
@@ -21,6 +25,12 @@ AI_ENABLED = os.environ.get(
 ).lower() in {"true", "1", "yes"}
 if AI_ENABLED:
     app.include(llm_app)
+CHART_SPECIALIST_ENABLED = AI_ENABLED and os.environ.get(
+    "IELTS_WEB_CHART_SPECIALIST_ENABLED",
+    os.environ.get("AI_WRITING_CHART_SPECIALIST_ENABLED", "false"),
+).lower() in {"true", "1", "yes"}
+if CHART_SPECIALIST_ENABLED:
+    app.include(chart_app)
 database = modal.Volume.from_name(
     "ielts-web-postgres-dev" if MODE == "dev" else "ielts-web-postgres",
     create_if_missing=True,
@@ -62,7 +72,13 @@ image = (
         }
     )
     .run_commands("cd /workspace/frontend && npm ci && npm run build")
-    .env({"IELTS_MODAL_MODE": MODE, "IELTS_WEB_AI_ENABLED": str(AI_ENABLED).lower()})
+    .env(
+        {
+            "IELTS_MODAL_MODE": MODE,
+            "IELTS_WEB_AI_ENABLED": str(AI_ENABLED).lower(),
+            "IELTS_WEB_CHART_SPECIALIST_ENABLED": str(CHART_SPECIALIST_ENABLED).lower(),
+        }
+    )
     .add_local_file(
         ROOT / "deploy/modal/web_runtime.py", "/workspace/deploy/modal/web_runtime.py", copy=True
     )
@@ -101,6 +117,14 @@ class Web:
         from web_runtime import WebRuntime, configure_ai_environment
 
         configure_ai_environment(AI_ENABLED, MODEL, llm_serve.get_web_url() if AI_ENABLED else None)
+        from web_runtime import configure_chart_environment
+
+        configure_chart_environment(
+            CHART_SPECIALIST_ENABLED,
+            DEPLOT_MODEL,
+            DEPLOT_REVISION,
+            chart_serve.get_web_url() if CHART_SPECIALIST_ENABLED else None,
+        )
 
         self.owner = uuid4().hex
         self.stop_heartbeat = threading.Event()

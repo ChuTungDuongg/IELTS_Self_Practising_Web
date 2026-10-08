@@ -8,7 +8,10 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.core.config import Settings
 from app.core.exceptions import AppError
 from app.domains.scoring.mts_prompts import effective_prompt_version
+from app.domains.writing.visual_families import VisualFamily, visual_family
 from app.models.enums import WritingAIRunStatus
+from app.providers.chart_derendering import ChartDerenderingProvider
+from app.providers.chart_derendering.deplot import DePlotChartDerenderingProvider
 from app.providers.writing_llm import create_provider, provider_identity
 from app.providers.writing_llm.base import LLMProvider, ProviderFailure
 from app.repositories.writing_ai import ACTIVE, WritingAIRepository
@@ -33,10 +36,12 @@ class WritingAIWorker:
         sessions: async_sessionmaker[AsyncSession],
         settings: Settings,
         provider: LLMProvider | None = None,
+        chart_derenderer: ChartDerenderingProvider | None = None,
     ) -> None:
         self.sessions = sessions
         self.settings = settings
         self.provider = provider
+        self.chart_derenderer = chart_derenderer
 
     def launch(self, run_id: UUID) -> None:
         task = asyncio.create_task(self.execute(run_id), name=f"writing-ai-{run_id}")
@@ -76,7 +81,14 @@ class WritingAIWorker:
                 await repository.append_event(run, "run.started", EventPayload())
             provider_client = self.provider or create_provider(self.settings)
             mts = (
-                Task1WritingScoringService(provider_client)
+                Task1WritingScoringService(
+                    provider_client,
+                    (self.chart_derenderer or DePlotChartDerenderingProvider(self.settings))
+                    if request.chart_specialist.enabled
+                    and visual_family(request.task_type) == VisualFamily.CHART_TABLE
+                    else None,
+                    self.settings.ai_writing_chart_specialist_timeout_seconds,
+                )
                 if isinstance(request, Task1ScoringRequest)
                 else MTSWritingScoringService(provider_client)
             )

@@ -30,6 +30,8 @@ DATA_GUARD = (
 TA_GUIDANCE = (
     "Assess fulfilment of the visual description task: overview where relevant, selection and coverage "
     "of major features, relevant supporting detail, accuracy, and significant omissions. "
+    "Judge the whole report: an overview alone or a large quantity of correct numbers does not establish a high band. "
+    "Consider representative strengths and limitations; do not mechanically deduct for one wrong fact. "
     "1: unrelated content; ignore copied task wording. 2: almost no relevant description. "
     "3: major misunderstanding and little useful information. 4: few important features, with confused "
     "or inaccurate reporting. 5: limited coverage and mechanical detail; weak overall picture and key inaccuracies. "
@@ -80,6 +82,10 @@ def score_prompt(
 ) -> list[Message]:
     messages = scoring_messages(request.prompt, request.response, trait, evidence)
     system = messages[0]["content"].replace("Task 2", "Academic Task 1")
+    system = system.replace(
+        "For Task Response assess coverage, position, relevant development and support independently of language sophistication. ",
+        "For Task Achievement assess visual-report fulfilment, overview, selection of major features, supporting detail, accuracy and relevant comparisons. ",
+    )
     if trait == "ta":
         system = system.replace("Task Response", "Task Achievement").replace(
             SCOPES[trait], TA_GUIDANCE
@@ -87,6 +93,7 @@ def score_prompt(
         system = system.replace(RUBRICS[trait], "").replace(LOW_BANDS[trait], "")
         system += (
             " Use only supplied grounded reference, deterministic facts and claim verdicts for visual accuracy. "
+            "Perception disagreements are not student errors and their count never implies a band penalty. "
             "Uncertain values are unknown, not contradictions. LOW confidence permits cautious qualitative "
             "judgment only; never assert exact-number errors from uncertain perception. Missing/failed claim "
             "verification is not evidence of an error. Do not calculate penalties from verdict counts."

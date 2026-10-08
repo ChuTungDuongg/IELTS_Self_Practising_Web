@@ -11,6 +11,24 @@ module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 
 
+def test_chart_configuration_uses_hydrated_backend_only_url(monkeypatch):
+    import os
+
+    for key in [
+        "AI_WRITING_CHART_SPECIALIST_ENABLED",
+        "AI_WRITING_DEPLOT_MODEL",
+        "AI_WRITING_DEPLOT_REVISION",
+        "AI_WRITING_DEPLOT_BASE_URL",
+        "AI_WRITING_CHART_SPECIALIST_PROVIDER",
+    ]:
+        monkeypatch.delenv(key, raising=False)
+    module.configure_chart_environment(True, "google/deplot", "pinned", "https://chart.modal.run/")
+    assert os.environ["AI_WRITING_DEPLOT_BASE_URL"] == "https://chart.modal.run"
+    assert os.environ["AI_WRITING_DEPLOT_REVISION"] == "pinned"
+    module.configure_chart_environment(False, "google/deplot", "pinned", None)
+    assert os.environ["AI_WRITING_CHART_SPECIALIST_ENABLED"] == "false"
+
+
 def runtime_at(tmp_path, monkeypatch, snapshot="seed/database.dump"):
     runtime = module.WebRuntime()
     runtime.database_root = tmp_path / "database"

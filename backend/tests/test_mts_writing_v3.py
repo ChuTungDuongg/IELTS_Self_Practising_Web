@@ -109,9 +109,9 @@ async def test_vietnamese_independent_prompts_and_cache_version():
     for field in ["feedback", "strengths", "improvements"]:
         assert field in provider.calls[1][0]["content"]
     assert sum(e == "criterion.completed" for e, _ in events) == 4
-    for old in ["mts-task2-v1", "mts-task2-v2", "mts-task2-v3", "mts-task2-v4"]:
-        assert effective_prompt_version(old) == "mts-task2-v5"
-    assert effective_prompt_version("custom") == "mts-task2-v5:custom"
+    for old in ["mts-task2-v1", "mts-task2-v2", "mts-task2-v3", "mts-task2-v4", "mts-task2-v5"]:
+        assert effective_prompt_version(old) == "mts-task2-v6"
+    assert effective_prompt_version("custom") == "mts-task2-v6:custom"
 
 
 @pytest.mark.parametrize(

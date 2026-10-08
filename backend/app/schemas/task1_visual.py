@@ -59,6 +59,7 @@ class Point(VisualModel):
     category: Text
     value: Number | None
     confidence: Confidence
+    value_is_labelled: bool | None = None
 
 
 class Series(VisualModel):

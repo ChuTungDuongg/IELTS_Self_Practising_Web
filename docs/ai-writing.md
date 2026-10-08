@@ -2,8 +2,8 @@
 
 Task 1 and Task 2 share the configured `mistralai/Ministral-3-8B-Instruct-2512`
 model, provider adapters and existing Modal/vLLM GPU function. Task 2 retains
-its text-only MTS pipeline and `mts-task2-v5` cache contract. Task 1 adds the
-multimodal grounding pipeline below, with its own `mts-task1-visual-v1` version.
+its text-only MTS pipeline and `mts-task2-v6` cache contract. Task 1 adds the
+multimodal grounding pipeline below, with its own `mts-task1-visual-v2` version.
 
 ## Task 2: text-only assessment
 
@@ -32,11 +32,20 @@ helpers are isolated and documented; source-ID inference never calls them.
 Each evidence/scoring interaction gets at most one targeted correction, then
 fails that criterion safely if still invalid; remaining criteria continue.
 
-Prompt version **`mts-task2-v5`** requires natural Vietnamese for assessments,
+Prompt version **`mts-task2-v6`** requires natural Vietnamese for assessments,
 feedback, strengths and improvements, while preserving original English quotes.
-Old v1/v2/v3/v4 assessments remain history and are never reused by v5. Deployed secrets
-still naming older versions use effective v5 for fingerprinting/execution. Custom labels
-are prefixed by v5 so they cannot accidentally reuse the previous contract.
+Old v1/v2/v3/v4/v5 assessments remain history and are never reused by v6. Deployed secrets
+still naming older versions use effective v6 for fingerprinting/execution. Custom labels
+are prefixed by v6 so they cannot accidentally reuse the previous contract.
+
+Both `mts-task2-v6` and `mts-task1-visual-v2` tighten descriptor discrimination:
+compare the plausible whole-band profile with its immediate neighbours, requiring
+sustained whole-response evidence for higher-level qualities. Isolated strong
+sentences and isolated weaknesses do not represent the whole essay. Uncertainty
+is neither rounded upward by default nor resolved by an automatic lower-band rule.
+Half-bands remain interpolation. Criterion-specific guidance keeps TA/TR separate
+from CC/LR/GRA. No score subtraction, caps, error-count formulas or new scoring
+metadata validators were added; the four-field score contract is unchanged.
 
 Scoring guidance was checked against the [official IELTS descriptors](https://ielts.org/cdn/ielts-guides/ielts-writing-band-descriptors.pdf)
 on 2026-10-08 (current publication: May 2023, Task 2 pages 7–9). Only the four
@@ -181,7 +190,8 @@ source-reference presentation helper; source IDs stay internal and exact quotati
 stay selectable. Copying suggestions changes only authorized local manual form
 state. Explicit human Save remains required: AI runs never write official criterion
 scores, attempt band, History or Analytics. No combined AI Writing band is shown.
-DePlot, TinyChart, extra VLMs, voting, benchmarks and T1-B/T1-C are not implemented.
+T1-B adds the optional DePlot cross-check described below. TinyChart, extra judge
+VLMs, model voting and T1-C evaluation remain out of scope.
 
 ## Backend setup
 
@@ -203,7 +213,7 @@ AI_WRITING_MODAL_SECRET=<proxy token secret>
 AI_WRITING_VLLM_API_KEY=
 AI_WRITING_REQUEST_TIMEOUT_SECONDS=300
 AI_WRITING_STARTUP_TIMEOUT_SECONDS=600
-AI_WRITING_PROMPT_VERSION=mts-task2-v5
+AI_WRITING_PROMPT_VERSION=mts-task2-v6
 AI_WRITING_STALE_AFTER_SECONDS=90
 ```
 
@@ -464,7 +474,7 @@ pg_restore --dbname=<target-database> --no-owner --no-acl ./database.dump
 
 ```powershell
 cd backend
-uv run pytest tests/test_task1_visual.py tests/test_task1_writing_ai.py tests/test_essay_sources.py tests/test_mts_writing_v3.py tests/test_mts_writing_v4.py tests/test_mts_writing_v5.py tests/test_writing_ai.py tests/test_mts_writing_validation.py tests/test_writing_ai_output_normalization.py tests/test_writing_llm_providers.py tests/test_writing_llm_readiness.py -q
+uv run pytest tests/test_chart_cross_check.py tests/test_task1_visual.py tests/test_task1_writing_ai.py tests/test_essay_sources.py tests/test_mts_writing_v3.py tests/test_mts_writing_v4.py tests/test_mts_writing_v5.py tests/test_writing_ai.py tests/test_mts_writing_validation.py tests/test_writing_ai_output_normalization.py tests/test_writing_llm_providers.py tests/test_writing_llm_readiness.py tests/test_deplot_deployment.py tests/test_modal_app.py tests/test_modal_web_runtime.py -q
 # Run Ruff on the AI modules and touched integration files.
 cd ../frontend
 npx vitest run tests/writing-ai-assessment.test.tsx tests/writing-ai-progress.test.tsx tests/writing-review.test.tsx
@@ -513,3 +523,76 @@ prefetch, and client router-cache behavior was not reproduced without a browser;
 the earlier stale-prefetch hypothesis remains unconfirmed. Focused regressions
 cover fresh cookie checks, validated login destinations, waiting for session
 confirmation, roles and logout. No blanket prefetch/auth change was made.
+
+
+## T1-B: optional chart perception cross-check
+
+T1-A remains the primary general visual grounder. T1-B adds one independent
+`google/deplot` image-to-table extraction only for LINE_GRAPH, BAR_CHART,
+PIE_CHART, TABLE and MIXED_CHARTS. PROCESS, MAP_PLAN, OBJECT_SYSTEM_DIAGRAM and
+OTHER_VISUAL retain T1-A; Task 2 stays text-only. No third judge model or repeated
+image scoring is introduced. DePlot never receives the essay or assigns IELTS scores.
+
+The [official model card](https://huggingface.co/google/deplot) identifies an
+Apache-2.0 Pix2Struct checkpoint. We pin revision
+`6e76d62430da16986be3426bae32301fb9115397`, Transformers **5.13.0**, PyTorch
+**2.10.0**, Pillow **12.1.1**, SentencePiece **0.2.1** and FastAPI **0.135.1**.
+The [direct Transformers API](https://huggingface.co/docs/transformers/v5.13.0/model_doc/deplot)
+uses `AutoProcessor` and `Pix2StructForConditionalGeneration`, a PIL RGB image
+and the fixed chart-to-table instruction. No deprecated pipeline or Google
+research repository is installed. Outputs must finish within 512 generated tokens.
+
+The backend-only `ChartDerenderingProvider` accepts trusted `ImagePart` bytes.
+Its HTTP implementation submits once to the protected specialist service,
+checks the reported model/revision, and bounds response bytes and time. Raw
+linearized tables are parsed locally and never persisted or streamed. Parser
+limits are 16,384 characters, 30 data rows, 30 value columns and 120 characters
+per label. Cells use the existing finite bounded Decimal contract, explicit
+VALUE/MISSING/UNPARSEABLE states and percentage units; ambiguous thousands
+separators, exponent strings, code and arbitrary prose are not numbers.
+
+Reconciliation normalizes labels with NFC, whitespace trimming/collapsing and
+casefold. It accepts exact row/column or transposed correspondence, never fuzzy
+semantic matches. Multi-pie regions align via the primary component state/title
+and sector labels; no time axis is inferred. Mixed components and units stay
+separate. A specialist cell cannot confirm two primary components. Unknown or
+conflicting units are recorded as uncertainty.
+
+Numeric comparison is exact Decimal equality, with **no tolerance**. Thus 48,
+48.0 and 48% agree when percentage semantics are established. Independently
+matching printed values, pie percentages and table cells may strengthen point
+confidence; explicitly estimated continuous-chart values remain below the
+existing exact-fact reliability threshold. One-source values retain their
+original confidence; specialist-only cells do not fabricate new primary data.
+Root LOW/UNUSABLE confidence is never promoted.
+
+Disputed values become null with zero point confidence before `derive_facts()`.
+Dependent exact facts and deterministic contradictions therefore cannot use them.
+The primary summary is cleared of potentially stale numerical claims, and semantic
+fallback is skipped for unstructured claims when disagreement exists. Other
+supported facts remain usable. TA receives cautious grounded information, with
+**no band penalty derived from disagreement counts**.
+
+Specialist timeout, unavailability, malformed output or wrong model identity
+falls back to the unchanged primary reference. Safe typed diagnostics contain
+only model identity, bounded agreement/disagreement/unmatched/unknown counts and
+allowlisted warnings. An unusable primary reference cannot be replaced by DePlot;
+TA fails independently while CC/LR/GRA continue. Existing human grading remains
+authoritative. Old persisted T1-A history remains readable through optional
+`cross_check`; chart cache identity additionally includes enabled/provider/model,
+pinned revision and parser/reconciliation contract version, alongside the visual
+hash and scoring prompt version. Non-chart fingerprints omit specialist settings.
+
+SSE stages are `chart_specialist.started`, `.completed`, `.failed` and
+`chart_reconciliation.completed`, preceding existing facts/claims/criteria stages.
+Snapshots persist safe diagnostics for replay. The UI describes chart confirmation,
+uncertainty or graceful fallback in Vietnamese without raw tables/model internals.
+
+Enable with backend-only `AI_WRITING_CHART_SPECIALIST_ENABLED=true` and a trusted
+`AI_WRITING_DEPLOT_BASE_URL`; provider/model/revision defaults are in
+`backend/.env.example`. Existing Modal proxy credentials protect both services.
+The specialist is disabled by default and never required for language criteria.
+The backend timeout defaults to 90 seconds (maximum 120), including cold-start
+waiting. Deploy/cache/cost details and the measured smoke result are documented in
+[Modal deployment](modal-web.md#optional-t1-b-chart-service). TinyChart remains a future comparison candidate; T1-C,
+model voting and evaluation dashboards are not implemented.

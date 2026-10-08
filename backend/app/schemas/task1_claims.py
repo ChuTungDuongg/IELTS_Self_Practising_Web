@@ -3,6 +3,7 @@ from typing import Annotated, Literal
 from pydantic import Field, StringConstraints
 
 from app.domains.scoring.task1_facts import MAX_DERIVED_FACTS, DerivedFact, FactKind, FactNumber
+from app.schemas.chart_cross_check import ChartCrossCheckResult, ChartWarning
 from app.schemas.task1_visual import (
     GroundingConfidence,
     Location,
@@ -110,13 +111,15 @@ class Task1Analysis(VisualModel):
     visual_family: Literal["chart_table", "process", "map", "system", "other"]
     confidence: GroundingConfidence = GroundingConfidence.UNUSABLE
     reference: VisualReference | None = None
+    cross_check: ChartCrossCheckResult | None = None
     derived_facts: list[DerivedFact] = Field(default_factory=list, max_length=MAX_DERIVED_FACTS)
     claims: list[VerifiedClaim] = Field(default_factory=list, max_length=20)
     warnings: list[
-        Literal[
+        ChartWarning
+        | Literal[
             "VISUAL_LOW_CONFIDENCE",
             "VISUAL_GROUNDING_FAILED",
             "CLAIM_EXTRACTION_FAILED",
             "CLAIM_VERIFICATION_FAILED",
         ]
-    ] = Field(default_factory=list, max_length=4)
+    ] = Field(default_factory=list, max_length=9)

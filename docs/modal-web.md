@@ -180,3 +180,57 @@ Stop the web deployment with `modal app stop ielts-practice-web --yes`; stopping
 `modal serve` also shuts down its temporary Web and GPU functions. Volumes and
 backups remain available. A legacy standalone `ielts-writing-llm` deployment is
 not needed by this entry point; stop it separately after migrating any clients.
+
+
+## Optional T1-B chart service
+
+The unified Ministral vLLM service remains unchanged. DePlot runs in the separate
+`deploy/modal/chart_derenderer.py` Modal app/function, with no second Web/PostgreSQL
+stack. It uses a protected ASGI `/extract` endpoint accepting only bounded PNG,
+JPEG or WebP bytes, PIL RGB preprocessing and a fixed extraction instruction.
+The backend never exposes its URL or proxy credentials to the frontend.
+
+Set `AI_WRITING_CHART_SPECIALIST_ENABLED=true` in the shell **before** the existing
+`modal serve deploy/modal/app.py` or `modal deploy deploy/modal/app.py` command.
+The entry point then includes the separate chart function and hydrates its backend
+URL, checkpoint and revision. It is disabled by default; web-only mode also disables
+it. Existing `AI_WRITING_MODAL_KEY`/`AI_WRITING_MODAL_SECRET` credentials must be valid
+for the chart endpoint. For a separately hosted specialist, use the backend
+configuration in `.env.example` instead. No production deployment was performed
+for this task.
+
+Runtime pins: Python 3.12, Transformers 5.13.0, PyTorch 2.10.0, Pillow 12.1.1,
+SentencePiece 0.2.1 and FastAPI 0.135.1. Checkpoint `google/deplot` is Apache-2.0,
+pinned at `6e76d62430da16986be3426bae32301fb9115397`. Model downloads use the
+`ielts-deplot-model-cache` Volume. The function requests T4, 2 CPU cores and
+8 GiB host RAM, with zero minimum containers, one maximum container and 60-second
+scaledown. It does not share the Ministral L4 process or its GPU memory.
+
+On 2026-10-08, [Modal pricing](https://modal.com/pricing) listed T4 as its lowest
+priced GPU at $0.000164/second, versus L4 at $0.000222/second. CPU and host memory
+are billed separately, as are applicable Volume/storage costs; startup and the
+scaledown grace period also contribute. CPU-only inference was not benchmarked,
+so no CPU latency or cost advantage is claimed.
+
+One optional synthetic multi-pie smoke actually ran using Modal client 1.5.3 and
+the pinned runtime on T4. It measured **30.247 s** model download/load and
+**3.364 s** inference; peak PyTorch GPU allocation was **2,204,196,864 bytes**
+(about 2.05 GiB). Overall local wall time was **145.25 s**, including first image
+build/provisioning and app teardown; this is not HTTP serving latency or a warm
+latency distribution. These measurements verify memory fit and practical
+single-extraction compute time on the cheapest listed GPU, not chart accuracy.
+
+The model returned malformed multi-pie table data. A single local cross-check
+using that same output produced **PARSE_FAILED**, correctly retaining T1-A rather
+than confirming chart data. No second extraction or repeated GPU benchmark was
+run. Normal tests independently validate six matching values from the original
+synthetic Region A/B fixture. Real multi-pie extraction remains a model limitation,
+so the optional specialist stays disabled by default. The temporary smoke app
+completed; the production Web and Ministral deployments were not changed.
+
+The backend specialist timeout is 90 seconds by default and never exceeds 120.
+Cold cache/download or queueing can exceed it; fail-open fallback keeps usable
+primary grounding. One extra specialist pass is requested only for the chart/table
+family. No real IELTS image, real essay grading, TinyChart or T1-C evaluation was
+run. `synthetic_smoke` is an explicit manual diagnostic function, not part of normal
+grading or automated tests; avoid repeated paid inference when verifying changes.

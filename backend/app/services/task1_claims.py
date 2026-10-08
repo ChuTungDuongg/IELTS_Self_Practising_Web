@@ -74,7 +74,11 @@ class Task1ClaimService(Task1StructuredCompletion):
                     evidence=evidence,
                 )
             )
-            if claim.check is None and analysis.confidence in {"HIGH", "MEDIUM"}:
+            if (
+                claim.check is None
+                and analysis.confidence in {"HIGH", "MEDIUM"}
+                and not (analysis.cross_check and analysis.cross_check.disagreement_count)
+            ):
                 pending.append(claim)
         if not pending:
             return True

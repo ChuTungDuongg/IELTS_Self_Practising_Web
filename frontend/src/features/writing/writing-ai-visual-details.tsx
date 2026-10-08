@@ -16,6 +16,13 @@ export function Task1VisualStatus({ analysis }: { analysis: Task1Analysis }) {
     <p><strong>Độ tin cậy khi đọc hình: {confidenceNames[analysis.confidence]}</strong></p>
     {analysis.confidence === "LOW" ? <p role="status">AI chưa đọc hình với độ tin cậy cao. Hãy xem phần Task Achievement như một gợi ý tham khảo.</p> : null}
     {analysis.confidence === "UNUSABLE" ? <p role="status">AI chưa đọc được hình đủ rõ để chấm Task Achievement. CC, LR và GRA vẫn được chấm từ bài viết.</p> : null}
+    {analysis.visual_family === "chart_table" && analysis.cross_check ? <p className={styles.visualNote} role="status">
+      <strong>Đối chiếu dữ liệu hình: </strong>
+      {analysis.cross_check.status !== "COMPLETED" ? "Không thể dùng bộ đối chiếu chuyên dụng; tiếp tục với phân tích hình chính."
+        : analysis.cross_check.disagreement_count ? "Một số số liệu trong hình chưa được AI đọc thống nhất; nhận xét Task Achievement được đưa ra thận trọng hơn."
+        : analysis.cross_check.agreement_count ? `${analysis.cross_check.agreement_count} số liệu đã được xác nhận chéo.${analysis.cross_check.warnings.length ? " Một phần dữ liệu chưa được đối chiếu đầy đủ." : ""}`
+        : "Chưa đủ dữ liệu trùng khớp để xác nhận chéo; tiếp tục với phân tích hình chính."}
+    </p> : null}
     {analysis.claims.length ? <p className={styles.claimCounts}>{supported} nhận định phù hợp · {contradicted} nhận định chưa khớp · {insufficient} nhận định chưa đủ dữ liệu</p> : null}
   </section>;
 }

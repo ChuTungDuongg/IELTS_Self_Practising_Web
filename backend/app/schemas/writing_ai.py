@@ -187,7 +187,12 @@ class CreateRunResponse(BaseModel):
 
 
 AssessmentStage = Literal[
-    "evidence", "scoring", "visual_grounding", "claim_extraction", "claim_verification"
+    "evidence",
+    "scoring",
+    "visual_grounding",
+    "claim_extraction",
+    "claim_verification",
+    "chart_cross_check",
 ]
 ActivityPhase = Literal[
     "preparing",
@@ -202,6 +207,10 @@ ActivityPhase = Literal[
     "failed",
     "visual_grounding",
     "visual_grounded",
+    "chart_cross_check",
+    "chart_read",
+    "chart_fallback",
+    "chart_reconciled",
     "deriving_facts",
     "extracting_claims",
     "claims_extracted",
@@ -285,6 +294,10 @@ EventType = Literal[
     "visual_grounding.started",
     "visual_grounding.completed",
     "visual_grounding.failed",
+    "chart_specialist.started",
+    "chart_specialist.completed",
+    "chart_specialist.failed",
+    "chart_reconciliation.completed",
     "derived_facts.completed",
     "claim_extraction.started",
     "claim_extraction.completed",

@@ -12,10 +12,12 @@ from app.core.exceptions import AppError
 from app.domains.scoring.mts_prompts import effective_prompt_version
 from app.domains.scoring.writing import WritingScoringRequest
 from app.domains.writing.task_types import TASK_ONE_TYPES, WritingTaskType
+from app.domains.writing.visual_families import VisualFamily, visual_family
 from app.models import TestSession, WritingAIGradingRun
 from app.models.enums import AttemptStatus, ModuleType, TestSessionStatus, WritingAIRunStatus
 from app.providers.writing_llm import create_provider, is_configured, provider_identity
 from app.repositories.writing_ai import ACTIVE, WritingAIRepository
+from app.schemas.chart_cross_check import ChartSpecialistIdentity
 from app.schemas.task1_claims import Task1Analysis
 from app.schemas.writing_ai import (
     AIWritingResult,
@@ -54,6 +56,10 @@ def persist_activity(run: WritingAIGradingRun, event: EventType, payload: EventP
         "visual_grounding.started": "visual_grounding",
         "visual_grounding.completed": "visual_grounded",
         "visual_grounding.failed": "failed",
+        "chart_specialist.started": "chart_cross_check",
+        "chart_specialist.completed": "chart_read",
+        "chart_specialist.failed": "chart_fallback",
+        "chart_reconciliation.completed": "chart_reconciled",
         "derived_facts.completed": "deriving_facts",
         "claim_extraction.started": "extracting_claims",
         "claim_extraction.completed": "claims_extracted",
@@ -89,6 +95,8 @@ def input_fingerprint(
             image_sha256=request.image_checksum,
             image_mime=request.image.mime_type if request.image else None,
         )
+        if visual_family(request.task_type) == VisualFamily.CHART_TABLE:
+            inputs["chart_specialist"] = request.chart_specialist.model_dump(mode="json")
     canonical = json.dumps(
         inputs,
         sort_keys=True,
@@ -259,6 +267,12 @@ class WritingAIService:
                 response=essay,
                 task_type=task_type,
                 image=image,
+                chart_specialist=ChartSpecialistIdentity(
+                    enabled=self.settings.ai_writing_chart_specialist_enabled,
+                    provider=self.settings.ai_writing_chart_specialist_provider,
+                    model=self.settings.ai_writing_deplot_model,
+                    revision=self.settings.ai_writing_deplot_revision,
+                ),
             )
         return WritingScoringRequest(
             attempt_id=attempt_id, writing_task_id=task_id, prompt=task.prompt, response=essay

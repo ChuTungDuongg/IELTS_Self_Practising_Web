@@ -18,6 +18,17 @@ def configure_ai_environment(enabled: bool, model: str, endpoint: str | None) ->
         os.environ["AI_WRITING_VLLM_MODEL"] = model
 
 
+def configure_chart_environment(
+    enabled: bool, model: str, revision: str, endpoint: str | None
+) -> None:
+    os.environ["AI_WRITING_CHART_SPECIALIST_ENABLED"] = str(enabled).lower()
+    if enabled:
+        os.environ["AI_WRITING_CHART_SPECIALIST_PROVIDER"] = "deplot"
+        os.environ["AI_WRITING_DEPLOT_MODEL"] = model
+        os.environ["AI_WRITING_DEPLOT_REVISION"] = revision
+        os.environ["AI_WRITING_DEPLOT_BASE_URL"] = endpoint.rstrip("/") if endpoint else ""
+
+
 class WebRuntime:
     def __init__(self) -> None:
         self.processes: list[subprocess.Popen] = []

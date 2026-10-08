@@ -21,8 +21,8 @@ export const aiCriterionSchema = z.object({
 });
 export type AICriterion = z.infer<typeof aiCriterionSchema>;
 const criterion = aiCriterionSchema;
-export const aiActivityPhases = ["preparing", "starting_model", "collecting_evidence", "validating_evidence", "evidence_collected", "scoring", "validating_score", "retrying", "completed", "failed", "visual_grounding", "visual_grounded", "deriving_facts", "extracting_claims", "claims_extracted", "verifying_claims", "claims_verified", "claim_extraction_failed", "claim_verification_failed"] as const;
-const assessmentStage = z.enum(["evidence", "scoring", "visual_grounding", "claim_extraction", "claim_verification"]);
+export const aiActivityPhases = ["preparing", "starting_model", "collecting_evidence", "validating_evidence", "evidence_collected", "scoring", "validating_score", "retrying", "completed", "failed", "visual_grounding", "visual_grounded", "deriving_facts", "extracting_claims", "claims_extracted", "verifying_claims", "claims_verified", "claim_extraction_failed", "claim_verification_failed", "chart_cross_check", "chart_read", "chart_fallback", "chart_reconciled"] as const;
+const assessmentStage = z.enum(["evidence", "scoring", "visual_grounding", "claim_extraction", "claim_verification", "chart_cross_check"]);
 export const aiActivitySchema = z.object({
   phase: z.enum(aiActivityPhases), criterion: z.enum(aiTraits).nullable(),
   stage: assessmentStage.nullable(), started_at: z.string(),
@@ -55,7 +55,7 @@ export const aiRunSchema = z.object({
   task1_analysis: task1AnalysisSchema.nullable().optional(),
 });
 export type AIWritingRun = z.infer<typeof aiRunSchema>;
-export const aiEventTypes = ["run.started", "provider.starting", "provider.ready", "criterion.started", "evidence.request.started", "evidence.validation.started", "criterion.evidence.completed", "criterion.scoring.started", "criterion.scoring.validation.started", "criterion.retrying", "criterion.completed", "criterion.failed", "run.completed", "run.failed", "heartbeat", "visual_grounding.started", "visual_grounding.completed", "visual_grounding.failed", "derived_facts.completed", "claim_extraction.started", "claim_extraction.completed", "claim_extraction.failed", "claim_verification.started", "claim_verification.completed", "claim_verification.failed"] as const;
+export const aiEventTypes = ["run.started", "provider.starting", "provider.ready", "criterion.started", "evidence.request.started", "evidence.validation.started", "criterion.evidence.completed", "criterion.scoring.started", "criterion.scoring.validation.started", "criterion.retrying", "criterion.completed", "criterion.failed", "run.completed", "run.failed", "heartbeat", "visual_grounding.started", "visual_grounding.completed", "visual_grounding.failed", "derived_facts.completed", "claim_extraction.started", "claim_extraction.completed", "claim_extraction.failed", "claim_verification.started", "claim_verification.completed", "claim_verification.failed", "chart_specialist.started", "chart_specialist.completed", "chart_specialist.failed", "chart_reconciliation.completed"] as const;
 export const aiEventSchema = z.object({
   sequence: z.number().int().positive(), event_type: z.enum(aiEventTypes),
   created_at: z.string().optional(),

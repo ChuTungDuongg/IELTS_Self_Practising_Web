@@ -13,15 +13,17 @@ from app.domains.writing.task_types import WritingTaskType
 from app.models import Asset, WritingTask
 from app.models.enums import AssetType
 from app.providers.writing_llm.base import ImagePart
+from app.schemas.chart_cross_check import ChartSpecialistIdentity
 from app.storage import LocalAssetStorage
 
-TASK1_PROMPT_VERSION = "mts-task1-visual-v1"
+TASK1_PROMPT_VERSION = "mts-task1-visual-v2"
 
 
 class Task1ScoringRequest(WritingScoringRequest):
     task_number: Literal[1] = 1
     task_type: WritingTaskType
     image: ImagePart | None = Field(default=None, exclude=True, repr=False)
+    chart_specialist: ChartSpecialistIdentity = Field(default_factory=ChartSpecialistIdentity)
 
     @property
     def image_checksum(self) -> str:
