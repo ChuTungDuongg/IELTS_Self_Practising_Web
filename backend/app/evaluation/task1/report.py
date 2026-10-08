@@ -5,10 +5,69 @@ import io
 from collections import Counter, defaultdict
 from itertools import combinations
 from pathlib import Path
+from statistics import mean, median
 
 from app.evaluation.task1.metrics import score_metrics
 from app.evaluation.task1.models import BENCHMARK_CONTRACT_VERSION
 from app.schemas.writing_ai import TRAITS
+
+
+def _tacs(records):
+    selected = [r for r in records if r.architecture == "anchor-pairwise"]
+    criteria = [
+        r.scoring_diagnostics.get("criteria", {}).get(t, {})
+        for r in selected
+        for t in ("cc", "lr", "gra")
+    ]
+    nodes = [c.get("tree", {}).get("nodes", []) for c in criteria]
+    counts = [len(n) for n in nodes]
+    visited = [n for group in nodes for n in group]
+    agreement = sum(
+        n.get("forward") is not None and n.get("forward") == n.get("reverse") for n in visited
+    )
+    reasons = Counter(c.get("fallback_reason") for c in criteria if c.get("fallback_reason"))
+    fallbacks = sum(c.get("mode") == "DIRECT_FALLBACK" for c in criteria)
+    return {
+        "language_criterion_count": len(criteria),
+        "visited_node_count": len(visited),
+        "nodes": {
+            "mean": mean(counts) if counts else None,
+            "p50": median(counts) if counts else None,
+            "max": max(counts) if counts else None,
+        },
+        "pairwise_calls": sum(c.get("pairwise_calls", 0) for c in criteria),
+        "visited_bands": dict(sorted(Counter(str(n["band"]) for n in visited).items())),
+        "directional_agreement_count": agreement,
+        "directional_agreement_rate": agreement / len(visited) if visited else None,
+        "position_conflict_count": reasons["POSITION_CONFLICT"],
+        "position_conflict_rate": reasons["POSITION_CONFLICT"] / len(criteria)
+        if criteria
+        else None,
+        "direct_fallback_count": fallbacks,
+        "direct_fallback_rate": fallbacks / len(criteria) if criteria else None,
+        "fallback_reasons": {
+            reason: {
+                "count": reasons[reason],
+                "rate": reasons[reason] / len(criteria) if criteria else None,
+            }
+            for reason in (
+                "NO_ANCHORS",
+                "INSUFFICIENT_CONTIGUOUS_COVERAGE",
+                "OUT_OF_RANGE",
+                "POSITION_CONFLICT",
+                "BUDGET_EXHAUSTED",
+                "PAIRWISE_PROVIDER_FAILURE",
+            )
+        },
+        "feedback_unavailable_count": sum(
+            c.get("mode") == "PAIRWISE" and c.get("feedback_status") == "UNAVAILABLE"
+            for c in criteria
+        ),
+        "denominators": {
+            "nodes": "all visited language nodes, including invalid provider outputs",
+            "fallbacks": "three language criteria per attempted Hybrid run; TA excluded",
+        },
+    }
 
 
 def _score_metrics(records):
@@ -74,6 +133,8 @@ def aggregate(records):
         if count
         else None,
         "metrics": _score_metrics(records),
+        "tacs": _tacs(records),
+        "token_usage": dict(sum((Counter(r.token_usage) for r in records), Counter())),
         "perception": _perception(records),
         "decomposition": dict(Counter(record.decomposition for record in records)),
         "mean_wall_clock_seconds": sum(record.wall_clock_seconds for record in records) / count
@@ -127,6 +188,28 @@ def _comparison_kind(left, right):
         left.model_dump(mode="json", exclude={"label"}),
         right.model_dump(mode="json", exclude={"label"}),
     )
+    if (
+        left.architecture != right.architecture
+        and left.specialist == right.specialist
+        and left.scoring_version == right.scoring_version
+    ):
+        for key in (
+            "architecture",
+            "architecture_id",
+            "prompt_version",
+            "scoring_prompt_version",
+            "tree_node_budget",
+            "self_consistency_count",
+            "anchor_digest",
+            "anchor_set_id",
+            "anchor_set_version",
+            "anchor_density",
+            "pairwise_prompt_version",
+            "feedback_prompt_version",
+        ):
+            a.pop(key)
+            b.pop(key)
+        return "architecture" if a == b else None
     if (
         left.scoring_version == right.scoring_version
         and left.specialist.enabled != right.specialist.enabled
@@ -342,11 +425,14 @@ def markdown_report(report):
         )
     for aggregate in report["configurations"].values():
         cfg = aggregate["configuration"]
+        tacs = aggregate["tacs"]
         lines.extend(
             [
                 f"## {cfg['label']}",
                 "",
                 f"Provider/model: {cfg['provider']} / {cfg['model']}. Perception: {cfg['visual_contract_version']}. Scoring: {cfg['scoring_prompt_version']}. Cache/production version: {cfg['prompt_version']}.",
+                f"Architecture: {cfg['architecture_id']} {cfg['architecture']}. Anchor set: {cfg['anchor_set_id']} / version {cfg['anchor_set_version']}. Density: {cfg['anchor_density']}. Node budget: {cfg['tree_node_budget']}.",
+                f"Hybrid language criteria: {tacs['language_criterion_count']}; nodes mean/p50/max: {tacs['nodes']}; pairwise calls: {tacs['pairwise_calls']}; visited bands: {tacs['visited_bands']}. Exact directional agreement: {_number(tacs['directional_agreement_rate'])} over {tacs['visited_node_count']} visited language nodes. Direct fallbacks: {tacs['direct_fallback_count']} / {tacs['language_criterion_count']} language criteria. Reasons: {tacs['fallback_reasons']}. TA is excluded from these denominators. Tokens: {aggregate['token_usage']}.",
                 "",
                 "| Criterion | N | Exact | ±0.5 | ±1.0 | MAE | Bias | RMSE | QWK |",
                 "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
@@ -479,3 +565,43 @@ def write_report(output: Path, report):
     writer.writeheader()
     writer.writerows(report["largest_disagreements"])
     atomic_write(output / "disagreements.csv", stream.getvalue())
+    costs = io.StringIO(newline="")
+    writer = csv.DictWriter(
+        costs,
+        fieldnames=[
+            "sample_id",
+            "architecture",
+            "config_key",
+            "status",
+            "provider_calls",
+            "wall_clock_seconds",
+            "pairwise_calls",
+            "direct_fallbacks",
+            "anchor_set_id",
+            "anchor_set_version",
+        ],
+    )
+    writer.writeheader()
+    for record in report["records"]:
+        diagnostics = record.get("scoring_diagnostics", {})
+        traits = [diagnostics.get("criteria", {}).get(t, {}) for t in ("cc", "lr", "gra")]
+        writer.writerow(
+            {
+                **{
+                    k: record[k]
+                    for k in (
+                        "sample_id",
+                        "architecture",
+                        "config_key",
+                        "status",
+                        "provider_calls",
+                        "wall_clock_seconds",
+                    )
+                },
+                "pairwise_calls": sum(c.get("pairwise_calls", 0) for c in traits),
+                "direct_fallbacks": sum(c.get("mode") == "DIRECT_FALLBACK" for c in traits),
+                "anchor_set_id": diagnostics.get("anchor_set_id"),
+                "anchor_set_version": diagnostics.get("anchor_set_version"),
+            }
+        )
+    atomic_write(output / "architecture-costs.csv", costs.getvalue())

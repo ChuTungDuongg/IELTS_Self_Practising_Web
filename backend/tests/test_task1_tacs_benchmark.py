@@ -16,6 +16,7 @@ from app.evaluation.task1.anchor_sources import (
 from app.evaluation.task1.architectures import architecture_configurations
 from app.evaluation.task1.manifest import BenchmarkInputError, load_manifest
 from app.evaluation.task1.models import EvaluationRecord
+from app.evaluation.task1.report import aggregate
 from app.evaluation.task1.runner import run_benchmark
 
 
@@ -69,6 +70,59 @@ async def test_all_architectures_and_independent_self_consistency(benchmark_file
     hybrid = next(r for r in records if r.architecture == "anchor-pairwise")
     assert hybrid.scoring_diagnostics["criteria"]["ta"]["mode"] == "GROUNDED_DIRECT"
     assert sum(p.pairwise_calls for p in providers) == 6
+    metrics = report["configurations"][hybrid.config_key]["tacs"]
+    assert metrics["language_criterion_count"] == 3
+    assert metrics["pairwise_calls"] == 6 and metrics["nodes"]["mean"] == 1
+    assert metrics["directional_agreement_rate"] == 1
+    assert metrics["direct_fallback_count"] == 0
+    reasons = (
+        "NO_ANCHORS",
+        "INSUFFICIENT_CONTIGUOUS_COVERAGE",
+        "OUT_OF_RANGE",
+        "POSITION_CONFLICT",
+        "BUDGET_EXHAUSTED",
+        "PAIRWISE_PROVIDER_FAILURE",
+    )
+    fallback_records = [
+        hybrid.model_copy(
+            update={
+                "scoring_diagnostics": {
+                    "criteria": {
+                        "ta": {"mode": "GROUNDED_DIRECT"},
+                        **{
+                            t: {
+                                "mode": "DIRECT_FALLBACK",
+                                "fallback_reason": reason,
+                                "pairwise_calls": 2,
+                                "tree": {
+                                    "nodes": [
+                                        {
+                                            "band": 7,
+                                            "forward": "TARGET_BETTER",
+                                            "reverse": "ANCHOR_BETTER",
+                                        }
+                                    ]
+                                },
+                            }
+                            for t in ("cc", "lr", "gra")
+                        },
+                    }
+                }
+            }
+        )
+        for reason in reasons
+    ]
+    fallback_metrics = aggregate(fallback_records)["tacs"]
+    assert (
+        fallback_metrics["language_criterion_count"]
+        == fallback_metrics["direct_fallback_count"]
+        == 18
+    )
+    assert fallback_metrics["directional_agreement_rate"] == 0
+    assert all(
+        v["count"] == 3 and v["rate"] == 1 / 6
+        for v in fallback_metrics["fallback_reasons"].values()
+    )
     public = json.dumps(report)
     assert sample["essay"] not in public and "Fictional response 7" not in public
     restored = await run_benchmark(

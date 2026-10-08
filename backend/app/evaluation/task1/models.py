@@ -125,6 +125,7 @@ class EvaluationRecord(Model):
     benchmark_version: Literal["task1-benchmark-v2"] = BENCHMARK_CONTRACT_VERSION
     architecture: Architecture = "mts"
     scoring_diagnostics: dict[str, Any] = Field(default_factory=dict)
+    latency: dict[str, Any] = Field(default_factory=dict)
     repeats: list[dict[str, Any]] = Field(default_factory=list, max_length=3)
     repeat_spread: dict[str, float] = Field(default_factory=dict)
     repeat_variance: dict[str, float] = Field(default_factory=dict)

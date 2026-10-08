@@ -347,6 +347,7 @@ async def evaluate(
     disagreements = analysis.cross_check.disagreement_count if analysis.cross_check else 0
     return EvaluationRecord(
         architecture=config.architecture,
+        latency=scorer.latency_summary() if scorer else {},
         scoring_diagnostics=scorer.scoring_metadata()
         if scorer and hasattr(scorer, "scoring_metadata")
         else {},
