@@ -80,34 +80,16 @@ def test_task1_feedback_and_evidence_assessments_obey_same_scope(stage, trait, b
 def test_task1_scoring_requires_balanced_whole_response_descriptor_fit(trait):
     system = messages(trait, "scoring")[0]["content"].lower()
     for concept in [
-        "most plausible official whole-band profile",
-        "adjacent lower and higher",
-        "consistently",
-        "half-bands interpolate",
-        "sustained affirmative evidence",
-        "do not resolve ambiguity upward",
-        "do not automatically resolve it downward",
-        "no fixed score offsets",
-        "no hard caps",
-        "no error-count or comparison-count rules",
+        "evaluate the entire response for this criterion",
+        "choose the band whose descriptor best matches",
+        "representative support",
+        "interpolation between adjacent official whole-band descriptors",
+        "do not favor the higher or lower band by default",
+        "no score offsets, hard caps, error-count rules or cross-criterion penalties",
     ]:
         assert concept in system
     assert all(f"{band}:" in system for band in range(1, 10))
     assert "no hidden reasoning" in system
-
-
-@pytest.mark.parametrize(
-    "trait,concepts",
-    [
-        ("ta", ["copying correct numbers", "selecting, grouping and comparing", "overview"]),
-        ("cc", ["four paragraphs", "mechanical", "well-managed progression"]),
-        ("lr", ["academic-looking words", "sustained flexibility", "collocational control"]),
-        ("gra", ["long sentences", "subordinators", "varied complex structures", "error-free"]),
-    ],
-)
-def test_task1_calibration_distinguishes_appearance_from_sustained_control(trait, concepts):
-    system = messages(trait, "scoring")[0]["content"].lower()
-    assert all(concept in system for concept in concepts)
 
 
 @pytest.mark.parametrize("stage", ["evidence", "scoring"])
@@ -147,12 +129,12 @@ def test_task1_evidence_preserves_exact_source_data_and_instruction_guard(trait)
 
 
 def test_task1_scoring_version_changes_cache_without_changing_visual_contract():
-    assert task1_input.TASK1_PROMPT_VERSION == "mts-task1-visual-v4"
+    assert task1_input.TASK1_PROMPT_VERSION == "mts-task1-visual-v5"
     assert getattr(task1_input, "TASK1_VISUAL_CONTRACT_VERSION", None) == "mts-task1-visual-v3"
-    assert getattr(task1_input, "TASK1_SCORING_PROMPT_VERSION", None) == "mts-task1-scoring-v4"
+    assert getattr(task1_input, "TASK1_SCORING_PROMPT_VERSION", None) == "mts-task1-scoring-v5"
     req = request()
     assert input_fingerprint(req, task1_input.TASK1_PROMPT_VERSION, "vllm", "model") != (
-        input_fingerprint(req, "mts-task1-visual-v3", "vllm", "model")
+        input_fingerprint(req, "mts-task1-visual-v4", "vllm", "model")
     )
 
 
@@ -181,16 +163,29 @@ async def test_benchmark_legacy_uses_original_v3_guidance_with_same_perception_a
     assert results[0].task1_analysis == results[1].task1_analysis
     assert timelines[0] == timelines[1]
     assert len(providers[0].calls) == len(providers[1].calls) == 10
-    assert providers[0].calls[:2] == providers[1].calls[:2]
-    for production, legacy in zip(providers[0].calls[2:], providers[1].calls[2:], strict=True):
+
+    def auxiliary(call):
+        return isinstance(call[1]["content"], list) or "Extract at most" in call[0]["content"]
+
+    assert [call for call in providers[0].calls if auxiliary(call)] == [
+        call for call in providers[1].calls if auxiliary(call)
+    ]
+    for production, legacy in zip(
+        [call for call in providers[0].calls if not auxiliary(call)],
+        [call for call in providers[1].calls if not auxiliary(call)],
+        strict=True,
+    ):
         assert production[1] == legacy[1]
         assert production[0] != legacy[0]
         assert "Feedback purity:" in production[0]["content"]
         assert "Feedback purity:" not in legacy[0]["content"]
     # Original v3 evidence systems used abbreviated linguistic trait names.
-    assert "Criterion: cc." in providers[1].calls[4][0]["content"]
-    assert "Criterion: gra." in providers[1].calls[8][0]["content"]
-    assert (
-        "For Task Achievement assess visual-report fulfilment"
-        in providers[1].calls[3][0]["content"]
+    systems = [call[0]["content"] for call in providers[1].calls]
+    assert any("Criterion: cc." in system for system in systems)
+    assert any("Criterion: gra." in system for system in systems)
+    assert "For Task Achievement assess visual-report fulfilment" in next(
+        system for system in systems if "For Task Achievement assess" in system
     )
+    # The evaluation-only baseline must not inherit current neutral guidance.
+    assert any("Require sustained, affirmative" in system for system in systems)
+    assert all("Band 8 and Band 9 are valid outcomes" not in system for system in systems)

@@ -278,7 +278,13 @@ async def test_optional_service_success_failure_malformed_disagreement(text, err
         event for event, _ in events
     ].index("derived_facts.completed")
     assert (
-        len([calls for calls in scorer.provider.calls if isinstance(calls[1]["content"], list)])
+        len(
+            [
+                calls
+                for calls in scorer.provider.provider.calls
+                if isinstance(calls[1]["content"], list)
+            ]
+        )
         == 1
     )
     if status != "COMPLETED":
@@ -292,12 +298,15 @@ async def test_primary_failure_never_uses_specialist_as_replacement():
     specialist = FakeSpecialist()
     scorer, result, _ = await grade(specialist, Task1FakeProvider(malformed_grounding=2))
     assert result is None and "ta" in scorer.failures
-    assert specialist.calls == []
+    # Extraction now overlaps primary perception, but it cannot replace a failed reference.
+    assert len(specialist.calls) == 1
+    assert scorer.states["ta"].result is None
+    assert all(scorer.states[trait].result for trait in ("cc", "lr", "gra"))
     assert (
         len(
             [
                 messages
-                for messages in scorer.provider.calls
+                for messages in scorer.provider.provider.calls
                 if "Score 0 through 9" in messages[0]["content"]
             ]
         )
@@ -351,7 +360,7 @@ def test_fingerprint_includes_chart_config_but_not_non_chart_config():
     assert input_fingerprint(req, "v2", "vllm", "primary") == base
 
 
-def test_calibration_contract_and_separate_task_achievement():
+def test_descriptor_fit_contract_and_separate_task_achievement():
     evidence = EvidenceResult(evidence=[])
     for trait in ["ta", "cc", "lr", "gra"]:
         system = scoring_messages("Synthetic question", "Synthetic essay", trait, evidence)[0][
@@ -359,12 +368,11 @@ def test_calibration_contract_and_separate_task_achievement():
         ]
         for wording in [
             "official IELTS",
-            "immediately lower and higher",
-            "whole-response",
-            "sustained",
-            "Do not resolve uncertainty upward",
+            "Evaluate the entire response for this criterion",
+            "Choose the band whose descriptor best matches",
+            "Do not favor the higher or lower band by default",
             "Half-bands are interpolation",
-            "No cross-criterion penalties, fixed subtraction, error-count rules or hard caps",
+            "No score offsets, hard caps, error-count rules or cross-criterion penalties",
             "Vietnamese",
             "only four fields",
         ]:
@@ -373,7 +381,8 @@ def test_calibration_contract_and_separate_task_achievement():
         "content"
     ]
     assert "Task Achievement" in system and "Task Response" not in system
-    assert "quantity of correct numbers" in system
+    assert "not additional scoring criteria" in system
+    assert "Do not convert counts of supported or contradicted claims" in system
 
 
 @pytest.mark.parametrize(

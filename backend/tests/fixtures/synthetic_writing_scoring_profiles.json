@@ -1,0 +1,97 @@
+{
+  "provenance": "Original fictional fragments and descriptor profiles for mocked contract tests only. Mock scores are scripted outputs, not human labels or expected live LLM grades.",
+  "profiles": [
+    {
+      "id": "weak",
+      "mock_scores": {"ta": 4, "cc": 4.5, "lr": 3.5, "gra": 4},
+      "evidence_count": 2,
+      "task1": {
+        "response": "A increased from 20 to 50. B go small and A big. The chart have years and two lines. I think this good for people because numbers are important. There are many numbers but I do not explain them.",
+        "trait_profiles": {
+          "ta": "Ít đặc điểm chính được chọn; nhận xét cá nhân không liên quan đến biểu đồ.",
+          "cc": "Trình tự thông tin chưa rõ và quan hệ giữa các ý khó theo dõi.",
+          "lr": "Từ vựng rất hạn chế, lặp lại và thiếu chính xác.",
+          "gra": "Cấu trúc chủ yếu đơn giản; lỗi ngữ pháp xuất hiện thường xuyên."
+        }
+      },
+      "task2": {
+        "response": "Parks are good. City need parks because good. Some people say money and houses but I do not know. A park have things for people. This is why the city should make things and people can use them every day.",
+        "trait_profiles": {
+          "ta": "Đề bài chỉ được đề cập sơ lược; quan điểm và ý hỗ trợ chưa rõ.",
+          "cc": "Có các ý liên quan nhưng thiếu trình tự phát triển rõ ràng.",
+          "lr": "Vốn từ hạn chế và cách chọn từ khó diễn đạt ý chính xác.",
+          "gra": "Câu đơn chiếm ưu thế; lỗi ngữ pháp thường xuyên gây khó khăn khi đọc."
+        }
+      }
+    },
+    {
+      "id": "mid",
+      "mock_scores": {"ta": 6, "cc": 6.5, "lr": 6, "gra": 5.5},
+      "evidence_count": 3,
+      "task1": {
+        "response": "A increased from 20 to 50. B fell from 30 to 10. Overall, A went up while B went down. In 2000, B was higher. In 2010, A was higher. The two lines therefore changed their positions over the period.",
+        "trait_profiles": {
+          "ta": "Đặc điểm chính và tổng quan được nêu; một số chi tiết cần minh họa thêm.",
+          "cc": "Thông tin có tiến triển tổng thể rõ, dù một vài liên kết còn máy móc.",
+          "lr": "Từ vựng đủ để truyền đạt ý, nhưng phạm vi và độ chính xác còn hạn chế.",
+          "gra": "Có thử dùng câu phức nhưng cấu trúc lặp lại và độ chính xác chưa đều."
+        }
+      },
+      "task2": {
+        "response": "Cities should provide parks because people need somewhere to exercise. Parks can also help neighbours meet. Housing is important too, but I think both can be built. For example, a small park near flats gives families a place to spend time together.",
+        "trait_profiles": {
+          "ta": "Quan điểm liên quan đến đề; các ý chính phù hợp nhưng phát triển chưa đầy đủ.",
+          "cc": "Bài có tổ chức và tiến triển rõ; liên kết cục bộ đôi chỗ chưa linh hoạt.",
+          "lr": "Từ vựng phù hợp nhìn chung, nhưng cách diễn đạt đôi chỗ thiếu chính xác.",
+          "gra": "Câu đơn được kiểm soát tốt hơn câu phức; cấu trúc còn hạn chế."
+        }
+      }
+    },
+    {
+      "id": "strong",
+      "mock_scores": {"ta": 7.5, "cc": 8, "lr": 7, "gra": 7.5},
+      "evidence_count": 1,
+      "task1": {
+        "response": "A increased from 20 to 50. By contrast, B declined from 30 to 10. Overall, the two series moved in opposite directions, reversing their initial ranking. Whereas B led by 10 units in 2000, A finished 40 units ahead in 2010.",
+        "trait_profiles": {
+          "ta": "Tổng quan rõ, số liệu phù hợp và các khác biệt chính được so sánh hiệu quả.",
+          "cc": "Thông tin dễ theo dõi, có trình tự hợp lý và liên kết được quản lý tốt.",
+          "lr": "Từ vựng có độ linh hoạt và chính xác; một số cách kết hợp từ chưa phù hợp.",
+          "gra": "Cấu trúc đa dạng và thường chính xác; đôi chỗ khả năng kiểm soát chưa đều."
+        }
+      },
+      "task2": {
+        "response": "Cities should preserve accessible parks while expanding housing. Shared green space supports exercise and social contact, particularly for residents whose flats lack gardens. Although scarce land creates a real trade-off, compact housing around a modest public park can meet both needs rather than forcing families to choose between them.",
+        "trait_profiles": {
+          "ta": "Lập trường rõ và ý chính được mở rộng, hỗ trợ phù hợp với đề.",
+          "cc": "Các ý được sắp xếp hợp lý, dễ theo dõi và liên kết tốt.",
+          "lr": "Có khả năng diễn đạt linh hoạt và chú ý đến kết hợp từ, dù còn vài lựa chọn chưa phù hợp.",
+          "gra": "Câu phức đa dạng và nhiều câu không có lỗi; một số lỗi nhỏ còn xuất hiện."
+        }
+      }
+    },
+    {
+      "id": "exceptional",
+      "mock_scores": {"ta": 9, "cc": 8.5, "lr": 9, "gra": 9},
+      "evidence_count": 0,
+      "task1": {
+        "response": "A increased from 20 to 50. Over the same period, B fell from 30 to 10, so their relative positions were reversed. The overall pattern is one of divergence: B initially exceeded A by 10 units, whereas A ended the period with a 40-unit lead.",
+        "trait_profiles": {
+          "ta": "Các yêu cầu được đáp ứng đầy đủ, phù hợp; đặc điểm chính được trình bày chính xác.",
+          "cc": "Tiến triển gần như liền mạch, liên kết tự nhiên và tổ chức thông tin hiệu quả.",
+          "lr": "Từ vựng được sử dụng tự nhiên, linh hoạt và chính xác trong phạm vi của đề.",
+          "gra": "Cấu trúc được kiểm soát linh hoạt; ngữ pháp và dấu câu phù hợp xuyên suốt."
+        }
+      },
+      "task2": {
+        "response": "Urban housing and public parks serve complementary needs. Dense development can make homes more affordable, but residents still require shared places to exercise and meet. Planning compact neighbourhoods around accessible green space therefore offers a coherent compromise: it accommodates more households while preserving the everyday social benefits that private gardens cannot provide equally.",
+        "trait_profiles": {
+          "ta": "Lập trường trực tiếp, đầy đủ; ý liên quan được phát triển và hỗ trợ thấu đáo.",
+          "cc": "Thông điệp được theo dõi dễ dàng, liên kết tự nhiên và tiến triển gần như liền mạch.",
+          "lr": "Diễn đạt tự nhiên, linh hoạt và chính xác với khả năng kiểm soát từ vựng rộng.",
+          "gra": "Cấu trúc đa dạng được kiểm soát đầy đủ; ngữ pháp và dấu câu phù hợp xuyên suốt."
+        }
+      }
+    }
+  ]
+}

@@ -39,6 +39,13 @@ from app.schemas.writing_ai import (
     ScoringOutput,
     Trait,
 )
+from app.services.writing_execution import (
+    BoundedWritingProvider,
+    CriterionExecutionState,
+    TraceFailure,
+    WritingLatencyMetrics,
+    gather_isolated,
+)
 
 T = TypeVar("T", bound=BaseModel)
 TraceCallback = Callable[[EventType, EventPayload], Awaitable[None]]
@@ -61,13 +68,63 @@ class MTSWritingScoringService:
     Each trait owns two fresh logical turns. No other trait's score is shared.
     """
 
-    def __init__(self, provider: LLMProvider) -> None:
-        self.provider = provider
-        self.usage: list[dict[str, int]] = []
-        self.diagnostics: list[OutputDiagnostic] = []
-        self.current_criterion: Trait | None = None
-        self.current_stage: AssessmentStage | None = None
-        self.failures: dict[Trait, CriterionFailure] = {}
+    def __init__(
+        self,
+        provider: LLMProvider,
+        *,
+        max_concurrent_requests: int = 2,
+        latency: WritingLatencyMetrics | None = None,
+    ) -> None:
+        self.provider = BoundedWritingProvider(provider, max_concurrent_requests)
+        self._external_latency = latency is not None
+        self.latency = latency or WritingLatencyMetrics()
+        self._start_assessment()
+
+    def _start_assessment(self) -> None:
+        self.states = {trait: CriterionExecutionState(trait) for trait in TRAITS}
+        self.aux_usage: list[dict[str, int]] = []
+        self.aux_diagnostics: list[OutputDiagnostic] = []
+        if not self._external_latency:
+            self.latency = WritingLatencyMetrics()
+
+    @property
+    def usage(self) -> list[dict[str, int]]:
+        return self.aux_usage + [item for trait in TRAITS for item in self.states[trait].usage]
+
+    @property
+    def diagnostics(self) -> list[OutputDiagnostic]:
+        return self.aux_diagnostics + [
+            item for trait in TRAITS for item in self.states[trait].diagnostics
+        ]
+
+    @property
+    def failures(self) -> dict[Trait, CriterionFailure]:
+        return {trait: self.states[trait].failure for trait in TRAITS if self.states[trait].failure}
+
+    @property
+    def failure_context(self) -> tuple[Trait | None, AssessmentStage | None]:
+        return next(
+            ((trait, failure.stage) for trait, failure in self.failures.items()), (None, None)
+        )
+
+    def latency_summary(self) -> dict:
+        return {
+            **self.latency.summary(),
+            "llm_concurrency_limit": self.provider.limit,
+            "peak_active_llm_requests": self.provider.peak_active,
+        }
+
+    @staticmethod
+    def protected_trace(trace: TraceCallback) -> TraceCallback:
+        async def emit(event, payload):
+            try:
+                await trace(event, payload)
+            except TraceFailure:
+                raise
+            except Exception:
+                raise TraceFailure from None
+
+        return emit
 
     async def _validated(
         self,
@@ -78,7 +135,13 @@ class MTSWritingScoringService:
         stage: AssessmentStage,
         trace: TraceCallback,
     ) -> T:
-        self.current_stage = stage
+        state = self.states[trait]
+        state.stage = stage
+        with self.latency.stage(stage, trait):
+            return await self._validated_stage(messages, schema, sources, trait, stage, trace)
+
+    async def _validated_stage(self, messages, schema, sources, trait, stage, trace):
+        state = self.states[trait]
         reason = "SCHEMA_VALIDATION"
         normal_max_tokens = EVIDENCE_MAX_TOKENS if stage == "evidence" else SCORING_MAX_TOKENS
         await trace(
@@ -94,16 +157,21 @@ class MTSWritingScoringService:
                 else normal_max_tokens
             )
             try:
-                completion = await self.provider.complete(
-                    messages + ([correction_message(reason)] if repair else []),
-                    # Request concise output/maxItems, but parse semantic core
-                    # independently of provider-unsupported display limits.
-                    (ScoringOutput if schema is RawScoringOutput else schema).model_json_schema(
-                        mode="serialization"
-                    ),
-                    options=CompletionOptions(max_tokens=max_tokens),
-                )
-                self.usage.append(completion.usage)
+                with self.latency.attempt(stage, trait, repair + 1) as timing:
+                    try:
+                        completion = await self.provider.complete(
+                            messages + ([correction_message(reason)] if repair else []),
+                            # Provider display limits remain independent of semantic validation.
+                            (
+                                ScoringOutput if schema is RawScoringOutput else schema
+                            ).model_json_schema(mode="serialization"),
+                            options=CompletionOptions(max_tokens=max_tokens),
+                        )
+                    except ProviderFailure as exc:
+                        self.latency.completion(timing, exc.finish_reason, {})
+                        raise
+                    self.latency.completion(timing, completion.finish_reason, completion.usage)
+                state.usage.append(completion.usage)
                 finish_reason = safe_finish_reason(completion.finish_reason)
                 logger.info(
                     "AI completion: stage=%s criterion=%s attempt=%s finish_reason=%s completion_tokens=%s",
@@ -111,7 +179,7 @@ class MTSWritingScoringService:
                     trait,
                     repair + 1,
                     finish_reason,
-                    completion.usage.get("completion_tokens"),
+                    timing.get("completion_tokens"),
                 )
                 validate_finish(completion.finish_reason)
                 await trace(
@@ -130,7 +198,7 @@ class MTSWritingScoringService:
                     result, normalized_issues = normalize_scoring_output(result)
                     result.calibration = calibration
                     if normalized_issues:
-                        self.diagnostics.append(
+                        state.diagnostics.append(
                             OutputDiagnostic(
                                 stage=stage,
                                 criterion=trait,
@@ -151,7 +219,7 @@ class MTSWritingScoringService:
                                 issue.validation_type,
                             )
                     for notice in notices:
-                        self.diagnostics.append(
+                        state.diagnostics.append(
                             OutputDiagnostic(
                                 stage=stage,
                                 criterion=trait,
@@ -185,7 +253,7 @@ class MTSWritingScoringService:
                 finish_reason=finish_reason,
                 validation_issues=issues,
             )
-            self.diagnostics.append(diagnostic)
+            state.diagnostics.append(diagnostic)
             logger.warning(
                 "AI validation failure: stage=%s criterion=%s reason=%s attempt=%s finish_reason=%s",
                 stage,
@@ -212,60 +280,63 @@ class MTSWritingScoringService:
     async def assess(
         self, request: WritingScoringRequest, trace: TraceCallback
     ) -> AIWritingResult | None:
-        self.usage = []
-        self.diagnostics = []
-        self.failures = {}
+        self._start_assessment()
+        trace = self.protected_trace(trace)
         segments = segment_essay(request.response)
-        sources = {segment.source_id: segment for segment in segments}
-        criteria = {}
-        for trait in TRAITS:
-            self.current_criterion = trait
-            self.current_stage = "evidence"
-            await trace("criterion.started", EventPayload(criterion=trait))
-            try:
-                selection = await self._validated(
-                    evidence_messages(request.prompt, request.response, trait, segments),
-                    EvidenceSelection,
-                    sources,
+        await gather_isolated(
+            *(
+                self._run_criterion(
+                    request,
                     trait,
-                    "evidence",
                     trace,
+                    lambda trait=trait: evidence_messages(
+                        request.prompt, request.response, trait, segments
+                    ),
+                    lambda evidence, trait=trait: scoring_messages(
+                        request.prompt, request.response, trait, evidence, segments
+                    ),
                 )
-                evidence = resolve_evidence(selection, sources)
-                await trace(
-                    "criterion.evidence.completed",
-                    EventPayload(criterion=trait, evidence=evidence.evidence),
-                )
-                score = await self._validated(
-                    scoring_messages(request.prompt, request.response, trait, evidence, segments),
-                    RawScoringOutput,
-                    sources,
-                    trait,
-                    "scoring",
-                    trace,
-                )
-            except ProviderFailure as exc:
-                failure = CriterionFailure(
-                    error_code=exc.code,
-                    error_message="Không thể hoàn tất tiêu chí này.",
-                    stage=self.current_stage,
-                )
-                self.failures[trait] = failure
-                await trace(
-                    "criterion.failed", EventPayload(criterion=trait, **failure.model_dump())
-                )
-                continue
-            # Text is already bounded; optional metadata never gates this result.
-            result = CriterionResult(
-                **score.model_dump(exclude={"calibration"}), evidence=evidence.evidence
+                for trait in TRAITS
             )
-            criteria[trait] = result
-            await trace("criterion.completed", EventPayload(criterion=trait, result=result))
+        )
+        return self._task2_result()
+
+    def _task2_result(self) -> AIWritingResult | None:
         if self.failures:
             return None
+        criteria = {trait: self.states[trait].result for trait in TRAITS}
         validated = Criteria.model_validate(criteria)
         raw_mean, overall_band = aggregate_ai_task_two(*(criteria[trait].score for trait in TRAITS))
         return AIWritingResult(criteria=validated, raw_mean=raw_mean, overall_band=overall_band)
+
+    async def _run_criterion(self, request, trait, trace, evidence_prompt, score_prompt):
+        state = self.states[trait]
+        await trace("criterion.started", EventPayload(criterion=trait))
+        try:
+            state.result = await self.assess_criterion(
+                request,
+                trait,
+                trace,
+                evidence_prompt() if callable(evidence_prompt) else evidence_prompt,
+                score_prompt,
+            )
+        except TraceFailure:
+            raise
+        except Exception as exc:
+            # Unexpected criterion/provider bugs are isolated; never retain exception text.
+            failure = CriterionFailure(
+                error_code=exc.code
+                if isinstance(exc, ProviderFailure)
+                else "AI_PROVIDER_BAD_RESPONSE",
+                error_message="Không thể hoàn tất tiêu chí này.",
+                stage=state.stage,
+            )
+            state.failure = failure
+            await trace("criterion.failed", EventPayload(criterion=trait, **failure.model_dump()))
+            return None
+        self.latency.completed_criterion()
+        await trace("criterion.completed", EventPayload(criterion=trait, result=state.result))
+        return state.result
 
     async def assess_criterion(
         self,
@@ -276,7 +347,6 @@ class MTSWritingScoringService:
         score_prompt: Callable[[EvidenceResult], list[Message]],
     ) -> CriterionResult:
         """Shared source validation/normalization for task-specific criterion prompts."""
-        self.current_criterion = trait
         sources = {segment.source_id: segment for segment in segment_essay(request.response)}
         selection = await self._validated(
             evidence_prompt, EvidenceSelection, sources, trait, "evidence", trace
@@ -286,6 +356,7 @@ class MTSWritingScoringService:
             "criterion.evidence.completed",
             EventPayload(criterion=trait, evidence=evidence.evidence),
         )
+        self.states[trait].stage = "scoring"
         score = await self._validated(
             score_prompt(evidence), RawScoringOutput, sources, trait, "scoring", trace
         )

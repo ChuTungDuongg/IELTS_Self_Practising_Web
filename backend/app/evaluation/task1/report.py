@@ -152,7 +152,7 @@ def _ablations(records, configs):
         if kind is None:
             continue
         if (kind == "chart_specialist" and left.specialist.enabled) or (
-            kind == "scoring_prompt" and left.scoring_version == "v4"
+            kind == "scoring_prompt" and left.scoring_version == "v5"
         ):
             left, right = right, left
         baseline = {

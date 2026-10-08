@@ -28,7 +28,7 @@ def main(argv=None) -> int:
         "--limit", type=int, help="Maximum samples, before configuration expansion."
     )
     parser.add_argument("--chart-specialist", choices=["off", "on", "both"], default="off")
-    parser.add_argument("--scoring-version", choices=["v3", "v4", "both"], default="v4")
+    parser.add_argument("--scoring-version", choices=["v3", "v5", "both"], default="v5")
     parser.add_argument(
         "--dry-run",
         action="store_true",

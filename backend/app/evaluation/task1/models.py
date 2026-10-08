@@ -88,8 +88,9 @@ class BenchmarkSample(Model):
 
 
 class BenchmarkConfig(Model):
+    max_concurrent_llm_requests: int = Field(default=2, ge=1, le=4)
     label: str = Field(max_length=160)
-    scoring_version: Literal["v3", "v4"]
+    scoring_version: Literal["v3", "v5"]
     prompt_version: str
     visual_contract_version: str
     scoring_prompt_version: str

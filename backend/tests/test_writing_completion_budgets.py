@@ -253,7 +253,9 @@ async def test_task1_ta_and_counted_provider_forward_budget_without_changing_per
         if {"reference", "claims", "items"} & schema["properties"].keys()
     )
     scores = [call for call in provider.budget_calls if "score" in call[1]["properties"]]
-    assert [budget(call) for call in scores] == [3072, 4096, 3072, 3072, 3072]
+    ta_scores = [call for call in scores if "Task Achievement" in call[0][0]["content"]]
+    assert [budget(call) for call in ta_scores] == [3072, 4096]
+    assert all(budget(call) == 3072 for call in scores if call not in ta_scores)
     assert service.diagnostics[0].reason == "PROVIDER_FINISH_LENGTH"
     assert sum(event == "criterion.retrying" for event, _ in events) == 1
 

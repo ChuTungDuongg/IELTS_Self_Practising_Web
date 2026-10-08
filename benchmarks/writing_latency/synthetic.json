@@ -1,0 +1,18 @@
+{
+  "provenance": "Original fictional content and fixed mock outputs; no licensed/private material or live IELTS quality claims.",
+  "task2": {"prompt": "Discuss fictional city parks.", "response": "Fictional parks improve city life. However, funding should be transparent."},
+  "task1": {"prompt": "Describe the fictional A/B chart.", "response": "A increased from 20 to 50. B fell from 30 to 10."},
+  "grounding": {"reference": {"visual_family": "chart_table", "confidence": "HIGH", "summary": "A tăng và B giảm.", "components": [
+    {"id": "chart", "kind": "line_graph", "unit": "%", "ordered_categories": true, "categories": ["2000", "2010"], "series": [
+      {"id": "a", "name": "A", "points": [{"category": "2000", "value": 20, "confidence": 0.95, "value_is_labelled": true}, {"category": "2010", "value": 50, "confidence": 0.95, "value_is_labelled": true}]},
+      {"id": "b", "name": "B", "points": [{"category": "2000", "value": 30, "confidence": 0.95, "value_is_labelled": true}, {"category": "2010", "value": 10, "confidence": 0.95, "value_is_labelled": true}]}
+    ]}
+  ]}},
+  "claims": {"claims": [{"claim_id": "c1", "source_ids": ["P1S1"], "kind": "overview", "claim": "A tăng.", "check": null}]},
+  "verification": {"items": [{"claim_id": "c1", "verdict": "SUPPORTED", "explanation": "Nhận định phù hợp với hình."}]},
+  "evidence": {"evidence": [{"source_id": "P1S1", "assessment": "Dẫn chứng liên quan đến tiêu chí."}]},
+  "score": {"score": 6.5, "feedback": "Bài viết trình bày rõ ý, nhưng chi tiết hỗ trợ còn hạn chế.", "strengths": ["Diễn đạt rõ ràng."], "improvements": ["Phát triển chi tiết cụ thể."]},
+  "deplot": "Year | A (%) | B (%)\n2000 | 20 | 30\n2010 | 50 | 10",
+  "usage_per_call": {"prompt_tokens": 100, "completion_tokens": 50, "total_tokens": 150},
+  "image_base64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aS5kAAAAASUVORK5CYII="
+}

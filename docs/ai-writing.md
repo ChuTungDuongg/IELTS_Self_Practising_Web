@@ -2,14 +2,17 @@
 
 Task 1 and Task 2 share the configured `mistralai/Ministral-3-8B-Instruct-2512`
 model, provider adapters and existing Modal/vLLM GPU function. Task 2 retains
-its text-only MTS pipeline and `mts-task2-v6` cache contract. Task 1 adds the
-multimodal grounding pipeline below, with its own `mts-task1-visual-v2` version.
+its text-only MTS pipeline and current local `mts-task2-v7` cache contract. Task 1
+uses `mts-task1-scoring-v5`, composite `mts-task1-visual-v5`, and the unchanged
+`mts-task1-visual-v3` perception contract. These scoring changes preceded the
+latency phase. See [the latency engineering case study](enhance_latency.md) for
+bounded concurrent execution, serving settings, measurements and reproduction.
 
 ## Task 2: text-only assessment
 
 This is an **MTS-inspired zero-shot scoring** workflow: an online IELTS Task 2
 adaptation, not an exact reproduction of a research experiment. Four independent
-criteria are assessed sequentially: Task Response (`ta` for compatibility),
+criteria are assessed independently and concurrently: Task Response (`ta` for compatibility),
 Coherence and Cohesion, Lexical Resource, and Grammatical Range and Accuracy.
 Each criterion selects stable source IDs with brief Vietnamese assessments,
 then scores against faithful paraphrases of the current official IELTS Task 2

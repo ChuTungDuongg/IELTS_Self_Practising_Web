@@ -1,10 +1,13 @@
 """One protected Ministral 3 text/vision service, included by the web entry point."""
 
+import os
 import subprocess
 
 import modal
+from deploy.modal.writing_llm_config import MODEL as MODEL
+from deploy.modal.writing_llm_config import WritingServingConfig
 
-MODEL = "mistralai/Ministral-3-8B-Instruct-2512"
+config = WritingServingConfig.from_env(os.environ)
 app = modal.App("ielts-writing-llm")
 cache = modal.Volume.from_name("ielts-writing-model-cache", create_if_missing=True)
 image = (
@@ -15,8 +18,10 @@ image = (
             "HF_HOME": "/cache/huggingface",
             "VLLM_CACHE_ROOT": "/cache/vllm",
             "HF_XET_HIGH_PERFORMANCE": "1",
+            **config.image_env(),
         }
     )
+    .add_local_python_source("deploy.modal")
 )
 
 
@@ -28,38 +33,10 @@ image = (
     volumes={"/cache": cache},
     min_containers=0,
     max_containers=1,
-    scaledown_window=60,
+    scaledown_window=config.scaledown_seconds,
     timeout=900,
 )
+@modal.concurrent(max_inputs=config.max_num_seqs)
 @modal.web_server(8000, startup_timeout=600, requires_proxy_auth=True)
 def serve():
-    subprocess.Popen(
-        [
-            "vllm",
-            "serve",
-            MODEL,
-            "--host",
-            "0.0.0.0",
-            "--port",
-            "8000",
-            "--tokenizer-mode",
-            "mistral",
-            "--config-format",
-            "mistral",
-            "--load-format",
-            "mistral",
-            "--dtype",
-            "auto",
-            "--max-model-len",
-            "8192",
-            "--max-num-seqs",
-            "1",
-            "--limit-mm-per-prompt",
-            '{"image": 1}',
-            "--gpu-memory-utilization",
-            "0.90",
-            "--enforce-eager",
-            "--disable-log-requests",
-            "--disable-uvicorn-access-log",
-        ]
-    )
+    subprocess.Popen(config.command())

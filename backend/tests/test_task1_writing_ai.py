@@ -34,6 +34,31 @@ from app.services.task1_input import TASK1_PROMPT_VERSION
 from app.services.writing_ai import input_fingerprint
 
 
+async def test_failed_early_claim_extraction_keeps_warning_in_partial_analysis(
+    db_session, task1, settings
+):
+    class Provider(Task1FakeProvider):
+        async def complete(self, messages, schema, *, options=None):
+            if "claims" in schema["properties"]:
+                from app.providers.writing_llm.base import ProviderFailure
+
+                raise ProviderFailure("AI_PROVIDER_TIMEOUT")
+            return await super().complete(messages, schema, options=options)
+
+    api = service(db_session, settings)
+    created = await api.create(task1[0], task1[1], force=False)
+    runner = worker(db_session, settings, Provider(fail_trait="Task Achievement"))
+    await runner.execute(created.run_id)
+    run, events = await api.snapshot(created.run_id, 0)
+    assert run.status == WritingAIRunStatus.FAILED and "ta" in run.failures
+    assert "CLAIM_EXTRACTION_FAILED" in run.task1_analysis.warnings
+    failed = [event for event in events if event.event_type == "claim_extraction.failed"]
+    assert (
+        len(failed) == 1 and "CLAIM_EXTRACTION_FAILED" in failed[0].payload.task1_analysis.warnings
+    )
+    assert set(run.progress) == {"cc", "lr", "gra"}
+
+
 @pytest.mark.parametrize(
     "error", [None, "CHART_SPECIALIST_UNAVAILABLE", "CHART_SPECIALIST_PARSE_FAILED"]
 )
@@ -172,7 +197,8 @@ async def test_unexpected_optional_failure_persists_safe_analysis_and_completed_
 
 
 @pytest.mark.parametrize(
-    "old_version", ["mts-task1-visual-v1", "mts-task1-visual-v2", "mts-task1-visual-v3"]
+    "old_version",
+    ["mts-task1-visual-v1", "mts-task1-visual-v2", "mts-task1-visual-v3", "mts-task1-visual-v4"],
 )
 async def test_old_task1_prompt_cache_remains_readable_but_is_not_reused(
     db_session, task1, settings, old_version
@@ -191,7 +217,7 @@ async def test_old_task1_prompt_cache_remains_readable_but_is_not_reused(
         )
     upgraded = await api.create(attempt_id, task_id, force=False)
     assert not upgraded.cache_hit and upgraded.run_id != created.run_id
-    assert (await api.get(upgraded.run_id)).prompt_version == "mts-task1-visual-v4"
+    assert (await api.get(upgraded.run_id)).prompt_version == "mts-task1-visual-v5"
     assert (await api.get(created.run_id)).result == old_result
 
 
@@ -268,7 +294,11 @@ async def test_task1_persists_replays_caches_and_never_changes_official_scores(
         event.sequence for event in events if event.event_type == "claim_verification.completed"
     )
     restored, replay = await api.snapshot(run.id, cursor)
-    assert restored == run and replay[0].event_type == "criterion.started"
+    assert restored == run and all(event.sequence > cursor for event in replay)
+    assert any(
+        event.event_type == "criterion.started" and event.payload.criterion == "ta"
+        for event in replay
+    )
     chunks = [
         chunk
         async for chunk in event_stream(

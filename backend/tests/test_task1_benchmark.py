@@ -79,9 +79,17 @@ def test_invalid_manifest_has_safe_diagnostics(benchmark_files, failure):
 def test_configuration_identity_separates_prompt_and_specialist_versions():
     configs = configurations(Settings(_env_file=None), "both", "both")
     assert len(configs) == 4 and len({config.key for config in configs}) == 4
-    assert {config.scoring_version for config in configs} == {"v3", "v4"}
+    assert {config.scoring_version for config in configs} == {"v3", "v5"}
     assert all(config.visual_contract_version == "mts-task1-visual-v3" for config in configs)
+    current = [config for config in configs if config.scoring_version == "v5"]
+    assert all(config.prompt_version == "mts-task1-visual-v5" for config in current)
+    assert all(config.scoring_prompt_version == "mts-task1-scoring-v5" for config in current)
     assert all("SECRET" not in config.model_dump_json() for config in configs)
+
+
+def test_old_v4_is_not_silently_aliased_to_current_benchmark_scorer():
+    with pytest.raises(ValueError, match="BENCHMARK_CONFIGURATION_INVALID"):
+        configurations(Settings(_env_file=None), "v4", "off")
 
 
 async def test_dry_run_does_not_create_providers_or_upload_content(benchmark_files, tmp_path):
@@ -92,7 +100,7 @@ async def test_dry_run_does_not_create_providers_or_upload_content(benchmark_fil
 
     report = await run_benchmark(
         load_manifest(path, "dev"),
-        configurations(Settings(_env_file=None), "v4", "off"),
+        configurations(Settings(_env_file=None), "v5", "off"),
         tmp_path / "report",
         dry_run=True,
         provider_factory=forbidden,
@@ -146,7 +154,7 @@ async def test_resume_reuses_success_but_invalidates_content_and_config(benchmar
         calls.append(config.key)
         return PieProvider(json.loads(MATRIX.read_text(encoding="utf-8")))
 
-    configs = configurations(Settings(_env_file=None), "v4", "off")
+    configs = configurations(Settings(_env_file=None), "v5", "off")
     output = tmp_path / "report"
     await run_benchmark(load_manifest(path, "dev"), configs, output, provider_factory=factory)
     report = await run_benchmark(
@@ -178,7 +186,7 @@ async def test_resume_invalidates_image_provider_model_and_recovers_corrupt_cach
         calls.append(config.key)
         return PieProvider(json.loads(MATRIX.read_text(encoding="utf-8")))
 
-    config = configurations(Settings(_env_file=None), "v4", "off")[0]
+    config = configurations(Settings(_env_file=None), "v5", "off")[0]
     output = tmp_path / "report"
     first = await run_benchmark(
         load_manifest(path, "dev"), [config], output, provider_factory=factory
@@ -206,7 +214,7 @@ async def test_interruption_keeps_completed_checkpoints_and_resume_retries_failu
 ):
     path, _sample = benchmark_files
     items = load_manifest(path, "dev")
-    configs = configurations(Settings(_env_file=None), "v4", "both")
+    configs = configurations(Settings(_env_file=None), "v5", "both")
     calls = []
 
     def interrupted(config):
@@ -254,7 +262,7 @@ async def test_partial_scores_remain_evaluable_after_primary_failure(benchmark_f
     provider = PieProvider({"invalid": "PRIVATE RAW PAYLOAD"})
     report = await run_benchmark(
         load_manifest(path, "dev"),
-        configurations(Settings(_env_file=None), "v4", "off"),
+        configurations(Settings(_env_file=None), "v5", "off"),
         tmp_path / "report",
         provider_factory=lambda _config: provider,
     )
@@ -268,7 +276,7 @@ async def test_partial_scores_remain_evaluable_after_primary_failure(benchmark_f
 
 async def test_resume_preserves_failed_attempt_history_and_total_cost(benchmark_files, tmp_path):
     path, _sample = benchmark_files
-    configs = configurations(Settings(_env_file=None), "v4", "off")
+    configs = configurations(Settings(_env_file=None), "v5", "off")
     output = tmp_path / "report"
     first = await run_benchmark(
         load_manifest(path, "dev"),
@@ -302,7 +310,7 @@ async def test_resume_preserves_failed_attempt_history_and_total_cost(benchmark_
 )
 async def test_inconsistent_completed_cache_is_rejected(benchmark_files, tmp_path, corruption):
     path, _sample = benchmark_files
-    configs = configurations(Settings(_env_file=None), "v4", "off")
+    configs = configurations(Settings(_env_file=None), "v5", "off")
     calls = []
 
     def factory(_config):
@@ -340,7 +348,7 @@ async def test_runtime_timeouts_match_configuration_and_endpoint_mismatch_is_rej
         ai_writing_request_timeout_seconds=10,
         ai_writing_startup_timeout_seconds=11,
     )
-    configs = configurations(settings, "v4", "off")
+    configs = configurations(settings, "v5", "off")
     actual = []
 
     def factory(runtime):
@@ -389,7 +397,7 @@ def test_resume_identity_covers_shared_scoring_dependencies(monkeypatch, depende
 
 async def test_ablation_deltas_use_paired_valid_criterion_cohorts(benchmark_files, tmp_path):
     path, _sample = benchmark_files
-    configs = configurations(Settings(_env_file=None), "v4", "both")
+    configs = configurations(Settings(_env_file=None), "v5", "both")
     report = await run_benchmark(
         load_manifest(path, "dev"),
         configs,

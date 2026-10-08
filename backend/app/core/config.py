@@ -44,7 +44,8 @@ class Settings(BaseSettings):
     ai_writing_openai_base_url: str = "https://api.openai.com/v1"
     ai_writing_request_timeout_seconds: float = Field(default=300, gt=0, le=900)
     ai_writing_startup_timeout_seconds: float = Field(default=600, gt=0, le=900)
-    ai_writing_prompt_version: str = Field(default="mts-task2-v6", min_length=1, max_length=80)
+    ai_writing_max_concurrent_llm_requests: int = Field(default=2, ge=1, le=4)
+    ai_writing_prompt_version: str = Field(default="mts-task2-v7", min_length=1, max_length=80)
     ai_writing_chart_specialist_enabled: bool = False
     ai_writing_chart_specialist_provider: str = "deplot"
     ai_writing_deplot_model: str = "google/deplot"

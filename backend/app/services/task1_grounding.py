@@ -2,6 +2,7 @@
 
 import json
 import logging
+from contextlib import nullcontext
 from decimal import Decimal, DecimalException
 from typing import Any, Literal, TypeVar
 
@@ -27,6 +28,7 @@ from app.schemas.task1_visual import (
 from app.schemas.writing_ai import OutputDiagnostic, ValidationIssue
 from app.services.task1_diagnostics import WrongVisualFamily, safe_task1_issues
 from app.services.task1_input import Task1ScoringRequest
+from app.services.writing_execution import WritingLatencyMetrics
 
 T = TypeVar("T", bound=BaseModel)
 logger = logging.getLogger(__name__)
@@ -58,9 +60,11 @@ class Task1StructuredCompletion:
         provider: LLMProvider,
         usage: list[dict[str, int]],
         diagnostics: list[OutputDiagnostic] | None = None,
+        latency: WritingLatencyMetrics | None = None,
     ) -> None:
         self.provider, self.usage = provider, usage
         self.diagnostics = diagnostics if diagnostics is not None else []
+        self.latency = latency
 
     async def structured(
         self,
@@ -77,12 +81,24 @@ class Task1StructuredCompletion:
         for attempt in range(2 if repair else 1):
             reason, kind, issues, finish = "SCHEMA_VALIDATION", "SCHEMA_INVALID", [], None
             try:
-                completion = await self.provider.complete(
-                    messages,
-                    provider_schema
-                    if provider_schema is not None
-                    else schema.model_json_schema(mode="serialization"),
-                )
+                with (
+                    self.latency.attempt(stage, "ta", attempt + 1)
+                    if self.latency
+                    else nullcontext() as timing
+                ):
+                    try:
+                        completion = await self.provider.complete(
+                            messages,
+                            provider_schema
+                            if provider_schema is not None
+                            else schema.model_json_schema(mode="serialization"),
+                        )
+                    except ProviderFailure as exc:
+                        if self.latency:
+                            self.latency.completion(timing, exc.finish_reason, {})
+                        raise
+                    if self.latency:
+                        self.latency.completion(timing, completion.finish_reason, completion.usage)
                 self.usage.append(completion.usage)
                 finish = safe_finish_reason(completion.finish_reason)
                 validate_finish(completion.finish_reason)

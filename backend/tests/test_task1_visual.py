@@ -564,21 +564,23 @@ async def test_task1_pipeline_grounded_ta_text_only_languages_and_exact_quotes()
         sum(isinstance(message["content"], list) for call in provider.calls for message in call)
         == 1
     )
-    for call in provider.calls[1:]:
+    grounding_call = next(call for call in provider.calls if isinstance(call[1]["content"], list))
+    for call in provider.calls:
+        if call is grounding_call:
+            continue
         assert all(isinstance(message["content"], str) for message in call)
     score_calls = [
         call for call in provider.calls if "Return only four fields" in call[0]["content"]
     ]
-    assert (
-        "visual_reference" in score_calls[0][1]["content"]
-        and "Task Achievement" in score_calls[0][0]["content"]
-    )
+    ta_call = next(call for call in score_calls if "Task Achievement" in call[0]["content"])
+    assert "visual_reference" in ta_call[1]["content"]
     assert all(
         "visual_reference" not in call[1]["content"]
         and "claim_verification" not in call[1]["content"]
-        for call in score_calls[1:]
+        for call in score_calls
+        if call is not ta_call
     )
-    assert "image content" in provider.calls[0][0]["content"].lower()
+    assert "image content" in grounding_call[0]["content"].lower()
     assert not service.failures
     names = [event for event, _ in events]
     assert all(
@@ -625,9 +627,9 @@ async def test_trait_failure_does_not_stop_later_traits_and_sources_repair_once(
     provider = Task1FakeProvider(fail_trait="Lexical Resource", bad_sources=1)
     service, result, events = await assess(provider)
     assert result is None and list(service.failures) == ["lr"]
-    assert [
+    assert set(
         payload["criterion"] for event, payload in events if event == "criterion.completed"
-    ] == ["ta", "cc", "gra"]
+    ) == {"ta", "cc", "gra"}
     assert (
         sum(
             "Extract at most" in call[0]["content"]

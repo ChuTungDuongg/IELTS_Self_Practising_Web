@@ -30,3 +30,4 @@ storage/images/*
 /benchmarks/writing_task1/**/*.webp
 /benchmarks/writing_task1/reports/*
 !/benchmarks/writing_task1/reports/.gitkeep
+/benchmarks/writing_latency/reports/

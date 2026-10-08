@@ -109,9 +109,16 @@ async def test_vietnamese_independent_prompts_and_cache_version():
     for field in ["feedback", "strengths", "improvements"]:
         assert field in provider.calls[1][0]["content"]
     assert sum(e == "criterion.completed" for e, _ in events) == 4
-    for old in ["mts-task2-v1", "mts-task2-v2", "mts-task2-v3", "mts-task2-v4", "mts-task2-v5"]:
-        assert effective_prompt_version(old) == "mts-task2-v6"
-    assert effective_prompt_version("custom") == "mts-task2-v6:custom"
+    for old in [
+        "mts-task2-v1",
+        "mts-task2-v2",
+        "mts-task2-v3",
+        "mts-task2-v4",
+        "mts-task2-v5",
+        "mts-task2-v6",
+    ]:
+        assert effective_prompt_version(old) == "mts-task2-v7"
+    assert effective_prompt_version("custom") == "mts-task2-v7:custom"
 
 
 @pytest.mark.parametrize(
@@ -246,7 +253,7 @@ def test_long_original_sentence_survives_without_legacy_copy_limit():
     assert resolved.evidence[0].quote == essay
 
 
-def test_prompt_scope_adjacent_descriptors_interpolation_and_vietnamese_fields():
+def test_prompt_scope_descriptor_fit_interpolation_and_vietnamese_fields():
     from app.domains.scoring.mts_prompts import TRAIT_NAMES, scoring_messages
     from app.schemas.writing_ai import EvidenceResult
 
@@ -263,9 +270,9 @@ def test_prompt_scope_adjacent_descriptors_interpolation_and_vietnamese_fields()
         assert name in prompt
         assert "official IELTS Writing Task 2 Band Descriptors" in prompt
         assert "interpolation between adjacent official whole-band descriptors" in prompt
-        assert "immediately lower and higher" in prompt
-        assert "Ensure score and feedback agree" in prompt
-        assert "Vietnamese feedback/strengths/improvements" in prompt
+        assert "Do not favor the higher or lower band by default" in prompt
+        assert "Keep score and feedback consistent" in prompt
+        assert "Feedback is one concise Vietnamese paragraph" in prompt
         for other in TRAIT_NAMES.values():
             if other != name:
                 assert other not in prompt

@@ -42,6 +42,7 @@ def implementation_hash() -> str:
         "domains/writing/*.py",
         "services/task1*.py",
         "services/mts_writing.py",
+        "services/writing_execution.py",
         "providers/writing_llm/*.py",
         "providers/chart_derendering/*.py",
         "schemas/task1*.py",
@@ -67,9 +68,9 @@ def implementation_hash() -> str:
 def configurations(
     settings: Settings, scoring_version: str, chart_specialist: str
 ) -> list[BenchmarkConfig]:
-    versions = ["v3", "v4"] if scoring_version == "both" else [scoring_version]
+    versions = ["v3", "v5"] if scoring_version == "both" else [scoring_version]
     specialists = [False, True] if chart_specialist == "both" else [chart_specialist == "on"]
-    if not set(versions) <= {"v3", "v4"} or chart_specialist not in {"off", "on", "both"}:
+    if not set(versions) <= {"v3", "v5"} or chart_specialist not in {"off", "on", "both"}:
         raise ValueError("BENCHMARK_CONFIGURATION_INVALID")
     provider, model = provider_identity(settings)
     endpoint = (
@@ -82,13 +83,14 @@ def configurations(
         for enabled in specialists:
             result.append(
                 BenchmarkConfig(
-                    label=f"task1-{version}-{'calibrated' if version == 'v4' else 'current'}:deplot-{'on' if enabled else 'off'}",
+                    max_concurrent_llm_requests=settings.ai_writing_max_concurrent_llm_requests,
+                    label=f"task1-{version}-{'current' if version == 'v5' else 'legacy'}:deplot-{'on' if enabled else 'off'}",
                     scoring_version=version,
                     prompt_version=TASK1_PROMPT_VERSION
-                    if version == "v4"
+                    if version == "v5"
                     else LEGACY_TASK1_PROMPT_VERSION,
                     scoring_prompt_version=TASK1_SCORING_PROMPT_VERSION
-                    if version == "v4"
+                    if version == "v5"
                     else LEGACY_TASK1_SCORING_PROMPT_VERSION,
                     visual_contract_version=TASK1_VISUAL_CONTRACT_VERSION,
                     provider=provider,
@@ -280,7 +282,12 @@ async def evaluate(
             if config.scoring_version == "v3"
             else Task1WritingScoringService
         )
-        scorer = scorer_type(provider, specialist, chart_timeout=config.specialist_timeout_seconds)
+        scorer = scorer_type(
+            provider,
+            specialist,
+            chart_timeout=config.specialist_timeout_seconds,
+            max_concurrent_requests=config.max_concurrent_llm_requests,
+        )
         await provider.ensure_ready()
         # Deliberately construct only production inputs; no target/truth/provenance.
         request = Task1ScoringRequest(

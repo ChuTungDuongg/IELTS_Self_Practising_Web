@@ -15,16 +15,23 @@ from app.providers.chart_derendering.deplot import DePlotChartDerenderingProvide
 from app.providers.writing_llm import create_provider, provider_identity
 from app.providers.writing_llm.base import LLMProvider, ProviderFailure
 from app.repositories.writing_ai import ACTIVE, WritingAIRepository
-from app.schemas.writing_ai import EventPayload, EventType, OutputDiagnostic
+from app.schemas.writing_ai import (
+    TRAITS,
+    CriterionFailure,
+    EventPayload,
+    EventType,
+    OutputDiagnostic,
+)
 from app.services.mts_writing import MTSWritingScoringService
 from app.services.task1_input import TASK1_PROMPT_VERSION, Task1ScoringRequest
 from app.services.task1_writing import Task1WritingScoringService
 from app.services.writing_ai import WritingAIService, fail_run, input_fingerprint, persist_activity
+from app.services.writing_execution import TraceFailure, WritingLatencyMetrics, durable_checkpoint
 
 _tasks: set[asyncio.Task] = set()
 
 
-class RunStopped(Exception):
+class RunStopped(TraceFailure):
     pass
 
 
@@ -51,6 +58,28 @@ class WritingAIWorker:
     async def execute(self, run_id: UUID) -> None:
         heartbeat = None
         mts = None
+        latency = WritingLatencyMetrics()
+        checkpoint_lock = asyncio.Lock()
+
+        async def checkpoint(event_type, payload):
+            # Short DB checkpoints are serial per run. Provider work never holds this lock.
+            async with checkpoint_lock:
+                await durable_checkpoint(
+                    self._checkpoint(
+                        run_id,
+                        event_type,
+                        payload,
+                        mts.usage,
+                        mts.diagnostics,
+                        mts.latency_summary(),
+                    )
+                )
+
+        async def fail(code, message):
+            latency.finish()
+            async with checkpoint_lock:
+                await durable_checkpoint(self._fail(run_id, code, message, mts))
+
         try:
             async with self.sessions() as session, session.begin():
                 repository = WritingAIRepository(session)
@@ -88,71 +117,78 @@ class WritingAIWorker:
                     and visual_family(request.task_type) == VisualFamily.CHART_TABLE
                     else None,
                     self.settings.ai_writing_chart_specialist_timeout_seconds,
+                    max_concurrent_requests=self.settings.ai_writing_max_concurrent_llm_requests,
+                    latency=latency,
                 )
                 if isinstance(request, Task1ScoringRequest)
-                else MTSWritingScoringService(provider_client)
+                else MTSWritingScoringService(
+                    provider_client,
+                    max_concurrent_requests=self.settings.ai_writing_max_concurrent_llm_requests,
+                    latency=latency,
+                )
             )
-            heartbeat = asyncio.create_task(self._heartbeat(run_id))
-            await self._checkpoint(run_id, "provider.starting", EventPayload())
-            await provider_client.ensure_ready()
-            await self._checkpoint(run_id, "provider.ready", EventPayload())
+            heartbeat = asyncio.create_task(self._heartbeat(checkpoint))
+            await checkpoint("provider.starting", EventPayload())
+            with latency.stage("provider_ready"):
+                await provider_client.ensure_ready()
+            await checkpoint("provider.ready", EventPayload())
 
             async def trace(event_type: EventType, payload: EventPayload) -> None:
-                await self._checkpoint(run_id, event_type, payload, mts.usage, mts.diagnostics)
+                await checkpoint(event_type, payload)
 
             result = await mts.assess(request, trace)
             if result is None:
                 # All traits have now been attempted. Each successful checkpoint
                 # stays available; no partial mean/overall is ever calculated.
-                trait, failure = next(iter(mts.failures.items()))
-                mts.current_criterion, mts.current_stage = trait, failure.stage
-                await self._fail(
-                    run_id,
+                failure = next(iter(mts.failures.values()))
+                await fail(
                     failure.error_code,
                     "Một số tiêu chí chưa thể chấm xong. Các kết quả đã hoàn tất được giữ lại; bạn có thể thử chấm lại.",
-                    mts,
                 )
                 return
-            async with self.sessions() as session, session.begin():
-                repository = WritingAIRepository(session)
-                run = await repository.run(run_id, lock=True)
-                if run is None or run.status not in ACTIVE:
-                    return
-                run.result_json = result.model_dump(mode="json")
-                run.raw_mean = result.raw_mean
-                run.overall_band = result.overall_band
-                run.usage_json = {
-                    "calls": mts.usage,
-                    "diagnostics": [item.model_dump() for item in mts.diagnostics],
-                }
-                run.status = WritingAIRunStatus.COMPLETED
-                run.completed_at = run.updated_at = datetime.now(UTC)
-                persist_activity(run, "run.completed", EventPayload())
-                await repository.append_event(run, "run.completed", EventPayload())
+            latency.finish()
+            async with checkpoint_lock:
+                await durable_checkpoint(self._complete(run_id, result, mts))
         except RunStopped:
             pass
         except asyncio.CancelledError:
-            await self._fail(
-                run_id, "RUN_INTERRUPTED", "Chấm AI bị gián đoạn. Bạn có thể thử chấm lại.", mts
-            )
+            await fail("RUN_INTERRUPTED", "Chấm AI bị gián đoạn. Bạn có thể thử chấm lại.")
             raise
         except ProviderFailure as exc:
-            await self._fail(run_id, exc.code, exc.message, mts)
+            await fail(exc.code, exc.message)
         except AppError as exc:
-            await self._fail(run_id, exc.code, exc.message, mts)
+            await fail(exc.code, exc.message)
         except Exception:
             # Exception bodies can contain credentials/prompts. Never serialize/log them.
-            await self._fail(
-                run_id,
+            await fail(
                 "AI_GRADING_FAILED",
                 "AI chưa thể hoàn tất bài chấm. Bạn có thể thử chấm lại.",
-                mts,
             )
         finally:
+            latency.finish()
             if heartbeat:
                 heartbeat.cancel()
                 with suppress(asyncio.CancelledError, Exception):
                     await heartbeat
+
+    async def _complete(self, run_id, result, mts):
+        async with self.sessions() as session, session.begin():
+            repository = WritingAIRepository(session)
+            run = await repository.run(run_id, lock=True)
+            if run is None or run.status not in ACTIVE:
+                return
+            run.result_json = result.model_dump(mode="json")
+            run.raw_mean = result.raw_mean
+            run.overall_band = result.overall_band
+            run.usage_json = {
+                "calls": mts.usage,
+                "diagnostics": [item.model_dump() for item in mts.diagnostics],
+                "latency": mts.latency_summary(),
+            }
+            run.status = WritingAIRunStatus.COMPLETED
+            run.completed_at = run.updated_at = datetime.now(UTC)
+            persist_activity(run, "run.completed", EventPayload())
+            await repository.append_event(run, "run.completed", EventPayload())
 
     async def _checkpoint(
         self,
@@ -161,6 +197,7 @@ class WritingAIWorker:
         payload: EventPayload,
         usage: list[dict[str, int]] | None = None,
         diagnostics: list[OutputDiagnostic] | None = None,
+        latency: dict | None = None,
     ) -> None:
         async with self.sessions() as session, session.begin():
             repository = WritingAIRepository(session)
@@ -175,6 +212,8 @@ class WritingAIWorker:
                     **(run.usage_json or {}),
                     "diagnostics": [item.model_dump() for item in diagnostics],
                 }
+            if latency is not None:
+                run.usage_json = {**(run.usage_json or {}), "latency": latency}
             persist_activity(run, event_type, payload)
             if payload.task1_analysis:
                 run.result_json = {
@@ -202,12 +241,20 @@ class WritingAIWorker:
                         },
                     },
                 }
+            if run.result_json:
+                for key in ("criteria", "failures"):
+                    if key in run.result_json:
+                        values = run.result_json[key]
+                        run.result_json = {
+                            **run.result_json,
+                            key: {trait: values[trait] for trait in TRAITS if trait in values},
+                        }
             await repository.append_event(run, event_type, payload)
 
-    async def _heartbeat(self, run_id: UUID) -> None:
+    async def _heartbeat(self, checkpoint) -> None:
         while True:
             await asyncio.sleep(15)
-            await self._checkpoint(run_id, "heartbeat", EventPayload())
+            await checkpoint("heartbeat", EventPayload())
 
     async def _fail(
         self, run_id: UUID, code: str, message: str, mts: MTSWritingScoringService | None
@@ -223,14 +270,40 @@ class WritingAIWorker:
                             **(run.usage_json or {}),
                             "calls": mts.usage,
                             "diagnostics": [item.model_dump() for item in mts.diagnostics],
+                            "latency": mts.latency_summary(),
                         }
+                        if code == "RUN_INTERRUPTED":
+                            stored = run.result_json or {}
+                            failures = dict(stored.get("failures", {}))
+                            for trait in TRAITS:
+                                if (
+                                    trait not in stored.get("criteria", {})
+                                    and trait not in failures
+                                ):
+                                    failure = CriterionFailure(
+                                        error_code=code,
+                                        error_message="Không thể hoàn tất tiêu chí này.",
+                                        stage=mts.states[trait].stage,
+                                    )
+                                    failures[trait] = failure.model_dump(mode="json")
+                                    await repository.append_event(
+                                        run,
+                                        "criterion.failed",
+                                        EventPayload(criterion=trait, **failure.model_dump()),
+                                    )
+                            run.result_json = {
+                                **stored,
+                                "failures": {
+                                    trait: failures[trait] for trait in TRAITS if trait in failures
+                                },
+                            }
                     await fail_run(
                         repository,
                         run,
                         code,
                         message,
-                        criterion=mts.current_criterion if mts else None,
-                        stage=mts.current_stage if mts else None,
+                        criterion=mts.failure_context[0] if mts else None,
+                        stage=mts.failure_context[1] if mts else None,
                     )
         except Exception:
             pass

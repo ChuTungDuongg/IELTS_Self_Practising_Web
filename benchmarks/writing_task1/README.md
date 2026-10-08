@@ -2,10 +2,11 @@
 
 The CLI reuses production visual grounding, optional fail-open DePlot,
 deterministic facts, claim verification, source evidence and four-criterion MTS.
-It needs no database. Production uses `mts-task1-visual-v4` with perception
-contract `mts-task1-visual-v3` and scoring guidance `mts-task1-scoring-v4`.
+It needs no database. Production uses composite fingerprint `mts-task1-visual-v5`
+with perception contract `mts-task1-visual-v3` and scoring guidance `mts-task1-scoring-v5`.
 The v3 benchmark candidate preserves the former scoring/evidence prompts with
-the same current perception and scoring engine. Task 2 is unchanged.
+the same current perception and scoring engine. The current candidate is v5;
+v4 is not an alias for the new scorer. Task 2 is not run by this CLI.
 
 ## Local dataset
 
@@ -47,16 +48,16 @@ or checkpoints; only IDs, hashes, scores, counts and safe status codes remain.
 From `backend/`, first validate your local data without inference:
 
 ```powershell
-uv run python ../scripts/benchmark_task1.py --manifest ../benchmarks/writing_task1/private/manifest.jsonl --split dev --scoring-version v4 --chart-specialist off --dry-run --output ../benchmarks/writing_task1/reports/dev-plan
+uv run python ../scripts/benchmark_task1.py --manifest ../benchmarks/writing_task1/private/manifest.jsonl --split dev --scoring-version v5 --chart-specialist off --dry-run --output ../benchmarks/writing_task1/reports/dev-plan
 ```
 
 An explicit one-sample real smoke, using existing backend provider settings:
 
 ```powershell
-uv run python ../scripts/benchmark_task1.py --manifest ../benchmarks/writing_task1/private/manifest.jsonl --split dev --limit 1 --scoring-version v4 --chart-specialist off --resume --output ../benchmarks/writing_task1/reports/dev-smoke
+uv run python ../scripts/benchmark_task1.py --manifest ../benchmarks/writing_task1/private/manifest.jsonl --split dev --limit 1 --scoring-version v5 --chart-specialist off --resume --output ../benchmarks/writing_task1/reports/dev-smoke
 ```
 
-Controlled v3/v4 and DePlot off/on comparisons:
+Controlled v3/v5 and DePlot off/on comparisons:
 
 ```powershell
 uv run python ../scripts/benchmark_task1.py --manifest ../benchmarks/writing_task1/private/manifest.jsonl --split dev --scoring-version both --chart-specialist both --resume --output ../benchmarks/writing_task1/reports/dev-ablation

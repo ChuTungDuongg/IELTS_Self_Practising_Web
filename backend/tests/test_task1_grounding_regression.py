@@ -17,6 +17,7 @@ from app.schemas.task1_visual import GroundingConfidence, VisualGroundingOutput
 from app.services.task1_grounding import Task1VisualGroundingService
 from app.services.task1_input import TASK1_PROMPT_VERSION
 from app.services.task1_writing import Task1WritingScoringService
+from app.services.writing_execution import TraceFailure
 
 
 @pytest.fixture
@@ -104,7 +105,7 @@ def test_old_t1a_six_region_shape_still_validates(six_region_pies):
     assert component.x_axis is None and component.y_axis is None
     assert not component.ordered_categories
     assert len([fact for fact in derive_facts(output.reference) if fact.kind == "value"]) == 18
-    assert TASK1_PROMPT_VERSION == "mts-task1-visual-v4"
+    assert TASK1_PROMPT_VERSION == "mts-task1-visual-v5"
 
 
 @pytest.mark.parametrize(
@@ -359,7 +360,7 @@ async def test_trace_errors_are_not_swallowed_as_grounding_failures(six_region_p
         if event == "chart_specialist.completed":
             raise ProviderFailure("AI_PROVIDER_BAD_RESPONSE")
 
-    with pytest.raises(ProviderFailure):
+    with pytest.raises(TraceFailure):
         await Task1WritingScoringService(PieProvider(six_region_pies), FakeSpecialist()).assess(
             pie_request(True), trace
         )

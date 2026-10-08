@@ -8,7 +8,7 @@ Descriptor fit determines bands; perception confidence is not a band criterion.
 import json
 
 from app.domains.scoring.essay_sources import segment_essay
-from app.domains.scoring.mts_prompts import source_text
+from app.domains.scoring.mts_prompts import DESCRIPTOR_FIT_GUIDANCE, source_text
 from app.providers.writing_llm.base import Message
 from app.schemas.task1_claims import Task1Analysis
 from app.schemas.writing_ai import EvidenceResult, EvidenceSelection, ScoringOutput, Trait
@@ -24,7 +24,7 @@ DATA_GUARD = (
 )
 TASK1_TRAIT_NAMES = {
     "ta": "Task Achievement",
-    "cc": "Coherence & Cohesion",
+    "cc": "Coherence and Cohesion",
     "lr": "Lexical Resource",
     "gra": "Grammatical Range and Accuracy",
 }
@@ -82,8 +82,8 @@ TASK1_BAND_PROFILES = {
         "some could be developed more fully and content lapses may occur. "
         "8: sufficient, appropriate and relevant coverage; key features are skilfully selected, "
         "clearly presented and well illustrated, with occasional omissions or lapses. "
-        "9: fully appropriate fulfilment, with comprehensive and appropriate coverage of relevant "
-        "content and exceptionally rare content/support lapses."
+        "9: all task requirements are fully and appropriately fulfilled, with exceptionally "
+        "rare content lapses."
     ),
     "cc": (
         "1: no communicated message. 2: organisational control is barely evident. "
@@ -121,10 +121,12 @@ TASK1_BAND_PROFILES = {
         "7: sufficient vocabulary allows some flexibility and precision; less-common language "
         "and awareness of style/collocation appear, though unsuitable choices occur; few "
         "spelling/formation errors preserve clarity. "
-        "8: wide vocabulary conveys precise meaning fluently and flexibly; uncommon language "
+        "8: wide vocabulary conveys precise meaning fluently and flexibly within the scope of "
+        "the task; uncommon language "
         "is skilfully used when appropriate, with occasional lexical or spelling/formation "
         "slips having little impact. "
-        "9: broad, natural and precise lexical control is fully flexible, with exceptionally "
+        "9: broad, natural and precise lexical control is fully flexible within the scope of "
+        "the task, with exceptionally "
         "rare minor spelling/formation errors and negligible communicative impact."
     ),
     "gra": (
@@ -142,57 +144,21 @@ TASK1_BAND_PROFILES = {
         "7: varied complex structures with some flexibility and accuracy, generally good "
         "grammar/punctuation control and frequent error-free sentences; persistent errors "
         "do not impede communication. "
-        "8: broad structures used flexibly and accurately, with most sentences error-free and "
+        "8: broad structures within the scope of the task used flexibly and accurately, with "
+        "most sentences error-free and "
         "well-controlled punctuation; occasional non-systematic errors have little impact. "
-        "9: broad, fully flexible structural control with appropriate grammar/punctuation "
+        "9: broad, fully flexible structural control within the scope of the task, with appropriate grammar/punctuation "
         "throughout; exceptionally rare minor errors have negligible communicative impact."
     ),
 }
-TASK1_CALIBRATION_GUIDANCE = {
-    "ta": (
-        "Copying correct numbers, even a large quantity of correct numbers, does not by itself "
-        "establish strong Task Achievement. Distinguish "
-        "accurate individual data from selecting, grouping and comparing major features effectively "
-        "and presenting an appropriate overview. Judge coverage and support as a whole."
-    ),
-    "cc": (
-        "Four paragraphs, understandable order or visible linking words do not by themselves "
-        "establish Band 7. Distinguish coherent overall progression with mechanical/local "
-        "weaknesses from consistently logical, flexible, well-managed progression."
-    ),
-    "lr": (
-        "Academic-looking words or accurate topic nouns do not by themselves establish Band 7. "
-        "Look for sustained flexibility, precision, collocational control and variation throughout "
-        "the report; consider repetition and basic paraphrase holistically, with no vocabulary-count rule."
-    ),
-    "gra": (
-        "Long sentences, the presence of subordinators or words such as while/however/which, "
-        "or a few complex forms do not "
-        "by themselves establish Band 7. Judge actual structural variety and control throughout: "
-        "limited repetitive structures and often faulty complexity differ from a simple/complex "
-        "mix with uneven control; varied complex structures with flexibility, generally good "
-        "control and frequent error-free sentences differ from broad flexible accurate control "
-        "across most of the report. These are descriptor qualities, never numerical thresholds."
-    ),
-}
-WHOLE_RESPONSE_GUIDANCE = (
-    "Assess the whole response, including representative strengths and limitations rather than "
-    "only selected examples. Identify the most plausible official whole-band profile, compare "
-    "the adjacent lower and higher descriptor profiles, and consider how consistently the quality "
-    "appears throughout the report before selecting a score. Half-bands interpolate only when "
-    "performance genuinely falls between adjacent profiles; they are not separate descriptors. "
-    "Require sustained affirmative evidence for the higher profile; a few good examples cannot "
-    "establish Band 7+ and an isolated weakness cannot represent the entire response. Do not resolve "
-    "ambiguity upward because stronger features occur, and do not automatically resolve it downward. "
-    "No fixed score offsets, no hard caps, no error-count or comparison-count rules, and no "
-    "cross-criterion penalties. Exceptional responses can receive 8–9."
-)
 GROUNDED_TA_GUIDANCE = (
     "Use only supplied grounded reference, deterministic facts and claim verdicts for visual accuracy. "
     "Perception disagreements are not student errors and their count never implies a band penalty. "
     "Uncertain values are unknown, not contradictions. LOW confidence permits cautious qualitative "
     "judgment only; never assert exact-number errors from uncertain perception. Missing/failed claim "
-    "verification is not evidence of an error. Do not calculate penalties from verdict counts."
+    "verification is not evidence of an error. These inputs support understanding of task "
+    "fulfilment and accuracy, not additional scoring criteria. Do not convert counts of supported "
+    "or contradicted claims, omissions or comparisons into bands or penalties."
 )
 # Preserve the official exceptional low-response conditions, not a new calibration rule.
 OFFICIAL_LOW_RESPONSE_GUIDANCE = (
@@ -206,8 +172,7 @@ def criterion_guidance(trait: Trait) -> str:
     return (
         f"Criterion: {TASK1_TRAIT_NAMES[trait]}. Criterion scope: {TASK1_SCOPES[trait]}\n"
         "Feedback purity: apply this same scope to evidence assessments, feedback, strengths and "
-        f"improvements. {TASK1_FEEDBACK_BOUNDARIES[trait]}\n"
-        f"{TASK1_CALIBRATION_GUIDANCE[trait]}"
+        f"improvements. {TASK1_FEEDBACK_BOUNDARIES[trait]}"
     )
 
 
@@ -242,8 +207,9 @@ def evidence_prompt(
             "role": "system",
             "content": (
                 f"{DATA_GUARD}\nAcademic Writing Task 1. {criterion_guidance(trait)}\n"
-                "Select up to four allowed source_ids, representing strengths and limitations across "
-                "the whole response without forcing a fixed number of weaknesses. Vietnamese "
+                "Select up to four allowed source_ids as representative evidence relevant to this "
+                "criterion across the whole response. Evidence may show strengths, weaknesses or "
+                "limitations; no fixed balance of strengths and weaknesses is required. Vietnamese "
                 "assessments at most 320 characters/two concise sentences; never invent quote text. "
                 "The source_id is the only evidence identity; optional focus is only a display hint. "
                 "Return an empty evidence list if no relevant source exists. "
@@ -278,15 +244,14 @@ def score_prompt(
                 f"{criterion_guidance(trait)}\n"
                 "Semantic authority: official IELTS Academic Writing Task 1 Band Descriptors "
                 f"(May 2023); faithful whole-band paraphrases: {TASK1_BAND_PROFILES[trait]}\n"
-                f"{OFFICIAL_LOW_RESPONSE_GUIDANCE}\n{WHOLE_RESPONSE_GUIDANCE}\n"
+                f"{OFFICIAL_LOW_RESPONSE_GUIDANCE}\n{DESCRIPTOR_FIT_GUIDANCE}\n"
                 f"{GROUNDED_TA_GUIDANCE if trait == 'ta' else ''}\n"
                 "Score 0 through 9 in increments of 0.5 only. Return only four fields: score, "
                 "feedback, strengths, improvements. Feedback is one concise Vietnamese paragraph "
-                "(at most 800 characters) explaining this criterion's descriptor fit. When useful, "
-                "briefly explain which next-higher qualities are not consistently demonstrated; "
-                "at 9 compare with the highest profile without inventing a higher level. Strengths "
+                "(at most 800 characters) explaining why the returned band best fits this criterion, "
+                "using notable strengths and meaningful limitations where present. Strengths "
                 "and improvements are Vietnamese, at most 3 each and at most 240 characters per "
-                "item. Keep score and feedback consistent on the extent of limitations; give "
+                "item. Keep score and feedback consistent with this criterion's descriptor fit; give "
                 "specific, respectful and actionable advice without generic filler or headings. "
                 "Do not return nested calibration metadata or hidden reasoning. "
                 f"JSON schema: {json.dumps(ScoringOutput.model_json_schema(mode='serialization'))}"

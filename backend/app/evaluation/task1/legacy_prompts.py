@@ -1,6 +1,6 @@
 """Benchmark-only snapshot of the Task 1 v3 scoring prompts at 78a742d.
 
-The shared Task 2 v6 builders are unchanged by this Task 1 calibration. This
+The former Task 2 v6 builders are frozen in this evaluation package. This
 module preserves the former Task 1 modifications without duplicating the MTS
 engine or perception pipeline. Production code must not select this service.
 """
@@ -8,7 +8,7 @@ engine or perception pipeline. Production code must not select this service.
 import json
 
 from app.domains.scoring.essay_sources import segment_essay
-from app.domains.scoring.mts_prompts import (
+from app.evaluation.task1.legacy_task2_v6 import (
     LOW_BANDS,
     RUBRICS,
     SCOPES,

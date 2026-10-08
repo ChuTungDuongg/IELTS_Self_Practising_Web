@@ -48,15 +48,19 @@ class FakeProvider:
         self.calls = []
         self.overrides = overrides or {}
         self.scored = 0
+        self.attempts = {}
 
     async def ensure_ready(self):
         pass
 
     async def complete(self, messages, schema, *, options=None):
-        index = len(self.calls)
+        trait = next(trait for trait in TRAITS if TRAIT_NAMES[trait] in messages[0]["content"])
+        stage = "evidence" if "evidence" in schema["properties"] else "scoring"
+        self.attempts[trait, stage] = self.attempts.get((trait, stage), 0) + 1
+        identity = trait, stage, self.attempts[trait, stage]
         self.calls.append(messages)
-        if index in self.overrides:
-            output = self.overrides[index]
+        if identity in self.overrides:
+            output = self.overrides[identity]
             if isinstance(output, Exception):
                 raise output
             return Completion(output)
@@ -71,7 +75,7 @@ class FakeProvider:
             }
         else:
             value = {
-                "score": [6.5, 6, 7, 6][self.scored % 4],
+                "score": {"ta": 6.5, "cc": 6, "lr": 7, "gra": 6}[trait],
                 "feedback": "Cần phát triển chi tiết hỗ trợ cho luận điểm.",
                 "strengths": ["Diễn đạt rõ ràng."],
                 "improvements": ["Bổ sung một ví dụ cụ thể."],
@@ -145,6 +149,63 @@ def worker(session, settings, provider=None):
     return WritingAIWorker(factory, settings, provider or FakeProvider())
 
 
+@pytest.mark.integration
+async def test_concurrent_out_of_order_checkpoints_are_canonical_replayable_and_measured(
+    db_session, writing, settings
+):
+    release_cc = asyncio.Event()
+    completed = []
+
+    class Provider(FakeProvider):
+        async def complete(self, messages, schema, *, options=None):
+            if TRAIT_NAMES["cc"] in messages[0]["content"] and "score" in schema["properties"]:
+                await release_cc.wait()
+            return await super().complete(messages, schema, options=options)
+
+    api = service(db_session, settings)
+    created = await api.create(writing[0], writing[2], force=False)
+    runner = worker(db_session, settings, Provider())
+    original = runner._checkpoint
+
+    async def checkpoint(run_id, event, payload, *args):
+        await original(run_id, event, payload, *args)
+        if event == "criterion.completed":
+            completed.append(payload.criterion)
+            partial = await api.get(run_id)
+            assert list(partial.progress) == [trait for trait in TRAITS if trait in completed]
+            if len(completed) == 3:
+                assert "cc" not in partial.progress and partial.result is None
+                release_cc.set()
+
+    runner._checkpoint = checkpoint
+    await asyncio.wait_for(runner.execute(created.run_id), 10)
+    run, events = await api.snapshot(created.run_id, 0)
+    assert completed[-1] == "cc" and run.status == WritingAIRunStatus.COMPLETED
+    assert list(run.progress) == list(run.result.criteria.model_dump()) == list(TRAITS)
+    assert [event.sequence for event in events] == list(range(1, len(events) + 1))
+    gra = next(
+        event
+        for event in events
+        if event.event_type == "criterion.completed" and event.payload.criterion == "gra"
+    )
+    restored, replay = await api.snapshot(run.id, gra.sequence)
+    assert restored == run and any(
+        event.payload.criterion == "cc" and event.event_type == "criterion.completed"
+        for event in replay
+    )
+    async with db_session.begin():
+        db_session.expire_all()
+        stored = await db_session.get(WritingAIGradingRun, run.id)
+        metrics = stored.usage_json["latency"]
+        assert metrics["run_total_ms"] >= metrics["time_to_first_criterion_ms"] > 0
+        assert metrics["provider_ready_ms"] >= 0
+        assert metrics["llm_concurrency_limit"] == 2 and metrics["peak_active_llm_requests"] <= 2
+        assert set(metrics["stages"]) == {"provider_ready"} | {
+            f"{trait}.{stage}" for trait in TRAITS for stage in ("evidence", "scoring")
+        }
+        assert ESSAY not in json.dumps(metrics)
+
+
 @pytest.mark.parametrize("score", [Decimal(i) / 2 for i in range(19)])
 def test_ai_half_band_validation(score):
     assert TraitScore(score=score, feedback="Useful.", strengths=[], improvements=[]).score == score
@@ -215,7 +276,7 @@ async def test_success_persistence_cache_force_events_and_official_isolation(
     ]
     assert events[0].event_type == "run.started" and events[-1].event_type == "run.completed"
     assert len(provider.calls) == 8
-    for index, trait in enumerate(TRAITS):
+    for trait in TRAITS:
         assert [event.event_type for event in events if event.payload.criterion == trait] == [
             "criterion.started",
             "evidence.request.started",
@@ -226,13 +287,12 @@ async def test_success_persistence_cache_force_events_and_official_isolation(
             "criterion.completed",
         ]
         assert all(event.created_at is not None for event in events)
-        assert TRAIT_NAMES[trait] in provider.calls[index * 2][0]["content"]
+        calls = [call for call in provider.calls if TRAIT_NAMES[trait] in call[0]["content"]]
+        assert len(calls) == 2
         assert all(
-            TRAIT_NAMES[other] not in provider.calls[index * 2 + 1][0]["content"]
-            for other in TRAITS
-            if other != trait
+            TRAIT_NAMES[other] not in calls[1][0]["content"] for other in TRAITS if other != trait
         )
-        assert "UNTRUSTED DATA" in provider.calls[index * 2][0]["content"]
+        assert "UNTRUSTED DATA" in calls[0][0]["content"]
     cached = await api.create(attempt_id, task_id, force=False)
     assert cached.run_id == created.run_id and cached.cache_hit
     forced = await api.create(attempt_id, task_id, force=True)
@@ -378,21 +438,32 @@ async def test_task_from_other_version_rejected(db_session, writing, settings):
 async def test_bad_trait_call_repaired_once(db_session, writing, settings, bad):
     attempt_id, _, task_id = writing
     created = await service(db_session, settings).create(attempt_id, task_id, force=False)
-    provider = FakeProvider({1: bad})
+    provider = FakeProvider({("ta", "scoring", 1): bad})
     await worker(db_session, settings, provider).execute(created.run_id)
     assert (
         await service(db_session, settings).get(created.run_id)
     ).status == WritingAIRunStatus.COMPLETED
     assert len(provider.calls) == 9
-    assert "Correction (" in provider.calls[2][-1]["content"]
-    assert provider.calls[1][0] == provider.calls[2][0]
+    ta_scores = [
+        call
+        for call in provider.calls
+        if TRAIT_NAMES["ta"] in call[0]["content"]
+        and "Return only four fields" in call[0]["content"]
+    ]
+    assert len(ta_scores) == 2 and "Correction (" in ta_scores[1][-1]["content"]
+    assert ta_scores[0][0] == ta_scores[1][0]
 
 
 @pytest.mark.integration
 async def test_second_bad_call_fails_and_preserves_partial_progress(db_session, writing, settings):
     attempt_id, _, task_id = writing
     created = await service(db_session, settings).create(attempt_id, task_id, force=False)
-    provider = FakeProvider({3: "malformed secret raw text", 4: "still malformed secret raw text"})
+    provider = FakeProvider(
+        {
+            ("cc", "scoring", 1): "malformed secret raw text",
+            ("cc", "scoring", 2): "still malformed secret raw text",
+        }
+    )
     await worker(db_session, settings, provider).execute(created.run_id)
     run, events = await service(db_session, settings).snapshot(created.run_id, 0)
     assert run.status == WritingAIRunStatus.FAILED and run.error_code == "AI_PROVIDER_BAD_RESPONSE"
@@ -411,7 +482,9 @@ async def test_lr_evidence_failure_retains_ta_cc_runs_gra_and_terminates_replay(
     api = service(db_session, settings)
     created = await api.create(attempt_id, task_id, force=False)
     invalid_source = json.dumps({"evidence": [{"source_id": "P99S1", "assessment": "Nhận xét."}]})
-    provider = FakeProvider({4: invalid_source, 5: invalid_source})
+    provider = FakeProvider(
+        {("lr", "evidence", 1): invalid_source, ("lr", "evidence", 2): invalid_source}
+    )
     runner = worker(db_session, settings, provider)
     await runner.execute(created.run_id)
     run, events = await api.snapshot(created.run_id, 0)
@@ -472,9 +545,13 @@ async def test_lr_evidence_failure_retains_ta_cc_runs_gra_and_terminates_replay(
 async def test_interruption_after_lr_failure_persists_gra_failure_and_partial_results(
     db_session, writing, settings
 ):
+    ready_to_cancel = asyncio.Event()
+    done = set()
+
     class InterruptedProvider(FakeProvider):
         async def complete(self, messages, schema, *, options=None):
-            if len(self.calls) == 7:
+            if TRAIT_NAMES["gra"] in messages[0]["content"]:
+                await ready_to_cancel.wait()
                 raise asyncio.CancelledError
             return await super().complete(messages, schema, options=options)
 
@@ -482,10 +559,23 @@ async def test_interruption_after_lr_failure_persists_gra_failure_and_partial_re
     api = service(db_session, settings)
     created = await api.create(attempt_id, task_id, force=False)
     bad = '{"evidence":[{"source_id":"P99S1","assessment":"Nhận xét."}]}'
+    runner = worker(
+        db_session,
+        settings,
+        InterruptedProvider({("lr", "evidence", 1): bad, ("lr", "evidence", 2): bad}),
+    )
+    original = runner._checkpoint
+
+    async def checkpoint(run_id, event, payload, *args):
+        await original(run_id, event, payload, *args)
+        if event in {"criterion.completed", "criterion.failed"}:
+            done.add(payload.criterion)
+            if {"ta", "cc", "lr"} <= done:
+                ready_to_cancel.set()
+
+    runner._checkpoint = checkpoint
     with pytest.raises(asyncio.CancelledError):
-        await worker(db_session, settings, InterruptedProvider({4: bad, 5: bad})).execute(
-            created.run_id
-        )
+        await asyncio.wait_for(runner.execute(created.run_id), 5)
     run, events = await api.snapshot(created.run_id, 0)
     assert run.status == WritingAIRunStatus.FAILED and run.result is None
     assert set(run.progress) == {"ta", "cc"}
@@ -499,7 +589,7 @@ async def test_interruption_after_lr_failure_persists_gra_failure_and_partial_re
 
 
 @pytest.mark.integration
-async def test_partial_checkpoint_visible_before_next_trait_and_heartbeat_is_only_liveness(
+async def test_partial_checkpoint_visible_during_concurrent_work_and_heartbeat_is_only_liveness(
     db_session, writing, settings
 ):
     attempt_id, _, task_id = writing
@@ -507,18 +597,18 @@ async def test_partial_checkpoint_visible_before_next_trait_and_heartbeat_is_onl
     created = await api.create(attempt_id, task_id, force=False)
     runner = worker(db_session, settings)
 
-    class InspectingProvider(FakeProvider):
-        async def complete(self, messages, schema, *, options=None):
-            if len(self.calls) == 2:
-                before = await api.get(created.run_id)
-                assert set(before.progress) == {"ta"} and before.result is None
-                assert before.activity.criterion == "cc"
-                await runner._checkpoint(created.run_id, "heartbeat", EventPayload())
-                after = await api.get(created.run_id)
-                assert after.progress == before.progress and after.activity == before.activity
-            return await super().complete(messages, schema, options=options)
+    original = runner._checkpoint
 
-    runner.provider = InspectingProvider()
+    async def checkpoint(run_id, event, payload, *args):
+        await original(run_id, event, payload, *args)
+        if event == "criterion.completed" and payload.criterion == "ta":
+            before = await api.get(created.run_id)
+            assert "ta" in before.progress and before.result is None
+            await original(created.run_id, "heartbeat", EventPayload())
+            after = await api.get(created.run_id)
+            assert after.progress == before.progress and after.activity == before.activity
+
+    runner._checkpoint = checkpoint
     await runner.execute(created.run_id)
     saved, events = await api.snapshot(created.run_id, 0)
     assert saved.status == WritingAIRunStatus.COMPLETED
@@ -550,7 +640,7 @@ async def test_gra_optional_calibration_completes_persists_and_replays_without_r
         "improvements": ["Kiểm tra dấu câu ở các mệnh đề dài."],
         "calibration": calibration,
     }
-    provider = FakeProvider({7: json.dumps(gra)})
+    provider = FakeProvider({("gra", "scoring", 1): json.dumps(gra)})
     runner = worker(db_session, settings, provider)
     await runner.execute(created.run_id)
     saved, events = await api.snapshot(created.run_id, 0)
@@ -560,8 +650,10 @@ async def test_gra_optional_calibration_completes_persists_and_replays_without_r
     assert set(saved.progress) == set(TRAITS) and len(provider.calls) == 8
     assert not any(e.event_type in {"criterion.retrying", "criterion.failed"} for e in events)
     completed = [e for e in events if e.event_type == "criterion.completed"]
-    assert [e.payload.criterion for e in completed] == list(TRAITS)
-    assert completed[-1].payload.result.score == Decimal("8.5")
+    assert {e.payload.criterion for e in completed} == set(TRAITS)
+    assert next(
+        e for e in completed if e.payload.criterion == "gra"
+    ).payload.result.score == Decimal("8.5")
     assert completed[-1].sequence < events[-1].sequence
     assert events[-1].event_type == "run.completed"
     # Reconnecting with an event cursor restores the completed result and does
@@ -588,9 +680,17 @@ async def test_gra_optional_calibration_completes_persists_and_replays_without_r
 
 @pytest.mark.integration
 @pytest.mark.parametrize(
-    "old_version", ["mts-task2-v1", "mts-task2-v2", "mts-task2-v3", "mts-task2-v4", "mts-task2-v5"]
+    "old_version",
+    [
+        "mts-task2-v1",
+        "mts-task2-v2",
+        "mts-task2-v3",
+        "mts-task2-v4",
+        "mts-task2-v5",
+        "mts-task2-v6",
+    ],
 )
-async def test_old_cache_is_preserved_but_never_reused_for_v6(
+async def test_old_cache_is_preserved_but_never_reused_for_v7(
     db_session, writing, settings, old_version
 ):
     attempt_id, _, task_id = writing
@@ -608,14 +708,14 @@ async def test_old_cache_is_preserved_but_never_reused_for_v6(
     settings.ai_writing_prompt_version = old_version  # Existing deployed secret.
     upgraded = await api.create(attempt_id, task_id, force=False)
     assert upgraded.run_id != legacy.run_id and not upgraded.cache_hit
-    assert (await api.get(upgraded.run_id)).prompt_version == "mts-task2-v6"
+    assert (await api.get(upgraded.run_id)).prompt_version == "mts-task2-v7"
     history = await api.list(attempt_id, task_id)
     assert len(history.items) == 2
     assert history.items[1].prompt_version == old_version and history.items[1].result == old_result
 
 
 @pytest.mark.integration
-async def test_verbose_lr_normalizes_persists_live_before_gra_and_replays_without_inference(
+async def test_verbose_lr_normalizes_persists_live_and_replays_without_inference(
     db_session, writing, settings
 ):
     attempt_id, _, task_id = writing
@@ -632,18 +732,20 @@ async def test_verbose_lr_normalizes_persists_live_before_gra_and_replays_withou
         "improvements": [paragraph, "Chọn từ chính xác hơn."],
     }
 
-    class InspectingProvider(FakeProvider):
-        async def complete(self, messages, schema, *, options=None):
-            if len(self.calls) == 6:
-                live = await api.get(created.run_id)
-                assert live.status == WritingAIRunStatus.RUNNING and live.result is None
-                assert set(live.progress) == {"ta", "cc", "lr"} and not live.failures
-                assert live.progress["lr"].score == Decimal("6.5")
-                assert len(live.progress["lr"].feedback) <= 800
-            return await super().complete(messages, schema, options=options)
-
-    provider = InspectingProvider({5: json.dumps(lr)})
+    provider = FakeProvider({("lr", "scoring", 1): json.dumps(lr)})
     runner = worker(db_session, settings, provider)
+    original = runner._checkpoint
+
+    async def checkpoint(run_id, event, payload, *args):
+        await original(run_id, event, payload, *args)
+        if event == "criterion.completed" and payload.criterion == "lr":
+            live = await api.get(created.run_id)
+            assert live.status == WritingAIRunStatus.RUNNING and live.result is None
+            assert "lr" in live.progress and not live.failures
+            assert live.progress["lr"].score == Decimal("6.5")
+            assert len(live.progress["lr"].feedback) <= 800
+
+    runner._checkpoint = checkpoint
     await runner.execute(created.run_id)
     saved, events = await api.snapshot(created.run_id, 0)
     assert saved.status == WritingAIRunStatus.COMPLETED
@@ -661,7 +763,7 @@ async def test_verbose_lr_normalizes_persists_live_before_gra_and_replays_withou
     gra_started = next(
         e for e in events if e.event_type == "criterion.started" and e.payload.criterion == "gra"
     )
-    assert completed.sequence < gra_started.sequence
+    assert gra_started.sequence < completed.sequence
     snapshot, replay = await api.snapshot(created.run_id, completed.sequence - 1)
     assert snapshot.progress == saved.progress
     assert replay[0].payload.result == result
@@ -701,9 +803,9 @@ async def test_verbose_lr_normalizes_persists_live_before_gra_and_replays_withou
 async def test_provider_failure_safe_retryable(db_session, writing, settings, code):
     attempt_id, _, task_id = writing
     created = await service(db_session, settings).create(attempt_id, task_id, force=False)
-    await worker(db_session, settings, FakeProvider({0: ProviderFailure(code)})).execute(
-        created.run_id
-    )
+    await worker(
+        db_session, settings, FakeProvider({("ta", "evidence", 1): ProviderFailure(code)})
+    ).execute(created.run_id)
     run, events = await service(db_session, settings).snapshot(created.run_id, 0)
     assert run.status == WritingAIRunStatus.FAILED and run.error_code == code
     assert events[-1].event_type == "run.failed"
@@ -814,7 +916,9 @@ async def test_protocol_adapter_and_unknown_source_repair():
     request = WritingScoringRequest(
         attempt_id=uuid4(), writing_task_id=uuid4(), prompt="Fictional parks?", response=ESSAY
     )
-    provider = FakeProvider({0: '{"evidence":[{"source_id":"P99S1","assessment":"Nhận xét."}]}'})
+    provider = FakeProvider(
+        {("ta", "evidence", 1): '{"evidence":[{"source_id":"P99S1","assessment":"Nhận xét."}]}'}
+    )
     scoring: WritingScoringProvider = MTSWritingScoringService(provider)
     result = await scoring.score(request)
     assert result.overall_band == 6.5 and len(provider.calls) == 9

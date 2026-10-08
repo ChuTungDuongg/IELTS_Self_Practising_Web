@@ -144,7 +144,7 @@ class ScoringOutput(RawScoringOutput):
         strict=True,
         min_length=1,
         max_length=800,
-        description="Vietnamese feedback explaining descriptor fit and the next higher level.",
+        description="Vietnamese feedback explaining why the returned band fits this criterion.",
     )
     strengths: list[Annotated[StrictStr, Field(min_length=1, max_length=240)]] = Field(
         strict=True, max_length=3, description="Vietnamese strengths after selecting the score."

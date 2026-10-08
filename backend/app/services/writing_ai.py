@@ -20,6 +20,7 @@ from app.repositories.writing_ai import ACTIVE, WritingAIRepository
 from app.schemas.chart_cross_check import ChartSpecialistIdentity
 from app.schemas.task1_claims import Task1Analysis
 from app.schemas.writing_ai import (
+    TRAITS,
     AIWritingResult,
     AssessmentStage,
     CreateRunResponse,
@@ -123,12 +124,14 @@ def present_run(run: WritingAIGradingRun) -> RunResponse:
         if run.status == WritingAIRunStatus.COMPLETED
         else None,
         progress={
-            key: CriterionResult.model_validate(value)
-            for key, value in stored.get("criteria", {}).items()
+            trait: CriterionResult.model_validate(stored["criteria"][trait])
+            for trait in TRAITS
+            if trait in stored.get("criteria", {})
         },
         failures={
-            key: CriterionFailure.model_validate(value)
-            for key, value in stored.get("failures", {}).items()
+            trait: CriterionFailure.model_validate(stored["failures"][trait])
+            for trait in TRAITS
+            if trait in stored.get("failures", {})
         },
         error_code=run.error_code,
         error_message=run.error_message,
