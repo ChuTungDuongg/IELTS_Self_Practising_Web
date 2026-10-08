@@ -154,6 +154,45 @@ async def test_leakage_prevents_calls_even_when_resuming(benchmark_files, tmp_pa
         )
 
 
+async def test_self_consistency_uses_literal_three_score_median_and_variance(
+    benchmark_files, tmp_path
+):
+    from app.providers.writing_llm.base import Completion
+
+    path, _ = benchmark_files
+    scores = iter((6, 8, 7))
+
+    class Provider(HybridProvider):
+        def __init__(self, score):
+            super().__init__()
+            self.score = score
+
+        async def complete(self, messages, schema, *, options=None):
+            if "score" in schema["properties"]:
+                return Completion(
+                    json.dumps(
+                        {
+                            "score": self.score,
+                            "feedback": "Diễn đạt rõ.",
+                            "strengths": [],
+                            "improvements": [],
+                        }
+                    )
+                )
+            return await super().complete(messages, schema, options=options)
+
+    configs = architecture_configurations(Settings(_env_file=None), "direct-self-consistency")
+    report = await run_benchmark(
+        load_manifest(path, "dev"),
+        configs,
+        tmp_path / "median",
+        provider_factory=lambda _: Provider(next(scores)),
+    )
+    record = report["records"][0]
+    assert float(record["predicted"]["cc"]) == 7 and record["repeat_spread"]["cc"] == 2
+    assert record["repeat_variance"]["cc"] == pytest.approx(2 / 3)
+
+
 def test_private_manifest_validation_identity_and_density(tmp_path):
     bank = snapshot()
     anchors = [

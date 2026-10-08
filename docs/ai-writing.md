@@ -1,12 +1,30 @@
 # Advisory AI Academic Writing
 
-Task 1 and Task 2 share the configured `mistralai/Ministral-3-8B-Instruct-2512`
-model, provider adapters and existing Modal/vLLM GPU function. Task 2 retains
-its text-only MTS pipeline and current local `mts-task2-v7` cache contract. Task 1
-uses `mts-task1-scoring-v5`, composite `mts-task1-visual-v5`, and the unchanged
-`mts-task1-visual-v3` perception contract. These scoring changes preceded the
-latency phase. See [the latency engineering case study](enhance_latency.md) for
-bounded concurrent execution, serving settings, measurements and reproduction.
+CURRENT overview, 2026-10-08. Task 1 defaults to **LCES-inspired Hybrid TACS** (`task1-hybrid-tacs-v1`): grounded Direct TA, plus bounded language-anchor searches for CC/LR/GRA with criterion-local Direct fallback. Task 2 remains the local text-only MTS pipeline, `mts-task2-v7`. The configured provider/model and existing Modal/vLLM function are shared. The visual contract remains `mts-task1-visual-v3`.
+
+See [the TACS design and operating guide](lces_adapt.md) for tree semantics, reliability boundaries, research limits and all A0–A4 modes. [The latency case study](enhance_latency.md) retains prior synthetic MTS measurements; those are not measured TACS gains.
+
+## Task 1 Hybrid TACS and human anchors
+
+TA reuses primary visual grounding, optional fail-open DePlot reconciliation, facts and claim verification, then makes one normal Direct scoring turn. It never queries a production anchor ladder or comparator. Language traits independently traverse a contiguous whole-band ladder using one stable representative per visited band and exactly two swapped comparisons per node. Both normalized outcomes must agree exactly. Comparable returns the pivot; adjacent supported bounds reconstruct a Decimal half-band. Sparse coverage, position conflict, outer-range failure, provider failure or budget exhaustion triggers only that language trait's Direct fallback. There is no clamping, comparator retry, third vote or numeric label in comparative prompts.
+
+Default two nodes means at most four comparisons per language trait, twelve total before fallback. Comparisons use a 128-token cap. Direct scoring retains 3072 tokens and the existing single bounded repair (4096 maximum for length). Every completion shares the existing run-local limiter, default two; linguistic work overlaps visual dependencies. These are theoretical call bounds, not measured latency/cost improvements.
+
+A deterministic tree score is final independently of feedback. One strict 4096-token synthesis request attaches Vietnamese feedback to pairwise successes and cannot return score fields. Synthesis failure preserves scores, modes, private tree diagnostics and aggregate eligibility: feedback is null/omitted, empty lists, `feedback_status=UNAVAILABLE`, `feedback_error_code=AI_FEEDBACK_UNAVAILABLE`. No fabricated feedback, rescore or Direct substitution follows. Legacy criterion DTOs default AVAILABLE, and Direct/MTS raw outputs still require valid feedback. The UI preserves the band and existing human comments when copying unavailable AI feedback.
+
+Administrators curate `/admin/writing-anchors`. All reads/writes under `/api/v1/admin/writing-anchors` use existing AdminUser authorization. The workspace offers frozen published/previously-published archived task selection, paragraph-preserving response entry and four manual labels (TA or TR, CC, LR, GRA), without required feedback/overall. DRAFT is editable; ACTIVE/RETIRED are immutable. Create a draft or clone ACTIVE, then activate atomically. PostgreSQL triggers and serialized edit/activation locks enforce these rules. Empty/sparse activation is supported. Production readiness counts only Task 1 CC/LR/GRA; TA and Task 2 labels are explicitly research coverage.
+
+Migration `20261008_0021` adds the initially empty human bank; `20261008_0022` adds nullable run architecture, anchor-set FK, execution config and private diagnostic JSONB. Existing runs are not rewritten. Null execution configuration means legacy MTS. At enqueue, Task 1 pins the architecture/prompts, set ID/version or explicit none, and node budget before fingerprint/cache selection. Workers load only that frozen snapshot, including retired versions; activation while queued cannot change the run. Exact task ID, visual bytes/type, provider/model and execution versions participate in new Task 1 fingerprints. Task 2 fingerprint behavior remains unchanged.
+
+Public results/SSE expose scores, availability and safe stages, never bank IDs/text/labels/pivots/preferences. Private tree/config data stays outside result JSON. Existing cursor replay, heartbeats, partial results and durable checkpoints are retained. AI never mutates official human scores or attempts; explicit human Save remains required.
+
+```dotenv
+AI_WRITING_TASK1_SCORER=anchor_pairwise
+AI_WRITING_PAIRWISE_MAX_TREE_NODES=2
+AI_WRITING_MAX_CONCURRENT_LLM_REQUESTS=2
+```
+
+Task 1 selectors are `anchor_pairwise` (default), `direct`, and `mts` (retained rollback/A1). Node budget is 1–3. With no usable human bank, language traits fall back to Direct and TA stays grounded Direct. Task 2 always remains MTS. The [existing T1-C CLI](../benchmarks/writing_task1/README.md) supports A0 Direct, A1 MTS, A2 independent N=3 Direct median, A3 production Hybrid and A4 future ordinal work, with private/read-only sources and split-wide ID/normalized-essay leakage checks.
 
 ## Task 2: text-only assessment
 
@@ -35,13 +53,11 @@ helpers are isolated and documented; source-ID inference never calls them.
 Each evidence/scoring interaction gets at most one targeted correction, then
 fails that criterion safely if still invalid; remaining criteria continue.
 
-Prompt version **`mts-task2-v6`** requires natural Vietnamese for assessments,
+Current prompt version **`mts-task2-v7`** retains natural Vietnamese for assessments,
 feedback, strengths and improvements, while preserving original English quotes.
-Old v1/v2/v3/v4/v5 assessments remain history and are never reused by v6. Deployed secrets
-still naming older versions use effective v6 for fingerprinting/execution. Custom labels
-are prefixed by v6 so they cannot accidentally reuse the previous contract.
+Old prompt-version assessments remain readable history and cannot be reused as current v7 cache entries. Effective prompt versioning prefixes custom labels with v7.
 
-Both `mts-task2-v6` and `mts-task1-visual-v2` tighten descriptor discrimination:
+Historical v6/Task 1 v2 descriptor refinements, retained by the current Direct/MTS guidance, tighten discrimination:
 compare the plausible whole-band profile with its immediate neighbours, requiring
 sustained whole-response evidence for higher-level qualities. Isolated strong
 sentences and isolated weaknesses do not represent the whole essay. Uncertainty
@@ -161,8 +177,7 @@ Task Achievement uses that reference, deterministic facts and verdicts for holis
 assessment against original paraphrases of the
 [official Academic Task 1 descriptors](https://ielts.org/cdn/Guides/ielts-writing-band-descriptors.pdf)
 (May 2023, pages 3–5). There are no error-count penalties, score caps or a fifth
-criterion. CC/LR/GRA receive only prompt/essay and their own source evidence,
-without visual data or another criterion's score. Existing score normalization,
+criterion. Hybrid CC/LR/GRA receive language comparisons from prompt/essay contexts, without visual analysis or another criterion's score. Explicit MTS retains its own source-evidence stage. Existing score normalization,
 equal-weight Decimal mean and half-band rounding are reused.
 
 `HIGH`/`MEDIUM` grounding supports normal factual comparison. `LOW` shows a visible
@@ -174,7 +189,7 @@ Any failed criterion suppresses the overall score, preserves successful cards an
 allows an explicit regrade.
 
 Existing JSONB runs/events store typed Task 1 analysis alongside partial criteria;
-no schema migration is necessary. SSE persists grounding started/completed/failed,
+T1-A/B required no additional schema; T1-C adds migrations 0021/0022 for anchors and pinned execution. SSE persists grounding started/completed/failed,
 derived-facts completed, extraction/verification started/completed/failed, and the
 existing criterion/run events. Snapshots and cursor replay restore confidence,
 claim verdicts, partial cards and current activity. Heartbeats renew the lease and
@@ -194,7 +209,7 @@ stay selectable. Copying suggestions changes only authorized local manual form
 state. Explicit human Save remains required: AI runs never write official criterion
 scores, attempt band, History or Analytics. No combined AI Writing band is shown.
 T1-B adds the optional DePlot cross-check described below. TinyChart, extra judge
-VLMs, model voting and T1-C evaluation remain out of scope.
+VLM adjudicators and production model voting remain out of scope. T1-C extends the existing evaluation framework with A0–A3.
 
 ## Backend setup
 
@@ -216,7 +231,7 @@ AI_WRITING_MODAL_SECRET=<proxy token secret>
 AI_WRITING_VLLM_API_KEY=
 AI_WRITING_REQUEST_TIMEOUT_SECONDS=300
 AI_WRITING_STARTUP_TIMEOUT_SECONDS=600
-AI_WRITING_PROMPT_VERSION=mts-task2-v6
+AI_WRITING_PROMPT_VERSION=mts-task2-v7
 AI_WRITING_STALE_AFTER_SECONDS=90
 ```
 

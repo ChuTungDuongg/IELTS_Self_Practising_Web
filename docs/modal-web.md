@@ -1,5 +1,7 @@
 # Run Next.js and FastAPI together on Modal
 
+CURRENT hosting guide. Writing Task 1 now defaults to Hybrid TACS; Task 2 stays MTS v7. Apply Alembic migrations before serving. `AI_WRITING_TASK1_SCORER=anchor_pairwise|direct|mts` and `AI_WRITING_PAIRWISE_MAX_TREE_NODES=2` use the existing backend-only AI environment forwarding; no new GPU deployment or function is needed. The versioned anchor bank belongs to the existing PostgreSQL snapshot lifecycle. Admin curation is available at `/admin/writing-anchors`; initially empty banks use language Direct fallback with grounded Direct TA. See [the current AI overview](ai-writing.md) and [TACS guide](lces_adapt.md).
+
 After the one-time setup below, from the repository root:
 
 ```powershell

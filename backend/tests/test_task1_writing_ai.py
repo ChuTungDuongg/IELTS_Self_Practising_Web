@@ -16,6 +16,7 @@ from test_writing_ai import service, worker
 from test_writing_ai import writing as writing
 
 from app.api.v1.writing_ai import event_stream
+from app.core.config import Settings
 from app.core.exceptions import AppError
 from app.domains.writing.task_types import WritingTaskType
 from app.models import (
@@ -34,10 +35,14 @@ from app.services.writing_ai import input_fingerprint
 
 
 @pytest.fixture
-def settings(base_settings):
+def settings():
     # This module retains explicit legacy MTS visual/run regression expectations.
-    base_settings.ai_writing_task1_scorer = "mts"
-    return base_settings
+    return Settings(
+        _env_file=None,
+        ai_writing_enabled=True,
+        ai_writing_vllm_base_url="https://llm.example/v1",
+        ai_writing_task1_scorer="mts",
+    )
 
 
 async def test_failed_early_claim_extraction_keeps_warning_in_partial_analysis(

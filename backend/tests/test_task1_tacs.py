@@ -88,3 +88,20 @@ async def test_ta_never_accesses_language_bank(monkeypatch):
         HybridProvider(), anchor_snapshot=bank, target_fingerprint="target"
     )
     assert await service.assess(request(), no_trace) is not None
+
+
+@pytest.mark.asyncio
+async def test_private_tree_progress_exists_at_directional_checkpoint():
+    service = Task1TACSScoringService(
+        HybridProvider(), anchor_snapshot=snapshot(), target_fingerprint="target"
+    )
+    captured = []
+
+    async def checkpoint(event, payload):
+        if event == "anchor.forward.completed":
+            tree = service.scoring_metadata()["criteria"][payload.criterion]["tree"]
+            captured.append(tree)
+            assert tree["nodes"][0]["forward"] == "COMPARABLE"
+
+    assert await service.assess(request(), checkpoint) is not None
+    assert len(captured) == 3

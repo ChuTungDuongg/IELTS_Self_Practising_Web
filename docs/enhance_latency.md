@@ -1,5 +1,7 @@
 # IELTS Writing latency: dependency graphs, bounded concurrency and serving
 
+> HISTORICAL MTS latency engineering case study. The measurements and code paths below describe the earlier Task 1 MTS v5 / Task 2 v7 phase. Task 1 production now defaults to [Hybrid TACS](lces_adapt.md), preserving the same visual dependencies and concurrency limiter. The default TACS bound is two comparisons per node, four per language criterion and twelve before fallbacks; Direct repair, synthesis and perception add calls. No TACS GPU latency or human-agreement measurements are claimed here.
+
 Implementation session: 2026-10-08. Starting commit:
 `814197afcf83b9ed8bcc71fc01d914808c668f7b` on local `main`, also the remote-main
 reference supplied for this task. The worktree already contained uncommitted

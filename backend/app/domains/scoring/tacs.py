@@ -46,6 +46,7 @@ class TACSTree:
         if type(max_nodes) is not int or not 1 <= max_nodes <= 3:
             raise ValueError("Tree node budget must be between 1 and 3")
         self.comparator, self.max_nodes = comparator, max_nodes
+        self.progress = TreeResult()
 
     async def score(
         self,
@@ -59,6 +60,7 @@ class TACSTree:
     ) -> TreeResult:
         if criterion not in LANGUAGE_TRAITS:
             raise ValueError("TA is never a production pairwise criterion")
+        self.progress = TreeResult()
         anchors = snapshot.language_anchors(task_number, criterion)
         if not anchors:
             return TreeResult(fallback_reason="NO_ANCHORS")
@@ -85,9 +87,10 @@ class TACSTree:
             )
             node = TreeNode(band=pivot, anchor_id=anchor.id)
             nodes.append(node)
+            self.progress.nodes = nodes
             await emit("anchor.node.started")
 
-            async def direction(first, second, reverse):
+            async def direction(first, second, reverse, node=node):
                 try:
                     preference = await self.comparator.compare(criterion, first, second)
                 except TraceFailure:
@@ -96,6 +99,10 @@ class TACSTree:
                     outcome = None
                 else:
                     outcome = normalize(preference.preference, reverse=reverse)
+                if reverse:
+                    node.reverse = outcome
+                else:
+                    node.forward = outcome
                 await emit("anchor.reverse.completed" if reverse else "anchor.forward.completed")
                 return outcome
 

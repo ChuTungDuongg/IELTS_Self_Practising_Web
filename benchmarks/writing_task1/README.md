@@ -1,12 +1,25 @@
 # Task 1 evaluation (T1-C)
 
-The CLI reuses production visual grounding, optional fail-open DePlot,
-deterministic facts, claim verification, source evidence and four-criterion MTS.
-It needs no database. Production uses composite fingerprint `mts-task1-visual-v5`
-with perception contract `mts-task1-visual-v3` and scoring guidance `mts-task1-scoring-v5`.
-The v3 benchmark candidate preserves the former scoring/evidence prompts with
-the same current perception and scoring engine. The current candidate is v5;
-v4 is not an alias for the new scorer. Task 2 is not run by this CLI.
+CURRENT benchmark contract: `task1-benchmark-v2`. The CLI reuses production visual grounding, optional fail-open DePlot, deterministic facts and claim verification. A0 Direct, A1 MTS, A2 three independent full Direct assessments with criterion median, and A3 exact Hybrid TACS are supported. A4 ordinal modelling is future work. Task 2 is not run here.
+
+Default architecture is A3, grounded Direct TA plus language pairwise trees with Direct fallback. No-bank evaluation is supported. A1 keeps local MTS v5 and explicit legacy v3. The visual contract is unchanged `mts-task1-visual-v3`. `--architecture direct|mts|direct-self-consistency|anchor-pairwise|all` selects architecture; `--tree-node-budget 1|2|3` sets the bounded tree. Explicit historical `--scoring-version v3|v5|both` remains an MTS-only comparison and implies MTS if architecture is omitted. It cannot be combined with non-MTS architectures except default v5.
+
+## Human anchor sources and leakage
+
+A3 accepts either `--anchor-source postgres` (read-only ACTIVE PostgreSQL snapshot) or `--anchor-manifest PATH` (private evaluation JSON), mutually exclusively. Omission means an explicitly empty bank. Neither source ingests or mutates production anchors. The private JSON contract is `{schema_version:1,id:UUID,version:positive_integer,anchors:[...]}`. Each anchor has `id,writing_task_id,test_version_id,task_number,task_type,prompt,response_text,human_scores:{ta,cc,lr,gra},sample_id,provenance`. Four labels must be finite valid half-bands; provenance and response must be nonblank. UUIDs/sample IDs must be unique. Keep it private; it is not a seed file.
+
+The entire selected evaluation split is checked before `--limit`, provider calls or cache reuse. Matching anchor source sample IDs or NFKC/casefold/whitespace-normalized essay hashes cause `BENCHMARK_ANCHOR_LEAKAGE`. Original stored text is preserved. Model requests exclude human targets, visual truth and source provenance; comparison requests additionally exclude anchor labels/identity. A3 cache keys include source content digest, frozen identity/version, density, prompts and node budget. Implementation hashes/contract v2 prevent reuse of old benchmark checkpoints as current configurations.
+
+From `backend/`, validate without inference:
+
+```powershell
+uv run python ../scripts/benchmark_task1.py --manifest ../benchmarks/writing_task1/private/manifest.jsonl --split dev --architecture anchor-pairwise --anchor-source postgres --tree-node-budget 2 --dry-run
+uv run python ../scripts/benchmark_task1.py --manifest ../benchmarks/writing_task1/private/manifest.jsonl --split dev --architecture all --anchor-manifest ../benchmarks/writing_task1/private/anchors.json --dry-run
+```
+
+Dry-run validates local sources and emits a plan; it makes no model call or production mutation. PostgreSQL mode requires configured access. Actual scoring requires explicitly running without `--dry-run`; it is never automatically launched. A2 runs three complete independent A0 assessments per sample/configuration, storing individual score/perception/cost summaries, spread and population variance. Only three certified perception-OK repeats can certify aggregated perception OK.
+
+Reports preserve the existing exact/±0.5/±1, MAE/RMSE/bias/QWK and ALL/PERCEPTION_OK analysis. Hybrid adds mean/p50/max language nodes, total comparisons, visited bands, strict agreement, every fallback reason, and costs. TA accuracy is retained but TA is excluded from tree/fallback denominators. JSON/Markdown and `architecture-costs.csv` identify architecture, frozen bank/version/density, calls and latency; `disagreements.csv` retains score disagreements. Source essays/anchor text/private provenance/raw responses/secrets never enter reports. Recorded attempts distinguish failure history from terminal scores. Theoretical default bound: twelve comparisons before fallback, plus one synthesis for pairwise successes, Direct turns/repairs and perception. No new real-model result is claimed.
 
 ## Local dataset
 

@@ -37,6 +37,8 @@
 - ✅ Pause/Resume giữ nguyên attempt và thời gian active; History nhóm theo skill, test version và Full Mock
 - ✅ Autosave có revision/concurrency check; bản nháp chưa lưu có thể khôi phục sau reload hoặc mất mạng ngắn hạn
 - ✅ Writing lưu riêng từng task, đếm từ và chấm thủ công theo TA/CC/LR/GRA, kèm feedback tùy chọn cho từng tiêu chí
+- ✅ AI Writing Task 1: Hybrid TACS với TA chấm Direct từ hình và CC/LR/GRA so sánh anchor có nhãn người chấm; thiếu anchor dùng Direct fallback. [Kiến trúc và giới hạn](docs/lces_adapt.md).
+- ✅ `/admin/writing-anchors`: chọn đề Writing đã đóng băng, nhập bài và bốn nhãn người chấm; draft/activate/clone và thống kê coverage.
 - ✅ AI Writing Task 2: nhận xét tham khảo theo bốn tiêu chí, Scoring Trace trực tiếp; điểm chính thức vẫn cần người chấm Save. [Cấu hình và Modal deployment](docs/ai-writing.md).
 - ✅ Chạy Next.js + FastAPI + GPU AI riêng bằng một lệnh `modal serve deploy/modal/app.py`; backend tự lấy URL của Ministral 3 8B. [Thiết lập, web-only và PostgreSQL Volume](docs/modal-web.md).
 - ✅ Band khách quan chỉ chính thức khi module có 40 câu; overall dùng Reading + Listening + Writing

@@ -116,6 +116,11 @@ class Task1TACSScoringService(Task1DirectScoringService):
         tree = TACSTree(comparator, self.max_tree_nodes)
 
         async def event(name):
+            self.metadata[trait] = {
+                "mode": "SEARCHING",
+                "tree": tree.progress.model_dump(mode="json"),
+                "pairwise_calls": tree.progress.pairwise_calls,
+            }
             await trace(name, EventPayload(criterion=trait, stage="pairwise"))
 
         with self.latency.stage("pairwise", trait):

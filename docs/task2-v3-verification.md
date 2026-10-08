@@ -1,3 +1,5 @@
+> HISTORICAL verification of Task 2 v3. Current Task 2 is MTS v7; Task 1 is Hybrid TACS. See [the current overview](ai-writing.md). Original results and Git state below are preserved as history.
+
 # Task 2 v3 verification — 2026-10-08
 
 1. **Previous LR root cause:** the model generated a quote, then exact/conservative Unicode-whitespace matching rejected punctuation or copying differences as `QUOTE_NOT_EXACT`. A second invalid evidence response escaped the sequential loop and prevented GRA from running. Provider connectivity was already working.
