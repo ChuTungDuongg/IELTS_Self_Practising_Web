@@ -11,15 +11,15 @@ from app.domains.scoring.essay_sources import SourceSegment, segment_essay
 from app.providers.writing_llm.base import Message, OutputFailureReason
 from app.schemas.writing_ai import EvidenceResult, EvidenceSelection, ScoringOutput, Trait
 
-AI_WRITING_PROMPT_VERSION = "mts-task2-v3"
+AI_WRITING_PROMPT_VERSION = "mts-task2-v4"
 
 
 def effective_prompt_version(configured: str) -> str:
     # Always include the implemented contract in fingerprints, even when a
-    # deployed Secret still names v1/v2 or a custom configuration label.
+    # deployed Secret still names an old contract or a custom label.
     return (
         AI_WRITING_PROMPT_VERSION
-        if configured in {"mts-task2-v1", "mts-task2-v2", AI_WRITING_PROMPT_VERSION}
+        if configured in {"mts-task2-v1", "mts-task2-v2", "mts-task2-v3", AI_WRITING_PROMPT_VERSION}
         else f"{AI_WRITING_PROMPT_VERSION}:{configured}"[:80]
     )
 
@@ -129,7 +129,28 @@ def scoring_messages(
     return [
         {
             "role": "system",
-            "content": f"{GUARD}\nCriterion: {TRAIT_NAMES[trait]}. {SCOPES[trait]}\nSemantic authority: official IELTS Writing Task 2 Band Descriptors (May 2023); faithful whole-band paraphrases: {RUBRICS[trait]} {LOW_BANDS[trait]} {COMMON_LOW_GUIDANCE}\nEvaluate in this order without exposing hidden reasoning: criterion requirements, observed source evidence, weaknesses and whether isolated or recurring, most plausible whole-band fit, compare the immediately lower and higher official whole-band descriptors, final half-band, then Vietnamese feedback/strengths/improvements. Half-bands are interpolation between adjacent official whole-band descriptors, not separate rubrics. Judge the whole essay, including counterevidence; no cross-criterion penalties, fixed subtraction, error-count rules or hard caps. Do not infer a high band merely from intelligibility, visible paragraphing, ambitious words or absence of obvious faults. When fit is ambiguous, do not promote to the upper adjacent half-band without affirmative support for its descriptor features. For a provisional score >= 7.5, challenge its fit against lower and higher levels in this SAME interaction and return concise high_band_justification grounded in source support, not chain-of-thought. Exceptional responses can receive 8–9. Score 0 through 9 in increments of 0.5 only.\nReturn bounded calibration: support (up to 3 source_id/assessment items), next_band (the next higher official whole-band descriptor: floor(score) + 1, or null at 9), next_band_blockers (up to 2 source_id/assessment/severity items describing aspects of the next-higher official descriptor not yet consistently demonstrated; empty only at 9), and comparison. For half-bands explain fit between the bounding whole bands; for whole bands compare adjacent whole levels. At 9 explain fit to the highest descriptor without inventing a higher level. No mechanical gates. Keep assessments/comparison/justification in Vietnamese. Ensure score, calibration and feedback agree on weakness extent; revise contradictions before returning. Feedback must explain descriptor fit and why the next level is not established, in one concise Vietnamese paragraph (at most 800 characters); strengths and improvements are Vietnamese, at most 3 each, at most 240 characters each. JSON schema: {json.dumps(schema)}",
+            "content": (
+                f"{GUARD}\nCriterion: {TRAIT_NAMES[trait]}. {SCOPES[trait]}\n"
+                "Semantic authority: official IELTS Writing Task 2 Band Descriptors (May 2023); "
+                f"faithful whole-band paraphrases: {RUBRICS[trait]} {LOW_BANDS[trait]} {COMMON_LOW_GUIDANCE}\n"
+                "Assess this criterion's requirements, source evidence and limitations holistically. "
+                "Compare the most plausible fit with the immediately lower and higher official whole-band descriptors, "
+                "then select the final score and Vietnamese feedback/strengths/improvements. "
+                "Half-bands are interpolation between adjacent official whole-band descriptors, not separate rubrics. "
+                "Consider the whole essay and the extent/communicative effect of isolated or recurring weaknesses. "
+                "No cross-criterion penalties, fixed subtraction, error-count rules or hard caps. "
+                "High bands should fit the corresponding descriptor overall, with affirmative evidence; "
+                "intelligibility, paragraphs, ambitious words or absence of obvious faults alone do not establish that fit. "
+                "Exceptional responses can receive 8–9. Score 0 through 9 in increments of 0.5 only.\n"
+                "Return only four fields: score, feedback, strengths, improvements. "
+                "Feedback is one concise Vietnamese paragraph (at most 800 characters) explaining descriptor fit; "
+                "when useful, include a brief comparison explaining which next-higher descriptor features are not "
+                "consistently demonstrated. At 9 compare with the highest descriptor, without inventing a higher level. "
+                "Descriptor comparison guides judgment; it is not an extra assessment dimension or mandatory artifact. "
+                "Strengths and improvements are Vietnamese, at most 3 each and at most 240 characters per item. "
+                "Ensure score and feedback agree on the extent of limitations. "
+                f"Do not return nested calibration metadata or hidden reasoning. JSON schema: {json.dumps(schema)}"
+            ),
         },
         {
             "role": "user",
@@ -156,9 +177,11 @@ def correction_message(reason: OutputFailureReason) -> Message:
         "SCHEMA_VALIDATION": "Return only JSON matching every required field and supplied schema; no markdown or extra fields.",
         "EVIDENCE_UNKNOWN_SOURCE_ID": "Return only source_id values from the provided allowed IDs. Never return or reproduce a quote.",
         "EVIDENCE_SCHEMA_INVALID": "Return only the evidence selection JSON schema, with allowed source_id and Vietnamese assessment; no quote field.",
-        "SCORE_SCHEMA_INVALID": "Return only the scoring schema with bounded Vietnamese feedback, strengths, improvements and calibration.",
-        "SCORE_CALIBRATION_INVALID": "Return concise source-grounded adjacent-descriptor comparison. Use only allowed source IDs. next_band is the next higher official whole band (floor(score) + 1), null at 9; describe next_band_blockers below 9, and affirmative high_band_justification at 7.5 or above. Do not invent penalties or caps.",
-        "QUOTE_NOT_EXACT": "Legacy quote contracts are unsupported in v3; select allowed source_id values instead.",
+        "SCORE_SCHEMA_INVALID": "Return only score, bounded Vietnamese feedback, strengths and improvements matching the scoring schema.",
+        # Compatibility with old provider adapters only; v4 never emits this
+        # failure for optional metadata and never repairs metadata alone.
+        "SCORE_CALIBRATION_INVALID": "Return only the core score, Vietnamese feedback, strengths and improvements; omit optional metadata.",
+        "QUOTE_NOT_EXACT": "Legacy quote contracts are unsupported; select allowed source_id values instead.",
         "INVALID_HALF_BAND": "Score must be exactly one of 0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5, 6.0, 6.5, 7.0, 7.5, 8.0, 8.5, 9.0.",
         "EVIDENCE_ITEM_TOO_LONG": "Use concise Vietnamese assessments (at most 320 characters each) and only allowed source_id values.",
         "TOO_MANY_EVIDENCE_ITEMS": "Return at most 4 evidence items, each with an allowed source_id.",

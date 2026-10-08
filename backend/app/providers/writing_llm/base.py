@@ -47,11 +47,18 @@ OutputFailureReason = Literal[
     "EVIDENCE_UNKNOWN_SOURCE_ID",
     "EVIDENCE_SCHEMA_INVALID",
     "SCORE_SCHEMA_INVALID",
-    "SCORE_CALIBRATION_INVALID",
+    "SCORE_CALIBRATION_INVALID",  # Historical diagnostics only; not emitted by v4 validation.
     "PROVIDER_FINISH_LENGTH",
     "PROVIDER_FINISH_ABORT",
     "PROVIDER_FINISH_ERROR",
     "PROVIDER_FINISH_OTHER",
+]
+
+# Non-fatal explanation diagnostics are distinct from repair/failure reasons.
+CalibrationDiagnosticReason = Literal[
+    "CALIBRATION_DROPPED",
+    "CALIBRATION_SOURCE_DROPPED",
+    "CALIBRATION_METADATA_NORMALIZED",
 ]
 
 

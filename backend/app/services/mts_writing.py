@@ -7,7 +7,7 @@ from pydantic import BaseModel, ValidationError
 from app.domains.scoring.ai_writing import aggregate_ai_task_two
 from app.domains.scoring.ai_writing_validation import (
     resolve_evidence,
-    validate_calibration,
+    sanitize_calibration,
     validation_reason,
 )
 from app.domains.scoring.essay_sources import SourceSegment, segment_essay
@@ -97,7 +97,27 @@ class MTSWritingScoringService:
                 if isinstance(result, EvidenceSelection):
                     resolve_evidence(result, sources)
                 if isinstance(result, ScoringOutput):
-                    validate_calibration(result, sources)
+                    result.calibration, notices = sanitize_calibration(
+                        result.calibration, result.score, sources
+                    )
+                    for notice in notices:
+                        self.diagnostics.append(
+                            OutputDiagnostic(
+                                stage=stage,
+                                criterion=trait,
+                                reason=notice,
+                                attempt=repair + 1,
+                                finish_reason=finish_reason,
+                            )
+                        )
+                        logger.info(
+                            "AI optional metadata: stage=%s criterion=%s reason=%s attempt=%s finish_reason=%s",
+                            stage,
+                            trait,
+                            notice,
+                            repair + 1,
+                            finish_reason,
+                        )
                 return result
             except ValidationError as exc:
                 reason = validation_reason(exc, stage)

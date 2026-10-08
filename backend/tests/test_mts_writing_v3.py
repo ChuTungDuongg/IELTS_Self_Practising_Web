@@ -106,11 +106,12 @@ async def test_vietnamese_independent_prompts_and_cache_version():
         assert "Vietnamese" in messages[0]["content"] and "UNTRUSTED DATA" in messages[0]["content"]
     data = json.loads(provider.calls[0][1]["content"])
     assert "[P1S2] They  help city life." in data["segmented_essay"]
-    for field in ["feedback", "strengths", "improvements", "next_band_blockers"]:
+    for field in ["feedback", "strengths", "improvements"]:
         assert field in provider.calls[1][0]["content"]
     assert sum(e == "criterion.completed" for e, _ in events) == 4
-    for old in ["mts-task2-v1", "mts-task2-v2"]:
-        assert effective_prompt_version(old) == "mts-task2-v3"
+    for old in ["mts-task2-v1", "mts-task2-v2", "mts-task2-v3"]:
+        assert effective_prompt_version(old) == "mts-task2-v4"
+    assert effective_prompt_version("custom") == "mts-task2-v4:custom"
 
 
 @pytest.mark.parametrize(
@@ -204,7 +205,7 @@ async def test_synthetic_cc_descriptor_fit_profiles_have_no_deterministic_score_
 @pytest.mark.parametrize(
     "mutation", ["missing_justification", "wrong_next_band", "no_blockers", "unknown_source"]
 )
-async def test_high_band_requires_source_support_and_next_band_comparison(mutation):
+async def test_high_band_optional_explanation_artifacts_never_gate_score(mutation):
     c = {
         **SCORE["calibration"],
         "next_band": 9,
@@ -229,11 +230,11 @@ async def test_high_band_requires_source_support_and_next_band_comparison(mutati
         c["next_band_blockers"] = []
     if mutation == "unknown_source":
         c["support"][0]["source_id"] = "P99S1"
-    result, mts, _ = await assess(
-        Provider({1: json.dumps({**SCORE, "score": 8.5, "calibration": c})})
-    )
-    assert result.criteria.ta.score == 6.5 and len(mts.diagnostics) == 1
-    assert mts.diagnostics[0].reason == "SCORE_CALIBRATION_INVALID"
+    provider = Provider({1: json.dumps({**SCORE, "score": 8.5, "calibration": c})})
+    result, mts, events = await assess(provider)
+    assert result.criteria.ta.score == 8.5 and len(provider.calls) == 8
+    assert not any(e in {"criterion.retrying", "criterion.failed"} for e, _ in events)
+    assert all(d.reason.startswith("CALIBRATION_") for d in mts.diagnostics)
 
 
 def test_long_original_sentence_survives_without_legacy_copy_limit():
@@ -263,7 +264,7 @@ def test_prompt_scope_adjacent_descriptors_interpolation_and_vietnamese_fields()
         assert "official IELTS Writing Task 2 Band Descriptors" in prompt
         assert "interpolation between adjacent official whole-band descriptors" in prompt
         assert "immediately lower and higher" in prompt
-        assert "Ensure score, calibration and feedback agree" in prompt
+        assert "Ensure score and feedback agree" in prompt
         assert "Vietnamese feedback/strengths/improvements" in prompt
         for other in TRAIT_NAMES.values():
             if other != name:
@@ -315,7 +316,7 @@ def test_low_band_guidance_preserves_distinct_criterion_meanings():
     assert "wholly unrelated" not in prompts["cc"] + prompts["lr"] + prompts["gra"]
 
 
-async def test_band_nine_cannot_claim_an_unavailable_higher_descriptor_blocker():
+async def test_band_nine_unavailable_higher_descriptor_metadata_is_normalized_only():
     value = {
         **SCORE,
         "score": 9,
@@ -325,6 +326,7 @@ async def test_band_nine_cannot_claim_an_unavailable_higher_descriptor_blocker()
             "high_band_justification": "Dẫn chứng phù hợp mức cao nhất.",
         },
     }
-    result, mts, _ = await assess(Provider({1: json.dumps(value)}))
-    assert result.criteria.ta.score == 6.5
-    assert mts.diagnostics[0].reason == "SCORE_CALIBRATION_INVALID"
+    provider = Provider({1: json.dumps(value)})
+    result, mts, _ = await assess(provider)
+    assert result.criteria.ta.score == 9 and len(provider.calls) == 8
+    assert mts.diagnostics[0].reason == "CALIBRATION_METADATA_NORMALIZED"

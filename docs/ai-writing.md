@@ -21,28 +21,39 @@ The model selects up to four allowed IDs; the backend resolves each ID to that
 original slice and emits `source_id`, `quote` and Vietnamese `assessment`.
 Optional model `focus` never determines validity and is not persisted. The model
 never needs to reproduce punctuation or whitespace. Legacy v1/v2 quote recovery
-helpers are isolated and documented; v3 inference never calls them.
+helpers are isolated and documented; source-ID inference never calls them.
 Each evidence/scoring interaction gets at most one targeted correction, then
 fails that criterion safely if still invalid; remaining criteria continue.
 
-Prompt version **`mts-task2-v3`** requires natural Vietnamese for assessments,
+Prompt version **`mts-task2-v4`** requires natural Vietnamese for assessments,
 feedback, strengths and improvements, while preserving original English quotes.
-Old v1/v2 assessments remain history and are never reused by v3. Deployed secrets
-still naming v1/v2 use effective v3 for fingerprinting/execution. Custom labels
-are prefixed by v3 so they cannot accidentally reuse the previous contract.
+Old v1/v2/v3 assessments remain history and are never reused by v4. Deployed secrets
+still naming older versions use effective v4 for fingerprinting/execution. Custom labels
+are prefixed by v4 so they cannot accidentally reuse the previous contract.
 
 Scoring guidance was checked against the [official IELTS descriptors](https://ielts.org/cdn/ielts-guides/ielts-writing-band-descriptors.pdf)
 on 2026-10-08 (current publication: May 2023, Task 2 pages 7–9). Only the four
 official criterion scopes are used. Scoring compares adjacent whole-band
 descriptors holistically; half-bands interpolate, with affirmative descriptor-fit
-support for high scores. The same scoring interaction returns bounded Vietnamese
-source-backed support, next-band comparison, and observed limitations (including
-isolated/recurring extent). These are concise justifications, not chain-of-thought,
-and are excluded from the public result. Structure, IDs, next-band arithmetic and
-the presence of high-band justification are validated. No error-count deductions,
+support for high scores. The scoring interaction requests only four fields:
+`score`, concise Vietnamese `feedback`, and bounded Vietnamese `strengths` and
+`improvements`. A brief adjacent-descriptor comparison may inform feedback; it
+is prompt guidance, not an additional validity gate. No error-count deductions,
 severity-to-band rules, caps or calibration constants alter the model's score.
-Prompts require consistent score/feedback and explain why the next level is not
-established. Fake-provider tests verify this contract, not real-model accuracy.
+Prompts require consistent score/feedback. Fake-provider tests verify this
+contract, not real-model accuracy.
+
+Legacy or unsolicited `calibration` metadata is parsed independently after core
+validation. Missing/malformed metadata never retries or fails a valid criterion.
+Unknown calibration support/blocker IDs discard only those items; malformed
+explanations can discard the optional metadata. The next whole-band label is
+derived from the accepted score (`floor(score) + 1`, or none at 9), without changing
+that score. Safe `CALIBRATION_*` diagnostics are non-fatal and never user errors.
+Primary evidence IDs remain strict. Optional metadata is excluded from public
+results and guided scoring schemas. vLLM receives a copy of the JSON schema with
+unsupported `pattern`, `minLength`, `maxLength`, and `format` constraints removed;
+full backend Pydantic validation remains authoritative. Token budgets and timeouts
+are unchanged. Invalid core results or truncated completions still get one repair.
 
 Every criterion must be in 0–9 in steps of 0.5. FastAPI computes the Decimal
 equal-weight mean and rounds it with the existing `round_to_half` helper:
@@ -76,7 +87,7 @@ AI_WRITING_MODAL_SECRET=<proxy token secret>
 AI_WRITING_VLLM_API_KEY=
 AI_WRITING_REQUEST_TIMEOUT_SECONDS=300
 AI_WRITING_STARTUP_TIMEOUT_SECONDS=600
-AI_WRITING_PROMPT_VERSION=mts-task2-v3
+AI_WRITING_PROMPT_VERSION=mts-task2-v4
 AI_WRITING_STALE_AFTER_SECONDS=90
 ```
 
@@ -299,10 +310,14 @@ pg_restore --dbname=<target-database> --no-owner --no-acl ./database.dump
   Internal `usage_json.diagnostics` and safe log lines contain only stage,
   criterion, attempt and a fixed reason: `INVALID_JSON`, `SCHEMA_VALIDATION`,
   `INVALID_HALF_BAND`, `EVIDENCE_UNKNOWN_SOURCE_ID`, `EVIDENCE_SCHEMA_INVALID`,
-  `SCORE_SCHEMA_INVALID`, `SCORE_CALIBRATION_INVALID`, `EVIDENCE_ITEM_TOO_LONG`,
+  `SCORE_SCHEMA_INVALID`, `EVIDENCE_ITEM_TOO_LONG`,
   `TOO_MANY_EVIDENCE_ITEMS`, `PROVIDER_FINISH_LENGTH`, `EMPTY_MODEL_CONTENT`,
   `MALFORMED_COMPLETION_ENVELOPE` or `OUTPUT_TOO_LARGE`. These diagnostics are
-  excluded from API/SSE. Raw output, Pydantic input and prompts are not persisted.
+  excluded from API/SSE. Optional metadata can produce non-fatal
+  `CALIBRATION_DROPPED`, `CALIBRATION_SOURCE_DROPPED` or
+  `CALIBRATION_METADATA_NORMALIZED` diagnostics, without retry or failure.
+  `SCORE_CALIBRATION_INVALID` remains readable for historical v3 diagnostics only.
+  Raw output, Pydantic input and prompts are not persisted.
   The failed criterion stops animating immediately even if JSON reconciliation
   is temporarily offline; later criteria still run. Snapshot `failures` preserves
   local failure states across reload/reconnect. Completed cards appear on each

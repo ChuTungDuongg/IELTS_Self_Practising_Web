@@ -76,21 +76,6 @@ class FakeProvider:
                 "strengths": ["Diễn đạt rõ ràng."],
                 "improvements": ["Bổ sung một ví dụ cụ thể."],
             }
-            value["calibration"] = {
-                "support": [
-                    {"source_id": "P1S1", "assessment": "Dẫn chứng phù hợp với mức đã chọn."}
-                ],
-                "next_band": int(value["score"]) + 1,
-                "next_band_blockers": [
-                    {
-                        "source_id": "P1S2",
-                        "severity": "isolated",
-                        "assessment": "Một ý hỗ trợ còn chưa phát triển.",
-                    }
-                ],
-                "comparison": "Chưa thể hiện ổn định mức mô tả kế tiếp.",
-                "high_band_justification": None,
-            }
             self.scored += 1
         return Completion(json.dumps(value), {"total_tokens": 10})
 
@@ -540,8 +525,69 @@ async def test_partial_checkpoint_visible_before_next_trait_and_heartbeat_is_onl
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize("old_version", ["mts-task2-v1", "mts-task2-v2"])
-async def test_old_cache_is_preserved_but_never_reused_for_v3(
+@pytest.mark.parametrize(
+    "calibration",
+    [
+        {
+            "next_band": 8.5,
+            "support": [{"source_id": "P99S1", "assessment": "Nhận xét."}],
+            "next_band_blockers": [],
+        },
+        "malformed private metadata",
+    ],
+)
+async def test_gra_optional_calibration_completes_persists_and_replays_without_retry(
+    db_session, writing, settings, calibration
+):
+    attempt_id, _, task_id = writing
+    api = service(db_session, settings)
+    created = await api.create(attempt_id, task_id, force=False)
+    gra = {
+        "score": 8.5,
+        "feedback": "Câu phức được sử dụng linh hoạt, nhưng một vài dấu câu cần rà soát.",
+        "strengths": ["Phần lớn câu chính xác."],
+        "improvements": ["Kiểm tra dấu câu ở các mệnh đề dài."],
+        "calibration": calibration,
+    }
+    provider = FakeProvider({7: json.dumps(gra)})
+    runner = worker(db_session, settings, provider)
+    await runner.execute(created.run_id)
+    saved, events = await api.snapshot(created.run_id, 0)
+    assert saved.status == WritingAIRunStatus.COMPLETED and not saved.failures
+    assert saved.result.criteria.gra.score == Decimal("8.5")
+    assert saved.result.raw_mean == Decimal("7") and saved.result.overall_band == Decimal("7")
+    assert set(saved.progress) == set(TRAITS) and len(provider.calls) == 8
+    assert not any(e.event_type in {"criterion.retrying", "criterion.failed"} for e in events)
+    completed = [e for e in events if e.event_type == "criterion.completed"]
+    assert [e.payload.criterion for e in completed] == list(TRAITS)
+    assert completed[-1].payload.result.score == Decimal("8.5")
+    assert completed[-1].sequence < events[-1].sequence
+    assert events[-1].event_type == "run.completed"
+    # Reconnecting with an event cursor restores the completed result and does
+    # not launch inference again. A fresh snapshot retains all four cards.
+    restored, replay = await api.snapshot(created.run_id, completed[-1].sequence - 1)
+    assert restored.progress == saved.progress
+    assert [e.event_type for e in replay] == ["criterion.completed", "run.completed"]
+    await runner.execute(created.run_id)
+    assert len(provider.calls) == 8
+    assert "private" not in saved.model_dump_json() + str(events)
+    async with db_session.begin():
+        db_session.expire_all()
+        stored = await db_session.get(WritingAIGradingRun, created.run_id)
+        assert len(stored.usage_json["calls"]) == 8
+        assert stored.usage_json["diagnostics"]
+        assert all(d["reason"].startswith("CALIBRATION_") for d in stored.usage_json["diagnostics"])
+        assert "private" not in json.dumps(stored.usage_json)
+        human = await db_session.scalar(
+            select(AttemptWritingScore).where(AttemptWritingScore.attempt_id == attempt_id)
+        )
+        assert human.gra == 7 and human.ta_feedback == "Human feedback stays."
+        assert (await db_session.get(Attempt, attempt_id)).band_score == Decimal("7")
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("old_version", ["mts-task2-v1", "mts-task2-v2", "mts-task2-v3"])
+async def test_old_cache_is_preserved_but_never_reused_for_v4(
     db_session, writing, settings, old_version
 ):
     attempt_id, _, task_id = writing
@@ -559,7 +605,7 @@ async def test_old_cache_is_preserved_but_never_reused_for_v3(
     settings.ai_writing_prompt_version = old_version  # Existing deployed secret.
     upgraded = await api.create(attempt_id, task_id, force=False)
     assert upgraded.run_id != legacy.run_id and not upgraded.cache_hit
-    assert (await api.get(upgraded.run_id)).prompt_version == "mts-task2-v3"
+    assert (await api.get(upgraded.run_id)).prompt_version == "mts-task2-v4"
     history = await api.list(attempt_id, task_id)
     assert len(history.items) == 2
     assert history.items[1].prompt_version == old_version and history.items[1].result == old_result

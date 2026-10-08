@@ -229,6 +229,8 @@ async def test_vllm_evidence_contract_is_guided_and_budget_is_not_globally_incre
         assert schema["properties"]["evidence"]["maxItems"] == 4
         assert "source_id" in schema["$defs"]["EvidenceChoice"]["required"]
         assert "quote" not in schema["$defs"]["EvidenceChoice"]["properties"]
+        source_id = schema["$defs"]["EvidenceChoice"]["properties"]["source_id"]
+        assert not {"pattern", "minLength", "maxLength", "format"} & source_id.keys()
         return httpx.Response(
             200,
             json={
@@ -242,6 +244,31 @@ async def test_vllm_evidence_contract_is_guided_and_budget_is_not_globally_incre
         "AsyncClient",
         lambda **kwargs: original(transport=httpx.MockTransport(handler), **kwargs),
     )
-    await create_provider(settings).complete(
-        [], EvidenceSelection.model_json_schema(mode="serialization")
-    )
+    backend_schema = EvidenceSelection.model_json_schema(mode="serialization")
+    await create_provider(settings).complete([], backend_schema)
+    # Provider compatibility never mutates the authoritative backend schema.
+    assert "pattern" in backend_schema["$defs"]["EvidenceChoice"]["properties"]["source_id"]
+
+
+def test_guided_schema_strips_nested_constraints_preserving_properties_and_numeric_bounds():
+    from app.providers.writing_llm.vllm import guided_json_schema
+    from app.schemas.writing_ai import ScoringOutput
+
+    backend = ScoringOutput.model_json_schema(mode="serialization")
+    guided = guided_json_schema(backend)
+    assert guided["properties"]["score"] == backend["properties"]["score"]
+    assert guided["properties"]["strengths"]["maxItems"] == 3
+    assert "maxLength" not in guided["properties"]["strengths"]["items"]
+    assert backend["properties"]["strengths"]["items"]["maxLength"] == 240
+    # Keyword removal applies to schema nodes, never to names in property maps.
+    named = {
+        "type": "object",
+        "properties": {
+            "format": {"anyOf": [{"type": "string", "format": "date-time"}]},
+            "pattern": {"type": "array", "items": {"type": "string", "pattern": "x"}},
+        },
+    }
+    simplified = guided_json_schema(named)
+    assert set(simplified["properties"]) == {"format", "pattern"}
+    assert simplified["properties"]["format"]["anyOf"] == [{"type": "string"}]
+    assert simplified["properties"]["pattern"]["items"] == {"type": "string"}

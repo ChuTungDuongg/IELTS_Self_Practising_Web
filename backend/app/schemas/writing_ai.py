@@ -1,6 +1,6 @@
 from datetime import datetime
 from decimal import Decimal
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from pydantic import (
@@ -10,12 +10,15 @@ from pydantic import (
     StringConstraints,
     field_serializer,
     field_validator,
-    model_validator,
 )
 
 from app.domains.scoring import validate_writing_criterion_score
 from app.models.enums import WritingAIRunStatus
-from app.providers.writing_llm.base import OutputFailureReason, SafeFinishReason
+from app.providers.writing_llm.base import (
+    CalibrationDiagnosticReason,
+    OutputFailureReason,
+    SafeFinishReason,
+)
 
 Trait = Literal["ta", "cc", "lr", "gra"]
 TRAITS: tuple[Trait, ...] = ("ta", "cc", "lr", "gra")
@@ -98,10 +101,13 @@ class NextBandBlocker(BandSupport):
 
 
 class BandComparison(StrictModel):
-    support: list[BandSupport] = Field(max_length=3)
-    next_band: Decimal | None = Field(ge=0, le=9)
-    next_band_blockers: list[NextBandBlocker] = Field(max_length=2)
-    comparison: str = Field(
+    """Optional, sanitized explanation; never determines IELTS score validity."""
+
+    support: list[BandSupport] = Field(default_factory=list, max_length=3)
+    next_band: Decimal | None = Field(default=None, ge=0, le=9)
+    next_band_blockers: list[NextBandBlocker] = Field(default_factory=list, max_length=2)
+    comparison: str | None = Field(
+        default=None,
         min_length=1,
         max_length=240,
         description="Vietnamese holistic comparison with adjacent official whole-band descriptors; half-bands interpolate.",
@@ -110,7 +116,7 @@ class BandComparison(StrictModel):
         default=None,
         min_length=1,
         max_length=240,
-        description="Vietnamese affirmative descriptor-fit justification for scores >= 7.5, otherwise null.",
+        description="Optional concise Vietnamese descriptor-fit justification.",
     )
 
     @field_serializer("next_band", return_type=float | None)
@@ -131,24 +137,10 @@ class ScoringOutput(TraitScore):
     improvements: list[Annotated[str, Field(min_length=1, max_length=240)]] = Field(
         max_length=3, description="Vietnamese improvements relevant to this criterion."
     )
-    calibration: BandComparison
-
-    @model_validator(mode="after")
-    def consistent_comparison(self):
-        # Compare actual official descriptor levels, not an invented half-band
-        # descriptor. Both 7 and 7.5 compare to whole-band descriptor 8.
-        expected = Decimal(int(self.score) + 1) if self.score < 9 else None
-        if self.calibration.next_band != expected:
-            raise ValueError("Next-band comparison is inconsistent")
-        if self.score < 9 and not self.calibration.next_band_blockers:
-            raise ValueError("Explain which higher descriptor features are not consistently shown")
-        if self.score == 9 and self.calibration.next_band_blockers:
-            raise ValueError("There is no higher descriptor to block above band 9")
-        if self.score >= Decimal("7.5") and (
-            not self.calibration.support or not self.calibration.high_band_justification
-        ):
-            raise ValueError("High-band descriptor-fit justification is required")
-        return self
+    # Accept legacy/unsolicited calibration independently of the core contract.
+    # The domain sanitizer parses it best-effort AFTER core validation. Raw
+    # metadata is excluded from serialization, guided output schemas and repr.
+    calibration: Any = Field(default=None, exclude=True, repr=False)
 
 
 class Criteria(StrictModel):
@@ -203,7 +195,7 @@ class RunActivity(StrictModel):
 class OutputDiagnostic(StrictModel):
     stage: AssessmentStage
     criterion: Trait
-    reason: OutputFailureReason
+    reason: OutputFailureReason | CalibrationDiagnosticReason
     attempt: int = Field(ge=1, le=2)
     finish_reason: SafeFinishReason | None = None
 

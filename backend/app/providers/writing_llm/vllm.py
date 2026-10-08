@@ -5,6 +5,31 @@ from app.providers.writing_llm.base import Completion, Message
 from app.providers.writing_llm.http import ChatCompletionHTTP
 
 
+def guided_json_schema(schema: dict[str, Any]) -> dict[str, Any]:
+    """Strip unsupported vLLM string constraints from a copy, not backend models.
+
+    Walk schema nodes, preserving property names and definitions even if a
+    property happens to be called 'format'. Pydantic remains authoritative.
+    """
+    unsupported = {"pattern", "minLength", "maxLength", "format"}
+    maps = {"properties", "$defs", "definitions", "patternProperties"}
+
+    def visit(value: Any) -> Any:
+        if isinstance(value, list):
+            return [visit(item) for item in value]
+        if not isinstance(value, dict):
+            return value
+        return {
+            key: {name: visit(node) for name, node in child.items()}
+            if key in maps and isinstance(child, dict)
+            else visit(child)
+            for key, child in value.items()
+            if key not in unsupported
+        }
+
+    return visit(schema)
+
+
 class VLLMProvider:
     def __init__(self, settings: Settings) -> None:
         self.model = settings.ai_writing_vllm_model
@@ -33,7 +58,7 @@ class VLLMProvider:
                 "max_tokens": 1800,
                 "response_format": {
                     "type": "json_schema",
-                    "json_schema": {"name": "assessment", "schema": schema},
+                    "json_schema": {"name": "assessment", "schema": guided_json_schema(schema)},
                 },
             }
         )

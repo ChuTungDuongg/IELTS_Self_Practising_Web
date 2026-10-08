@@ -1,17 +1,24 @@
-"""v3 ID resolution; legacy quote recovery is isolated below for old payload tools."""
+"""Strict primary grounding and non-fatal optional explanation sanitization."""
 
 import unicodedata
+from decimal import Decimal
 
 from pydantic import ValidationError
 
 from app.domains.scoring.essay_sources import SourceSegment
-from app.providers.writing_llm.base import OutputFailureReason, ProviderFailure
+from app.providers.writing_llm.base import (
+    CalibrationDiagnosticReason,
+    OutputFailureReason,
+    ProviderFailure,
+)
 from app.schemas.writing_ai import (
     AssessmentStage,
+    BandComparison,
+    BandSupport,
     Evidence,
     EvidenceResult,
     EvidenceSelection,
-    ScoringOutput,
+    NextBandBlocker,
 )
 
 
@@ -29,10 +36,6 @@ def validation_reason(
             return "TOO_MANY_EVIDENCE_ITEMS"
         if location and location[0] == "evidence" and kind == "string_too_long":
             return "EVIDENCE_ITEM_TOO_LONG"
-        if stage == "scoring" and (
-            kind == "value_error" and not location or location and location[0] == "calibration"
-        ):
-            return "SCORE_CALIBRATION_INVALID"
     if stage:
         return "EVIDENCE_SCHEMA_INVALID" if stage == "evidence" else "SCORE_SCHEMA_INVALID"
     return "SCHEMA_VALIDATION"
@@ -52,12 +55,67 @@ def resolve_evidence(
     return EvidenceResult(evidence=evidence)
 
 
-def validate_calibration(result: ScoringOutput, sources: dict[str, SourceSegment]) -> None:
-    # Validate grounding only. Severity is qualitative evidence for LLM holistic
-    # descriptor matching, never a deterministic cap, penalty or score formula.
-    for item in [*result.calibration.support, *result.calibration.next_band_blockers]:
+def _calibration_items[Support: BandSupport](
+    raw: object,
+    model: type[Support],
+    limit: int,
+    sources: dict[str, SourceSegment],
+    reasons: list[CalibrationDiagnosticReason],
+) -> list[Support]:
+    if not isinstance(raw, list):
+        reasons.append("CALIBRATION_DROPPED")
+        return []
+    items = []
+    if len(raw) > limit:
+        reasons.append("CALIBRATION_DROPPED")
+    for value in raw[:limit]:
+        try:
+            item = model.model_validate(value)
+        except ValidationError:
+            reasons.append("CALIBRATION_DROPPED")
+            continue
         if item.source_id not in sources:
-            raise ProviderFailure("AI_PROVIDER_BAD_RESPONSE", reason="SCORE_CALIBRATION_INVALID")
+            reasons.append("CALIBRATION_SOURCE_DROPPED")
+            continue
+        items.append(item)
+    return items
+
+
+def sanitize_calibration(
+    value: object, score: Decimal, sources: dict[str, SourceSegment]
+) -> tuple[BandComparison | None, list[CalibrationDiagnosticReason]]:
+    """Parse optional metadata separately, without changing/rejecting a score.
+
+    Only safe reason codes escape. Malformed explanation text can discard the
+    metadata entirely; unknown support/blocker IDs discard only those items.
+    No comparison artifacts are required at any score, including high bands.
+    """
+    if value is None:
+        return None, []
+    if not isinstance(value, dict):
+        return None, ["CALIBRATION_DROPPED"]
+    reasons: list[CalibrationDiagnosticReason] = []
+    upper = Decimal(int(score) + 1) if score < 9 else None
+    if value.get("next_band") != upper:
+        reasons.append("CALIBRATION_METADATA_NORMALIZED")
+    data = {
+        "next_band": upper,
+        "support": _calibration_items(value.get("support", []), BandSupport, 3, sources, reasons),
+        "next_band_blockers": _calibration_items(
+            value.get("next_band_blockers", []), NextBandBlocker, 2, sources, reasons
+        ),
+        "comparison": value.get("comparison"),
+        "high_band_justification": value.get("high_band_justification"),
+    }
+    if upper is None and data["next_band_blockers"]:
+        data["next_band_blockers"] = []
+        reasons.append("CALIBRATION_METADATA_NORMALIZED")
+    try:
+        result = BandComparison.model_validate(data)
+    except ValidationError:
+        result = None
+        reasons.append("CALIBRATION_DROPPED")
+    return result, list(dict.fromkeys(reasons))
 
 
 def _canonical(text: str) -> tuple[str, list[tuple[int, int]]]:
@@ -86,7 +144,7 @@ def _canonical(text: str) -> tuple[str, list[tuple[int, int]]]:
 
 
 def original_quote(essay: str, quote: str) -> str:
-    """Legacy v1/v2 compatibility only. Never called by the v3 inference pipeline."""
+    """Legacy v1/v2 compatibility only. Never called by source-ID inference."""
     if not quote.strip():
         raise ProviderFailure("AI_PROVIDER_BAD_RESPONSE", reason="QUOTE_NOT_EXACT")
     if quote in essay:
