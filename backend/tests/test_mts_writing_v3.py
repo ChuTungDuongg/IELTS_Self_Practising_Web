@@ -109,9 +109,9 @@ async def test_vietnamese_independent_prompts_and_cache_version():
     for field in ["feedback", "strengths", "improvements"]:
         assert field in provider.calls[1][0]["content"]
     assert sum(e == "criterion.completed" for e, _ in events) == 4
-    for old in ["mts-task2-v1", "mts-task2-v2", "mts-task2-v3"]:
-        assert effective_prompt_version(old) == "mts-task2-v4"
-    assert effective_prompt_version("custom") == "mts-task2-v4:custom"
+    for old in ["mts-task2-v1", "mts-task2-v2", "mts-task2-v3", "mts-task2-v4"]:
+        assert effective_prompt_version(old) == "mts-task2-v5"
+    assert effective_prompt_version("custom") == "mts-task2-v5:custom"
 
 
 @pytest.mark.parametrize(
@@ -281,11 +281,11 @@ def test_prompt_scope_adjacent_descriptors_interpolation_and_vietnamese_fields()
         ("feedback", "x" * 801),
     ],
 )
-async def test_score_schema_limits_repair_only_scoring(field, value):
+async def test_score_display_limits_normalize_without_repair(field, value):
     provider = Provider({1: json.dumps({**SCORE, field: value})})
     result, mts, _ = await assess(provider)
-    assert result.overall_band == 6.5 and len(provider.calls) == 9
-    assert mts.diagnostics[0].reason == "SCORE_SCHEMA_INVALID"
+    assert result.overall_band == 6.5 and len(provider.calls) == 8
+    assert mts.diagnostics[0].reason == "SCORE_PRESENTATION_NORMALIZED"
 
 
 async def test_two_length_completions_fail_one_criterion_and_continue():

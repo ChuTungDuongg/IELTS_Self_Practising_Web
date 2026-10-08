@@ -2,8 +2,10 @@
 
 import unicodedata
 from decimal import Decimal
+from typing import get_args
 
 from pydantic import ValidationError
+from pydantic_core import ErrorType
 
 from app.domains.scoring.essay_sources import SourceSegment
 from app.providers.writing_llm.base import (
@@ -19,7 +21,47 @@ from app.schemas.writing_ai import (
     EvidenceResult,
     EvidenceSelection,
     NextBandBlocker,
+    ValidationIssue,
 )
+
+
+def safe_validation_issues(error: ValidationError) -> list[ValidationIssue]:
+    """Expose fixed field names/indexes and built-in types, never rejected data.
+
+    Extra-field locations come from model output and could themselves contain
+    secrets or essay text. Mask unknown names instead of logging them verbatim.
+    """
+    fields = {
+        "score",
+        "feedback",
+        "strengths",
+        "improvements",
+        "evidence",
+        "source_id",
+        "assessment",
+        "focus",
+        "quote",
+        "calibration",
+    }
+    error_types = get_args(ErrorType)
+    issues = []
+    for item in error.errors(include_url=False, include_context=False, include_input=False)[:8]:
+        path = []
+        for part in item["loc"]:
+            if isinstance(part, int) and part >= 0:
+                path.append(str(part))
+            elif isinstance(part, str) and part in fields:
+                path.append(part)
+            else:
+                path.append("<extra>")
+                break
+        issues.append(
+            ValidationIssue(
+                field=".".join(path)[:120] if path else "<root>",
+                validation_type=item["type"] if item["type"] in error_types else "validation_error",
+            )
+        )
+    return issues
 
 
 def validation_reason(

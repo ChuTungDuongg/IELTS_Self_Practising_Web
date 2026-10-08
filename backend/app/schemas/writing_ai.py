@@ -7,6 +7,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    StrictStr,
     StringConstraints,
     field_serializer,
     field_validator,
@@ -17,6 +18,7 @@ from app.models.enums import WritingAIRunStatus
 from app.providers.writing_llm.base import (
     CalibrationDiagnosticReason,
     OutputFailureReason,
+    PresentationDiagnosticReason,
     SafeFinishReason,
 )
 
@@ -124,23 +126,31 @@ class BandComparison(StrictModel):
         return float(value) if value is not None else None
 
 
-class ScoringOutput(TraitScore):
-    # Bound new inference without rejecting historical results with older limits.
+class RawScoringOutput(TraitScore):
+    """Semantic provider contract, independent of display lengths/item counts."""
+
+    feedback: str = Field(strict=True, min_length=1)
+    strengths: list[StrictStr] = Field(strict=True)
+    improvements: list[StrictStr] = Field(strict=True)
+    # Known legacy metadata remains best-effort, excluded from schema/repr/DTOs.
+    calibration: Any = Field(default=None, exclude=True, repr=False)
+
+
+class ScoringOutput(RawScoringOutput):
+    # Bounded display output. RawScoringOutput is validated before normalization;
+    # historical DTO limits in TraitScore remain unchanged.
     feedback: str = Field(
+        strict=True,
         min_length=1,
         max_length=800,
         description="Vietnamese feedback explaining descriptor fit and the next higher level.",
     )
-    strengths: list[Annotated[str, Field(min_length=1, max_length=240)]] = Field(
-        max_length=3, description="Vietnamese strengths after selecting the score."
+    strengths: list[Annotated[StrictStr, Field(min_length=1, max_length=240)]] = Field(
+        strict=True, max_length=3, description="Vietnamese strengths after selecting the score."
     )
-    improvements: list[Annotated[str, Field(min_length=1, max_length=240)]] = Field(
-        max_length=3, description="Vietnamese improvements relevant to this criterion."
+    improvements: list[Annotated[StrictStr, Field(min_length=1, max_length=240)]] = Field(
+        strict=True, max_length=3, description="Vietnamese improvements relevant to this criterion."
     )
-    # Accept legacy/unsolicited calibration independently of the core contract.
-    # The domain sanitizer parses it best-effort AFTER core validation. Raw
-    # metadata is excluded from serialization, guided output schemas and repr.
-    calibration: Any = Field(default=None, exclude=True, repr=False)
 
 
 class Criteria(StrictModel):
@@ -192,12 +202,19 @@ class RunActivity(StrictModel):
     started_at: datetime
 
 
+class ValidationIssue(StrictModel):
+    # Produced only by safe_validation_issues; never include input or messages.
+    field: str = Field(min_length=1, max_length=120)
+    validation_type: str = Field(min_length=1, max_length=80)
+
+
 class OutputDiagnostic(StrictModel):
     stage: AssessmentStage
     criterion: Trait
-    reason: OutputFailureReason | CalibrationDiagnosticReason
+    reason: OutputFailureReason | CalibrationDiagnosticReason | PresentationDiagnosticReason
     attempt: int = Field(ge=1, le=2)
     finish_reason: SafeFinishReason | None = None
+    validation_issues: list[ValidationIssue] = Field(default_factory=list, max_length=8)
 
 
 class CriterionFailure(StrictModel):

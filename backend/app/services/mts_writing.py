@@ -5,8 +5,10 @@ from typing import TypeVar
 from pydantic import BaseModel, ValidationError
 
 from app.domains.scoring.ai_writing import aggregate_ai_task_two
+from app.domains.scoring.ai_writing_normalization import normalize_scoring_output
 from app.domains.scoring.ai_writing_validation import (
     resolve_evidence,
+    safe_validation_issues,
     sanitize_calibration,
     validation_reason,
 )
@@ -31,6 +33,7 @@ from app.schemas.writing_ai import (
     EventType,
     EvidenceSelection,
     OutputDiagnostic,
+    RawScoringOutput,
     ScoringOutput,
     Trait,
 )
@@ -71,10 +74,15 @@ class MTSWritingScoringService:
         )
         for repair in range(2):
             finish_reason = None
+            issues = []
             try:
                 completion = await self.provider.complete(
                     messages + ([correction_message(reason)] if repair else []),
-                    schema.model_json_schema(mode="serialization"),
+                    # Request concise output/maxItems, but parse semantic core
+                    # independently of provider-unsupported display limits.
+                    (ScoringOutput if schema is RawScoringOutput else schema).model_json_schema(
+                        mode="serialization"
+                    ),
                 )
                 self.usage.append(completion.usage)
                 finish_reason = safe_finish_reason(completion.finish_reason)
@@ -96,10 +104,33 @@ class MTSWritingScoringService:
                 result = schema.model_validate_json(completion.text)
                 if isinstance(result, EvidenceSelection):
                     resolve_evidence(result, sources)
-                if isinstance(result, ScoringOutput):
-                    result.calibration, notices = sanitize_calibration(
+                if isinstance(result, RawScoringOutput):
+                    calibration, notices = sanitize_calibration(
                         result.calibration, result.score, sources
                     )
+                    result, normalized_issues = normalize_scoring_output(result)
+                    result.calibration = calibration
+                    if normalized_issues:
+                        self.diagnostics.append(
+                            OutputDiagnostic(
+                                stage=stage,
+                                criterion=trait,
+                                reason="SCORE_PRESENTATION_NORMALIZED",
+                                attempt=repair + 1,
+                                finish_reason=finish_reason,
+                                validation_issues=normalized_issues,
+                            )
+                        )
+                        for issue in normalized_issues:
+                            logger.info(
+                                "AI display normalization: stage=%s criterion=%s reason=SCORE_PRESENTATION_NORMALIZED attempt=%s finish_reason=%s field=%s validation_type=%s",
+                                stage,
+                                trait,
+                                repair + 1,
+                                finish_reason,
+                                issue.field,
+                                issue.validation_type,
+                            )
                     for notice in notices:
                         self.diagnostics.append(
                             OutputDiagnostic(
@@ -121,6 +152,7 @@ class MTSWritingScoringService:
                 return result
             except ValidationError as exc:
                 reason = validation_reason(exc, stage)
+                issues = safe_validation_issues(exc)
             except ProviderFailure as exc:
                 if exc.code not in {"INVALID_PROVIDER_OUTPUT", "AI_PROVIDER_BAD_RESPONSE"}:
                     raise
@@ -132,6 +164,7 @@ class MTSWritingScoringService:
                 reason=reason,
                 attempt=repair + 1,
                 finish_reason=finish_reason,
+                validation_issues=issues,
             )
             self.diagnostics.append(diagnostic)
             logger.warning(
@@ -142,6 +175,17 @@ class MTSWritingScoringService:
                 repair + 1,
                 finish_reason,
             )
+            for issue in issues:
+                logger.warning(
+                    "AI validation detail: stage=%s criterion=%s reason=%s attempt=%s finish_reason=%s field=%s validation_type=%s",
+                    stage,
+                    trait,
+                    reason,
+                    repair + 1,
+                    finish_reason,
+                    issue.field,
+                    issue.validation_type,
+                )
             if not repair:
                 await trace("criterion.retrying", EventPayload(criterion=trait, stage=stage))
         raise ProviderFailure("AI_PROVIDER_BAD_RESPONSE", reason=reason)
@@ -175,7 +219,7 @@ class MTSWritingScoringService:
                 )
                 score = await self._validated(
                     scoring_messages(request.prompt, request.response, trait, evidence, segments),
-                    ScoringOutput,
+                    RawScoringOutput,
                     sources,
                     trait,
                     "scoring",
@@ -192,8 +236,7 @@ class MTSWritingScoringService:
                     "criterion.failed", EventPayload(criterion=trait, **failure.model_dump())
                 )
                 continue
-            # Calibration is a bounded justification summary, not hidden reasoning.
-            # It guides validation in this interaction; user-facing DTO stays small.
+            # Text is already bounded; optional metadata never gates this result.
             result = CriterionResult(
                 **score.model_dump(exclude={"calibration"}), evidence=evidence.evidence
             )

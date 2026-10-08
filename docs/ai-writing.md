@@ -25,11 +25,11 @@ helpers are isolated and documented; source-ID inference never calls them.
 Each evidence/scoring interaction gets at most one targeted correction, then
 fails that criterion safely if still invalid; remaining criteria continue.
 
-Prompt version **`mts-task2-v4`** requires natural Vietnamese for assessments,
+Prompt version **`mts-task2-v5`** requires natural Vietnamese for assessments,
 feedback, strengths and improvements, while preserving original English quotes.
-Old v1/v2/v3 assessments remain history and are never reused by v4. Deployed secrets
-still naming older versions use effective v4 for fingerprinting/execution. Custom labels
-are prefixed by v4 so they cannot accidentally reuse the previous contract.
+Old v1/v2/v3/v4 assessments remain history and are never reused by v5. Deployed secrets
+still naming older versions use effective v5 for fingerprinting/execution. Custom labels
+are prefixed by v5 so they cannot accidentally reuse the previous contract.
 
 Scoring guidance was checked against the [official IELTS descriptors](https://ielts.org/cdn/ielts-guides/ielts-writing-band-descriptors.pdf)
 on 2026-10-08 (current publication: May 2023, Task 2 pages 7–9). Only the four
@@ -54,6 +54,21 @@ results and guided scoring schemas. vLLM receives a copy of the JSON schema with
 unsupported `pattern`, `minLength`, `maxLength`, and `format` constraints removed;
 full backend Pydantic validation remains authoritative. Token budgets and timeouts
 are unchanged. Invalid core results or truncated completions still get one repair.
+
+Provider output is parsed as `RawScoringOutput`: a valid half-band, non-blank
+text feedback, and lists containing only strings. Unknown extra fields remain
+forbidden; only known legacy `calibration` metadata is tolerated. Text length
+and bullet counts are display constraints, not IELTS score validity gates.
+After semantic validation, a pure helper strips outer whitespace, removes blank
+bullets, keeps at most three meaningful bullets and clips long text to the
+existing 800/240-character bounds. Clipping preserves an original Unicode
+prefix, prefers nearby sentence/word boundaries, and appends an ellipsis; it
+never changes scores, generates new text, or calls another model. The bounded
+`ScoringOutput` is then used for persisted/public criterion results. Guided
+schemas still request maxItems and concise text, but cannot enforce vLLM's
+unsupported string lengths. `SCORE_PRESENTATION_NORMALIZED` with safe field/type
+details is non-fatal and internal only. Missing/blank required feedback, invalid
+scores, non-string/non-list fields, invalid JSON and truncation still repair/fail.
 
 Every criterion must be in 0–9 in steps of 0.5. FastAPI computes the Decimal
 equal-weight mean and rounds it with the existing `round_to_half` helper:
@@ -87,7 +102,7 @@ AI_WRITING_MODAL_SECRET=<proxy token secret>
 AI_WRITING_VLLM_API_KEY=
 AI_WRITING_REQUEST_TIMEOUT_SECONDS=300
 AI_WRITING_STARTUP_TIMEOUT_SECONDS=600
-AI_WRITING_PROMPT_VERSION=mts-task2-v4
+AI_WRITING_PROMPT_VERSION=mts-task2-v5
 AI_WRITING_STALE_AFTER_SECONDS=90
 ```
 
@@ -308,7 +323,10 @@ pg_restore --dbname=<target-database> --no-owner --no-acl ./database.dump
   repair. A second failure emits/persists `criterion.failed` and continues with
   the next criterion. The run becomes FAILED after all four have been attempted.
   Internal `usage_json.diagnostics` and safe log lines contain only stage,
-  criterion, attempt and a fixed reason: `INVALID_JSON`, `SCHEMA_VALIDATION`,
+  criterion, attempt, finish reason, allowlisted field/index paths and built-in
+  Pydantic error types (never input, context or messages). Unknown extra-field
+  names are masked as `<extra>` because names can contain untrusted content.
+  Fixed reasons include `INVALID_JSON`, `SCHEMA_VALIDATION`,
   `INVALID_HALF_BAND`, `EVIDENCE_UNKNOWN_SOURCE_ID`, `EVIDENCE_SCHEMA_INVALID`,
   `SCORE_SCHEMA_INVALID`, `EVIDENCE_ITEM_TOO_LONG`,
   `TOO_MANY_EVIDENCE_ITEMS`, `PROVIDER_FINISH_LENGTH`, `EMPTY_MODEL_CONTENT`,
@@ -317,6 +335,8 @@ pg_restore --dbname=<target-database> --no-owner --no-acl ./database.dump
   `CALIBRATION_DROPPED`, `CALIBRATION_SOURCE_DROPPED` or
   `CALIBRATION_METADATA_NORMALIZED` diagnostics, without retry or failure.
   `SCORE_CALIBRATION_INVALID` remains readable for historical v3 diagnostics only.
+  Presentation limits yield `SCORE_PRESENTATION_NORMALIZED` without another
+  inference call. Required semantic/structural failures still use bounded repair.
   Raw output, Pydantic input and prompts are not persisted.
   The failed criterion stops animating immediately even if JSON reconciliation
   is temporarily offline; later criteria still run. Snapshot `failures` preserves

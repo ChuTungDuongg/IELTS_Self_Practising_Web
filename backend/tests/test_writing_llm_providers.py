@@ -272,3 +272,50 @@ def test_guided_schema_strips_nested_constraints_preserving_properties_and_numer
     assert set(simplified["properties"]) == {"format", "pattern"}
     assert simplified["properties"]["format"]["anyOf"] == [{"type": "string"}]
     assert simplified["properties"]["pattern"]["items"] == {"type": "string"}
+
+
+async def test_vllm_request_keeps_max_items_while_verbose_output_is_normalized_locally(monkeypatch):
+    from app.domains.scoring.ai_writing_normalization import normalize_scoring_output
+    from app.schemas.writing_ai import RawScoringOutput, ScoringOutput
+
+    calls = []
+    output = {
+        "score": 6.5,
+        "feedback": "Từ vựng nhìn chung phù hợp nhưng cần chính xác hơn. " * 25,
+        "strengths": ["Diễn đạt rõ ý."] * 4,
+        "improvements": ["Rà soát dạng từ."],
+    }
+
+    def handler(request):
+        calls.append(request)
+        schema = json.loads(request.content)["response_format"]["json_schema"]["schema"]
+        assert set(schema["required"]) == {"score", "feedback", "strengths", "improvements"}
+        assert schema["properties"]["strengths"]["maxItems"] == 3
+        assert schema["properties"]["improvements"]["maxItems"] == 3
+        assert "maxLength" not in schema["properties"]["feedback"]
+        return httpx.Response(
+            200,
+            json={
+                "choices": [{"finish_reason": "stop", "message": {"content": json.dumps(output)}}]
+            },
+        )
+
+    original = httpx.AsyncClient
+    monkeypatch.setattr(
+        httpx,
+        "AsyncClient",
+        lambda **kwargs: original(transport=httpx.MockTransport(handler), **kwargs),
+    )
+    settings = Settings(
+        _env_file=None,
+        ai_writing_enabled=True,
+        ai_writing_vllm_base_url="https://provider.example/v1",
+    )
+    completion = await create_provider(settings).complete(
+        [], ScoringOutput.model_json_schema(mode="serialization")
+    )
+    normalized, issues = normalize_scoring_output(
+        RawScoringOutput.model_validate_json(completion.text)
+    )
+    assert normalized.score == 6.5 and len(normalized.feedback) <= 800
+    assert len(normalized.strengths) == 3 and issues and len(calls) == 1

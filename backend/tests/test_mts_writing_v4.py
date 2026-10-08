@@ -163,8 +163,8 @@ def test_next_descriptor_is_metadata_derived_from_accepted_score(score, upper):
         {k: v for k, v in CORE.items() if k != "score"},
         {k: v for k, v in CORE.items() if k != "feedback"},
         {**CORE, "feedback": "   "},
-        {**CORE, "strengths": ["Nhận xét."] * 4},
-        {**CORE, "improvements": ["Nhận xét."] * 4},
+        {**CORE, "strengths": "Không phải danh sách."},
+        {**CORE, "improvements": [42]},
         Completion("private invalid JSON", finish_reason="stop"),
         [],
     ],
@@ -202,3 +202,23 @@ async def test_truncated_scoring_core_is_never_accepted():
     assert result is None and len(provider.calls) == 9
     assert [d.reason for d in service.diagnostics] == ["PROVIDER_FINISH_LENGTH"] * 2
     assert all(d.finish_reason == "length" for d in service.diagnostics)
+
+
+async def test_scoring_failure_logs_safe_field_type_and_masks_untrusted_extra_names(caplog):
+    caplog.set_level("INFO", logger="app.services.mts_writing")
+    invalid = {**CORE, "feedback": 42, "private-secret-key": "private rejected value"}
+    result, service, events = await run(CoreProvider({7: invalid, 8: invalid}))
+    assert result is None
+    for diagnostic in service.diagnostics:
+        assert {(i.field, i.validation_type) for i in diagnostic.validation_issues} == {
+            ("feedback", "string_type"),
+            ("<extra>", "extra_forbidden"),
+        }
+    assert "field=feedback validation_type=string_type" in caplog.text
+    assert "field=<extra> validation_type=extra_forbidden" in caplog.text
+    public = str(events)
+    assert "validation_type" not in public
+    assert "private" not in public
+    retained = caplog.text + str(service.diagnostics)
+    for forbidden in ["private", CORE["feedback"], ESSAY, "Discuss fictional parks."]:
+        assert forbidden not in retained

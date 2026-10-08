@@ -61,6 +61,8 @@ CalibrationDiagnosticReason = Literal[
     "CALIBRATION_METADATA_NORMALIZED",
 ]
 
+PresentationDiagnosticReason = Literal["SCORE_PRESENTATION_NORMALIZED"]
+
 
 class ProviderFailure(Exception):
     """Only allowlisted codes/messages cross this boundary; no raw exception bodies."""

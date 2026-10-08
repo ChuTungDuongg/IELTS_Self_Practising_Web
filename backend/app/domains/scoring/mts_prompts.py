@@ -11,7 +11,7 @@ from app.domains.scoring.essay_sources import SourceSegment, segment_essay
 from app.providers.writing_llm.base import Message, OutputFailureReason
 from app.schemas.writing_ai import EvidenceResult, EvidenceSelection, ScoringOutput, Trait
 
-AI_WRITING_PROMPT_VERSION = "mts-task2-v4"
+AI_WRITING_PROMPT_VERSION = "mts-task2-v5"
 
 
 def effective_prompt_version(configured: str) -> str:
@@ -19,7 +19,14 @@ def effective_prompt_version(configured: str) -> str:
     # deployed Secret still names an old contract or a custom label.
     return (
         AI_WRITING_PROMPT_VERSION
-        if configured in {"mts-task2-v1", "mts-task2-v2", "mts-task2-v3", AI_WRITING_PROMPT_VERSION}
+        if configured
+        in {
+            "mts-task2-v1",
+            "mts-task2-v2",
+            "mts-task2-v3",
+            "mts-task2-v4",
+            AI_WRITING_PROMPT_VERSION,
+        }
         else f"{AI_WRITING_PROMPT_VERSION}:{configured}"[:80]
     )
 
@@ -178,7 +185,7 @@ def correction_message(reason: OutputFailureReason) -> Message:
         "EVIDENCE_UNKNOWN_SOURCE_ID": "Return only source_id values from the provided allowed IDs. Never return or reproduce a quote.",
         "EVIDENCE_SCHEMA_INVALID": "Return only the evidence selection JSON schema, with allowed source_id and Vietnamese assessment; no quote field.",
         "SCORE_SCHEMA_INVALID": "Return only score, bounded Vietnamese feedback, strengths and improvements matching the scoring schema.",
-        # Compatibility with old provider adapters only; v4 never emits this
+        # Compatibility with old provider adapters only; v5 never emits this
         # failure for optional metadata and never repairs metadata alone.
         "SCORE_CALIBRATION_INVALID": "Return only the core score, Vietnamese feedback, strengths and improvements; omit optional metadata.",
         "QUOTE_NOT_EXACT": "Legacy quote contracts are unsupported; select allowed source_id values instead.",

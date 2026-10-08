@@ -436,6 +436,7 @@ async def test_lr_evidence_failure_retains_ta_cc_runs_gra_and_terminates_replay(
                 "reason": "EVIDENCE_UNKNOWN_SOURCE_ID",
                 "attempt": n,
                 "finish_reason": "stop",
+                "validation_issues": [],
             }
             for n in [1, 2]
         ]
@@ -586,8 +587,10 @@ async def test_gra_optional_calibration_completes_persists_and_replays_without_r
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize("old_version", ["mts-task2-v1", "mts-task2-v2", "mts-task2-v3"])
-async def test_old_cache_is_preserved_but_never_reused_for_v4(
+@pytest.mark.parametrize(
+    "old_version", ["mts-task2-v1", "mts-task2-v2", "mts-task2-v3", "mts-task2-v4"]
+)
+async def test_old_cache_is_preserved_but_never_reused_for_v5(
     db_session, writing, settings, old_version
 ):
     attempt_id, _, task_id = writing
@@ -605,10 +608,83 @@ async def test_old_cache_is_preserved_but_never_reused_for_v4(
     settings.ai_writing_prompt_version = old_version  # Existing deployed secret.
     upgraded = await api.create(attempt_id, task_id, force=False)
     assert upgraded.run_id != legacy.run_id and not upgraded.cache_hit
-    assert (await api.get(upgraded.run_id)).prompt_version == "mts-task2-v4"
+    assert (await api.get(upgraded.run_id)).prompt_version == "mts-task2-v5"
     history = await api.list(attempt_id, task_id)
     assert len(history.items) == 2
     assert history.items[1].prompt_version == old_version and history.items[1].result == old_result
+
+
+@pytest.mark.integration
+async def test_verbose_lr_normalizes_persists_live_before_gra_and_replays_without_inference(
+    db_session, writing, settings
+):
+    attempt_id, _, task_id = writing
+    api = service(db_session, settings)
+    created = await api.create(attempt_id, task_id, force=False)
+    paragraph = (
+        "Từ vựng phù hợp để trình bày quan điểm, nhưng một số cách kết hợp từ chưa tự nhiên. "
+        "Cần lựa chọn từ chính xác hơn và kiểm tra dạng từ trong các ví dụ hỗ trợ. "
+    ) * 8
+    lr = {
+        "score": 6.5,
+        "feedback": paragraph,
+        "strengths": ["  ", paragraph, "Từ vựng phù hợp.", "Diễn đạt rõ ý.", "Một ý khác."],
+        "improvements": [paragraph, "Chọn từ chính xác hơn."],
+    }
+
+    class InspectingProvider(FakeProvider):
+        async def complete(self, messages, schema):
+            if len(self.calls) == 6:
+                live = await api.get(created.run_id)
+                assert live.status == WritingAIRunStatus.RUNNING and live.result is None
+                assert set(live.progress) == {"ta", "cc", "lr"} and not live.failures
+                assert live.progress["lr"].score == Decimal("6.5")
+                assert len(live.progress["lr"].feedback) <= 800
+            return await super().complete(messages, schema)
+
+    provider = InspectingProvider({5: json.dumps(lr)})
+    runner = worker(db_session, settings, provider)
+    await runner.execute(created.run_id)
+    saved, events = await api.snapshot(created.run_id, 0)
+    assert saved.status == WritingAIRunStatus.COMPLETED
+    assert saved.result.overall_band == Decimal("6.5") and len(provider.calls) == 8
+    result = saved.progress["lr"]
+    assert result.score == Decimal("6.5") and result.feedback.endswith("…")
+    assert len(result.feedback) <= 800 and paragraph.startswith(result.feedback[:-1])
+    assert len(result.strengths) == 3 and result.strengths[0].endswith("…")
+    assert all(0 < len(v) <= 240 for v in result.strengths + result.improvements)
+    assert result.evidence[0].quote == "Fictional parks improve city life."
+    assert not any(e.event_type in {"criterion.retrying", "criterion.failed"} for e in events)
+    completed = next(
+        e for e in events if e.event_type == "criterion.completed" and e.payload.criterion == "lr"
+    )
+    gra_started = next(
+        e for e in events if e.event_type == "criterion.started" and e.payload.criterion == "gra"
+    )
+    assert completed.sequence < gra_started.sequence
+    snapshot, replay = await api.snapshot(created.run_id, completed.sequence - 1)
+    assert snapshot.progress == saved.progress
+    assert replay[0].payload.result == result
+    await runner.execute(created.run_id)
+    assert len(provider.calls) == 8
+    public = saved.model_dump_json() + str(events)
+    assert "SCORE_PRESENTATION_NORMALIZED" not in public and "validation_issues" not in public
+    async with db_session.begin():
+        db_session.expire_all()
+        stored = await db_session.get(WritingAIGradingRun, created.run_id)
+        diagnostic = stored.usage_json["diagnostics"][0]
+        assert diagnostic["reason"] == "SCORE_PRESENTATION_NORMALIZED"
+        assert {"field": "feedback", "validation_type": "string_too_long"} in diagnostic[
+            "validation_issues"
+        ]
+        assert paragraph[:50] not in json.dumps(stored.usage_json)
+        assert stored.result_json["criteria"]["lr"]["feedback"] == result.feedback
+        human = await db_session.scalar(
+            select(AttemptWritingScore).where(AttemptWritingScore.attempt_id == attempt_id)
+        )
+        assert human.lr == 7 and (await db_session.get(Attempt, attempt_id)).band_score == Decimal(
+            "7"
+        )
 
 
 @pytest.mark.integration
