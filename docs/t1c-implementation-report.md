@@ -1,6 +1,6 @@
 # T1-C implementation and verification record
 
-Implemented natively in the authoritative Windows checkout `C:/Users/Admin/IELTS_Self_Practising_Web`, on local branch `codex/t1c-hybrid-tacs`. Starting local HEAD and read-only remote-main reference matched `a4c3f3c245495d33d79f6bf6c25e0b0778492874`. The tracked checkout was clean; existing Writing work and the approved design/plan were retained. No push, deployment or main-branch merge was performed.
+Implemented natively in the authoritative Windows checkout `C:/Users/Admin/IELTS_Self_Practising_Web`, on local branch `codex/t1c-hybrid-tacs`. Starting local HEAD and read-only remote-main reference matched `a4c3f3c245495d33d79f6bf6c25e0b0778492874`. The tracked checkout was clean; existing Writing work and the approved design/plan were retained. No push, deployment or main-branch merge occurred during implementation. After verification, the user explicitly authorized pushing this feature branch and switching local main to the remote main state; that later repository handoff supersedes the original no-push instruction.
 
 ## Delivered behavior
 
@@ -83,4 +83,4 @@ No live GPU or human-labelled benchmark was run. Real-model agreement, position-
 
 No production TA anchor query, numeric anchor-label prompt leakage, one-way node, unbounded search, out-of-range clamp, synthetic production anchor, official-score mutation, MTS removal or push is introduced.
 
-The owned disposable database container is removed after verification. No deployment, configured-database migration, production bank seeding, remote push or main-branch merge is part of this delivery.
+The owned disposable database container was removed after verification. No deployment, configured-database migration, production bank seeding or feature merge into main is part of this delivery. The subsequently authorized Git handoff pushes the feature branch, then switches local main to `origin/main`.
