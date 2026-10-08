@@ -8,6 +8,7 @@ from app.providers.writing_llm.http import ChatCompletionHTTP
 class VLLMProvider:
     def __init__(self, settings: Settings) -> None:
         self.model = settings.ai_writing_vllm_model
+        self.startup_timeout = settings.ai_writing_startup_timeout_seconds
         headers = {}
         if settings.ai_writing_vllm_api_key:
             headers["Authorization"] = f"Bearer {settings.ai_writing_vllm_api_key}"
@@ -17,6 +18,9 @@ class VLLMProvider:
         self.transport = ChatCompletionHTTP(
             settings.ai_writing_vllm_base_url, headers, settings.ai_writing_request_timeout_seconds
         )
+
+    async def ensure_ready(self) -> None:
+        await self.transport.ensure_model(self.model, self.startup_timeout)
 
     async def complete(self, messages: list[Message], schema: dict[str, Any]) -> Completion:
         return await self.transport.send(

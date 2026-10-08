@@ -84,3 +84,29 @@ def test_restore_rejects_path_outside_snapshot_volume(tmp_path, monkeypatch):
     with pytest.raises(RuntimeError, match="Invalid snapshot path"):
         runtime.start_postgres()
     assert not any(args[0] == "pg_restore" for args, _ in calls)
+
+
+def test_bundled_model_url_overrides_old_secret_without_copying_secrets(monkeypatch):
+    monkeypatch.setenv("AI_WRITING_PROVIDER", "vllm")
+    monkeypatch.setenv("AI_WRITING_VLLM_BASE_URL", "https://old.example/v1")
+    monkeypatch.setenv("AI_WRITING_VLLM_MODEL", "old-model")
+    monkeypatch.setenv("AI_WRITING_MODAL_SECRET", "private-token")
+    model = "mistralai/Ministral-3-8B-Instruct-2512"
+    module.configure_ai_environment(True, model, "https://app--serve-dev.modal.run")
+    import os
+
+    assert os.environ["AI_WRITING_VLLM_BASE_URL"] == "https://app--serve-dev.modal.run/v1"
+    assert os.environ["AI_WRITING_VLLM_MODEL"] == model
+    assert os.environ["AI_WRITING_MODAL_SECRET"] == "private-token"
+
+
+def test_web_only_is_disabled_and_external_openai_selection_is_preserved(monkeypatch):
+    import os
+
+    monkeypatch.setenv("AI_WRITING_ENABLED", "true")
+    monkeypatch.setenv("AI_WRITING_PROVIDER", "openai")
+    monkeypatch.setenv("AI_WRITING_OPENAI_MODEL", "account-model")
+    module.configure_ai_environment(False, "bundled-model", None)
+    assert os.environ["AI_WRITING_ENABLED"] == "false"
+    module.configure_ai_environment(True, "bundled-model", "https://unused.example")
+    assert os.environ["AI_WRITING_OPENAI_MODEL"] == "account-model"

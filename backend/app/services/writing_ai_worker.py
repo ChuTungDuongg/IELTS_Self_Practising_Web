@@ -7,13 +7,14 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import Settings
 from app.core.exceptions import AppError
+from app.domains.scoring.mts_prompts import effective_prompt_version
 from app.models.enums import WritingAIRunStatus
 from app.providers.writing_llm import create_provider, provider_identity
 from app.providers.writing_llm.base import LLMProvider, ProviderFailure
 from app.repositories.writing_ai import ACTIVE, WritingAIRepository
-from app.schemas.writing_ai import EventPayload, EventType
+from app.schemas.writing_ai import EventPayload, EventType, OutputDiagnostic
 from app.services.mts_writing import MTSWritingScoringService
-from app.services.writing_ai import WritingAIService, fail_run, input_fingerprint
+from app.services.writing_ai import WritingAIService, fail_run, input_fingerprint, persist_activity
 
 _tasks: set[asyncio.Task] = set()
 
@@ -54,7 +55,10 @@ class WritingAIWorker:
                 ).input(run.attempt_id, run.writing_task_id)
                 provider, model = provider_identity(self.settings)
                 fingerprint = input_fingerprint(
-                    request, self.settings.ai_writing_prompt_version, provider, model
+                    request,
+                    effective_prompt_version(self.settings.ai_writing_prompt_version),
+                    provider,
+                    model,
                 )
                 if fingerprint != run.input_fingerprint:
                     raise AppError(
@@ -62,12 +66,17 @@ class WritingAIWorker:
                     )
                 run.status = WritingAIRunStatus.RUNNING
                 run.started_at = run.updated_at = datetime.now(UTC)
+                persist_activity(run, "run.started", EventPayload())
                 await repository.append_event(run, "run.started", EventPayload())
-            mts = MTSWritingScoringService(self.provider or create_provider(self.settings))
+            provider_client = self.provider or create_provider(self.settings)
+            mts = MTSWritingScoringService(provider_client)
             heartbeat = asyncio.create_task(self._heartbeat(run_id))
+            await self._checkpoint(run_id, "provider.starting", EventPayload())
+            await provider_client.ensure_ready()
+            await self._checkpoint(run_id, "provider.ready", EventPayload())
 
             async def trace(event_type: EventType, payload: EventPayload) -> None:
-                await self._checkpoint(run_id, event_type, payload, mts.usage)
+                await self._checkpoint(run_id, event_type, payload, mts.usage, mts.diagnostics)
 
             result = await mts.assess(request, trace)
             async with self.sessions() as session, session.begin():
@@ -78,9 +87,13 @@ class WritingAIWorker:
                 run.result_json = result.model_dump(mode="json")
                 run.raw_mean = result.raw_mean
                 run.overall_band = result.overall_band
-                run.usage_json = {"calls": mts.usage}
+                run.usage_json = {
+                    "calls": mts.usage,
+                    "diagnostics": [item.model_dump() for item in mts.diagnostics],
+                }
                 run.status = WritingAIRunStatus.COMPLETED
                 run.completed_at = run.updated_at = datetime.now(UTC)
+                persist_activity(run, "run.completed", EventPayload())
                 await repository.append_event(run, "run.completed", EventPayload())
         except RunStopped:
             pass
@@ -110,6 +123,7 @@ class WritingAIWorker:
         event_type: EventType,
         payload: EventPayload,
         usage: list[dict[str, int]] | None = None,
+        diagnostics: list[OutputDiagnostic] | None = None,
     ) -> None:
         async with self.sessions() as session, session.begin():
             repository = WritingAIRepository(session)
@@ -118,7 +132,13 @@ class WritingAIWorker:
                 raise RunStopped
             run.updated_at = datetime.now(UTC)
             if usage is not None:
-                run.usage_json = {"calls": list(usage)}
+                run.usage_json = {**(run.usage_json or {}), "calls": list(usage)}
+            if diagnostics is not None:
+                run.usage_json = {
+                    **(run.usage_json or {}),
+                    "diagnostics": [item.model_dump() for item in diagnostics],
+                }
+            persist_activity(run, event_type, payload)
             if payload.result and payload.criterion:
                 run.result_json = {
                     "criteria": {
@@ -143,8 +163,19 @@ class WritingAIWorker:
                 run = await repository.run(run_id, lock=True)
                 if run:
                     if mts and run.status in ACTIVE:
-                        run.usage_json = {"calls": mts.usage}
-                    await fail_run(repository, run, code, message)
+                        run.usage_json = {
+                            **(run.usage_json or {}),
+                            "calls": mts.usage,
+                            "diagnostics": [item.model_dump() for item in mts.diagnostics],
+                        }
+                    await fail_run(
+                        repository,
+                        run,
+                        code,
+                        message,
+                        criterion=mts.current_criterion if mts else None,
+                        stage=mts.current_stage if mts else None,
+                    )
         except Exception:
             pass
 

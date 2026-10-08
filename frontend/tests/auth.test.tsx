@@ -8,12 +8,12 @@ import { apiRequest, resetAuthRequestStateForTests } from "@/lib/api/client";
 import { getCurrentUser, login, logout, register } from "@/lib/api/auth";
 import { ApiError } from "@/lib/api/client";
 
-const navigation = vi.hoisted(() => ({ pathname: "/", push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }));
+const navigation = vi.hoisted(() => ({ pathname: "/", search: "", push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }));
 
 vi.mock("next/navigation", () => ({
   usePathname: () => navigation.pathname,
   useRouter: () => ({ push: navigation.push, replace: navigation.replace, refresh: navigation.refresh }),
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: () => new URLSearchParams(navigation.search),
 }));
 vi.mock("@/lib/api/auth", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api/auth")>();
@@ -35,6 +35,7 @@ describe("authentication UI", () => {
   beforeEach(() => {
     vi.resetAllMocks();
     navigation.pathname = "/";
+    navigation.search = "";
     vi.mocked(logout).mockResolvedValue(undefined);
   });
 
@@ -207,6 +208,29 @@ describe("authentication UI", () => {
     expect(await screen.findByRole("alert")).toBeInTheDocument();
     expect(screen.queryByText("Student")).not.toBeInTheDocument();
     expect(navigation.push).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["/library?module=WRITING", "/library?module=WRITING"],
+    ["//external.example/library", "/"],
+    ["https://external.example/library", "/"],
+  ])("validates login next=%s after confirming the cookie-backed session", async (next, target) => {
+    navigation.search = new URLSearchParams({ next }).toString();
+    let confirm!: (value: typeof baseUser) => void;
+    vi.mocked(getCurrentUser)
+      .mockRejectedValueOnce(new ApiError("AUTHENTICATION_REQUIRED", "Sign in", 401))
+      .mockReturnValueOnce(new Promise((resolve) => { confirm = resolve; }));
+    vi.mocked(login).mockResolvedValue({ user: baseUser, access_expires_at: new Date().toISOString() });
+    render(<AuthProvider><AuthForm mode="login" /></AuthProvider>);
+    await waitFor(() => expect(getCurrentUser).toHaveBeenCalledOnce());
+    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "student@example.com" } });
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "safe-password" } });
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+    await waitFor(() => expect(getCurrentUser).toHaveBeenCalledTimes(2));
+    expect(navigation.push).not.toHaveBeenCalled();
+    await act(async () => { confirm(baseUser); });
+    expect(navigation.refresh).toHaveBeenCalledOnce();
+    expect(navigation.push).toHaveBeenCalledWith(target);
   });
 
   it("surfaces non-401 session errors without showing a logged-out shell", async () => {

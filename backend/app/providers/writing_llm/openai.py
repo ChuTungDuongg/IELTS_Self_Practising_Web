@@ -20,6 +20,9 @@ class OpenAIProvider:
             settings.ai_writing_request_timeout_seconds,
         )
 
+    async def ensure_ready(self) -> None:
+        await self.transport.ensure_model(self.model, self.transport.timeout)
+
     async def complete(self, messages: list[Message], schema: dict[str, Any]) -> Completion:
         # Prompt construction already supplies the schema. The common MTS contract
         # validates JSON mode output identically to vLLM structured output.

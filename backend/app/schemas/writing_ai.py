@@ -3,10 +3,18 @@ from decimal import Decimal
 from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    field_serializer,
+    field_validator,
+)
 
 from app.domains.scoring import validate_writing_criterion_score
 from app.models.enums import WritingAIRunStatus
+from app.providers.writing_llm.base import OutputFailureReason
 
 Trait = Literal["ta", "cc", "lr", "gra"]
 TRAITS: tuple[Trait, ...] = ("ta", "cc", "lr", "gra")
@@ -18,8 +26,15 @@ class StrictModel(BaseModel):
 
 
 class Evidence(StrictModel):
-    quote: str = Field(min_length=1, max_length=600)
+    quote: Annotated[str, StringConstraints(strip_whitespace=False, min_length=1, max_length=600)]
     assessment: ShortText
+
+    @field_validator("quote")
+    @classmethod
+    def non_blank_quote(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Quotation must not be blank")
+        return value
 
 
 class EvidenceResult(StrictModel):
@@ -73,6 +88,35 @@ class CreateRunResponse(BaseModel):
     existing_active: bool
 
 
+AssessmentStage = Literal["evidence", "scoring"]
+ActivityPhase = Literal[
+    "preparing",
+    "starting_model",
+    "collecting_evidence",
+    "validating_evidence",
+    "evidence_collected",
+    "scoring",
+    "validating_score",
+    "retrying",
+    "completed",
+    "failed",
+]
+
+
+class RunActivity(StrictModel):
+    phase: ActivityPhase
+    criterion: Trait | None = None
+    stage: AssessmentStage | None = None
+    started_at: datetime
+
+
+class OutputDiagnostic(StrictModel):
+    stage: AssessmentStage
+    criterion: Trait
+    reason: OutputFailureReason
+    attempt: int = Field(ge=1, le=2)
+
+
 class RunResponse(BaseModel):
     id: UUID
     attempt_id: UUID
@@ -88,6 +132,7 @@ class RunResponse(BaseModel):
     started_at: datetime | None
     completed_at: datetime | None
     created_at: datetime
+    activity: RunActivity | None = None
 
 
 class RunListResponse(BaseModel):
@@ -97,9 +142,15 @@ class RunListResponse(BaseModel):
 
 EventType = Literal[
     "run.started",
+    "provider.starting",
+    "provider.ready",
     "criterion.started",
+    "evidence.request.started",
+    "evidence.validation.started",
     "criterion.evidence.completed",
     "criterion.scoring.started",
+    "criterion.scoring.validation.started",
+    "criterion.retrying",
     "criterion.completed",
     "run.completed",
     "run.failed",
@@ -109,6 +160,7 @@ EventType = Literal[
 
 class EventPayload(StrictModel):
     criterion: Trait | None = None
+    stage: AssessmentStage | None = None
     evidence: list[Evidence] | None = Field(default=None, max_length=6)
     result: CriterionResult | None = None
     error_code: str | None = Field(default=None, max_length=80)
@@ -119,3 +171,4 @@ class EventResponse(BaseModel):
     sequence: int = Field(ge=1)
     event_type: EventType
     payload: EventPayload
+    created_at: datetime | None = None

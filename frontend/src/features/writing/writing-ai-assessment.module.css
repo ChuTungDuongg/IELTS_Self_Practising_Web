@@ -5,17 +5,44 @@
 .actions { justify-content: flex-start; }
 .trace, .history { border: 1px solid var(--line); border-radius: 12px; padding: 16px; background: var(--surface-soft); }
 .panel summary { cursor: pointer; font-weight: 700; }
-.trace ol { display: grid; gap: 14px; padding-top: 16px; list-style: none; }
+.traceHeading, .stepTitle, .cardHeading { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
+.traceHeading { flex-wrap: wrap; margin-bottom: 8px; }
+.traceHeading h3 { font-weight: 800; }
+.traceHeading > span, .elapsed, .legacy { color: var(--muted); font-size: .85rem; }
+.timeline { display: grid; padding-top: 20px; list-style: none; }
+.step { position: relative; display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 12px; padding-bottom: 24px; }
+.step:not(:last-child)::before { position: absolute; top: 25px; bottom: 0; left: 13px; width: 2px; background: var(--line); content: ""; }
+.step:last-child { padding-bottom: 0; }
+.marker { z-index: 1; display: grid; place-items: center; width: 28px; height: 28px; border: 1px solid var(--line); border-radius: 50%; background: var(--surface); color: var(--muted); }
+.step[data-state="COMPLETED"] .marker { color: var(--writing); border-color: var(--writing); }
+.step[data-state="FAILED"] .marker { color: var(--danger); border-color: var(--danger); }
+.step[data-state="FAILED"] .stepBody > p { color: var(--danger); }
+.step[data-state="ACTIVE"] .stepBody, .step[data-state="RETRYING"] .stepBody { border-left: 2px solid var(--writing); padding-left: 12px; }
+.activeMarker { color: var(--writing); border-color: var(--writing); animation: activityPulse 1.6s ease-in-out infinite; }
+.stepTitle { flex-wrap: wrap; }
+.stepTitle b { color: var(--writing); font-variant-numeric: tabular-nums; }
+.stepBody small { display: block; color: var(--muted); margin: 3px 0 8px; }
+.stepBody p { font-size: .9rem; margin: 4px 0; }
+.elapsed { display: inline-block; font-variant-numeric: tabular-nums; margin-top: 4px; }
+@keyframes activityPulse { 50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--writing) 12%, transparent); } }
+@media (prefers-reduced-motion: reduce) { .activeMarker { animation: none; } }
 .panel blockquote { border-left: 3px solid var(--writing); margin: 12px 0; padding-left: 12px; overflow-wrap: anywhere; }
 .panel blockquote p { color: var(--muted); margin-top: 6px; }
+.panel blockquote q { white-space: pre-wrap; }
 .overall { padding: 18px; border-radius: 12px; background: color-mix(in srgb, var(--writing) 10%, var(--surface)); font-size: 1.25rem; }
 .overall strong { font-size: 1.75rem; }
 .overall small { display: block; color: var(--muted); font-size: .85rem; }
 .criteria { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
-.card { display: grid; align-content: start; gap: 12px; padding: 20px; border: 1px solid var(--line); border-radius: 12px; overflow-wrap: anywhere; }
-.card h3 { display: flex; justify-content: space-between; gap: 12px; font-weight: 800; }
-.card h3 strong { color: var(--writing); }
-.card h4 { font-weight: 700; }
+.card { display: grid; min-width: 0; align-content: start; gap: 20px; padding: 20px; border: 1px solid var(--line); border-radius: 12px; overflow-wrap: anywhere; }
+.cardHeading { padding-bottom: 14px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.card h3 { font-weight: 800; }
+.cardHeading small { color: var(--muted); display: block; margin-top: 4px; }
+.band { white-space: nowrap; color: var(--writing); padding: 6px 10px; border-radius: 8px; background: color-mix(in srgb, var(--writing) 10%, var(--surface)); font-variant-numeric: tabular-nums; }
+.card h4 { font-size: .78rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 800; margin-bottom: 8px; }
+.card .feedbackList { padding: 0; list-style: none; display: grid; gap: 8px; }
+.feedbackList li { display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 8px; }
+.feedbackList span { color: var(--writing); }
+.evidence { border-top: 1px solid var(--line); padding-top: 14px; }
 .card ul, .history ul { padding-left: 20px; list-style: disc; }
 .history li { margin-top: 10px; }
 @media (max-width: 720px) { .criteria { grid-template-columns: 1fr; } .actions > button { width: 100%; } }

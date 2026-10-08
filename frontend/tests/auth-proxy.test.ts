@@ -53,6 +53,22 @@ describe("protected route proxy", () => {
     expect(response.headers.get("x-middleware-request-cookie")).toBe("ielts_access=new-access; ielts_refresh=new-refresh");
   });
 
+  it("checks a fresh authenticated navigation after an unauthenticated prefetch redirect", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response("{}", { status: 401 }))
+      .mockResolvedValueOnce(new Response("{}", { status: 401 }))
+      .mockResolvedValueOnce(new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const prefetch = request("/library");
+    prefetch.headers.set("Next-Router-Prefetch", "1");
+    expect((await proxy(prefetch)).headers.get("location")).toContain("/login?");
+    const navigation = await proxy(request("/library", "ielts_access=new-session"));
+    expect(navigation.status).toBe(200);
+    expect(navigation.headers.get("location")).toBeNull();
+    expect(fetchMock.mock.calls[2][1].cache).toBe("no-store");
+    expect(new Headers(fetchMock.mock.calls[2][1].headers).get("cookie")).toBe("ielts_access=new-session");
+  });
+
   it("surfaces backend 500 without trying refresh or redirecting", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response("{}", { status: 500 }));
     vi.stubGlobal("fetch", fetchMock);

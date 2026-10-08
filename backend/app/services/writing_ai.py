@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
 from app.core.exceptions import AppError
+from app.domains.scoring.mts_prompts import effective_prompt_version
 from app.domains.scoring.writing import WritingScoringRequest
 from app.models import TestSession, WritingAIGradingRun
 from app.models.enums import AttemptStatus, ModuleType, TestSessionStatus, WritingAIRunStatus
@@ -16,13 +17,43 @@ from app.providers.writing_llm import create_provider, is_configured, provider_i
 from app.repositories.writing_ai import ACTIVE, WritingAIRepository
 from app.schemas.writing_ai import (
     AIWritingResult,
+    AssessmentStage,
     CreateRunResponse,
     CriterionResult,
     EventPayload,
     EventResponse,
+    EventType,
+    RunActivity,
     RunListResponse,
     RunResponse,
+    Trait,
 )
+
+
+def persist_activity(run: WritingAIGradingRun, event: EventType, payload: EventPayload) -> None:
+    phases = {
+        "run.started": "preparing",
+        "provider.starting": "starting_model",
+        "provider.ready": "preparing",
+        "criterion.started": "preparing",
+        "evidence.request.started": "collecting_evidence",
+        "evidence.validation.started": "validating_evidence",
+        "criterion.evidence.completed": "evidence_collected",
+        "criterion.scoring.started": "scoring",
+        "criterion.scoring.validation.started": "validating_score",
+        "criterion.retrying": "retrying",
+        "criterion.completed": "completed",
+        "run.completed": "completed",
+        "run.failed": "failed",
+    }
+    if event in phases:
+        activity = RunActivity(
+            phase=phases[event],
+            criterion=payload.criterion,
+            stage=payload.stage,
+            started_at=run.updated_at,
+        )
+        run.usage_json = {**(run.usage_json or {}), "activity": activity.model_dump(mode="json")}
 
 
 def input_fingerprint(
@@ -65,11 +96,20 @@ def present_run(run: WritingAIGradingRun) -> RunResponse:
         started_at=run.started_at,
         completed_at=run.completed_at,
         created_at=run.created_at,
+        activity=RunActivity.model_validate(run.usage_json["activity"])
+        if run.usage_json and run.usage_json.get("activity")
+        else None,
     )
 
 
 async def fail_run(
-    repository: WritingAIRepository, run: WritingAIGradingRun, code: str, message: str
+    repository: WritingAIRepository,
+    run: WritingAIGradingRun,
+    code: str,
+    message: str,
+    *,
+    criterion: Trait | None = None,
+    stage: AssessmentStage | None = None,
 ) -> None:
     if run.status not in ACTIVE:
         return
@@ -77,9 +117,15 @@ async def fail_run(
     run.error_code = code
     run.error_message = message
     run.completed_at = run.updated_at = datetime.now(UTC)
-    await repository.append_event(
-        run, "run.failed", EventPayload(error_code=code, error_message=message)
+    previous = (run.usage_json or {}).get("activity", {})
+    payload = EventPayload(
+        error_code=code,
+        error_message=message,
+        criterion=criterion or previous.get("criterion"),
+        stage=stage or previous.get("stage"),
     )
+    persist_activity(run, "run.failed", payload)
+    await repository.append_event(run, "run.failed", payload)
 
 
 class WritingAIService:
@@ -150,9 +196,8 @@ class WritingAIService:
             # never writes the attempt or its official scores.
             request = await self.input(attempt_id, task_id, lock=True)
             provider, model = provider_identity(self.settings)
-            fingerprint = input_fingerprint(
-                request, self.settings.ai_writing_prompt_version, provider, model
-            )
+            prompt_version = effective_prompt_version(self.settings.ai_writing_prompt_version)
+            fingerprint = input_fingerprint(request, prompt_version, provider, model)
             for run in await self.repository.runs(attempt_id, task_id, lock=True, limit=None):
                 await self.recover_stale(run)
             if not force:
@@ -176,7 +221,7 @@ class WritingAIService:
                 status=WritingAIRunStatus.PENDING,
                 provider=provider,
                 model=model,
-                prompt_version=self.settings.ai_writing_prompt_version,
+                prompt_version=prompt_version,
                 input_fingerprint=fingerprint,
                 created_at=datetime.now(UTC),
                 updated_at=datetime.now(UTC),
@@ -215,6 +260,7 @@ class WritingAIService:
                     sequence=event.sequence,
                     event_type=event.event_type,
                     payload=EventPayload.model_validate(event.payload),
+                    created_at=event.created_at,
                 )
                 for event in events
             ]

@@ -10,6 +10,14 @@ import urllib.request
 from pathlib import Path
 
 
+def configure_ai_environment(enabled: bool, model: str, endpoint: str | None) -> None:
+    os.environ["AI_WRITING_ENABLED"] = str(enabled).lower()
+    if enabled and os.environ.get("AI_WRITING_PROVIDER", "vllm") == "vllm":
+        # Resolve this App's hydrated function URL: no temporary URL in .env.
+        os.environ["AI_WRITING_VLLM_BASE_URL"] = endpoint.rstrip("/") + "/v1" if endpoint else ""
+        os.environ["AI_WRITING_VLLM_MODEL"] = model
+
+
 class WebRuntime:
     def __init__(self) -> None:
         self.processes: list[subprocess.Popen] = []

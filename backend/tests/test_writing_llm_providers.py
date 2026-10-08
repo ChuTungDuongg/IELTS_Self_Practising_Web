@@ -63,10 +63,10 @@ async def test_transports_use_backend_headers_and_discard_reasoning(monkeypatch,
 @pytest.mark.parametrize(
     "failure,code",
     [
-        ("timeout", "PROVIDER_TIMEOUT"),
-        ("http", "PROVIDER_HTTP_ERROR"),
-        ("json", "INVALID_PROVIDER_OUTPUT"),
-        ("truncated", "INVALID_PROVIDER_OUTPUT"),
+        ("timeout", "AI_PROVIDER_TIMEOUT"),
+        ("http", "AI_PROVIDER_HTTP_ERROR"),
+        ("json", "AI_PROVIDER_BAD_RESPONSE"),
+        ("truncated", "AI_PROVIDER_BAD_RESPONSE"),
     ],
 )
 async def test_transport_safe_failures(monkeypatch, failure, code):
@@ -97,6 +97,60 @@ async def test_transport_safe_failures(monkeypatch, failure, code):
     with pytest.raises(ProviderFailure) as error:
         await create_provider(settings).complete([], {})
     assert error.value.code == code and "raw secret" not in str(error.value)
+    if failure == "json":
+        assert error.value.reason == "INVALID_JSON"
+    elif failure == "truncated":
+        assert error.value.reason == "FINISH_REASON_NOT_STOP"
+
+
+@pytest.mark.parametrize(
+    "data,reason",
+    [
+        (
+            {"choices": [{"finish_reason": "stop", "message": {"content": "  "}}]},
+            "EMPTY_MODEL_CONTENT",
+        ),
+        (
+            {
+                "choices": [
+                    {"finish_reason": "length", "message": {"content": "private incomplete JSON"}}
+                ]
+            },
+            "FINISH_REASON_NOT_STOP",
+        ),
+        (
+            {"choices": [{"finish_reason": "stop", "message": {"content": None}}]},
+            "MALFORMED_COMPLETION_ENVELOPE",
+        ),
+        ({"choices": []}, "MALFORMED_COMPLETION_ENVELOPE"),
+        ({"private": "unexpected envelope"}, "MALFORMED_COMPLETION_ENVELOPE"),
+        (
+            {
+                "choices": [{"finish_reason": "stop", "message": {"content": "{}"}}],
+                "usage": ["private"],
+            },
+            "MALFORMED_COMPLETION_ENVELOPE",
+        ),
+    ],
+)
+async def test_transport_classifies_output_without_retaining_raw_text(monkeypatch, data, reason):
+    settings = Settings(
+        _env_file=None,
+        ai_writing_enabled=True,
+        ai_writing_vllm_base_url="https://provider.example/v1",
+    )
+    original = httpx.AsyncClient
+    monkeypatch.setattr(
+        httpx,
+        "AsyncClient",
+        lambda **kwargs: original(
+            transport=httpx.MockTransport(lambda request: httpx.Response(200, json=data)), **kwargs
+        ),
+    )
+    with pytest.raises(ProviderFailure) as failed:
+        await create_provider(settings).complete([], {})
+    assert failed.value.reason == reason
+    assert "private" not in str(failed.value) + str(vars(failed.value))
 
 
 def test_modal_proxy_pair_required_and_secrets_not_in_repr():

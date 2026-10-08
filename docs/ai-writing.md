@@ -11,8 +11,18 @@ shared. No dataset-level min-max scaling or outlier clipping is used.
 The public **Scoring Trace** contains progress, evidence and concise feedback.
 Hidden reasoning, raw provider responses and internal prompts are never stored
 or streamed. Question/essay/evidence are explicitly treated as untrusted data.
-Quotes must be exact substrings of the saved essay. Malformed output, invalid
-scores and unverified quotes get one correction retry for that individual call.
+Quotes must be actual contiguous substrings of the saved essay. Matching permits
+canonical Unicode normalization and collapsing ordinary spaces/tabs/newlines;
+the original essay substring is restored and length-checked before saving. No
+semantic similarity, punctuation folding, paraphrases or inserted ellipses are
+accepted. Each evidence/scoring call gets at most one targeted correction based
+on an allowlisted validation reason, then fails safely if still invalid.
+
+Prompt version **`mts-task2-v2`** requires natural Vietnamese for assessments,
+feedback, strengths and improvements, while preserving original English quotes.
+Old v1 assessments remain immutable history and are never reused by v2. Existing
+deployments still setting `AI_WRITING_PROMPT_VERSION=mts-task2-v1` are upgraded to
+the effective v2 version for fingerprinting and execution when this code loads.
 
 Every criterion must be in 0–9 in steps of 0.5. FastAPI computes the Decimal
 equal-weight mean and rounds it with the existing `round_to_half` helper:
@@ -38,12 +48,13 @@ Configure the backend-only variables in `backend/.env` (see `.env.example`):
 AI_WRITING_ENABLED=true
 AI_WRITING_PROVIDER=vllm
 AI_WRITING_VLLM_BASE_URL=https://YOUR-PROTECTED-ENDPOINT.modal.run/v1
-AI_WRITING_VLLM_MODEL=mistralai/Ministral-8B-Instruct-2410
+AI_WRITING_VLLM_MODEL=mistralai/Ministral-3-8B-Instruct-2512
 AI_WRITING_MODAL_KEY=<proxy token id>
 AI_WRITING_MODAL_SECRET=<proxy token secret>
 AI_WRITING_VLLM_API_KEY=
 AI_WRITING_REQUEST_TIMEOUT_SECONDS=300
-AI_WRITING_PROMPT_VERSION=mts-task2-v1
+AI_WRITING_STARTUP_TIMEOUT_SECONDS=600
+AI_WRITING_PROMPT_VERSION=mts-task2-v2
 AI_WRITING_STALE_AFTER_SECONDS=90
 ```
 
@@ -53,6 +64,8 @@ the Modal deployment relies on required proxy authentication at the perimeter.
 Disabled or missing configuration returns `AI_NOT_CONFIGURED` and keeps Writing
 review usable. Restart FastAPI after configuration changes. Increment the prompt
 version when changing rubric/prompt behavior so old cache entries stay distinct.
+The base URL accepts either the endpoint origin or its `/v1` base; the transport
+normalizes it once. Switching models also changes the grading fingerprint.
 
 The OpenAI HTTP transport implements the same internal completion contract and
 is dormant unless selected with a key. No OpenAI key is required for vLLM:
@@ -102,6 +115,22 @@ The frontend reconnects using its latest validated sequence and probes JSON thro
 the existing auth-refresh client. Duplicate replay events are ignored. Closing the
 browser disconnects only the stream, not the worker.
 
+Provider requests remain `stream=false` for reliable structured JSON. Public
+workflow events distinguish preparing, collecting evidence, validating evidence,
+scoring, validating scores, retrying and terminal states. New events are
+`evidence.request.started`, `evidence.validation.started`,
+`criterion.scoring.validation.started` and `criterion.retrying`. Safe activity
+with a stage timestamp is persisted in the existing run JSON metadata and
+included in snapshots; no migration is needed. The vertical timeline reconstructs
+from activity, progress and terminal status after refresh. Criterion cards appear
+as soon as their individual completion event arrives. Elapsed time is display-only,
+with no estimated percentage, and subtle animation respects reduced motion.
+Heartbeat events advance the replay cursor without invoking React UI callbacks.
+
+Completed criteria commit before the next criterion starts. If LR or another
+later operation fails, prior results remain visible/persisted, but no overall is
+computed. Explicit Regrade starts all four criteria afresh and retains history.
+
 A persisted heartbeat every 15 seconds renews `updated_at`. Reads/streams/new
 requests mark expired leases FAILED after 90 seconds by default, emit `run.failed`,
 retain partial progress and allow regrading after a process crash. Graceful shutdown
@@ -116,49 +145,77 @@ Run these commands from the repository root in an environment with Python 3.12+:
 uv tool install modal
 modal setup
 modal profile list
-# Temporary development endpoint; terminates when this command exits:
-modal serve deploy/modal/writing_llm.py
-# Persistent production deployment, with zero idle containers:
-modal deploy deploy/modal/writing_llm.py
 # Create backend-only proxy credentials; keep the output private:
 modal workspace proxy-tokens create --json
+# Copy the pair into backend/.env, then update the existing private Web Secret:
+cd backend
+uv run python ../scripts/modal_web_setup.py --snapshot <existing-snapshot>/database.dump
+cd ..
+# One temporary app: CPU Web + a separate protected GPU function:
+modal serve deploy/modal/app.py
+# Persistent app; stop its previous database writer first:
+modal deploy deploy/modal/app.py
 ```
 
-Use the URL printed by deployment, append `/v1`, and configure the returned
-`Modal-Key` / `Modal-Secret` pair in the backend settings above. Development URLs
-may have a `-dev` suffix. For scoped workspaces, allow the token in the deployment's
+The full-stack entry point automatically resolves the GPU URL for FastAPI.
+Configure the returned `Modal-Key` / `Modal-Secret` pair in the backend settings
+above. For scoped workspaces, allow the token in the deployment's
 environment (`modal workspace proxy-tokens allow --help`). No Modal credentials or
 Hugging Face tokens belong in Git. Public model downloads require no repository
 secret; if your workspace needs gated access, add a narrowly scoped Modal Secret
 to the deployment instead of hard-coding a token.
 
-The application uses pinned `vllm/vllm-openai:v0.11.2`, a persistent model/cache
-Volume, one L4, FP16 weights, eager execution, an 8,192-token model length, at most
-two concurrent sequences, and `min_containers=0` / a 60-second idle window. The
+For a local FastAPI client that intentionally runs outside the full-stack app,
+the standalone entry point remains available:
+
+```powershell
+modal serve deploy/modal/writing_llm.py
+# Or a stable, independent deployment:
+modal deploy deploy/modal/writing_llm.py
+```
+
+Only this standalone workflow requires configuring the printed URL manually.
+Use one model deployment for your application; the full-stack command includes
+the same function rather than requiring a second standalone GPU deployment.
+See [modal-web.md](modal-web.md) for database setup and web-only commands.
+
+The application uses pinned `vllm/vllm-openai:v0.13.0`, a persistent model/cache
+Volume, one L4, the model's published FP8 weights (`--dtype auto`), eager execution,
+an 8,192-token model length, one concurrent sequence, and one image per prompt.
+It keeps `min_containers=0` / a 60-second idle window. The
 web endpoint has `requires_proxy_auth=True`. The model URL and tokens stay behind
 FastAPI. Cold starts need time to download/cache weights and initialize the GPU.
 
-As checked on 2026-10-08, L4 is the lowest-priced Modal GPU with headroom for the
-unquantized 8B model at this context/sequence budget: L4 has 24 GB; the cheaper
-T4's 16 GB does not leave safe room for weights plus runtime/KV cache. This is a
-capacity choice rather than a throughput benchmark; recheck pricing as it changes.
+L4 has 24 GB and Ada FP8 support. T4 lacks native FP8 support for this published
+checkpoint. This is a conservative memory/capability choice for text and future
+image input, not a throughput benchmark; recheck pricing as it changes.
 Sources: [Modal supported GPUs](https://modal.com/docs/guide/gpu),
 [Modal pricing](https://modal.com/pricing), [NVIDIA GPU memory](https://docs.nvidia.com/brev/reference/gpu-types),
-[model serving guidance](https://huggingface.co/mistralai/Ministral-8B-Instruct-2410),
+[model serving guidance](https://huggingface.co/mistralai/Ministral-3-8B-Instruct-2512),
+[vLLM FP8 compatibility](https://docs.vllm.ai/en/v0.13.0/features/quantization/fp8/),
+[Modal Ministral 3 example](https://modal.com/docs/examples/ministral3_inference),
 [Modal proxy authentication](https://modal.com/docs/guide/webhook-proxy-auth).
 
-One lightweight smoke inference (set the proxy pair in the current shell):
+One backend-side readiness request and one tiny text-only completion (proxy pair
+in the ignored backend `.env` or current shell):
 
 ```powershell
-$env:AI_WRITING_MODAL_KEY='<proxy token id>'
-$env:AI_WRITING_MODAL_SECRET='<proxy token secret>'
-python deploy/modal/smoke.py --base-url https://YOUR-PROTECTED-ENDPOINT.modal.run/v1
+cd backend
+uv run python ../deploy/modal/smoke.py --base-url https://YOUR-PROTECTED-ENDPOINT.modal.run/v1
 ```
 
-It sends one 16-token JSON request and prints only pass/fail. Normal tests never
-contact Modal/OpenAI. For shutdown and optional cache removal:
+It sends `GET /v1/models`, verifies the exact served model, then sends one
+16-token JSON-schema request through the same backend transport/auth as grading.
+It prints only safe status/timing. Task 2 messages contain text only; vision
+support is retained in the shared model for future Task 1 work, but Task 1 grading
+is still not implemented. Normal tests never contact Modal/OpenAI.
+Stopping `modal serve` stops both functions in the temporary app. For a persistent
+full-stack deployment, stop `ielts-practice-web`; for the standalone GPU workflow,
+stop `ielts-writing-llm`. Volumes remain after stopping:
 
 ```powershell
+modal app stop ielts-practice-web --yes
+# Standalone GPU deployment only:
 modal app stop ielts-writing-llm --yes
 # Optional, destructive: deletes cached model weights after stopping the app.
 modal volume delete ielts-writing-model-cache
@@ -166,8 +223,8 @@ modal volume delete ielts-writing-model-cache
 modal workspace proxy-tokens delete <proxy-token-id>
 ```
 
-Ministral 8B 2410 has its own [Mistral Research License](https://huggingface.co/mistralai/Ministral-8B-Instruct-2410).
-Recheck its terms and commercial licensing before commercial deployment.
+Ministral 3 2512 is published under [Apache 2.0](https://huggingface.co/mistralai/Ministral-3-8B-Instruct-2512).
+Recheck the model's current license and dependencies before commercial deployment.
 
 ## PostgreSQL snapshots on Modal Volume
 
@@ -198,10 +255,32 @@ pg_restore --dbname=<target-database> --no-owner --no-acl ./database.dump
 
 - **Not configured:** enable AI and supply the selected provider's URL/model and
   credentials; Modal needs both proxy token fields. Restart FastAPI.
-- **Timeout/HTTP failure:** check `modal app logs ielts-writing-llm`, GPU startup,
-  proxy authorization and backend timeout. Regrade creates a new retryable run.
-- **Invalid assessment:** one repair is automatic; a second failure preserves
-  completed criteria and marks the run FAILED. Check the provider/model/version.
+- **Startup:** `provider.starting` is emitted before an authenticated models
+  request; `provider.ready` is emitted only after the configured model is listed.
+  Heartbeats continue during readiness. Default readiness budget is 600 seconds;
+  normal inference stays at its existing 300-second budget.
+- **150-second failure:** Modal can return HTTP 303 with a result-poll URL while
+  the original request continues. The backend follows at most four same-origin,
+  same-path Modal redirects as GET requests inside the original total budget.
+  It never resubmits the completion POST or forwards credentials to another host.
+  See [Modal's Web Function timeout contract](https://modal.com/docs/guide/webhook-timeouts).
+- **Provider failures:** `AI_PROVIDER_UNREACHABLE`, `AI_PROVIDER_AUTH_FAILED`,
+  `AI_PROVIDER_ENDPOINT_ERROR`, `AI_MODEL_UNAVAILABLE`,
+  `AI_PROVIDER_STARTUP_TIMEOUT`, `AI_PROVIDER_TIMEOUT` and
+  `AI_PROVIDER_BAD_RESPONSE` distinguish connectivity, credentials, path/model,
+  startup, inference and invalid output. Check `modal app logs ielts-practice-web-dev`
+  (or the deployed app name). Safe logs contain operation/code/status only.
+  Failed rows and partial progress remain; Regrade creates a new retryable run.
+- **Invalid assessment:** each evidence/scoring operation permits one targeted
+  repair. A second failure preserves completed criteria and marks the run FAILED.
+  Internal `usage_json.diagnostics` and safe log lines contain only stage,
+  criterion, attempt and a fixed reason: `INVALID_JSON`, `SCHEMA_VALIDATION`,
+  `INVALID_HALF_BAND`, `QUOTE_NOT_EXACT`, `EVIDENCE_ITEM_TOO_LONG`,
+  `TOO_MANY_EVIDENCE_ITEMS`, `FINISH_REASON_NOT_STOP`, `EMPTY_MODEL_CONTENT`,
+  `MALFORMED_COMPLETION_ENVELOPE` or `OUTPUT_TOO_LARGE`. These diagnostics are
+  excluded from API/SSE. Raw output, Pydantic input and prompts are not persisted.
+  The failed criterion stops animating immediately even if JSON reconciliation
+  is temporarily offline; remaining criteria are marked not run.
 - **Interrupted run:** wait for the heartbeat lease to expire or revisit review;
   stale state becomes FAILED and Regrade is available.
 - **Trace disconnected:** the client probes saved JSON and reconnects with its
@@ -209,13 +288,52 @@ pg_restore --dbname=<target-database> --no-owner --no-acl ./database.dump
 
 ```powershell
 cd backend
-uv run pytest tests/test_writing_ai.py tests/test_writing_llm_providers.py tests/test_writing_scoring.py tests/test_ielts_band.py tests/test_writing_attempts.py -q
+uv run pytest tests/test_writing_ai.py tests/test_mts_writing_validation.py tests/test_writing_llm_providers.py tests/test_writing_llm_readiness.py -q
 # Run Ruff on the AI modules and touched integration files.
 cd ../frontend
-npm exec vitest run tests/writing-ai-assessment.test.tsx tests/writing-review.test.tsx
+npx vitest run tests/writing-ai-assessment.test.tsx tests/writing-ai-progress.test.tsx tests/writing-review.test.tsx
 npm run typecheck
 cd ..
 git diff --check
 ```
 
 No browser, Playwright or broad E2E suite is required for these checks.
+
+### Runtime investigation, 2026-10-08
+
+The later failed run on Ministral 3 completed Task Response (7.5) and Coherence
+and Cohesion (7.0). Its persisted usage records contain both LR evidence calls
+(normal and repair), and events end after `criterion.started` for LR without
+`criterion.evidence.completed` or LR scoring. This confirms failure in the LR
+evidence JSON/schema/quote validation boundary, rather than scoring or the earlier
+provider connectivity problem. The previous code collapsed validation errors and
+stored no reason; it is impossible to distinguish quote mismatch from JSON/schema
+failure retrospectively. No raw provider output was recovered or saved. The new
+diagnostics make subsequent failures distinguishable. This update used fake
+providers for verification; no additional real GPU inference was performed.
+
+The inspected failed dev run used the previous 2410 model and stored
+`PROVIDER_HTTP_ERROR` after 150 seconds, with no completed evidence or provider
+usage. Its GPU endpoint was deployed, authenticated and processing the request;
+the vLLM completion finished successfully after the backend had already failed.
+The configured HTTP timeout was 300 seconds. The failure was classification of
+Modal's 303 result-poll redirect, not missing configuration, bad credentials or
+an application timeout set to 150 seconds. The old FAILED row remains unchanged.
+
+The updated full-stack dev app was started with `modal serve deploy/modal/app.py`.
+FastAPI's process environment was checked without printing secrets: enabled vLLM,
+the exact unified model, the same app's protected `/v1` endpoint, both proxy fields,
+300-second inference timeout and 600-second readiness timeout were all confirmed.
+One real models request completed after 256.3 seconds, including initial container
+startup and downloading the new weights. One tiny text-only JSON-schema completion
+then passed in 4.4 seconds. vLLM reported FP8 weights using about 9.77 GiB, with
+image profiling enabled. No real essay or image grading was sent. The temporary
+dev app was stopped after validation; the existing production app was unchanged.
+
+Fresh HTTP navigation through the same dev Web returned 307 to login without a
+session and 200 for `/auth/me`, `/library`, `/history` and `/admin` with a valid
+cookie. Current auth code was retained. Protected links still use Next's default
+prefetch, and client router-cache behavior was not reproduced without a browser;
+the earlier stale-prefetch hypothesis remains unconfirmed. Focused regressions
+cover fresh cookie checks, validated login destinations, waiting for session
+confirmation, roles and logout. No blanket prefetch/auth change was made.
