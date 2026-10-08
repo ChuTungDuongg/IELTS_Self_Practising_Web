@@ -758,12 +758,17 @@ input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--mute
 .writing-review .writing-task-tabs { border: 1px solid var(--line); border-radius: 14px; color: var(--ink); background: var(--surface); }
 .writing-review .writing-task-tabs button { border-color: var(--line); color: var(--ink); background: var(--surface-raised); }
 .writing-review .writing-task-tabs button span { color: var(--muted); }
-.writing-review-layout { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); overflow: hidden; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); box-shadow: var(--shadow-sm); }
-.writing-review .writing-task-prompt { max-height: 720px; border-color: var(--line); color: var(--ink); background: var(--surface); }
-.writing-review-response { min-width: 0; padding: clamp(24px, 4vw, 48px); background: var(--surface-soft); }
-.writing-review-response > div { display: flex; align-items: flex-end; justify-content: space-between; gap: 14px; border-bottom: 1px solid var(--line); padding-bottom: 16px; }
-.writing-review-response h2 { margin: 0; font-size: 18px; }
-.writing-review-response > p { min-height: 260px; margin: 22px 0 0; overflow-wrap: anywhere; font-family: Georgia, "Times New Roman", serif; font-size: 16px; line-height: 1.8; white-space: pre-wrap; }
+.writing-review-layout { display: grid; min-width: 0; grid-template-columns: minmax(280px, .8fr) minmax(0, 1.2fr); overflow: hidden; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); box-shadow: var(--shadow-sm); }
+.writing-review .writing-task-prompt { max-height: none; border-color: var(--line); padding: clamp(22px, 2.5vw, 36px); color: var(--ink); background: var(--surface); }
+.writing-review-response { min-width: 0; padding: clamp(18px, 2.5vw, 30px); background: var(--surface-soft); }
+.writing-review-response-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding-bottom: 16px; }
+.writing-review-response-heading > div { min-width: 0; }
+.writing-review-response h2 { margin: 5px 0 0; color: var(--ink); font-size: 18px; }
+.writing-review-word-count { border: 1px solid var(--line); border-radius: 999px; padding: 6px 10px; color: var(--ink-soft); background: var(--surface); font-size: 12px; font-weight: 750; font-variant-numeric: tabular-nums; }
+.writing-review-response-body { min-width: 0; border: 1px solid var(--line); border-radius: 12px; padding: clamp(18px, 2.2vw, 28px); color: var(--ink); background: var(--surface-raised); box-shadow: var(--shadow-sm); }
+.writing-review-response-body > p { max-width: 72ch; margin: 0 auto; overflow-wrap: anywhere; font-family: Georgia, "Times New Roman", serif; font-size: 1rem; line-height: 1.85; white-space: pre-wrap; }
+.writing-review-response-body > p + p { margin-top: 1.1em; }
+.writing-review-response-body > .writing-review-response-empty { color: var(--muted); font-family: inherit; }
 
 @media (max-width: 900px) {
   .writing-task-grid, .writing-preview-layout { grid-template-columns: 1fr; }

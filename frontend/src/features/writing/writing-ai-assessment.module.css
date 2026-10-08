@@ -1,4 +1,4 @@
-.panel { display: grid; gap: 18px; margin-top: 24px; padding: clamp(20px, 3vw, 32px); border: 1px solid color-mix(in srgb, var(--writing) 45%, var(--line)); border-radius: 18px; background: var(--surface); color: var(--ink); }
+.panel { display: grid; min-width: 0; gap: 18px; margin-top: 24px; padding: clamp(20px, 3vw, 32px); border: 1px solid color-mix(in srgb, var(--writing) 45%, var(--line)); border-radius: 18px; background: var(--surface); color: var(--ink); }
 .heading, .actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .heading h2 { font-size: 1.35rem; font-weight: 800; }
 .badge { border-radius: 999px; padding: 6px 12px; color: var(--writing); background: color-mix(in srgb, var(--writing) 12%, var(--surface)); font-weight: 700; }
@@ -27,23 +27,38 @@
 .elapsed { display: inline-block; font-variant-numeric: tabular-nums; margin-top: 4px; }
 @keyframes activityPulse { 50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--writing) 12%, transparent); } }
 @media (prefers-reduced-motion: reduce) { .activeMarker { animation: none; } }
-.panel blockquote { border-left: 3px solid var(--writing); margin: 12px 0; padding-left: 12px; overflow-wrap: anywhere; }
-.panel blockquote p { color: var(--muted); margin-top: 6px; }
-.panel blockquote q { white-space: pre-wrap; }
-.overall { padding: 18px; border-radius: 12px; background: color-mix(in srgb, var(--writing) 10%, var(--surface)); font-size: 1.25rem; }
-.overall strong { font-size: 1.75rem; }
-.overall small { display: block; color: var(--muted); font-size: .85rem; }
+.panel blockquote { border-left: 3px solid color-mix(in srgb, var(--writing) 50%, var(--line)); margin: 16px 0 0; padding: 12px 14px; border-radius: 0 8px 8px 0; background: var(--surface-soft); overflow-wrap: anywhere; }
+.panel blockquote p { max-width: 65ch; color: var(--ink-soft); margin: 10px 0 0; font-size: .9rem; line-height: 1.75; }
+.panel blockquote q { display: block; color: var(--ink); font-family: Georgia, "Times New Roman", serif; line-height: 1.8; white-space: pre-wrap; }
+.overall { min-width: 0; padding: 20px; border: 1px solid color-mix(in srgb, var(--writing) 28%, var(--line)); border-radius: 12px; background: color-mix(in srgb, var(--writing) 6%, var(--surface)); }
+.overallHeading { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.overallCopy { min-width: 0; }
+.overallEyebrow { margin: 0 0 6px; color: var(--writing); font-size: .8rem; font-weight: 750; }
+.overall h3 { margin: 0; font-size: 1.15rem; font-weight: 800; }
+.overallSupport { max-width: 60ch; margin: 8px 0 0; color: var(--muted); font-size: .9rem; line-height: 1.65; }
+.overallBand { display: inline-flex; max-width: 100%; flex: 0 0 auto; align-items: baseline; flex-wrap: wrap; gap: 8px; border: 1px solid color-mix(in srgb, var(--writing) 25%, var(--line)); border-radius: 10px; padding: 10px 14px; color: var(--writing); background: var(--surface); font-size: .85rem; font-variant-numeric: tabular-nums; }
+.overallBand span { font-size: 2rem; line-height: 1.15; }
+.overallCriteria { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 18px 0 0; border-top: 1px solid var(--line); padding-top: 14px; }
+.overallCriteria > div { display: flex; min-width: 0; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.overallCriteria dt { min-width: 0; }
+.overallCriteria abbr { color: var(--ink); font-size: .85rem; font-weight: 800; text-decoration: none; }
+.overallCriteria dt span { display: block; margin-top: 3px; color: var(--muted); font-size: .75rem; line-height: 1.5; overflow-wrap: anywhere; }
+.overallCriteria dd { flex: 0 0 auto; margin: 0; color: var(--ink); font-size: 1rem; font-weight: 800; font-variant-numeric: tabular-nums; }
 .criteria { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .card { display: grid; min-width: 0; align-content: start; gap: 20px; padding: 20px; border: 1px solid var(--line); border-radius: 12px; overflow-wrap: anywhere; }
 .cardHeading { padding-bottom: 14px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
 .card h3 { font-weight: 800; }
 .cardHeading small { color: var(--muted); display: block; margin-top: 4px; }
 .band { white-space: nowrap; color: var(--writing); padding: 6px 10px; border-radius: 8px; background: color-mix(in srgb, var(--writing) 10%, var(--surface)); font-variant-numeric: tabular-nums; }
-.card h4 { font-size: .78rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 800; margin-bottom: 8px; }
-.card .feedbackList { padding: 0; list-style: none; display: grid; gap: 8px; }
-.feedbackList li { display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 8px; }
+.card h4 { font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 800; margin-bottom: 10px; }
+.feedback { max-width: 65ch; margin: 0; line-height: 1.8; white-space: pre-wrap; }
+.card .feedbackList { max-width: 65ch; margin: 0; padding: 0; list-style: none; display: grid; gap: 12px; }
+.feedbackList li { display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 10px; line-height: 1.75; }
+.feedbackList p { margin: 0; }
 .feedbackList span { color: var(--writing); }
 .evidence { border-top: 1px solid var(--line); padding-top: 14px; }
 .card ul, .history ul { padding-left: 20px; list-style: disc; }
 .history li { margin-top: 10px; }
 @media (max-width: 720px) { .criteria { grid-template-columns: 1fr; } .actions > button { width: 100%; } }
+@media (max-width: 600px) { .overallHeading { align-items: flex-start; flex-direction: column; gap: 14px; } .overallCriteria { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; } }
+@media (max-width: 400px) { .overallCriteria { grid-template-columns: 1fr; } }

@@ -2,6 +2,8 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WritingAIAssessment } from "@/features/writing/writing-ai-assessment";
 import { WritingReviewView } from "@/features/writing/writing-review";
+import { CriterionAssessmentCard } from "@/features/writing/writing-ai-criterion-card";
+import { humanizeSourceReferences, presentAIFeedback } from "@/features/writing/ai-feedback-presentation";
 import { createAIWritingRun, getAIWritingRun, listAIWritingRuns, watchAIWritingRun, type AIWritingRun } from "@/lib/api/writing-ai";
 import { saveWritingTaskScore, type WritingReviewPayload } from "@/lib/api/exam";
 import { ApiError } from "@/lib/api/client";
@@ -40,6 +42,52 @@ function review(): WritingReviewPayload {
     task1_overall: null, task2_overall: null, weighted_overall: null, band_score: null,
   };
 }
+
+describe("AI feedback presentation", () => {
+  it.each([
+    ["P1S3", "đoạn 1, câu 3"],
+    ["Xem P1S3 và P2S1.", "Xem đoạn 1, câu 3 và đoạn 2, câu 1."],
+    ["(P1S4, P1S8, P2S12)", "(đoạn 1, câu 4; đoạn 1, câu 8; đoạn 2, câu 12)"],
+    ["Tokyo (P1S8).", "Tokyo (đoạn 1, câu 8)."],
+    ["Nhận xét không có mã nguồn.", "Nhận xét không có mã nguồn."],
+    ["XP1S3 P1S3suffix _P1S3 P1S3_ AP1S3B tiếngP1S3 P1S3é", "XP1S3 P1S3suffix _P1S3 P1S3_ AP1S3B tiếngP1S3 P1S3é"],
+    ["P0S3 P1S0 P01S3 p1s3 P1 S3 PS P S", "P0S3 P1S0 P01S3 p1s3 P1 S3 PS P S"],
+    ["P1S3, P2S1suffix", "đoạn 1, câu 3, P2S1suffix"],
+  ])("humanizes only standalone internal tokens in %s", (input, expected) => {
+    expect(humanizeSourceReferences(input)).toBe(expected);
+  });
+
+  it("strips simple paired emphasis while preserving unmatched and complex markers", () => {
+    expect(presentAIFeedback("**Rõ ràng** tại **P1S3**.")).toBe("Rõ ràng tại đoạn 1, câu 3.");
+    expect(presentAIFeedback("Unpaired **marker; ***complex***; P/S.")).toBe("Unpaired **marker; ***complex***; P/S.");
+  });
+
+  it("humanizes every commentary section and leaves exact evidence quotes and IDs intact", () => {
+    const quote = "  Fictional writers use **P1S3** literally.\nTheir words stay unchanged.  ";
+    const grounded = {
+      ...criterion,
+      feedback: "**Ví dụ** ở P1S3 và P2S1.",
+      strengths: ["Lập trường ở P1S4."],
+      improvements: ["Phát triển (P1S8, P2S4)."],
+      evidence: [{ source_id: "P4S99", quote, assessment: "Liên kết P1S3 với P2S4." }],
+    };
+    render(<CriterionAssessmentCard trait="ta" assessment={grounded} />);
+    const card = screen.getByRole("article", { name: "AI Task Response" });
+    expect(within(card).getByText("Ví dụ ở đoạn 1, câu 3 và đoạn 2, câu 1.")).toBeInTheDocument();
+    expect(within(card).getByText("Lập trường ở đoạn 1, câu 4.")).toBeInTheDocument();
+    expect(within(card).getByText("Phát triển (đoạn 1, câu 8; đoạn 2, câu 4).")).toBeInTheDocument();
+    expect(within(card).getByText("Liên kết đoạn 1, câu 3 với đoạn 2, câu 4.")).toBeInTheDocument();
+    for (const commentary of card.querySelectorAll("section, blockquote p")) {
+      expect(commentary.textContent).not.toMatch(/P\d+S\d+/);
+      expect(commentary.textContent).not.toContain("**");
+    }
+    expect(card.querySelector("q")?.textContent).toBe(quote);
+    expect(card).not.toHaveTextContent("P4S99");
+    expect(screen.getByText("Dẫn chứng từ bài viết (1)").closest("details")).not.toHaveAttribute("open");
+    expect(grounded.feedback).toBe("**Ví dụ** ở P1S3 và P2S1.");
+    expect(grounded.evidence[0]).toEqual({ source_id: "P4S99", quote, assessment: "Liên kết P1S3 với P2S4." });
+  });
+});
 
 describe("Task 2 AI assessment", () => {
   beforeEach(() => {
@@ -88,7 +136,7 @@ describe("Task 2 AI assessment", () => {
     await waitFor(() => expect(MockEventSource.instances).toHaveLength(1));
     vi.mocked(getAIWritingRun).mockResolvedValue(completed);
     act(() => MockEventSource.instances[0].emit("run.completed", 18));
-    expect(await screen.findByText(/AI Task 2 Overall:/)).toHaveTextContent("6.5");
+    expect(await screen.findByRole("region", { name: "AI Task 2 overall summary" })).toHaveTextContent("Band 6.5");
     expect(MockEventSource.instances[0].close).toHaveBeenCalled();
     expect(saveWritingTaskScore).not.toHaveBeenCalled();
   });
@@ -96,10 +144,70 @@ describe("Task 2 AI assessment", () => {
   it("restores cached completed results without starting inference", async () => {
     vi.mocked(listAIWritingRuns).mockResolvedValue({ configured: true, items: [completed] });
     panel();
-    expect(await screen.findByText(/AI Task 2 Overall:/)).toHaveTextContent("6.5");
+    expect(await screen.findByRole("region", { name: "AI Task 2 overall summary" })).toHaveTextContent("Band 6.5");
     expect(screen.getAllByRole("article")).toHaveLength(4);
     expect(createAIWritingRun).not.toHaveBeenCalled();
     expect(MockEventSource.instances).toHaveLength(0);
+  });
+
+  it("shows an advisory overall Band and all four backend criterion scores", async () => {
+    vi.mocked(listAIWritingRuns).mockResolvedValue({ configured: true, items: [completed] });
+    panel();
+    const summary = await screen.findByRole("region", { name: "AI Task 2 overall summary" });
+    expect(within(summary).getByRole("heading", { name: "Điểm tổng hợp AI" })).toBeInTheDocument();
+    expect(summary).toHaveTextContent("Band 6.5");
+    expect(summary).toHaveTextContent("AI Task 2 · Ý kiến tham khảo");
+    expect(summary).toHaveTextContent("Trung bình đều của 4 tiêu chí Task 2. Không phải band Writing chính thức.");
+    for (const [label, name, score] of [
+      ["TR", "Task Response", "6.5"], ["CC", "Coherence & Cohesion", "6.0"],
+      ["LR", "Lexical Resource", "7.0"], ["GRA", "Grammatical Range & Accuracy", "6.0"],
+    ]) {
+      const stat = within(summary).getByText(label).closest("dt")!.parentElement!;
+      expect(stat).toHaveTextContent(name);
+      expect(within(stat).getByRole("definition")).toHaveTextContent(score);
+    }
+  });
+
+  it("keeps the overall summary absent even after four progress cards until the complete result arrives", async () => {
+    let resolveSnapshot!: (response: Response) => void;
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(() => new Promise<Response>((resolve) => { resolveSnapshot = resolve; })));
+    panel(); await waitFor(() => expect(screen.getByRole("button")).toBeEnabled());
+    fireEvent.click(screen.getByRole("button"));
+    await waitFor(() => expect(MockEventSource.instances).toHaveLength(1));
+    const source = MockEventSource.instances[0];
+    for (const [index, trait] of (["ta", "cc", "lr", "gra"] as const).entries()) {
+      act(() => source.emit("criterion.completed", index + 1, { criterion: trait, result: result.criteria[trait] }));
+    }
+    expect(screen.getAllByRole("article")).toHaveLength(4);
+    expect(screen.queryByRole("region", { name: "AI Task 2 overall summary" })).not.toBeInTheDocument();
+    act(() => source.emit("run.completed", 5));
+    expect(screen.queryByRole("region", { name: "AI Task 2 overall summary" })).not.toBeInTheDocument();
+    await act(async () => { resolveSnapshot(new Response(JSON.stringify(completed), { status: 200 })); });
+    expect(await screen.findByRole("region", { name: "AI Task 2 overall summary" })).toHaveTextContent("Band 6.5");
+  });
+
+  it("humanizes old persisted feedback and copies it to every editable manual field without saving", async () => {
+    const referencedResult = { ...result, criteria: {
+      ta: { ...result.criteria.ta, feedback: "**Luận điểm** ở P1S13." },
+      cc: { ...result.criteria.cc, feedback: "Liên kết (P1S3, P2S1)." },
+      lr: { ...result.criteria.lr, feedback: "Từ vựng tại P2S4." },
+      gra: { ...result.criteria.gra, feedback: "Cấu trúc tại P1S16." },
+    } };
+    vi.mocked(listAIWritingRuns).mockResolvedValue({ configured: true, items: [{ ...completed, prompt_version: "mts-task2-v1", result: referencedResult }] });
+    render(<WritingReviewView data={review()} />);
+    fireEvent.click(screen.getByRole("tab", { name: /Task 2/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "Chép gợi ý AI vào biểu mẫu" }));
+    const expected = {
+      TA: "Luận điểm ở đoạn 1, câu 13.", CC: "Liên kết (đoạn 1, câu 3; đoạn 2, câu 1).",
+      LR: "Từ vựng tại đoạn 2, câu 4.", GRA: "Cấu trúc tại đoạn 1, câu 16.",
+    };
+    for (const [trait, feedback] of Object.entries(expected)) {
+      expect(screen.getByLabelText(`Task 2 ${trait} feedback`)).toHaveValue(feedback);
+      expect(screen.getByLabelText(`Task 2 ${trait} feedback`)).toBeEnabled();
+    }
+    expect(screen.getByLabelText("AI Assessment").textContent).not.toMatch(/P\d+S\d+/);
+    expect(saveWritingTaskScore).not.toHaveBeenCalled();
+    expect(referencedResult.criteria.ta.feedback).toBe("**Luận điểm** ở P1S13.");
   });
 
   it("shows a retryable failed state and explicitly forces a regrade", async () => {
@@ -115,9 +223,9 @@ describe("Task 2 AI assessment", () => {
     vi.mocked(listAIWritingRuns).mockResolvedValue({ configured: true, items: [{ ...pending, id: taskId, status: "FAILED" }, completed] });
     panel();
     expect(await screen.findByRole("alert")).toHaveTextContent("Các tiêu chí đã hoàn thành vẫn được giữ lại");
-    expect(screen.queryByText(/AI Task 2 Overall:/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "AI Task 2 overall summary" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /6.5 · mts-task2-v2/ }));
-    expect(screen.getByText(/AI Task 2 Overall:/)).toHaveTextContent("6.5");
+    expect(screen.getByRole("region", { name: "AI Task 2 overall summary" })).toHaveTextContent("Band 6.5");
     expect(createAIWritingRun).not.toHaveBeenCalled();
   });
 
@@ -153,7 +261,7 @@ describe("Task 2 AI assessment", () => {
     vi.mocked(listAIWritingRuns).mockResolvedValue({ configured: true, items: [completed] });
     render(<WritingReviewView data={review()} />);
     fireEvent.click(screen.getByRole("tab", { name: /Task 2/ }));
-    await screen.findByText(/AI Task 2 Overall:/);
+    await screen.findByRole("region", { name: "AI Task 2 overall summary" });
     expect(screen.queryByRole("button", { name: "Chép gợi ý AI vào biểu mẫu" })).not.toBeInTheDocument();
   });
 
@@ -213,7 +321,7 @@ describe("Task 2 AI assessment", () => {
     expect(within(ta).getByText("Đang chấm điểm…")).toBeInTheDocument();
     act(() => source.emit("criterion.completed", 4, { criterion: "ta", result: criterion }));
     expect(screen.getByRole("article", { name: "AI Task Response" })).toBeInTheDocument();
-    expect(screen.queryByText(/AI Task 2 Overall:/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "AI Task 2 overall summary" })).not.toBeInTheDocument();
     act(() => source.emit("criterion.completed", 5, { criterion: "cc", result: result.criteria.cc }));
     expect(screen.getByText("2 / 4 tiêu chí hoàn tất")).toBeInTheDocument();
     act(() => source.emit("criterion.retrying", 6, { criterion: "lr", stage: "evidence" }));
@@ -242,10 +350,10 @@ describe("Task 2 AI assessment", () => {
     expect(screen.getByLabelText("Tiến trình Lexical Resource")).toHaveAttribute("data-state", "FAILED");
     expect(screen.getByLabelText("Tiến trình Grammatical Range & Accuracy")).toHaveTextContent("Chưa thực hiện");
     expect(screen.queryByText("raw details must not render")).not.toBeInTheDocument();
-    expect(screen.queryByText(/AI Task 2 Overall:/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "AI Task 2 overall summary" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /6.5 · mts-task2-v1/ }));
     expect(screen.getByText(/Bản chấm cũ/)).toBeInTheDocument();
-    expect(screen.getByText(/AI Task 2 Overall:/)).toHaveTextContent("6.5");
+    expect(screen.getByRole("region", { name: "AI Task 2 overall summary" })).toHaveTextContent("Band 6.5");
     expect(createAIWritingRun).not.toHaveBeenCalled();
   });
 
@@ -293,7 +401,7 @@ describe("Task 2 AI assessment", () => {
     act(() => source.emit("run.failed", 7, { error_code: "AI_PROVIDER_BAD_RESPONSE" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Các kết quả đã hoàn tất được giữ lại");
     expect(screen.getAllByRole("article")).toHaveLength(3);
-    expect(screen.queryByText(/AI Task 2 Overall:/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "AI Task 2 overall summary" })).not.toBeInTheDocument();
     cleanup();
     vi.mocked(listAIWritingRuns).mockResolvedValue({ configured: true, items: [failed] });
     panel();

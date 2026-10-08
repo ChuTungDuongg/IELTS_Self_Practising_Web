@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import {
-  aiTraits, createAIWritingRun, getAIWritingRun, isActiveAIRun, listAIWritingRuns,
+  aiTraits, aiTraitNames, createAIWritingRun, getAIWritingRun, isActiveAIRun, listAIWritingRuns,
   watchAIWritingRun, type AIWritingEvent, type AIWritingResult, type AIWritingRun,
 } from "@/lib/api/writing-ai";
 import { ApiError } from "@/lib/api/client";
@@ -102,7 +102,22 @@ export function WritingAIAssessment({ attemptId, taskId, hasEssay, canCopy, onCo
     {notice ? <p role="status">{notice}</p> : null}
     {error || visibleRun?.status === "FAILED" ? <p role="alert" className="notice notice-error">{visibleRun?.status === "FAILED" ? aiErrorMessage(visibleRun.error_code) : error}</p> : null}
     <ScoringProgress run={visibleRun} />
-    {run?.result ? <p className={styles.overall}>AI Task 2 Overall: <strong>{run.result.overall_band.toFixed(1)}</strong><small>Điểm tham khảo cho Task 2 · không phải band Writing chính thức</small></p> : null}
+    {run?.result ? <section className={styles.overall} aria-label="AI Task 2 overall summary">
+      <header className={styles.overallHeading}>
+        <div className={styles.overallCopy}>
+          <p className={styles.overallEyebrow}>AI Task 2 · Ý kiến tham khảo</p>
+          <h3>Điểm tổng hợp AI</h3>
+          <p className={styles.overallSupport}>Trung bình đều của 4 tiêu chí Task 2. Không phải band Writing chính thức.</p>
+        </div>
+        <strong className={styles.overallBand}>Band <span>{run.result.overall_band.toFixed(1)}</span></strong>
+      </header>
+      <dl className={styles.overallCriteria}>
+        {aiTraits.map((trait) => <div key={trait}>
+          <dt><abbr title={aiTraitNames[trait]}>{trait === "ta" ? "TR" : trait.toUpperCase()}</abbr><span>{aiTraitNames[trait]}</span></dt>
+          <dd>{run.result!.criteria[trait].score.toFixed(1)}</dd>
+        </div>)}
+      </dl>
+    </section> : null}
     <div className={styles.criteria}>{aiTraits.map((trait) => {
       const assessment = run?.result?.criteria[trait] ?? run?.progress[trait];
       return assessment ? <CriterionAssessmentCard key={trait} trait={trait} assessment={assessment} /> : null;

@@ -1,7 +1,13 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { WritingReviewView } from "@/features/writing/writing-review";
 import { saveWritingTaskScore, type WritingReviewPayload } from "@/lib/api/exam";
+import { listAIWritingRuns } from "@/lib/api/writing-ai";
+import { assetContentUrl } from "@/lib/api/assets";
+
+vi.mock("@/lib/api/writing-ai", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/lib/api/writing-ai")>(), listAIWritingRuns: vi.fn(),
+}));
 
 vi.mock("@/lib/api/exam", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api/exam")>();
@@ -91,7 +97,10 @@ function selectTaskScores(taskNumber: number, values: [string, string, string, s
 }
 
 describe("WritingReviewView", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(listAIWritingRuns).mockResolvedValue({ configured: false, items: [] });
+  });
 
   it("shows review content and two four-criterion assessment cards", () => {
     render(<WritingReviewView data={reviewPayload()} />);
@@ -111,6 +120,66 @@ describe("WritingReviewView", () => {
       Array.from({ length: 19 }, (_, index) => (index / 2).toFixed(1)),
     );
     expect(screen.getByRole("button", { name: "Save Task 1 scores" })).toBeDisabled();
+  });
+
+  it("preserves authored paragraphs, CRLF, whitespace and word count without changing essay content", () => {
+    const data = reviewPayload();
+    const content = "  First fictional paragraph.\r\n\r\nSecond fictional paragraph.\r\n  \r\nThird paragraph with https://example.test/a-long-path.\r\nFourth paragraph.";
+    data.tasks[0].content = content;
+    data.tasks[0].word_count = 293;
+    render(<WritingReviewView data={data} />);
+    const reader = screen.getByRole("article", { name: "Saved Task 1 response" });
+    expect(within(reader).getByRole("heading", { name: "Task 1 response" })).toBeInTheDocument();
+    expect(within(reader).getByText("293 words")).toBeInTheDocument();
+    expect([...reader.querySelectorAll(".writing-review-response-body > p")].map((paragraph) => paragraph.textContent)).toEqual([
+      "  First fictional paragraph.", "Second fictional paragraph.",
+      "Third paragraph with https://example.test/a-long-path.", "Fourth paragraph.",
+    ]);
+    expect(data.tasks[0].content).toBe(content);
+    expect(within(reader).queryByRole("textbox")).not.toBeInTheDocument();
+    expect(saveWritingTaskScore).not.toHaveBeenCalled();
+  });
+
+  it("keeps a response without line breaks as one paragraph without inventing breaks", () => {
+    const data = reviewPayload();
+    data.tasks[0].content = "One sentence. Another sentence! A final sentence?";
+    render(<WritingReviewView data={data} />);
+    const paragraphs = screen.getByRole("article", { name: "Saved Task 1 response" }).querySelectorAll(".writing-review-response-body > p");
+    expect(paragraphs).toHaveLength(1);
+    expect(paragraphs[0].textContent).toBe(data.tasks[0].content);
+  });
+
+  it.each(["", " \r\n\r\n  "])("shows the empty response fallback for %j", (content) => {
+    const data = reviewPayload(); data.tasks[0].content = content; data.tasks[0].word_count = 0;
+    render(<WritingReviewView data={data} />);
+    const reader = screen.getByRole("article", { name: "Saved Task 1 response" });
+    expect(within(reader).getByText("No response was saved.")).toBeInTheDocument();
+    expect(within(reader).getByText("0 words")).toBeInTheDocument();
+  });
+
+  it("switches the reader, count and prompt correctly and restores Task 1 image without AI controls", async () => {
+    const data = reviewPayload();
+    data.tasks[1].content = "Task two introduction.\n\nTask two conclusion.";
+    data.tasks[1].word_count = 7;
+    render(<WritingReviewView data={data} />);
+    expect(screen.getByAltText("Writing Task 1 reference")).toHaveAttribute("src", assetContentUrl(data.tasks[0].image_asset!));
+    expect(listAIWritingRuns).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("tab", { name: /Task 2/ }));
+    const reader = screen.getByRole("article", { name: "Saved Task 2 response" });
+    expect(within(reader).getByRole("heading", { name: "Task 2 response" })).toBeInTheDocument();
+    expect(within(reader).getByText("7 words")).toBeInTheDocument();
+    expect([...reader.querySelectorAll(".writing-review-response-body > p")].map((paragraph) => paragraph.textContent)).toEqual(["Task two introduction.", "Task two conclusion."]);
+    expect(screen.getByText("Discuss a fictional proposition.")).toBeInTheDocument();
+    expect(screen.queryByText("A saved fictional response.")).not.toBeInTheDocument();
+    expect(screen.queryByAltText("Writing Task 1 reference")).not.toBeInTheDocument();
+    await screen.findByText("Chấm AI chưa được cấu hình.");
+    fireEvent.click(screen.getByRole("tab", { name: /Task 1/ }));
+    expect(within(screen.getByRole("article", { name: "Saved Task 1 response" })).getByText("A saved fictional response.")).toBeInTheDocument();
+    expect(screen.getByAltText("Writing Task 1 reference")).toBeInTheDocument();
+    expect(screen.getByText("Describe fictional data.")).toBeInTheDocument();
+    expect(screen.getByText("Minimum 150 words")).toBeInTheDocument();
+    expect(screen.queryByLabelText("AI Assessment")).not.toBeInTheDocument();
+    expect(listAIWritingRuns).toHaveBeenCalledTimes(1);
   });
 
   it("saves all Task 1 criteria and keeps the final band pending", async () => {

@@ -4,6 +4,7 @@ import { useState } from "react";
 import Image from "next/image";
 import { useAuth } from "@/features/auth/auth-provider";
 import { WritingAIAssessment } from "./writing-ai-assessment";
+import { presentAIFeedback } from "./ai-feedback-presentation";
 import { aiTraits, type AIWritingResult } from "@/lib/api/writing-ai";
 import { assetContentUrl } from "@/lib/api/assets";
 import {
@@ -58,6 +59,7 @@ export function WritingReviewView({ data }: { data: WritingReviewPayload }) {
   const task = reviewData.tasks[taskIndex];
 
   if (!task) return <p>No Writing review content is available.</p>;
+  const paragraphs = task.content.replace(/\r\n/g, "\n").split(/\n+/).filter((paragraph) => paragraph.trim());
 
   function updateCriterion(taskId: string, criterion: Criterion, value: string) {
     setSelections((current) => ({
@@ -78,7 +80,7 @@ export function WritingReviewView({ data }: { data: WritingReviewPayload }) {
   function copyAISuggestions(taskId: string, result: AIWritingResult) {
     if (user?.role !== "ADMIN") return;
     setSelections((current) => ({ ...current, [taskId]: Object.fromEntries(aiTraits.map((key) => [key, result.criteria[key].score.toFixed(1)])) as TaskSelection }));
-    setFeedback((current) => ({ ...current, [taskId]: Object.fromEntries(aiTraits.map((key) => [key, result.criteria[key].feedback])) as TaskFeedback }));
+    setFeedback((current) => ({ ...current, [taskId]: Object.fromEntries(aiTraits.map((key) => [key, presentAIFeedback(result.criteria[key].feedback)])) as TaskFeedback }));
     setMessages((current) => ({ ...current, [taskId]: "AI suggestions copied. Review and save these scores explicitly." }));
   }
 
@@ -150,7 +152,15 @@ export function WritingReviewView({ data }: { data: WritingReviewPayload }) {
     </div>
     <main className="writing-review-layout">
       <article className="writing-task-prompt"><p className="writing-task-kicker">Writing Task {task.task_number}</p><h2>Task {task.task_number}</h2><p>{task.prompt}</p>{task.image_asset ? <Image unoptimized width={720} height={420} src={assetContentUrl(task.image_asset)} alt={`Writing Task ${task.task_number} reference`} /> : null}<div className="writing-task-guidance"><span>Minimum {task.minimum_recommended_words ?? "—"} words</span><span>{task.recommended_duration_seconds ? Math.round(task.recommended_duration_seconds / 60) : "—"} minutes suggested</span></div></article>
-      <article className="writing-review-response"><div><p className="writing-response-kicker">Saved response</p><h2>{task.word_count} words</h2></div><p>{task.content || "No response was saved."}</p></article>
+      <article className="writing-review-response" aria-label={`Saved Task ${task.task_number} response`}>
+        <header className="writing-review-response-heading">
+          <div><p className="writing-response-kicker">Saved response</p><h2>Task {task.task_number} response</h2></div>
+          <span className="writing-review-word-count">{task.word_count} words</span>
+        </header>
+        <div className="writing-review-response-body">
+          {paragraphs.length ? paragraphs.map((paragraph, index) => <p key={index}>{paragraph}</p>) : <p className="writing-review-response-empty">No response was saved.</p>}
+        </div>
+      </article>
     </main>
     {task.task_number === 2 ? <WritingAIAssessment key={task.writing_task_id} attemptId={reviewData.review.attempt.attempt_id} taskId={task.writing_task_id} hasEssay={Boolean(task.content.trim())} canCopy={user?.role === "ADMIN"} onCopy={(result) => copyAISuggestions(task.writing_task_id, result)} /> : null}
   </div>;
