@@ -50,7 +50,7 @@ def is_configured(settings: Settings) -> bool:
 
 def create_provider(settings: Settings) -> LLMProvider:
     if not is_configured(settings):
-        raise AppError("AI_NOT_CONFIGURED", "AI grading is not configured.", 503)
+        raise AppError("AI_NOT_CONFIGURED", "Chấm AI chưa được cấu hình.", 503)
     if settings.ai_writing_provider == "openai":
         return OpenAIProvider(settings)
     return VLLMProvider(settings)

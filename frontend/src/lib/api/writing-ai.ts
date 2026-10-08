@@ -8,7 +8,7 @@ export const aiTraitNames: Record<AITrait, string> = {
   gra: "Grammatical Range & Accuracy",
 };
 const band = z.number().min(0).max(9).multipleOf(0.5);
-const evidence = z.object({ quote: z.string().min(1).max(600), assessment: z.string().min(1).max(800) });
+const evidence = z.object({ source_id: z.string().max(32).nullable().optional(), quote: z.string().min(1).max(12000), assessment: z.string().min(1).max(800) });
 export const aiCriterionSchema = z.object({
   score: band, feedback: z.string().min(1).max(2000),
   strengths: z.array(z.string().min(1).max(800)).max(5),
@@ -28,17 +28,22 @@ export const aiWritingResultSchema = z.object({
   raw_mean: z.number().min(0).max(9), overall_band: band,
 });
 export type AIWritingResult = z.infer<typeof aiWritingResultSchema>;
+const criterionFailure = z.object({
+  error_code: z.string().max(80), error_message: z.string().max(300),
+  stage: z.enum(["evidence", "scoring"]).nullable().optional(),
+});
 export const aiRunSchema = z.object({
   id: z.string().uuid(), attempt_id: z.string().uuid(), writing_task_id: z.string().uuid(),
   status: z.enum(["PENDING", "RUNNING", "COMPLETED", "FAILED"]),
   provider: z.string(), model: z.string(), prompt_version: z.string(),
   result: aiWritingResultSchema.nullable(), progress: z.partialRecord(z.enum(aiTraits), criterion),
+  failures: z.partialRecord(z.enum(aiTraits), criterionFailure).optional(),
   error_code: z.string().nullable(), error_message: z.string().nullable(),
   started_at: z.string().nullable(), completed_at: z.string().nullable(), created_at: z.string(),
   activity: aiActivitySchema.nullable().optional(),
 });
 export type AIWritingRun = z.infer<typeof aiRunSchema>;
-export const aiEventTypes = ["run.started", "provider.starting", "provider.ready", "criterion.started", "evidence.request.started", "evidence.validation.started", "criterion.evidence.completed", "criterion.scoring.started", "criterion.scoring.validation.started", "criterion.retrying", "criterion.completed", "run.completed", "run.failed", "heartbeat"] as const;
+export const aiEventTypes = ["run.started", "provider.starting", "provider.ready", "criterion.started", "evidence.request.started", "evidence.validation.started", "criterion.evidence.completed", "criterion.scoring.started", "criterion.scoring.validation.started", "criterion.retrying", "criterion.completed", "criterion.failed", "run.completed", "run.failed", "heartbeat"] as const;
 export const aiEventSchema = z.object({
   sequence: z.number().int().positive(), event_type: z.enum(aiEventTypes),
   created_at: z.string().optional(),

@@ -62,7 +62,9 @@ class WritingAIWorker:
                 )
                 if fingerprint != run.input_fingerprint:
                     raise AppError(
-                        "AI_CONFIGURATION_CHANGED", "AI configuration changed. Please regrade.", 409
+                        "AI_CONFIGURATION_CHANGED",
+                        "Cấu hình AI đã thay đổi. Bạn có thể thử chấm lại.",
+                        409,
                     )
                 run.status = WritingAIRunStatus.RUNNING
                 run.started_at = run.updated_at = datetime.now(UTC)
@@ -79,6 +81,18 @@ class WritingAIWorker:
                 await self._checkpoint(run_id, event_type, payload, mts.usage, mts.diagnostics)
 
             result = await mts.assess(request, trace)
+            if result is None:
+                # All traits have now been attempted. Each successful checkpoint
+                # stays available; no partial mean/overall is ever calculated.
+                trait, failure = next(iter(mts.failures.items()))
+                mts.current_criterion, mts.current_stage = trait, failure.stage
+                await self._fail(
+                    run_id,
+                    failure.error_code,
+                    "Một số tiêu chí chưa thể chấm xong. Các kết quả đã hoàn tất được giữ lại; bạn có thể thử chấm lại.",
+                    mts,
+                )
+                return
             async with self.sessions() as session, session.begin():
                 repository = WritingAIRepository(session)
                 run = await repository.run(run_id, lock=True)
@@ -99,7 +113,7 @@ class WritingAIWorker:
             pass
         except asyncio.CancelledError:
             await self._fail(
-                run_id, "RUN_INTERRUPTED", "AI grading was interrupted. Please regrade.", mts
+                run_id, "RUN_INTERRUPTED", "Chấm AI bị gián đoạn. Bạn có thể thử chấm lại.", mts
             )
             raise
         except ProviderFailure as exc:
@@ -109,7 +123,10 @@ class WritingAIWorker:
         except Exception:
             # Exception bodies can contain credentials/prompts. Never serialize/log them.
             await self._fail(
-                run_id, "AI_GRADING_FAILED", "AI grading could not finish. Please regrade.", mts
+                run_id,
+                "AI_GRADING_FAILED",
+                "AI chưa thể hoàn tất bài chấm. Bạn có thể thử chấm lại.",
+                mts,
             )
         finally:
             if heartbeat:
@@ -141,10 +158,23 @@ class WritingAIWorker:
             persist_activity(run, event_type, payload)
             if payload.result and payload.criterion:
                 run.result_json = {
+                    **(run.result_json or {}),
                     "criteria": {
                         **(run.result_json or {}).get("criteria", {}),
                         payload.criterion: payload.result.model_dump(mode="json"),
-                    }
+                    },
+                }
+            if event_type == "criterion.failed" and payload.criterion:
+                run.result_json = {
+                    **(run.result_json or {}),
+                    "failures": {
+                        **(run.result_json or {}).get("failures", {}),
+                        payload.criterion: {
+                            "error_code": payload.error_code,
+                            "error_message": payload.error_message,
+                            "stage": payload.stage,
+                        },
+                    },
                 }
             await repository.append_event(run, event_type, payload)
 

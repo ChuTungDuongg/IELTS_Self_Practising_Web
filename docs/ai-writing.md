@@ -4,29 +4,51 @@ This is an **MTS-inspired zero-shot scoring** workflow: an online IELTS Task 2
 adaptation, not an exact reproduction of a research experiment. Four independent
 criteria are assessed sequentially: Task Response (`ta` for compatibility),
 Coherence and Cohesion, Lexical Resource, and Grammatical Range and Accuracy.
-Each criterion retrieves exact essay quotations with brief public assessments,
-then scores against original internal guidance. No other criterion's answer is
+Each criterion selects stable source IDs with brief Vietnamese assessments,
+then scores against faithful paraphrases of the current official IELTS Task 2
+band descriptors. No other criterion's answer is
 shared. No dataset-level min-max scaling or outlier clipping is used.
 
 The public **Scoring Trace** contains progress, evidence and concise feedback.
 Hidden reasoning, raw provider responses and internal prompts are never stored
 or streamed. Question/essay/evidence are explicitly treated as untrusted data.
-Quotes must be actual contiguous substrings of the saved essay. Matching permits
-canonical Unicode normalization and collapsing ordinary spaces/tabs/newlines;
-the original essay substring is restored and length-checked before saving. No
-semantic similarity, punctuation folding, paraphrases or inserted ellipses are
-accepted. Each evidence/scoring call gets at most one targeted correction based
-on an allowlisted validation reason, then fails safely if still invalid.
+Before inference, a deterministic pure helper divides the original essay into
+non-empty paragraphs (blank-line boundaries) and conservative sentences. It
+handles CRLF/LF, closing quotation marks, abbreviations, decimals and Unicode
+punctuation. Each `PnSm` source stores paragraph/sentence indices, start/end
+character offsets and the exact `essay[start:end]` text, without rewriting it.
+The model selects up to four allowed IDs; the backend resolves each ID to that
+original slice and emits `source_id`, `quote` and Vietnamese `assessment`.
+Optional model `focus` never determines validity and is not persisted. The model
+never needs to reproduce punctuation or whitespace. Legacy v1/v2 quote recovery
+helpers are isolated and documented; v3 inference never calls them.
+Each evidence/scoring interaction gets at most one targeted correction, then
+fails that criterion safely if still invalid; remaining criteria continue.
 
-Prompt version **`mts-task2-v2`** requires natural Vietnamese for assessments,
+Prompt version **`mts-task2-v3`** requires natural Vietnamese for assessments,
 feedback, strengths and improvements, while preserving original English quotes.
-Old v1 assessments remain immutable history and are never reused by v2. Existing
-deployments still setting `AI_WRITING_PROMPT_VERSION=mts-task2-v1` are upgraded to
-the effective v2 version for fingerprinting and execution when this code loads.
+Old v1/v2 assessments remain history and are never reused by v3. Deployed secrets
+still naming v1/v2 use effective v3 for fingerprinting/execution. Custom labels
+are prefixed by v3 so they cannot accidentally reuse the previous contract.
+
+Scoring guidance was checked against the [official IELTS descriptors](https://ielts.org/cdn/ielts-guides/ielts-writing-band-descriptors.pdf)
+on 2026-10-08 (current publication: May 2023, Task 2 pages 7–9). Only the four
+official criterion scopes are used. Scoring compares adjacent whole-band
+descriptors holistically; half-bands interpolate, with affirmative descriptor-fit
+support for high scores. The same scoring interaction returns bounded Vietnamese
+source-backed support, next-band comparison, and observed limitations (including
+isolated/recurring extent). These are concise justifications, not chain-of-thought,
+and are excluded from the public result. Structure, IDs, next-band arithmetic and
+the presence of high-band justification are validated. No error-count deductions,
+severity-to-band rules, caps or calibration constants alter the model's score.
+Prompts require consistent score/feedback and explain why the next level is not
+established. Fake-provider tests verify this contract, not real-model accuracy.
 
 Every criterion must be in 0–9 in steps of 0.5. FastAPI computes the Decimal
 equal-weight mean and rounds it with the existing `round_to_half` helper:
-`(6.5 + 6 + 7 + 6) / 4 = 6.375 → 6.5`. Both values are persisted.
+`(6.5 + 6 + 7 + 6) / 4 = 6.375 → 6.5`. Both values are persisted only if all four
+criteria succeed. Otherwise the run ends FAILED after attempting all criteria,
+with successful results and individual failures preserved and no aggregate.
 **AI Task 2 Overall** is advisory. It never updates `AttemptWritingScore`,
 `Attempt.band_score`, official Writing, History or Analytics. An admin can copy
 scores/feedback into the existing editable form; the existing explicit human
@@ -54,7 +76,7 @@ AI_WRITING_MODAL_SECRET=<proxy token secret>
 AI_WRITING_VLLM_API_KEY=
 AI_WRITING_REQUEST_TIMEOUT_SECONDS=300
 AI_WRITING_STARTUP_TIMEOUT_SECONDS=600
-AI_WRITING_PROMPT_VERSION=mts-task2-v2
+AI_WRITING_PROMPT_VERSION=mts-task2-v3
 AI_WRITING_STALE_AFTER_SECONDS=90
 ```
 
@@ -272,15 +294,31 @@ pg_restore --dbname=<target-database> --no-owner --no-acl ./database.dump
   (or the deployed app name). Safe logs contain operation/code/status only.
   Failed rows and partial progress remain; Regrade creates a new retryable run.
 - **Invalid assessment:** each evidence/scoring operation permits one targeted
-  repair. A second failure preserves completed criteria and marks the run FAILED.
+  repair. A second failure emits/persists `criterion.failed` and continues with
+  the next criterion. The run becomes FAILED after all four have been attempted.
   Internal `usage_json.diagnostics` and safe log lines contain only stage,
   criterion, attempt and a fixed reason: `INVALID_JSON`, `SCHEMA_VALIDATION`,
-  `INVALID_HALF_BAND`, `QUOTE_NOT_EXACT`, `EVIDENCE_ITEM_TOO_LONG`,
-  `TOO_MANY_EVIDENCE_ITEMS`, `FINISH_REASON_NOT_STOP`, `EMPTY_MODEL_CONTENT`,
+  `INVALID_HALF_BAND`, `EVIDENCE_UNKNOWN_SOURCE_ID`, `EVIDENCE_SCHEMA_INVALID`,
+  `SCORE_SCHEMA_INVALID`, `SCORE_CALIBRATION_INVALID`, `EVIDENCE_ITEM_TOO_LONG`,
+  `TOO_MANY_EVIDENCE_ITEMS`, `PROVIDER_FINISH_LENGTH`, `EMPTY_MODEL_CONTENT`,
   `MALFORMED_COMPLETION_ENVELOPE` or `OUTPUT_TOO_LARGE`. These diagnostics are
   excluded from API/SSE. Raw output, Pydantic input and prompts are not persisted.
   The failed criterion stops animating immediately even if JSON reconciliation
-  is temporarily offline; remaining criteria are marked not run.
+  is temporarily offline; later criteria still run. Snapshot `failures` preserves
+  local failure states across reload/reconnect. Completed cards appear on each
+  `criterion.completed`, before the full run finishes. Counts distinguish
+  completed/failed/active criteria. Heartbeats never change visible progress.
+- **Finish metadata:** safe logs/diagnostics distinguish stop, length, abort,
+  error and other/missing/tool/filter reasons. vLLM 0.13's [engine contract](https://github.com/vllm-project/vllm/blob/v0.13.0/vllm/v1/engine/__init__.py)
+  defines length as a token/context limit, abort as interrupted generation and
+  error as an internal failure; these are not successful stop completions.
+  Length is rejected even if the JSON happens to look complete, with one shorter
+  repair. Unknown metadata is sanitised to `other`, never logged verbatim. The
+  existing guided JSON-schema integration, temperature 0/seed 0 and 1800-token
+  vLLM budget remain. Evidence assessments are at most 320 characters/two
+  requested sentences; score feedback is at most 800 characters, strengths and
+  improvements at most three each. No global token increase or GPU smoke job was
+  needed. Scoring context references selected IDs rather than duplicating quotes.
 - **Interrupted run:** wait for the heartbeat lease to expire or revisit review;
   stale state becomes FAILED and Regrade is available.
 - **Trace disconnected:** the client probes saved JSON and reconnects with its
@@ -288,7 +326,7 @@ pg_restore --dbname=<target-database> --no-owner --no-acl ./database.dump
 
 ```powershell
 cd backend
-uv run pytest tests/test_writing_ai.py tests/test_mts_writing_validation.py tests/test_writing_llm_providers.py tests/test_writing_llm_readiness.py -q
+uv run pytest tests/test_essay_sources.py tests/test_mts_writing_v3.py tests/test_writing_ai.py tests/test_mts_writing_validation.py tests/test_writing_llm_providers.py tests/test_writing_llm_readiness.py -q
 # Run Ruff on the AI modules and touched integration files.
 cd ../frontend
 npx vitest run tests/writing-ai-assessment.test.tsx tests/writing-ai-progress.test.tsx tests/writing-review.test.tsx

@@ -19,6 +19,7 @@ from app.schemas.writing_ai import (
     AIWritingResult,
     AssessmentStage,
     CreateRunResponse,
+    CriterionFailure,
     CriterionResult,
     EventPayload,
     EventResponse,
@@ -43,6 +44,7 @@ def persist_activity(run: WritingAIGradingRun, event: EventType, payload: EventP
         "criterion.scoring.validation.started": "validating_score",
         "criterion.retrying": "retrying",
         "criterion.completed": "completed",
+        "criterion.failed": "failed",
         "run.completed": "completed",
         "run.failed": "failed",
     }
@@ -91,6 +93,10 @@ def present_run(run: WritingAIGradingRun) -> RunResponse:
             key: CriterionResult.model_validate(value)
             for key, value in stored.get("criteria", {}).items()
         },
+        failures={
+            key: CriterionFailure.model_validate(value)
+            for key, value in stored.get("failures", {}).items()
+        },
         error_code=run.error_code,
         error_message=run.error_message,
         started_at=run.started_at,
@@ -124,6 +130,29 @@ async def fail_run(
         criterion=criterion or previous.get("criterion"),
         stage=stage or previous.get("stage"),
     )
+    stored = run.result_json or {}
+    if (
+        payload.criterion
+        and payload.criterion not in stored.get("criteria", {})
+        and payload.criterion not in stored.get("failures", {})
+    ):
+        # Shutdown/stale recovery can interrupt a later criterion after an
+        # earlier local failure. Preserve both; never mark a completed one failed.
+        failure = CriterionFailure(
+            error_code=code, error_message="Không thể hoàn tất tiêu chí này.", stage=payload.stage
+        )
+        run.result_json = {
+            **stored,
+            "failures": {
+                **stored.get("failures", {}),
+                payload.criterion: failure.model_dump(mode="json"),
+            },
+        }
+        await repository.append_event(
+            run,
+            "criterion.failed",
+            EventPayload(criterion=payload.criterion, **failure.model_dump()),
+        )
     persist_activity(run, "run.failed", payload)
     await repository.append_event(run, "run.failed", payload)
 
@@ -140,41 +169,39 @@ class WritingAIService:
     ) -> WritingScoringRequest:
         attempt = await self.repository.attempt(attempt_id, self.user_id, lock=lock)
         if attempt is None:
-            raise AppError("ATTEMPT_NOT_FOUND", "The requested attempt does not exist.", 404)
+            raise AppError("ATTEMPT_NOT_FOUND", "Không tìm thấy lượt làm bài này.", 404)
         if attempt.module_type != ModuleType.WRITING:
             raise AppError(
-                "WRITING_ATTEMPT_REQUIRED", "AI grading requires a Writing attempt.", 422
+                "WRITING_ATTEMPT_REQUIRED", "Chấm AI yêu cầu một lượt làm bài Writing.", 422
             )
         if (
             attempt.status in {AttemptStatus.IN_PROGRESS, AttemptStatus.PAUSED}
             or attempt.finished_at is None
         ):
-            raise AppError("ATTEMPT_NOT_FINALIZED", "Finalize the attempt before AI grading.", 409)
+            raise AppError(
+                "ATTEMPT_NOT_FINALIZED", "Hãy hoàn tất lượt làm bài trước khi chấm AI.", 409
+            )
         if attempt.test_session_id:
             mock = await self.session.get(TestSession, attempt.test_session_id)
             if mock and mock.status == TestSessionStatus.IN_PROGRESS:
                 raise AppError(
-                    "FULL_MOCK_REVIEW_LOCKED", "Complete the Full Mock before AI grading.", 409
+                    "FULL_MOCK_REVIEW_LOCKED",
+                    "Hãy hoàn tất bài thi Full Mock trước khi chấm AI.",
+                    409,
                 )
         task = await self.repository.task(task_id, attempt.test_version_id)
         if task is None:
-            raise AppError(
-                "INVALID_WRITING_TASK", "The Writing task does not belong to this attempt.", 422
-            )
+            raise AppError("INVALID_WRITING_TASK", "Bài Writing không thuộc lượt làm bài này.", 422)
         if task.task_number != 2:
-            raise AppError(
-                "AI_TASK_TWO_ONLY", "AI grading is available for Writing Task 2 only.", 422
-            )
+            raise AppError("AI_TASK_TWO_ONLY", "Chấm AI chỉ hỗ trợ Writing Task 2.", 422)
         essay = await self.repository.essay(attempt_id, task_id)
         if require_essay and not essay.strip():
             raise AppError(
-                "AI_EMPTY_ESSAY", "Save a non-empty Task 2 response before AI grading.", 422
+                "AI_EMPTY_ESSAY", "Hãy lưu câu trả lời Task 2 có nội dung trước khi chấm AI.", 422
             )
         # Never truncate a saved response silently to fit the GPU's context budget.
         if require_essay and (len(essay) > 12_000 or len(task.prompt) > 4000):
-            raise AppError(
-                "AI_INPUT_TOO_LONG", "This response or prompt is too long for AI grading.", 422
-            )
+            raise AppError("AI_INPUT_TOO_LONG", "Câu trả lời hoặc đề bài quá dài để chấm AI.", 422)
         return WritingScoringRequest(
             attempt_id=attempt_id, writing_task_id=task_id, prompt=task.prompt, response=essay
         )
@@ -187,7 +214,7 @@ class WritingAIService:
                 self.repository,
                 run,
                 "STALE_RUN",
-                "AI grading was interrupted. Please regrade to try again.",
+                "Chấm AI bị gián đoạn. Bạn có thể thử chấm lại.",
             )
 
     async def create(self, attempt_id: UUID, task_id: UUID, *, force: bool) -> CreateRunResponse:
@@ -250,9 +277,7 @@ class WritingAIService:
         async with self.session.begin():
             run = await self.repository.run(run_id, user_id=self.user_id, lock=True)
             if run is None:
-                raise AppError(
-                    "AI_RUN_NOT_FOUND", "The requested AI assessment does not exist.", 404
-                )
+                raise AppError("AI_RUN_NOT_FOUND", "Không tìm thấy bài đánh giá AI này.", 404)
             await self.recover_stale(run)
             events = await self.repository.events(run_id, after) if include_events else []
             return present_run(run), [

@@ -14,7 +14,7 @@ export function activityFromEvent(event: AIWritingEvent): AIActivity | null {
     "criterion.started": "preparing", "evidence.request.started": "collecting_evidence",
     "evidence.validation.started": "validating_evidence", "criterion.evidence.completed": "evidence_collected",
     "criterion.scoring.started": "scoring", "criterion.scoring.validation.started": "validating_score",
-    "criterion.retrying": "retrying", "criterion.completed": "completed", "run.failed": "failed", "run.completed": "completed",
+    "criterion.retrying": "retrying", "criterion.completed": "completed", "criterion.failed": "failed", "run.failed": "failed", "run.completed": "completed",
   };
   const phase = phases[event.event_type];
   return phase ? { phase, criterion: event.payload.criterion ?? null, stage: event.payload.stage ?? null, started_at: event.created_at ?? new Date().toISOString() } : null;
@@ -51,24 +51,30 @@ export function ScoringProgress({ run }: { run: AIWritingRun | null }) {
   const active = isActiveAIRun(run);
   const count = aiTraits.filter((trait) => run?.progress[trait] || run?.result?.criteria[trait]).length;
   const activity = run?.activity;
+  const failedTraits = new Set(aiTraits.filter((trait) => run?.failures?.[trait] && !run?.progress[trait] && !run?.result?.criteria[trait]));
   // Legacy failed rows contain progress but no persisted activity. Sequential
   // grading identifies the first unfinished criterion after completed results.
-  const failedTrait = run?.status === "FAILED" ? activity?.criterion
-    ?? (count > 0 || ["AI_PROVIDER_BAD_RESPONSE", "INVALID_PROVIDER_OUTPUT"].includes(run.error_code ?? "")
+  const terminalTrait = run?.status === "FAILED" ? activity?.criterion
+    ?? (failedTraits.size === 0 && (count > 0 || ["AI_PROVIDER_BAD_RESPONSE", "INVALID_PROVIDER_OUTPUT"].includes(run.error_code ?? ""))
       ? aiTraits.find((trait) => !run.progress[trait]) : null) : null;
-  const summary = run?.status === "FAILED" ? "Chưa thể hoàn tất bài chấm"
+  if (terminalTrait && !run?.progress[terminalTrait] && !run?.result?.criteria[terminalTrait]) failedTraits.add(terminalTrait);
+  const failedCount = failedTraits.size;
+  const activeCount = active && activity?.criterion && !run?.progress[activity.criterion] && !run?.failures?.[activity.criterion] ? 1 : 0;
+  const summary = run?.status === "FAILED" ? "Chưa thể hoàn tất toàn bộ bài chấm."
     : run?.status === "COMPLETED" ? "Chấm bài hoàn tất"
     : activity?.phase === "starting_model" ? "Đang khởi động mô hình AI…"
-    : active ? "Chấm bài bằng AI đang diễn ra" : "Sẵn sàng chấm Task 2";
+    : active ? "Đang chấm bài…" : "Sẵn sàng chấm Task 2";
 
   return <section className={styles.trace} aria-label="Scoring Trace">
     <div className={styles.traceHeading}><h3>Scoring Trace · Tiến trình chấm</h3><span>{count} / 4 tiêu chí hoàn tất</span></div>
+    {failedCount ? <p className={styles.progressCounts}>{count} hoàn tất · {failedCount} lỗi{activeCount ? ` · ${activeCount} đang chấm` : active ? ` · ${4 - count - failedCount} đang chờ` : ""}</p> : null}
     <p role="status" aria-live="polite">{summary}</p>
     <ol className={styles.timeline} aria-live="polite" aria-label="Tiến trình tiêu chí">
       {aiTraits.map((trait) => {
         const completed = run?.progress[trait] ?? run?.result?.criteria[trait];
-        const current = active && !completed && activity?.criterion === trait;
-        const state = completed || run?.status === "COMPLETED" ? "COMPLETED" : failedTrait === trait ? "FAILED"
+        const failed = failedTraits.has(trait);
+        const current = active && !completed && !failed && activity?.criterion === trait;
+        const state = completed || run?.status === "COMPLETED" ? "COMPLETED" : failed ? "FAILED"
           : current ? activity?.phase === "retrying" ? "RETRYING" : "ACTIVE" : "WAITING";
         const evidenceCollected = completed || (activity?.criterion === trait && ["scoring", "validating_score", "evidence_collected"].includes(activity.phase))
           || (activity?.criterion === trait && activity.stage === "scoring");
@@ -78,7 +84,7 @@ export function ScoringProgress({ run }: { run: AIWritingRun | null }) {
             <div className={styles.stepTitle}><strong>{aiTraitNames[trait]}</strong>{completed ? <b>Band {completed.score.toFixed(1)}</b> : null}</div>
             <small>{traitSubtitles[trait]}</small>
             {evidenceCollected ? <p>✓ Đã thu thập dẫn chứng</p> : null}
-            <p>{state === "COMPLETED" ? "Đã chấm xong" : state === "FAILED" ? "Không thể hoàn tất đánh giá cho tiêu chí này."
+            <p>{state === "COMPLETED" ? "Đã chấm xong" : state === "FAILED" ? "Không thể hoàn tất tiêu chí này."
               : current ? phaseLabel(activity) : run?.status === "FAILED" ? "Chưa thực hiện" : "Đang chờ"}</p>
             {current && activity ? <StageElapsed startedAt={activity.started_at} /> : null}
           </div>

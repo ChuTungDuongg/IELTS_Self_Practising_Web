@@ -41,3 +41,10 @@ it("terminal completed state overrides an outdated transient stage", () => {
   expect(screen.getAllByText("Đã chấm xong")).toHaveLength(4);
   expect(screen.queryByText("Đang thu thập dẫn chứng…")).not.toBeInTheDocument();
 });
+
+it("retains an interrupted terminal criterion beside an earlier persisted failure", () => {
+  render(<ScoringProgress run={{ ...active, status: "FAILED", progress: { ta: criterion, cc: criterion }, failures: { lr: { error_code: "AI_PROVIDER_BAD_RESPONSE", error_message: "Không thể hoàn tất tiêu chí này.", stage: "evidence" } }, error_code: "RUN_INTERRUPTED", activity: { ...active.activity!, phase: "failed", criterion: "gra", stage: "scoring" } }} />);
+  expect(screen.getByLabelText("Tiến trình Lexical Resource")).toHaveAttribute("data-state", "FAILED");
+  expect(screen.getByLabelText("Tiến trình Grammatical Range & Accuracy")).toHaveAttribute("data-state", "FAILED");
+  expect(screen.getByText("2 hoàn tất · 2 lỗi")).toBeInTheDocument();
+});

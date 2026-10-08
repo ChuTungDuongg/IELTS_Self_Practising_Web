@@ -64,7 +64,7 @@ class FakeProvider:
             value = {
                 "evidence": [
                     {
-                        "quote": "Fictional parks improve city life.",
+                        "source_id": "P1S1",
                         "assessment": "Luận điểm trả lời trực tiếp yêu cầu của đề.",
                     }
                 ]
@@ -75,6 +75,21 @@ class FakeProvider:
                 "feedback": "Cần phát triển chi tiết hỗ trợ cho luận điểm.",
                 "strengths": ["Diễn đạt rõ ràng."],
                 "improvements": ["Bổ sung một ví dụ cụ thể."],
+            }
+            value["calibration"] = {
+                "support": [
+                    {"source_id": "P1S1", "assessment": "Dẫn chứng phù hợp với mức đã chọn."}
+                ],
+                "next_band": int(value["score"]) + 1,
+                "next_band_blockers": [
+                    {
+                        "source_id": "P1S2",
+                        "severity": "isolated",
+                        "assessment": "Một ý hỗ trợ còn chưa phát triển.",
+                    }
+                ],
+                "comparison": "Chưa thể hiện ổn định mức mô tả kế tiếp.",
+                "high_band_justification": None,
             }
             self.scored += 1
         return Completion(json.dumps(value), {"total_tokens": 10})
@@ -396,41 +411,47 @@ async def test_second_bad_call_fails_and_preserves_partial_progress(db_session, 
     await worker(db_session, settings, provider).execute(created.run_id)
     run, events = await service(db_session, settings).snapshot(created.run_id, 0)
     assert run.status == WritingAIRunStatus.FAILED and run.error_code == "AI_PROVIDER_BAD_RESPONSE"
-    assert set(run.progress) == {"ta"} and run.result is None
-    assert len(provider.calls) == 5 and events[-1].event_type == "run.failed"
+    assert set(run.progress) == {"ta", "lr", "gra"} and run.result is None
+    assert len(provider.calls) == 9 and events[-1].event_type == "run.failed"
     assert "secret" not in run.model_dump_json() + str(events)
     retried = await service(db_session, settings).create(attempt_id, task_id, force=False)
     assert retried.run_id != run.id
 
 
 @pytest.mark.integration
-async def test_lr_evidence_failure_retains_ta_cc_and_terminates_replay(
+async def test_lr_evidence_failure_retains_ta_cc_runs_gra_and_terminates_replay(
     db_session, writing, settings
 ):
     attempt_id, _, task_id = writing
     api = service(db_session, settings)
     created = await api.create(attempt_id, task_id, force=False)
-    invalid_quote = json.dumps(
-        {"evidence": [{"quote": "private invented quote", "assessment": "Nhận xét."}]}
-    )
-    provider = FakeProvider({4: invalid_quote, 5: invalid_quote})
+    invalid_source = json.dumps({"evidence": [{"source_id": "P99S1", "assessment": "Nhận xét."}]})
+    provider = FakeProvider({4: invalid_source, 5: invalid_source})
     runner = worker(db_session, settings, provider)
     await runner.execute(created.run_id)
     run, events = await api.snapshot(created.run_id, 0)
     assert run.status == WritingAIRunStatus.FAILED and run.result is None
-    assert set(run.progress) == {"ta", "cc"}
+    assert set(run.progress) == {"ta", "cc", "gra"}
     assert run.activity.phase == "failed" and run.activity.criterion == "lr"
     assert run.activity.stage == "evidence"
     assert not any(
         e.event_type == "criterion.scoring.started" and e.payload.criterion == "lr" for e in events
     )
-    assert len(provider.calls) == 6
+    assert len(provider.calls) == 8
+    assert set(run.failures) == {"lr"}
     assert [e.sequence for e in events] == list(range(1, len(events) + 1))
     async with db_session.begin():
         db_session.expire_all()
         stored = await db_session.get(WritingAIGradingRun, run.id)
+        assert stored.raw_mean is None and stored.overall_band is None
         assert stored.usage_json["diagnostics"] == [
-            {"stage": "evidence", "criterion": "lr", "reason": "QUOTE_NOT_EXACT", "attempt": n}
+            {
+                "stage": "evidence",
+                "criterion": "lr",
+                "reason": "EVIDENCE_UNKNOWN_SOURCE_ID",
+                "attempt": n,
+                "finish_reason": "stop",
+            }
             for n in [1, 2]
         ]
         assert "private invented" not in json.dumps(stored.usage_json) + json.dumps(
@@ -453,12 +474,42 @@ async def test_lr_evidence_failure_retains_ta_cc_and_terminates_replay(
     assert "event: run.failed" in stream
     assert "QUOTE_NOT_EXACT" not in stream + run.model_dump_json()
     assert "private invented" not in stream + run.model_dump_json()
-    assert "event: criterion.completed" not in stream
+    assert "event: criterion.completed" in stream
     forced = await api.create(attempt_id, task_id, force=True)
     fresh = FakeProvider()
     await worker(db_session, settings, fresh).execute(forced.run_id)
     assert len(fresh.calls) == 8
     assert (await api.get(run.id)).progress == run.progress
+
+
+@pytest.mark.integration
+async def test_interruption_after_lr_failure_persists_gra_failure_and_partial_results(
+    db_session, writing, settings
+):
+    class InterruptedProvider(FakeProvider):
+        async def complete(self, messages, schema):
+            if len(self.calls) == 7:
+                raise asyncio.CancelledError
+            return await super().complete(messages, schema)
+
+    attempt_id, _, task_id = writing
+    api = service(db_session, settings)
+    created = await api.create(attempt_id, task_id, force=False)
+    bad = '{"evidence":[{"source_id":"P99S1","assessment":"Nhận xét."}]}'
+    with pytest.raises(asyncio.CancelledError):
+        await worker(db_session, settings, InterruptedProvider({4: bad, 5: bad})).execute(
+            created.run_id
+        )
+    run, events = await api.snapshot(created.run_id, 0)
+    assert run.status == WritingAIRunStatus.FAILED and run.result is None
+    assert set(run.progress) == {"ta", "cc"}
+    assert set(run.failures) == {"lr", "gra"}
+    assert run.failures["gra"].error_code == "RUN_INTERRUPTED"
+    assert [e.payload.criterion for e in events if e.event_type == "criterion.failed"] == [
+        "lr",
+        "gra",
+    ]
+    assert events[-1].event_type == "run.failed"
 
 
 @pytest.mark.integration
@@ -489,8 +540,9 @@ async def test_partial_checkpoint_visible_before_next_trait_and_heartbeat_is_onl
 
 
 @pytest.mark.integration
-async def test_old_english_cache_is_preserved_but_never_reused_for_v2(
-    db_session, writing, settings
+@pytest.mark.parametrize("old_version", ["mts-task2-v1", "mts-task2-v2"])
+async def test_old_cache_is_preserved_but_never_reused_for_v3(
+    db_session, writing, settings, old_version
 ):
     attempt_id, _, task_id = writing
     api = service(db_session, settings)
@@ -500,19 +552,17 @@ async def test_old_english_cache_is_preserved_but_never_reused_for_v2(
     async with db_session.begin():
         request = await api.input(attempt_id, task_id)
         stored = await db_session.get(WritingAIGradingRun, legacy.run_id)
-        stored.prompt_version = "mts-task2-v1"
+        stored.prompt_version = old_version
         stored.input_fingerprint = input_fingerprint(
             request, stored.prompt_version, stored.provider, stored.model
         )
-    settings.ai_writing_prompt_version = "mts-task2-v1"  # Existing deployed secret.
+    settings.ai_writing_prompt_version = old_version  # Existing deployed secret.
     upgraded = await api.create(attempt_id, task_id, force=False)
     assert upgraded.run_id != legacy.run_id and not upgraded.cache_hit
-    assert (await api.get(upgraded.run_id)).prompt_version == "mts-task2-v2"
+    assert (await api.get(upgraded.run_id)).prompt_version == "mts-task2-v3"
     history = await api.list(attempt_id, task_id)
     assert len(history.items) == 2
-    assert (
-        history.items[1].prompt_version == "mts-task2-v1" and history.items[1].result == old_result
-    )
+    assert history.items[1].prompt_version == old_version and history.items[1].result == old_result
 
 
 @pytest.mark.integration
@@ -638,13 +688,11 @@ async def test_sse_api_replay_auth_disconnect_and_no_raw_content(
         app.dependency_overrides.clear()
 
 
-async def test_protocol_adapter_and_unverified_quotation_repair():
+async def test_protocol_adapter_and_unknown_source_repair():
     request = WritingScoringRequest(
         attempt_id=uuid4(), writing_task_id=uuid4(), prompt="Fictional parks?", response=ESSAY
     )
-    provider = FakeProvider(
-        {0: '{"evidence":[{"quote":"invented evidence","assessment":"Invalid"}]}'}
-    )
+    provider = FakeProvider({0: '{"evidence":[{"source_id":"P99S1","assessment":"Nhận xét."}]}'})
     scoring: WritingScoringProvider = MTSWritingScoringService(provider)
     result = await scoring.score(request)
     assert result.overall_band == 6.5 and len(provider.calls) == 9

@@ -5,7 +5,12 @@ from typing import Any
 
 import httpx
 
-from app.providers.writing_llm.base import Completion, ProviderFailure
+from app.providers.writing_llm.base import (
+    Completion,
+    ProviderFailure,
+    safe_finish_reason,
+    validate_finish,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -130,6 +135,9 @@ class ChatCompletionHTTP:
         data = await self._json_request("POST", "/chat/completions", self.timeout, body)
         try:
             choice = data["choices"][0]
+            finish = safe_finish_reason(choice.get("finish_reason"))
+            logger.info("AI provider completion: finish_reason=%s", finish)
+            validate_finish(finish)
             text = choice["message"]["content"]
             if not isinstance(text, str):
                 raise ProviderFailure(
@@ -137,8 +145,6 @@ class ChatCompletionHTTP:
                 )
             if not text.strip():
                 raise ProviderFailure("AI_PROVIDER_BAD_RESPONSE", reason="EMPTY_MODEL_CONTENT")
-            if choice.get("finish_reason") != "stop":
-                raise ProviderFailure("AI_PROVIDER_BAD_RESPONSE", reason="FINISH_REASON_NOT_STOP")
             # Discard reasoning fields, provider metadata and arbitrary usage properties.
             usage = data.get("usage") or {}
             safe_usage = {
@@ -148,7 +154,7 @@ class ChatCompletionHTTP:
                 and type(value) is int
                 and 0 <= value <= 10_000_000
             }
-            return Completion(text, safe_usage)
+            return Completion(text, safe_usage, finish)
         except (ValueError, KeyError, IndexError, TypeError, AttributeError):
             raise ProviderFailure(
                 "AI_PROVIDER_BAD_RESPONSE", reason="MALFORMED_COMPLETION_ENVELOPE"

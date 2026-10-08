@@ -143,8 +143,9 @@ async def test_poll_redirect_never_leaks_headers_or_changes_path(monkeypatch, lo
         return httpx.Response(303, headers={"Location": location})
 
     mock_http(monkeypatch, handler)
-    with pytest.raises(ProviderFailure, match="endpoint is incorrect"):
+    with pytest.raises(ProviderFailure) as failed:
         await create_provider(config()).complete([], {})
+    assert failed.value.code == "AI_PROVIDER_ENDPOINT_ERROR"
     assert len(requests) == 1
 
 

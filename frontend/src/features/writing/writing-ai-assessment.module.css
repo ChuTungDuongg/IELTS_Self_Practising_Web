@@ -8,6 +8,7 @@
 .traceHeading, .stepTitle, .cardHeading { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
 .traceHeading { flex-wrap: wrap; margin-bottom: 8px; }
 .traceHeading h3 { font-weight: 800; }
+.progressCounts { color: var(--muted); font-size: .9rem; font-variant-numeric: tabular-nums; }
 .traceHeading > span, .elapsed, .legacy { color: var(--muted); font-size: .85rem; }
 .timeline { display: grid; padding-top: 20px; list-style: none; }
 .step { position: relative; display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 12px; padding-bottom: 24px; }

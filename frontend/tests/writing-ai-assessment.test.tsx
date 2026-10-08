@@ -224,12 +224,12 @@ describe("Task 2 AI assessment", () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));
     act(() => source.emit("run.failed", 7, { criterion: "lr", stage: "evidence", error_code: "AI_PROVIDER_BAD_RESPONSE" }));
     expect(lr).toHaveAttribute("data-state", "FAILED");
-    expect(within(lr).getByText("Không thể hoàn tất đánh giá cho tiêu chí này.")).toBeInTheDocument();
+    expect(within(lr).getByText("Không thể hoàn tất tiêu chí này.")).toBeInTheDocument();
     expect(screen.getByLabelText("Tiến trình Grammatical Range & Accuracy")).toHaveTextContent("Chưa thực hiện");
     expect(screen.queryByText(/Đang (thu thập|kiểm tra|chấm điểm|sửa dữ liệu)/)).not.toBeInTheDocument();
     expect(screen.getAllByRole("article")).toHaveLength(2);
     expect(saveWritingTaskScore).not.toHaveBeenCalled();
-    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("AI trả về dữ liệu chưa hợp lệ"));
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("dữ liệu chưa hợp lệ"));
   });
 
   it("restores a partial failed timeline with safe Vietnamese messaging and keeps old history", async () => {
@@ -264,6 +264,42 @@ describe("Task 2 AI assessment", () => {
     expect(MockEventSource.instances[1].url).toContain("after=5");
     act(() => MockEventSource.instances[1].emit("criterion.started", 4, { criterion: "ta" }));
     expect(screen.getByLabelText("Tiến trình Coherence & Cohesion")).toHaveAttribute("data-state", "ACTIVE");
+    expect(createAIWritingRun).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps LR failure local, runs Grammar live, and restores failed criteria on reload", async () => {
+    panel(); await waitFor(() => expect(screen.getByRole("button")).toBeEnabled());
+    fireEvent.click(screen.getByRole("button"));
+    await waitFor(() => expect(MockEventSource.instances).toHaveLength(1));
+    const source = MockEventSource.instances[0];
+    act(() => source.emit("criterion.completed", 1, { criterion: "ta", result: criterion }));
+    act(() => source.emit("criterion.completed", 2, { criterion: "cc", result: result.criteria.cc }));
+    act(() => source.emit("criterion.failed", 3, { criterion: "lr", stage: "evidence", error_code: "AI_PROVIDER_BAD_RESPONSE", error_message: "private error must not render" }));
+    expect(screen.getByLabelText("Tiến trình Lexical Resource")).toHaveAttribute("data-state", "FAILED");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.queryByText("private error must not render")).not.toBeInTheDocument();
+    act(() => source.emit("criterion.started", 4, { criterion: "gra" }));
+    expect(screen.getByText("2 hoàn tất · 1 lỗi · 1 đang chấm")).toBeInTheDocument();
+    expect(screen.getByText("Đang chấm bài…")).toBeInTheDocument();
+    expect(screen.getByLabelText("Tiến trình Grammatical Range & Accuracy")).toHaveAttribute("data-state", "ACTIVE");
+    const visible = screen.getByLabelText("Scoring Trace").textContent;
+    act(() => source.emit("heartbeat", 5));
+    expect(screen.getByLabelText("Scoring Trace").textContent).toBe(visible);
+    act(() => source.emit("criterion.completed", 6, { criterion: "gra", result: criterion }));
+    expect(screen.getByRole("article", { name: "AI Grammatical Range & Accuracy" })).toBeInTheDocument();
+    const failed: AIWritingRun = { ...pending, status: "FAILED", error_code: "AI_PROVIDER_BAD_RESPONSE", progress: { ta: criterion, cc: criterion, gra: criterion }, failures: { lr: { error_code: "AI_PROVIDER_BAD_RESPONSE", error_message: "Không thể hoàn tất tiêu chí này.", stage: "evidence" } } };
+    vi.mocked(getAIWritingRun).mockResolvedValue(failed);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(failed), { status: 200 })));
+    act(() => source.emit("run.failed", 7, { error_code: "AI_PROVIDER_BAD_RESPONSE" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Các kết quả đã hoàn tất được giữ lại");
+    expect(screen.getAllByRole("article")).toHaveLength(3);
+    expect(screen.queryByText(/AI Task 2 Overall:/)).not.toBeInTheDocument();
+    cleanup();
+    vi.mocked(listAIWritingRuns).mockResolvedValue({ configured: true, items: [failed] });
+    panel();
+    await screen.findByRole("alert");
+    expect(screen.getByLabelText("Tiến trình Lexical Resource")).toHaveAttribute("data-state", "FAILED");
+    expect(screen.getAllByRole("article")).toHaveLength(3);
     expect(createAIWritingRun).toHaveBeenCalledTimes(1);
   });
 });

@@ -69,7 +69,9 @@ def replay_cursor(after: int, last_event_id: str | None) -> int:
         if cursor < 0:
             raise ValueError
     except ValueError:
-        raise AppError("INVALID_EVENT_CURSOR", "The event cursor is invalid.", 422) from None
+        raise AppError(
+            "INVALID_EVENT_CURSOR", "Mốc phát lại tiến trình không hợp lệ.", 422
+        ) from None
     return max(after, cursor)
 
 

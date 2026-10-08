@@ -50,6 +50,10 @@ export function WritingAIAssessment({ attemptId, taskId, hasEssay, canCopy, onCo
           error_code: event.event_type === "run.failed" ? event.payload.error_code ?? current.error_code : current.error_code,
           activity: activity ? { ...activity, criterion: event.event_type === "run.failed" ? activity.criterion ?? current.activity?.criterion ?? null : activity.criterion } : current.activity,
           progress: trait && event.payload.result ? { ...current.progress, [trait]: event.payload.result } : current.progress,
+          failures: trait && event.event_type === "criterion.failed" ? { ...current.failures, [trait]: {
+            error_code: event.payload.error_code ?? "AI_GRADING_FAILED",
+            error_message: "Không thể hoàn tất tiêu chí này.", stage: event.payload.stage,
+          } } : current.failures,
         } : current);
         // Terminal UI overrides transient phases immediately. Keep observation
         // alive until JSON reconciliation finishes, including during an outage.
@@ -57,7 +61,7 @@ export function WritingAIAssessment({ attemptId, taskId, hasEssay, canCopy, onCo
         if (event.event_type === "run.completed") setTerminal("COMPLETED");
       },
       snapshot(saved) {
-        setRun((current) => current?.id === saved.id ? { ...saved, progress: { ...current.progress, ...saved.progress }, activity: saved.activity ?? current.activity } : current);
+        setRun((current) => current?.id === saved.id ? { ...saved, progress: { ...current.progress, ...saved.progress }, failures: { ...current.failures, ...saved.failures }, activity: saved.activity ?? current.activity } : current);
         setTerminal(null);
         setError("");
         setRuns((current) => [saved, ...current.filter((item) => item.id !== saved.id)]);
@@ -108,7 +112,7 @@ export function WritingAIAssessment({ attemptId, taskId, hasEssay, canCopy, onCo
 }
 
 function aiErrorMessage(code?: string | null) {
-  if (["AI_PROVIDER_BAD_RESPONSE", "INVALID_PROVIDER_OUTPUT"].includes(code ?? "")) return "AI trả về dữ liệu chưa hợp lệ ở một tiêu chí. Các phần đã chấm được giữ lại; hãy thử chấm lại.";
+  if (["AI_PROVIDER_BAD_RESPONSE", "INVALID_PROVIDER_OUTPUT"].includes(code ?? "")) return "Một số tiêu chí chưa thể chấm xong do dữ liệu chưa hợp lệ. Các kết quả đã hoàn tất được giữ lại; bạn có thể thử chấm lại.";
   if (code === "AI_NOT_CONFIGURED") return "Chấm AI chưa được cấu hình.";
   if (["AI_PROVIDER_TIMEOUT", "AI_PROVIDER_STARTUP_TIMEOUT", "PROVIDER_TIMEOUT"].includes(code ?? "")) return "AI chưa hoàn tất trong thời gian cho phép. Các phần đã chấm được giữ lại; bạn có thể chấm lại.";
   if (["AI_PROVIDER_AUTH_FAILED", "AI_PROVIDER_ENDPOINT_ERROR", "AI_MODEL_UNAVAILABLE"].includes(code ?? "")) return "Dịch vụ AI chưa sẵn sàng. Vui lòng kiểm tra cấu hình backend; các phần đã chấm vẫn được giữ lại.";
