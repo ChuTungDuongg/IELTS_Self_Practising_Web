@@ -22,10 +22,12 @@ from app.schemas.writing_ai import (
     EventType,
     OutputDiagnostic,
 )
+from app.schemas.writing_anchors import AnchorSnapshot
 from app.services.mts_writing import MTSWritingScoringService
 from app.services.task1_input import TASK1_PROMPT_VERSION, Task1ScoringRequest
-from app.services.task1_writing import Task1WritingScoringService
+from app.services.task1_scorer import Task1ExecutionConfig, create_task1_scorer
 from app.services.writing_ai import WritingAIService, fail_run, input_fingerprint, persist_activity
+from app.services.writing_anchors import WritingAnchorService
 from app.services.writing_execution import TraceFailure, WritingLatencyMetrics, durable_checkpoint
 
 _tasks: set[asyncio.Task] = set()
@@ -72,6 +74,7 @@ class WritingAIWorker:
                         mts.usage,
                         mts.diagnostics,
                         mts.latency_summary(),
+                        mts.scoring_metadata() if hasattr(mts, "scoring_metadata") else None,
                     )
                 )
 
@@ -90,13 +93,24 @@ class WritingAIWorker:
                     session, run.requested_by_user_id, self.settings
                 ).input(run.attempt_id, run.writing_task_id)
                 provider, model = provider_identity(self.settings)
+                execution = (
+                    Task1ExecutionConfig.model_validate(run.execution_config_json)
+                    if run.execution_config_json
+                    else None
+                )
+                snapshot = (
+                    await WritingAnchorService(session).snapshot(execution.anchor_set_id)
+                    if execution and execution.anchor_set_id
+                    else AnchorSnapshot()
+                )
                 fingerprint = input_fingerprint(
                     request,
-                    TASK1_PROMPT_VERSION
+                    (execution.prompt_version if execution else TASK1_PROMPT_VERSION)
                     if isinstance(request, Task1ScoringRequest)
                     else effective_prompt_version(self.settings.ai_writing_prompt_version),
                     provider,
                     model,
+                    execution=execution,
                 )
                 if fingerprint != run.input_fingerprint:
                     raise AppError(
@@ -110,7 +124,9 @@ class WritingAIWorker:
                 await repository.append_event(run, "run.started", EventPayload())
             provider_client = self.provider or create_provider(self.settings)
             mts = (
-                Task1WritingScoringService(
+                create_task1_scorer(
+                    execution,
+                    snapshot,
                     provider_client,
                     (self.chart_derenderer or DePlotChartDerenderingProvider(self.settings))
                     if request.chart_specialist.enabled
@@ -119,6 +135,7 @@ class WritingAIWorker:
                     self.settings.ai_writing_chart_specialist_timeout_seconds,
                     max_concurrent_requests=self.settings.ai_writing_max_concurrent_llm_requests,
                     latency=latency,
+                    target_fingerprint=fingerprint,
                 )
                 if isinstance(request, Task1ScoringRequest)
                 else MTSWritingScoringService(
@@ -178,6 +195,8 @@ class WritingAIWorker:
             if run is None or run.status not in ACTIVE:
                 return
             run.result_json = result.model_dump(mode="json")
+            if hasattr(mts, "scoring_metadata"):
+                run.scoring_diagnostics_json = mts.scoring_metadata()
             run.raw_mean = result.raw_mean
             run.overall_band = result.overall_band
             run.usage_json = {
@@ -198,6 +217,7 @@ class WritingAIWorker:
         usage: list[dict[str, int]] | None = None,
         diagnostics: list[OutputDiagnostic] | None = None,
         latency: dict | None = None,
+        scoring_metadata: dict | None = None,
     ) -> None:
         async with self.sessions() as session, session.begin():
             repository = WritingAIRepository(session)
@@ -214,6 +234,8 @@ class WritingAIWorker:
                 }
             if latency is not None:
                 run.usage_json = {**(run.usage_json or {}), "latency": latency}
+            if scoring_metadata is not None:
+                run.scoring_diagnostics_json = scoring_metadata
             persist_activity(run, event_type, payload)
             if payload.task1_analysis:
                 run.result_json = {
@@ -266,6 +288,8 @@ class WritingAIWorker:
                 run = await repository.run(run_id, lock=True)
                 if run:
                     if mts and run.status in ACTIVE:
+                        if hasattr(mts, "scoring_metadata"):
+                            run.scoring_diagnostics_json = mts.scoring_metadata()
                         run.usage_json = {
                             **(run.usage_json or {}),
                             "calls": mts.usage,

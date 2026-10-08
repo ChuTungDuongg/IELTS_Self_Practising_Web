@@ -51,6 +51,12 @@ class WritingAIGradingRun(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     model: Mapped[str] = mapped_column(String(200), nullable=False)
     prompt_version: Mapped[str] = mapped_column(String(80), nullable=False)
     input_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    scoring_architecture: Mapped[str | None] = mapped_column(String(32))
+    anchor_set_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("writing_anchor_sets.id", ondelete="RESTRICT")
+    )
+    execution_config_json: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    scoring_diagnostics_json: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     raw_mean: Mapped[Decimal | None] = mapped_column(Numeric(5, 3))
     overall_band: Mapped[Decimal | None] = mapped_column(Numeric(2, 1))
     result_json: Mapped[dict[str, Any] | None] = mapped_column(JSONB)

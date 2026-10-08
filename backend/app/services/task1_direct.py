@@ -7,6 +7,14 @@ from app.services.task1_writing import Task1WritingScoringService
 class Task1DirectScoringService(Task1WritingScoringService):
     """Same grounded TA dependencies and failure isolation; one scoring turn per trait."""
 
+    def scoring_metadata(self):
+        return {
+            "architecture": "direct",
+            "criteria": {
+                t: {"mode": "GROUNDED_DIRECT" if t == "ta" else "DIRECT"} for t in self.states
+            },
+        }
+
     def _evidence_prompt(self, request, trait, analysis):
         return []
 

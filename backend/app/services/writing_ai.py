@@ -35,11 +35,20 @@ from app.schemas.writing_ai import (
     Task1WritingResult,
     Trait,
 )
-from app.services.task1_input import TASK1_PROMPT_VERSION, Task1ScoringRequest, load_task1_image
+from app.schemas.writing_anchors import AnchorSnapshot
+from app.services.task1_input import Task1ScoringRequest, load_task1_image
+from app.services.task1_scorer import Task1ExecutionConfig
+from app.services.writing_anchors import WritingAnchorService
 
 
 def persist_activity(run: WritingAIGradingRun, event: EventType, payload: EventPayload) -> None:
     phases = {
+        "anchor.search.started": "anchor_search",
+        "anchor.node.started": "anchor_comparing",
+        "anchor.forward.completed": "anchor_comparing",
+        "anchor.reverse.completed": "anchor_comparing",
+        "anchor.node.completed": "anchor_compared",
+        "anchor.bracket.completed": "anchor_bracketed",
         "run.started": "preparing",
         "provider.starting": "starting_model",
         "provider.ready": "preparing",
@@ -81,7 +90,12 @@ def persist_activity(run: WritingAIGradingRun, event: EventType, payload: EventP
 
 
 def input_fingerprint(
-    request: WritingScoringRequest, prompt_version: str, provider: str, model: str
+    request: WritingScoringRequest,
+    prompt_version: str,
+    provider: str,
+    model: str,
+    *,
+    execution: Task1ExecutionConfig | None = None,
 ) -> str:
     inputs = {
         "prompt": request.prompt,
@@ -91,6 +105,9 @@ def input_fingerprint(
         "model": model,
     }
     if isinstance(request, Task1ScoringRequest):
+        if execution is not None:
+            inputs["execution"] = execution.model_dump(mode="json")
+            inputs["writing_task_id"] = str(request.writing_task_id)
         inputs.update(
             task_number=1,
             task_type=request.task_type.value,
@@ -142,7 +159,7 @@ def present_run(run: WritingAIGradingRun) -> RunResponse:
         if run.usage_json and run.usage_json.get("activity")
         else None,
         task_number=1
-        if stored.get("task_number") == 1 or run.prompt_version.startswith("mts-task1-")
+        if stored.get("task_number") == 1 or run.prompt_version.startswith(("mts-task1-", "task1-"))
         else 2,
         task1_analysis=Task1Analysis.model_validate(stored["task1_analysis"])
         if stored.get("task1_analysis")
@@ -299,12 +316,26 @@ class WritingAIService:
             # never writes the attempt or its official scores.
             request = await self.input(attempt_id, task_id, lock=True)
             provider, model = provider_identity(self.settings)
+            execution = None
+            if isinstance(request, Task1ScoringRequest):
+                snapshot = (
+                    await WritingAnchorService(self.session).active_snapshot()
+                    if self.settings.ai_writing_task1_scorer == "anchor_pairwise"
+                    else AnchorSnapshot()
+                )
+                execution = Task1ExecutionConfig.pin(
+                    self.settings.ai_writing_task1_scorer,
+                    snapshot,
+                    self.settings.ai_writing_pairwise_max_tree_nodes,
+                )
             prompt_version = (
-                TASK1_PROMPT_VERSION
+                execution.prompt_version
                 if isinstance(request, Task1ScoringRequest)
                 else effective_prompt_version(self.settings.ai_writing_prompt_version)
             )
-            fingerprint = input_fingerprint(request, prompt_version, provider, model)
+            fingerprint = input_fingerprint(
+                request, prompt_version, provider, model, execution=execution
+            )
             for run in await self.repository.runs(attempt_id, task_id, lock=True, limit=None):
                 await self.recover_stale(run)
             if not force:
@@ -330,6 +361,9 @@ class WritingAIService:
                 model=model,
                 prompt_version=prompt_version,
                 input_fingerprint=fingerprint,
+                scoring_architecture=execution.architecture if execution else None,
+                anchor_set_id=execution.anchor_set_id if execution else None,
+                execution_config_json=execution.model_dump(mode="json") if execution else None,
                 created_at=datetime.now(UTC),
                 updated_at=datetime.now(UTC),
             )

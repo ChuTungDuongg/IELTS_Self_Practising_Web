@@ -90,7 +90,7 @@ class TraitScore(StrictModel):
 
 
 class CriterionResult(TraitScore):
-    feedback: str | None = Field(min_length=1, max_length=2000)
+    feedback: str | None = Field(default=None, min_length=1, max_length=2000)
     feedback_status: Literal["AVAILABLE", "UNAVAILABLE"] = "AVAILABLE"
     feedback_error_code: Literal["AI_FEEDBACK_UNAVAILABLE"] | None = None
     evidence: list[Evidence] = Field(max_length=6)
@@ -216,6 +216,10 @@ AssessmentStage = Literal[
     "chart_cross_check",
 ]
 ActivityPhase = Literal[
+    "anchor_search",
+    "anchor_comparing",
+    "anchor_compared",
+    "anchor_bracketed",
     "preparing",
     "starting_model",
     "collecting_evidence",

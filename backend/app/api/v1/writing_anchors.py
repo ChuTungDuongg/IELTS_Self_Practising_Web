@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import AdminUser
+from app.core.config import get_settings
 from app.core.database import get_session
 from app.schemas.writing_anchors import (
     AnchorCoverageResponse,
@@ -55,7 +56,9 @@ async def tasks(
 
 @router.get("/coverage", response_model=AnchorCoverageResponse)
 async def coverage(_: AdminUser, session: AsyncSession = Depends(get_session)):
-    return await WritingAnchorService(session).coverage()
+    return await WritingAnchorService(session).coverage(
+        node_budget=get_settings().ai_writing_pairwise_max_tree_nodes
+    )
 
 
 @router.get("/anchors", response_model=AnchorPage)

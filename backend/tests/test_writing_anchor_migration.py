@@ -31,3 +31,18 @@ async def test_real_upgrade_downgrade_upgrade_preserves_preexisting_tables():
         await migrate(url, "upgrade", "head")
         async with engine.connect() as connection:
             assert await connection.scalar(text("SELECT count(*) FROM writing_human_anchors")) == 0
+            columns = set(
+                await connection.scalars(
+                    text(
+                        "SELECT column_name FROM information_schema.columns WHERE table_name='writing_ai_grading_runs'"
+                    )
+                )
+            )
+            assert {
+                "execution_config_json",
+                "anchor_set_id",
+                "scoring_architecture",
+                "scoring_diagnostics_json",
+            } <= columns
+        await migrate(url, "downgrade", "20261008_0021")
+        await migrate(url, "upgrade", "head")

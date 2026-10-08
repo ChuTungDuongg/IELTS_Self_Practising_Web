@@ -13,7 +13,6 @@ from sqlalchemy import func, select
 from test_chart_cross_check import LINE, FakeSpecialist
 from test_task1_visual import ESSAY, PNG, Task1FakeProvider
 from test_writing_ai import service, worker
-from test_writing_ai import settings as settings
 from test_writing_ai import writing as writing
 
 from app.api.v1.writing_ai import event_stream
@@ -32,6 +31,13 @@ from app.models.enums import AssetType, AttemptStatus, ModuleType, WritingAIRunS
 from app.models.enums import TestSessionStatus as SessionStatus
 from app.services.task1_input import TASK1_PROMPT_VERSION
 from app.services.writing_ai import input_fingerprint
+
+
+@pytest.fixture
+def settings(base_settings):
+    # This module retains explicit legacy MTS visual/run regression expectations.
+    base_settings.ai_writing_task1_scorer = "mts"
+    return base_settings
 
 
 async def test_failed_early_claim_extraction_keeps_warning_in_partial_analysis(
