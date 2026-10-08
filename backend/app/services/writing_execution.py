@@ -49,6 +49,8 @@ class WritingLatencyMetrics:
     STAGES = frozenset(
         {
             "provider_ready",
+            "pairwise",
+            "feedback",
             "evidence",
             "scoring",
             "visual_grounding",
@@ -69,7 +71,9 @@ class WritingLatencyMetrics:
     def key(self, stage: str, trait: Trait | None):
         if stage not in self.STAGES:
             raise ValueError("Invalid latency stage")
-        return f"{trait}.{stage}" if trait and stage in {"evidence", "scoring"} else stage
+        return (
+            f"{trait}.{stage}" if trait and stage in {"evidence", "scoring", "pairwise"} else stage
+        )
 
     @contextmanager
     def stage(self, stage: str, trait: Trait | None = None) -> Iterator[None]:

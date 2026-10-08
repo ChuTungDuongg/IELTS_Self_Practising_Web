@@ -11,6 +11,7 @@ from pydantic import (
     StringConstraints,
     field_serializer,
     field_validator,
+    model_validator,
 )
 
 from app.domains.scoring import validate_writing_criterion_score
@@ -89,7 +90,24 @@ class TraitScore(StrictModel):
 
 
 class CriterionResult(TraitScore):
+    feedback: str | None = Field(min_length=1, max_length=2000)
+    feedback_status: Literal["AVAILABLE", "UNAVAILABLE"] = "AVAILABLE"
+    feedback_error_code: Literal["AI_FEEDBACK_UNAVAILABLE"] | None = None
     evidence: list[Evidence] = Field(max_length=6)
+
+    @model_validator(mode="after")
+    def coherent_feedback(self):
+        if self.feedback_status == "AVAILABLE":
+            if not self.feedback or not self.feedback.strip() or self.feedback_error_code:
+                raise ValueError("Available feedback requires text and no error")
+        elif (
+            self.feedback is not None
+            or self.strengths
+            or self.improvements
+            or self.feedback_error_code != "AI_FEEDBACK_UNAVAILABLE"
+        ):
+            raise ValueError("Unavailable feedback must be empty with an explicit safe error")
+        return self
 
 
 class BandSupport(StrictModel):
@@ -187,6 +205,8 @@ class CreateRunResponse(BaseModel):
 
 
 AssessmentStage = Literal[
+    "pairwise",
+    "feedback",
     "evidence",
     "scoring",
     "visual_grounding",
@@ -278,6 +298,12 @@ class RunListResponse(BaseModel):
 
 
 EventType = Literal[
+    "anchor.search.started",
+    "anchor.node.started",
+    "anchor.forward.completed",
+    "anchor.reverse.completed",
+    "anchor.node.completed",
+    "anchor.bracket.completed",
     "run.started",
     "provider.starting",
     "provider.ready",

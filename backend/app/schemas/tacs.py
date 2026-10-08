@@ -4,6 +4,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.schemas.writing_ai import ShortText, StrictModel
 from app.schemas.writing_anchors import LanguageTrait
 
 Preference = Literal["RESPONSE_1_BETTER", "RESPONSE_2_BETTER", "COMPARABLE"]
@@ -49,6 +50,16 @@ class TreeResult(BaseModel):
     @property
     def pairwise_calls(self) -> int:
         return len(self.nodes) * 2
+
+
+class LanguageFeedback(StrictModel):
+    feedback: str = Field(min_length=1, max_length=800)
+    strengths: list[ShortText] = Field(max_length=3)
+    improvements: list[ShortText] = Field(max_length=3)
+
+
+class FeedbackSynthesis(StrictModel):
+    criteria: dict[LanguageTrait, LanguageFeedback] = Field(min_length=1, max_length=3)
 
 
 __all__ = [
