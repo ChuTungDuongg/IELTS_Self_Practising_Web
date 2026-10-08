@@ -38,6 +38,7 @@ describe("AdminDashboardPage", () => {
 
     expect(getAdminUsers).toHaveBeenCalledExactlyOnceWith({ isActive: true, search: "", offset: 0 }, serverApiRequest);
     expect(screen.getByRole("tab", { name: "Active Users (3)" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("link", { name: "Kho bài Writing đã chấm bởi người" })).toHaveAttribute("href", "/admin/writing-anchors");
   });
 
   it("passes a valid page offset to the filtered API", async () => {
