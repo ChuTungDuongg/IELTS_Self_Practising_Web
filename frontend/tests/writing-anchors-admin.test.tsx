@@ -10,22 +10,24 @@ import * as api from "@/lib/api/writing-anchors";
 
 vi.mock("@/lib/api/writing-anchors", async (original) => ({
   ...await original<typeof import("@/lib/api/writing-anchors")>(),
-  listAnchorSets: vi.fn(), getAnchorCoverage: vi.fn(), listAnchors: vi.fn(),
+  getAnchorBank: vi.fn(), editAnchorBank: vi.fn(), applyAnchorBank: vi.fn(), cancelAnchorBank: vi.fn(), deleteAnchorBank: vi.fn(), getAnchorHistory: vi.fn(), getAnchorCoverage: vi.fn(), listAnchors: vi.fn(),
   listFrozenTasks: vi.fn(), getAnchor: vi.fn(), createAnchorDraft: vi.fn(),
   createAnchor: vi.fn(), updateAnchor: vi.fn(), deleteAnchor: vi.fn(), activateAnchorSet: vi.fn(),
 }));
 const set: api.AnchorSet = { id: "11111111-1111-4111-8111-111111111111", name: "Human bank", version: 1, status: "DRAFT", created_at: "now", activated_at: null, retired_at: null };
 const task: api.FrozenTask = { id: "22222222-2222-4222-8222-222222222222", test_version_id: set.id, test_title: "Fictional Writing", version_number: 2, task_number: 1, task_type: "line_graph", prompt_preview: "Describe fictional data." };
-const detail: api.AnchorDetail = { id: "44444444-4444-4444-8444-444444444444", anchor_set_id: set.id, task, word_count: 150, human_scores: { ta: 6.5, cc: 7, lr: 7, gra: 7 }, created_at: "2026-10-07T10:11:12Z", response_text: "Intro.\n\nDetails.", admin_note: null, provenance: null };
+const detail: api.AnchorDetail = { id: "44444444-4444-4444-8444-444444444444", anchor_set_id: set.id, source_kind: "BUILDER_TASK", custom_prompt: null, task, word_count: 150, human_scores: { ta: 6.5, cc: 7, lr: 7, gra: 7 }, created_at: "2026-10-07T10:11:12Z", response_text: "Intro.\n\nDetails.", admin_note: null, provenance: null };
 const emptyRow = (criterion: "cc" | "lr" | "gra"): api.AnchorCoverage["production_task1"][number] => ({ criterion, counts: {}, ladder: [], readiness: "EMPTY", pilot_complete: false });
 const coverage: api.AnchorCoverage = { active_set: null, production_task1: [emptyRow("cc"), emptyRow("lr"), emptyRow("gra")], research_task1_ta: [], research_task2: [], recommendations: [], node_budget: 2 };
 const emptyPage = { items: [], total: 0, offset: 0, limit: 25 };
-const input = { writing_task_id: task.id, response_text: detail.response_text, human_scores: detail.human_scores, admin_note: null, provenance: null };
-const bank = () => screen.getByRole("region", { name: "Bộ dữ liệu anchor" });
+const input = { source_kind: "BUILDER_TASK" as const, writing_task_id: task.id, response_text: detail.response_text, human_scores: detail.human_scores, admin_note: null, provenance: null };
+const noBank: api.AnchorBankState = { current: null, working: null, current_count: 0, working_count: 0 };
 
 beforeEach(() => {
   vi.resetAllMocks();
-  vi.mocked(api.listAnchorSets).mockResolvedValue({ items: [] });
+  vi.mocked(api.getAnchorBank).mockResolvedValue(noBank);
+  vi.mocked(api.editAnchorBank).mockResolvedValue(set);
+  vi.mocked(api.getAnchorHistory).mockResolvedValue({ items: [] });
   vi.mocked(api.getAnchorCoverage).mockResolvedValue(coverage);
   vi.mocked(api.listAnchors).mockResolvedValue(emptyPage);
   vi.mocked(api.listFrozenTasks).mockResolvedValue({ items: [task], total: 1, offset: 0, limit: 25 });
@@ -36,176 +38,218 @@ beforeEach(() => {
   vi.mocked(api.deleteAnchor).mockResolvedValue(undefined);
 });
 
-describe("Vietnamese Writing anchor workflow", () => {
-  it("introduces the page in Vietnamese and offers an empty draft workflow", async () => {
+describe("logical current Writing anchor bank", () => {
+  it("shows the Vietnamese page heading, Direct no-bank state and creates a working bank", async () => {
     render(<WritingAnchorsPage />);
     expect(screen.getByRole("heading", { level: 1, name: "Kho bài Writing đã chấm bởi người" })).toBeInTheDocument();
-    expect(screen.getByText("Quản lý các bài Writing đã được chấm thủ công để làm dữ liệu tham chiếu cho hệ thống chấm AI.")).toBeInTheDocument();
-    expect(await screen.findByText("Chưa có bộ dữ liệu anchor. Tạo bản nháp để bắt đầu.")).toBeInTheDocument();
-    vi.mocked(api.listAnchorSets).mockResolvedValue({ items: [set] });
-    fireEvent.click(screen.getByRole("button", { name: "Tạo bản nháp" }));
+    expect(await screen.findByText("Chưa có bộ anchor đang dùng.")).toBeInTheDocument();
+    expect(screen.getByText("CC, LR và GRA hiện sử dụng Direct scoring.")).toBeInTheDocument();
+    vi.mocked(api.getAnchorBank).mockResolvedValue({ ...noBank, working: set });
+    fireEvent.click(screen.getByRole("button", { name: "Tạo bộ anchor" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "Thêm bài tham chiếu" })).toBeEnabled());
-    expect(api.createAnchorDraft).toHaveBeenCalledExactlyOnceWith();
-    expect(within(bank()).getByText("Bản nháp v1")).toBeInTheDocument();
-    expect(within(bank()).getByText("Đang chỉnh sửa")).toBeInTheDocument();
+    expect(api.editAnchorBank).toHaveBeenCalledExactlyOnceWith();
+    expect(screen.getByRole("heading", { name: "Chỉnh sửa bộ anchor" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Phiên bản")).not.toBeInTheDocument();
+    expect(screen.queryByText(/ACTIVE|DRAFT|RETIRED/)).not.toBeInTheDocument();
   });
 
-  it("shows a useful Vietnamese draft empty state and keeps filter enum values unchanged", async () => {
-    vi.mocked(api.listAnchorSets).mockResolvedValue({ items: [set] });
+  it("shows one current bank and opens a copy-on-write editor with Sửa", async () => {
+    const active = { ...set, status: "ACTIVE" as const };
+    vi.mocked(api.getAnchorBank).mockResolvedValueOnce({ ...noBank, current: active, current_count: 42 }).mockResolvedValue({ current: active, working: { ...set, id: task.id, version: 2 }, current_count: 42, working_count: 42 });
+    vi.mocked(api.editAnchorBank).mockResolvedValue({ ...set, id: task.id, version: 2 });
     render(<AnchorWorkspace />);
-    expect(await screen.findByText("Chưa có bài tham chiếu phù hợp với bộ lọc hiện tại.")).toBeInTheDocument();
-    expect(screen.getByText("Hãy thêm các bài Writing đã được chấm thủ công để bắt đầu xây dựng bộ anchor.")).toBeInTheDocument();
-    expect(screen.getByText("0 bài")).toBeInTheDocument();
-    const status = screen.getByLabelText("Trạng thái");
-    for (const [value, label] of [["DRAFT", "Bản nháp"], ["ACTIVE", "Đang sử dụng"], ["RETIRED", "Đã lưu trữ"]]) {
-      expect(within(status).getByRole("option", { name: label })).toHaveValue(value);
-    }
-    fireEvent.change(status, { target: { value: "ACTIVE" } });
-    await waitFor(() => expect(api.listAnchors).toHaveBeenLastCalledWith(expect.objectContaining({ status: "ACTIVE" })));
-    expect(screen.queryByText("Hãy thêm các bài Writing đã được chấm thủ công để bắt đầu xây dựng bộ anchor.")).not.toBeInTheDocument();
+    expect(await screen.findByText("42 bài tham chiếu")).toBeInTheDocument();
+    expect(screen.getByText("Đang được AI sử dụng")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Sửa" }));
+    expect(await screen.findByText("Đang chỉnh sửa")).toBeInTheDocument();
+    expect(screen.getByText(/Bộ đang dùng vẫn phục vụ chấm AI/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Lưu & áp dụng" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Phiên bản")).not.toBeInTheDocument();
   });
 
-  it("adds four human labels, preserving paragraphs and the existing payload without feedback", async () => {
-    vi.mocked(api.listAnchorSets).mockResolvedValue({ items: [set] });
+  it("Thêm bài opens the working form without selecting or cloning a version", async () => {
+    const active = { ...set, status: "ACTIVE" as const };
+    vi.mocked(api.getAnchorBank).mockResolvedValueOnce({ ...noBank, current: active, current_count: 1 }).mockResolvedValue({ current: active, working: set, current_count: 1, working_count: 1 });
+    render(<AnchorWorkspace />);
+    fireEvent.click(await screen.findByRole("button", { name: "Thêm bài" }));
+    expect(await screen.findByRole("heading", { name: "Thêm bài tham chiếu" })).toBeInTheDocument();
+    expect(api.editAnchorBank).toHaveBeenCalledOnce();
+    await waitFor(() => expect(screen.getByLabelText("Bài viết của học viên")).toBeEnabled());
+  });
+
+  it("adds a Builder-backed response with four scores and unchanged paragraphs", async () => {
+    vi.mocked(api.getAnchorBank).mockResolvedValue({ ...noBank, working: set });
     render(<AnchorWorkspace />);
     fireEvent.click(await screen.findByRole("button", { name: "Thêm bài tham chiếu" }));
+    expect(screen.getByRole("button", { name: "Lưu & áp dụng" })).toBeDisabled();
+    expect(screen.getByText("Lưu hoặc đóng biểu mẫu bài tham chiếu trước khi áp dụng bộ anchor.")).toBeInTheDocument();
     await screen.findByText(/Fictional Writing · v2/);
     fireEvent.change(screen.getByLabelText("Đề Writing đã xuất bản"), { target: { value: task.id } });
-    expect(screen.getByLabelText("Task Achievement (TA)")).toBeInTheDocument();
-    expect(screen.queryByLabelText(/Feedback|Phản hồi/i)).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Bài viết của học viên"), { target: { value: detail.response_text } });
     fireEvent.change(screen.getByLabelText("Task Achievement (TA)"), { target: { value: "6.5" } });
+    expect(screen.queryByLabelText(/Feedback|Phản hồi/i)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Lưu bài tham chiếu" }));
     await waitFor(() => expect(api.createAnchor).toHaveBeenCalledExactlyOnceWith(set.id, input));
     await waitFor(() => expect(screen.queryByRole("form")).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Lưu & áp dụng" })).toBeEnabled());
   });
 
-  it("keeps the form available when saving fails", async () => {
-    vi.mocked(api.listAnchorSets).mockResolvedValue({ items: [set] });
-    vi.mocked(api.createAnchor).mockRejectedValue(new Error("Bản nháp đã thay đổi. Hãy làm mới."));
-    render(<AnchorWorkspace />);
-    fireEvent.click(await screen.findByRole("button", { name: "Thêm bài tham chiếu" }));
-    await screen.findByText(/Fictional Writing · v2/);
-    fireEvent.change(screen.getByLabelText("Đề Writing đã xuất bản"), { target: { value: task.id } });
-    fireEvent.change(screen.getByLabelText("Bài viết của học viên"), { target: { value: detail.response_text } });
-    fireEvent.click(screen.getByRole("button", { name: "Lưu bài tham chiếu" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("Bản nháp đã thay đổi. Hãy làm mới.");
-    expect(screen.getByRole("button", { name: "Lưu bài tham chiếu" })).toBeEnabled();
-    fireEvent.click(screen.getByRole("button", { name: "Hủy" }));
-    expect(screen.queryByRole("form")).not.toBeInTheDocument();
-  });
-
-  it("edits and deletes draft entries through the existing API workflows", async () => {
-    vi.mocked(api.listAnchorSets).mockResolvedValue({ items: [set] });
+  it("edits and deletes a response only in the working revision, with explicit delete wording", async () => {
+    vi.mocked(api.getAnchorBank).mockResolvedValue({ ...noBank, working: set, working_count: 1 });
     vi.mocked(api.listAnchors).mockResolvedValue({ ...emptyPage, items: [detail], total: 1 });
     render(<AnchorWorkspace />);
-    fireEvent.click(await screen.findByRole("button", { name: "Xem / chỉnh sửa" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Sửa bài" }));
     expect(await screen.findByRole("heading", { name: "Chỉnh sửa bài tham chiếu" })).toBeInTheDocument();
-    expect(api.getAnchor).toHaveBeenCalledExactlyOnceWith(detail.id);
     fireEvent.change(screen.getByLabelText("Ghi chú nội bộ"), { target: { value: "Đã kiểm tra" } });
     fireEvent.click(screen.getByRole("button", { name: "Lưu bài tham chiếu" }));
     await waitFor(() => expect(api.updateAnchor).toHaveBeenCalledExactlyOnceWith(detail.id, { ...input, admin_note: "Đã kiểm tra" }));
     await waitFor(() => expect(screen.queryByRole("form")).not.toBeInTheDocument());
+    fireEvent.click(await screen.findByRole("button", { name: "Xóa bài tham chiếu" }));
+    const dialog = screen.getByRole("dialog", { name: "Xóa bài tham chiếu?" });
+    expect(api.deleteAnchor).not.toHaveBeenCalled();
     vi.mocked(api.listAnchors).mockResolvedValue(emptyPage);
-    fireEvent.click(await screen.findByRole("button", { name: "Xóa" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Xóa bài tham chiếu" }));
     await waitFor(() => expect(api.deleteAnchor).toHaveBeenCalledExactlyOnceWith(detail.id));
     expect(await screen.findByText("0 bài")).toBeInTheDocument();
   });
 
-  it.each(["ACTIVE", "RETIRED"] as const)("keeps %s versions read-only with Vietnamese actions", async (status) => {
-    vi.mocked(api.listAnchorSets).mockResolvedValue({ items: [{ ...set, status }] });
+  it("applies changes and immediately removes write actions even if bank refresh fails", async () => {
+    const active = { ...set, status: "ACTIVE" as const };
+    vi.mocked(api.getAnchorBank).mockResolvedValueOnce({ ...noBank, working: set, working_count: 1 }).mockRejectedValue(new Error("refresh failed"));
+    vi.mocked(api.applyAnchorBank).mockResolvedValue(active);
+    render(<AnchorWorkspace />);
+    fireEvent.click(await screen.findByRole("button", { name: "Lưu & áp dụng" }));
+    await waitFor(() => expect(api.applyAnchorBank).toHaveBeenCalledExactlyOnceWith(set.id));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Không thể tải bộ anchor");
+    expect(screen.getByText("Đang được AI sử dụng")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Lưu & áp dụng" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Xóa bài tham chiếu" })).not.toBeInTheDocument();
+  });
+
+  it("cancels unapplied changes and returns to the active bank", async () => {
+    const active = { ...set, status: "ACTIVE" as const };
+    const working = { ...set, id: task.id, version: 2 };
+    vi.mocked(api.getAnchorBank).mockResolvedValueOnce({ current: active, working, current_count: 1, working_count: 2 }).mockResolvedValue({ ...noBank, current: active, current_count: 1 });
+    render(<AnchorWorkspace />);
+    fireEvent.click(await screen.findByRole("button", { name: "Hủy thay đổi" }));
+    const dialog = screen.getByRole("dialog", { name: "Hủy các thay đổi chưa áp dụng?" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Hủy thay đổi" }));
+    await waitFor(() => expect(api.cancelAnchorBank).toHaveBeenCalledExactlyOnceWith(working.id));
+    expect(await screen.findByText("Đang được AI sử dụng")).toBeInTheDocument();
+    expect(api.deleteAnchorBank).not.toHaveBeenCalled();
+  });
+
+  it("requires bank deletion confirmation and explains future Direct fallback while retaining history", async () => {
+    const active = { ...set, status: "ACTIVE" as const };
+    vi.mocked(api.getAnchorBank).mockResolvedValueOnce({ ...noBank, current: active, current_count: 1 }).mockResolvedValue(noBank);
+    render(<AnchorWorkspace />);
+    fireEvent.click(await screen.findByRole("button", { name: "Xóa bộ anchor" }));
+    let dialog = screen.getByRole("dialog", { name: "Xóa bộ anchor đang dùng?" });
+    expect(dialog).toHaveTextContent("Các lượt chấm trước đây và dữ liệu lịch sử không bị xóa.");
+    expect(dialog).toHaveTextContent("tự chuyển sang Direct scoring");
+    expect(api.deleteAnchorBank).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Hủy" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Xóa bộ anchor" }));
+    dialog = screen.getByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Xóa bộ anchor" }));
+    await waitFor(() => expect(api.deleteAnchorBank).toHaveBeenCalledExactlyOnceWith(active.id));
+    expect(await screen.findByText("Chưa có bộ anchor đang dùng.")).toBeInTheDocument();
+    expect(screen.getByText("CC, LR và GRA hiện sử dụng Direct scoring.")).toBeInTheDocument();
+  });
+
+  it("opens history on demand and keeps historical response content read-only", async () => {
+    const active = { ...set, status: "ACTIVE" as const };
+    const retired = { ...set, id: task.id, status: "RETIRED" as const };
+    vi.mocked(api.getAnchorBank).mockResolvedValue({ ...noBank, current: active, current_count: 1 });
+    vi.mocked(api.getAnchorHistory).mockResolvedValue({ items: [active, retired] });
     vi.mocked(api.listAnchors).mockResolvedValue({ ...emptyPage, items: [detail], total: 1 });
     render(<AnchorWorkspace />);
-    expect(await screen.findByText("Phiên bản này chỉ đọc. Tạo hoặc chọn bản nháp để chỉnh sửa.")).toBeInTheDocument();
-    expect(within(bank()).getByText("Chỉ đọc")).toBeInTheDocument();
-    expect(within(bank()).getByRole("button", { name: status === "ACTIVE" ? "Tạo bản nháp mới từ bản đang dùng" : "Tạo bản nháp" })).toBeEnabled();
-    for (const name of ["Thêm bài tham chiếu", "Kích hoạt bản nháp", "Xóa", "Xem / chỉnh sửa"]) {
-      expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
-    }
-    fireEvent.click(await screen.findByRole("button", { name: "Xem" }));
+    await screen.findByText("Đang được AI sử dụng");
+    const history = screen.getByRole("group", { name: "Lịch sử thay đổi" });
+    expect(history).not.toHaveAttribute("open");
+    expect(api.getAnchorHistory).not.toHaveBeenCalled();
+    fireEvent.click(within(history).getByText("Lịch sử thay đổi", { selector: "summary" }));
+    await within(history).findByText("Đã thay thế / ngừng dùng");
+    fireEvent.click(within(history).getAllByRole("button", { name: "Xem" })[1]);
+    expect(screen.getByText(/Đang xem lịch sử/)).toBeInTheDocument();
+    const list = screen.getByRole("region", { name: "Các bài tham chiếu" });
+    fireEvent.click(await within(list).findByRole("button", { name: "Xem" }));
     expect(await screen.findByRole("heading", { name: "Xem bài tham chiếu" })).toBeInTheDocument();
     expect(screen.getByLabelText("Bài viết của học viên")).toBeDisabled();
-    expect(screen.queryByRole("button", { name: "Lưu bài tham chiếu" })).not.toBeInTheDocument();
+    expect(within(list).queryByRole("button", { name: "Sửa bài" })).not.toBeInTheDocument();
+    expect(within(list).queryByRole("button", { name: "Xóa bài tham chiếu" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Đóng" }));
-    expect(screen.queryByRole("form")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Quay lại bộ hiện tại" }));
+    expect(screen.queryByText(/Đang xem lịch sử/)).not.toBeInTheDocument();
   });
 
-  it("creates a draft from the active bank without changing the lifecycle API", async () => {
-    const active = { ...set, status: "ACTIVE" as const };
-    const draft = { ...set, id: task.id, version: 2 };
-    vi.mocked(api.listAnchorSets).mockResolvedValueOnce({ items: [active] }).mockResolvedValue({ items: [active, draft] });
-    vi.mocked(api.createAnchorDraft).mockResolvedValue(draft);
-    render(<AnchorWorkspace />);
-    fireEvent.click(await screen.findByRole("button", { name: "Tạo bản nháp mới từ bản đang dùng" }));
-    expect(await screen.findByText("Bản nháp v2")).toBeInTheDocument();
-    expect(api.createAnchorDraft).toHaveBeenCalledExactlyOnceWith();
-    expect(within(bank()).getByLabelText("Phiên bản")).toHaveValue(draft.id);
-  });
-
-  it("opens the draft from the zero-coverage CTA even while viewing an active version", async () => {
-    const active = { ...set, id: "33333333-3333-4333-8333-333333333333", status: "ACTIVE" as const };
-    vi.mocked(api.listAnchorSets).mockResolvedValue({ items: [active, set] });
-    vi.mocked(api.getAnchorCoverage).mockResolvedValue({ ...coverage, active_set: active });
-    render(<AnchorWorkspace />);
-    await screen.findByText("Bản nháp v1");
-    fireEvent.change(within(bank()).getByLabelText("Phiên bản"), { target: { value: active.id } });
-    fireEvent.click(screen.getByRole("button", { name: "Thêm bài tham chiếu vào bản nháp" }));
-    expect(within(bank()).getByLabelText("Phiên bản")).toHaveValue(set.id);
-    expect(screen.getByRole("heading", { name: "Thêm bài tham chiếu" })).toBeInTheDocument();
-    expect(screen.getByLabelText("Bài viết của học viên")).toBeEnabled();
-  });
-
-  it("keeps task, search and pagination filters functional and displays creation dates", async () => {
-    vi.mocked(api.listAnchorSets).mockResolvedValue({ items: [set] });
+  it("preserves filters, pagination and refresh without primary revision selection", async () => {
+    vi.mocked(api.getAnchorBank).mockResolvedValue({ ...noBank, working: set });
     vi.mocked(api.listAnchors).mockResolvedValue({ ...emptyPage, items: [detail], total: 26 });
     render(<AnchorWorkspace />);
     expect(await screen.findByText("2026-10-07")).toBeInTheDocument();
-    for (const heading of ["Đề Writing", "Số từ", "TA / TR", "CC", "LR", "GRA", "Ngày thêm", "Thao tác"]) {
-      expect(screen.getByRole("columnheader", { name: heading })).toBeInTheDocument();
-    }
     fireEvent.change(screen.getByLabelText("Kỹ năng"), { target: { value: "2" } });
     fireEvent.change(screen.getByLabelText("Tìm bài tham chiếu"), { target: { value: "fictional" } });
-    fireEvent.change(screen.getByLabelText("Dạng bài"), { target: { value: "line_graph" } });
-    fireEvent.change(screen.getByLabelText("Đề Writing"), { target: { value: task.id } });
-    await waitFor(() => expect(api.listAnchors).toHaveBeenLastCalledWith(expect.objectContaining({ task_number: 2, search: "fictional", task_type: "line_graph", writing_task_id: task.id, offset: 0 })));
+    await waitFor(() => expect(api.listAnchors).toHaveBeenLastCalledWith(expect.objectContaining({ set_id: set.id, task_number: 2, search: "fictional" })));
     fireEvent.click(screen.getByRole("button", { name: "Sau" }));
     await waitFor(() => expect(api.listAnchors).toHaveBeenLastCalledWith(expect.objectContaining({ offset: 25 })));
     fireEvent.click(screen.getByRole("button", { name: "Trước" }));
     await waitFor(() => expect(api.listAnchors).toHaveBeenLastCalledWith(expect.objectContaining({ offset: 0 })));
     fireEvent.click(screen.getByRole("button", { name: "Làm mới" }));
-    await waitFor(() => expect(api.listAnchorSets).toHaveBeenCalledTimes(2));
-  });
-
-  it.each(["coverage", "sets"])("keeps activation authoritative when refreshing %s fails", async (failedRead) => {
-    const previous = { ...set, id: "33333333-3333-4333-8333-333333333333", status: "ACTIVE" as const, version: 4 };
-    const draft = { ...set, version: 5 };
-    const activated = { ...draft, status: "ACTIVE" as const, activated_at: "2026-10-08T00:00:00Z" };
-    vi.mocked(api.listAnchorSets).mockResolvedValueOnce({ items: [previous, draft] });
-    vi.mocked(api.getAnchorCoverage).mockResolvedValueOnce({ ...coverage, active_set: previous });
-    vi.mocked(api.listAnchors).mockResolvedValue({ ...emptyPage, items: [detail], total: 1 });
-    vi.mocked(api.activateAnchorSet).mockResolvedValue(activated);
-    if (failedRead === "sets") vi.mocked(api.listAnchorSets).mockRejectedValue(new Error("Không thể làm mới phiên bản."));
-    else vi.mocked(api.listAnchorSets).mockResolvedValue({ items: [{ ...previous, status: "RETIRED" }, activated] });
-    if (failedRead === "coverage") vi.mocked(api.getAnchorCoverage).mockRejectedValue(new Error("Không thể làm mới mức sẵn sàng."));
-    else vi.mocked(api.getAnchorCoverage).mockResolvedValue({ ...coverage, active_set: activated });
-    render(<AnchorWorkspace />);
-    await within(bank()).findByText("v4", { exact: true });
-    fireEvent.click(await screen.findByRole("button", { name: "Kích hoạt bản nháp" }));
-    await screen.findByRole("alert");
-    expect(api.activateAnchorSet).toHaveBeenCalledExactlyOnceWith(draft.id);
-    expect(screen.getByText("Phiên bản này chỉ đọc. Tạo hoặc chọn bản nháp để chỉnh sửa.")).toBeInTheDocument();
-    for (const name of ["Thêm bài tham chiếu", "Kích hoạt bản nháp", "Xóa", "Xem / chỉnh sửa"]) {
-      expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
-    }
-    expect(within(bank()).queryByText("v4", { exact: true })).not.toBeInTheDocument();
-    if (failedRead === "coverage") {
-      expect(screen.getByText("Không thể tải mức độ sẵn sàng. Hãy làm mới để thử lại.")).toBeInTheDocument();
-      expect(within(bank()).getByText("Chưa xác định")).toBeInTheDocument();
-    } else expect(within(bank()).getByText("v5", { exact: true })).toBeInTheDocument();
+    await waitFor(() => expect(api.getAnchorBank).toHaveBeenCalledTimes(2));
   });
 });
 
 describe("human anchor form validation", () => {
+  it.each([1, 2] as const)("saves a standalone custom Task %s without a Builder reference", async number => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(<AnchorForm detail={null} readOnly={false} busy={false} onSave={onSave} onCancel={vi.fn()} />);
+    fireEvent.click(screen.getByRole("radio", { name: "Nhập đề ngoài" }));
+    expect(screen.queryByLabelText("Đề Writing đã xuất bản")).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Task"), { target: { value: String(number) } });
+    const type = number === 1 ? "BAR_CHART" : "OPINION";
+    fireEvent.change(screen.getByLabelText("Dạng bài"), { target: { value: type } });
+    fireEvent.change(screen.getByLabelText("Đề bài / prompt"), { target: { value: "Fictional external prompt.\n\nDetails." } });
+    fireEvent.change(screen.getByLabelText("Bài viết của học viên"), { target: { value: detail.response_text } });
+    fireEvent.change(screen.getByLabelText(number === 1 ? "Task Achievement (TA)" : "Task Response (TR)"), { target: { value: "6.5" } });
+    fireEvent.change(screen.getByLabelText("Nguồn / xuất xứ"), { target: { value: "Mẫu tự viết" } });
+    fireEvent.change(screen.getByLabelText("Ghi chú nội bộ"), { target: { value: "Đã chấm thủ công" } });
+    if (number === 1) expect(screen.getByText(/không phải mẫu benchmark TA có thể tái lập/)).toHaveTextContent("CC/LR/GRA vẫn có thể dùng cho TACS");
+    else expect(screen.getByText(/Task 2 hiện vẫn dùng MTS/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Lưu bài tham chiếu" }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledExactlyOnceWith({ source_kind: "CUSTOM_TASK", task_number: number, custom_prompt: "Fictional external prompt.\n\nDetails.", custom_task_type: type, response_text: detail.response_text, human_scores: detail.human_scores, provenance: "Mẫu tự viết", admin_note: "Đã chấm thủ công" }));
+  });
+
+  it("rejects a blank custom prompt and preserves the Builder picker when switching back", async () => {
+    const onSave = vi.fn();
+    render(<AnchorForm detail={detail} readOnly={false} busy={false} onSave={onSave} onCancel={vi.fn()} />);
+    fireEvent.click(screen.getByRole("radio", { name: "Nhập đề ngoài" }));
+    fireEvent.change(screen.getByLabelText("Đề bài / prompt"), { target: { value: " \n " } });
+    fireEvent.click(screen.getByRole("button", { name: "Lưu bài tham chiếu" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("Vui lòng nhập đề bài cho đề ngoài.");
+    expect(onSave).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("radio", { name: "Chọn đề có sẵn trong hệ thống" }));
+    expect(screen.getByLabelText("Đề Writing đã xuất bản")).toHaveValue(task.id);
+    fireEvent.click(screen.getByRole("button", { name: "Lưu bài tham chiếu" }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledExactlyOnceWith(input));
+  });
+
+  it("loads custom metadata for editing and clears its task type when changing Task", async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const custom: api.AnchorDetail = { ...detail, source_kind: "CUSTOM_TASK", custom_prompt: "External fictional chart.", task: { ...task, id: null, test_version_id: null, version_number: null, test_title: "Đề ngoài", task_type: "BAR_CHART" } };
+    render(<AnchorForm detail={custom} readOnly={false} busy={false} onSave={onSave} onCancel={vi.fn()} />);
+    expect(screen.getByRole("radio", { name: "Nhập đề ngoài" })).toBeChecked();
+    expect(screen.getByLabelText("Đề bài / prompt")).toHaveValue(custom.custom_prompt);
+    expect(screen.getByLabelText("Dạng bài")).toHaveValue("BAR_CHART");
+    expect(api.listFrozenTasks).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText("Task"), { target: { value: "2" } });
+    expect(screen.getByLabelText("Dạng bài")).toHaveValue("");
+    expect(screen.queryByRole("option", { name: "Bar chart" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Lưu bài tham chiếu" }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith({ source_kind: "CUSTOM_TASK", task_number: 2, custom_prompt: custom.custom_prompt, custom_task_type: null, response_text: detail.response_text, human_scores: detail.human_scores, admin_note: null, provenance: null }));
+  });
+
   it("ignores stale task search responses without changing the selected context", async () => {
     let late!: (value: Awaited<ReturnType<typeof api.listFrozenTasks>>) => void;
     vi.mocked(api.listFrozenTasks).mockImplementationOnce(() => new Promise(resolve => { late = resolve; })).mockResolvedValue({ items: [task], total: 1, offset: 0, limit: 25 });
@@ -246,6 +290,21 @@ describe("human anchor form validation", () => {
 });
 
 describe("anchor readiness and progressive disclosure", () => {
+  it("previews the working bank without claiming it is already used by production", () => {
+    render(<AnchorCoveragePanel editing coverage={{ ...coverage, evaluated_set: set, production_task1: [{ ...emptyRow("cc"), counts: { "6": 1, "7": 1 }, ladder: [6, 7], readiness: "PAIRWISE_USABLE" }] }} />);
+    expect(screen.getByText(/Xem trước dữ liệu đang chỉnh sửa/)).toBeInTheDocument();
+    expect(screen.getByText("Có thể dùng TACS sau khi áp dụng")).toBeInTheDocument();
+    expect(screen.queryByText("Chưa có bộ anchor đang hoạt động.")).not.toBeInTheDocument();
+    expect(screen.queryByText("Chấm bằng TACS")).not.toBeInTheDocument();
+  });
+
+  it("labels historical coverage as read-only even while a different bank is active", () => {
+    render(<AnchorCoveragePanel historicalVersion={1} coverage={{ ...coverage, active_set: { ...set, status: "ACTIVE", version: 2 } }} />);
+    expect(screen.getByText(/Dữ liệu lịch sử v1/)).toBeInTheDocument();
+    expect(screen.getAllByText("Số liệu lịch sử · Chỉ đọc")).toHaveLength(3);
+    expect(screen.queryByText("CC, LR và GRA hiện sẽ tự động dùng Direct scoring.")).not.toBeInTheDocument();
+  });
+
   it("states the scoring architecture and Direct fallback before empty counts", () => {
     const onAdd = vi.fn();
     render(<AnchorCoveragePanel coverage={coverage} onAddAnchor={onAdd} />);
@@ -255,7 +314,7 @@ describe("anchor readiness and progressive disclosure", () => {
     const empty = screen.getByText("Chưa có bộ anchor đang hoạt động.");
     expect(screen.getByText("CC, LR và GRA hiện sẽ tự động dùng Direct scoring.")).toBeInTheDocument();
     expect(empty.compareDocumentPosition(screen.getByRole("article", { name: "Mức sẵn sàng CC" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Thêm bài tham chiếu vào bản nháp" }));
+    fireEvent.click(screen.getByRole("button", { name: "Thêm bài tham chiếu" }));
     expect(onAdd).toHaveBeenCalledOnce();
     const target = screen.getByRole("region", { name: "Mục tiêu nên bắt đầu" });
     expect(within(target).getByText("Cho từng tiêu chí CC, LR và GRA:")).toBeInTheDocument();
@@ -329,7 +388,7 @@ describe("anchor readiness and progressive disclosure", () => {
     expect(tr[1]).toHaveTextContent("4");
     expect(tr[3]).toHaveTextContent("5");
     expect(tr[8]).toHaveTextContent("6");
-    expect(within(research).getByRole("table", { name: "Task 1 · TA theo đề Writing" })).toHaveTextContent("Fictional Writing · v2 · TA");
+    expect(within(research).getByRole("table", { name: "Task 1 · TA theo đề Writing" })).toHaveTextContent("Fictional Writing · v2 · Task 1 · TA");
     for (const paragraph of container.querySelectorAll("p")) expect(paragraph.textContent).not.toMatch(/\d(?:\.\d)?: \d+,/);
     fireEvent.click(within(research).getByText("Các band khác (0–4.5)", { selector: "summary" }));
     const other = within(research).getByRole("table", { name: "Task 2 · Số bài ở Band 0–4.5" });

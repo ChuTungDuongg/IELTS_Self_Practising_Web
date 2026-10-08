@@ -1,6 +1,6 @@
 # T1-C: LCES-inspired Trait-wise Anchor Comparative Scoring
 
-CURRENT implementation, 2026-10-08. This is an IELTS-specific **LCES-inspired** adaptation, named **Trait-wise Anchor Comparative Scoring (TACS)**. It is not an exact reproduction of original LCES. AI results are advisory; only explicit human grading changes official scores.
+CURRENT implementation, 2026-10-09. This is an IELTS-specific **LCES-inspired** adaptation, named **Trait-wise Anchor Comparative Scoring (TACS)**. It is not an exact reproduction of original LCES. AI results are advisory; only explicit human grading changes official scores.
 
 ## 1. Motivation
 
@@ -20,17 +20,29 @@ Each anchor has an administrator-validated full response and four finite half-ba
 
 ## 5. PostgreSQL model
 
-Migration `20261008_0021` creates `writing_anchor_sets` and `writing_human_anchors`. A set has a monotonic version and DRAFT/ACTIVE/RETIRED lifecycle. Partial unique indexes allow one active and one draft globally. Anchors reference exact frozen Writing tasks and store response text, four Numeric labels, creator and optional private note/provenance. Foreign keys restrict deletion of referenced tasks/creators/sets. Assets stay outside PostgreSQL.
+Migration `20261008_0021` creates `writing_anchor_sets` and `writing_human_anchors`. A set has a version and DRAFT/ACTIVE/RETIRED lifecycle. Partial unique indexes allow one active and one working draft globally. All anchors store response text, four Numeric labels, creator and optional private note/provenance. Foreign keys restrict deletion of referenced tasks/creators/sets. Assets stay outside PostgreSQL.
+
+Migration `20261009_0023` adds coherent source kinds. `BUILDER_TASK` requires the existing authoritative `writing_task_id` relation to a published/frozen Writing task; custom task number, prompt and type are absent. `CUSTOM_TASK` has no Builder FK and requires `task_number` (1 or 2) and a nonblank `custom_prompt`; `custom_task_type` is optional and uses the existing Writing taxonomy. Pydantic validates source/type combinations and four half-band scores; PostgreSQL also enforces source coherence and score constraints. Paragraphs are preserved. Existing anchors become `BUILDER_TASK` without rewriting frozen content or historical runs. Downgrade refuses to discard custom records.
+
+Each working revision records `based_on_set_id`. Applying validates its current base, then atomically freezes it and retires its predecessor. The migration attaches any preexisting draft to the current active revision. No duplicate mutable Builder prompt or external visual-upload system is added.
 
 PostgreSQL triggers guard frozen content, including raw SQL writes. Lifecycle changes use a transaction advisory lock; edits lock their owning set. Activation waits for an in-flight edit, retires the previous active set and publishes the draft atomically. An active set may transition to retired but cannot have its content rewritten. Migration `20261008_0022` adds nullable pinned execution and private diagnostic fields to AI runs without rewriting history.
 
 ## 6. Admin workflow
 
-`/admin/writing-anchors` uses the existing protected admin layout. Every API route under `/api/v1/admin/writing-anchors` requires AdminUser. Start with an empty draft or clone the active bank. Search published tasks, including archived previously published versions; choose title/version/task/type/prompt context, then enter the original response and four labels. Paragraphs are preserved. Draft anchors support create, detail, replacement edit and delete. Activate freezes the version; active/retired detail is read-only. No manually entered task UUID workflow is offered.
+`/admin/writing-anchors` uses the existing protected admin layout and Vietnamese copy. Every API route under `/api/v1/admin/writing-anchors` requires AdminUser (401 unauthenticated, 403 non-admin). The administrator sees one **Bộ anchor hiện tại**, its response count, and **Sửa**, **Thêm bài**, **Xóa bộ anchor**. Without a current bank, **Tạo bộ anchor** creates an empty working copy. **Sửa** automatically creates or resumes a shared copy-on-write revision; the currently used revision stays immutable. Add/edit/delete changes only the working copy. **Lưu & áp dụng** publishes it for future runs; **Hủy thay đổi** discards only unapplied work and keeps the current bank.
+
+The form's **Nguồn đề** offers **Chọn đề có sẵn trong hệ thống** (searchable frozen task picker, including archived previously published versions) or **Nhập đề ngoài** (Task 1/2, optional existing task type and required prompt). Both require response and four manual labels, without feedback/overall. External samples need no Builder test. Provenance and internal notes remain optional/private.
+
+Confirmed **Xóa bộ anchor** retires the current revision and discards any unapplied working copy. Future production lookup sees no active bank: CC/LR/GRA use Direct fallback; TA remains grounded Direct. It does not delete historical anchors, AI runs, learner attempts or official human grades. Retired revisions cannot be selected for production through this UI. **Lịch sử thay đổi** is closed by default and offers read-only viewing. Technical/research disclosures are also closed by default.
+
+The logical API exposes `GET /bank`, `POST /bank/edit`, `POST /bank/{id}/apply`, `DELETE /bank/{id}/working`, `DELETE /bank/{id}/current`, and `GET /history`. Current deletion verifies the expected revision ID so a stale request cannot disable a replacement. Existing revision/snapshot APIs remain compatible for internal and benchmark consumers. `GET /coverage?set_id=...` previews working or historical coverage without changing production selection; `active_set` remains the true current revision and `evaluated_set` identifies the displayed data.
 
 ## 7. Coverage strategy
 
-Production coverage counts Task 1 CC/LR/GRA only. Half-band anchors remain stored and counted, but whole bands form search pivots. Pilot guidance is two anchors at each band 6/7/8; mature guidance is three at each band 5–9. Counts, contiguous ladders and EMPTY/PARTIAL/PAIRWISE USABLE/RECOMMENDED COVERAGE states are informational. Sparse/empty banks can activate safely. Task 1 TA is displayed separately per exact task for research; Task 2's four labels are separate research coverage. Readiness is never gated by TA.
+Production coverage pools Task 1 CC/LR/GRA from both Builder-backed and custom anchors across prompts, visual types and tests. It does not require a same-task match. Half-band anchors remain stored and counted, but whole bands form search pivots. Pilot guidance is two anchors at each band 6/7/8; mature guidance is three at each band 5–9. Counts, contiguous ladders and EMPTY/PARTIAL/PAIRWISE USABLE/RECOMMENDED COVERAGE states are informational. Sparse/empty banks can activate safely. The UI shows Vietnamese readiness, Band 5–9 cells and **Dải band có thể dùng**, with full counts inside disclosure.
+
+Task 1 TA is separate research metadata, grouped by frozen task or standalone source record. A custom Task 1 anchor has no stored visual in this workflow, so its TA label is **not** a reproducible grounded-TA benchmark sample. It can still calibrate CC/LR/GRA. Task 2 custom or Builder labels (TR/CC/LR/GRA) remain evaluation/future-TACS data; production Task 2 stays MTS. Readiness is never gated by TA or Task 2.
 
 ## 8. Why production TA is grounded Direct
 
@@ -111,7 +123,7 @@ JSON/Markdown, disagreements CSV and architecture-costs CSV identify architectur
 
 ## 20. Leakage prevention
 
-A3 sources are an explicitly supplied private version-1 anchor manifest or a read-only ACTIVE PostgreSQL snapshot; neither mutates production data. A private bank includes stable set/anchor/task/version identity, full text, all four labels, source sample ID and nonblank provenance. Task 1/2 language pools stay separate.
+A3 sources are an explicitly supplied private version-1 anchor manifest or a read-only ACTIVE PostgreSQL snapshot; neither mutates production data. A private bank includes stable set/anchor identity, full prompt/response text, all four labels, source sample ID and nonblank provenance. Builder-backed records retain task/version identity; standalone custom records do not require those Builder IDs. Task 1/2 language pools stay separate. Custom Task 1 TA without visual evidence is not a grounded-TA benchmark target.
 
 Before inference or cache reuse, reject any selected evaluation sample whose ID matches an anchor source ID or whose essay hash matches an anchor response. Hash normalization uses NFKC, casefold and whitespace collapse only for leakage detection; stored text is preserved. The CLI checks the entire selected split before `--limit`. Evaluation target labels, visual truth and private provenance never enter scorer requests. Source identity/content digest participates in A3 cache keys.
 

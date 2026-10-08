@@ -82,3 +82,91 @@ async def test_queued_obsolete_contract_fails_safely_without_provider_calls(
     assert result.error_code == "AI_CONFIGURATION_CHANGED"
     assert provider.ready_calls == provider.pairwise_calls == provider.feedback_calls == 0
     assert provider.calls == []
+
+
+async def test_deactivation_preserves_pinned_custom_bank_and_future_runs_use_direct(
+    db_session, task1, settings
+):
+    from sqlalchemy import text
+    from test_anchor_source_lifecycle import custom_input
+
+    settings.ai_writing_task1_scorer = "anchor_pairwise"
+    bank = WritingAnchorService(db_session)
+    owner = db_session.info["current_user_id"]
+    working = await bank.begin_edit(owner)
+    for band in (6, 7, 8):
+        await bank.create_anchor(owner, working.id, custom_input(band=band))
+    await bank.activate(owner, working.id)
+    api = service(db_session, settings)
+    pinned = await api.create(task1[0], task1[1], force=False)
+    async with db_session.begin():
+        before = await db_session.scalar(
+            text("SELECT jsonb_agg(to_jsonb(r) ORDER BY r.id) FROM attempt_writing_responses r")
+        )
+        official = await db_session.scalar(
+            text("SELECT jsonb_agg(to_jsonb(s) ORDER BY s.id) FROM attempt_writing_scores s")
+        )
+        assert official  # Existing official human grades are part of the preservation check.
+        attempts = await db_session.scalar(
+            text("SELECT jsonb_agg(to_jsonb(a) ORDER BY a.id) FROM attempts a")
+        )
+    await bank.deactivate(working.id)
+    provider = HybridProvider()
+    await worker(db_session, settings, provider).execute(pinned.run_id)
+    old = await api.get(pinned.run_id)
+    assert old.status == "COMPLETED" and provider.pairwise_calls == 6
+    future = await api.create(task1[0], task1[1], force=True)
+    direct = HybridProvider()
+    await worker(db_session, settings, direct).execute(future.run_id)
+    assert (await api.get(future.run_id)).status == "COMPLETED" and direct.pairwise_calls == 0
+    async with db_session.begin():
+        retained = await db_session.get(WritingAIGradingRun, old.id)
+        assert retained.anchor_set_id == working.id
+        assert retained.scoring_diagnostics_json["criteria"]["ta"]["mode"] == "GROUNDED_DIRECT"
+        assert (await db_session.get(WritingAIGradingRun, future.run_id)).anchor_set_id is None
+        assert (
+            await db_session.scalar(
+                text("SELECT jsonb_agg(to_jsonb(r) ORDER BY r.id) FROM attempt_writing_responses r")
+            )
+            == before
+        )
+        assert (
+            await db_session.scalar(
+                text("SELECT jsonb_agg(to_jsonb(s) ORDER BY s.id) FROM attempt_writing_scores s")
+            )
+            == official
+        )
+        assert (
+            await db_session.scalar(
+                text("SELECT jsonb_agg(to_jsonb(a) ORDER BY a.id) FROM attempts a")
+            )
+            == attempts
+        )
+    assert len((await bank.snapshot(working.id)).anchors) == 3
+
+
+async def test_custom_task2_bank_never_switches_production_away_from_mts(
+    db_session, writing, settings
+):
+    from test_anchor_source_lifecycle import custom_input
+    from test_writing_ai import FakeProvider
+
+    settings.ai_writing_task1_scorer = "anchor_pairwise"
+    bank = WritingAnchorService(db_session)
+    owner = db_session.info["current_user_id"]
+    working = await bank.begin_edit(owner)
+    for number in (1, 2):
+        for band in (6, 7, 8):
+            await bank.create_anchor(owner, working.id, custom_input(number=number, band=band))
+    await bank.activate(owner, working.id)
+    api = service(db_session, settings)
+    created = await api.create(writing[0], writing[2], force=False)
+    provider = FakeProvider()
+    await worker(db_session, settings, provider).execute(created.run_id)
+    result = await api.get(created.run_id)
+    assert result.status == "COMPLETED" and result.task_number == 2
+    assert len(provider.calls) == 8 and provider.scored == 4  # Existing two-stage MTS per trait.
+    async with db_session.begin():
+        stored = await db_session.get(WritingAIGradingRun, result.id)
+        assert stored.anchor_set_id is None and stored.execution_config_json is None
+        assert stored.prompt_version == "mts-task2-v7"

@@ -1,4 +1,8 @@
-import type { AnchorCoverage, AnchorSet } from "@/lib/api/writing-anchors";
+import type { AnchorCoverage, AnchorSet, AnchorTask } from "@/lib/api/writing-anchors";
+
+export function anchorTaskLabel(task: AnchorTask) {
+  return `${task.id ? `${task.test_title} · v${task.version_number}` : "Đề ngoài"} · Task ${task.task_number}`;
+}
 
 export const bankLabels: Record<AnchorSet["status"], string> = {
   DRAFT: "Bản nháp",

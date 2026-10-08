@@ -10,6 +10,7 @@ from app.api.dependencies import AdminUser
 from app.core.config import get_settings
 from app.core.database import get_session
 from app.schemas.writing_anchors import (
+    AnchorBankState,
     AnchorCoverageResponse,
     AnchorDetail,
     AnchorPage,
@@ -21,6 +22,40 @@ from app.schemas.writing_anchors import (
 from app.services.writing_anchors import WritingAnchorService
 
 router = APIRouter(prefix="/admin/writing-anchors", tags=["admin-writing-anchors"])
+
+
+@router.get("/bank", response_model=AnchorBankState)
+async def current_bank(_: AdminUser, session: AsyncSession = Depends(get_session)):
+    return await WritingAnchorService(session).bank_state()
+
+
+@router.post("/bank/edit", response_model=AnchorSetResponse)
+async def edit_bank(admin: AdminUser, session: AsyncSession = Depends(get_session)):
+    return await WritingAnchorService(session).begin_edit(admin.id)
+
+
+@router.post("/bank/{set_id}/apply", response_model=AnchorSetResponse)
+async def apply_bank(set_id: UUID, admin: AdminUser, session: AsyncSession = Depends(get_session)):
+    return await WritingAnchorService(session).activate(admin.id, set_id)
+
+
+@router.delete("/bank/{set_id}/working", status_code=204)
+async def cancel_bank(set_id: UUID, _: AdminUser, session: AsyncSession = Depends(get_session)):
+    await WritingAnchorService(session).discard_working(set_id)
+
+
+@router.delete("/bank/{set_id}/current", status_code=204)
+async def delete_bank(set_id: UUID, _: AdminUser, session: AsyncSession = Depends(get_session)):
+    await WritingAnchorService(session).deactivate(set_id)
+
+
+@router.get("/history", response_model=dict[str, list[AnchorSetResponse]])
+async def bank_history(_: AdminUser, session: AsyncSession = Depends(get_session)):
+    return {
+        "items": [
+            row for row in await WritingAnchorService(session).list_sets() if row.status != "DRAFT"
+        ]
+    }
 
 
 @router.get("/sets", response_model=dict[str, list[AnchorSetResponse]])
@@ -55,9 +90,11 @@ async def tasks(
 
 
 @router.get("/coverage", response_model=AnchorCoverageResponse)
-async def coverage(_: AdminUser, session: AsyncSession = Depends(get_session)):
+async def coverage(
+    _: AdminUser, set_id: UUID | None = None, session: AsyncSession = Depends(get_session)
+):
     return await WritingAnchorService(session).coverage(
-        node_budget=get_settings().ai_writing_pairwise_max_tree_nodes
+        node_budget=get_settings().ai_writing_pairwise_max_tree_nodes, set_id=set_id
     )
 
 

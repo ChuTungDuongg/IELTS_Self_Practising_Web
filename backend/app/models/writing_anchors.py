@@ -44,6 +44,9 @@ class WritingAnchorSet(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     created_by_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
     activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     retired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    based_on_set_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("writing_anchor_sets.id", ondelete="RESTRICT")
+    )
 
 
 class WritingHumanAnchor(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -56,15 +59,29 @@ class WritingHumanAnchor(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         for trait in ("ta", "cc", "lr", "gra")
     ) + (
         CheckConstraint("length(btrim(response_text)) > 0", name="nonblank_response"),
+        CheckConstraint(
+            "(source_kind = 'BUILDER_TASK' AND writing_task_id IS NOT NULL "
+            "AND task_number IS NULL AND custom_prompt IS NULL AND custom_task_type IS NULL) OR "
+            "(source_kind = 'CUSTOM_TASK' AND writing_task_id IS NULL "
+            "AND task_number IS NOT NULL AND task_number IN (1,2) AND custom_prompt IS NOT NULL "
+            "AND length(btrim(custom_prompt)) > 0)",
+            name="valid_source",
+        ),
         Index("ix_writing_human_anchors_set_task", "anchor_set_id", "writing_task_id"),
     )
 
     anchor_set_id: Mapped[UUID] = mapped_column(
         ForeignKey("writing_anchor_sets.id", ondelete="RESTRICT")
     )
-    writing_task_id: Mapped[UUID] = mapped_column(
+    source_kind: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="BUILDER_TASK", server_default="BUILDER_TASK"
+    )
+    writing_task_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("writing_tasks.id", ondelete="RESTRICT")
     )
+    task_number: Mapped[int | None] = mapped_column(Integer)
+    custom_prompt: Mapped[str | None] = mapped_column(Text)
+    custom_task_type: Mapped[str | None] = mapped_column(String(64))
     response_text: Mapped[str] = mapped_column(Text, nullable=False)
     ta_score: Mapped[Decimal] = mapped_column(Numeric(2, 1), nullable=False)
     cc_score: Mapped[Decimal] = mapped_column(Numeric(2, 1), nullable=False)

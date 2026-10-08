@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import AppError
@@ -18,6 +18,7 @@ from app.repositories.writing_anchors import (
 )
 from app.schemas.writing_anchors import (
     LANGUAGE_TRAITS,
+    AnchorBankState,
     AnchorCoverageResponse,
     AnchorDetail,
     AnchorPage,
@@ -25,6 +26,7 @@ from app.schemas.writing_anchors import (
     AnchorSetResponse,
     AnchorSnapshot,
     AnchorSummary,
+    AnchorTask,
     CriterionCoverage,
     FrozenTaskPage,
     FrozenWritingTask,
@@ -52,12 +54,29 @@ def scores(anchor):
     )
 
 
+def source_task(row):
+    anchor, task, version, test = row
+    if anchor.source_kind == "BUILDER_TASK":
+        return task_dto(task, version, test)
+    return AnchorTask(
+        id=None,
+        test_version_id=None,
+        test_title="Đề ngoài",
+        version_number=None,
+        task_number=anchor.task_number,
+        task_type=anchor.custom_task_type,
+        prompt_preview=anchor.custom_prompt[:240],
+    )
+
+
 def detail(row):
     anchor, task, version, test = row
     return AnchorDetail(
         id=anchor.id,
         anchor_set_id=anchor.anchor_set_id,
-        task=task_dto(task, version, test),
+        source_kind=anchor.source_kind,
+        task=source_task(row),
+        custom_prompt=anchor.custom_prompt,
         word_count=len(anchor.response_text.split()),
         human_scores=scores(anchor),
         created_at=anchor.created_at,
@@ -119,6 +138,72 @@ class WritingAnchorService:
         async with self.transaction():
             return [AnchorSetResponse.model_validate(row) for row in await self.repository.sets()]
 
+    async def bank_state(self):
+        async with self.transaction():
+            # Consistent current/working/counts even when another admin applies changes.
+            await self.repository.lifecycle_lock()
+            sets = await self.repository.sets()
+            current = next((row for row in sets if row.status == "ACTIVE"), None)
+            working = next((row for row in sets if row.status == "DRAFT"), None)
+
+            async def count(row):
+                return (
+                    (
+                        await self.session.scalar(
+                            select(func.count())
+                            .select_from(WritingHumanAnchor)
+                            .where(WritingHumanAnchor.anchor_set_id == row.id)
+                        )
+                    )
+                    if row
+                    else 0
+                )
+
+            return AnchorBankState(
+                current=AnchorSetResponse.model_validate(current) if current else None,
+                working=AnchorSetResponse.model_validate(working) if working else None,
+                current_count=await count(current),
+                working_count=await count(working),
+            )
+
+    async def begin_edit(self, admin_id):
+        async with self.transaction():
+            await self.repository.lifecycle_lock()
+            working = await self.session.scalar(
+                select(WritingAnchorSet).where(WritingAnchorSet.status == "DRAFT")
+            )
+            if working:
+                return AnchorSetResponse.model_validate(working)
+            active = await self.repository.active()
+            return await self.create_draft(
+                admin_id, active.name if active else "Kho anchor Writing"
+            )
+
+    async def discard_working(self, set_id):
+        async with self.transaction():
+            await self.repository.lifecycle_lock()
+            row = await self._set(set_id, draft=True)
+            # Delete children while the owning row is still DRAFT; frozen rows are never deleted.
+            for anchor, *_ in await self.repository.rows(row.id):
+                await self.session.delete(anchor)
+            await self.session.flush()
+            await self.session.delete(row)
+            await self.session.flush()
+
+    async def deactivate(self, set_id):
+        async with self.transaction():
+            await self.repository.lifecycle_lock()
+            active = await self.repository.active()
+            if not active or active.id != set_id:
+                raise AppError("ANCHOR_BANK_CHANGED", "Bộ anchor đã thay đổi. Hãy làm mới.", 409)
+            working = await self.session.scalar(
+                select(WritingAnchorSet).where(WritingAnchorSet.status == "DRAFT")
+            )
+            if working:
+                await self.discard_working(working.id)
+            active.status, active.retired_at = "RETIRED", datetime.now(UTC)
+            await self.session.flush()
+
     async def create_draft(self, admin_id: UUID, name: str):
         async with self.transaction():
             await self.repository.lifecycle_lock()
@@ -132,6 +217,7 @@ class WritingAnchorService:
                 version=await self.repository.next_version(),
                 status="DRAFT",
                 created_by_id=admin_id,
+                based_on_set_id=active.id if active else None,
             )
             self.session.add(row)
             await self.session.flush()
@@ -141,6 +227,10 @@ class WritingAnchorService:
                         WritingHumanAnchor(
                             anchor_set_id=row.id,
                             writing_task_id=anchor.writing_task_id,
+                            source_kind=anchor.source_kind,
+                            task_number=anchor.task_number,
+                            custom_prompt=anchor.custom_prompt,
+                            custom_task_type=anchor.custom_task_type,
                             response_text=anchor.response_text,
                             created_by_id=anchor.created_by_id,
                             admin_note=anchor.admin_note,
@@ -159,6 +249,12 @@ class WritingAnchorService:
             await self.repository.lifecycle_lock()
             row = await self._set(set_id, draft=True)
             active = await self.repository.active()
+            if row.based_on_set_id != (active.id if active else None):
+                raise AppError(
+                    "ANCHOR_BANK_CHANGED",
+                    "Bộ anchor đã thay đổi. Hãy làm mới trước khi áp dụng.",
+                    409,
+                )
             now = datetime.now(UTC)
             if active:
                 active.status, active.retired_at = "RETIRED", now
@@ -180,6 +276,10 @@ class WritingAnchorService:
         return row
 
     def _apply(self, anchor, body):
+        anchor.source_kind = body.source_kind
+        anchor.task_number = body.task_number
+        anchor.custom_prompt = body.custom_prompt
+        anchor.custom_task_type = body.custom_task_type
         anchor.writing_task_id, anchor.response_text = body.writing_task_id, body.response_text
         anchor.admin_note, anchor.provenance = body.admin_note, body.provenance
         for trait in ("ta", *LANGUAGE_TRAITS):
@@ -188,7 +288,11 @@ class WritingAnchorService:
     async def create_anchor(self, admin_id: UUID, set_id: UUID, body: HumanAnchorInput):
         async with self.transaction():
             await self._set(set_id, draft=True)
-            task, version, test = await self._frozen_task(body.writing_task_id)
+            task, version, test = (
+                await self._frozen_task(body.writing_task_id)
+                if body.source_kind == "BUILDER_TASK"
+                else (None, None, None)
+            )
             row = WritingHumanAnchor(anchor_set_id=set_id, created_by_id=admin_id)
             self._apply(row, body)
             self.session.add(row)
@@ -209,7 +313,11 @@ class WritingAnchorService:
         async with self.transaction():
             row, *_ = await self._anchor(anchor_id)
             await self._set(row.anchor_set_id, draft=True)
-            task, version, test = await self._frozen_task(body.writing_task_id)
+            task, version, test = (
+                await self._frozen_task(body.writing_task_id)
+                if body.source_kind == "BUILDER_TASK"
+                else (None, None, None)
+            )
             self._apply(row, body)
             await self.session.flush()
             return detail((row, task, version, test))
@@ -227,8 +335,6 @@ class WritingAnchorService:
             if task_number is not None:
                 query = query.where(WritingTask.task_number == task_number)
             if search:
-                from sqlalchemy import or_
-
                 query = query.where(
                     or_(
                         Test.title.icontains(search, autoescape=True),
@@ -264,20 +370,26 @@ class WritingAnchorService:
             if set_id:
                 query = query.where(WritingHumanAnchor.anchor_set_id == set_id)
             if task_number is not None:
-                query = query.where(WritingTask.task_number == task_number)
+                query = query.where(
+                    func.coalesce(WritingTask.task_number, WritingHumanAnchor.task_number)
+                    == task_number
+                )
             if writing_task_id:
                 query = query.where(WritingTask.id == writing_task_id)
             if task_type:
-                query = query.where(WritingTask.task_type == task_type)
+                query = query.where(
+                    func.coalesce(WritingTask.task_type, WritingHumanAnchor.custom_task_type)
+                    == task_type
+                )
             if status:
                 query = query.where(WritingAnchorSet.status == status)
             if search:
-                from sqlalchemy import or_
-
                 query = query.where(
                     or_(
                         Test.title.icontains(search, autoescape=True),
                         WritingTask.prompt.icontains(search, autoescape=True),
+                        WritingHumanAnchor.custom_prompt.icontains(search, autoescape=True),
+                        WritingHumanAnchor.response_text.icontains(search, autoescape=True),
                     )
                 )
             total = await self.session.scalar(select(func.count()).select_from(query.subquery()))
@@ -309,11 +421,12 @@ class WritingAnchorService:
             anchors=tuple(
                 AnchorRecord(
                     id=anchor.id,
-                    writing_task_id=task.id,
-                    test_version_id=version.id,
-                    task_number=task.task_number,
-                    task_type=task.task_type,
-                    prompt=task.prompt,
+                    source_kind=anchor.source_kind,
+                    writing_task_id=task.id if task else None,
+                    test_version_id=version.id if version else None,
+                    task_number=task.task_number if task else anchor.task_number,
+                    task_type=task.task_type if task else anchor.custom_task_type,
+                    prompt=task.prompt if task else anchor.custom_prompt,
                     response_text=anchor.response_text,
                     human_scores=scores(anchor),
                 )
@@ -334,27 +447,38 @@ class WritingAnchorService:
                 )
             return await self._snapshot(row)
 
-    async def coverage(self, *, node_budget=2):
+    async def coverage(self, *, node_budget=2, set_id=None):
         async with self.transaction():
             active = await self.repository.active()
-            snapshot = await self._snapshot(active)
+            evaluated = await self._set(set_id) if set_id else active
+            snapshot = await self._snapshot(evaluated)
             one = [anchor for anchor in snapshot.anchors if anchor.task_number == 1]
             two = [anchor for anchor in snapshot.anchors if anchor.task_number == 2]
             research = []
-            if active:
+            if evaluated:
                 task_rows = {
-                    task.id: task_dto(task, version, test)
-                    for _, task, version, test in await self.repository.rows(active.id)
+                    anchor.writing_task_id or anchor.id: source_task((anchor, task, version, test))
+                    for anchor, task, version, test in await self.repository.rows(evaluated.id)
                 }
-                for task_id in sorted({anchor.writing_task_id for anchor in one}, key=str):
+                for task_id in sorted(
+                    {anchor.writing_task_id or anchor.id for anchor in one}, key=str
+                ):
                     row = criterion_coverage(
-                        [anchor for anchor in one if anchor.writing_task_id == task_id], "ta"
+                        [
+                            anchor
+                            for anchor in one
+                            if (anchor.writing_task_id or anchor.id) == task_id
+                        ],
+                        "ta",
                     )
                     research.append(
-                        ResearchTaskCoverage(**row.model_dump(), task=task_rows[task_id])
+                        ResearchTaskCoverage(
+                            **row.model_dump(), source_id=task_id, task=task_rows[task_id]
+                        )
                     )
             return AnchorCoverageResponse(
                 active_set=AnchorSetResponse.model_validate(active) if active else None,
+                evaluated_set=AnchorSetResponse.model_validate(evaluated) if evaluated else None,
                 production_task1=[criterion_coverage(one, trait) for trait in LANGUAGE_TRAITS],
                 research_task1_ta=research,
                 research_task2=[

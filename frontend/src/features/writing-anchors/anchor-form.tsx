@@ -1,14 +1,19 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { anchorInputSchema, listFrozenTasks, type AnchorDetail, type AnchorInput, type FrozenTask } from "@/lib/api/writing-anchors";
+import { anchorInputSchema, frozenTaskSchema, listFrozenTasks, type AnchorDetail, type AnchorInput, type FrozenTask } from "@/lib/api/writing-anchors";
+import { taskOneTypes, taskTwoTypes } from "@/features/writing/task-types";
 import { criterionNames } from "./anchor-presentation";
 import styles from "./anchor-workspace.module.css";
 
 const traits = ["ta", "cc", "lr", "gra"] as const;
 
 export function AnchorForm({ detail, readOnly, busy, onSave, onCancel }: { detail: AnchorDetail | null; readOnly: boolean; busy: boolean; onSave: (input: AnchorInput) => Promise<void>; onCancel: () => void }) {
-  const [selected, setSelected] = useState<FrozenTask | null>(detail?.task ?? null);
+  const [sourceKind, setSourceKind] = useState<"BUILDER_TASK" | "CUSTOM_TASK">(detail?.source_kind ?? "BUILDER_TASK");
+  const [selected, setSelected] = useState<FrozenTask | null>(() => detail?.source_kind === "BUILDER_TASK" ? frozenTaskSchema.parse(detail.task) : null);
+  const [customNumber, setCustomNumber] = useState<1 | 2>(detail?.task.task_number ?? 1);
+  const [customPrompt, setCustomPrompt] = useState(detail?.custom_prompt ?? "");
+  const [customType, setCustomType] = useState(detail?.source_kind === "CUSTOM_TASK" ? detail.task.task_type ?? "" : "");
   const [tasks, setTasks] = useState<FrozenTask[]>([]);
   const [search, setSearch] = useState("");
   const [number, setNumber] = useState("");
@@ -18,16 +23,19 @@ export function AnchorForm({ detail, readOnly, busy, onSave, onCancel }: { detai
   const [provenance, setProvenance] = useState(detail?.provenance ?? "");
   const [error, setError] = useState("");
   useEffect(() => {
+    if (sourceKind !== "BUILDER_TASK" || readOnly) return;
     let current = true;
     listFrozenTasks({ search, task_number: number ? Number(number) : undefined, limit: 100 }).then(data => { if (current) setTasks(data.items); }).catch(e => { if (current) setError(e instanceof Error ? e.message : "Không thể tải đề Writing. Hãy thử lại."); });
     return () => { current = false; };
-  }, [search, number]);
+  }, [search, number, sourceKind, readOnly]);
   async function submit(event: React.FormEvent) {
     event.preventDefault(); setError("");
-    if (!selected) { setError("Vui lòng chọn đề Writing đã xuất bản."); return; }
+    if (sourceKind === "BUILDER_TASK" && !selected) { setError("Vui lòng chọn đề Writing đã xuất bản."); return; }
+    if (sourceKind === "CUSTOM_TASK" && !customPrompt.trim()) { setError("Vui lòng nhập đề bài cho đề ngoài."); return; }
     if (!response.trim()) { setError("Vui lòng nhập bài viết của học viên (không chỉ khoảng trắng)."); return; }
     const humanScores = Object.fromEntries(traits.map(trait => [trait, scores[trait].trim() ? Number(scores[trait]) : NaN]));
-    const parsed = anchorInputSchema.safeParse({ writing_task_id: selected.id, response_text: response, human_scores: humanScores, admin_note: note || null, provenance: provenance || null });
+    const source = sourceKind === "BUILDER_TASK" ? { source_kind: sourceKind, writing_task_id: selected!.id } : { source_kind: sourceKind, task_number: customNumber, custom_prompt: customPrompt, custom_task_type: customType || null };
+    const parsed = anchorInputSchema.safeParse({ ...source, response_text: response, human_scores: humanScores, admin_note: note || null, provenance: provenance || null });
     if (!parsed.success) { setError("Vui lòng chọn đề Writing, nhập bài viết và đủ 4 điểm tiêu chí hợp lệ theo bước 0.5 từ 0 đến 9."); return; }
     await onSave(parsed.data);
   }
@@ -36,15 +44,29 @@ export function AnchorForm({ detail, readOnly, busy, onSave, onCancel }: { detai
     <h2>{readOnly ? "Xem bài tham chiếu" : detail ? "Chỉnh sửa bài tham chiếu" : "Thêm bài tham chiếu"}</h2>
     {error && <p className="notice notice-error" role="alert">{error}</p>}
     <fieldset disabled={readOnly || busy}><legend>Đề Writing và điểm chấm thủ công</legend>
+      <fieldset className={styles.sourceOptions}><legend>Nguồn đề</legend>
+        <label><input type="radio" name="anchor-source" checked={sourceKind === "BUILDER_TASK"} onChange={() => setSourceKind("BUILDER_TASK")} />Chọn đề có sẵn trong hệ thống</label>
+        <label><input type="radio" name="anchor-source" checked={sourceKind === "CUSTOM_TASK"} onChange={() => setSourceKind("CUSTOM_TASK")} />Nhập đề ngoài</label>
+      </fieldset>
+      {sourceKind === "BUILDER_TASK" ? <>
       <div className={styles.formFilters}>
         <label>Tìm đề Writing<input value={search} onChange={e => setSearch(e.target.value)} maxLength={160} /></label>
         <label>Task<select value={number} onChange={e => setNumber(e.target.value)}><option value="">Cả hai</option><option value="1">Task 1</option><option value="2">Task 2</option></select></label>
       </div>
       <label>Đề Writing đã xuất bản<select required value={selected?.id ?? ""} onChange={e => setSelected(options.find(t => t.id === e.target.value) ?? null)}><option value="">Chọn đề Writing</option>{options.map(t => <option key={t.id} value={t.id}>{t.test_title} · v{t.version_number} · Task {t.task_number} · {t.task_type ?? "Khác"} · {t.prompt_preview}</option>)}</select></label>
       {selected && <p className={styles.help}>{selected.prompt_preview}</p>}
+      </> : <>
+        <div className={styles.formFilters}>
+          <label>Task<select value={customNumber} onChange={e => { setCustomNumber(Number(e.target.value) as 1 | 2); setCustomType(""); }}><option value="1">Task 1</option><option value="2">Task 2</option></select></label>
+          <label>Dạng bài<select value={customType} onChange={e => setCustomType(e.target.value)}><option value="">Chưa phân loại</option>{(customNumber === 1 ? taskOneTypes : taskTwoTypes).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label>
+        </div>
+        <label>Đề bài / prompt<textarea rows={4} required maxLength={100000} value={customPrompt} onChange={e => setCustomPrompt(e.target.value)} /></label>
+        <p className={styles.help}>{customNumber === 1 ? "Điểm TA của đề ngoài chỉ phục vụ nghiên cứu. Chưa lưu hình ảnh nên đây không phải mẫu benchmark TA có thể tái lập dựa trên hình. CC/LR/GRA vẫn có thể dùng cho TACS." : "Task 2 hiện vẫn dùng MTS. Bài tham chiếu này phục vụ đánh giá và nghiên cứu TACS trong tương lai."}</p>
+      </>}
       <label>Bài viết của học viên<textarea rows={12} required value={response} onChange={e => setResponse(e.target.value)} maxLength={100000} /></label>
       <div className={styles.scores}>{traits.map(t => {
-        const label = t === "ta" ? selected?.task_number === 2 ? "Task Response (TR)" : "Task Achievement (TA)" : t.toUpperCase();
+        const taskNumber = sourceKind === "CUSTOM_TASK" ? customNumber : selected?.task_number;
+        const label = t === "ta" ? taskNumber === 2 ? "Task Response (TR)" : "Task Achievement (TA)" : t.toUpperCase();
         return <label key={t}><span>{label}</span>{t !== "ta" && <small id={`anchor-${t}-name`}>{criterionNames[t]}</small>}<input aria-label={label} aria-describedby={t !== "ta" ? `anchor-${t}-name` : undefined} type="number" required min={0} max={9} step={0.5} value={scores[t]} onChange={e => setScores(s => ({ ...s, [t]: e.target.value }))} /></label>;
       })}</div>
       <p className={styles.help}>Nhập đủ 4 điểm tiêu chí từ 0 đến 9, theo bước 0.5.</p>

@@ -14,6 +14,12 @@ PREFIX = "/api/v1/admin/writing-anchors"
     "method,path",
     [
         ("GET", "/sets"),
+        ("GET", "/bank"),
+        ("POST", "/bank/edit"),
+        ("POST", f"/bank/{uuid4()}/apply"),
+        ("DELETE", f"/bank/{uuid4()}/working"),
+        ("DELETE", f"/bank/{uuid4()}/current"),
+        ("GET", "/history"),
         ("POST", "/sets"),
         ("GET", "/tasks"),
         ("GET", "/coverage"),
@@ -80,3 +86,30 @@ async def test_anchor_api_rejects_mutable_and_unknown_tasks(client, db_session):
             PREFIX + f"/sets/{set_id}/anchors", json=anchor_input(task_id).model_dump(mode="json")
         )
         assert result.status_code == 422 and result.json()["code"] == "ANCHOR_FROZEN_TASK_REQUIRED"
+
+
+async def test_logical_bank_routes_and_custom_source(client, db_session):
+    from test_anchor_source_lifecycle import custom_input
+
+    app.dependency_overrides[get_current_user] = lambda: db_session.info["current_user_identity"]
+    state = (await client.get(PREFIX + "/bank")).json()
+    assert state == {"current": None, "working": None, "current_count": 0, "working_count": 0}
+    working = (await client.post(PREFIX + "/bank/edit")).json()
+    added = await client.post(
+        PREFIX + f"/sets/{working['id']}/anchors", json=custom_input().model_dump(mode="json")
+    )
+    assert added.status_code == 201 and added.json()["task"]["id"] is None
+    assert (await client.get(PREFIX + "/bank")).json()["working_count"] == 1
+    assert (await client.get(PREFIX + "/coverage", params={"set_id": working["id"]})).json()[
+        "evaluated_set"
+    ]["id"] == working["id"]
+    assert (await client.post(PREFIX + f"/bank/{working['id']}/apply")).status_code == 200
+    editing = (await client.post(PREFIX + "/bank/edit")).json()
+    assert editing["version"] == 2
+    assert (await client.delete(PREFIX + f"/bank/{editing['id']}/working")).status_code == 204
+    assert (await client.delete(PREFIX + f"/bank/{working['id']}/current")).status_code == 204
+    state = (await client.get(PREFIX + "/bank")).json()
+    assert state["current"] is None and state["working"] is None
+    history = (await client.get(PREFIX + "/history")).json()["items"]
+    assert len(history) == 1 and history[0]["status"] == "RETIRED"
+    assert (await client.get(PREFIX + f"/anchors/{added.json()['id']}")).status_code == 200

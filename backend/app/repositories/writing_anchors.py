@@ -34,10 +34,10 @@ def frozen_condition():
 def anchor_query():
     return (
         select(WritingHumanAnchor, WritingTask, TestVersion, Test)
-        .join(WritingTask, WritingHumanAnchor.writing_task_id == WritingTask.id)
-        .join(TestModule, WritingTask.module_id == TestModule.id)
-        .join(TestVersion, TestModule.test_version_id == TestVersion.id)
-        .join(Test, TestVersion.test_id == Test.id)
+        .outerjoin(WritingTask, WritingHumanAnchor.writing_task_id == WritingTask.id)
+        .outerjoin(TestModule, WritingTask.module_id == TestModule.id)
+        .outerjoin(TestVersion, TestModule.test_version_id == TestVersion.id)
+        .outerjoin(Test, TestVersion.test_id == Test.id)
     )
 
 
