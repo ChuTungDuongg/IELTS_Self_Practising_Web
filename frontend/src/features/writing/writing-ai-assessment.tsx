@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
-  aiTraits, traitNamesForTask, createAIWritingRun, getAIWritingRun, isActiveAIRun, listAIWritingRuns,
+  aiTraits, traitNamesForTask, cancelAIWritingRun, createAIWritingRun, getAIWritingRun, isActiveAIRun, isCancelledAIRun, listAIWritingRuns,
   watchAIWritingRun, type AIWritingEvent, type AIWritingResult, type AIWritingRun,
 } from "@/lib/api/writing-ai";
 import { ApiError } from "@/lib/api/client";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ScoringProgress, activityFromEvent } from "./writing-ai-progress";
 import { CriterionAssessmentCard } from "./writing-ai-criterion-card";
 import styles from "./writing-ai-assessment.module.css";
@@ -22,12 +23,17 @@ export function WritingAIAssessment({ attemptId, taskId, taskNumber = 2, hasEssa
   const [configured, setConfigured] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
+  const [stopping, setStopping] = useState(false);
+  const stopInFlight = useRef(false);
+  const [confirmStop, setConfirmStop] = useState(false);
+  const [stopError, setStopError] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const runId = run?.id;
   const observing = isActiveAIRun(run);
   const visibleRun = run && terminal ? { ...run, status: terminal } : run;
   const active = isActiveAIRun(visibleRun);
+  const cancelled = isCancelledAIRun(visibleRun);
   const aiTraitNames = traitNamesForTask(taskNumber);
   const visualAnalysis = run?.task1_analysis ?? (run?.result?.task_number === 1 ? run.result.task1_analysis : null);
 
@@ -62,11 +68,11 @@ export function WritingAIAssessment({ attemptId, taskId, taskNumber = 2, hasEssa
         } : current);
         // Terminal UI overrides transient phases immediately. Keep observation
         // alive until JSON reconciliation finishes, including during an outage.
-        if (event.event_type === "run.failed") { setTerminal("FAILED"); setError(aiErrorMessage(event.payload.error_code)); }
+        if (event.event_type === "run.failed") { setTerminal("FAILED"); setError(event.payload.error_code === "AI_GRADING_CANCELLED" ? "" : aiErrorMessage(event.payload.error_code)); }
         if (event.event_type === "run.completed") setTerminal("COMPLETED");
       },
       snapshot(saved) {
-        setRun((current) => current?.id === saved.id ? { ...saved, progress: { ...current.progress, ...saved.progress }, failures: { ...current.failures, ...saved.failures }, activity: saved.activity ?? current.activity } : current);
+        setRun((current) => current?.id === saved.id && !(isCancelledAIRun(current) && isActiveAIRun(saved)) ? { ...saved, progress: { ...current.progress, ...saved.progress }, failures: { ...current.failures, ...saved.failures }, activity: saved.activity ?? current.activity } : current);
         setTerminal(null);
         setError("");
         setRuns((current) => [saved, ...current.filter((item) => item.id !== saved.id)]);
@@ -76,8 +82,8 @@ export function WritingAIAssessment({ attemptId, taskId, taskNumber = 2, hasEssa
   }, [runId, observing]);
 
   async function grade(force: boolean) {
-    if (starting || active) return;
-    setStarting(true); setError(""); setNotice("");
+    if (starting || stopping || active) return;
+    setStarting(true); setError(""); setNotice(""); setConfirmStop(false);
     try {
       const created = await createAIWritingRun(attemptId, taskId, force);
       const saved = await getAIWritingRun(created.run_id);
@@ -92,6 +98,21 @@ export function WritingAIAssessment({ attemptId, taskId, taskNumber = 2, hasEssa
     } finally { setStarting(false); }
   }
 
+  async function stop() {
+    if (!runId || !active || stopInFlight.current) return;
+    stopInFlight.current = true;
+    setStopping(true); setStopError("");
+    try {
+      const saved = await cancelAIWritingRun(runId);
+      setRun((current) => current?.id === saved.id ? { ...saved, progress: { ...current.progress, ...saved.progress } } : current);
+      setRuns((current) => [saved, ...current.filter((item) => item.id !== saved.id)]);
+      setTerminal(null); setError(""); setConfirmStop(false);
+      if (saved.status === "COMPLETED") setNotice("Bài chấm AI đã hoàn tất trước khi yêu cầu dừng được xử lý.");
+    } catch {
+      setStopError("Chưa thể dừng chấm AI. Vui lòng thử lại.");
+    } finally { stopInFlight.current = false; setStopping(false); }
+  }
+
   return <section className={styles.panel} aria-label="AI Assessment">
     <div className={styles.heading}><div><p className="writing-review-kicker">AI Assessment</p><h2>Đánh giá AI · Task {taskNumber}</h2></div><span className={styles.badge}>Ý kiến tham khảo</span></div>
     <p>AI chỉ đóng vai trò tham khảo. Điểm chính thức chỉ thay đổi khi người chấm chủ động lưu.</p>
@@ -99,13 +120,16 @@ export function WritingAIAssessment({ attemptId, taskId, taskNumber = 2, hasEssa
     {!hasEssay ? <p>Cần có câu trả lời Task {taskNumber} đã lưu để chấm AI.</p> : null}
     {run?.prompt_version === "mts-task2-v1" ? <p className={styles.legacy}>Bản chấm cũ · trước khi chuyển nhận xét sang tiếng Việt</p> : null}
     <div className={styles.actions}>
-      <button type="button" className="btn btn-writing" disabled={loading || starting || active || !hasEssay || configured === false} onClick={() => void grade(Boolean(run))}>
+      <button type="button" className="btn btn-writing" disabled={loading || starting || stopping || active || !hasEssay || configured === false} onClick={() => void grade(Boolean(run))}>
         {starting ? "Đang bắt đầu chấm AI…" : active ? "Đang chấm với AI…" : run ? "Chấm lại với AI" : `Chấm Task ${taskNumber} với AI`}
       </button>
-      {run?.result && canCopy ? <button type="button" className="btn" disabled={active || starting} onClick={() => { onCopy(run.result!); setNotice(`Đã chép gợi ý AI. Bạn có thể chỉnh sửa; cần bấm Save Task ${taskNumber} scores để lưu điểm chính thức.`); }}>Chép gợi ý AI vào biểu mẫu</button> : null}
+      {active ? <button type="button" className="btn btn-secondary" disabled={stopping} onClick={() => { setStopError(""); setConfirmStop(true); }}>{stopping ? "Đang dừng…" : "Dừng chấm"}</button> : null}
+      {run?.result && canCopy ? <button type="button" className="btn" disabled={active || starting || stopping} onClick={() => { onCopy(run.result!); setNotice(`Đã chép gợi ý AI. Bạn có thể chỉnh sửa; cần bấm Save Task ${taskNumber} scores để lưu điểm chính thức.`); }}>Chép gợi ý AI vào biểu mẫu</button> : null}
     </div>
+    <ConfirmDialog open={confirmStop && active} title="Dừng chấm AI?" description="Quá trình chấm hiện tại sẽ dừng. Các tiêu chí đã hoàn tất vẫn được giữ lại. Điểm chính thức của bài Writing không bị thay đổi." confirmLabel="Dừng chấm" cancelLabel="Tiếp tục chấm" pendingLabel="Đang dừng…" pending={stopping} errorMessage={stopError} onCancel={() => setConfirmStop(false)} onConfirm={() => void stop()} />
     {notice ? <p role="status">{notice}</p> : null}
-    {error || visibleRun?.status === "FAILED" ? <p role="alert" className="notice notice-error">{visibleRun?.status === "FAILED" ? aiErrorMessage(visibleRun.error_code) : error}</p> : null}
+    {cancelled ? <p role="status">Đã dừng chấm AI. Các tiêu chí hoàn tất trước đó vẫn được giữ lại.</p> : null}
+    {error || (visibleRun?.status === "FAILED" && !cancelled) ? <p role="alert" className="notice notice-error">{visibleRun?.status === "FAILED" && !cancelled ? aiErrorMessage(visibleRun.error_code) : error}</p> : null}
     <ScoringProgress run={visibleRun} taskNumber={taskNumber} />
     {taskNumber === 1 && visualAnalysis ? <Task1VisualStatus analysis={visualAnalysis} /> : null}
     {run?.result ? <section className={styles.overall} aria-label={`AI Task ${taskNumber} overall summary`}>
@@ -128,7 +152,7 @@ export function WritingAIAssessment({ attemptId, taskId, taskNumber = 2, hasEssa
       const assessment = run?.result?.criteria[trait] ?? run?.progress[trait];
       return assessment ? <CriterionAssessmentCard key={trait} trait={trait} assessment={assessment} taskNumber={taskNumber} visualAnalysis={visualAnalysis} /> : null;
     })}</div>
-    {runs.some((item) => item.status === "COMPLETED" && item.id !== run?.id) ? <details className={styles.history}><summary>Các bài chấm AI trước</summary><ul>{runs.filter((item) => item.status === "COMPLETED").map((item) => <li key={item.id}><button type="button" className="btn" disabled={active || starting} onClick={() => { setRun(item); setTerminal(null); setError(""); setNotice(""); }}>{new Date(item.created_at).toLocaleString("vi-VN")} · {item.result?.overall_band.toFixed(1)} · {item.prompt_version}</button></li>)}</ul></details> : null}
+    {runs.some((item) => item.status === "COMPLETED" && item.id !== run?.id) ? <details className={styles.history}><summary>Các bài chấm AI trước</summary><ul>{runs.filter((item) => item.status === "COMPLETED").map((item) => <li key={item.id}><button type="button" className="btn" disabled={active || starting || stopping} onClick={() => { setRun(item); setTerminal(null); setError(""); setNotice(""); }}>{new Date(item.created_at).toLocaleString("vi-VN")} · {item.result?.overall_band.toFixed(1)} · {item.prompt_version}</button></li>)}</ul></details> : null}
   </section>;
 }
 

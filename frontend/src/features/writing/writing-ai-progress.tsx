@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { aiTraits, traitNamesForTask, isActiveAIRun, type AIActivity, type AIWritingEvent, type AIWritingRun } from "@/lib/api/writing-ai";
+import { aiTraits, traitNamesForTask, isActiveAIRun, isCancelledAIRun, type AIActivity, type AIWritingEvent, type AIWritingRun } from "@/lib/api/writing-ai";
 import styles from "./writing-ai-assessment.module.css";
 
 export const traitSubtitles = {
@@ -72,18 +72,19 @@ function phaseLabel(activity?: AIActivity | null) {
 export function ScoringProgress({ run, taskNumber = 2 }: { run: AIWritingRun | null; taskNumber?: 1 | 2 }) {
   const aiTraitNames = traitNamesForTask(taskNumber);
   const active = isActiveAIRun(run);
+  const cancelled = isCancelledAIRun(run);
   const count = aiTraits.filter((trait) => run?.progress[trait] || run?.result?.criteria[trait]).length;
   const activity = run?.activity;
   const failedTraits = new Set(aiTraits.filter((trait) => run?.failures?.[trait] && !run?.progress[trait] && !run?.result?.criteria[trait]));
   // Legacy failed rows contain progress but no persisted activity. Sequential
   // grading identifies the first unfinished criterion after completed results.
-  const terminalTrait = run?.status === "FAILED" ? activity?.criterion
+  const terminalTrait = run?.status === "FAILED" && !cancelled ? activity?.criterion
     ?? (failedTraits.size === 0 && (count > 0 || ["AI_PROVIDER_BAD_RESPONSE", "INVALID_PROVIDER_OUTPUT"].includes(run.error_code ?? ""))
       ? aiTraits.find((trait) => !run.progress[trait]) : null) : null;
   if (terminalTrait && !run?.progress[terminalTrait] && !run?.result?.criteria[terminalTrait]) failedTraits.add(terminalTrait);
   const failedCount = failedTraits.size;
   const activeCount = active && activity?.criterion && !run?.progress[activity.criterion] && !run?.failures?.[activity.criterion] ? 1 : 0;
-  const summary = run?.status === "FAILED" ? "Chưa thể hoàn tất toàn bộ bài chấm."
+  const summary = cancelled ? "Đã dừng chấm AI." : run?.status === "FAILED" ? "Chưa thể hoàn tất toàn bộ bài chấm."
     : run?.status === "COMPLETED" ? "Chấm bài hoàn tất"
     : activity?.phase === "starting_model" ? "Đang khởi động mô hình AI…"
     : active && activity && ["visual_grounding", "visual_grounded", "deriving_facts", "derived_facts_failed", "extracting_claims", "claims_extracted", "verifying_claims", "claims_verified", "claim_extraction_failed", "claim_verification_failed", "chart_cross_check", "chart_read", "chart_fallback", "chart_reconciled"].includes(activity.phase) ? phaseLabel(activity)
@@ -99,7 +100,7 @@ export function ScoringProgress({ run, taskNumber = 2 }: { run: AIWritingRun | n
         const failed = failedTraits.has(trait);
         const current = active && !completed && !failed && activity?.criterion === trait;
         const state = completed || run?.status === "COMPLETED" ? "COMPLETED" : failed ? "FAILED"
-          : current ? activity?.phase === "retrying" ? "RETRYING" : "ACTIVE" : "WAITING";
+          : cancelled ? "STOPPED" : current ? activity?.phase === "retrying" ? "RETRYING" : "ACTIVE" : "WAITING";
         const evidenceCollected = completed || (activity?.criterion === trait && ["scoring", "validating_score", "evidence_collected"].includes(activity.phase))
           || (activity?.criterion === trait && activity.stage === "scoring");
         return <li key={trait} className={styles.step} data-state={state} aria-label={`Tiến trình ${aiTraitNames[trait]}`}>
@@ -109,6 +110,7 @@ export function ScoringProgress({ run, taskNumber = 2 }: { run: AIWritingRun | n
             <small>{traitSubtitles[trait]}</small>
             {evidenceCollected ? <p>✓ Đã thu thập dẫn chứng</p> : null}
             <p>{state === "COMPLETED" ? "Đã chấm xong" : state === "FAILED" ? "Không thể hoàn tất tiêu chí này."
+              : state === "STOPPED" ? "Chưa hoàn tất do bạn đã dừng chấm"
               : current ? phaseLabel(activity) : run?.status === "FAILED" ? "Chưa thực hiện" : "Đang chờ"}</p>
             {current && activity ? <StageElapsed startedAt={activity.started_at} /> : null}
           </div>

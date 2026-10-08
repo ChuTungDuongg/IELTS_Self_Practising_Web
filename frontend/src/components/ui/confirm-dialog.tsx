@@ -7,6 +7,8 @@ export function ConfirmDialog({
   title,
   description,
   confirmLabel,
+  cancelLabel = "Cancel",
+  pendingLabel = "Working…",
   pending,
   errorMessage,
   onCancel,
@@ -16,6 +18,8 @@ export function ConfirmDialog({
   title: string;
   description: string;
   confirmLabel: string;
+  cancelLabel?: string;
+  pendingLabel?: string;
   pending: boolean;
   errorMessage?: string;
   onCancel: () => void;
@@ -91,7 +95,7 @@ export function ConfirmDialog({
             onClick={onCancel}
             className="btn btn-secondary"
           >
-            Cancel
+            {cancelLabel}
           </button>
           <button
             type="button"
@@ -99,7 +103,7 @@ export function ConfirmDialog({
             onClick={onConfirm}
             className="btn btn-danger"
           >
-            {pending ? "Working…" : confirmLabel}
+            {pending ? pendingLabel : confirmLabel}
           </button>
         </div>
       </div>

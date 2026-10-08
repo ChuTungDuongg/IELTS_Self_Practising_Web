@@ -11,7 +11,7 @@ from app.core.database import SessionFactory, get_session
 from app.core.exceptions import AppError
 from app.models.enums import WritingAIRunStatus
 from app.schemas.writing_ai import CreateRunRequest, CreateRunResponse, RunListResponse, RunResponse
-from app.services.writing_ai import WritingAIService
+from app.services.writing_ai import CANCELLATION_CODE, WritingAIService
 from app.services.writing_ai_worker import WritingAIWorker
 
 router = APIRouter(tags=["writing-ai"])
@@ -61,6 +61,21 @@ async def get_run(
     run_id: UUID, user: CurrentUser, session: AsyncSession = Depends(get_session)
 ) -> RunResponse:
     return await WritingAIService(session, user.id, get_settings()).get(run_id)
+
+
+@router.post("/ai-writing-grading-runs/{run_id}/cancel", response_model=RunResponse)
+async def cancel_run(
+    run_id: UUID,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+    worker: WritingAIWorker = Depends(get_worker),
+) -> RunResponse:
+    result = await WritingAIService(session, user.id, get_settings()).cancel(run_id)
+    # Commit first. Other processes rely on the durable terminal state, while
+    # this process can also interrupt an in-flight provider request immediately.
+    if result.status == WritingAIRunStatus.FAILED and result.error_code == CANCELLATION_CODE:
+        worker.cancel(run_id)
+    return result
 
 
 def replay_cursor(after: int, last_event_id: str | None) -> int:

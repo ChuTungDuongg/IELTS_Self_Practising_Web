@@ -35,12 +35,294 @@ from app.models import TestVersion as DomainVersion
 from app.models.enums import AttemptStatus, ModuleType, TimerMode, VersionStatus, WritingAIRunStatus
 from app.providers.writing_llm import create_provider, is_configured
 from app.providers.writing_llm.base import Completion, ProviderFailure
-from app.schemas.writing_ai import TRAITS, EventPayload, TraitScore
+from app.schemas.writing_ai import TRAITS, CriterionResult, EventPayload, TraitScore
 from app.services.mts_writing import MTSWritingScoringService
-from app.services.writing_ai import WritingAIService, input_fingerprint
-from app.services.writing_ai_worker import WritingAIWorker
+from app.services.writing_ai import CANCELLATION_CODE, WritingAIService, input_fingerprint
+from app.services.writing_ai_worker import RunStopped, WritingAIWorker
 
 ESSAY = "Fictional parks improve city life. However, funding should be transparent."
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("status", [WritingAIRunStatus.PENDING, WritingAIRunStatus.RUNNING])
+async def test_owner_cancels_active_run_with_durable_idempotent_event(
+    db_session, writing, settings, status
+):
+    attempt_id, _, task_id = writing
+    api = service(db_session, settings)
+    created = await api.create(attempt_id, task_id, force=False)
+    async with db_session.begin():
+        row = await db_session.get(WritingAIGradingRun, created.run_id)
+        row.status = status
+    cancelled = await api.cancel(created.run_id)
+    assert cancelled.status == WritingAIRunStatus.FAILED
+    assert cancelled.error_code == CANCELLATION_CODE
+    assert cancelled.error_message == "Bạn đã dừng bài chấm AI."
+    assert cancelled.completed_at is not None and cancelled.result is None
+    again = await api.cancel(created.run_id)
+    assert again == cancelled
+    refreshed, events = await api.snapshot(created.run_id, 0)
+    assert refreshed == cancelled
+    assert [(event.sequence, event.event_type) for event in events] == [(1, "run.failed")]
+    assert events[0].payload.error_code == CANCELLATION_CODE
+    async with db_session.begin():
+        row = await db_session.get(WritingAIGradingRun, created.run_id)
+        assert row.updated_at == row.completed_at
+    # Even without force, FAILED rows never qualify as completed cache entries.
+    regrade = await api.create(attempt_id, task_id, force=False)
+    assert regrade.run_id != created.run_id and not regrade.cache_hit
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("foreign", [False, True])
+async def test_cancel_missing_or_foreign_run_is_not_found(db_session, writing, settings, foreign):
+    attempt_id, _, task_id = writing
+    api = service(db_session, settings)
+    created = await api.create(attempt_id, task_id, force=False)
+    with pytest.raises(AppError) as failure:
+        await service(db_session, settings, uuid4() if foreign else None).cancel(
+            created.run_id if foreign else uuid4()
+        )
+    assert failure.value.code == "AI_RUN_NOT_FOUND" and failure.value.status_code == 404
+    assert (await api.get(created.run_id)).status == WritingAIRunStatus.PENDING
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("completed", [False, True])
+async def test_cancel_does_not_rewrite_terminal_run(db_session, writing, settings, completed):
+    attempt_id, _, task_id = writing
+    api = service(db_session, settings)
+    created = await api.create(attempt_id, task_id, force=False)
+    runner = worker(db_session, settings)
+    if completed:
+        await runner.execute(created.run_id)
+    else:
+        await runner._fail(created.run_id, "AI_PROVIDER_TIMEOUT", "Provider timeout", None)
+    before, events_before = await api.snapshot(created.run_id, 0)
+    assert await api.cancel(created.run_id) == before
+    _, events_after = await api.snapshot(created.run_id, 0)
+    assert events_after == events_before
+
+
+@pytest.mark.integration
+async def test_cancelled_pending_worker_never_calls_provider(db_session, writing, settings):
+    attempt_id, _, task_id = writing
+    api = service(db_session, settings)
+    created = await api.create(attempt_id, task_id, force=False)
+    await api.cancel(created.run_id)
+    provider = FakeProvider()
+    await worker(db_session, settings, provider).execute(created.run_id)
+    assert provider.calls == []
+    assert (await api.get(created.run_id)).error_code == CANCELLATION_CODE
+
+
+@pytest.mark.integration
+async def test_cancel_preserves_partial_and_official_scores_blocks_late_worker_updates(
+    db_session, writing, settings
+):
+    attempt_id, _, task_id = writing
+    api = service(db_session, settings)
+    created = await api.create(attempt_id, task_id, force=False)
+    runner = worker(db_session, settings)
+    result = CriterionResult(score=6, feedback="Fictional feedback", strengths=[], improvements=[], evidence=[])
+    for trait in ("ta", "cc"):
+        await runner._checkpoint(
+            created.run_id, "criterion.completed", EventPayload(criterion=trait, result=result)
+        )
+    await runner._checkpoint(created.run_id, "criterion.started", EventPayload(criterion="lr"))
+    before = await api.get(created.run_id)
+    stopped = await api.cancel(created.run_id)
+    assert stopped.progress == before.progress and set(stopped.progress) == {"ta", "cc"}
+    assert stopped.failures == {} and stopped.result is None
+    with pytest.raises(RunStopped):
+        await runner._checkpoint(
+            created.run_id, "criterion.completed", EventPayload(criterion="lr", result=result)
+        )
+    # Must return before accessing the proposed result: cancellation acquired its lock first.
+    await runner._complete(created.run_id, Mock(), Mock())
+    await runner._fail(created.run_id, "RUN_INTERRUPTED", "Interrupted", None)
+    saved, events = await api.snapshot(created.run_id, 0)
+    assert saved == stopped
+    assert events[-1].event_type == "run.failed"
+    assert not any(event.event_type == "criterion.failed" for event in events)
+    async with db_session.begin():
+        db_session.expire_all()
+        row = await db_session.get(WritingAIGradingRun, created.run_id)
+        assert row.raw_mean is None and row.overall_band is None
+        attempt = await db_session.get(Attempt, attempt_id)
+        assert attempt.band_score == Decimal("7.0")
+        essay = await db_session.scalar(select(AttemptWritingResponse).where(
+            AttemptWritingResponse.attempt_id == attempt_id
+        ))
+        assert essay.content == ESSAY
+        score = await db_session.scalar(select(AttemptWritingScore).where(
+            AttemptWritingScore.attempt_id == attempt_id
+        ))
+        assert (score.ta, score.cc, score.lr, score.gra, score.ta_feedback) == (
+            7, 7, 7, 7, "Human feedback stays."
+        )
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("local_stop", [False, True])
+async def test_user_cancel_stops_provider_work_and_survives_asyncio_cleanup(
+    db_session, writing, settings, local_stop
+):
+    class WaitingProvider(FakeProvider):
+        def __init__(self):
+            super().__init__()
+            self.waiting = asyncio.Event()
+            self.release = asyncio.Event()
+            self.interrupted = asyncio.Event()
+
+        async def ensure_ready(self):
+            self.waiting.set()
+            try:
+                await self.release.wait()
+            except asyncio.CancelledError:
+                self.interrupted.set()
+                raise
+
+    from app.services.writing_ai_worker import _tasks
+
+    attempt_id, _, task_id = writing
+    api = service(db_session, settings)
+    created = await api.create(attempt_id, task_id, force=False)
+    provider = WaitingProvider()
+    runner = worker(db_session, settings, provider)
+    runner.launch(created.run_id)
+    job = _tasks[created.run_id]
+    try:
+        await asyncio.wait_for(provider.waiting.wait(), timeout=5)
+        assert (await api.get(created.run_id)).status == WritingAIRunStatus.RUNNING
+        await api.cancel(created.run_id)
+        if local_stop:
+            # A separately instantiated API worker still finds the process-wide registry.
+            worker(db_session, settings).cancel(created.run_id)
+            with pytest.raises(asyncio.CancelledError):
+                await asyncio.wait_for(job, timeout=5)
+            assert provider.interrupted.is_set()
+        else:
+            # Simulates another process: the next durable checkpoint stops provider work.
+            provider.release.set()
+            await asyncio.wait_for(job, timeout=5)
+        assert provider.calls == []
+        saved = await api.get(created.run_id)
+        assert saved.error_code == CANCELLATION_CODE and saved.result is None
+        await asyncio.sleep(0)
+        assert created.run_id not in _tasks
+    finally:
+        if not job.done():
+            job.cancel()
+            await asyncio.gather(job, return_exceptions=True)
+
+
+@pytest.mark.integration
+async def test_cancel_endpoint_authorization_commit_then_stop_and_sse_replay(
+    db_session, writing, settings, monkeypatch
+):
+    attempt_id, _, task_id = writing
+    created = await service(db_session, settings).create(attempt_id, task_id, force=False)
+    runner = worker(db_session, settings)
+    stops = []
+
+    def stop_after_commit(run_id):
+        assert not db_session.in_transaction()
+        stops.append(run_id)
+
+    monkeypatch.setattr(runner, "cancel", stop_after_commit)
+    monkeypatch.setattr(routes, "get_settings", lambda: settings)
+    app.dependency_overrides[routes.get_worker] = lambda: runner
+    app.dependency_overrides[get_current_user] = lambda: db_session.info["current_user_identity"]
+
+    async def session_override():
+        yield db_session
+
+    app.dependency_overrides[get_session] = session_override
+    try:
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            url = f"/api/v1/ai-writing-grading-runs/{created.run_id}"
+            response = await client.post(url + "/cancel")
+            assert response.status_code == 200 and response.json()["error_code"] == CANCELLATION_CODE
+            assert stops == [created.run_id]
+            assert (await client.post(url + "/cancel")).json() == response.json()
+            stream = await client.get(url + "/events")
+            assert "event: run.failed" in stream.text and CANCELLATION_CODE in stream.text
+            assert (await client.get(url + "/events", headers={"Last-Event-ID": "1"})).text == ""
+            assert (await client.get(url)).json() == response.json()
+            assert (await client.post(f"/api/v1/ai-writing-grading-runs/{uuid4()}/cancel")).status_code == 404
+            app.dependency_overrides[get_current_user] = lambda: Mock(id=uuid4())
+            assert (await client.post(url + "/cancel")).status_code == 404
+            app.dependency_overrides.pop(get_current_user)
+            assert (await client.post(url + "/cancel")).status_code == 401
+    finally:
+        app.dependency_overrides.clear()
+
+
+@pytest.mark.integration
+async def test_cancel_interrupts_inflight_criteria_and_retains_completed_results(
+    db_session, writing, settings
+):
+    from app.services.writing_ai_worker import _tasks
+
+    class PartialProvider(FakeProvider):
+        def __init__(self):
+            super().__init__()
+            self.blocked = set()
+            self.interrupted = set()
+            self.waiting = asyncio.Event()
+
+        async def complete(self, messages, schema, *, options=None):
+            trait = next(trait for trait in TRAITS if TRAIT_NAMES[trait] in messages[0]["content"])
+            if trait in {"lr", "gra"}:
+                self.blocked.add(trait)
+                if len(self.blocked) == 2:
+                    self.waiting.set()
+                try:
+                    await asyncio.Event().wait()
+                except asyncio.CancelledError:
+                    self.interrupted.add(trait)
+                    raise
+            return await super().complete(messages, schema, options=options)
+
+    attempt_id, _, task_id = writing
+    api = service(db_session, settings)
+    created = await api.create(attempt_id, task_id, force=False)
+    provider = PartialProvider()
+    runner = worker(db_session, settings.model_copy(update={
+        "ai_writing_max_concurrent_llm_requests": 4
+    }), provider)
+    completed = set()
+    partial_ready = asyncio.Event()
+    checkpoint = runner._checkpoint
+
+    async def record_checkpoint(run_id, event, payload, *args):
+        await checkpoint(run_id, event, payload, *args)
+        if event == "criterion.completed":
+            completed.add(payload.criterion)
+            if len(completed) == 2:
+                partial_ready.set()
+
+    runner._checkpoint = record_checkpoint
+    runner.launch(created.run_id)
+    job = _tasks[created.run_id]
+    try:
+        await asyncio.wait_for(asyncio.gather(provider.waiting.wait(), partial_ready.wait()), 5)
+        stopped = await api.cancel(created.run_id)
+        runner.cancel(created.run_id)
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(job, 5)
+        assert provider.interrupted == {"lr", "gra"} and provider.scored == 2
+        saved = await api.get(created.run_id)
+        assert saved == stopped and set(saved.progress) == {"ta", "cc"}
+        assert saved.error_code == CANCELLATION_CODE and saved.result is None
+        assert saved.failures == {}
+    finally:
+        if not job.done():
+            job.cancel()
+            await asyncio.gather(job, return_exceptions=True)
 
 
 class FakeProvider:

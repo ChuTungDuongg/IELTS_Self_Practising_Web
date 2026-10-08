@@ -85,8 +85,14 @@ export async function createAIWritingRun(attemptId: string, taskId: string, forc
 export async function getAIWritingRun(runId: string) {
   return aiRunSchema.parse(await apiRequest<unknown>(`/ai-writing-grading-runs/${runId}`));
 }
+export async function cancelAIWritingRun(runId: string) {
+  return aiRunSchema.parse(await apiRequest<unknown>(`/ai-writing-grading-runs/${runId}/cancel`, { method: "POST" }));
+}
 export function isActiveAIRun(run: AIWritingRun | null) {
   return run?.status === "PENDING" || run?.status === "RUNNING";
+}
+export function isCancelledAIRun(run: AIWritingRun | null) {
+  return run?.status === "FAILED" && run.error_code === "AI_GRADING_CANCELLED";
 }
 
 // Uses the application's cookie auth. A JSON probe refreshes expired access

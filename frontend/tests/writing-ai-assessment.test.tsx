@@ -5,14 +5,14 @@ import { Task1VisualDetails, Task1VisualStatus } from "@/features/writing/writin
 import { WritingReviewView } from "@/features/writing/writing-review";
 import { CriterionAssessmentCard } from "@/features/writing/writing-ai-criterion-card";
 import { humanizeSourceReferences, presentAIFeedback } from "@/features/writing/ai-feedback-presentation";
-import { aiRunSchema, createAIWritingRun, getAIWritingRun, listAIWritingRuns, watchAIWritingRun, type AIWritingRun } from "@/lib/api/writing-ai";
+import { aiRunSchema, cancelAIWritingRun, createAIWritingRun, getAIWritingRun, listAIWritingRuns, watchAIWritingRun, type AIWritingRun } from "@/lib/api/writing-ai";
 import type { Task1Analysis } from "@/lib/api/task1-visual";
 import { saveWritingTaskScore, type WritingReviewPayload } from "@/lib/api/exam";
 import { ApiError } from "@/lib/api/client";
 
 const auth = vi.hoisted(() => ({ role: "ADMIN" }));
 vi.mock("@/features/auth/auth-provider", () => ({ useAuth: () => ({ user: { role: auth.role } }) }));
-vi.mock("@/lib/api/writing-ai", async (original) => ({ ...await original<typeof import("@/lib/api/writing-ai")>(), listAIWritingRuns: vi.fn(), createAIWritingRun: vi.fn(), getAIWritingRun: vi.fn() }));
+vi.mock("@/lib/api/writing-ai", async (original) => ({ ...await original<typeof import("@/lib/api/writing-ai")>(), listAIWritingRuns: vi.fn(), createAIWritingRun: vi.fn(), getAIWritingRun: vi.fn(), cancelAIWritingRun: vi.fn() }));
 vi.mock("@/lib/api/exam", async (original) => ({ ...await original<typeof import("@/lib/api/exam")>(), saveWritingTaskScore: vi.fn() }));
 
 const attemptId = "11111111-1111-4111-8111-111111111111";
@@ -139,6 +139,114 @@ describe("Writing AI assessment", () => {
     vi.mocked(getAIWritingRun).mockResolvedValue(pending);
   });
   afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.useRealTimers(); });
+
+  it.each(["PENDING", "RUNNING"] as const)("offers confirmation for active %s and dismisses without cancelling", async (status) => {
+    vi.mocked(listAIWritingRuns).mockResolvedValue({ configured: true, items: [{ ...pending, status }] });
+    panel();
+    fireEvent.click(await screen.findByRole("button", { name: "Dừng chấm" }));
+    const dialog = screen.getByRole("dialog", { name: "Dừng chấm AI?" });
+    expect(dialog).toHaveTextContent("Điểm chính thức của bài Writing không bị thay đổi.");
+    const resume = within(dialog).getByRole("button", { name: "Tiếp tục chấm" });
+    expect(resume).toHaveFocus();
+    fireEvent.click(resume);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(cancelAIWritingRun).not.toHaveBeenCalled();
+  });
+
+  it.each(["COMPLETED", "FAILED"] as const)("does not offer stop for terminal %s", async (status) => {
+    vi.mocked(listAIWritingRuns).mockResolvedValue({ configured: true, items: [{ ...completed, status }] });
+    panel();
+    await screen.findByRole("button", { name: "Chấm lại với AI" });
+    expect(screen.queryByRole("button", { name: "Dừng chấm" })).not.toBeInTheDocument();
+  });
+
+  it("confirms once, blocks duplicate requests, preserves partial results and permits a new regrade", async () => {
+    const running: AIWritingRun = { ...pending, status: "RUNNING", progress: { ta: criterion, cc: criterion } };
+    const cancelled: AIWritingRun = { ...running, status: "FAILED", error_code: "AI_GRADING_CANCELLED", completed_at: pending.created_at };
+    vi.mocked(listAIWritingRuns).mockResolvedValue({ configured: true, items: [running] });
+    let resolveStop!: (run: AIWritingRun) => void;
+    vi.mocked(cancelAIWritingRun).mockReturnValue(new Promise((resolve) => { resolveStop = resolve; }));
+    const onCopy = vi.fn();
+    render(<WritingAIAssessment attemptId={attemptId} taskId={taskId} hasEssay canCopy onCopy={onCopy} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Dừng chấm" }));
+    const confirm = within(screen.getByRole("dialog")).getByRole("button", { name: "Dừng chấm" });
+    fireEvent.click(confirm); fireEvent.click(confirm);
+    expect(cancelAIWritingRun).toHaveBeenCalledExactlyOnceWith(runId);
+    expect(screen.getAllByRole("button", { name: "Đang dừng…" })).toHaveLength(2);
+    for (const button of screen.getAllByRole("button")) expect(button).toBeDisabled();
+    await act(async () => resolveStop(cancelled));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Dừng chấm" })).not.toBeInTheDocument();
+    expect(screen.getByText("Đã dừng chấm AI. Các tiêu chí hoàn tất trước đó vẫn được giữ lại.")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByText("2 / 4 tiêu chí hoàn tất")).toBeInTheDocument();
+    expect(screen.getAllByRole("article")).toHaveLength(2);
+    expect(screen.queryByRole("region", { name: "AI Task 2 overall summary" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Chép gợi ý AI vào biểu mẫu" })).not.toBeInTheDocument();
+    expect(onCopy).not.toHaveBeenCalled(); expect(saveWritingTaskScore).not.toHaveBeenCalled();
+    expect(MockEventSource.instances[0].close).toHaveBeenCalled();
+    vi.mocked(createAIWritingRun).mockResolvedValue({ run_id: taskId, cache_hit: false, existing_active: false });
+    vi.mocked(getAIWritingRun).mockResolvedValue({ ...pending, id: taskId });
+    fireEvent.click(screen.getByRole("button", { name: "Chấm lại với AI" }));
+    await waitFor(() => expect(createAIWritingRun).toHaveBeenCalledWith(attemptId, taskId, true));
+    await waitFor(() => expect(MockEventSource.instances).toHaveLength(2));
+    expect(MockEventSource.instances[1].url).toContain(taskId);
+  });
+
+  it("restores friendly cancellation on refresh and SSE replay without provider-failure copy", async () => {
+    const cancelled: AIWritingRun = { ...pending, status: "FAILED", error_code: "AI_GRADING_CANCELLED", progress: { ta: criterion } };
+    vi.mocked(listAIWritingRuns).mockResolvedValue({ configured: true, items: [pending] });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(cancelled), { status: 200 })));
+    panel();
+    await screen.findByRole("button", { name: "Dừng chấm" });
+    act(() => MockEventSource.instances[0].emit("run.failed", 1, { error_code: "AI_GRADING_CANCELLED" }));
+    await screen.findByText("Đã dừng chấm AI. Các tiêu chí hoàn tất trước đó vẫn được giữ lại.");
+    await screen.findByRole("article", { name: "AI Task Response" });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    cleanup();
+    vi.mocked(listAIWritingRuns).mockResolvedValue({ configured: true, items: [cancelled] });
+    panel();
+    await screen.findByText("Đã dừng chấm AI. Các tiêu chí hoàn tất trước đó vẫn được giữ lại.");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Chấm lại với AI" })).toBeEnabled();
+  });
+
+  it("keeps completion when it wins the cancel race", async () => {
+    vi.mocked(listAIWritingRuns).mockResolvedValue({ configured: true, items: [pending] });
+    vi.mocked(cancelAIWritingRun).mockResolvedValue(completed);
+    panel();
+    fireEvent.click(await screen.findByRole("button", { name: "Dừng chấm" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Dừng chấm" }));
+    await screen.findByRole("region", { name: "AI Task 2 overall summary" });
+    expect(screen.getByText("Bài chấm AI đã hoàn tất trước khi yêu cầu dừng được xử lý.")).toBeInTheDocument();
+    expect(screen.queryByText("Đã dừng chấm AI.")).not.toBeInTheDocument();
+  });
+
+  it("does not reopen an old confirmation when completion wins before the user confirms", async () => {
+    vi.mocked(listAIWritingRuns).mockResolvedValue({ configured: true, items: [pending] });
+    panel();
+    fireEvent.click(await screen.findByRole("button", { name: "Dừng chấm" }));
+    act(() => MockEventSource.instances[0].emit("run.completed", 1));
+    await screen.findByRole("region", { name: "AI Task 2 overall summary" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    vi.mocked(createAIWritingRun).mockResolvedValue({ run_id: taskId, cache_hit: false, existing_active: false });
+    vi.mocked(getAIWritingRun).mockResolvedValue({ ...pending, id: taskId });
+    fireEvent.click(screen.getByRole("button", { name: "Chấm lại với AI" }));
+    await screen.findByRole("button", { name: "Dừng chấm" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(cancelAIWritingRun).not.toHaveBeenCalled();
+  });
+
+  it("keeps confirmation retryable after a failed cancellation request", async () => {
+    vi.mocked(listAIWritingRuns).mockResolvedValue({ configured: true, items: [pending] });
+    vi.mocked(cancelAIWritingRun).mockRejectedValue(new Error("Network unavailable"));
+    panel();
+    fireEvent.click(await screen.findByRole("button", { name: "Dừng chấm" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Dừng chấm" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Chưa thể dừng chấm AI. Vui lòng thử lại.");
+    expect(within(screen.getByRole("dialog")).getByRole("button", { name: "Dừng chấm" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Đang chấm với AI…" })).toBeDisabled();
+  });
 
   it("starts grading and renders validated SSE trace and criterion progress", async () => {
     const rendered = panel();

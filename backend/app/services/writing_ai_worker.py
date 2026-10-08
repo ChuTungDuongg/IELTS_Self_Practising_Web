@@ -28,7 +28,7 @@ from app.services.task1_writing import Task1WritingScoringService
 from app.services.writing_ai import WritingAIService, fail_run, input_fingerprint, persist_activity
 from app.services.writing_execution import TraceFailure, WritingLatencyMetrics, durable_checkpoint
 
-_tasks: set[asyncio.Task] = set()
+_tasks: dict[UUID, asyncio.Task] = {}
 
 
 class RunStopped(TraceFailure):
@@ -51,9 +51,21 @@ class WritingAIWorker:
         self.chart_derenderer = chart_derenderer
 
     def launch(self, run_id: UUID) -> None:
+        if run_id in _tasks and not _tasks[run_id].done():
+            return
         task = asyncio.create_task(self.execute(run_id), name=f"writing-ai-{run_id}")
-        _tasks.add(task)
-        task.add_done_callback(_tasks.discard)
+        _tasks[run_id] = task
+
+        def discard(done: asyncio.Task) -> None:
+            if _tasks.get(run_id) is done:
+                _tasks.pop(run_id)
+
+        task.add_done_callback(discard)
+
+    def cancel(self, run_id: UUID) -> None:
+        task = _tasks.get(run_id)
+        if task and not task.done():
+            task.cancel()
 
     async def execute(self, run_id: UUID) -> None:
         heartbeat = None
@@ -152,6 +164,8 @@ class WritingAIWorker:
         except RunStopped:
             pass
         except asyncio.CancelledError:
+            # _fail holds the row lock and only updates ACTIVE runs. A committed
+            # user cancellation always wins over this shutdown/interruption path.
             await fail("RUN_INTERRUPTED", "Chấm AI bị gián đoạn. Bạn có thể thử chấm lại.")
             raise
         except ProviderFailure as exc:
@@ -310,7 +324,7 @@ class WritingAIWorker:
 
 
 async def stop_writing_ai_workers() -> None:
-    tasks = list(_tasks)
+    tasks = list(_tasks.values())
     for task in tasks:
         task.cancel()
     await asyncio.gather(*tasks, return_exceptions=True)

@@ -1,9 +1,48 @@
 import { act, cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import styles from "@/features/writing/writing-ai-assessment.module.css";
 import { ScoringProgress, activityFromEvent } from "@/features/writing/writing-ai-progress";
 import { aiEventSchema, type AIWritingRun } from "@/lib/api/writing-ai";
 
 afterEach(() => { cleanup(); vi.useRealTimers(); });
+
+it.each(["collecting_evidence", "retrying"] as const)("animates only the active marker in phase %s", (phase) => {
+  render(<ScoringProgress run={{ ...active, activity: { ...active.activity!, phase } }} />);
+  const current = screen.getByLabelText("Tiến trình Task Response");
+  expect(current).toHaveAttribute("data-state", phase === "retrying" ? "RETRYING" : "ACTIVE");
+  expect(within(current).getByText("●")).toHaveClass(styles.activeMarker);
+  const waiting = screen.getByLabelText("Tiến trình Lexical Resource");
+  expect(waiting).toHaveAttribute("data-state", "WAITING");
+  expect(within(waiting).getByText("○")).not.toHaveClass(styles.activeMarker);
+});
+
+it("keeps completed and genuine failure markers static", () => {
+  render(<ScoringProgress run={{ ...active, status: "FAILED", progress: { ta: criterion }, failures: { cc: { error_code: "AI_PROVIDER_BAD_RESPONSE", error_message: "Failed" } }, activity: null }} />);
+  expect(within(screen.getByLabelText("Tiến trình Task Response")).getByText("✓")).not.toHaveClass(styles.activeMarker);
+  expect(within(screen.getByLabelText("Tiến trình Coherence & Cohesion")).getByText("×")).not.toHaveClass(styles.activeMarker);
+});
+
+it("stops unfinished criteria neutrally and preserves completed criteria after user cancellation", () => {
+  render(<ScoringProgress run={{ ...active, status: "FAILED", error_code: "AI_GRADING_CANCELLED", progress: { ta: criterion, cc: criterion }, activity: { ...active.activity!, criterion: "lr", stage: "scoring" } }} />);
+  expect(screen.getByText("2 / 4 tiêu chí hoàn tất")).toBeInTheDocument();
+  expect(screen.getByText("Đã dừng chấm AI.")).toBeInTheDocument();
+  expect(screen.getAllByText("Đã chấm xong")).toHaveLength(2);
+  expect(screen.getAllByText("Chưa hoàn tất do bạn đã dừng chấm")).toHaveLength(2);
+  expect(screen.getByLabelText("Tiến trình Lexical Resource")).toHaveAttribute("data-state", "STOPPED");
+  expect(screen.queryByText("×")).not.toBeInTheDocument();
+  expect(screen.queryByText("Chưa thể hoàn tất toàn bộ bài chấm.")).not.toBeInTheDocument();
+});
+
+it("keeps the rotating ring outside the 28px layout and static for reduced motion", () => {
+  const css = readFileSync(resolve(process.cwd(), "src/features/writing/writing-ai-assessment.module.css"), "utf8");
+  expect(css).toMatch(/\.marker\s*\{[^}]*width: 28px; height: 28px/);
+  expect(css).toMatch(/\.activeMarker::after\s*\{[^}]*position: absolute;[^}]*inset: -4px;[^}]*border-top-color: var\(--writing\);[^}]*activityRotate 1\.2s linear infinite/);
+  expect(css).toMatch(/prefers-reduced-motion: reduce[^}]*\.activeMarker, \.activeMarker::after\s*\{ animation: none;/);
+  expect(css).toContain(".actions > button { width: 100%; }");
+  expect(css).not.toContain("activityPulse");
+});
 
 it.each([
   ["chart_specialist.started", "Đang đối chiếu dữ liệu biểu đồ…"],

@@ -37,6 +37,8 @@ from app.schemas.writing_ai import (
 )
 from app.services.task1_input import TASK1_PROMPT_VERSION, Task1ScoringRequest, load_task1_image
 
+CANCELLATION_CODE = "AI_GRADING_CANCELLED"
+
 
 def persist_activity(run: WritingAIGradingRun, event: EventType, payload: EventPayload) -> None:
     phases = {
@@ -174,7 +176,8 @@ async def fail_run(
     )
     stored = run.result_json or {}
     if (
-        payload.criterion
+        code != CANCELLATION_CODE
+        and payload.criterion
         and payload.criterion not in stored.get("criteria", {})
         and payload.criterion not in stored.get("failures", {})
     ):
@@ -350,6 +353,17 @@ class WritingAIService:
     async def get(self, run_id: UUID) -> RunResponse:
         run, _ = await self.snapshot(run_id, after=0, include_events=False)
         return run
+
+    async def cancel(self, run_id: UUID) -> RunResponse:
+        async with self.session.begin():
+            # The same row lock serializes cancellation, checkpoints and completion.
+            run = await self.repository.run(run_id, user_id=self.user_id, lock=True)
+            if run is None:
+                raise AppError("AI_RUN_NOT_FOUND", "Không tìm thấy bài đánh giá AI này.", 404)
+            await fail_run(
+                self.repository, run, CANCELLATION_CODE, "Bạn đã dừng bài chấm AI."
+            )
+            return present_run(run)
 
     async def snapshot(
         self, run_id: UUID, after: int, *, include_events: bool = True
