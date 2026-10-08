@@ -11,10 +11,12 @@ from app.core.config import Settings
 from app.core.exceptions import AppError
 from app.domains.scoring.mts_prompts import effective_prompt_version
 from app.domains.scoring.writing import WritingScoringRequest
+from app.domains.writing.task_types import TASK_ONE_TYPES, WritingTaskType
 from app.models import TestSession, WritingAIGradingRun
 from app.models.enums import AttemptStatus, ModuleType, TestSessionStatus, WritingAIRunStatus
 from app.providers.writing_llm import create_provider, is_configured, provider_identity
 from app.repositories.writing_ai import ACTIVE, WritingAIRepository
+from app.schemas.task1_claims import Task1Analysis
 from app.schemas.writing_ai import (
     AIWritingResult,
     AssessmentStage,
@@ -27,8 +29,10 @@ from app.schemas.writing_ai import (
     RunActivity,
     RunListResponse,
     RunResponse,
+    Task1WritingResult,
     Trait,
 )
+from app.services.task1_input import TASK1_PROMPT_VERSION, Task1ScoringRequest, load_task1_image
 
 
 def persist_activity(run: WritingAIGradingRun, event: EventType, payload: EventPayload) -> None:
@@ -47,6 +51,16 @@ def persist_activity(run: WritingAIGradingRun, event: EventType, payload: EventP
         "criterion.failed": "failed",
         "run.completed": "completed",
         "run.failed": "failed",
+        "visual_grounding.started": "visual_grounding",
+        "visual_grounding.completed": "visual_grounded",
+        "visual_grounding.failed": "failed",
+        "derived_facts.completed": "deriving_facts",
+        "claim_extraction.started": "extracting_claims",
+        "claim_extraction.completed": "claims_extracted",
+        "claim_extraction.failed": "claim_extraction_failed",
+        "claim_verification.started": "verifying_claims",
+        "claim_verification.completed": "claims_verified",
+        "claim_verification.failed": "claim_verification_failed",
     }
     if event in phases:
         activity = RunActivity(
@@ -61,14 +75,22 @@ def persist_activity(run: WritingAIGradingRun, event: EventType, payload: EventP
 def input_fingerprint(
     request: WritingScoringRequest, prompt_version: str, provider: str, model: str
 ) -> str:
+    inputs = {
+        "prompt": request.prompt,
+        "essay": request.response,
+        "prompt_version": prompt_version,
+        "provider": provider,
+        "model": model,
+    }
+    if isinstance(request, Task1ScoringRequest):
+        inputs.update(
+            task_number=1,
+            task_type=request.task_type.value,
+            image_sha256=request.image_checksum,
+            image_mime=request.image.mime_type if request.image else None,
+        )
     canonical = json.dumps(
-        {
-            "prompt": request.prompt,
-            "essay": request.response,
-            "prompt_version": prompt_version,
-            "provider": provider,
-            "model": model,
-        },
+        inputs,
         sort_keys=True,
         ensure_ascii=False,
         separators=(",", ":"),
@@ -86,7 +108,9 @@ def present_run(run: WritingAIGradingRun) -> RunResponse:
         provider=run.provider,
         model=run.model,
         prompt_version=run.prompt_version,
-        result=AIWritingResult.model_validate(stored)
+        result=(
+            Task1WritingResult if stored.get("task_number") == 1 else AIWritingResult
+        ).model_validate(stored)
         if run.status == WritingAIRunStatus.COMPLETED
         else None,
         progress={
@@ -104,6 +128,12 @@ def present_run(run: WritingAIGradingRun) -> RunResponse:
         created_at=run.created_at,
         activity=RunActivity.model_validate(run.usage_json["activity"])
         if run.usage_json and run.usage_json.get("activity")
+        else None,
+        task_number=1
+        if stored.get("task_number") == 1 or run.prompt_version.startswith("mts-task1-")
+        else 2,
+        task1_analysis=Task1Analysis.model_validate(stored["task1_analysis"])
+        if stored.get("task1_analysis")
         else None,
     )
 
@@ -192,16 +222,44 @@ class WritingAIService:
         task = await self.repository.task(task_id, attempt.test_version_id)
         if task is None:
             raise AppError("INVALID_WRITING_TASK", "Bài Writing không thuộc lượt làm bài này.", 422)
-        if task.task_number != 2:
-            raise AppError("AI_TASK_TWO_ONLY", "Chấm AI chỉ hỗ trợ Writing Task 2.", 422)
+        if task.task_number not in {1, 2}:
+            raise AppError("AI_INVALID_TASK", "Chấm AI hỗ trợ Writing Task 1 và Task 2.", 422)
         essay = await self.repository.essay(attempt_id, task_id)
         if require_essay and not essay.strip():
             raise AppError(
-                "AI_EMPTY_ESSAY", "Hãy lưu câu trả lời Task 2 có nội dung trước khi chấm AI.", 422
+                "AI_EMPTY_ESSAY",
+                f"Hãy lưu câu trả lời Task {task.task_number} có nội dung trước khi chấm AI.",
+                422,
             )
         # Never truncate a saved response silently to fit the GPU's context budget.
         if require_essay and (len(essay) > 12_000 or len(task.prompt) > 4000):
             raise AppError("AI_INPUT_TOO_LONG", "Câu trả lời hoặc đề bài quá dài để chấm AI.", 422)
+        if task.task_number == 1:
+            try:
+                task_type = (
+                    WritingTaskType(task.task_type)
+                    if task.task_type
+                    else WritingTaskType.OTHER_VISUAL
+                )
+                if task_type not in TASK_ONE_TYPES:
+                    raise ValueError
+            except ValueError:
+                raise AppError(
+                    "AI_INVALID_TASK_TYPE", "Loại đề Task 1 không hợp lệ.", 422
+                ) from None
+            image = (
+                await load_task1_image(self.session, task, attempt.test_version_id, self.settings)
+                if require_essay
+                else None
+            )
+            return Task1ScoringRequest(
+                attempt_id=attempt_id,
+                writing_task_id=task_id,
+                prompt=task.prompt,
+                response=essay,
+                task_type=task_type,
+                image=image,
+            )
         return WritingScoringRequest(
             attempt_id=attempt_id, writing_task_id=task_id, prompt=task.prompt, response=essay
         )
@@ -223,7 +281,11 @@ class WritingAIService:
             # never writes the attempt or its official scores.
             request = await self.input(attempt_id, task_id, lock=True)
             provider, model = provider_identity(self.settings)
-            prompt_version = effective_prompt_version(self.settings.ai_writing_prompt_version)
+            prompt_version = (
+                TASK1_PROMPT_VERSION
+                if isinstance(request, Task1ScoringRequest)
+                else effective_prompt_version(self.settings.ai_writing_prompt_version)
+            )
             fingerprint = input_fingerprint(request, prompt_version, provider, model)
             for run in await self.repository.runs(attempt_id, task_id, lock=True, limit=None):
                 await self.recover_stale(run)

@@ -21,6 +21,7 @@ from app.providers.writing_llm.base import (
     PresentationDiagnosticReason,
     SafeFinishReason,
 )
+from app.schemas.task1_claims import Task1Analysis
 
 Trait = Literal["ta", "cc", "lr", "gra"]
 TRAITS: tuple[Trait, ...] = ("ta", "cc", "lr", "gra")
@@ -170,6 +171,11 @@ class AIWritingResult(StrictModel):
         return float(value)
 
 
+class Task1WritingResult(AIWritingResult):
+    task_number: Literal[1] = 1
+    task1_analysis: Task1Analysis
+
+
 class CreateRunRequest(StrictModel):
     force: bool = False
 
@@ -180,7 +186,9 @@ class CreateRunResponse(BaseModel):
     existing_active: bool
 
 
-AssessmentStage = Literal["evidence", "scoring"]
+AssessmentStage = Literal[
+    "evidence", "scoring", "visual_grounding", "claim_extraction", "claim_verification"
+]
 ActivityPhase = Literal[
     "preparing",
     "starting_model",
@@ -192,6 +200,15 @@ ActivityPhase = Literal[
     "retrying",
     "completed",
     "failed",
+    "visual_grounding",
+    "visual_grounded",
+    "deriving_facts",
+    "extracting_claims",
+    "claims_extracted",
+    "verifying_claims",
+    "claims_verified",
+    "claim_extraction_failed",
+    "claim_verification_failed",
 ]
 
 
@@ -231,7 +248,9 @@ class RunResponse(BaseModel):
     provider: str
     model: str
     prompt_version: str
-    result: AIWritingResult | None
+    result: Task1WritingResult | AIWritingResult | None
+    task_number: Literal[1, 2] = 2
+    task1_analysis: Task1Analysis | None = None
     progress: dict[Trait, CriterionResult]
     failures: dict[Trait, CriterionFailure] = Field(default_factory=dict)
     error_code: str | None
@@ -263,6 +282,16 @@ EventType = Literal[
     "run.completed",
     "run.failed",
     "heartbeat",
+    "visual_grounding.started",
+    "visual_grounding.completed",
+    "visual_grounding.failed",
+    "derived_facts.completed",
+    "claim_extraction.started",
+    "claim_extraction.completed",
+    "claim_extraction.failed",
+    "claim_verification.started",
+    "claim_verification.completed",
+    "claim_verification.failed",
 ]
 
 
@@ -273,6 +302,7 @@ class EventPayload(StrictModel):
     result: CriterionResult | None = None
     error_code: str | None = Field(default=None, max_length=80)
     error_message: str | None = Field(default=None, max_length=300)
+    task1_analysis: Task1Analysis | None = None
 
 
 class EventResponse(BaseModel):

@@ -299,7 +299,7 @@ async def test_ai_does_not_create_manual_score_for_ungraded_attempt(db_session, 
 @pytest.mark.parametrize(
     "violation,code",
     [
-        ("task1", "AI_TASK_TWO_ONLY"),
+        ("task1", "AI_EMPTY_ESSAY"),
         ("active", "ATTEMPT_NOT_FINALIZED"),
         ("paused", "ATTEMPT_NOT_FINALIZED"),
         ("empty", "AI_EMPTY_ESSAY"),

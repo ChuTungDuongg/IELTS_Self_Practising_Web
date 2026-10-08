@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { aiTraits, aiTraitNames, isActiveAIRun, type AIActivity, type AIWritingEvent, type AIWritingRun } from "@/lib/api/writing-ai";
+import { aiTraits, traitNamesForTask, isActiveAIRun, type AIActivity, type AIWritingEvent, type AIWritingRun } from "@/lib/api/writing-ai";
 import styles from "./writing-ai-assessment.module.css";
 
 export const traitSubtitles = {
@@ -15,6 +15,12 @@ export function activityFromEvent(event: AIWritingEvent): AIActivity | null {
     "evidence.validation.started": "validating_evidence", "criterion.evidence.completed": "evidence_collected",
     "criterion.scoring.started": "scoring", "criterion.scoring.validation.started": "validating_score",
     "criterion.retrying": "retrying", "criterion.completed": "completed", "criterion.failed": "failed", "run.failed": "failed", "run.completed": "completed",
+    "visual_grounding.started": "visual_grounding", "visual_grounding.completed": "visual_grounded",
+    "visual_grounding.failed": "failed", "derived_facts.completed": "deriving_facts",
+    "claim_extraction.started": "extracting_claims", "claim_extraction.completed": "claims_extracted",
+    "claim_extraction.failed": "claim_extraction_failed",
+    "claim_verification.started": "verifying_claims", "claim_verification.completed": "claims_verified",
+    "claim_verification.failed": "claim_verification_failed",
   };
   const phase = phases[event.event_type];
   return phase ? { phase, criterion: event.payload.criterion ?? null, stage: event.payload.stage ?? null, started_at: event.created_at ?? new Date().toISOString() } : null;
@@ -42,12 +48,22 @@ function phaseLabel(activity?: AIActivity | null) {
     case "evidence_collected": return "Đã thu thập dẫn chứng";
     case "scoring": return "Đang chấm điểm…";
     case "validating_score": return "Đang kiểm tra điểm và nhận xét…";
+    case "visual_grounding": return "Đang phân tích hình…";
+    case "visual_grounded": return "Đã đọc thông tin từ hình";
+    case "deriving_facts": return "Đã tổng hợp các dữ kiện từ hình";
+    case "extracting_claims": return "Đang xác định nhận định trong bài viết…";
+    case "claims_extracted": return "Đã xác định các nhận định trong bài viết";
+    case "verifying_claims": return "Đang đối chiếu nội dung bài viết với hình…";
+    case "claims_verified": return "Đã đối chiếu các nhận định với hình";
+    case "claim_extraction_failed": return "Chưa xác định đủ nhận định; tiếp tục từ thông tin hình đã đọc được.";
+    case "claim_verification_failed": return "Một phần đối chiếu chưa hoàn tất; tiếp tục từ thông tin hình đã đọc được.";
     case "retrying": return activity.stage === "scoring" ? "Đang sửa dữ liệu chấm điểm · thử lại 1 lần…" : "Đang sửa dữ liệu dẫn chứng · thử lại 1 lần…";
     default: return "Đang chuẩn bị…";
   }
 }
 
-export function ScoringProgress({ run }: { run: AIWritingRun | null }) {
+export function ScoringProgress({ run, taskNumber = 2 }: { run: AIWritingRun | null; taskNumber?: 1 | 2 }) {
+  const aiTraitNames = traitNamesForTask(taskNumber);
   const active = isActiveAIRun(run);
   const count = aiTraits.filter((trait) => run?.progress[trait] || run?.result?.criteria[trait]).length;
   const activity = run?.activity;
@@ -63,7 +79,8 @@ export function ScoringProgress({ run }: { run: AIWritingRun | null }) {
   const summary = run?.status === "FAILED" ? "Chưa thể hoàn tất toàn bộ bài chấm."
     : run?.status === "COMPLETED" ? "Chấm bài hoàn tất"
     : activity?.phase === "starting_model" ? "Đang khởi động mô hình AI…"
-    : active ? "Đang chấm bài…" : "Sẵn sàng chấm Task 2";
+    : active && activity && ["visual_grounding", "visual_grounded", "deriving_facts", "extracting_claims", "claims_extracted", "verifying_claims", "claims_verified", "claim_extraction_failed", "claim_verification_failed"].includes(activity.phase) ? phaseLabel(activity)
+    : active ? "Đang chấm bài…" : `Sẵn sàng chấm Task ${taskNumber}`;
 
   return <section className={styles.trace} aria-label="Scoring Trace">
     <div className={styles.traceHeading}><h3>Scoring Trace · Tiến trình chấm</h3><span>{count} / 4 tiêu chí hoàn tất</span></div>

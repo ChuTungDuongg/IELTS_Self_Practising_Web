@@ -4,7 +4,29 @@ from typing import Any, Literal, Protocol, TypedDict, get_args
 
 class Message(TypedDict):
     role: Literal["system", "user"]
-    content: str
+    content: str | list["TextPart | ImagePart"]
+
+
+class TextPart(TypedDict):
+    type: Literal["text"]
+    text: str
+
+
+@dataclass(frozen=True, slots=True)
+class ImagePart:
+    """Backend-loaded bytes only; no URL input and no accidental bytes in repr."""
+
+    mime_type: Literal["image/png", "image/jpeg", "image/webp"]
+    data: bytes = field(repr=False)
+
+    def __post_init__(self) -> None:
+        signatures = {
+            "image/png": self.data.startswith(b"\x89PNG\r\n\x1a\n"),
+            "image/jpeg": self.data.startswith(b"\xff\xd8\xff"),
+            "image/webp": self.data.startswith(b"RIFF") and self.data[8:12] == b"WEBP",
+        }
+        if not signatures.get(self.mime_type) or not 0 < len(self.data) <= 10 * 1024 * 1024:
+            raise ValueError("Invalid trusted image type or size")
 
 
 @dataclass(frozen=True)

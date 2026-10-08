@@ -14,6 +14,8 @@ from app.providers.writing_llm.base import LLMProvider, ProviderFailure
 from app.repositories.writing_ai import ACTIVE, WritingAIRepository
 from app.schemas.writing_ai import EventPayload, EventType, OutputDiagnostic
 from app.services.mts_writing import MTSWritingScoringService
+from app.services.task1_input import TASK1_PROMPT_VERSION, Task1ScoringRequest
+from app.services.task1_writing import Task1WritingScoringService
 from app.services.writing_ai import WritingAIService, fail_run, input_fingerprint, persist_activity
 
 _tasks: set[asyncio.Task] = set()
@@ -56,7 +58,9 @@ class WritingAIWorker:
                 provider, model = provider_identity(self.settings)
                 fingerprint = input_fingerprint(
                     request,
-                    effective_prompt_version(self.settings.ai_writing_prompt_version),
+                    TASK1_PROMPT_VERSION
+                    if isinstance(request, Task1ScoringRequest)
+                    else effective_prompt_version(self.settings.ai_writing_prompt_version),
                     provider,
                     model,
                 )
@@ -71,7 +75,11 @@ class WritingAIWorker:
                 persist_activity(run, "run.started", EventPayload())
                 await repository.append_event(run, "run.started", EventPayload())
             provider_client = self.provider or create_provider(self.settings)
-            mts = MTSWritingScoringService(provider_client)
+            mts = (
+                Task1WritingScoringService(provider_client)
+                if isinstance(request, Task1ScoringRequest)
+                else MTSWritingScoringService(provider_client)
+            )
             heartbeat = asyncio.create_task(self._heartbeat(run_id))
             await self._checkpoint(run_id, "provider.starting", EventPayload())
             await provider_client.ensure_ready()
@@ -156,6 +164,12 @@ class WritingAIWorker:
                     "diagnostics": [item.model_dump() for item in diagnostics],
                 }
             persist_activity(run, event_type, payload)
+            if payload.task1_analysis:
+                run.result_json = {
+                    **(run.result_json or {}),
+                    "task_number": 1,
+                    "task1_analysis": payload.task1_analysis.model_dump(mode="json"),
+                }
             if payload.result and payload.criterion:
                 run.result_json = {
                     **(run.result_json or {}),

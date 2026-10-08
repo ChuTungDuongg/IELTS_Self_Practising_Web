@@ -2,16 +2,18 @@
 
 import { useEffect, useState } from "react";
 import {
-  aiTraits, aiTraitNames, createAIWritingRun, getAIWritingRun, isActiveAIRun, listAIWritingRuns,
+  aiTraits, traitNamesForTask, createAIWritingRun, getAIWritingRun, isActiveAIRun, listAIWritingRuns,
   watchAIWritingRun, type AIWritingEvent, type AIWritingResult, type AIWritingRun,
 } from "@/lib/api/writing-ai";
 import { ApiError } from "@/lib/api/client";
 import { ScoringProgress, activityFromEvent } from "./writing-ai-progress";
 import { CriterionAssessmentCard } from "./writing-ai-criterion-card";
 import styles from "./writing-ai-assessment.module.css";
+import { Task1VisualStatus } from "./writing-ai-visual-details";
 
-export function WritingAIAssessment({ attemptId, taskId, hasEssay, canCopy, onCopy }: {
+export function WritingAIAssessment({ attemptId, taskId, taskNumber = 2, hasEssay, canCopy, onCopy }: {
   attemptId: string; taskId: string; hasEssay: boolean; canCopy: boolean;
+  taskNumber?: 1 | 2;
   onCopy: (result: AIWritingResult) => void;
 }) {
   const [runs, setRuns] = useState<AIWritingRun[]>([]);
@@ -26,6 +28,8 @@ export function WritingAIAssessment({ attemptId, taskId, hasEssay, canCopy, onCo
   const observing = isActiveAIRun(run);
   const visibleRun = run && terminal ? { ...run, status: terminal } : run;
   const active = isActiveAIRun(visibleRun);
+  const aiTraitNames = traitNamesForTask(taskNumber);
+  const visualAnalysis = run?.task1_analysis ?? (run?.result?.task_number === 1 ? run.result.task1_analysis : null);
 
   useEffect(() => {
     let disposed = false;
@@ -50,6 +54,7 @@ export function WritingAIAssessment({ attemptId, taskId, hasEssay, canCopy, onCo
           error_code: event.event_type === "run.failed" ? event.payload.error_code ?? current.error_code : current.error_code,
           activity: activity ? { ...activity, criterion: event.event_type === "run.failed" ? activity.criterion ?? current.activity?.criterion ?? null : activity.criterion } : current.activity,
           progress: trait && event.payload.result ? { ...current.progress, [trait]: event.payload.result } : current.progress,
+          task1_analysis: event.payload.task1_analysis ?? current.task1_analysis,
           failures: trait && event.event_type === "criterion.failed" ? { ...current.failures, [trait]: {
             error_code: event.payload.error_code ?? "AI_GRADING_FAILED",
             error_message: "Không thể hoàn tất tiêu chí này.", stage: event.payload.stage,
@@ -88,45 +93,47 @@ export function WritingAIAssessment({ attemptId, taskId, hasEssay, canCopy, onCo
   }
 
   return <section className={styles.panel} aria-label="AI Assessment">
-    <div className={styles.heading}><div><p className="writing-review-kicker">AI Assessment</p><h2>Đánh giá AI · Task 2</h2></div><span className={styles.badge}>Ý kiến tham khảo</span></div>
+    <div className={styles.heading}><div><p className="writing-review-kicker">AI Assessment</p><h2>Đánh giá AI · Task {taskNumber}</h2></div><span className={styles.badge}>Ý kiến tham khảo</span></div>
     <p>AI chỉ đóng vai trò tham khảo. Điểm chính thức chỉ thay đổi khi người chấm chủ động lưu.</p>
     {configured === false ? <p role="status">Chấm AI chưa được cấu hình.</p> : null}
-    {!hasEssay ? <p>Cần có câu trả lời Task 2 đã lưu để chấm AI.</p> : null}
+    {!hasEssay ? <p>Cần có câu trả lời Task {taskNumber} đã lưu để chấm AI.</p> : null}
     {run?.prompt_version === "mts-task2-v1" ? <p className={styles.legacy}>Bản chấm cũ · trước khi chuyển nhận xét sang tiếng Việt</p> : null}
     <div className={styles.actions}>
       <button type="button" className="btn btn-writing" disabled={loading || starting || active || !hasEssay || configured === false} onClick={() => void grade(Boolean(run))}>
-        {starting ? "Đang bắt đầu chấm AI…" : active ? "Đang chấm với AI…" : run ? "Chấm lại với AI" : "Chấm Task 2 với AI"}
+        {starting ? "Đang bắt đầu chấm AI…" : active ? "Đang chấm với AI…" : run ? "Chấm lại với AI" : `Chấm Task ${taskNumber} với AI`}
       </button>
-      {run?.result && canCopy ? <button type="button" className="btn" disabled={active || starting} onClick={() => { onCopy(run.result!); setNotice("Đã chép gợi ý AI. Bạn có thể chỉnh sửa; cần bấm Save Task 2 scores để lưu điểm chính thức."); }}>Chép gợi ý AI vào biểu mẫu</button> : null}
+      {run?.result && canCopy ? <button type="button" className="btn" disabled={active || starting} onClick={() => { onCopy(run.result!); setNotice(`Đã chép gợi ý AI. Bạn có thể chỉnh sửa; cần bấm Save Task ${taskNumber} scores để lưu điểm chính thức.`); }}>Chép gợi ý AI vào biểu mẫu</button> : null}
     </div>
     {notice ? <p role="status">{notice}</p> : null}
     {error || visibleRun?.status === "FAILED" ? <p role="alert" className="notice notice-error">{visibleRun?.status === "FAILED" ? aiErrorMessage(visibleRun.error_code) : error}</p> : null}
-    <ScoringProgress run={visibleRun} />
-    {run?.result ? <section className={styles.overall} aria-label="AI Task 2 overall summary">
+    <ScoringProgress run={visibleRun} taskNumber={taskNumber} />
+    {taskNumber === 1 && visualAnalysis ? <Task1VisualStatus analysis={visualAnalysis} /> : null}
+    {run?.result ? <section className={styles.overall} aria-label={`AI Task ${taskNumber} overall summary`}>
       <header className={styles.overallHeading}>
         <div className={styles.overallCopy}>
-          <p className={styles.overallEyebrow}>AI Task 2 · Ý kiến tham khảo</p>
+          <p className={styles.overallEyebrow}>AI Task {taskNumber} · Ý kiến tham khảo</p>
           <h3>Điểm tổng hợp AI</h3>
-          <p className={styles.overallSupport}>Trung bình đều của 4 tiêu chí Task 2. Không phải band Writing chính thức.</p>
+          <p className={styles.overallSupport}>Trung bình đều của 4 tiêu chí Task {taskNumber}. Không phải band Writing chính thức.</p>
         </div>
         <strong className={styles.overallBand}>Band <span>{run.result.overall_band.toFixed(1)}</span></strong>
       </header>
       <dl className={styles.overallCriteria}>
         {aiTraits.map((trait) => <div key={trait}>
-          <dt><abbr title={aiTraitNames[trait]}>{trait === "ta" ? "TR" : trait.toUpperCase()}</abbr><span>{aiTraitNames[trait]}</span></dt>
+          <dt><abbr title={aiTraitNames[trait]}>{trait === "ta" ? taskNumber === 1 ? "TA" : "TR" : trait.toUpperCase()}</abbr><span>{aiTraitNames[trait]}</span></dt>
           <dd>{run.result!.criteria[trait].score.toFixed(1)}</dd>
         </div>)}
       </dl>
     </section> : null}
     <div className={styles.criteria}>{aiTraits.map((trait) => {
       const assessment = run?.result?.criteria[trait] ?? run?.progress[trait];
-      return assessment ? <CriterionAssessmentCard key={trait} trait={trait} assessment={assessment} /> : null;
+      return assessment ? <CriterionAssessmentCard key={trait} trait={trait} assessment={assessment} taskNumber={taskNumber} visualAnalysis={visualAnalysis} /> : null;
     })}</div>
     {runs.some((item) => item.status === "COMPLETED" && item.id !== run?.id) ? <details className={styles.history}><summary>Các bài chấm AI trước</summary><ul>{runs.filter((item) => item.status === "COMPLETED").map((item) => <li key={item.id}><button type="button" className="btn" disabled={active || starting} onClick={() => { setRun(item); setTerminal(null); setError(""); setNotice(""); }}>{new Date(item.created_at).toLocaleString("vi-VN")} · {item.result?.overall_band.toFixed(1)} · {item.prompt_version}</button></li>)}</ul></details> : null}
   </section>;
 }
 
 function aiErrorMessage(code?: string | null) {
+  if (["AI_TASK1_IMAGE_MISSING", "AI_TASK1_IMAGE_INVALID"].includes(code ?? "")) return "Task 1 cần có hình hợp lệ trong phiên bản bài thi đã làm để chấm AI.";
   if (["AI_PROVIDER_BAD_RESPONSE", "INVALID_PROVIDER_OUTPUT"].includes(code ?? "")) return "Một số tiêu chí chưa thể chấm xong do dữ liệu chưa hợp lệ. Các kết quả đã hoàn tất được giữ lại; bạn có thể thử chấm lại.";
   if (code === "AI_NOT_CONFIGURED") return "Chấm AI chưa được cấu hình.";
   if (["AI_PROVIDER_TIMEOUT", "AI_PROVIDER_STARTUP_TIMEOUT", "PROVIDER_TIMEOUT"].includes(code ?? "")) return "AI chưa hoàn tất trong thời gian cho phép. Các phần đã chấm được giữ lại; bạn có thể chấm lại.";

@@ -1,4 +1,11 @@
-# Advisory AI Writing Task 2
+# Advisory AI Academic Writing
+
+Task 1 and Task 2 share the configured `mistralai/Ministral-3-8B-Instruct-2512`
+model, provider adapters and existing Modal/vLLM GPU function. Task 2 retains
+its text-only MTS pipeline and `mts-task2-v5` cache contract. Task 1 adds the
+multimodal grounding pipeline below, with its own `mts-task1-visual-v1` version.
+
+## Task 2: text-only assessment
 
 This is an **MTS-inspired zero-shot scoring** workflow: an online IELTS Task 2
 adaptation, not an exact reproduction of a research experiment. Four independent
@@ -80,7 +87,101 @@ with successful results and individual failures preserved and no aggregate.
 scores/feedback into the existing editable form; the existing explicit human
 Save is still required. The official Task 1 × 1 / Task 2 × 2 rule is unchanged.
 Other users retain their existing permissions and cannot use AI to gain manual
-grading access. Task 1 and Speaking are outside this feature.
+grading access. Speaking remains outside this feature.
+
+## Task 1: visual grounding before assessment
+
+Only the backend loads the saved Task 1 image. It checks ownership, finalized
+Writing/review eligibility, the exact frozen task/version, a non-empty response,
+asset version/type, supported PNG/JPEG/WebP MIME and matching byte signature,
+storage-root containment, file existence and byte size (at most the configured
+upload limit, capped at 10 MiB). No remote image URL is accepted. The frontend
+uses its existing prompt image; it never uploads another image for grading.
+
+The normal run performs one image-plus-prompt perception call, followed by
+text-only claim extraction and the shared evidence/scoring pairs. The image
+never reaches TA scoring, claim verification, CC, LR or GRA. Structurally invalid
+grounding or claim extraction permits one bounded repair; harmless summary/note
+length excess is clipped locally. A grounding repair is the only repeated image
+call. There is no new serving flag, model, deployment or GPU allocation.
+
+The shared provider contract represents string messages or typed text parts and
+trusted image bytes. Both vLLM and the dormant OpenAI adapter serialize those
+bytes to one OpenAI-compatible data URL inside the provider layer. Text-only
+serialization remains unchanged. The format was checked against the pinned
+[vLLM 0.13.0 multimodal client](https://github.com/vllm-project/vllm/blob/v0.13.0/examples/online_serving/openai_chat_completion_client_for_multimodal.py),
+[vLLM multimodal documentation](https://docs.vllm.ai/en/v0.13.0/features/multimodal_inputs/)
+and the [exact Ministral model card](https://huggingface.co/mistralai/Ministral-3-8B-Instruct-2512).
+Image text, prompt, essay, extracted claims and structured observations are
+untrusted source data; system prompts explicitly prohibit following instructions
+within them. No image bytes/base64, system prompt or hidden reasoning is persisted.
+
+The typed `VisualReference` is a discriminated Pydantic union, mirrored by Zod:
+
+| Existing task types | Family | Structured contents |
+| --- | --- | --- |
+| LINE_GRAPH, BAR_CHART, PIE_CHART, TABLE, MIXED_CHARTS | chart_table | Separate components/units, categories, series and uncertain numeric points; tables have headers/cells and pies support state labels without fake axes |
+| PROCESS | process | Labelled stages, directed edges, boundaries, linear/cyclic/branched shape |
+| MAP_PLAN | map | States/features, qualitative compass locations and additions/removals/replacements/relocations/expansions/unchanged features |
+| OBJECT_SYSTEM_DIAGRAM | system | Components, connections/flows, inputs and outputs |
+| OTHER_VISUAL | other | Conservative entities, relationships and major observations |
+
+Labels, identifiers, relation endpoints, numbers, confidence and collection sizes
+are validated; unknown/null numbers stay unknown. Backend-only Decimal arithmetic
+derives values, extrema, start/end, signed absolute/percentage changes (no division
+by zero), dense rankings/ties, rank changes, largest increases/decreases, stable
+series, direction and crossovers between observed adjacent categories. Ordered
+facts require an explicitly ordered axis. Unreliable/missing points never become
+invented facts; extrema/rankings require sufficient complete observations. Facts
+are bounded to 1,600 per run, and scoring context prioritizes aggregate facts
+within a 120-fact limit while retaining the structured reference and claim verdicts.
+
+Claim extraction reuses existing essay segmentation and stable source IDs. Backend
+quote resolution takes exact original essay slices. Numeric assertions, comparisons,
+rankings, process order, map changes and directed system relations use conservative
+deterministic checks. Ambiguous/missing observations are `INSUFFICIENT_EVIDENCE`.
+Claims without a structured check may use one bounded text-only semantic verification
+call; failed verification leaves claims inconclusive. Verdicts are `SUPPORTED`,
+`CONTRADICTED`, `INSUFFICIENT_EVIDENCE` or `NOT_APPLICABLE`, with brief Vietnamese
+explanations. English source quotations remain unchanged.
+
+Task Achievement uses that reference, deterministic facts and verdicts for holistic
+assessment against original paraphrases of the
+[official Academic Task 1 descriptors](https://ielts.org/cdn/Guides/ielts-writing-band-descriptors.pdf)
+(May 2023, pages 3–5). There are no error-count penalties, score caps or a fifth
+criterion. CC/LR/GRA receive only prompt/essay and their own source evidence,
+without visual data or another criterion's score. Existing score normalization,
+equal-weight Decimal mean and half-band rounding are reused.
+
+`HIGH`/`MEDIUM` grounding supports normal factual comparison. `LOW` shows a visible
+Vietnamese caution and allows only cautious TA judgment; deterministic numeric
+contradictions are withheld. `UNUSABLE` or empty/failed grounding fails TA safely
+while CC/LR/GRA continue. Claim-stage failure does not imply an essay error; TA can
+continue from a usable reference, with a visible incomplete-verification notice.
+Any failed criterion suppresses the overall score, preserves successful cards and
+allows an explicit regrade.
+
+Existing JSONB runs/events store typed Task 1 analysis alongside partial criteria;
+no schema migration is necessary. SSE persists grounding started/completed/failed,
+derived-facts completed, extraction/verification started/completed/failed, and the
+existing criterion/run events. Snapshots and cursor replay restore confidence,
+claim verdicts, partial cards and current activity. Heartbeats renew the lease and
+cursor without producing visible progress.
+
+Task 1 fingerprints add task type, image MIME and SHA-256 of actual image bytes to
+prompt/essay/provider/model and the separate Task 1 prompt version. Changed image
+bytes cannot reuse an old run; the worker rechecks inputs before inference. Stored
+history remains readable even if the image later becomes unavailable. Task 2's
+fingerprint inputs and historical parsing remain compatible.
+
+The shared review panel now follows Task 1/2 selection, with TA/TR labels, live
+visual stages, confidence notices, collapsed TA visual claim details, per-task
+overall/chips, history and forced regrade. All explanatory text uses the existing
+source-reference presentation helper; source IDs stay internal and exact quotations
+stay selectable. Copying suggestions changes only authorized local manual form
+state. Explicit human Save remains required: AI runs never write official criterion
+scores, attempt band, History or Analytics. No combined AI Writing band is shown.
+DePlot, TinyChart, extra VLMs, voting, benchmarks and T1-B/T1-C are not implemented.
 
 ## Backend setup
 
@@ -139,11 +240,11 @@ ownership, including for administrators:
 | Method | Path | Purpose |
 | --- | --- | --- |
 | POST | `/api/v1/attempts/{attempt_id}/writing/{task_id}/ai-grading-runs` | `{ "force": false }`; returns `run_id`, `cache_hit`, `existing_active` |
-| GET | same path | Configured state and latest 20 runs for that Task 2 |
+| GET | same path | Configured state and latest 20 runs for that Writing task |
 | GET | `/api/v1/ai-writing-grading-runs/{run_id}` | Safe JSON snapshot and partial criterion results |
 | GET | `/api/v1/ai-writing-grading-runs/{run_id}/events` | SSE replay/live events |
 
-Only finalized Writing attempts with a non-empty saved Task 2 response from the
+Only finalized Writing attempts with a non-empty saved Task 1/2 response from the
 exact frozen version can start. Full Mock review restrictions also apply. Inputs
 above 12,000 essay characters or 4,000 prompt characters are rejected rather than
 silently truncated; the model may reject unusually token-dense smaller inputs.
@@ -235,7 +336,7 @@ web endpoint has `requires_proxy_auth=True`. The model URL and tokens stay behin
 FastAPI. Cold starts need time to download/cache weights and initialize the GPU.
 
 L4 has 24 GB and Ada FP8 support. T4 lacks native FP8 support for this published
-checkpoint. This is a conservative memory/capability choice for text and future
+checkpoint. This is a conservative memory/capability choice for text and single
 image input, not a throughput benchmark; recheck pricing as it changes.
 Sources: [Modal supported GPUs](https://modal.com/docs/guide/gpu),
 [Modal pricing](https://modal.com/pricing), [NVIDIA GPU memory](https://docs.nvidia.com/brev/reference/gpu-types),
@@ -255,8 +356,10 @@ uv run python ../deploy/modal/smoke.py --base-url https://YOUR-PROTECTED-ENDPOIN
 It sends `GET /v1/models`, verifies the exact served model, then sends one
 16-token JSON-schema request through the same backend transport/auth as grading.
 It prints only safe status/timing. Task 2 messages contain text only; vision
-support is retained in the shared model for future Task 1 work, but Task 1 grading
-is still not implemented. Normal tests never contact Modal/OpenAI.
+support is used by Task 1's separate grounding stage. This text smoke command
+does not verify vision; Task 1 transport is covered with mocked completions.
+No live multimodal smoke or real Task 1 grading was performed during T1-A.
+Normal tests never contact Modal/OpenAI.
 Stopping `modal serve` stops both functions in the temporary app. For a persistent
 full-stack deployment, stop `ielts-practice-web`; for the standalone GPU workflow,
 stop `ielts-writing-llm`. Volumes remain after stopping:
@@ -361,7 +464,7 @@ pg_restore --dbname=<target-database> --no-owner --no-acl ./database.dump
 
 ```powershell
 cd backend
-uv run pytest tests/test_essay_sources.py tests/test_mts_writing_v3.py tests/test_writing_ai.py tests/test_mts_writing_validation.py tests/test_writing_llm_providers.py tests/test_writing_llm_readiness.py -q
+uv run pytest tests/test_task1_visual.py tests/test_task1_writing_ai.py tests/test_essay_sources.py tests/test_mts_writing_v3.py tests/test_mts_writing_v4.py tests/test_mts_writing_v5.py tests/test_writing_ai.py tests/test_mts_writing_validation.py tests/test_writing_ai_output_normalization.py tests/test_writing_llm_providers.py tests/test_writing_llm_readiness.py -q
 # Run Ruff on the AI modules and touched integration files.
 cd ../frontend
 npx vitest run tests/writing-ai-assessment.test.tsx tests/writing-ai-progress.test.tsx tests/writing-review.test.tsx

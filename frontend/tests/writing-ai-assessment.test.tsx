@@ -4,7 +4,8 @@ import { WritingAIAssessment } from "@/features/writing/writing-ai-assessment";
 import { WritingReviewView } from "@/features/writing/writing-review";
 import { CriterionAssessmentCard } from "@/features/writing/writing-ai-criterion-card";
 import { humanizeSourceReferences, presentAIFeedback } from "@/features/writing/ai-feedback-presentation";
-import { createAIWritingRun, getAIWritingRun, listAIWritingRuns, watchAIWritingRun, type AIWritingRun } from "@/lib/api/writing-ai";
+import { aiRunSchema, createAIWritingRun, getAIWritingRun, listAIWritingRuns, watchAIWritingRun, type AIWritingRun } from "@/lib/api/writing-ai";
+import type { Task1Analysis } from "@/lib/api/task1-visual";
 import { saveWritingTaskScore, type WritingReviewPayload } from "@/lib/api/exam";
 import { ApiError } from "@/lib/api/client";
 
@@ -20,6 +21,15 @@ const criterion = { score: 6.5, feedback: "Cần phát triển ví dụ cụ th�
 const result = { criteria: { ta: criterion, cc: { ...criterion, score: 6 }, lr: { ...criterion, score: 7 }, gra: { ...criterion, score: 6 } }, raw_mean: 6.375, overall_band: 6.5 };
 const pending: AIWritingRun = { id: runId, attempt_id: attemptId, writing_task_id: taskId, status: "PENDING", provider: "fake", model: "fictional", prompt_version: "mts-task2-v2", result: null, progress: {}, error_code: null, error_message: null, started_at: null, completed_at: null, created_at: "2026-10-08T00:00:00Z" };
 const completed: AIWritingRun = { ...pending, status: "COMPLETED", result, progress: result.criteria };
+const visualAnalysis: Task1Analysis = {
+  visual_family: "other", confidence: "LOW", derived_facts: [], warnings: ["VISUAL_LOW_CONFIDENCE"],
+  reference: { visual_family: "other", confidence: "LOW", summary: "Thông tin ở P1S1 cần đối chiếu thêm.", uncertainty: ["Một số nhãn chưa rõ."], entities: [{ id: "e1", label: "Fictional parks" }], relationships: [], observations: ["Các khu vực được đánh dấu."] },
+  claims: [{ claim_id: "c1", source_ids: ["P1S1"], quote: "  Fictional parks help.  ", claim: "Nhận định ở P1S1.", verdict: "INSUFFICIENT_EVIDENCE", explanation: "Chưa đủ dữ liệu tại P1S1.", evidence: [] }],
+};
+const taskOneResult = { ...result, task_number: 1 as const, task1_analysis: visualAnalysis,
+  criteria: { ...result.criteria, ta: { ...criterion, feedback: "Mô tả tại P1S1." } } };
+const pendingTaskOne: AIWritingRun = { ...pending, task_number: 1, prompt_version: "mts-task1-visual-v1" };
+const completedTaskOne: AIWritingRun = { ...pendingTaskOne, status: "COMPLETED", result: taskOneResult, progress: taskOneResult.criteria, task1_analysis: visualAnalysis };
 
 class MockEventSource {
   static instances: MockEventSource[] = [];
@@ -89,7 +99,7 @@ describe("AI feedback presentation", () => {
   });
 });
 
-describe("Task 2 AI assessment", () => {
+describe("Writing AI assessment", () => {
   beforeEach(() => {
     vi.clearAllMocks(); auth.role = "ADMIN"; MockEventSource.instances = [];
     vi.stubGlobal("EventSource", MockEventSource);
@@ -240,7 +250,7 @@ describe("Task 2 AI assessment", () => {
   it("copies into the human form without saving, and leaves values editable", async () => {
     vi.mocked(listAIWritingRuns).mockResolvedValue({ configured: true, items: [completed] });
     render(<WritingReviewView data={review()} />);
-    expect(screen.queryByLabelText("AI Assessment")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Đánh giá AI · Task 1" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("tab", { name: /Task 2/ }));
     fireEvent.click(await screen.findByRole("button", { name: "Chép gợi ý AI vào biểu mẫu" }));
     expect(screen.getByLabelText("Task 2 TA")).toHaveValue("6.5");
@@ -265,11 +275,12 @@ describe("Task 2 AI assessment", () => {
     expect(screen.queryByRole("button", { name: "Chép gợi ý AI vào biểu mẫu" })).not.toBeInTheDocument();
   });
 
-  it("never adds AI controls to Task 1", () => {
+  it("uses the shared assessment controls for Task 1", async () => {
     const data = review(); data.tasks = data.tasks.filter((task) => task.task_number === 1);
     render(<WritingReviewView data={data} />);
-    expect(screen.queryByLabelText("AI Assessment")).not.toBeInTheDocument();
-    expect(listAIWritingRuns).not.toHaveBeenCalled();
+    expect(await screen.findByRole("button", { name: "Chấm Task 1 với AI" })).toBeEnabled();
+    expect(listAIWritingRuns).toHaveBeenCalledWith(attemptId, runId);
+    expect(screen.queryByText("Task Response")).not.toBeInTheDocument();
   });
 
   it("reconnects with the last persisted sequence and ignores replay duplicates", async () => {
@@ -409,5 +420,119 @@ describe("Task 2 AI assessment", () => {
     expect(screen.getByLabelText("Tiến trình Lexical Resource")).toHaveAttribute("data-state", "FAILED");
     expect(screen.getAllByRole("article")).toHaveLength(3);
     expect(createAIWritingRun).toHaveBeenCalledTimes(1);
+  });
+
+  it("streams Task 1 grounding and claim verification, then immediate TA and the completed overall", async () => {
+    vi.mocked(getAIWritingRun).mockResolvedValue(pendingTaskOne);
+    render(<WritingAIAssessment attemptId={attemptId} taskId={taskId} taskNumber={1} hasEssay canCopy onCopy={vi.fn()} />);
+    const grade = await screen.findByRole("button", { name: "Chấm Task 1 với AI" });
+    await waitFor(() => expect(grade).toBeEnabled()); fireEvent.click(grade);
+    await waitFor(() => expect(MockEventSource.instances).toHaveLength(1));
+    const source = MockEventSource.instances[0];
+    act(() => source.emit("visual_grounding.started", 1, { criterion: "ta", stage: "visual_grounding" }));
+    expect(screen.getAllByText("Đang phân tích hình…")).toHaveLength(2);
+    act(() => source.emit("visual_grounding.completed", 2, { task1_analysis: visualAnalysis }));
+    expect(screen.getByText(/AI chưa đọc hình với độ tin cậy cao/)).toBeInTheDocument();
+    act(() => source.emit("claim_verification.started", 3, { criterion: "ta", stage: "claim_verification" }));
+    expect(screen.getAllByText("Đang đối chiếu nội dung bài viết với hình…")).toHaveLength(2);
+    const beforeHeartbeat = screen.getByLabelText("Scoring Trace").textContent;
+    act(() => source.emit("heartbeat", 4));
+    expect(screen.getByLabelText("Scoring Trace").textContent).toBe(beforeHeartbeat);
+    act(() => source.emit("claim_verification.completed", 5, { task1_analysis: visualAnalysis }));
+    act(() => source.emit("criterion.completed", 6, { criterion: "ta", result: taskOneResult.criteria.ta }));
+    const ta = screen.getByRole("article", { name: "AI Task Achievement" });
+    expect(ta).toHaveTextContent("Mô tả tại đoạn 1, câu 1.");
+    const visualDetails = within(ta).getByText("Đối chiếu với hình (1 nhận định)").closest("details")!;
+    expect(visualDetails).not.toHaveAttribute("open");
+    fireEvent.click(within(ta).getByText("Đối chiếu với hình (1 nhận định)"));
+    expect(visualDetails.querySelector("q")?.textContent).toBe(visualAnalysis.claims[0].quote);
+    expect(visualDetails).toHaveTextContent("Chưa đủ dữ liệu tại đoạn 1, câu 1.");
+    expect(screen.getByLabelText("AI Assessment").textContent).not.toMatch(/P\d+S\d+/);
+    expect(screen.queryByRole("region", { name: "AI Task 1 overall summary" })).not.toBeInTheDocument();
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(completedTaskOne), { status: 200 })));
+    act(() => source.emit("run.completed", 7));
+    const overall = await screen.findByRole("region", { name: "AI Task 1 overall summary" });
+    expect(overall).toHaveTextContent("Band 6.5");
+    expect(overall).toHaveTextContent("Không phải band Writing chính thức.");
+    for (const [label, score] of [["TA", "6.5"], ["CC", "6.0"], ["LR", "7.0"], ["GRA", "6.0"]]) {
+      expect(within(overall).getByText(label).closest("dt")!.parentElement).toHaveTextContent(score);
+    }
+    expect(overall).toHaveTextContent("Task Achievement");
+    expect(screen.queryByText("Task Response")).not.toBeInTheDocument();
+    expect(saveWritingTaskScore).not.toHaveBeenCalled();
+  });
+
+  it("restores Task 1 cached confidence, typed results and exact claims without inference", async () => {
+    const parsed = aiRunSchema.parse(completedTaskOne);
+    vi.mocked(listAIWritingRuns).mockResolvedValue({ configured: true, items: [parsed] });
+    render(<WritingAIAssessment attemptId={attemptId} taskId={taskId} taskNumber={1} hasEssay canCopy onCopy={vi.fn()} />);
+    await screen.findByRole("region", { name: "AI Task 1 overall summary" });
+    expect(screen.getByText(/Độ tin cậy khi đọc hình: Thấp/)).toBeInTheDocument();
+    expect(screen.getByText(/AI chưa đọc hình với độ tin cậy cao/)).toBeInTheDocument();
+    expect(parsed.task1_analysis?.claims[0].quote).toBe(visualAnalysis.claims[0].quote);
+    expect(createAIWritingRun).not.toHaveBeenCalled();
+    expect(MockEventSource.instances).toHaveLength(0);
+    expect(aiRunSchema.safeParse({ ...completedTaskOne, result: { ...taskOneResult, task1_analysis: { ...visualAnalysis, visual_family: "unknown" } } }).success).toBe(false);
+    expect(aiRunSchema.parse(completed).result).toEqual(result);
+  });
+
+  it("copies humanized Task 1 suggestions into local manual state without saving or changing Task 2", async () => {
+    vi.mocked(listAIWritingRuns).mockImplementation(async (_attempt, task) => ({ configured: true, items: task === runId ? [completedTaskOne] : [] }));
+    render(<WritingReviewView data={review()} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Chép gợi ý AI vào biểu mẫu" }));
+    for (const [trait, score] of [["TA", "6.5"], ["CC", "6.0"], ["LR", "7.0"], ["GRA", "6.0"]]) {
+      expect(screen.getByLabelText(`Task 1 ${trait}`)).toHaveValue(score);
+    }
+    expect(screen.getByLabelText("Task 1 TA feedback")).toHaveValue("Mô tả tại đoạn 1, câu 1.");
+    expect(screen.getByLabelText("Task 1 TA feedback")).toBeEnabled();
+    expect(screen.getByLabelText("Task 2 TA")).toHaveValue("");
+    expect(saveWritingTaskScore).not.toHaveBeenCalled();
+    expect(screen.getByText("Waiting for all 8 criterion scores")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: /Task 2/ }));
+    expect(await screen.findByRole("button", { name: "Chấm Task 2 với AI" })).toBeInTheDocument();
+    expect(screen.queryByText(/Độ tin cậy khi đọc hình/)).not.toBeInTheDocument();
+  });
+
+  it("retains failed TA while later language cards arrive and restores their persisted state", async () => {
+    vi.mocked(getAIWritingRun).mockResolvedValue(pendingTaskOne);
+    render(<WritingAIAssessment attemptId={attemptId} taskId={taskId} taskNumber={1} hasEssay canCopy onCopy={vi.fn()} />);
+    await waitFor(() => expect(screen.getByRole("button")).toBeEnabled()); fireEvent.click(screen.getByRole("button"));
+    await waitFor(() => expect(MockEventSource.instances).toHaveLength(1));
+    const source = MockEventSource.instances[0];
+    const unusable = { ...visualAnalysis, confidence: "UNUSABLE" as const, reference: null, claims: [], warnings: ["VISUAL_GROUNDING_FAILED" as const] };
+    act(() => source.emit("visual_grounding.failed", 1, { task1_analysis: unusable }));
+    expect(screen.getByText(/CC, LR và GRA vẫn được chấm từ bài viết/)).toBeInTheDocument();
+    const failure = { error_code: "AI_PROVIDER_BAD_RESPONSE", error_message: "Không thể hoàn tất tiêu chí này.", stage: "visual_grounding" as const };
+    act(() => source.emit("criterion.failed", 2, { criterion: "ta", ...failure }));
+    act(() => source.emit("criterion.started", 3, { criterion: "cc" }));
+    expect(screen.getByLabelText("Tiến trình Task Achievement")).toHaveAttribute("data-state", "FAILED");
+    expect(screen.getByLabelText("Tiến trình Coherence & Cohesion")).toHaveAttribute("data-state", "ACTIVE");
+    for (const [index, trait] of (["cc", "lr", "gra"] as const).entries()) {
+      act(() => source.emit("criterion.completed", index + 4, { criterion: trait, result: result.criteria[trait] }));
+    }
+    expect(screen.getAllByRole("article")).toHaveLength(3);
+    expect(screen.queryByRole("region", { name: "AI Task 1 overall summary" })).not.toBeInTheDocument();
+    const failed: AIWritingRun = { ...pendingTaskOne, status: "FAILED", task1_analysis: unusable, progress: { cc: result.criteria.cc, lr: result.criteria.lr, gra: result.criteria.gra }, failures: { ta: failure }, error_code: failure.error_code };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(failed), { status: 200 })));
+    act(() => source.emit("run.failed", 7, { error_code: failure.error_code }));
+    await screen.findByRole("alert"); cleanup();
+    vi.mocked(listAIWritingRuns).mockResolvedValue({ configured: true, items: [failed] });
+    render(<WritingAIAssessment attemptId={attemptId} taskId={taskId} taskNumber={1} hasEssay canCopy onCopy={vi.fn()} />);
+    await screen.findByRole("alert");
+    expect(screen.getAllByRole("article")).toHaveLength(3);
+    expect(screen.getByLabelText("Tiến trình Task Achievement")).toHaveAttribute("data-state", "FAILED");
+  });
+
+  it("forces Task 1 regrade while retaining its completed history", async () => {
+    vi.mocked(listAIWritingRuns).mockResolvedValue({ configured: true, items: [completedTaskOne] });
+    vi.mocked(getAIWritingRun).mockResolvedValue({ ...pendingTaskOne, id: taskId });
+    vi.mocked(createAIWritingRun).mockResolvedValue({ run_id: taskId, cache_hit: false, existing_active: false });
+    render(<WritingAIAssessment attemptId={attemptId} taskId={taskId} taskNumber={1} hasEssay canCopy onCopy={vi.fn()} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Chấm lại với AI" }));
+    await waitFor(() => expect(createAIWritingRun).toHaveBeenCalledWith(attemptId, taskId, true));
+    await waitFor(() => expect(MockEventSource.instances).toHaveLength(1));
+    expect(screen.getByText("Các bài chấm AI trước")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "AI Task 1 overall summary" })).not.toBeInTheDocument();
+    expect(saveWritingTaskScore).not.toHaveBeenCalled();
   });
 });

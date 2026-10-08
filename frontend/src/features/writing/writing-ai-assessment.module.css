@@ -59,6 +59,11 @@
 .evidence { border-top: 1px solid var(--line); padding-top: 14px; }
 .card ul, .history ul { padding-left: 20px; list-style: disc; }
 .history li { margin-top: 10px; }
+.visualStatus { display: grid; gap: 8px; border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; background: var(--surface-soft); line-height: 1.7; overflow-wrap: anywhere; }
+.visualStatus p { margin: 0; }
+.claimCounts, .visualNote { color: var(--muted); font-size: .9rem; }
+.visualNote { margin-top: 12px; line-height: 1.7; }
+.verdict { display: block; margin-bottom: 8px; color: var(--ink-soft); font-size: .85rem; }
 @media (max-width: 720px) { .criteria { grid-template-columns: 1fr; } .actions > button { width: 100%; } }
 @media (max-width: 600px) { .overallHeading { align-items: flex-start; flex-direction: column; gap: 14px; } .overallCriteria { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; } }
 @media (max-width: 400px) { .overallCriteria { grid-template-columns: 1fr; } }

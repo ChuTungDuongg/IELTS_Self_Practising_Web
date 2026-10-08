@@ -31,6 +31,7 @@ from app.schemas.writing_ai import (
     CriterionResult,
     EventPayload,
     EventType,
+    EvidenceResult,
     EvidenceSelection,
     OutputDiagnostic,
     RawScoringOutput,
@@ -247,6 +248,32 @@ class MTSWritingScoringService:
         validated = Criteria.model_validate(criteria)
         raw_mean, overall_band = aggregate_ai_task_two(*(criteria[trait].score for trait in TRAITS))
         return AIWritingResult(criteria=validated, raw_mean=raw_mean, overall_band=overall_band)
+
+    async def assess_criterion(
+        self,
+        request: WritingScoringRequest,
+        trait: Trait,
+        trace: TraceCallback,
+        evidence_prompt: list[Message],
+        score_prompt: Callable[[EvidenceResult], list[Message]],
+    ) -> CriterionResult:
+        """Shared source validation/normalization for task-specific criterion prompts."""
+        self.current_criterion = trait
+        sources = {segment.source_id: segment for segment in segment_essay(request.response)}
+        selection = await self._validated(
+            evidence_prompt, EvidenceSelection, sources, trait, "evidence", trace
+        )
+        evidence = resolve_evidence(selection, sources)
+        await trace(
+            "criterion.evidence.completed",
+            EventPayload(criterion=trait, evidence=evidence.evidence),
+        )
+        score = await self._validated(
+            score_prompt(evidence), RawScoringOutput, sources, trait, "scoring", trace
+        )
+        return CriterionResult(
+            **score.model_dump(exclude={"calibration"}), evidence=evidence.evidence
+        )
 
     async def score(self, request: WritingScoringRequest) -> WritingScoringResult:
         async def no_trace(_event: EventType, _payload: EventPayload) -> None:

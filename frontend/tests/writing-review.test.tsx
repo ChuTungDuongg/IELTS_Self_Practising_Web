@@ -157,13 +157,13 @@ describe("WritingReviewView", () => {
     expect(within(reader).getByText("0 words")).toBeInTheDocument();
   });
 
-  it("switches the reader, count and prompt correctly and restores Task 1 image without AI controls", async () => {
+  it("switches the reader, count, prompt and shared AI panel and restores Task 1 image", async () => {
     const data = reviewPayload();
     data.tasks[1].content = "Task two introduction.\n\nTask two conclusion.";
     data.tasks[1].word_count = 7;
     render(<WritingReviewView data={data} />);
     expect(screen.getByAltText("Writing Task 1 reference")).toHaveAttribute("src", assetContentUrl(data.tasks[0].image_asset!));
-    expect(listAIWritingRuns).not.toHaveBeenCalled();
+    expect(listAIWritingRuns).toHaveBeenCalledWith(attemptId, taskOneId);
     fireEvent.click(screen.getByRole("tab", { name: /Task 2/ }));
     const reader = screen.getByRole("article", { name: "Saved Task 2 response" });
     expect(within(reader).getByRole("heading", { name: "Task 2 response" })).toBeInTheDocument();
@@ -178,8 +178,8 @@ describe("WritingReviewView", () => {
     expect(screen.getByAltText("Writing Task 1 reference")).toBeInTheDocument();
     expect(screen.getByText("Describe fictional data.")).toBeInTheDocument();
     expect(screen.getByText("Minimum 150 words")).toBeInTheDocument();
-    expect(screen.queryByLabelText("AI Assessment")).not.toBeInTheDocument();
-    expect(listAIWritingRuns).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("heading", { name: "Đánh giá AI · Task 1" })).toBeInTheDocument();
+    expect(listAIWritingRuns).toHaveBeenCalledTimes(3);
   });
 
   it("saves all Task 1 criteria and keeps the final band pending", async () => {

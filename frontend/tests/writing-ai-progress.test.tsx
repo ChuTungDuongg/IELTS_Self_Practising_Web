@@ -48,3 +48,11 @@ it("retains an interrupted terminal criterion beside an earlier persisted failur
   expect(screen.getByLabelText("Tiến trình Grammatical Range & Accuracy")).toHaveAttribute("data-state", "FAILED");
   expect(screen.getByText("2 hoàn tất · 2 lỗi")).toBeInTheDocument();
 });
+
+it("restores incomplete Task 1 verification without claiming completion or failing TA", () => {
+  render(<ScoringProgress taskNumber={1} run={{ ...active, task_number: 1, activity: { ...active.activity!, phase: "claim_verification_failed", stage: "claim_verification" } }} />);
+  expect(screen.getAllByText("Một phần đối chiếu chưa hoàn tất; tiếp tục từ thông tin hình đã đọc được.")).toHaveLength(2);
+  expect(screen.getByLabelText("Tiến trình Task Achievement")).toHaveAttribute("data-state", "ACTIVE");
+  expect(screen.queryByText("Đã đối chiếu các nhận định với hình")).not.toBeInTheDocument();
+  expect(screen.queryByText("Không thể hoàn tất tiêu chí này.")).not.toBeInTheDocument();
+});
