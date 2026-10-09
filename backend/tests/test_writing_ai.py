@@ -124,7 +124,9 @@ async def test_cancel_preserves_partial_and_official_scores_blocks_late_worker_u
     api = service(db_session, settings)
     created = await api.create(attempt_id, task_id, force=False)
     runner = worker(db_session, settings)
-    result = CriterionResult(score=6, feedback="Fictional feedback", strengths=[], improvements=[], evidence=[])
+    result = CriterionResult(
+        score=6, feedback="Fictional feedback", strengths=[], improvements=[], evidence=[]
+    )
     for trait in ("ta", "cc"):
         await runner._checkpoint(
             created.run_id, "criterion.completed", EventPayload(criterion=trait, result=result)
@@ -151,15 +153,19 @@ async def test_cancel_preserves_partial_and_official_scores_blocks_late_worker_u
         assert row.raw_mean is None and row.overall_band is None
         attempt = await db_session.get(Attempt, attempt_id)
         assert attempt.band_score == Decimal("7.0")
-        essay = await db_session.scalar(select(AttemptWritingResponse).where(
-            AttemptWritingResponse.attempt_id == attempt_id
-        ))
+        essay = await db_session.scalar(
+            select(AttemptWritingResponse).where(AttemptWritingResponse.attempt_id == attempt_id)
+        )
         assert essay.content == ESSAY
-        score = await db_session.scalar(select(AttemptWritingScore).where(
-            AttemptWritingScore.attempt_id == attempt_id
-        ))
+        score = await db_session.scalar(
+            select(AttemptWritingScore).where(AttemptWritingScore.attempt_id == attempt_id)
+        )
         assert (score.ta, score.cc, score.lr, score.gra, score.ta_feedback) == (
-            7, 7, 7, 7, "Human feedback stays."
+            7,
+            7,
+            7,
+            7,
+            "Human feedback stays.",
         )
 
 
@@ -245,14 +251,18 @@ async def test_cancel_endpoint_authorization_commit_then_stop_and_sse_replay(
         ) as client:
             url = f"/api/v1/ai-writing-grading-runs/{created.run_id}"
             response = await client.post(url + "/cancel")
-            assert response.status_code == 200 and response.json()["error_code"] == CANCELLATION_CODE
+            assert (
+                response.status_code == 200 and response.json()["error_code"] == CANCELLATION_CODE
+            )
             assert stops == [created.run_id]
             assert (await client.post(url + "/cancel")).json() == response.json()
             stream = await client.get(url + "/events")
             assert "event: run.failed" in stream.text and CANCELLATION_CODE in stream.text
             assert (await client.get(url + "/events", headers={"Last-Event-ID": "1"})).text == ""
             assert (await client.get(url)).json() == response.json()
-            assert (await client.post(f"/api/v1/ai-writing-grading-runs/{uuid4()}/cancel")).status_code == 404
+            assert (
+                await client.post(f"/api/v1/ai-writing-grading-runs/{uuid4()}/cancel")
+            ).status_code == 404
             app.dependency_overrides[get_current_user] = lambda: Mock(id=uuid4())
             assert (await client.post(url + "/cancel")).status_code == 404
             app.dependency_overrides.pop(get_current_user)
@@ -291,9 +301,11 @@ async def test_cancel_interrupts_inflight_criteria_and_retains_completed_results
     api = service(db_session, settings)
     created = await api.create(attempt_id, task_id, force=False)
     provider = PartialProvider()
-    runner = worker(db_session, settings.model_copy(update={
-        "ai_writing_max_concurrent_llm_requests": 4
-    }), provider)
+    runner = worker(
+        db_session,
+        settings.model_copy(update={"ai_writing_max_concurrent_llm_requests": 4}),
+        provider,
+    )
     completed = set()
     partial_ready = asyncio.Event()
     checkpoint = runner._checkpoint

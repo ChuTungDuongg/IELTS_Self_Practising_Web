@@ -360,9 +360,7 @@ class WritingAIService:
             run = await self.repository.run(run_id, user_id=self.user_id, lock=True)
             if run is None:
                 raise AppError("AI_RUN_NOT_FOUND", "Không tìm thấy bài đánh giá AI này.", 404)
-            await fail_run(
-                self.repository, run, CANCELLATION_CODE, "Bạn đã dừng bài chấm AI."
-            )
+            await fail_run(self.repository, run, CANCELLATION_CODE, "Bạn đã dừng bài chấm AI.")
             return present_run(run)
 
     async def snapshot(
