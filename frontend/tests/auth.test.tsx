@@ -7,6 +7,8 @@ import { AuthProvider } from "@/features/auth/auth-provider";
 import { apiRequest, resetAuthRequestStateForTests } from "@/lib/api/client";
 import { getCurrentUser, login, logout, register } from "@/lib/api/auth";
 import { ApiError } from "@/lib/api/client";
+import { useEffect } from "react";
+import { renderWithLocale } from "./locale-test-utils";
 
 const navigation = vi.hoisted(() => ({ pathname: "/", search: "", push: vi.fn(), replace: vi.fn(), refresh: vi.fn(), documentReplace: vi.fn() }));
 
@@ -53,22 +55,43 @@ describe("authentication UI", () => {
 
   it("shows login actions while logged out", async () => {
     vi.mocked(getCurrentUser).mockRejectedValue(new ApiError("AUTHENTICATION_REQUIRED", "Sign in", 401));
-    render(<AuthProvider><AppShell><p>Content</p></AppShell></AuthProvider>);
+    render(<AuthProvider><AppShell currentYear={2026}><p>Content</p></AppShell></AuthProvider>);
     expect(await screen.findByRole("link", { name: "Login" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Register" })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Builder" })).not.toBeInTheDocument();
   });
 
+  it("does not remount children or recheck auth when preferences change", async () => {
+    window.localStorage.clear();
+    document.documentElement.dataset.theme = "light";
+    vi.mocked(getCurrentUser).mockResolvedValue(baseUser);
+    let mounts = 0;
+    function Child() { useEffect(() => { mounts += 1; }, []); return <input aria-label="Existing answer" defaultValue="kept" />; }
+    renderWithLocale(<AuthProvider><AppShell currentYear={2026}><Child /></AppShell></AuthProvider>);
+    await screen.findByText("Student");
+    const input = screen.getByLabelText("Existing answer");
+    fireEvent.change(input, { target: { value: "draft" } });
+    fireEvent.click(screen.getByRole("button", { name: "Switch to Vietnamese" }));
+    fireEvent.click(screen.getByRole("button", { name: "Dùng giao diện tối" }));
+    fireEvent.click(screen.getByRole("button", { name: "Switch to English" }));
+    expect(screen.getByLabelText("Existing answer")).toBe(input);
+    expect(input).toHaveValue("draft");
+    expect(mounts).toBe(1);
+    expect(getCurrentUser).toHaveBeenCalledOnce();
+    expect(navigation.push).not.toHaveBeenCalled();
+    expect(navigation.refresh).not.toHaveBeenCalled();
+  });
+
   it("hides admin navigation for USER and shows it for ADMIN", async () => {
     vi.mocked(getCurrentUser).mockResolvedValue(baseUser);
-    const first = render(<AuthProvider><AppShell><p>User content</p></AppShell></AuthProvider>);
+    const first = render(<AuthProvider><AppShell currentYear={2026}><p>User content</p></AppShell></AuthProvider>);
     await screen.findByText("Student");
     expect(screen.queryByRole("link", { name: "Admin" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Builder" })).not.toBeInTheDocument();
     first.unmount();
 
     vi.mocked(getCurrentUser).mockResolvedValue({ ...baseUser, role: "ADMIN" });
-    render(<AuthProvider><AppShell><p>Admin content</p></AppShell></AuthProvider>);
+    render(<AuthProvider><AppShell currentYear={2026}><p>Admin content</p></AppShell></AuthProvider>);
     expect(await screen.findByRole("link", { name: "Admin" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Builder" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Transfer" })).toBeInTheDocument();
@@ -76,7 +99,7 @@ describe("authentication UI", () => {
 
   it("disables speculative prefetch for every protected shell link while preserving Overview", async () => {
     vi.mocked(getCurrentUser).mockResolvedValue({ ...baseUser, role: "ADMIN" });
-    render(<AuthProvider><AppShell><p>Content</p></AppShell></AuthProvider>);
+    render(<AuthProvider><AppShell currentYear={2026}><p>Content</p></AppShell></AuthProvider>);
     await screen.findByText("Student");
     for (const href of ["/library", "/history", "/analytics", "/admin", "/admin/tests", "/transfer", "/profile"]) {
       expect(document.querySelector(`a[href="${href}"]`)).toHaveAttribute("data-prefetch", "disabled");
@@ -95,7 +118,7 @@ describe("authentication UI", () => {
   it("replaces a stale login route without ever showing a login form for an authenticated user", async () => {
     navigation.search = "next=%2Fhistory";
     vi.mocked(getCurrentUser).mockResolvedValue(baseUser);
-    render(<AuthProvider><AppShell><AuthForm mode="login" /></AppShell></AuthProvider>);
+    render(<AuthProvider><AppShell currentYear={2026}><AuthForm mode="login" /></AppShell></AuthProvider>);
     expect(screen.queryByLabelText("Email")).not.toBeInTheDocument();
     await waitFor(() => expect(navigation.documentReplace).toHaveBeenCalledWith("/history"));
     expect(navigation.documentReplace).toHaveBeenCalledOnce();
@@ -134,7 +157,7 @@ describe("authentication UI", () => {
 
   it("confirms logout before clearing the authenticated shell state", async () => {
     vi.mocked(getCurrentUser).mockResolvedValue(baseUser);
-    render(<AuthProvider><AppShell><p>Content</p></AppShell></AuthProvider>);
+    render(<AuthProvider><AppShell currentYear={2026}><p>Content</p></AppShell></AuthProvider>);
     const logoutButton = await screen.findByRole("button", { name: "Logout" });
     fireEvent.click(logoutButton);
 
@@ -164,7 +187,7 @@ describe("authentication UI", () => {
 
   it("dismisses logout on the backdrop without changing the session", async () => {
     vi.mocked(getCurrentUser).mockResolvedValue(baseUser);
-    render(<AuthProvider><AppShell><p>Content</p></AppShell></AuthProvider>);
+    render(<AuthProvider><AppShell currentYear={2026}><p>Content</p></AppShell></AuthProvider>);
     fireEvent.click(await screen.findByRole("button", { name: "Logout" }));
     const dialog = screen.getByRole("dialog", { name: "Log out?" });
 
@@ -180,7 +203,7 @@ describe("authentication UI", () => {
 
   it("keeps keyboard focus in the logout dialog and restores it after Escape", async () => {
     vi.mocked(getCurrentUser).mockResolvedValue(baseUser);
-    render(<AuthProvider><AppShell><p>Content</p></AppShell></AuthProvider>);
+    render(<AuthProvider><AppShell currentYear={2026}><p>Content</p></AppShell></AuthProvider>);
     const logoutButton = await screen.findByRole("button", { name: "Logout" });
     logoutButton.focus();
     fireEvent.click(logoutButton);
@@ -205,7 +228,7 @@ describe("authentication UI", () => {
     let resolveLogout!: () => void;
     vi.mocked(logout).mockReturnValue(new Promise<void>((resolve) => { resolveLogout = resolve; }));
     vi.mocked(getCurrentUser).mockResolvedValue(baseUser);
-    render(<AuthProvider><AppShell><p>Content</p></AppShell></AuthProvider>);
+    render(<AuthProvider><AppShell currentYear={2026}><p>Content</p></AppShell></AuthProvider>);
     fireEvent.click(await screen.findByRole("button", { name: "Logout" }));
     const dialog = screen.getByRole("dialog", { name: "Log out?" });
     const confirm = within(dialog).getByRole("button", { name: "Log out" });
@@ -234,7 +257,7 @@ describe("authentication UI", () => {
       .mockRejectedValueOnce(new ApiError("AUTHENTICATION_REQUIRED", "Sign in", 401))
       .mockResolvedValueOnce(baseUser);
     vi.mocked(login).mockResolvedValue({ user: baseUser, access_expires_at: new Date().toISOString() });
-    render(<AuthProvider><AuthForm mode="login" /><AppShell><p>Content</p></AppShell></AuthProvider>);
+    render(<AuthProvider><AuthForm mode="login" /><AppShell currentYear={2026}><p>Content</p></AppShell></AuthProvider>);
 
     await screen.findByRole("link", { name: "Login" });
     fireEvent.change(screen.getByLabelText("Email"), { target: { value: "student@example.com" } });
@@ -253,7 +276,7 @@ describe("authentication UI", () => {
   it("does not accept a login response when the cookie-backed session cannot be read", async () => {
     vi.mocked(getCurrentUser).mockRejectedValue(new ApiError("AUTHENTICATION_REQUIRED", "Sign in", 401));
     vi.mocked(login).mockResolvedValue({ user: baseUser, access_expires_at: new Date().toISOString() });
-    render(<AuthProvider><AuthForm mode="login" /><AppShell><p>Content</p></AppShell></AuthProvider>);
+    render(<AuthProvider><AuthForm mode="login" /><AppShell currentYear={2026}><p>Content</p></AppShell></AuthProvider>);
     await screen.findByRole("link", { name: "Login" });
     fireEvent.change(screen.getByLabelText("Email"), { target: { value: "student@example.com" } });
     fireEvent.change(screen.getByLabelText("Password"), { target: { value: "safe-password" } });
@@ -296,7 +319,7 @@ describe("authentication UI", () => {
 
   it("surfaces non-401 session errors without showing a logged-out shell", async () => {
     vi.mocked(getCurrentUser).mockRejectedValue(new ApiError("API_ERROR", "Backend failed", 500));
-    render(<AuthProvider><AppShell><p>Content</p></AppShell></AuthProvider>);
+    render(<AuthProvider><AppShell currentYear={2026}><p>Content</p></AppShell></AuthProvider>);
     expect(await screen.findByRole("alert")).toHaveTextContent("Backend failed");
     expect(screen.queryByRole("link", { name: "Login" })).not.toBeInTheDocument();
   });
@@ -485,7 +508,7 @@ describe("API refresh coordination", () => {
 
   it("clears provider state on ACCOUNT_INACTIVE without refreshing", async () => {
     vi.mocked(getCurrentUser).mockResolvedValue(baseUser);
-    render(<AuthProvider><AppShell><p>Content</p></AppShell></AuthProvider>);
+    render(<AuthProvider><AppShell currentYear={2026}><p>Content</p></AppShell></AuthProvider>);
     await screen.findByText("Student");
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
       code: "ACCOUNT_INACTIVE", message: "This account is inactive.",

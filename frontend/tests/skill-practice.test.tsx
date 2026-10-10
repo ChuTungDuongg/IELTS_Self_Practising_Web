@@ -54,7 +54,7 @@ describe("Skill practice", () => {
   });
 
   it("adds authenticated workspace navigation in order with active route", () => {
-    render(<AppShell>Content</AppShell>);
+    render(<AppShell currentYear={2026}>Content</AppShell>);
     const links = within(screen.getByRole("navigation", { name: "Primary" })).getAllByRole("link");
     expect(links.map((link) => link.textContent)).toEqual(["Overview", "Test library", "Skill practice", "Attempt history", "Analytics"]);
     expect(screen.getByRole("link", { name: "Skill practice" })).toHaveAttribute("aria-current", "page");

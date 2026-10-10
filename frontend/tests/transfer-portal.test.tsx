@@ -46,7 +46,7 @@ describe("Test transfer portal", () => {
   });
 
   it("adds Transfer to authenticated ADMIN navigation", async () => {
-    render(<AuthProvider><AppShell><p>content</p></AppShell></AuthProvider>);
+    render(<AuthProvider><AppShell currentYear={2026}><p>content</p></AppShell></AuthProvider>);
     expect(await screen.findByRole("link", { name: "Transfer" })).toHaveAttribute("href", "/transfer");
   });
 

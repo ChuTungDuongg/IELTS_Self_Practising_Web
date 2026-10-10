@@ -28,7 +28,7 @@ const base = {
 };
 
 function view() {
-  return render(<AuthProvider><AppShell><ProfilePage /></AppShell></AuthProvider>);
+  return render(<AuthProvider><AppShell currentYear={2026}><ProfilePage /></AppShell></AuthProvider>);
 }
 
 describe("profile", () => {

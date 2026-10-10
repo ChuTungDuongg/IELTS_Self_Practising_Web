@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef, useState, type ReactElement, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { AppLogo } from "./app-logo";
@@ -27,7 +27,9 @@ function isCurrent(pathname: string, href: string) {
   return href === "/" || href === "/admin" ? pathname === href : pathname.startsWith(href);
 }
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({ children, currentYear }: { children: ReactNode; currentYear: number }): ReactElement {
+  // Accepted now for the shared footer integration in Task 4.
+  void currentYear;
   const pathname = usePathname() ?? "/";
   const { user, loading, sessionError, logout } = useAuth();
   const [confirmingLogout, setConfirmingLogout] = useState(false);

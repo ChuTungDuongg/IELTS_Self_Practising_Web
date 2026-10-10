@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { AppShell } from "@/components/ui/app-shell";
 import { AuthProvider } from "@/features/auth/auth-provider";
+import { LocaleProvider } from "@/lib/i18n/locale-provider";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -8,7 +9,7 @@ export const metadata: Metadata = {
   description: "A focused IELTS learning, practice, and authoring workspace",
 };
 
-export const themeInitializationScript = `(function(){try{var saved=localStorage.getItem("ielts-theme");var theme=saved==="light"||saved==="dark"?saved:(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");document.documentElement.dataset.theme=theme}catch(e){document.documentElement.dataset.theme="light"}})();`;
+export const themeInitializationScript = `(function(){try{var saved=localStorage.getItem("ielts-theme");document.documentElement.dataset.theme=saved==="light"||saved==="dark"?saved:"light"}catch(e){document.documentElement.dataset.theme="light"}})();`;
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
@@ -18,7 +19,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           id="theme-initialization"
           dangerouslySetInnerHTML={{ __html: themeInitializationScript }}
         />
-        <AuthProvider><AppShell>{children}</AppShell></AuthProvider>
+        <LocaleProvider><AuthProvider><AppShell currentYear={new Date().getFullYear()}>{children}</AppShell></AuthProvider></LocaleProvider>
       </body>
     </html>
   );

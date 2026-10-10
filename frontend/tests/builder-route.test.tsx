@@ -44,7 +44,7 @@ describe("canonical Builder edit route", () => {
   });
 
   it("keeps the sidebar Builder destination on the authoring Test Library", () => {
-    render(<AppShell><p>content</p></AppShell>);
+    render(<AppShell currentYear={2026}><p>content</p></AppShell>);
     expect(screen.getByRole("link", { name: "Builder" })).toHaveAttribute("href", "/admin/tests");
   });
 
