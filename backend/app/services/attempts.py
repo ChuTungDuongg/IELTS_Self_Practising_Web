@@ -87,6 +87,11 @@ from app.schemas.content import (
     ReadingReview,
     WritingAttemptReview,
 )
+from app.services.attempt_scope import (
+    AttemptScopeGuard,
+    resolve_focused_target,
+    validate_start_scope,
+)
 from app.services.reading import ReadingService
 
 
@@ -106,6 +111,7 @@ class AttemptService:
         self.repository = AttemptRepository(session)
 
     async def start(self, data: AttemptCreate) -> AttemptResponse:
+        validate_start_scope(data)
         now = TimerService.now()
         async with self.session.begin():
             module = await self.session.scalar(
@@ -129,6 +135,8 @@ class AttemptService:
                 user_id=self.user_id,
                 test_version_id=data.test_version_id,
                 module_type=data.module,
+                scope=data.scope,
+                **await resolve_focused_target(self.session, data, module.id),
                 timer_mode=data.timer.mode,
                 timer_limit_seconds=data.timer.duration_seconds,
                 started_at=now,
@@ -270,6 +278,7 @@ class AttemptService:
                 .options(selectinload(QuestionGroup.passage))
             )
             assert group is not None
+            AttemptScopeGuard(attempt).require_group(group)
             passage_blocks = (
                 normalize_passage_blocks(group.passage.content_json, group.passage.id)
                 if group.passage
@@ -408,6 +417,7 @@ class AttemptService:
                     "The Writing task does not belong to this attempt.",
                     422,
                 )
+            AttemptScopeGuard(attempt).require_unit("WRITING_TASK", task.id)
             word_count = count_words(content)
             response_row = await self.session.scalar(
                 select(AttemptWritingResponse).where(
@@ -511,6 +521,7 @@ class AttemptService:
         answer_rows = [
             self._present_review_answer(answer, attempt.module_type)
             for answer in sorted(attempt.answers, key=lambda item: item.question.number)
+            if AttemptScopeGuard(attempt).allows_group(answer.question.question_group)
         ]
         writing_rows: list[WritingReview] = []
         if attempt.module_type == ModuleType.WRITING:
@@ -534,6 +545,7 @@ class AttemptService:
                         scores.get(task.id),
                     )
                     for task in sorted(module.writing_tasks, key=lambda item: item.order_index)
+                    if AttemptScopeGuard(attempt).allows_unit("WRITING_TASK", task.id)
                 ]
         return AttemptReview(
             attempt=self._to_response(attempt),
@@ -661,6 +673,7 @@ class AttemptService:
                     "The Writing task does not belong to this attempt.",
                     422,
                 )
+            AttemptScopeGuard(attempt).require_unit("WRITING_TASK", task.id)
             score = next(
                 (
                     item
@@ -708,7 +721,11 @@ class AttemptService:
             )
             attempt.raw_score = None
             attempt.max_score = None
-            attempt.band_score = calculate_final_writing_band(weighted_overall)
+            attempt.band_score = (
+                None
+                if AttemptScopeGuard(attempt).focused
+                else calculate_final_writing_band(weighted_overall)
+            )
             response = self._present_writing_attempt_review(await self.review(attempt_id))
         return response
 
@@ -779,6 +796,8 @@ class AttemptService:
                     test_id=item.test_version.test_id,
                     test_version_id=item.test_version_id,
                     test_session_id=item.test_session_id,
+                    scope=item.scope,
+                    focused_unit=AttemptScopeGuard(item).presentation(),
                     test_title=item.test_version.test.title,
                     version_number=item.test_version.version_number,
                     module=item.module_type,
@@ -805,7 +824,7 @@ class AttemptService:
         items_by_id = {item.attempt_id: item for item in items}
         by_version: dict[uuid.UUID, list[Attempt]] = {}
         for attempt in attempts:
-            if attempt.test_session_id is None:
+            if attempt.test_session_id is None and not AttemptScopeGuard(attempt).focused:
                 by_version.setdefault(attempt.test_version_id, []).append(attempt)
 
         def latest_finalized(
@@ -913,8 +932,12 @@ class AttemptService:
         writing_tasks: list[ExamWritingTask] = []
         if module is not None:
             for passage in module.passages:
+                if not AttemptScopeGuard(attempt).allows_unit("READING_PASSAGE", passage.id):
+                    continue
                 passages.append(self._present_exam_passage(passage, answer_values, flags))
             for part in sorted(module.listening_parts, key=lambda item: item.order_index):
+                if not AttemptScopeGuard(attempt).allows_unit("LISTENING_PART", part.id):
+                    continue
                 listening_parts.append(
                     ExamListeningPart(
                         id=part.id,
@@ -938,6 +961,8 @@ class AttemptService:
                 response.writing_task_id: response for response in attempt.writing_responses
             }
             for task in sorted(module.writing_tasks, key=lambda item: item.order_index):
+                if not AttemptScopeGuard(attempt).allows_unit("WRITING_TASK", task.id):
+                    continue
                 response = responses.get(task.id)
                 writing_tasks.append(
                     ExamWritingTask(
@@ -1081,7 +1106,13 @@ class AttemptService:
             (item for item in version.modules if item.module_type == attempt.module_type), None
         )
         passages = (
-            [ReadingService._present_passage(item) for item in module.passages] if module else []
+            [
+                ReadingService._present_passage(item)
+                for item in module.passages
+                if AttemptScopeGuard(attempt).allows_unit("READING_PASSAGE", item.id)
+            ]
+            if module
+            else []
         )
         return ReadingReview(
             review=review,
@@ -1101,7 +1132,11 @@ class AttemptService:
             (item for item in version.modules if item.module_type == attempt.module_type), None
         )
         parts = (
-            [ReadingService._present_listening_part(item) for item in module.listening_parts]
+            [
+                ReadingService._present_listening_part(item)
+                for item in module.listening_parts
+                if AttemptScopeGuard(attempt).allows_unit("LISTENING_PART", item.id)
+            ]
             if module
             else []
         )
@@ -1240,6 +1275,7 @@ class AttemptService:
             select(Question)
             .join(QuestionGroup)
             .join(TestModule)
+            .options(selectinload(Question.question_group))
             .where(
                 Question.id == question_id,
                 TestModule.test_version_id == attempt.test_version_id,
@@ -1248,6 +1284,7 @@ class AttemptService:
         )
         if question is None:
             raise AppError("INVALID_QUESTION", "The question does not belong to this attempt.", 422)
+        AttemptScopeGuard(attempt).require_group(question.question_group)
         return question
 
     async def _validate_navigation_target(
@@ -1297,6 +1334,14 @@ class AttemptService:
                 "The navigation target does not belong to this attempt.",
                 422,
             )
+        AttemptScopeGuard(attempt).require_unit(
+            {
+                "PASSAGE": "READING_PASSAGE",
+                "LISTENING_PART": "LISTENING_PART",
+                "WRITING_TASK": "WRITING_TASK",
+            }[kind],
+            target_id,
+        )
 
     async def _highlight_source(self, attempt: Attempt, body: HighlightCreate) -> str:
         if body.target_kind == "PASSAGE_BLOCK":
@@ -1312,6 +1357,7 @@ class AttemptService:
                 raise AppError(
                     "INVALID_HIGHLIGHT", "The passage does not belong to this attempt.", 422
                 )
+            AttemptScopeGuard(attempt).require_unit("READING_PASSAGE", passage.id)
             blocks = {
                 uuid.UUID(str(item["id"])): item["text"]
                 for item in normalize_passage_blocks(passage.content_json, passage.id)
@@ -1343,6 +1389,7 @@ class AttemptService:
                     "The completion group does not belong to this attempt.",
                     422,
                 )
+            AttemptScopeGuard(attempt).require_group(group)
             normalized, _ = normalize_question_group_payload(
                 question_type=group.question_type,
                 group_config=group.config,
@@ -1390,6 +1437,7 @@ class AttemptService:
                     "The question group does not belong to this attempt.",
                     422,
                 )
+            AttemptScopeGuard(attempt).require_group(group)
             passage_blocks: list[dict] = []
             if group.passage_id is not None:
                 passage = await self.session.get(ReadingPassage, group.passage_id)
@@ -1539,6 +1587,7 @@ class AttemptService:
                 .where(
                     TestModule.test_version_id == attempt.test_version_id,
                     TestModule.module_type == attempt.module_type,
+                    AttemptScopeGuard(attempt).group_filter(),
                 )
             )
         )
@@ -1574,7 +1623,11 @@ class AttemptService:
             if attempt.module_type == ModuleType.READING
             else listening_raw_to_band
         )
-        band = converter(attempt.raw_score, attempt.max_score)
+        band = (
+            None
+            if AttemptScopeGuard(attempt).focused
+            else converter(attempt.raw_score, attempt.max_score)
+        )
         attempt.band_score = Decimal(str(band)) if band is not None else None
 
     @staticmethod
@@ -1597,6 +1650,8 @@ class AttemptService:
             attempt_id=attempt.id,
             test_version_id=attempt.test_version_id,
             test_session_id=attempt.test_session_id,
+            scope=attempt.scope,
+            focused_unit=AttemptScopeGuard(attempt).presentation(),
             attempt_context=(
                 AttemptContext.FULL_MOCK
                 if attempt.test_session_id is not None

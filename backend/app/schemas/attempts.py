@@ -1,6 +1,6 @@
 from datetime import datetime
 from decimal import Decimal
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from app.domains.scoring import validate_writing_criterion_score
 from app.models.enums import (
     AttemptContext,
+    AttemptScope,
     AttemptStatus,
     FinishedReason,
     ModuleType,
@@ -19,21 +20,51 @@ from app.schemas.assets import AssetResponse
 
 class TimerRequest(BaseModel):
     mode: TimerMode
-    duration_seconds: int | None = None
+    duration_seconds: int | None = Field(default=None, gt=0)
 
     @model_validator(mode="after")
     def validate_mode(self) -> "TimerRequest":
-        presets = {2400, 3000, 3600, 4200}
-        if self.mode == TimerMode.COUNTDOWN and self.duration_seconds not in presets:
-            raise ValueError("Countdown duration must be 40, 50, 60, or 70 minutes")
+        if self.mode == TimerMode.COUNTDOWN and self.duration_seconds is None:
+            raise ValueError("Countdown mode requires a duration")
         if self.mode == TimerMode.COUNT_UP and self.duration_seconds is not None:
             raise ValueError("Count-up mode does not accept a duration")
         return self
 
 
+class FocusedReadingPassage(BaseModel):
+    kind: Literal["READING_PASSAGE"]
+    id: UUID
+
+
+class FocusedListeningPart(BaseModel):
+    kind: Literal["LISTENING_PART"]
+    id: UUID
+
+
+class FocusedWritingTask(BaseModel):
+    kind: Literal["WRITING_TASK"]
+    id: UUID
+
+
+FocusedUnit = Annotated[
+    FocusedReadingPassage | FocusedListeningPart | FocusedWritingTask,
+    Field(discriminator="kind"),
+]
+
+
+class FocusedUnitResponse(BaseModel):
+    kind: Literal["READING_PASSAGE", "LISTENING_PART", "WRITING_TASK"]
+    id: UUID
+    order_index: int
+    label: str
+    title: str | None = None
+
+
 class AttemptCreate(BaseModel):
     test_version_id: UUID
     module: ModuleType
+    scope: AttemptScope = AttemptScope.FULL_MODULE
+    focused_unit: FocusedUnit | None = None
     timer: TimerRequest
 
 
@@ -112,6 +143,8 @@ class AttemptResponse(BaseModel):
     test_version_id: UUID
     test_session_id: UUID | None = None
     attempt_context: AttemptContext = AttemptContext.STANDALONE
+    scope: AttemptScope = AttemptScope.FULL_MODULE
+    focused_unit: FocusedUnitResponse | None = None
     module: ModuleType
     status: AttemptStatus
     finished_reason: FinishedReason | None
@@ -168,6 +201,8 @@ class HistoryItem(BaseModel):
     test_id: UUID
     test_version_id: UUID
     test_session_id: UUID | None = None
+    scope: AttemptScope = AttemptScope.FULL_MODULE
+    focused_unit: FocusedUnitResponse | None = None
     test_title: str
     version_number: int
     module: ModuleType

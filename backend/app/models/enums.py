@@ -54,6 +54,11 @@ class AttemptContext(StrEnum):
     FULL_MOCK = "FULL_MOCK"
 
 
+class AttemptScope(StrEnum):
+    FULL_MODULE = "FULL_MODULE"
+    FOCUSED_UNIT = "FOCUSED_UNIT"
+
+
 class FinishedReason(StrEnum):
     USER_SUBMIT = "USER_SUBMIT"
     TIME_EXPIRED = "TIME_EXPIRED"

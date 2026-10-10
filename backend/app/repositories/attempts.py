@@ -33,6 +33,9 @@ class AttemptRepository:
             select(Attempt)
             .where(Attempt.id == attempt_id)
             .options(
+                selectinload(Attempt.focused_reading_passage),
+                selectinload(Attempt.focused_listening_part),
+                selectinload(Attempt.focused_writing_task),
                 selectinload(Attempt.answers)
                 .selectinload(AttemptAnswer.question)
                 .selectinload(Question.question_group)
@@ -63,6 +66,11 @@ class AttemptRepository:
             .where(Attempt.user_id == user_id)
             .options(selectinload(Attempt.test_version).selectinload(TestVersion.test))
             .options(selectinload(Attempt.test_session))
+            .options(
+                selectinload(Attempt.focused_reading_passage),
+                selectinload(Attempt.focused_listening_part),
+                selectinload(Attempt.focused_writing_task),
+            )
             .order_by(Attempt.started_at.desc())
         )
         return list(result)

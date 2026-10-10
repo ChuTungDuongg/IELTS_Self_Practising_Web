@@ -16,7 +16,7 @@ from app.models import (
     TestSession,
     TestVersion,
 )
-from app.models.enums import AttemptStatus, EventType, ModuleType, TestSessionStatus
+from app.models.enums import AttemptScope, AttemptStatus, EventType, ModuleType, TestSessionStatus
 from app.schemas.analytics import (
     AnalyticsAttemptOption,
     AnalyticsDashboard,
@@ -139,7 +139,7 @@ class AnalyticsService:
     async def _attempts(self) -> list[Attempt]:
         rows = await self.session.scalars(
             select(Attempt)
-            .where(Attempt.user_id == self.user_id)
+            .where(Attempt.user_id == self.user_id, Attempt.scope == AttemptScope.FULL_MODULE)
             .options(
                 selectinload(Attempt.test_version).selectinload(TestVersion.test),
                 selectinload(Attempt.answers)

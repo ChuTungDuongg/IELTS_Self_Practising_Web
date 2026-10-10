@@ -29,6 +29,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 from app.models.enums import (
     AssetType,
+    AttemptScope,
     AttemptStatus,
     EventType,
     FinishedReason,
@@ -328,6 +329,21 @@ class Question(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 class Attempt(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "attempts"
     __table_args__ = (
+        CheckConstraint(
+            "(scope = 'FULL_MODULE' AND focused_reading_passage_id IS NULL "
+            "AND focused_listening_part_id IS NULL AND focused_writing_task_id IS NULL) OR "
+            "(scope = 'FOCUSED_UNIT' AND ((module_type = 'READING' "
+            "AND focused_reading_passage_id IS NOT NULL AND focused_listening_part_id IS NULL "
+            "AND focused_writing_task_id IS NULL) OR (module_type = 'LISTENING' "
+            "AND focused_listening_part_id IS NOT NULL AND focused_reading_passage_id IS NULL "
+            "AND focused_writing_task_id IS NULL) OR (module_type = 'WRITING' "
+            "AND focused_writing_task_id IS NOT NULL AND focused_reading_passage_id IS NULL "
+            "AND focused_listening_part_id IS NULL)))",
+            name="scope_target",
+        ),
+        CheckConstraint(
+            "test_session_id IS NULL OR scope = 'FULL_MODULE'", name="session_full_module"
+        ),
         Index(
             "uq_attempts_test_session_module",
             "test_session_id",
@@ -348,6 +364,21 @@ class Attempt(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     module_type: Mapped[ModuleType] = mapped_column(
         Enum(ModuleType, name="attempt_module_type"), nullable=False
+    )
+    scope: Mapped[AttemptScope] = mapped_column(
+        Enum(AttemptScope, name="attempt_scope"),
+        default=AttemptScope.FULL_MODULE,
+        server_default="FULL_MODULE",
+        nullable=False,
+    )
+    focused_reading_passage_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("reading_passages.id", ondelete="RESTRICT")
+    )
+    focused_listening_part_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("listening_parts.id", ondelete="RESTRICT")
+    )
+    focused_writing_task_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("writing_tasks.id", ondelete="RESTRICT")
     )
     timer_mode: Mapped[TimerMode] = mapped_column(
         Enum(TimerMode, name="timer_mode"), nullable=False
@@ -372,6 +403,9 @@ class Attempt(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     band_score: Mapped[Decimal | None] = mapped_column(Numeric(2, 1))
 
     test_version: Mapped[TestVersion] = relationship()
+    focused_reading_passage: Mapped[ReadingPassage | None] = relationship()
+    focused_listening_part: Mapped[ListeningPart | None] = relationship()
+    focused_writing_task: Mapped[WritingTask | None] = relationship()
     user: Mapped[User] = relationship(back_populates="attempts")
     test_session: Mapped[TestSession | None] = relationship(back_populates="attempts")
     answers: Mapped[list[AttemptAnswer]] = relationship(

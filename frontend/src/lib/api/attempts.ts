@@ -3,11 +3,21 @@ import { apiRequest } from "./client";
 
 export type TimerMode = "COUNTDOWN" | "COUNT_UP";
 
+export const focusedUnitSchema = z.object({
+  kind: z.enum(["READING_PASSAGE", "LISTENING_PART", "WRITING_TASK"]),
+  id: z.string().uuid(),
+  order_index: z.number().int().nonnegative(),
+  label: z.string(),
+  title: z.string().nullable(),
+});
+
 export const attemptResponseSchema = z.object({
   attempt_id: z.string().uuid(),
   test_version_id: z.string().uuid(),
   test_session_id: z.string().uuid().nullable().optional(),
   attempt_context: z.enum(["STANDALONE", "FULL_MOCK"]).optional(),
+  scope: z.enum(["FULL_MODULE", "FOCUSED_UNIT"]).optional(),
+  focused_unit: focusedUnitSchema.nullable().optional(),
   module: z.enum(["READING", "LISTENING", "WRITING"]),
   status: z.enum(["IN_PROGRESS", "PAUSED", "SUBMITTED", "AUTO_SUBMITTED", "INTERRUPTED", "ABANDONED"]),
   finished_reason: z.string().nullable(),
@@ -50,11 +60,16 @@ export async function getAttempt(attemptId: string): Promise<AttemptResponse> {
   return attemptResponseSchema.parse(await apiRequest<unknown>(`/attempts/${attemptId}`));
 }
 
-export async function startAttempt(input: {
+type AttemptStartInput = {
   test_version_id: string;
   module: "READING" | "LISTENING" | "WRITING";
   timer: { mode: TimerMode; duration_seconds?: number };
-}) {
+} & (
+  | { scope?: "FULL_MODULE"; focused_unit?: null }
+  | { scope: "FOCUSED_UNIT"; focused_unit: { kind: "READING_PASSAGE" | "LISTENING_PART" | "WRITING_TASK"; id: string } }
+);
+
+export async function startAttempt(input: AttemptStartInput) {
   return attemptResponseSchema.parse(await apiRequest<unknown>("/attempts", {
     method: "POST",
     body: JSON.stringify(input),

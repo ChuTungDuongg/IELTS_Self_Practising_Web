@@ -237,6 +237,9 @@ class WritingAIService:
         task = await self.repository.task(task_id, attempt.test_version_id)
         if task is None:
             raise AppError("INVALID_WRITING_TASK", "Bài Writing không thuộc lượt làm bài này.", 422)
+        from app.services.attempt_scope import AttemptScopeGuard
+
+        AttemptScopeGuard(attempt).require_unit("WRITING_TASK", task.id)
         if task.task_number not in {1, 2}:
             raise AppError("AI_INVALID_TASK", "Chấm AI hỗ trợ Writing Task 1 và Task 2.", 422)
         essay = await self.repository.essay(attempt_id, task_id)

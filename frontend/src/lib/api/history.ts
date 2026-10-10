@@ -1,11 +1,14 @@
 import { z } from "zod";
 import { apiRequest, type ApiRequester } from "./client";
+import { focusedUnitSchema } from "./attempts";
 
 const historyItemSchema = z.object({
   attempt_id: z.string().uuid(),
   test_id: z.string().uuid(),
   test_version_id: z.string().uuid(),
   test_session_id: z.string().uuid().nullable().optional(),
+  scope: z.enum(["FULL_MODULE", "FOCUSED_UNIT"]).optional(),
+  focused_unit: focusedUnitSchema.nullable().optional(),
   test_title: z.string(),
   version_number: z.number().int(),
   module: z.enum(["READING", "LISTENING", "WRITING"]),

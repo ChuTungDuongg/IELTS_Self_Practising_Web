@@ -11,6 +11,7 @@ from app.domains.scoring import project_overall_band
 from app.domains.timers import TimerService
 from app.models import Attempt, QuestionGroup, Test, TestModule, TestSession, TestVersion
 from app.models.enums import (
+    AttemptScope,
     AttemptStatus,
     ModuleType,
     TestSessionStatus,
@@ -203,6 +204,7 @@ class TestSessionService:
             test_version_id=test_session.test_version_id,
             test_session=test_session,
             module_type=module.module_type,
+            scope=AttemptScope.FULL_MODULE,
             timer_mode=TimerMode.COUNTDOWN,
             timer_limit_seconds=module.recommended_duration_seconds,
             started_at=now,
