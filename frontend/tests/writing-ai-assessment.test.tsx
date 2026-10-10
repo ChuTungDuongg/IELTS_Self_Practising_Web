@@ -140,6 +140,46 @@ describe("Writing AI assessment", () => {
   });
   afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 
+  it.each(["RUNNING", "COMPLETED"] as const)("switches away from Task 1 without cancellation and recovers its existing %s run", async (returnStatus) => {
+    const activeTaskOne: AIWritingRun = { ...pendingTaskOne, writing_task_id: runId, status: "RUNNING", progress: { cc: criterion } };
+    let savedTaskOne: AIWritingRun | null = null;
+    vi.mocked(listAIWritingRuns).mockImplementation(async (_attempt, task) => ({ configured: true, items: task === runId && savedTaskOne ? [savedTaskOne] : [] }));
+    vi.mocked(getAIWritingRun).mockResolvedValue(activeTaskOne);
+    render(<WritingReviewView data={review()} />);
+    const grade = await screen.findByRole("button", { name: "Chấm Task 1 với AI" });
+    await waitFor(() => expect(grade).toBeEnabled());
+    fireEvent.click(grade);
+    await waitFor(() => expect(MockEventSource.instances).toHaveLength(1));
+    savedTaskOne = activeTaskOne;
+    const old = MockEventSource.instances[0];
+    expect(old.url).toContain(`/ai-writing-grading-runs/${runId}/events`);
+    fireEvent.click(screen.getByRole("tab", { name: /Task 2/ }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Chấm Task 2 với AI" })).toBeEnabled());
+    expect(old.close).toHaveBeenCalledOnce();
+    expect(screen.getByRole("article", { name: "Saved Task 2 response" })).toBeInTheDocument();
+    act(() => { old.emit("run.failed", 99, { error_code: "RUN_INTERRUPTED" }); old.onerror?.(); });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Dừng chấm" })).not.toBeInTheDocument();
+    expect(savedTaskOne.status).toBe("RUNNING");
+    expect(cancelAIWritingRun).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+    savedTaskOne = returnStatus === "COMPLETED" ? { ...completedTaskOne, writing_task_id: runId } : activeTaskOne;
+    fireEvent.click(screen.getByRole("tab", { name: /Task 1/ }));
+    if (returnStatus === "RUNNING") {
+      await waitFor(() => expect(MockEventSource.instances).toHaveLength(2));
+      expect(MockEventSource.instances[1].url).toContain(`/ai-writing-grading-runs/${runId}/events?after=0`);
+      expect(screen.getByRole("button", { name: "Đang chấm với AI…" })).toBeDisabled();
+      expect(screen.getByRole("article", { name: "AI Coherence & Cohesion" })).toBeInTheDocument();
+    } else {
+      expect(await screen.findByRole("region", { name: "AI Task 1 overall summary" })).toHaveTextContent("Band 6.5");
+      expect(MockEventSource.instances).toHaveLength(1);
+    }
+    expect(listAIWritingRuns).toHaveBeenNthCalledWith(3, attemptId, runId);
+    expect(createAIWritingRun).toHaveBeenCalledExactlyOnceWith(attemptId, runId, false);
+    expect(cancelAIWritingRun).not.toHaveBeenCalled();
+    expect(saveWritingTaskScore).not.toHaveBeenCalled();
+  });
+
   it.each(["PENDING", "RUNNING"] as const)("offers confirmation for active %s and dismisses without cancelling", async (status) => {
     vi.mocked(listAIWritingRuns).mockResolvedValue({ configured: true, items: [{ ...pending, status }] });
     panel();
@@ -199,6 +239,7 @@ describe("Writing AI assessment", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(cancelled), { status: 200 })));
     panel();
     await screen.findByRole("button", { name: "Dừng chấm" });
+    await waitFor(() => expect(MockEventSource.instances).toHaveLength(1));
     act(() => MockEventSource.instances[0].emit("run.failed", 1, { error_code: "AI_GRADING_CANCELLED" }));
     await screen.findByText("Đã dừng chấm AI. Các tiêu chí hoàn tất trước đó vẫn được giữ lại.");
     await screen.findByRole("article", { name: "AI Task Response" });

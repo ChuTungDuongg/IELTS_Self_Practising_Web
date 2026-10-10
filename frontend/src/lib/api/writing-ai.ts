@@ -108,10 +108,16 @@ export function watchAIWritingRun(runId: string, callbacks: {
   let after = 0;
   let reconciling = false;
 
+  function closeSource() {
+    const previous = source;
+    source = null;
+    previous?.close();
+  }
+
   async function reconcile() {
     if (stopped || reconciling) return;
     reconciling = true;
-    source?.close();
+    closeSource();
     try {
       const run = await getAIWritingRun(runId);
       if (stopped) return;
@@ -126,9 +132,10 @@ export function watchAIWritingRun(runId: string, callbacks: {
   }
   function connect() {
     if (stopped) return;
-    source = new EventSource(`${API_BASE_URL}/ai-writing-grading-runs/${runId}/events?after=${after}`, { withCredentials: true });
-    for (const type of aiEventTypes) source.addEventListener(type, (message) => {
-      if (stopped) return;
+    const connection = new EventSource(`${API_BASE_URL}/ai-writing-grading-runs/${runId}/events?after=${after}`, { withCredentials: true });
+    source = connection;
+    for (const type of aiEventTypes) connection.addEventListener(type, (message) => {
+      if (stopped || source !== connection) return;
       try {
         const event = aiEventSchema.parse(JSON.parse((message as MessageEvent).data));
         if (event.event_type !== type || event.sequence <= after) return;
@@ -137,8 +144,9 @@ export function watchAIWritingRun(runId: string, callbacks: {
         if (type === "run.completed" || type === "run.failed") void reconcile();
       } catch { callbacks.error("Không thể đọc tiến trình chấm. Đang khôi phục kết quả đã lưu…"); void reconcile(); }
     });
-    source.onerror = () => { void reconcile(); };
+    connection.onerror = () => { if (!stopped && source === connection) void reconcile(); };
   }
   connect();
-  return () => { stopped = true; source?.close(); if (timer) clearTimeout(timer); };
+  // View cleanup owns only observation, never the backend run or its provider requests.
+  return () => { stopped = true; closeSource(); if (timer) clearTimeout(timer); };
 }

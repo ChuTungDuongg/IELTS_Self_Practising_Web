@@ -113,9 +113,16 @@ class ChatCompletionHTTP:
                         if status != 200:
                             raise ProviderFailure("AI_PROVIDER_BAD_RESPONSE")
                         return json.loads(content)
+        except asyncio.CancelledError:
+            # Deliberate worker cancellation must abort the request, not drain
+            # unwanted inference or accept an incomplete body. No source data.
+            logger.info("AI provider request cancelled: operation=%s", path)
+            raise
         except (httpx.TimeoutException, TimeoutError):
+            logger.warning("AI provider failure: operation=%s code=%s", path, timeout_code)
             raise ProviderFailure(timeout_code) from None
         except httpx.RequestError:
+            logger.warning("AI provider failure: operation=%s code=AI_PROVIDER_UNREACHABLE", path)
             raise ProviderFailure("AI_PROVIDER_UNREACHABLE") from None
         except (ValueError, TypeError):
             raise ProviderFailure("AI_PROVIDER_BAD_RESPONSE", reason="INVALID_JSON") from None

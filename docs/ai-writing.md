@@ -298,6 +298,33 @@ The frontend reconnects using its latest validated sequence and probes JSON thro
 the existing auth-refresh client. Duplicate replay events are ignored. Closing the
 browser disconnects only the stream, not the worker.
 
+Writing Task 1/2 tabs are view changes. Unmount retires the current EventSource,
+clears reconnect timers and ignores late events/snapshots; it never posts `/cancel`
+or aborts grading HTTP requests. On return, listing saved runs recovers the same
+active run and persisted progress, or its completed result. Watching/replaying
+events does not launch inference. SSE request cancellation unwinds only its poll
+session; the worker is a separate `asyncio.create_task` held in the process registry.
+
+Only confirmed **Dừng chấm** posts the cancellation endpoint. The backend commits
+`AI_GRADING_CANCELLED` before cancelling the local worker; completed criteria stay
+saved and later checkpoints/completion cannot rewrite the terminal run. Shutdown
+and existing durable terminal-state checks are separate legitimate stop paths.
+Cancellation propagates through criterion/perception work into the provider's
+`httpx` stream, which closes immediately rather than draining unwanted inference.
+Incomplete transfers remain failures, even if received bytes happen to form JSON.
+
+The inspected local Modal SDK 1.5.3 HTTP proxy aborts its upstream connection on
+`http.disconnect`. The same wrapper proxies both application SSE and vLLM HTTP;
+an `_runtime/asgi.py` `ClientPayloadError`/`TransferEncodingError` traceback alone
+does not identify which endpoint disconnected or prove grading was cancelled.
+Such a traceback can accompany a proxy disconnect, including an intentional Stop;
+its occurrence in the reported deployment was not reproduced with a live model.
+Correlate timestamps with content-free worker logs (`source=explicit_user`,
+`shutdown`, `terminal_state`) and provider cancellation logs (`operation=/models`
+or `/chat/completions`). Timeout/transport failure codes are logged separately.
+No exception is hidden, no incomplete completion is accepted, and no per-heartbeat
+logging is added.
+
 Provider requests remain `stream=false` for reliable structured JSON. Public
 workflow events distinguish preparing, collecting evidence, validating evidence,
 scoring, validating scores, retrying and terminal states. New events are

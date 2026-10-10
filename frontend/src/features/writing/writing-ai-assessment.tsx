@@ -51,8 +51,10 @@ export function WritingAIAssessment({ attemptId, taskId, taskNumber = 2, hasEssa
 
   useEffect(() => {
     if (!runId || !observing) return;
-    return watchAIWritingRun(runId, {
+    let disposed = false;
+    const stopObserving = watchAIWritingRun(runId, {
       event(event: AIWritingEvent) {
+        if (disposed) return;
         const activity = activityFromEvent(event);
         const trait = event.payload.criterion;
         setRun((current) => current?.id === runId ? {
@@ -72,13 +74,16 @@ export function WritingAIAssessment({ attemptId, taskId, taskNumber = 2, hasEssa
         if (event.event_type === "run.completed") setTerminal("COMPLETED");
       },
       snapshot(saved) {
+        if (disposed || saved.id !== runId) return;
         setRun((current) => current?.id === saved.id && !(isCancelledAIRun(current) && isActiveAIRun(saved)) ? { ...saved, progress: { ...current.progress, ...saved.progress }, failures: { ...current.failures, ...saved.failures }, activity: saved.activity ?? current.activity } : current);
         setTerminal(null);
         setError("");
         setRuns((current) => [saved, ...current.filter((item) => item.id !== saved.id)]);
       },
-      error: setError,
+      error(message) { if (!disposed) setError(message); },
     });
+    // Task tabs remount this view. Stop observing; only the Stop button cancels grading.
+    return () => { disposed = true; stopObserving(); };
   }, [runId, observing]);
 
   async function grade(force: boolean) {

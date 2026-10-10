@@ -1,3 +1,4 @@
+import asyncio
 import json
 
 import httpx
@@ -6,6 +7,92 @@ import pytest
 from app.core.config import Settings
 from app.providers.writing_llm import create_provider, is_configured
 from app.providers.writing_llm.base import ProviderFailure
+
+
+async def test_explicit_provider_task_cancellation_closes_inflight_response_and_propagates(
+    monkeypatch, caplog
+):
+    caplog.set_level("INFO", logger="app.providers.writing_llm.http")
+    waiting, release, interrupted, closed = (asyncio.Event() for _ in range(4))
+
+    class WaitingBody(httpx.AsyncByteStream):
+        async def __aiter__(self):
+            yield b'{"choices":['
+            waiting.set()
+            try:
+                await release.wait()
+            except asyncio.CancelledError:
+                interrupted.set()
+                raise
+
+        async def aclose(self):
+            closed.set()
+
+    original = httpx.AsyncClient
+    monkeypatch.setattr(
+        httpx,
+        "AsyncClient",
+        lambda **kwargs: original(
+            transport=httpx.MockTransport(
+                lambda _request: httpx.Response(200, stream=WaitingBody())
+            ),
+            **kwargs,
+        ),
+    )
+    provider = create_provider(
+        Settings(
+            _env_file=None,
+            ai_writing_enabled=True,
+            ai_writing_vllm_base_url="https://provider.example/v1",
+        )
+    )
+    job = asyncio.create_task(provider.complete([], {}))
+    try:
+        await asyncio.wait_for(waiting.wait(), 2)
+        job.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await job
+        assert interrupted.is_set() and closed.is_set()
+        assert "AI provider request cancelled: operation=/chat/completions" in caplog.text
+        assert "provider.example" not in caplog.text
+    finally:
+        if not job.done():
+            job.cancel()
+        await asyncio.gather(job, return_exceptions=True)
+
+
+async def test_incomplete_http_transfer_is_not_success_even_if_received_json_is_valid(
+    monkeypatch, caplog
+):
+    class IncompleteBody(httpx.AsyncByteStream):
+        async def __aiter__(self):
+            yield json.dumps(
+                {"choices": [{"finish_reason": "stop", "message": {"content": "{}"}}]}
+            ).encode()
+            raise httpx.RemoteProtocolError("PRIVATE truncated transfer body")
+
+    original = httpx.AsyncClient
+    monkeypatch.setattr(
+        httpx,
+        "AsyncClient",
+        lambda **kwargs: original(
+            transport=httpx.MockTransport(
+                lambda _request: httpx.Response(200, stream=IncompleteBody())
+            ),
+            **kwargs,
+        ),
+    )
+    provider = create_provider(
+        Settings(
+            _env_file=None,
+            ai_writing_enabled=True,
+            ai_writing_vllm_base_url="https://provider.example/v1",
+        )
+    )
+    with pytest.raises(ProviderFailure) as failure:
+        await provider.complete([], {})
+    assert failure.value.code == "AI_PROVIDER_UNREACHABLE"
+    assert "PRIVATE" not in str(failure.value) + caplog.text
 
 
 @pytest.mark.parametrize("provider", ["vllm", "openai"])

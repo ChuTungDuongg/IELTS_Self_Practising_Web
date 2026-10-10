@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from contextlib import suppress
 from datetime import UTC, datetime
 from uuid import UUID
@@ -29,6 +30,7 @@ from app.services.writing_ai import WritingAIService, fail_run, input_fingerprin
 from app.services.writing_execution import TraceFailure, WritingLatencyMetrics, durable_checkpoint
 
 _tasks: dict[UUID, asyncio.Task] = {}
+logger = logging.getLogger(__name__)
 
 
 class RunStopped(TraceFailure):
@@ -65,6 +67,7 @@ class WritingAIWorker:
     def cancel(self, run_id: UUID) -> None:
         task = _tasks.get(run_id)
         if task and not task.done():
+            logger.info("AI grading worker cancellation: source=explicit_user")
             task.cancel()
 
     async def execute(self, run_id: UUID) -> None:
@@ -162,7 +165,7 @@ class WritingAIWorker:
             async with checkpoint_lock:
                 await durable_checkpoint(self._complete(run_id, result, mts))
         except RunStopped:
-            pass
+            logger.info("AI grading worker stopped: source=terminal_state")
         except asyncio.CancelledError:
             # _fail holds the row lock and only updates ACTIVE runs. A committed
             # user cancellation always wins over this shutdown/interruption path.
@@ -325,6 +328,8 @@ class WritingAIWorker:
 
 async def stop_writing_ai_workers() -> None:
     tasks = list(_tasks.values())
+    if tasks:
+        logger.info("AI grading worker cancellation: source=shutdown")
     for task in tasks:
         task.cancel()
     await asyncio.gather(*tasks, return_exceptions=True)

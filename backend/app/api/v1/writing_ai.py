@@ -93,6 +93,11 @@ def replay_cursor(after: int, last_event_id: str | None) -> int:
 async def event_stream(
     request: Request, run_id: UUID, user_id: UUID, after: int, worker: WritingAIWorker
 ):
+    """Observe persisted events; disconnect/cancellation belongs only to this request.
+
+    The detached worker is never awaited or cancelled here. Let CancelledError
+    unwind the SSE poll/session normally without mutating grading state.
+    """
     # New sessions per poll; the request's service session never escapes the route.
     while not await request.is_disconnected():
         async with worker.sessions() as session:
