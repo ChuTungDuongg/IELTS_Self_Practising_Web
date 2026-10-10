@@ -35,6 +35,7 @@ export const vi = {
   "theme.useDark": "Dùng giao diện tối",
   "footer.description": "Luyện tập và biên soạn đề",
   "footer.copyright": "© {year} IELTS Studio",
+  "footer.language": "Tiếng Việt",
   "runner.pause": "Tạm dừng",
   "runner.question": "Câu hỏi {number}",
 } satisfies TranslationDictionary;

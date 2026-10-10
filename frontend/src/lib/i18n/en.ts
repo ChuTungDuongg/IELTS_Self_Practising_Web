@@ -33,6 +33,7 @@ export const en = {
   "theme.useDark": "Use dark theme",
   "footer.description": "Practice & authoring",
   "footer.copyright": "© {year} IELTS Studio",
+  "footer.language": "English",
   "runner.pause": "Pause",
   "runner.question": "Question {number}",
 } as const;

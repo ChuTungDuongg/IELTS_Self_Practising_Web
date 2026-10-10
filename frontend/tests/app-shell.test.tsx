@@ -12,6 +12,23 @@ const routes = ["/", "/library", "/practice", "/history", "/analytics", "/admin"
 beforeEach(() => { state.pathname = "/"; state.role = null; state.loading = false; state.sessionError = null; state.name = "Learner"; window.localStorage.clear(); document.documentElement.dataset.theme = "light"; });
 
 describe("horizontal application shell", () => {
+  it.each(["/", "/admin", "/admin/tests", "/admin/tests/new", "/admin/tests/test", "/admin/tests/test/versions/version/edit", "/review/attempt", "/test-session/session", "/session/restore", "/login", "/register", "/profile", "/transfer", "/admin/tests/preview", "/admin/tests/preview/versions/version/edit", "/admin/tests/test/versions/version/preview/extra", "/admin/tests/test/versions/version/previewing", "/some/preview", "/admin/tests/test/preview", "/admin/tests/test/versions/version/preview//"])("only exact Builder preview suppresses the global footer: ordinary %s retains it", (path) => {
+    state.pathname = path; state.role = "ADMIN";
+    const { container } = render(<AppShell currentYear={2026}>Content</AppShell>);
+    const footer = screen.getByRole("contentinfo");
+    expect(footer).toHaveClass("app-footer");
+    expect(footer).toHaveTextContent("© 2026 IELTS Studio");
+    expect(container.querySelector(".app-content")?.nextElementSibling).toBe(footer);
+    expect(screen.getByRole("banner")).toBeInTheDocument();
+  });
+
+  it.each(["/admin/tests/test/versions/version/preview", "/admin/tests/test/versions/version/preview/"])("only exact Builder preview suppresses the global footer: %s", (path) => {
+    state.pathname = path; state.role = "ADMIN";
+    const { container } = render(<AppShell currentYear={2026}>Preview</AppShell>);
+    expect(screen.getByRole("banner")).toBeInTheDocument();
+    expect(container.querySelector(".app-footer")).toBeNull();
+  });
+
   it.each([null, "USER", "ADMIN"] as const)("guest user and admin navigation preserve routes (%s)", (role) => {
     state.role = role;
     const { container } = render(<AppShell currentYear={2026}><p>Feature content</p></AppShell>);

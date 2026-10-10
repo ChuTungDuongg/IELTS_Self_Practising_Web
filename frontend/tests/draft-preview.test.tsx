@@ -1,7 +1,12 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { DraftPreview } from "@/features/test-builder/draft-preview";
+import { AppShell } from "@/components/ui/app-shell";
 import type { BuilderVersion } from "@/lib/api/builder";
+
+const navigation = vi.hoisted(() => ({ pathname: "/admin/tests/test/versions/version/preview" }));
+vi.mock("next/navigation", () => ({ usePathname: () => navigation.pathname }));
+vi.mock("@/features/auth/auth-provider", () => ({ useAuth: () => ({ user: { role: "ADMIN", display_name: "Fictional admin" }, loading: false, sessionError: null, logout: vi.fn() }) }));
 
 const version: BuilderVersion = {
   id: "11111111-1111-4111-8111-111111111111",
@@ -40,6 +45,19 @@ const version: BuilderVersion = {
 };
 
 describe("DraftPreview", () => {
+  it.each(["", "/"])("retains the local exam footer and global header on exact preview with a query (%s)", (slash) => {
+    navigation.pathname = `/admin/tests/test/versions/version/preview${slash}`;
+    window.history.replaceState(null, "", `${navigation.pathname}?module=READING`);
+    const { container } = render(<AppShell currentYear={2026}><DraftPreview version={version} moduleType="READING" /></AppShell>);
+    expect(container.querySelector(".app-header")).toBeInTheDocument();
+    expect(container.querySelector(".app-footer")).toBeNull();
+    expect(container.querySelectorAll(".exam-footer")).toHaveLength(1);
+    expect(screen.getByText("Answers in preview are not saved.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("radio", { name: "TRUE" }));
+    expect(screen.getByRole("radio", { name: "TRUE" })).toBeChecked();
+    window.history.replaceState(null, "", "/");
+  });
+
   it("renders the candidate question UI with ephemeral local answers", () => {
     render(<DraftPreview version={version} moduleType="READING" />);
     expect(screen.getByText(/DRAFT PREVIEW/)).toBeInTheDocument();

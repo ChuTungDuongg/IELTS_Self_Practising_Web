@@ -31,6 +31,7 @@ describe("RootLayout theme initialization", () => {
     expect(markup).toContain('lang="en"');
     expect(markup).toContain('data-theme="light"');
     expect(markup).toContain("Use dark theme");
+    expect(markup).toContain("© 2026 IELTS Studio");
     expect(markup).not.toContain("Dùng giao diện");
   });
 

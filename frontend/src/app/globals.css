@@ -155,7 +155,10 @@ input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--mute
 .theme-dark-label { display: none; }
 :root[data-theme="dark"] .theme-light-label { display: none; }
 :root[data-theme="dark"] .theme-dark-label { display: inline; }
-.app-content { min-width: 0; width: 100%; max-width: 1500px; margin: 0 auto; padding: 48px clamp(24px, 4vw, 64px) 72px; }
+.app-content { flex: 1; min-width: 0; width: 100%; max-width: 1500px; margin: 0 auto; padding: 48px clamp(24px, 4vw, 64px) 72px; }
+.app-footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; padding: 24px clamp(24px, 4vw, 64px); border-top: 1px solid var(--line); color: var(--muted); background: var(--surface); }
+.app-footer strong { color: var(--ink); }
+.app-footer p { margin: 0; }
 .exam-shell { min-height: 100vh; }
 
 .page-heading { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 24px; margin-bottom: 30px; }
@@ -1202,6 +1205,7 @@ input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--mute
 }
 
 @media (max-width: 560px) {
+  .app-footer { flex-direction: column; align-items: flex-start; }
   .brand-mark { width: 36px; height: 36px; }
   .theme-toggle { min-width: 38px; width: 38px; padding: 0; }
   .theme-text { display: none; }
