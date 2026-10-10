@@ -263,7 +263,11 @@ export function ListeningRunner({ initial }: { initial: ExamPayload }) {
     <DraftRecoveryNotices offline={offline} conflicts={conflicts} labelFor={(id) => `question ${questions.find((question) => question.id === id)?.number ?? id}`} onResolve={resolveConflict} />
     {actionError ? <p role="alert" className="notice notice-error">{actionError}</p> : null}
     {highlightError && !confirmDeleteAll ? <p role="alert" className="notice notice-error">{highlightError}</p> : null}
-    {focused && !playbackClip ? <p role="alert" className="notice m-4">No audio range is configured for this focused section.</p> : initial.listening_audio_asset ? <><ListeningAudioPlayer src={assetContentUrl(initial.listening_audio_asset)} clip={playbackClip} policy={{ allowSeeking: initial.audio_policy?.allow_seeking ?? true, allowSpeed: initial.audio_policy?.allow_speed ?? true }} />{initial.audio_policy?.allow_seeking === false ? <p className="exam-mode-label">Exam mode · Seeking locked</p> : null}</> : <p className="notice m-4">This Listening test has no audio recording attached.</p>}
+    {initial.listening_audio_asset ? <>
+      <ListeningAudioPlayer src={assetContentUrl(initial.listening_audio_asset)} clip={playbackClip} policy={{ allowSeeking: initial.audio_policy?.allow_seeking ?? true, allowSpeed: initial.audio_policy?.allow_speed ?? true }} />
+      {focused && !playbackClip ? <p className="notice m-4">Section audio range is not configured. Full recording is available.</p> : null}
+      {initial.audio_policy?.allow_seeking === false ? <p className="exam-mode-label">Exam mode · Seeking locked</p> : null}
+    </> : <p className="notice m-4">{focused ? "No recording is attached. You can continue with the questions and use an external recording if needed." : "This Listening test has no audio recording attached."}</p>}
     <main ref={questionPane} inert={finalizing} className={`listening-question-pane ${visualGroup ? "listening-question-pane-visual" : ""}`} onWheelCapture={() => { programmaticNavigation.current = null; }} onTouchStartCapture={() => { programmaticNavigation.current = null; }} onPointerDownCapture={() => { programmaticNavigation.current = null; }} onKeyDownCapture={() => { programmaticNavigation.current = null; }} onFocusCapture={(event) => {
       const target = (event.target as HTMLElement).closest<HTMLElement>(".exam-question-target[data-question-id]");
       if (target?.dataset.questionId) { programmaticNavigation.current = null; setActiveQuestionId(target.dataset.questionId); }

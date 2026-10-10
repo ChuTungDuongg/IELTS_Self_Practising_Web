@@ -202,8 +202,8 @@ async def test_revision_edits_and_audio_reset_are_atomic(db_session):
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize("missing", ["range", "audio"])
-async def test_focused_requires_audio_range_but_full_listening_and_mock_do_not(db_session, missing):
+@pytest.mark.parametrize("missing", ["none", "range", "audio"])
+async def test_focused_optional_audio_preserves_full_listening_and_mock(db_session, missing):
     version, units = await content(db_session)
     target = units[ModuleType.LISTENING][0]
     async with db_session.begin():
@@ -211,16 +211,34 @@ async def test_focused_requires_audio_range_but_full_listening_and_mock_do_not(d
             await db_session.execute(
                 update(ListeningPart).values(audio_start_seconds=None, audio_end_seconds=None)
             )
-        else:
+        elif missing == "audio":
             await db_session.execute(
                 update(ModuleRecord)
                 .where(ModuleRecord.test_version_id == version.id)
                 .values(audio_asset_id=None)
             )
+    # Model a fresh request after direct fixture writes, including the audio relationship.
+    db_session.expire_all()
     service = AttemptService(db_session)
-    with pytest.raises(AppError) as failure:
-        await service.start(request(version, ModuleType.LISTENING, target))
-    assert failure.value.code == "FOCUSED_LISTENING_AUDIO_UNAVAILABLE"
+    focused = await service.start(request(version, ModuleType.LISTENING, target))
+    assert focused.scope == "FOCUSED_UNIT" and focused.focused_unit.id == target.id
+    exam = await service.exam(focused.attempt_id)
+    assert [part.id for part in exam.listening_parts] == [target.id]
+    assert len(exam.listening_parts[0].question_groups[0].questions) == 2
+    assert (exam.listening_audio_asset is None) == (missing == "audio")
+    expected_range = (None, None) if missing == "range" else (0, 60)
+    assert (
+        exam.listening_parts[0].audio_start_seconds,
+        exam.listening_parts[0].audio_end_seconds,
+    ) == expected_range
+    await db_session.rollback()
+    await service.submit(focused.attempt_id)
+    review = await service.listening_review(focused.attempt_id)
+    assert [part.id for part in review.parts] == [target.id]
+    assert (review.audio_asset is None) == (missing == "audio")
+    assert review.review.attempt.raw_score == 0 and review.review.attempt.max_score == 2
+    assert review.review.attempt.band_score is None
+    await db_session.rollback()
     _, foreign_units = await content(db_session)
     with pytest.raises(AppError) as foreign:
         await service.start(

@@ -12,7 +12,6 @@ from app.models import (
     ListeningPart,
     QuestionGroup,
     ReadingPassage,
-    TestModule,
     WritingTask,
 )
 from app.models.enums import AttemptScope, ModuleType, TimerMode
@@ -75,17 +74,6 @@ async def resolve_focused_target(
             "The selected unit is not available for this module and version.",
             422,
         )
-    if data.module == ModuleType.LISTENING:
-        audio_asset_id = await session.scalar(
-            select(TestModule.audio_asset_id).where(TestModule.id == module_id)
-        )
-        start, end = target.audio_start_seconds, target.audio_end_seconds
-        if audio_asset_id is None or start is None or end is None or start < 0 or end <= start:
-            raise AppError(
-                "FOCUSED_LISTENING_AUDIO_UNAVAILABLE",
-                "Focused Listening requires a recording and a configured section audio range.",
-                422,
-            )
     return {f"{field}_id": target.id}
 
 

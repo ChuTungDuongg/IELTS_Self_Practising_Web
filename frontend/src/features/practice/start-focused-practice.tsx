@@ -36,7 +36,7 @@ export function StartFocusedPractice({ versionId, target, unavailableReason }: {
     }
   }
 
-  return <div className="mt-5 border-t border-[var(--line)] pt-4">
+  return <div className="practice-start mt-5 border-t border-[var(--line)] pt-4">
     <label className="field-label">Practice timer
       <select className="select-field mt-2" value={duration} disabled={pending || Boolean(unavailableReason)} onChange={(event) => setDuration(event.target.value)}>
         {minutes.map((minute) => <option key={minute} value={minute * 60}>{minute} minutes</option>)}

@@ -547,11 +547,13 @@ describe("Listening footer navigation", () => {
     expect(saveAnswer).toHaveBeenCalledTimes(1);
   });
 
-  it("reuses focused Listening navigation, clip and submit for only the selected section", async () => {
+  it.each(["none", "range", "audio"])("keeps focused Listening usable with missing %s", async (missing) => {
     const initial = payload();
     const part = initial.listening_parts[0];
     initial.attempt = { ...initial.attempt, scope: "FOCUSED_UNIT", focused_unit: { kind: "LISTENING_PART", id: part.id, order_index: 1, label: "Section 2", title: "Section Two" } };
-    initial.listening_parts = [{ ...part, audio_start_seconds: 468, audio_end_seconds: 931 }];
+    initial.listening_parts = [{ ...part, audio_start_seconds: missing === "range" ? null : 468, audio_end_seconds: missing === "range" ? null : 931 }];
+    initial.audio_policy = { allow_seeking: true, allow_speed: true };
+    if (missing === "audio") initial.listening_audio_asset = null;
     vi.mocked(submitAttempt).mockResolvedValue({} as never);
     const view = render(<ListeningRunner initial={initial} />);
     expect(screen.getByText("Focused practice · Listening")).toBeInTheDocument();
@@ -559,12 +561,32 @@ describe("Listening footer navigation", () => {
     expect(screen.queryByRole("navigation", { name: "Section navigation" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Go to question 1" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Go to question 15" })).toBeInTheDocument();
-    const audio = view.container.querySelector("audio")!;
-    Object.defineProperty(audio, "duration", { configurable: true, value: 1000 });
-    fireEvent.loadedMetadata(audio);
-    expect(audio.currentTime).toBe(468);
-    expect(screen.getByLabelText("Audio seek")).toHaveAttribute("max", "463");
-    expect(screen.getByLabelText("Audio seek")).not.toBeDisabled();
+    const audio = view.container.querySelector("audio");
+    if (missing === "audio") {
+      expect(audio).toBeNull();
+      expect(screen.queryByLabelText("Listening audio player")).not.toBeInTheDocument();
+      expect(screen.getByText("No recording is attached. You can continue with the questions and use an external recording if needed.")).toHaveClass("notice");
+    } else {
+      expect(audio).not.toBeNull();
+      Object.defineProperty(audio!, "duration", { configurable: true, value: 1000 });
+      fireEvent.loadedMetadata(audio!);
+      expect(audio!.currentTime).toBe(missing === "range" ? 0 : 468);
+      expect(screen.getByLabelText("Audio seek")).toHaveAttribute("max", missing === "range" ? "1000" : "463");
+      expect(screen.getByLabelText("Audio seek")).not.toBeDisabled();
+      expect(screen.getByLabelText("Playback speed")).not.toBeDisabled();
+      if (missing === "range") {
+        expect(screen.getByText("Section audio range is not configured. Full recording is available.")).toHaveClass("notice");
+        fireEvent.change(screen.getByLabelText("Audio seek"), { target: { value: "950" } });
+        expect(audio!.currentTime).toBe(950);
+        fireEvent.change(screen.getByLabelText("Playback speed"), { target: { value: "1.5" } });
+        expect(audio!.playbackRate).toBe(1.5);
+      }
+    }
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(view.container.querySelector(".exam-timer")).toBeInTheDocument();
+    const question = view.container.querySelector(`[data-question-id="${q15}"]`)!;
+    fireEvent.click(within(question as HTMLElement).getByRole("radio", { name: "FALSE" }));
+    await waitFor(() => expect(saveAnswer).toHaveBeenCalledWith(attemptId, q15, "FALSE", 0));
     fireEvent.click(screen.getByRole("button", { name: "Submit answers" }));
     await waitFor(() => expect(submitAttempt).toHaveBeenCalledWith(attemptId));
     expect(push).toHaveBeenCalledWith(`/review/${attemptId}`);
@@ -582,7 +604,14 @@ describe("Listening footer navigation", () => {
     expect(audio.currentTime).toBe(0);
     expect(screen.getByLabelText("Audio seek")).toHaveAttribute("max", "1000");
     expect(within(screen.getByRole("navigation", { name: "Section navigation" })).getAllByRole("button")).toHaveLength(4);
-    if (mock) expect(screen.getByLabelText("Audio seek")).toBeDisabled();
-    else expect(screen.getByLabelText("Audio seek")).not.toBeDisabled();
+    expect(screen.queryByText("Section audio range is not configured. Full recording is available.")).not.toBeInTheDocument();
+    if (mock) {
+      expect(screen.getByLabelText("Audio seek")).toBeDisabled();
+      expect(screen.getByLabelText("Playback speed")).toBeDisabled();
+      expect(screen.getByText("Exam mode · Seeking locked")).toBeInTheDocument();
+    } else {
+      expect(screen.getByLabelText("Audio seek")).not.toBeDisabled();
+      expect(screen.getByLabelText("Playback speed")).not.toBeDisabled();
+    }
   });
 });

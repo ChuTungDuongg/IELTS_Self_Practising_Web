@@ -16,7 +16,7 @@ export default async function PracticePage() {
   const available = details.filter((detail): detail is VersionDetail => detail !== null && detail.status === "PUBLISHED");
 
   return <>
-    <PageHeading eyebrow="Practice" title="Skill Practice" description="Focus on one Reading passage or Writing task at a time. Choose a timer and practise at your own pace." />
+    <PageHeading eyebrow="Practice" title="Skill Practice" description="Practise one Reading passage, Listening section, or Writing task at a time." />
     <SkillPractice versions={available} />
   </>;
 }

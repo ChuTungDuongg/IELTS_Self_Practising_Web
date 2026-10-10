@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import PracticePage from "@/app/practice/page";
 import { AppShell } from "@/components/ui/app-shell";
+import { SkillPractice } from "@/features/practice/skill-practice";
 import { getTests, getVersion } from "@/lib/api/tests";
 import { startAttempt } from "@/lib/api/attempts";
 import { ApiError } from "@/lib/api/client";
@@ -59,7 +60,7 @@ describe("Skill practice", () => {
     expect(screen.getByRole("link", { name: "Skill practice" })).toHaveAttribute("aria-current", "page");
   });
 
-  it("uses published non-archived available versions and groups multiple tests", async () => {
+  it("uses published non-archived versions with provenance on each card", async () => {
     const other = { ...test, id: id(11), title: "Another fictional test", versions: [{ ...version, id: id(12) }] };
     vi.mocked(getTests).mockResolvedValue([test, other,
       { ...test, id: id(20), archived_at: version.created_at, versions: [{ ...version, id: id(21) }] },
@@ -71,11 +72,19 @@ describe("Skill practice", () => {
       return versionId === id(12) ? { ...version, id: id(12), test_id: id(11), test_title: other.title } : version;
     });
     render(await PracticePage());
-    expect(screen.getByRole("heading", { name: test.title })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: other.title })).toBeInTheDocument();
+    expect(screen.getAllByRole("article").map((card) => within(card).getByText(/ · Version /).textContent)).toEqual([
+      `${test.title} · Version 1`, `${test.title} · Version 1`, `${other.title} · Version 1`, `${other.title} · Version 1`,
+    ]);
     expect(vi.mocked(getVersion).mock.calls.map(([value]) => value)).toEqual([id(2), id(12), id(41)]);
     expect(screen.getAllByRole("button", { name: "Start focused practice" })).toHaveLength(4);
-    expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["Reading", "Listening", "Writing"]);
+    const filters = screen.getByRole("navigation", { name: "Practice filters" });
+    for (const skill of ["Reading", "Listening", "Writing"]) {
+      expect(within(filters).getByRole("button", { name: skill })).toBeInTheDocument();
+    }
+    expect(within(filters).getByRole("button", { name: "Reading" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Reading" })).toBeInTheDocument();
+    expect(screen.getByText("Practise one Reading passage, Listening section, or Writing task at a time.")).toBeInTheDocument();
   });
 
   it("shows accurate counts without inventing ranges for gaps, with Reading timers", async () => {
@@ -104,7 +113,7 @@ describe("Skill practice", () => {
 
   it.each([1, 2])("starts Writing Task %i with its ID, default and count-up support", async (taskNumber) => {
     render(await PracticePage());
-    fireEvent.click(screen.getByRole("tab", { name: "Writing" }));
+    fireEvent.click(screen.getByRole("button", { name: "Writing" }));
     const card = screen.getByRole("heading", { name: `Task ${taskNumber}` }).closest("article")!;
     const select = within(card).getByRole("combobox") as HTMLSelectElement;
     expect(select).toHaveValue(taskNumber === 1 ? "1200" : "2400");
@@ -133,6 +142,33 @@ describe("Skill practice", () => {
     expect(select).toHaveValue("1800"); expect(button).not.toBeDisabled();
   });
 
+  it("preserves timers, pending starts and errors through filter round trips", async () => {
+    let reject!: (error: unknown) => void;
+    vi.mocked(startAttempt).mockReturnValue(new Promise((_resolve, fail) => { reject = fail; }));
+    render(await PracticePage());
+    const firstCard = screen.getByRole("heading", { name: "Fictional trees" }).closest("article")!;
+    fireEvent.change(within(firstCard).getByRole("combobox"), { target: { value: "1800" } });
+    fireEvent.click(within(firstCard).getByRole("button"));
+    const search = screen.getByRole("searchbox", { name: "Search practice" });
+    fireEvent.change(search, { target: { value: "rivers" } });
+    expect(screen.getAllByRole("article")).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "Writing" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reading" }));
+    fireEvent.change(search, { target: { value: "" } });
+    const restored = screen.getByRole("heading", { name: "Fictional trees" }).closest("article")!;
+    expect(within(restored).getByRole("button")).toBeDisabled();
+    expect(within(restored).getByRole("combobox")).toHaveValue("1800");
+    fireEvent.click(within(restored).getByRole("button"));
+    expect(startAttempt).toHaveBeenCalledTimes(1);
+    await act(async () => reject(new ApiError("UNAVAILABLE", "This version is unavailable.", 409)));
+    fireEvent.change(search, { target: { value: "no matches" } });
+    fireEvent.change(search, { target: { value: "" } });
+    const failed = screen.getByRole("heading", { name: "Fictional trees" }).closest("article")!;
+    expect(within(failed).getByRole("alert")).toHaveTextContent("This version is unavailable.");
+    expect(within(failed).getByRole("combobox")).toHaveValue("1800");
+    expect(within(failed).getByRole("button")).not.toBeDisabled();
+  });
+
   it("parses the public unit IDs and metadata", () => {
     const parsed = versionDetailSchema.parse(version);
     expect(parsed.modules[0].reading_passages![0].id).toBe(id(4));
@@ -143,9 +179,9 @@ describe("Skill practice", () => {
 
   it.each(["600", "900", "1200", "count-up"])("starts the Listening section with timer %s", async (duration) => {
     render(await PracticePage());
-    fireEvent.click(screen.getByRole("tab", { name: "Listening" }));
+    fireEvent.click(screen.getByRole("button", { name: "Listening" }));
     expect(screen.getByText("Questions 1–10 · 10 questions")).toBeInTheDocument();
-    expect(screen.getByText("Audio 07:48–15:31 · 07:43 clip")).toBeInTheDocument();
+    expect(screen.getByText("Audio 07:48–15:31 · 07:43")).toBeInTheDocument();
     const select = screen.getByRole("combobox") as HTMLSelectElement;
     expect(select).toHaveValue("600");
     expect([...select.options].map((option) => option.textContent)).toEqual(["10 minutes", "15 minutes", "20 minutes", "Count up"]);
@@ -158,25 +194,31 @@ describe("Skill practice", () => {
     expect(push).toHaveBeenCalledWith(`/attempt/${id(99)}`);
   });
 
-  it.each(["audio", "range"])("keeps unavailable Listening cards visible without %s", async (missing) => {
+  it.each(["none", "range", "audio"])("starts the same focused Listening section with missing %s", async (missing) => {
     const listening = version.modules[2];
     vi.mocked(getVersion).mockResolvedValue({ ...version, modules: [{ ...listening, has_audio: missing !== "audio", listening_sections: listening.listening_sections!.map((section) => missing === "range" ? { ...section, audio_start_seconds: null, audio_end_seconds: null } : section) }] });
     render(await PracticePage());
-    fireEvent.click(screen.getByRole("tab", { name: "Listening" }));
+    fireEvent.click(screen.getByRole("button", { name: "Listening" }));
     expect(screen.getByRole("heading", { name: "Fictional listening section" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Start focused practice" })).toBeDisabled();
-    expect(screen.getByText(missing === "audio" ? /No recording is attached/ : /needs a configured audio range/)).toBeInTheDocument();
-    expect(startAttempt).not.toHaveBeenCalled();
+    const button = screen.getByRole("button", { name: "Start focused practice" });
+    expect(button).not.toBeDisabled();
+    expect(screen.getByRole("combobox")).not.toBeDisabled();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByText(missing === "audio" ? "No recording attached · external audio can be used" : missing === "range" ? "Full recording available" : "Audio 07:48–15:31 · 07:43")).toBeInTheDocument();
+    fireEvent.click(button);
+    expect(startAttempt).toHaveBeenCalledWith({ test_version_id: id(2), module: "LISTENING", scope: "FOCUSED_UNIT", focused_unit: { kind: "LISTENING_PART", id: id(10) }, timer: { mode: "COUNTDOWN", duration_seconds: 600 } });
+    await act(async () => {});
+    expect(push).toHaveBeenCalledWith(`/attempt/${id(99)}`);
   });
 
   it("keeps the Listening timer after a safe backend eligibility failure", async () => {
-    vi.mocked(startAttempt).mockRejectedValue(new ApiError("FOCUSED_LISTENING_AUDIO_UNAVAILABLE", "The section recording is unavailable.", 422));
+    vi.mocked(startAttempt).mockRejectedValue(new ApiError("FOCUSED_UNIT_INVALID", "The selected section is unavailable.", 422));
     render(await PracticePage());
-    fireEvent.click(screen.getByRole("tab", { name: "Listening" }));
+    fireEvent.click(screen.getByRole("button", { name: "Listening" }));
     fireEvent.change(screen.getByRole("combobox"), { target: { value: "900" } });
     fireEvent.click(screen.getByRole("button", { name: "Start focused practice" }));
     await act(async () => {});
-    expect(screen.getByRole("alert")).toHaveTextContent("The section recording is unavailable.");
+    expect(screen.getByRole("alert")).toHaveTextContent("The selected section is unavailable.");
     expect(screen.getByRole("combobox")).toHaveValue("900");
     expect(screen.getByRole("button", { name: "Start focused practice" })).not.toBeDisabled();
   });
@@ -185,6 +227,86 @@ describe("Skill practice", () => {
     vi.mocked(getVersion).mockResolvedValue({ ...version, status: "DRAFT" });
     render(await PracticePage());
     expect(screen.getByText("No Reading passages available")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Start focused practice" })).not.toBeInTheDocument();
+  });
+
+  it("derives available unit filters and resets them when switching skills", async () => {
+    render(await PracticePage());
+    const filters = screen.getByRole("navigation", { name: "Practice filters" });
+    expect(within(filters).queryByRole("button", { name: "Passage 3" })).not.toBeInTheDocument();
+    expect(within(filters).queryByRole("button", { name: "Section 2" })).not.toBeInTheDocument();
+    fireEvent.click(within(filters).getByRole("button", { name: "Passage 2" }));
+    expect(screen.getAllByRole("article")).toHaveLength(1);
+    expect(screen.getByRole("heading", { name: "Fictional rivers" })).toBeInTheDocument();
+    expect(within(filters).getByRole("button", { name: "Passage 2" })).toHaveAttribute("aria-current", "true");
+    fireEvent.click(within(filters).getByRole("button", { name: "All passages" }));
+    expect(screen.getAllByRole("article")).toHaveLength(2);
+    fireEvent.click(within(filters).getByRole("button", { name: "Task 1" }));
+    expect(screen.getAllByRole("article")).toHaveLength(1);
+    expect(screen.getByRole("heading", { name: "Task 1" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Task 2" })).not.toBeInTheDocument();
+    fireEvent.click(within(filters).getByRole("button", { name: "Reading" }));
+    expect(screen.getAllByRole("article")).toHaveLength(2);
+    expect(within(filters).getByRole("button", { name: "All passages" })).toHaveAttribute("aria-current", "true");
+  });
+
+  it("filters Section 2 across tests and combines search with section selection", async () => {
+    const listening = version.modules[2];
+    const section = listening.listening_sections![0];
+    const section2 = { ...section, id: id(15), title: "Fictional station", order_index: 1, question_groups: [{ question_type: "short_answer", start_number: 11, end_number: 20, question_count: 10 }] };
+    const first = { ...version, modules: [...version.modules.slice(0, 2), { ...listening, listening_part_count: 2, question_count: 20, listening_sections: [section, section2] }] };
+    const second = { ...version, id: id(12), test_id: id(11), test_title: "Another fictional test", version_number: 2, modules: [{ ...listening, id: id(13), listening_sections: [{ ...section2, id: id(14), title: "Fictional accommodation" }] }] };
+    const view = render(<SkillPractice versions={[first, second]} />);
+    fireEvent.click(screen.getByRole("button", { name: "Listening" }));
+    expect(screen.getAllByRole("article")).toHaveLength(3);
+    expect(screen.queryByRole("heading", { name: "Fictional trees" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Section 2" }));
+    expect(screen.getAllByRole("article")).toHaveLength(2);
+    expect(screen.getAllByText("Questions 11–20 · 10 questions")).toHaveLength(2);
+    const search = screen.getByRole("searchbox", { name: "Search practice" });
+    fireEvent.change(search, { target: { value: "ANOTHER" } });
+    expect(screen.getAllByRole("article")).toHaveLength(1);
+    expect(screen.getByText("Another fictional test · Version 2")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Start focused practice" }));
+    expect(startAttempt).toHaveBeenCalledWith(expect.objectContaining({ test_version_id: id(12), module: "LISTENING", focused_unit: { kind: "LISTENING_PART", id: id(14) } }));
+    await act(async () => {});
+    fireEvent.change(search, { target: { value: "station" } });
+    expect(screen.getAllByRole("article")).toHaveLength(1);
+    expect(screen.getByRole("heading", { name: "Fictional station" })).toBeInTheDocument();
+    fireEvent.change(search, { target: { value: "listening section" } });
+    expect(screen.getByText("No practice units match these filters.")).toBeInTheDocument();
+    expect(screen.queryByRole("article")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "All sections" }));
+    expect(screen.getAllByRole("article")).toHaveLength(1);
+    fireEvent.change(search, { target: { value: "" } });
+    expect(screen.getAllByRole("article")).toHaveLength(3);
+    expect(view.container.querySelector("img")).toBeNull();
+  });
+
+  it("searches Reading titles and Writing prompt excerpts without changing timers", async () => {
+    render(await PracticePage());
+    const search = screen.getByRole("searchbox", { name: "Search practice" });
+    fireEvent.change(search, { target: { value: "  TREES  " } });
+    expect(screen.getAllByRole("article")).toHaveLength(1);
+    expect(screen.getByRole("heading", { name: "Fictional trees" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Writing" }));
+    fireEvent.change(search, { target: { value: "discuss a fictional opinion" } });
+    expect(screen.getAllByRole("article")).toHaveLength(1);
+    expect(screen.getByRole("heading", { name: "Task 2" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox")).toHaveValue("2400");
+    fireEvent.click(screen.getByRole("button", { name: "Task 1" }));
+    expect(screen.getByText("No practice units match these filters.")).toBeInTheDocument();
+    fireEvent.change(search, { target: { value: "no matching prompt" } });
+    expect(screen.queryByRole("article")).not.toBeInTheDocument();
+    expect(screen.getByText("Try another unit or clear your search.")).toBeInTheDocument();
+  });
+
+  it("explains when the selected skill has no published units", async () => {
+    vi.mocked(getVersion).mockResolvedValue({ ...version, modules: [version.modules[0]] });
+    render(await PracticePage());
+    fireEvent.click(screen.getByRole("button", { name: "Listening" }));
+    expect(screen.getByText("No Listening sections available")).toBeInTheDocument();
+    expect(screen.getByText("Published tests with Listening content will appear here.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Start focused practice" })).not.toBeInTheDocument();
   });
 });

@@ -57,11 +57,33 @@ it("keeps the full recording in full Listening review even with saved ranges", (
   expect(screen.getByLabelText("Review sections")).toBeInTheDocument();
 });
 
-it("does not fall back to the whole recording for a legacy focused section without a range", () => {
+it("offers the full recording for a focused section without a range", () => {
   const view = render(<ListeningReviewView data={{ ...data, parts: data.parts.map((part) => ({ ...part, audio_start_seconds: null, audio_end_seconds: null })) }} />);
-  expect(screen.getByRole("alert")).toHaveTextContent("No audio range is configured");
-  expect(view.container.querySelector("audio")).toBeNull();
+  expect(screen.getByText("Section audio range is not configured. Full recording is available.")).toHaveClass("notice");
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  const audio = view.container.querySelector("audio")!;
+  expect(audio).not.toBeNull();
+  Object.defineProperty(audio, "duration", { configurable: true, value: 1000 });
+  fireEvent.loadedMetadata(audio);
+  expect(audio.currentTime).toBe(0);
+  expect(screen.getByLabelText("Audio seek")).toHaveAttribute("max", "1000");
+  expect(screen.getByLabelText("Audio seek")).not.toBeDisabled();
+  expect(screen.getByLabelText("Playback speed")).not.toBeDisabled();
   expect(screen.getByText("80.0% accuracy")).toBeInTheDocument();
+  expect(screen.queryByText(/Band|Official band unavailable/)).not.toBeInTheDocument();
+  expect(screen.getByText("Question 11")).toBeInTheDocument();
+});
+
+it("reviews focused answers without audio and offers the external-recording notice", () => {
+  const view = render(<ListeningReviewView data={{ ...data, audio_asset: null }} />);
+  expect(view.container.querySelector("audio")).toBeNull();
+  expect(screen.queryByLabelText("Listening audio player")).not.toBeInTheDocument();
+  expect(screen.getByText("No recording is attached. You can continue with the questions and use an external recording if needed.")).toHaveClass("notice");
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  expect(screen.getByText("8 / 10")).toBeInTheDocument();
+  expect(screen.getByText("80.0% accuracy")).toBeInTheDocument();
+  expect(screen.queryByText(/Band|Official band unavailable/)).not.toBeInTheDocument();
+  expect(screen.getByText("Question 11")).toBeInTheDocument();
 });
 
 it.each(["COUNTDOWN", "COUNT_UP"] as const)("retains focused Listening paused %s context and resume", async (mode) => {

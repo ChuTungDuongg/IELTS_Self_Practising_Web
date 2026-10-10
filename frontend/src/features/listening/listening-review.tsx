@@ -49,7 +49,10 @@ export function ListeningReviewView({ data }: { data: ReviewData }) {
         ))}
       </div> : null}
 
-      {focused && !playbackClip ? <p role="alert" className="notice">No audio range is configured for this focused section.</p> : data.audio_asset ? <ListeningAudioPlayer src={assetContentUrl(data.audio_asset)} clip={playbackClip} /> : null}
+      {data.audio_asset ? <>
+        <ListeningAudioPlayer src={assetContentUrl(data.audio_asset)} clip={playbackClip} />
+        {focused && !playbackClip ? <p className="notice">Section audio range is not configured. Full recording is available.</p> : null}
+      </> : focused ? <p className="notice">No recording is attached. You can continue with the questions and use an external recording if needed.</p> : null}
 
       <section className="review-surface">
         <p className="exam-passage-kicker">Section {part.order_index + 1}</p>

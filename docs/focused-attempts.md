@@ -8,8 +8,13 @@ the user-facing flow with Listening sections and shared-recording audio ranges.
 ## Phase 2 — Reading and Writing
 
 `/practice` (sidebar: **Skill practice**) uses the existing authenticated workspace
-and published-version APIs. It lists available, non-archived frozen tests, grouped
-by test/version, with Reading, Listening and Writing tabs. Test Library remains
+and published-version APIs. It lists units from available, non-archived frozen
+tests in one compact grid, with exact test/version provenance on every card.
+An internal filter panel selects Reading, Listening or Writing and derives
+Passage/Section/Task filters from the published units. Client-side search matches
+test titles, unit titles and Writing prompt excerpts within those filters.
+The panel sits beside results on desktop and above them on smaller screens;
+cards adapt to the available width. Thumbnails are deferred. Test Library remains
 the place for full skills and Full Mock.
 
 Public VersionDetail summaries now include Reading passage IDs and Writing task
@@ -67,20 +72,26 @@ still import. Publishing full Listening does not require section ranges.
 
 Public version summaries expose section UUIDs, start/end times, actual question
 counts and a module `has_audio` boolean, without storage paths or answer keys.
-Skill Practice keeps unavailable section cards visible with a reason and disables
-their start controls. The backend independently rejects a focused start without
-audio or a complete range with `FOCUSED_LISTENING_AUDIO_UNAVAILABLE`, after proving
-the unit belongs to the exact published module/version. Full Listening and Full
-Mock are exempt from that eligibility requirement.
+Skill Practice allows focused section starts regardless of recording or range
+availability. The backend proves the unit belongs to the exact published
+module/version and validates the normal attempt scope and timer rules; audio is
+an optional enhancement, not a focused-start prerequisite.
 
 Focused Listening starts one LISTENING_PART via the existing attempt API with
 10 / 15 / 20 minutes or count-up (default: 10), then opens `/attempt/{id}`. Its
-runner and review receive only the selected section. Playback uses absolute source
-positions but displays a section-relative 00:00–clip-length timeline; seeking and
+runner and review receive only the selected section. With a configured range,
+playback uses absolute source positions but displays a section-relative
+00:00–clip-length timeline; seeking and
 skip controls stay within the range, playback pauses at its end, and Play replays
 from its start. Source/clip changes stop the previous playback without autoplay.
 Invalid or out-of-duration ranges produce an actionable error, not a shortened
 successful clip. Existing seeking/speed restrictions still apply.
+
+Without a section range, focused runner/review offer the full recording with the
+notice: "Section audio range is not configured. Full recording is available."
+Without a recording, they render no player and show: "No recording is attached.
+You can continue with the questions and use an external recording if needed."
+Questions and the normal attempt lifecycle remain available in both cases.
 
 Full standalone Listening, full Listening review, and Full Mock ignore section
 ranges and continue using the entire recording; Full Mock seeking stays locked.
