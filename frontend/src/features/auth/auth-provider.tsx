@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { useRouter } from "next/navigation";
 import { getCurrentUser, logout as logoutRequest, type AuthUser } from "@/lib/api/auth";
 import { ApiError } from "@/lib/api/client";
+import { useTranslation } from "@/lib/i18n/locale-provider";
 
 type AuthContextValue = {
   user: AuthUser | null;
@@ -21,15 +22,17 @@ const AuthContext = createContext<AuthContextValue>({
   logout: async () => undefined,
 });
 
-function sessionErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "The session could not be checked.";
+function sessionErrorMessage(error: unknown): { raw: string } | { fallback: true } {
+  return error instanceof Error ? { raw: error.message } : { fallback: true };
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
+  const { t } = useTranslation();
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
-  const [sessionError, setSessionError] = useState<string | null>(null);
+  const [sessionFailure, setSessionError] = useState<ReturnType<typeof sessionErrorMessage> | null>(null);
+  const sessionError = sessionFailure ? "raw" in sessionFailure ? sessionFailure.raw : t("auth.sessionCheckFailed") : null;
   const sessionVersion = useRef(0);
 
   useEffect(() => {

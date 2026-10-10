@@ -1,4 +1,12 @@
 export const en = {
+  "common.working": "Working…",
+  "shell.roleUser": "User",
+  "shell.roleAdmin": "Admin",
+  "shell.logoutTitle": "Log out?",
+  "shell.logoutDescription": "Are you sure you want to log out of your account?",
+  "shell.logoutConfirm": "Log out",
+  "shell.skipNavigation": "Skip navigation",
+  "auth.sessionCheckFailed": "The session could not be checked.",
   "common.back": "Back",
   "common.cancel": "Cancel",
   "common.continue": "Continue",

@@ -5,10 +5,10 @@ export function PageHeading({
   description,
   action,
 }: {
-  eyebrow?: string;
+  eyebrow?: React.ReactNode;
   eyebrowClassName?: string;
-  title: string;
-  description?: string;
+  title: React.ReactNode;
+  description?: React.ReactNode;
   action?: React.ReactNode;
 }) {
   return (

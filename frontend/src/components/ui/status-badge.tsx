@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 const styles: Record<string, string> = {
   DRAFT: "status-draft",
   PUBLISHED: "status-published",
@@ -10,13 +12,13 @@ const styles: Record<string, string> = {
   ABANDONED: "status-archived",
 };
 
-export function StatusBadge({ status }: { status: string }) {
+export function StatusBadge({ status, label }: { status: string; label?: ReactNode }) {
   return (
     <span
       className={`status-badge ${styles[status] ?? styles.ARCHIVED}`}
     >
       <span className="status-dot" aria-hidden="true" />
-      {status.replaceAll("_", " ")}
+      {label ?? status.replaceAll("_", " ")}
     </span>
   );
 }

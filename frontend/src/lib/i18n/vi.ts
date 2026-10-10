@@ -1,6 +1,14 @@
 import type { TranslationDictionary } from "./types";
 
 export const vi = {
+  "common.working": "Đang xử lý…",
+  "shell.roleUser": "Người dùng",
+  "shell.roleAdmin": "Quản trị viên",
+  "shell.logoutTitle": "Đăng xuất?",
+  "shell.logoutDescription": "Bạn có chắc muốn đăng xuất khỏi tài khoản?",
+  "shell.logoutConfirm": "Đăng xuất",
+  "shell.skipNavigation": "Bỏ qua điều hướng",
+  "auth.sessionCheckFailed": "Không thể kiểm tra phiên đăng nhập.",
   "common.back": "Quay lại",
   "common.cancel": "Hủy",
   "common.continue": "Tiếp tục",

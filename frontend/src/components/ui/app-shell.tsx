@@ -4,6 +4,7 @@ import type { ReactElement, ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { GlobalHeader } from "./global-header";
 import { AppFooter } from "./app-footer";
+import { useTranslation } from "@/lib/i18n/locale-provider";
 
 function isBuilderPreview(pathname: string): boolean {
   return /^\/admin\/tests\/[^/]+\/versions\/[^/]+\/preview\/?$/.test(pathname);
@@ -28,12 +29,14 @@ function contentWidth(pathname: string): "standard" | "wide" {
 
 export function AppShell({ children, currentYear }: { children: ReactNode; currentYear: number }): ReactElement {
   const pathname = usePathname() ?? "/";
+  const { t } = useTranslation();
   if (pathname.startsWith("/attempt/")) {
     return <main className="exam-shell">{children}</main>;
   }
   return <div className="app-shell">
+    <a className="sr-only focus:not-sr-only" href="#main-content">{t("shell.skipNavigation")}</a>
     <GlobalHeader pathname={pathname} />
-    <main className={`app-content app-content-${contentWidth(pathname)}`}>{children}</main>
+    <main id="main-content" className={`app-content app-content-${contentWidth(pathname)}`}>{children}</main>
     {!isBuilderPreview(pathname) ? <AppFooter year={currentYear} /> : null}
   </div>;
 }

@@ -1,14 +1,15 @@
 "use client";
 
 import { useEffect, useId, useRef } from "react";
+import { useTranslation } from "@/lib/i18n/locale-provider";
 
 export function ConfirmDialog({
   open,
   title,
   description,
   confirmLabel,
-  cancelLabel = "Cancel",
-  pendingLabel = "Working…",
+  cancelLabel,
+  pendingLabel,
   pending,
   errorMessage,
   onCancel,
@@ -25,6 +26,7 @@ export function ConfirmDialog({
   onCancel: () => void;
   onConfirm: () => void;
 }) {
+  const { t } = useTranslation();
   const titleId = useId();
   const descriptionId = useId();
   const panel = useRef<HTMLDivElement>(null);
@@ -95,7 +97,7 @@ export function ConfirmDialog({
             onClick={onCancel}
             className="btn btn-secondary"
           >
-            {cancelLabel}
+            {cancelLabel ?? t("common.cancel")}
           </button>
           <button
             type="button"
@@ -103,7 +105,7 @@ export function ConfirmDialog({
             onClick={onConfirm}
             className="btn btn-danger"
           >
-            {pending ? pendingLabel : confirmLabel}
+            {pending ? pendingLabel ?? t("common.working") : confirmLabel}
           </button>
         </div>
       </div>

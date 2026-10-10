@@ -58,7 +58,7 @@ function HeaderActions({ loggingOut, onLogout }: { loggingOut: boolean; onLogout
     <LocaleSwitcher />
     <ThemeToggle />
     {sessionError ? <p role="alert" className="notice">{sessionError}</p> : null}
-    {!loading && user ? <><Link href="/profile" prefetch={false} className="auth-user-label"><span className="auth-user-name">{user.display_name}</span><small>{user.role}</small></Link><button type="button" className="btn btn-ghost" disabled={loggingOut} onClick={onLogout}>{t("shell.logout")}</button></> : !loading && !sessionError ? <><Link href="/login" prefetch={false} className="btn btn-ghost">{t("shell.login")}</Link><Link href="/register" prefetch={false} className="btn btn-primary">{t("shell.register")}</Link></> : null}
+    {!loading && user ? <><Link href="/profile" prefetch={false} className="auth-user-label"><span className="auth-user-name">{user.display_name}</span><small>{t(user.role === "ADMIN" ? "shell.roleAdmin" : "shell.roleUser")}</small></Link><button type="button" className="btn btn-ghost" disabled={loggingOut} onClick={onLogout}>{t("shell.logout")}</button></> : !loading && !sessionError ? <><Link href="/login" prefetch={false} className="btn btn-ghost">{t("shell.login")}</Link><Link href="/register" prefetch={false} className="btn btn-primary">{t("shell.register")}</Link></> : null}
   </div>;
 }
 
@@ -89,6 +89,6 @@ export function GlobalHeader({ pathname }: { pathname: string }): ReactElement {
         <HeaderActions loggingOut={loggingOut} onLogout={() => setConfirmingLogout(true)} />
       </div>
     </header>
-    <ConfirmDialog open={confirmingLogout && user !== null} title="Log out?" description="Are you sure you want to log out of your account?" confirmLabel="Log out" pending={loggingOut} onCancel={() => setConfirmingLogout(false)} onConfirm={() => void confirmLogout()} />
+    <ConfirmDialog open={confirmingLogout && user !== null} title={t("shell.logoutTitle")} description={t("shell.logoutDescription")} confirmLabel={t("shell.logoutConfirm")} pending={loggingOut} onCancel={() => setConfirmingLogout(false)} onConfirm={() => void confirmLogout()} />
   </>;
 }
