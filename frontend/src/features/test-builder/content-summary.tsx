@@ -51,7 +51,7 @@ export function ContentSummary({ units }: { units: SummaryUnit[] }) {
   if (!units.length) return <p className="mt-4 text-sm text-[var(--muted)]">No content added yet.</p>;
   return <div className="mt-4 space-y-3">
     {units.map((unit) => <div key={unit.heading} className="border-t border-[var(--border)] pt-3">
-      <p className="text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">{unit.heading}</p>
+      <p className="text-sm font-medium text-[var(--muted)]">{unit.heading}</p>
       {unit.title ? <p className="mt-1 text-sm font-semibold">{unit.title}</p> : null}
       {unit.questionTypes ? <div className="mt-2 flex flex-wrap gap-1.5">{unit.questionTypes.map((type) => <span key={type} className="rounded-full border border-[var(--border)] px-2 py-0.5 text-xs">{questionTypeLabel(type)}</span>)}</div> : null}
       {unit.taskType !== undefined ? <span className="mt-2 inline-block rounded-full border border-[var(--border)] px-2 py-0.5 text-xs">{writingTaskTypeLabel(unit.taskType)}</span> : null}
