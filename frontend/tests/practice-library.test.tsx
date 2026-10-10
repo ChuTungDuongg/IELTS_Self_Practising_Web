@@ -1,4 +1,5 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
+import { renderWithLocale } from "./locale-test-utils";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import LibraryPage from "@/app/library/page";
 import TestVersionLibraryPage from "@/app/library/[versionId]/page";
@@ -29,6 +30,32 @@ const detail: VersionDetail = {
 };
 
 describe("Practice library", () => {
+  it("translates the application fallback only when the authored description is null", async () => {
+    window.localStorage.clear();
+    vi.mocked(getTests).mockResolvedValue([{ ...publishedTest, description: null }]);
+    renderWithLocale(await LibraryPage());
+    const card = screen.getByRole("article");
+    fireEvent.click(screen.getByText("Switch to Vietnamese"));
+    expect(within(card).getByText("Đề luyện IELTS đã xuất bản.")).toBeInTheDocument();
+    expect(getTests).toHaveBeenCalledOnce(); expect(getVersion).toHaveBeenCalledOnce();
+  });
+  it("translates list and detail readiness while retaining authored data and server calls", async () => {
+    window.localStorage.clear();
+    const before = JSON.stringify({ publishedTest, detail });
+    const list = renderWithLocale(await LibraryPage());
+    fireEvent.click(screen.getByText("Switch to Vietnamese"));
+    expect(screen.getByRole("link", { name: "Mở đề" })).toHaveAttribute("href", `/library/${versionId}`);
+    expect(screen.getByText(publishedTest.description!)).toBeInTheDocument();
+    expect(getTests).toHaveBeenCalledOnce(); expect(getVersion).toHaveBeenCalledOnce();
+    list.unmount(); window.localStorage.clear();
+    vi.mocked(getVersion).mockResolvedValue({ ...detail, modules: detail.modules.filter((module) => module.module_type !== "READING") });
+    renderWithLocale(await TestVersionLibraryPage({ params: Promise.resolve({ versionId }) }));
+    fireEvent.click(screen.getByText("Switch to Vietnamese"));
+    expect(screen.getByText("Không thể làm bài thi thử: Thiếu mô-đun Đọc.")).toBeInTheDocument();
+    expect(screen.getByText("Describe fictional charts.")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: publishedTest.title })).toBeInTheDocument();
+    expect(JSON.stringify({ publishedTest, detail })).toBe(before); expect(getTest).toHaveBeenCalledOnce();
+  });
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(getTests).mockResolvedValue([publishedTest]);

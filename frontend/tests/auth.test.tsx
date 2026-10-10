@@ -39,6 +39,19 @@ vi.mock("next/link", () => ({
 }));
 
 describe("authentication UI", () => {
+  it.each(["login", "register"] as const)("localizes %s form chrome while preserving entered fields and auth identity", async (mode) => {
+    window.localStorage.clear();
+    vi.mocked(getCurrentUser).mockRejectedValue(new ApiError("AUTHENTICATION_REQUIRED", "Sign in", 401));
+    renderWithLocale(<AuthProvider><AuthForm mode={mode} /></AuthProvider>);
+    const email = await screen.findByLabelText("Email"); const password = screen.getByLabelText("Password");
+    fireEvent.change(email, { target: { value: "learner@example.com" } }); fireEvent.change(password, { target: { value: "draft-password" } });
+    fireEvent.click(screen.getByText("Switch to Vietnamese"));
+    expect(screen.getByLabelText("Email")).toBe(email); expect(screen.getByLabelText("Mật khẩu")).toBe(password);
+    expect(email).toHaveValue("learner@example.com"); expect(password).toHaveValue("draft-password");
+    expect(screen.getByRole("heading", { name: mode === "login" ? "Chào mừng trở lại" : "Tạo tài khoản của bạn" })).toBeInTheDocument();
+    expect(getCurrentUser).toHaveBeenCalledOnce(); expect(login).not.toHaveBeenCalled(); expect(register).not.toHaveBeenCalled();
+    expect(navigation.documentReplace).not.toHaveBeenCalled();
+  });
   beforeEach(() => {
     vi.resetAllMocks();
     vi.unstubAllGlobals();

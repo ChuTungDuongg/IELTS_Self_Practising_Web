@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
+import type { TranslationKey } from "@/lib/i18n/types";
+import { useTranslation } from "@/lib/i18n/locale-provider";
 import { useRouter } from "next/navigation";
 import { PageHeading } from "@/components/ui/page-heading";
 import { useAuth } from "@/features/auth/auth-provider";
@@ -22,17 +24,19 @@ function valuesFromProfile(profile: Profile): FormValues {
 }
 
 export default function ProfilePage() {
+  const { t } = useTranslation();
   const { user, loading, sessionError, confirmSession } = useAuth();
+  const userId = user?.id;
   const router = useRouter();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [values, setValues] = useState<FormValues | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | { message: TranslationKey } | null>(null);
   const [success, setSuccess] = useState(false);
   const [saving, setSaving] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [passwordError, setPasswordError] = useState<string | { message: TranslationKey } | null>(null);
   const [passwordSuccess, setPasswordSuccess] = useState(false);
   const [changingPassword, setChangingPassword] = useState(false);
 
@@ -41,13 +45,13 @@ export default function ProfilePage() {
   }, [loading, user, sessionError, router]);
 
   useEffect(() => {
-    if (!user) return;
+    if (!userId) return;
     let active = true;
     getProfile().then((data) => {
       if (active) { setProfile(data); setValues(valuesFromProfile(data)); setError(null); }
-    }).catch((cause) => { if (active) setError(cause instanceof Error ? cause.message : "Profile could not be loaded."); });
+    }).catch((cause) => { if (active) setError(cause instanceof Error ? cause.message : { message: "profile.loadFailed" }); });
     return () => { active = false; };
-  }, [user?.id]);
+  }, [userId]);
 
   function field(key: Editable, label: string, type = "text", maxLength?: number) {
     return <label className="field-label" key={key}>{label}<input className="field" type={type} maxLength={maxLength} step={type === "number" ? "0.5" : undefined} min={type === "number" ? "0" : undefined} max={type === "number" ? "9" : undefined} value={values?.[key] ?? ""} onChange={(event) => setValues((current) => current ? { ...current, [key]: event.target.value } : current)} /></label>;
@@ -72,7 +76,7 @@ export default function ProfilePage() {
       await confirmSession();
       setSuccess(true);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Profile could not be saved.");
+      setError(cause instanceof Error ? cause.message : { message: "profile.saveFailed" });
     } finally { setSaving(false); }
   }
 
@@ -80,11 +84,11 @@ export default function ProfilePage() {
     event.preventDefault();
     setPasswordError(null); setPasswordSuccess(false);
     if (newPassword !== confirmPassword) {
-      setPasswordError("New passwords do not match.");
+      setPasswordError({ message: "profile.mismatch" });
       return;
     }
     if (newPassword.length < 8 || newPassword.length > 256) {
-      setPasswordError("New password must be 8–256 characters.");
+      setPasswordError({ message: "profile.passwordLength" });
       return;
     }
     setChangingPassword(true);
@@ -94,56 +98,56 @@ export default function ProfilePage() {
       setCurrentPassword(""); setNewPassword(""); setConfirmPassword("");
       setPasswordSuccess(true);
     } catch (cause) {
-      setPasswordError(cause instanceof Error ? cause.message : "Password could not be changed.");
+      setPasswordError(cause instanceof Error ? cause.message : { message: "profile.passwordFailed" });
     } finally { setChangingPassword(false); }
   }
 
   if (sessionError) return <p className="notice" role="alert">{sessionError}</p>;
-  if (loading || !user || !profile || !values) return <p className="notice">{error ?? "Loading profile…"}</p>;
+  if (loading || !user || !profile || !values) return <p className="notice">{error ? typeof error === "string" ? error : t(error.message) : t("profile.loading")}</p>;
 
   return <>
-    <PageHeading eyebrow="Profile" title="Your account" description="Your personal details and IELTS goals are optional. Update them whenever you like." />
+    <PageHeading eyebrow={t("profile.profile")} title={t("profile.account")} description={t("profile.description")} />
     <form className="profile-form" onSubmit={(event) => void save(event)}>
-      <section className="surface-card profile-card"><h2 className="section-title">Account information</h2><div className="profile-grid">
-        <Detail label="Email" value={profile.email} /><Detail label="Role" value={profile.role} />
-        <Detail label="Account status" value={profile.is_active ? "Active" : "Inactive"} />
-        <Detail label="Member since" value={formatProjectDateTime(profile.created_at)} />
-        <Detail label="Last login" value={profile.last_login_at ? formatProjectDateTime(profile.last_login_at) : "Never"} />
+      <section className="surface-card profile-card"><h2 className="section-title">{t("profile.accountInformation")}</h2><div className="profile-grid">
+        <Detail label={t("profile.email")} value={profile.email} /><Detail label={t("profile.role")} value={t(profile.role === "ADMIN" ? "shell.roleAdmin" : "shell.roleUser")} />
+        <Detail label={t("profile.status")} value={profile.is_active ? t("profile.active") : t("profile.inactive")} />
+        <Detail label={t("profile.memberSince")} value={formatProjectDateTime(profile.created_at)} />
+        <Detail label={t("profile.lastLogin")} value={profile.last_login_at ? formatProjectDateTime(profile.last_login_at) : t("profile.never")} />
       </div></section>
-      <section className="surface-card profile-card"><h2 className="section-title">Personal information</h2><div className="profile-grid">
-        {field("display_name", "Display name", "text", 160)}
-        {field("phone_number", "Phone", "tel", 32)}
-        {field("date_of_birth", "Date of birth", "date")}
-        {field("country", "Country", "text", 120)}
-        {field("city", "City", "text", 120)}
-        {field("occupation", "Occupation", "text", 160)}
-        {field("institution", "Institution", "text", 200)}
+      <section className="surface-card profile-card"><h2 className="section-title">{t("profile.personal")}</h2><div className="profile-grid">
+        {field("display_name", t("profile.displayName"), "text", 160)}
+        {field("phone_number", t("profile.phone"), "tel", 32)}
+        {field("date_of_birth", t("profile.birth"), "date")}
+        {field("country", t("profile.country"), "text", 120)}
+        {field("city", t("profile.city"), "text", 120)}
+        {field("occupation", t("profile.occupation"), "text", 160)}
+        {field("institution", t("profile.institution"), "text", 200)}
       </div></section>
-      <section className="surface-card profile-card"><h2 className="section-title">IELTS goals</h2>
-        <div className="profile-overall-target"><div><span>Overall target band</span><strong>{profile.target_band === null ? "—" : profile.target_band.toFixed(1)}</strong></div><p>Calculated from all four skill targets. Save changes to update Overall.</p></div>
+      <section className="surface-card profile-card"><h2 className="section-title">{t("profile.goals")}</h2>
+        <div className="profile-overall-target"><div><span>{t("profile.overall")}</span><strong>{profile.target_band === null ? "—" : profile.target_band.toFixed(1)}</strong></div><p>{t("profile.overallHelp")}</p></div>
         <div className="profile-grid profile-goals-grid">
-          {field("target_listening_band", "Listening", "number")}
-          {field("target_reading_band", "Reading", "number")}
-          {field("target_writing_band", "Writing", "number")}
-          {field("target_speaking_band", "Speaking", "number")}
-          {field("target_test_date", "Target test date", "date")}
+          {field("target_listening_band", t("profile.listening"), "number")}
+          {field("target_reading_band", t("profile.reading"), "number")}
+          {field("target_writing_band", t("profile.writing"), "number")}
+          {field("target_speaking_band", t("profile.speaking"), "number")}
+          {field("target_test_date", t("profile.targetDate"), "date")}
         </div></section>
-      <section className="surface-card profile-card"><h2 className="section-title">About</h2><label className="field-label">Bio<textarea className="textarea-field" maxLength={1000} value={values.bio} onChange={(event) => setValues({ ...values, bio: event.target.value })} /></label></section>
-      {error ? <p className="notice" role="alert">{error}</p> : null}
-      {success ? <p className="notice" role="status">Profile saved.</p> : null}
-      <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? "Saving…" : "Save changes"}</button>
+      <section className="surface-card profile-card"><h2 className="section-title">{t("profile.about")}</h2><label className="field-label">{t("profile.bio")}<textarea className="textarea-field" maxLength={1000} value={values.bio} onChange={(event) => setValues({ ...values, bio: event.target.value })} /></label></section>
+      {error ? <p className="notice" role="alert">{typeof error === "string" ? error : error ? t(error.message) : null}</p> : null}
+      {success ? <p className="notice" role="status">{t("profile.saved")}</p> : null}
+      <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? t("profile.saving") : t("profile.save")}</button>
     </form>
-    <section className="surface-card profile-card profile-security"><h2 className="section-title">Security</h2>
+    <section className="surface-card profile-card profile-security"><h2 className="section-title">{t("profile.security")}</h2>
       {profile.has_password ? <form className="profile-form" onSubmit={(event) => void savePassword(event)}>
         <div className="profile-grid">
-          <label className="field-label">Current password<input className="field" type="password" autoComplete="current-password" required value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} /></label>
-          <label className="field-label">New password<input className="field" type="password" autoComplete="new-password" minLength={8} maxLength={256} required value={newPassword} onChange={(event) => setNewPassword(event.target.value)} /></label>
-          <label className="field-label">Confirm new password<input className="field" type="password" autoComplete="new-password" minLength={8} maxLength={256} required value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} /></label>
+          <label className="field-label">{t("profile.currentPassword")}<input className="field" type="password" autoComplete="current-password" required value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} /></label>
+          <label className="field-label">{t("profile.newPassword")}<input className="field" type="password" autoComplete="new-password" minLength={8} maxLength={256} required value={newPassword} onChange={(event) => setNewPassword(event.target.value)} /></label>
+          <label className="field-label">{t("profile.confirmPassword")}<input className="field" type="password" autoComplete="new-password" minLength={8} maxLength={256} required value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} /></label>
         </div>
-        {passwordError ? <p className="notice" role="alert">{passwordError}</p> : null}
-        {passwordSuccess ? <p className="notice" role="status">Password changed successfully.</p> : null}
-        <button type="submit" className="btn btn-primary" disabled={changingPassword}>{changingPassword ? "Changing…" : "Change password"}</button>
-      </form> : <p className="notice">This account signs in through Google and does not currently use a local password.</p>}
+        {passwordError ? <p className="notice" role="alert">{typeof passwordError === "string" ? passwordError : passwordError ? t(passwordError.message) : null}</p> : null}
+        {passwordSuccess ? <p className="notice" role="status">{t("profile.passwordChanged")}</p> : null}
+        <button type="submit" className="btn btn-primary" disabled={changingPassword}>{changingPassword ? t("profile.changing") : t("profile.changePassword")}</button>
+      </form> : <p className="notice">{t("profile.googleOnly")}</p>}
     </section>
   </>;
 }

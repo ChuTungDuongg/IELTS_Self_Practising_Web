@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import type { TranslationKey } from "@/lib/i18n/types";
+import { useTranslation } from "@/lib/i18n/locale-provider";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -14,12 +16,14 @@ import { ApiError } from "@/lib/api/client";
 import { deleteStandaloneTestHistory, type HistoryGroup, type HistoryItem, type HistoryResponse, type MockHistoryGroup } from "@/lib/api/history";
 import { deleteTestSession } from "@/lib/api/test-sessions";
 import { formatProjectDateTime } from "@/lib/date-time";
-import { accuracyLabel } from "@/features/exam/focused-attempt";
+import { moduleTranslationKeys, statusTranslationKeys } from "@/lib/i18n/translations";
+import { accuracyLabel, focusedUnitLabel } from "@/features/exam/focused-attempt";
 
 type HistoryMode = "skill" | "focused" | "test" | "mock";
 
 export function AttemptHistoryList({ initialHistory }: { initialHistory: HistoryResponse }) {
   const router = useRouter();
+  const { t } = useTranslation();
   const [mode, setMode] = useState<HistoryMode>("skill");
   const [deletedAttemptIds, setDeletedAttemptIds] = useState<Set<string>>(() => new Set());
   const [deletedSessionIds, setDeletedSessionIds] = useState<Set<string>>(() => new Set());
@@ -28,7 +32,7 @@ export function AttemptHistoryList({ initialHistory }: { initialHistory: History
   const [selectedSession, setSelectedSession] = useState<MockHistoryGroup | null>(null);
   const [selectedGroup, setSelectedGroup] = useState<HistoryGroup | null>(null);
   const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string>();
+  const [error, setError] = useState<string | { message: TranslationKey }>();
 
   const deletedVersionIds = hiddenVersions?.source === initialHistory ? hiddenVersions.ids : new Set<string>();
   const items = initialHistory.items.filter((item) =>
@@ -95,7 +99,7 @@ export function AttemptHistoryList({ initialHistory }: { initialHistory: History
       router.refresh();
     } catch (caught) {
       setError(
-        caught instanceof ApiError ? caught.message : "The history entry could not be deleted. Please try again.",
+        caught instanceof ApiError ? caught.message : { message: "history.deleteFailed" },
       );
     } finally {
       setPending(false);
@@ -104,7 +108,7 @@ export function AttemptHistoryList({ initialHistory }: { initialHistory: History
 
   return (
     <>
-      <div className="history-tabs" role="tablist" aria-label="History view">
+      <div className="history-tabs" role="tablist" aria-label={t("history.view")}>
         {(["skill", "focused", "test", "mock"] as const).map((view) => (
           <button
             key={view}
@@ -116,7 +120,7 @@ export function AttemptHistoryList({ initialHistory }: { initialHistory: History
             className={mode === view ? "btn btn-primary" : "btn btn-secondary"}
             onClick={() => setMode(view)}
           >
-            {view === "skill" ? "By skill" : view === "focused" ? "Focused practice" : view === "test" ? "By test" : "By mock test"}
+            {view === "skill" ? t("history.bySkill") : view === "focused" ? t("history.focused") : view === "test" ? t("history.byTest") : t("history.byMock")}
           </button>
         ))}
       </div>
@@ -132,8 +136,8 @@ export function AttemptHistoryList({ initialHistory }: { initialHistory: History
           ) : (
             <EmptyState
               icon={<HistoryIcon className="size-6" />}
-              title="No practice attempts yet"
-              description="Start a published Reading, Listening or Writing test and your saved progress will appear here."
+              title={t("history.emptySkill")}
+              description={t("history.emptySkillDescription")}
             />
           )}
         </div>
@@ -141,7 +145,7 @@ export function AttemptHistoryList({ initialHistory }: { initialHistory: History
         <div id="history-by-focused" role="tabpanel" aria-labelledby="history-tab-focused">
           {focusedItems.length ? <ul className="history-list">
             {focusedItems.map((item) => <HistoryRow key={item.attempt_id} item={item} pending={pending} onDelete={chooseAttempt} />)}
-          </ul> : <><EmptyState icon={<HistoryIcon className="size-6" />} title="No focused practice attempts yet" description="Practise a Reading passage or Writing task from Skill Practice and it will appear here." /><Link href="/practice" className="btn btn-primary m-4">Open Skill Practice</Link></>}
+          </ul> : <><EmptyState icon={<HistoryIcon className="size-6" />} title={t("history.emptyFocused")} description={t("history.emptyFocusedDescription")} /><Link href="/practice" className="btn btn-primary m-4">{t("history.openPractice")}</Link></>}
         </div>
       ) : mode === "test" ? (
         <div id="history-by-test" role="tabpanel" aria-labelledby="history-tab-test">
@@ -154,8 +158,8 @@ export function AttemptHistoryList({ initialHistory }: { initialHistory: History
           ) : (
             <EmptyState
               icon={<HistoryIcon className="size-6" />}
-              title="No standalone test history yet"
-              description="Complete Reading, Listening or Writing practice for a published test and results will be grouped here by exact test version."
+              title={t("history.emptyTest")}
+              description={t("history.emptyTestDescription")}
             />
           )}
         </div>
@@ -170,8 +174,8 @@ export function AttemptHistoryList({ initialHistory }: { initialHistory: History
           ) : (
             <EmptyState
               icon={<HistoryIcon className="size-6" />}
-              title="No Full Mock history yet"
-              description="Start a Full Mock and its session history will appear here."
+              title={t("history.emptyMock")}
+              description={t("history.emptyMockDescription")}
             />
           )}
         </div>
@@ -179,15 +183,15 @@ export function AttemptHistoryList({ initialHistory }: { initialHistory: History
 
       <ConfirmDialog
         open={selected !== null || selectedSession !== null || selectedGroup !== null}
-        title={selectedSession ? "Delete this Full Mock?" : selectedGroup ? "Delete this test history?" : "Delete this attempt?"}
+        title={selectedSession ? t("history.deleteMockTitle") : selectedGroup ? t("history.deleteGroupTitle") : t("history.deleteTitle")}
         description={selectedSession
-          ? "This permanently deletes this Full Mock session and its Listening, Reading and Writing attempts, including saved answers and review history. The published test itself will not be deleted."
+          ? t("history.mockDescription")
           : selectedGroup
-            ? `This will permanently delete all of your standalone Reading, Listening and Writing attempts for ${selectedGroup.test_title}, Version ${selectedGroup.version_number}. Full Mock sessions and the published test will not be deleted.`
-            : `${selected?.status === "IN_PROGRESS" || selected?.status === "PAUSED" ? "This attempt is not finalized. " : ""}This will permanently remove this attempt and its saved answers, highlights, flags and activity history. The test itself will not be deleted.`}
-        confirmLabel={selectedSession ? "Delete Full Mock" : selectedGroup ? "Delete history" : "Delete attempt"}
+            ? t("history.groupDescription", { title: selectedGroup.test_title, number: selectedGroup.version_number })
+            : `${selected?.status === "IN_PROGRESS" || selected?.status === "PAUSED" ? t("history.notFinalized") : ""}${t("history.attemptDescription")}`}
+        confirmLabel={selectedSession ? t("history.deleteMock") : selectedGroup ? t("history.deleteHistory") : t("history.deleteAttempt")}
         pending={pending}
-        errorMessage={error}
+        errorMessage={typeof error === "string" ? error : error ? t(error.message) : undefined}
         onCancel={cancelDelete}
         onConfirm={() => void confirmDelete()}
       />
@@ -205,8 +209,9 @@ function HistoryRow({
   onDelete: (item: HistoryItem) => void;
 }) {
   const router = useRouter();
+  const { t } = useTranslation();
   const [resuming, setResuming] = useState(false);
-  const [resumeError, setResumeError] = useState<string>();
+  const [resumeError, setResumeError] = useState<string | { message: TranslationKey }>();
 
   async function resume() {
     if (resuming) return;
@@ -216,7 +221,7 @@ function HistoryRow({
       await resumeAttempt(item.attempt_id);
       router.push(`/attempt/${item.attempt_id}`);
     } catch (caught) {
-      setResumeError(caught instanceof ApiError ? caught.message : "This attempt could not be resumed. Please try again.");
+      setResumeError(caught instanceof ApiError ? caught.message : { message: "history.resumeFailed" });
       setResuming(false);
     }
   }
@@ -225,84 +230,85 @@ function HistoryRow({
     <li className="history-row">
       <div className="history-record">
         <div className="history-record-topline">
-          <ModuleBadge module={item.module} />
-          {item.scope === "FOCUSED_UNIT" ? <span className="history-context-badge">{item.focused_unit?.label ?? "Focused practice"}</span> : null}
-          <span>Version {item.version_number}</span>
-          {item.test_session_id ? <span className="history-context-badge">Full Mock</span> : null}
+          <ModuleBadge module={item.module} label={t(moduleTranslationKeys[item.module])} />
+          {item.scope === "FOCUSED_UNIT" ? <span className="history-context-badge">{focusedUnitLabel({ scope: item.scope, focused_unit: item.focused_unit ? { ...item.focused_unit, title: null } : null }, t) ?? t("history.focused")}</span> : null}
+          <span>{t("common.versionNumber", { number: item.version_number })}</span>
+          {item.test_session_id ? <span className="history-context-badge">{t("history.fullMock")}</span> : null}
         </div>
         <p className="history-record-title">{item.test_title}</p>
         {item.scope === "FOCUSED_UNIT" && item.focused_unit?.title ? <p className="history-record-date">{item.focused_unit.title}</p> : null}
-        <p className="history-record-date">Started {formatProjectDateTime(item.started_at)}</p>
+        <p className="history-record-date">{t("history.started", { date: formatProjectDateTime(item.started_at) })}</p>
       </div>
       <div className="history-state">
-        <StatusBadge status={item.status} />
+        <StatusBadge status={item.status} label={t(statusTranslationKeys[item.status])} />
         <span className="history-duration">
           {item.status === "PAUSED" && item.timer_mode === "COUNTDOWN"
-            ? `Remaining: ${formatDuration(item.remaining_seconds ?? 0)}`
+            ? t("history.remaining", { time: formatDuration(item.remaining_seconds ?? 0) })
             : item.status === "PAUSED"
-              ? `Practice time: ${formatDuration(item.elapsed_seconds ?? 0)}`
-              : item.elapsed_seconds === null ? "Time in progress" : formatDuration(item.elapsed_seconds)}
+              ? t("history.practiceTime", { time: formatDuration(item.elapsed_seconds ?? 0) })
+              : item.elapsed_seconds === null ? t("history.timeProgress") : formatDuration(item.elapsed_seconds)}
         </span>
         <AttemptScore item={item} />
       </div>
       <div className="history-actions">
         {item.status === "PAUSED" ? (
           <button type="button" className="btn btn-primary" disabled={resuming} onClick={() => void resume()}>
-            {resuming ? "Resuming…" : "Resume"}
+            {resuming ? t("history.resumePending") : t("history.resume")}
           </button>
         ) : item.status !== "IN_PROGRESS" && item.review_available !== false ? (
           <Link href={`/review/${item.attempt_id}`} className="btn btn-primary">
-            Review
+            {t("common.review")}
           </Link>
         ) : item.status === "IN_PROGRESS" ? (
           <Link href={`/attempt/${item.attempt_id}`} className="btn btn-primary">
-            Continue
+            {t("common.continue")}
           </Link>
-        ) : item.test_session_id ? <Link href={`/test-session/${item.test_session_id}`} className="btn btn-secondary">Resume Full Mock</Link> : null}
+        ) : item.test_session_id ? <Link href={`/test-session/${item.test_session_id}`} className="btn btn-secondary">{t("history.resumeMock")}</Link> : null}
         {item.test_session_id ? null : <button
           type="button"
           disabled={pending}
-          aria-label={`Delete ${item.test_title}`}
+          aria-label={t("history.deleteNamed", { title: item.test_title })}
           onClick={() => onDelete(item)}
           className="btn btn-danger-ghost"
         >
-          Delete
+          {t("history.delete")}
         </button>}
-        {resumeError ? <span role="alert" className="history-action-error">{resumeError}</span> : null}
+        {resumeError ? <span role="alert" className="history-action-error">{typeof resumeError === "string" ? resumeError : resumeError ? t(resumeError.message) : undefined}</span> : null}
       </div>
     </li>
   );
 }
 
 function AttemptScore({ item }: { item: HistoryItem }) {
+  const { t } = useTranslation();
   if (item.status === "PAUSED") {
-    return <span className="history-score history-score-state" data-testid={`history-score-${item.attempt_id}`}>Paused</span>;
+    return <span className="history-score history-score-state" data-testid={`history-score-${item.attempt_id}`}>{t("history.paused")}</span>;
   }
   if (item.status === "IN_PROGRESS") {
-    return <span className="history-score history-score-state" data-testid={`history-score-${item.attempt_id}`}>In progress</span>;
+    return <span className="history-score history-score-state" data-testid={`history-score-${item.attempt_id}`}>{t("history.progress")}</span>;
   }
   if (item.scope === "FOCUSED_UNIT") {
     return <span className="history-score history-score-result" data-testid={`history-score-${item.attempt_id}`}>
-      {item.module === "WRITING" ? item.task_score == null ? "Not graded" : `Task score ${item.task_score.toFixed(1)}` : <>
-        <strong>{item.raw_score ?? "—"} / {item.max_score ?? "—"} correct</strong>
-        <small>{accuracyLabel(item.raw_score, item.max_score)}</small>
+      {item.module === "WRITING" ? item.task_score == null ? t("history.notGraded") : t("history.taskScore", { score: item.task_score.toFixed(1) }) : <>
+        <strong>{t("history.correct", { raw: item.raw_score ?? "—", max: item.max_score ?? "—" })}</strong>
+        <small>{accuracyLabel(item.raw_score, item.max_score, t)}</small>
       </>}
     </span>;
   }
   if (item.band_score === null) {
     return (
       <span className="history-score history-score-unavailable" data-testid={`history-score-${item.attempt_id}`}>
-        {item.module === "WRITING" ? "Not graded" : "Official band unavailable"}
-        {item.module !== "WRITING" && item.raw_score !== null && item.max_score !== null ? <small>{item.raw_score} / {item.max_score} correct</small> : null}
+        {item.module === "WRITING" ? t("history.notGraded") : t("history.officialUnavailable")}
+        {item.module !== "WRITING" && item.raw_score !== null && item.max_score !== null ? <small>{t("history.correct", { raw: item.raw_score, max: item.max_score })}</small> : null}
       </span>
     );
   }
 
   return (
     <span className="history-score history-score-result" data-testid={`history-score-${item.attempt_id}`}>
-      <span className="history-band-label">Band</span>
+      <span className="history-band-label">{t("history.band")}</span>
       <strong className="history-band-value">{item.band_score.toFixed(1)}</strong>
-      {item.module !== "WRITING" ? <small>{item.raw_score === null || item.max_score === null ? "Raw score unavailable" : `${item.raw_score} / ${item.max_score} correct`}</small> : null}
+      {item.module !== "WRITING" ? <small>{item.raw_score === null || item.max_score === null ? t("history.rawUnavailable") : t("history.correct", { raw: item.raw_score, max: item.max_score })}</small> : null}
     </span>
   );
 }
@@ -312,17 +318,18 @@ function HistoryGroupCard({ group, pending, onDelete }: {
   pending: boolean;
   onDelete: (group: HistoryGroup) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <li className="history-group-card">
       <div className="history-group-heading">
         <div>
           <p className="history-record-title">{group.test_title}</p>
-          <p className="history-record-date">Version {group.version_number}</p>
+          <p className="history-record-date">{t("common.versionNumber", { number: group.version_number })}</p>
         </div>
         <strong>
           {group.overall_band_score === null
-            ? "Overall band —"
-            : `Overall band ${group.overall_band_score.toFixed(1)}`}
+            ? t("history.overallEmpty")
+            : t("history.overall", { score: group.overall_band_score.toFixed(1) })}
         </strong>
       </div>
       <ul className="history-group-skills">
@@ -332,7 +339,7 @@ function HistoryGroupCard({ group, pending, onDelete }: {
       </ul>
       <div className="history-group-footer">
         <button type="button" className="btn btn-danger-ghost" disabled={pending} onClick={() => onDelete(group)}>
-          Delete test history
+          {t("history.deleteGroup")}
         </button>
       </div>
     </li>
@@ -340,16 +347,17 @@ function HistoryGroupCard({ group, pending, onDelete }: {
 }
 
 function HistoryGroupSkill({ label, item }: { label: string; item: HistoryItem | null }) {
+  const { t } = useTranslation();
   return (
     <li className="history-group-skill">
-      <span>{label}</span>
-      <span>{!item ? "—" : item.band_score === null ? label === "Writing" ? "Not graded" : "—" : item.band_score.toFixed(1)}</span>
+      <span>{t(label === "Reading" ? "common.reading" : label === "Listening" ? "common.listening" : "common.writing")}</span>
+      <span>{!item ? "—" : item.band_score === null ? label === "Writing" ? t("history.notGraded") : "—" : item.band_score.toFixed(1)}</span>
       {item && item.review_available !== false ? (
         <Link href={`/review/${item.attempt_id}`} className="btn btn-secondary">
-          Review {label}
+          {t("history.reviewSkill", { skill: t(label === "Reading" ? "common.reading" : label === "Listening" ? "common.listening" : "common.writing") })}
         </Link>
       ) : (
-        <span>No finalized attempt</span>
+        <span>{t("history.noFinal")}</span>
       )}
     </li>
   );
@@ -360,18 +368,19 @@ function MockSessionCard({ session, pending, onDelete }: {
   pending: boolean;
   onDelete: (session: MockHistoryGroup) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <li className="history-group-card history-session-card">
       <div className="history-group-heading">
         <div>
-          <p className="history-session-kicker">Full Mock</p>
+          <p className="history-session-kicker">{t("history.fullMock")}</p>
           <p className="history-record-title">{session.test_title}</p>
-          <p className="history-record-date">Version {session.version_number}</p>
+          <p className="history-record-date">{t("common.versionNumber", { number: session.version_number })}</p>
         </div>
         <strong>
           {session.status === "COMPLETED"
-            ? `Overall band ${session.overall_band_score?.toFixed(1) ?? "—"}`
-            : session.status === "ABANDONED" ? "Abandoned" : "In progress"}
+            ? t("history.overall", { score: session.overall_band_score?.toFixed(1) ?? "—" })
+            : session.status === "ABANDONED" ? t("common.abandoned") : t("common.inProgress")}
         </strong>
       </div>
       <ul className="history-group-skills">
@@ -382,11 +391,11 @@ function MockSessionCard({ session, pending, onDelete }: {
       <div className="history-group-footer">
         {session.status === "IN_PROGRESS" ? (
           <Link href={`/test-session/${session.session_id}`} className="btn btn-primary">
-            Resume Full Mock
+            {t("history.resumeMock")}
           </Link>
         ) : null}
         <button type="button" className="btn btn-danger-ghost" disabled={pending} onClick={() => onDelete(session)}>
-          Delete Full Mock
+          {t("history.deleteMock")}
         </button>
       </div>
     </li>

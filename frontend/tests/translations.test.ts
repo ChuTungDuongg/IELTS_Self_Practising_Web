@@ -3,7 +3,7 @@ import { createElement } from "react";
 import { describe, expect, it } from "vitest";
 import { en } from "@/lib/i18n/en";
 import { vi } from "@/lib/i18n/vi";
-import { translate, moduleTranslationKeys, statusTranslationKeys } from "@/lib/i18n/translations";
+import { translate, moduleTranslationKeys, statusTranslationKeys, questionTypeTranslationKeys, writingTaskTranslationKeys } from "@/lib/i18n/translations";
 import type { TranslationDictionary } from "@/lib/i18n/types";
 
 describe("typed translations", () => {
@@ -13,9 +13,15 @@ describe("typed translations", () => {
     expect(Object.values(vi).every(Boolean)).toBe(true);
     expect(translate("en", "runner.pause")).toBe("Pause");
     expect(translate("vi", "runner.pause")).toBe("Tạm dừng");
-    for (const key of [...Object.values(moduleTranslationKeys), ...Object.values(statusTranslationKeys)]) {
+    for (const key of [...Object.values(moduleTranslationKeys), ...Object.values(statusTranslationKeys), ...Object.values(questionTypeTranslationKeys), ...Object.values(writingTaskTranslationKeys)]) {
       expect(en[key]).toBeTruthy();
       expect(vi[key]).toBeTruthy();
+    }
+  });
+
+  it("keeps named placeholders paired across all workspace dictionaries", () => {
+    for (const key of Object.keys(en) as Array<keyof typeof en>) {
+      expect(vi[key].match(/\{[a-zA-Z][a-zA-Z0-9_]*\}/g)?.sort() ?? []).toEqual(en[key].match(/\{[a-zA-Z][a-zA-Z0-9_]*\}/g)?.sort() ?? []);
     }
   });
 

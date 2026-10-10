@@ -1,3 +1,4 @@
+import { UiText } from "@/lib/i18n/locale-provider";
 import { PageHeading } from "@/components/ui/page-heading";
 import { SkillPractice } from "@/features/practice/skill-practice";
 import { getTests, getVersion } from "@/lib/api/tests";
@@ -16,7 +17,7 @@ export default async function PracticePage() {
   const available = details.filter((detail): detail is VersionDetail => detail !== null && detail.status === "PUBLISHED");
 
   return <>
-    <PageHeading eyebrow="Practice" title="Skill Practice" description="Practise one Reading passage, Listening section, or Writing task at a time." />
+    <PageHeading eyebrow={<UiText message="pages.practice" />} title={<UiText message="pages.skillPractice" />} description={<UiText message="pages.skillPracticeDescription" />} />
     <SkillPractice versions={available} />
   </>;
 }

@@ -7,6 +7,7 @@ import { getTests, getVersion } from "@/lib/api/tests";
 import { startAttempt } from "@/lib/api/attempts";
 import { ApiError } from "@/lib/api/client";
 import { versionDetailSchema, type TestSummary, type VersionDetail } from "@/lib/api/schema";
+import { renderWithLocale } from "./locale-test-utils";
 
 const push = vi.fn();
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push }), usePathname: () => "/practice" }));
@@ -46,6 +47,47 @@ const test: TestSummary = {
 };
 
 describe("Skill practice", () => {
+  it("keeps focused start pending and its single request guard through locale changes", async () => {
+    window.localStorage.clear();
+    let finish!: (result: Awaited<ReturnType<typeof startAttempt>>) => void;
+    vi.mocked(startAttempt).mockReturnValue(new Promise((resolve) => { finish = resolve; }));
+    renderWithLocale(<SkillPractice versions={[version]} />);
+    const card = screen.getAllByRole("article")[0]; const timer = within(card).getByRole("combobox");
+    fireEvent.change(timer, { target: { value: "1500" } });
+    fireEvent.click(within(card).getByRole("button", { name: "Start focused practice" }));
+    const pending = within(card).getByRole("button", { name: "Starting…" });
+    fireEvent.click(screen.getByText("Switch to Vietnamese"));
+    expect(within(card).getByRole("button", { name: "Đang bắt đầu…" })).toBe(pending);
+    expect(pending).toBeDisabled(); expect(timer).toHaveValue("1500"); expect(timer).toBeDisabled();
+    fireEvent.click(pending);
+    expect(startAttempt).toHaveBeenCalledExactlyOnceWith({ test_version_id: id(2), module: "READING", scope: "FOCUSED_UNIT", focused_unit: { kind: "READING_PASSAGE", id: id(4) }, timer: { mode: "COUNTDOWN", duration_seconds: 1500 } });
+    await act(async () => { finish({ attempt_id: id(99) } as Awaited<ReturnType<typeof startAttempt>>); });
+  });
+  it("workspace locale changes copy without changing selected state or focused payload", async () => {
+    window.localStorage.clear();
+    const fixture = structuredClone(version);
+    fixture.modules[2].listening_sections![0].title = "Section 2 · Đề <img>";
+    const before = JSON.stringify(fixture);
+    renderWithLocale(<SkillPractice versions={[fixture]} />);
+    fireEvent.click(screen.getByRole("button", { name: "Listening" }));
+    fireEvent.click(screen.getByRole("button", { name: "Section 1" }));
+    fireEvent.change(screen.getByRole("searchbox"), { target: { value: "Section 2" } });
+    const card = screen.getByRole("heading", { name: "Section 2 · Đề <img>" }).closest("article")!;
+    const timer = within(card).getByRole("combobox");
+    fireEvent.change(timer, { target: { value: "900" } });
+    fireEvent.click(screen.getByText("Switch to Vietnamese"));
+    expect(screen.getByRole("button", { name: "Nghe" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Phần 1" })).toHaveAttribute("aria-current", "true");
+    expect(screen.getByRole("searchbox", { name: "Tìm bài luyện tập" })).toHaveValue("Section 2");
+    expect(screen.getByRole("heading", { name: "Section 2 · Đề <img>" }).closest("article")).toBe(card);
+    expect(within(card).getByRole("combobox")).toBe(timer);
+    expect(timer).toHaveValue("900");
+    expect(startAttempt).not.toHaveBeenCalled();
+    fireEvent.click(within(card).getByRole("button", { name: "Bắt đầu luyện tập riêng" }));
+    expect(startAttempt).toHaveBeenCalledExactlyOnceWith({ test_version_id: id(2), module: "LISTENING", scope: "FOCUSED_UNIT", focused_unit: { kind: "LISTENING_PART", id: id(10) }, timer: { mode: "COUNTDOWN", duration_seconds: 900 } });
+    expect(JSON.stringify(fixture)).toBe(before);
+    await act(async () => {});
+  });
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(getTests).mockResolvedValue([test]);

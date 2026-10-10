@@ -6,6 +6,7 @@ import { AuthProvider } from "@/features/auth/auth-provider";
 import { changePassword, getCurrentUser } from "@/lib/api/auth";
 import { getProfile, updateProfile } from "@/lib/api/profile";
 import { ApiError } from "@/lib/api/client";
+import { renderWithLocale } from "./locale-test-utils";
 
 const navigation = vi.hoisted(() => ({ replace: vi.fn(), refresh: vi.fn() }));
 vi.mock("next/navigation", () => ({
@@ -32,6 +33,19 @@ function view() {
 }
 
 describe("profile", () => {
+  it("keeps an unsaved profile draft and auth request identity across locale changes", async () => {
+    window.localStorage.clear();
+    renderWithLocale(<AuthProvider><ProfilePage /></AuthProvider>);
+    const input = await screen.findByLabelText("Display name");
+    fireEvent.change(input, { target: { value: "Nguyễn <draft>" } });
+    fireEvent.click(screen.getByText("Switch to Vietnamese"));
+    expect(screen.getByLabelText("Tên hiển thị")).toBe(input);
+    expect(input).toHaveValue("Nguyễn <draft>");
+    expect(screen.getByRole("heading", { name: "Tài khoản của bạn" })).toBeInTheDocument();
+    expect(getProfile).toHaveBeenCalledOnce();
+    expect(getCurrentUser).toHaveBeenCalledOnce();
+    expect(updateProfile).not.toHaveBeenCalled();
+  });
   beforeEach(() => {
     vi.resetAllMocks();
     vi.mocked(getCurrentUser).mockResolvedValue(base);
@@ -44,7 +58,7 @@ describe("profile", () => {
     view();
     expect(await screen.findByRole("heading", { name: "Your account" })).toBeInTheDocument();
     expect(screen.getByText("student@example.com")).toBeInTheDocument();
-    expect(screen.getByText(role, { selector: "strong" })).toBeInTheDocument();
+    expect(screen.getByText(role === "ADMIN" ? "Admin" : "User", { selector: "strong" })).toBeInTheDocument();
     expect(screen.getByText("Never")).toBeInTheDocument();
     expect(screen.queryByLabelText(/profile photo|profile picture|avatar/i)).not.toBeInTheDocument();
     expect(document.querySelector('input[type="file"]')).toBeNull();

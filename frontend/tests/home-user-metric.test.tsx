@@ -1,4 +1,5 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
+import { renderWithLocale } from "./locale-test-utils";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import DashboardPage from "@/app/page";
 import { getAdminStats } from "@/lib/api/admin";
@@ -31,6 +32,16 @@ const profile = {
 };
 
 describe("homepage metrics and personal IELTS goals", () => {
+  it("translates overview goals without repeating the server loaders", async () => {
+    window.localStorage.clear();
+    renderWithLocale(await DashboardPage());
+    const metric = screen.getByRole("region", { name: "Workspace summary" });
+    fireEvent.click(screen.getByText("Switch to Vietnamese"));
+    expect(screen.getByRole("region", { name: "Tóm tắt không gian làm việc" })).toBe(metric);
+    expect(screen.getByRole("heading", { name: "Mục tiêu IELTS" })).toBeInTheDocument();
+    expect(screen.getByText("Mục tiêu điểm tổng").parentElement).toHaveTextContent("7.5");
+    expect(getTests).toHaveBeenCalledOnce(); expect(getHistory).toHaveBeenCalledOnce(); expect(getProfile).toHaveBeenCalledOnce();
+  });
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(getTests).mockResolvedValue([]);

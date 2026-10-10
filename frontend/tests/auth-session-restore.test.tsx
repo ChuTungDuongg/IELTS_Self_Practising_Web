@@ -1,4 +1,5 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { renderWithLocale } from "./locale-test-utils";
 import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import SessionRestorePage from "@/app/session/restore/page";
@@ -27,6 +28,19 @@ function SessionUser() {
 }
 
 describe("browser session restoration", () => {
+  it("starts in English and changes restore copy without restarting the in-flight request", async () => {
+    window.localStorage.clear();
+    let finish!: (response: Response) => void;
+    const fetchMock = vi.fn(() => new Promise<Response>((resolve) => { finish = resolve; }));
+    vi.stubGlobal("fetch", fetchMock);
+    renderWithLocale(<SessionRestorePage />);
+    expect(screen.getByRole("status")).toHaveTextContent("Restoring your session…");
+    fireEvent.click(screen.getByText("Switch to Vietnamese"));
+    expect(screen.getByRole("status")).toHaveTextContent("Đang khôi phục phiên đăng nhập…");
+    expect(fetchMock).toHaveBeenCalledOnce();
+    await act(async () => { finish(new Response(JSON.stringify(user))); });
+    expect(navigation.replace).toHaveBeenCalledExactlyOnceWith("/library?module=WRITING");
+  });
   beforeEach(() => {
     vi.resetAllMocks();
     vi.unstubAllGlobals();

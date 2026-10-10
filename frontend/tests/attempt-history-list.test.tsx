@@ -6,6 +6,7 @@ import { deleteAttempt, resumeAttempt } from "@/lib/api/attempts";
 import { deleteTestSession } from "@/lib/api/test-sessions";
 import { deleteStandaloneTestHistory } from "@/lib/api/history";
 import type { HistoryGroup, HistoryItem, HistoryResponse, MockHistoryGroup } from "@/lib/api/history";
+import { renderWithLocale } from "./locale-test-utils";
 
 const refresh = vi.fn();
 const push = vi.fn();
@@ -118,6 +119,23 @@ function history(items: HistoryItem[], groups: HistoryGroup[] = [], sessions: Mo
 }
 
 describe("AttemptHistoryList", () => {
+  it("preserves the focused tab, scores and open delete dialog while all four tabs translate", () => {
+    window.localStorage.clear();
+    const item: HistoryItem = { ...submitted, scope: "FOCUSED_UNIT", band_score: null, raw_score: 2, max_score: 3, test_title: "Section 2 <title>", focused_unit: { kind: "LISTENING_PART", id: submitted.test_id, order_index: 1, label: "Section 2", title: "Đề thử" } };
+    const initial = history([item]); const before = JSON.stringify(initial);
+    renderWithLocale(<AttemptHistoryList initialHistory={initial} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Focused practice" }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete Section 2 <title>" }));
+    const dialog = screen.getByRole("dialog"); const cancel = within(dialog).getByRole("button", { name: "Cancel" });
+    fireEvent.click(screen.getByText("Switch to Vietnamese"));
+    expect(screen.getByRole("tab", { name: "Luyện tập riêng" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["Theo kỹ năng", "Luyện tập riêng", "Theo đề", "Theo bài thi thử"]);
+    expect(screen.getByRole("dialog", { name: "Xóa lượt làm này?" })).toBe(dialog);
+    expect(within(dialog).getByRole("button", { name: "Hủy" })).toBe(cancel); expect(cancel).toHaveFocus();
+    expect(screen.getByText("Phần 2")).toBeInTheDocument(); expect(screen.getByText("Section 2 <title>")).toBeInTheDocument();
+    expect(screen.getByTestId(`history-score-${item.attempt_id}`)).toHaveTextContent("2 / 3 đúng66.7% chính xác");
+    expect(JSON.stringify(initial)).toBe(before); expect(deleteAttempt).not.toHaveBeenCalled();
+  });
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -391,7 +409,7 @@ describe("AttemptHistoryList", () => {
     render(<AttemptHistoryList initialHistory={history([paused])} />);
 
     expect(screen.getByText("Remaining: 50:00")).toBeInTheDocument();
-    expect(screen.getByText("Paused")).toBeInTheDocument();
+    expect(screen.getByTestId(`history-score-${paused.attempt_id}`)).toHaveTextContent("Paused");
     expect(screen.queryByRole("link", { name: "Review" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Resume" }));
 

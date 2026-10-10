@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { TranslationKey } from "@/lib/i18n/types";
+import { useTranslation } from "@/lib/i18n/locale-provider";
 import { useSearchParams } from "next/navigation";
 import { getCurrentUser } from "@/lib/api/auth";
 import { ApiError } from "@/lib/api/client";
@@ -8,8 +10,9 @@ import { authRedirectPath, safeAuthDestination } from "@/lib/auth-destination";
 
 export function SessionRestore() {
   const searchParams = useSearchParams();
+  const { t } = useTranslation();
   const destination = safeAuthDestination(searchParams.get("next"));
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | { message: TranslationKey } | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -23,12 +26,12 @@ export function SessionRestore() {
         if (caught instanceof ApiError && (caught.status === 401 || caught.code === "ACCOUNT_INACTIVE")) {
           window.location.replace(authRedirectPath("/login", destination));
         } else {
-          setError(caught instanceof Error ? caught.message : "The session could not be restored.");
+          setError(caught instanceof Error ? caught.message : { message: "auth.restoreFailed" });
         }
       });
     return () => { active = false; };
   }, [destination]);
 
-  if (error) return <p className="notice" role="alert">{error}</p>;
-  return <p className="notice" role="status">Đang khôi phục phiên đăng nhập…</p>;
+  if (error) return <p className="notice" role="alert">{typeof error === "string" ? error : error ? t(error.message) : null}</p>;
+  return <p className="notice" role="status">{t("auth.restoring")}</p>;
 }
