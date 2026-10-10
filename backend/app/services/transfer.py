@@ -675,7 +675,11 @@ class TransferService:
                 passages[item.id] = passage
             for item in source_module.listening_parts:
                 part = ListeningPart(
-                    id=maps["parts"][item.id], title=item.title, order_index=item.order_index
+                    id=maps["parts"][item.id],
+                    title=item.title,
+                    order_index=item.order_index,
+                    audio_start_seconds=item.audio_start_seconds,
+                    audio_end_seconds=item.audio_end_seconds,
                 )
                 module.listening_parts.append(part)
                 parts[item.id] = part

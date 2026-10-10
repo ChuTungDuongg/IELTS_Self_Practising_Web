@@ -1,15 +1,16 @@
-# Focused Practice — Phases 1 and 2
+# Focused Practice — Phases 1–3
 
 Focused practice reuses `Attempt`, its owner, frozen published `TestVersion`, timer,
 autosave, pause/resume, submission and review lifecycle. Phase 1 provides the scope
-foundation; Phase 2 exposes Reading passages and Writing tasks in the workspace.
+foundation; Phase 2 exposes Reading passages and Writing tasks; Phase 3 completes
+the user-facing flow with Listening sections and shared-recording audio ranges.
 
 ## Phase 2 — Reading and Writing
 
 `/practice` (sidebar: **Skill practice**) uses the existing authenticated workspace
 and published-version APIs. It lists available, non-archived frozen tests, grouped
-by test/version, with Reading and Writing tabs. Test Library remains the place for
-full skills and Full Mock.
+by test/version, with Reading, Listening and Writing tabs. Test Library remains
+the place for full skills and Full Mock.
 
 Public VersionDetail summaries now include Reading passage IDs and Writing task
 IDs, minimum recommended words and recommended duration. Question-group summaries
@@ -41,10 +42,53 @@ Focused records appear in Focused practice rather than By skill. Continue, Resum
 Review and standalone Delete use existing actions. By-test/Full Mock grouping,
 group deletion and full-skill analytics remain unchanged.
 
-**Focused Listening user flow is not implemented yet.** Phase 3 requires separate
-audio-range design. Existing API-created focused Listening records can appear in
-history as Section N with raw/max and accuracy; Phase 2 adds no Listening start UI,
-audio segmentation or Builder changes.
+## Phase 3 — Listening sections and audio ranges
+
+Listening keeps one optional recording on the module. Nullable integer
+`ListeningPart.audio_start_seconds` / `audio_end_seconds` locate each section in
+that recording; no files are split or duplicated for clips. Migration
+`20261010_0022_listening_audio_ranges` follows `20261010_0021`. Its PostgreSQL CHECK
+allows both fields null, or both present with start >= 0 and end > start, including
+explicit non-null checks. Old content remains valid without ranges.
+
+The Builder section editor saves title and both boundaries together through the
+existing revision-checked part update. Enter MM:SS, capture the current absolute
+playback position, or preview the selected clip in the existing shared player.
+Incomplete/malformed ranges, end <= start, and end beyond known browser duration
+block autosave and preview with an explanation. Duration comes from browser audio
+metadata; the backend validates range structure without probing/transcoding audio.
+
+Replacing/removing the shared recording with a different asset ID resets all
+section ranges in the same transaction and advances affected section revisions.
+Reattaching the same ID preserves them. A stale editor cannot restore the old
+range after replacement. Version cloning and ZIP export/import preserve ranges
+while remapping section IDs; older schema-v1 archives without these optional fields
+still import. Publishing full Listening does not require section ranges.
+
+Public version summaries expose section UUIDs, start/end times, actual question
+counts and a module `has_audio` boolean, without storage paths or answer keys.
+Skill Practice keeps unavailable section cards visible with a reason and disables
+their start controls. The backend independently rejects a focused start without
+audio or a complete range with `FOCUSED_LISTENING_AUDIO_UNAVAILABLE`, after proving
+the unit belongs to the exact published module/version. Full Listening and Full
+Mock are exempt from that eligibility requirement.
+
+Focused Listening starts one LISTENING_PART via the existing attempt API with
+10 / 15 / 20 minutes or count-up (default: 10), then opens `/attempt/{id}`. Its
+runner and review receive only the selected section. Playback uses absolute source
+positions but displays a section-relative 00:00–clip-length timeline; seeking and
+skip controls stay within the range, playback pauses at its end, and Play replays
+from its start. Source/clip changes stop the previous playback without autoplay.
+Invalid or out-of-duration ranges produce an actionable error, not a shortened
+successful clip. Existing seeking/speed restrictions still apply.
+
+Full standalone Listening, full Listening review, and Full Mock ignore section
+ranges and continue using the entire recording; Full Mock seeking stays locked.
+Focused review and history show raw/max and one-decimal accuracy with no IELTS
+band. Pause/resume, autosave, flags, highlights and submission use the existing
+lifecycle. Full-module Listening band mapping is unchanged. Focused analytics
+remain out of scope; no AI, scoring prompts, grading versions or provider behavior
+change in this phase.
 
 ## Phase 1 foundation (preserved)
 
@@ -88,7 +132,7 @@ and presentation. Existing ownership/version checks run before scope checks for
 answers, flags, question visits, navigation, highlights, Writing responses, manual
 task scoring and AI eligibility. Exam and review return only the selected unit;
 unrelated content and answer keys are never sent for clients to hide. Listening
-module audio and its playback policy retain their current behavior.
+module audio remains shared; only FOCUSED_UNIT playback applies section boundaries.
 
 Focused Reading/Listening store raw/max scores for their selected questions, with
 band null even if that unit happens to contain 40 questions. Expiration uses the
@@ -107,6 +151,26 @@ practice cards, timer/start behavior, protected navigation, scoped runners/revie
 paused gates and history actions. Full skill, Full Mock, deletion and AI assessment
 regressions use the existing tests. Validation uses isolated PostgreSQL, mocked
 frontend APIs, typecheck and targeted Ruff/ESLint checks, without live inference.
+
+Phase 3 adds real migration/constraint tests, range/revision/reset persistence,
+clone and legacy/current ZIP round trips, safe public summaries, focused start
+eligibility and scoped exam/review. Vitest covers MM:SS helpers, bounded playback,
+Builder capture/preview/autosave/conflicts/reset, Listening cards/timers/start,
+focused/full/Full Mock runners, review and paused gates. Tests use synthetic audio
+metadata and mocked APIs; no browser, E2E or live audio/model service is used.
+
+Phase 3 focused validation commands (backend against isolated, migrated PostgreSQL):
+
+```powershell
+# backend/
+uv run pytest tests/test_listening_audio_ranges.py tests/test_focused_attempts.py tests/test_focused_scope_migration.py tests/test_focused_attempt_contract.py tests/test_api_contract.py tests/test_listening.py tests/test_asset_cloning.py tests/test_transfer.py tests/test_full_mock_sessions.py -q --tb=line
+# frontend/
+npx vitest run tests/listening-audio-ranges.test.tsx tests/listening-player.test.tsx tests/listening-navigation.test.tsx tests/focused-listening-review.test.tsx tests/skill-practice.test.tsx tests/practice-library.test.tsx tests/focused-reading-review.test.tsx tests/reading-navigation.test.tsx tests/writing-review.test.tsx tests/attempt-page.test.tsx tests/attempt-history-list.test.tsx tests/focused-attempt-contract.test.ts tests/history-api.test.ts
+npm run typecheck
+```
+
+Ruff lint/format checks and ESLint cover the changed/new Python and TypeScript
+files. `git diff --check` covers the complete change.
 
 Phase 1 validation commands:
 

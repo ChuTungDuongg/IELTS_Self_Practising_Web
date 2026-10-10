@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.domains.writing.task_types import WritingTaskType
 from app.models.enums import ModuleType, VersionStatus
+from app.schemas.listening import ListeningAudioRange
 
 
 class TestCreate(BaseModel):
@@ -84,6 +85,7 @@ class ModuleSummary(BaseModel):
     listening_part_count: int
     writing_task_count: int
     question_count: int
+    has_audio: bool = False
     reading_passages: list["ReadingPassageSummary"] = Field(default_factory=list)
     listening_sections: list["ListeningSectionSummary"] = Field(default_factory=list)
     writing_tasks: list["WritingTaskSummary"] = Field(default_factory=list)
@@ -103,7 +105,8 @@ class ReadingPassageSummary(BaseModel):
     question_groups: list[QuestionGroupSummary]
 
 
-class ListeningSectionSummary(BaseModel):
+class ListeningSectionSummary(ListeningAudioRange):
+    id: UUID
     title: str | None
     order_index: int
     question_groups: list[QuestionGroupSummary]

@@ -579,6 +579,8 @@ class TestService:
                 cloned_part = ListeningPart(
                     title=part.title,
                     order_index=part.order_index,
+                    audio_start_seconds=part.audio_start_seconds,
+                    audio_end_seconds=part.audio_end_seconds,
                 )
                 new_module.listening_parts.append(cloned_part)
                 part_map[part.id] = cloned_part

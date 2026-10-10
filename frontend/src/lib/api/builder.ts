@@ -45,6 +45,8 @@ const assetSchema = z.object({ id: z.string().uuid(), original_name: z.string(),
 const listeningPartSchema = z.object({
   id: z.string().uuid(), revision: z.number().int().positive(), title: z.string().nullable(), order_index: z.number().int(),
   question_groups: z.array(groupSchema),
+  audio_start_seconds: z.number().int().nullable().optional(),
+  audio_end_seconds: z.number().int().nullable().optional(),
 });
 const builderWritingTaskSchema = z.object({
   id: z.string().uuid(),
@@ -150,11 +152,11 @@ export function deleteModule(moduleId: string) {
   return apiRequest(`/test-modules/${moduleId}`, { method: "DELETE" });
 }
 
-export function createListeningPart(versionId: string, body: { title: string; order_index: number }) {
+export function createListeningPart(versionId: string, body: { title: string; order_index: number; audio_start_seconds?: number | null; audio_end_seconds?: number | null }) {
   return apiRequest<BuilderListeningPart>(`/test-versions/${versionId}/listening/parts`, { method: "POST", body: JSON.stringify(body) });
 }
 
-export function updateListeningPart(partId: string, body: { expected_revision: number; title: string | null; order_index: number }) {
+export function updateListeningPart(partId: string, body: { expected_revision: number; title: string | null; order_index: number; audio_start_seconds?: number | null; audio_end_seconds?: number | null }) {
   return apiRequest<BuilderListeningPart>(`/listening/parts/${partId}`, { method: "PUT", body: JSON.stringify(body) });
 }
 

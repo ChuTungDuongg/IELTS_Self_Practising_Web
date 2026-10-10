@@ -13,6 +13,7 @@ from app.core.exceptions import AppError
 from app.domains.scoring import calculate_task_overall
 from app.domains.timers import TimerService
 from app.models import (
+    Asset,
     Attempt,
     AttemptAnswer,
     ListeningPart,
@@ -24,7 +25,7 @@ from app.models import (
 from app.models import Test as ExamRecord
 from app.models import TestModule as ModuleRecord
 from app.models import TestVersion as VersionRecord
-from app.models.enums import AttemptScope, AttemptStatus, ModuleType, VersionStatus
+from app.models.enums import AssetType, AttemptScope, AttemptStatus, ModuleType, VersionStatus
 from app.schemas.attempts import AttemptCreate, NavigationRequest, WritingTaskScoreUpdate
 from app.schemas.content import HighlightCreate
 from app.services.analytics import AnalyticsService
@@ -58,6 +59,17 @@ async def content(session, *, status=VersionStatus.PUBLISHED, archived=False):
             module_type=skill, order_index=index, recommended_duration_seconds=3600
         )
         version.modules.append(module)
+        if skill == ModuleType.LISTENING:
+            audio = Asset(
+                id=uuid4(),
+                asset_type=AssetType.LISTENING_AUDIO,
+                relative_path=f"audio/fictional-{uuid4()}.mp3",
+                mime_type="audio/mpeg",
+                original_name="fictional-focused.mp3",
+                file_size=10,
+            )
+            version.assets.append(audio)
+            module.audio_asset = audio
         units[skill] = []
         for order in range(2):
             if skill == ModuleType.WRITING:
@@ -84,7 +96,12 @@ async def content(session, *, status=VersionStatus.PUBLISHED, archived=False):
                     )
                     module.passages.append(unit)
                 else:
-                    unit = ListeningPart(title=f"Fictional section {order + 1}", order_index=order)
+                    unit = ListeningPart(
+                        title=f"Fictional section {order + 1}",
+                        order_index=order,
+                        audio_start_seconds=order * 60,
+                        audio_end_seconds=(order + 1) * 60,
+                    )
                     module.listening_parts.append(unit)
                 group = QuestionGroup(
                     question_type="short_answer",

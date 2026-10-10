@@ -93,7 +93,9 @@ def _source_with_all_asset_references(
         order_index=0,
         audio_asset=assets["audio"],
     )
-    part = ListeningPart(title="Section 1", order_index=0)
+    part = ListeningPart(
+        title="Section 1", order_index=0, audio_start_seconds=468, audio_end_seconds=931
+    )
     option_ids = [str(uuid4()), str(uuid4())]
     group = QuestionGroup(
         question_type="map_labelling",
@@ -155,6 +157,11 @@ async def test_version_clone_owns_independent_copies_of_every_referenced_asset(
     )
     writing = next(module for module in clone.modules if module.module_type == ModuleType.WRITING)
     cloned_group = listening.question_groups[0]
+    assert listening.listening_parts[0].id != source.modules[0].listening_parts[0].id
+    assert (
+        listening.listening_parts[0].audio_start_seconds,
+        listening.listening_parts[0].audio_end_seconds,
+    ) == (468, 931)
     cloned_task = writing.writing_tasks[0]
     referenced = [listening.audio_asset, cloned_group.image_asset, cloned_task.image_asset]
 

@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { accuracyLabel, focusedUnitLabel } from "@/features/exam/focused-attempt";
+import { sectionAudioClip } from "./audio-time";
 import { ListeningAudioPlayer } from "./audio-player";
 import { questionRegistry } from "@/features/questions/registry";
 import { groupQuestionCount, groupQuestionRange } from "@/features/questions/numbering";
@@ -13,6 +15,7 @@ import type { getListeningReview } from "@/lib/api/exam";
 type ReviewData = Awaited<ReturnType<typeof getListeningReview>>;
 
 export function ListeningReviewView({ data }: { data: ReviewData }) {
+  const focused = data.review.attempt.scope === "FOCUSED_UNIT";
   const [partIndex, setPartIndex] = useState(0);
   const part = data.parts[partIndex];
   const answers = new Map(data.review.answers.map((item) => [item.question_id, item]));
@@ -20,31 +23,33 @@ export function ListeningReviewView({ data }: { data: ReviewData }) {
   const highlighting: HighlightController = { highlights: data.highlights, readOnly: true };
 
   if (!part) return <p>No Listening review content is available.</p>;
+  const playbackClip = focused ? sectionAudioClip(part) : undefined;
 
   return (
     <div className="listening-review">
       <header className="review-header">
         <div>
-          <p className="page-eyebrow listening-eyebrow">Listening review</p>
+          <p className="page-eyebrow listening-eyebrow">{focused ? "Focused practice · Listening" : "Listening review"}</p>
           <h1>{data.review.test_title}</h1>
+          {focusedUnitLabel(data.review.attempt) ? <p>{focusedUnitLabel(data.review.attempt)}</p> : null}
         </div>
         <p className="review-score">
-          <span>Score</span>
+          <span>{focused ? "Correct answers" : "Score"}</span>
           <b>{data.review.attempt.raw_score ?? "—"} / {data.review.attempt.max_score ?? "—"}</b>
-          <small>{data.review.attempt.band_score === null ? "Official band unavailable" : `Band ${data.review.attempt.band_score.toFixed(1)}`}</small>
+          <small>{focused ? accuracyLabel(data.review.attempt.raw_score, data.review.attempt.max_score) : data.review.attempt.band_score === null ? "Official band unavailable" : `Band ${data.review.attempt.band_score.toFixed(1)}`}</small>
         </p>
       </header>
 
-      <div className="listening-part-tabs" aria-label="Review sections">
+      {!focused ? <div className="listening-part-tabs" aria-label="Review sections">
         {data.parts.map((item, index) => (
           <button key={item.id} type="button" className={index === partIndex ? "active" : ""} onClick={() => setPartIndex(index)}>
             <b>Section {item.order_index + 1}</b>
             <span>{item.question_groups.reduce((count, group) => count + groupQuestionCount(group), 0)} questions</span>
           </button>
         ))}
-      </div>
+      </div> : null}
 
-      {data.audio_asset ? <ListeningAudioPlayer src={assetContentUrl(data.audio_asset)} /> : null}
+      {focused && !playbackClip ? <p role="alert" className="notice">No audio range is configured for this focused section.</p> : data.audio_asset ? <ListeningAudioPlayer src={assetContentUrl(data.audio_asset)} clip={playbackClip} /> : null}
 
       <section className="review-surface">
         <p className="exam-passage-kicker">Section {part.order_index + 1}</p>

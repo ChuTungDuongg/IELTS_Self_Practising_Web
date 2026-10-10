@@ -7,7 +7,7 @@ import { ListeningRunner } from "@/features/listening/listening-runner";
 import { ListeningReviewView } from "@/features/listening/listening-review";
 import { BuilderAutosaveStatus, BuilderLifecycleProvider } from "@/features/test-builder/builder-lifecycle";
 import { ApiError } from "@/lib/api/client";
-import { createListeningQuestionGroup, updateListeningPart, updateListeningQuestionGroup, type BuilderQuestionGroup, type BuilderVersion } from "@/lib/api/builder";
+import { attachListeningAudio, createListeningQuestionGroup, updateListeningPart, updateListeningQuestionGroup, type BuilderQuestionGroup, type BuilderVersion } from "@/lib/api/builder";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }) }));
 vi.mock("@/lib/api/attempts", async (importOriginal) => {
@@ -20,7 +20,7 @@ vi.mock("@/lib/api/exam", async (importOriginal) => {
 });
 vi.mock("@/lib/api/builder", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api/builder")>();
-  return { ...actual, createListeningQuestionGroup: vi.fn(), updateListeningQuestionGroup: vi.fn(), updateListeningPart: vi.fn() };
+  return { ...actual, attachListeningAudio: vi.fn(), createListeningQuestionGroup: vi.fn(), updateListeningQuestionGroup: vi.fn(), updateListeningPart: vi.fn() };
 });
 
 function listeningBuilderVersion(questionGroups: BuilderQuestionGroup[]): BuilderVersion {
@@ -291,6 +291,24 @@ describe("Listening audio and templates", () => {
 
     expect(screen.getAllByLabelText("Listening audio player")).toHaveLength(1);
     expect(HTMLMediaElement.prototype.load).toHaveBeenCalledTimes(loadsAfterMount);
+  });
+
+  it("explains recording replacement and rebases the section editor after range reset", async () => {
+    const version = listeningBuilderVersion([]);
+    const listeningModule = version.modules[0];
+    listeningModule.audio_asset = { id: crypto.randomUUID(), original_name: "fictional.mp3", mime_type: "audio/mpeg", file_size: 100, content_url: "/assets/fictional/content" };
+    listeningModule.listening_parts = listeningModule.listening_parts.map((part) => ({ ...part, audio_start_seconds: part.order_index * 60, audio_end_seconds: (part.order_index + 1) * 60 }));
+    vi.mocked(attachListeningAudio).mockResolvedValue({ ...listeningModule, revision: 2, audio_asset: null, listening_parts: listeningModule.listening_parts.map((part) => ({ ...part, revision: 2, audio_start_seconds: null, audio_end_seconds: null })) });
+    render(<BuilderLifecycleProvider><ListeningBuilder version={version} /></BuilderLifecycleProvider>);
+    expect(screen.getByText(/Replacing or removing this recording resets all saved section audio ranges/)).toBeInTheDocument();
+    expect(screen.getByLabelText("Audio start (MM:SS)")).toHaveValue("00:00");
+    expect(screen.getByLabelText("Audio end (MM:SS)")).toHaveValue("01:00");
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Remove" })); });
+    expect(attachListeningAudio).toHaveBeenCalledWith(listeningModule.id, null, 1);
+    expect(screen.getByLabelText("Audio start (MM:SS)")).toHaveValue("");
+    expect(screen.getByLabelText("Audio end (MM:SS)")).toHaveValue("");
+    expect(screen.getByRole("button", { name: "Preview section clip" })).toBeDisabled();
+    expect(updateListeningPart).not.toHaveBeenCalled();
   });
 
   it("renders Listening review answers with semantic result styles", () => {

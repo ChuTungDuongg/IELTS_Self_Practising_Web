@@ -38,6 +38,8 @@ class ListeningService:
                 module_id=module.id,
                 title=body.title.strip(),
                 order_index=body.order_index,
+                audio_start_seconds=body.audio_start_seconds,
+                audio_end_seconds=body.audio_end_seconds,
             )
             self.session.add(part)
             await self.session.flush()
@@ -52,6 +54,9 @@ class ListeningService:
             advance_revision(part, body.expected_revision)
             part.title = body.title.strip()
             part.order_index = body.order_index
+            if {"audio_start_seconds", "audio_end_seconds"} & body.model_fields_set:
+                part.audio_start_seconds = body.audio_start_seconds
+                part.audio_end_seconds = body.audio_end_seconds
             await self.shared._canonicalize_module(part.module_id)
             saved = await self.get_part(part_id)
         return saved
@@ -104,6 +109,23 @@ class ListeningService:
                             422,
                         )
                     module.audio_asset_id = asset.id
+                if previous_asset_id != module.audio_asset_id:
+                    # The version lock also serializes section edits. Lock/reload
+                    # sections so stale editor revisions cannot restore old ranges.
+                    parts = await self.session.scalars(
+                        select(ListeningPart)
+                        .where(ListeningPart.module_id == module.id)
+                        .with_for_update()
+                        .execution_options(populate_existing=True)
+                    )
+                    for part in parts:
+                        if (
+                            part.audio_start_seconds is not None
+                            or part.audio_end_seconds is not None
+                        ):
+                            part.audio_start_seconds = None
+                            part.audio_end_seconds = None
+                            part.revision += 1
                 await self.session.flush()
                 if previous_asset_id is not None and previous_asset_id != module.audio_asset_id:
                     from app.services.tests import TestService

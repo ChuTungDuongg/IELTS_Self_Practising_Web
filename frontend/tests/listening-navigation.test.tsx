@@ -134,6 +134,8 @@ describe("Listening footer navigation", () => {
   let observerCount = 0;
 
   beforeEach(() => {
+    Object.defineProperty(HTMLMediaElement.prototype, "pause", { configurable: true, value: vi.fn() });
+    Object.defineProperty(HTMLMediaElement.prototype, "load", { configurable: true, value: vi.fn() });
     sessionStorage.clear();
     vi.clearAllMocks();
     scrolled.length = 0;
@@ -543,5 +545,44 @@ describe("Listening footer navigation", () => {
     expect(screen.getByRole("status")).toHaveTextContent("Attempt finished");
     expect(screen.queryByText("Save failed")).not.toBeInTheDocument();
     expect(saveAnswer).toHaveBeenCalledTimes(1);
+  });
+
+  it("reuses focused Listening navigation, clip and submit for only the selected section", async () => {
+    const initial = payload();
+    const part = initial.listening_parts[0];
+    initial.attempt = { ...initial.attempt, scope: "FOCUSED_UNIT", focused_unit: { kind: "LISTENING_PART", id: part.id, order_index: 1, label: "Section 2", title: "Section Two" } };
+    initial.listening_parts = [{ ...part, audio_start_seconds: 468, audio_end_seconds: 931 }];
+    vi.mocked(submitAttempt).mockResolvedValue({} as never);
+    const view = render(<ListeningRunner initial={initial} />);
+    expect(screen.getByText("Focused practice · Listening")).toBeInTheDocument();
+    expect(screen.getByText("Section 2 · Section Two")).toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "Section navigation" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Go to question 1" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Go to question 15" })).toBeInTheDocument();
+    const audio = view.container.querySelector("audio")!;
+    Object.defineProperty(audio, "duration", { configurable: true, value: 1000 });
+    fireEvent.loadedMetadata(audio);
+    expect(audio.currentTime).toBe(468);
+    expect(screen.getByLabelText("Audio seek")).toHaveAttribute("max", "463");
+    expect(screen.getByLabelText("Audio seek")).not.toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Submit answers" }));
+    await waitFor(() => expect(submitAttempt).toHaveBeenCalledWith(attemptId));
+    expect(push).toHaveBeenCalledWith(`/review/${attemptId}`);
+  });
+
+  it.each([false, true])("ignores stored ranges in full Listening (Full Mock=%s)", (mock) => {
+    const initial = payload();
+    initial.attempt = { ...initial.attempt, scope: "FULL_MODULE", attempt_context: mock ? "FULL_MOCK" : "STANDALONE" };
+    initial.listening_parts = initial.listening_parts.map((part) => ({ ...part, audio_start_seconds: 468, audio_end_seconds: 931 }));
+    initial.audio_policy = { allow_seeking: !mock, allow_speed: !mock };
+    const view = render(<ListeningRunner initial={initial} />);
+    const audio = view.container.querySelector("audio")!;
+    Object.defineProperty(audio, "duration", { configurable: true, value: 1000 });
+    fireEvent.loadedMetadata(audio);
+    expect(audio.currentTime).toBe(0);
+    expect(screen.getByLabelText("Audio seek")).toHaveAttribute("max", "1000");
+    expect(within(screen.getByRole("navigation", { name: "Section navigation" })).getAllByRole("button")).toHaveLength(4);
+    if (mock) expect(screen.getByLabelText("Audio seek")).toBeDisabled();
+    else expect(screen.getByLabelText("Audio seek")).not.toBeDisabled();
   });
 });

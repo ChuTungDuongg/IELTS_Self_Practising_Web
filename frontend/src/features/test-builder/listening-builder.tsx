@@ -8,7 +8,8 @@ import { resolveQuestionGroupInstruction } from "@/features/questions/question-g
 import { listeningQuestionTypeOptions, questionRegistry } from "@/features/questions/registry";
 import type { QuestionGroupModel, QuestionType } from "@/features/questions/types";
 import { groupQuestionCount, groupQuestionRange, questionNumbers } from "@/features/questions/numbering";
-import { uploadAsset } from "@/lib/api/assets";
+import { assetContentUrl, uploadAsset } from "@/lib/api/assets";
+import { ListeningAudioPlayer, type ListeningAudioPlayerHandle } from "@/features/listening/audio-player";
 import {
   attachListeningAudio,
   createListeningModule,
@@ -17,7 +18,6 @@ import {
   deleteQuestionGroup,
   deleteModule,
   reorderQuestionGroups,
-  updateListeningPart,
   updateListeningQuestionGroup,
   type BuilderListeningPart,
   type BuilderQuestionGroup,
@@ -25,7 +25,8 @@ import {
 } from "@/lib/api/builder";
 import { builderPreviewPath } from "@/lib/routes";
 import { ApiError } from "@/lib/api/client";
-import { useBuilderAutosave, useBuilderLifecycle } from "./builder-lifecycle";
+import { useBuilderLifecycle } from "./builder-lifecycle";
+import { ListeningSectionEditor } from "./listening-section-editor";
 import { AutosaveLink } from "./autosave-link";
 import { ModuleDurationEditor } from "./module-duration-editor";
 import { QuestionGroupEditor } from "./question-group-editor";
@@ -37,6 +38,8 @@ export function ListeningBuilder({ version }: { version: BuilderVersion }) {
   const [savedModule, setSavedModule] = useState<BuilderVersion["modules"][number] | null>(null);
   const [savedParts, setSavedParts] = useState<Record<string, BuilderListeningPart>>({});
   const [savedGroups, setSavedGroups] = useState<Record<string, BuilderQuestionGroup>>({});
+  const player = useRef<ListeningAudioPlayerHandle>(null);
+  const [recordingDuration, setRecordingDuration] = useState<{ assetId: string; seconds: number } | null>(null);
   const listening = useMemo(() => {
     if (!sourceListening) return undefined;
     const currentModule = savedModule && savedModule.revision > sourceListening.revision ? savedModule : sourceListening;
@@ -185,9 +188,15 @@ export function ListeningBuilder({ version }: { version: BuilderVersion }) {
           </div>
         </div>
 
+        <p className="mt-2 text-sm text-[var(--muted)]">Replacing or removing this recording resets all saved section audio ranges.</p>
+        {listening.audio_asset ? <ListeningAudioPlayer key={listening.audio_asset.id} ref={player} src={assetContentUrl(listening.audio_asset)} onDuration={(seconds) => setRecordingDuration({ assetId: listening.audio_asset!.id, seconds })} /> : null}
+
         {part ? (
           <div className="listening-part-panel">
-            <ListeningPartTitle key={part.id} part={part} onPersisted={(saved) => { setSavedParts((current) => ({ ...current, [saved.id]: saved })); router.refresh(); }} />
+            <ListeningSectionEditor key={`${part.id}:${listening.audio_asset?.id ?? "none"}`} part={part}
+              duration={listening.audio_asset && recordingDuration?.assetId === listening.audio_asset.id ? recordingDuration.seconds : null}
+              currentPosition={() => player.current?.currentPosition() ?? 0} onPreview={(clip) => player.current?.preview(clip)}
+              onPersisted={(saved) => { setSavedParts((current) => ({ ...current, [saved.id]: saved })); router.refresh(); }} />
             <div className="question-group-list mt-5">
               {part.question_groups.map((group) => {
                 return <div key={group.id} className="question-group-card listening-group-card"><span className="question-range">{groupQuestionRange(group)}</span><div className="min-w-0 flex-1"><p>{questionRegistry[group.question_type].label}</p><span>{resolveQuestionGroupInstruction(group).intro}</span></div><div className="group-actions"><button className="icon-button" onClick={() => moveGroup(group.id, -1)}>↑</button><button className="icon-button" onClick={() => moveGroup(group.id, 1)}>↓</button><button className="btn btn-secondary" onClick={() => void editGroup(group)}>Edit</button><button className="btn btn-danger-ghost" onClick={() => run(() => deleteQuestionGroup(group.id))}>Delete</button></div></div>;
@@ -206,24 +215,6 @@ export function ListeningBuilder({ version }: { version: BuilderVersion }) {
       <ConfirmDialog open={confirmingModuleDelete} title="Delete Listening module?" description="All Listening sections and questions in this draft will be removed." confirmLabel="Delete Listening module" pending={deleting} onCancel={() => setConfirmingModuleDelete(false)} onConfirm={() => void run(() => deleteModule(listening.id))} />
     </fieldset>
   );
-}
-
-function ListeningPartTitle({ part, onPersisted }: { part: BuilderListeningPart; onPersisted: (part: BuilderListeningPart) => void }) {
-  const [title, setTitle] = useState(part.title ?? `Section ${part.order_index + 1}`);
-  const revision = useRef(part.revision);
-  useBuilderAutosave({ resourceKey: `listening-part:${part.id}`, value: { title, order_index: part.order_index }, save: async (value) => {
-    const saved = await updateListeningPart(part.id, { ...value, expected_revision: revision.current });
-    revision.current = saved.revision;
-    return saved;
-  }, onSaved: (saved, _submitted, unchanged) => {
-    onPersisted(saved);
-    if (unchanged) {
-      const canonical = saved.title ?? `Section ${saved.order_index + 1}`;
-      setTitle(canonical);
-      return { title: canonical, order_index: saved.order_index };
-    }
-  }, valid: title.trim().length > 0 && title.length <= 240 });
-  return <label className="field-label mb-4 block">Section title / internal label<input className="field mt-2" value={title} onChange={(event) => setTitle(event.target.value)} /></label>;
 }
 
 function canonicalListeningGroupStart(

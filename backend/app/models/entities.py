@@ -241,12 +241,22 @@ class ReadingPassage(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
 class ListeningPart(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "listening_parts"
-    __table_args__ = (UniqueConstraint("module_id", "order_index"),)
+    __table_args__ = (
+        UniqueConstraint("module_id", "order_index"),
+        CheckConstraint(
+            "(audio_start_seconds IS NULL AND audio_end_seconds IS NULL) OR "
+            "(audio_start_seconds IS NOT NULL AND audio_end_seconds IS NOT NULL "
+            "AND audio_start_seconds >= 0 AND audio_end_seconds > audio_start_seconds)",
+            name="audio_range",
+        ),
+    )
 
     module_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("test_modules.id", ondelete="CASCADE"))
     title: Mapped[str] = mapped_column(String(240), nullable=False)
     order_index: Mapped[int] = mapped_column(Integer, nullable=False)
     revision: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    audio_start_seconds: Mapped[int | None] = mapped_column(Integer)
+    audio_end_seconds: Mapped[int | None] = mapped_column(Integer)
     module: Mapped[TestModule] = relationship(back_populates="listening_parts")
     question_groups: Mapped[list[QuestionGroup]] = relationship(
         back_populates="listening_part", order_by="QuestionGroup.order_index"

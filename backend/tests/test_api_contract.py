@@ -91,7 +91,14 @@ def test_published_version_summary_contains_safe_content_metadata() -> None:
     reading.passages.append(passage)
     reading.question_groups.append(reading_group)
     listening = DomainModule(id=uuid4(), module_type=ModuleType.LISTENING, order_index=1)
-    section = ListeningPart(id=uuid4(), title="Fictional tour", order_index=0)
+    listening.audio_asset_id = uuid4()
+    section = ListeningPart(
+        id=uuid4(),
+        title="Fictional tour",
+        order_index=0,
+        audio_start_seconds=468,
+        audio_end_seconds=931,
+    )
     listening_group = QuestionGroup(
         id=uuid4(), question_type="note_completion", order_index=0, config={}
     )
@@ -133,6 +140,23 @@ def test_published_version_summary_contains_safe_content_metadata() -> None:
         == "matching"
     )
     assert summary["modules"][1]["listening_sections"][0]["title"] == "Fictional tour"
+    assert summary["modules"][1]["has_audio"] is True
+    assert summary["modules"][0]["has_audio"] is False
+    assert summary["modules"][1]["listening_sections"][0] == {
+        "id": str(section.id),
+        "title": "Fictional tour",
+        "order_index": 0,
+        "audio_start_seconds": 468,
+        "audio_end_seconds": 931,
+        "question_groups": [
+            {
+                "question_type": "note_completion",
+                "start_number": 1,
+                "end_number": 1,
+                "question_count": 1,
+            }
+        ],
+    }
     assert (
         summary["modules"][1]["listening_sections"][0]["question_groups"][0]["question_type"]
         == "note_completion"

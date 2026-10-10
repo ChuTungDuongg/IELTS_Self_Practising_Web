@@ -165,7 +165,9 @@ async def _portable_fixture(
     listening = DomainModule(
         module_type=ModuleType.LISTENING, title="Listening", order_index=1, audio_asset=audio
     )
-    part = ListeningPart(title="Section 1", order_index=0)
+    part = ListeningPart(
+        title="Section 1", order_index=0, audio_start_seconds=468, audio_end_seconds=931
+    )
     listening.listening_parts.append(part)
     map_question = Question(
         id=uuid4(),
@@ -490,8 +492,9 @@ async def test_transfer_round_trip_preserves_completion_titles_and_static_diagra
 
 
 @pytest.mark.integration
+@pytest.mark.parametrize("legacy_ranges", [False, True])
 async def test_transfer_round_trip_remaps_ids_assets_and_can_import_twice(
-    db_session: AsyncSession, tmp_path: Path
+    db_session: AsyncSession, tmp_path: Path, legacy_ranges: bool
 ) -> None:
     settings = _settings(tmp_path / "storage")
     source_test, source_version, _ = await _portable_fixture(
@@ -504,6 +507,11 @@ async def test_transfer_round_trip_remaps_ids_assets_and_can_import_twice(
         version_detail_query().where(DomainVersion.id == source_version_id)
     )
     assert source_loaded is not None
+    source_part_id = (
+        next(m for m in source_loaded.modules if m.module_type == ModuleType.LISTENING)
+        .listening_parts[0]
+        .id
+    )
     source_question_ids = {
         question.id
         for module in source_loaded.modules
@@ -521,6 +529,22 @@ async def test_transfer_round_trip_remaps_ids_assets_and_can_import_twice(
     archive = tmp_path / "bundle.zip"
     await TransferService(db_session, settings).export([source_test_id], archive)
     await db_session.rollback()
+    if legacy_ranges:
+
+        def remove_ranges(entries):
+            for name in list(entries):
+                if name.startswith("tests/") and name.endswith(".json"):
+                    payload = json.loads(entries[name])
+                    for version in payload["versions"]:
+                        for module in version["modules"]:
+                            for part in module["listening_parts"]:
+                                part.pop("audio_start_seconds", None)
+                                part.pop("audio_end_seconds", None)
+                    entries[name] = json.dumps(payload).encode()
+
+        legacy = tmp_path / "legacy.zip"
+        _rewrite(archive, legacy, remove_ranges)
+        archive = legacy
 
     with tempfile.TemporaryDirectory(dir=tmp_path) as staging:
         package = TransferService(db_session, settings).validate_archive(archive, Path(staging))
@@ -535,6 +559,13 @@ async def test_transfer_round_trip_remaps_ids_assets_and_can_import_twice(
     assert imported is not None
     assert imported.id != source_version_id
     assert imported.status == VersionStatus.PUBLISHED
+    imported_part = next(
+        m for m in imported.modules if m.module_type == ModuleType.LISTENING
+    ).listening_parts[0]
+    assert imported_part.id != source_part_id
+    assert (imported_part.audio_start_seconds, imported_part.audio_end_seconds) == (
+        (None, None) if legacy_ranges else (468, 931)
+    )
     with pytest.raises(AppError) as immutable:
         await LifecycleService(db_session).ensure_draft(imported.id)
     assert immutable.value.code == "TEST_VERSION_IMMUTABLE"

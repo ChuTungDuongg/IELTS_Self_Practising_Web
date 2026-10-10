@@ -35,7 +35,7 @@ const version: VersionDetail = {
       ] },
     { id: id(9), module_type: "LISTENING", title: null, recommended_duration_seconds: 1800,
       passage_count: 0, listening_part_count: 1, writing_task_count: 0, question_count: 10,
-      listening_sections: [{ title: "Fictional listening section", order_index: 0, question_groups: [{ question_type: "short_answer", start_number: 1, end_number: 10 }] }] },
+      has_audio: true, listening_sections: [{ id: id(10), audio_start_seconds: 468, audio_end_seconds: 931, title: "Fictional listening section", order_index: 0, question_groups: [{ question_type: "short_answer", start_number: 1, end_number: 10, question_count: 10 }] }] },
   ],
 };
 const test: TestSummary = {
@@ -75,7 +75,7 @@ describe("Skill practice", () => {
     expect(screen.getByRole("heading", { name: other.title })).toBeInTheDocument();
     expect(vi.mocked(getVersion).mock.calls.map(([value]) => value)).toEqual([id(2), id(12), id(41)]);
     expect(screen.getAllByRole("button", { name: "Start focused practice" })).toHaveLength(4);
-    expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["Reading", "Writing"]);
+    expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["Reading", "Listening", "Writing"]);
   });
 
   it("shows accurate counts without inventing ranges for gaps, with Reading timers", async () => {
@@ -138,6 +138,47 @@ describe("Skill practice", () => {
     expect(parsed.modules[0].reading_passages![0].id).toBe(id(4));
     expect(parsed.modules[0].reading_passages![0].question_groups[0].question_count).toBe(3);
     expect(parsed.modules[1].writing_tasks![0]).toMatchObject({ id: id(7), minimum_recommended_words: 150, recommended_duration_seconds: 1200 });
+    expect(parsed.modules[2]).toMatchObject({ has_audio: true, listening_sections: [{ id: id(10), audio_start_seconds: 468, audio_end_seconds: 931 }] });
+  });
+
+  it.each(["600", "900", "1200", "count-up"])("starts the Listening section with timer %s", async (duration) => {
+    render(await PracticePage());
+    fireEvent.click(screen.getByRole("tab", { name: "Listening" }));
+    expect(screen.getByText("Questions 1–10 · 10 questions")).toBeInTheDocument();
+    expect(screen.getByText("Audio 07:48–15:31 · 07:43 clip")).toBeInTheDocument();
+    const select = screen.getByRole("combobox") as HTMLSelectElement;
+    expect(select).toHaveValue("600");
+    expect([...select.options].map((option) => option.textContent)).toEqual(["10 minutes", "15 minutes", "20 minutes", "Count up"]);
+    fireEvent.change(select, { target: { value: duration } });
+    const button = screen.getByRole("button", { name: "Start focused practice" });
+    fireEvent.click(button); fireEvent.click(button);
+    expect(startAttempt).toHaveBeenCalledTimes(1);
+    expect(startAttempt).toHaveBeenCalledWith({ test_version_id: id(2), module: "LISTENING", scope: "FOCUSED_UNIT", focused_unit: { kind: "LISTENING_PART", id: id(10) }, timer: duration === "count-up" ? { mode: "COUNT_UP" } : { mode: "COUNTDOWN", duration_seconds: Number(duration) } });
+    await act(async () => {});
+    expect(push).toHaveBeenCalledWith(`/attempt/${id(99)}`);
+  });
+
+  it.each(["audio", "range"])("keeps unavailable Listening cards visible without %s", async (missing) => {
+    const listening = version.modules[2];
+    vi.mocked(getVersion).mockResolvedValue({ ...version, modules: [{ ...listening, has_audio: missing !== "audio", listening_sections: listening.listening_sections!.map((section) => missing === "range" ? { ...section, audio_start_seconds: null, audio_end_seconds: null } : section) }] });
+    render(await PracticePage());
+    fireEvent.click(screen.getByRole("tab", { name: "Listening" }));
+    expect(screen.getByRole("heading", { name: "Fictional listening section" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Start focused practice" })).toBeDisabled();
+    expect(screen.getByText(missing === "audio" ? /No recording is attached/ : /needs a configured audio range/)).toBeInTheDocument();
+    expect(startAttempt).not.toHaveBeenCalled();
+  });
+
+  it("keeps the Listening timer after a safe backend eligibility failure", async () => {
+    vi.mocked(startAttempt).mockRejectedValue(new ApiError("FOCUSED_LISTENING_AUDIO_UNAVAILABLE", "The section recording is unavailable.", 422));
+    render(await PracticePage());
+    fireEvent.click(screen.getByRole("tab", { name: "Listening" }));
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "900" } });
+    fireEvent.click(screen.getByRole("button", { name: "Start focused practice" }));
+    await act(async () => {});
+    expect(screen.getByRole("alert")).toHaveTextContent("The section recording is unavailable.");
+    expect(screen.getByRole("combobox")).toHaveValue("900");
+    expect(screen.getByRole("button", { name: "Start focused practice" })).not.toBeDisabled();
   });
 
   it("does not expose a detail that is no longer published", async () => {

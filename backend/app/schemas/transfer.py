@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.domains.writing.task_types import WritingTaskType, validate_task_type
 from app.models.enums import AssetType, ModuleType, VersionStatus
+from app.schemas.listening import ListeningAudioRange
 
 TRANSFER_FORMAT = "devweblocalforielts-test-bundle"
 TRANSFER_SCHEMA_VERSION = 1
@@ -55,7 +56,7 @@ class PortablePassage(BaseModel):
     plain_text: str
 
 
-class PortableListeningPart(BaseModel):
+class PortableListeningPart(ListeningAudioRange):
     id: UUID
     title: str = Field(min_length=1, max_length=240)
     order_index: int = Field(ge=0)

@@ -7,7 +7,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import AppError
 from app.domains.timers.service import COUNTDOWN_PRESETS
-from app.models import Attempt, ListeningPart, QuestionGroup, ReadingPassage, WritingTask
+from app.models import (
+    Attempt,
+    ListeningPart,
+    QuestionGroup,
+    ReadingPassage,
+    TestModule,
+    WritingTask,
+)
 from app.models.enums import AttemptScope, ModuleType, TimerMode
 from app.schemas.attempts import AttemptCreate, FocusedUnitResponse
 
@@ -59,7 +66,7 @@ async def resolve_focused_target(
         return {}
     _, model, field = UNITS[data.focused_unit.kind]
     target = await session.scalar(
-        select(model.id).where(model.id == data.focused_unit.id, model.module_id == module_id)
+        select(model).where(model.id == data.focused_unit.id, model.module_id == module_id)
     )
     if target is None:
         # Missing, foreign-version and foreign-module IDs are indistinguishable.
@@ -68,7 +75,18 @@ async def resolve_focused_target(
             "The selected unit is not available for this module and version.",
             422,
         )
-    return {f"{field}_id": target}
+    if data.module == ModuleType.LISTENING:
+        audio_asset_id = await session.scalar(
+            select(TestModule.audio_asset_id).where(TestModule.id == module_id)
+        )
+        start, end = target.audio_start_seconds, target.audio_end_seconds
+        if audio_asset_id is None or start is None or end is None or start < 0 or end <= start:
+            raise AppError(
+                "FOCUSED_LISTENING_AUDIO_UNAVAILABLE",
+                "Focused Listening requires a recording and a configured section audio range.",
+                422,
+            )
+    return {f"{field}_id": target.id}
 
 
 class AttemptScopeGuard:

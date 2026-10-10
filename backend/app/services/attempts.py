@@ -963,6 +963,8 @@ class AttemptService:
                         id=part.id,
                         title=part.title,
                         order_index=part.order_index,
+                        audio_start_seconds=part.audio_start_seconds,
+                        audio_end_seconds=part.audio_end_seconds,
                         question_groups=[
                             self._present_exam_group(
                                 group,

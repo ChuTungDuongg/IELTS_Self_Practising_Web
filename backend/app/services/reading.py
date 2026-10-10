@@ -867,6 +867,8 @@ class ReadingService:
             revision=part.revision,
             title=part.title,
             order_index=part.order_index,
+            audio_start_seconds=part.audio_start_seconds,
+            audio_end_seconds=part.audio_end_seconds,
             question_groups=[
                 cls._present_group(group, [], module_type=ModuleType.LISTENING)
                 for group in sorted(part.question_groups, key=lambda item: item.order_index)

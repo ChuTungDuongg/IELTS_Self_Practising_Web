@@ -19,7 +19,7 @@ const passageSchema = z.object({
   blocks: z.array(z.object({ id: z.string().uuid(), type: z.enum(["paragraph", "heading"]), label: z.string().nullable().optional(), text: z.string() })),
   question_groups: z.array(groupSchema),
 });
-const listeningPartSchema = z.object({ id: z.string().uuid(), title: z.string(), order_index: z.number(), question_groups: z.array(groupSchema) });
+const listeningPartSchema = z.object({ id: z.string().uuid(), title: z.string(), order_index: z.number(), audio_start_seconds: z.number().int().nullable().optional(), audio_end_seconds: z.number().int().nullable().optional(), question_groups: z.array(groupSchema) });
 const writingTaskSchema = z.object({
   id: z.string().uuid(),
   task_number: z.number().int(),
@@ -96,7 +96,7 @@ export async function getListeningReview(attemptId: string, request: ApiRequeste
     review: { attempt: z.infer<typeof attemptResponseSchema>; test_title: string; answers: Array<{ question_id: string; question_number: number; prompt: string; value: unknown; answer_key: Record<string, unknown>; is_correct: boolean | null; explanation: string | null }> };
     highlights: z.infer<typeof highlightSchema>[];
     audio_asset: z.infer<typeof assetSchema> | null;
-    parts: Array<{ id: string; title: string; order_index: number; question_groups: Array<{ id: string; question_type: string; instruction: string; config: Record<string, unknown>; image_asset?: z.infer<typeof assetSchema> | null; order_index: number; questions: Array<{ id: string; number: number; prompt: string; config: Record<string, unknown>; answer_key: Record<string, unknown>; explanation: string | null; order_index: number }> }> }>;
+    parts: Array<{ id: string; title: string; order_index: number; audio_start_seconds?: number | null; audio_end_seconds?: number | null; question_groups: Array<{ id: string; question_type: string; instruction: string; config: Record<string, unknown>; image_asset?: z.infer<typeof assetSchema> | null; order_index: number; questions: Array<{ id: string; number: number; prompt: string; config: Record<string, unknown>; answer_key: Record<string, unknown>; explanation: string | null; order_index: number }> }> }>;
   }>(`/attempts/${attemptId}/listening-review`);
 }
 

@@ -30,14 +30,18 @@ export const moduleSchema = z.object({
   listening_part_count: z.number().int(),
   writing_task_count: z.number().int(),
   question_count: z.number().int(),
+  has_audio: z.boolean().optional(),
   reading_passages: z.array(z.object({
     id: z.string().uuid(),
     title: z.string(), order_index: z.number().int(),
     question_groups: z.array(z.object({ question_type: z.string(), start_number: z.number().int(), end_number: z.number().int(), question_count: z.number().int().nonnegative() })),
   })).optional(),
   listening_sections: z.array(z.object({
+    id: z.string().uuid(),
     title: z.string().nullable(), order_index: z.number().int(),
-    question_groups: z.array(z.object({ question_type: z.string(), start_number: z.number().int(), end_number: z.number().int() })),
+    audio_start_seconds: z.number().int().nullable().optional(),
+    audio_end_seconds: z.number().int().nullable().optional(),
+    question_groups: z.array(z.object({ question_type: z.string(), start_number: z.number().int(), end_number: z.number().int(), question_count: z.number().int().nonnegative() })),
   })).optional(),
   writing_tasks: z.array(z.object({
     id: z.string().uuid(),

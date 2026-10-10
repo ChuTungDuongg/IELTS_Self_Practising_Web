@@ -4,6 +4,7 @@ import { useState } from "react";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ModuleBadge } from "@/components/ui/module-badge";
 import { writingTaskTypeLabel } from "@/features/writing/task-types";
+import { formatAudioTime, sectionAudioClip, validAudioClip } from "@/features/listening/audio-time";
 import type { VersionDetail } from "@/lib/api/schema";
 import { StartFocusedPractice } from "./start-focused-practice";
 
@@ -23,13 +24,13 @@ function questionSummary(groups: GroupSummary[]): string {
 }
 
 export function SkillPractice({ versions }: { versions: VersionDetail[] }) {
-  const [skill, setSkill] = useState<"READING" | "WRITING">("READING");
+  const [skill, setSkill] = useState<"READING" | "LISTENING" | "WRITING">("READING");
   const available = versions.filter((version) => version.modules.some((module) =>
-    module.module_type === skill && (skill === "READING" ? module.reading_passages?.length : module.writing_tasks?.length)));
+    module.module_type === skill && (skill === "READING" ? module.reading_passages?.length : skill === "LISTENING" ? module.listening_sections?.length : module.writing_tasks?.length)));
 
   return <>
     <div className="history-tabs mb-6" role="tablist" aria-label="Practice skill">
-      {(["READING", "WRITING"] as const).map((module) => <button type="button" key={module} id={`practice-tab-${module}`} role="tab" aria-selected={skill === module} aria-controls="practice-units" className={`btn ${skill === module ? "btn-primary" : "btn-secondary"}`} onClick={() => setSkill(module)}>{module === "READING" ? "Reading" : "Writing"}</button>)}
+      {(["READING", "LISTENING", "WRITING"] as const).map((module) => <button type="button" key={module} id={`practice-tab-${module}`} role="tab" aria-selected={skill === module} aria-controls="practice-units" className={`btn ${skill === module ? "btn-primary" : "btn-secondary"}`} onClick={() => setSkill(module)}>{module === "READING" ? "Reading" : module === "LISTENING" ? "Listening" : "Writing"}</button>)}
     </div>
     <div id="practice-units" role="tabpanel" aria-labelledby={`practice-tab-${skill}`}>
       {available.length ? available.map((version) => <section key={`${skill}-${version.id}`} className="mb-8" aria-labelledby={`practice-version-${version.id}`}>
@@ -47,7 +48,20 @@ export function SkillPractice({ versions }: { versions: VersionDetail[] }) {
                 <StartFocusedPractice versionId={version.id} target={{ module: "READING", unitId: passage.id }} />
               </div>
             </article>)
-            : [...(module.writing_tasks ?? [])].sort((a, b) => a.task_number - b.task_number).map((task) => <article key={task.id} className="practice-card practice-card-writing">
+            : skill === "LISTENING" ? [...(module.listening_sections ?? [])].sort((a, b) => a.order_index - b.order_index).map((section) => {
+              const clip = sectionAudioClip(section);
+              const validRange = clip !== undefined && validAudioClip(clip);
+              const reason = !module.has_audio ? "No recording is attached to this Listening module." : !validRange ? "This section needs a configured audio range before focused practice is available." : undefined;
+              return <article key={section.id} className="practice-card practice-card-listening">
+                <div className="practice-card-accent" aria-hidden="true" />
+                <div className="practice-card-content">
+                  <ModuleBadge module="LISTENING" />
+                  <div className="practice-card-title"><p className="practice-module-kicker">Section {section.order_index + 1}</p><h3 className="mt-2 text-lg font-semibold">{section.title ?? `Section ${section.order_index + 1}`}</h3><span>{questionSummary(section.question_groups)}</span></div>
+                  {validRange ? <p className="mt-3 text-sm text-[var(--muted)]">Audio {formatAudioTime(clip.startSeconds)}–{formatAudioTime(clip.endSeconds)} · {formatAudioTime(clip.endSeconds - clip.startSeconds)} clip</p> : null}
+                  <StartFocusedPractice versionId={version.id} target={{ module: "LISTENING", unitId: section.id }} unavailableReason={reason} />
+                </div>
+              </article>;
+            }) : [...(module.writing_tasks ?? [])].sort((a, b) => a.task_number - b.task_number).map((task) => <article key={task.id} className="practice-card practice-card-writing">
               <div className="practice-card-accent" aria-hidden="true" />
               <div className="practice-card-content">
                 <ModuleBadge module="WRITING" />
@@ -57,7 +71,7 @@ export function SkillPractice({ versions }: { versions: VersionDetail[] }) {
               </div>
             </article>))}
         </div>
-      </section>) : <EmptyState title={`No ${skill === "READING" ? "Reading passages" : "Writing tasks"} available`} description="Published tests with this skill will appear here when available." />}
+      </section>) : <EmptyState title={`No ${skill === "READING" ? "Reading passages" : skill === "LISTENING" ? "Listening sections" : "Writing tasks"} available`} description="Published tests with this skill will appear here when available." />}
     </div>
   </>;
 }

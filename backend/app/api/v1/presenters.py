@@ -39,6 +39,7 @@ def present_version(version: TestVersion) -> VersionDetail:
                 recommended_duration_seconds=module.recommended_duration_seconds,
                 passage_count=len(module.passages),
                 listening_part_count=len(module.listening_parts),
+                has_audio=module.audio_asset_id is not None,
                 writing_task_count=len(module.writing_tasks),
                 question_count=sum(
                     len(group_slots(group.question_type, group.questions))
@@ -61,8 +62,11 @@ def present_version(version: TestVersion) -> VersionDetail:
                 ],
                 listening_sections=[
                     ListeningSectionSummary(
+                        id=part.id,
                         title=part.title,
                         order_index=part.order_index,
+                        audio_start_seconds=part.audio_start_seconds,
+                        audio_end_seconds=part.audio_end_seconds,
                         question_groups=[
                             summary
                             for group in sorted(

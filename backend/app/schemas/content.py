@@ -8,6 +8,7 @@ from app.domains.writing.task_types import WritingTaskType
 from app.models.enums import ModuleType, VersionStatus
 from app.schemas.assets import AssetResponse
 from app.schemas.attempts import AttemptResponse, AttemptReview, WritingReview
+from app.schemas.listening import ListeningAudioRange
 
 
 class TextBlock(BaseModel):
@@ -127,7 +128,7 @@ class BuilderPassage(BaseModel):
     question_groups: list[BuilderQuestionGroup]
 
 
-class ListeningPartWrite(BaseModel):
+class ListeningPartWrite(ListeningAudioRange):
     title: str = Field(min_length=1, max_length=240)
     order_index: int = Field(ge=0, le=3)
 
@@ -141,7 +142,7 @@ class ListeningModuleAudioWrite(BaseModel):
     asset_id: UUID | None = None
 
 
-class BuilderListeningPart(BaseModel):
+class BuilderListeningPart(ListeningAudioRange):
     id: UUID
     revision: int
     title: str
@@ -224,7 +225,7 @@ class ExamPassage(BaseModel):
     question_groups: list[ExamQuestionGroup]
 
 
-class ExamListeningPart(BaseModel):
+class ExamListeningPart(ListeningAudioRange):
     id: UUID
     title: str
     order_index: int
