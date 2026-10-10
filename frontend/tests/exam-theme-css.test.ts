@@ -158,6 +158,30 @@ it.each(["light", "dark"] as const)("paper tokens cannot change resolved exam co
 });
 function resolvePath(path: string) { return resolve(process.cwd(),path); }
 
+it("workspace typography excludes attempts, paused gates and embedded DraftPreview exam descendants", () => {
+  const scoped = postcss.parse(css.slice(css.indexOf("/* Workspace type and controls"), css.indexOf("/* Dark-only treatments")));
+  const typography = new Set(["font-size", "font-weight", "line-height", "letter-spacing", "font-family"]);
+  const wrappers = ["exam-shell", "exam-runner draft-preview"];
+  for (const wrapper of wrappers) {
+    const root = document.createElement("div"); root.className = wrapper;
+    root.innerHTML = '<div class="page-heading exam-header"><h1>Authored title</h1></div><button class="btn btn-primary theme-toggle">Action</button><label class="field-label"><input class="field"></label><span class="status-badge module-badge">Status</span><p class="page-description">Content</p>';
+    document.body.append(root);
+    scoped.walkRules((rule) => {
+      if (!rule.selector.includes(":not(:where(")) return;
+      let changesType = false; rule.walkDecls((decl) => { if (typography.has(decl.prop)) changesType = true; });
+      if (!changesType) return;
+      for (const selector of postcss.list.comma(rule.selector)) for (const node of root.querySelectorAll("*")) expect(node.matches(selector), selector).toBe(false);
+    });
+    root.remove();
+  }
+  const values: Record<string, string> = {};
+  postcss.parse(css).walkRules((rule) => { if (rule.selector === ":is(.exam-shell, .exam-runner)") rule.walkDecls((decl) => { values[decl.prop] = decl.value; }); });
+  expect(values).toMatchObject({ "font-size": "15px", "font-weight": "400", "line-height": "1.5", "letter-spacing": "normal" });
+  const shell = readFileSync(resolvePath("src/components/ui/app-shell.tsx"), "utf8");
+  expect(shell.indexOf('pathname.startsWith("/attempt/")')).toBeLessThan(shell.indexOf("<GlobalHeader"));
+  expect(readFileSync(resolvePath("src/features/test-builder/draft-preview.tsx"), "utf8")).toContain('className="exam-runner draft-preview');
+});
+
 it("protects exam dialogs and highlight portals from workspace decoration", () => {
  const stylesheet = postcss.parse(css);
  const values = (selector: string) => {

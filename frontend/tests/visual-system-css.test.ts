@@ -1,10 +1,11 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import postcss from "postcss";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 const css = readFileSync(resolve(process.cwd(), "src/app/globals.css"), "utf8");
 const workspaceOnly = ':not(:where(.exam-shell, .exam-shell *, .exam-runner, .exam-runner *, .highlight-popover, .highlight-popover *))';
+afterEach(() => { document.body.replaceChildren(); document.documentElement.dataset.theme = "light"; });
 function workspaceValues(selector: string, media?: string) {
   const result: Record<string, string> = {};
   postcss.parse(css).walkRules(rule => {
@@ -13,6 +14,28 @@ function workspaceValues(selector: string, media?: string) {
     if (postcss.list.comma(rule.selector).includes(selector)) rule.walkDecls(decl => { result[decl.prop] = decl.value; });
   });
   return result;
+}
+
+// Apply matching source declarations for the requested interaction state. This
+// checks the CSS contract; jsdom does not demonstrate browser pixel layout.
+function interactionValues(element: Element, state: "hover" | "focus" | "reduced") {
+  const values: Record<string, string> = {};
+  const important = new Set<string>();
+  postcss.parse(css).walkRules((rule) => {
+    if (rule.parent?.type === "atrule" && !(state === "reduced" && rule.parent.params === "(prefers-reduced-motion: reduce)")) return;
+    const matches = postcss.list.comma(rule.selector).some((selector) => {
+      if (selector.includes("::")) return false;
+      if (selector.includes(":hover") && state !== "hover") return false;
+      if (selector.includes(":focus-visible") && state !== "focus") return false;
+      const normalized = selector.replace(/:hover|:focus-visible/g, "");
+      return element.matches(normalized.trim() ? normalized.endsWith(" ") ? `${normalized}*` : normalized : "*");
+    });
+    if (matches) rule.walkDecls((decl) => {
+      if (!important.has(decl.prop) || decl.important) values[decl.prop] = decl.value;
+      if (decl.important) important.add(decl.prop);
+    });
+  });
+  return values;
 }
 
 function themeBlock(selector: string, endMarker: string): string {
@@ -193,4 +216,55 @@ it("removes decorative workspace gradients, blur and colored elevation while pre
   expect(css).toContain(".home-orbit-interactive.is-active .home-orbit-scene");
   expect(css).toContain(".trend-chart");
   expect(css).toContain(".highlight-mark");
+});
+
+describe("final workspace hover focus and reduced-motion contracts", () => {
+  it.each(["light", "dark"])("keeps every current button variant flat with visible focus in %s", (theme) => {
+    document.documentElement.dataset.theme = theme;
+    const surface = document.createElement("div");
+    document.body.append(surface);
+    for (const variant of ["primary", "secondary", "ghost", "danger", "danger-ghost", "listening", "writing"]) {
+      const button = document.createElement("button"); button.className = `btn btn-${variant}`; surface.append(button);
+      const hover = interactionValues(button, "hover");
+      expect(hover.transform, variant).toBe("none");
+      expect(["none", "var(--shadow-sm)"]).toContain(hover["box-shadow"]);
+      expect(hover.background ?? "", variant).not.toMatch(/gradient|glow/);
+      const focus = interactionValues(button, "focus");
+      expect(focus.outline).toMatch(/^3px solid /); expect(focus["outline-color"]).toBe("var(--accent)"); expect(focus["outline-offset"]).toBe("3px");
+      expect(interactionValues(button, "reduced")["transition-duration"]).toBe("0.01ms");
+    }
+    surface.remove(); document.documentElement.dataset.theme = "light";
+  });
+
+  it("retains neutral card hover, readable fields, badges and status presentation", () => {
+    const surface = document.createElement("div"); document.body.append(surface);
+    for (const className of ["home-metric", "learning-path-card", "practice-card", "test-card"]) {
+      const card = document.createElement("a"); card.className = className; surface.append(card);
+      const hover = interactionValues(card, "hover"); expect(hover.transform).toBe("none"); expect(["none", "var(--shadow-sm)"]).toContain(hover["box-shadow"]); expect(hover.background ?? "").not.toMatch(/gradient|glow/);
+    }
+    for (const className of ["field", "select-field", "textarea-field"]) {
+      const input = document.createElement("input"); input.className = className; surface.append(input);
+      expect(interactionValues(input, "focus")["outline-color"]).toBe("var(--accent)"); expect(["var(--accent)", "var(--line-strong)"]).toContain(interactionValues(input, "hover")["border-color"]);
+    }
+    for (const skill of ["reading", "listening", "writing"]) {
+      const badge = document.createElement("span"); badge.className = `module-badge module-${skill}`; surface.append(badge);
+      expect(interactionValues(badge, "hover")).toMatchObject({ color: `var(--${skill})`, background: `color-mix(in srgb, var(--${skill}) 8%, var(--surface))` });
+    }
+    for (const state of ["published", "draft", "archived"]) {
+      const badge = document.createElement("span"); badge.className = `status-badge status-${state}`; surface.append(badge);
+      const values = interactionValues(badge, "hover"); expect(values["font-size"]).toBe("12px"); expect(values.background).not.toMatch(/gradient|glow/);
+    }
+    surface.remove();
+  });
+
+  it("keeps global navigation focus and active markers visible and normal chrome unblurred", () => {
+    expect(workspaceValues(".primary-nav-link-active")).toMatchObject({ "border-bottom-color": "var(--accent)", background: "var(--surface-raised)" });
+    const nav = document.createElement("a"); nav.className = "primary-nav-link"; document.body.append(nav);
+    expect(interactionValues(nav, "focus")).toMatchObject({ "outline-color": "var(--accent)", "outline-offset": "3px" }); nav.remove();
+    for (const selector of [".app-header", ".dialog-backdrop", ".app-footer"]) expect(workspaceValues(selector)["backdrop-filter"] ?? "none").toBe("none");
+    for (const selector of [".header-actions a", ".header-actions button"]) {
+      expect(workspaceValues(selector, "(width < 768px)")["min-height"]).toBe("44px");
+    }
+    expect(workspaceValues(".primary-nav-link")["min-height"]).toBe("44px");
+  });
 });

@@ -138,4 +138,16 @@ describe("horizontal application shell", () => {
     expect(Array.from(actions.children).map((child) => child.getAttribute("role") ?? child.tagName.toLowerCase())).toEqual(["group", "button", "a", role ? "button" : "a"]);
     if (role) expect(screen.getByRole("link", { name: new RegExp(state.name) })).toHaveAttribute("href", "/profile");
   });
+
+  it("retains one global nav and ordinary DOM Tab order without responsive duplicate controls", () => {
+    state.role = "ADMIN";
+    const { container } = renderWithLocale(<AppShell currentYear={2026}><input aria-label="Feature input" /></AppShell>);
+    const header = screen.getByRole("banner");
+    const focusable = Array.from(header.querySelectorAll<HTMLAnchorElement | HTMLButtonElement>('a[href], button'));
+    expect(header.querySelectorAll("nav")).toHaveLength(1);
+    expect(focusable.slice(1, 9).map((node) => node.getAttribute("href"))).toEqual(routes);
+    expect(focusable.slice(9).map((node) => node.getAttribute("aria-label") ?? node.textContent)).toEqual(["English", "Tiếng Việt", "Use dark theme", expect.stringContaining("Learner"), "Logout"]);
+    expect(focusable.every((node) => node.tabIndex === 0)).toBe(true);
+    expect(container.querySelector('[tabindex]:not([tabindex="0"]):not([tabindex="-1"])')).toBeNull();
+  });
 });
