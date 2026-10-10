@@ -83,9 +83,11 @@ export function GlobalHeader({ pathname }: { pathname: string }): ReactElement {
 
   return <>
     <header className="app-header">
-      <Link href="/" className="brand" aria-label={t("shell.brandOverview")}><span className="brand-mark" aria-hidden="true"><AppLogo variant="primary" /></span><strong>IELTS Studio</strong></Link>
-      <PrimaryNavigation pathname={pathname} />
-      <HeaderActions loggingOut={loggingOut} onLogout={() => setConfirmingLogout(true)} />
+      <div className="app-header-inner">
+        <Link href="/" className="brand" aria-label={t("shell.brandOverview")}><span className="brand-mark" aria-hidden="true"><AppLogo variant="primary" /></span><strong>IELTS Studio</strong></Link>
+        <PrimaryNavigation pathname={pathname} />
+        <HeaderActions loggingOut={loggingOut} onLogout={() => setConfirmingLogout(true)} />
+      </div>
     </header>
     <ConfirmDialog open={confirmingLogout && user !== null} title="Log out?" description="Are you sure you want to log out of your account?" confirmLabel="Log out" pending={loggingOut} onCancel={() => setConfirmingLogout(false)} onConfirm={() => void confirmLogout()} />
   </>;
