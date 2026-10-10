@@ -7,7 +7,15 @@ from decimal import Decimal
 import pytest
 from test_task1_visual import Task1FakeProvider, chart, request
 
-from app.domains.scoring.task1_prompts import evidence_prompt, score_prompt
+from app.domains.scoring.task1_prompts import (
+    GROUNDED_TA_GUIDANCE,
+    TASK1_TA_DESCRIPTOR_DISCRIMINATION_GUIDANCE,
+    TASK1_TA_EVIDENCE_SELECTION_GUIDANCE,
+    evidence_prompt,
+    score_prompt,
+)
+from app.evaluation.task1 import baseline_v5_prompts
+from app.providers.writing_llm.base import Completion
 from app.schemas.task1_claims import Task1Analysis
 from app.schemas.writing_ai import TRAITS, EvidenceResult
 from app.services import task1_input
@@ -129,13 +137,162 @@ def test_task1_evidence_preserves_exact_source_data_and_instruction_guard(trait)
 
 
 def test_task1_scoring_version_changes_cache_without_changing_visual_contract():
-    assert task1_input.TASK1_PROMPT_VERSION == "mts-task1-visual-v5"
+    assert task1_input.TASK1_PROMPT_VERSION == "mts-task1-visual-v6"
     assert getattr(task1_input, "TASK1_VISUAL_CONTRACT_VERSION", None) == "mts-task1-visual-v3"
-    assert getattr(task1_input, "TASK1_SCORING_PROMPT_VERSION", None) == "mts-task1-scoring-v5"
+    assert getattr(task1_input, "TASK1_SCORING_PROMPT_VERSION", None) == "mts-task1-scoring-v6"
     req = request()
     assert input_fingerprint(req, task1_input.TASK1_PROMPT_VERSION, "vllm", "model") != (
-        input_fingerprint(req, "mts-task1-visual-v4", "vllm", "model")
+        input_fingerprint(req, "mts-task1-visual-v5", "vllm", "model")
     )
+
+
+@pytest.mark.parametrize("trait", TRAITS)
+@pytest.mark.parametrize("stage", ["evidence", "scoring"])
+def test_adjacent_band_calibration_is_only_in_ta_scoring(trait, stage):
+    system = messages(trait, stage)[0]["content"]
+    assert (TASK1_TA_DESCRIPTOR_DISCRIMINATION_GUIDANCE in system) == (
+        trait == "ta" and stage == "scoring"
+    )
+    assert (TASK1_TA_EVIDENCE_SELECTION_GUIDANCE in system) == (
+        trait == "ta" and stage == "evidence"
+    )
+    if trait == "ta" and stage == "scoring":
+        assert system.count(TASK1_TA_DESCRIPTOR_DISCRIMINATION_GUIDANCE) == 1
+
+
+def test_ta_discriminates_adjacent_descriptors_without_safe_default_or_perfection():
+    system = messages("ta", "scoring")[0]["content"]
+    for concept in [
+        "Band 6 is not a safe default",
+        "use the full scale when descriptor fit supports it",
+        "without biasing the response upward",
+        "a relevant overview attempted from a clear overview",
+        "adequately highlighted key features from clearly highlighted key features",
+        "Band 7 does not require near-perfect Task Achievement",
+        "permits a few omissions or local lapses",
+        "relevant, mostly accurate coverage captures the overall picture",
+        "every secondary figure or perfect numerical accuracy",
+        "An omitted secondary datum is not necessarily a missing key feature",
+        "Prefer Band 6 when material limitations make its descriptor the better fit",
+        "inaccuracies that materially weaken the reported picture",
+        "not a checklist or automatic deductions",
+        "Band 8 permits occasional omissions or local lapses",
+        "not reserved for perfection",
+        "skilful feature selection/presentation",
+        "effective supporting illustration",
+        "Band 9 remains exceptional",
+        "that lapse alone is not evidence that the response must fall to the lower band",
+        "do not award it when an essential positive feature is genuinely absent",
+    ]:
+        assert concept in system
+
+
+def test_ta_half_band_requires_real_adjacent_descriptor_interpolation():
+    system = messages("ta", "scoring")[0]["content"]
+    assert (
+        "Use 6.5 only as genuine interpolation between the Band 6 and Band 7 descriptors" in system
+    )
+    assert "clear overview with meaningful limitations in key-feature development" in system
+    assert (
+        "generally effective selection with an important area of insufficient fulfilment" in system
+    )
+    assert "do not choose it merely because 6 feels too low and 7 feels too high" in system
+    assert "same adjacent-descriptor interpolation at other levels" in system
+
+
+def test_ta_materiality_is_qualitative_and_keeps_conservative_grounding():
+    assert GROUNDED_TA_GUIDANCE == baseline_v5_prompts.GROUNDED_TA_GUIDANCE
+    system = messages("ta", "scoring")[0]["content"]
+    for concept in [
+        "materiality of a verified lapse to task fulfilment rather than its mere existence",
+        "wrong main trend, overview or central comparison matters much more",
+        "local slip in one secondary figure",
+        "missing key feature matters more than a minor supporting datum",
+        "minor local factual lapse does not automatically imply Band 6",
+        "Several central inaccuracies can materially weaken fulfilment",
+        "Keep factual verification intact",
+        "never severity points, arithmetic penalties, count-to-band rules, score offsets, band floors/caps",
+        "Do not convert counts of supported or contradicted claims, omissions or comparisons into bands or penalties",
+        "Uncertain values are unknown, not contradictions",
+        "LOW confidence permits cautious qualitative judgment only",
+        "never assert exact-number errors from uncertain perception",
+        "Missing/failed claim verification is not evidence of an error",
+    ]:
+        assert concept in system
+    for numeric_hack in ("add 0.5", "+0.5", "minimum TA band", "one error =", "prefer 7"):
+        assert numeric_hack not in system
+
+
+def test_ta_evidence_is_representative_without_error_mining_or_quotas():
+    system = messages("ta", "evidence")[0]["content"]
+    for concept in [
+        "Select up to four allowed source_ids",
+        "overview quality, key-feature selection",
+        "coverage of major comparisons/trends",
+        "appropriate supporting detail",
+        "material inaccuracies or omissions where present",
+        "Do not mine only errors or select the four worst mistakes",
+        "Minor local factual slips must not crowd out evidence",
+        "Do not invent strengths when none exist or require weaknesses when none are material",
+        "no positive/negative quota",
+        "never invent a source for absent text",
+    ]:
+        assert concept in system
+    assert "Band 7" not in system and "Band 8" not in system
+
+
+@pytest.mark.parametrize("trait", ["cc", "lr", "gra"])
+def test_v6_linguistic_prompts_are_exactly_v5(trait):
+    req, grounded = request(), analysis()
+    assert evidence_prompt(req, trait, grounded) == baseline_v5_prompts.evidence_prompt(
+        req, trait, grounded
+    )
+    evidence = EvidenceResult(evidence=[])
+    assert score_prompt(req, trait, evidence, grounded) == baseline_v5_prompts.score_prompt(
+        req, trait, evidence, grounded
+    )
+
+
+@pytest.mark.parametrize("band", [6, 6.5, 7, 7.5, 8])
+async def test_v6_preserves_fake_provider_ta_score_and_v5_grounding(band):
+    class Provider(Task1FakeProvider):
+        async def complete(self, messages, schema, *, options=None):
+            result = await super().complete(messages, schema, options=options)
+            if (
+                "score" in schema["properties"]
+                and "Criterion: Task Achievement." in messages[0]["content"]
+            ):
+                payload = json.loads(result.text)
+                payload["score"] = band
+                return Completion(json.dumps(payload), result.usage)
+            return result
+
+    req = request()
+    providers = [Provider(), Provider()]
+    services = [
+        baseline_v5_prompts.BaselineV5Task1WritingScoringService(providers[0]),
+        Task1WritingScoringService(providers[1]),
+    ]
+
+    async def trace(_event, _payload):
+        pass
+
+    results = [await service.assess(req, trace) for service in services]
+    assert all(
+        result is not None and result.criteria.ta.score == Decimal(str(band)) for result in results
+    )
+    assert results[0].task1_analysis == results[1].task1_analysis
+    assert len(providers[0].calls) == len(providers[1].calls) == 10
+
+    # Neither perception/claims nor linguistic evidence/scoring changes between versions.
+    def unchanged_calls(provider):
+        return [
+            call
+            for call in provider.calls
+            if "Criterion: Task Achievement." not in call[0]["content"]
+        ]
+
+    assert unchanged_calls(providers[0]) == unchanged_calls(providers[1])
 
 
 async def test_benchmark_legacy_uses_original_v3_guidance_with_same_perception_and_mts():

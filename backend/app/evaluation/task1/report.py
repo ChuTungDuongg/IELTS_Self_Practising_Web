@@ -152,7 +152,8 @@ def _ablations(records, configs):
         if kind is None:
             continue
         if (kind == "chart_specialist" and left.specialist.enabled) or (
-            kind == "scoring_prompt" and left.scoring_version == "v5"
+            kind == "scoring_prompt"
+            and int(left.scoring_version[1:]) > int(right.scoring_version[1:])
         ):
             left, right = right, left
         baseline = {
@@ -431,15 +432,15 @@ def markdown_report(report):
             "",
             "Candidate minus baseline; only identical sample content/images and controlled configuration changes are paired.",
             "",
-            "| Ablation | Baseline → Candidate | Paired N | Completed pairs | ΔTA MAE | ΔGRA bias | ΔFailure rate | ΔLatency (s) | ΔNumeric agreement |",
-            "|---|---|---:|---:|---:|---:|---:|---:|---:|",
+            "| Ablation | Baseline → Candidate | Paired N | Completed pairs | ΔTA MAE | ΔTA bias | ΔTA exact agreement | ΔGRA bias | ΔFailure rate | ΔLatency (s) | ΔNumeric agreement |",
+            "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
         ]
     )
     for comparison in report["ablations"]:
         left = report["configurations"][comparison["baseline"]]["configuration"]["label"]
         right = report["configurations"][comparison["candidate"]]["configuration"]["label"]
         lines.append(
-            f"| {comparison['kind']} | {left} → {right} | {comparison['paired_sample_count']} | {comparison['completed_pair_count']} | {_number(comparison['criterion_deltas']['ta']['mae'], signed=True)} | {_number(comparison['criterion_deltas']['gra']['signed_bias'], signed=True)} | {_number(comparison['failure_rate_delta'], signed=True)} | {_number(comparison['latency_delta_seconds'], signed=True)} | {_number(comparison['reconciled_numeric_agreement_delta'], signed=True)} |"
+            f"| {comparison['kind']} | {left} → {right} | {comparison['paired_sample_count']} | {comparison['completed_pair_count']} | {_number(comparison['criterion_deltas']['ta']['mae'], signed=True)} | {_number(comparison['criterion_deltas']['ta']['signed_bias'], signed=True)} | {_number(comparison['criterion_deltas']['ta']['exact_agreement'], signed=True)} | {_number(comparison['criterion_deltas']['gra']['signed_bias'], signed=True)} | {_number(comparison['failure_rate_delta'], signed=True)} | {_number(comparison['latency_delta_seconds'], signed=True)} | {_number(comparison['reconciled_numeric_agreement_delta'], signed=True)} |"
         )
     lines.extend(
         [

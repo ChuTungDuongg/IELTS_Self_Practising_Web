@@ -2,11 +2,20 @@
 
 The CLI reuses production visual grounding, optional fail-open DePlot,
 deterministic facts, claim verification, source evidence and four-criterion MTS.
-It needs no database. Production uses composite fingerprint `mts-task1-visual-v5`
-with perception contract `mts-task1-visual-v3` and scoring guidance `mts-task1-scoring-v5`.
-The v3 benchmark candidate preserves the former scoring/evidence prompts with
-the same current perception and scoring engine. The current candidate is v5;
-v4 is not an alias for the new scorer. Task 2 is not run by this CLI.
+It needs no database. Production uses composite fingerprint `mts-task1-visual-v6`
+with perception contract `mts-task1-visual-v3` and scoring guidance `mts-task1-scoring-v6`.
+The default candidate is v6. `--scoring-version both` compares a frozen v5 baseline
+with v6, reusing the same essays, human scores, perception pipeline/contract,
+provider/model and chart-specialist setting. Historical v3 prompts remain explicitly
+available with `--scoring-version v3`; v4 is not an alias. Task 2 is not run by this CLI.
+
+V6 targets conservative Task Achievement compression through clearer adjacent
+descriptor fit: Band 7 permits a few local omissions/lapses and Band 8 permits
+occasional ones, without requiring perfection or overlooking material weaknesses.
+TA evidence selection represents whole-response fulfilment instead of mining errors.
+There are no offsets, floors, caps or automatic generosity. Factual grounding,
+perception v3 and CC/LR/GRA prompts are unchanged. No accuracy improvement is
+claimed without a labelled human-scored comparison.
 
 ## Local dataset
 
@@ -48,22 +57,30 @@ or checkpoints; only IDs, hashes, scores, counts and safe status codes remain.
 From `backend/`, first validate your local data without inference:
 
 ```powershell
-uv run python ../scripts/benchmark_task1.py --manifest ../benchmarks/writing_task1/private/manifest.jsonl --split dev --scoring-version v5 --chart-specialist off --dry-run --output ../benchmarks/writing_task1/reports/dev-plan
+uv run python ../scripts/benchmark_task1.py --manifest ../benchmarks/writing_task1/private/manifest.jsonl --split dev --scoring-version v6 --chart-specialist off --dry-run --output ../benchmarks/writing_task1/reports/dev-plan
 ```
 
 An explicit one-sample real smoke, using existing backend provider settings:
 
 ```powershell
-uv run python ../scripts/benchmark_task1.py --manifest ../benchmarks/writing_task1/private/manifest.jsonl --split dev --limit 1 --scoring-version v5 --chart-specialist off --resume --output ../benchmarks/writing_task1/reports/dev-smoke
+uv run python ../scripts/benchmark_task1.py --manifest ../benchmarks/writing_task1/private/manifest.jsonl --split dev --limit 1 --scoring-version v6 --chart-specialist off --resume --output ../benchmarks/writing_task1/reports/dev-smoke
 ```
 
-Controlled v3/v5 and DePlot off/on comparisons:
+Controlled v5 baseline / v6 candidate comparison at a fixed specialist setting:
+
+```powershell
+uv run python ../scripts/benchmark_task1.py --manifest ../benchmarks/writing_task1/private/manifest.jsonl --split dev --scoring-version both --chart-specialist off --resume --output ../benchmarks/writing_task1/reports/dev-v5-v6
+```
+
+To also compare DePlot off/on:
 
 ```powershell
 uv run python ../scripts/benchmark_task1.py --manifest ../benchmarks/writing_task1/private/manifest.jsonl --split dev --scoring-version both --chart-specialist both --resume --output ../benchmarks/writing_task1/reports/dev-ablation
 ```
 
-`both` × `both` runs four configurations **per sample**. `--limit` limits unique
+`both` × `both` runs four configurations **per sample**: v5/v6 × DePlot off/on.
+Scoring ablations report v5 as baseline and v6 as candidate, with candidate-minus-baseline
+TA signed bias, MAE and agreement deltas. `--limit` limits unique
 samples, not the number of provider requests. Specialist-on applies only to
 chart/table families, remains fail-open, and may fall back if unavailable.
 Run one-sample/single-configuration smoke first. No benchmark is started by the
@@ -117,6 +134,11 @@ these statistics cover completed attempt records only.
 
 Positive signed bias means generosity; negative bias means under-scoring. Read
 each criterion separately so mixed errors cannot cancel in overall.
+For v5/v6, inspect signed TA bias, MAE and exact/within-band agreement together;
+an upward shift alone is not evidence of better accuracy. Both versions invoke
+the same perception pipeline, but live perception can still vary between runs.
+Use the primary/reconciled perception metrics to identify that confound rather
+than attributing every TA difference to scoring prompts.
 
 - Bad perception and TA disagreement: investigate perception/reconciliation.
 - Accurate perception but TA disagreement: investigate Task Achievement guidance.

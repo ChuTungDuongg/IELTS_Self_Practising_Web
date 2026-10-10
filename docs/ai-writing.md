@@ -3,10 +3,10 @@
 Task 1 and Task 2 share the configured `mistralai/Ministral-3-8B-Instruct-2512`
 model, provider adapters and existing Modal/vLLM GPU function. Task 2 retains
 its text-only MTS pipeline and current local `mts-task2-v7` cache contract. Task 1
-uses `mts-task1-scoring-v5`, composite `mts-task1-visual-v5`, and the unchanged
-`mts-task1-visual-v3` perception contract. These scoring changes preceded the
-latency phase. See [the latency engineering case study](enhance_latency.md) for
-bounded concurrent execution, serving settings, measurements and reproduction.
+uses `mts-task1-scoring-v6`, composite `mts-task1-visual-v6`, and the unchanged
+`mts-task1-visual-v3` perception contract. See
+[the latency engineering case study](enhance_latency.md) for bounded concurrent
+execution, serving settings, measurements and reproduction.
 
 ## Task 2: text-only assessment
 
@@ -159,11 +159,32 @@ explanations. English source quotations remain unchanged.
 
 Task Achievement uses that reference, deterministic facts and verdicts for holistic
 assessment against original paraphrases of the
-[official Academic Task 1 descriptors](https://ielts.org/cdn/Guides/ielts-writing-band-descriptors.pdf)
-(May 2023, pages 3–5). There are no error-count penalties, score caps or a fifth
+[official Academic Task 1 descriptors](https://ielts.org/cdn/ielts-guides/ielts-writing-band-descriptors.pdf)
+(May 2023, PDF pages 2–4). There are no error-count penalties, score caps or a fifth
 criterion. CC/LR/GRA receive only prompt/essay and their own source evidence,
 without visual data or another criterion's score. Existing score normalization,
 equal-weight Decimal mean and half-band rounding are reused.
+
+Task 1 scoring v6 addresses conservative TA band compression through clearer
+adjacent-descriptor discrimination, not score offsets or automatic generosity.
+Band 6's attempted overview/adequate feature selection differs from Band 7's
+clear overview, main patterns and clearly highlighted features. Band 7 permits
+a few local omissions/lapses; Band 8 permits occasional ones when fulfilment is
+sufficient and features are skilfully selected and illustrated. A permitted lapse
+does not itself require the lower band, but genuinely absent essential qualities
+or material content weaknesses still matter. Half-bands interpolate adjacent
+descriptors; a secondary numerical slip and a wrong central trend have different
+qualitative significance, never arithmetic penalties.
+
+TA evidence selection represents overview, features, main comparisons, support
+and material limitations rather than mining errors. Its four-source maximum and
+source-ID contract remain intact. Factual verification, uncertainty safeguards,
+perception/reconciliation v3, CC/LR/GRA and Task 2 scoring are unchanged. The v6
+composite fingerprint prevents reuse of v5 scoring runs while keeping their
+history readable. The [Task 1 benchmark](../benchmarks/writing_task1/README.md)
+compares frozen v5 baseline prompts with v6 under the same provider/model and
+specialist settings. Signed TA bias, MAE and agreement on a labelled human-scored
+set are needed to establish improvement; synthetic contract tests do not prove it.
 
 `HIGH`/`MEDIUM` grounding supports normal factual comparison. `LOW` shows a visible
 Vietnamese caution and allows only cautious TA judgment; deterministic numeric

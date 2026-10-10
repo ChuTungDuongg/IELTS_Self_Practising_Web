@@ -7,14 +7,16 @@ from decimal import Decimal
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 from test_chart_cross_check import FakeSpecialist
 from test_task1_grounding_regression import PieProvider
 
 from app.core.config import Settings
 from app.evaluation.task1.manifest import BenchmarkInputError, load_manifest
-from app.evaluation.task1.models import EvaluationRecord
+from app.evaluation.task1.models import BenchmarkConfig, EvaluationRecord
 from app.evaluation.task1.report import build_report
 from app.evaluation.task1.runner import configurations, implementation_hash, run_benchmark
+from app.providers.writing_llm.base import Completion
 from app.schemas.chart_cross_check import ChartSpecialistIdentity
 
 MATRIX = Path(__file__).parent / "fixtures" / "synthetic_six_region_pie_matrix.json"
@@ -79,12 +81,29 @@ def test_invalid_manifest_has_safe_diagnostics(benchmark_files, failure):
 def test_configuration_identity_separates_prompt_and_specialist_versions():
     configs = configurations(Settings(_env_file=None), "both", "both")
     assert len(configs) == 4 and len({config.key for config in configs}) == 4
-    assert {config.scoring_version for config in configs} == {"v3", "v5"}
+    assert {config.scoring_version for config in configs} == {"v5", "v6"}
     assert all(config.visual_contract_version == "mts-task1-visual-v3" for config in configs)
-    current = [config for config in configs if config.scoring_version == "v5"]
-    assert all(config.prompt_version == "mts-task1-visual-v5" for config in current)
-    assert all(config.scoring_prompt_version == "mts-task1-scoring-v5" for config in current)
+    current = [config for config in configs if config.scoring_version == "v6"]
+    assert all(config.prompt_version == "mts-task1-visual-v6" for config in current)
+    assert all(config.scoring_prompt_version == "mts-task1-scoring-v6" for config in current)
+    baseline = [config for config in configs if config.scoring_version == "v5"]
+    assert all(config.prompt_version == "mts-task1-visual-v5" for config in baseline)
+    assert all(config.scoring_prompt_version == "mts-task1-scoring-v5" for config in baseline)
+    # At a fixed specialist setting, only prompt/version fields change.
+    for before, after in zip(baseline, current, strict=True):
+        exclude = {"label", "scoring_version", "prompt_version", "scoring_prompt_version"}
+        assert before.model_dump(exclude=exclude) == after.model_dump(exclude=exclude)
+        assert before.key != after.key
     assert all("SECRET" not in config.model_dump_json() for config in configs)
+
+
+def test_historical_v3_remains_explicit_and_unknown_versions_are_invalid():
+    config = configurations(Settings(_env_file=None), "v3", "off")[0]
+    assert config.label == "task1-v3-legacy:deplot-off"
+    assert config.prompt_version == config.visual_contract_version == "mts-task1-visual-v3"
+    assert config.scoring_prompt_version == "mts-task1-scoring-v3"
+    with pytest.raises(ValidationError):
+        BenchmarkConfig.model_validate({**config.model_dump(), "scoring_version": "v4"})
 
 
 def test_old_v4_is_not_silently_aliased_to_current_benchmark_scorer():
@@ -233,7 +252,8 @@ async def test_interruption_keeps_completed_checkpoints_and_resume_retries_failu
     assert report["records"][1]["status"] == "COMPLETED"
 
 
-def test_cli_dry_run_and_rejected_input_are_content_safe(benchmark_files, tmp_path):
+@pytest.mark.parametrize("version", [None, "both", "v3", "v5", "v6"])
+def test_cli_dry_run_and_rejected_input_are_content_safe(benchmark_files, tmp_path, version):
     path, sample = benchmark_files
     script = Path(__file__).resolve().parents[2] / "scripts" / "benchmark_task1.py"
     command = [
@@ -247,14 +267,65 @@ def test_cli_dry_run_and_rejected_input_are_content_safe(benchmark_files, tmp_pa
         "--output",
         str(tmp_path / "cli"),
     ]
+    if version is not None:
+        command.extend(["--scoring-version", version])
     result = subprocess.run(command, capture_output=True, text=True, check=False)
     assert result.returncode == 0 and "DRY_RUN: samples=1 runs=0 failed=0" in result.stdout
     assert sample["essay"] not in result.stdout + result.stderr
+    plan = json.loads((tmp_path / "cli" / "report.json").read_text())
+    expected = {"v5", "v6"} if version == "both" else {version or "v6"}
+    assert {
+        entry["configuration"]["scoring_version"] for entry in plan["configurations"].values()
+    } == expected
     del sample["human_scores"]
     path.write_text(json.dumps(sample), encoding="utf-8")
     invalid = subprocess.run(command, capture_output=True, text=True, check=False)
     assert invalid.returncode == 2 and "BENCHMARK_SAMPLE_INVALID:line=1" in invalid.stderr
     assert "PRIVATE" not in invalid.stdout + invalid.stderr
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+async def test_scoring_ablation_is_v5_baseline_to_v6_candidate(benchmark_files, tmp_path, reverse):
+    path, _sample = benchmark_files
+    configs = configurations(Settings(_env_file=None), "both", "off")
+    if reverse:
+        configs.reverse()
+
+    class Provider(PieProvider):
+        def __init__(self, version):
+            super().__init__(json.loads(MATRIX.read_text(encoding="utf-8")))
+            self.version = version
+
+        async def complete(self, messages, schema, *, options=None):
+            result = await super().complete(messages, schema, options=options)
+            if (
+                "score" in schema["properties"]
+                and "Criterion: Task Achievement." in messages[0]["content"]
+            ):
+                payload = json.loads(result.text)
+                payload["score"] = 5.5 if self.version == "v5" else 6.5
+                return Completion(json.dumps(payload), result.usage)
+            return result
+
+    report = await run_benchmark(
+        load_manifest(path, "dev"),
+        configs,
+        tmp_path / "paired",
+        provider_factory=lambda config: Provider(config.scoring_version),
+    )
+    comparison = report["ablations"][0]
+    entries = report["configurations"]
+    assert comparison["kind"] == "scoring_prompt"
+    assert entries[comparison["baseline"]]["configuration"]["scoring_version"] == "v5"
+    assert entries[comparison["candidate"]]["configuration"]["scoring_version"] == "v6"
+    assert comparison["paired_criterion_counts"]["ta"] == 1
+    # Fake provider scores establish direction and arithmetic, not calibration accuracy.
+    assert comparison["criterion_deltas"]["ta"]["signed_bias"] == 1
+    assert comparison["criterion_deltas"]["ta"]["mae"] == 1
+    assert comparison["criterion_deltas"]["ta"]["exact_agreement"] == -1
+    markdown = (tmp_path / "paired" / "report.md").read_text(encoding="utf-8")
+    assert "task1-v5-baseline:deplot-off → task1-v6-current:deplot-off" in markdown
+    assert "ΔTA bias" in markdown and "ΔTA exact agreement" in markdown
 
 
 async def test_partial_scores_remain_evaluable_after_primary_failure(benchmark_files, tmp_path):

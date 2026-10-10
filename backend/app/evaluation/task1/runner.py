@@ -12,6 +12,11 @@ from pydantic import ValidationError
 
 from app.core.config import Settings
 from app.domains.writing.visual_families import visual_family
+from app.evaluation.task1.baseline_v5_prompts import (
+    BASELINE_TASK1_PROMPT_VERSION,
+    BASELINE_TASK1_SCORING_PROMPT_VERSION,
+    BaselineV5Task1WritingScoringService,
+)
 from app.evaluation.task1.legacy_prompts import (
     LEGACY_TASK1_PROMPT_VERSION,
     LEGACY_TASK1_SCORING_PROMPT_VERSION,
@@ -68,10 +73,15 @@ def implementation_hash() -> str:
 def configurations(
     settings: Settings, scoring_version: str, chart_specialist: str
 ) -> list[BenchmarkConfig]:
-    versions = ["v3", "v5"] if scoring_version == "both" else [scoring_version]
+    versions = ["v5", "v6"] if scoring_version == "both" else [scoring_version]
     specialists = [False, True] if chart_specialist == "both" else [chart_specialist == "on"]
-    if not set(versions) <= {"v3", "v5"} or chart_specialist not in {"off", "on", "both"}:
+    if not set(versions) <= {"v3", "v5", "v6"} or chart_specialist not in {"off", "on", "both"}:
         raise ValueError("BENCHMARK_CONFIGURATION_INVALID")
+    contracts = {
+        "v3": ("legacy", LEGACY_TASK1_PROMPT_VERSION, LEGACY_TASK1_SCORING_PROMPT_VERSION),
+        "v5": ("baseline", BASELINE_TASK1_PROMPT_VERSION, BASELINE_TASK1_SCORING_PROMPT_VERSION),
+        "v6": ("current", TASK1_PROMPT_VERSION, TASK1_SCORING_PROMPT_VERSION),
+    }
     provider, model = provider_identity(settings)
     endpoint = (
         settings.ai_writing_vllm_base_url
@@ -80,18 +90,15 @@ def configurations(
     )
     result = []
     for version in versions:
+        role, prompt_version, scoring_prompt_version = contracts[version]
         for enabled in specialists:
             result.append(
                 BenchmarkConfig(
                     max_concurrent_llm_requests=settings.ai_writing_max_concurrent_llm_requests,
-                    label=f"task1-{version}-{'current' if version == 'v5' else 'legacy'}:deplot-{'on' if enabled else 'off'}",
+                    label=f"task1-{version}-{role}:deplot-{'on' if enabled else 'off'}",
                     scoring_version=version,
-                    prompt_version=TASK1_PROMPT_VERSION
-                    if version == "v5"
-                    else LEGACY_TASK1_PROMPT_VERSION,
-                    scoring_prompt_version=TASK1_SCORING_PROMPT_VERSION
-                    if version == "v5"
-                    else LEGACY_TASK1_SCORING_PROMPT_VERSION,
+                    prompt_version=prompt_version,
+                    scoring_prompt_version=scoring_prompt_version,
                     visual_contract_version=TASK1_VISUAL_CONTRACT_VERSION,
                     provider=provider,
                     model=model,
@@ -277,11 +284,11 @@ async def evaluate(
                 specialist = CountedSpecialist(specialist_factory(config))
             except Exception:
                 specialist = CountedSpecialist(UnavailableSpecialist())
-        scorer_type = (
-            LegacyTask1WritingScoringService
-            if config.scoring_version == "v3"
-            else Task1WritingScoringService
-        )
+        scorer_type = {
+            "v3": LegacyTask1WritingScoringService,
+            "v5": BaselineV5Task1WritingScoringService,
+            "v6": Task1WritingScoringService,
+        }[config.scoring_version]
         scorer = scorer_type(
             provider,
             specialist,

@@ -198,7 +198,13 @@ async def test_unexpected_optional_failure_persists_safe_analysis_and_completed_
 
 @pytest.mark.parametrize(
     "old_version",
-    ["mts-task1-visual-v1", "mts-task1-visual-v2", "mts-task1-visual-v3", "mts-task1-visual-v4"],
+    [
+        "mts-task1-visual-v1",
+        "mts-task1-visual-v2",
+        "mts-task1-visual-v3",
+        "mts-task1-visual-v4",
+        "mts-task1-visual-v5",
+    ],
 )
 async def test_old_task1_prompt_cache_remains_readable_but_is_not_reused(
     db_session, task1, settings, old_version
@@ -217,7 +223,7 @@ async def test_old_task1_prompt_cache_remains_readable_but_is_not_reused(
         )
     upgraded = await api.create(attempt_id, task_id, force=False)
     assert not upgraded.cache_hit and upgraded.run_id != created.run_id
-    assert (await api.get(upgraded.run_id)).prompt_version == "mts-task1-visual-v5"
+    assert (await api.get(upgraded.run_id)).prompt_version == "mts-task1-visual-v6"
     assert (await api.get(created.run_id)).result == old_result
 
 
