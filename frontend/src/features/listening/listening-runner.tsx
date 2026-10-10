@@ -260,17 +260,13 @@ export function ListeningRunner({ initial }: { initial: ExamPayload }) {
 
   const highlighting: HighlightController = { highlights, onCreate: addHighlight, onDelete: removeHighlight };
 
-  return <div className="exam-runner listening-exam">
+  return <div className="exam-runner listening-exam listening-attempt">
     <header className="exam-header"><div><p>{focused ? t("runner.listeningFocused") : t("runner.listeningSectionUpper", { number: part.order_index + 1 })}</p><h1>{initial.test_title}</h1>{focusedUnitLabel(initial.attempt, t) ? <p>{focusedUnitLabel(initial.attempt, t)}</p> : null}</div><div className="exam-header-tools"><PauseAttemptControl attemptId={attemptId} beforePause={flush} /><ThemeToggle /><div className="exam-highlight-toolbar" aria-label={t("runner.highlightManagement")}><span>{t(highlights.length === 1 ? "runner.highlightCount" : "runner.highlightsCount", { count: highlights.length })}</span>{highlights.length ? <button type="button" onClick={() => { setHighlightError(""); setConfirmDeleteAll(true); }}>{t("runner.deleteAll")}</button> : null}</div><div className="exam-header-status"><span aria-label={t(initial.attempt.timer_mode === "COUNTDOWN" ? "runner.timeRemaining" : "runner.timeElapsed")} className={`exam-timer ${initial.attempt.timer_mode === "COUNTDOWN" && seconds < 300 ? "exam-timer-warning" : ""}`}>{formatDuration(seconds)}</span><span className={`exam-save-state exam-save-${saveState}`}>{saveState === "saving" ? t("common.saving") : saveState === "conflict" ? t("runner.conflict") : saveState === "error" ? t("runner.saveFailed") : saveState === "dirty" ? t("runner.unsaved") : t("common.saved")}</span>{saveState === "error" ? <button type="button" onClick={() => void flush().catch(() => undefined)}>{t("runner.retry")}</button> : null}{saveState === "conflict" ? <button type="button" onClick={() => window.location.reload()}>{t("runner.reload")}</button> : null}</div></div></header>
     {submitError ? <p role="alert" className="notice notice-error">{submitError}</p> : null}
     <DraftRecoveryNotices offline={offline} conflicts={conflicts} labelFor={(id) => t("runner.questionLower", { number: questions.find((question) => question.id === id)?.number ?? id })} onResolve={resolveConflict} />
     {actionError ? <p role="alert" className="notice notice-error">{t(actionError)}</p> : null}
     {highlightError && !confirmDeleteAll ? <p role="alert" className="notice notice-error">{t(highlightError)}</p> : null}
-    {initial.listening_audio_asset ? <>
-      <ListeningAudioPlayer src={assetContentUrl(initial.listening_audio_asset)} clip={playbackClip} policy={{ allowSeeking: initial.audio_policy?.allow_seeking ?? true, allowSpeed: initial.audio_policy?.allow_speed ?? true }} />
-      {focused && !playbackClip ? <p className="notice m-4">{t("runner.fullRecordingNotice")}</p> : null}
-      {initial.audio_policy?.allow_seeking === false ? <p className="exam-mode-label">{t("runner.seekingLocked")}</p> : null}
-    </> : <p className="notice m-4">{focused ? t("runner.externalRecordingNotice") : t("runner.noRecording")}</p>}
+    {!initial.listening_audio_asset ? <p className="notice m-4">{focused ? t("runner.externalRecordingNotice") : t("runner.noRecording")}</p> : null}
     <main ref={questionPane} inert={finalizing} className={`listening-question-pane ${visualGroup ? "listening-question-pane-visual" : ""}`} onWheelCapture={() => { programmaticNavigation.current = null; }} onTouchStartCapture={() => { programmaticNavigation.current = null; }} onPointerDownCapture={() => { programmaticNavigation.current = null; }} onKeyDownCapture={() => { programmaticNavigation.current = null; }} onFocusCapture={(event) => {
       const target = (event.target as HTMLElement).closest<HTMLElement>(".exam-question-target[data-question-id]");
       if (target?.dataset.questionId) { programmaticNavigation.current = null; setActiveQuestionId(target.dataset.questionId); }
@@ -286,6 +282,12 @@ export function ListeningRunner({ initial }: { initial: ExamPayload }) {
         </section>;
       })() : <p className="notice">{t("runner.noGroups")}</p>}
     </main>
+    <div className="listening-lower-dock">
+      {initial.listening_audio_asset ? <div className="listening-audio-dock">
+        <ListeningAudioPlayer layout="exam-bar" src={assetContentUrl(initial.listening_audio_asset)} clip={playbackClip} policy={{ allowSeeking: initial.audio_policy?.allow_seeking ?? true, allowSpeed: initial.audio_policy?.allow_speed ?? true }} />
+        {focused && !playbackClip ? <p className="notice m-4">{t("runner.fullRecordingNotice")}</p> : null}
+        {initial.audio_policy?.allow_seeking === false ? <p className="exam-mode-label">{t("runner.seekingLocked")}</p> : null}
+      </div> : null}
     <footer className="exam-footer listening-exam-footer">
       <div className="exam-footer-navigation">
         {!focused ? <nav className="exam-section-navigation" aria-label={t("runner.sectionNavigation")}>{parts.map((item, index) => <button key={item.id} type="button" onClick={() => selectPart(index)} className={index === partIndex ? "active" : ""} aria-current={index === partIndex ? "page" : undefined}>{t("common.sectionNumber", { number: item.order_index + 1 })}</button>)}</nav> : null}
@@ -301,6 +303,7 @@ export function ListeningRunner({ initial }: { initial: ExamPayload }) {
       </div>
       <button type="button" onClick={() => void submit()} disabled={submitting} className="exam-submit">{submitting ? t("runner.submitting") : t("runner.submitAnswers")}</button>
     </footer>
+    </div>
     <ConfirmDialog open={confirmDeleteAll} title={t("runner.deleteHighlightsTitle")} description={t("runner.deleteHighlightsDescription")} confirmLabel={t("runner.deleteHighlights")} pending={deletingAll} errorMessage={highlightError ? t(highlightError) : ""} onCancel={() => { setConfirmDeleteAll(false); setHighlightError(""); }} onConfirm={() => { if (stopped.current) return; setDeletingAll(true); setHighlightError(""); void runMutation(() => deleteAllHighlights(attemptId)).then(() => { setHighlights([]); setConfirmDeleteAll(false); }).catch((error) => { if (!(error instanceof AttemptStoppedError)) setHighlightError("runner.highlightsDeleteError"); }).finally(() => setDeletingAll(false)); }} />
   </div>;
 }

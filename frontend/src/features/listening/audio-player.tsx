@@ -10,8 +10,8 @@ export type AudioPolicy = { allowSeeking: boolean; allowSpeed: boolean };
 
 export type ListeningAudioPlayerHandle = { currentPosition: () => number; preview: (clip: AudioClip) => void };
 
-export function ListeningAudioPlayer({ src, clip, policy = { allowSeeking: true, allowSpeed: true }, ref, onDuration }: {
-  src: string; clip?: AudioClip; policy?: AudioPolicy; ref?: Ref<ListeningAudioPlayerHandle>; onDuration?: (seconds: number) => void;
+export function ListeningAudioPlayer({ src, clip, policy = { allowSeeking: true, allowSpeed: true }, ref, onDuration, layout = "inline" }: {
+  src: string; clip?: AudioClip; policy?: AudioPolicy; ref?: Ref<ListeningAudioPlayerHandle>; onDuration?: (seconds: number) => void; layout?: "inline" | "exam-bar";
 }) {
   const { t } = useTranslation();
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -84,7 +84,18 @@ export function ListeningAudioPlayer({ src, clip, policy = { allowSeeking: true,
     } else audio.pause();
   }
 
-  return <><div className="listening-player" aria-label={t("runner.audioPlayer")}><audio ref={audioRef} src={src} preload="metadata" onLoadedMetadata={(event) => {
+  const skipSeconds = layout === "exam-bar" ? 5 : 10;
+  const playPause = <button type="button" className="player-main" disabled={unavailable || (Boolean(activeClip) && !duration)} onClick={() => void toggle()} aria-label={playing ? t("runner.pauseAudio") : t("runner.playAudio")}>{playing ? "❚❚" : "▶"}</button>;
+  const backward = <button type="button" className="player-skip" disabled={!policy.allowSeeking || unavailable} onClick={() => seek(current - skipSeconds)} aria-label={t(layout === "exam-bar" ? "runner.seekBackFive" : "runner.seekBack")}>−{skipSeconds}</button>;
+  const elapsed = <span className="player-time">{formatAudioTime(Math.max(0, current - start))}</span>;
+  const progress = <input aria-label={t("runner.audioSeek")} type="range" min={0} max={length} step={0.1} value={Math.max(0, Math.min(current - start, length))} disabled={!policy.allowSeeking || unavailable} onChange={(event) => seek(start + Number(event.target.value))} />;
+  const total = <span className="player-time">{unavailable ? t("runner.audioError") : state === "loading" && !duration ? t("runner.audioLoading") : formatAudioTime(length)}</span>;
+  const forward = <button type="button" className="player-skip" disabled={!policy.allowSeeking || unavailable} onClick={() => seek(current + skipSeconds)} aria-label={t(layout === "exam-bar" ? "runner.seekForwardFive" : "runner.seekForward")}>+{skipSeconds}</button>;
+  const speed = <select aria-label={t("runner.speed")} value={rate} disabled={!policy.allowSpeed} onChange={(event) => { const next = Number(event.target.value); setRate(next); if (audioRef.current) audioRef.current.playbackRate = next; }}>{speeds.map((speed) => <option key={speed} value={speed}>{speed}x</option>)}</select>;
+  const mute = <button type="button" className="player-mute" onClick={() => { const next = !muted; setMuted(next); if (audioRef.current) audioRef.current.muted = next; }} aria-label={muted ? t("runner.unmute") : t("runner.mute")}>{muted ? "🔇" : "🔊"}</button>;
+  const volumeControl = <input aria-label={t("runner.volume")} type="range" min={0} max={1} step={0.05} value={volume} onChange={(event) => { const next = Number(event.target.value); setVolume(next); if (audioRef.current) audioRef.current.volume = next; }} />;
+
+  return <><div className={`listening-player${layout === "exam-bar" ? " listening-player-exam-bar" : ""}`} aria-label={t("runner.audioPlayer")}><audio ref={audioRef} src={src} preload="metadata" onLoadedMetadata={(event) => {
       const value = event.currentTarget.duration;
       if (!Number.isFinite(value) || value <= 0) { setState("error"); return; }
       setDuration(value); onDuration?.(value); setState("ready");
@@ -96,15 +107,17 @@ export function ListeningAudioPlayer({ src, clip, policy = { allowSeeking: true,
       }
       setCurrent(audio.currentTime);
     }} onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onEnded={() => setPlaying(false)} onWaiting={() => setState("loading")} onCanPlay={() => setState((currentState) => currentState === "error" ? "error" : "ready")} onError={() => setState("error")} />
-    <button type="button" className="player-main" disabled={unavailable || (Boolean(activeClip) && !duration)} onClick={() => void toggle()} aria-label={playing ? t("runner.pauseAudio") : t("runner.playAudio")}>{playing ? "❚❚" : "▶"}</button>
-    <button type="button" className="player-skip" disabled={!policy.allowSeeking || unavailable} onClick={() => seek(current - 10)} aria-label={t("runner.seekBack")}>−10</button>
-    <span className="player-time">{formatAudioTime(Math.max(0, current - start))}</span>
-    <input aria-label={t("runner.audioSeek")} type="range" min={0} max={length} step={0.1} value={Math.max(0, Math.min(current - start, length))} disabled={!policy.allowSeeking || unavailable} onChange={(event) => seek(start + Number(event.target.value))} />
-    <span className="player-time">{unavailable ? t("runner.audioError") : state === "loading" && !duration ? t("runner.audioLoading") : formatAudioTime(length)}</span>
-    <button type="button" className="player-skip" disabled={!policy.allowSeeking || unavailable} onClick={() => seek(current + 10)} aria-label={t("runner.seekForward")}>+10</button>
-    <select aria-label={t("runner.speed")} value={rate} disabled={!policy.allowSpeed} onChange={(event) => { const next = Number(event.target.value); setRate(next); if (audioRef.current) audioRef.current.playbackRate = next; }}>{speeds.map((speed) => <option key={speed} value={speed}>{speed}x</option>)}</select>
-    <button type="button" className="player-mute" onClick={() => { const next = !muted; setMuted(next); if (audioRef.current) audioRef.current.muted = next; }} aria-label={muted ? t("runner.unmute") : t("runner.mute")}>{muted ? "🔇" : "🔊"}</button>
-    <input aria-label={t("runner.volume")} type="range" min={0} max={1} step={0.05} value={volume} onChange={(event) => { const next = Number(event.target.value); setVolume(next); if (audioRef.current) audioRef.current.volume = next; }} />
+    {layout === "exam-bar" ? <>
+      <div className="player-progress-row">{progress}</div>
+      <div className="player-control-row">
+        <div className="player-left-controls">
+          <div className="player-time-pair">{elapsed} / {total}</div>
+          <div className="player-volume-controls">{mute}{volumeControl}</div>
+        </div>
+        <div className="player-transport">{backward}{playPause}{forward}</div>
+        <label className="player-speed-control"><span>{t("runner.speedLabel")}:</span>{speed}</label>
+      </div>
+    </> : <>{playPause}{backward}{elapsed}{progress}{total}{forward}{speed}{mute}{volumeControl}</>}
   </div>
     {clipError ? <p role="alert" className="notice notice-error">{t("runner.clipError")}</p> : state === "error" ? <p role="alert" className="notice notice-error">{t("runner.audioLoadError")}</p> : null}
     {playError ? <p role="alert" className="notice notice-error">{t("runner.audioPlayError")}</p> : null}

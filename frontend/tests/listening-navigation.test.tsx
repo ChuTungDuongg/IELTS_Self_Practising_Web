@@ -182,6 +182,36 @@ describe("Listening footer navigation", () => {
     expect(view.container.querySelector(".listening-question-pane")?.contains(questionNavigation)).toBe(false);
   });
 
+  it("places the audio dock after questions and directly above the unchanged footer", () => {
+    const view = render(<ListeningRunner initial={payload()} />);
+    const pane = view.container.querySelector(".listening-question-pane")!;
+    const dock = view.container.querySelector(".listening-audio-dock")!;
+    const footer = view.container.querySelector(".listening-exam-footer")!;
+    expect(dock).toBeInTheDocument();
+    expect(pane.compareDocumentPosition(dock) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(dock.nextElementSibling).toBe(footer);
+    expect(dock.querySelector(".listening-player-exam-bar")).toBeInTheDocument();
+    expect(dock.querySelector(".exam-question-strip")).toBeNull();
+    expect(screen.queryByRole("button", { name: /Skip introduction|Bỏ qua giới thiệu/i })).not.toBeInTheDocument();
+  });
+
+  it("keeps the dock, player, media state and reset counts while navigating groups and sections", () => {
+    const view = render(<ListeningRunner initial={payload()} />);
+    const dock = view.container.querySelector(".listening-audio-dock");
+    expect(dock).toBeInTheDocument();
+    const player = view.container.querySelector(".listening-player"); const audio = view.container.querySelector("audio")!;
+    Object.defineProperty(audio, "duration", { configurable: true, value: 120 }); fireEvent.loadedMetadata(audio);
+    audio.currentTime = 42; audio.playbackRate = 1.5; audio.volume = 0.35; audio.muted = true; fireEvent.timeUpdate(audio);
+    const resets = [audio.pause, audio.load].map((method) => vi.mocked(method).mock.calls.length);
+    for (const name of ["Go to question 2", "Go to question 3", "Section 2", "Go to question 25"]) {
+      fireEvent.click(screen.getByRole("button", { name }));
+      expect(view.container.querySelector(".listening-audio-dock")).toBe(dock); expect(view.container.querySelector(".listening-player")).toBe(player); expect(view.container.querySelector("audio")).toBe(audio);
+      expect([audio.currentTime, audio.playbackRate, audio.volume, audio.muted]).toEqual([42, 1.5, 0.35, true]);
+      expect([audio.pause, audio.load].map((method) => vi.mocked(method).mock.calls.length)).toEqual(resets);
+    }
+    expect(screen.getByRole("button", { name: "Go to question 25" })).toHaveAttribute("aria-current", "true");
+  });
+
   it("shows answered, unanswered, flagged, and current states", () => {
     const view = render(<ListeningRunner initial={payload()} />);
 
@@ -564,16 +594,23 @@ describe("Listening footer navigation", () => {
     const audio = view.container.querySelector("audio");
     if (missing === "audio") {
       expect(audio).toBeNull();
+      expect(view.container.querySelector(".listening-audio-dock")).toBeNull();
       expect(screen.queryByLabelText("Listening audio player")).not.toBeInTheDocument();
       expect(screen.getByText("No recording is attached. You can continue with the questions and use an external recording if needed.")).toHaveClass("notice");
     } else {
       expect(audio).not.toBeNull();
+      expect(view.container.querySelector(".listening-audio-dock")).toContainElement(audio);
       Object.defineProperty(audio!, "duration", { configurable: true, value: 1000 });
       fireEvent.loadedMetadata(audio!);
       expect(audio!.currentTime).toBe(missing === "range" ? 0 : 468);
       expect(screen.getByLabelText("Audio seek")).toHaveAttribute("max", missing === "range" ? "1000" : "463");
       expect(screen.getByLabelText("Audio seek")).not.toBeDisabled();
       expect(screen.getByLabelText("Playback speed")).not.toBeDisabled();
+      if (missing === "none") {
+        fireEvent.click(screen.getByRole("button", { name: "Seek backward 5 seconds" })); expect(audio!.currentTime).toBe(468);
+        fireEvent.change(screen.getByLabelText("Audio seek"), { target: { value: "460" } });
+        fireEvent.click(screen.getByRole("button", { name: "Seek forward 5 seconds" })); expect(audio!.currentTime).toBe(931);
+      }
       if (missing === "range") {
         expect(screen.getByText("Section audio range is not configured. Full recording is available.")).toHaveClass("notice");
         fireEvent.change(screen.getByLabelText("Audio seek"), { target: { value: "950" } });
@@ -609,6 +646,9 @@ describe("Listening footer navigation", () => {
       expect(screen.getByLabelText("Audio seek")).toBeDisabled();
       expect(screen.getByLabelText("Playback speed")).toBeDisabled();
       expect(screen.getByText("Exam mode · Seeking locked")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Seek backward 5 seconds" })).toBeDisabled();
+      expect(screen.getByRole("button", { name: "Seek forward 5 seconds" })).toBeDisabled();
+      fireEvent.change(screen.getByLabelText("Audio seek"), { target: { value: "90" } }); expect(audio.currentTime).toBe(0);
     } else {
       expect(screen.getByLabelText("Audio seek")).not.toBeDisabled();
       expect(screen.getByLabelText("Playback speed")).not.toBeDisabled();

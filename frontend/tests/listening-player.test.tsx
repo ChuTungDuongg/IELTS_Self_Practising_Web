@@ -1,4 +1,6 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { LocaleControls, renderWithLocale } from "./locale-test-utils";
+import { LocaleProvider } from "@/lib/i18n/locale-provider";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ListeningAudioPlayer } from "@/features/listening/audio-player";
 import { listeningQuestionTypeOptions, questionRegistry } from "@/features/questions/registry";
@@ -83,6 +85,80 @@ describe("Listening audio and templates", () => {
     expect(audio.src).toMatch(/part-2\.mp3$/);
     expect(HTMLMediaElement.prototype.pause).toHaveBeenCalled();
     expect(HTMLMediaElement.prototype.load).toHaveBeenCalled();
+  });
+
+  it("composes the exam bar with its own progress row and left/center/right controls", async () => {
+    const view = render(<ListeningAudioPlayer src="/part-1.mp3" layout="exam-bar" />);
+    const audio = view.container.querySelector("audio")!;
+    Object.defineProperty(audio, "duration", { configurable: true, value: 372 });
+    fireEvent.loadedMetadata(audio);
+    audio.currentTime = 8; fireEvent.timeUpdate(audio);
+    expect(view.container.querySelector(".player-progress-row")).toContainElement(screen.getByLabelText("Audio seek"));
+    const row = view.container.querySelector(".player-control-row")!;
+    expect([...row.children].map((node) => node.className)).toEqual(["player-left-controls", "player-transport", "player-speed-control"]);
+    expect(row.querySelector(".player-left-controls")).toHaveTextContent("00:08 / 06:12");
+    expect(row.querySelector(".player-left-controls")).toContainElement(screen.getByLabelText("Volume"));
+    expect(within(row.querySelector(".player-transport") as HTMLElement).getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual(["Seek backward 5 seconds", "Play audio", "Seek forward 5 seconds"]);
+    expect(row.querySelector(".player-speed-control")).toHaveTextContent("Speed:");
+    expect([...((screen.getByLabelText("Playback speed") as HTMLSelectElement).options)].map((option) => option.value)).toEqual(["0.75", "1", "1.25", "1.5", "2"]);
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Play audio" })));
+    expect(audio.play).toHaveBeenCalledOnce(); fireEvent.play(audio);
+    Object.defineProperty(audio, "paused", { configurable: true, value: false });
+    const pauses = vi.mocked(audio.pause).mock.calls.length;
+    fireEvent.click(screen.getByRole("button", { name: "Pause audio" }));
+    expect(audio.pause).toHaveBeenCalledTimes(pauses + 1);
+    expect(screen.queryByRole("button", { name: /Skip introduction|Bỏ qua giới thiệu/i })).not.toBeInTheDocument();
+  });
+
+  it("seeks exactly five seconds in the exam bar and clamps to recording boundaries", () => {
+    const view = render(<ListeningAudioPlayer src="/part-1.mp3" layout="exam-bar" />);
+    const audio = view.container.querySelector("audio")!;
+    Object.defineProperty(audio, "duration", { configurable: true, value: 120 }); fireEvent.loadedMetadata(audio);
+    audio.currentTime = 42; fireEvent.timeUpdate(audio);
+    fireEvent.click(screen.getByRole("button", { name: "Seek backward 5 seconds" })); expect(audio.currentTime).toBe(37);
+    fireEvent.click(screen.getByRole("button", { name: "Seek forward 5 seconds" })); expect(audio.currentTime).toBe(42);
+    audio.currentTime = 118; fireEvent.timeUpdate(audio);
+    fireEvent.click(screen.getByRole("button", { name: "Seek forward 5 seconds" })); expect(audio.currentTime).toBe(120);
+    audio.currentTime = 2; fireEvent.timeUpdate(audio);
+    fireEvent.click(screen.getByRole("button", { name: "Seek backward 5 seconds" })); expect(audio.currentTime).toBe(0);
+  });
+
+  it.each([{ allowSeeking: false, allowSpeed: false }, { allowSeeking: false, allowSpeed: true }, { allowSeeking: true, allowSpeed: false }])("keeps independent exam playback restrictions %j", (policy) => {
+    const view = render(<ListeningAudioPlayer src="/part-1.mp3" layout="exam-bar" policy={policy} />);
+    const audio = view.container.querySelector("audio")!;
+    Object.defineProperty(audio, "duration", { configurable: true, value: 120 }); fireEvent.loadedMetadata(audio);
+    audio.currentTime = 42; fireEvent.timeUpdate(audio);
+    for (const label of ["Seek backward 5 seconds", "Seek forward 5 seconds"]) expect((screen.getByRole("button", { name: label }) as HTMLButtonElement).disabled).toBe(!policy.allowSeeking);
+    const seek = screen.getByLabelText("Audio seek");
+    expect((seek as HTMLInputElement).disabled).toBe(!policy.allowSeeking);
+    expect((screen.getByLabelText("Playback speed") as HTMLSelectElement).disabled).toBe(!policy.allowSpeed);
+    if (!policy.allowSeeking) {
+      fireEvent.click(screen.getByRole("button", { name: "Seek forward 5 seconds" }));
+      fireEvent.keyDown(seek, { key: "ArrowRight" }); fireEvent.change(seek, { target: { value: "90" } });
+      expect(audio.currentTime).toBe(42);
+    }
+  });
+
+  it("keeps exam media state and nodes when EN/VI labels or presentation change", () => {
+    localStorage.clear();
+    const view = renderWithLocale(<ListeningAudioPlayer src="/part-1.mp3" layout="exam-bar" />);
+    const audio = view.container.querySelector("audio")!;
+    const player = view.container.querySelector(".listening-player");
+    Object.defineProperty(audio, "duration", { configurable: true, value: 120 }); fireEvent.loadedMetadata(audio);
+    audio.currentTime = 42; fireEvent.timeUpdate(audio);
+    fireEvent.change(screen.getByLabelText("Playback speed"), { target: { value: "1.5" } });
+    fireEvent.change(screen.getByLabelText("Volume"), { target: { value: "0.35" } }); fireEvent.click(screen.getByRole("button", { name: "Mute" }));
+    const calls = [audio.play, audio.pause, audio.load].map((method) => vi.mocked(method).mock.calls.length);
+    fireEvent.click(screen.getByRole("button", { name: "Switch to Vietnamese" }));
+    expect(screen.getByRole("button", { name: "Tua lùi 5 giây" })).toBeInTheDocument(); expect(screen.getByText("Tốc độ:")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Bỏ qua giới thiệu/i })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Switch to English" }));
+    view.rerender(<LocaleProvider><ListeningAudioPlayer src="/part-1.mp3" layout="inline" /><LocaleControls /></LocaleProvider>);
+    expect(view.container.querySelector("audio")).toBe(audio); expect(view.container.querySelector(".listening-player")).toBe(player);
+    expect([audio.currentTime, audio.playbackRate, audio.volume, audio.muted]).toEqual([42, 1.5, 0.35, true]);
+    expect([audio.play, audio.pause, audio.load].map((method) => vi.mocked(method).mock.calls.length)).toEqual(calls);
+    expect(screen.getByRole("button", { name: "Seek backward 10 seconds" })).toBeInTheDocument();
+    expect(view.container.querySelector(".player-progress-row")).toBeNull();
   });
 
   it("registers every practical Listening template", () => {
