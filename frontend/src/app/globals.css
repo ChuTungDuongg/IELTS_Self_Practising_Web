@@ -51,52 +51,54 @@
 }
 
 :root[data-theme="dark"] {
-  --app-bg: #070d1f;
-  --app-bg-elevated: #0b1430;
-  --surface: #101a33;
-  --surface-raised: #14213e;
-  --surface-soft: #172542;
-  --surface-hover: #1d2e50;
-  --surface-glass: rgb(12 21 43 / 0.84);
-  --ink: #f2f5ff;
-  --ink-soft: #d4dcf2;
-  --muted: #99a8c8;
-  --line: #26375c;
-  --line-strong: #3b507c;
-  --accent: #7c8fff;
-  --accent-strong: #6076f2;
-  --accent-soft: #202e60;
-  --accent-violet: #ad8cff;
-  --accent-cyan: #4dc9ec;
-  --accent-contrast: #071022;
-  --success: #4bd4aa;
-  --success-soft: #10372f;
-  --warning: #f3bd64;
-  --warning-soft: #3c2e1d;
-  --danger: #ff8698;
-  --danger-soft: #44202d;
-  --danger-contrast: #1b0810;
-  --shadow-sm: 0 8px 24px rgb(0 3 14 / 0.18);
-  --shadow-md: 0 22px 56px rgb(0 3 18 / 0.3), 0 3px 12px rgb(0 0 0 / 0.2);
-  --shadow-lg: 0 34px 90px rgb(0 2 16 / 0.48);
-  --glow-accent: 0 18px 42px rgb(72 105 255 / 0.2);
-  --glow-violet: 0 20px 48px rgb(126 87 218 / 0.18);
+  /* Graphite foundations; color is reserved for actions, modules and states. */
+  --app-bg: #10131b;
+  --app-bg-elevated: #141922;
+  --surface: #191f2a;
+  --surface-raised: #202733;
+  --surface-soft: #242c39;
+  --surface-hover: #2a3342;
+  --surface-glass: rgb(20 25 34 / 0.96);
+  --ink: #edf0f7;
+  --ink-soft: #c8cedb;
+  --muted: #a1abba;
+  --line: #303a49;
+  --line-strong: #647087;
+  --accent: #9aa6e8;
+  --accent-strong: #8996d8;
+  --accent-soft: #272f43;
+  --accent-violet: #b1a2cf;
+  --accent-cyan: #8cbcc5;
+  --accent-contrast: #11151d;
+  --success: #8fc1a4;
+  --success-soft: #1c302a;
+  --warning: #d6b47b;
+  --warning-soft: #332c20;
+  --danger: #df9ca7;
+  --danger-soft: #36252c;
+  --danger-contrast: #21151a;
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.12);
+  --shadow-md: 0 8px 24px rgb(0 0 0 / 0.18);
+  --shadow-lg: 0 20px 56px rgb(0 0 0 / 0.32);
+  --glow-accent: 0 2px 8px rgb(154 166 232 / 0.06);
+  --glow-violet: 0 2px 8px rgb(177 162 207 / 0.05);
   --paper: var(--app-bg);
   --surface-tint: var(--accent-soft);
   --reading: var(--accent-cyan);
   --listening: var(--accent-violet);
-  --writing: #f0a36d;
-  --highlight-bg: #d8ba55;
-  --highlight-text: #181520;
-  --exam-bg: #0a1121;
-  --exam-surface: #111b2d;
-  --exam-surface-alt: #152136;
-  --exam-text: #edf2ff;
-  --exam-muted: #a8b5ce;
-  --exam-border: #2e405f;
-  --exam-control-bg: #19263d;
-  --exam-control-text: #edf2ff;
-  --exam-accent: #62bce0;
+  --writing: #d5a17d;
+  --highlight-bg: #cbb674;
+  --highlight-text: #191820;
+  /* Editorial panes are neutral; only controls carry the exam/module accent. */
+  --exam-bg: #101319;
+  --exam-surface: #191e27;
+  --exam-surface-alt: #1e242e;
+  --exam-text: #e8ecf3;
+  --exam-muted: #a1abba;
+  --exam-border: #364050;
+  --exam-control-bg: #2a3342;
+  --exam-control-text: #edf0f7;
+  --exam-accent: var(--accent);
   color-scheme: dark;
 }
 
@@ -226,9 +228,9 @@ input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--mute
 .module-reading { color: #0369a1; background: #e0f2fe; }
 .module-listening { color: #6d28d9; background: #ede9fe; }
 .module-writing { color: #c2410c; background: #ffedd5; }
-:root[data-theme="dark"] .module-reading { color: #7dd3fc; background: #14364a; }
-:root[data-theme="dark"] .module-listening { color: #c4b5fd; background: #32255d; }
-:root[data-theme="dark"] .module-writing { color: #fdba74; background: #4a291d; }
+:root[data-theme="dark"] .module-reading { color: var(--reading); background: color-mix(in srgb, var(--reading) 12%, var(--surface)); }
+:root[data-theme="dark"] .module-listening { color: var(--listening); background: color-mix(in srgb, var(--listening) 12%, var(--surface)); }
+:root[data-theme="dark"] .module-writing { color: var(--writing); background: color-mix(in srgb, var(--writing) 12%, var(--surface)); }
 
 .empty-state { display: grid; min-height: 280px; place-items: center; align-content: center; border: 1px dashed var(--line-strong); border-radius: 16px; padding: 36px 24px; text-align: center; background: linear-gradient(145deg, color-mix(in srgb, var(--accent) 4%, var(--surface)), color-mix(in srgb, var(--accent-violet) 3%, var(--surface))); }
 .empty-state-icon { display: grid; width: 52px; height: 52px; place-items: center; border-radius: 16px; color: var(--accent); background: var(--accent-soft); }
@@ -546,8 +548,8 @@ input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--mute
 .content-block-side { display: flex; align-items: center; flex-direction: column; gap: 12px; padding: 14px 9px; border-right: 1px solid var(--line); background: var(--surface-soft); }
 .block-label, .subheading-mark { display: grid; width: 30px; height: 30px; place-items: center; border-radius: 9px; color: #0369a1; background: #e0f2fe; font-size: 12px; font-weight: 850; }
 .subheading-mark { color: #6d28d9; background: #ede9fe; }
-:root[data-theme="dark"] .block-label { color: #7dd3fc; background: #14364a; }
-:root[data-theme="dark"] .subheading-mark { color: #c4b5fd; background: #32255d; }
+:root[data-theme="dark"] .block-label { color: var(--reading); background: color-mix(in srgb, var(--reading) 12%, var(--surface)); }
+:root[data-theme="dark"] .subheading-mark { color: var(--listening); background: color-mix(in srgb, var(--listening) 12%, var(--surface)); }
 .block-move-actions { display: flex; flex-direction: column; gap: 2px; }
 .block-move-actions button { width: 28px; height: 26px; border: 0; border-radius: 7px; color: var(--muted); background: transparent; }
 .block-move-actions button:hover { color: var(--ink); background: var(--surface-raised); }
@@ -1299,3 +1301,77 @@ input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--mute
 }
 
 .completion-editable-text:only-child { display: inline-block; min-width: 100%; min-height: 1lh; }
+
+/* Dark-only treatments for decoration that cannot be quieted by palette alone.
+   Light styles, geometry, responsive rules and planet interactions stay above. */
+:root[data-theme="dark"] body { background: radial-gradient(circle at 54% -14%, color-mix(in srgb, var(--accent) 3%, transparent), transparent 38rem), var(--app-bg); }
+:root[data-theme="dark"] .app-shell::before { background: none; }
+:root[data-theme="dark"] :is(.app-header, .builder-toolbar, .library-toolbar) { background: var(--surface-glass); box-shadow: var(--shadow-sm); backdrop-filter: blur(8px); }
+:root[data-theme="dark"] .app-sidebar { background: var(--app-bg-elevated); backdrop-filter: none; }
+:root[data-theme="dark"] .sidebar-item-active { background: color-mix(in srgb, var(--accent) 8%, var(--surface-raised)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 18%, var(--line)); }
+:root[data-theme="dark"] .sidebar-item-active:hover { background: var(--surface-hover); }
+:root[data-theme="dark"] :is(.sidebar-note, .empty-state, .reading-empty, .listening-empty, .writing-empty, .listening-builder, .writing-builder, .writing-assessment-summary) { border-color: var(--line); background: var(--surface); }
+:root[data-theme="dark"] :is(.history-group-heading, .passage-card-header) { background: var(--surface-soft); }
+:root[data-theme="dark"] :is(.passage-editor, .group-editor) { border-color: var(--line-strong); box-shadow: var(--shadow-sm); }
+:root[data-theme="dark"] .panel { background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
+
+/* Let the existing interactive planet be the homepage's richest element. */
+:root[data-theme="dark"] .home-hero { border-color: var(--line); background: radial-gradient(circle at 82% 42%, color-mix(in srgb, var(--accent) 4%, transparent), transparent 21rem), var(--surface); box-shadow: var(--shadow-sm); }
+:root[data-theme="dark"] .home-hero::after,
+:root[data-theme="dark"] .learning-path-card::after { background: none; }
+:root[data-theme="dark"] .learning-path-blue::before { background: var(--accent); }
+:root[data-theme="dark"] .practice-card-accent { background: var(--reading); }
+:root[data-theme="dark"] .practice-card-listening .practice-card-accent { background: var(--listening); }
+:root[data-theme="dark"] .practice-card-writing .practice-card-accent { background: var(--writing); }
+:root[data-theme="dark"] .practice-test-card .practice-card-accent,
+:root[data-theme="dark"] .test-card-accent { background: var(--accent); }
+:root[data-theme="dark"] .archived-grid .test-card-accent { background: var(--muted); }
+:root[data-theme="dark"] :is(.home-metric, .learning-path-card, .practice-card, .test-card):hover { border-color: var(--line-strong); background: var(--surface-hover); box-shadow: var(--shadow-sm); }
+:root[data-theme="dark"] .listening-orb { background: var(--listening); box-shadow: none; }
+:root[data-theme="dark"] .writing-empty .listening-orb { background: var(--writing); }
+
+/* Flat actions and neutral hover elevation replace colored drop shadows. */
+:root[data-theme="dark"] .btn-primary { background: var(--accent); box-shadow: var(--shadow-sm); }
+:root[data-theme="dark"] .btn-primary:hover:not(:disabled) { background: var(--accent-strong); box-shadow: var(--shadow-sm); }
+:root[data-theme="dark"] .btn-listening { background: var(--listening); box-shadow: var(--shadow-sm); }
+:root[data-theme="dark"] .btn-writing { background: var(--writing); box-shadow: var(--shadow-sm); }
+:root[data-theme="dark"] :is(.btn-listening, .btn-writing):hover:not(:disabled) { box-shadow: var(--shadow-sm); }
+:root[data-theme="dark"] .btn-danger { box-shadow: var(--shadow-sm); }
+:root[data-theme="dark"] :is(.btn-secondary, .theme-toggle):hover:not(:disabled) { background: var(--surface-hover); box-shadow: var(--shadow-sm); }
+:root[data-theme="dark"] :is(.btn, .btn-listening):disabled { opacity: .7; }
+:root[data-theme="dark"] .dialog-backdrop { background: color-mix(in srgb, var(--app-bg) 76%, transparent); backdrop-filter: blur(4px); }
+
+/* Recessed editable controls, readable placeholders and opaque focus outlines. */
+:root[data-theme="dark"] :is(.field, .select-field, .textarea-field, .auth-form input, .analytics-compare-controls select, .library-search) { border-color: var(--line-strong); background: var(--app-bg-elevated); }
+:root[data-theme="dark"] :is(.field, .select-field, .textarea-field):focus { border-color: var(--accent); }
+:root[data-theme="dark"] :is(.field, .select-field, .textarea-field)[aria-invalid="true"] { border-color: var(--danger); }
+:root[data-theme="dark"] input::placeholder,
+:root[data-theme="dark"] textarea::placeholder { color: var(--muted); opacity: 1; }
+:root[data-theme="dark"] :is(input, textarea, select):disabled { color: var(--muted); opacity: 1; }
+:root[data-theme="dark"] :is(input[type="radio"], input[type="checkbox"]) { accent-color: var(--accent); }
+:root[data-theme="dark"] :focus-visible { outline-color: var(--accent); }
+
+/* Module and pause states share the palette instead of hard-coded bright tints. */
+:root[data-theme="dark"] .status-paused { border-color: color-mix(in srgb, var(--warning) 34%, var(--line)); color: var(--warning); background: var(--warning-soft); }
+:root[data-theme="dark"] .paused-attempt-gate > strong,
+:root[data-theme="dark"] .exam-pause-button:hover { color: var(--warning); }
+:root[data-theme="dark"] .exam-pause-button:hover { border-color: var(--warning); }
+
+/* Candidate panes stay editorial, with visible controls and no ambient glow. */
+:root[data-theme="dark"] :is(.exam-header, .exam-footer, .player-main) { box-shadow: none; }
+:root[data-theme="dark"] .listening-player { background: var(--exam-surface); box-shadow: none; }
+:root[data-theme="dark"] .exam-runner .question-group-instruction { background: var(--exam-surface); }
+:root[data-theme="dark"] .exam-runner :is(input:not([type="radio"]):not([type="checkbox"]):not([type="range"]), textarea, select) { border-color: var(--line-strong); }
+:root[data-theme="dark"] .exam-runner :is(input:not([type="radio"]):not([type="checkbox"]):not([type="range"]), textarea, select):focus { border-color: var(--exam-accent); }
+:root[data-theme="dark"] .exam-runner input::placeholder,
+:root[data-theme="dark"] .exam-runner textarea::placeholder { color: var(--exam-muted); }
+:root[data-theme="dark"] .exam-runner :is(input, textarea, select):disabled { color: var(--exam-muted); }
+:root[data-theme="dark"] .exam-runner :is(input[type="radio"], input[type="checkbox"], input[type="range"]) { accent-color: var(--exam-accent); }
+:root[data-theme="dark"] .exam-runner :focus-visible { outline-color: var(--exam-accent); }
+
+/* Image canvases stay light for authored arrows; overlay labels follow the theme. */
+:root[data-theme="dark"] .diagram-label { color: var(--ink); background: var(--surface-raised); }
+:root[data-theme="dark"] :is(.diagram-label-editor, .diagram-static-annotation) { border-color: var(--line-strong); box-shadow: var(--shadow-sm); }
+:root[data-theme="dark"] :is(.diagram-label-editor, .diagram-static-annotation).is-selected { border-color: var(--accent); }
+:root[data-theme="dark"] .diagram-drag-grip { color: var(--muted); }
+:root[data-theme="dark"] .diagram-gap-input { color: var(--exam-control-text); background: var(--exam-control-bg); }
