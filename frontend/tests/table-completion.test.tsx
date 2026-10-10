@@ -1,3 +1,4 @@
+import { renderWithLocale } from "./locale-test-utils";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
@@ -210,4 +211,22 @@ describe("table completion", () => {
     const view = render(<Renderer group={group} values={{}} />);
     expect(view.container.querySelector("figcaption")).not.toBeInTheDocument();
   });
+});
+
+it("updates generic Question accessibility in VI without changing authored table-completion content or input identity", () => {
+  localStorage.clear();
+  const group = tableGroup() as ExamGroup;
+  const before = JSON.stringify(group);
+  const Renderer = questionRegistry.table_completion.ExamRenderer;
+  const view = renderWithLocale(<Renderer group={group} values={{ [group.questions[0].id]: "Exact learner answer" }} />);
+  const question = group.questions[0];
+  const input = screen.getByLabelText(`Question ${question.number}`);
+  const authored = view.container.firstElementChild!.textContent;
+  fireEvent.click(screen.getByRole("button", { name: "Switch to Vietnamese" }));
+  expect(screen.getByLabelText(`Câu hỏi ${question.number}`)).toBe(input);
+  expect(input).toHaveValue("Exact learner answer");
+  expect(view.container.firstElementChild!.textContent).toBe(authored);
+  expect(JSON.stringify(group)).toBe(before);
+  fireEvent.click(screen.getByRole("button", { name: "Switch to English" }));
+  expect(screen.getByLabelText(`Question ${question.number}`)).toBe(input);
 });

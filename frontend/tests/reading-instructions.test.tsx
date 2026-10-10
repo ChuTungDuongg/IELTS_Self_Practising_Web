@@ -50,7 +50,7 @@ describe("Reading question group instructions", () => {
 
     render(<ReadingRunner initial={initial} />);
     fireEvent.click(screen.getByRole("radio", { name: "TRUE" }));
-    fireEvent.click(screen.getByRole("button", { name: "Toggle color theme" }));
+    fireEvent.click(screen.getByRole("button", { name: "Use dark theme" }));
 
     expect(document.documentElement.dataset.theme).toBe("dark");
     expect(screen.getByRole("radio", { name: "TRUE" })).toBeChecked();

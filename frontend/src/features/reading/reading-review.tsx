@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@/lib/i18n/locale-provider";
+
 import { useState } from "react";
 import { SelectableText, type HighlightController } from "@/features/highlighting/selectable-text";
 import { QuestionGroupInstruction } from "@/features/questions/question-group-instruction";
@@ -11,6 +13,7 @@ import { accuracyLabel, focusedUnitLabel } from "@/features/exam/focused-attempt
 type ReviewData = Awaited<ReturnType<typeof import("@/lib/api/exam").getReadingReview>>;
 
 export function ReadingReviewView({ data }: { data: ReviewData }) {
+  const { t } = useTranslation();
   const [passageIndex, setPassageIndex] = useState(0);
   const passage = data.passages[passageIndex];
   const answers = new Map(data.review.answers.map((item) => [item.question_id, item]));
@@ -18,7 +21,7 @@ export function ReadingReviewView({ data }: { data: ReviewData }) {
   const highlighting: HighlightController = { highlights: data.highlights, readOnly: true };
   const focused = data.review.attempt.scope === "FOCUSED_UNIT";
 
-  if (!passage) return <p>No Reading review content is available.</p>;
+  if (!passage) return <p>{t("runner.noReadingReview")}</p>;
 
   const highlightBlock = (block: { id: string; text: string }) => (
     <SelectableText
@@ -32,29 +35,29 @@ export function ReadingReviewView({ data }: { data: ReviewData }) {
     <div className="reading-review">
       <header className="review-header">
         <div>
-          <p className="page-eyebrow reading-eyebrow">{focused ? "Focused practice · Reading" : "Reading review"}</p>
+          <p className="page-eyebrow reading-eyebrow">{focused ? t("runner.readingReviewFocused") : t("runner.readingReview")}</p>
           <h1>{data.review.test_title}</h1>
-          {focusedUnitLabel(data.review.attempt) ? <p>{focusedUnitLabel(data.review.attempt)}</p> : null}
+          {focusedUnitLabel(data.review.attempt, t) ? <p>{focusedUnitLabel(data.review.attempt, t)}</p> : null}
         </div>
         <p className="review-score">
-          <span>{focused ? "Correct answers" : "Score"}</span>
+          <span>{focused ? t("runner.correctAnswers") : t("runner.score")}</span>
           <b>{data.review.attempt.raw_score ?? "—"} / {data.review.attempt.max_score ?? "—"}</b>
-          <small>{focused ? accuracyLabel(data.review.attempt.raw_score, data.review.attempt.max_score) : data.review.attempt.band_score === null ? "Official band unavailable" : `Band ${data.review.attempt.band_score.toFixed(1)}`}</small>
+          <small>{focused ? accuracyLabel(data.review.attempt.raw_score, data.review.attempt.max_score, t) : data.review.attempt.band_score === null ? t("runner.bandUnavailable") : t("runner.band", { score: data.review.attempt.band_score.toFixed(1) })}</small>
         </p>
       </header>
 
-      <div className="listening-part-tabs" aria-label="Review passages">
+      <div className="listening-part-tabs" aria-label={t("runner.reviewReading")}>
         {data.passages.map((item, index) => (
           <button key={item.id} type="button" className={index === passageIndex ? "active" : ""} onClick={() => setPassageIndex(index)}>
-            <b>Passage {item.order_index + 1}</b>
-            <span>{item.question_groups.reduce((count, group) => count + groupQuestionCount(group), 0)} questions</span>
+            <b>{t("common.passageNumber", { number: item.order_index + 1 })}</b>
+            <span>{t("common.questionsCount", { count: item.question_groups.reduce((count, group) => count + groupQuestionCount(group), 0) })}</span>
           </button>
         ))}
       </div>
 
       <section key={passage.id} className="review-layout">
         <article className="review-passage">
-          <p className="exam-passage-kicker">Passage {passage.order_index + 1}</p>
+          <p className="exam-passage-kicker">{t("common.passageNumber", { number: passage.order_index + 1 })}</p>
           <h2>{passage.title}</h2>
           <div className="review-passage-body">
             {passage.blocks.map((block) => block.type === "heading" ? (
@@ -91,14 +94,14 @@ export function ReadingReviewView({ data }: { data: ReviewData }) {
                     return (
                       <div key={question.id} className={answer?.is_correct ? "review-answer-correct" : "review-answer-wrong"}>
                         <div className="review-answer-heading">
-                          <b>{group.question_type === "multiple_choice_multiple" ? groupQuestionRange(group).replace(/^Q/, "Questions ") : `Question ${question.number}`}</b>
-                          <span>{answer?.is_correct ? "Correct" : "Needs review"}</span>
+                          <b>{group.question_type === "multiple_choice_multiple" ? groupQuestionRange(group).replace(/^Q/, `${t("common.questions")} `) : t("runner.question", { number: question.number })}</b>
+                          <span>{answer?.is_correct ? t("runner.correct") : t("runner.needsReview")}</span>
                         </div>
                         <div className="review-answer-details">
-                          <span><small>Your answer</small>{display(answer?.value)}</span>
-                          <span><small>Correct answer</small>{display(expected)}</span>
+                          <span><small>{t("runner.yourAnswer")}</small>{display(answer?.value)}</span>
+                          <span><small>{t("runner.correctAnswer")}</small>{display(expected)}</span>
                         </div>
-                        {question.explanation ? <p className="review-explanation"><small>Explanation</small>{question.explanation}</p> : null}
+                        {question.explanation ? <p className="review-explanation"><small>{t("runner.explanation")}</small>{question.explanation}</p> : null}
                       </div>
                     );
                   })}

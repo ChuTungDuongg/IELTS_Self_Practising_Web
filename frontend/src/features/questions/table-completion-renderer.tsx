@@ -1,10 +1,13 @@
 "use client";
 
+import { useTranslation } from "@/lib/i18n/locale-provider";
+
 import { Fragment } from "react";
 import type { TableCompletionLayout } from "./types";
 import { questionTarget, type RendererProps } from "./renderers";
 
 export function TableCompletionRenderer({ group, values, disabled, onAnswer, activeQuestionId }: RendererProps) {
+  const { t } = useTranslation();
   const layout = group.config.layout as TableCompletionLayout;
   const title = layout.title?.trim();
 
@@ -28,7 +31,7 @@ export function TableCompletionRenderer({ group, values, disabled, onAnswer, act
                         <label key={segment.id} {...questionTarget(question, activeQuestionId, "table-completion-answer")}>
                           <span className="table-completion-question-number">{question.number}</span>
                           <input
-                            aria-label={`Question ${question.number}`}
+                            aria-label={t("runner.question", { number: question.number })}
                             className="table-completion-answer-input"
                             disabled={disabled}
                             value={String(values[question.id] ?? "")}

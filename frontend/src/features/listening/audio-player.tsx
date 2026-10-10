@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@/lib/i18n/locale-provider";
+
 import { useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
 import { formatAudioTime, validAudioClip, type AudioClip } from "./audio-time";
 
@@ -11,6 +13,7 @@ export type ListeningAudioPlayerHandle = { currentPosition: () => number; previe
 export function ListeningAudioPlayer({ src, clip, policy = { allowSeeking: true, allowSpeed: true }, ref, onDuration }: {
   src: string; clip?: AudioClip; policy?: AudioPolicy; ref?: Ref<ListeningAudioPlayerHandle>; onDuration?: (seconds: number) => void;
 }) {
+  const { t } = useTranslation();
   const audioRef = useRef<HTMLAudioElement>(null);
   const [preview, setPreview] = useState<AudioClip | undefined>();
   const [previewRequest, setPreviewRequest] = useState(0);
@@ -81,7 +84,7 @@ export function ListeningAudioPlayer({ src, clip, policy = { allowSeeking: true,
     } else audio.pause();
   }
 
-  return <><div className="listening-player" aria-label="Listening audio player"><audio ref={audioRef} src={src} preload="metadata" onLoadedMetadata={(event) => {
+  return <><div className="listening-player" aria-label={t("runner.audioPlayer")}><audio ref={audioRef} src={src} preload="metadata" onLoadedMetadata={(event) => {
       const value = event.currentTarget.duration;
       if (!Number.isFinite(value) || value <= 0) { setState("error"); return; }
       setDuration(value); onDuration?.(value); setState("ready");
@@ -93,18 +96,18 @@ export function ListeningAudioPlayer({ src, clip, policy = { allowSeeking: true,
       }
       setCurrent(audio.currentTime);
     }} onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onEnded={() => setPlaying(false)} onWaiting={() => setState("loading")} onCanPlay={() => setState((currentState) => currentState === "error" ? "error" : "ready")} onError={() => setState("error")} />
-    <button type="button" className="player-main" disabled={unavailable || (Boolean(activeClip) && !duration)} onClick={() => void toggle()} aria-label={playing ? "Pause audio" : "Play audio"}>{playing ? "❚❚" : "▶"}</button>
-    <button type="button" className="player-skip" disabled={!policy.allowSeeking || unavailable} onClick={() => seek(current - 10)} aria-label="Seek backward 10 seconds">−10</button>
+    <button type="button" className="player-main" disabled={unavailable || (Boolean(activeClip) && !duration)} onClick={() => void toggle()} aria-label={playing ? t("runner.pauseAudio") : t("runner.playAudio")}>{playing ? "❚❚" : "▶"}</button>
+    <button type="button" className="player-skip" disabled={!policy.allowSeeking || unavailable} onClick={() => seek(current - 10)} aria-label={t("runner.seekBack")}>−10</button>
     <span className="player-time">{formatAudioTime(Math.max(0, current - start))}</span>
-    <input aria-label="Audio seek" type="range" min={0} max={length} step={0.1} value={Math.max(0, Math.min(current - start, length))} disabled={!policy.allowSeeking || unavailable} onChange={(event) => seek(start + Number(event.target.value))} />
-    <span className="player-time">{unavailable ? "Error" : state === "loading" && !duration ? "Loading" : formatAudioTime(length)}</span>
-    <button type="button" className="player-skip" disabled={!policy.allowSeeking || unavailable} onClick={() => seek(current + 10)} aria-label="Seek forward 10 seconds">+10</button>
-    <select aria-label="Playback speed" value={rate} disabled={!policy.allowSpeed} onChange={(event) => { const next = Number(event.target.value); setRate(next); if (audioRef.current) audioRef.current.playbackRate = next; }}>{speeds.map((speed) => <option key={speed} value={speed}>{speed}x</option>)}</select>
-    <button type="button" className="player-mute" onClick={() => { const next = !muted; setMuted(next); if (audioRef.current) audioRef.current.muted = next; }} aria-label={muted ? "Unmute" : "Mute"}>{muted ? "🔇" : "🔊"}</button>
-    <input aria-label="Volume" type="range" min={0} max={1} step={0.05} value={volume} onChange={(event) => { const next = Number(event.target.value); setVolume(next); if (audioRef.current) audioRef.current.volume = next; }} />
+    <input aria-label={t("runner.audioSeek")} type="range" min={0} max={length} step={0.1} value={Math.max(0, Math.min(current - start, length))} disabled={!policy.allowSeeking || unavailable} onChange={(event) => seek(start + Number(event.target.value))} />
+    <span className="player-time">{unavailable ? t("runner.audioError") : state === "loading" && !duration ? t("runner.audioLoading") : formatAudioTime(length)}</span>
+    <button type="button" className="player-skip" disabled={!policy.allowSeeking || unavailable} onClick={() => seek(current + 10)} aria-label={t("runner.seekForward")}>+10</button>
+    <select aria-label={t("runner.speed")} value={rate} disabled={!policy.allowSpeed} onChange={(event) => { const next = Number(event.target.value); setRate(next); if (audioRef.current) audioRef.current.playbackRate = next; }}>{speeds.map((speed) => <option key={speed} value={speed}>{speed}x</option>)}</select>
+    <button type="button" className="player-mute" onClick={() => { const next = !muted; setMuted(next); if (audioRef.current) audioRef.current.muted = next; }} aria-label={muted ? t("runner.unmute") : t("runner.mute")}>{muted ? "🔇" : "🔊"}</button>
+    <input aria-label={t("runner.volume")} type="range" min={0} max={1} step={0.05} value={volume} onChange={(event) => { const next = Number(event.target.value); setVolume(next); if (audioRef.current) audioRef.current.volume = next; }} />
   </div>
-    {clipError ? <p role="alert" className="notice notice-error">The section audio range is invalid or extends beyond this recording. Correct the start/end times in the Builder.</p> : state === "error" ? <p role="alert" className="notice notice-error">Could not load the recording. Check the audio file and try again.</p> : null}
-    {playError ? <p role="alert" className="notice notice-error">Could not start audio playback. Press Play to try again.</p> : null}
-    {preview && !clip ? <button type="button" className="btn btn-secondary mt-2" onClick={() => { previewPending.current = false; setPreview(undefined); }}>Full recording</button> : null}
+    {clipError ? <p role="alert" className="notice notice-error">{t("runner.clipError")}</p> : state === "error" ? <p role="alert" className="notice notice-error">{t("runner.audioLoadError")}</p> : null}
+    {playError ? <p role="alert" className="notice notice-error">{t("runner.audioPlayError")}</p> : null}
+    {preview && !clip ? <button type="button" className="btn btn-secondary mt-2" onClick={() => { previewPending.current = false; setPreview(undefined); }}>{t("runner.fullRecording")}</button> : null}
   </>;
 }

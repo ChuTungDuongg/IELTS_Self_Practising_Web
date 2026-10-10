@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@/lib/i18n/locale-provider";
+
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { snapToWordBoundaries } from "./word-boundaries";
@@ -28,6 +30,7 @@ export function SelectableText({ text, target, controller, className }: {
   controller?: HighlightController;
   className?: string;
 }) {
+  const { t } = useTranslation();
   const root = useRef<HTMLSpanElement>(null);
   const createPopover = useRef<HTMLDivElement>(null);
   const removePopover = useRef<HTMLDivElement>(null);
@@ -35,7 +38,7 @@ export function SelectableText({ text, target, controller, className }: {
   const [pending, setPending] = useState<PendingSelection | null>(null);
   const [activeHighlight, setActiveHighlight] = useState<(Highlight & { x: number; y: number }) | null>(null);
   const [working, setWorking] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState<import("@/lib/i18n/types").TranslationKey | "">("");
   const matches = (controller?.highlights ?? [])
     .filter((item) => item.target_kind === target.target_kind
       && item.target_id === target.target_id
@@ -151,7 +154,7 @@ export function SelectableText({ text, target, controller, className }: {
       className={mutable ? "highlight-mark highlight-mark-interactive" : "highlight-mark"}
       role={mutable ? "button" : undefined}
       tabIndex={mutable ? 0 : undefined}
-      aria-label={mutable ? `Highlight: ${item.selected_text}. Open options` : undefined}
+      aria-label={mutable ? t("runner.highlightOptionsFor", { text: item.selected_text }) : undefined}
       onClick={(event) => openHighlight(item, event.currentTarget)}
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") {
@@ -166,7 +169,7 @@ export function SelectableText({ text, target, controller, className }: {
 
   return <span className={className}>
     <span ref={root} onMouseUp={select} onTouchEnd={select} data-highlight-target>{content}</span>
-    {pending && typeof document !== "undefined" ? createPortal(<div ref={createPopover} className="highlight-popover highlight-create-popover" style={{ left: pending.x, top: pending.y }} role="dialog" aria-label="Create highlight">
+    {pending && typeof document !== "undefined" ? createPortal(<div ref={createPopover} className="highlight-popover highlight-create-popover" style={{ left: pending.x, top: pending.y }} role="dialog" aria-label={t("runner.createHighlight")}>
       <q>{pending.selected_text}</q>
       <button type="button" disabled={working} onClick={async () => {
         setWorking(true);
@@ -181,15 +184,15 @@ export function SelectableText({ text, target, controller, className }: {
           setPending(null);
           window.getSelection()?.removeAllRanges();
         } catch {
-          setError("Could not create the highlight. Please try again.");
+          setError("runner.createHighlightError");
         } finally {
           setWorking(false);
         }
-      }}>{working ? "Working…" : "Highlight"}</button>
-      {error ? <p role="alert">{error}</p> : null}
+      }}>{working ? t("common.working") : t("runner.highlight")}</button>
+      {error ? <p role="alert">{t(error)}</p> : null}
     </div>, document.body) : null}
-    {activeHighlight && typeof document !== "undefined" ? createPortal(<div ref={removePopover} className="highlight-popover highlight-remove-popover" style={{ left: activeHighlight.x, top: activeHighlight.y }} role="dialog" aria-label="Highlight options">
-      <p>Highlight</p>
+    {activeHighlight && typeof document !== "undefined" ? createPortal(<div ref={removePopover} className="highlight-popover highlight-remove-popover" style={{ left: activeHighlight.x, top: activeHighlight.y }} role="dialog" aria-label={t("runner.highlightOptions")}>
+      <p>{t("runner.highlight")}</p>
       <q>{activeHighlight.selected_text}</q>
       <button type="button" className="highlight-remove-action" disabled={working} onClick={async () => {
         setWorking(true);
@@ -198,12 +201,12 @@ export function SelectableText({ text, target, controller, className }: {
           await controller?.onDelete?.(activeHighlight.id);
           setActiveHighlight(null);
         } catch {
-          setError("Could not remove the highlight. Please try again.");
+          setError("runner.removeHighlightError");
         } finally {
           setWorking(false);
         }
-      }}>{working ? "Removing…" : "Remove highlight"}</button>
-      {error ? <p role="alert">{error}</p> : null}
+      }}>{working ? t("runner.removing") : t("runner.removeHighlight")}</button>
+      {error ? <p role="alert">{t(error)}</p> : null}
     </div>, document.body) : null}
   </span>;
 }

@@ -1,10 +1,13 @@
 "use client";
 
+import { useTranslation } from "@/lib/i18n/locale-provider";
+
 import { SelectableText } from "@/features/highlighting/selectable-text";
 import { questionTarget, type RendererProps } from "./renderers";
 import type { NoteCompletionLayout } from "./types";
 
 export function NoteCompletionRenderer({ group, values, disabled, onAnswer, highlighting, activeQuestionId }: RendererProps) {
+  const { t } = useTranslation();
   const layout = group.config.layout as NoteCompletionLayout;
   const title = layout.title?.trim();
   return (
@@ -23,7 +26,7 @@ export function NoteCompletionRenderer({ group, values, disabled, onAnswer, high
                 return question ? (
                   <label key={segment.id} {...questionTarget(question, activeQuestionId, "note-completion-answer")}>
                     <span className="note-completion-question-number">{question.number}</span>
-                    <input aria-label={`Question ${question.number}`} className="note-completion-answer-input" disabled={disabled} value={String(values[question.id] ?? "")} onChange={(event) => onAnswer?.(question.id, event.target.value)} />
+                    <input aria-label={t("runner.question", { number: question.number })} className="note-completion-answer-input" disabled={disabled} value={String(values[question.id] ?? "")} onChange={(event) => onAnswer?.(question.id, event.target.value)} />
                   </label>
                 ) : null;
               })}

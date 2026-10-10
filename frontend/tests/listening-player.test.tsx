@@ -108,7 +108,7 @@ describe("Listening audio and templates", () => {
     } as BuilderQuestionGroup;
     render(<BuilderLifecycleProvider><ListeningBuilder version={listeningBuilderVersion([persisted])} /></BuilderLifecycleProvider>);
     expect(screen.getByText("Q13–14")).toBeInTheDocument();
-    expect(screen.getByText("2 / 40 questions")).toBeInTheDocument();
+    expect(screen.getByText("2 / 40 Questions")).toBeInTheDocument();
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Edit" })); await Promise.resolve(); });
     expect(screen.getByRole("combobox", { name: "Required selections" })).toHaveValue("2");
     fireEvent.change(screen.getByRole("combobox", { name: "Required selections" }), { target: { value: "3" } });

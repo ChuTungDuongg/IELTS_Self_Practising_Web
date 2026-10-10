@@ -1,3 +1,4 @@
+import { renderWithLocale } from "./locale-test-utils";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -264,4 +265,22 @@ describe("diagram label completion", () => {
     expect((saved.config.items as Array<{ box: { x: number; y: number } }>)[0].box).toMatchObject({ x: 0.25, y: 0.26 });
     vi.useRealTimers();
   });
+});
+
+it("updates generic Question accessibility in VI without changing authored diagram-labelling content or input identity", () => {
+  localStorage.clear();
+  const group = diagramGroup() as ExamGroup;
+  const before = JSON.stringify(group);
+  const Renderer = questionRegistry.diagram_labelling.ExamRenderer;
+  const view = renderWithLocale(<Renderer group={group} values={{ [group.questions[0].id]: "Exact learner answer" }} />);
+  const question = group.questions[0];
+  const input = screen.getByLabelText(`Question ${question.number}`);
+  const authored = view.container.firstElementChild!.textContent;
+  fireEvent.click(screen.getByRole("button", { name: "Switch to Vietnamese" }));
+  expect(screen.getByLabelText(`Câu hỏi ${question.number}`)).toBe(input);
+  expect(input).toHaveValue("Exact learner answer");
+  expect(view.container.firstElementChild!.textContent).toBe(authored);
+  expect(JSON.stringify(group)).toBe(before);
+  fireEvent.click(screen.getByRole("button", { name: "Switch to English" }));
+  expect(screen.getByLabelText(`Question ${question.number}`)).toBe(input);
 });

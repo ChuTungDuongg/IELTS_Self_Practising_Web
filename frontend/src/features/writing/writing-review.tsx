@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@/lib/i18n/locale-provider";
+
 import { useState } from "react";
 import Image from "next/image";
 import { useAuth } from "@/features/auth/auth-provider";
@@ -15,10 +17,10 @@ import {
 
 const bands = Array.from({ length: 19 }, (_, index) => (index / 2).toFixed(1));
 const criteria = [
-  ["ta", "TA", "Task Achievement"],
-  ["cc", "CC", "Coherence & Cohesion"],
-  ["lr", "LR", "Lexical Resource"],
-  ["gra", "GRA", "Grammatical Range & Accuracy"],
+  ["ta", "TA", "runner.criterion.ta"],
+  ["cc", "CC", "runner.criterion.cc"],
+  ["lr", "LR", "runner.criterion.lr"],
+  ["gra", "GRA", "runner.criterion.gra"],
 ] as const;
 type Criterion = "ta" | "cc" | "lr" | "gra";
 type TaskSelection = Record<Criterion, string>;
@@ -49,18 +51,19 @@ function initialFeedback(data: WritingReviewPayload): Record<string, TaskFeedbac
 }
 
 export function WritingReviewView({ data }: { data: WritingReviewPayload }) {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const [reviewData, setReviewData] = useState(data);
   const [taskIndex, setTaskIndex] = useState(0);
   const [selections, setSelections] = useState(() => initialSelections(data));
   const [feedback, setFeedback] = useState(() => initialFeedback(data));
   const [savingTaskId, setSavingTaskId] = useState<string | null>(null);
-  const [messages, setMessages] = useState<Record<string, string>>({});
-  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [messages, setMessages] = useState<Record<string, { message: import("@/lib/i18n/types").TranslationKey; number?: number } | null>>({});
+  const [errors, setErrors] = useState<Record<string, { message: import("@/lib/i18n/types").TranslationKey; number?: number } | null>>({});
   const task = reviewData.tasks[taskIndex];
   const focused = reviewData.review.attempt.scope === "FOCUSED_UNIT";
 
-  if (!task) return <p>No Writing review content is available.</p>;
+  if (!task) return <p>{t("runner.noWritingReview")}</p>;
   const paragraphs = task.content.replace(/\r\n/g, "\n").split(/\n+/).filter((paragraph) => paragraph.trim());
 
   function updateCriterion(taskId: string, criterion: Criterion, value: string) {
@@ -68,7 +71,7 @@ export function WritingReviewView({ data }: { data: WritingReviewPayload }) {
       ...current,
       [taskId]: { ...current[taskId], [criterion]: value },
     }));
-    setMessages((current) => ({ ...current, [taskId]: "" }));
+    setMessages((current) => ({ ...current, [taskId]: null }));
   }
 
   function updateFeedback(taskId: string, criterion: Criterion, value: string) {
@@ -76,22 +79,22 @@ export function WritingReviewView({ data }: { data: WritingReviewPayload }) {
       ...current,
       [taskId]: { ...current[taskId], [criterion]: value },
     }));
-    setMessages((current) => ({ ...current, [taskId]: "" }));
+    setMessages((current) => ({ ...current, [taskId]: null }));
   }
 
   function copyAISuggestions(taskId: string, result: AIWritingResult) {
     if (user?.role !== "ADMIN") return;
     setSelections((current) => ({ ...current, [taskId]: Object.fromEntries(aiTraits.map((key) => [key, result.criteria[key].score.toFixed(1)])) as TaskSelection }));
     setFeedback((current) => ({ ...current, [taskId]: Object.fromEntries(aiTraits.map((key) => [key, presentAIFeedback(result.criteria[key].feedback)])) as TaskFeedback }));
-    setMessages((current) => ({ ...current, [taskId]: "AI suggestions copied. Review and save these scores explicitly." }));
+    setMessages((current) => ({ ...current, [taskId]: { message: "runner.aiCopied" } }));
   }
 
   async function saveTaskScores(taskId: string, taskNumber: number) {
     const selection = selections[taskId];
     if (!selection || Object.values(selection).some((value) => value === "")) return;
     setSavingTaskId(taskId);
-    setErrors((current) => ({ ...current, [taskId]: "" }));
-    setMessages((current) => ({ ...current, [taskId]: "" }));
+    setErrors((current) => ({ ...current, [taskId]: null }));
+    setMessages((current) => ({ ...current, [taskId]: null }));
     try {
       const response = await saveWritingTaskScore(
         reviewData.review.attempt.attempt_id,
@@ -108,9 +111,9 @@ export function WritingReviewView({ data }: { data: WritingReviewPayload }) {
         },
       );
       setReviewData(response);
-      setMessages((current) => ({ ...current, [taskId]: `Task ${taskNumber} scores saved.` }));
+      setMessages((current) => ({ ...current, [taskId]: { message: "runner.taskScoresSaved", number: taskNumber } }));
     } catch {
-      setErrors((current) => ({ ...current, [taskId]: `Task ${taskNumber} scores could not be saved.` }));
+      setErrors((current) => ({ ...current, [taskId]: { message: "runner.taskScoresError", number: taskNumber } }));
     } finally {
       setSavingTaskId(null);
     }
@@ -118,17 +121,17 @@ export function WritingReviewView({ data }: { data: WritingReviewPayload }) {
 
   return <div className="writing-review">
     <header className="review-header">
-      <div><p className="writing-review-kicker">{focused ? "Writing · Focused practice" : "Writing review"}</p><h1>{reviewData.review.test_title}</h1>{focusedUnitLabel(reviewData.review.attempt) ? <p>{focusedUnitLabel(reviewData.review.attempt)}</p> : null}</div>
-      <p className="review-score"><span className="review-result-label">{focused ? "Task score" : "Final assessment"}</span><b>{focused ? task.score ? task.score.overall.toFixed(2) : "Not graded" : reviewData.band_score === null ? "Pending" : `Band ${reviewData.band_score.toFixed(1)}`}</b></p>
+      <div><p className="writing-review-kicker">{focused ? t("runner.writingFocused") : t("runner.writingReview")}</p><h1>{reviewData.review.test_title}</h1>{focusedUnitLabel(reviewData.review.attempt, t) ? <p>{focusedUnitLabel(reviewData.review.attempt, t)}</p> : null}</div>
+      <p className="review-score"><span className="review-result-label">{focused ? t("runner.taskScore") : t("runner.finalAssessment")}</span><b>{focused ? task.score ? task.score.overall.toFixed(2) : t("runner.notGraded") : reviewData.band_score === null ? t("runner.pending") : t("runner.band", { score: reviewData.band_score.toFixed(1) })}</b></p>
     </header>
 
-    {!focused ? <section className="writing-assessment-summary" aria-label="Writing assessment summary">
-      <div><p className="writing-review-kicker">Final assessment</p><h2>{reviewData.band_score === null ? "Waiting for all 8 criterion scores" : `Band ${reviewData.band_score.toFixed(1)}`}</h2></div>
+    {!focused ? <section className="writing-assessment-summary" aria-label={t("runner.writingSummary")}>
+      <div><p className="writing-review-kicker">{t("runner.finalAssessment")}</p><h2>{reviewData.band_score === null ? t("runner.waitingCriteria") : t("runner.band", { score: reviewData.band_score.toFixed(1) })}</h2></div>
       <dl>
-        <div><dt>Task 1 overall</dt><dd>{formatOverall(reviewData.task1_overall)}</dd></div>
-        <div><dt>Task 2 overall</dt><dd>{formatOverall(reviewData.task2_overall)}</dd></div>
-        <div><dt>Weighted overall</dt><dd>{formatOverall(reviewData.weighted_overall)}</dd></div>
-        <div><dt>Task weighting</dt><dd>Task 1 × 1 · Task 2 × 2</dd></div>
+        <div><dt>{t("runner.task1Overall")}</dt><dd>{formatOverall(reviewData.task1_overall)}</dd></div>
+        <div><dt>{t("runner.task2Overall")}</dt><dd>{formatOverall(reviewData.task2_overall)}</dd></div>
+        <div><dt>{t("runner.weightedOverall")}</dt><dd>{formatOverall(reviewData.weighted_overall)}</dd></div>
+        <div><dt>{t("runner.taskWeighting")}</dt><dd>{t("runner.taskWeights")}</dd></div>
       </dl>
     </section> : null}
 
@@ -137,30 +140,30 @@ export function WritingReviewView({ data }: { data: WritingReviewPayload }) {
         const selection = selections[scoreTask.writing_task_id];
         const complete = selection && Object.values(selection).every((value) => value !== "");
         const saving = savingTaskId === scoreTask.writing_task_id;
-        return <section key={scoreTask.writing_task_id} className="writing-assessment-card" aria-label={`Task ${scoreTask.task_number} assessment`}>
-          <div className="writing-assessment-card-heading"><div><p className="writing-review-kicker">Writing Task {scoreTask.task_number}</p><h2>Task {scoreTask.task_number} assessment</h2></div><strong>{scoreTask.score ? `${focused ? "Task score" : "Overall"} ${scoreTask.score.overall.toFixed(2)}` : focused ? "Not graded" : "Awaiting scores"}</strong></div>
+        return <section key={scoreTask.writing_task_id} className="writing-assessment-card" aria-label={t("runner.taskAssessment", { number: scoreTask.task_number })}>
+          <div className="writing-assessment-card-heading"><div><p className="writing-review-kicker">{t("runner.writingTask", { number: scoreTask.task_number })}</p><h2>{t("runner.taskAssessment", { number: scoreTask.task_number })}</h2></div><strong>{scoreTask.score ? `${focused ? t("runner.taskScore") : t("runner.overall")} ${scoreTask.score.overall.toFixed(2)}` : focused ? t("runner.notGraded") : t("runner.awaitingScores")}</strong></div>
           <div className="writing-criteria-grid">
-            {criteria.map(([key, abbreviation, fullName]) => <div key={key} className="writing-criterion-field"><label><span><b>{abbreviation}</b><small>{key === "ta" && scoreTask.task_number === 2 ? "Task Response" : fullName}</small></span><select aria-label={`Task ${scoreTask.task_number} ${abbreviation}`} className="select-field" value={selection?.[key] ?? ""} onChange={(event) => updateCriterion(scoreTask.writing_task_id, key, event.target.value)}><option value="">Not scored</option>{bands.map((band) => <option key={band} value={band}>{band}</option>)}</select></label><label className="field-label">{abbreviation} feedback <span className="font-normal text-[var(--muted)]">(optional)</span><textarea aria-label={`Task ${scoreTask.task_number} ${abbreviation} feedback`} className="textarea-field mt-2" rows={3} maxLength={4000} value={feedback[scoreTask.writing_task_id]?.[key] ?? ""} onChange={(event) => updateFeedback(scoreTask.writing_task_id, key, event.target.value)} /></label></div>)}
+            {criteria.map(([key, abbreviation, fullName]) => <div key={key} className="writing-criterion-field"><label><span><b>{abbreviation}</b><small>{key === "ta" && scoreTask.task_number === 2 ? t("runner.taskResponse") : t(fullName)}</small></span><select aria-label={t("runner.taskCriterion", { number: scoreTask.task_number, criterion: abbreviation })} className="select-field" value={selection?.[key] ?? ""} onChange={(event) => updateCriterion(scoreTask.writing_task_id, key, event.target.value)}><option value="">{t("runner.notScored")}</option>{bands.map((band) => <option key={band} value={band}>{band}</option>)}</select></label><label className="field-label">{t("runner.criterionFeedback", { criterion: abbreviation })} <span className="font-normal text-[var(--muted)]">{t("runner.optional")}</span><textarea aria-label={t("runner.taskCriterionFeedback", { number: scoreTask.task_number, criterion: abbreviation })} className="textarea-field mt-2" rows={3} maxLength={4000} value={feedback[scoreTask.writing_task_id]?.[key] ?? ""} onChange={(event) => updateFeedback(scoreTask.writing_task_id, key, event.target.value)} /></label></div>)}
           </div>
-          <button type="button" className="btn btn-writing" disabled={!complete || saving} onClick={() => void saveTaskScores(scoreTask.writing_task_id, scoreTask.task_number)}>{saving ? "Saving…" : `Save Task ${scoreTask.task_number} scores`}</button>
-          {messages[scoreTask.writing_task_id] ? <p role="status" className="notice notice-success">{messages[scoreTask.writing_task_id]}</p> : null}
-          {errors[scoreTask.writing_task_id] ? <p role="alert" className="notice notice-error">{errors[scoreTask.writing_task_id]}</p> : null}
+          <button type="button" className="btn btn-writing" disabled={!complete || saving} onClick={() => void saveTaskScores(scoreTask.writing_task_id, scoreTask.task_number)}>{saving ? t("common.saving") : t("runner.saveTaskScores", { number: scoreTask.task_number })}</button>
+          {messages[scoreTask.writing_task_id] ? <p role="status" className="notice notice-success">{t(messages[scoreTask.writing_task_id]!.message, { number: messages[scoreTask.writing_task_id]!.number ?? "" })}</p> : null}
+          {errors[scoreTask.writing_task_id] ? <p role="alert" className="notice notice-error">{t(errors[scoreTask.writing_task_id]!.message, { number: errors[scoreTask.writing_task_id]!.number ?? "" })}</p> : null}
         </section>;
       })}
     </div>
 
-    {!focused || reviewData.tasks.length > 1 ? <div className="writing-task-tabs" role="tablist" aria-label="Writing review tasks">
-      {reviewData.tasks.map((item, index) => <button key={item.writing_task_id} type="button" role="tab" aria-selected={index === taskIndex} className={index === taskIndex ? "active" : ""} onClick={() => setTaskIndex(index)}><b>Task {item.task_number}</b><span>{item.word_count} words</span></button>)}
+    {!focused || reviewData.tasks.length > 1 ? <div className="writing-task-tabs" role="tablist" aria-label={t("runner.writingReviewTasks")}>
+      {reviewData.tasks.map((item, index) => <button key={item.writing_task_id} type="button" role="tab" aria-selected={index === taskIndex} className={index === taskIndex ? "active" : ""} onClick={() => setTaskIndex(index)}><b>{t("common.taskNumber", { number: item.task_number })}</b><span>{t("runner.wordCount", { count: item.word_count })}</span></button>)}
     </div> : null}
     <main className="writing-review-layout">
-      <article className="writing-task-prompt"><p className="writing-task-kicker">Writing Task {task.task_number}</p><h2>Task {task.task_number}</h2><p>{task.prompt}</p>{task.image_asset ? <Image unoptimized width={720} height={420} src={assetContentUrl(task.image_asset)} alt={`Writing Task ${task.task_number} reference`} /> : null}<div className="writing-task-guidance"><span>Minimum {task.minimum_recommended_words ?? "—"} words</span><span>{task.recommended_duration_seconds ? Math.round(task.recommended_duration_seconds / 60) : "—"} minutes suggested</span></div></article>
-      <article className="writing-review-response" aria-label={`Saved Task ${task.task_number} response`}>
+      <article className="writing-task-prompt"><p className="writing-task-kicker">{t("runner.writingTask", { number: task.task_number })}</p><h2>{t("common.taskNumber", { number: task.task_number })}</h2><p>{task.prompt}</p>{task.image_asset ? <Image unoptimized width={720} height={420} src={assetContentUrl(task.image_asset)} alt={t("runner.writingReference", { number: task.task_number })} /> : null}<div className="writing-task-guidance"><span>{t("runner.minimumWordsReview", { count: task.minimum_recommended_words ?? "—" })}</span><span>{t("runner.minutesSuggested", { minutes: task.recommended_duration_seconds ? Math.round(task.recommended_duration_seconds / 60) : "—" })}</span></div></article>
+      <article className="writing-review-response" aria-label={t("runner.savedTaskResponse", { number: task.task_number })}>
         <header className="writing-review-response-heading">
-          <div><p className="writing-response-kicker">Saved response</p><h2>Task {task.task_number} response</h2></div>
-          <span className="writing-review-word-count">{task.word_count} words</span>
+          <div><p className="writing-response-kicker">{t("runner.savedResponse")}</p><h2>{t("runner.taskResponseHeading", { number: task.task_number })}</h2></div>
+          <span className="writing-review-word-count">{t("runner.wordCount", { count: task.word_count })}</span>
         </header>
         <div className="writing-review-response-body">
-          {paragraphs.length ? paragraphs.map((paragraph, index) => <p key={index}>{paragraph}</p>) : <p className="writing-review-response-empty">No response was saved.</p>}
+          {paragraphs.length ? paragraphs.map((paragraph, index) => <p key={index}>{paragraph}</p>) : <p className="writing-review-response-empty">{t("runner.noSavedResponse")}</p>}
         </div>
       </article>
     </main>

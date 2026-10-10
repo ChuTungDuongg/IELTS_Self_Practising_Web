@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@/lib/i18n/locale-provider";
+
 import { assetContentUrl } from "@/lib/api/assets";
 import { diagramPercent, splitDiagramPrompt } from "./diagram-labelling";
 import { questionTarget, type RendererProps } from "./renderers";
@@ -15,9 +17,10 @@ export function DiagramLabellingRenderer({
   activeQuestionId,
   presentation,
 }: RendererProps) {
+  const { t } = useTranslation();
   const config = group.config as unknown as DiagramLabellingConfig & { image_asset?: typeof group.image_asset };
   const image = group.image_asset ?? config.image_asset;
-  if (!image) return <p className="notice">The diagram image is unavailable.</p>;
+  if (!image) return <p className="notice">{t("runner.noDiagram")}</p>;
   if (presentation === "listening-visual") {
     return (
       <div className="listening-visual-layout">
@@ -29,7 +32,7 @@ export function DiagramLabellingRenderer({
             <label key={question.id} {...questionTarget(question, activeQuestionId, "grid gap-2")}>
               <span className="font-medium"><b className="mr-2 text-[var(--accent)]">{question.number}</b>{question.prompt}</span>
               <input
-                aria-label={`Question ${question.number}`}
+                aria-label={t("runner.question", { number: question.number })}
                 className="select-field"
                 disabled={disabled}
                 value={String(values[question.id] ?? "")}
@@ -78,7 +81,7 @@ export function DiagramLabellingRenderer({
               <span className="diagram-label-copy">
                 <b className="diagram-question-number">{question.number}</b>{" "}{before}
                 <input
-                  aria-label={`Question ${question.number}`}
+                  aria-label={t("runner.question", { number: question.number })}
                   className="diagram-gap-input"
                   disabled={disabled}
                   value={String(values[question.id] ?? "")}

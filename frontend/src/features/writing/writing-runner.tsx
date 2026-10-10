@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@/lib/i18n/locale-provider";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
@@ -17,6 +19,7 @@ import { assetContentUrl } from "@/lib/api/assets";
 import { type ExamPayload } from "@/lib/api/exam";
 
 export function WritingRunner({ initial }: { initial: ExamPayload }) {
+  const { t } = useTranslation();
   const attemptId = initial.attempt.attempt_id;
   const tasks = useMemo(
     () => [...initial.writing_tasks].sort((left, right) => left.order_index - right.order_index),
@@ -24,7 +27,7 @@ export function WritingRunner({ initial }: { initial: ExamPayload }) {
   );
   const [taskIndex, setTaskIndex] = useState(0);
   const initialResponses = useMemo(() => tasks.map((task) => ({ id: task.id, value: task.content, revision: task.response_revision })), [tasks]);
-  const [activityError, setActivityError] = useState<string | null>(null);
+  const [activityError, setActivityError] = useState<import("@/lib/i18n/types").TranslationKey | null>(null);
   const [clock, setClock] = useState(() => new Date(initial.attempt.server_time).getTime());
   const [offset, setOffset] = useState(0);
   const autosaveRef = useRef<RevisionAutosaveQueue<string> | null>(null);
@@ -59,7 +62,7 @@ export function WritingRunner({ initial }: { initial: ExamPayload }) {
     attemptId, initialAttempt: initial.attempt, flush: flushBeforeSubmit, runMutation, accept, isStopped,
   });
   const task = tasks[taskIndex];
-  useEffect(() => { if (task && !stopped.current && !isSubmitting()) void trackTelemetry(runMutation(() => recordNavigation(attemptId, "WRITING_TASK", task.id))).catch((error) => { if (!(error instanceof AttemptStoppedError)) setActivityError("Your activity could not be recorded. Please try again."); }); }, [attemptId, isSubmitting, runMutation, stopped, task, trackTelemetry]);
+  useEffect(() => { if (task && !stopped.current && !isSubmitting()) void trackTelemetry(runMutation(() => recordNavigation(attemptId, "WRITING_TASK", task.id))).catch((error) => { if (!(error instanceof AttemptStoppedError)) setActivityError("runner.activityError"); }); }, [attemptId, isSubmitting, runMutation, stopped, task, trackTelemetry]);
 
   const saveTask = useCallback(async (taskId: string) => {
     await autosave.saveNow(taskId);
@@ -91,7 +94,7 @@ export function WritingRunner({ initial }: { initial: ExamPayload }) {
       lastActivity.current = now;
       if (now - lastHeartbeat.current >= 20_000) {
         lastHeartbeat.current = now;
-        void trackTelemetry(runMutation(() => recordActivity(attemptId))).catch((error) => { if (!(error instanceof AttemptStoppedError)) setActivityError("Your activity could not be recorded. Please try again."); });
+        void trackTelemetry(runMutation(() => recordActivity(attemptId))).catch((error) => { if (!(error instanceof AttemptStoppedError)) setActivityError("runner.activityError"); });
       }
     };
     const events: Array<keyof WindowEventMap> = ["keydown", "click", "touchstart", "scroll"];
@@ -110,38 +113,38 @@ export function WritingRunner({ initial }: { initial: ExamPayload }) {
     }
   }, [finish, initial.attempt.timer_mode, seconds, stopped]);
 
-  if (ended) return <p role="status">Attempt finished. Opening your result…</p>;
-  if (!task) return <p>No Writing tasks are available.</p>;
+  if (ended) return <p role="status">{t("runner.finished")}</p>;
+  if (!task) return <p>{t("runner.noWriting")}</p>;
   const content = contents[task.id] ?? "";
 
   return <div className="exam-runner writing-exam">
     <header className="exam-header">
-      <div><p>{initial.attempt.scope === "FOCUSED_UNIT" ? "Writing · Focused practice" : `WRITING · TASK ${task.task_number}`}</p><h1>{initial.test_title}</h1>{focusedUnitLabel(initial.attempt) ? <p>{focusedUnitLabel(initial.attempt)}</p> : null}</div>
-      <div className="exam-header-tools"><PauseAttemptControl attemptId={attemptId} beforePause={flushForSubmission} /><ThemeToggle /><div className="exam-header-status"><span className={`exam-timer ${initial.attempt.timer_mode === "COUNTDOWN" && seconds < 300 ? "exam-timer-warning" : ""}`}>{initial.attempt.timer_mode === "COUNT_UP" ? "Time used " : ""}{formatDuration(seconds)}</span><span className={`exam-save-state exam-save-${saveState}`}>{saveState === "saving" ? "Saving…" : saveState === "conflict" ? "Changed in another tab" : saveState === "error" ? "Save failed" : saveState === "dirty" ? "Unsaved" : "Saved"}</span></div></div>
+      <div><p>{initial.attempt.scope === "FOCUSED_UNIT" ? t("runner.writingFocused") : t("runner.writingTaskUpper", { number: task.task_number })}</p><h1>{initial.test_title}</h1>{focusedUnitLabel(initial.attempt, t) ? <p>{focusedUnitLabel(initial.attempt, t)}</p> : null}</div>
+      <div className="exam-header-tools"><PauseAttemptControl attemptId={attemptId} beforePause={flushForSubmission} /><ThemeToggle /><div className="exam-header-status"><span aria-label={t(initial.attempt.timer_mode === "COUNTDOWN" ? "runner.timeRemaining" : "runner.timeElapsed")} className={`exam-timer ${initial.attempt.timer_mode === "COUNTDOWN" && seconds < 300 ? "exam-timer-warning" : ""}`}>{initial.attempt.timer_mode === "COUNT_UP" ? t("runner.timeUsed") : ""}{formatDuration(seconds)}</span><span className={`exam-save-state exam-save-${saveState}`}>{saveState === "saving" ? t("common.saving") : saveState === "conflict" ? t("runner.shortConflict") : saveState === "error" ? t("runner.saveFailed") : saveState === "dirty" ? t("runner.unsaved") : t("common.saved")}</span></div></div>
     </header>
-    {initial.attempt.scope !== "FOCUSED_UNIT" || tasks.length > 1 ? <div className="writing-task-tabs" role="tablist" aria-label="Writing tasks">
-      {tasks.map((item, index) => <button key={item.id} type="button" role="tab" aria-selected={index === taskIndex} className={index === taskIndex ? "active" : ""} onClick={() => setTaskIndex(index)}><b>Task {item.task_number}</b><span>{countWords(contents[item.id] ?? "")} words</span></button>)}
+    {initial.attempt.scope !== "FOCUSED_UNIT" || tasks.length > 1 ? <div className="writing-task-tabs" role="tablist" aria-label={t("runner.writingTasks")}>
+      {tasks.map((item, index) => <button key={item.id} type="button" role="tab" aria-selected={index === taskIndex} className={index === taskIndex ? "active" : ""} onClick={() => setTaskIndex(index)}><b>{t("common.taskNumber", { number: item.task_number })}</b><span>{t("runner.wordCount", { count: countWords(contents[item.id] ?? "") })}</span></button>)}
     </div> : null}
-    {saveState === "error" ? <div role="alert" className="notice notice-error writing-save-error"><span>Your response could not be saved. Retry before submitting.</span><button type="button" className="btn btn-secondary" onClick={() => void flushForSubmission().catch(() => undefined)}>Retry save</button></div> : null}
-    {saveState === "conflict" ? <div role="alert" className="notice notice-error writing-save-error"><span>This response changed in another tab or session. Reload to see the latest saved version.</span><button type="button" className="btn btn-secondary" onClick={() => window.location.reload()}>Reload latest</button></div> : null}
-    <DraftRecoveryNotices offline={offline} conflicts={conflicts} labelFor={(id) => `Task ${tasks.find((item) => item.id === id)?.task_number ?? id}`} onResolve={resolveConflict} />
+    {saveState === "error" ? <div role="alert" className="notice notice-error writing-save-error"><span>{t("runner.writingSaveError")}</span><button type="button" className="btn btn-secondary" onClick={() => void flushForSubmission().catch(() => undefined)}>{t("runner.retry")}</button></div> : null}
+    {saveState === "conflict" ? <div role="alert" className="notice notice-error writing-save-error"><span>{t("runner.writingConflict")}</span><button type="button" className="btn btn-secondary" onClick={() => window.location.reload()}>{t("runner.reload")}</button></div> : null}
+    <DraftRecoveryNotices offline={offline} conflicts={conflicts} labelFor={(id) => t("common.taskNumber", { number: tasks.find((item) => item.id === id)?.task_number ?? id })} onResolve={resolveConflict} />
     {submitError ? <p role="alert" className="notice notice-error">{submitError}</p> : null}
-    {activityError ? <p role="alert" className="notice notice-error">{activityError}</p> : null}
+    {activityError ? <p role="alert" className="notice notice-error">{t(activityError)}</p> : null}
     <main className="writing-runner-layout">
       <article className="writing-task-prompt">
-        <p className="writing-task-kicker">Writing Task {task.task_number}</p>
-        <h2>Task {task.task_number}</h2>
+        <p className="writing-task-kicker">{t("runner.writingTask", { number: task.task_number })}</p>
+        <h2>{t("common.taskNumber", { number: task.task_number })}</h2>
         <p>{task.prompt}</p>
-        {task.image_asset ? <Image unoptimized width={720} height={420} src={assetContentUrl(task.image_asset)} alt={`Writing Task ${task.task_number} reference`} /> : null}
-        <div className="writing-task-guidance"><span>Write at least {task.minimum_recommended_words ?? "—"} words</span><span>Suggested time: {task.recommended_duration_seconds ? Math.round(task.recommended_duration_seconds / 60) : "—"} minutes</span></div>
+        {task.image_asset ? <Image unoptimized width={720} height={420} src={assetContentUrl(task.image_asset)} alt={t("runner.writingReference", { number: task.task_number })} /> : null}
+        <div className="writing-task-guidance"><span>{t("runner.minimumWords", { count: task.minimum_recommended_words ?? "—" })}</span><span>{t("runner.suggestedTime", { minutes: task.recommended_duration_seconds ? Math.round(task.recommended_duration_seconds / 60) : "—" })}</span></div>
       </article>
       <section className="writing-response-pane">
-        <div className="writing-response-heading"><div><p>Your response</p><h2>Task {task.task_number}</h2></div><span>{countWords(content)} words</span></div>
-        <label className="sr-only" htmlFor={`writing-response-${task.id}`}>Response for Task {task.task_number}</label>
+        <div className="writing-response-heading"><div><p>{t("runner.yourResponse")}</p><h2>{t("common.taskNumber", { number: task.task_number })}</h2></div><span>{t("runner.wordCount", { count: countWords(content) })}</span></div>
+        <label className="sr-only" htmlFor={`writing-response-${task.id}`}>{t("runner.responseForTask", { number: task.task_number })}</label>
         <textarea id={`writing-response-${task.id}`} value={content} onChange={(event) => updateContent(task.id, event.target.value)} disabled={finalizing || Boolean(conflicts[task.id])} spellCheck className="writing-response-textarea" />
-        <button type="button" disabled={finalizing} className="btn btn-writing" onClick={() => void saveTask(task.id).catch(() => undefined)}>Save Task {task.task_number}</button>
+        <button type="button" disabled={finalizing} className="btn btn-writing" onClick={() => void saveTask(task.id).catch(() => undefined)}>{t("runner.saveTask", { number: task.task_number })}</button>
       </section>
     </main>
-    <footer className="exam-footer"><span className="exam-preview-note">Your work is saved automatically.</span><button type="button" onClick={() => void finish()} disabled={submitting} className="exam-submit">{submitting ? "Submitting…" : "Submit Writing"}</button></footer>
+    <footer className="exam-footer"><span className="exam-preview-note">{t("runner.automaticSave")}</span><button type="button" onClick={() => void finish()} disabled={submitting} className="exam-submit">{submitting ? t("runner.submitting") : t("runner.submitWriting")}</button></footer>
   </div>;
 }

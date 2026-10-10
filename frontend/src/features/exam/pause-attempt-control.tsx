@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@/lib/i18n/locale-provider";
+
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -14,11 +16,12 @@ export function PauseAttemptControl({
   attemptId: string;
   beforePause?: () => Promise<void>;
 }) {
+  const { t } = useTranslation();
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState(false);
   const pendingRef = useRef(false);
-  const [error, setError] = useState<string>();
+  const [error, setError] = useState<string | { message: import("@/lib/i18n/types").TranslationKey }>();
 
   async function confirm() {
     if (pendingRef.current) return;
@@ -36,7 +39,7 @@ export function PauseAttemptControl({
       } catch (reconcileError) {
         caught = reconcileError;
       }
-      setError(caught instanceof ApiError ? caught.message : "Your work could not be saved and paused. Please try again.");
+      setError(caught instanceof ApiError ? caught.message : { message: "runner.pauseError" });
       pendingRef.current = false;
       setPending(false);
     }
@@ -45,15 +48,15 @@ export function PauseAttemptControl({
   return (
     <>
       <button type="button" className="exam-pause-button" onClick={() => setOpen(true)}>
-        Pause &amp; exit
+        {t("runner.pauseExit")}
       </button>
       <ConfirmDialog
         open={open}
-        title="Pause this attempt?"
-        description="Your progress will be saved and the timer will stop until you resume from Attempt History."
-        confirmLabel="Pause & exit"
+        title={t("runner.pauseTitle")}
+        description={t("runner.pauseDescription")}
+        confirmLabel={t("runner.pauseExit")}
         pending={pending}
-        errorMessage={error}
+        errorMessage={typeof error === "string" ? error : error ? t(error.message) : undefined}
         onCancel={() => { setOpen(false); setError(undefined); }}
         onConfirm={() => void confirm()}
       />

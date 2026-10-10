@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@/lib/i18n/locale-provider";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { elapsedFromSnapshot, formatDuration, estimateServerOffset, remainingSeconds } from "@/features/exam/timer";
 import { PauseAttemptControl } from "@/features/exam/pause-attempt-control";
@@ -21,6 +23,7 @@ import { recordActivity, recordNavigation, saveAnswer } from "@/lib/api/attempts
 import { createHighlight, deleteAllHighlights, deleteHighlight, getExam, saveFlag, type ExamPassage, type ExamPayload, type HighlightCreate } from "@/lib/api/exam";
 
 export function ReadingRunner({ initial }: { initial: ExamPayload }) {
+  const { t } = useTranslation();
   const attemptId = initial.attempt.attempt_id;
   const passages = useMemo(() => [...initial.passages].sort((left, right) => left.order_index - right.order_index), [initial.passages]);
   const questions = useMemo(() => passages.flatMap((passage, passageIndex) => [...passage.question_groups]
@@ -39,8 +42,8 @@ export function ReadingRunner({ initial }: { initial: ExamPayload }) {
   const [highlights, setHighlights] = useState(initial.highlights);
   const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
   const [deletingAll, setDeletingAll] = useState(false);
-  const [highlightError, setHighlightError] = useState("");
-  const [actionError, setActionError] = useState("");
+  const [highlightError, setHighlightError] = useState<import("@/lib/i18n/types").TranslationKey | "">("");
+  const [actionError, setActionError] = useState<import("@/lib/i18n/types").TranslationKey | "">("");
   const [clock, setClock] = useState(() => Date.now());
   const autosaveRef = useRef<RevisionAutosaveQueue<unknown> | null>(null);
   const lastActivity = useRef(0);
@@ -155,10 +158,10 @@ export function ReadingRunner({ initial }: { initial: ExamPayload }) {
   });
 
   const passage = passages[passageIndex];
-  if (ended) return <p role="status">Attempt finished. Opening your result…</p>;
-  if (!passage) return <p>No Reading passage is available.</p>;
+  if (ended) return <p role="status">{t("runner.finished")}</p>;
+  if (!passage) return <p>{t("runner.noReading")}</p>;
 
-  async function toggleFlag(questionId: string) { if (stopped.current) return; const next = !flags[questionId]; setFlags((current) => ({ ...current, [questionId]: next })); try { await runMutation(() => saveFlag(attemptId, questionId, next)); } catch (error) { if (!(error instanceof AttemptStoppedError)) setActionError("Could not save the flag. Please try again."); } }
+  async function toggleFlag(questionId: string) { if (stopped.current) return; const next = !flags[questionId]; setFlags((current) => ({ ...current, [questionId]: next })); try { await runMutation(() => saveFlag(attemptId, questionId, next)); } catch (error) { if (!(error instanceof AttemptStoppedError)) setActionError("runner.flagError"); } }
   function selectPassage(index: number) {
     pendingQuestion.current = null;
     const firstQuestionId = questions.find((question) => question.passageIndex === index)?.id ?? null;
@@ -177,39 +180,40 @@ export function ReadingRunner({ initial }: { initial: ExamPayload }) {
     }
     if (!scrollToQuestion(questionId)) pendingQuestion.current = questionId;
   }
-  async function addHighlight(body: HighlightCreate) { if (stopped.current) return; try { const created = await runMutation(() => createHighlight(attemptId, body)); setHighlights((current) => [...current, created]); } catch (error) { if (!(error instanceof AttemptStoppedError)) setHighlightError("Could not save the highlight. Please try again."); } }
-  async function removeHighlight(id: string) { if (stopped.current) return; try { await runMutation(() => deleteHighlight(attemptId, id)); setHighlights((current) => current.filter((item) => item.id !== id)); } catch (error) { if (!(error instanceof AttemptStoppedError)) setHighlightError("Could not delete the highlight. Please try again."); } }
+  async function addHighlight(body: HighlightCreate) { if (stopped.current) return; try { const created = await runMutation(() => createHighlight(attemptId, body)); setHighlights((current) => [...current, created]); } catch (error) { if (!(error instanceof AttemptStoppedError)) setHighlightError("runner.highlightSaveError"); } }
+  async function removeHighlight(id: string) { if (stopped.current) return; try { await runMutation(() => deleteHighlight(attemptId, id)); setHighlights((current) => current.filter((item) => item.id !== id)); } catch (error) { if (!(error instanceof AttemptStoppedError)) setHighlightError("runner.highlightDeleteError"); } }
   const highlighting: HighlightController = { highlights, onCreate: addHighlight, onDelete: removeHighlight };
 
   return <div className="exam-runner">
-    <header className="exam-header"><div><p>{initial.attempt.scope === "FOCUSED_UNIT" ? "Reading · Focused practice" : "READING"}</p><h1>{initial.test_title}</h1>{focusedUnitLabel(initial.attempt) ? <p>{focusedUnitLabel(initial.attempt)}</p> : null}</div><div className="exam-header-tools"><PauseAttemptControl attemptId={attemptId} beforePause={flush} /><ThemeToggle /><div className="exam-highlight-toolbar" aria-label="Highlight management"><span>{highlights.length} {highlights.length === 1 ? "highlight" : "highlights"}</span>{highlights.length ? <button type="button" onClick={() => { setHighlightError(""); setConfirmDeleteAll(true); }}>Delete all</button> : null}</div><div className="exam-header-status"><span className={`exam-timer ${initial.attempt.timer_mode === "COUNTDOWN" && seconds < 300 ? "exam-timer-warning" : ""}`}>{initial.attempt.timer_mode === "COUNT_UP" ? "Time used " : ""}{formatDuration(seconds)}</span><span className={`exam-save-state exam-save-${saveState}`}>{saveState === "saving" ? "Saving…" : saveState === "conflict" ? "This response changed in another tab or session." : saveState === "error" ? "Save failed" : saveState === "dirty" ? "Unsaved" : "Saved"}</span>{saveState === "error" ? <button type="button" onClick={() => void flush().catch(() => undefined)}>Retry save</button> : null}{saveState === "conflict" ? <button type="button" onClick={() => window.location.reload()}>Reload latest</button> : null}</div></div></header>
+    <header className="exam-header"><div><p>{initial.attempt.scope === "FOCUSED_UNIT" ? t("runner.readingFocused") : t("runner.reading")}</p><h1>{initial.test_title}</h1>{focusedUnitLabel(initial.attempt, t) ? <p>{focusedUnitLabel(initial.attempt, t)}</p> : null}</div><div className="exam-header-tools"><PauseAttemptControl attemptId={attemptId} beforePause={flush} /><ThemeToggle /><div className="exam-highlight-toolbar" aria-label={t("runner.highlightManagement")}><span>{t(highlights.length === 1 ? "runner.highlightCount" : "runner.highlightsCount", { count: highlights.length })}</span>{highlights.length ? <button type="button" onClick={() => { setHighlightError(""); setConfirmDeleteAll(true); }}>{t("runner.deleteAll")}</button> : null}</div><div className="exam-header-status"><span aria-label={t(initial.attempt.timer_mode === "COUNTDOWN" ? "runner.timeRemaining" : "runner.timeElapsed")} className={`exam-timer ${initial.attempt.timer_mode === "COUNTDOWN" && seconds < 300 ? "exam-timer-warning" : ""}`}>{initial.attempt.timer_mode === "COUNT_UP" ? t("runner.timeUsed") : ""}{formatDuration(seconds)}</span><span className={`exam-save-state exam-save-${saveState}`}>{saveState === "saving" ? t("common.saving") : saveState === "conflict" ? t("runner.conflict") : saveState === "error" ? t("runner.saveFailed") : saveState === "dirty" ? t("runner.unsaved") : t("common.saved")}</span>{saveState === "error" ? <button type="button" onClick={() => void flush().catch(() => undefined)}>{t("runner.retry")}</button> : null}{saveState === "conflict" ? <button type="button" onClick={() => window.location.reload()}>{t("runner.reload")}</button> : null}</div></div></header>
     {submitError ? <p role="alert" className="notice notice-error">{submitError}</p> : null}
-    <DraftRecoveryNotices offline={offline} conflicts={conflicts} labelFor={(id) => `question ${questions.find((question) => question.id === id)?.number ?? id}`} onResolve={resolveConflict} />
-    {actionError ? <p role="alert" className="notice notice-error">{actionError}</p> : null}
-    {highlightError && !confirmDeleteAll ? <p role="alert" className="notice notice-error">{highlightError}</p> : null}
+    <DraftRecoveryNotices offline={offline} conflicts={conflicts} labelFor={(id) => t("runner.questionLower", { number: questions.find((question) => question.id === id)?.number ?? id })} onResolve={resolveConflict} />
+    {actionError ? <p role="alert" className="notice notice-error">{t(actionError)}</p> : null}
+    {highlightError && !confirmDeleteAll ? <p role="alert" className="notice notice-error">{t(highlightError)}</p> : null}
     <div className="grid min-h-0 flex-1 lg:grid-cols-2">
       <PassagePane passage={passage} highlighting={highlighting} />
-      <div ref={questionPane} inert={finalizing} className="exam-questions" onWheelCapture={() => { programmaticNavigation.current = null; }} onTouchStartCapture={() => { programmaticNavigation.current = null; }} onPointerDownCapture={() => { programmaticNavigation.current = null; }} onKeyDownCapture={() => { programmaticNavigation.current = null; }} onFocusCapture={(event) => { const target = (event.target as HTMLElement).closest<HTMLElement>(".exam-question-target[data-question-id]"); if (target?.dataset.questionId) { programmaticNavigation.current = null; setActiveQuestionId(target.dataset.questionId); } }}><div className="exam-question-panel-heading"><p>Reading · Passage {passage.order_index + 1}</p><h2>Questions</h2></div>{[...passage.question_groups].sort((left, right) => left.order_index - right.order_index).map((group) => { const definition = questionRegistry[group.question_type as keyof typeof questionRegistry]; if (!definition) return null; const Renderer = definition.ExamRenderer; return <section key={group.id} className="exam-question-group"><QuestionGroupInstruction group={group as ExamGroup} passageNumber={passage.order_index + 1} /><Renderer group={{ ...group, questions: [...group.questions].sort((left, right) => left.order_index - right.order_index) } as ExamGroup} values={values} passageBlocks={passage.blocks} onAnswer={answer} highlighting={highlighting} activeQuestionId={activeQuestionId} /></section>; })}</div>
+      <div ref={questionPane} inert={finalizing} className="exam-questions" onWheelCapture={() => { programmaticNavigation.current = null; }} onTouchStartCapture={() => { programmaticNavigation.current = null; }} onPointerDownCapture={() => { programmaticNavigation.current = null; }} onKeyDownCapture={() => { programmaticNavigation.current = null; }} onFocusCapture={(event) => { const target = (event.target as HTMLElement).closest<HTMLElement>(".exam-question-target[data-question-id]"); if (target?.dataset.questionId) { programmaticNavigation.current = null; setActiveQuestionId(target.dataset.questionId); } }}><div className="exam-question-panel-heading"><p>{t("runner.readingPassage", { number: passage.order_index + 1 })}</p><h2>{t("common.questions")}</h2></div>{[...passage.question_groups].sort((left, right) => left.order_index - right.order_index).map((group) => { const definition = questionRegistry[group.question_type as keyof typeof questionRegistry]; if (!definition) return null; const Renderer = definition.ExamRenderer; return <section key={group.id} className="exam-question-group"><QuestionGroupInstruction group={group as ExamGroup} passageNumber={passage.order_index + 1} /><Renderer group={{ ...group, questions: [...group.questions].sort((left, right) => left.order_index - right.order_index) } as ExamGroup} values={values} passageBlocks={passage.blocks} onAnswer={answer} highlighting={highlighting} activeQuestionId={activeQuestionId} /></section>; })}</div>
     </div>
     <footer className="exam-footer reading-exam-footer">
       <div className="exam-footer-navigation">
-        <nav className="exam-passage-navigation" aria-label="Passage navigation">{passages.map((item, index) => <button key={item.id} type="button" onClick={() => selectPassage(index)} className={index === passageIndex ? "active" : ""} aria-current={index === passageIndex ? "page" : undefined}>Passage {item.order_index + 1}</button>)}</nav>
-        <nav ref={questionStrip} className="exam-question-strip" aria-label="Question navigation">{navigationSlots.map((question) => {
+        <nav className="exam-passage-navigation" aria-label={t("runner.passageNavigation")}>{passages.map((item, index) => <button key={item.id} type="button" onClick={() => selectPassage(index)} className={index === passageIndex ? "active" : ""} aria-current={index === passageIndex ? "page" : undefined}>{t("common.passageNumber", { number: item.order_index + 1 })}</button>)}</nav>
+        <nav ref={questionStrip} className="exam-question-strip" aria-label={t("runner.questionNavigation")}>{navigationSlots.map((question) => {
           const answered = completedQuestionSlots(question.questionType, question.config, values[question.id]) > question.slotIndex;
           const flagged = Boolean(flags[question.id]);
           const current = activeQuestionId === question.id;
           return <div key={`${question.id}:${question.slotIndex}`} data-nav-question-id={question.id} className={`exam-question-chip ${answered ? "answered" : "unanswered"} ${flagged ? "flagged" : ""} ${current ? "current" : ""}`}>
-            <button ref={question.slotIndex === 0 ? (element) => { if (element) questionChips.current.set(question.id, element); else questionChips.current.delete(question.id); } : undefined} type="button" className="exam-question-number" onClick={() => navigateToQuestion(question.id, question.passageIndex)} aria-label={`Go to question ${question.number}`} aria-current={current ? "true" : undefined}>{question.number}</button>
-            <button type="button" className="exam-question-flag" onClick={() => void toggleFlag(question.id)} aria-label={`${flagged ? "Unflag" : "Flag"} question ${question.number}`} aria-pressed={flagged}><span aria-hidden="true">{flagged ? "⚑" : "⚐"}</span></button>
+            <button ref={question.slotIndex === 0 ? (element) => { if (element) questionChips.current.set(question.id, element); else questionChips.current.delete(question.id); } : undefined} type="button" className="exam-question-number" onClick={() => navigateToQuestion(question.id, question.passageIndex)} aria-label={t("runner.goQuestion", { number: question.number })} aria-current={current ? "true" : undefined}>{question.number}</button>
+            <button type="button" className="exam-question-flag" onClick={() => void toggleFlag(question.id)} aria-label={t(flagged ? "runner.unflagQuestion" : "runner.flagQuestion", { number: question.number })} aria-pressed={flagged}><span aria-hidden="true">{flagged ? "⚑" : "⚐"}</span></button>
           </div>;
         })}</nav>
       </div>
-      <button type="button" onClick={() => void submit()} disabled={submitting} className="exam-submit">{submitting ? "Submitting…" : "Submit answers"}</button>
+      <button type="button" onClick={() => void submit()} disabled={submitting} className="exam-submit">{submitting ? t("runner.submitting") : t("runner.submitAnswers")}</button>
     </footer>
-    <ConfirmDialog open={confirmDeleteAll} title="Delete all highlights?" description="All highlights in this attempt will be removed. This action cannot be undone." confirmLabel="Delete all highlights" pending={deletingAll} errorMessage={highlightError} onCancel={() => { setConfirmDeleteAll(false); setHighlightError(""); }} onConfirm={() => { if (stopped.current) return; setDeletingAll(true); setHighlightError(""); void runMutation(() => deleteAllHighlights(attemptId)).then(() => { setHighlights([]); setConfirmDeleteAll(false); }).catch((error) => { if (!(error instanceof AttemptStoppedError)) setHighlightError("Could not delete the highlights. Please try again."); }).finally(() => setDeletingAll(false)); }} />
+    <ConfirmDialog open={confirmDeleteAll} title={t("runner.deleteHighlightsTitle")} description={t("runner.deleteHighlightsDescription")} confirmLabel={t("runner.deleteHighlights")} pending={deletingAll} errorMessage={highlightError ? t(highlightError) : ""} onCancel={() => { setConfirmDeleteAll(false); setHighlightError(""); }} onConfirm={() => { if (stopped.current) return; setDeletingAll(true); setHighlightError(""); void runMutation(() => deleteAllHighlights(attemptId)).then(() => { setHighlights([]); setConfirmDeleteAll(false); }).catch((error) => { if (!(error instanceof AttemptStoppedError)) setHighlightError("runner.highlightsDeleteError"); }).finally(() => setDeletingAll(false)); }} />
   </div>;
 }
 
 function PassagePane({ passage, highlighting }: { passage: ExamPassage; highlighting: HighlightController }) {
-  return <article className="exam-passage"><div className="exam-passage-content"><p className="exam-passage-kicker">Reading passage {passage.order_index + 1}</p><h2>{passage.title}</h2><div className="exam-passage-body">{passage.blocks.map((block) => { const text = <SelectableText text={block.text} target={{ target_kind: "PASSAGE_BLOCK", target_id: passage.id, segment_id: block.id }} controller={highlighting} />; return block.type === "heading" ? <h3 key={block.id}>{text}</h3> : <p key={block.id} className="exam-passage-paragraph"><b>{block.label}</b>{text}</p>; })}</div></div></article>;
+  const { t } = useTranslation();
+  return <article className="exam-passage"><div className="exam-passage-content"><p className="exam-passage-kicker">{t("runner.readingPassageKicker", { number: passage.order_index + 1 })}</p><h2>{passage.title}</h2><div className="exam-passage-body">{passage.blocks.map((block) => { const text = <SelectableText text={block.text} target={{ target_kind: "PASSAGE_BLOCK", target_id: passage.id, segment_id: block.id }} controller={highlighting} />; return block.type === "heading" ? <h3 key={block.id}>{text}</h3> : <p key={block.id} className="exam-passage-paragraph"><b>{block.label}</b>{text}</p>; })}</div></div></article>;
 }

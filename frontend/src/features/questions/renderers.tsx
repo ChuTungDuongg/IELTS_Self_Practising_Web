@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@/lib/i18n/locale-provider";
+
 import type { ExamGroup, ExamQuestion, Option, PassageBlock, TextCompletionLayout } from "./types";
 import { assetContentUrl } from "@/lib/api/assets";
 import { SelectableText, type HighlightController } from "@/features/highlighting/selectable-text";
@@ -40,8 +42,9 @@ export function MultipleChoiceMultipleRenderer({ group, values, disabled, onAnsw
 }
 
 export function MatchingRenderer({ group, values, disabled, onAnswer, highlighting, activeQuestionId }: RendererProps) {
+  const { t } = useTranslation();
   const options = group.config.options as Option[];
-  return <div className="space-y-4">{group.questions.map((question) => <div key={question.id} {...questionTarget(question, activeQuestionId, "grid gap-2 sm:grid-cols-[1fr_16rem]")}><QuestionHeader question={question} highlighting={highlighting} /><select aria-label={`Question ${question.number}`} disabled={disabled} value={String(values[question.id] ?? "")} onChange={(event) => onAnswer?.(question.id, event.target.value)} className="select-field"><option value="">Choose an answer</option>{options.map((option) => <option key={option.id} value={option.id}>{option.label} — {option.text}</option>)}</select></div>)}</div>;
+  return <div className="space-y-4">{group.questions.map((question) => <div key={question.id} {...questionTarget(question, activeQuestionId, "grid gap-2 sm:grid-cols-[1fr_16rem]")}><QuestionHeader question={question} highlighting={highlighting} /><select aria-label={t("runner.question", { number: question.number })} disabled={disabled} value={String(values[question.id] ?? "")} onChange={(event) => onAnswer?.(question.id, event.target.value)} className="select-field"><option value="">{t("runner.chooseAnswer")}</option>{options.map((option) => <option key={option.id} value={option.id}>{option.label} — {option.text}</option>)}</select></div>)}</div>;
 }
 
 export function VisualLabellingRenderer(props: RendererProps) {
@@ -61,9 +64,10 @@ export function VisualLabellingRenderer(props: RendererProps) {
 }
 
 export function StructuredCompletionRenderer(props: RendererProps) {
+  const { t } = useTranslation();
   const { group, values, disabled, onAnswer, activeQuestionId } = props;
   const layout = group.config.layout as { kind: string; columns?: Array<{ id: string; label: string }>; rows?: Array<{ id: string; cells: Array<{ id: string; type: "TEXT" | "GAP"; text: string; question_id?: string }> }>; nodes?: Array<{ id: string; type: "TEXT" | "GAP"; text: string; question_id?: string; level: number }> };
-  const gap = (questionId?: string) => { const question = group.questions.find((item) => item.id === questionId); return question ? <label {...questionTarget(question, activeQuestionId, "structured-answer")}><span>{question.number}</span><input aria-label={`Question ${question.number}`} disabled={disabled} value={String(values[question.id] ?? "")} onChange={(event) => onAnswer?.(question.id, event.target.value)} /></label> : null; };
+  const gap = (questionId?: string) => { const question = group.questions.find((item) => item.id === questionId); return question ? <label {...questionTarget(question, activeQuestionId, "structured-answer")}><span>{question.number}</span><input aria-label={t("runner.question", { number: question.number })} disabled={disabled} value={String(values[question.id] ?? "")} onChange={(event) => onAnswer?.(question.id, event.target.value)} /></label> : null; };
   if (layout.kind === "TABLE") return <div className="overflow-x-auto"><table className="completion-table"><thead><tr>{layout.columns?.map((column) => <th key={column.id}>{column.label}</th>)}</tr></thead><tbody>{layout.rows?.map((row) => <tr key={row.id}>{row.cells.map((cell) => <td key={cell.id}>{cell.type === "GAP" ? gap(cell.question_id) : cell.text}</td>)}</tr>)}</tbody></table></div>;
   return <div className={`completion-layout completion-${layout.kind.toLowerCase()}`}>{layout.nodes?.map((node) => <div key={node.id} className="completion-node" style={{ marginLeft: `${node.level * 20}px` }}>{node.type === "GAP" ? gap(node.question_id) : node.text}</div>)}</div>;
 }
@@ -81,8 +85,9 @@ function AgreementRenderer({ group, values, disabled, onAnswer, highlighting, ch
 }
 
 export function TextCompletionRenderer({ group, values, disabled, onAnswer, highlighting, activeQuestionId }: RendererProps) {
+  const { t } = useTranslation();
   const layout = group.config as unknown as TextCompletionLayout;
-  if (!layout.blocks) return <div className="space-y-4">{group.questions.map((question) => <div key={question.id} {...questionTarget(question, activeQuestionId, "block")}><QuestionHeader question={question} highlighting={highlighting} /><input aria-label={`Question ${question.number}`} disabled={disabled} value={String(values[question.id] ?? "")} onChange={(event) => onAnswer?.(question.id, event.target.value)} className="mt-2 w-full rounded-md border border-[var(--line)] px-3 py-2" /></div>)}</div>;
+  if (!layout.blocks) return <div className="space-y-4">{group.questions.map((question) => <div key={question.id} {...questionTarget(question, activeQuestionId, "block")}><QuestionHeader question={question} highlighting={highlighting} /><input aria-label={t("runner.question", { number: question.number })} disabled={disabled} value={String(values[question.id] ?? "")} onChange={(event) => onAnswer?.(question.id, event.target.value)} className="mt-2 w-full rounded-md border border-[var(--line)] px-3 py-2" /></div>)}</div>;
   return (
     <div className={`text-completion-layout text-completion-${layout.mode.toLowerCase()}`}>
       {layout.mode === "PASSAGE" && layout.title?.trim() ? <h3 className="completion-content-title">{layout.title.trim()}</h3> : null}
@@ -95,7 +100,7 @@ export function TextCompletionRenderer({ group, values, disabled, onAnswer, high
               <label key={segment.id} {...questionTarget(question, activeQuestionId, "completion-gap-inline")}>
                 <span className="completion-gap-number">{question.number}</span>
                 <input
-                  aria-label={`Question ${question.number}`}
+                  aria-label={t("runner.question", { number: question.number })}
                   disabled={disabled}
                   value={String(values[question.id] ?? "")}
                   onChange={(event) => onAnswer?.(question.id, event.target.value)}
@@ -111,18 +116,21 @@ export function TextCompletionRenderer({ group, values, disabled, onAnswer, high
 }
 
 export function MatchingHeadingsRenderer({ group, values, disabled, onAnswer, passageBlocks = [], highlighting, activeQuestionId }: RendererProps) {
+  const { t } = useTranslation();
   const options = group.config.options as Option[];
   const paragraphs = new Map(passageBlocks.map((block) => [block.id, block]));
-  return <div><ol className="matching-heading-options">{options.map((option) => <li key={option.id} className="matching-heading-option"><b className="matching-heading-label">{option.label}.</b><SelectableText className="matching-heading-text" text={option.text} target={{ target_kind: "QUESTION_GROUP_OPTION", target_id: group.id, segment_id: option.id }} controller={highlighting} /></li>)}</ol><div className="space-y-4">{group.questions.map((question) => { const block = paragraphs.get(String(question.config.target_block_id)); return <label key={question.id} {...questionTarget(question, activeQuestionId, "grid gap-2 sm:grid-cols-[1fr_14rem]")}><span className="font-medium"><span className="mr-2 text-[var(--accent)]">{question.number}</span>Paragraph {block?.label ?? "(missing)"}</span><select aria-label={`Question ${question.number}`} disabled={disabled} value={String(values[question.id] ?? "")} onChange={(event) => onAnswer?.(question.id, event.target.value)} className="rounded-md border border-[var(--line)] px-3 py-2"><option value="">Choose heading</option>{options.map((option) => <option key={option.id} value={option.id}>{option.label} — {option.text}</option>)}</select></label>; })}</div></div>;
+  return <div><ol className="matching-heading-options">{options.map((option) => <li key={option.id} className="matching-heading-option"><b className="matching-heading-label">{option.label}.</b><SelectableText className="matching-heading-text" text={option.text} target={{ target_kind: "QUESTION_GROUP_OPTION", target_id: group.id, segment_id: option.id }} controller={highlighting} /></li>)}</ol><div className="space-y-4">{group.questions.map((question) => { const block = paragraphs.get(String(question.config.target_block_id)); return <label key={question.id} {...questionTarget(question, activeQuestionId, "grid gap-2 sm:grid-cols-[1fr_14rem]")}><span className="font-medium"><span className="mr-2 text-[var(--accent)]">{question.number}</span>Paragraph {block?.label ?? "(missing)"}</span><select aria-label={t("runner.question", { number: question.number })} disabled={disabled} value={String(values[question.id] ?? "")} onChange={(event) => onAnswer?.(question.id, event.target.value)} className="rounded-md border border-[var(--line)] px-3 py-2"><option value="">{t("runner.chooseHeading")}</option>{options.map((option) => <option key={option.id} value={option.id}>{option.label} — {option.text}</option>)}</select></label>; })}</div></div>;
 }
 
 export function MatchingInformationRenderer({ group, values, disabled, onAnswer, passageBlocks = [], highlighting, activeQuestionId }: RendererProps) {
+  const { t } = useTranslation();
   const paragraphs = passageBlocks.filter((block) => block.type === "paragraph");
-  return <div className="space-y-4">{group.questions.map((question) => <div key={question.id} {...questionTarget(question, activeQuestionId, "grid gap-2 sm:grid-cols-[1fr_14rem]")}><QuestionHeader question={question} highlighting={highlighting} /><select aria-label={`Question ${question.number}`} disabled={disabled} value={String(values[question.id] ?? "")} onChange={(event) => onAnswer?.(question.id, event.target.value)} className="select-field"><option value="">Choose paragraph</option>{paragraphs.map((block) => <option key={block.id} value={block.id}>{block.label ?? "Paragraph"}</option>)}</select></div>)}</div>;
+  return <div className="space-y-4">{group.questions.map((question) => <div key={question.id} {...questionTarget(question, activeQuestionId, "grid gap-2 sm:grid-cols-[1fr_14rem]")}><QuestionHeader question={question} highlighting={highlighting} /><select aria-label={t("runner.question", { number: question.number })} disabled={disabled} value={String(values[question.id] ?? "")} onChange={(event) => onAnswer?.(question.id, event.target.value)} className="select-field"><option value="">{t("runner.chooseParagraph")}</option>{paragraphs.map((block) => <option key={block.id} value={block.id}>{block.label ?? "Paragraph"}</option>)}</select></div>)}</div>;
 }
 
 export function SummaryWordListRenderer({ group, values, disabled, onAnswer, highlighting, activeQuestionId }: RendererProps) {
+  const { t } = useTranslation();
   const layout = group.config as unknown as TextCompletionLayout;
   const options = group.config.options as Option[];
-  return <div><ol className="matching-heading-options">{options.map((option) => <li key={option.id}><b>{option.label}.</b> {option.text}</li>)}</ol><div className={`text-completion-layout text-completion-${layout.mode.toLowerCase()}`}>{layout.mode === "PASSAGE" && layout.title?.trim() ? <h3 className="completion-content-title">{layout.title.trim()}</h3> : null}{layout.blocks.map((block) => <div key={block.id} className="text-completion-block text-completion-line">{block.segments.map((segment) => { if (segment.type === "TEXT") return <SelectableText key={segment.id} text={segment.text ?? ""} target={{ target_kind: "TEXT_COMPLETION_SEGMENT", target_id: group.id, segment_id: segment.id }} controller={highlighting} />; const question = group.questions.find((item) => item.id === segment.question_id); return question ? <label key={segment.id} {...questionTarget(question, activeQuestionId, "completion-gap-inline")}><span className="completion-gap-number">{question.number}</span><select aria-label={`Question ${question.number}`} disabled={disabled} value={String(values[question.id] ?? "")} onChange={(event) => onAnswer?.(question.id, event.target.value)} className="completion-gap-input"><option value="">Choose</option>{options.map((option) => <option key={option.id} value={option.id}>{option.label} — {option.text}</option>)}</select></label> : null; })}</div>)}</div></div>;
+  return <div><ol className="matching-heading-options">{options.map((option) => <li key={option.id}><b>{option.label}.</b> {option.text}</li>)}</ol><div className={`text-completion-layout text-completion-${layout.mode.toLowerCase()}`}>{layout.mode === "PASSAGE" && layout.title?.trim() ? <h3 className="completion-content-title">{layout.title.trim()}</h3> : null}{layout.blocks.map((block) => <div key={block.id} className="text-completion-block text-completion-line">{block.segments.map((segment) => { if (segment.type === "TEXT") return <SelectableText key={segment.id} text={segment.text ?? ""} target={{ target_kind: "TEXT_COMPLETION_SEGMENT", target_id: group.id, segment_id: segment.id }} controller={highlighting} />; const question = group.questions.find((item) => item.id === segment.question_id); return question ? <label key={segment.id} {...questionTarget(question, activeQuestionId, "completion-gap-inline")}><span className="completion-gap-number">{question.number}</span><select aria-label={t("runner.question", { number: question.number })} disabled={disabled} value={String(values[question.id] ?? "")} onChange={(event) => onAnswer?.(question.id, event.target.value)} className="completion-gap-input"><option value="">{t("runner.choose")}</option>{options.map((option) => <option key={option.id} value={option.id}>{option.label} — {option.text}</option>)}</select></label> : null; })}</div>)}</div></div>;
 }

@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@/lib/i18n/locale-provider";
+
 import { useCallback, useRef, useState } from "react";
 import { type AttemptResponse } from "@/lib/api/attempts";
 import { submitAttempt } from "@/lib/api/exam";
@@ -20,11 +22,13 @@ export function useExamSubmit({
   accept: (attempt: AttemptResponse) => void;
   isStopped: () => boolean;
 }) {
+  const { t } = useTranslation();
   const pending = useRef(false);
   const finalizingRef = useRef(false);
   const [submitting, setSubmitting] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
-  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitErrorKey, setSubmitError] = useState<import("@/lib/i18n/types").TranslationKey | null>(null);
+  const submitError = submitErrorKey ? t(submitErrorKey) : null;
 
   const submit = useCallback(async () => {
     if (pending.current || isStopped()) return;
@@ -47,8 +51,8 @@ export function useExamSubmit({
       const outcome = await reconcileAmbiguousSubmit(error, attemptId, accept);
       if (outcome === "terminal") return;
       setSubmitError(outcome === "unknown"
-        ? "We couldn't confirm whether your submission completed. Reconnect and try again."
-        : "Submission could not be completed. Please try again.");
+        ? "runner.submitUnknown"
+        : "runner.submitError");
     } finally {
       finalizingRef.current = false;
       setFinalizing(false);
