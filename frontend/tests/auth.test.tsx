@@ -71,9 +71,9 @@ describe("authentication UI", () => {
     await screen.findByText("Student");
     const input = screen.getByLabelText("Existing answer");
     fireEvent.change(input, { target: { value: "draft" } });
-    fireEvent.click(screen.getByRole("button", { name: "Switch to Vietnamese" }));
+    fireEvent.click(screen.getByRole("button", { name: "Tiếng Việt" }));
     fireEvent.click(screen.getByRole("button", { name: "Dùng giao diện tối" }));
-    fireEvent.click(screen.getByRole("button", { name: "Switch to English" }));
+    fireEvent.click(screen.getByRole("button", { name: "English" }));
     expect(screen.getByLabelText("Existing answer")).toBe(input);
     expect(input).toHaveValue("draft");
     expect(mounts).toBe(1);

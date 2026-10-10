@@ -153,7 +153,7 @@ describe("editorial dark theme", () => {
 
   it("removes ambient shell lighting and flat-card hover glows while retaining the planet", () => {
     expect(declarations(stylesheet, `${darkSelector} .app-shell::before`).background).toBe("none");
-    const navigation = declarations(stylesheet, `${darkSelector} .sidebar-item-active`);
+    const navigation = declarations(stylesheet, `${darkSelector} .primary-nav-link-active`);
     expect(navigation.background).toContain("var(--surface-raised)");
     expect(navigation.background).not.toContain("gradient");
     const hover = declarations(stylesheet, `${darkSelector} :is(.home-metric, .learning-path-card, .practice-card, .test-card):hover`);
