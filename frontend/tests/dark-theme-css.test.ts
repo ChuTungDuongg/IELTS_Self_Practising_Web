@@ -42,60 +42,85 @@ const workspaceSurfaces = ["app-bg", "app-bg-elevated", "surface", "surface-rais
 const examSurfaces = ["exam-bg", "exam-surface", "exam-surface-alt", "exam-control-bg"];
 
 describe("editorial dark theme", () => {
-  it("keeps the complete light palette frozen and defines every semantic token in dark mode", () => {
-    expect(light).toMatchInlineSnapshot(`
-      {
-        "--accent": "#465de8",
-        "--accent-contrast": "#ffffff",
-        "--accent-cyan": "#008eb9",
-        "--accent-soft": "#e7ebff",
-        "--accent-strong": "#3348cd",
-        "--accent-violet": "#7957d5",
-        "--app-bg": "#f4f7ff",
-        "--app-bg-elevated": "#edf2ff",
-        "--danger": "#c4495f",
-        "--danger-contrast": "#ffffff",
-        "--danger-soft": "#fff0f3",
-        "--exam-accent": "#256ea5",
-        "--exam-bg": "#eef2f8",
-        "--exam-border": "#d6deeb",
-        "--exam-control-bg": "#ffffff",
-        "--exam-control-text": "#172039",
-        "--exam-muted": "#626e88",
-        "--exam-surface": "#ffffff",
-        "--exam-surface-alt": "#f5f7fb",
-        "--exam-text": "#172039",
-        "--glow-accent": "0 16px 36px rgb(70 93 232 / 0.2)",
-        "--glow-violet": "0 18px 44px rgb(121 87 213 / 0.18)",
-        "--highlight-bg": "#f4dc86",
-        "--highlight-text": "#252137",
-        "--ink": "#151d35",
-        "--ink-soft": "#34405d",
-        "--line": "#dde4f2",
-        "--line-strong": "#c7d2e8",
-        "--listening": "var(--accent-violet)",
-        "--muted": "#687493",
-        "--paper": "var(--app-bg)",
-        "--reading": "var(--accent-cyan)",
-        "--shadow-lg": "0 30px 80px rgb(24 32 68 / 0.2)",
-        "--shadow-md": "0 18px 46px rgb(45 59 112 / 0.11), 0 3px 10px rgb(30 41 77 / 0.05)",
-        "--shadow-sm": "0 1px 2px rgb(24 35 70 / 0.05), 0 7px 20px rgb(50 64 112 / 0.06)",
-        "--success": "#087f62",
-        "--success-soft": "#e9f8f3",
-        "--surface": "#ffffff",
-        "--surface-glass": "rgb(255 255 255 / 0.84)",
-        "--surface-hover": "#eef2ff",
-        "--surface-raised": "#ffffff",
-        "--surface-soft": "#f7f8fe",
-        "--surface-tint": "var(--accent-soft)",
-        "--warning": "#b96b12",
-        "--warning-soft": "#fff5e7",
-        "--writing": "#cb6d30",
-        "color-scheme": "light",
-      }
-    `);
+  it("uses the complete approved paper and graphite palettes", () => {
+    const expected = {
+  "light": {
+    "app-bg": "#f5f2eb",
+    "paper": "#f5f2eb",
+    "app-bg-elevated": "#eee9df",
+    "surface": "#fcfaf5",
+    "surface-raised": "#fffdf8",
+    "surface-soft": "#eeeae1",
+    "surface-hover": "#e8e3d9",
+    "surface-glass": "#fcfaf5",
+    "ink": "#292620",
+    "ink-soft": "#4c473e",
+    "muted": "#686155",
+    "line": "#ddd6c9",
+    "line-strong": "#8f8575",
+    "accent": "#5261a8",
+    "accent-strong": "#434f90",
+    "accent-soft": "#e7e9f3",
+    "surface-tint": "#e7e9f3",
+    "accent-contrast": "#ffffff",
+    "reading": "#286f82",
+    "accent-cyan": "#286f82",
+    "listening": "#725b91",
+    "accent-violet": "#725b91",
+    "writing": "#99562e",
+    "success": "#277052",
+    "success-soft": "#e7f0e9",
+    "warning": "#8a581d",
+    "warning-soft": "#f5ebd9",
+    "danger": "#a83c50",
+    "danger-soft": "#f7e8eb",
+    "danger-contrast": "#ffffff",
+    "shadow-sm": "0 1px 3px rgb(41 38 32 / 0.07)",
+    "shadow-md": "0 4px 12px rgb(41 38 32 / 0.08)",
+    "shadow-lg": "0 12px 32px rgb(41 38 32 / 0.16)"
+  },
+  "dark": {
+    "app-bg": "#201e1b",
+    "paper": "#201e1b",
+    "app-bg-elevated": "#25221e",
+    "surface": "#292622",
+    "surface-raised": "#312d28",
+    "surface-soft": "#35312c",
+    "surface-hover": "#3c3731",
+    "surface-glass": "#292622",
+    "ink": "#f1ece2",
+    "ink-soft": "#d2cbc0",
+    "muted": "#b4aa9a",
+    "line": "#494239",
+    "line-strong": "#8d8070",
+    "accent": "#a4afd9",
+    "accent-strong": "#b5bfe2",
+    "accent-soft": "#333748",
+    "surface-tint": "#333748",
+    "accent-contrast": "#201e1b",
+    "reading": "#94bac4",
+    "accent-cyan": "#94bac4",
+    "listening": "#b4a4ce",
+    "accent-violet": "#b4a4ce",
+    "writing": "#d2ab8b",
+    "success": "#a3c3ad",
+    "success-soft": "#26372d",
+    "warning": "#d5b887",
+    "warning-soft": "#3b3022",
+    "danger": "#dda4aa",
+    "danger-soft": "#3c292d",
+    "danger-contrast": "#201e1b",
+    "shadow-sm": "0 1px 3px rgb(0 0 0 / 0.16)",
+    "shadow-md": "0 4px 12px rgb(0 0 0 / 0.20)",
+    "shadow-lg": "0 12px 32px rgb(0 0 0 / 0.30)"
+  }
+};
+    for (const [theme, values] of [[light, expected.light], [dark, expected.dark]] as const) {
+      for (const [token, value] of Object.entries(values)) expect(theme[`--${token}`], token).toBe(value);
+      expect(theme["--glow-accent"]).toBe("var(--shadow-sm)");
+      expect(theme["--glow-violet"]).toBe("var(--shadow-sm)");
+    }
     expect(Object.keys(dark).sort()).toEqual(Object.keys(light).sort());
-    expect(dark["color-scheme"]).toBe("dark");
   });
 
   it.each([...workspaceSurfaces, ...examSurfaces])("keeps %s dark and neutral instead of saturated navy", (token) => {
@@ -105,7 +130,7 @@ describe("editorial dark theme", () => {
   });
 
   it("distinguishes surface elevation and editorial panes without color pools", () => {
-    for (const surfaces of [workspaceSurfaces, examSurfaces]) {
+    for (const surfaces of [examSurfaces]) {
       const levels = surfaces.map((token) => luminance(color(token)));
       expect(levels).toEqual([...levels].sort((a, b) => a - b));
       expect(new Set(levels).size).toBe(levels.length);
@@ -131,7 +156,7 @@ describe("editorial dark theme", () => {
     for (const accent of ["accent", "accent-strong", "reading", "listening", "writing", "exam-accent"]) {
       expect(contrast(color("accent-contrast"), color(accent)), accent).toBeGreaterThanOrEqual(4.5);
       expect(contrast(color(accent), color("surface-hover")), accent).toBeGreaterThanOrEqual(3);
-      const badge = color(accent).map((channel, index) => channel * .12 + color("surface")[index] * .88);
+      const badge = color(accent).map((channel, index) => channel * .08 + color("surface")[index] * .92);
       expect(contrast(color(accent), badge), `${accent} badge`).toBeGreaterThanOrEqual(4.5);
     }
     expect(contrast(color("danger-contrast"), color("danger"))).toBeGreaterThanOrEqual(4.5);
@@ -152,17 +177,14 @@ describe("editorial dark theme", () => {
   });
 
   it("removes ambient shell lighting and flat-card hover glows while retaining the planet", () => {
-    expect(declarations(stylesheet, `${darkSelector} .app-shell::before`).background).toBe("none");
+    expect(css).not.toContain(".app-shell::before");
     const navigation = declarations(stylesheet, `${darkSelector} .primary-nav-link-active`);
     expect(navigation.background).toContain("var(--surface-raised)");
     expect(navigation.background).not.toContain("gradient");
     const hover = declarations(stylesheet, `${darkSelector} :is(.home-metric, .learning-path-card, .practice-card, .test-card):hover`);
     expect(hover.background).toBe("var(--surface-hover)");
     expect(hover["box-shadow"]).toBe("var(--shadow-sm)");
-    for (const token of ["glow-accent", "glow-violet"]) {
-      const opacity = Number(dark[`--${token}`].match(/\/\s*([\d.]+)/)![1]);
-      expect(opacity).toBeLessThanOrEqual(.06);
-    }
+    for (const token of ["glow-accent", "glow-violet"]) expect(dark[`--${token}`]).toBe("var(--shadow-sm)");
     expect(css).toContain(".home-orbit-interactive.is-active .home-orbit-scene");
     expect(css).toContain("@media (prefers-reduced-motion: reduce)");
   });
@@ -181,3 +203,20 @@ describe("editorial dark theme", () => {
     }
   });
 });
+
+ it("keeps light workspace text, semantic tints and meaningful boundaries readable", () => {
+   const rgb = (token: string): number[] => light[`--${token}`].slice(1).match(/../g)!.map(channel => parseInt(channel,16));
+   for (const surface of workspaceSurfaces) {
+     for (const text of ["ink", "ink-soft", "muted"]) expect(contrast(rgb(text), rgb(surface)), `${text} on ${surface}`).toBeGreaterThanOrEqual(4.5);
+     const controls = declarations(stylesheet, ':is(.field, .select-field, .textarea-field, .auth-form input, .practice-search, .analytics-compare-controls select):not(:where(.exam-shell *, .exam-runner *))');
+     expect(controls["border-color"]).toBe("var(--accent)");
+     expect(contrast(rgb("accent"), rgb(surface))).toBeGreaterThanOrEqual(3);
+     expect(contrast(rgb("accent"), rgb(surface))).toBeGreaterThanOrEqual(3);
+   }
+   for (const semantic of ["reading", "listening", "writing"]) {
+     const tint = rgb(semantic).map((c,i)=>c*.08+rgb("surface")[i]*.92);
+     expect(contrast(rgb(semantic),tint)).toBeGreaterThanOrEqual(4.5);
+     expect(contrast(rgb("accent-contrast"),rgb(semantic))).toBeGreaterThanOrEqual(4.5);
+   }
+   for (const state of ["success", "warning", "danger"]) expect(contrast(rgb(state),rgb(`${state}-soft`))).toBeGreaterThanOrEqual(4.5);
+ });

@@ -10,7 +10,7 @@ function themeBlock(selector: string, endMarker: string): string {
   return css.slice(start, end);
 }
 
-describe("fantasy galaxy visual system", () => {
+describe("paper workspace visual system", () => {
   it("defines the shared semantic tokens in both supported themes", () => {
     const light = themeBlock(":root {", ':root[data-theme="dark"]');
     const dark = themeBlock(':root[data-theme="dark"]', "* { box-sizing");
@@ -49,7 +49,7 @@ describe("fantasy galaxy visual system", () => {
   it("styles the reusable planet brand mark without raster dependencies", () => {
     expect(css).toContain(".app-logo");
     expect(css).toMatch(/\.brand-mark\s*\{[^}]*width:\s*42px[^}]*height:\s*42px/);
-    expect(css).toMatch(/\.brand-mark \.app-logo\s*\{[^}]*drop-shadow/);
+    expect(css).toMatch(/\.brand-mark \.app-logo\s*\{[^}]*filter:\s*none/);
     expect(css).toMatch(/@media \(max-width:\s*560px\)[\s\S]*?\.brand-mark\s*\{[^}]*width:\s*36px[^}]*height:\s*36px/);
   });
 
@@ -126,4 +126,18 @@ describe("fantasy galaxy visual system", () => {
     expect(css).toMatch(/\.matching-heading-text\s*\{[^}]*color:\s*var\(--exam-text\)/);
     expect(css).toMatch(/@media \(max-width:\s*520px\)[\s\S]*?\.writing-criteria-grid\s*\{[^}]*grid-template-columns:\s*1fr/);
   });
+});
+
+it("removes decorative workspace gradients, blur and colored elevation while preserving functional visuals", () => {
+  for (const selector of ["body", ".app-header", ".home-hero", ".home-orbit-glow", ".home-orbit-core::before", ".empty-state", ".history-group-heading", ".passage-card-header", ".listening-builder, .listening-empty", ".writing-builder"]) {
+    const escaped=selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const block=css.match(new RegExp(escaped+"\\s*\\{([^}]+)"))?.[1];
+    expect(block,selector).toBeDefined();
+    expect(block,selector).not.toMatch(/gradient|backdrop-filter:\s*blur|drop-shadow/);
+  }
+  expect(css).not.toContain(".app-shell::before");
+  expect(css).not.toContain(".home-hero::after");
+  expect(css).toContain(".home-orbit-interactive.is-active .home-orbit-scene");
+  expect(css).toContain(".trend-chart");
+  expect(css).toContain(".highlight-mark");
 });
