@@ -20,7 +20,7 @@ export function DiagramLabellingRenderer({
   const { t } = useTranslation();
   const config = group.config as unknown as DiagramLabellingConfig & { image_asset?: typeof group.image_asset };
   const image = group.image_asset ?? config.image_asset;
-  if (!image) return <p className="notice">{t("runner.noDiagram")}</p>;
+  if (!image) return <p className="notice">The diagram image is unavailable.</p>;
   if (presentation === "listening-visual") {
     return (
       <div className="listening-visual-layout">

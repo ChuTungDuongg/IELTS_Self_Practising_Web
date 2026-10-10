@@ -811,7 +811,6 @@ export const vi = {
   "runner.chooseHeading": "Chọn tiêu đề",
   "runner.chooseParagraph": "Chọn đoạn văn",
   "runner.choose": "Chọn",
-  "runner.noDiagram": "Hình sơ đồ không khả dụng.",
   "runner.noPreview": "Bản nháp kỹ năng này chưa có nội dung để xem trước.",
   "runner.backBuilder": "Quay lại trình biên soạn",
   "runner.noPrompt": "Chưa có đề bài.",

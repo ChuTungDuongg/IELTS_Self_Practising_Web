@@ -809,7 +809,6 @@ export const en = {
   "runner.chooseHeading": "Choose heading",
   "runner.chooseParagraph": "Choose paragraph",
   "runner.choose": "Choose",
-  "runner.noDiagram": "The diagram image is unavailable.",
   "runner.noPreview": "This draft module has no previewable content yet.",
   "runner.backBuilder": "Back to Builder",
   "runner.noPrompt": "No prompt has been added yet.",

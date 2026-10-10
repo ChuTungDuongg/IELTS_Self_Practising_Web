@@ -284,3 +284,13 @@ it("updates generic Question accessibility in VI without changing authored diagr
   fireEvent.click(screen.getByRole("button", { name: "Switch to English" }));
   expect(screen.getByLabelText(`Question ${question.number}`)).toBe(input);
 });
+
+it("keeps diagram-specific fallback copy outside the generic Question localization scope", () => {
+  localStorage.clear();
+  const group = diagramGroup(false) as ExamGroup;
+  const Renderer = questionRegistry.diagram_labelling.ExamRenderer;
+  renderWithLocale(<Renderer group={group} values={{}} />);
+  const fallback = screen.getByText("The diagram image is unavailable.");
+  fireEvent.click(screen.getByRole("button", { name: "Switch to Vietnamese" }));
+  expect(screen.getByText("The diagram image is unavailable.")).toBe(fallback);
+});
