@@ -132,6 +132,26 @@ describe("Reading footer navigation", () => {
 
   afterEach(() => vi.useRealTimers());
 
+  it("keeps focused Passage 2 navigation, answers and submission scoped", async () => {
+    const data = payload();
+    const passage = data.passages[0];
+    data.passages = [passage];
+    data.attempt.scope = "FOCUSED_UNIT";
+    data.attempt.focused_unit = { kind: "READING_PASSAGE", id: passage.id, order_index: 1, label: "Passage 2", title: passage.title };
+    vi.mocked(submitAttempt).mockResolvedValue({});
+    render(<ReadingRunner initial={data} />);
+    expect(screen.getByText("Reading · Focused practice")).toBeInTheDocument();
+    expect(screen.getByText("Passage 2 · Passage Two")).toBeInTheDocument();
+    expect(within(screen.getByRole("navigation", { name: "Passage navigation" })).getAllByRole("button").map((button) => button.textContent)).toEqual(["Passage 2"]);
+    expect(screen.getByRole("button", { name: "Go to question 19" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Go to question 1" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("radio", { name: "TRUE" }));
+    fireEvent.click(screen.getByRole("button", { name: "Submit answers" }));
+    await waitFor(() => expect(submitAttempt).toHaveBeenCalledWith(data.attempt.attempt_id));
+    expect(saveAnswer).toHaveBeenCalledWith(data.attempt.attempt_id, q19, "TRUE", 0);
+    expect(push).toHaveBeenCalledWith(`/review/${data.attempt.attempt_id}`);
+  });
+
   it("renders canonical passage and question rows without per-group flag controls", () => {
     const view = render(<ReadingRunner initial={payload()} />);
     expect(screen.getByRole("button", { name: "Pause & exit" })).toBeInTheDocument();

@@ -115,6 +115,8 @@ def test_published_version_summary_contains_safe_content_metadata() -> None:
             task_number=1,
             task_type="PIE_CHART",
             prompt="Describe fictional data.",
+            minimum_recommended_words=150,
+            recommended_duration_seconds=1200,
             order_index=0,
         )
     )
@@ -123,6 +125,9 @@ def test_published_version_summary_contains_safe_content_metadata() -> None:
     summary = present_version(version).model_dump(mode="json")
 
     assert summary["modules"][0]["reading_passages"][0]["title"] == "A fictional ship"
+    assert summary["modules"][0]["reading_passages"][0]["id"] == str(passage.id)
+    assert summary["modules"][0]["reading_passages"][0]["order_index"] == 0
+    assert summary["modules"][0]["reading_passages"][0]["question_groups"][0]["question_count"] == 1
     assert (
         summary["modules"][0]["reading_passages"][0]["question_groups"][0]["question_type"]
         == "matching"
@@ -133,9 +138,28 @@ def test_published_version_summary_contains_safe_content_metadata() -> None:
         == "note_completion"
     )
     assert summary["modules"][2]["writing_tasks"][0]["task_type"] == "PIE_CHART"
+    task_summary = summary["modules"][2]["writing_tasks"][0]
+    assert task_summary["id"] == str(writing.writing_tasks[0].id)
+    assert task_summary["task_number"] == 1
+    assert task_summary["minimum_recommended_words"] == 150
+    assert task_summary["recommended_duration_seconds"] == 1200
     assert "answer_key" not in str(summary)
     assert "Private explanation" not in str(summary)
     assert "secret" not in str(summary)
+
+
+def test_group_summary_counts_actual_slots_instead_of_number_range() -> None:
+    from app.api.v1.presenters import group_summary
+
+    group = QuestionGroup(question_type="short_answer", config={}, order_index=0)
+    group.questions.extend(
+        [
+            Question(number=4, config={}, answer_key={}, order_index=0),
+            Question(number=7, config={}, answer_key={}, order_index=1),
+        ]
+    )
+    summary = group_summary(group)
+    assert (summary.start_number, summary.end_number, summary.question_count) == (4, 7, 2)
 
 
 def test_active_exam_normalizes_legacy_content_without_exposing_answer_keys() -> None:

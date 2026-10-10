@@ -18,6 +18,7 @@ def group_summary(group) -> QuestionGroupSummary | None:
         question_type=group.question_type,
         start_number=min(slots),
         end_number=max(slots),
+        question_count=len(slots),
     )
 
 
@@ -45,6 +46,7 @@ def present_version(version: TestVersion) -> VersionDetail:
                 ),
                 reading_passages=[
                     ReadingPassageSummary(
+                        id=passage.id,
                         title=passage.title,
                         order_index=passage.order_index,
                         question_groups=[
@@ -73,9 +75,12 @@ def present_version(version: TestVersion) -> VersionDetail:
                 ],
                 writing_tasks=[
                     WritingTaskSummary(
+                        id=task.id,
                         task_number=task.task_number,
                         task_type=task.task_type,
                         prompt_excerpt=(task.prompt.strip()[:140] or None),
+                        minimum_recommended_words=task.minimum_recommended_words,
+                        recommended_duration_seconds=task.recommended_duration_seconds,
                     )
                     for task in sorted(module.writing_tasks, key=lambda item: item.order_index)
                 ],

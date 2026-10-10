@@ -10,6 +10,7 @@ import { RevisionAutosaveQueue } from "@/features/exam/revision-autosave";
 import { useExamDraftAutosave } from "@/features/exam/use-exam-draft-autosave";
 import { DraftRecoveryNotices } from "@/features/exam/draft-recovery-notices";
 import { useExamSubmit } from "@/features/exam/use-exam-submit";
+import { focusedUnitLabel } from "@/features/exam/focused-attempt";
 import { countWords } from "@/features/writing/word-count";
 import { recordActivity, recordNavigation, saveWritingResponse } from "@/lib/api/attempts";
 import { assetContentUrl } from "@/lib/api/assets";
@@ -115,12 +116,12 @@ export function WritingRunner({ initial }: { initial: ExamPayload }) {
 
   return <div className="exam-runner writing-exam">
     <header className="exam-header">
-      <div><p>WRITING · TASK {task.task_number}</p><h1>{initial.test_title}</h1></div>
+      <div><p>{initial.attempt.scope === "FOCUSED_UNIT" ? "Writing · Focused practice" : `WRITING · TASK ${task.task_number}`}</p><h1>{initial.test_title}</h1>{focusedUnitLabel(initial.attempt) ? <p>{focusedUnitLabel(initial.attempt)}</p> : null}</div>
       <div className="exam-header-tools"><PauseAttemptControl attemptId={attemptId} beforePause={flushForSubmission} /><ThemeToggle /><div className="exam-header-status"><span className={`exam-timer ${initial.attempt.timer_mode === "COUNTDOWN" && seconds < 300 ? "exam-timer-warning" : ""}`}>{initial.attempt.timer_mode === "COUNT_UP" ? "Time used " : ""}{formatDuration(seconds)}</span><span className={`exam-save-state exam-save-${saveState}`}>{saveState === "saving" ? "Saving…" : saveState === "conflict" ? "Changed in another tab" : saveState === "error" ? "Save failed" : saveState === "dirty" ? "Unsaved" : "Saved"}</span></div></div>
     </header>
-    <div className="writing-task-tabs" role="tablist" aria-label="Writing tasks">
+    {initial.attempt.scope !== "FOCUSED_UNIT" || tasks.length > 1 ? <div className="writing-task-tabs" role="tablist" aria-label="Writing tasks">
       {tasks.map((item, index) => <button key={item.id} type="button" role="tab" aria-selected={index === taskIndex} className={index === taskIndex ? "active" : ""} onClick={() => setTaskIndex(index)}><b>Task {item.task_number}</b><span>{countWords(contents[item.id] ?? "")} words</span></button>)}
-    </div>
+    </div> : null}
     {saveState === "error" ? <div role="alert" className="notice notice-error writing-save-error"><span>Your response could not be saved. Retry before submitting.</span><button type="button" className="btn btn-secondary" onClick={() => void flushForSubmission().catch(() => undefined)}>Retry save</button></div> : null}
     {saveState === "conflict" ? <div role="alert" className="notice notice-error writing-save-error"><span>This response changed in another tab or session. Reload to see the latest saved version.</span><button type="button" className="btn btn-secondary" onClick={() => window.location.reload()}>Reload latest</button></div> : null}
     <DraftRecoveryNotices offline={offline} conflicts={conflicts} labelFor={(id) => `Task ${tasks.find((item) => item.id === id)?.task_number ?? id}`} onResolve={resolveConflict} />

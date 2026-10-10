@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { AppLogo } from "./app-logo";
 import { ConfirmDialog } from "./confirm-dialog";
-import { AnalyticsIcon, BuilderIcon, HistoryIcon, HomeIcon, LibraryIcon, TransferIcon } from "./icons";
+import { AnalyticsIcon, BuilderIcon, HistoryIcon, HomeIcon, LibraryIcon, ReadingIcon, TransferIcon } from "./icons";
 import { ThemeToggle } from "./theme-toggle";
 import { TRANSFER_ROUTE } from "@/lib/routes";
 import { useAuth } from "@/features/auth/auth-provider";
@@ -13,6 +13,7 @@ import { useAuth } from "@/features/auth/auth-provider";
 const navigation = [
   { label: "Overview", href: "/", icon: HomeIcon },
   { label: "Test library", href: "/library", icon: LibraryIcon },
+  { label: "Skill practice", href: "/practice", icon: ReadingIcon },
   { label: "Attempt history", href: "/history", icon: HistoryIcon },
   { label: "Analytics", href: "/analytics", icon: AnalyticsIcon },
 ] as const;

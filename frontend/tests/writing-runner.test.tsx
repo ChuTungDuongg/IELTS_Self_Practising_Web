@@ -115,6 +115,25 @@ describe("WritingRunner", () => {
     expect(screen.getByText("Discuss a fictional proposition.")).toBeInTheDocument();
   });
 
+  it.each([1, 2])("saves and submits only the selected focused Task %i", async (taskNumber) => {
+    const data = payload();
+    const task = data.writing_tasks[taskNumber - 1];
+    data.writing_tasks = [task];
+    data.attempt.scope = "FOCUSED_UNIT";
+    data.attempt.focused_unit = { kind: "WRITING_TASK", id: task.id, order_index: task.order_index, label: `Task ${taskNumber}`, title: null };
+    render(<WritingRunner initial={data} />);
+    expect(screen.getByText("Writing · Focused practice")).toBeInTheDocument();
+    expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(`Response for Task ${taskNumber === 1 ? 2 : 1}`)).not.toBeInTheDocument();
+    if (taskNumber === 1) expect(screen.getByAltText("Writing Task 1 reference")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(`Response for Task ${taskNumber}`), { target: { value: "Selected task response." } });
+    fireEvent.click(screen.getByRole("button", { name: "Submit Writing" }));
+    await act(async () => {});
+    expect(saveWritingResponse).toHaveBeenCalledWith(attemptId, task.id, "Selected task response.", 1);
+    expect(submitAttempt).toHaveBeenCalledWith(attemptId);
+    expect(push).toHaveBeenCalledWith(`/review/${attemptId}`);
+  });
+
   it("updates local word count and autosaves after 750 ms", async () => {
     render(<WritingRunner initial={payload()} />);
     fireEvent.change(screen.getByLabelText("Response for Task 1"), {

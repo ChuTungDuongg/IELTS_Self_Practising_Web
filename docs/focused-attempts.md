@@ -1,8 +1,52 @@
-# Phase 1 — Focused Attempt Foundation
+# Focused Practice — Phases 1 and 2
 
 Focused practice reuses `Attempt`, its owner, frozen published `TestVersion`, timer,
-autosave, pause/resume, submission and review lifecycle. This phase adds no practice
-page, history tab, Builder changes or Listening audio ranges.
+autosave, pause/resume, submission and review lifecycle. Phase 1 provides the scope
+foundation; Phase 2 exposes Reading passages and Writing tasks in the workspace.
+
+## Phase 2 — Reading and Writing
+
+`/practice` (sidebar: **Skill practice**) uses the existing authenticated workspace
+and published-version APIs. It lists available, non-archived frozen tests, grouped
+by test/version, with Reading and Writing tabs. Test Library remains the place for
+full skills and Full Mock.
+
+Public VersionDetail summaries now include Reading passage IDs and Writing task
+IDs, minimum recommended words and recommended duration. Question-group summaries
+include the actual question-slot count, so unusual numbering does not imply a
+fictitious continuous range. Summaries contain no answer keys or explanations.
+
+Reading starts one passage with 20 / 25 / 30 minutes or count-up (default: 20).
+Writing starts one Task 1 or Task 2 with 20 / 25 / 30 / 35 / 40 minutes or count-up
+(defaults: Task 1 = 20, Task 2 = 40). Both use existing `POST /attempts`, scope
+FOCUSED_UNIT and the real published unit UUID, then open `/attempt/{id}`. Pending
+starts prevent duplicate clicks; failures retain the selected timer.
+
+Existing runners and paused gates identify the focused unit. A single Writing
+task has no redundant task switch. Autosave, highlights, flags, images, word count,
+timers and lifecycle transitions retain their existing behavior.
+
+Review and **Focused practice** history show Reading raw/max correct and one-decimal
+accuracy when max is positive; partial results never imply an IELTS band. Focused
+Writing shows **Task score** when criterion scores exist, otherwise **Not graded**.
+The nullable history `task_score` uses existing `calculate_task_overall` for the
+selected Writing task only, while `band_score` stays null. Other scopes/modules
+return null task_score. Review preserves the exact task average to two decimals;
+history formats it to one decimal. There is no weighted Writing overall for a
+single task. Existing manual criteria and task-specific AI assessment remain usable
+without changing scoring or provider lifecycle.
+
+History tabs are **By skill**, **Focused practice**, **By test**, **By mock test**.
+Focused records appear in Focused practice rather than By skill. Continue, Resume,
+Review and standalone Delete use existing actions. By-test/Full Mock grouping,
+group deletion and full-skill analytics remain unchanged.
+
+**Focused Listening user flow is not implemented yet.** Phase 3 requires separate
+audio-range design. Existing API-created focused Listening records can appear in
+history as Section N with raw/max and accuracy; Phase 2 adds no Listening start UI,
+audio segmentation or Builder changes.
+
+## Phase 1 foundation (preserved)
 
 `AttemptContext` remains STANDALONE / FULL_MOCK. The independent `AttemptScope` is
 FULL_MODULE / FOCUSED_UNIT. Full Mock always creates FULL_MODULE attempts and retains
@@ -53,10 +97,18 @@ scores, but attempt-level Writing band remains null. AI prompts, calibration and
 grading versions are unchanged.
 
 Normal history items include focused records and their scope. Existing By-test
-full-module slots and existing analytics exclude focused attempts; this phase does
-not introduce focused analytics or a new history interface.
+full-module slots and existing analytics exclude focused attempts. Phase 2 adds
+the dedicated history view described above without introducing focused analytics.
 
 ## Validation
+
+Phase 2 adds focused presenter/history contract tests and Vitest coverage for
+practice cards, timer/start behavior, protected navigation, scoped runners/reviews,
+paused gates and history actions. Full skill, Full Mock, deletion and AI assessment
+regressions use the existing tests. Validation uses isolated PostgreSQL, mocked
+frontend APIs, typecheck and targeted Ruff/ESLint checks, without live inference.
+
+Phase 1 validation commands:
 
 Executed against an isolated PostgreSQL database migrated with `uv run alembic
 upgrade head`. Migration tests execute the actual upgrade/downgrade DDL inside

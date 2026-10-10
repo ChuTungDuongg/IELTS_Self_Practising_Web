@@ -66,6 +66,7 @@ class AttemptRepository:
             .where(Attempt.user_id == user_id)
             .options(selectinload(Attempt.test_version).selectinload(TestVersion.test))
             .options(selectinload(Attempt.test_session))
+            .options(selectinload(Attempt.writing_scores))
             .options(
                 selectinload(Attempt.focused_reading_passage),
                 selectinload(Attempt.focused_listening_part),

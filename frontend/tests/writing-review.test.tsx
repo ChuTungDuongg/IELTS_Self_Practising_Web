@@ -122,6 +122,27 @@ describe("WritingReviewView", () => {
     expect(screen.getByRole("button", { name: "Save Task 1 scores" })).toBeDisabled();
   });
 
+  it.each([1, 2])("reviews and assesses only focused Task %i without weighted Writing scores", async (taskNumber) => {
+    const data = reviewPayload();
+    const task = data.tasks[taskNumber - 1];
+    data.tasks = [task];
+    data.review.attempt.scope = "FOCUSED_UNIT";
+    data.review.attempt.focused_unit = { kind: "WRITING_TASK", id: task.writing_task_id, order_index: taskNumber - 1, label: `Task ${taskNumber}`, title: null };
+    const { rerender } = render(<WritingReviewView data={data} />);
+    expect(screen.getByText("Writing · Focused practice")).toBeInTheDocument();
+    expect(screen.getAllByText("Not graded")).toHaveLength(2);
+    expect(screen.queryByText(/Weighted overall|Task weighting|Waiting for all 8/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(`Task ${taskNumber === 1 ? 2 : 1} assessment`)).not.toBeInTheDocument();
+    await waitFor(() => expect(listAIWritingRuns).toHaveBeenCalledWith(attemptId, task.writing_task_id));
+    expect(vi.mocked(listAIWritingRuns).mock.calls.every(([, taskId]) => taskId === task.writing_task_id)).toBe(true);
+    const graded = { ...data, tasks: [{ ...task, score: taskOneScore }] };
+    rerender(<WritingReviewView key="graded" data={graded} />);
+    expect(screen.getByText("Task score 6.75")).toBeInTheDocument();
+    expect(screen.queryByText(/Band|Weighted overall|Task weighting/)).not.toBeInTheDocument();
+    await waitFor(() => expect(listAIWritingRuns).toHaveBeenCalledWith(attemptId, task.writing_task_id));
+  });
+
   it("preserves authored paragraphs, CRLF, whitespace and word count without changing essay content", () => {
     const data = reviewPayload();
     const content = "  First fictional paragraph.\r\n\r\nSecond fictional paragraph.\r\n  \r\nThird paragraph with https://example.test/a-long-path.\r\nFourth paragraph.";

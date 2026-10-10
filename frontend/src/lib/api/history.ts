@@ -22,6 +22,7 @@ const historyItemSchema = z.object({
   raw_score: z.number().int().nullable(),
   max_score: z.number().int().nullable(),
   band_score: z.number().nullable(),
+  task_score: z.number().nullable().optional(),
   review_available: z.boolean().optional(),
 });
 

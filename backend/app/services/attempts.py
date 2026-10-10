@@ -782,6 +782,25 @@ class AttemptService:
         history_now = TimerService.now()
         items: list[HistoryItem] = []
         for item in attempts:
+            task_score = None
+            if AttemptScopeGuard(item).focused and item.module_type == ModuleType.WRITING:
+                selected_score = next(
+                    (
+                        score
+                        for score in item.writing_scores
+                        if score.writing_task_id == item.focused_writing_task_id
+                    ),
+                    None,
+                )
+                if selected_score is not None:
+                    task_score = float(
+                        calculate_task_overall(
+                            selected_score.ta,
+                            selected_score.cc,
+                            selected_score.lr,
+                            selected_score.gra,
+                        )
+                    )
             timer = TimerService.snapshot(
                 mode=item.timer_mode,
                 started_at=item.started_at,
@@ -815,6 +834,7 @@ class AttemptService:
                     raw_score=item.raw_score,
                     max_score=item.max_score,
                     band_score=item.band_score,
+                    task_score=task_score,
                     review_available=(
                         item.test_session is None
                         or item.test_session.status == TestSessionStatus.COMPLETED

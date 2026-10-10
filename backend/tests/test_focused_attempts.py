@@ -10,6 +10,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.core.config import Settings
 from app.core.exceptions import AppError
+from app.domains.scoring import calculate_task_overall
 from app.domains.timers import TimerService
 from app.models import (
     Attempt,
@@ -36,6 +37,8 @@ KINDS = {
     ModuleType.LISTENING: "LISTENING_PART",
     ModuleType.WRITING: "WRITING_TASK",
 }
+
+
 PRESETS = {
     ModuleType.READING: [1200, 1500, 1800],
     ModuleType.LISTENING: [600, 900, 1200],
@@ -539,3 +542,39 @@ async def test_even_40_question_focused_reading_cannot_become_a_band(db_session)
     complete = await service.submit(full.attempt_id)
     assert (partial.raw_score, partial.max_score, partial.band_score) == (20, 40, None)
     assert complete.max_score == 40 and complete.band_score is not None
+
+
+@pytest.mark.integration
+async def test_focused_writing_history_exposes_task_score_without_overall_band(db_session):
+    version, units = await content(db_session)
+    service = AttemptService(db_session)
+    writing = await service.start(
+        request(version, ModuleType.WRITING, units[ModuleType.WRITING][0])
+    )
+    reading = await service.start(
+        request(version, ModuleType.READING, units[ModuleType.READING][0])
+    )
+    full = await service.start(request(version, ModuleType.WRITING))
+    await service.submit(full.attempt_id)
+    await service.grade_writing_task(
+        full.attempt_id,
+        units[ModuleType.WRITING][0].id,
+        WritingTaskScoreUpdate(ta=6.5, cc=7.0, lr=6.5, gra=7.0),
+    )
+    await service.submit(writing.attempt_id)
+    history = {item.attempt_id: item for item in (await service.history()).items}
+    assert history[writing.attempt_id].task_score is None
+    await db_session.rollback()
+    await service.grade_writing_task(
+        writing.attempt_id,
+        units[ModuleType.WRITING][0].id,
+        WritingTaskScoreUpdate(ta=6.5, cc=7.0, lr=6.5, gra=7.0),
+    )
+    # Reload through the history repository, rather than relying on the grading identity map.
+    await db_session.rollback()
+    db_session.expire_all()
+    history = {item.attempt_id: item for item in (await service.history()).items}
+    assert history[writing.attempt_id].band_score is None
+    assert history[writing.attempt_id].task_score == float(calculate_task_overall(6.5, 7, 6.5, 7))
+    assert history[reading.attempt_id].task_score is None
+    assert history[full.attempt_id].task_score is None

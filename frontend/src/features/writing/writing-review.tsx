@@ -7,6 +7,7 @@ import { WritingAIAssessment } from "./writing-ai-assessment";
 import { presentAIFeedback } from "./ai-feedback-presentation";
 import { aiTraits, type AIWritingResult } from "@/lib/api/writing-ai";
 import { assetContentUrl } from "@/lib/api/assets";
+import { focusedUnitLabel } from "@/features/exam/focused-attempt";
 import {
   saveWritingTaskScore,
   type WritingReviewPayload,
@@ -57,6 +58,7 @@ export function WritingReviewView({ data }: { data: WritingReviewPayload }) {
   const [messages, setMessages] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const task = reviewData.tasks[taskIndex];
+  const focused = reviewData.review.attempt.scope === "FOCUSED_UNIT";
 
   if (!task) return <p>No Writing review content is available.</p>;
   const paragraphs = task.content.replace(/\r\n/g, "\n").split(/\n+/).filter((paragraph) => paragraph.trim());
@@ -116,11 +118,11 @@ export function WritingReviewView({ data }: { data: WritingReviewPayload }) {
 
   return <div className="writing-review">
     <header className="review-header">
-      <div><p className="writing-review-kicker">Writing review</p><h1>{reviewData.review.test_title}</h1></div>
-      <p className="review-score"><span className="review-result-label">Final assessment</span><b>{reviewData.band_score === null ? "Pending" : `Band ${reviewData.band_score.toFixed(1)}`}</b></p>
+      <div><p className="writing-review-kicker">{focused ? "Writing · Focused practice" : "Writing review"}</p><h1>{reviewData.review.test_title}</h1>{focusedUnitLabel(reviewData.review.attempt) ? <p>{focusedUnitLabel(reviewData.review.attempt)}</p> : null}</div>
+      <p className="review-score"><span className="review-result-label">{focused ? "Task score" : "Final assessment"}</span><b>{focused ? task.score ? task.score.overall.toFixed(2) : "Not graded" : reviewData.band_score === null ? "Pending" : `Band ${reviewData.band_score.toFixed(1)}`}</b></p>
     </header>
 
-    <section className="writing-assessment-summary" aria-label="Writing assessment summary">
+    {!focused ? <section className="writing-assessment-summary" aria-label="Writing assessment summary">
       <div><p className="writing-review-kicker">Final assessment</p><h2>{reviewData.band_score === null ? "Waiting for all 8 criterion scores" : `Band ${reviewData.band_score.toFixed(1)}`}</h2></div>
       <dl>
         <div><dt>Task 1 overall</dt><dd>{formatOverall(reviewData.task1_overall)}</dd></div>
@@ -128,7 +130,7 @@ export function WritingReviewView({ data }: { data: WritingReviewPayload }) {
         <div><dt>Weighted overall</dt><dd>{formatOverall(reviewData.weighted_overall)}</dd></div>
         <div><dt>Task weighting</dt><dd>Task 1 × 1 · Task 2 × 2</dd></div>
       </dl>
-    </section>
+    </section> : null}
 
     <div className="writing-assessment-grid">
       {reviewData.tasks.map((scoreTask) => {
@@ -136,7 +138,7 @@ export function WritingReviewView({ data }: { data: WritingReviewPayload }) {
         const complete = selection && Object.values(selection).every((value) => value !== "");
         const saving = savingTaskId === scoreTask.writing_task_id;
         return <section key={scoreTask.writing_task_id} className="writing-assessment-card" aria-label={`Task ${scoreTask.task_number} assessment`}>
-          <div className="writing-assessment-card-heading"><div><p className="writing-review-kicker">Writing Task {scoreTask.task_number}</p><h2>Task {scoreTask.task_number} assessment</h2></div><strong>{scoreTask.score ? `Overall ${scoreTask.score.overall.toFixed(2)}` : "Awaiting scores"}</strong></div>
+          <div className="writing-assessment-card-heading"><div><p className="writing-review-kicker">Writing Task {scoreTask.task_number}</p><h2>Task {scoreTask.task_number} assessment</h2></div><strong>{scoreTask.score ? `${focused ? "Task score" : "Overall"} ${scoreTask.score.overall.toFixed(2)}` : focused ? "Not graded" : "Awaiting scores"}</strong></div>
           <div className="writing-criteria-grid">
             {criteria.map(([key, abbreviation, fullName]) => <div key={key} className="writing-criterion-field"><label><span><b>{abbreviation}</b><small>{key === "ta" && scoreTask.task_number === 2 ? "Task Response" : fullName}</small></span><select aria-label={`Task ${scoreTask.task_number} ${abbreviation}`} className="select-field" value={selection?.[key] ?? ""} onChange={(event) => updateCriterion(scoreTask.writing_task_id, key, event.target.value)}><option value="">Not scored</option>{bands.map((band) => <option key={band} value={band}>{band}</option>)}</select></label><label className="field-label">{abbreviation} feedback <span className="font-normal text-[var(--muted)]">(optional)</span><textarea aria-label={`Task ${scoreTask.task_number} ${abbreviation} feedback`} className="textarea-field mt-2" rows={3} maxLength={4000} value={feedback[scoreTask.writing_task_id]?.[key] ?? ""} onChange={(event) => updateFeedback(scoreTask.writing_task_id, key, event.target.value)} /></label></div>)}
           </div>
@@ -147,9 +149,9 @@ export function WritingReviewView({ data }: { data: WritingReviewPayload }) {
       })}
     </div>
 
-    <div className="writing-task-tabs" role="tablist" aria-label="Writing review tasks">
+    {!focused || reviewData.tasks.length > 1 ? <div className="writing-task-tabs" role="tablist" aria-label="Writing review tasks">
       {reviewData.tasks.map((item, index) => <button key={item.writing_task_id} type="button" role="tab" aria-selected={index === taskIndex} className={index === taskIndex ? "active" : ""} onClick={() => setTaskIndex(index)}><b>Task {item.task_number}</b><span>{item.word_count} words</span></button>)}
-    </div>
+    </div> : null}
     <main className="writing-review-layout">
       <article className="writing-task-prompt"><p className="writing-task-kicker">Writing Task {task.task_number}</p><h2>Task {task.task_number}</h2><p>{task.prompt}</p>{task.image_asset ? <Image unoptimized width={720} height={420} src={assetContentUrl(task.image_asset)} alt={`Writing Task ${task.task_number} reference`} /> : null}<div className="writing-task-guidance"><span>Minimum {task.minimum_recommended_words ?? "—"} words</span><span>{task.recommended_duration_seconds ? Math.round(task.recommended_duration_seconds / 60) : "—"} minutes suggested</span></div></article>
       <article className="writing-review-response" aria-label={`Saved Task ${task.task_number} response`}>

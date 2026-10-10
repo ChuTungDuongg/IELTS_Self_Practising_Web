@@ -28,3 +28,12 @@ it("retains focused identity in history without constructing full-test group slo
   expect(history.items[0].focused_unit).toEqual(unit);
   expect(history.groups).toEqual([]);
 });
+
+it("preserves the task score separately from the intentionally null Writing band", async () => {
+  const item = { ...response, module: "WRITING", test_id: id, test_title: "Fictional test", version_number: 1, scope: "FOCUSED_UNIT", task_score: 6.75,
+    focused_unit: { ...unit, kind: "WRITING_TASK", label: "Task 1", title: null } };
+  const request = vi.fn().mockResolvedValue({ items: [item], groups: [], total: 1 });
+  const history = await getHistory(request);
+  expect(history.items[0].task_score).toBe(6.75);
+  expect(history.items[0].band_score).toBeNull();
+});

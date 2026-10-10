@@ -6,6 +6,7 @@ import { QuestionGroupInstruction } from "@/features/questions/question-group-in
 import { questionRegistry } from "@/features/questions/registry";
 import { groupQuestionCount, groupQuestionRange } from "@/features/questions/numbering";
 import type { ExamGroup } from "@/features/questions/types";
+import { accuracyLabel, focusedUnitLabel } from "@/features/exam/focused-attempt";
 
 type ReviewData = Awaited<ReturnType<typeof import("@/lib/api/exam").getReadingReview>>;
 
@@ -15,6 +16,7 @@ export function ReadingReviewView({ data }: { data: ReviewData }) {
   const answers = new Map(data.review.answers.map((item) => [item.question_id, item]));
   const values = Object.fromEntries(data.review.answers.map((item) => [item.question_id, item.value]));
   const highlighting: HighlightController = { highlights: data.highlights, readOnly: true };
+  const focused = data.review.attempt.scope === "FOCUSED_UNIT";
 
   if (!passage) return <p>No Reading review content is available.</p>;
 
@@ -30,13 +32,14 @@ export function ReadingReviewView({ data }: { data: ReviewData }) {
     <div className="reading-review">
       <header className="review-header">
         <div>
-          <p className="page-eyebrow reading-eyebrow">Reading review</p>
+          <p className="page-eyebrow reading-eyebrow">{focused ? "Focused practice · Reading" : "Reading review"}</p>
           <h1>{data.review.test_title}</h1>
+          {focusedUnitLabel(data.review.attempt) ? <p>{focusedUnitLabel(data.review.attempt)}</p> : null}
         </div>
         <p className="review-score">
-          <span>Score</span>
+          <span>{focused ? "Correct answers" : "Score"}</span>
           <b>{data.review.attempt.raw_score ?? "—"} / {data.review.attempt.max_score ?? "—"}</b>
-          <small>{data.review.attempt.band_score === null ? "Official band unavailable" : `Band ${data.review.attempt.band_score.toFixed(1)}`}</small>
+          <small>{focused ? accuracyLabel(data.review.attempt.raw_score, data.review.attempt.max_score) : data.review.attempt.band_score === null ? "Official band unavailable" : `Band ${data.review.attempt.band_score.toFixed(1)}`}</small>
         </p>
       </header>
 

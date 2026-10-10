@@ -14,8 +14,9 @@ import { ApiError } from "@/lib/api/client";
 import { deleteStandaloneTestHistory, type HistoryGroup, type HistoryItem, type HistoryResponse, type MockHistoryGroup } from "@/lib/api/history";
 import { deleteTestSession } from "@/lib/api/test-sessions";
 import { formatProjectDateTime } from "@/lib/date-time";
+import { accuracyLabel } from "@/features/exam/focused-attempt";
 
-type HistoryMode = "skill" | "test" | "mock";
+type HistoryMode = "skill" | "focused" | "test" | "mock";
 
 export function AttemptHistoryList({ initialHistory }: { initialHistory: HistoryResponse }) {
   const router = useRouter();
@@ -38,6 +39,8 @@ export function AttemptHistoryList({ initialHistory }: { initialHistory: History
   );
   const sessions = (initialHistory.sessions ?? []).filter((session) => !deletedSessionIds.has(session.session_id));
   const groups = initialHistory.groups.filter((group) => !deletedVersionIds.has(group.test_version_id));
+  const skillItems = items.filter((item) => item.scope !== "FOCUSED_UNIT");
+  const focusedItems = items.filter((item) => item.scope === "FOCUSED_UNIT");
 
   function chooseAttempt(item: HistoryItem) {
     setSelected(item);
@@ -102,7 +105,7 @@ export function AttemptHistoryList({ initialHistory }: { initialHistory: History
   return (
     <>
       <div className="history-tabs" role="tablist" aria-label="History view">
-        {(["skill", "test", "mock"] as const).map((view) => (
+        {(["skill", "focused", "test", "mock"] as const).map((view) => (
           <button
             key={view}
             type="button"
@@ -113,16 +116,16 @@ export function AttemptHistoryList({ initialHistory }: { initialHistory: History
             className={mode === view ? "btn btn-primary" : "btn btn-secondary"}
             onClick={() => setMode(view)}
           >
-            {view === "skill" ? "By skill" : view === "test" ? "By test" : "By mock test"}
+            {view === "skill" ? "By skill" : view === "focused" ? "Focused practice" : view === "test" ? "By test" : "By mock test"}
           </button>
         ))}
       </div>
 
       {mode === "skill" ? (
         <div id="history-by-skill" role="tabpanel" aria-labelledby="history-tab-skill">
-          {items.length ? (
+          {skillItems.length ? (
             <ul className="history-list">
-              {items.map((item) => (
+              {skillItems.map((item) => (
                 <HistoryRow key={item.attempt_id} item={item} pending={pending} onDelete={chooseAttempt} />
               ))}
             </ul>
@@ -133,6 +136,12 @@ export function AttemptHistoryList({ initialHistory }: { initialHistory: History
               description="Start a published Reading, Listening or Writing test and your saved progress will appear here."
             />
           )}
+        </div>
+      ) : mode === "focused" ? (
+        <div id="history-by-focused" role="tabpanel" aria-labelledby="history-tab-focused">
+          {focusedItems.length ? <ul className="history-list">
+            {focusedItems.map((item) => <HistoryRow key={item.attempt_id} item={item} pending={pending} onDelete={chooseAttempt} />)}
+          </ul> : <><EmptyState icon={<HistoryIcon className="size-6" />} title="No focused practice attempts yet" description="Practise a Reading passage or Writing task from Skill Practice and it will appear here." /><Link href="/practice" className="btn btn-primary m-4">Open Skill Practice</Link></>}
         </div>
       ) : mode === "test" ? (
         <div id="history-by-test" role="tabpanel" aria-labelledby="history-tab-test">
@@ -217,10 +226,12 @@ function HistoryRow({
       <div className="history-record">
         <div className="history-record-topline">
           <ModuleBadge module={item.module} />
+          {item.scope === "FOCUSED_UNIT" ? <span className="history-context-badge">{item.focused_unit?.label ?? "Focused practice"}</span> : null}
           <span>Version {item.version_number}</span>
           {item.test_session_id ? <span className="history-context-badge">Full Mock</span> : null}
         </div>
         <p className="history-record-title">{item.test_title}</p>
+        {item.scope === "FOCUSED_UNIT" && item.focused_unit?.title ? <p className="history-record-date">{item.focused_unit.title}</p> : null}
         <p className="history-record-date">Started {formatProjectDateTime(item.started_at)}</p>
       </div>
       <div className="history-state">
@@ -269,6 +280,14 @@ function AttemptScore({ item }: { item: HistoryItem }) {
   }
   if (item.status === "IN_PROGRESS") {
     return <span className="history-score history-score-state" data-testid={`history-score-${item.attempt_id}`}>In progress</span>;
+  }
+  if (item.scope === "FOCUSED_UNIT") {
+    return <span className="history-score history-score-result" data-testid={`history-score-${item.attempt_id}`}>
+      {item.module === "WRITING" ? item.task_score == null ? "Not graded" : `Task score ${item.task_score.toFixed(1)}` : <>
+        <strong>{item.raw_score ?? "—"} / {item.max_score ?? "—"} correct</strong>
+        <small>{accuracyLabel(item.raw_score, item.max_score)}</small>
+      </>}
+    </span>;
   }
   if (item.band_score === null) {
     return (

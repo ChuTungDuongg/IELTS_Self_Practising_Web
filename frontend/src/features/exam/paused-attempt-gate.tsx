@@ -10,6 +10,7 @@ import type { ExamPayload } from "@/lib/api/exam";
 import { useExamDraftAutosave } from "./use-exam-draft-autosave";
 import { DraftRecoveryNotices } from "./draft-recovery-notices";
 import { questionSpan } from "@/features/questions/numbering";
+import { focusedUnitLabel } from "./focused-attempt";
 
 const pausedSave = async (): Promise<never> => { throw new Error("Resume before saving responses."); };
 
@@ -52,9 +53,11 @@ export function PausedAttemptGate({ exam }: { exam: ExamPayload }) {
     : `Practice time: ${formatDuration(attempt.elapsed_seconds)}`;
 
   return <main className="paused-attempt-gate">
-    <p className="page-eyebrow">{attempt.module} · PAUSED</p>
+    <p className="page-eyebrow">{attempt.scope === "FOCUSED_UNIT" ? `${attempt.module === "WRITING" ? "Writing" : attempt.module === "READING" ? "Reading" : "Listening"} · ${attempt.focused_unit?.label ?? "Focused practice"}` : `${attempt.module} · PAUSED`}</p>
+    {attempt.scope === "FOCUSED_UNIT" ? <p>Focused practice · Paused</p> : null}
     <h1>Attempt paused</h1>
     <p>{testTitle}</p>
+    {attempt.focused_unit?.title ? <p>{focusedUnitLabel(attempt)}</p> : null}
     <p>Your progress is saved.</p>
     {recoveredIds.length ? <section className="notice" aria-label="Recovered responses from this tab">
       <strong>Unsaved responses kept in this tab</strong>

@@ -10,6 +10,11 @@ function request(path: string, cookie = "") {
 describe("protected route proxy", () => {
   beforeEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
+  it("protects Skill Practice through the existing session restoration flow", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("{}", { status: 401 })));
+    expect((await proxy(request("/practice"))).headers.get("location")).toContain("/session/restore?next=%2Fpractice");
+  });
+
   it("uses the internal FastAPI origin when the browser API URL is relative", async () => {
     vi.stubEnv("API_INTERNAL_BASE_URL", "http://127.0.0.1:9001/api/v1");
     const fetchMock = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }));

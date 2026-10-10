@@ -122,6 +122,60 @@ describe("AttemptHistoryList", () => {
     vi.clearAllMocks();
   });
 
+  it("separates focused history and shows partial Reading and generic Listening accuracy", () => {
+    const focused = { ...submitted, scope: "FOCUSED_UNIT" as const, band_score: null, raw_score: 11, max_score: 13,
+      test_title: "Focused Reading", focused_unit: { kind: "READING_PASSAGE" as const, id: submitted.test_id, label: "Passage 2", title: "Fictional rivers", order_index: 1 } };
+    const focusedListening = { ...focused, attempt_id: listening.attempt_id, module: "LISTENING" as const, test_title: "Focused Listening",
+      focused_unit: { ...focused.focused_unit, kind: "LISTENING_PART" as const, label: "Section 2" } };
+    render(<AttemptHistoryList initialHistory={history([focused, focusedListening, { ...inProgress, test_title: "Full Reading" }])} />);
+    expect(screen.queryByText("Focused Reading")).not.toBeInTheDocument();
+    expect(screen.getByText("Full Reading")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "Focused practice" }));
+    expect(screen.queryByText("Full Reading")).not.toBeInTheDocument();
+    expect(screen.getByText("Focused Reading")).toBeInTheDocument();
+    expect(screen.getByText("Passage 2")).toBeInTheDocument();
+    expect(screen.getByText("Section 2")).toBeInTheDocument();
+    expect(screen.getAllByText("11 / 13 correct")).toHaveLength(2);
+    expect(screen.getAllByText("84.6% accuracy")).toHaveLength(2);
+    expect(screen.queryByText(/Band|Official band unavailable/)).not.toBeInTheDocument();
+    expect(screen.getAllByRole("link", { name: "Review" })).toHaveLength(2);
+  });
+
+  it.each([null, 6.75])("shows focused Writing task score %s without an overall band", (taskScore) => {
+    render(<AttemptHistoryList initialHistory={history([{ ...writing, scope: "FOCUSED_UNIT", band_score: null, task_score: taskScore,
+      focused_unit: { kind: "WRITING_TASK", id: writing.test_id, order_index: 0, label: "Task 1", title: null } }])} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Focused practice" }));
+    expect(screen.getByText(taskScore === null ? "Not graded" : "Task score 6.8")).toBeInTheDocument();
+    expect(screen.queryByText(/Band|Official band unavailable/)).not.toBeInTheDocument();
+  });
+
+  it("retains Continue, Resume and standalone deletion for focused attempts", async () => {
+    vi.mocked(resumeAttempt).mockResolvedValue({} as never);
+    vi.mocked(deleteAttempt).mockResolvedValue(undefined);
+    render(<AttemptHistoryList initialHistory={history([
+      { ...inProgress, scope: "FOCUSED_UNIT" }, { ...paused, scope: "FOCUSED_UNIT" },
+    ])} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Focused practice" }));
+    expect(screen.getByRole("link", { name: "Continue" })).toHaveAttribute("href", `/attempt/${inProgress.attempt_id}`);
+    expect(screen.getByText("Remaining: 50:00")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Resume" }));
+    await waitFor(() => expect(push).toHaveBeenCalledWith(`/attempt/${paused.attempt_id}`));
+    expect(resumeAttempt).toHaveBeenCalledWith(paused.attempt_id);
+    fireEvent.click(screen.getByRole("button", { name: `Delete ${inProgress.test_title}` }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete attempt" }));
+    await waitFor(() => expect(deleteAttempt).toHaveBeenCalledWith(inProgress.attempt_id));
+    expect(deleteTestSession).not.toHaveBeenCalled();
+    expect(deleteStandaloneTestHistory).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.queryByText(inProgress.test_title)).not.toBeInTheDocument());
+  });
+
+  it("links empty focused history to Skill Practice", () => {
+    render(<AttemptHistoryList initialHistory={history([submitted])} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Focused practice" }));
+    expect(screen.getByText("No focused practice attempts yet")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open Skill Practice" })).toHaveAttribute("href", "/practice");
+  });
+
   it.each(["IN_PROGRESS", "PAUSED", "SUBMITTED", "INTERRUPTED", "AUTO_SUBMITTED", "ABANDONED"] as const)(
     "renders Delete for %s attempts",
     (status) => {
@@ -144,7 +198,7 @@ describe("AttemptHistoryList", () => {
 
   it("groups an active Full Mock header, skills, and Resume action into one card", () => {
     const { container } = render(<AttemptHistoryList initialHistory={history([inProgress], [], [activeSession])} />);
-    expect(screen.getAllByRole("tab")).toHaveLength(3);
+    expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["By skill", "Focused practice", "By test", "By mock test"]);
     expect(screen.queryByText("Cambridge 11 Test 2")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("tab", { name: "By mock test" }));
     const card = container.querySelector(".history-session-card")!;

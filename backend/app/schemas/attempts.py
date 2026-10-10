@@ -216,6 +216,7 @@ class HistoryItem(BaseModel):
     raw_score: int | None
     max_score: int | None
     band_score: float | None
+    task_score: float | None = None
     review_available: bool = True
 
 

@@ -93,9 +93,11 @@ class QuestionGroupSummary(BaseModel):
     question_type: str
     start_number: int
     end_number: int
+    question_count: int
 
 
 class ReadingPassageSummary(BaseModel):
+    id: UUID
     title: str
     order_index: int
     question_groups: list[QuestionGroupSummary]
@@ -108,9 +110,12 @@ class ListeningSectionSummary(BaseModel):
 
 
 class WritingTaskSummary(BaseModel):
+    id: UUID
     task_number: int
     task_type: WritingTaskType | None
     prompt_excerpt: str | None
+    minimum_recommended_words: int | None
+    recommended_duration_seconds: int | None
 
 
 class VersionDetail(VersionSummary):
