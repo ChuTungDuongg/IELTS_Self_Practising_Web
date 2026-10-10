@@ -1,4 +1,5 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
+import { renderWithLocale } from "./locale-test-utils";
 import { expect, it, vi } from "vitest";
 import AdminUserPage from "@/app/admin/users/[userId]/page";
 import { getAdminUser } from "@/lib/api/admin";
@@ -8,6 +9,8 @@ vi.mock("@/lib/api/server-client", () => ({ serverApiRequest: vi.fn() }));
 vi.mock("@/features/auth/admin-user-actions", () => ({ AdminUserActions: () => null }));
 
 it("shows the derived Overall provided by the backend as read-only profile detail", async () => {
+  window.localStorage.clear();
+  vi.clearAllMocks();
   const userId = "11111111-1111-4111-8111-111111111111";
   vi.mocked(getAdminUser).mockResolvedValue({
     user: {
@@ -21,8 +24,15 @@ it("shows the derived Overall provided by the backend as read-only profile detai
     history: { total: 0, items: [] },
     analytics: { total_finalized_attempts: 0, completed_full_mocks: 0 },
   } as never);
-  render(await AdminUserPage({ params: Promise.resolve({ userId }) }));
+  renderWithLocale(await AdminUserPage({ params: Promise.resolve({ userId }) }));
   expect(screen.getByText("Overall target band").parentElement).toHaveTextContent("7");
   expect(screen.getByText("Speaking target band").parentElement).toHaveTextContent("8.5");
   expect(screen.queryByLabelText("Overall target band")).not.toBeInTheDocument();
+  const name = screen.getByRole("heading", { name: "Learner" });
+  fireEvent.click(screen.getByText("Switch to Vietnamese"));
+  expect(screen.getByRole("heading", { name: "Learner" })).toBe(name);
+  expect(screen.getByText("Mục tiêu điểm tổng").parentElement).toHaveTextContent("7");
+  expect(screen.getByText("Band mục tiêu Nói").parentElement).toHaveTextContent("8.5");
+  expect(screen.getByText(/learner@example.com · Người dùng/)).toBeInTheDocument();
+  expect(getAdminUser).toHaveBeenCalledOnce();
 });

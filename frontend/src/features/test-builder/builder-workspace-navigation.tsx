@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@/lib/i18n/locale-provider";
+
 import { BuilderIcon, ReadingIcon } from "@/components/ui/icons";
 import { builderEditPath } from "@/lib/routes";
 import { AutosaveLink } from "./autosave-link";
@@ -15,15 +17,16 @@ export function BuilderWorkspaceRow({ active, disabled, href, icon, label, statu
 }
 
 export function BuilderWorkspaceNavigation({ testId, versionId, workspace, moduleTypes = [] }: { testId: string; versionId: string; workspace: BuilderWorkspace; moduleTypes?: Array<"READING" | "LISTENING" | "WRITING"> }) {
+  const { t } = useTranslation();
   const base = builderEditPath(testId, versionId);
   const exists = (type: "READING" | "LISTENING" | "WRITING") => moduleTypes.includes(type);
   return (
-    <aside className="builder-local-nav" aria-label="Builder sections">
-      <p>Test structure</p>
-      <BuilderWorkspaceRow tone="overview" active={workspace === "overview"} href={`${base}?workspace=overview`} icon={<BuilderIcon className="size-4" />} label="Overview" status="Summary" />
-      <BuilderWorkspaceRow tone="reading" active={workspace === "reading"} href={`${base}?workspace=reading`} icon={<ReadingIcon className="size-4" />} label="Reading" status={exists("READING") ? "Created" : "Not created"} />
-      <BuilderWorkspaceRow tone="listening" active={workspace === "listening"} href={`${base}?workspace=listening`} icon={<BuilderIcon className="size-4" />} label="Listening" status={exists("LISTENING") ? "Created" : "Not created"} />
-      <BuilderWorkspaceRow tone="writing" active={workspace === "writing"} href={`${base}?workspace=writing`} icon={<BuilderIcon className="size-4" />} label="Writing" status={exists("WRITING") ? "Created" : "Not created"} />
+    <aside className="builder-local-nav" aria-label={t("builder.sections")}>
+      <p>{t("builder.structure")}</p>
+      <BuilderWorkspaceRow tone="overview" active={workspace === "overview"} href={`${base}?workspace=overview`} icon={<BuilderIcon className="size-4" />} label={t("shell.overview")} status={t("builder.summary")} />
+      <BuilderWorkspaceRow tone="reading" active={workspace === "reading"} href={`${base}?workspace=reading`} icon={<ReadingIcon className="size-4" />} label={t("common.reading")} status={exists("READING") ? t("builder.created") : t("builder.notCreated")} />
+      <BuilderWorkspaceRow tone="listening" active={workspace === "listening"} href={`${base}?workspace=listening`} icon={<BuilderIcon className="size-4" />} label={t("common.listening")} status={exists("LISTENING") ? t("builder.created") : t("builder.notCreated")} />
+      <BuilderWorkspaceRow tone="writing" active={workspace === "writing"} href={`${base}?workspace=writing`} icon={<BuilderIcon className="size-4" />} label={t("common.writing")} status={exists("WRITING") ? t("builder.created") : t("builder.notCreated")} />
     </aside>
   );
 }

@@ -1,3 +1,4 @@
+import { UiText } from "@/lib/i18n/locale-provider";
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { PageHeading } from "@/components/ui/page-heading";
@@ -41,23 +42,23 @@ export default async function VersionEditorPage({ params, searchParams }: { para
   if (version.test_id !== testId) notFound();
   return (
     <>
-      {version.status === "DRAFT" ? <TestDetailsHeading testId={testId} initialTitle={version.test_title} initialDescription={version.test_description ?? null} versionNumber={version.version_number} /> : <PageHeading eyebrow="IELTS Studio · Exam Builder" title={version.test_title} description={`Version ${version.version_number} · Structured authoring workspace`} action={<StatusBadge status={version.status} />} />}
+      {version.status === "DRAFT" ? <TestDetailsHeading testId={testId} initialTitle={version.test_title} initialDescription={version.test_description ?? null} versionNumber={version.version_number} /> : <PageHeading eyebrow={<UiText message="builder.brand" />} title={version.test_title} description={<UiText message="builder.versionWorkspace" params={{ number: version.version_number }} />} action={<StatusBadge status={version.status} label={<UiText message={version.status === "PUBLISHED" ? "common.published" : "common.archived"} />} />} />}
       <BuilderLifecycleProvider>
         <VersionActions testId={testId} version={version} />
         <div className="builder-workspace">
           <BuilderWorkspaceNavigation testId={testId} versionId={versionId} workspace={workspace} moduleTypes={version.modules.map((item) => item.module_type)} />
           <div className="builder-canvas">
             {workspace === "overview" ? <section className="builder-overview">
-              <div className="section-header"><div><h2 className="section-title">Test overview</h2><p className="section-description">A quick view of the modules currently included in this version.</p></div></div>
+              <div className="section-header"><div><h2 className="section-title"><UiText message="builder.overview" /></h2><p className="section-description"><UiText message="builder.overviewDescription" /></p></div></div>
               <div className="module-overview-grid">
                 {(["READING", "LISTENING", "WRITING"] as const).map((kind) => {
                   const moduleRecord = version.modules.find((item) => item.module_type === kind);
                   const groups = (moduleRecord?.passages.reduce((sum, item) => sum + item.question_groups.length, 0) ?? 0) + (moduleRecord?.listening_parts.reduce((sum, item) => sum + item.question_groups.length, 0) ?? 0);
                   return (
                     <article key={kind} className={`module-overview-card module-card-${kind.toLowerCase()}`}>
-                      <div className="flex items-center justify-between gap-3"><ModuleBadge module={kind} /><span className="module-state">{moduleRecord ? "Active" : "Not created"}</span></div>
-                      <dl><div><dt>{kind === "READING" ? "Passages" : kind === "LISTENING" ? "Sections" : "Tasks"}</dt><dd>{kind === "LISTENING" ? moduleRecord?.listening_parts.length ?? 0 : kind === "WRITING" ? moduleRecord?.writing_tasks.length ?? 0 : moduleRecord?.passages.length ?? 0}</dd></div><div><dt>{kind === "WRITING" ? "Prompts ready" : "Groups"}</dt><dd>{kind === "WRITING" ? moduleRecord?.writing_tasks.filter((task) => task.prompt.trim()).length ?? 0 : groups}</dd></div></dl>
-                      {moduleRecord ? <p className="section-description">Recommended time: {moduleRecord.recommended_duration_seconds ? `${moduleRecord.recommended_duration_seconds / 60} min` : "Not set"}{version.status === "DRAFT" ? <> · <Link href={`${builderEditPath(testId, versionId)}?workspace=${kind.toLowerCase()}`}>Edit duration</Link></> : null}</p> : null}
+                      <div className="flex items-center justify-between gap-3"><ModuleBadge module={kind} label={<UiText message={kind === "READING" ? "common.reading" : kind === "LISTENING" ? "common.listening" : "common.writing"} />} /><span className="module-state"><UiText message={moduleRecord ? "builder.active" : "builder.notCreated"} /></span></div>
+                      <dl><div><dt><UiText message={kind === "READING" ? "common.passages" : kind === "LISTENING" ? "common.sections" : "common.tasks"} /></dt><dd>{kind === "LISTENING" ? moduleRecord?.listening_parts.length ?? 0 : kind === "WRITING" ? moduleRecord?.writing_tasks.length ?? 0 : moduleRecord?.passages.length ?? 0}</dd></div><div><dt><UiText message={kind === "WRITING" ? "builder.promptsReady" : "builder.groups"} /></dt><dd>{kind === "WRITING" ? moduleRecord?.writing_tasks.filter((task) => task.prompt.trim()).length ?? 0 : groups}</dd></div></dl>
+                      {moduleRecord ? <p className="section-description"><UiText message="builder.recommendedTime" /> {moduleRecord.recommended_duration_seconds ? <UiText message="common.minutesShort" params={{ count: moduleRecord.recommended_duration_seconds / 60 }} /> : <UiText message="builder.notSet" />}{version.status === "DRAFT" ? <> · <Link href={`${builderEditPath(testId, versionId)}?workspace=${kind.toLowerCase()}`}><UiText message="builder.editDuration" /></Link></> : null}</p> : null}
                       <ContentSummary units={builderContentSummary(moduleRecord)} />
                     </article>
                   );
@@ -65,10 +66,10 @@ export default async function VersionEditorPage({ params, searchParams }: { para
               </div>
             </section> : null}
             {workspace === "reading" ? <div>
-              {version.status === "DRAFT" ? <ReadingBuilder version={version} /> : <p className="notice mt-6">This published version is frozen. Clone it to create an editable draft.</p>}
+              {version.status === "DRAFT" ? <ReadingBuilder version={version} /> : <p className="notice mt-6"><UiText message="builder.frozen" /></p>}
             </div> : null}
-            {workspace === "listening" ? version.status === "DRAFT" ? <ListeningBuilder version={version} /> : <p className="notice mt-6">This published version is frozen. Clone it to create an editable draft.</p> : null}
-            {workspace === "writing" ? version.status === "DRAFT" ? <WritingBuilder version={version} /> : <p className="notice mt-6">This published version is frozen. Clone it to create an editable draft.</p> : null}
+            {workspace === "listening" ? version.status === "DRAFT" ? <ListeningBuilder version={version} /> : <p className="notice mt-6"><UiText message="builder.frozen" /></p> : null}
+            {workspace === "writing" ? version.status === "DRAFT" ? <WritingBuilder version={version} /> : <p className="notice mt-6"><UiText message="builder.frozen" /></p> : null}
           </div>
         </div>
       </BuilderLifecycleProvider>

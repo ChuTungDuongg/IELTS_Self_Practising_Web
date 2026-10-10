@@ -1,3 +1,4 @@
+import { UiText } from "@/lib/i18n/locale-provider";
 import { PageHeading } from "@/components/ui/page-heading";
 import { TransferPortal, type TransferTestOption } from "@/features/transfer/transfer-portal";
 import { getTests, getVersion } from "@/lib/api/tests";
@@ -23,5 +24,5 @@ export default async function TransferPage() {
       archived: test.archived_at !== null,
     };
   }));
-  return <><PageHeading eyebrow="Local portability" title="Test transfer" description="Export authored tests with their images and audio, then import them into another installation." /><TransferPortal tests={tests} /></>;
+  return <><PageHeading eyebrow={<UiText message="transfer.portability" />} title={<UiText message="transfer.title" />} description={<UiText message="transfer.description" />} /><TransferPortal tests={tests} /></>;
 }

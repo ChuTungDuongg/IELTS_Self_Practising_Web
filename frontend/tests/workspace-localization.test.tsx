@@ -14,12 +14,61 @@ import { startAttempt } from "@/lib/api/attempts";
 import { startTestSession } from "@/lib/api/test-sessions";
 import { ApiError } from "@/lib/api/client";
 import { readFileSync } from "node:fs";
+import { NewTestForm } from "@/features/test-builder/new-test-form";
+import { createTest } from "@/lib/api/tests";
+import { ListeningSectionEditor } from "@/features/test-builder/listening-section-editor";
+import type { BuilderListeningPart } from "@/lib/api/builder";
+import { WritingBuilder } from "@/features/test-builder/writing-builder";
+import { BuilderLifecycleProvider } from "@/features/test-builder/builder-lifecycle";
 
-vi.mock("@/lib/api/tests", () => ({ getTests: vi.fn(), getVersion: vi.fn() }));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
+vi.mock("@/lib/api/tests", () => ({ getTests: vi.fn(), getVersion: vi.fn(), createTest: vi.fn() }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }));
 vi.mock("@/lib/api/attempts", () => ({ startAttempt: vi.fn() }));
 vi.mock("@/lib/api/test-sessions", () => ({ startTestSession: vi.fn() }));
 describe("workspace localization boundaries", () => {
+  it("keeps Writing Builder prompt values while translating top-level task fields and save actions", () => {
+    const version = { id: "version", test_id: "test", test_title: "Section 2", version_number: 1, status: "DRAFT", modules: [{ id: "module", revision: 1, module_type: "WRITING", title: "Writing", recommended_duration_seconds: 3600, audio_asset: null, passages: [], listening_parts: [], writing_tasks: [{ id: "task", revision: 1, task_number: 1, task_type: null, prompt: "Describe <raw> data.", image_asset_id: null, image_asset: null, minimum_recommended_words: 150, recommended_duration_seconds: 1200, order_index: 0 }] }] } satisfies Parameters<typeof WritingBuilder>[0]["version"];
+    const before = JSON.stringify(version);
+    renderWithLocale(<BuilderLifecycleProvider><WritingBuilder version={version} /></BuilderLifecycleProvider>);
+    const prompt = screen.getByLabelText("Prompt");
+    fireEvent.change(prompt, { target: { value: "Authored draft <raw>" } });
+    fireEvent.click(screen.getByText("Switch to Vietnamese"));
+    expect(screen.getByLabelText("Đề bài")).toBe(prompt);
+    expect(prompt).toHaveValue("Authored draft <raw>");
+    expect(screen.getByRole("button", { name: "Lưu bài viết 1" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Số từ tối thiểu đề xuất")).toHaveValue(150);
+    expect(JSON.stringify(version)).toBe(before);
+  });
+  it("translates new-test metadata chrome without changing the authored draft or payload", async () => {
+    vi.mocked(createTest).mockResolvedValue({ id: "new-test" } as Awaited<ReturnType<typeof createTest>>);
+    renderWithLocale(<NewTestForm />);
+    const title = screen.getByRole("textbox", { name: "Test title" });
+    const description = screen.getByRole("textbox", { name: /Description/ });
+    fireEvent.change(title, { target: { value: "Section 2 <raw>" } });
+    fireEvent.change(description, { target: { value: "Mô tả authored" } });
+    fireEvent.click(screen.getByText("Switch to Vietnamese"));
+    expect(screen.getByRole("textbox", { name: "Tiêu đề đề" })).toBe(title);
+    expect(title).toHaveValue("Section 2 <raw>");
+    expect(description).toHaveValue("Mô tả authored");
+    expect(createTest).not.toHaveBeenCalled();
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Tạo bản nháp" })); });
+    expect(createTest).toHaveBeenCalledExactlyOnceWith({ title: "Section 2 <raw>", description: "Mô tả authored" });
+  });
+  it("translates section chrome while specialized range help and persisted fallback stay exact", () => {
+    const part = { id: "section", revision: 1, title: "Section 2", order_index: 1, question_groups: [], audio_start_seconds: null, audio_end_seconds: null } satisfies BuilderListeningPart;
+    const before = JSON.stringify(part);
+    renderWithLocale(<ListeningSectionEditor part={part} duration={null} currentPosition={() => 0} onPreview={vi.fn()} onPersisted={vi.fn()} />);
+    const input = screen.getByRole("textbox", { name: "Section title / internal label" });
+    const help = screen.getByText(/Optional for full Listening/).textContent;
+    fireEvent.click(screen.getByText("Switch to Vietnamese"));
+    expect(screen.getByRole("textbox", { name: "Tiêu đề phần / nhãn nội bộ" })).toBe(input);
+    expect(input).toHaveValue("Section 2");
+    expect(screen.getByText(/Optional for full Listening/).textContent).toBe(help);
+    expect(screen.getByRole("button", { name: "Preview section clip" })).toBeInTheDocument();
+    expect(JSON.stringify(part)).toBe(before);
+    const source = readFileSync("src/features/test-builder/listening-section-editor.tsx", "utf8");
+    expect(source).toContain('title: part.title ?? `Section ${part.order_index + 1}`');
+  });
   beforeEach(() => { window.localStorage.clear(); vi.clearAllMocks(); });
   it("translates Library empty state without refetching server data", async () => {
     vi.mocked(getTests).mockResolvedValue([]);

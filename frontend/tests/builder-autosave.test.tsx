@@ -3,6 +3,7 @@ import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BuilderAutosaveStatus, BuilderLifecycleProvider, useBuilderAutosave } from "@/features/test-builder/builder-lifecycle";
 import { ApiError } from "@/lib/api/client";
+import { renderWithLocale } from "./locale-test-utils";
 
 function Harness({ save }: { save: (value: string) => Promise<unknown> }) {
   const [value, setValue] = useState("initial");
@@ -54,6 +55,27 @@ function setup(save: (value: string) => Promise<unknown>) {
 }
 
 describe("Builder autosave", () => {
+  it("translates pending save status while preserving the controller drain and draft", async () => {
+    window.localStorage.clear();
+    let finish!: () => void;
+    const save = vi.fn(() => new Promise<void>((resolve) => { finish = resolve; }));
+    renderWithLocale(<BuilderLifecycleProvider><Harness save={save} /></BuilderLifecycleProvider>);
+    const input = screen.getByLabelText("Draft value");
+    fireEvent.change(input, { target: { value: "Section 2 <raw>" } });
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    expect(screen.getByRole("status")).toHaveTextContent("Saving…");
+    fireEvent.click(screen.getByText("Switch to Vietnamese"));
+    expect(screen.getByRole("status")).toHaveTextContent("Đang lưu…");
+    expect(screen.getByLabelText("Draft value")).toBe(input);
+    expect(input).toHaveValue("Section 2 <raw>");
+    expect(save).toHaveBeenCalledExactlyOnceWith("Section 2 <raw>");
+    await act(async () => { finish(); await Promise.resolve(); });
+    expect(screen.getByRole("status")).toHaveTextContent("Đã lưu");
+    fireEvent.click(screen.getByText("Switch to English"));
+    expect(screen.getByRole("status")).toHaveTextContent("Saved");
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    expect(save).toHaveBeenCalledOnce();
+  });
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 

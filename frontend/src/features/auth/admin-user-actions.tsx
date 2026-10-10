@@ -1,5 +1,9 @@
 "use client";
 
+import type { TranslationKey, TranslationParams } from "@/lib/i18n/types";
+
+import { useTranslation } from "@/lib/i18n/locale-provider";
+
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { updateAdminUser } from "@/lib/api/admin";
@@ -14,9 +18,11 @@ export function AdminUserActions({
   role: "USER" | "ADMIN";
   isActive: boolean;
 }) {
+  const { t } = useTranslation();
   const router = useRouter();
   const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | { message: TranslationKey; params?: TranslationParams } | null>(null);
+  const errorText = typeof error === "string" ? error : error ? t(error.message, error.params) : null;
 
   async function update(change: { role?: "USER" | "ADMIN"; is_active?: boolean }) {
     setPending(true);
@@ -25,19 +31,19 @@ export function AdminUserActions({
       await updateAdminUser(userId, change);
       router.refresh();
     } catch (caught) {
-      setError(caught instanceof ApiError ? caught.message : "The user could not be updated.");
+      setError(caught instanceof ApiError ? caught.message : { message: "admin.updateFailed" });
     } finally {
       setPending(false);
     }
   }
 
-  return <div className="admin-user-actions" aria-label="User administration">
+  return <div className="admin-user-actions" aria-label={t("admin.userAdministration")}>
     <button type="button" className="btn btn-secondary" disabled={pending} onClick={() => void update({ role: role === "ADMIN" ? "USER" : "ADMIN" })}>
-      {role === "ADMIN" ? "Demote to User" : "Promote to Admin"}
+      {role === "ADMIN" ? t("admin.demote") : t("admin.promote")}
     </button>
     <button type="button" className="btn btn-ghost" disabled={pending} onClick={() => void update({ is_active: !isActive })}>
-      {isActive ? "Deactivate account" : "Reactivate account"}
+      {isActive ? t("admin.deactivateAccount") : t("admin.reactivateAccount")}
     </button>
-    {error ? <p role="alert" className="notice">{error}</p> : null}
+    {error ? <p role="alert" className="notice">{errorText}</p> : null}
   </div>;
 }

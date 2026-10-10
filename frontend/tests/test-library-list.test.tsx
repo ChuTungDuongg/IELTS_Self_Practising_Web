@@ -4,6 +4,7 @@ import { TestLibraryList } from "@/features/test-builder/test-library-list";
 import { ApiError } from "@/lib/api/client";
 import type { TestSummary } from "@/lib/api/schema";
 import { cloneVersion, deleteTest, permanentlyDeleteTest, restoreTest } from "@/lib/api/tests";
+import { renderWithLocale } from "./locale-test-utils";
 
 const refresh = vi.fn();
 const push = vi.fn();
@@ -59,6 +60,23 @@ const archivedTest: TestSummary = {
 };
 
 describe("TestLibraryList", () => {
+  it("keeps search, authored content and open deletion focus while localizing chrome", () => {
+    window.localStorage.clear();
+    renderWithLocale(<TestLibraryList activeTests={[draftTest]} archivedTests={[]} />);
+    const input = screen.getByPlaceholderText("Search tests…");
+    fireEvent.change(input, { target: { value: "Fictional" } });
+    fireEvent.click(screen.getByRole("button", { name: "Delete Fictional draft" }));
+    const dialog = screen.getByRole("dialog");
+    const cancel = within(dialog).getByRole("button", { name: "Cancel" });
+    fireEvent.click(screen.getByText("Switch to Vietnamese"));
+    expect(screen.getByPlaceholderText("Tìm đề…")).toBe(input);
+    expect(input).toHaveValue("Fictional");
+    expect(screen.getByRole("dialog", { name: "Xóa “Fictional draft”?" })).toBe(dialog);
+    expect(cancel).toHaveFocus();
+    expect(screen.getByRole("heading", { name: "Fictional draft" })).toBeInTheDocument();
+    expect(deleteTest).not.toHaveBeenCalled();
+    expect(refresh).not.toHaveBeenCalled();
+  });
   beforeEach(() => {
     vi.clearAllMocks();
   });

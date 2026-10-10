@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@/lib/i18n/locale-provider";
+
 import { useRef, useState } from "react";
 import { formatAudioTime, parseAudioTime, type AudioClip } from "@/features/listening/audio-time";
 import { updateListeningPart, type BuilderListeningPart } from "@/lib/api/builder";
@@ -21,6 +23,7 @@ export function ListeningSectionEditor({ part, duration, currentPosition, onPrev
   onPreview: (clip: AudioClip) => void;
   onPersisted: (part: BuilderListeningPart) => void;
 }) {
+  const { t } = useTranslation();
   const [value, setValue] = useState(() => fields(part));
   const revision = useRef(part.revision);
   function validation(next: SectionFields): string | null {
@@ -52,7 +55,7 @@ export function ListeningSectionEditor({ part, duration, currentPosition, onPrev
   }
   const clip = { startSeconds: parseAudioTime(value.start) ?? 0, endSeconds: parseAudioTime(value.end) ?? 0 };
   return <div>
-    <label className="field-label mb-4 block">Section title / internal label<input className="field mt-2" value={value.title} onChange={(event) => change({ title: event.target.value })} /></label>
+    <label className="field-label mb-4 block">{t("builder.sectionTitle")}<input className="field mt-2" value={value.title} onChange={(event) => change({ title: event.target.value })} /></label>
     <div className="grid gap-4 sm:grid-cols-2">
       <label className="field-label">Audio start (MM:SS)<input className="field mt-2" placeholder="07:48" value={value.start} aria-describedby={`audio-range-${part.id}`} onChange={(event) => change({ start: event.target.value })} /></label>
       <label className="field-label">Audio end (MM:SS)<input className="field mt-2" placeholder="15:31" value={value.end} aria-describedby={`audio-range-${part.id}`} onChange={(event) => change({ end: event.target.value })} /></label>

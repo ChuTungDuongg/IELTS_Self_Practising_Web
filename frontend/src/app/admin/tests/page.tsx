@@ -1,3 +1,4 @@
+import { UiText } from "@/lib/i18n/locale-provider";
 import Link from "next/link";
 import { PlusIcon } from "@/components/ui/icons";
 import { PageHeading } from "@/components/ui/page-heading";
@@ -15,11 +16,11 @@ export default async function AdminTestsPage() {
   return (
     <>
       <PageHeading
-        eyebrow="Authoring workspace"
+        eyebrow={<UiText message="builder.workspace" />}
         eyebrowClassName="authoring-eyebrow"
-        title="Test Library"
-        description="Create, manage, and publish structured IELTS tests. Published versions stay frozen so every attempt remains historically accurate."
-        action={<Link href="/admin/tests/new" className="btn btn-primary"><PlusIcon className="size-4" /> New test</Link>}
+        title={<UiText message="builder.library" />}
+        description={<UiText message="builder.libraryDescription" />}
+        action={<Link href="/admin/tests/new" className="btn btn-primary"><PlusIcon className="size-4" /> <UiText message="builder.newTest" /></Link>}
       />
       <TestLibraryList activeTests={activeTests} archivedTests={archivedTests} />
     </>

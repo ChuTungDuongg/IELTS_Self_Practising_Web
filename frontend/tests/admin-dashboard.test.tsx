@@ -1,16 +1,19 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { renderWithLocale } from "./locale-test-utils";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import AdminDashboardPage from "@/app/admin/page";
 import { getAdminStats, getAdminUsers } from "@/lib/api/admin";
 import { serverApiRequest } from "@/lib/api/server-client";
+import { AdminGuard } from "@/features/auth/admin-guard";
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }));
+vi.mock("next/navigation", () => ({ usePathname: () => "/admin", useRouter: () => ({ push: vi.fn(), refresh: vi.fn(), replace: vi.fn() }) }));
 vi.mock("@/lib/api/admin", async (importOriginal) => ({
   ...await importOriginal<typeof import("@/lib/api/admin")>(),
   getAdminStats: vi.fn(),
   getAdminUsers: vi.fn(),
 }));
 vi.mock("@/lib/api/server-client", () => ({ serverApiRequest: vi.fn() }));
+vi.mock("@/features/auth/auth-provider", () => ({ useAuth: () => ({ user: { role: "USER" }, loading: false, sessionError: null }) }));
 
 const stats = {
   total_users: 5, active_users: 3, users_with_attempts: 2, total_attempts: 4,
@@ -19,10 +22,32 @@ const stats = {
 };
 
 describe("AdminDashboardPage", () => {
+  it("localizes the existing forbidden guard without exposing protected content", () => {
+    window.localStorage.clear();
+    renderWithLocale(<AdminGuard><p>Protected content</p></AdminGuard>);
+    expect(screen.getByRole("heading", { name: "Forbidden" })).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Switch to Vietnamese"));
+    expect(screen.getByRole("heading", { name: "Không có quyền truy cập" })).toBeInTheDocument();
+    expect(screen.queryByText("Protected content")).not.toBeInTheDocument();
+  });
   beforeEach(() => {
+    window.localStorage.clear();
     vi.clearAllMocks();
     vi.mocked(getAdminStats).mockResolvedValue(stats);
     vi.mocked(getAdminUsers).mockResolvedValue({ items: [], total: 0, offset: 0, limit: 50 });
+  });
+
+  it("localizes dashboard and search without refetching or replacing the search draft", async () => {
+    renderWithLocale(await AdminDashboardPage({ searchParams: Promise.resolve({ status: "deactivated", search: "Ada" }) }));
+    const input = screen.getByPlaceholderText("Search email or name");
+    fireEvent.change(input, { target: { value: "Ada <raw>" } });
+    fireEvent.click(screen.getByText("Switch to Vietnamese"));
+    expect(screen.getByRole("heading", { name: "Bảng điều khiển nền tảng" })).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Tìm email hoặc tên")).toBe(input);
+    expect(input).toHaveValue("Ada <raw>");
+    expect(screen.getByRole("tab", { name: "Người dùng đã vô hiệu hóa (2)" })).toHaveAttribute("aria-selected", "true");
+    expect(getAdminStats).toHaveBeenCalledOnce();
+    expect(getAdminUsers).toHaveBeenCalledOnce();
   });
 
   it("requests only deactivated users with the search term", async () => {

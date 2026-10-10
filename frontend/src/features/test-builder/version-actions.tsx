@@ -1,5 +1,9 @@
 "use client";
 
+import type { TranslationFunction, TranslationKey, TranslationParams } from "@/lib/i18n/types";
+
+import { useTranslation } from "@/lib/i18n/locale-provider";
+
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -15,11 +19,14 @@ type ValidationIssue = { path: string; message: string };
 type ValidationResult = { valid: boolean; errors: ValidationIssue[]; warnings: ValidationIssue[] };
 
 export function VersionActions({ testId, version }: { testId: string; version: BuilderVersion }) {
+  const { t } = useTranslation();
   const router = useRouter();
   const { beginDelete, deleting, mutating, transitioning, runTransition } = useBuilderLifecycle();
-  const [message, setMessage] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | { message: TranslationKey; params?: TranslationParams } | null>(null);
+  const messageText = typeof message === "string" ? message : message ? t(message.message, message.params) : null;
   const [validation, setValidation] = useState<ValidationResult | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | { message: TranslationKey; params?: TranslationParams } | null>(null);
+  const actionErrorText = typeof actionError === "string" ? actionError : actionError ? t(actionError.message, actionError.params) : null;
   const [pending, setPending] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const validationPanel = useRef<HTMLElement>(null);
@@ -45,10 +52,10 @@ export function VersionActions({ testId, version }: { testId: string; version: B
           }
           if (action === "publish") {
             await publishVersion(versionId);
-            setMessage("Version published and frozen.");
+            setMessage({ message: "builder.publishedFrozen" });
             router.refresh();
           } else {
-            setMessage("Validation complete.");
+            setMessage({ message: "builder.validationComplete" });
             focusValidationPanel();
           }
         } else {
@@ -58,11 +65,11 @@ export function VersionActions({ testId, version }: { testId: string; version: B
         }
       });
       if (!transition.ready) {
-        setActionError("Fix invalid draft fields or retry the failed save before continuing.");
+        setActionError({ message: "builder.fixDraft" });
         focusValidationPanel();
       }
     } catch (caught) {
-      setActionError(caught instanceof ApiError ? caught.message : "The action failed.");
+      setActionError(caught instanceof ApiError ? caught.message : { message: "builder.actionFailed" });
       focusValidationPanel();
     } finally {
       setPending(false);
@@ -79,7 +86,7 @@ export function VersionActions({ testId, version }: { testId: string; version: B
       router.push("/admin/tests");
       router.refresh();
     } catch (caught) {
-      setActionError(caught instanceof ApiError ? caught.message : "The draft could not be deleted.");
+      setActionError(caught instanceof ApiError ? caught.message : { message: "builder.deleteDraftFailed" });
       setPending(false);
       setConfirmingDelete(false);
       focusValidationPanel();
@@ -89,13 +96,13 @@ export function VersionActions({ testId, version }: { testId: string; version: B
   return (
     <>
       <div className="builder-toolbar">
-        <div><BuilderAutosaveStatus />{message ? <p role="status">{message}</p> : null}{pending || deleting ? <p role="status">Working…</p> : published ? <p>Published · frozen</p> : null}</div>
+        <div><BuilderAutosaveStatus />{message ? <p role="status">{messageText}</p> : null}{pending || deleting ? <p role="status">{t("common.working")}</p> : published ? <p>{t("builder.frozenStatus")}</p> : null}</div>
         <div className="flex flex-wrap items-center gap-2">
-          <button onClick={() => act("validate")} disabled={pending || deleting || mutating || transitioning} className="btn btn-secondary">Validate</button>
+          <button onClick={() => act("validate")} disabled={pending || deleting || mutating || transitioning} className="btn btn-secondary">{t("builder.validate")}</button>
           {published ? (
-            <button onClick={() => act("clone")} disabled={pending || deleting || mutating || transitioning} className="btn btn-primary">Edit</button>
+            <button onClick={() => act("clone")} disabled={pending || deleting || mutating || transitioning} className="btn btn-primary">{t("common.edit")}</button>
           ) : status === "DRAFT" ? (
-            <button onClick={() => act("publish")} disabled={pending || deleting || mutating || transitioning} className="btn btn-primary">Publish version</button>
+            <button onClick={() => act("publish")} disabled={pending || deleting || mutating || transitioning} className="btn btn-primary">{t("builder.publish")}</button>
           ) : null}
           {status === "DRAFT" ? (
             <button
@@ -104,7 +111,7 @@ export function VersionActions({ testId, version }: { testId: string; version: B
               disabled={pending || deleting || mutating || transitioning}
               className="btn btn-danger-ghost ml-2"
             >
-              Delete draft
+              {t("builder.deleteDraft")}
             </button>
           ) : null}
         </div>
@@ -120,22 +127,22 @@ export function VersionActions({ testId, version }: { testId: string; version: B
         >
           <div className="validation-result-heading">
             <div>
-              <p className="page-eyebrow">Publish validation</p>
+              <p className="page-eyebrow">{t("builder.publishValidation")}</p>
               <h2 id="validation-result-title">
-                {actionError ? "The action could not be completed" : validation?.errors.length ? "Cannot publish yet" : "Validation passed"}
+                {actionError ? t("builder.actionIncomplete") : validation?.errors.length ? t("builder.cannotPublish") : t("builder.valid")}
               </h2>
             </div>
-            {!actionError && validation?.valid ? <span className="validation-ready-badge">No blocking errors</span> : null}
+            {!actionError && validation?.valid ? <span className="validation-ready-badge">{t("builder.noBlocking")}</span> : null}
           </div>
 
-          {actionError ? <p className="validation-action-error">{actionError}</p> : null}
+          {actionError ? <p className="validation-action-error">{actionErrorText}</p> : null}
 
           {validation?.errors.length ? (
             <div className="validation-blocking-errors">
-              <h3>Blocking errors</h3>
+              <h3>{t("builder.blocking")}</h3>
               <div className="validation-issue-list">
                 {validation.errors.map((issue, index) => {
-                  const context = resolveValidationContext(issue.path, version);
+                  const context = resolveValidationContext(issue.path, version, t);
                   return (
                     <article className="validation-issue" key={`${issue.path}-${index}`}>
                       <p className="validation-issue-location">{context.location}</p>
@@ -151,19 +158,19 @@ export function VersionActions({ testId, version }: { testId: string; version: B
 
           {validation?.warnings.length ? (
             <div className="validation-recommendations">
-              <h3>IELTS readiness</h3>
+              <h3>{t("builder.readiness")}</h3>
               <ul>{validation.warnings.map((warning, index) => <li key={`${warning.path}-${index}`}>{warning.message}</li>)}</ul>
-              <p>These recommendations do not block publishing.</p>
+              <p>{t("builder.recommendations")}</p>
             </div>
-          ) : validation?.valid ? <p className="validation-clean">This version has no blocking validation errors or readiness warnings.</p> : null}
+          ) : validation?.valid ? <p className="validation-clean">{t("builder.clean")}</p> : null}
         </section>
       ) : null}
 
       <ConfirmDialog
         open={confirmingDelete}
-        title="Delete this draft?"
-        description="All unpublished edits in this draft version will be removed. Published versions and previous attempts will not be affected."
-        confirmLabel="Delete draft"
+        title={t("builder.deleteDraftTitle")}
+        description={t("builder.deleteDraftDescription")}
+        confirmLabel={t("builder.deleteDraft")}
         pending={pending || deleting}
         onCancel={() => setConfirmingDelete(false)}
         onConfirm={() => void removeDraft()}
@@ -172,7 +179,7 @@ export function VersionActions({ testId, version }: { testId: string; version: B
   );
 }
 
-function resolveValidationContext(path: string, version: BuilderVersion): { location: string; subject?: string } {
+function resolveValidationContext(path: string, version: BuilderVersion, t: TranslationFunction): { location: string; subject?: string } {
   const [moduleName] = path.split(".");
   const builderModule = version.modules.find((item) => item.module_type.toLowerCase() === moduleName);
   if (!builderModule) return { location: humanizePath(path) };
@@ -187,12 +194,12 @@ function resolveValidationContext(path: string, version: BuilderVersion): { loca
       ?? passage.question_groups.find((item) => questionNumbers(item).includes(questionNumber));
     if (group) {
       return {
-        location: `Reading Passage ${passageIndex + 1} · ${passage.title}`,
+        location: `${t("builder.readingPassage", { number: passageIndex + 1 })} · ${passage.title}`,
         subject: `${questionRegistry[group.question_type].label} · ${groupQuestionRange(group)}`,
       };
     }
     if (passage.id === passageId) {
-      return { location: `Reading Passage ${passageIndex + 1} · ${passage.title}`, subject: "Passage content" };
+      return { location: `${t("builder.readingPassage", { number: passageIndex + 1 })} · ${passage.title}`, subject: t("builder.passageContent") };
     }
   }
 
@@ -200,13 +207,13 @@ function resolveValidationContext(path: string, version: BuilderVersion): { loca
     const group = part.question_groups.find((item) => item.id === groupId)
       ?? part.question_groups.find((item) => questionNumbers(item).includes(questionNumber));
     if (group) return {
-      location: `Listening Section ${partIndex + 1} · ${part.title}`,
+      location: `${t("builder.listeningSection", { number: partIndex + 1 })} · ${part.title}`,
       subject: `${questionRegistry[group.question_type].label} · ${groupQuestionRange(group)}`,
     };
   }
 
-  if (moduleName === "reading") return { location: "Reading module", subject: humanizePath(path) };
-  if (moduleName === "listening") return { location: "Listening module", subject: humanizePath(path) };
+  if (moduleName === "reading") return { location: t("builder.moduleReading"), subject: humanizePath(path) };
+  if (moduleName === "listening") return { location: t("builder.moduleListening"), subject: humanizePath(path) };
   return { location: humanizePath(path) };
 }
 

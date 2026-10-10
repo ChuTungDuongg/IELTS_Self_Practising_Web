@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@/lib/i18n/locale-provider";
+
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { CheckIcon } from "@/components/ui/icons";
 import { ApiError } from "@/lib/api/client";
@@ -316,7 +318,8 @@ export function useBuilderAutosave<T, Saved = unknown>({ resourceKey, value, sav
 }
 
 export function BuilderAutosaveStatus() {
+  const { t } = useTranslation();
   const { autosaveState, flushAutosaves } = useBuilderLifecycle();
-  const labels: Record<AutosaveState, string> = { SAVED: "Saved", DIRTY: "Unsaved changes", SAVING: "Saving…", ERROR: "Save failed", INVALID: "Unsaved — fix validation issues", CONFLICT: "This content changed in another tab or by another admin. Reload the latest version before continuing." };
-  return <div className="save-status" role="status" aria-live="polite"><span className={autosaveState === "ERROR" || autosaveState === "INVALID" || autosaveState === "CONFLICT" ? "save-status-error" : ""}><CheckIcon className="size-4" /> {labels[autosaveState]}</span>{autosaveState === "ERROR" || autosaveState === "DIRTY" ? <button type="button" className="btn btn-ghost" onClick={() => void flushAutosaves()}>{autosaveState === "ERROR" ? "Retry" : "Save now"}</button> : null}{autosaveState === "CONFLICT" ? <button type="button" className="btn btn-ghost" onClick={() => window.location.reload()}>Reload latest</button> : null}</div>;
+  const labels: Record<AutosaveState, string> = { SAVED: t("common.saved"), DIRTY: t("builder.unsaved"), SAVING: t("common.saving"), ERROR: t("builder.saveFailed"), INVALID: t("builder.invalid"), CONFLICT: t("builder.conflict") };
+  return <div className="save-status" role="status" aria-live="polite"><span className={autosaveState === "ERROR" || autosaveState === "INVALID" || autosaveState === "CONFLICT" ? "save-status-error" : ""}><CheckIcon className="size-4" /> {labels[autosaveState]}</span>{autosaveState === "ERROR" || autosaveState === "DIRTY" ? <button type="button" className="btn btn-ghost" onClick={() => void flushAutosaves()}>{autosaveState === "ERROR" ? t("common.retry") : t("builder.saveNow")}</button> : null}{autosaveState === "CONFLICT" ? <button type="button" className="btn btn-ghost" onClick={() => window.location.reload()}>{t("builder.reload")}</button> : null}</div>;
 }

@@ -1,5 +1,9 @@
 "use client";
 
+import type { TranslationKey, TranslationParams } from "@/lib/i18n/types";
+
+import { useTranslation } from "@/lib/i18n/locale-provider";
+
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ApiError } from "@/lib/api/client";
@@ -14,9 +18,11 @@ export function ModuleDurationEditor({ module, onPersisted }: {
   module: BuilderModule;
   onPersisted?: (saved: BuilderModule) => void;
 }) {
+  const { t } = useTranslation();
   const router = useRouter();
   const [value, setValue] = useState(() => minutes(module.recommended_duration_seconds));
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | { message: TranslationKey; params?: TranslationParams } | null>(null);
+  const errorText = typeof error === "string" ? error : error ? t(error.message, error.params) : null;
   const revision = useRef(module.revision);
   useEffect(() => {
     if (module.revision > revision.current) revision.current = module.revision;
@@ -36,7 +42,7 @@ export function ModuleDurationEditor({ module, onPersisted }: {
         setError(null);
         return saved;
       } catch (reason) {
-        setError(reason instanceof ApiError ? reason.message : "Recommended duration could not be saved.");
+        setError(reason instanceof ApiError ? reason.message : { message: "builder.durationFailed" });
         throw reason;
       }
     },
@@ -52,11 +58,11 @@ export function ModuleDurationEditor({ module, onPersisted }: {
   });
 
   return <div className="mt-5">
-    <label className="field-label" htmlFor={`module-duration-${module.id}`}>Recommended duration</label>
+    <label className="field-label" htmlFor={`module-duration-${module.id}`}>{t("builder.duration")}</label>
     <div className="mt-2 flex items-center gap-2">
       <input
         id={`module-duration-${module.id}`}
-        aria-label="Recommended duration in minutes"
+        aria-label={t("builder.durationMinutes")}
         className="field w-24"
         type="number"
         min="1"
@@ -70,8 +76,8 @@ export function ModuleDurationEditor({ module, onPersisted }: {
           stageValue(next, number === null || (Number.isInteger(number) && number >= 1 && number <= 240));
         }}
       />
-      <span>minutes</span>
+      <span>{t("builder.minutes")}</span>
     </div>
-    {error ? <p role="alert" className="notice notice-error mt-2">{error}</p> : null}
+    {error ? <p role="alert" className="notice notice-error mt-2">{errorText}</p> : null}
   </div>;
 }

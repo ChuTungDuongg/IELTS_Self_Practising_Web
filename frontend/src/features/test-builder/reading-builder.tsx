@@ -1,5 +1,9 @@
 "use client";
 
+import { useTranslation } from "@/lib/i18n/locale-provider";
+
+import type { TranslationKey, TranslationParams } from "@/lib/i18n/types";
+
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertIcon, PlusIcon, ReadingIcon } from "@/components/ui/icons";
@@ -31,6 +35,7 @@ import { AutosaveLink } from "./autosave-link";
 import { ModuleDurationEditor } from "./module-duration-editor";
 
 export function ReadingBuilder({ version }: { version: BuilderVersion }) {
+  const { t } = useTranslation();
   const router = useRouter();
   const { deleting, transitioning, flushAutosaves, runMutation } = useBuilderLifecycle();
   const sourceReading = version.modules.find((item) => item.module_type === "READING");
@@ -62,7 +67,8 @@ export function ReadingBuilder({ version }: { version: BuilderVersion }) {
   useEffect(() => { if (serverModuleRevision) moduleRevision.current = serverModuleRevision; }, [serverModuleRevision]);
   const [editingPassage, setEditingPassage] = useState<BuilderPassage | "new" | null>(null);
   const [editingGroup, setEditingGroup] = useState<{ passageId: string; group: QuestionGroupModel } | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | { message: TranslationKey; params?: TranslationParams } | null>(null);
+  const messageText = typeof message === "string" ? message : message ? t(message.message, message.params) : null;
   const [conflict, setConflict] = useState(false);
   const [confirmingModuleDelete, setConfirmingModuleDelete] = useState(false);
   const nextNumber = useMemo(() => Math.max(0, ...(reading?.passages.flatMap((passage) => passage.question_groups.flatMap(questionNumbers)) ?? [])) + 1, [reading]);
@@ -97,7 +103,7 @@ export function ReadingBuilder({ version }: { version: BuilderVersion }) {
     setMessage(null);
     try {
       if (!(await flushAutosaves(excludeAutosaveKey))) {
-        setMessage("Resolve unsaved draft changes before continuing.");
+        setMessage({ message: "builder.resolveUnsaved" });
         return;
       }
       await runMutation(action);
@@ -106,13 +112,13 @@ export function ReadingBuilder({ version }: { version: BuilderVersion }) {
       router.refresh();
     } catch (error) {
       if (error instanceof ApiError && error.code === "DRAFT_REVISION_CONFLICT") setConflict(true);
-      setMessage(error instanceof ApiError ? error.message : "The builder change could not be saved.");
+      setMessage(error instanceof ApiError ? error.message : { message: "builder.readingChangeFailed" });
     }
   }
 
   async function editPassage(passage: BuilderPassage | "new") {
     if (!(await flushAutosaves())) {
-      setMessage("Resolve unsaved draft changes before switching editors.");
+      setMessage({ message: "builder.resolveEditors" });
       return;
     }
     setEditingPassage(passage);
@@ -120,7 +126,7 @@ export function ReadingBuilder({ version }: { version: BuilderVersion }) {
 
   async function editGroup(passageId: string, group: QuestionGroupModel) {
     if (!(await flushAutosaves())) {
-      setMessage("Resolve unsaved draft changes before switching groups.");
+      setMessage({ message: "builder.resolveGroups" });
       return;
     }
     setEditingGroup({ passageId, group });
@@ -131,10 +137,10 @@ export function ReadingBuilder({ version }: { version: BuilderVersion }) {
       <fieldset disabled={deleting || transitioning} className="contents">
         <section aria-busy={deleting} className="reading-empty">
           <div className="empty-state-icon"><ReadingIcon className="size-6" /></div>
-          <h2>Build the Reading module</h2>
-          <p>Create the module before adding passages, structured question groups, and inline answer keys.</p>
-          <button onClick={() => run(() => createReadingModule(version.id))} className="btn btn-primary mt-5"><PlusIcon className="size-4" /> Create Reading module</button>
-          {message ? <p role="alert" className="notice notice-error mt-4">{message}</p> : null}
+          <h2>{t("builder.buildReading")}</h2>
+          <p>{t("builder.readingCreateHelp")}</p>
+          <button onClick={() => run(() => createReadingModule(version.id))} className="btn btn-primary mt-5"><PlusIcon className="size-4" /> {t("builder.createReading")}</button>
+          {message ? <p role="alert" className="notice notice-error mt-4">{messageText}</p> : null}
         </section>
       </fieldset>
     );
@@ -145,17 +151,17 @@ export function ReadingBuilder({ version }: { version: BuilderVersion }) {
       <section aria-busy={deleting} className="reading-builder">
         <div className="section-header reading-builder-header">
           <div>
-            <p className="page-eyebrow">Reading module</p>
-            <h2>Reading Builder</h2>
-            <p>Build passage blocks, arrange question groups, and keep answer keys next to each question.</p>
+            <p className="page-eyebrow">{t("builder.moduleReading")}</p>
+            <h2>{t("builder.editorReading")}</h2>
+            <p>{t("builder.readingHelp")}</p>
           </div>
-          <div className="flex flex-wrap gap-2"><AutosaveLink href={builderPreviewPath(version.test_id, version.id, "reading")} className="btn btn-secondary">Preview Reading</AutosaveLink><button onClick={() => void editPassage("new")} className="btn btn-primary"><PlusIcon className="size-4" /> Add passage</button><button onClick={() => setConfirmingModuleDelete(true)} className="btn btn-danger-ghost">Delete module</button></div>
+          <div className="flex flex-wrap gap-2"><AutosaveLink href={builderPreviewPath(version.test_id, version.id, "reading")} className="btn btn-secondary">{t("builder.previewReading")}</AutosaveLink><button onClick={() => void editPassage("new")} className="btn btn-primary"><PlusIcon className="size-4" /> {t("builder.addPassage")}</button><button onClick={() => setConfirmingModuleDelete(true)} className="btn btn-danger-ghost">{t("builder.deleteModule")}</button></div>
         </div>
 
         <ModuleDurationEditor module={reading} onPersisted={(saved) => { moduleRevision.current = saved.revision; setSavedModule(saved); }} />
         {duplicateQuestionNumbers.length ? <p role="alert" className="notice notice-error mt-4"><AlertIcon className="mt-0.5 size-4 shrink-0" /> Duplicate displayed question numbers: {duplicateQuestionNumbers.join(", ")}. Renumber before publishing.</p> : null}
-        {message ? <p role="alert" className="notice notice-error mt-4"><AlertIcon className="mt-0.5 size-4 shrink-0" /> {message}</p> : null}
-        {conflict ? <button type="button" className="btn btn-secondary mt-2" onClick={() => window.location.reload()}>Reload latest</button> : null}
+        {message ? <p role="alert" className="notice notice-error mt-4"><AlertIcon className="mt-0.5 size-4 shrink-0" /> {messageText}</p> : null}
+        {conflict ? <button type="button" className="btn btn-secondary mt-2" onClick={() => window.location.reload()}>{t("builder.reload")}</button> : null}
 
         {editingPassage ? (
           <PassageEditor
@@ -175,16 +181,16 @@ export function ReadingBuilder({ version }: { version: BuilderVersion }) {
               <div className="passage-card-header">
                 <div className="passage-number" aria-hidden="true">{passage.order_index + 1}</div>
                 <div className="min-w-0 flex-1">
-                  <p className="passage-kicker">Reading passage {passage.order_index + 1}</p>
+                  <p className="passage-kicker">{t("common.passageNumber", { number: passage.order_index + 1 })}</p>
                   <h3>{passage.title}</h3>
                   <div className="passage-meta">
-                    <span>{passage.blocks.filter((block) => block.type === "paragraph").length} paragraphs</span>
-                    <span>{passage.question_groups.length} question groups</span>
+                    <span>{t("builder.paragraphCount", { count: passage.blocks.filter((block) => block.type === "paragraph").length })}</span>
+                    <span>{t("builder.groupCount", { count: passage.question_groups.length })}</span>
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <button onClick={() => void editPassage(passage)} className="btn btn-secondary">Edit passage</button>
-                  <button onClick={() => run(() => deletePassage(passage.id))} className="btn btn-danger-ghost">Delete</button>
+                  <button onClick={() => void editPassage(passage)} className="btn btn-secondary">{t("builder.editPassage")}</button>
+                  <button onClick={() => run(() => deletePassage(passage.id))} className="btn btn-danger-ghost">{t("common.delete")}</button>
                 </div>
               </div>
 
@@ -200,15 +206,16 @@ export function ReadingBuilder({ version }: { version: BuilderVersion }) {
               </div>
             </article>
           ))}
-          {!reading.passages.length ? <div className="reading-inline-empty"><p>No passages yet.</p><span>Add a passage to begin authoring Reading content.</span></div> : null}
+          {!reading.passages.length ? <div className="reading-inline-empty"><p>{t("builder.noPassages")}</p><span>{t("builder.addPassageHelp")}</span></div> : null}
         </div>
       </section>
-      <ConfirmDialog open={confirmingModuleDelete} title="Delete Reading module?" description="All Reading passages and questions in this draft will be removed." confirmLabel="Delete Reading module" pending={deleting} onCancel={() => setConfirmingModuleDelete(false)} onConfirm={() => void run(() => deleteModule(reading.id))} />
+      <ConfirmDialog open={confirmingModuleDelete} title={t("builder.deleteReadingTitle")} description={t("builder.deleteReadingDescription")} confirmLabel={t("builder.deleteReading")} pending={deleting} onCancel={() => setConfirmingModuleDelete(false)} onConfirm={() => void run(() => deleteModule(reading.id))} />
     </fieldset>
   );
 }
 
 function PassageEditor({ passage, orderIndex, onSave, onAutosave, onPersisted, onCancel }: { passage?: BuilderPassage; orderIndex: number; onSave: (body: { title: string; order_index: number; blocks: TextBlock[] }) => Promise<void>; onAutosave?: (body: { expected_revision: number; title: string; order_index: number; blocks: TextBlock[] }) => Promise<BuilderPassage>; onPersisted?: (passage: BuilderPassage) => void; onCancel: () => void }) {
+  const { t } = useTranslation();
   const [title, setTitle] = useState(passage?.title ?? "New reading passage");
   const [blocks, setBlocks] = useState<TextBlock[]>(passage?.blocks ?? [{ id: crypto.randomUUID(), type: "paragraph", label: "A", text: "Passage paragraph" }]);
   const [deletedReferences, setDeletedReferences] = useState<number[]>([]);
@@ -286,31 +293,33 @@ function PassageEditor({ passage, orderIndex, onSave, onAutosave, onPersisted, o
           <button type="button" onClick={() => setBlocks([...blocks, { id: crypto.randomUUID(), type: "paragraph", label: nextParagraphLabel(blocks), text: "New paragraph" }])} className="btn btn-secondary"><PlusIcon className="size-4" /> Add paragraph</button>
           <button type="button" onClick={() => setBlocks([...blocks, { id: crypto.randomUUID(), type: "heading", label: null, text: "New subheading" }])} className="btn btn-secondary"><PlusIcon className="size-4" /> Add subheading</button>
         </div>
-        <div className="flex gap-2"><button type="button" onClick={() => { if (passage) void saveNow().then((saved) => { if (saved) onCancel(); }); else onCancel(); }} className="btn btn-ghost">{passage ? "Close" : "Cancel"}</button><button type="button" disabled={invalid || pending} onClick={async () => { setPending(true); try { if (passage) await saveNow(); else { await onSave(payload); markSaved(); } } finally { setPending(false); } }} className="btn btn-primary">{pending ? "Saving…" : passage ? "Save now" : "Create passage"}</button></div>
+        <div className="flex gap-2"><button type="button" onClick={() => { if (passage) void saveNow().then((saved) => { if (saved) onCancel(); }); else onCancel(); }} className="btn btn-ghost">{passage ? t("common.close") : t("common.cancel")}</button><button type="button" disabled={invalid || pending} onClick={async () => { setPending(true); try { if (passage) await saveNow(); else { await onSave(payload); markSaved(); } } finally { setPending(false); } }} className="btn btn-primary">{pending ? t("common.saving") : passage ? t("builder.saveNow") : t("builder.createPassage")}</button></div>
       </div>
     </fieldset>
   );
 }
 
 function GroupSummary({ group, passageNumber, onMove, onEdit, onDelete }: { group: BuilderQuestionGroup; passageNumber: number; onMove: (offset: number) => void; onEdit: () => void; onDelete: () => void }) {
+  const { t } = useTranslation();
   const range = groupQuestionRange(group);
   return (
     <div className="question-group-card">
       <span className="question-range">{range}</span>
       <div className="min-w-0 flex-1"><p>{questionRegistry[group.question_type].label}</p><span>{groupQuestionCount(group)} question{groupQuestionCount(group) === 1 ? "" : "s"} · {resolveQuestionGroupInstruction(group, { passageNumber }).intro}</span></div>
-      <div className="group-actions"><button type="button" onClick={() => onMove(-1)} aria-label="Move question group up" className="icon-button">↑</button><button type="button" onClick={() => onMove(1)} aria-label="Move question group down" className="icon-button">↓</button><button onClick={onEdit} className="btn btn-secondary">Edit / Preview</button><button onClick={onDelete} className="btn btn-danger-ghost">Delete</button></div>
+      <div className="group-actions"><button type="button" onClick={() => onMove(-1)} aria-label="Move question group up" className="icon-button">↑</button><button type="button" onClick={() => onMove(1)} aria-label="Move question group down" className="icon-button">↓</button><button onClick={onEdit} className="btn btn-secondary">{t("builder.editPreview")}</button><button onClick={onDelete} className="btn btn-danger-ghost">{t("common.delete")}</button></div>
     </div>
   );
 }
 
 function NewGroupButton({ nextNumber, orderIndex, passageBlocks, onCreate }: { nextNumber: number; orderIndex: number; passageBlocks: TextBlock[]; onCreate: (group: QuestionGroupModel) => void }) {
+  const { t } = useTranslation();
   const [type, setType] = useState<QuestionType>("multiple_choice");
   function create() {
     const group = { ...questionRegistry[type].createDefault(nextNumber, { moduleType: "READING" }), order_index: orderIndex };
     if (type === "matching_headings") group.questions[0].config = { target_block_id: passageBlocks.find((block) => block.type === "paragraph")?.id ?? "" };
     onCreate(group);
   }
-  return <div className="new-group-row"><label className="field-label flex-1">Question type<select value={type} onChange={(event) => setType(event.target.value as QuestionType)} className="select-field">{readingQuestionTypeOptions.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label><button onClick={create} className="btn btn-secondary"><PlusIcon className="size-4" /> Add question group</button></div>;
+  return <div className="new-group-row"><label className="field-label flex-1">Question type<select value={type} onChange={(event) => setType(event.target.value as QuestionType)} className="select-field">{readingQuestionTypeOptions.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label><button onClick={create} className="btn btn-secondary"><PlusIcon className="size-4" /> {t("builder.addGroup")}</button></div>;
 }
 
 function duplicateValues(values: string[]): string[] {

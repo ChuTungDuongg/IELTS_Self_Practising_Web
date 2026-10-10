@@ -7,6 +7,7 @@ import { TransferPortal } from "@/features/transfer/transfer-portal";
 import { exportTests, importTests } from "@/lib/api/transfer";
 import { getTests } from "@/lib/api/tests";
 import { getCurrentUser } from "@/lib/api/auth";
+import { renderWithLocale } from "./locale-test-utils";
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/transfer",
@@ -30,6 +31,7 @@ const options = [{ id: testId, title: "Fictional portable test", latestVersion: 
 
 describe("Test transfer portal", () => {
   beforeEach(() => {
+    window.localStorage.clear();
     vi.clearAllMocks();
     vi.mocked(getCurrentUser).mockResolvedValue({
       id: testId,
@@ -43,6 +45,33 @@ describe("Test transfer portal", () => {
     });
     vi.stubGlobal("URL", { createObjectURL: vi.fn(() => "blob:test"), revokeObjectURL: vi.fn() });
     vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+  });
+
+  it("retains the selected File and test IDs across locale switches and pending import", async () => {
+    let finish!: (result: Awaited<ReturnType<typeof importTests>>) => void;
+    vi.mocked(importTests).mockReturnValue(new Promise((resolve) => { finish = resolve; }));
+    renderWithLocale(<TransferPortal tests={options} />);
+    const selected = screen.getByLabelText("Select Fictional portable test");
+    fireEvent.click(selected);
+    const picker = screen.getByLabelText("Test package ZIP");
+    const file = new File(["zip"], "Đề <raw>.zip", { type: "application/zip" });
+    fireEvent.change(picker, { target: { files: [file] } });
+    fireEvent.click(screen.getByText("Switch to Vietnamese"));
+    expect(screen.getByLabelText("Gói đề ZIP")).toBe(picker);
+    expect((picker as HTMLInputElement).files?.[0]).toBe(file);
+    expect(selected).toBeChecked();
+    expect(screen.getByText("Đã chọn: Đề <raw>.zip")).toBeInTheDocument();
+    expect(importTests).not.toHaveBeenCalled();
+    expect(exportTests).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Nhập" }));
+    fireEvent.click(screen.getByText("Switch to English"));
+    expect(screen.getByRole("button", { name: "Importing…" })).toBeDisabled();
+    expect(importTests).toHaveBeenCalledExactlyOnceWith(file);
+    finish({ imported_tests: [], version_count: 0, asset_count: 0 });
+    await screen.findByText("Imported 0 tests");
+    vi.mocked(exportTests).mockResolvedValue({ blob: new Blob(["zip"]), filename: "raw.zip" });
+    fireEvent.click(screen.getByRole("button", { name: "Export selected" }));
+    await waitFor(() => expect(exportTests).toHaveBeenCalledExactlyOnceWith([testId]));
   });
 
   it("adds Transfer to authenticated ADMIN navigation", async () => {

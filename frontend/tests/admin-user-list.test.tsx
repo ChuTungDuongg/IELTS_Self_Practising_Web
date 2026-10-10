@@ -4,6 +4,7 @@ import { AdminUserList } from "@/features/auth/admin-user-list";
 import { deleteAdminUser, updateAdminUser } from "@/lib/api/admin";
 import type { AdminStats, AdminUserList as AdminUserListData } from "@/lib/api/admin";
 import { ApiError } from "@/lib/api/client";
+import { renderWithLocale } from "./locale-test-utils";
 
 const refresh = vi.fn();
 const push = vi.fn();
@@ -33,6 +34,23 @@ const stats: AdminStats = {
 const inactiveUsers: AdminUserListData = { items: [user], total: 1, offset: 0, limit: 50 };
 
 describe("AdminUserList", () => {
+  it("localizes role and pending dialog while keeping raw names, emails and diagnostics", async () => {
+    window.localStorage.clear();
+    vi.mocked(deleteAdminUser).mockRejectedValue(new ApiError("RAW", "Diagnostic <raw>", 409));
+    renderWithLocale(<AdminUserList users={inactiveUsers} status="deactivated" search="Ada" stats={stats} />);
+    fireEvent.click(screen.getByRole("button", { name: "Delete permanently Ada Student" }));
+    const dialog = screen.getByRole("dialog");
+    fireEvent.click(screen.getByText("Switch to Vietnamese"));
+    expect(screen.getByRole("dialog", { name: "Xóa vĩnh viễn “Ada Student”?" })).toBe(dialog);
+    expect(screen.getByText("ada@example.com")).toBeInTheDocument();
+    expect(within(screen.getByRole("link", { name: "Ada Student" }).closest(".admin-user-row") as HTMLElement).getByText("Người dùng")).toBeInTheDocument();
+    expect(push).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Xóa vĩnh viễn" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Diagnostic <raw>");
+    fireEvent.click(screen.getByText("Switch to English"));
+    expect(screen.getByRole("alert")).toHaveTextContent("Diagnostic <raw>");
+    expect(deleteAdminUser).toHaveBeenCalledExactlyOnceWith(user.id);
+  });
   beforeEach(() => vi.clearAllMocks());
 
   it("navigates between server-filtered statuses while preserving the search term", () => {
@@ -123,7 +141,7 @@ describe("AdminUserList", () => {
 
     expect(screen.getByRole("link", { name: "Ada Student" }).closest(".admin-user-row"))
       .toHaveClass("admin-user-row-inactive");
-    expect(screen.getByText("DEACTIVATED")).toHaveClass("status-badge");
+    expect(screen.getByText("Deactivated")).toHaveClass("status-badge");
   });
 
   it("keeps the user and shows the backend error if permanent deletion fails", async () => {

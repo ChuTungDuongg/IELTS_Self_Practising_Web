@@ -3,6 +3,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { BuilderLifecycleProvider } from "@/features/test-builder/builder-lifecycle";
 import { ModuleDurationEditor } from "@/features/test-builder/module-duration-editor";
 import { updateModuleDuration, type BuilderModule } from "@/lib/api/builder";
+import { renderWithLocale } from "./locale-test-utils";
 
 const refresh = vi.fn();
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh }) }));
@@ -26,6 +27,21 @@ const moduleRecord: BuilderModule = {
 afterEach(() => {
   vi.useRealTimers();
   vi.clearAllMocks();
+});
+
+it("keeps duration draft and autosave payload when changing locale", async () => {
+  window.localStorage.clear();
+  vi.useFakeTimers();
+  vi.mocked(updateModuleDuration).mockResolvedValue({ ...moduleRecord, revision: 2, recommended_duration_seconds: 3300 });
+  renderWithLocale(<BuilderLifecycleProvider><ModuleDurationEditor module={moduleRecord} /></BuilderLifecycleProvider>);
+  const input = screen.getByRole("spinbutton", { name: "Recommended duration in minutes" });
+  fireEvent.change(input, { target: { value: "55" } });
+  fireEvent.click(screen.getByText("Switch to Vietnamese"));
+  expect(screen.getByRole("spinbutton", { name: "Thời lượng đề xuất tính bằng phút" })).toBe(input);
+  expect(input).toHaveValue(55);
+  expect(updateModuleDuration).not.toHaveBeenCalled();
+  await act(async () => { await vi.advanceTimersByTimeAsync(350); });
+  expect(updateModuleDuration).toHaveBeenCalledExactlyOnceWith(moduleRecord.id, 1, 3300);
 });
 
 it("saves a changed module duration in seconds and updates without a reload", async () => {

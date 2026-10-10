@@ -5,6 +5,7 @@ import { getBuilderVersion } from "@/lib/api/builder";
 import { ApiError } from "@/lib/api/client";
 import { getTest, updateTest } from "@/lib/api/tests";
 import { builderEditPath } from "@/lib/routes";
+import { renderWithLocale } from "./locale-test-utils";
 
 const navigation = vi.hoisted(() => ({
   notFound: vi.fn(() => { throw new Error("NEXT_NOT_FOUND"); }),
@@ -25,6 +26,27 @@ const testId = "11111111-1111-4111-8111-111111111111";
 const versionId = "22222222-2222-4222-8222-222222222222";
 
 describe("Builder workspace page", () => {
+  it("preserves metadata drafts, selected workspace and server fetch identity in Vietnamese", async () => {
+    window.localStorage.clear();
+    vi.mocked(getBuilderVersion).mockResolvedValue({ id: versionId, test_id: testId, test_title: "Section 2", test_description: "Đề <raw>", version_number: 1, status: "DRAFT", modules: [] });
+    renderWithLocale(await VersionEditorPage({ params: Promise.resolve({ testId, versionId }), searchParams: Promise.resolve({ workspace: "listening" }) }));
+    fireEvent.click(screen.getByRole("button", { name: "Edit test details" }));
+    const input = screen.getByRole("textbox", { name: "Test name" });
+    const description = screen.getByRole("textbox", { name: "Description" });
+    fireEvent.change(input, { target: { value: "Section 2 edited" } });
+    fireEvent.change(description, { target: { value: "Đề <raw> edited" } });
+    const selected = screen.getByRole("link", { name: /ListeningNot created/ });
+    fireEvent.click(screen.getByText("Switch to Vietnamese"));
+    expect(screen.getByRole("textbox", { name: "Tên đề" })).toBe(input);
+    expect(input).toHaveValue("Section 2 edited");
+    expect(description).toHaveValue("Đề <raw> edited");
+    expect(screen.getByRole("heading", { name: "Section 2" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Tạo mô-đun Nghe" })).toBeInTheDocument();
+    expect(selected).toHaveAttribute("aria-current", "page");
+    expect(getBuilderVersion).toHaveBeenCalledOnce();
+    expect(updateTest).not.toHaveBeenCalled();
+    expect(navigation.refresh).not.toHaveBeenCalled();
+  });
   beforeEach(() => vi.clearAllMocks());
 
   it("opens the real Listening workspace without a module or audio", async () => {

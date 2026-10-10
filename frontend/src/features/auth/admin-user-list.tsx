@@ -1,5 +1,9 @@
 "use client";
 
+import type { TranslationKey, TranslationParams } from "@/lib/i18n/types";
+
+import { useTranslation } from "@/lib/i18n/locale-provider";
+
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
@@ -20,6 +24,7 @@ export function AdminUserList({ users, status, search, stats }: {
   search: string;
   stats: AdminStats | null;
 }) {
+  const { t } = useTranslation();
   const router = useRouter();
   const [items, setItems] = useState(users.items);
   const [resultTotal, setResultTotal] = useState(users.total);
@@ -30,8 +35,10 @@ export function AdminUserList({ users, status, search, stats }: {
   const [pendingId, setPendingId] = useState<string | null>(null);
   const pendingRef = useRef(false);
   const [deleteTarget, setDeleteTarget] = useState<AdminUser | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
+  const [error, setError] = useState<string | { message: TranslationKey; params?: TranslationParams } | null>(null);
+  const errorText = typeof error === "string" ? error : error ? t(error.message, error.params) : null;
+  const [success, setSuccess] = useState<string | { message: TranslationKey; params?: TranslationParams } | null>(null);
+  const successText = typeof success === "string" ? success : success ? t(success.message, success.params) : null;
   const [serverSnapshot, setServerSnapshot] = useState({ users, stats, status });
   if (serverSnapshot.users !== users || serverSnapshot.stats !== stats || serverSnapshot.status !== status) {
     setServerSnapshot({ users, stats, status });
@@ -71,10 +78,10 @@ export function AdminUserList({ users, status, search, stats }: {
         active: current.active === null ? null : current.active + (isActive ? 1 : -1),
         deactivated: current.deactivated === null ? null : current.deactivated + (isActive ? -1 : 1),
       }));
-      setSuccess(`${isActive ? "Reactivated" : "Deactivated"} ${target.display_name}.`);
+      setSuccess({ message: isActive ? "admin.reactivatedNamed" : "admin.deactivatedNamed", params: { name: target.display_name } });
       router.refresh();
     } catch (caught) {
-      setError(caught instanceof ApiError ? caught.message : "The user could not be updated.");
+      setError(caught instanceof ApiError ? caught.message : { message: "admin.updateFailed" });
     } finally {
       pendingRef.current = false;
       setPendingId(null);
@@ -97,10 +104,10 @@ export function AdminUserList({ users, status, search, stats }: {
         deactivated: current.deactivated === null ? null : current.deactivated - 1,
       }));
       setDeleteTarget(null);
-      setSuccess(`Permanently deleted ${target.display_name}.`);
+      setSuccess({ message: "admin.deletedNamed", params: { name: target.display_name } });
       router.refresh();
     } catch (caught) {
-      setError(caught instanceof ApiError ? caught.message : "The user could not be permanently deleted.");
+      setError(caught instanceof ApiError ? caught.message : { message: "admin.deleteFailed" });
     } finally {
       pendingRef.current = false;
       setPendingId(null);
@@ -109,41 +116,41 @@ export function AdminUserList({ users, status, search, stats }: {
 
   return <section className="admin-users surface-card">
     <div className="section-header">
-      <div><h2 className="section-title">Users</h2><p className="section-description">{resultTotal} {status === "active" ? "active" : "deactivated"} account{resultTotal === 1 ? "" : "s"}{search ? " matching this search" : ""}</p></div>
+      <div><h2 className="section-title">{t("admin.users")}</h2><p className="section-description">{t(status === "active" ? resultTotal === 1 ? "admin.activeAccountCount" : "admin.activeAccountsCount" : resultTotal === 1 ? "admin.deactivatedAccountCount" : "admin.deactivatedAccountsCount", { count: resultTotal })}{search ? t("admin.matching") : ""}</p></div>
       <form role="search" action="/admin" method="get">
         <input type="hidden" name="status" value={status} />
-        <label className="library-search"><span className="sr-only">Search users</span><input name="search" defaultValue={search} placeholder="Search email or name" /></label>
-        <button className="btn btn-secondary" type="submit">Search</button>
+        <label className="library-search"><span className="sr-only">{t("admin.searchUsers")}</span><input name="search" defaultValue={search} placeholder={t("admin.searchPlaceholder")} /></label>
+        <button className="btn btn-secondary" type="submit">{t("common.search")}</button>
       </form>
     </div>
-    <div className="segmented-control" role="tablist" aria-label="User status">
-      <button type="button" role="tab" aria-selected={status === "active"} onClick={() => navigate("active")}>Active Users {counts.active === null ? null : <span>({counts.active})</span>}</button>
-      <button type="button" role="tab" aria-selected={status === "deactivated"} onClick={() => navigate("deactivated")}>Deactivated Users {counts.deactivated === null ? null : <span>({counts.deactivated})</span>}</button>
+    <div className="segmented-control" role="tablist" aria-label={t("admin.userStatus")}>
+      <button type="button" role="tab" aria-selected={status === "active"} onClick={() => navigate("active")}>{t("admin.activeUsers")} {counts.active === null ? null : <span>({counts.active})</span>}</button>
+      <button type="button" role="tab" aria-selected={status === "deactivated"} onClick={() => navigate("deactivated")}>{t("admin.deactivatedUsers")} {counts.deactivated === null ? null : <span>({counts.deactivated})</span>}</button>
     </div>
-    {error && !deleteTarget ? <p role="alert" className="notice notice-error">{error}</p> : null}
-    {success ? <p role="status" className="notice notice-success">{success}</p> : null}
+    {error && !deleteTarget ? <p role="alert" className="notice notice-error">{errorText}</p> : null}
+    {success ? <p role="status" className="notice notice-success">{successText}</p> : null}
     {items.length ? <div className="admin-user-list">{items.map((user) => <div key={user.id} className={`admin-user-row admin-user-management-row ${status === "deactivated" ? "admin-user-row-inactive" : ""}`}>
-      <span><Link href={`/admin/users/${user.id}`}><strong>{user.display_name}</strong></Link><small>{user.email}</small>{status === "deactivated" ? <StatusBadge status="DEACTIVATED" /> : null}</span>
-      <span>{user.role}</span>
-      <span>{user.attempt_count} attempts</span>
-      <span className="admin-user-actions"><small>{user.last_activity_at ? formatProjectDateTime(user.last_activity_at) : "No activity"}</small>
-        {status === "active" ? <button type="button" className="btn btn-ghost" disabled={pendingId !== null} aria-label={`Deactivate ${user.display_name}`} onClick={() => void changeStatus(user, false)}>Deactivate</button>
-          : <><button type="button" className="btn btn-secondary" disabled={pendingId !== null} aria-label={`Reactivate ${user.display_name}`} onClick={() => void changeStatus(user, true)}>Reactivate</button>
-            <button type="button" className="btn btn-danger-ghost" disabled={pendingId !== null} aria-label={`Delete permanently ${user.display_name}`} onClick={() => { setError(null); setDeleteTarget(user); }}>Delete permanently</button></>}
+      <span><Link href={`/admin/users/${user.id}`}><strong>{user.display_name}</strong></Link><small>{user.email}</small>{status === "deactivated" ? <StatusBadge status="DEACTIVATED" label={t("admin.deactivated")} /> : null}</span>
+      <span>{t(user.role === "ADMIN" ? "shell.roleAdmin" : "shell.roleUser")}</span>
+      <span>{t("admin.attemptCount", { count: user.attempt_count })}</span>
+      <span className="admin-user-actions"><small>{user.last_activity_at ? formatProjectDateTime(user.last_activity_at) : t("admin.noActivity")}</small>
+        {status === "active" ? <button type="button" className="btn btn-ghost" disabled={pendingId !== null} aria-label={t("admin.deactivateNamed", { name: user.display_name })} onClick={() => void changeStatus(user, false)}>{t("admin.deactivate")}</button>
+          : <><button type="button" className="btn btn-secondary" disabled={pendingId !== null} aria-label={t("admin.reactivateNamed", { name: user.display_name })} onClick={() => void changeStatus(user, true)}>{t("admin.reactivate")}</button>
+            <button type="button" className="btn btn-danger-ghost" disabled={pendingId !== null} aria-label={t("admin.deleteNamed", { name: user.display_name })} onClick={() => { setError(null); setDeleteTarget(user); }}>{t("common.deletePermanently")}</button></>}
       </span>
-    </div>)}</div> : <div className="mt-5"><EmptyState title={users.offset > 0 && resultTotal > 0 ? "No users on this page" : search ? "No matching users" : status === "active" ? "No active users" : "No deactivated users"} description={users.offset > 0 && resultTotal > 0 ? "Open the previous page to see the remaining accounts." : search ? "Try another email or name, or clear the search." : status === "active" ? "Active accounts will appear here." : "Accounts you deactivate will appear here."} /></div>}
-    {resultTotal > users.limit || users.offset > 0 ? <nav aria-label="User pages" className="admin-user-pagination">
-      <button type="button" className="btn btn-secondary" disabled={pendingId !== null || users.offset === 0} onClick={() => navigatePage(Math.max(0, users.offset - users.limit))}>Previous</button>
-      <span>{users.offset >= resultTotal ? "This page is empty" : `Page ${Math.floor(users.offset / users.limit) + 1} of ${Math.ceil(resultTotal / users.limit)}`}</span>
-      <button type="button" className="btn btn-secondary" disabled={pendingId !== null || users.offset + users.limit >= resultTotal} onClick={() => navigatePage(users.offset + users.limit)}>Next</button>
+    </div>)}</div> : <div className="mt-5"><EmptyState title={users.offset > 0 && resultTotal > 0 ? t("admin.emptyPage") : search ? t("admin.noMatching") : status === "active" ? t("admin.noActive") : t("admin.noDeactivated")} description={users.offset > 0 && resultTotal > 0 ? t("admin.previousHelp") : search ? t("admin.searchHelp") : status === "active" ? t("admin.activeHelp") : t("admin.deactivatedHelp")} /></div>}
+    {resultTotal > users.limit || users.offset > 0 ? <nav aria-label={t("admin.userPages")} className="admin-user-pagination">
+      <button type="button" className="btn btn-secondary" disabled={pendingId !== null || users.offset === 0} onClick={() => navigatePage(Math.max(0, users.offset - users.limit))}>{t("common.previous")}</button>
+      <span>{users.offset >= resultTotal ? t("admin.pageEmpty") : t("admin.pageOf", { number: Math.floor(users.offset / users.limit) + 1, count: Math.ceil(resultTotal / users.limit) })}</span>
+      <button type="button" className="btn btn-secondary" disabled={pendingId !== null || users.offset + users.limit >= resultTotal} onClick={() => navigatePage(users.offset + users.limit)}>{t("common.next")}</button>
     </nav> : null}
     <ConfirmDialog
       open={deleteTarget !== null}
-      title={`Delete “${deleteTarget?.display_name ?? ""}” permanently?`}
-      description={`This permanently deletes the account and its personal learning data, including ${deleteTarget?.attempt_count ?? 0} attempt${deleteTarget?.attempt_count === 1 ? "" : "s"} and their history. This action cannot be undone.`}
-      confirmLabel="Delete permanently"
+      title={t("admin.deleteTitle", { name: deleteTarget?.display_name ?? "" })}
+      description={t(deleteTarget?.attempt_count === 1 ? "admin.deleteDescriptionOne" : "admin.deleteDescriptionMany", { count: deleteTarget?.attempt_count ?? 0 })}
+      confirmLabel={t("common.deletePermanently")}
       pending={pendingId !== null}
-      errorMessage={deleteTarget ? error ?? undefined : undefined}
+      errorMessage={deleteTarget ? errorText ?? undefined : undefined}
       onCancel={() => { setDeleteTarget(null); setError(null); }}
       onConfirm={() => void permanentlyDelete()}
     />

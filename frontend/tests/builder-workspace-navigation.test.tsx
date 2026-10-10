@@ -1,4 +1,5 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { renderWithLocale } from "./locale-test-utils";
 import { describe, expect, it } from "vitest";
 import { BuilderWorkspaceNavigation } from "@/features/test-builder/builder-workspace-navigation";
 
@@ -6,6 +7,18 @@ const testId = "11111111-1111-4111-8111-111111111111";
 const versionId = "22222222-2222-4222-8222-222222222222";
 
 describe("Builder workspace navigation", () => {
+  it("localizes the selected workspace without changing link nodes or destinations", () => {
+    window.localStorage.clear();
+    renderWithLocale(<BuilderWorkspaceNavigation testId={testId} versionId={versionId} workspace="listening" moduleTypes={["READING"]} />);
+    const links = screen.getAllByRole("link");
+    const hrefs = links.map((link) => link.getAttribute("href"));
+    fireEvent.click(screen.getByText("Switch to Vietnamese"));
+    expect(screen.getByRole("complementary", { name: "Các phần biên soạn" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /NgheChưa tạo/ })).toBe(links[2]);
+    expect(links[2]).toHaveAttribute("aria-current", "page");
+    expect(screen.getAllByRole("link")).toEqual(links);
+    expect(links.map((link) => link.getAttribute("href"))).toEqual(hrefs);
+  });
   it("uses URL-backed navigation and follows the selected workspace", () => {
     render(<BuilderWorkspaceNavigation testId={testId} versionId={versionId} workspace="listening" moduleTypes={["READING"]} />);
 

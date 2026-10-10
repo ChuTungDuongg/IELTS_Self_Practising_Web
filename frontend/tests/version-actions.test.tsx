@@ -9,6 +9,7 @@ import {
 import { VersionActions } from "@/features/test-builder/version-actions";
 import type { BuilderVersion } from "@/lib/api/builder";
 import { deleteDraft, publishVersion, validateVersion } from "@/lib/api/tests";
+import { renderWithLocale } from "./locale-test-utils";
 
 const push = vi.fn();
 const refresh = vi.fn();
@@ -115,6 +116,22 @@ function TransitionHarness({ ready }: { ready: () => void }) {
 }
 
 describe("VersionActions draft deletion", () => {
+  it("localizes validation chrome while preserving raw backend diagnostics and authored context", async () => {
+    window.localStorage.clear();
+    vi.mocked(validateVersion).mockResolvedValue({ valid: false, errors: [{ path: `reading.question_groups.${groupId}`, message: "Diagnostic <raw>" }], warnings: [] });
+    renderWithLocale(<BuilderLifecycleProvider><VersionActions testId="test" version={builderVersion("DRAFT")} /></BuilderLifecycleProvider>);
+    fireEvent.click(screen.getByRole("button", { name: "Validate" }));
+    await screen.findByRole("alert");
+    fireEvent.click(screen.getByText("Switch to Vietnamese"));
+    expect(screen.getByRole("button", { name: "Kiểm tra" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Xuất bản phiên bản" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Chưa thể xuất bản" })).toBeInTheDocument();
+    expect(screen.getByText("Diagnostic <raw>")).toBeInTheDocument();
+    expect(screen.getByText(/Urban foxes/)).toBeInTheDocument();
+    expect(screen.getByText("Bài đọc 1 · Urban foxes")).toBeInTheDocument();
+    expect(validateVersion).toHaveBeenCalledExactlyOnceWith("22222222-2222-4222-8222-222222222222");
+    expect(publishVersion).not.toHaveBeenCalled();
+  });
   beforeEach(() => {
     vi.clearAllMocks();
   });
