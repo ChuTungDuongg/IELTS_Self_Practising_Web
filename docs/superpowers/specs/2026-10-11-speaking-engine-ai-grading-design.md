@@ -50,7 +50,7 @@ The current repository still contains an older `AGENTS.md` statement saying not 
 - Exam/Full Mock: no replay, no retry, no return to a committed previous response.
 - Focused/self-practice: candidate may listen and retry the current response before `Done / Next`; committed prior prompts stay locked.
 - Reload/crash recovery resumes the interrupted prompt rather than restarting it.
-- Recovery grants a 7-second reconnect/preparation grace window before the original remaining response/preparation time resumes. The grace is not added to IELTS response quota and cannot be farmed with repeated refreshes.
+- Recovery preserves a server-authoritative snapshot of the response/preparation time remaining at interruption, then grants a 7-second reconnect/preparation grace window before that remaining time resumes. The grace is not added to speaking quota and cannot be farmed with repeated refreshes.
 - Speaking review exposes two separate user actions: `Generate Transcript` and `Grade with AI`.
 - Transcript is read-only and shown per question/prompt only; there is no merged full-transcript UI in v1.
 - `Grade with AI` reuses a valid transcript if available; otherwise it generates one internally.
@@ -282,7 +282,7 @@ The final logical response may be represented as an ordered chunk manifest or as
 
 ### 5.1 Server-authoritative timing
 
-Frontend timers are display aids. Backend stores authoritative timing state for the active prompt.
+Frontend timers are display aids. Backend owns the authoritative active phase and a recoverable remaining-time snapshot.
 
 Conceptually:
 
@@ -293,6 +293,7 @@ SpeakingPromptProgress
 - state
 - phase_started_at
 - phase_deadline_at
+- last_confirmed_remaining_ms
 - interruption_count
 - recovery_grace_used_for_current_interruption
 - last_resumed_at nullable
@@ -300,27 +301,32 @@ SpeakingPromptProgress
 
 Exact persistence may be folded into attempt/response tables if that is cleaner, but the semantics must remain explicit.
 
+The backend updates/derives `last_confirmed_remaining_ms` from authoritative timing plus accepted heartbeats/chunks. The client must never invent a larger remaining value.
+
 ### 5.2 Recovery behavior
 
-If browser reload/crash occurs with time remaining:
+If browser reload/crash occurs during a valid active phase:
 
 - preserve already uploaded chunks;
 - restore the same active prompt;
 - do not reset to the full original timer;
-- calculate remaining time using server time/deadline;
-- grant a 7-second recovery grace countdown;
-- during grace, reconnect/reinitialize microphone and show restored prompt;
-- after grace, resume the original remaining preparation/response time;
+- recover the bounded remaining-time snapshot from the interruption/last server-confirmed state;
+- suspend consumption of that snapshot while the browser reconnects under the recovery flow;
+- grant a 7-second recovery grace countdown after the app/microphone has restored enough state to continue;
+- during grace, show the restored prompt and reconnect/reinitialize microphone;
+- after grace, resume the recovered remaining preparation/response time;
 - resume chunk sequence/take coherently.
 
-Example: 31 seconds remained before disconnect. On restore, user gets a 7-second reconnect grace, then the 31-second response countdown continues.
+Example: 31 seconds remained at the last valid interruption snapshot. After recovery succeeds, the UI gives a 7-second reconnect/preparation countdown, then resumes with 31 seconds of the original response allowance remaining.
+
+If the backend cannot establish a valid recoverable interruption state (for example, the attempt was already finalized or the saved state is inconsistent), it must fail closed rather than manufacturing extra time.
 
 ### 5.3 Anti-abuse
 
-- grace is server-authorized, not frontend-calculated;
-- repeated refresh while restoring must not stack unlimited 7-second grants;
-- completed prompts never reopen;
-- response deadlines are monotonic under normal exam operation except for the explicit bounded recovery pause/grace semantics;
+- grace and remaining-time recovery are server-authorized, not frontend-calculated;
+- repeated refresh while restoring must not stack additional 7-second grants or repeatedly rewind remaining time;
+- a completed prompt never reopens;
+- each interruption/recovery transition is idempotent and auditably tied to the same prompt/take;
 - record interruption/recovery events for debugging/audit without exposing sensitive logs to users.
 
 ### 5.4 Unrecoverable last chunk
@@ -777,7 +783,7 @@ Initial analytics may expose Speaking attempt/band history and criterion trends 
 
 ## 15. Security, privacy, and retention
 
-Audio is user-generated biometric-like voice content and deserves stricter handling than ordinary text answers.
+Audio is user-generated voice content and deserves stricter handling than ordinary text answers.
 
 Requirements:
 
@@ -858,8 +864,9 @@ Implementation uses TDD in small phases.
 - idempotent chunk upload;
 - ordered reconstruction;
 - crash with partial chunks;
+- recover exact server-confirmed remaining-time snapshot;
 - 7-second grace exactly once per valid interruption event;
-- repeated reload cannot farm grace;
+- repeated reload cannot farm grace or rewind remaining time;
 - finalization races.
 
 ### 18.4 Transcript tests
@@ -1010,7 +1017,7 @@ The implementation plan must preserve these invariants:
 3. Exam/current prompt is recorded with server-authoritative timing.
 4. `Done / Next` commits before advancing; timeout auto-commits/advances.
 5. Practice may retry current prompt; Exam/Full Mock may not replay/retry.
-6. Crash recovery preserves prior chunks and resumes the same prompt with one bounded 7-second reconnect grace before original remaining time continues.
+6. Crash recovery preserves prior chunks, restores the server-confirmed remaining-time snapshot, and gives one bounded 7-second reconnect grace before that remaining time resumes.
 7. Raw audio lives in asset storage and remains source of truth.
 8. Transcript is per-question, read-only, and cannot improve candidate grammar.
 9. `Generate Transcript` and `Grade with AI` are separate actions; grading can reuse/generate transcript automatically.
