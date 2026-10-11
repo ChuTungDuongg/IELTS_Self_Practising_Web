@@ -30,6 +30,8 @@ from app.models import (
     Question,
     QuestionGroup,
     ReadingPassage,
+    SpeakingPart,
+    SpeakingPrompt,
     Test,
     TestModule,
     TestVersion,
@@ -49,6 +51,7 @@ from app.schemas.transfer import (
     PortablePassage,
     PortableQuestion,
     PortableQuestionGroup,
+    PortableSpeakingPart,
     PortableTest,
     PortableVersion,
     PortableWritingTask,
@@ -359,6 +362,10 @@ class TransferService:
                         PortableWritingTask.model_validate(item, from_attributes=True)
                         for item in module.writing_tasks
                     ],
+                    speaking_parts=[
+                        PortableSpeakingPart.model_validate(item, from_attributes=True)
+                        for item in module.speaking_parts
+                    ],
                     question_groups=[
                         PortableQuestionGroup(
                             id=group.id,
@@ -423,7 +430,17 @@ class TransferService:
     ) -> None:
         seen: dict[str, set[uuid.UUID]] = {
             key: set()
-            for key in ("versions", "modules", "passages", "parts", "tasks", "groups", "questions")
+            for key in (
+                "versions",
+                "modules",
+                "passages",
+                "parts",
+                "tasks",
+                "groups",
+                "questions",
+                "speaking_parts",
+                "speaking_prompts",
+            )
         }
         referenced_assets: set[uuid.UUID] = set()
         for test in tests:
@@ -437,6 +454,24 @@ class TransferService:
                 TransferService._remember(seen["versions"], version.id, "version")
                 for module in version.modules:
                     TransferService._remember(seen["modules"], module.id, "module")
+                    if module.module_type != ModuleType.SPEAKING and module.speaking_parts:
+                        raise TransferService._invalid("Speaking parts require a Speaking module.")
+                    if module.module_type == ModuleType.SPEAKING and (
+                        module.passages
+                        or module.listening_parts
+                        or module.writing_tasks
+                        or module.question_groups
+                        or module.audio_asset_id
+                    ):
+                        raise TransferService._invalid(
+                            "A Speaking module contains content from another module type."
+                        )
+                    for part in module.speaking_parts:
+                        TransferService._remember(seen["speaking_parts"], part.id, "Speaking part")
+                        for prompt in part.prompts:
+                            TransferService._remember(
+                                seen["speaking_prompts"], prompt.id, "Speaking prompt"
+                            )
                     if module.module_type == ModuleType.READING and (
                         module.listening_parts or module.writing_tasks
                     ):
@@ -606,6 +641,21 @@ class TransferService:
                 for module in version.modules
                 for task in module.writing_tasks
             ],
+            "speaking_parts": [
+                part.id
+                for item in package.tests
+                for version in item.versions
+                for module in version.modules
+                for part in module.speaking_parts
+            ],
+            "speaking_prompts": [
+                prompt.id
+                for item in package.tests
+                for version in item.versions
+                for module in version.modules
+                for part in module.speaking_parts
+                for prompt in part.prompts
+            ],
             "groups": [
                 group.id
                 for item in package.tests
@@ -665,7 +715,11 @@ class TransferService:
                 title=source_module.title,
                 recommended_duration_seconds=(
                     source_module.recommended_duration_seconds
-                    or default_module_duration(source_module.module_type)
+                    or (
+                        None
+                        if source_module.module_type == ModuleType.SPEAKING
+                        else default_module_duration(source_module.module_type)
+                    )
                 ),
                 order_index=source_module.order_index,
                 audio_asset=assets.get(source_module.audio_asset_id),
@@ -706,6 +760,27 @@ class TransferService:
                         order_index=item.order_index,
                     )
                 )
+            for item in source_module.speaking_parts:
+                part = SpeakingPart(
+                    id=maps["speaking_parts"][item.id],
+                    part_number=item.part_number,
+                    title=item.title,
+                    instructions=item.instructions,
+                    order_index=item.order_index,
+                )
+                module.speaking_parts.append(part)
+                for prompt in item.prompts:
+                    part.prompts.append(
+                        SpeakingPrompt(
+                            id=maps["speaking_prompts"][prompt.id],
+                            prompt_type=prompt.prompt_type,
+                            prompt_text=prompt.prompt_text,
+                            order_index=prompt.order_index,
+                            preparation_seconds=prompt.preparation_seconds,
+                            response_seconds=prompt.response_seconds,
+                            config_json=prompt.config_json.model_dump(),
+                        )
+                    )
             for item in source_module.question_groups:
                 group = QuestionGroup(
                     id=maps["groups"][item.id],
@@ -737,6 +812,13 @@ class TransferService:
     @staticmethod
     def _validate_built_version(version: TestVersion) -> None:
         for module in version.modules:
+            if module.module_type == ModuleType.SPEAKING and version.status != VersionStatus.DRAFT:
+                from app.services.speaking_builder import validate_speaking_module
+
+                if validate_speaking_module(module):
+                    raise TransferService._invalid(
+                        "A published Speaking module is incomplete or invalid."
+                    )
             blocks_by_passage = {
                 passage.id: normalize_passage_blocks(passage.content_json, passage.id)
                 for passage in module.passages

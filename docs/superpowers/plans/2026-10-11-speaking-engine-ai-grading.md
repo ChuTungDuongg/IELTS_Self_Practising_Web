@@ -135,11 +135,11 @@ git commit -m "Add Speaking content domain model"
 - Produces Builder mutations for part/prompt create/update/delete/reorder plus `validate_speaking_module(module_id)`.
 - Validation on publish/moderation requires parts 1/2/3, exactly one Part 2 `LONG_TURN`, non-empty prompt text, positive timers, unique normalized order, and legal prompt types by part. Draft autosave remains permissive for incomplete intermediate state.
 
-- [ ] **Step 1: Add failing API/service tests** for append order, reorder normalization, Part 2 cue points/default 60/120 timers, configurable Part 1/3 60s default, malformed publish rejection, owner/published immutability policy, clone preserving IDs only where existing clone semantics require new IDs, and ZIP export/import round-trip.
-- [ ] **Step 2: Run RED:** `cd backend && uv run pytest tests/test_speaking_builder.py tests/test_asset_cloning.py -q` plus the existing transfer test file.
-- [ ] **Step 3: Implement minimal repository/service/routes and wire publish validation.** Reuse `require_content_author`/current access policy; never add a Speaking-specific teacher bypass.
-- [ ] **Step 4: Run GREEN + Ruff** on touched files.
-- [ ] **Step 5: Commit:** `git commit -am "Add Speaking Builder API and validation"` (stage new files explicitly first).
+- [x] **Step 1: Add failing API/service tests** for append order, reorder normalization, Part 2 cue points/default 60/120 timers, configurable Part 1/3 60s default, malformed publish rejection, owner/published immutability policy, clone preserving IDs only where existing clone semantics require new IDs, and ZIP export/import round-trip.
+- [x] **Step 2: Run RED:** `cd backend && uv run pytest tests/test_speaking_builder.py tests/test_asset_cloning.py -q` plus the existing transfer test file.
+- [x] **Step 3: Implement minimal repository/service/routes and wire publish validation.** Reuse `require_content_author`/current access policy; never add a Speaking-specific teacher bypass.
+- [x] **Step 4: Run GREEN + Ruff** on touched files.
+- [x] **Step 5: Commit:** `git commit -am "Add Speaking Builder API and validation"` (stage new files explicitly first).
 
 ### Task 3: Dynamic Speaking Builder UI
 

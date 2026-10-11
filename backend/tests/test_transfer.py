@@ -25,6 +25,65 @@ from app.services.tests import TestService as LifecycleService
 from app.services.transfer import TransferService
 
 
+@pytest.mark.integration
+async def test_speaking_transfer_roundtrip_preserves_draft_and_remaps_ids(db_session, tmp_path):
+    from app.models import SpeakingPart, SpeakingPrompt
+
+    test = DomainTest(title="Fictional Speaking transfer")
+    version = DomainVersion(version_number=1, status=VersionStatus.DRAFT)
+    module = DomainModule(module_type=ModuleType.SPEAKING, order_index=0)
+    part = SpeakingPart(
+        part_number=2, title="Fictional cue card", instructions="Describe it", order_index=0
+    )
+    part.prompts.extend(
+        [
+            SpeakingPrompt(
+                prompt_type="LONG_TURN",
+                prompt_text="Describe a fictional tool.",
+                preparation_seconds=40,
+                response_seconds=100,
+                config_json={"cue_points": ["Its purpose", "Why it helps"]},
+                order_index=0,
+            ),
+            SpeakingPrompt(
+                prompt_type="FOLLOW_UP",
+                prompt_text="Would you share it?",
+                preparation_seconds=0,
+                response_seconds=45,
+                config_json={},
+                order_index=1,
+            ),
+        ]
+    )
+    module.speaking_parts.append(part)
+    version.modules.append(module)
+    test.versions.append(version)
+    async with db_session.begin():
+        db_session.add(test)
+        await db_session.flush()
+        test_id, part_id = test.id, part.id
+        prompt_ids = [item.id for item in part.prompts]
+    path = tmp_path / "speaking.zip"
+    settings = _settings(tmp_path / "storage")
+    await TransferService(db_session, settings).export([test_id], path)
+    await db_session.rollback()
+    service = TransferService(db_session, settings)
+    package = service.validate_archive(path, tmp_path / "staging")
+    imported = await service.import_package(package)
+    loaded = await LifecycleService(db_session).get_test(imported.imported_tests[0].test_id)
+    builder = await ReadingService(db_session).builder_version(loaded.versions[0].id)
+    imported_part = builder.modules[0].speaking_parts[0]
+    assert imported_part.id != part_id
+    assert all(item.id not in prompt_ids for item in imported_part.prompts)
+    assert [item.prompt_type for item in imported_part.prompts] == ["LONG_TURN", "FOLLOW_UP"]
+    assert imported_part.prompts[0].config_json.cue_points == ["Its purpose", "Why it helps"]
+    assert (
+        imported_part.prompts[0].preparation_seconds,
+        imported_part.prompts[0].response_seconds,
+    ) == (40, 100)
+    assert imported_part.prompts[1].response_seconds == 45
+
+
 def _settings(storage_root: Path, **overrides: int) -> Settings:
     return Settings(
         database_url=get_settings().database_url,

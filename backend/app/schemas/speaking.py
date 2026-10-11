@@ -57,3 +57,50 @@ class BuilderSpeakingPart(BaseModel):
     instructions: str | None = None
     order_index: int
     prompts: list[BuilderSpeakingPrompt] = Field(default_factory=list)
+
+
+class SpeakingPromptItem(SpeakingPromptWrite):
+    id: UUID | None = None
+    order_index: int = Field(ge=0)
+
+
+class SpeakingPartUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    expected_revision: int = Field(ge=1)
+    title: str | None = Field(default=None, max_length=240)
+    instructions: str | None = Field(default=None, max_length=4000)
+    prompts: list[SpeakingPromptItem] = Field(default_factory=list, max_length=100)
+
+    @model_validator(mode="after")
+    def unique_prompts(self):
+        ids = [item.id for item in self.prompts if item.id is not None]
+        orders = [item.order_index for item in self.prompts]
+        if len(ids) != len(set(ids)) or sorted(orders) != list(range(len(orders))):
+            raise ValueError("Prompt IDs and canonical order indexes must be unique")
+        return self
+
+
+class SpeakingPromptCreate(SpeakingPromptWrite):
+    expected_revision: int = Field(ge=1)
+
+
+class SpeakingPromptOrderWrite(BaseModel):
+    expected_revision: int = Field(ge=1)
+    prompt_ids: list[UUID] = Field(max_length=100)
+
+    @model_validator(mode="after")
+    def unique_ids(self):
+        if len(self.prompt_ids) != len(set(self.prompt_ids)):
+            raise ValueError("Prompt IDs must be unique")
+        return self
+
+
+class SpeakingPartOrderWrite(BaseModel):
+    expected_revision: int = Field(ge=1)
+    part_ids: list[UUID] = Field(max_length=3)
+
+    @model_validator(mode="after")
+    def unique_ids(self):
+        if len(self.part_ids) != len(set(self.part_ids)):
+            raise ValueError("Part IDs must be unique")
+        return self

@@ -15,6 +15,7 @@ from app.api.v1 import (
     notifications,
     preferences,
     reading,
+    speaking,
     test_sessions,
     tests,
     transfer,
@@ -34,6 +35,7 @@ api_router.include_router(test_sessions.router)
 api_router.include_router(analytics.router)
 api_router.include_router(assets.router)
 api_router.include_router(reading.router)
+api_router.include_router(speaking.router)
 api_router.include_router(listening.router)
 api_router.include_router(writing.router)
 api_router.include_router(writing_ai.router)

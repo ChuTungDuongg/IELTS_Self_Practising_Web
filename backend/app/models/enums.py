@@ -89,6 +89,10 @@ class SpeakingPromptType(StrEnum):
     FOLLOW_UP = "FOLLOW_UP"
 
 
+# P1 adds authored content only; runtime/product integration is a later phase.
+RUNTIME_MODULE_TYPES = (ModuleType.READING, ModuleType.LISTENING, ModuleType.WRITING)
+
+
 class TimerMode(StrEnum):
     COUNTDOWN = "COUNTDOWN"
     COUNT_UP = "COUNT_UP"

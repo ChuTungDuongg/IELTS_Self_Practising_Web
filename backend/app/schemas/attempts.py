@@ -63,7 +63,7 @@ class FocusedUnitResponse(BaseModel):
 class AttemptCreate(BaseModel):
     model_config = {"extra": "forbid"}
     test_version_id: UUID
-    module: ModuleType
+    module: Literal[ModuleType.READING, ModuleType.LISTENING, ModuleType.WRITING]
     scope: AttemptScope = AttemptScope.FULL_MODULE
     focused_unit: FocusedUnit | None = None
     timer: TimerRequest

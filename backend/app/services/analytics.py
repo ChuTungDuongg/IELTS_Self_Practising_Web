@@ -16,7 +16,14 @@ from app.models import (
     TestSession,
     TestVersion,
 )
-from app.models.enums import AttemptScope, AttemptStatus, EventType, ModuleType, TestSessionStatus
+from app.models.enums import (
+    RUNTIME_MODULE_TYPES,
+    AttemptScope,
+    AttemptStatus,
+    EventType,
+    ModuleType,
+    TestSessionStatus,
+)
 from app.schemas.analytics import (
     AnalyticsAttemptOption,
     AnalyticsDashboard,
@@ -52,7 +59,7 @@ class AnalyticsService:
         time_attempts = [item for item in attempts if skill is None or item.module_type == skill]
         band_attempts = [item for item in filtered if item.band_score is not None]
         bands: dict[str, SkillBandSummary] = {}
-        for module in ModuleType:
+        for module in RUNTIME_MODULE_TYPES:
             candidates = [
                 item
                 for item in finalized
@@ -225,7 +232,7 @@ class AnalyticsService:
                     key=lambda item: item.finished_at or item.started_at,
                     default=None,
                 )
-                for module in ModuleType
+                for module in RUNTIME_MODULE_TYPES
             }
             overall = project_overall_band(
                 latest[ModuleType.READING].band_score if latest[ModuleType.READING] else None,

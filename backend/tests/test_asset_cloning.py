@@ -19,6 +19,53 @@ from app.services.tests import TestService as VersionService
 from app.storage import LocalAssetStorage
 
 
+@pytest.mark.integration
+async def test_speaking_version_clone_remaps_authored_ids(db_session):
+    from app.models import SpeakingPart, SpeakingPrompt
+
+    test = DomainTest(title="Fictional Speaking clone")
+    source = DomainVersion(version_number=1, status=VersionStatus.PUBLISHED)
+    test.versions.append(source)
+    module = DomainModule(module_type=ModuleType.SPEAKING, order_index=0)
+    part = SpeakingPart(part_number=2, order_index=0)
+    part.prompts.append(
+        SpeakingPrompt(
+            prompt_type="LONG_TURN",
+            prompt_text="Describe a fictional item.",
+            preparation_seconds=60,
+            response_seconds=120,
+            config_json={"cue_points": ["Its purpose"]},
+            order_index=0,
+        )
+    )
+    module.speaking_parts.append(part)
+    source.modules.append(module)
+    async with db_session.begin():
+        db_session.add(test)
+        await db_session.flush()
+        source_ids = (test.id, source.id, module.id, part.id, part.prompts[0].id)
+    clone = await VersionService(db_session).create_version(
+        source_ids[0], VersionCreate(source_version_id=source_ids[1])
+    )
+    from app.services.reading import ReadingService
+
+    builder = await ReadingService(db_session).builder_version(clone.id)
+    cloned_module = builder.modules[0]
+    assert len(cloned_module.speaking_parts) == 1
+    cloned_part = cloned_module.speaking_parts[0]
+    assert (cloned_module.id, cloned_part.id, cloned_part.prompts[0].id) != source_ids[2:]
+    assert all(
+        left != right
+        for left, right in zip(
+            (cloned_module.id, cloned_part.id, cloned_part.prompts[0].id),
+            source_ids[2:],
+            strict=True,
+        )
+    )
+    assert cloned_part.prompts[0].config_json.cue_points == ["Its purpose"]
+    assert cloned_part.prompts[0].prompt_text == "Describe a fictional item."
+
+
 def _settings(storage_root: Path) -> SimpleNamespace:
     return SimpleNamespace(
         resolved_storage_root=storage_root,

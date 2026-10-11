@@ -70,11 +70,20 @@ class ReadingService:
                 module_type=body.module_type,
                 title=body.title,
                 recommended_duration_seconds=(
-                    body.recommended_duration_seconds or default_module_duration(body.module_type)
+                    body.recommended_duration_seconds
+                    or (
+                        None
+                        if body.module_type == ModuleType.SPEAKING
+                        else default_module_duration(body.module_type)
+                    )
                 ),
                 order_index=len(version.modules),
             )
             version.modules.append(module)
+            if body.module_type == ModuleType.SPEAKING:
+                from app.services.speaking_builder import initialize_speaking_parts
+
+                initialize_speaking_parts(module)
             if body.module_type == ModuleType.WRITING:
                 module.writing_tasks.extend(
                     [

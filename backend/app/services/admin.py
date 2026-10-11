@@ -21,10 +21,10 @@ from app.models import (
     User,
 )
 from app.models.enums import (
+    RUNTIME_MODULE_TYPES,
     AttemptStatus,
     ClassroomStatus,
     ModerationStatus,
-    ModuleType,
     TestOrigin,
     TestSessionStatus,
     UserRole,
@@ -85,7 +85,7 @@ class AdminService:
             )
             or 0
         )
-        by_skill = {module: 0 for module in ModuleType}
+        by_skill = {module: 0 for module in RUNTIME_MODULE_TYPES}
         by_skill.update({module: int(count) for module, count in skill_rows})
         return AdminStats(
             total_users=total_users,

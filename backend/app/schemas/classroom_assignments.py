@@ -33,7 +33,7 @@ class AssignmentResponse(BaseModel):
 class AssignmentStart(BaseModel):
     model_config = ConfigDict(extra="forbid")
     mode: Literal["MODULE", "FULL_MOCK"]
-    module: ModuleType | None = None
+    module: Literal[ModuleType.READING, ModuleType.LISTENING, ModuleType.WRITING] | None = None
     scope: AttemptScope = AttemptScope.FULL_MODULE
     focused_unit: FocusedUnit | None = None
     timer: TimerRequest = Field(default_factory=lambda: TimerRequest(mode=TimerMode.COUNT_UP))

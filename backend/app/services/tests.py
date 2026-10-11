@@ -1,4 +1,5 @@
 import uuid
+from copy import deepcopy
 from datetime import UTC, datetime
 
 from pydantic import ValidationError
@@ -24,6 +25,8 @@ from app.models import (
     Question,
     QuestionGroup,
     ReadingPassage,
+    SpeakingPart,
+    SpeakingPrompt,
     Test,
     TestModule,
     TestVersion,
@@ -713,6 +716,25 @@ class TestService:
                         order_index=task.order_index,
                     )
                 )
+            for part in module.speaking_parts:
+                cloned_part = SpeakingPart(
+                    part_number=part.part_number,
+                    title=part.title,
+                    instructions=part.instructions,
+                    order_index=part.order_index,
+                )
+                new_module.speaking_parts.append(cloned_part)
+                for prompt in part.prompts:
+                    cloned_part.prompts.append(
+                        SpeakingPrompt(
+                            prompt_type=prompt.prompt_type,
+                            prompt_text=prompt.prompt_text,
+                            order_index=prompt.order_index,
+                            preparation_seconds=prompt.preparation_seconds,
+                            response_seconds=prompt.response_seconds,
+                            config_json=deepcopy(prompt.config_json),
+                        )
+                    )
             for group in module.question_groups:
                 question_ids = {str(question.id): str(uuid.uuid4()) for question in group.questions}
                 new_group = QuestionGroup(
@@ -748,6 +770,14 @@ class TestService:
             issues.append(ValidationIssue(path="modules", message="Add at least one module."))
         for module in version.modules:
             prefix = module.module_type.value.lower()
+            if module.module_type == ModuleType.SPEAKING:
+                from app.services.speaking_builder import validate_speaking_module
+
+                speaking_issues = validate_speaking_module(module)
+                issues.extend(speaking_issues)
+                if not speaking_issues:
+                    usable_modules += 1
+                continue
             if not module.recommended_duration_seconds or module.recommended_duration_seconds <= 0:
                 warnings.append(
                     ValidationIssue(

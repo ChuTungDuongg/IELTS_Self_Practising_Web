@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from app.domains.writing.task_types import WritingTaskType, validate_task_type
 from app.models.enums import AssetType, ModuleType, VersionStatus
 from app.schemas.listening import ListeningAudioRange
+from app.schemas.speaking import BuilderSpeakingPrompt, SpeakingPartWrite
 
 TRANSFER_FORMAT = "devweblocalforielts-test-bundle"
 TRANSFER_SCHEMA_VERSION = 1
@@ -78,6 +79,27 @@ class PortableWritingTask(BaseModel):
         return self
 
 
+class PortableSpeakingPrompt(BuilderSpeakingPrompt):
+    order_index: int = Field(ge=0)
+    prompt_text: str = Field(max_length=20_000)
+    preparation_seconds: int = Field(ge=0, le=3600)
+    response_seconds: int = Field(ge=1, le=3600)
+
+
+class PortableSpeakingPart(SpeakingPartWrite):
+    id: UUID
+    order_index: int = Field(ge=0)
+    prompts: list[PortableSpeakingPrompt] = Field(default_factory=list, max_length=100)
+
+    @model_validator(mode="after")
+    def unique_prompts(self):
+        ids = [item.id for item in self.prompts]
+        orders = [item.order_index for item in self.prompts]
+        if len(ids) != len(set(ids)) or sorted(orders) != list(range(len(orders))):
+            raise ValueError("Speaking prompt IDs and canonical ordering must be unique")
+        return self
+
+
 class PortableModule(BaseModel):
     id: UUID
     module_type: ModuleType
@@ -88,6 +110,7 @@ class PortableModule(BaseModel):
     passages: list[PortablePassage] = Field(default_factory=list)
     listening_parts: list[PortableListeningPart] = Field(default_factory=list)
     writing_tasks: list[PortableWritingTask] = Field(default_factory=list)
+    speaking_parts: list[PortableSpeakingPart] = Field(default_factory=list, max_length=3)
     question_groups: list[PortableQuestionGroup] = Field(default_factory=list)
 
     @model_validator(mode="after")
@@ -96,6 +119,7 @@ class PortableModule(BaseModel):
             ("passage", [item.order_index for item in self.passages]),
             ("Listening part", [item.order_index for item in self.listening_parts]),
             ("Writing task", [item.order_index for item in self.writing_tasks]),
+            ("Speaking part", [item.order_index for item in self.speaking_parts]),
             ("question group", [item.order_index for item in self.question_groups]),
         ):
             if len(values) != len(set(values)):
@@ -103,6 +127,9 @@ class PortableModule(BaseModel):
         task_numbers = [item.task_number for item in self.writing_tasks]
         if len(task_numbers) != len(set(task_numbers)):
             raise ValueError("Writing task numbers must be unique within a module")
+        numbers = [item.part_number for item in self.speaking_parts]
+        if len(numbers) != len(set(numbers)):
+            raise ValueError("Speaking part numbers must be unique within a module")
         return self
 
 
