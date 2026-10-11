@@ -90,9 +90,9 @@ describe("authentication UI", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Use dark theme" })).toBeEnabled());
     const input = screen.getByLabelText("Existing answer");
     fireEvent.change(input, { target: { value: "draft" } });
-    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Tiếng Việt" })));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Switch to Vietnamese" })));
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Dùng giao diện tối" })));
-    await act(async () => fireEvent.click(screen.getByRole("button", { name: "English" })));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Switch to English" })));
     expect(screen.getByLabelText("Existing answer")).toBe(input);
     expect(input).toHaveValue("draft");
     expect(mounts).toBe(1);

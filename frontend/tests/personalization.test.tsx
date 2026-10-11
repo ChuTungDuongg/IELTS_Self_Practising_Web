@@ -60,17 +60,14 @@ async function settingsReady() {
   await waitFor(() => expect(screen.getByRole("button", { name: "Blue" })).toBeEnabled());
 }
 
-it("header theme and language changes persist to the authenticated account", async () => {
+it("header theme changes persist to the authenticated account", async () => {
   render(<Application />);
   await screen.findByText("Person");
   await waitFor(() => expect(screen.getByRole("button", { name: "Use dark theme" })).toBeEnabled());
   fireEvent.click(screen.getByRole("button", { name: "Use dark theme" }));
   await waitFor(() => expect(saved.appearance).toBe("DARK"));
-  fireEvent.click(screen.getByRole("button", { name: "Tiếng Việt" }));
-  await waitFor(() => expect(saved.locale).toBe("VI"));
   expect(document.documentElement.dataset.theme).toBe("dark");
-  expect(document.documentElement.lang).toBe("vi");
-  expect(screen.getByRole("button", { name: "Dùng giao diện sáng" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Use light theme" })).toBeInTheDocument();
 });
 
 it("backend account settings override another accounts stale browser cache", async () => {
@@ -87,16 +84,28 @@ it("backend account settings override another accounts stale browser cache", asy
   expect(localStorage.getItem("ielts-locale")).toBe("en");
 });
 
-it("authenticated users have a compact link to account personalization", async () => {
+it("authenticated header keeps theme, personalization, notifications, profile and logout in order", async () => {
   render(<Application />);
   await screen.findByText("Person");
-  expect(screen.getByRole("link", { name: "Personalization" })).toHaveAttribute("href", "/settings/personalization");
+  const header = within(screen.getByRole("banner"));
+  const settings = header.getByRole("link", { name: "Personalization" });
+  const profile = header.getByRole("link", { name: /^Person\s*User$/ });
+  expect(settings).toHaveAttribute("href", "/settings/personalization");
+  expect(settings).toHaveClass("icon-button");
+  expect(profile).toHaveAttribute("href", "/profile");
+  expect(Array.from(screen.getByRole("banner").querySelector(".header-actions")!.querySelectorAll("a[href], button"))).toEqual([
+    header.getByRole("button", { name: "Use dark theme" }),
+    settings,
+    header.getByRole("button", { name: "Notifications (0 unread)" }),
+    profile,
+    header.getByRole("button", { name: "Logout" }),
+  ]);
 });
 
 it("settings exposes exactly three groups, ten preset swatches and the Purple default", async () => {
   render(<Application><PersonalizationPage /></Application>);
   await settingsReady();
-  expect(screen.getAllByRole("group").map(node => node.getAttribute("aria-label") ?? node.querySelector("legend")?.textContent)).toEqual(["Language", "Accent color", "Appearance", "Language"]);
+  expect(screen.getAllByRole("group").map(node => node.getAttribute("aria-label") ?? node.querySelector("legend")?.textContent)).toEqual(["Accent color", "Appearance", "Language"]);
   const palette = screen.getByRole("group", { name: "Accent color" });
   const buttons = within(palette).getAllByRole("button").filter(node => node.hasAttribute("aria-pressed"));
   expect(buttons.map(node => node.getAttribute("aria-label"))).toEqual(["Purple", "Indigo", "Blue", "Cyan", "Emerald", "Green", "Amber", "Orange", "Red", "Pink"]);
@@ -173,18 +182,36 @@ it("a load failure disables unconfirmed edits and Retry reconciles to backend", 
   expect(patches()).toHaveLength(0);
 });
 
-it("settings appearance and language stay synchronized with header controls and root", async () => {
+it("settings switches both languages and persists locale while keeping header theme and root synchronized", async () => {
   render(<Application><PersonalizationPage /></Application>);
   await settingsReady();
   fireEvent.click(screen.getByRole("button", { name: "Dark" }));
   await waitFor(() => expect(saved.appearance).toBe("DARK"));
   expect(screen.getByRole("button", { name: "Use light theme" })).toBeInTheDocument();
-  const language = screen.getAllByRole("group", { name: "Language" })[1];
-  fireEvent.click(within(language).getByRole("button", { name: "Tiếng Việt" }));
+  const language = screen.getByRole("group", { name: "Language" });
+  const english = within(language).getByRole("button", { name: "English" });
+  const vietnamese = within(language).getByRole("button", { name: "Tiếng Việt" });
+  expect(english).toHaveAttribute("lang", "en");
+  expect(english).toHaveAttribute("aria-pressed", "true");
+  expect(vietnamese).toHaveAttribute("lang", "vi");
+  fireEvent.click(vietnamese);
   await waitFor(() => expect(saved.locale).toBe("VI"));
   expect(document.documentElement.lang).toBe("vi");
+  expect(localStorage.getItem("ielts-locale")).toBe("vi");
+  expect(vietnamese).toHaveAttribute("aria-pressed", "true");
+  expect(english).toHaveAttribute("aria-pressed", "false");
   expect(screen.getByRole("heading", { name: "Cá nhân hóa" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Dùng giao diện sáng" })).toBeInTheDocument();
+  expect(screen.getByRole("group", { name: "Ngôn ngữ" })).toBe(language);
+  fireEvent.click(english);
+  await waitFor(() => expect(saved.locale).toBe("EN"));
+  expect(document.documentElement.lang).toBe("en");
+  expect(localStorage.getItem("ielts-locale")).toBe("en");
+  expect(english).toHaveAttribute("aria-pressed", "true");
+  expect(vietnamese).toHaveAttribute("aria-pressed", "false");
+  expect(screen.getByRole("heading", { name: "Personalization" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Use light theme" })).toBeInTheDocument();
+  expect(patches().map(([, init]) => JSON.parse(String(init?.body)))).toEqual([{ appearance: "DARK" }, { locale: "VI" }, { locale: "EN" }]);
 });
 
 it("account switching reconciles all preferences without remounting working content", async () => {

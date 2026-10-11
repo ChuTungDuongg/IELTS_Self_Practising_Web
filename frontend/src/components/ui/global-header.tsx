@@ -7,10 +7,9 @@ import { ConfirmDialog } from "./confirm-dialog";
 import { ThemeToggle } from "./theme-toggle";
 import { TRANSFER_ROUTE } from "@/lib/routes";
 import { useAuth } from "@/features/auth/auth-provider";
-import { useLocale, useTranslation } from "@/lib/i18n/locale-provider";
+import { useTranslation } from "@/lib/i18n/locale-provider";
 import { roleTranslationKeys } from "@/lib/i18n/translations";
 import { NotificationCenter } from "@/features/notifications/notification-center";
-import { usePersonalization } from "@/features/personalization/personalization-provider";
 import { PersonalizationError } from "@/features/personalization/personalization-settings";
 import { SettingsIcon } from "./icons";
 
@@ -50,21 +49,10 @@ function PrimaryNavigation({ pathname }: { pathname: string }) {
   );
 }
 
-function LocaleSwitcher() {
-  const { locale, setLocale } = useLocale();
-  const { t } = useTranslation();
-  const { canUpdate } = usePersonalization();
-  return <div className="locale-switcher" role="group" aria-label={t("shell.language")}>
-    <button type="button" lang="en" aria-label="English" aria-pressed={locale === "en"} disabled={!canUpdate} onClick={() => setLocale("en")}>EN</button>
-    <button type="button" lang="vi" aria-label="Tiếng Việt" aria-pressed={locale === "vi"} disabled={!canUpdate} onClick={() => setLocale("vi")}>VI</button>
-  </div>;
-}
-
 function HeaderActions({ loggingOut, onLogout, pathname }: { loggingOut: boolean; onLogout(): void; pathname: string }) {
   const { user, loading, sessionError } = useAuth();
   const { t } = useTranslation();
   return <div className="header-actions">
-    <LocaleSwitcher />
     <ThemeToggle />
     {user ? <Link href="/settings/personalization" prefetch={false} className="icon-button" aria-label={t("personalization.title")} title={t("personalization.title")}><SettingsIcon width="20" height="20" /></Link> : null}
     {!pathname.startsWith("/settings/personalization") ? <PersonalizationError /> : null}
