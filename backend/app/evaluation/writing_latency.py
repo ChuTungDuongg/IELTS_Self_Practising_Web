@@ -51,6 +51,8 @@ def load_fixture():
 
 def call_identity(messages, schema):
     properties = schema["properties"]
+    if "verdict" in properties:
+        return "relevance", "ta"
     if "reference" in properties:
         return "visual_grounding", "ta"
     if "claims" in properties:
@@ -96,7 +98,17 @@ class FakeLatencyProvider:
                 "scoring": "score",
             }.get(stage, stage)
             return Completion(
-                json.dumps(self.fixture[key], ensure_ascii=False),
+                json.dumps(
+                    {
+                        "verdict": "ON_TOPIC",
+                        "confidence": "HIGH",
+                        "source_ids": [],
+                        "reason": "Có liên hệ với đề bài.",
+                    }
+                    if stage == "relevance"
+                    else self.fixture[key],
+                    ensure_ascii=False,
+                ),
                 dict(self.fixture["usage_per_call"]),
             )
         finally:
@@ -118,6 +130,7 @@ class SequentialTask2Reference(MTSWritingScoringService):
         self._start_assessment()
         trace = self.protected_trace(trace)
         segments = segment_essay(request.response)
+        await self._relevance_gate(request, None, trace)
         for trait in TRAITS:
             await self._run_criterion(
                 request,
@@ -139,6 +152,7 @@ class SequentialTask1Reference(Task1WritingScoringService):
         grounding, claims = self._analysis_services()
         await self._ground(request, analysis, grounding, trace)
         if analysis.confidence != "UNUSABLE":
+            await self._relevance_gate(request, analysis.reference, trace)
             if specialist_eligible(request):
                 extracted = await extract_chart(
                     request, self.chart_derenderer, trace, self.chart_timeout, self.latency

@@ -39,6 +39,18 @@ class Provider:
         self.overrides, self.calls = overrides or {}, []
 
     async def complete(self, messages, schema, *, options=None):
+        if "verdict" in schema["properties"]:
+            # Keep legacy index-based overrides scoped to evidence/scoring calls.
+            return Completion(
+                json.dumps(
+                    {
+                        "verdict": "ON_TOPIC",
+                        "confidence": "HIGH",
+                        "source_ids": [],
+                        "reason": "Có liên hệ với đề bài.",
+                    }
+                )
+            )
         index = len(self.calls)
         self.calls.append(messages)
         value = self.overrides.get(index)
@@ -117,8 +129,8 @@ async def test_vietnamese_independent_prompts_and_cache_version():
         "mts-task2-v5",
         "mts-task2-v6",
     ]:
-        assert effective_prompt_version(old) == "mts-task2-v7"
-    assert effective_prompt_version("custom") == "mts-task2-v7:custom"
+        assert effective_prompt_version(old) == "mts-task2-v8"
+    assert effective_prompt_version("custom") == "mts-task2-v8:custom"
 
 
 @pytest.mark.parametrize(

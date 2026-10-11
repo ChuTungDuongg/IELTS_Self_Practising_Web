@@ -33,6 +33,18 @@ class CoreProvider:
         self.calls = []
 
     async def complete(self, messages, schema, *, options=None):
+        if "verdict" in schema["properties"]:
+            # Keep legacy index-based overrides scoped to evidence/scoring calls.
+            return Completion(
+                json.dumps(
+                    {
+                        "verdict": "ON_TOPIC",
+                        "confidence": "HIGH",
+                        "source_ids": [],
+                        "reason": "Có liên hệ với đề bài.",
+                    }
+                )
+            )
         index = len(self.calls)
         self.calls.append((messages, schema))
         if index in self.overrides:

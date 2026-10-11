@@ -77,3 +77,40 @@ class WritingAIGradingEvent(UUIDPrimaryKeyMixin, Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+
+class WritingAIPracticeFeedback(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """One explicitly saved advisory snapshot; never an official Writing grade."""
+
+    __tablename__ = "writing_ai_practice_feedback"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "attempt_id",
+            "writing_task_id",
+            name="uq_writing_ai_practice_feedback_owner_task",
+        ),
+        *(
+            CheckConstraint(
+                f"{trait}_score >= 0 AND {trait}_score <= 9 AND mod({trait}_score * 2, 1) = 0",
+                name=f"{trait}_half_band",
+            )
+            for trait in ("ta", "cc", "lr", "gra")
+        ),
+    )
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    attempt_id: Mapped[UUID] = mapped_column(ForeignKey("attempts.id", ondelete="CASCADE"))
+    writing_task_id: Mapped[UUID] = mapped_column(
+        ForeignKey("writing_tasks.id", ondelete="RESTRICT")
+    )
+    source_ai_run_id: Mapped[UUID] = mapped_column(
+        ForeignKey("writing_ai_grading_runs.id", ondelete="CASCADE")
+    )
+    ta_score: Mapped[Decimal] = mapped_column(Numeric(2, 1))
+    ta_feedback: Mapped[str] = mapped_column(String(2000))
+    cc_score: Mapped[Decimal] = mapped_column(Numeric(2, 1))
+    cc_feedback: Mapped[str] = mapped_column(String(2000))
+    lr_score: Mapped[Decimal] = mapped_column(Numeric(2, 1))
+    lr_feedback: Mapped[str] = mapped_column(String(2000))
+    gra_score: Mapped[Decimal] = mapped_column(Numeric(2, 1))
+    gra_feedback: Mapped[str] = mapped_column(String(2000))

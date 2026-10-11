@@ -63,6 +63,7 @@ def safe_finish_reason(value: object) -> SafeFinishReason:
 
 
 OutputFailureReason = Literal[
+    "RELEVANCE_AUXILIARY_FAILED",
     "INVALID_JSON",
     "SCHEMA_VALIDATION",
     "INVALID_HALF_BAND",

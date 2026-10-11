@@ -11,10 +11,41 @@ from app.core.database import SessionFactory, get_session
 from app.core.exceptions import AppError
 from app.models.enums import WritingAIRunStatus
 from app.schemas.writing_ai import CreateRunRequest, CreateRunResponse, RunListResponse, RunResponse
+from app.schemas.writing_ai_practice_feedback import PracticeFeedbackResponse, SavePracticeFeedback
 from app.services.writing_ai import CANCELLATION_CODE, WritingAIService
+from app.services.writing_ai_practice_feedback import WritingAIPracticeFeedbackService
 from app.services.writing_ai_worker import WritingAIWorker
 
 router = APIRouter(tags=["writing-ai"])
+
+
+@router.get(
+    "/attempts/{attempt_id}/writing/{writing_task_id}/ai-practice-feedback",
+    response_model=PracticeFeedbackResponse | None,
+)
+async def get_practice_feedback(
+    attempt_id: UUID,
+    writing_task_id: UUID,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+):
+    return await WritingAIPracticeFeedbackService(session, user.id).get(attempt_id, writing_task_id)
+
+
+@router.put(
+    "/attempts/{attempt_id}/writing/{writing_task_id}/ai-practice-feedback",
+    response_model=PracticeFeedbackResponse,
+)
+async def save_practice_feedback(
+    attempt_id: UUID,
+    writing_task_id: UUID,
+    body: SavePracticeFeedback,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+):
+    return await WritingAIPracticeFeedbackService(session, user.id).save(
+        attempt_id, writing_task_id, body.source_run_id
+    )
 
 
 def get_worker() -> WritingAIWorker:

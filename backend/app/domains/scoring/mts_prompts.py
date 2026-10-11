@@ -11,7 +11,7 @@ from app.domains.scoring.essay_sources import SourceSegment, segment_essay
 from app.providers.writing_llm.base import Message, OutputFailureReason
 from app.schemas.writing_ai import EvidenceResult, EvidenceSelection, ScoringOutput, Trait
 
-AI_WRITING_PROMPT_VERSION = "mts-task2-v7"
+AI_WRITING_PROMPT_VERSION = "mts-task2-v8"
 
 
 def effective_prompt_version(configured: str) -> str:
@@ -27,6 +27,7 @@ def effective_prompt_version(configured: str) -> str:
             "mts-task2-v4",
             "mts-task2-v5",
             "mts-task2-v6",
+            "mts-task2-v7",
             AI_WRITING_PROMPT_VERSION,
         }
         else f"{AI_WRITING_PROMPT_VERSION}:{configured}"[:80]

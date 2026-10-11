@@ -298,8 +298,9 @@ async def test_primary_failure_never_uses_specialist_as_replacement():
     specialist = FakeSpecialist()
     scorer, result, _ = await grade(specialist, Task1FakeProvider(malformed_grounding=2))
     assert result is None and "ta" in scorer.failures
-    # Extraction now overlaps primary perception, but it cannot replace a failed reference.
-    assert len(specialist.calls) == 1
+    # Post-grounding work now waits for usable perception and relevance. A specialist
+    # cannot replace an unusable reference, so no unnecessary extraction starts.
+    assert not specialist.calls
     assert scorer.states["ta"].result is None
     assert all(scorer.states[trait].result for trait in ("cc", "lr", "gra"))
     assert (

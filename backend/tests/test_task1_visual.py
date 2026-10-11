@@ -475,7 +475,14 @@ class Task1FakeProvider:
     async def complete(self, messages, schema, *, options=None):
         self.calls.append(messages)
         properties = schema["properties"]
-        if "reference" in properties:
+        if "verdict" in properties:
+            output = {
+                "verdict": "ON_TOPIC",
+                "confidence": "HIGH",
+                "source_ids": [],
+                "reason": "Có liên hệ với đề bài.",
+            }
+        elif "reference" in properties:
             if self.malformed_grounding:
                 self.malformed_grounding -= 1
                 return Completion("{}")
@@ -572,7 +579,7 @@ async def test_fake_provider_failure_targets_only_the_explicit_criterion(trait, 
 async def test_task1_pipeline_grounded_ta_text_only_languages_and_exact_quotes():
     provider = Task1FakeProvider()
     service, result, events = await assess(provider)
-    assert result is not None and result.overall_band == Decimal(7) and len(provider.calls) == 10
+    assert result is not None and result.overall_band == Decimal(7) and len(provider.calls) == 11
     assert result.task_number == 1 and result.task1_analysis.claims[0].verdict == "SUPPORTED"
     assert result.task1_analysis.claims[0].quote == "A increased from 20 to 50."
     assert all(

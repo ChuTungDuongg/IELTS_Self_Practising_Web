@@ -224,7 +224,7 @@ async def test_old_task1_prompt_cache_remains_readable_but_is_not_reused(
         )
     upgraded = await api.create(attempt_id, task_id, force=False)
     assert not upgraded.cache_hit and upgraded.run_id != created.run_id
-    assert (await api.get(upgraded.run_id)).prompt_version == "mts-task1-visual-v7"
+    assert (await api.get(upgraded.run_id)).prompt_version == "mts-task1-visual-v8"
     assert (await api.get(created.run_id)).result == old_result
 
 
@@ -319,7 +319,7 @@ async def test_task1_persists_replays_caches_and_never_changes_official_scores(
     assert chunks[-1].startswith(f"id: {events[-1].sequence}\nevent: run.completed\n")
     assert all(json.loads(chunk.split("data: ")[1])["sequence"] > cursor for chunk in chunks)
     await runner.execute(run.id)
-    assert len(provider.calls) == 10
+    assert len(provider.calls) == 11
     cached = await api.create(attempt_id, task_id, force=False)
     assert cached.run_id == run.id and cached.cache_hit
     forced = await api.create(attempt_id, task_id, force=True)

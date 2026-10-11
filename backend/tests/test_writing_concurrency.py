@@ -85,7 +85,7 @@ async def test_task2_all_evidence_overlaps_and_each_score_waits_for_own_evidence
     job = asyncio.create_task(service.assess(synthetic_request(2, load_fixture()), trace))
     try:
         await wait(evidence_started)
-        assert not provider.calls
+        assert all(call[0] == "relevance" for call in provider.calls)
         release_evidence.set()
         await wait(three_completed)
         assert service.states["cc"].result is None
@@ -100,8 +100,8 @@ async def test_task2_all_evidence_overlaps_and_each_score_waits_for_own_evidence
         assert events.index(("criterion.evidence.completed", trait)) < events.index(
             ("criterion.scoring.started", trait)
         )
-        for _, call_trait, messages, _, options in provider.calls:
-            if call_trait == trait:
+        for stage, call_trait, messages, _, options in provider.calls:
+            if call_trait == trait and stage != "relevance":
                 other_scores = {
                     other: float(service.states[other].result.score)
                     for other in TRAITS
@@ -114,7 +114,7 @@ async def test_task2_all_evidence_overlaps_and_each_score_waits_for_own_evidence
 
 
 @pytest.mark.parametrize("enabled", [False, True])
-async def test_task1_text_claims_and_visuals_overlap_ta_waits_for_all_dependencies(enabled):
+async def test_task1_claims_and_specialist_start_after_grounding_and_relevance(enabled):
     fixture = load_fixture()
     starts = {
         stage: asyncio.Event()
@@ -149,6 +149,10 @@ async def test_task1_text_claims_and_visuals_overlap_ta_waits_for_all_dependenci
     job = asyncio.create_task(service.assess(synthetic_request(1, fixture, enabled), trace))
     try:
         await wait(starts["visual_grounding"])
+        assert not starts["claim_extraction"].is_set()
+        assert not starts["chart_specialist"].is_set()
+        await wait(languages_done)
+        releases["visual_grounding"].set()
         await wait(starts["claim_extraction"])
         if enabled:
             await wait(starts["chart_specialist"])
@@ -172,6 +176,8 @@ async def test_task1_text_claims_and_visuals_overlap_ta_waits_for_all_dependenci
         await asyncio.gather(job, return_exceptions=True)
     assert result.task1_analysis.claims[0].verdict == "SUPPORTED"
     names = [event for event, _ in events]
+    assert names.index("visual_grounding.completed") < names.index("relevance.started")
+    assert names.index("relevance.completed") < names.index("claim_extraction.started")
     assert names.index("derived_facts.completed") < names.index("claim_verification.started")
     assert names.index("claim_extraction.completed") < names.index("claim_verification.started")
     assert names.index("claim_verification.completed") < events.index(("criterion.started", "ta"))
@@ -310,7 +316,7 @@ async def test_fake_comparison_preserves_outputs_prompts_schemas_budgets_and_cou
     groups = Counter()
     for row in report["rows"]:
         assert row["equivalent_outputs_and_requests"]
-        assert row["llm_calls"] == (8 if row["task_number"] == 2 else 11)
+        assert row["llm_calls"] == (9 if row["task_number"] == 2 else 12)
         assert row["total_tokens"] == row["llm_calls"] * 150
         assert row["specialist_calls"] == int(row["specialist_enabled"])
         assert row["peak_active_llm_requests"] <= row["limit"]

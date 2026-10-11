@@ -233,7 +233,7 @@ async def assess_profile(task, profile, **provider_options):
 async def test_profiles_preserve_independent_core_scores_and_evidence_first_flow(task, profile):
     result, service, provider, events, req = await assess_profile(task, profile)
     assert result is not None and not service.failures and not service.diagnostics
-    assert len(provider.calls) == (10 if task == 1 else 8)
+    assert len(provider.calls) == (11 if task == 1 else 9)
     for trait in TRAITS:
         assert [stage for t, stage, *_ in provider.mts_calls if t == trait] == [
             "evidence",
@@ -252,7 +252,7 @@ async def test_profiles_preserve_independent_core_scores_and_evidence_first_flow
         assert [item.quote for item in criterion.evidence] == [
             source.text for source in sources[: profile["evidence_count"]]
         ]
-    for _trait, stage, messages, schema, options in provider.mts_calls:
+    for trait, stage, messages, schema, options in provider.mts_calls:
         payload = json.loads(messages[1]["content"])
         assert all(
             f"[{source.source_id}] {source.text}" in payload["segmented_essay"]
@@ -265,7 +265,7 @@ async def test_profiles_preserve_independent_core_scores_and_evidence_first_flow
         assert "trait_profiles" not in str(messages) and "mock_scores" not in str(messages)
         if stage == "scoring":
             assert len(messages) == 2  # No other criterion's interaction or scores.
-            assert options.max_tokens == 3072
+            assert options.max_tokens == (4096 if task == 1 and trait == "ta" else 3072)
             assert set(schema["properties"]) == {"score", "feedback", "strengths", "improvements"}
         else:
             assert options.max_tokens == 1800
@@ -283,4 +283,4 @@ async def test_full_half_band_range_survives_without_evidence_minimum_or_metadat
     assert result is not None and not service.diagnostics
     assert all(getattr(result.criteria, trait).score == Decimal(str(score)) for trait in TRAITS)
     assert result.raw_mean == result.overall_band == Decimal(str(score))
-    assert len(provider.calls) == (10 if task == 1 else 8)
+    assert len(provider.calls) == (11 if task == 1 else 9)

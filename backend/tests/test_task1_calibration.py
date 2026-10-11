@@ -141,9 +141,9 @@ def test_task1_evidence_preserves_exact_source_data_and_instruction_guard(trait)
 
 
 def test_task1_scoring_version_changes_cache_without_changing_visual_contract():
-    assert task1_input.TASK1_PROMPT_VERSION == "mts-task1-visual-v7"
+    assert task1_input.TASK1_PROMPT_VERSION == "mts-task1-visual-v8"
     assert getattr(task1_input, "TASK1_VISUAL_CONTRACT_VERSION", None) == "mts-task1-visual-v3"
-    assert getattr(task1_input, "TASK1_SCORING_PROMPT_VERSION", None) == "mts-task1-scoring-v7"
+    assert getattr(task1_input, "TASK1_SCORING_PROMPT_VERSION", None) == "mts-task1-scoring-v8"
     req = request()
     assert input_fingerprint(req, task1_input.TASK1_PROMPT_VERSION, "vllm", "model") != (
         input_fingerprint(req, "mts-task1-visual-v6", "vllm", "model")
@@ -566,7 +566,7 @@ async def test_preserves_fake_provider_ta_score_and_v5_grounding(band):
         result is not None and result.criteria.ta.score == Decimal(str(band)) for result in results
     )
     assert results[0].task1_analysis == results[1].task1_analysis
-    assert len(providers[0].calls) == len(providers[1].calls) == 10
+    assert len(providers[0].calls) == len(providers[1].calls) == 11
 
     # Perception/claims and LR/GRA evidence/scoring remain identical to frozen v5.
     def unchanged_calls(provider):
@@ -606,10 +606,14 @@ async def test_benchmark_legacy_uses_original_v3_guidance_with_same_perception_a
     assert all(result is not None and result.overall_band == Decimal(7) for result in results)
     assert results[0].task1_analysis == results[1].task1_analysis
     assert timelines[0] == timelines[1]
-    assert len(providers[0].calls) == len(providers[1].calls) == 10
+    assert len(providers[0].calls) == len(providers[1].calls) == 11
 
     def auxiliary(call):
-        return isinstance(call[1]["content"], list) or "Extract at most" in call[0]["content"]
+        return (
+            isinstance(call[1]["content"], list)
+            or "Extract at most" in call[0]["content"]
+            or "Classify only" in call[0]["content"]
+        )
 
     assert [call for call in providers[0].calls if auxiliary(call)] == [
         call for call in providers[1].calls if auxiliary(call)

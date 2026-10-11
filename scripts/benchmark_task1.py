@@ -30,9 +30,9 @@ def main(argv=None) -> int:
     parser.add_argument("--chart-specialist", choices=["off", "on", "both"], default="off")
     parser.add_argument(
         "--scoring-version",
-        choices=["v3", "v5", "v7", "both"],
-        default="v7",
-        help="v7 production candidate (default); both compares v5 baseline with v7; v3 is historical",
+        choices=["v3", "v5", "v7", "v8", "both"],
+        default="v8",
+        help="v8 production candidate (default); both compares v5 baseline with v8; v3/v7 are historical",
     )
     parser.add_argument(
         "--dry-run",

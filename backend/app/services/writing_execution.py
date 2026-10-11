@@ -49,6 +49,7 @@ class WritingLatencyMetrics:
     STAGES = frozenset(
         {
             "provider_ready",
+            "relevance",
             "evidence",
             "scoring",
             "visual_grounding",

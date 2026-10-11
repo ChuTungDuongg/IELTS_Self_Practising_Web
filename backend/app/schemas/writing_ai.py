@@ -72,6 +72,21 @@ class EvidenceSelection(StrictModel):
     evidence: list[EvidenceChoice] = Field(max_length=4)
 
 
+class WritingRelevanceAssessment(StrictModel):
+    verdict: Literal["ON_TOPIC", "PARTIALLY_RELEVANT", "WHOLLY_UNRELATED"]
+    confidence: Literal["HIGH", "MEDIUM", "LOW"]
+    source_ids: list[SourceID] = Field(max_length=4)
+    reason: str = Field(strict=True, min_length=1, max_length=320)
+
+
+class WritingRelevanceResult(StrictModel):
+    verdict: Literal["ON_TOPIC", "PARTIALLY_RELEVANT", "WHOLLY_UNRELATED"]
+    confidence: Literal["HIGH", "MEDIUM", "LOW"]
+    reason: str = Field(min_length=1, max_length=320)
+    evidence: list[Evidence] = Field(max_length=4)
+    short_circuit_applied: bool
+
+
 class TraitScore(StrictModel):
     score: Decimal = Field(ge=0, le=9, allow_inf_nan=False)
     feedback: str = Field(min_length=1, max_length=2000)
@@ -165,6 +180,7 @@ class AIWritingResult(StrictModel):
     criteria: Criteria
     raw_mean: Decimal = Field(ge=0, le=9, allow_inf_nan=False)
     overall_band: Decimal = Field(ge=0, le=9, allow_inf_nan=False)
+    relevance: WritingRelevanceResult | None = None
 
     @field_serializer("raw_mean", "overall_band", return_type=float)
     def serialize_band(self, value: Decimal) -> float:
@@ -187,6 +203,7 @@ class CreateRunResponse(BaseModel):
 
 
 AssessmentStage = Literal[
+    "relevance",
     "evidence",
     "scoring",
     "visual_grounding",
@@ -196,6 +213,9 @@ AssessmentStage = Literal[
     "chart_cross_check",
 ]
 ActivityPhase = Literal[
+    "checking_relevance",
+    "relevance_checked",
+    "relevance_failed",
     "preparing",
     "starting_model",
     "collecting_evidence",
@@ -270,6 +290,7 @@ class RunResponse(BaseModel):
     completed_at: datetime | None
     created_at: datetime
     activity: RunActivity | None = None
+    relevance: WritingRelevanceResult | None = None
 
 
 class RunListResponse(BaseModel):
@@ -278,6 +299,9 @@ class RunListResponse(BaseModel):
 
 
 EventType = Literal[
+    "relevance.started",
+    "relevance.completed",
+    "relevance.failed",
     "run.started",
     "provider.starting",
     "provider.ready",
@@ -319,6 +343,7 @@ class EventPayload(StrictModel):
     error_code: str | None = Field(default=None, max_length=80)
     error_message: str | None = Field(default=None, max_length=300)
     task1_analysis: Task1Analysis | None = None
+    relevance: WritingRelevanceResult | None = None
 
 
 class EventResponse(BaseModel):

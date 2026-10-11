@@ -33,6 +33,17 @@ class BudgetProvider:
         self.calls = []
 
     async def complete(self, messages, schema, *, options=None):
+        if "verdict" in schema["properties"]:
+            return Completion(
+                json.dumps(
+                    {
+                        "verdict": "ON_TOPIC",
+                        "confidence": "HIGH",
+                        "source_ids": [],
+                        "reason": "Có liên hệ với đề bài.",
+                    }
+                )
+            )
         self.calls.append((messages, schema, options))
         is_evidence = "evidence" in schema["properties"]
         value = next(self.evidence if is_evidence else self.scoring, None)
@@ -103,6 +114,27 @@ async def test_mts_vllm_wire_schema_has_only_four_fields_and_stage_budgets(monke
         body = json.loads(request.content)
         bodies.append(body)
         schema = body["response_format"]["json_schema"]["schema"]
+        if "verdict" in schema["properties"]:
+            return httpx.Response(
+                200,
+                json={
+                    "choices": [
+                        {
+                            "finish_reason": "stop",
+                            "message": {
+                                "content": json.dumps(
+                                    {
+                                        "verdict": "ON_TOPIC",
+                                        "confidence": "HIGH",
+                                        "source_ids": [],
+                                        "reason": "Có liên hệ với đề bài.",
+                                    }
+                                )
+                            },
+                        }
+                    ]
+                },
+            )
         is_evidence = "evidence" in schema["properties"]
         if not is_evidence:
             assert (
@@ -141,7 +173,7 @@ async def test_mts_vllm_wire_schema_has_only_four_fields_and_stage_budgets(monke
     )
     result, service, _events = await assess(create_provider(settings))
     assert result.overall_band == Decimal("6.5") and not service.diagnostics
-    assert [body["max_tokens"] for body in bodies] == [1800, 3072] * 4
+    assert [body["max_tokens"] for body in bodies] == [768] + [1800, 3072] * 4
     assert "private ignored reasoning" not in result.model_dump_json()
 
 
@@ -244,7 +276,7 @@ async def test_task1_success_gives_only_ta_scoring_first_pass_headroom():
     provider = Task1BudgetProvider(ta_length_failures=0)
     result, service, events = await assess(provider, Task1WritingScoringService, task1_request())
     assert result is not None and provider.ta_calls == 1
-    assert len(provider.budget_calls) == 10
+    assert len(provider.budget_calls) == 11
     scores = [call for call in provider.budget_calls if "score" in call[1]["properties"]]
     ta_scores = [call for call in scores if "Criterion: Task Achievement." in call[0][0]["content"]]
     assert [budget(call) for call in ta_scores] == [4096]
@@ -261,8 +293,8 @@ async def test_task1_ta_and_counted_provider_forward_budget_without_changing_per
 
     assert result is not None and result.criteria.ta.score == Decimal(7)
     assert result.task1_analysis.claims[0].verdict == "SUPPORTED"
-    assert provider.ta_calls == 2 and counted.calls == 11
-    assert counted.usage["total_tokens"] == 100
+    assert provider.ta_calls == 2 and counted.calls == 12
+    assert counted.usage["total_tokens"] == 110
     assert all(
         options is None
         for _messages, schema, options in provider.budget_calls
@@ -280,7 +312,7 @@ async def test_task1_second_ta_length_failure_stays_invalid_with_no_third_attemp
     provider = Task1BudgetProvider(ta_length_failures=2)
     result, service, events = await assess(provider, Task1WritingScoringService, task1_request())
     assert result is None and set(service.failures) == {"ta"}
-    assert provider.ta_calls == 2 and len(provider.budget_calls) == 11
+    assert provider.ta_calls == 2 and len(provider.budget_calls) == 12
     ta_scores = [
         call
         for call in provider.budget_calls

@@ -348,6 +348,19 @@ class FakeProvider:
         pass
 
     async def complete(self, messages, schema, *, options=None):
+        if "verdict" in schema["properties"]:
+            self.calls.append(messages)
+            return Completion(
+                json.dumps(
+                    {
+                        "verdict": "ON_TOPIC",
+                        "confidence": "HIGH",
+                        "source_ids": [],
+                        "reason": "Có liên hệ với đề bài.",
+                    }
+                ),
+                {"total_tokens": 10},
+            )
         trait = next(trait for trait in TRAITS if TRAIT_NAMES[trait] in messages[0]["content"])
         stage = "evidence" if "evidence" in schema["properties"] else "scoring"
         self.attempts[trait, stage] = self.attempts.get((trait, stage), 0) + 1
@@ -494,7 +507,7 @@ async def test_concurrent_out_of_order_checkpoints_are_canonical_replayable_and_
         assert metrics["run_total_ms"] >= metrics["time_to_first_criterion_ms"] > 0
         assert metrics["provider_ready_ms"] >= 0
         assert metrics["llm_concurrency_limit"] == 2 and metrics["peak_active_llm_requests"] <= 2
-        assert set(metrics["stages"]) == {"provider_ready"} | {
+        assert set(metrics["stages"]) == {"provider_ready", "relevance"} | {
             f"{trait}.{stage}" for trait in TRAITS for stage in ("evidence", "scoring")
         }
         assert ESSAY not in json.dumps(metrics)
@@ -561,17 +574,22 @@ async def test_success_persistence_cache_force_events_and_official_isolation(
     assert saved.status == WritingAIRunStatus.COMPLETED
     assert saved.result.raw_mean == Decimal("6.375")
     assert saved.result.overall_band == Decimal("6.5")
-    assert len(events) == 32
-    assert [event.sequence for event in events] == list(range(1, 33))
-    assert [event.event_type for event in events[1:4]] == [
+    assert len(events) == 34
+    assert [event.sequence for event in events] == list(range(1, 35))
+    assert [event.event_type for event in events[1:5]] == [
         "provider.starting",
         "provider.ready",
+        "relevance.started",
         "criterion.started",
     ]
     assert events[0].event_type == "run.started" and events[-1].event_type == "run.completed"
-    assert len(provider.calls) == 8
+    assert len(provider.calls) == 9
     for trait in TRAITS:
-        assert [event.event_type for event in events if event.payload.criterion == trait] == [
+        assert [
+            event.event_type
+            for event in events
+            if event.payload.criterion == trait and not event.event_type.startswith("relevance.")
+        ] == [
             "criterion.started",
             "evidence.request.started",
             "evidence.validation.started",
@@ -602,7 +620,7 @@ async def test_success_persistence_cache_force_events_and_official_isolation(
         )
         run = await db_session.get(WritingAIGradingRun, created.run_id)
         assert run.raw_mean == Decimal("6.375")
-        assert run.usage_json["calls"] == [{"total_tokens": 10}] * 8
+        assert run.usage_json["calls"] == [{"total_tokens": 10}] * 9
         assert run.usage_json["diagnostics"] == []
         assert run.usage_json["activity"]["phase"] == "completed"
         assert attempt.band_score == Decimal("7.0")
@@ -737,7 +755,7 @@ async def test_bad_trait_call_repaired_once(db_session, writing, settings, bad):
     assert (
         await service(db_session, settings).get(created.run_id)
     ).status == WritingAIRunStatus.COMPLETED
-    assert len(provider.calls) == 9
+    assert len(provider.calls) == 10
     ta_scores = [
         call
         for call in provider.calls
@@ -762,7 +780,7 @@ async def test_second_bad_call_fails_and_preserves_partial_progress(db_session, 
     run, events = await service(db_session, settings).snapshot(created.run_id, 0)
     assert run.status == WritingAIRunStatus.FAILED and run.error_code == "AI_PROVIDER_BAD_RESPONSE"
     assert set(run.progress) == {"ta", "lr", "gra"} and run.result is None
-    assert len(provider.calls) == 9 and events[-1].event_type == "run.failed"
+    assert len(provider.calls) == 10 and events[-1].event_type == "run.failed"
     assert "secret" not in run.model_dump_json() + str(events)
     retried = await service(db_session, settings).create(attempt_id, task_id, force=False)
     assert retried.run_id != run.id
@@ -789,7 +807,7 @@ async def test_lr_evidence_failure_retains_ta_cc_runs_gra_and_terminates_replay(
     assert not any(
         e.event_type == "criterion.scoring.started" and e.payload.criterion == "lr" for e in events
     )
-    assert len(provider.calls) == 8
+    assert len(provider.calls) == 9
     assert set(run.failures) == {"lr"}
     assert [e.sequence for e in events] == list(range(1, len(events) + 1))
     async with db_session.begin():
@@ -831,7 +849,7 @@ async def test_lr_evidence_failure_retains_ta_cc_runs_gra_and_terminates_replay(
     forced = await api.create(attempt_id, task_id, force=True)
     fresh = FakeProvider()
     await worker(db_session, settings, fresh).execute(forced.run_id)
-    assert len(fresh.calls) == 8
+    assert len(fresh.calls) == 9
     assert (await api.get(run.id)).progress == run.progress
 
 
@@ -941,7 +959,7 @@ async def test_gra_optional_calibration_completes_persists_and_replays_without_r
     assert saved.status == WritingAIRunStatus.COMPLETED and not saved.failures
     assert saved.result.criteria.gra.score == Decimal("8.5")
     assert saved.result.raw_mean == Decimal("7") and saved.result.overall_band == Decimal("7")
-    assert set(saved.progress) == set(TRAITS) and len(provider.calls) == 8
+    assert set(saved.progress) == set(TRAITS) and len(provider.calls) == 9
     assert not any(e.event_type in {"criterion.retrying", "criterion.failed"} for e in events)
     completed = [e for e in events if e.event_type == "criterion.completed"]
     assert {e.payload.criterion for e in completed} == set(TRAITS)
@@ -956,12 +974,12 @@ async def test_gra_optional_calibration_completes_persists_and_replays_without_r
     assert restored.progress == saved.progress
     assert [e.event_type for e in replay] == ["criterion.completed", "run.completed"]
     await runner.execute(created.run_id)
-    assert len(provider.calls) == 8
+    assert len(provider.calls) == 9
     assert "private" not in saved.model_dump_json() + str(events)
     async with db_session.begin():
         db_session.expire_all()
         stored = await db_session.get(WritingAIGradingRun, created.run_id)
-        assert len(stored.usage_json["calls"]) == 8
+        assert len(stored.usage_json["calls"]) == 9
         assert stored.usage_json["diagnostics"]
         assert all(d["reason"].startswith("CALIBRATION_") for d in stored.usage_json["diagnostics"])
         assert "private" not in json.dumps(stored.usage_json)
@@ -984,7 +1002,7 @@ async def test_gra_optional_calibration_completes_persists_and_replays_without_r
         "mts-task2-v6",
     ],
 )
-async def test_old_cache_is_preserved_but_never_reused_for_v7(
+async def test_old_cache_is_preserved_but_never_reused_for_v8(
     db_session, writing, settings, old_version
 ):
     attempt_id, _, task_id = writing
@@ -1002,7 +1020,7 @@ async def test_old_cache_is_preserved_but_never_reused_for_v7(
     settings.ai_writing_prompt_version = old_version  # Existing deployed secret.
     upgraded = await api.create(attempt_id, task_id, force=False)
     assert upgraded.run_id != legacy.run_id and not upgraded.cache_hit
-    assert (await api.get(upgraded.run_id)).prompt_version == "mts-task2-v7"
+    assert (await api.get(upgraded.run_id)).prompt_version == "mts-task2-v8"
     history = await api.list(attempt_id, task_id)
     assert len(history.items) == 2
     assert history.items[1].prompt_version == old_version and history.items[1].result == old_result
@@ -1043,7 +1061,7 @@ async def test_verbose_lr_normalizes_persists_live_and_replays_without_inference
     await runner.execute(created.run_id)
     saved, events = await api.snapshot(created.run_id, 0)
     assert saved.status == WritingAIRunStatus.COMPLETED
-    assert saved.result.overall_band == Decimal("6.5") and len(provider.calls) == 8
+    assert saved.result.overall_band == Decimal("6.5") and len(provider.calls) == 9
     result = saved.progress["lr"]
     assert result.score == Decimal("6.5") and result.feedback.endswith("…")
     assert len(result.feedback) <= 800 and paragraph.startswith(result.feedback[:-1])
@@ -1062,7 +1080,7 @@ async def test_verbose_lr_normalizes_persists_live_and_replays_without_inference
     assert snapshot.progress == saved.progress
     assert replay[0].payload.result == result
     await runner.execute(created.run_id)
-    assert len(provider.calls) == 8
+    assert len(provider.calls) == 9
     public = saved.model_dump_json() + str(events)
     assert "SCORE_PRESENTATION_NORMALIZED" not in public and "validation_issues" not in public
     async with db_session.begin():
@@ -1179,7 +1197,7 @@ async def test_sse_api_replay_auth_disconnect_and_no_raw_content(
             assert (
                 await client.get(url + "/events", headers={"Last-Event-ID": "bad"})
             ).status_code == 422
-            assert (await client.get(url + "/events?after=32")).text == ""
+            assert (await client.get(url + "/events?after=34")).text == ""
             assert len((await client.get(path)).json()["items"]) == 1
             assert (await client.post(path, json={})).json()["cache_hit"]
             assert (await client.post(path, json={"force": True})).json()["run_id"] != str(run_id)
@@ -1215,7 +1233,7 @@ async def test_protocol_adapter_and_unknown_source_repair():
     )
     scoring: WritingScoringProvider = MTSWritingScoringService(provider)
     result = await scoring.score(request)
-    assert result.overall_band == 6.5 and len(provider.calls) == 9
+    assert result.overall_band == 6.5 and len(provider.calls) == 10
 
 
 @pytest.mark.integration

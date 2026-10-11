@@ -46,6 +46,7 @@ from app.services.writing_execution import (
     WritingLatencyMetrics,
     gather_isolated,
 )
+from app.services.writing_relevance import classify_relevance
 
 T = TypeVar("T", bound=BaseModel)
 TraceCallback = Callable[[EventType, EventPayload], Awaitable[None]]
@@ -74,8 +75,11 @@ class MTSWritingScoringService:
         *,
         max_concurrent_requests: int = 2,
         latency: WritingLatencyMetrics | None = None,
+        relevance_enabled: bool = True,
     ) -> None:
         self.provider = BoundedWritingProvider(provider, max_concurrent_requests)
+        # Offline historical benchmarks can retain their pre-gate contract.
+        self.relevance_enabled = relevance_enabled
         self._external_latency = latency is not None
         self.latency = latency or WritingLatencyMetrics()
         self._start_assessment()
@@ -84,6 +88,7 @@ class MTSWritingScoringService:
         self.states = {trait: CriterionExecutionState(trait) for trait in TRAITS}
         self.aux_usage: list[dict[str, int]] = []
         self.aux_diagnostics: list[OutputDiagnostic] = []
+        self.relevance = None
         if not self._external_latency:
             self.latency = WritingLatencyMetrics()
 
@@ -286,22 +291,21 @@ class MTSWritingScoringService:
         self._start_assessment()
         trace = self.protected_trace(trace)
         segments = segment_essay(request.response)
-        await gather_isolated(
-            *(
-                self._run_criterion(
-                    request,
-                    trait,
-                    trace,
-                    lambda trait=trait: evidence_messages(
-                        request.prompt, request.response, trait, segments
-                    ),
-                    lambda evidence, trait=trait: scoring_messages(
-                        request.prompt, request.response, trait, evidence, segments
-                    ),
-                )
-                for trait in TRAITS
+
+        async def run(trait):
+            if trait == "ta" and await self._relevance_gate(request, None, trace):
+                return
+            await self._run_criterion(
+                request,
+                trait,
+                trace,
+                lambda: evidence_messages(request.prompt, request.response, trait, segments),
+                lambda evidence: scoring_messages(
+                    request.prompt, request.response, trait, evidence, segments
+                ),
             )
-        )
+
+        await gather_isolated(*(run(trait) for trait in TRAITS))
         return self._task2_result()
 
     def _task2_result(self) -> AIWritingResult | None:
@@ -310,7 +314,41 @@ class MTSWritingScoringService:
         criteria = {trait: self.states[trait].result for trait in TRAITS}
         validated = Criteria.model_validate(criteria)
         raw_mean, overall_band = aggregate_ai_task_two(*(criteria[trait].score for trait in TRAITS))
-        return AIWritingResult(criteria=validated, raw_mean=raw_mean, overall_band=overall_band)
+        return AIWritingResult(
+            criteria=validated,
+            raw_mean=raw_mean,
+            overall_band=overall_band,
+            relevance=self.relevance,
+        )
+
+    async def _relevance_gate(self, request, reference, trace):
+        if not self.relevance_enabled:
+            return False
+        self.states["ta"].stage = "relevance"
+        self.relevance = await classify_relevance(
+            self.provider,
+            request,
+            reference,
+            trace,
+            self.aux_usage,
+            self.aux_diagnostics,
+            self.latency,
+        )
+        if self.relevance is None or not self.relevance.short_circuit_applied:
+            return False
+        await trace("criterion.started", EventPayload(criterion="ta"))
+        name = "Task Achievement" if reference is not None else "Task Response"
+        result = CriterionResult(
+            score=1,
+            feedback=f"Bài viết hoàn toàn không liên quan đến yêu cầu của đề, phù hợp mô tả {name} Band 1. {self.relevance.reason}",
+            strengths=[],
+            improvements=["Viết nội dung trực tiếp đáp ứng yêu cầu của đề bài."],
+            evidence=self.relevance.evidence,
+        )
+        self.states["ta"].result = result
+        self.latency.completed_criterion()
+        await trace("criterion.completed", EventPayload(criterion="ta", result=result))
+        return True
 
     async def _run_criterion(self, request, trait, trace, evidence_prompt, score_prompt):
         state = self.states[trait]

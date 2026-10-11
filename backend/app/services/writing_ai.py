@@ -34,6 +34,7 @@ from app.schemas.writing_ai import (
     RunResponse,
     Task1WritingResult,
     Trait,
+    WritingRelevanceResult,
 )
 from app.services.task1_input import TASK1_PROMPT_VERSION, Task1ScoringRequest, load_task1_image
 
@@ -42,6 +43,9 @@ CANCELLATION_CODE = "AI_GRADING_CANCELLED"
 
 def persist_activity(run: WritingAIGradingRun, event: EventType, payload: EventPayload) -> None:
     phases = {
+        "relevance.started": "checking_relevance",
+        "relevance.completed": "relevance_checked",
+        "relevance.failed": "relevance_failed",
         "run.started": "preparing",
         "provider.starting": "starting_model",
         "provider.ready": "preparing",
@@ -148,6 +152,9 @@ def present_run(run: WritingAIGradingRun) -> RunResponse:
         else 2,
         task1_analysis=Task1Analysis.model_validate(stored["task1_analysis"])
         if stored.get("task1_analysis")
+        else None,
+        relevance=WritingRelevanceResult.model_validate(stored["relevance"])
+        if stored.get("relevance")
         else None,
     )
 

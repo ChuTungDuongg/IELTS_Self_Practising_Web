@@ -42,8 +42,14 @@ class Task1WritingScoringService(MTSWritingScoringService):
         *,
         max_concurrent_requests: int = 2,
         latency: WritingLatencyMetrics | None = None,
+        relevance_enabled: bool = True,
     ) -> None:
-        super().__init__(provider, max_concurrent_requests=max_concurrent_requests, latency=latency)
+        super().__init__(
+            provider,
+            max_concurrent_requests=max_concurrent_requests,
+            latency=latency,
+            relevance_enabled=relevance_enabled,
+        )
         self.chart_derenderer, self.chart_timeout = chart_derenderer, chart_timeout
 
     def _normal_completion_budget(self, trait: Trait, stage: AssessmentStage) -> int:
@@ -83,6 +89,11 @@ class Task1WritingScoringService(MTSWritingScoringService):
 
         async def achievement():
             self.states["ta"].stage = "visual_grounding"
+            await self._ground(request, analysis, grounding, trace)
+            if analysis.confidence != "UNUSABLE" and await self._relevance_gate(
+                request, analysis.reference, trace
+            ):
+                return
             await self._prepare_analysis(request, analysis, grounding, claims, trace)
             await self._task1_criterion(request, "ta", analysis, trace)
 
@@ -97,7 +108,7 @@ class Task1WritingScoringService(MTSWritingScoringService):
         return self._task1_result(analysis)
 
     async def _prepare_analysis(self, request, analysis, grounding, claim_service, trace):
-        # None of these image/text extraction turns depend on each other's output.
+        # Primary grounding and relevance have finished; now parallelize post-gate work.
         prepared = await gather_isolated(
             self._prepare_reference(request, analysis, grounding, trace),
             self._extract_claims(request, claim_service, trace, analysis),
@@ -106,17 +117,12 @@ class Task1WritingScoringService(MTSWritingScoringService):
             await self._verify_claims(request, prepared[1], analysis, claim_service, trace)
 
     async def _prepare_reference(self, request, analysis, grounding, trace):
-        work = [self._ground(request, analysis, grounding, trace)]
-        if specialist_eligible(request):
-            work.append(
-                extract_chart(
-                    request, self.chart_derenderer, trace, self.chart_timeout, self.latency
-                )
-            )
-        prepared = await gather_isolated(*work)
         if analysis.confidence != "UNUSABLE":
             if specialist_eligible(request):
-                await apply_chart_cross_check(request, analysis, prepared[1], trace, self.latency)
+                prepared = await extract_chart(
+                    request, self.chart_derenderer, trace, self.chart_timeout, self.latency
+                )
+                await apply_chart_cross_check(request, analysis, prepared, trace, self.latency)
             await self._derive_facts(analysis, trace)
 
     async def _ground(self, request, analysis, grounding, trace):
@@ -276,4 +282,5 @@ class Task1WritingScoringService(MTSWritingScoringService):
             raw_mean=mean,
             overall_band=overall,
             task1_analysis=analysis,
+            relevance=self.relevance,
         )

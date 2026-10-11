@@ -232,6 +232,11 @@ class WritingAIWorker:
             if latency is not None:
                 run.usage_json = {**(run.usage_json or {}), "latency": latency}
             persist_activity(run, event_type, payload)
+            if payload.relevance:
+                run.result_json = {
+                    **(run.result_json or {}),
+                    "relevance": payload.relevance.model_dump(mode="json"),
+                }
             if payload.task1_analysis:
                 run.result_json = {
                     **(run.result_json or {}),
