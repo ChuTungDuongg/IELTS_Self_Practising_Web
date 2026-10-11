@@ -1,39 +1,18 @@
 "use client";
 
-import { useLayoutEffect, useState } from "react";
+import { usePersonalization } from "@/features/personalization/personalization-provider";
 import { useTranslation } from "@/lib/i18n/locale-provider";
 
-type Theme = "light" | "dark";
-const STORAGE_KEY = "ielts-theme";
-
-function currentTheme(): Theme {
-  return document.documentElement.dataset.theme === "dark" ? "dark" : "light";
-}
-
 export function ThemeToggle() {
-  const [theme, setTheme] = useState<Theme>("light");
+  const { appearance, setAppearance, canUpdate } = usePersonalization();
+  const theme = appearance === "DARK" ? "dark" : "light";
   const { t } = useTranslation();
-  useLayoutEffect(() => {
-    // Reconcile the bootstrapped root only after deterministic server/client markup.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setTheme(currentTheme());
-  }, []);
-
-  function toggle() {
-    const next: Theme = currentTheme() === "dark" ? "light" : "dark";
-    document.documentElement.dataset.theme = next;
-    setTheme(next);
-    try {
-      window.localStorage.setItem(STORAGE_KEY, next);
-    } catch {
-      // The theme still changes for this document even if persistence is unavailable.
-    }
-  }
 
   return (
     <button
       type="button"
-      onClick={toggle}
+      onClick={() => setAppearance(appearance === "DARK" ? "LIGHT" : "DARK")}
+      disabled={!canUpdate}
       className="theme-toggle"
       aria-label={t(theme === "dark" ? "theme.useLight" : "theme.useDark")}
       title={t(theme === "dark" ? "theme.useLight" : "theme.useDark")}

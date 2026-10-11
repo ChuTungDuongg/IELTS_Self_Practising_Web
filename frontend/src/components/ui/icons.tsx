@@ -51,6 +51,10 @@ export function HeadphonesIcon(props: IconProps) {
   return <IconBase {...props}><path d="M4 14v-2a8 8 0 0 1 16 0v2" /><path d="M4 14h3v6H5a1 1 0 0 1-1-1ZM20 14h-3v6h2a1 1 0 0 0 1-1Z" /></IconBase>;
 }
 
+export function SettingsIcon(props: IconProps) {
+  return <IconBase {...props}><path d="M4 7h16M4 17h16" /><circle cx="9" cy="7" r="3" /><circle cx="15" cy="17" r="3" /></IconBase>;
+}
+
 export function RewindFiveIcon(props: IconProps) {
   return <IconBase {...props}>
     <path d="m7 4-3 3 3 3" />

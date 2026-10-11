@@ -13,6 +13,7 @@ from app.api.v1 import (
     history,
     listening,
     notifications,
+    preferences,
     reading,
     test_sessions,
     tests,
@@ -24,6 +25,7 @@ from app.api.v1 import (
 api_router = APIRouter()
 api_router.include_router(health.router)
 api_router.include_router(auth.router)
+api_router.include_router(preferences.router)
 api_router.include_router(admin.router)
 api_router.include_router(tests.router)
 api_router.include_router(attempts.router)

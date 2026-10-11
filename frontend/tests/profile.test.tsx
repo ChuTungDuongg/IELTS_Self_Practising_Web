@@ -1,10 +1,11 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import ProfilePage from "@/app/profile/page";
 import { AppShell } from "@/components/ui/app-shell";
 import { AuthProvider } from "@/features/auth/auth-provider";
 import { changePassword, getCurrentUser } from "@/lib/api/auth";
 import { getProfile, updateProfile } from "@/lib/api/profile";
+import { getPreferences, updatePreferences } from "@/lib/api/preferences";
 import { ApiError } from "@/lib/api/client";
 import { renderWithLocale } from "./locale-test-utils";
 
@@ -17,6 +18,7 @@ vi.mock("@/lib/api/auth", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/api/auth")>()), getCurrentUser: vi.fn(), changePassword: vi.fn(),
 }));
 vi.mock("@/lib/api/profile", () => ({ getProfile: vi.fn(), updateProfile: vi.fn() }));
+vi.mock("@/lib/api/preferences", () => ({ getPreferences: vi.fn(), updatePreferences: vi.fn() }));
 
 const base = {
   id: "11111111-1111-4111-8111-111111111111", email: "student@example.com",
@@ -37,8 +39,9 @@ describe("profile", () => {
     window.localStorage.clear();
     renderWithLocale(<AuthProvider><ProfilePage /></AuthProvider>);
     const input = await screen.findByLabelText("Display name");
+    await waitFor(() => expect(getPreferences).toHaveBeenCalledOnce());
     fireEvent.change(input, { target: { value: "Nguyễn <draft>" } });
-    fireEvent.click(screen.getByText("Switch to Vietnamese"));
+    await act(async () => fireEvent.click(screen.getByText("Switch to Vietnamese")));
     expect(screen.getByLabelText("Tên hiển thị")).toBe(input);
     expect(input).toHaveValue("Nguyễn <draft>");
     expect(screen.getByRole("heading", { name: "Tài khoản của bạn" })).toBeInTheDocument();
@@ -50,6 +53,9 @@ describe("profile", () => {
     vi.resetAllMocks();
     vi.mocked(getCurrentUser).mockResolvedValue(base);
     vi.mocked(getProfile).mockResolvedValue(base);
+    let preferences = { accent_color: "PURPLE", appearance: "LIGHT", locale: "EN" } as Awaited<ReturnType<typeof getPreferences>>;
+    vi.mocked(getPreferences).mockResolvedValue(preferences);
+    vi.mocked(updatePreferences).mockImplementation(async update => preferences = { ...preferences, ...update });
   });
 
   it.each(["USER", "ADMIN"] as const)("renders read-only account details for %s", async (role) => {

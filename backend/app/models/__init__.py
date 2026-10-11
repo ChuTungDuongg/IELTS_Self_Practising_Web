@@ -29,6 +29,7 @@ from app.models.entities import (
     WritingTask,
 )
 from app.models.notifications import Notification
+from app.models.preferences import UserPreference
 from app.models.writing_ai import (
     WritingAIGradingEvent,
     WritingAIGradingRun,
@@ -36,6 +37,7 @@ from app.models.writing_ai import (
 )
 
 __all__ = [
+    "UserPreference",
     "Classroom",
     "ClassroomAssignment",
     "ClassroomInvitation",

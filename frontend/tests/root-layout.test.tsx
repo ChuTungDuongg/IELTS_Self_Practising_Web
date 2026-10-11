@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { Children, type ReactElement, type ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import RootLayout, { themeInitializationScript } from "@/app/layout";
-import { LocaleProvider } from "@/lib/i18n/locale-provider";
+import { PersonalizationProvider } from "@/features/personalization/personalization-provider";
 import { AuthProvider } from "@/features/auth/auth-provider";
 import { AppShell } from "@/components/ui/app-shell";
 
@@ -14,7 +14,7 @@ vi.mock("next/navigation", () => ({
 describe("RootLayout theme initialization", () => {
   afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); vi.unstubAllGlobals(); window.localStorage.clear(); });
 
-  it("keeps the server composition English/light with LocaleProvider above auth and a server year", () => {
+  it("keeps the server composition English/light with central personalization above auth and a server year", () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-10-10T12:00:00Z"));
     window.localStorage.setItem("ielts-locale", "vi");
@@ -22,7 +22,7 @@ describe("RootLayout theme initialization", () => {
     const layout = RootLayout({ children: <p>content</p> });
     const body = layout.props.children as ReactElement<{ children: ReactNode }>;
     const locale = Children.toArray(body.props.children)[1] as ReactElement<{ children: ReactElement<{ children: ReactNode }> }>;
-    expect(locale.type).toBe(LocaleProvider);
+    expect(locale.type).toBe(PersonalizationProvider);
     expect(locale.props.children.type).toBe(AuthProvider);
     const shell = locale.props.children.props.children as ReactElement<{ currentYear: number }>;
     expect(shell.type).toBe(AppShell);
@@ -76,5 +76,12 @@ describe("RootLayout theme initialization", () => {
     Object.defineProperty(globalThis, "localStorage", { configurable: true, get: () => { throw new Error("server localStorage access"); } });
     expect(() => renderToStaticMarkup(<RootLayout><p>content</p></RootLayout>)).not.toThrow();
     if (descriptor) Object.defineProperty(globalThis, "localStorage", descriptor);
+  });
+
+  it.each(["PURPLE", "INDIGO", "BLUE", "CYAN", "EMERALD", "GREEN", "AMBER", "ORANGE", "RED", "PINK", "INVALID", "blue", "#fff", null])("bootstraps supported accent identifiers only (%s)", saved => {
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(key => key === "ielts-accent" ? saved : "light");
+    window.eval(themeInitializationScript);
+    expect(document.documentElement.dataset.accent).toBe(saved && /^[A-Z]+$/.test(saved) && saved !== "INVALID" ? saved.toLowerCase() : "purple");
+    expect(document.documentElement.dataset.theme).toBe("light");
   });
 });

@@ -6,6 +6,7 @@ import { AuthForm } from "@/features/auth/auth-form";
 import { AuthProvider } from "@/features/auth/auth-provider";
 import { apiRequest, resetAuthRequestStateForTests } from "@/lib/api/client";
 import { getCurrentUser, login, logout, register } from "@/lib/api/auth";
+import { getPreferences, updatePreferences } from "@/lib/api/preferences";
 import { ApiError } from "@/lib/api/client";
 import { useEffect } from "react";
 import { renderWithLocale } from "./locale-test-utils";
@@ -21,6 +22,7 @@ vi.mock("@/lib/api/auth", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api/auth")>();
   return { ...actual, getCurrentUser: vi.fn(), login: vi.fn(), logout: vi.fn(), register: vi.fn() };
 });
+vi.mock("@/lib/api/preferences", () => ({ getPreferences: vi.fn(), updatePreferences: vi.fn() }));
 
 const baseUser = {
   id: "11111111-1111-4111-8111-111111111111",
@@ -64,6 +66,9 @@ describe("authentication UI", () => {
     navigation.pathname = "/";
     navigation.search = "";
     vi.mocked(logout).mockResolvedValue(undefined);
+    let preferences = { accent_color: "PURPLE", appearance: "LIGHT", locale: "EN" } as Awaited<ReturnType<typeof getPreferences>>;
+    vi.mocked(getPreferences).mockResolvedValue(preferences);
+    vi.mocked(updatePreferences).mockImplementation(async update => preferences = { ...preferences, ...update });
   });
 
   it("shows login actions while logged out", async () => {
@@ -82,11 +87,12 @@ describe("authentication UI", () => {
     function Child() { useEffect(() => { mounts += 1; }, []); return <input aria-label="Existing answer" defaultValue="kept" />; }
     renderWithLocale(<AuthProvider><AppShell currentYear={2026}><Child /></AppShell></AuthProvider>);
     await screen.findByText("Student");
+    await waitFor(() => expect(screen.getByRole("button", { name: "Use dark theme" })).toBeEnabled());
     const input = screen.getByLabelText("Existing answer");
     fireEvent.change(input, { target: { value: "draft" } });
-    fireEvent.click(screen.getByRole("button", { name: "Tiếng Việt" }));
-    fireEvent.click(screen.getByRole("button", { name: "Dùng giao diện tối" }));
-    fireEvent.click(screen.getByRole("button", { name: "English" }));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Tiếng Việt" })));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Dùng giao diện tối" })));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "English" })));
     expect(screen.getByLabelText("Existing answer")).toBe(input);
     expect(input).toHaveValue("draft");
     expect(mounts).toBe(1);
@@ -368,6 +374,60 @@ describe("API refresh coordination", () => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
     Object.defineProperty(navigator, "locks", { configurable: true, value: undefined });
+  });
+
+  it("does not refresh or replay an account-bound PATCH after cancellation and a late 401", async () => {
+    let respond!: (response: Response) => void;
+    const delayed = new Promise<Response>(resolve => { respond = resolve; });
+    const fetchMock = vi.fn().mockReturnValueOnce(delayed).mockResolvedValue(new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const expired = vi.fn();
+    window.addEventListener("ielts:session-expired", expired);
+    const controller = new AbortController();
+    const request = apiRequest("/me/preferences", { method: "PATCH", body: JSON.stringify({ accent_color: "PINK" }), signal: controller.signal });
+    const rejected = expect(request).rejects.toHaveProperty("name", "AbortError");
+    controller.abort(); // Logout/account change, before the old response arrives.
+    respond(new Response("{}", { status: 401 }));
+    await rejected;
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(expired).not.toHaveBeenCalled();
+    window.removeEventListener("ielts:session-expired", expired);
+  });
+
+  it("does not replay a cancelled preference PATCH after a shared auth refresh completes", async () => {
+    let respond!: (response: Response) => void;
+    const refresh = new Promise<Response>(resolve => { respond = resolve; });
+    const fetchMock = vi.fn((input: string | URL | Request) => String(input).endsWith("/auth/refresh")
+      ? refresh : Promise.resolve(new Response("{}", { status: 401 })));
+    vi.stubGlobal("fetch", fetchMock);
+    const controller = new AbortController();
+    const request = apiRequest("/me/preferences", { method: "PATCH", body: "{}", signal: controller.signal });
+    const rejected = expect(request).rejects.toHaveProperty("name", "AbortError");
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    controller.abort();
+    respond(new Response(null, { status: 204 }));
+    await rejected;
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([401, 403])("a cancelled %s error-body read cannot expire the next accounts session", async status => {
+    let respond!: (body: unknown) => void;
+    const body = new Promise(resolve => { respond = resolve; });
+    const response = new Response(null, { status });
+    const readBody = vi.spyOn(response, "json").mockReturnValue(body);
+    vi.stubGlobal("fetch", vi.fn((input: string | URL | Request) => Promise.resolve(String(input).endsWith("/me/preferences")
+      ? response : new Response(null, { status: 401 }))));
+    const expired = vi.fn();
+    window.addEventListener("ielts:session-expired", expired);
+    const controller = new AbortController();
+    const request = apiRequest("/me/preferences", { signal: controller.signal });
+    const rejected = expect(request).rejects.toHaveProperty("name", "AbortError");
+    await waitFor(() => expect(readBody).toHaveBeenCalled());
+    controller.abort();
+    respond({ code: status === 403 ? "ACCOUNT_INACTIVE" : "AUTHENTICATION_REQUIRED" });
+    await rejected;
+    expect(expired).not.toHaveBeenCalled();
+    window.removeEventListener("ielts:session-expired", expired);
   });
 
   it("uses one refresh for concurrent 401 responses and retries both requests once", async () => {

@@ -135,7 +135,7 @@ describe("horizontal application shell", () => {
     state.name = "A very long fictional learner display name that must remain fully accessible";
     const { container } = render(<AppShell currentYear={2026}>Content</AppShell>);
     const actions = container.querySelector(".header-actions")!;
-    expect(Array.from(actions.children).map((child) => child.getAttribute("role") ?? child.tagName.toLowerCase())).toEqual(["group", "button", "a", role ? "button" : "a"]);
+    expect(Array.from(actions.children).map((child) => child.getAttribute("role") ?? child.tagName.toLowerCase())).toEqual(role ? ["group", "button", "a", "a", "button"] : ["group", "button", "a", "a"]);
     if (role) expect(screen.getByRole("link", { name: new RegExp(state.name) })).toHaveAttribute("href", "/profile");
   });
 
@@ -146,7 +146,7 @@ describe("horizontal application shell", () => {
     const focusable = Array.from(header.querySelectorAll<HTMLAnchorElement | HTMLButtonElement>('a[href], button'));
     expect(header.querySelectorAll("nav")).toHaveLength(1);
     expect(focusable.slice(1, 1 + routes.length).map((node) => node.getAttribute("href"))).toEqual(routes);
-    expect(focusable.slice(1 + routes.length).map((node) => node.getAttribute("aria-label") ?? node.textContent)).toEqual(["English", "Tiếng Việt", "Use dark theme", expect.stringContaining("Learner"), "Logout"]);
+    expect(focusable.slice(1 + routes.length).map((node) => node.getAttribute("aria-label") ?? node.textContent)).toEqual(["English", "Tiếng Việt", "Use dark theme", "Personalization", expect.stringContaining("Learner"), "Logout"]);
     expect(focusable.every((node) => node.tabIndex === 0)).toBe(true);
     expect(container.querySelector('[tabindex]:not([tabindex="0"]):not([tabindex="-1"])')).toBeNull();
   });

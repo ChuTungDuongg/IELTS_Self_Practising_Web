@@ -1,5 +1,86 @@
 @import "tailwindcss";
 
+/* Account accent presets. Palette values live here; components only consume tokens. */
+:where([data-accent="purple"]) {
+  --palette-light: #5261a8; --palette-strong-light: #434f90; --palette-soft-light: #e7e9f3;
+  --palette-dark: #a4afd9; --palette-strong-dark: #b5bfe2; --palette-soft-dark: #333748;
+}
+:where([data-accent="indigo"]) {
+  --palette-light: #4f46a5; --palette-strong-light: #403783; --palette-soft-light: #e9e7f4;
+  --palette-dark: #a9afe8; --palette-strong-dark: #c0c5f0; --palette-soft-dark: #323348;
+}
+:where([data-accent="blue"]) {
+  --palette-light: #2565a8; --palette-strong-light: #1f5288; --palette-soft-light: #e5edf6;
+  --palette-dark: #9fc4ed; --palette-strong-dark: #b6d2f2; --palette-soft-dark: #2b3542;
+}
+:where([data-accent="cyan"]) {
+  --palette-light: #176a7b; --palette-strong-light: #125767; --palette-soft-light: #e1eff1;
+  --palette-dark: #94cbd3; --palette-strong-dark: #abdae0; --palette-soft-dark: #293a3d;
+}
+:where([data-accent="emerald"]) {
+  --palette-light: #216b56; --palette-strong-light: #195442; --palette-soft-light: #e2eee8;
+  --palette-dark: #91cbb4; --palette-strong-dark: #abd8c7; --palette-soft-dark: #293b33;
+}
+:where([data-accent="green"]) {
+  --palette-light: #466c2a; --palette-strong-light: #37551f; --palette-soft-light: #e8efdf;
+  --palette-dark: #b3c995; --palette-strong-dark: #c7d8af; --palette-soft-dark: #343b2b;
+}
+:where([data-accent="amber"]) {
+  --palette-light: #885b19; --palette-strong-light: #6c4813; --palette-soft-light: #f4ebdb;
+  --palette-dark: #ddbf81; --palette-strong-dark: #e8d2a2; --palette-soft-dark: #3d3528;
+}
+:where([data-accent="orange"]) {
+  --palette-light: #a35325; --palette-strong-light: #84421d; --palette-soft-light: #f6e8de;
+  --palette-dark: #e6b294; --palette-strong-dark: #efc8b0; --palette-soft-dark: #403229;
+}
+:where([data-accent="red"]) {
+  --palette-light: #a2383e; --palette-strong-light: #812d32; --palette-soft-light: #f5e5e6;
+  --palette-dark: #e3a4a7; --palette-strong-dark: #eec0c2; --palette-soft-dark: #3d2c2e;
+}
+:where([data-accent="pink"]) {
+  --palette-light: #9b3e73; --palette-strong-light: #7c305b; --palette-soft-light: #f3e4ed;
+  --palette-dark: #daa7c7; --palette-strong-dark: #e8c1d9; --palette-soft-dark: #3b2d36;
+}
+:root[data-theme][data-accent] {
+  --personal-accent: var(--palette-light);
+  --personal-accent-strong: var(--palette-strong-light);
+  --personal-accent-soft: var(--palette-soft-light);
+  --personal-accent-contrast: #ffffff;
+  --accent: var(--personal-accent); --accent-strong: var(--personal-accent-strong);
+  --accent-soft: var(--personal-accent-soft); --accent-contrast: var(--personal-accent-contrast);
+  --focus-ring: var(--accent); --surface-tint: var(--accent-soft);
+}
+:root[data-theme="dark"][data-accent] {
+  --personal-accent: var(--palette-dark);
+  --personal-accent-strong: var(--palette-strong-dark);
+  --personal-accent-soft: var(--palette-soft-dark);
+  --personal-accent-contrast: #201e1b;
+}
+/* Generic exam actions follow personalization; exam/module/status identities stay intact. */
+:root[data-theme][data-accent] :is(.exam-shell, .exam-runner, .highlight-popover) {
+  --accent: var(--personal-accent); --accent-strong: var(--personal-accent-strong);
+  --accent-soft: var(--personal-accent-soft); --accent-contrast: var(--personal-accent-contrast);
+  --surface-tint: var(--accent-soft); --focus-ring: var(--accent);
+  --glow-accent: var(--shadow-sm);
+}
+.personalization-settings { max-width: 760px; }
+.personalization-card { min-width: 0; margin: 0 0 20px; padding: 20px; border: 1px solid var(--line); }
+.personalization-card legend { padding-inline: 8px; color: var(--ink); font-size: 20px; font-weight: 700; }
+.accent-options { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
+.accent-option { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 10px 4px; border: 1px solid transparent; border-radius: 12px; color: var(--ink); background: transparent; font-size: 13px; }
+.accent-option:hover:not(:disabled) { background: var(--surface-hover); }
+.accent-option[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
+.accent-swatch { display: grid; width: 36px; height: 36px; place-items: center; border-radius: 50%; color: #ffffff; background: var(--palette-light); font-weight: 800; }
+:root[data-theme="dark"] .accent-swatch { color: #201e1b; background: var(--palette-dark); }
+.personalization-options, .personalization-preview { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.personalization-options [aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); box-shadow: inset 0 -2px var(--accent); }
+.personalization-preview { margin-top: 20px; color: var(--muted); }
+.personalization-error { color: var(--danger); border-left: 3px solid var(--danger); padding-left: 12px; }
+.personalization-error p { margin: 0 0 8px; }
+.personalization-save-status { min-height: 1.6em; color: var(--muted); }
+@media (max-width: 480px) { .accent-options { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+
 .notification-center { position: relative; }
 .notification-panel { position: absolute; z-index: 50; right: 0; top: calc(100% + .5rem); width: min(24rem, calc(100vw - 2rem)); max-height: 70vh; overflow-y: auto; padding: 1rem; }
 .notification-panel ul { list-style: none; margin: 0; padding: 0; }
@@ -1130,7 +1211,7 @@ input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--mute
 .listening-navigation-scroll { flex: 1; min-width: 0; min-height: 0; overflow-y: auto; padding: 16px 12px; scrollbar-color: var(--exam-border) transparent; scrollbar-width: thin; }
 .listening-section-navigation { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin-bottom: 20px; }
 .listening-section-navigation button { min-height: 36px; border: 1px solid var(--exam-border); border-radius: 7px; padding: 6px; color: var(--exam-muted); background: var(--exam-control-bg); font-size: 12px; font-weight: 700; }
-.listening-section-navigation button.active { border-color: var(--exam-accent); color: var(--exam-bg); background: var(--exam-accent); }
+.listening-section-navigation button.active { border-color: var(--accent); color: var(--accent-contrast); background: var(--accent); }
 .listening-question-navigation { display: grid; gap: 18px; }
 .listening-navigation-section > p { margin: 0 0 8px; color: var(--exam-muted); font-size: 11px; font-weight: 700; }
 .listening-question-navigation .listening-section-questions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }

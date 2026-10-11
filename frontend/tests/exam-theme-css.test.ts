@@ -8,7 +8,11 @@ const css = readFileSync(resolve(process.cwd(), "src/app/globals.css"), "utf8");
 describe("exam theme CSS", () => {
   it("defines every custom property referenced by exam and highlight styles", () => {
     const definitions = new Set([...css.matchAll(/--([\w-]+)\s*:/g)].map((match) => match[1]));
-    const relevant = css.slice(css.indexOf(".exam-runner"));
+    const examRules: string[] = [];
+    postcss.parse(css).walkRules(rule => {
+      if (/\.(?:exam-|listening-|writing-task|completion-gap|highlight)/.test(rule.selector)) examRules.push(rule.toString());
+    });
+    const relevant = examRules.join("\n");
     const references = [...relevant.matchAll(/var\(--([\w-]+)/g)].map((match) => match[1]);
 
     expect([...new Set(references.filter((name) => !definitions.has(name)))]).toEqual([]);

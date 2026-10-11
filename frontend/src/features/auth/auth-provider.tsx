@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { getCurrentUser, logout as logoutRequest, type AuthUser } from "@/lib/api/auth";
 import { ApiError } from "@/lib/api/client";
 import { useTranslation } from "@/lib/i18n/locale-provider";
+import { usePersonalization } from "@/features/personalization/personalization-provider";
 
 type AuthContextValue = {
   user: AuthUser | null;
@@ -34,6 +35,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [sessionFailure, setSessionError] = useState<ReturnType<typeof sessionErrorMessage> | null>(null);
   const sessionError = sessionFailure ? "raw" in sessionFailure ? sessionFailure.raw : t("auth.sessionCheckFailed") : null;
   const sessionVersion = useRef(0);
+  const { synchronizeAccount } = usePersonalization();
+  const userId = user?.id;
+  useEffect(() => {
+    // Rechecking the same session (e.g. after profile saving) keeps its write queue.
+    synchronizeAccount(userId ?? (loading ? undefined : null));
+  }, [loading, userId, synchronizeAccount]);
 
   useEffect(() => {
     let active = true;

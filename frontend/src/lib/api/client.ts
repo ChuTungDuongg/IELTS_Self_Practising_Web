@@ -97,6 +97,7 @@ export async function apiResponse(path: string, init?: RequestInit): Promise<Res
 }
 
 async function requestResponse(path: string, init: RequestInit | undefined, allowRefresh: boolean): Promise<Response> {
+  init?.signal?.throwIfAborted();
   let response: Response;
   try {
     response = await fetch(`${API_BASE_URL}${path}`, {
@@ -109,17 +110,25 @@ async function requestResponse(path: string, init: RequestInit | undefined, allo
       },
     });
   } catch (error) {
+    if (init?.signal?.aborted) throw error;
     throw new ApiError("NETWORK_ERROR", "The API is not reachable.", 0, error);
   }
+  // An old account-bound request must never refresh/replay using a new session.
+  init?.signal?.throwIfAborted();
   if (response.status === 401 && allowRefresh && canRefresh(path)) {
-    if (await refreshAccessSession()) return requestResponse(path, init, false);
+    const refreshed = await refreshAccessSession();
+    init?.signal?.throwIfAborted();
+    if (refreshed) return requestResponse(path, init, false);
   }
   if (!response.ok) {
     const error = await responseError(response);
+    init?.signal?.throwIfAborted();
     if (error.code === "ACCOUNT_INACTIVE") announceSessionExpired();
     if (response.status === 401 && canRefresh(path)) {
       // A retry can still fail for a resource-specific reason while /auth/me is valid.
-      if (allowRefresh || !await probeCurrentSession()) announceSessionExpired();
+      const sessionExpired = allowRefresh || !await probeCurrentSession();
+      init?.signal?.throwIfAborted();
+      if (sessionExpired) announceSessionExpired();
     }
     throw error;
   }
