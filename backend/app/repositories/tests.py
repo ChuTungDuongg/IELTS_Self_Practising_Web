@@ -8,6 +8,7 @@ from app.models import (
     ListeningPart,
     QuestionGroup,
     ReadingPassage,
+    SpeakingPart,
     Test,
     TestModule,
     TestVersion,
@@ -19,6 +20,9 @@ def version_detail_query() -> Select[tuple[TestVersion]]:
     return select(TestVersion).options(
         selectinload(TestVersion.test),
         selectinload(TestVersion.modules).selectinload(TestModule.passages),
+        selectinload(TestVersion.modules)
+        .selectinload(TestModule.speaking_parts)
+        .selectinload(SpeakingPart.prompts),
         selectinload(TestVersion.modules)
         .selectinload(TestModule.passages)
         .selectinload(ReadingPassage.question_groups)

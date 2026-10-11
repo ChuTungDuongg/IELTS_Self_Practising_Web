@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import (
     BigInteger,
@@ -41,6 +41,9 @@ from app.models.enums import (
     UserRole,
     VersionStatus,
 )
+
+if TYPE_CHECKING:
+    from app.models.speaking import SpeakingPart
 
 
 class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -204,6 +207,9 @@ class TestModule(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     writing_tasks: Mapped[list[WritingTask]] = relationship(
         back_populates="module", cascade="all, delete-orphan", order_by="WritingTask.order_index"
+    )
+    speaking_parts: Mapped[list[SpeakingPart]] = relationship(
+        back_populates="module", cascade="all, delete-orphan", order_by="SpeakingPart.order_index"
     )
     question_groups: Mapped[list[QuestionGroup]] = relationship(
         back_populates="module", cascade="all, delete-orphan", order_by="QuestionGroup.order_index"

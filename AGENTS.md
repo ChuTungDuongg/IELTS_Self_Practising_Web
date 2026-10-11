@@ -13,7 +13,7 @@
 - Question correctness is evaluated server-side.
 - Highlights store semantic offsets, not HTML.
 - Assets are stored outside PostgreSQL.
-- Do not implement Speaking.
+- Speaking work follows the approved design in `docs/superpowers/specs/2026-10-11-speaking-engine-ai-grading-design.md` and its phased plan/self-review amendments; implement only the explicitly authorized phase.
 - Do not implement authentication.
 - Do not implement AI scoring until explicitly requested.
 - Do not commit copyrighted test content.

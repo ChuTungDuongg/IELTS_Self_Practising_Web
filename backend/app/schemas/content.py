@@ -9,6 +9,7 @@ from app.models.enums import ModuleType, VersionStatus
 from app.schemas.assets import AssetResponse
 from app.schemas.attempts import AttemptResponse, AttemptReview, WritingReview
 from app.schemas.listening import ListeningAudioRange
+from app.schemas.speaking import BuilderSpeakingPart
 
 
 class TextBlock(BaseModel):
@@ -185,6 +186,14 @@ class BuilderModule(BaseModel):
     passages: list[BuilderPassage]
     listening_parts: list[BuilderListeningPart]
     writing_tasks: list[BuilderWritingTask] = Field(default_factory=list)
+    speaking_parts: list[BuilderSpeakingPart] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def unique_speaking_parts(self) -> "BuilderModule":
+        numbers = [part.part_number for part in self.speaking_parts]
+        if len(numbers) != len(set(numbers)):
+            raise ValueError("Speaking part numbers must be unique within a module")
+        return self
 
 
 class BuilderVersion(BaseModel):

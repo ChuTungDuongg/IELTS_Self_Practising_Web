@@ -80,6 +80,13 @@ class ModuleType(StrEnum):
     READING = "READING"
     LISTENING = "LISTENING"
     WRITING = "WRITING"
+    SPEAKING = "SPEAKING"
+
+
+class SpeakingPromptType(StrEnum):
+    SHORT_ANSWER = "SHORT_ANSWER"
+    LONG_TURN = "LONG_TURN"
+    FOLLOW_UP = "FOLLOW_UP"
 
 
 class TimerMode(StrEnum):

@@ -44,6 +44,7 @@ from app.schemas.content import (
     QuestionGroupWrite,
     QuestionWrite,
 )
+from app.schemas.speaking import BuilderSpeakingPart
 from app.services.access_policy import AccessPolicy
 from app.services.draft_revisions import advance_revision
 
@@ -777,6 +778,9 @@ class ReadingService:
                     ],
                     writing_tasks=[
                         cls._present_writing_task(item) for item in module.writing_tasks
+                    ],
+                    speaking_parts=[
+                        BuilderSpeakingPart.model_validate(item) for item in module.speaking_parts
                     ],
                 )
                 for module in version.modules

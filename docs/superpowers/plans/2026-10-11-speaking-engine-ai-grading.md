@@ -92,25 +92,25 @@ Do not create all files up front. Create each when its owning task reaches GREEN
 - Produces `ModuleType.SPEAKING`, `SpeakingPromptType = SHORT_ANSWER | LONG_TURN | FOLLOW_UP`, `SpeakingPart`, `SpeakingPrompt`, and Builder DTOs nested under the existing `TestModule`/Builder response.
 - `SpeakingPart` belongs to one SPEAKING `TestModule`; unique `(module_id, part_number)` for part 1/2/3. `SpeakingPrompt` has stable UUID, `order_index`, `prompt_text`, `preparation_seconds`, `response_seconds`, bounded `config_json` for cue points/presentation data.
 
-- [ ] **Step 1: Write failing model/Builder contract tests**
+- [x] **Step 1: Write failing model/Builder contract tests**
 
 Add tests proving `ModuleType.SPEAKING` is accepted; three parts can be represented; duplicate part numbers are rejected; stable prompt IDs survive reorder; draft content can be incomplete; and Builder serialization exposes `speaking_parts` without changing Reading/Listening/Writing DTOs.
 
-- [ ] **Step 2: Run and verify RED**
+- [x] **Step 2: Run and verify RED**
 
 Run: `cd backend && uv run pytest tests/test_speaking_builder.py -q`
 
 Expected: FAIL because Speaking enum/models/schemas do not exist.
 
-- [ ] **Step 3: Implement enum, focused model file, schema, migration, and repository guidance**
+- [x] **Step 3: Implement enum, focused model file, schema, migration, and repository guidance**
 
 Before migration creation run `uv run alembic heads`; generate from the actual single current head. Replace only the stale root `AGENTS.md` Speaking prohibition with an invariant that Speaking work follows the approved spec/plan. Do not rewrite old historical plan docs that said Speaking was out of scope for those older tasks.
 
-- [ ] **Step 4: Run GREEN + model lint**
+- [x] **Step 4: Run GREEN + model lint**
 
 Run: `cd backend && uv run pytest tests/test_speaking_builder.py -q && uv run ruff check app/models/enums.py app/models/speaking.py app/schemas/speaking.py tests/test_speaking_builder.py`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add AGENTS.md backend/app/models backend/app/schemas backend/alembic/versions backend/tests/test_speaking_builder.py
