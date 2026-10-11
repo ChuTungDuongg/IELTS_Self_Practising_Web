@@ -920,11 +920,12 @@ async def test_interruption_after_lr_failure_persists_gra_failure_and_partial_re
     attempt_id, _, task_id = writing
     api = service(db_session, settings)
     created = await api.create(attempt_id, task_id, force=False)
-    bad = '{"evidence":[{"source_id":"P99S1","assessment":"Nhận xét."}]}'
+    # Invalid scores remain strict; an unknown auxiliary source no longer fails LR.
+    bad = '{"score":6.3}'
     runner = worker(
         db_session,
         settings,
-        InterruptedProvider({("lr", "evidence", 1): bad, ("lr", "evidence", 2): bad}),
+        InterruptedProvider({("lr", "scoring", 1): bad, ("lr", "scoring", 2): bad}),
     )
     original = runner._checkpoint
 
@@ -942,6 +943,7 @@ async def test_interruption_after_lr_failure_persists_gra_failure_and_partial_re
     assert run.status == WritingAIRunStatus.FAILED and run.result is None
     assert set(run.progress) == {"ta", "cc"}
     assert set(run.failures) == {"lr", "gra"}
+    assert run.failures["lr"].stage == "scoring"
     assert run.failures["gra"].error_code == "RUN_INTERRUPTED"
     assert [e.payload.criterion for e in events if e.event_type == "criterion.failed"] == [
         "lr",
