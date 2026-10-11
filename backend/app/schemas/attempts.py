@@ -61,6 +61,7 @@ class FocusedUnitResponse(BaseModel):
 
 
 class AttemptCreate(BaseModel):
+    model_config = {"extra": "forbid"}
     test_version_id: UUID
     module: ModuleType
     scope: AttemptScope = AttemptScope.FULL_MODULE

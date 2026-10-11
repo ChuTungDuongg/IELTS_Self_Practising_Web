@@ -41,9 +41,38 @@ class TestSessionService:
         if not isinstance(self.user_id, uuid.UUID):
             raise ValueError("TestSessionService requires an authenticated user id")
 
-    async def start(self, test_version_id: uuid.UUID) -> TestSessionStartResponse:
+    async def start(
+        self, test_version_id: uuid.UUID, *, _classroom_assignment_id: uuid.UUID | None = None
+    ) -> TestSessionStartResponse:
         now = TimerService.now()
         async with self.session.begin():
+            if _classroom_assignment_id is not None:
+                from app.services.classroom_assignments import require_assignment_start
+
+                await require_assignment_start(
+                    self.session, self.user_id, _classroom_assignment_id, test_version_id
+                )
+            else:
+                from app.models import User
+                from app.services.access_policy import AccessPolicy
+
+                actor = await self.session.get(User, self.user_id)
+                if actor is None:
+                    raise AppError("ACCOUNT_INACTIVE", "This account is inactive.", 403)
+                policy = AccessPolicy(self.session, actor)
+                await policy.lock_actor()
+                try:
+                    candidate = await policy.lock_version(test_version_id)
+                except AppError as error:
+                    if error.status_code != 404:
+                        raise
+                    raise AppError(
+                        "FULL_MOCK_VERSION_UNAVAILABLE", "This version is unavailable.", 422
+                    ) from error
+                if not await policy.version_access(candidate):
+                    raise AppError(
+                        "FULL_MOCK_VERSION_UNAVAILABLE", "This version is unavailable.", 422
+                    )
             version = await self._load_version(test_version_id, for_update=True)
             if version is None or version.status != VersionStatus.PUBLISHED:
                 raise AppError(
@@ -74,6 +103,7 @@ class TestSessionService:
                     422,
                 )
             test_session = TestSession(
+                classroom_assignment_id=_classroom_assignment_id,
                 user_id=self.user_id,
                 test_version_id=version.id,
                 status=TestSessionStatus.IN_PROGRESS,

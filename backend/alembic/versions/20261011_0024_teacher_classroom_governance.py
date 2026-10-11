@@ -337,6 +337,11 @@ def upgrade() -> None:
         postgresql_where=sa.text("status = 'PENDING'"),
     )
     op.add_column("attempts", sa.Column("classroom_assignment_id", sa.Uuid(), nullable=True))
+    op.create_check_constraint(
+        op.f("ck_attempts_classroom_provenance_standalone"),
+        "attempts",
+        "classroom_assignment_id IS NULL OR test_session_id IS NULL",
+    )
     op.create_index(
         op.f("ix_attempts_classroom_assignment_id"),
         "attempts",
@@ -395,6 +400,10 @@ def downgrade() -> None:
             raise RuntimeError("Teacher governance downgrade requires an empty feature domain")
     if bind.execute(sa.text("SELECT EXISTS (SELECT 1 FROM users WHERE role = 'TEACHER')")).scalar():
         raise RuntimeError("Resolve teacher roles before downgrading")
+    if bind.execute(
+        sa.text("SELECT EXISTS (SELECT 1 FROM tests WHERE origin = 'TEACHER')")
+    ).scalar():
+        raise RuntimeError("Preserve teacher-origin content before downgrading")
     op.drop_constraint(op.f("fk_tests_owner_user_id_users"), "tests", type_="foreignkey")
     op.drop_index(op.f("ix_tests_owner_user_id"), table_name="tests")
     op.drop_column("tests", "origin")
@@ -412,6 +421,9 @@ def downgrade() -> None:
         type_="foreignkey",
     )
     op.drop_index(op.f("ix_attempts_classroom_assignment_id"), table_name="attempts")
+    op.drop_constraint(
+        op.f("ck_attempts_classroom_provenance_standalone"), "attempts", type_="check"
+    )
     op.drop_column("attempts", "classroom_assignment_id")
     op.drop_index(
         "uq_moderation_pending_scope",

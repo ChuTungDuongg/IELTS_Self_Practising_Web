@@ -360,6 +360,10 @@ class Attempt(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     __table_args__ = (
         CheckConstraint(
+            "classroom_assignment_id IS NULL OR test_session_id IS NULL",
+            name="classroom_provenance_standalone",
+        ),
+        CheckConstraint(
             "(scope = 'FULL_MODULE' AND focused_reading_passage_id IS NULL "
             "AND focused_listening_part_id IS NULL AND focused_writing_task_id IS NULL) OR "
             "(scope = 'FOCUSED_UNIT' AND ((module_type = 'READING' "

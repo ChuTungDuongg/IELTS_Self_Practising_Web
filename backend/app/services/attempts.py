@@ -43,6 +43,7 @@ from app.models import (
     TestModule,
     TestSession,
     TestVersion,
+    User,
     WritingTask,
 )
 from app.models.enums import (
@@ -110,10 +111,38 @@ class AttemptService:
         self.allow_any_user = allow_any_user
         self.repository = AttemptRepository(session)
 
-    async def start(self, data: AttemptCreate) -> AttemptResponse:
+    async def start(
+        self, data: AttemptCreate, *, _classroom_assignment_id: uuid.UUID | None = None
+    ) -> AttemptResponse:
         validate_start_scope(data)
         now = TimerService.now()
         async with self.session.begin():
+            if _classroom_assignment_id is not None:
+                from app.services.classroom_assignments import require_assignment_start
+
+                await require_assignment_start(
+                    self.session, self.user_id, _classroom_assignment_id, data.test_version_id
+                )
+            else:
+                from app.services.access_policy import AccessPolicy
+
+                actor = await self.session.get(User, self.user_id)
+                if actor is None:
+                    raise AppError("ACCOUNT_INACTIVE", "This account is inactive.", 403)
+                policy = AccessPolicy(self.session, actor)
+                await policy.lock_actor()
+                try:
+                    version = await policy.lock_version(data.test_version_id)
+                except AppError as error:
+                    if error.status_code != 404:
+                        raise
+                    raise AppError(
+                        "TEST_MODULE_UNAVAILABLE", "The requested module is unavailable.", 422
+                    ) from error
+                if not await policy.version_access(version):
+                    raise AppError(
+                        "TEST_MODULE_UNAVAILABLE", "The requested module is unavailable.", 422
+                    )
             module = await self.session.scalar(
                 select(TestModule)
                 .join(TestVersion)
@@ -132,6 +161,7 @@ class AttemptService:
                     422,
                 )
             attempt = Attempt(
+                classroom_assignment_id=_classroom_assignment_id,
                 user_id=self.user_id,
                 test_version_id=data.test_version_id,
                 module_type=data.module,

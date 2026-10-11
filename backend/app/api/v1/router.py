@@ -6,9 +6,13 @@ from app.api.v1 import (
     assets,
     attempts,
     auth,
+    classroom_assignments,
+    classrooms,
+    content_governance,
     health,
     history,
     listening,
+    notifications,
     reading,
     test_sessions,
     tests,
@@ -32,3 +36,7 @@ api_router.include_router(listening.router)
 api_router.include_router(writing.router)
 api_router.include_router(writing_ai.router)
 api_router.include_router(transfer.router)
+api_router.include_router(content_governance.router)
+api_router.include_router(classrooms.router)
+api_router.include_router(notifications.router)
+api_router.include_router(classroom_assignments.router)

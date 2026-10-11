@@ -8,6 +8,7 @@ from app.schemas.attempts import AttemptResponse
 
 
 class TestSessionCreate(BaseModel):
+    model_config = {"extra": "forbid"}
     test_version_id: UUID
 
 
