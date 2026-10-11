@@ -178,3 +178,36 @@ class SpeakingFinish(SpeakingCurrentTake):
 
 class SpeakingNotes(SpeakingBegin):
     scratch_notes: str = Field(max_length=20000)
+
+
+class SpeakingSegmentCreate(SpeakingCurrentTake):
+    segment_index: int = Field(ge=0, le=1000)
+    mime_type: Literal["audio/webm", "audio/webm;codecs=opus", "audio/mp4", "audio/ogg;codecs=opus"]
+
+
+class SpeakingSegmentClose(BaseModel):
+    chunk_count: int = Field(ge=0, le=10000)
+
+
+class SpeakingChunkData(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    sequence: int
+    sha256: str
+    byte_size: int
+
+
+class SpeakingSegmentData(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    segment_index: int
+    mime_type: str
+    chunk_count: int | None
+    closed_at: datetime | None
+    chunks: list[SpeakingChunkData] = Field(default_factory=list)
+    content_url: str | None = None
+
+
+class SpeakingManifest(BaseModel):
+    response: SpeakingResponseData
+    segments: list[SpeakingSegmentData]

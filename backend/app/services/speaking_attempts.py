@@ -225,6 +225,9 @@ class SpeakingAttemptService:
                 )
             reason = "TIMEOUT" if progress.phase == "FINALIZING" else "USER_DONE"
             take = await self.repository.take(response.id, take_number)
+            from app.services.speaking_media import committed_fingerprint
+
+            response.committed_audio_fingerprint = await committed_fingerprint(self.session, take)
             end = min(now, progress.phase_deadline_at)
             duration_ms = max(0, int((end - take.started_at).total_seconds() * 1000))
             take.status, take.completed_at, take.duration_ms = "COMMITTED", end, duration_ms

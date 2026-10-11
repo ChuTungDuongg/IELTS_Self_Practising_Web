@@ -20,6 +20,8 @@ storage/audio/*
 storage/images/*
 !storage/audio/.gitkeep
 !storage/images/.gitkeep
+storage/speaking-private/*
+!storage/speaking-private/.gitkeep
 
 # Evaluation datasets/outputs can contain private student or licensed material.
 /benchmarks/writing_task1/private/

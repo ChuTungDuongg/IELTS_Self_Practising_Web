@@ -31,6 +31,9 @@ from app.models.entities import (
 from app.models.notifications import Notification
 from app.models.preferences import UserPreference
 from app.models.speaking import (
+    SpeakingAudioChunk,
+    SpeakingAudioSegment,
+    SpeakingMediaCleanup,
     SpeakingPart,
     SpeakingPrompt,
     SpeakingPromptProgress,
@@ -44,6 +47,9 @@ from app.models.writing_ai import (
 )
 
 __all__ = [
+    "SpeakingAudioChunk",
+    "SpeakingAudioSegment",
+    "SpeakingMediaCleanup",
     "SpeakingPart",
     "SpeakingPrompt",
     "SpeakingPromptProgress",

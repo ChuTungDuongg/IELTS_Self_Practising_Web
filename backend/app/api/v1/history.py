@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import CurrentUser
@@ -23,7 +23,11 @@ async def history(user: CurrentUser, session: AsyncSession = Depends(get_session
 async def delete_standalone_history(
     test_version_id: UUID,
     user: CurrentUser,
+    background: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
 ) -> Response:
     await AttemptService(session, user.id).delete_standalone_history(test_version_id)
+    from app.services.speaking_media import cleanup_private_media
+
+    background.add_task(cleanup_private_media)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

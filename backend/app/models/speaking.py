@@ -123,3 +123,34 @@ class SpeakingPromptProgress(TimestampMixin, Base):
     last_resumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Private convenience data lives ONLY here; never on spoken response/take DTOs.
     scratch_notes: Mapped[str] = mapped_column(Text, default="")
+
+
+class SpeakingAudioSegment(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "speaking_audio_segments"
+    __table_args__ = (UniqueConstraint("response_take_id", "segment_index"),)
+    response_take_id: Mapped[UUID] = mapped_column(
+        ForeignKey("speaking_response_takes.id", ondelete="CASCADE")
+    )
+    segment_index: Mapped[int] = mapped_column(Integer)
+    mime_type: Mapped[str] = mapped_column(String(80))
+    chunk_count: Mapped[int | None] = mapped_column(Integer)
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class SpeakingAudioChunk(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "speaking_audio_chunks"
+    __table_args__ = (UniqueConstraint("segment_id", "sequence"),)
+    segment_id: Mapped[UUID] = mapped_column(
+        ForeignKey("speaking_audio_segments.id", ondelete="CASCADE")
+    )
+    sequence: Mapped[int] = mapped_column(Integer)
+    storage_key: Mapped[str] = mapped_column(String(512))
+    sha256: Mapped[str] = mapped_column(String(64))
+    byte_size: Mapped[int] = mapped_column(Integer)
+
+
+class SpeakingMediaCleanup(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """Transactional outbox survives deleting the authorization/manifest rows."""
+
+    __tablename__ = "speaking_media_cleanup"
+    storage_key: Mapped[str] = mapped_column(String(512), unique=True)

@@ -100,6 +100,31 @@ class LocalAssetStorage:
             raise AppError("ASSET_NOT_FOUND", "The asset file does not exist.", 404)
         return candidate
 
+    def store_private_speaking(self, content: bytes, mime_type: str, max_bytes: int) -> StoredAsset:
+        """Server names only; published content upload MIME policy stays unchanged."""
+        extension = {
+            "audio/webm": ".webm",
+            "audio/webm;codecs=opus": ".webm",
+            "audio/mp4": ".m4a",
+            "audio/ogg;codecs=opus": ".ogg",
+        }.get(mime_type)
+        if extension is None or not 0 < len(content) <= max_bytes:
+            raise AppError("SPEAKING_UPLOAD_INVALID", "Invalid recording type or size.", 422)
+        key = f"speaking-private/{uuid4().hex}{extension}"
+        destination = (self.root / key).resolve()
+        if self.root not in destination.parents:
+            raise AppError("SPEAKING_UPLOAD_INVALID", "Invalid recording destination.", 422)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            with destination.open("xb") as output:
+                output.write(content)
+        except OSError as error:
+            destination.unlink(missing_ok=True)
+            raise AppError(
+                "SPEAKING_STORAGE_UNAVAILABLE", "Recording storage is unavailable.", 503
+            ) from error
+        return StoredAsset(relative_path=key, size=len(content))
+
     def delete(self, relative_path: str) -> bool:
         candidate = (self.root / relative_path).resolve()
         if candidate == self.root or self.root not in candidate.parents:

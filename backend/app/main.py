@@ -16,6 +16,9 @@ settings = get_settings()
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     (settings.resolved_storage_root / "audio").mkdir(parents=True, exist_ok=True)
     (settings.resolved_storage_root / "images").mkdir(parents=True, exist_ok=True)
+    from app.services.speaking_media import cleanup_private_media
+
+    await cleanup_private_media()
     yield
     await stop_writing_ai_workers()
 

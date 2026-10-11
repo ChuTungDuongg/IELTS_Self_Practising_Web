@@ -243,11 +243,11 @@ git commit -m "Add Speaking content domain model"
 - One practice take may have multiple segments after crash/recovery. A new MediaRecorder process/session always starts a new segment; chunks are ordered only within the segment. Final logical audio fingerprint hashes ordered segment/chunk hashes + committed take identity.
 - Private playback/read endpoint authorizes attempt owner or an existing assignment-authorized teacher result view; unrelated IDs never grant access.
 
-- [ ] **Step 1: Write failing tests** for WebM MIME acceptance, size limits, duplicate `(segment,sequence)` retry idempotency, conflicting duplicate hash rejection, out-of-order arrival yielding ordered manifest, new segment after recovery, superseded practice take exclusion, final fingerprint determinism, and owner/teacher/unrelated-user playback authorization.
-- [ ] **Step 2: Run RED:** `cd backend && uv run pytest tests/test_speaking_media.py tests/test_asset_access.py tests/test_classroom_assignments.py -q`.
-- [ ] **Step 3: Implement private storage manifests.** Reuse `LocalAssetStorage` filesystem safety but store under a private Speaking namespace; do not create public content `Asset` rows for candidate audio. Extend MIME handling for browser WebM/Opus.
-- [ ] **Step 4: Run GREEN + Ruff.**
-- [ ] **Step 5: Commit:** `git commit -m "Add private Speaking chunk storage"`.
+- [x] **Step 1: Write failing tests** for WebM MIME acceptance, size limits, duplicate `(segment,sequence)` retry idempotency, conflicting duplicate hash rejection, out-of-order arrival yielding ordered manifest, new segment after recovery, superseded practice take exclusion, final fingerprint determinism, and owner/teacher/unrelated-user playback authorization.
+- [x] **Step 2: Run RED:** `cd backend && uv run pytest tests/test_speaking_media.py tests/test_asset_access.py tests/test_classroom_assignments.py -q`.
+- [x] **Step 3: Implement private storage manifests.** Reuse `LocalAssetStorage` filesystem safety but store under a private Speaking namespace; do not create public content `Asset` rows for candidate audio. Extend MIME handling for browser WebM/Opus.
+- [x] **Step 4: Run GREEN + Ruff.**
+- [x] **Step 5: Commit:** `git commit -m "Add private Speaking chunk storage"`.
 
 ### Task 7: Interruption/recovery protocol with one 7-second grace
 

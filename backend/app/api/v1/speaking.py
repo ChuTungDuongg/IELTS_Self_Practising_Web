@@ -2,30 +2,122 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Request, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import CurrentUser, require_content_author
+from app.core.config import get_settings
 from app.core.database import get_session
+from app.core.exceptions import AppError
 from app.schemas.speaking import (
     BuilderSpeakingPart,
     SpeakingBegin,
+    SpeakingChunkData,
     SpeakingCurrentTake,
     SpeakingFinish,
     SpeakingHeartbeat,
+    SpeakingManifest,
     SpeakingNotes,
     SpeakingPartOrderWrite,
     SpeakingPartUpdate,
     SpeakingPartWrite,
     SpeakingPromptCreate,
     SpeakingPromptOrderWrite,
+    SpeakingSegmentClose,
+    SpeakingSegmentCreate,
+    SpeakingSegmentData,
     SpeakingState,
 )
 from app.services.speaking_attempts import SpeakingAttemptService
 from app.services.speaking_builder import SpeakingBuilderService
+from app.services.speaking_media import SpeakingMediaService
 
 router = APIRouter(dependencies=[Depends(require_content_author)], tags=["speaking-builder"])
 runtime_router = APIRouter(prefix="/speaking-attempts", tags=["speaking-runtime"])
+
+
+@runtime_router.post("/{attempt_id}/segments", response_model=SpeakingSegmentData)
+async def create_segment(
+    attempt_id: UUID,
+    body: SpeakingSegmentCreate,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+):
+    return await SpeakingMediaService(session, user).create_segment(
+        attempt_id, body.prompt_id, body.take_number, body.segment_index, body.mime_type
+    )
+
+
+@runtime_router.put(
+    "/{attempt_id}/segments/{segment_id}/chunks/{sequence}", response_model=SpeakingChunkData
+)
+async def upload_chunk(
+    attempt_id: UUID,
+    segment_id: UUID,
+    sequence: int,
+    request: Request,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+):
+    maximum = get_settings().speaking_max_chunk_bytes
+    data = bytearray()
+    async for block in request.stream():
+        if len(data) + len(block) > maximum:
+            raise AppError("SPEAKING_UPLOAD_INVALID", "Recording chunk size exceeded.", 422)
+        data.extend(block)
+    return await SpeakingMediaService(session, user).upload_chunk(
+        attempt_id, segment_id, sequence, bytes(data)
+    )
+
+
+@runtime_router.post(
+    "/{attempt_id}/segments/{segment_id}/close", response_model=SpeakingSegmentData
+)
+async def close_segment(
+    attempt_id: UUID,
+    segment_id: UUID,
+    body: SpeakingSegmentClose,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+):
+    return await SpeakingMediaService(session, user).close_segment(
+        attempt_id, segment_id, body.chunk_count
+    )
+
+
+@runtime_router.get(
+    "/{attempt_id}/responses/{response_id}/manifest", response_model=SpeakingManifest
+)
+async def get_manifest(
+    attempt_id: UUID,
+    response_id: UUID,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+):
+    return await SpeakingMediaService(session, user).manifest(attempt_id, response_id)
+
+
+@runtime_router.get("/{attempt_id}/segments/{segment_id}/content")
+async def get_recording(
+    attempt_id: UUID,
+    segment_id: UUID,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+):
+    paths, mime = await SpeakingMediaService(session, user).playback(attempt_id, segment_id)
+
+    def content():
+        for path in paths:
+            with path.open("rb") as audio:
+                while block := audio.read(64 * 1024):
+                    yield block
+
+    return StreamingResponse(
+        content(),
+        media_type=mime,
+        headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"},
+    )
 
 
 @runtime_router.get("/{attempt_id}/state", response_model=SpeakingState)

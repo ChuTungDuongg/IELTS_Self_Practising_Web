@@ -248,7 +248,9 @@ class AttemptService:
         async with self.session.begin():
             attempt = await self._require(attempt_id, for_update=True)
             if attempt.module_type == ModuleType.SPEAKING:
-                raise AppError("SPEAKING_PAUSE_NOT_ALLOWED", "Speaking uses its prompt recovery flow.", 409)
+                raise AppError(
+                    "SPEAKING_PAUSE_NOT_ALLOWED", "Speaking uses its prompt recovery flow.", 409
+                )
             now = TimerService.now()
             await self._synchronize_state(attempt, now)
             if attempt.status == AttemptStatus.IN_PROGRESS:
@@ -265,7 +267,9 @@ class AttemptService:
         async with self.session.begin():
             attempt = await self._require(attempt_id, for_update=True)
             if attempt.module_type == ModuleType.SPEAKING:
-                raise AppError("SPEAKING_PAUSE_NOT_ALLOWED", "Speaking uses its prompt recovery flow.", 409)
+                raise AppError(
+                    "SPEAKING_PAUSE_NOT_ALLOWED", "Speaking uses its prompt recovery flow.", 409
+                )
             now = TimerService.now()
             AttemptStateMachine.ensure_transition(attempt.status, AttemptStatus.IN_PROGRESS)
             if attempt.paused_at is None:
@@ -510,8 +514,15 @@ class AttemptService:
     async def submit(self, attempt_id: uuid.UUID) -> AttemptResponse:
         async with self.session.begin():
             attempt = await self._require(attempt_id, for_update=True)
-            if attempt.module_type == ModuleType.SPEAKING and attempt.status == AttemptStatus.IN_PROGRESS:
-                raise AppError("SPEAKING_RESPONSE_NOT_ACTIVE", "Finish the current Speaking response first.", 409)
+            if (
+                attempt.module_type == ModuleType.SPEAKING
+                and attempt.status == AttemptStatus.IN_PROGRESS
+            ):
+                raise AppError(
+                    "SPEAKING_RESPONSE_NOT_ACTIVE",
+                    "Finish the current Speaking response first.",
+                    409,
+                )
             now = TimerService.now()
             await self._synchronize_state(attempt, now)
             if attempt.status == AttemptStatus.PAUSED:
@@ -1299,25 +1310,43 @@ class AttemptService:
                     "Delete the Full Mock session instead of an individual module attempt.",
                     409,
                 )
+            if attempt.module_type == ModuleType.SPEAKING and attempt.classroom_assignment_id:
+                raise AppError(
+                    "ASSIGNMENT_HISTORY_RETAINED", "Assignment Speaking history is retained.", 409
+                )
+            from app.services.speaking_media import queue_media_cleanup
+
+            await queue_media_cleanup(self.session, [attempt.id])
             await self.session.delete(attempt)
 
     async def delete_standalone_history(self, test_version_id: uuid.UUID) -> None:
         async with self.session.begin():
-            deleted_id = await self.session.scalar(
-                delete(Attempt)
-                .where(
-                    Attempt.user_id == self.user_id,
-                    Attempt.test_version_id == test_version_id,
-                    Attempt.test_session_id.is_(None),
+            rows = list(
+                await self.session.scalars(
+                    select(Attempt)
+                    .with_for_update()
+                    .where(
+                        Attempt.user_id == self.user_id,
+                        Attempt.test_version_id == test_version_id,
+                        Attempt.test_session_id.is_(None),
+                    )
                 )
-                .returning(Attempt.id)
             )
-            if deleted_id is None:
+            if not rows:
                 raise AppError(
                     "STANDALONE_HISTORY_NOT_FOUND",
                     "Standalone history for this test version does not exist.",
                     404,
                 )
+            removable = [
+                a.id
+                for a in rows
+                if not (a.module_type == ModuleType.SPEAKING and a.classroom_assignment_id)
+            ]
+            from app.services.speaking_media import queue_media_cleanup
+
+            await queue_media_cleanup(self.session, removable)
+            await self.session.execute(delete(Attempt).where(Attempt.id.in_(removable)))
 
     async def _require(self, attempt_id: uuid.UUID, *, for_update: bool = False) -> Attempt:
         attempt = await self.repository.get(
