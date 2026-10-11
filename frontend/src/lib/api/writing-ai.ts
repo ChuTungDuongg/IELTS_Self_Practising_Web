@@ -21,8 +21,14 @@ export const aiCriterionSchema = z.object({
 });
 export type AICriterion = z.infer<typeof aiCriterionSchema>;
 const criterion = aiCriterionSchema;
-export const aiActivityPhases = ["preparing", "starting_model", "collecting_evidence", "validating_evidence", "evidence_collected", "scoring", "validating_score", "retrying", "completed", "failed", "visual_grounding", "visual_grounded", "deriving_facts", "derived_facts_failed", "extracting_claims", "claims_extracted", "verifying_claims", "claims_verified", "claim_extraction_failed", "claim_verification_failed", "chart_cross_check", "chart_read", "chart_fallback", "chart_reconciled"] as const;
-const assessmentStage = z.enum(["evidence", "scoring", "visual_grounding", "derived_facts", "claim_extraction", "claim_verification", "chart_cross_check"]);
+export const aiRelevanceSchema = z.object({
+  verdict: z.enum(["ON_TOPIC", "PARTIALLY_RELEVANT", "WHOLLY_UNRELATED"]),
+  confidence: z.enum(["HIGH", "MEDIUM", "LOW"]), reason: z.string().min(1).max(320),
+  evidence: z.array(evidence).max(4), short_circuit_applied: z.boolean(),
+});
+export type AIRelevance = z.infer<typeof aiRelevanceSchema>;
+export const aiActivityPhases = ["checking_relevance", "relevance_checked", "relevance_failed", "preparing", "starting_model", "collecting_evidence", "validating_evidence", "evidence_collected", "scoring", "validating_score", "retrying", "completed", "failed", "visual_grounding", "visual_grounded", "deriving_facts", "derived_facts_failed", "extracting_claims", "claims_extracted", "verifying_claims", "claims_verified", "claim_extraction_failed", "claim_verification_failed", "chart_cross_check", "chart_read", "chart_fallback", "chart_reconciled"] as const;
+const assessmentStage = z.enum(["relevance", "evidence", "scoring", "visual_grounding", "derived_facts", "claim_extraction", "claim_verification", "chart_cross_check"]);
 export const aiActivitySchema = z.object({
   phase: z.enum(aiActivityPhases), criterion: z.enum(aiTraits).nullable(),
   stage: assessmentStage.nullable(), started_at: z.string(),
@@ -32,6 +38,7 @@ const task2Result = z.object({
   criteria: z.object({ ta: criterion, cc: criterion, lr: criterion, gra: criterion }),
   raw_mean: z.number().min(0).max(9), overall_band: band,
   task_number: z.literal(2).optional(),
+  relevance: aiRelevanceSchema.nullable().optional(),
 });
 export const aiWritingResultSchema = z.union([
   task2Result.extend({ task_number: z.literal(1), task1_analysis: task1AnalysisSchema }),
@@ -53,9 +60,10 @@ export const aiRunSchema = z.object({
   activity: aiActivitySchema.nullable().optional(),
   task_number: z.union([z.literal(1), z.literal(2)]).optional(),
   task1_analysis: task1AnalysisSchema.nullable().optional(),
+  relevance: aiRelevanceSchema.nullable().optional(),
 });
 export type AIWritingRun = z.infer<typeof aiRunSchema>;
-export const aiEventTypes = ["run.started", "provider.starting", "provider.ready", "criterion.started", "evidence.request.started", "evidence.validation.started", "criterion.evidence.completed", "criterion.scoring.started", "criterion.scoring.validation.started", "criterion.retrying", "criterion.completed", "criterion.failed", "run.completed", "run.failed", "heartbeat", "visual_grounding.started", "visual_grounding.completed", "visual_grounding.failed", "derived_facts.completed", "derived_facts.failed", "claim_extraction.started", "claim_extraction.completed", "claim_extraction.failed", "claim_verification.started", "claim_verification.completed", "claim_verification.failed", "chart_specialist.started", "chart_specialist.completed", "chart_specialist.failed", "chart_reconciliation.completed"] as const;
+export const aiEventTypes = ["relevance.started", "relevance.completed", "relevance.failed", "run.started", "provider.starting", "provider.ready", "criterion.started", "evidence.request.started", "evidence.validation.started", "criterion.evidence.completed", "criterion.scoring.started", "criterion.scoring.validation.started", "criterion.retrying", "criterion.completed", "criterion.failed", "run.completed", "run.failed", "heartbeat", "visual_grounding.started", "visual_grounding.completed", "visual_grounding.failed", "derived_facts.completed", "derived_facts.failed", "claim_extraction.started", "claim_extraction.completed", "claim_extraction.failed", "claim_verification.started", "claim_verification.completed", "claim_verification.failed", "chart_specialist.started", "chart_specialist.completed", "chart_specialist.failed", "chart_reconciliation.completed"] as const;
 export const aiEventSchema = z.object({
   sequence: z.number().int().positive(), event_type: z.enum(aiEventTypes),
   created_at: z.string().optional(),
@@ -66,9 +74,27 @@ export const aiEventSchema = z.object({
     result: criterion.nullable().optional(), error_code: z.string().nullable().optional(),
     error_message: z.string().nullable().optional(),
     task1_analysis: task1AnalysisSchema.nullable().optional(),
+    relevance: aiRelevanceSchema.nullable().optional(),
   }),
 });
 export type AIWritingEvent = z.infer<typeof aiEventSchema>;
+
+const practiceCriterion = z.object({ score: band, feedback: z.string().min(1).max(2000) });
+export const aiPracticeFeedbackSchema = z.object({
+  id: z.string().uuid(), attempt_id: z.string().uuid(), writing_task_id: z.string().uuid(),
+  source_run_id: z.string().uuid(),
+  criteria: z.object({ ta: practiceCriterion, cc: practiceCriterion, lr: practiceCriterion, gra: practiceCriterion }),
+  created_at: z.string(), updated_at: z.string(), relevance: aiRelevanceSchema.nullable().optional(),
+});
+export type AIPracticeFeedback = z.infer<typeof aiPracticeFeedbackSchema>;
+export async function getAIPracticeFeedback(attemptId: string, taskId: string) {
+  return aiPracticeFeedbackSchema.nullable().parse(await apiRequest<unknown>(`/attempts/${attemptId}/writing/${taskId}/ai-practice-feedback`));
+}
+export async function saveAIPracticeFeedback(attemptId: string, taskId: string, sourceRunId: string) {
+  return aiPracticeFeedbackSchema.parse(await apiRequest<unknown>(`/attempts/${attemptId}/writing/${taskId}/ai-practice-feedback`, {
+    method: "PUT", body: JSON.stringify({ source_run_id: sourceRunId }),
+  }));
+}
 
 export async function listAIWritingRuns(attemptId: string, taskId: string) {
   return z.object({ configured: z.boolean(), items: z.array(aiRunSchema) }).parse(

@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { aiTraits, traitNamesForTask, isActiveAIRun, isCancelledAIRun, type AIActivity, type AIWritingEvent, type AIWritingRun } from "@/lib/api/writing-ai";
+import { useTranslation } from "@/lib/i18n/locale-provider";
+import type { TranslationFunction } from "@/lib/i18n/types";
 import styles from "./writing-ai-assessment.module.css";
 
 export const traitSubtitles = {
@@ -10,6 +12,7 @@ export const traitSubtitles = {
 
 export function activityFromEvent(event: AIWritingEvent): AIActivity | null {
   const phases: Partial<Record<AIWritingEvent["event_type"], AIActivity["phase"]>> = {
+    "relevance.started": "checking_relevance", "relevance.completed": "relevance_checked", "relevance.failed": "relevance_failed",
     "run.started": "preparing", "provider.starting": "starting_model", "provider.ready": "preparing",
     "criterion.started": "preparing", "evidence.request.started": "collecting_evidence",
     "evidence.validation.started": "validating_evidence", "criterion.evidence.completed": "evidence_collected",
@@ -43,8 +46,11 @@ function StageElapsed({ startedAt }: { startedAt: string }) {
   return <span className={styles.elapsed} aria-hidden="true">{elapsedLabel(startedAt, now)}</span>;
 }
 
-function phaseLabel(activity?: AIActivity | null) {
+function phaseLabel(activity: AIActivity | null | undefined, t: TranslationFunction) {
   switch (activity?.phase) {
+    case "checking_relevance": return t("writingAI.checkingRelevance");
+    case "relevance_checked": return t("writingAI.relevanceChecked");
+    case "relevance_failed": return t("writingAI.relevanceFailed");
     case "collecting_evidence": return "Đang thu thập dẫn chứng…";
     case "validating_evidence": return "Đang kiểm tra dẫn chứng…";
     case "evidence_collected": return "Đã thu thập dẫn chứng";
@@ -70,6 +76,7 @@ function phaseLabel(activity?: AIActivity | null) {
 }
 
 export function ScoringProgress({ run, taskNumber = 2 }: { run: AIWritingRun | null; taskNumber?: 1 | 2 }) {
+  const { t } = useTranslation();
   const aiTraitNames = traitNamesForTask(taskNumber);
   const active = isActiveAIRun(run);
   const cancelled = isCancelledAIRun(run);
@@ -87,7 +94,7 @@ export function ScoringProgress({ run, taskNumber = 2 }: { run: AIWritingRun | n
   const summary = cancelled ? "Đã dừng chấm AI." : run?.status === "FAILED" ? "Chưa thể hoàn tất toàn bộ bài chấm."
     : run?.status === "COMPLETED" ? "Chấm bài hoàn tất"
     : activity?.phase === "starting_model" ? "Đang khởi động mô hình AI…"
-    : active && activity && ["visual_grounding", "visual_grounded", "deriving_facts", "derived_facts_failed", "extracting_claims", "claims_extracted", "verifying_claims", "claims_verified", "claim_extraction_failed", "claim_verification_failed", "chart_cross_check", "chart_read", "chart_fallback", "chart_reconciled"].includes(activity.phase) ? phaseLabel(activity)
+    : active && activity && ["checking_relevance", "relevance_checked", "relevance_failed", "visual_grounding", "visual_grounded", "deriving_facts", "derived_facts_failed", "extracting_claims", "claims_extracted", "verifying_claims", "claims_verified", "claim_extraction_failed", "claim_verification_failed", "chart_cross_check", "chart_read", "chart_fallback", "chart_reconciled"].includes(activity.phase) ? phaseLabel(activity, t)
     : active ? "Đang chấm bài…" : `Sẵn sàng chấm Task ${taskNumber}`;
 
   return <section className={styles.trace} aria-label="Scoring Trace">
@@ -111,7 +118,7 @@ export function ScoringProgress({ run, taskNumber = 2 }: { run: AIWritingRun | n
             {evidenceCollected ? <p>✓ Đã thu thập dẫn chứng</p> : null}
             <p>{state === "COMPLETED" ? "Đã chấm xong" : state === "FAILED" ? "Không thể hoàn tất tiêu chí này."
               : state === "STOPPED" ? "Chưa hoàn tất do bạn đã dừng chấm"
-              : current ? phaseLabel(activity) : run?.status === "FAILED" ? "Chưa thực hiện" : "Đang chờ"}</p>
+              : current ? phaseLabel(activity, t) : run?.status === "FAILED" ? "Chưa thực hiện" : "Đang chờ"}</p>
             {current && activity ? <StageElapsed startedAt={activity.started_at} /> : null}
           </div>
         </li>;

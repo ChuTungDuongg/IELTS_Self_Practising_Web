@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   aiTraits, traitNamesForTask, cancelAIWritingRun, createAIWritingRun, getAIWritingRun, isActiveAIRun, isCancelledAIRun, listAIWritingRuns,
   watchAIWritingRun, type AIWritingEvent, type AIWritingResult, type AIWritingRun,
+  getAIPracticeFeedback, saveAIPracticeFeedback, type AIPracticeFeedback,
 } from "@/lib/api/writing-ai";
 import { ApiError } from "@/lib/api/client";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -11,12 +12,21 @@ import { ScoringProgress, activityFromEvent } from "./writing-ai-progress";
 import { CriterionAssessmentCard } from "./writing-ai-criterion-card";
 import styles from "./writing-ai-assessment.module.css";
 import { Task1VisualStatus } from "./writing-ai-visual-details";
+import { useTranslation } from "@/lib/i18n/locale-provider";
+import { SavedAIPracticeFeedback, WritingRelevanceNotice } from "./writing-ai-practice-feedback";
 
-export function WritingAIAssessment({ attemptId, taskId, taskNumber = 2, hasEssay, canCopy, onCopy }: {
+export function WritingAIAssessment({ attemptId, taskId, taskNumber = 2, hasEssay, canCopy, canSavePersonalFeedback = false, onCopy }: {
   attemptId: string; taskId: string; hasEssay: boolean; canCopy: boolean;
   taskNumber?: 1 | 2;
+  canSavePersonalFeedback?: boolean;
   onCopy: (result: AIWritingResult) => void;
 }) {
+  const { t } = useTranslation();
+  const [personalFeedback, setPersonalFeedback] = useState<AIPracticeFeedback | null>(null);
+  const [feedbackLoading, setFeedbackLoading] = useState(true);
+  const [feedbackSaving, setFeedbackSaving] = useState(false);
+  const [feedbackLoadError, setFeedbackLoadError] = useState(false);
+  const [feedbackSaveError, setFeedbackSaveError] = useState(false);
   const [runs, setRuns] = useState<AIWritingRun[]>([]);
   const [run, setRun] = useState<AIWritingRun | null>(null);
   const [terminal, setTerminal] = useState<"FAILED" | "COMPLETED" | null>(null);
@@ -36,6 +46,25 @@ export function WritingAIAssessment({ attemptId, taskId, taskNumber = 2, hasEssa
   const cancelled = isCancelledAIRun(visibleRun);
   const aiTraitNames = traitNamesForTask(taskNumber);
   const visualAnalysis = run?.task1_analysis ?? (run?.result?.task_number === 1 ? run.result.task1_analysis : null);
+
+  useEffect(() => {
+    if (!canSavePersonalFeedback) return;
+    let disposed = false;
+    getAIPracticeFeedback(attemptId, taskId).then(saved => { if (!disposed) setPersonalFeedback(saved); })
+      .catch(() => { if (!disposed) setFeedbackLoadError(true); })
+      .finally(() => { if (!disposed) setFeedbackLoading(false); });
+    return () => { disposed = true; };
+  }, [attemptId, taskId, canSavePersonalFeedback]);
+
+  async function savePersonalFeedback() {
+    if (!canSavePersonalFeedback || run?.status !== "COMPLETED" || !run.result || feedbackSaving) return;
+    setFeedbackSaving(true); setFeedbackSaveError(false);
+    try {
+      setPersonalFeedback(await saveAIPracticeFeedback(attemptId, taskId, run.id));
+      setFeedbackLoadError(false);
+    } catch { setFeedbackSaveError(true); }
+    finally { setFeedbackSaving(false); }
+  }
 
   useEffect(() => {
     let disposed = false;
@@ -63,6 +92,7 @@ export function WritingAIAssessment({ attemptId, taskId, taskNumber = 2, hasEssa
           activity: activity ? { ...activity, criterion: event.event_type === "run.failed" ? activity.criterion ?? current.activity?.criterion ?? null : activity.criterion } : current.activity,
           progress: trait && event.payload.result ? { ...current.progress, [trait]: event.payload.result } : current.progress,
           task1_analysis: event.payload.task1_analysis ?? current.task1_analysis,
+          relevance: event.payload.relevance ?? current.relevance,
           failures: trait && event.event_type === "criterion.failed" ? { ...current.failures, [trait]: {
             error_code: event.payload.error_code ?? "AI_GRADING_FAILED",
             error_message: "Không thể hoàn tất tiêu chí này.", stage: event.payload.stage,
@@ -130,6 +160,9 @@ export function WritingAIAssessment({ attemptId, taskId, taskNumber = 2, hasEssa
       </button>
       {active ? <button type="button" className="btn btn-secondary" disabled={stopping} onClick={() => { setStopError(""); setConfirmStop(true); }}>{stopping ? "Đang dừng…" : "Dừng chấm"}</button> : null}
       {run?.result && canCopy ? <button type="button" className="btn" disabled={active || starting || stopping} onClick={() => { onCopy(run.result!); setNotice(`Đã chép gợi ý AI. Bạn có thể chỉnh sửa; cần bấm Save Task ${taskNumber} scores để lưu điểm chính thức.`); }}>Chép gợi ý AI vào biểu mẫu</button> : null}
+      {canSavePersonalFeedback && run?.status === "COMPLETED" && run.result ? <button type="button" className="btn" disabled={active || starting || stopping || feedbackLoading || feedbackSaving || personalFeedback?.source_run_id === run.id} onClick={() => void savePersonalFeedback()}>
+        {t(feedbackSaving ? "writingAI.savingFeedback" : personalFeedback?.source_run_id === run.id ? "writingAI.feedbackSaved" : personalFeedback ? "writingAI.updateFeedback" : "writingAI.saveFeedback")}
+      </button> : null}
     </div>
     <ConfirmDialog open={confirmStop && active} title="Dừng chấm AI?" description="Quá trình chấm hiện tại sẽ dừng. Các tiêu chí đã hoàn tất vẫn được giữ lại. Điểm chính thức của bài Writing không bị thay đổi." confirmLabel="Dừng chấm" cancelLabel="Tiếp tục chấm" pendingLabel="Đang dừng…" pending={stopping} errorMessage={stopError} onCancel={() => setConfirmStop(false)} onConfirm={() => void stop()} />
     {notice ? <p role="status">{notice}</p> : null}
@@ -137,6 +170,10 @@ export function WritingAIAssessment({ attemptId, taskId, taskNumber = 2, hasEssa
     {error || (visibleRun?.status === "FAILED" && !cancelled) ? <p role="alert" className="notice notice-error">{visibleRun?.status === "FAILED" && !cancelled ? aiErrorMessage(visibleRun.error_code) : error}</p> : null}
     <ScoringProgress run={visibleRun} taskNumber={taskNumber} />
     {taskNumber === 1 && visualAnalysis ? <Task1VisualStatus analysis={visualAnalysis} /> : null}
+    <WritingRelevanceNotice relevance={run?.result?.relevance ?? run?.relevance} />
+    {canSavePersonalFeedback && feedbackLoadError ? <p role="alert">{t("writingAI.loadFeedbackError")}</p> : null}
+    {canSavePersonalFeedback && feedbackSaveError ? <p role="alert">{t("writingAI.saveFeedbackError")}</p> : null}
+    {canSavePersonalFeedback && personalFeedback ? <SavedAIPracticeFeedback feedback={personalFeedback} taskNumber={taskNumber} /> : null}
     {run?.result ? <section className={styles.overall} aria-label={`AI Task ${taskNumber} overall summary`}>
       <header className={styles.overallHeading}>
         <div className={styles.overallCopy}>

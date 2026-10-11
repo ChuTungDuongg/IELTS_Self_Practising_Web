@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { ApiError, resetAuthRequestStateForTests } from "@/lib/api/client";
-import { cancelAIWritingRun, isCancelledAIRun, watchAIWritingRun } from "@/lib/api/writing-ai";
+import { cancelAIWritingRun, getAIPracticeFeedback, saveAIPracticeFeedback, isCancelledAIRun, watchAIWritingRun } from "@/lib/api/writing-ai";
 
 const runId = "11111111-1111-4111-8111-111111111111";
 const cancelled = {
@@ -53,6 +53,31 @@ function observer() {
   const callbacks = { event: vi.fn(), snapshot: vi.fn(), error: vi.fn() };
   return { callbacks, stop: watchAIWritingRun(runId, callbacks) };
 }
+
+it("personal save sends only the source run ID through normal authenticated PUT", async () => {
+  const pair = { score: 7, feedback: "Fictional feedback." };
+  const snapshot = { id: runId, attempt_id: runId, writing_task_id: runId, source_run_id: runId, criteria: { ta: pair, cc: pair, lr: pair, gra: pair }, created_at: "2026-10-11T00:00:00Z", updated_at: "2026-10-11T01:00:00Z", relevance: null };
+  const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(snapshot), { status: 200 }));
+  vi.stubGlobal("fetch", fetchMock);
+  expect(await saveAIPracticeFeedback(runId, runId, runId)).toEqual(snapshot);
+  expect(fetchMock.mock.calls[0][0]).toBe(`http://localhost:8000/api/v1/attempts/${runId}/writing/${runId}/ai-practice-feedback`);
+  expect(fetchMock.mock.calls[0][1]).toMatchObject({ method: "PUT", credentials: "include", cache: "no-store", body: JSON.stringify({ source_run_id: runId }) });
+});
+
+it("personal GET accepts the ordinary not-saved state", async () => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("null", { status: 200 })));
+  expect(await getAIPracticeFeedback(runId, runId)).toBeNull();
+});
+
+it("relevance failure is an auxiliary replayable event and does not cancel observation", () => {
+  const { callbacks, stop } = observer();
+  ObserverSource.instances[0].emit("relevance.started", 1);
+  ObserverSource.instances[0].emit("relevance.failed", 2);
+  expect(callbacks.event.mock.calls.map(call => call[0].event_type)).toEqual(["relevance.started", "relevance.failed"]);
+  expect(ObserverSource.instances[0].close).not.toHaveBeenCalled();
+  expect(callbacks.error).not.toHaveBeenCalled();
+  stop();
+});
 
 it("retires a disconnected source before probing and ignores its late callbacks after reconnect", async () => {
   vi.useFakeTimers();

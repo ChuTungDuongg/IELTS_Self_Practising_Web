@@ -167,7 +167,7 @@ export function WritingReviewView({ data }: { data: WritingReviewPayload }) {
         </div>
       </article>
     </main>
-    {task.task_number === 1 || task.task_number === 2 ? <WritingAIAssessment key={task.writing_task_id} taskNumber={task.task_number} attemptId={reviewData.review.attempt.attempt_id} taskId={task.writing_task_id} hasEssay={Boolean(task.content.trim())} canCopy={user?.role === "ADMIN"} onCopy={(result) => copyAISuggestions(task.writing_task_id, result)} /> : null}
+    {task.task_number === 1 || task.task_number === 2 ? <WritingAIAssessment key={task.writing_task_id} taskNumber={task.task_number} attemptId={reviewData.review.attempt.attempt_id} taskId={task.writing_task_id} hasEssay={Boolean(task.content.trim())} canCopy={user?.role === "ADMIN"} canSavePersonalFeedback={user?.role === "USER" && focused && !reviewData.review.attempt.test_session_id && reviewData.review.attempt.focused_unit?.kind === "WRITING_TASK" && reviewData.review.attempt.focused_unit.id === task.writing_task_id} onCopy={(result) => copyAISuggestions(task.writing_task_id, result)} /> : null}
   </div>;
 }
 

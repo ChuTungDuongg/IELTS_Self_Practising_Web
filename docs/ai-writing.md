@@ -2,11 +2,88 @@
 
 Task 1 and Task 2 share the configured `mistralai/Ministral-3-8B-Instruct-2512`
 model, provider adapters and existing Modal/vLLM GPU function. Task 2 retains
-its text-only MTS pipeline and current local `mts-task2-v7` cache contract. Task 1
-uses `mts-task1-scoring-v7`, composite `mts-task1-visual-v7`, and the unchanged
+its text-only MTS pipeline and current local `mts-task2-v8` cache contract. Task 1
+uses `mts-task1-scoring-v8`, composite `mts-task1-visual-v8`, and the unchanged
 `mts-task1-visual-v3` perception contract. See
 [the latency engineering case study](enhance_latency.md) for bounded concurrent
 execution, serving settings, measurements and reproduction.
+
+## Conservative task relevance (v8)
+
+A shared text-only auxiliary classifier returns `ON_TOPIC`, `PARTIALLY_RELEVANT`
+or `WHOLLY_UNRELATED`, confidence `HIGH`/`MEDIUM`/`LOW`, up to four stable essay
+source IDs and a concise Vietnamese reason. The backend resolves exact essay
+quotes. Only **WHOLLY_UNRELATED + HIGH** skips TA/TR evidence and scoring and
+constructs a valid TA/TR **1.0** result explaining the Band 1 descriptor. CC,
+LR and GRA still run independently; the existing equal-weight aggregate is unchanged.
+
+On-topic, partial and uncertain verdicts follow normal TA/TR scoring. Weak language,
+missing an overview, inaccurate numbers/trends, omissions or discussing only one
+view are insufficient for wholly-unrelated classification when a meaningful task
+connection remains. Ambiguity favours partial relevance. This does not detect
+plagiarism, memorisation, cheating or authorship.
+
+Task 2 starts relevance alongside linguistic criteria; only TR waits for the
+decision. Task 1 first completes primary visual grounding, then reuses compact
+structured context (labels/relationships/categories, without chart point/cell
+values) in text-only relevance. No additional image call is made for relevance.
+After a short-circuit, primary grounding metadata is retained and **claims,
+verification, facts, optional DePlot, TA evidence and TA scoring never start**.
+Otherwise the post-gate specialist/facts and claims paths may overlap before TA.
+Linguistic criteria remain independent of both dependencies. UNUSABLE grounding
+preserves TA's existing failure and linguistic progress; it never causes a text-only
+Band 1 decision. Chart, table, map, process, system and other visual families remain supported.
+
+Relevance uses the run-local bounded provider, a **768-token** cap and a 30-second
+per-call timeout. Invalid JSON/schema/source IDs or non-stop finish reasons permit
+one repair, never a third attempt. Timeout/provider/auxiliary failures fail open
+and cannot fail a scoreable run. Diagnostics retain fixed reasons, safe field types,
+usage and timings, without raw content or exception bodies. Existing evidence budgets
+(1800), scoring budgets (3072; Task 1 TA 4096), finish validation and scoring repairs
+remain unchanged. A normal healthy assessment adds one text call; a relevance repair
+adds at most one more. Healthy short-circuits use seven LLM calls for Task 2 and eight
+for Task 1 including primary grounding and all six linguistic calls. No live-model
+accuracy or speed claim follows from scripted tests.
+
+Optional `relevance` metadata is stored in the existing run result JSON and exposed
+in full/partial DTOs. Durable `relevance.started`, `.completed`, `.failed` events
+replay through SSE; auxiliary failure continues normal assessment. Historic runs
+without relevance still parse. Effective Task 2 v8 includes old deployed version
+labels, including v7, so prior cached results stay readable without being reused.
+Task 1 v8 fingerprints invalidate earlier scoring caches while retaining perception
+v3 and the v7 TA/CC guidance. Offline benchmarks default to v8; v3/v5/v7 retain
+their historical pre-gate execution selection and frozen v5 prompts remain unchanged.
+Task-tab cleanup still stops observation only; explicit Stop cancels grading.
+
+## Personal focused Writing feedback
+
+`writing_ai_practice_feedback` stores one explicit latest advisory snapshot per
+`(user_id, attempt_id, writing_task_id)`: source AI run, four criterion score/feedback
+pairs and creation/update timestamps. Migration `20261011_0023` follows
+`20261010_0022`. PostgreSQL UPSERT converges concurrent saves onto the same row;
+there is no snapshot history, DELETE endpoint or duplicate overall score.
+
+Authenticated resource paths:
+
+- `GET /api/v1/attempts/{attempt_id}/writing/{writing_task_id}/ai-practice-feedback`
+  returns a snapshot or `null` if none was saved.
+- `PUT` at the same path accepts **only** `{ "source_run_id": "UUID" }`. Extra
+  fields are rejected. FastAPI validates the durable completed run through production
+  result schemas and copies its four scores/feedback; browser-supplied scores are never used.
+
+The attempt must belong to the caller, be standalone WRITING/FOCUSED_UNIT and select
+that task. The source run must match the attempt/task/requester and contain a complete
+validated result. Full-module/Full Mock, foreign attempts/tasks/runs, pending/running/failed
+runs and malformed/incomplete results are rejected. Snapshot foreign keys cascade with
+attempt/user removal. Official manual grading remains ADMIN-only.
+
+USER review exposes Save/Update only for focused Writing. The separately loaded card
+shows four criterion scores, feedback, saved/update times and an advisory badge in
+EN/VI. Regrading does not overwrite the card; another explicit save replaces it. An
+unrelated source run shows its explanation alongside the independent linguistic scores.
+ADMIN retains copy-to-manual-form → edit → explicit official Save. Full-module/Full Mock
+USER review exposes neither action. Snapshot saves never modify `AttemptWritingScore`,
+attempt band, History, Analytics or official Full Mock state.
 
 ## Task 2: text-only assessment
 
