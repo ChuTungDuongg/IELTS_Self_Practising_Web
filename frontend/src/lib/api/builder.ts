@@ -61,6 +61,20 @@ const builderWritingTaskSchema = z.object({
   order_index: z.number().int(),
 });
 
+const speakingPromptSchema = z.object({
+  id: z.string().uuid(), order_index: z.number().int().nonnegative(),
+  prompt_type: z.enum(["SHORT_ANSWER", "LONG_TURN", "FOLLOW_UP"]),
+  prompt_text: z.string().max(20_000), preparation_seconds: z.number().int().min(0).max(3600),
+  response_seconds: z.number().int().positive().max(3600),
+  config_json: z.object({ cue_points: z.array(z.string().max(1000)).max(12).default([]) }).strict(),
+});
+const speakingPartSchema = z.object({
+  id: z.string().uuid(), revision: z.number().int().positive(),
+  part_number: z.union([z.literal(1), z.literal(2), z.literal(3)]),
+  title: z.string().nullable(), instructions: z.string().nullable(), order_index: z.number().int().nonnegative(),
+  prompts: z.array(speakingPromptSchema).max(100),
+});
+
 const builderVersionSchema = z.object({
   id: z.string().uuid(),
   test_id: z.string().uuid(),
@@ -72,13 +86,14 @@ const builderVersionSchema = z.object({
     z.object({
       id: z.string().uuid(),
       revision: z.number().int().positive(),
-      module_type: z.enum(["READING", "LISTENING", "WRITING"]),
+      module_type: z.enum(["READING", "LISTENING", "WRITING", "SPEAKING"]),
       title: z.string().nullable(),
       recommended_duration_seconds: z.number().int().nullable(),
       audio_asset: assetSchema.nullable().default(null),
       passages: z.array(passageSchema).default([]),
       listening_parts: z.array(listeningPartSchema).default([]),
       writing_tasks: z.array(builderWritingTaskSchema).default([]),
+      speaking_parts: z.array(speakingPartSchema).optional(),
     }),
   ),
 });
@@ -89,6 +104,9 @@ export type BuilderPassage = z.infer<typeof passageSchema>;
 export type BuilderQuestionGroup = z.infer<typeof groupSchema>;
 export type BuilderListeningPart = z.infer<typeof listeningPartSchema>;
 export type BuilderWritingTask = z.infer<typeof builderWritingTaskSchema>;
+export type BuilderSpeakingPart = z.infer<typeof speakingPartSchema>;
+export type BuilderSpeakingPrompt = z.infer<typeof speakingPromptSchema>;
+export type SpeakingPartUpdate = Pick<BuilderSpeakingPart, "title" | "instructions" | "prompts"> & { expected_revision: number };
 export type TextBlock = z.infer<typeof blockSchema>;
 
 export function parseBuilderVersion(value: unknown): BuilderVersion {
@@ -123,6 +141,34 @@ export function createWritingModule(versionId: string) {
       title: "Writing",
     }),
   });
+}
+
+export async function createSpeakingModule(versionId: string): Promise<BuilderModule> {
+  return builderVersionSchema.shape.modules.element.parse(await apiRequest(`/test-versions/${versionId}/modules`, {
+    method: "POST", body: JSON.stringify({ module_type: "SPEAKING", title: "Speaking" }),
+  }));
+}
+
+export async function createSpeakingPart(moduleId: string, partNumber: 1 | 2 | 3): Promise<BuilderSpeakingPart> {
+  return speakingPartSchema.parse(await apiRequest(`/speaking/modules/${moduleId}/parts`, {
+    method: "POST", body: JSON.stringify({ part_number: partNumber }),
+  }));
+}
+
+export async function updateSpeakingPart(partId: string, body: SpeakingPartUpdate): Promise<BuilderSpeakingPart> {
+  return speakingPartSchema.parse(await apiRequest(`/speaking/parts/${partId}`, { method: "PUT", body: JSON.stringify(body) }));
+}
+
+export async function createSpeakingPrompt(partId: string, body: { expected_revision: number; prompt_type: BuilderSpeakingPrompt["prompt_type"] }): Promise<BuilderSpeakingPart> {
+  return speakingPartSchema.parse(await apiRequest(`/speaking/parts/${partId}/prompts`, { method: "POST", body: JSON.stringify(body) }));
+}
+
+export async function reorderSpeakingPrompts(partId: string, expectedRevision: number, promptIds: string[]): Promise<BuilderSpeakingPart> {
+  return speakingPartSchema.parse(await apiRequest(`/speaking/parts/${partId}/prompts/order`, { method: "PUT", body: JSON.stringify({ expected_revision: expectedRevision, prompt_ids: promptIds }) }));
+}
+
+export async function deleteSpeakingPrompt(partId: string, promptId: string, expectedRevision: number): Promise<BuilderSpeakingPart> {
+  return speakingPartSchema.parse(await apiRequest(`/speaking/parts/${partId}/prompts/${promptId}?expected_revision=${expectedRevision}`, { method: "DELETE" }));
 }
 
 export async function updateModuleDuration(moduleId: string, expectedRevision: number, seconds: number | null): Promise<BuilderModule> {

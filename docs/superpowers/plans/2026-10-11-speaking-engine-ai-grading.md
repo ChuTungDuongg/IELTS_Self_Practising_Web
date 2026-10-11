@@ -159,11 +159,11 @@ git commit -m "Add Speaking content domain model"
 - Builder workspace union becomes `overview | reading | listening | writing | speaking`; module type unions include `SPEAKING`.
 - `SpeakingBuilder` presents Part 1/2/3, append-at-end questions, reorder/delete, Part 2 cue points + timers + optional follow-ups, and uses existing autosave lifecycle.
 
-- [ ] **Step 1: Write failing RTL tests** for workspace navigation, creation, append/reorder, Part 2 defaults, autosave payload, frozen published/under-moderation behavior, focus moving to a newly added card, and reduced-motion-compatible class/state behavior.
-- [ ] **Step 2: Run RED:** `cd frontend && npx vitest run tests/speaking-builder.test.tsx`.
-- [ ] **Step 3: Implement UI/API schemas.** Use existing semantic theme tokens; add lightweight 150–250ms enter/reorder transitions and `prefers-reduced-motion`, no new animation library.
-- [ ] **Step 4: Run GREEN + typecheck/targeted ESLint:** `npx vitest run tests/speaking-builder.test.tsx && npm run typecheck` then ESLint touched files.
-- [ ] **Step 5: Commit:** `git commit -m "Add Speaking Builder workspace"`.
+- [x] **Step 1: Write failing RTL tests** for workspace navigation, creation, append/reorder, Part 2 defaults, autosave payload, frozen published/under-moderation behavior, focus moving to a newly added card, and reduced-motion-compatible class/state behavior.
+- [x] **Step 2: Run RED:** `cd frontend && npx vitest run tests/speaking-builder.test.tsx`.
+- [x] **Step 3: Implement UI/API schemas.** Use existing semantic theme tokens; add lightweight 150–250ms enter/reorder transitions and `prefers-reduced-motion`, no new animation library.
+- [x] **Step 4: Run GREEN + typecheck/targeted ESLint:** `npx vitest run tests/speaking-builder.test.tsx && npm run typecheck` then ESLint touched files.
+- [x] **Step 5: Commit:** `git commit -m "Add Speaking Builder workspace"`.
 
 **P1 gate:** stop and review. Do not start runner work until P1 tests are green and Builder/publish/clone/transfer contracts are coherent.
 

@@ -14,7 +14,7 @@ function StartAssignment({ assignment }: {
 }) {
   const { t } = useTranslation();
   const router = useRouter();
-  const available = assignment.version?.modules.map(item => item.module_type)
+  const available = assignment.version?.modules.map(item => item.module_type).filter((kind): kind is ModuleType => kind !== "SPEAKING")
     ?? ["READING", "LISTENING", "WRITING"] as ModuleType[];
   const fullMockReady = ["LISTENING", "READING", "WRITING"].every(kind => assignment.version?.modules.some(item => item.module_type === kind && (item.recommended_duration_seconds ?? 0) > 0));
   const [mode, setMode] = useState<string>(available[0] ?? "READING");

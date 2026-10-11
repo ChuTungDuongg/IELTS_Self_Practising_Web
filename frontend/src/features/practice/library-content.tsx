@@ -15,6 +15,12 @@ import { useTranslation } from "@/lib/i18n/locale-provider";
 import { moduleTranslationKeys, statusTranslationKeys } from "@/lib/i18n/translations";
 
 const moduleOrder = { READING: 0, LISTENING: 1, WRITING: 2 } as const;
+type RuntimeModule = VersionDetail["modules"][number] & { module_type: keyof typeof moduleOrder };
+function runtimeModules(modules: VersionDetail["modules"]) {
+  // P1 authored Speaking remains in Builder until its runtime phase is enabled.
+  return modules.filter((item): item is RuntimeModule => item.module_type !== "SPEAKING")
+    .sort((left, right) => moduleOrder[left.module_type] - moduleOrder[right.module_type]);
+}
 
 export function TestAttribution({ test }: { test: TestSummary }) {
   const { t } = useTranslation();
@@ -27,7 +33,7 @@ export function LibraryContent({ items }: { items: Array<{ test: TestSummary; ve
     <PageHeading eyebrow={t("pages.library.practice")} title={t("pages.library.choose")} description={t("pages.library.chooseDescription")} />
     {items.length ? <div className="practice-grid">
       {items.map(({ test, version, detail }) => {
-        const modules = [...detail.modules].sort((left, right) => moduleOrder[left.module_type] - moduleOrder[right.module_type]);
+        const modules = runtimeModules(detail.modules);
         return <article key={version.id} className="practice-card practice-test-card">
           <div className="practice-card-accent" aria-hidden="true" />
           <div className="practice-card-content">
@@ -46,7 +52,7 @@ export function LibraryContent({ items }: { items: Array<{ test: TestSummary; ve
 
 export function LibraryVersionContent({ test, version }: { test: TestSummary; version: VersionDetail }): ReactElement {
   const { t } = useTranslation();
-  const modules = [...version.modules].sort((left, right) => moduleOrder[left.module_type] - moduleOrder[right.module_type]);
+  const modules = runtimeModules(version.modules);
   const missing = (["LISTENING", "READING", "WRITING"] as const).find((type) => !modules.some((item) => item.module_type === type));
   const missingDuration = modules.find((item) => !item.recommended_duration_seconds || item.recommended_duration_seconds <= 0);
   const readinessWarnings = modules.filter((item) => (item.module_type === "READING" || item.module_type === "LISTENING") && item.question_count !== 40).map((item) => t("pages.library.bandWarning", { skill: t(moduleTranslationKeys[item.module_type]), count: item.question_count }));

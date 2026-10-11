@@ -26,7 +26,7 @@ export const testSchema = z.object({
 
 export const moduleSchema = z.object({
   id: z.string().uuid(),
-  module_type: z.enum(["READING", "LISTENING", "WRITING"]),
+  module_type: z.enum(["READING", "LISTENING", "WRITING", "SPEAKING"]),
   title: z.string().nullable(),
   recommended_duration_seconds: z.number().int().nullable(),
   passage_count: z.number().int(),

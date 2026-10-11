@@ -1,5 +1,27 @@
 @import "tailwindcss";
 
+/* Authored Speaking Builder only; all colors follow the shared theme/accent. */
+.speaking-builder { display: grid; gap: 24px; }
+.speaking-part { min-width: 0; margin: 0; padding: 20px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+.speaking-part legend { padding-inline: 8px; font-size: 20px; font-weight: 700; color: var(--ink); }
+.speaking-part-details, .speaking-timers { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)); gap: 16px; }
+.speaking-timers { margin-top: 16px; }
+.speaking-prompt-sequence { display: grid; gap: 16px; margin-top: 16px; }
+.speaking-prompt-card { min-width: 0; padding: 16px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-raised); animation: speaking-card-enter 180ms ease-out; transition: border-color 180ms ease-out; }
+.speaking-cue-card { border-inline-start: 3px solid var(--accent); background: var(--surface-tint); }
+.speaking-card-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.speaking-candidate-preview { margin-top: 20px; padding: 16px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-soft); }
+.speaking-candidate-preview h3 { font-size: 16px; font-weight: 700; }
+.speaking-candidate-preview ul { list-style: disc; padding-inline-start: 24px; }
+.speaking-authored-text { white-space: pre-line; margin-block: 12px; }
+.speaking-part:disabled { opacity: .85; }
+.module-speaking { color: var(--accent); background: var(--accent-soft); }
+.builder-workspace-speaking.builder-local-active { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+@keyframes speaking-card-enter { from { opacity: .65; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) {
+  .speaking-prompt-card { animation: none; transition: none; }
+}
+
 /* Account accent presets. Palette values live here; components only consume tokens. */
 :where([data-accent="purple"]) {
   --palette-light: #5261a8; --palette-strong-light: #434f90; --palette-soft-light: #e7e9f3;

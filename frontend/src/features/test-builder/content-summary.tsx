@@ -3,7 +3,7 @@ import type { VersionDetail } from "@/lib/api/schema";
 import type { WritingTaskType } from "@/features/writing/task-types";
 
 export type SummaryUnit = {
-  heading: { message: "common.passageNumber" | "common.sectionNumber" | "common.taskNumber"; params: { number: number } };
+  heading: { message: "common.passageNumber" | "common.sectionNumber" | "common.taskNumber" | "speaking.part"; params: { number: number } };
   title: string | null;
   questionTypes?: string[];
   taskType?: WritingTaskType | null;
@@ -21,6 +21,10 @@ function excerpt(prompt: string): string | null {
 
 export function builderContentSummary(module: BuilderVersion["modules"][number] | undefined): SummaryUnit[] {
   if (!module) return [];
+  if (module.module_type === "SPEAKING") return [...(module.speaking_parts ?? [])].sort((a, b) => a.order_index - b.order_index).map((part) => ({
+    heading: { message: "speaking.part", params: { number: part.part_number } }, title: part.title,
+    excerpt: excerpt(part.prompts.map(prompt => prompt.prompt_text).join(" ")),
+  }));
   if (module.module_type === "READING") return [...module.passages].sort((a, b) => a.order_index - b.order_index).map((passage) => ({
     heading: { message: "common.passageNumber", params: { number: passage.order_index + 1 } }, title: passage.title,
     questionTypes: uniqueTypes([...passage.question_groups].sort((a, b) => a.order_index - b.order_index)),

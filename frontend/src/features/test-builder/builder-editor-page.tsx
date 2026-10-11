@@ -8,6 +8,7 @@ import { BuilderLifecycleProvider } from "@/features/test-builder/builder-lifecy
 import { ReadingBuilder } from "@/features/test-builder/reading-builder";
 import { ListeningBuilder } from "@/features/test-builder/listening-builder";
 import { WritingBuilder } from "@/features/test-builder/writing-builder";
+import { SpeakingBuilder } from "@/features/test-builder/speaking-builder";
 import { BuilderWorkspaceNavigation, type BuilderWorkspace } from "@/features/test-builder/builder-workspace-navigation";
 import { TestDetailsHeading } from "@/features/test-builder/test-details-heading";
 import { ContentSummary, builderContentSummary } from "@/features/test-builder/content-summary";
@@ -31,7 +32,7 @@ export async function BuilderEditorPage({ params, searchParams, namespace = "adm
 }) {
   const { testId, versionId } = await params;
   const requestedWorkspace = (await searchParams)?.workspace;
-  const workspace: BuilderWorkspace = typeof requestedWorkspace === "string" && ["overview", "reading", "listening", "writing"].includes(requestedWorkspace) ? requestedWorkspace as BuilderWorkspace : "overview";
+  const workspace: BuilderWorkspace = typeof requestedWorkspace === "string" && ["overview", "reading", "listening", "writing", "speaking"].includes(requestedWorkspace) ? requestedWorkspace as BuilderWorkspace : "overview";
   let version;
   try {
     version = await getBuilderVersion(versionId, serverApiRequest);
@@ -52,7 +53,7 @@ export async function BuilderEditorPage({ params, searchParams, namespace = "adm
   }
   if (version.test_id !== testId)
     notFound();
-  const requests = namespace === "teacher" ? await getVersionModeration(versionId, serverApiRequest) : [];
+  const requests = namespace === "teacher" || workspace === "speaking" ? await getVersionModeration(versionId, serverApiRequest) : [];
   const editable = version.status === "DRAFT" && !requests.some(item => item.status === "PENDING");
   return (<>
     {editable ? <TestDetailsHeading testId={testId} initialTitle={version.test_title} initialDescription={version.test_description ?? null} versionNumber={version.version_number} /> : <PageHeading eyebrow={<UiText message="builder.brand" />} title={version.test_title} description={<UiText message="builder.versionWorkspace" params={{ number: version.version_number }} />} action={<StatusBadge status={version.status} label={<UiText message={version.status === "PUBLISHED" ? "common.published" : version.status === "DRAFT" ? "common.draft" : "common.archived"} />} />} />}
@@ -73,12 +74,12 @@ export async function BuilderEditorPage({ params, searchParams, namespace = "adm
               </div>
             </div>
             <div className="module-overview-grid">
-              {(["READING", "LISTENING", "WRITING"] as const).map((kind) => {
+              {(["READING", "LISTENING", "WRITING", "SPEAKING"] as const).map((kind) => {
                 const moduleRecord = version.modules.find((item) => item.module_type === kind);
                 const groups = (moduleRecord?.passages.reduce((sum, item) => sum + item.question_groups.length, 0) ?? 0) + (moduleRecord?.listening_parts.reduce((sum, item) => sum + item.question_groups.length, 0) ?? 0);
                 return (<article key={kind} className={`module-overview-card module-card-${kind.toLowerCase()}`}>
                   <div className="flex items-center justify-between gap-3">
-                    <ModuleBadge module={kind} label={<UiText message={kind === "READING" ? "common.reading" : kind === "LISTENING" ? "common.listening" : "common.writing"} />} />
+                    <ModuleBadge module={kind} label={<UiText message={kind === "READING" ? "common.reading" : kind === "LISTENING" ? "common.listening" : kind === "SPEAKING" ? "common.speaking" : "common.writing"} />} />
                     <span className="module-state">
                       <UiText message={moduleRecord ? "builder.active" : "builder.notCreated"} />
                     </span>
@@ -86,15 +87,15 @@ export async function BuilderEditorPage({ params, searchParams, namespace = "adm
                   <dl>
                     <div>
                       <dt>
-                        <UiText message={kind === "READING" ? "common.passages" : kind === "LISTENING" ? "common.sections" : "common.tasks"} />
+                        <UiText message={kind === "READING" ? "common.passages" : kind === "LISTENING" || kind === "SPEAKING" ? "common.sections" : "common.tasks"} />
                       </dt>
-                      <dd>{kind === "LISTENING" ? moduleRecord?.listening_parts.length ?? 0 : kind === "WRITING" ? moduleRecord?.writing_tasks.length ?? 0 : moduleRecord?.passages.length ?? 0}</dd>
+                      <dd>{kind === "LISTENING" ? moduleRecord?.listening_parts.length ?? 0 : kind === "WRITING" ? moduleRecord?.writing_tasks.length ?? 0 : kind === "SPEAKING" ? moduleRecord?.speaking_parts?.length ?? 0 : moduleRecord?.passages.length ?? 0}</dd>
                     </div>
                     <div>
                       <dt>
-                        <UiText message={kind === "WRITING" ? "builder.promptsReady" : "builder.groups"} />
+                        <UiText message={kind === "WRITING" || kind === "SPEAKING" ? "builder.promptsReady" : "builder.groups"} />
                       </dt>
-                      <dd>{kind === "WRITING" ? moduleRecord?.writing_tasks.filter((task) => task.prompt.trim()).length ?? 0 : groups}</dd>
+                      <dd>{kind === "WRITING" ? moduleRecord?.writing_tasks.filter((task) => task.prompt.trim()).length ?? 0 : kind === "SPEAKING" ? moduleRecord?.speaking_parts?.reduce((sum, part) => sum + part.prompts.filter(prompt => prompt.prompt_text.trim()).length, 0) ?? 0 : groups}</dd>
                     </div>
                   </dl>
                   {moduleRecord ? <p className="section-description">
@@ -118,6 +119,7 @@ export async function BuilderEditorPage({ params, searchParams, namespace = "adm
           {workspace === "writing" ? editable ? <WritingBuilder version={version} namespace={namespace} /> : <p className="notice mt-6">
             <UiText message="builder.frozen" />
           </p> : null}
+          {workspace === "speaking" ? <SpeakingBuilder version={version} editable={editable} /> : null}
         </div>
       </div>
     </BuilderLifecycleProvider>
