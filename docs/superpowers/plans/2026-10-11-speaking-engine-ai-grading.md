@@ -214,11 +214,11 @@ git commit -m "Add Speaking content domain model"
 - `SpeakingRecorder` wraps native `MediaRecorder`, `navigator.mediaDevices`, and Web Audio level sampling; production code receives state callbacks/chunk callbacks rather than manipulating UI directly.
 - Runner state mirrors backend phases: question enter, preparing, recording, finalizing/uploading, completed, restoring.
 
-- [ ] **Step 1: Add failing tests** with fake `MediaRecorder`, `mediaDevices`, `AudioContext`, and fake timers: permission denied; supported MIME selection preferring WebM/Opus; level meter; current question only in exam; Part 2 preparation + start countdown; Done/Next and timeout; no exam retry/replay; practice Retry confirmation; no advance before persistence callback resolves; reduced-motion behavior.
-- [ ] **Step 2: Run RED:** `cd frontend && npx vitest run tests/speaking-preflight.test.tsx tests/speaking-runner.test.tsx tests/attempt-page.test.tsx`.
-- [ ] **Step 3: Implement native-browser recorder abstraction and state-driven UI.** Do not add third-party waveform/recording dependency; use lightweight level bars from analyser data.
-- [ ] **Step 4: Run GREEN + `npm run typecheck` + targeted ESLint.**
-- [ ] **Step 5: Commit:** `git commit -m "Add Speaking preflight and runner state UI"`.
+- [x] **Step 1: Add failing tests** with fake `MediaRecorder`, `mediaDevices`, `AudioContext`, and fake timers: permission denied; supported MIME selection preferring WebM/Opus; level meter; current question only in exam; Part 2 preparation + start countdown; Done/Next and timeout; no exam retry/replay; practice Retry confirmation; no advance before persistence callback resolves; reduced-motion behavior.
+- [x] **Step 2: Run RED:** `cd frontend && npx vitest run tests/speaking-preflight.test.tsx tests/speaking-runner.test.tsx tests/attempt-page.test.tsx`.
+- [x] **Step 3: Implement native-browser recorder abstraction and state-driven UI.** Do not add third-party waveform/recording dependency; use lightweight level bars from analyser data.
+- [x] **Step 4: Run GREEN + `npm run typecheck` + targeted ESLint.**
+- [x] **Step 5: Commit:** `git commit -m "Add Speaking preflight and runner state UI"`.
 
 **P2 gate:** runner/state tests must pass with mocked recorder/network. It is not yet crash-durable until P3; do not market/enable production Speaking flow until P3 completes.
 

@@ -15,7 +15,7 @@ const draftSchema = z.object({
   schema_version: z.literal(1),
   attempt_id: z.uuid(),
   test_version_id: z.uuid(),
-  module: z.enum(["READING", "LISTENING", "WRITING"]),
+  module: z.enum(["READING", "LISTENING", "WRITING", "SPEAKING"]),
   updated_at: z.iso.datetime(),
   entries: z.record(z.uuid(), z.discriminatedUnion("kind", [answerEntry, writingEntry])),
 }).strict();

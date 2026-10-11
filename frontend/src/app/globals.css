@@ -1,5 +1,18 @@
 @import "tailwindcss";
 
+.speaking-runner { max-width: 960px; margin: auto; }
+.speaking-card { border: 1px solid var(--line); border-radius: 16px; background: var(--surface); padding: 1.5rem; margin: 1rem 0; }
+.speaking-card h2 { font-size: 1.4rem; margin-bottom: .8rem; }
+.speaking-question { animation: speaking-enter 180ms ease-out; }
+.speaking-status, .speaking-controls { display: flex; align-items: center; justify-content: space-between; gap: .75rem; margin: 1rem 0; flex-wrap: wrap; }
+.speaking-status [role="timer"] { font-size: 2rem; font-variant-numeric: tabular-nums; }
+.speaking-card progress, .speaking-card meter { width: 100%; accent-color: var(--accent); transition: opacity 180ms; }
+.speaking-card textarea { min-height: 120px; width: 100%; padding: .75rem; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); }
+.speaking-card small { display: block; color: var(--muted); }
+.speaking-card audio { width: 100%; margin-top: .75rem; }
+@keyframes speaking-enter { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) { .speaking-question { animation: none; } .speaking-card progress, .speaking-card meter { transition: none; } }
+
 /* Authored Speaking Builder only; all colors follow the shared theme/accent. */
 .speaking-builder { display: grid; gap: 24px; }
 .speaking-part { min-width: 0; margin: 0; padding: 20px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }

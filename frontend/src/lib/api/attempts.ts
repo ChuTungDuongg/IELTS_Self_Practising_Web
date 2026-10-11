@@ -4,7 +4,7 @@ import { apiRequest } from "./client";
 export type TimerMode = "COUNTDOWN" | "COUNT_UP";
 
 export const focusedUnitSchema = z.object({
-  kind: z.enum(["READING_PASSAGE", "LISTENING_PART", "WRITING_TASK"]),
+  kind: z.enum(["READING_PASSAGE", "LISTENING_PART", "WRITING_TASK", "SPEAKING_PROMPT"]),
   id: z.string().uuid(),
   order_index: z.number().int().nonnegative(),
   label: z.string(),
@@ -18,7 +18,7 @@ export const attemptResponseSchema = z.object({
   attempt_context: z.enum(["STANDALONE", "FULL_MOCK"]).optional(),
   scope: z.enum(["FULL_MODULE", "FOCUSED_UNIT"]).optional(),
   focused_unit: focusedUnitSchema.nullable().optional(),
-  module: z.enum(["READING", "LISTENING", "WRITING"]),
+  module: z.enum(["READING", "LISTENING", "WRITING", "SPEAKING"]),
   status: z.enum(["IN_PROGRESS", "PAUSED", "SUBMITTED", "AUTO_SUBMITTED", "INTERRUPTED", "ABANDONED"]),
   finished_reason: z.string().nullable(),
   timer_mode: z.enum(["COUNTDOWN", "COUNT_UP"]),

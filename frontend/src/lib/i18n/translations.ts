@@ -9,8 +9,8 @@ export function translate(locale: Locale, key: TranslationKey, params?: Translat
   );
 }
 
-export const moduleTranslationKeys: Record<"READING" | "LISTENING" | "WRITING", TranslationKey> = {
-  READING: "common.reading", LISTENING: "common.listening", WRITING: "common.writing",
+export const moduleTranslationKeys: Record<"READING" | "LISTENING" | "WRITING" | "SPEAKING", TranslationKey> = {
+  READING: "common.reading", LISTENING: "common.listening", WRITING: "common.writing", SPEAKING: "common.speaking",
 };
 
 export const roleTranslationKeys: Record<"USER" | "TEACHER" | "ADMIN", TranslationKey> = {

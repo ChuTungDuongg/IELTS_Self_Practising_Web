@@ -1,3 +1,4 @@
+import { SpeakingRunner } from "@/features/speaking/speaking-runner";
 import { notFound, redirect } from "next/navigation";
 import { ReadingRunner } from "@/features/reading/reading-runner";
 import { ListeningRunner } from "@/features/listening/listening-runner";
@@ -22,6 +23,7 @@ export default async function AttemptShellPage({ params }: { params: Promise<{ a
     return <PausedAttemptGate exam={exam} />;
   }
   if (exam.attempt.status !== "IN_PROGRESS") return <TerminalAttemptRedirect attempt={exam.attempt} />;
+  if (exam.attempt.module === "SPEAKING") return <SpeakingRunner key={exam.attempt.attempt_id} initial={exam} />;
   if (exam.attempt.module === "WRITING") return <WritingRunner key={exam.attempt.attempt_id} initial={exam} />;
   return exam.attempt.module === "LISTENING"
     ? <ListeningRunner key={exam.attempt.attempt_id} initial={exam} />

@@ -16,6 +16,7 @@ vi.mock("@/lib/api/server-client", () => ({ serverApiRequest: vi.fn() }));
 vi.mock("@/features/reading/reading-runner", () => ({ ReadingRunner: () => null }));
 vi.mock("@/features/listening/listening-runner", () => ({ ListeningRunner: () => null }));
 vi.mock("@/features/writing/writing-runner", () => ({ WritingRunner: () => null }));
+vi.mock("@/features/speaking/speaking-runner", () => ({ SpeakingRunner: () => <main aria-label="Speaking runner" /> }));
 vi.mock("@/features/exam/paused-attempt-gate", () => ({ PausedAttemptGate: () => null }));
 
 const attemptId = "11111111-1111-4111-8111-111111111111";
@@ -47,5 +48,11 @@ describe("attempt page initial state", () => {
   it("retains 404 handling for a missing attempt", async () => {
     vi.mocked(getExam).mockRejectedValue(new ApiError("NOT_FOUND", "missing", 404));
     await expect(AttemptShellPage(params)).rejects.toThrow("notFound");
+  });
+
+  it("dispatches active Speaking to its runner", async () => {
+    vi.mocked(getExam).mockResolvedValue({ attempt: { attempt_id: attemptId, status: "IN_PROGRESS", module: "SPEAKING" } } as never);
+    const view = render(await AttemptShellPage(params));
+    expect(view.getByRole("main", { name: "Speaking runner" })).toBeInTheDocument();
   });
 });
