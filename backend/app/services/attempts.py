@@ -165,6 +165,7 @@ class AttemptService:
                 user_id=self.user_id,
                 test_version_id=data.test_version_id,
                 module_type=data.module,
+                speaking_mode=data.speaking_mode,
                 scope=data.scope,
                 **await resolve_focused_target(self.session, data, module.id),
                 timer_mode=data.timer.mode,
@@ -246,6 +247,8 @@ class AttemptService:
     async def pause(self, attempt_id: uuid.UUID) -> AttemptResponse:
         async with self.session.begin():
             attempt = await self._require(attempt_id, for_update=True)
+            if attempt.module_type == ModuleType.SPEAKING:
+                raise AppError("SPEAKING_PAUSE_NOT_ALLOWED", "Speaking uses its prompt recovery flow.", 409)
             now = TimerService.now()
             await self._synchronize_state(attempt, now)
             if attempt.status == AttemptStatus.IN_PROGRESS:
@@ -261,6 +264,8 @@ class AttemptService:
     async def resume(self, attempt_id: uuid.UUID) -> AttemptResponse:
         async with self.session.begin():
             attempt = await self._require(attempt_id, for_update=True)
+            if attempt.module_type == ModuleType.SPEAKING:
+                raise AppError("SPEAKING_PAUSE_NOT_ALLOWED", "Speaking uses its prompt recovery flow.", 409)
             now = TimerService.now()
             AttemptStateMachine.ensure_transition(attempt.status, AttemptStatus.IN_PROGRESS)
             if attempt.paused_at is None:
@@ -505,6 +510,8 @@ class AttemptService:
     async def submit(self, attempt_id: uuid.UUID) -> AttemptResponse:
         async with self.session.begin():
             attempt = await self._require(attempt_id, for_update=True)
+            if attempt.module_type == ModuleType.SPEAKING and attempt.status == AttemptStatus.IN_PROGRESS:
+                raise AppError("SPEAKING_RESPONSE_NOT_ACTIVE", "Finish the current Speaking response first.", 409)
             now = TimerService.now()
             await self._synchronize_state(attempt, now)
             if attempt.status == AttemptStatus.PAUSED:
@@ -1555,6 +1562,9 @@ class AttemptService:
             raise AppError("ATTEMPT_FINALIZED", "This attempt no longer accepts changes.", 409)
 
     async def _synchronize_state(self, attempt: Attempt, now: datetime) -> None:
+        if attempt.module_type == ModuleType.SPEAKING:
+            # Prompt deadlines/recovery own Speaking timing; the parent remains generic.
+            return
         if attempt.status != AttemptStatus.IN_PROGRESS:
             return
         timer = TimerService.snapshot(
@@ -1625,7 +1635,7 @@ class AttemptService:
             attempt.test_session.finished_at = now
 
     async def _score(self, attempt: Attempt) -> None:
-        if attempt.module_type == ModuleType.WRITING:
+        if attempt.module_type in {ModuleType.WRITING, ModuleType.SPEAKING}:
             attempt.raw_score = None
             attempt.max_score = None
             attempt.band_score = None

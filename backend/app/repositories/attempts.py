@@ -36,6 +36,7 @@ class AttemptRepository:
                 selectinload(Attempt.focused_reading_passage),
                 selectinload(Attempt.focused_listening_part),
                 selectinload(Attempt.focused_writing_task),
+                selectinload(Attempt.focused_speaking_prompt),
                 selectinload(Attempt.answers)
                 .selectinload(AttemptAnswer.question)
                 .selectinload(Question.question_group)
@@ -71,6 +72,7 @@ class AttemptRepository:
                 selectinload(Attempt.focused_reading_passage),
                 selectinload(Attempt.focused_listening_part),
                 selectinload(Attempt.focused_writing_task),
+                selectinload(Attempt.focused_speaking_prompt),
             )
             .order_by(Attempt.started_at.desc())
         )

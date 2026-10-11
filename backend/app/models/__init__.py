@@ -30,7 +30,13 @@ from app.models.entities import (
 )
 from app.models.notifications import Notification
 from app.models.preferences import UserPreference
-from app.models.speaking import SpeakingPart, SpeakingPrompt
+from app.models.speaking import (
+    SpeakingPart,
+    SpeakingPrompt,
+    SpeakingPromptProgress,
+    SpeakingResponse,
+    SpeakingResponseTake,
+)
 from app.models.writing_ai import (
     WritingAIGradingEvent,
     WritingAIGradingRun,
@@ -40,6 +46,9 @@ from app.models.writing_ai import (
 __all__ = [
     "SpeakingPart",
     "SpeakingPrompt",
+    "SpeakingPromptProgress",
+    "SpeakingResponse",
+    "SpeakingResponseTake",
     "UserPreference",
     "Classroom",
     "ClassroomAssignment",

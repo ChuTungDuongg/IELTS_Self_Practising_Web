@@ -12,6 +12,8 @@ from app.models import (
     ListeningPart,
     QuestionGroup,
     ReadingPassage,
+    SpeakingPart,
+    SpeakingPrompt,
     WritingTask,
 )
 from app.models.enums import AttemptScope, ModuleType, TimerMode
@@ -21,11 +23,13 @@ UNITS = {
     "READING_PASSAGE": (ModuleType.READING, ReadingPassage, "focused_reading_passage"),
     "LISTENING_PART": (ModuleType.LISTENING, ListeningPart, "focused_listening_part"),
     "WRITING_TASK": (ModuleType.WRITING, WritingTask, "focused_writing_task"),
+    "SPEAKING_PROMPT": (ModuleType.SPEAKING, SpeakingPrompt, "focused_speaking_prompt"),
 }
 FOCUSED_PRESETS = {
     ModuleType.READING: frozenset({1200, 1500, 1800}),
     ModuleType.LISTENING: frozenset({600, 900, 1200}),
     ModuleType.WRITING: frozenset({1200, 1500, 1800, 2100, 2400}),
+    ModuleType.SPEAKING: frozenset(),
 }
 
 
@@ -64,9 +68,12 @@ async def resolve_focused_target(
     if data.focused_unit is None:
         return {}
     _, model, field = UNITS[data.focused_unit.kind]
-    target = await session.scalar(
-        select(model).where(model.id == data.focused_unit.id, model.module_id == module_id)
-    )
+    query = select(model).where(model.id == data.focused_unit.id)
+    if model is SpeakingPrompt:
+        query = query.join(SpeakingPart).where(SpeakingPart.module_id == module_id)
+    else:
+        query = query.where(model.module_id == module_id)
+    target = await session.scalar(query)
     if target is None:
         # Missing, foreign-version and foreign-module IDs are indistinguishable.
         raise AppError(
@@ -126,6 +133,9 @@ class AttemptScopeGuard:
             if self.attempt.module_type == module:
                 unit = getattr(self.attempt, field)
                 label = (
+                    f"Prompt {unit.order_index + 1}"
+                    if kind == "SPEAKING_PROMPT"
+                    else
                     f"Task {unit.task_number}"
                     if kind == "WRITING_TASK"
                     else f"{'Passage' if kind == 'READING_PASSAGE' else 'Section'} {unit.order_index + 1}"

@@ -46,14 +46,19 @@ class FocusedWritingTask(BaseModel):
     id: UUID
 
 
+class FocusedSpeakingPrompt(BaseModel):
+    kind: Literal["SPEAKING_PROMPT"]
+    id: UUID
+
+
 FocusedUnit = Annotated[
-    FocusedReadingPassage | FocusedListeningPart | FocusedWritingTask,
+    FocusedReadingPassage | FocusedListeningPart | FocusedWritingTask | FocusedSpeakingPrompt,
     Field(discriminator="kind"),
 ]
 
 
 class FocusedUnitResponse(BaseModel):
-    kind: Literal["READING_PASSAGE", "LISTENING_PART", "WRITING_TASK"]
+    kind: Literal["READING_PASSAGE", "LISTENING_PART", "WRITING_TASK", "SPEAKING_PROMPT"]
     id: UUID
     order_index: int
     label: str
@@ -63,10 +68,23 @@ class FocusedUnitResponse(BaseModel):
 class AttemptCreate(BaseModel):
     model_config = {"extra": "forbid"}
     test_version_id: UUID
-    module: Literal[ModuleType.READING, ModuleType.LISTENING, ModuleType.WRITING]
+    module: Literal[ModuleType.READING, ModuleType.LISTENING, ModuleType.WRITING, ModuleType.SPEAKING]
+    speaking_mode: Literal["PRACTICE", "EXAM"] | None = None
     scope: AttemptScope = AttemptScope.FULL_MODULE
     focused_unit: FocusedUnit | None = None
     timer: TimerRequest
+
+    @model_validator(mode="after")
+    def speaking_runtime_mode(self):
+        if self.module != ModuleType.SPEAKING and self.speaking_mode is not None:
+            raise ValueError("Speaking mode is only available for Speaking attempts")
+        if self.module == ModuleType.SPEAKING:
+            self.speaking_mode = self.speaking_mode or "PRACTICE"
+            if self.timer.mode != TimerMode.COUNT_UP:
+                raise ValueError("Speaking uses authored per-prompt deadlines and a count-up clock")
+            if self.scope == AttemptScope.FOCUSED_UNIT and self.speaking_mode != "PRACTICE":
+                raise ValueError("Focused Speaking is practice only")
+        return self
 
 
 class ActivityRequest(BaseModel):

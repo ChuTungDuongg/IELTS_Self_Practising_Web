@@ -43,7 +43,7 @@ from app.models.enums import (
 )
 
 if TYPE_CHECKING:
-    from app.models.speaking import SpeakingPart
+    from app.models.speaking import SpeakingPart, SpeakingPrompt
 
 
 class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -371,14 +371,18 @@ class Attempt(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         ),
         CheckConstraint(
             "(scope = 'FULL_MODULE' AND focused_reading_passage_id IS NULL "
-            "AND focused_listening_part_id IS NULL AND focused_writing_task_id IS NULL) OR "
+            "AND focused_listening_part_id IS NULL AND focused_writing_task_id IS NULL "
+            "AND focused_speaking_prompt_id IS NULL) OR "
             "(scope = 'FOCUSED_UNIT' AND ((module_type = 'READING' "
             "AND focused_reading_passage_id IS NOT NULL AND focused_listening_part_id IS NULL "
-            "AND focused_writing_task_id IS NULL) OR (module_type = 'LISTENING' "
+            "AND focused_writing_task_id IS NULL AND focused_speaking_prompt_id IS NULL) OR (module_type = 'LISTENING' "
             "AND focused_listening_part_id IS NOT NULL AND focused_reading_passage_id IS NULL "
-            "AND focused_writing_task_id IS NULL) OR (module_type = 'WRITING' "
+            "AND focused_writing_task_id IS NULL AND focused_speaking_prompt_id IS NULL) OR (module_type = 'WRITING' "
             "AND focused_writing_task_id IS NOT NULL AND focused_reading_passage_id IS NULL "
-            "AND focused_listening_part_id IS NULL)))",
+            "AND focused_listening_part_id IS NULL AND focused_speaking_prompt_id IS NULL) OR "
+            "(module_type = 'SPEAKING' AND focused_speaking_prompt_id IS NOT NULL "
+            "AND focused_reading_passage_id IS NULL AND focused_listening_part_id IS NULL "
+            "AND focused_writing_task_id IS NULL)))",
             name="scope_target",
         ),
         CheckConstraint(
@@ -420,6 +424,10 @@ class Attempt(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     focused_writing_task_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("writing_tasks.id", ondelete="RESTRICT")
     )
+    focused_speaking_prompt_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("speaking_prompts.id", ondelete="RESTRICT")
+    )
+    speaking_mode: Mapped[str | None] = mapped_column(String(16))
     timer_mode: Mapped[TimerMode] = mapped_column(
         Enum(TimerMode, name="timer_mode"), nullable=False
     )
@@ -446,6 +454,7 @@ class Attempt(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     focused_reading_passage: Mapped[ReadingPassage | None] = relationship()
     focused_listening_part: Mapped[ListeningPart | None] = relationship()
     focused_writing_task: Mapped[WritingTask | None] = relationship()
+    focused_speaking_prompt: Mapped[SpeakingPrompt | None] = relationship()
     user: Mapped[User] = relationship(back_populates="attempts")
     test_session: Mapped[TestSession | None] = relationship(back_populates="attempts")
     answers: Mapped[list[AttemptAnswer]] = relationship(

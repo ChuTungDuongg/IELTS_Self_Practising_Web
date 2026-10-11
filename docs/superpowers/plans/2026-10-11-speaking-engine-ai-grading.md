@@ -189,11 +189,11 @@ git commit -m "Add Speaking content domain model"
 - Service entry points conceptually: `get_state(attempt_id)`, `begin_prompt(...)`, `heartbeat(...)`, `finish_current_response(..., completion_reason)`, `retry_current_response(...)`.
 - Progress stores active prompt/phase, authoritative phase timestamps/deadline, `last_confirmed_remaining_ms`, interruption generation/count, grace-used state, and last resume time.
 
-- [ ] **Step 1: Write failing state tests** for ordered Part 1→Part 2 prep→long turn/follow-up→Part 3 flow; current prompt only; Done/Next; timeout; locked committed response; practice retry allowed only current prompt; exam/full-mock retry/replay forbidden; focused Speaking prompt target; and client remaining-time values never increasing server state.
-- [ ] **Step 2: Run RED:** `cd backend && uv run pytest tests/test_speaking_attempts.py tests/test_focused_attempts.py -q`.
-- [ ] **Step 3: Implement state machine using `TimerService.now()` and DB state.** Do not add `setInterval` semantics server-side. Keep the overall `Attempt` lifecycle generic while Speaking prompt progress is its child state.
-- [ ] **Step 4: Run GREEN + Ruff.**
-- [ ] **Step 5: Commit:** `git commit -m "Add Speaking attempt state machine"`.
+- [x] **Step 1: Write failing state tests** for ordered Part 1→Part 2 prep→long turn/follow-up→Part 3 flow; current prompt only; Done/Next; timeout; locked committed response; practice retry allowed only current prompt; exam/full-mock retry/replay forbidden; focused Speaking prompt target; and client remaining-time values never increasing server state.
+- [x] **Step 2: Run RED:** `cd backend && uv run pytest tests/test_speaking_attempts.py tests/test_focused_attempts.py -q`.
+- [x] **Step 3: Implement state machine using `TimerService.now()` and DB state.** Do not add `setInterval` semantics server-side. Keep the overall `Attempt` lifecycle generic while Speaking prompt progress is its child state.
+- [x] **Step 4: Run GREEN + Ruff.**
+- [x] **Step 5: Commit:** `git commit -m "Add Speaking attempt state machine"`.
 
 ### Task 5: Browser preflight, recorder abstraction, and runner UI state
 

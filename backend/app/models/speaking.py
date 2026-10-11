@@ -1,11 +1,22 @@
-"""Authored, versioned Speaking content. No candidate runtime or audio state."""
+"""Authored Speaking content and private candidate runtime state."""
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
-from sqlalchemy import CheckConstraint, Enum, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -56,3 +67,59 @@ class SpeakingPrompt(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     config_json: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
 
     part: Mapped[SpeakingPart] = relationship(back_populates="prompts")
+
+
+class SpeakingResponse(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "speaking_responses"
+    __table_args__ = (UniqueConstraint("attempt_id", "prompt_id"),)
+
+    attempt_id: Mapped[UUID] = mapped_column(ForeignKey("attempts.id", ondelete="CASCADE"))
+    prompt_id: Mapped[UUID] = mapped_column(ForeignKey("speaking_prompts.id", ondelete="RESTRICT"))
+    active_take_number: Mapped[int] = mapped_column(Integer, default=1)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    duration_ms: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(String(24), default="ACTIVE")
+    completion_reason: Mapped[str | None] = mapped_column(String(24))
+    locked: Mapped[bool] = mapped_column(Boolean, default=False)
+    committed_audio_fingerprint: Mapped[str | None] = mapped_column(String(64))
+
+
+class SpeakingResponseTake(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "speaking_response_takes"
+    __table_args__ = (UniqueConstraint("response_id", "take_number"),)
+
+    response_id: Mapped[UUID] = mapped_column(
+        ForeignKey("speaking_responses.id", ondelete="CASCADE")
+    )
+    take_number: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(24), default="ACTIVE")
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    duration_ms: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class SpeakingPromptProgress(TimestampMixin, Base):
+    __tablename__ = "speaking_prompt_progress"
+
+    attempt_id: Mapped[UUID] = mapped_column(
+        ForeignKey("attempts.id", ondelete="CASCADE"), primary_key=True
+    )
+    prompt_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("speaking_prompts.id", ondelete="RESTRICT")
+    )
+    response_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("speaking_responses.id", ondelete="SET NULL")
+    )
+    take_number: Mapped[int | None] = mapped_column(Integer)
+    phase: Mapped[str] = mapped_column(String(24), default="QUESTION_ENTER")
+    phase_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    phase_deadline_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_confirmed_remaining_ms: Mapped[int] = mapped_column(Integer, default=0)
+    interruption_generation: Mapped[int] = mapped_column(Integer, default=0)
+    interruption_count: Mapped[int] = mapped_column(Integer, default=0)
+    recovery_state: Mapped[str | None] = mapped_column(String(24))
+    recovery_grace_used: Mapped[bool] = mapped_column(Boolean, default=False)
+    last_resumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Private convenience data lives ONLY here; never on spoken response/take DTOs.
+    scratch_notes: Mapped[str] = mapped_column(Text, default="")

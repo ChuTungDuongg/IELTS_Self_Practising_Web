@@ -1,5 +1,6 @@
 """Speaking authoring contracts; incomplete draft text is intentional."""
 
+from datetime import datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
@@ -104,3 +105,76 @@ class SpeakingPartOrderWrite(BaseModel):
         if len(self.part_ids) != len(set(self.part_ids)):
             raise ValueError("Part IDs must be unique")
         return self
+
+
+class CurrentSpeakingPrompt(BuilderSpeakingPrompt):
+    part_number: Literal[1, 2, 3]
+    part_title: str | None = None
+    instructions: str | None = None
+
+
+class SpeakingResponseData(BaseModel):
+    """Allowlisted spoken-response metadata; never includes private scratch notes."""
+
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    prompt_id: UUID
+    active_take_number: int
+    started_at: datetime
+    completed_at: datetime | None
+    duration_ms: int
+    status: str
+    completion_reason: str | None
+    locked: bool
+    committed_audio_fingerprint: str | None
+
+
+class SpeakingState(BaseModel):
+    attempt_id: UUID
+    mode: Literal["PRACTICE", "EXAM"]
+    phase: Literal[
+        "QUESTION_ENTER",
+        "PREPARING",
+        "STARTING",
+        "RECORDING",
+        "FINALIZING",
+        "COMPLETED",
+        "INTERRUPTED",
+        "RECOVERY_GRACE",
+    ]
+    current_prompt: CurrentSpeakingPrompt | None
+    response_id: UUID | None
+    take_number: int | None
+    phase_started_at: datetime | None
+    phase_deadline_at: datetime | None
+    remaining_ms: int
+    server_time: datetime
+    can_retry: bool
+    can_replay: bool
+    scratch_notes: str = ""
+    interruption_generation: int = 0
+    interruption_count: int = 0
+    recovery_state: str | None = None
+    recovery_grace_used: bool = False
+    last_resumed_at: datetime | None = None
+
+
+class SpeakingBegin(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    prompt_id: UUID
+
+
+class SpeakingCurrentTake(SpeakingBegin):
+    take_number: int = Field(ge=1)
+
+
+class SpeakingHeartbeat(SpeakingCurrentTake):
+    client_remaining_ms: int | None = Field(default=None, ge=0)
+
+
+class SpeakingFinish(SpeakingCurrentTake):
+    completion_reason: Literal["USER_DONE", "TIMEOUT"]
+
+
+class SpeakingNotes(SpeakingBegin):
+    scratch_notes: str = Field(max_length=20000)
