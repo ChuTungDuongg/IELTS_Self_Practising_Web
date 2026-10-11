@@ -48,6 +48,7 @@ class ComparisonCheck(VisualModel):
     subject: Text
     other: Text
     category: Text
+    other_category: Text | None = None
     operator: Literal["gt", "lt", "eq"]
 
 

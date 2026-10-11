@@ -69,7 +69,7 @@ async def production_input(content, *, task_number=2, require_essay=True):
         task_number=task_number,
         prompt="Discuss fictional parks.",
         order_index=0,
-        task_type=None,
+        task_type="LINE_GRAPH" if task_number == 1 else None,
     )
     response = AttemptWritingResponse(
         attempt_id=attempt.id,
@@ -181,14 +181,17 @@ async def test_visual_softwrap_without_newline_does_not_invent_paragraphs():
     assert all(stored.content[s.start : s.end] == s.text for s in sources)
 
 
-async def test_task1_production_input_keeps_blank_line_paragraph_semantics():
-    content = "First fictional sentence\ncontinues here.\n\nSecond paragraph."
+@pytest.mark.parametrize("newline", ["\n", "\r\n"])
+async def test_task1_production_input_preserves_four_editor_paragraphs(newline):
+    content = newline.join(["Introduction.", "Overview.", "Earlier details.", "Later details."])
     request, stored = await production_input(content, task_number=1, require_essay=False)
     assert isinstance(request, Task1ScoringRequest)
-    assert request.paragraph_mode == "blank_lines" and request.response == stored.content
+    assert request.paragraph_mode == "textarea" and request.response == stored.content == content
     assert [(s.source_id, s.text) for s in essay_sources.request_sources(request)] == [
-        ("P1S1", "First fictional sentence\ncontinues here."),
-        ("P2S1", "Second paragraph."),
+        ("P1S1", "Introduction."),
+        ("P2S1", "Overview."),
+        ("P3S1", "Earlier details."),
+        ("P4S1", "Later details."),
     ]
 
 
@@ -198,3 +201,92 @@ async def test_paragraph_mode_is_internal_and_absent_from_serialized_requests():
     assert "paragraph_mode" not in request.model_dump()
     assert "paragraph_mode" not in json.loads(request.model_dump_json())
     assert "paragraph_mode" not in request.model_json_schema(mode="serialization")["properties"]
+
+
+@pytest.mark.parametrize("newline", ["\n", "\r\n"])
+async def test_all_production_task1_stages_resolve_the_same_saved_sources(newline):
+    from test_task1_visual import PNG, Task1FakeProvider
+
+    from app.providers.writing_llm.base import ImagePart
+    from app.services.task1_writing import Task1WritingScoringService
+
+    content = newline.join(
+        ["Introduction. Same.", "Overview.", "A increased from 20 to 50.", "Same."]
+    )
+    req, stored = await production_input(content, task_number=1, require_essay=False)
+    req.image = ImagePart("image/png", PNG)
+    sources = essay_sources.request_sources(req)
+    expected = [s.source_id for s in sources]
+
+    class Provider(Task1FakeProvider):
+        async def complete(self, messages, schema, *, options=None):
+            if "claims" in schema["properties"]:
+                reply = await super().complete(messages, schema, options=options)
+                data = json.loads(reply.text)
+                data["claims"][0]["source_ids"] = ["P3S1"]
+                return Completion(json.dumps(data))
+            if "evidence" in schema["properties"]:
+                self.calls.append(messages)
+                return Completion(
+                    json.dumps(
+                        {
+                            "evidence": [
+                                {
+                                    "source_id": identity,
+                                    "assessment": "Unverified selector commentary.",
+                                }
+                                for identity in ("P1S1", "P2S1", "P3S1", "P4S1")
+                            ]
+                        }
+                    )
+                )
+            if "observations" in schema["properties"]:
+                self.calls.append(messages)
+                return Completion(json.dumps({"observations": []}))
+            return await super().complete(messages, schema, options=options)
+
+    events = []
+
+    async def trace(event, payload):
+        events.append((event, payload))
+
+    provider = Provider()
+    result = await Task1WritingScoringService(provider).assess(req, trace)
+    assert result is not None
+    assert expected == ["P1S1", "P1S2", "P2S1", "P3S1", "P4S1"]
+    assert stored.content == req.response == content
+    assert all(content[s.start : s.end] == s.text for s in sources)
+    claim = result.task1_analysis.claims[0]
+    assert claim.verdict == "SUPPORTED" and claim.source_ids == ["P3S1"]
+    assert claim.quote == "A increased from 20 to 50."
+    for call in provider.calls:
+        if not isinstance(call[1]["content"], str):
+            continue
+        payload = json.loads(call[1]["content"])
+        if "segmented_essay" in payload:
+            assert payload["segmented_essay"] == "\n".join(
+                f"[{s.source_id}] {s.text}" for s in sources
+            )
+        if "allowed_ids" in payload:
+            assert payload["allowed_ids"] == expected
+        if "essay_sources" in payload:
+            assert [s["source_id"] for s in payload["essay_sources"]] == expected
+        if "fixed_score" in payload:
+            assert "evidence" not in payload  # no generated assessment prose
+    for trait in ("ta", "cc", "lr", "gra"):
+        evidence = getattr(result.criteria, trait).evidence
+        assert [e.source_id for e in evidence] == ["P1S1", "P2S1", "P3S1", "P4S1"]
+        assert evidence[-1].quote == "Same." and "đoạn 4" in evidence[-1].assessment
+        assert all("Unverified" not in e.assessment for e in evidence)
+    assert len([event for event, _ in events if event == "criterion.completed"]) == 4
+
+
+async def test_task1_current_cache_key_includes_paragraph_provenance():
+    from app.services.task1_input import TASK1_PROMPT_VERSION
+    from app.services.writing_ai import input_fingerprint
+
+    req, _ = await production_input("One.\nTwo.", task_number=1, require_essay=False)
+    wrapped = req.model_copy(update={"paragraph_mode": "blank_lines"})
+    assert input_fingerprint(req, TASK1_PROMPT_VERSION, "vllm", "model") != input_fingerprint(
+        wrapped, TASK1_PROMPT_VERSION, "vllm", "model"
+    )

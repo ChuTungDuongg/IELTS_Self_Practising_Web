@@ -15,7 +15,7 @@ from app.domains.scoring.ai_writing_validation import (
     sanitize_calibration,
     validation_reason,
 )
-from app.domains.scoring.essay_sources import SourceSegment, request_sources, segment_essay
+from app.domains.scoring.essay_sources import SourceSegment, request_sources
 from app.domains.scoring.mts_prompts import (
     correction_message,
     evidence_messages,
@@ -201,6 +201,13 @@ class MTSWritingScoringService:
             "scoring": SCORING_MAX_TOKENS,
         }[stage]
 
+    def _repair_message(self, reason, schema, trait, stage):
+        return (
+            task2_feedback_correction(reason, trait)
+            if schema is RawTask2FeedbackDraft
+            else correction_message(reason, stage)
+        )
+
     async def _validated_stage(self, messages, schema, sources, trait, stage, trace):
         state = self.states[trait]
         reason = "SCHEMA_VALIDATION"
@@ -230,11 +237,7 @@ class MTSWritingScoringService:
                         completion = await self.provider.complete(
                             messages
                             + (
-                                [
-                                    task2_feedback_correction(reason, trait)
-                                    if schema is RawTask2FeedbackDraft
-                                    else correction_message(reason, stage)
-                                ]
+                                [self._repair_message(reason, schema, trait, stage)]
                                 if repair
                                 else []
                             ),
@@ -649,7 +652,7 @@ class MTSWritingScoringService:
         | None = None,
     ) -> CriterionResult:
         """Shared source validation/normalization for task-specific criterion prompts."""
-        sources = {segment.source_id: segment for segment in segment_essay(request.response)}
+        sources = {segment.source_id: segment for segment in request_sources(request)}
         selection = await self._validated(
             evidence_prompt, EvidenceSelection, sources, trait, "evidence", trace
         )

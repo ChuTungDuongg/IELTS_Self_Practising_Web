@@ -7,18 +7,17 @@ Descriptor fit determines bands; perception confidence is not a band criterion.
 
 import json
 
-from app.domains.scoring.essay_sources import segment_essay
+from app.domains.scoring.essay_sources import request_sources
 from app.domains.scoring.mts_prompts import (
     DESCRIPTOR_FIT_GUIDANCE,
-    FEEDBACK_GUIDANCE,
     SCORE_ONLY_GUIDANCE,
     source_text,
 )
 from app.providers.writing_llm.base import Message
 from app.schemas.task1_claims import Task1Analysis
+from app.schemas.task1_feedback import RawTask1FeedbackDraft
 from app.schemas.writing_ai import (
     CriterionBandScore,
-    CriterionFeedbackOutput,
     EvidenceResult,
     EvidenceSelection,
     Trait,
@@ -325,7 +324,7 @@ def grounded_context(analysis: Task1Analysis) -> dict:
 def evidence_prompt(
     request: Task1ScoringRequest, trait: Trait, analysis: Task1Analysis
 ) -> list[Message]:
-    sources = segment_essay(request.response)
+    sources = request_sources(request)
     ta_guidance = f"{TASK1_TA_EVIDENCE_SELECTION_GUIDANCE}\n" if trait == "ta" else ""
     cc_guidance = f"{TASK1_CC_EVIDENCE_SELECTION_GUIDANCE}\n" if trait == "cc" else ""
     payload = {
@@ -362,13 +361,12 @@ def _assessment_prompt(
     trait: Trait,
     evidence: EvidenceResult,
     analysis: Task1Analysis,
-    fixed_score=None,
 ) -> list[Message]:
     ta_guidance = f"{TASK1_TA_DESCRIPTOR_DISCRIMINATION_GUIDANCE}\n" if trait == "ta" else ""
     cc_guidance = f"{TASK1_CC_DESCRIPTOR_DISCRIMINATION_GUIDANCE}\n" if trait == "cc" else ""
     payload = {
         "question": request.prompt,
-        "segmented_essay": source_text(segment_essay(request.response)),
+        "segmented_essay": source_text(request_sources(request)),
         # Exact quotations remain in the source context; do not duplicate them.
         "evidence": [
             {"source_id": item.source_id, "assessment": item.assessment}
@@ -378,9 +376,7 @@ def _assessment_prompt(
     if trait == "ta":
         payload["task_type"] = request.task_type.value
         payload.update(grounded_context(analysis))
-    if fixed_score is not None:
-        payload["fixed_score"] = float(fixed_score)
-    schema = CriterionBandScore if fixed_score is None else CriterionFeedbackOutput
+    schema = CriterionBandScore
     return [
         {
             "role": "system",
@@ -393,7 +389,7 @@ def _assessment_prompt(
                 f"{ta_guidance}"
                 f"{cc_guidance}"
                 f"{GROUNDED_TA_GUIDANCE if trait == 'ta' else ''}\n"
-                f"{SCORE_ONLY_GUIDANCE if fixed_score is None else FEEDBACK_GUIDANCE}\n"
+                f"{SCORE_ONLY_GUIDANCE}\n"
                 f"JSON schema: {json.dumps(schema.model_json_schema(mode='serialization'))}"
             ),
         },
@@ -405,5 +401,68 @@ def score_prompt(request, trait, evidence, analysis) -> list[Message]:
     return _assessment_prompt(request, trait, evidence, analysis)
 
 
+TASK1_CONSERVATIVE_FEEDBACK = (
+    "fixed_score is immutable metadata, not a target to rationalize. Independently report only "
+    "directly observable strengths and limitations. Do not invent defects because the score is "
+    "below 9 or infer a language error from a number. Empty limitation lists are valid; no quotas. "
+    "If uncertain, omit. Do not claim valid wording is erroneous because an alternative exists. "
+    "Use source IDs only, never model-generated paragraph/sentence locations. Revisions must "
+    "preserve meaning. ERROR requires HIGH confidence and exact original_span for GRA/LR. "
+    "Stylistic alternatives are at most OPTIONAL_REFINEMENT, never factual errors. "
+    "Return observations only: no score, feedback summary or arbitrary strengths/improvements."
+)
+TASK1_FEEDBACK_GUARDS = {
+    "ta": "Use observation=null and no suggested_revision: select a verified claim_id only; "
+    "the backend writes factual display text. STRENGTH requires SUPPORTED; factual_accuracy ERROR "
+    "requires CONTRADICTED with deterministic fact evidence and exact original_span. "
+    "INSUFFICIENT_EVIDENCE never establishes an error. Do not invent numbers or chart truth. "
+    "Do not call content already reported and supported an omission. Claim extraction is not "
+    "exhaustive and cannot establish absence; omit unverifiable omission advice. No grammar, "
+    "vocabulary or linker advice. Unknown/null/unreliable observations remain unknown.",
+    "cc": "Judge logical progression, grouping, real paragraph structure and sequencing. "
+    "Do not count linkers or require a connector between every sentence or paragraph. Logical "
+    "progression alone may be clear. Do not recommend causal connectors without a causal "
+    "relationship. Simple natural linkers are valid; repeated precise entity names may be clearer "
+    "than forced pronouns. Identify an actual unclear relationship before recommending a linker.",
+    "lr": "Do not synonym-swap merely for variety. Repeated fixed chart labels, entity names "
+    "and necessary topic terms are valid. Accurate natural common phrases are not weaknesses. "
+    "British and American standard usage are both valid. A replacement must preserve meaning, "
+    "register and collocation; an alternative is not automatically an improvement.",
+    "gra": "Report only sentence structures, grammar and punctuation. Before reporting ERROR "
+    "verify the original is actually ungrammatical in standard English; no invented subjects, "
+    "agreement, article or punctuation errors. Do not classify conceptual transitions, discourse "
+    "markers, chart comparisons or Task Achievement omissions as grammar weaknesses. "
+    "Stylistic rewriting belongs at most to OPTIONAL_REFINEMENT. If uncertain, omit.",
+}
+
+
 def feedback_prompt(request, trait, evidence, analysis, score) -> list[Message]:
-    return _assessment_prompt(request, trait, evidence, analysis, fixed_score=score)
+    sources = request_sources(request)
+    payload = {
+        "question": request.prompt,
+        "segmented_essay": source_text(sources),
+        "allowed_ids": [source.source_id for source in sources],
+        "evidence_source_ids": [item.source_id for item in evidence.evidence],
+        "fixed_score": float(score),
+    }
+    if trait == "ta":
+        payload["derived_facts"] = grounded_context(analysis)["derived_facts"]
+        payload["verified_claims"] = [
+            {
+                "claim_id": claim.claim_id,
+                "source_ids": claim.source_ids,
+                "verdict": claim.verdict,
+                "fact_ids": claim.evidence,
+            }
+            for claim in analysis.claims
+        ]
+    return [
+        {
+            "role": "system",
+            "content": f"{DATA_GUARD}\nAcademic Writing Task 1. "
+            f"{criterion_guidance(trait)}\n{TASK1_CONSERVATIVE_FEEDBACK}\n"
+            f"{TASK1_FEEDBACK_GUARDS[trait]}\nJSON schema: "
+            f"{json.dumps(RawTask1FeedbackDraft.model_json_schema(mode='serialization'))}",
+        },
+        {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
+    ]

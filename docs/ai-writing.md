@@ -3,7 +3,7 @@
 Task 1 and Task 2 share the configured `mistralai/Ministral-3-8B-Instruct-2512`
 model, provider adapters and existing Modal/vLLM GPU function. Task 2 retains
 its text-only pipeline with the `mts-task2-v11` cache contract. Task 1
-uses `mts-task1-scoring-v9`, composite `mts-task1-visual-v9`, and the unchanged
+uses `mts-task1-scoring-v10`, composite `mts-task1-visual-v10`, and the unchanged
 `mts-task1-visual-v3` perception contract. See
 [the latency engineering case study](enhance_latency.md) for bounded concurrent
 execution, serving settings, measurements and reproduction.
@@ -49,7 +49,7 @@ in full/partial DTOs. Durable `relevance.started`, `.completed`, `.failed` event
 replay through SSE; auxiliary failure continues normal assessment. Historic runs
 without relevance still parse. Effective Task 2 v11 includes old deployed version
 labels through v10, so prior cached results stay readable without being reused.
-Task 1 v9 fingerprints invalidate earlier scoring caches while retaining perception
+Task 1 v10 fingerprints invalidate earlier scoring caches while retaining perception
 v3 and the v7 TA/CC guidance. Offline benchmarks use the current contract; frozen v3/v5
 retain their historical pre-gate combined-output contracts.
 Task-tab cleanup still stops observation only; explicit Stop cancels grading.
@@ -258,14 +258,102 @@ grading access. Speaking remains outside this feature.
 
 Task 1 also uses score-only inference followed by fixed-band feedback, with the
 same stage budgets and recoverable feedback fallback as Task 2. Its current
-composite version is **`mts-task1-visual-v9`** and scoring version is
-**`mts-task1-scoring-v9`**; the visual contract remains **`mts-task1-visual-v3`**.
-TA scoring and feedback retain the visual reference, deterministic facts,
-verified claims and conservative uncertainty policy. Task 1 TA/CC calibration
+composite version is **`mts-task1-visual-v10`** and scoring version is
+**`mts-task1-scoring-v10`**; the visual contract remains **`mts-task1-visual-v3`**.
+TA scoring retains the visual reference, deterministic facts and verified claims;
+feedback selects validated claims and uses backend-owned factual display text.
+Task 1 TA/CC calibration
 and linguistic criterion boundaries remain intact. Frozen v3/v5 offline
 benchmark services retain their original combined-output contracts and budgets.
-Current benchmark configurations identify v9 accurately. Historical v7/v8
+Current benchmark configurations identify v10 accurately. Historical v7/v8
 retain their combined-output prompts and budgets; report/result schemas remain readable.
+The benchmark CLI defaults to `--scoring-version v10`; `both` compares frozen v5
+with current v10. Historical v9 report records still parse, but v9 is not reused
+as a label for the new production candidate.
+
+### Task 1 paragraph and feedback reliability (v10)
+
+Both Writing tasks use the same plain `<textarea>`, revision autosave JSON `content`,
+and `AttemptWritingResponse.content`. Explicit Enter is saved as a newline;
+visual soft wrapping inserts none. Task 1 previously omitted the Task 2 internal
+`paragraph_mode="textarea"` provenance and several consumers called the default
+blank-line segmenter directly. Consequently four single-Enter paragraphs became P1.
+Production Task 1 now carries textarea provenance, and relevance, evidence selection,
+score context, structured feedback, claim extraction, verification and quote lookup
+all use `request_sources(request)`. LF, CRLF and CR are accepted; blank rows do not
+create empty paragraphs. Lexical content and original character offsets are unchanged;
+repeated sentences have independent IDs. Generic requests without editor provenance
+still treat single newlines as potential wrapped lines. Backend source metadata supplies
+display locations, never model-authored paragraph/sentence labels.
+
+The Task 1 semantic pipeline remains visual grounding/reconciliation and verified
+facts/claims → criterion evidence → **score-only** → fixed score → structured feedback
+→ conservative backend display. Independent linguistic criteria continue to overlap
+visual grounding. Score fields, half-band validation, aggregation, retries and token
+budgets are unchanged; feedback/improvement output never feeds back into scoring.
+The official band profiles, adjacent-band guidance, weights and calibration thresholds
+were not changed. Correct source structure and fact matching may affect a future score
+through corrected input; this is not upward calibration or a promise of a higher band.
+
+`RawTask1FeedbackDraft` is internal. Its observations carry a source ID, criterion
+aspect, kind, confidence and optional exact span/revision/verified claim ID. There
+is no writable score or free-form summary. `fixed_score` is immutable metadata,
+not a target to rationalize; a band below 9 never requires a fabricated weakness.
+Empty observation/improvement lists are valid. Unknown sources, malformed items,
+non-HIGH negatives, non-exact GRA/LR errors, no-op rewrites and detectable criterion
+leakage are dropped individually, leaving other valid items intact. Whole-JSON errors
+get at most one repair; recoverable feedback failure preserves the accepted score.
+Public `CriterionResult`, Task 1 analysis DTOs and SSE stages remain compatible, so
+no frontend change is required. Selector assessments are not public factual feedback:
+displayed evidence uses exact backend quotes and neutral backend locations.
+
+For TA, `observation` must be null: the model chooses a verified claim rather than
+writing chart numbers/trends. A strength requires SUPPORTED and a matching source.
+A factual ERROR requires CONTRADICTED, an exact source span and existing deterministic
+fact evidence. The backend renders fact labels, states, values or directions; arbitrary
+provider-written factual prose is dropped, not rewritten into an unsupported generic
+weakness. INSUFFICIENT_EVIDENCE never becomes a correction. Selected evidence and
+claim extraction are not exhaustive, so they cannot establish that content is missing;
+unverifiable omission advice is omitted, including an already-supported comparison.
+This deliberately limits TA explanations to verifiable claims; it does not attempt
+to prove every overview/selection judgement or every semantic absence.
+
+CC feedback judges progression, grouping, real paragraphs and relationships; it does
+not count linkers or demand connectors everywhere, and must not imply causation where
+none is observed. LR rejects synonyms merely for variety and replacements of fixed
+chart labels/necessary entity names. GRA stays with grammatical structures and
+punctuation, requiring exact spans for ERROR; conceptual flow/linker advice belongs
+outside GRA. Structured aspect checks and conservative detectable-prose guards enforce
+these boundaries. Optional stylistic suggestions use the existing backend-owned
+"Gợi ý tùy chọn" wording. Linguistic inference does not wait for visual grounding;
+if visual labels are not available yet, proposed LR rewrites are conservatively
+omitted rather than guessing whether they replace a fixed label. The guards cannot
+mathematically prove every linguistic
+judgement; uncertainty should produce fewer claims, not invented errors.
+
+Single-series pies often store slice labels as point categories and the year in
+`component.state`; the current perception prompt prefers one matrix component
+with named slice series and snapshot/year categories. Both representations are
+covered by regressions. Explicitly ordered matrices now retain the state interval
+on stable facts as well, so an unchanged claim with its two years is addressable.
+For separate single-series panels, the previous generic fact view searched for slice names
+as series names, and could not compare separate year panels. The new deterministic
+view uses slice labels as subjects and explicit states as categories, while retaining
+point/rank facts under their original component IDs. Compatible pie pairs (explicit
+four-digit years, same cohort title after removing the stated year, unit, series label,
+slice-label set and axes) generate cross-year facts under stable pair identities.
+Values, ranks, signed changes, directions, unchanged values and direct same-slice
+cross-year comparisons are checkable. Claim extraction receives compact grounded
+label/state identities, not new image interpretation or chart values to copy.
+Unknown states, incompatible panels, null/unreliable points and ambiguous matches stay
+INSUFFICIENT_EVIDENCE; existing reliability thresholds are unchanged. The structural
+bug is reproduced with fictional fixtures, but the original 1/14 live run was not
+available to establish that every insufficient verdict had this cause.
+
+Scoring/composite v10 invalidates v9 caches; old persisted DTOs remain readable.
+Raw visual perception v3 and Task 2 v11 remain unchanged. Fake-provider regressions
+prove contracts and deterministic grounding only, not live-model feedback accuracy
+or improved agreement with human examiners. No live inference was used.
 
 
 Only the backend loads the saved Task 1 image. It checks ownership, finalized

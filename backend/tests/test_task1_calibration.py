@@ -141,9 +141,9 @@ def test_task1_evidence_preserves_exact_source_data_and_instruction_guard(trait)
 
 
 def test_task1_scoring_version_changes_cache_without_changing_visual_contract():
-    assert task1_input.TASK1_PROMPT_VERSION == "mts-task1-visual-v9"
+    assert task1_input.TASK1_PROMPT_VERSION == "mts-task1-visual-v10"
     assert getattr(task1_input, "TASK1_VISUAL_CONTRACT_VERSION", None) == "mts-task1-visual-v3"
-    assert getattr(task1_input, "TASK1_SCORING_PROMPT_VERSION", None) == "mts-task1-scoring-v9"
+    assert getattr(task1_input, "TASK1_SCORING_PROMPT_VERSION", None) == "mts-task1-scoring-v10"
     req = request()
     assert input_fingerprint(req, task1_input.TASK1_PROMPT_VERSION, "vllm", "model") != (
         input_fingerprint(req, "mts-task1-visual-v8", "vllm", "model")
@@ -602,6 +602,7 @@ async def test_preserves_fake_provider_ta_score_and_v5_grounding(band):
                 or "Extract at most" in call[0]["content"]
                 or "Classify only" in call[0]["content"]
             )
+            and "fixed_score" not in call[1]["content"]
         ]
 
     assert unchanged_calls(providers[0]) == unchanged_calls(providers[1])

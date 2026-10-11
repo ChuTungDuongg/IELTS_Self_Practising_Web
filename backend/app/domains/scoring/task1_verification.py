@@ -147,13 +147,37 @@ def verify_claim(
             for fact in facts
             if fact.kind == "value"
             and _same(fact.subjects[0], check.other)
-            and _same(fact.category, check.category)
+            and _same(fact.category, check.other_category or check.category)
             and (check.component_id is None or fact.component_id == check.component_id)
         ]
         if len(left) == len(right) == 1 and left[0].component_id == right[0].component_id:
             a, b = left[0].value, right[0].value
             outcome = {"gt": a > b, "lt": a < b, "eq": a == b}[check.operator]
             evidence = [left[0].id, right[0].id]
+        elif check.other_category and _same(check.subject, check.other):
+            # Same slice across states needs a reliable compatible pair fact.
+            changes = [
+                fact
+                for fact in facts
+                if fact.kind == "absolute_change"
+                and _same(fact.subjects[0], check.subject)
+                and (check.component_id is None or fact.component_id == check.component_id)
+                and (
+                    (
+                        _same(fact.category, check.category)
+                        and _same(fact.end_category, check.other_category)
+                    )
+                    or (
+                        _same(fact.category, check.other_category)
+                        and _same(fact.end_category, check.category)
+                    )
+                )
+            ]
+            if len(changes) == 1:
+                fact = changes[0]
+                delta = fact.value if _same(fact.category, check.category) else -fact.value
+                outcome = {"gt": delta < 0, "lt": delta > 0, "eq": delta == 0}[check.operator]
+                evidence = [fact.id]
     elif isinstance(check, RelationCheck):
         outcome = _relation(check, reference)
     if outcome is None:

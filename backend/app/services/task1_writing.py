@@ -1,23 +1,39 @@
 import logging
+from functools import partial
 
 from app.domains.scoring.ai_writing import aggregate_ai_task_two
+from app.domains.scoring.ai_writing_validation import resolve_evidence
+from app.domains.scoring.essay_sources import request_sources
 from app.domains.scoring.task1_facts import derive_facts
+from app.domains.scoring.task1_feedback import normalize_task1_feedback, render_task1_feedback
 from app.domains.scoring.task1_prompts import evidence_prompt, feedback_prompt, score_prompt
 from app.domains.writing.visual_families import visual_family
 from app.providers.chart_derendering import ChartDerenderingProvider
-from app.providers.writing_llm.base import LLMProvider, Message
+from app.providers.writing_llm.base import LLMProvider, Message, ProviderFailure
 from app.schemas.task1_claims import ExtractedClaims, Task1Analysis
+from app.schemas.task1_feedback import RawTask1FeedbackDraft
 from app.schemas.writing_ai import (
     TRAITS,
     AssessmentStage,
     Criteria,
+    CriterionBandScore,
     CriterionFailure,
+    CriterionFeedbackOutput,
+    CriterionResult,
     EventPayload,
     EvidenceResult,
+    EvidenceSelection,
+    OutputDiagnostic,
     Task1WritingResult,
     Trait,
 )
-from app.services.mts_writing import COMPLETION_MAX_TOKENS, MTSWritingScoringService, TraceCallback
+from app.services.mts_writing import (
+    COMPLETION_MAX_TOKENS,
+    FEEDBACK_FALLBACK,
+    FEEDBACK_RECOVERABLE_REASONS,
+    MTSWritingScoringService,
+    TraceCallback,
+)
 from app.services.task1_chart_cross_check import (
     apply_chart_cross_check,
     extract_chart,
@@ -56,6 +72,17 @@ class Task1WritingScoringService(MTSWritingScoringService):
         if trait == "ta" and stage == "scoring":
             return COMPLETION_MAX_TOKENS
         return super()._normal_completion_budget(trait, stage)
+
+    def _repair_message(self, reason, schema, trait, stage):
+        if schema is RawTask1FeedbackDraft:
+            return {
+                "role": "system",
+                "content": f"Correction ({reason}): Return one complete observations JSON object "
+                "matching the supplied schema, no score or extra fields. Use allowed sources, "
+                "criterion-appropriate aspects and exact spans. For TA, observation=null; "
+                "select only verified claims. Omit uncertain items; an empty list is valid.",
+            }
+        return super()._repair_message(reason, schema, trait, stage)
 
     def _evidence_prompt(
         self, request: Task1ScoringRequest, trait: Trait, analysis: Task1Analysis
@@ -170,7 +197,9 @@ class Task1WritingScoringService(MTSWritingScoringService):
         )
         try:
             with self.latency.stage("claim_extraction", "ta"):
-                extracted = await claim_service.extract(request)
+                extracted = await claim_service.extract(
+                    request, analysis.reference if analysis else None
+                )
         except TraceFailure:
             raise
         except Exception:
@@ -273,6 +302,88 @@ class Task1WritingScoringService(MTSWritingScoringService):
             lambda evidence, score: feedback_prompt(
                 request, trait, evidence, analysis, score.score
             ),
+            # Frozen evaluation baselines retain their original combined schema.
+            assessor=partial(self._assess_task1_criterion, analysis=analysis)
+            if self.score_schema is CriterionBandScore
+            else None,
+        )
+
+    async def _assess_task1_criterion(
+        self,
+        request,
+        trait,
+        trace,
+        evidence_messages,
+        score_messages,
+        feedback_messages,
+        *,
+        analysis,
+    ):
+        sources = {source.source_id: source for source in request_sources(request)}
+        selection = await self._validated(
+            evidence_messages, EvidenceSelection, sources, trait, "evidence", trace
+        )
+        evidence = resolve_evidence(selection, sources)
+        # Preserve score input/evidence semantics. Public selector prose is not
+        # verified feedback: only backend-resolved quotations/locations are shown.
+        display_evidence = evidence.model_copy(deep=True)
+        for item in display_evidence.evidence:
+            item.assessment = (
+                f"Trích dẫn từ đoạn {sources[item.source_id].paragraph_index} của bài viết."
+            )
+        await trace(
+            "criterion.evidence.completed",
+            EventPayload(criterion=trait, evidence=display_evidence.evidence),
+        )
+        score = await self._validated(
+            score_messages(evidence), CriterionBandScore, sources, trait, "score", trace
+        )
+        self.states[trait].band_score = score
+        try:
+            raw = await self._validated(
+                feedback_messages(evidence, score),
+                RawTask1FeedbackDraft,
+                sources,
+                trait,
+                "feedback",
+                trace,
+            )
+            draft, issues = normalize_task1_feedback(raw, sources, trait, score.score, analysis)
+            for reason, items in (
+                ("FEEDBACK_PRESENTATION_NORMALIZED", issues.normalized),
+                ("FEEDBACK_OBSERVATION_DROPPED", issues.dropped),
+            ):
+                if items:
+                    self.states[trait].diagnostics.append(
+                        OutputDiagnostic(
+                            stage="feedback",
+                            criterion=trait,
+                            reason=reason,
+                            attempt=1,
+                            validation_issues=items[:8],
+                        )
+                    )
+                    logger.info(
+                        "Task1 explanation validation: criterion=%s reason=%s items=%s",
+                        trait,
+                        reason,
+                        len(items),
+                    )
+            display, grounded_evidence = render_task1_feedback(draft, sources)
+            if grounded_evidence.evidence:
+                display_evidence = grounded_evidence
+        except ProviderFailure as exc:
+            if (
+                exc.code not in {"INVALID_PROVIDER_OUTPUT", "AI_PROVIDER_BAD_RESPONSE"}
+                or exc.reason not in FEEDBACK_RECOVERABLE_REASONS
+            ):
+                raise
+            self._explanation_fallback(trait, "feedback", 2)
+            display = CriterionFeedbackOutput(
+                feedback=FEEDBACK_FALLBACK, strengths=[], improvements=[]
+            )
+        return CriterionResult(
+            score=score.score, **display.model_dump(), evidence=display_evidence.evidence
         )
 
     def _task1_result(self, analysis):

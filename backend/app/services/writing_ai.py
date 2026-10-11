@@ -102,6 +102,7 @@ def input_fingerprint(
             task_type=request.task_type.value,
             image_sha256=request.image_checksum,
             image_mime=request.image.mime_type if request.image else None,
+            paragraph_mode=request.paragraph_mode,
         )
         if visual_family(request.task_type) == VisualFamily.CHART_TABLE:
             inputs["chart_specialist"] = request.chart_specialist.model_dump(mode="json")
@@ -283,6 +284,7 @@ class WritingAIService:
                 prompt=task.prompt,
                 response=essay,
                 task_type=task_type,
+                paragraph_mode="textarea",
                 image=image,
                 chart_specialist=ChartSpecialistIdentity(
                     enabled=self.settings.ai_writing_chart_specialist_enabled,

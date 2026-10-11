@@ -29,7 +29,14 @@ from app.models import (
 from app.models import Test as DomainTest
 from app.models import TestModule as ModuleRecord
 from app.models import TestVersion as VersionRecord
-from app.models.enums import AttemptStatus, ModuleType, TimerMode, UserRole, VersionStatus
+from app.models.enums import (
+    RUNTIME_MODULE_TYPES,
+    AttemptStatus,
+    ModuleType,
+    TimerMode,
+    UserRole,
+    VersionStatus,
+)
 from app.services.attempts import AttemptService
 
 
@@ -153,7 +160,7 @@ async def response_context() -> AsyncIterator[ResponseContext]:
                     last_active_at=now,
                     status=AttemptStatus.IN_PROGRESS,
                 )
-                for module in ModuleType
+                for module in RUNTIME_MODULE_TYPES
             }
             session.add_all(attempts.values())
             await session.flush()

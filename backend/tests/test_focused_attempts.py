@@ -25,7 +25,14 @@ from app.models import (
 from app.models import Test as ExamRecord
 from app.models import TestModule as ModuleRecord
 from app.models import TestVersion as VersionRecord
-from app.models.enums import AssetType, AttemptScope, AttemptStatus, ModuleType, VersionStatus
+from app.models.enums import (
+    RUNTIME_MODULE_TYPES,
+    AssetType,
+    AttemptScope,
+    AttemptStatus,
+    ModuleType,
+    VersionStatus,
+)
 from app.schemas.attempts import AttemptCreate, NavigationRequest, WritingTaskScoreUpdate
 from app.schemas.content import HighlightCreate
 from app.services.analytics import AnalyticsService
@@ -54,7 +61,7 @@ async def content(session, *, status=VersionStatus.PUBLISHED, archived=False):
     version = VersionRecord(version_number=1, status=status)
     test.versions.append(version)
     units = {}
-    for index, skill in enumerate(ModuleType):
+    for index, skill in enumerate(RUNTIME_MODULE_TYPES):
         module = ModuleRecord(
             module_type=skill, order_index=index, recommended_duration_seconds=3600
         )
@@ -330,7 +337,7 @@ async def test_focused_creation_exam_mutations_review_and_grading(db_session, sk
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize("skill", list(ModuleType))
+@pytest.mark.parametrize("skill", RUNTIME_MODULE_TYPES)
 async def test_focused_targets_require_exact_available_version(db_session, skill):
     version, units = await content(db_session)
     foreign, elsewhere = await content(db_session)
@@ -351,7 +358,7 @@ async def test_focused_targets_require_exact_available_version(db_session, skill
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize("skill", list(ModuleType))
+@pytest.mark.parametrize("skill", RUNTIME_MODULE_TYPES)
 async def test_scope_and_timer_policy_and_full_module_compatibility(db_session, skill):
     version, units = await content(db_session)
     service = AttemptService(db_session)
@@ -434,7 +441,7 @@ async def test_history_analytics_and_full_mock_exclude_focused_results(db_sessio
     version, units = await content(db_session)
     service = AttemptService(db_session)
     ids = []
-    for skill in ModuleType:
+    for skill in RUNTIME_MODULE_TYPES:
         started = await service.start(request(version, skill, units[skill][0]))
         ids.append(started.attempt_id)
         await service.submit(started.attempt_id)

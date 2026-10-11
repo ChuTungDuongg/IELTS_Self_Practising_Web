@@ -524,6 +524,8 @@ class Task1FakeProvider:
             )
         elif "evidence" in properties:
             output = {"evidence": [{"source_id": "P1S1", "assessment": "Dẫn chứng cụ thể."}]}
+        elif "observations" in properties:
+            output = {"observations": []}
         else:
             system = messages[0]["content"]
             output = {

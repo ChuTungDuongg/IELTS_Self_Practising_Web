@@ -1,5 +1,7 @@
 """Provider-free Decimal arithmetic on reliable, structurally compatible visual data."""
 
+import hashlib
+import re
 from decimal import Decimal
 from itertools import combinations
 from typing import Annotated, Literal
@@ -73,6 +75,61 @@ def component_series(component: ChartComponent) -> dict[str, dict[str, Point]]:
     }
 
 
+def _fact_views(reference: ChartTableVisualReference):
+    """Transpose labelled slices; compare only explicit, compatible pie years."""
+    pies = []
+    for component in reference.components:
+        if component.kind == "pie_chart" and len(component.series) == 1 and component.state:
+            series = {
+                label: {
+                    component.state: next(
+                        (p for p in component.series[0].points if p.category == label), None
+                    )
+                }
+                for label in component.categories
+            }
+            yield component, series, [component.state], False, False
+            if re.fullmatch(r"[0-9]{4}", component.state) and component.unit:
+                pies.append(component)
+        else:
+            categories = (
+                component.column_headers if component.kind == "table" else component.categories
+            )
+            yield (
+                component,
+                component_series(component),
+                categories,
+                component.ordered_categories,
+                False,
+            )
+    for left, right in combinations(pies, 2):
+
+        def cohort(item):
+            title = re.sub(rf"\b{re.escape(item.state)}\b", "", item.title)
+            return (
+                " ".join(title.casefold().split()),
+                item.unit,
+                item.series[0].name,
+                frozenset(item.categories),
+                item.x_axis,
+                item.y_axis,
+            )
+
+        if left.state == right.state or cohort(left) != cohort(right):
+            continue
+        first, last = sorted((left, right), key=lambda item: int(item.state))
+        series = {
+            label: {
+                item.state: next((p for p in item.series[0].points if p.category == label), None)
+                for item in (first, last)
+            }
+            for label in first.categories
+        }
+        identity = hashlib.sha256(f"{first.id}\0{last.id}".encode()).hexdigest()[:24]
+        combined = first.model_copy(update={"id": f"pie-pair:{identity}"})
+        yield combined, series, [first.state, last.state], True, True
+
+
 def derive_facts(reference: VisualReference) -> list[DerivedFact]:
     if not isinstance(reference, ChartTableVisualReference) or reference.confidence not in {
         "HIGH",
@@ -82,6 +139,9 @@ def derive_facts(reference: VisualReference) -> list[DerivedFact]:
     facts: list[DerivedFact] = []
 
     def add(component: ChartComponent, kind: FactKind, subjects: list[str], **kwargs) -> None:
+        # Pair views must not duplicate point/rank facts from original panels.
+        if _pair_view and kind in {"value", "min", "max", "rank"}:
+            return
         if len(facts) >= MAX_DERIVED_FACTS:
             return
         facts.append(
@@ -94,9 +154,7 @@ def derive_facts(reference: VisualReference) -> list[DerivedFact]:
             )
         )
 
-    for component in reference.components:
-        series = component_series(component)
-        categories = component.column_headers if component.kind == "table" else component.categories
+    for component, series, categories, ordered, _pair_view in _fact_views(reference):
         changes: dict[str, Decimal] = {}
         ranks: dict[str, dict[str, int]] = {}
         for name, points in series.items():
@@ -113,8 +171,13 @@ def derive_facts(reference: VisualReference) -> list[DerivedFact]:
                         if points[category].value == value:
                             add(component, kind, [name], category=category, value=value)
                 if len(categories) > 1 and minimum == maximum:
-                    add(component, "stable", [name], value=minimum)
-            if not component.ordered_categories or len(categories) < 2:
+                    interval = (
+                        {"category": categories[0], "end_category": categories[-1]}
+                        if ordered
+                        else {}
+                    )
+                    add(component, "stable", [name], value=minimum, **interval)
+            if not ordered or len(categories) < 2:
                 continue
             start, end = points.get(categories[0]), points.get(categories[-1])
             if reliable(start) and reliable(end):
@@ -161,7 +224,7 @@ def derive_facts(reference: VisualReference) -> list[DerivedFact]:
             }
             for name, rank in ranks[category].items():
                 add(component, "rank", [name], category=category, value=Decimal(rank))
-        if component.ordered_categories and len(categories) > 1:
+        if ordered and len(categories) > 1:
             first, last = categories[0], categories[-1]
             if first in ranks and last in ranks:
                 for name in series:

@@ -36,6 +36,18 @@ TASK2_FEEDBACK = {
         }
     ]
 }
+TASK1_FEEDBACK = {
+    "observations": [
+        {
+            "source_id": "P1S1",
+            "kind": "STRENGTH",
+            "aspect": "key_feature",
+            "observation": None,
+            "confidence": "HIGH",
+            "claim_id": "c1",
+        }
+    ]
+}
 LENGTH = Completion('{"score":7,"feedback":"' + "verbose " * 100, finish_reason="length")
 
 
@@ -84,7 +96,10 @@ class Provider(Task1FakeProvider):
                 }
             )
         elif "observations" in properties:
-            value = TASK2_FEEDBACK
+            if "Academic Writing Task 1" in messages[0]["content"]:
+                value = TASK1_FEEDBACK if trait == "ta" else {"observations": []}
+            else:
+                value = TASK2_FEEDBACK
         else:
             value = FEEDBACK
         if isinstance(value, BaseException):
@@ -180,14 +195,15 @@ async def test_feedback_repair_recovers_without_rescoring(task):
         async def complete(self, messages, schema, *, options=None):
             if {"feedback", "observations"} & schema["properties"].keys() and len(messages) == 3:
                 self.requests.append((messages, schema, options))
-                return Completion(json.dumps(FEEDBACK if task == 1 else TASK2_FEEDBACK))
+                return Completion(json.dumps(TASK1_FEEDBACK if task == 1 else TASK2_FEEDBACK))
             return await super().complete(messages, schema, options=options)
 
     provider = RepairProvider(feedback=Completion("broken JSON"))
     result, service, _, _ = await grade(provider, task)
     assert result.criteria.ta.score == 7
     if task == 1:
-        assert result.criteria.ta.feedback == FEEDBACK["feedback"]
+        assert result.criteria.ta.strengths and result.criteria.ta.improvements == []
+        assert "phù hợp với hình" in result.criteria.ta.feedback
     else:
         assert TASK2_FEEDBACK["observations"][0]["observation"] in " ".join(
             result.criteria.ta.strengths
@@ -300,8 +316,8 @@ async def test_versions_invalidate_old_cache_and_prompt_content_is_stable():
     assert effective_prompt_version("mts-task2-v9") == "mts-task2-v11"
     assert effective_prompt_version("mts-task2-v10") == "mts-task2-v11"
     assert effective_prompt_version("custom") == "mts-task2-v11:custom"
-    assert TASK1_PROMPT_VERSION == "mts-task1-visual-v9"
-    assert TASK1_SCORING_PROMPT_VERSION == "mts-task1-scoring-v9"
+    assert TASK1_PROMPT_VERSION == "mts-task1-visual-v10"
+    assert TASK1_SCORING_PROMPT_VERSION == "mts-task1-scoring-v10"
     assert TASK1_VISUAL_CONTRACT_VERSION == "mts-task1-visual-v3"
     providers = [Provider(failed_trait=None), Provider(failed_trait=None)]
     runs = [await grade(p) for p in providers]

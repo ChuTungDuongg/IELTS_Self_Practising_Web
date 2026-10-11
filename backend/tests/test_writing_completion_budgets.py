@@ -548,7 +548,12 @@ async def test_frozen_benchmark_evidence_length_repair_keeps_historical_budget(c
 
 
 def task1_stage_calls(provider, stage):
-    return [call for call in provider.budget_calls if stage in call[1]["properties"]]
+    return [
+        call
+        for call in provider.budget_calls
+        if stage in call[1]["properties"]
+        or (stage == "feedback" and "observations" in call[1]["properties"])
+    ]
 
 
 async def test_task1_all_traits_use_same_tiny_score_cap_and_separate_feedback():
@@ -560,11 +565,11 @@ async def test_task1_all_traits_use_same_tiny_score_cap_and_separate_feedback():
         calls = task1_stage_calls(provider, stage)
         assert len(calls) == 4 and all(budget(call) == STAGE_BUDGETS[stage] for call in calls)
         if stage in {"score", "feedback"}:
-            expected = {"score"} if stage == "score" else set(FEEDBACK)
+            expected = {"score"} if stage == "score" else {"observations"}
             assert all(set(call[1]["properties"]) == expected for call in calls)
     criterion_stages = {}
     for messages, schema, _options in provider.budget_calls:
-        if {"evidence", "score", "feedback"} & schema["properties"].keys():
+        if {"evidence", "score", "feedback", "observations"} & schema["properties"].keys():
             name = messages[0]["content"].split("Criterion: ", 1)[1].split(".", 1)[0]
             criterion_stages.setdefault(name, []).append(completion_stage(schema))
     assert len(criterion_stages) == 4
