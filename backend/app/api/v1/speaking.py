@@ -3,7 +3,10 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Request, status
-from fastapi.responses import StreamingResponse
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.routing import APIRoute
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import CurrentUser, require_content_author
@@ -25,6 +28,7 @@ from app.schemas.speaking import (
     SpeakingPromptCreate,
     SpeakingPromptOrderWrite,
     SpeakingRecovery,
+    SpeakingReviewData,
     SpeakingSegmentClose,
     SpeakingSegmentCreate,
     SpeakingSegmentData,
@@ -34,8 +38,47 @@ from app.services.speaking_attempts import SpeakingAttemptService
 from app.services.speaking_builder import SpeakingBuilderService
 from app.services.speaking_media import SpeakingMediaService
 
+
+class SpeakingRuntimeRoute(APIRoute):
+    """Sensitive runtime errors must never echo request inputs or DB parameters."""
+
+    def get_route_handler(self):
+        handler = super().get_route_handler()
+
+        async def safe_handler(request: Request):
+            try:
+                return await handler(request)
+            except RequestValidationError:
+                return JSONResponse(
+                    status_code=422,
+                    content={
+                        "code": "SPEAKING_REQUEST_INVALID",
+                        "message": "The Speaking request is invalid.",
+                    },
+                )
+            except (SQLAlchemyError, OSError):
+                return JSONResponse(
+                    status_code=503,
+                    content={
+                        "code": "SPEAKING_STORAGE_UNAVAILABLE",
+                        "message": "Speaking persistence is unavailable. Try again.",
+                    },
+                )
+
+        return safe_handler
+
+
 router = APIRouter(dependencies=[Depends(require_content_author)], tags=["speaking-builder"])
-runtime_router = APIRouter(prefix="/speaking-attempts", tags=["speaking-runtime"])
+runtime_router = APIRouter(
+    prefix="/speaking-attempts", tags=["speaking-runtime"], route_class=SpeakingRuntimeRoute
+)
+
+
+@runtime_router.get("/{attempt_id}/review", response_model=SpeakingReviewData)
+async def speaking_review(
+    attempt_id: UUID, user: CurrentUser, session: AsyncSession = Depends(get_session)
+):
+    return await SpeakingMediaService(session, user).review(attempt_id)
 
 
 @runtime_router.post("/{attempt_id}/interrupt", response_model=SpeakingState)

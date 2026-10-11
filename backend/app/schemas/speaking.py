@@ -219,3 +219,18 @@ class SpeakingSegmentData(BaseModel):
 class SpeakingManifest(BaseModel):
     response: SpeakingResponseData
     segments: list[SpeakingSegmentData]
+
+
+class SpeakingReviewedResponse(SpeakingManifest):
+    prompt: CurrentSpeakingPrompt
+
+
+class SpeakingReviewPart(BaseModel):
+    part_number: int
+    responses: list[SpeakingReviewedResponse]
+
+
+class SpeakingReviewData(BaseModel):
+    attempt_id: UUID
+    test_title: str
+    parts: list[SpeakingReviewPart]

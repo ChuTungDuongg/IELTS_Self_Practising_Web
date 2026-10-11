@@ -22,7 +22,8 @@ export function SpeakingPreflight({ onReady }: { onReady(recorder: SpeakingRecor
     recorder.current = next;
     try {
       await next.prepare(deviceId); setMime(next.mimeType);
-      setDevices((await navigator.mediaDevices.enumerateDevices()).filter((device) => device.kind === "audioinput"));
+      const inputs = await navigator.mediaDevices.enumerateDevices?.().catch(() => []) ?? [];
+      setDevices(inputs.filter((device) => device.kind === "audioinput"));
     } catch (caught) { setError(caught instanceof Error && caught.message === "MICROPHONE_UNSUPPORTED" ? "unsupported" : "permission"); }
     finally { setBusy(false); }
   }

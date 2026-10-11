@@ -30,11 +30,11 @@ const detail: VersionDetail = {
 };
 
 describe("Practice library", () => {
-  it("keeps P1 authored Speaking out of candidate starts and preserves three-skill Full Mock", async () => {
+  it("enables durable Speaking starts and preserves three-skill Full Mock readiness", async () => {
     vi.mocked(getVersion).mockResolvedValue({ ...detail, modules: [...detail.modules, { ...detail.modules[0], id: crypto.randomUUID(), module_type: "SPEAKING", recommended_duration_seconds: null, writing_task_count: 0, writing_tasks: [] }] });
     render(await TestVersionLibraryPage({ params: Promise.resolve({ versionId }) }));
-    expect(screen.getAllByRole("button", { name: /Start/ }).map(button => button.textContent)).toEqual(["Start Full Mock", "Start READING", "Start LISTENING", "Start WRITING"]);
-    expect(screen.queryByText("Speaking practice")).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /Start/ }).map(button => button.textContent)).toEqual(["Start Full Mock", "Start READING", "Start LISTENING", "Start WRITING", "Start SPEAKING"]);
+    expect(screen.getByRole("button", { name: "Start Full Mock" })).toBeEnabled();
   });
   it("translates the application fallback only when the authored description is null", async () => {
     window.localStorage.clear();

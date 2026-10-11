@@ -11,7 +11,7 @@ const historyItemSchema = z.object({
   focused_unit: focusedUnitSchema.nullable().optional(),
   test_title: z.string(),
   version_number: z.number().int(),
-  module: z.enum(["READING", "LISTENING", "WRITING"]),
+  module: z.enum(["READING", "LISTENING", "WRITING", "SPEAKING"]),
   status: z.enum(["IN_PROGRESS", "PAUSED", "SUBMITTED", "AUTO_SUBMITTED", "INTERRUPTED", "ABANDONED"]),
   started_at: z.string(),
   finished_at: z.string().nullable(),

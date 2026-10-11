@@ -62,11 +62,12 @@ export async function getAttempt(attemptId: string): Promise<AttemptResponse> {
 
 type AttemptStartInput = {
   test_version_id: string;
-  module: "READING" | "LISTENING" | "WRITING";
+  module: "READING" | "LISTENING" | "WRITING" | "SPEAKING";
+  speaking_mode?: "PRACTICE" | "EXAM";
   timer: { mode: TimerMode; duration_seconds?: number };
 } & (
   | { scope?: "FULL_MODULE"; focused_unit?: null }
-  | { scope: "FOCUSED_UNIT"; focused_unit: { kind: "READING_PASSAGE" | "LISTENING_PART" | "WRITING_TASK"; id: string } }
+  | { scope: "FOCUSED_UNIT"; focused_unit: { kind: "READING_PASSAGE" | "LISTENING_PART" | "WRITING_TASK" | "SPEAKING_PROMPT"; id: string } }
 );
 
 export async function startAttempt(input: AttemptStartInput) {

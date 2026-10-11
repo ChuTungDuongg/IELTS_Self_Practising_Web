@@ -156,6 +156,9 @@ async def test_assignment_teacher_provenance_and_retention(db_session, tmp_path)
         attempt.classroom_assignment_id = assignment.id
     teacher_media = SpeakingMediaService(db_session, teacher, storage=media.storage)
     assert (await teacher_media.playback(aid, seg.id))[0][0].read_bytes() == b"assignment"
+    with pytest.raises(AppError) as mutation_error:
+        await teacher_media.upload_chunk(aid, seg.id, 0, b"assignment")
+    assert mutation_error.value.code == "ATTEMPT_NOT_FOUND"
     with pytest.raises(AppError):
         await SpeakingMediaService(db_session, other, storage=media.storage).playback(aid, seg.id)
     with pytest.raises(AppError) as error:
@@ -169,6 +172,35 @@ async def test_assignment_teacher_provenance_and_retention(db_session, tmp_path)
         attempt.classroom_assignment_id = None
     with pytest.raises(AppError):
         await teacher_media.playback(aid, seg.id)
+
+
+async def test_review_committed_take_and_authored_prompt_without_notes(db_session, tmp_path):
+    runtime, media, aid, prompts, state, seg = await recording(db_session, tmp_path, focused=0)
+    with pytest.raises(AppError):
+        await media.review(aid)
+    await media.upload_chunk(aid, seg.id, 0, b"final recording")
+    await media.close_segment(aid, seg.id, 1)
+    await runtime.finish_current_response(aid, prompts[0], 1, "USER_DONE")
+    review = await media.review(aid)
+    assert review.parts[0].responses[0].prompt.id == prompts[0]
+    assert review.parts[0].responses[0].response.locked
+    assert "scratch_notes" not in review.model_dump_json()
+
+
+async def test_runtime_validation_never_echoes_private_notes(db_session):
+    from teacher_helpers import api_client
+
+    runtime, aid, prompts = await started(db_session, focused=1)
+    await runtime.begin_prompt(aid, prompts[1])
+    marker = "PRIVATE_NOTE_REDACTION_MARKER"
+    async with api_client(db_session, db_session.info["current_user_identity"]) as client:
+        response = await client.put(
+            f"/api/v1/speaking-attempts/{aid}/notes",
+            json={"prompt_id": str(prompts[1]), "scratch_notes": marker * 1000},
+        )
+    assert response.status_code == 422
+    assert marker not in response.text
+    assert response.json()["code"] == "SPEAKING_REQUEST_INVALID"
 
 
 async def test_out_of_order_201_http_retries_and_path_headers_are_safe(

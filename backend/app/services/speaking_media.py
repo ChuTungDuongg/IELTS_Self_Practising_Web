@@ -352,3 +352,78 @@ class SpeakingMediaService:
                 self.storage.resolve(c.storage_key)
                 for c in await ordered_chunks(self.session, segment.id)
             ], segment.mime_type
+
+    async def review(self, aid):
+        from app.models import Test, TestVersion
+        from app.schemas.speaking import (
+            CurrentSpeakingPrompt,
+            SpeakingReviewData,
+            SpeakingReviewedResponse,
+            SpeakingReviewPart,
+        )
+
+        # Each manifest read reauthorizes; only immutable committed active takes enter review.
+        async with self.session.begin():
+            attempt = await self.session.get(Attempt, aid)
+            if (
+                attempt is None
+                or attempt.module_type != "SPEAKING"
+                or attempt.status in {"IN_PROGRESS", "PAUSED"}
+            ):
+                raise AppError(
+                    "SPEAKING_REVIEW_UNAVAILABLE", "Finalize Speaking before opening review.", 409
+                )
+            prompts = await self.runtime.repository.prompts(attempt)
+            rows = list(
+                await self.session.scalars(
+                    select(SpeakingResponse).where(
+                        SpeakingResponse.attempt_id == aid, SpeakingResponse.locked.is_(True)
+                    )
+                )
+            )
+            if attempt.user_id != self.actor.id and not rows:
+                raise AppError("SPEAKING_MEDIA_FORBIDDEN", "Recording access is unavailable.", 403)
+            for response in rows:
+                await self._read_access(aid, response)
+            title = await self.session.scalar(
+                select(Test.title)
+                .join(TestVersion)
+                .where(TestVersion.id == attempt.test_version_id)
+            )
+            authored = {
+                p.id: CurrentSpeakingPrompt(
+                    **{
+                        name: getattr(p, name)
+                        for name in (
+                            "id",
+                            "order_index",
+                            "prompt_type",
+                            "prompt_text",
+                            "preparation_seconds",
+                            "response_seconds",
+                            "config_json",
+                        )
+                    },
+                    part_number=p.part.part_number,
+                    part_title=p.part.title,
+                    instructions=p.part.instructions,
+                )
+                for p in prompts
+            }
+        parts = {}
+        for response in rows:
+            manifest = await self.manifest(aid, response.id)
+            prompt = authored[response.prompt_id]
+            parts.setdefault(prompt.part_number, []).append(
+                SpeakingReviewedResponse(prompt=prompt, **manifest.model_dump())
+            )
+        return SpeakingReviewData(
+            attempt_id=aid,
+            test_title=title,
+            parts=[
+                SpeakingReviewPart(
+                    part_number=n, responses=sorted(cards, key=lambda c: c.prompt.order_index)
+                )
+                for n, cards in sorted(parts.items())
+            ],
+        )

@@ -58,3 +58,11 @@ it("recorder flushes its final chunk and releases stream", async () => {
   recorder.start(); await recorder.stop();
   expect(chunks[0].size).toBeGreaterThan(0); recorder.close(); expect(release).toHaveBeenCalled();
 });
+it("cancels a microphone request that resolves after unmount cleanup", async () => {
+  media(); const release = vi.fn(); let permission!: (stream: MediaStream) => void;
+  vi.mocked(navigator.mediaDevices.getUserMedia).mockImplementation(() => new Promise((resolve) => { permission = resolve; }));
+  const recorder = new SpeakingRecorder(); const pending = recorder.prepare(); recorder.close();
+  permission({ getTracks: () => [{ stop: release }] } as unknown as MediaStream);
+  try { await expect(pending).rejects.toThrow("MICROPHONE_CANCELLED"); expect(release).toHaveBeenCalledOnce(); }
+  finally { recorder.close(); }
+});

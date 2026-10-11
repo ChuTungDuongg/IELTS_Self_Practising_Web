@@ -1,6 +1,24 @@
 import type { TranslationDictionary } from "./types";
 
 export const vi = {
+  "speakingRuntime.stopped": "Đã dừng ghi âm",
+  "speakingRuntime.interrupted": "Ghi âm bị gián đoạn; phần đã nhận được lưu",
+
+  "speakingRuntime.mode": "Chế độ bài Nói",
+  "speakingRuntime.practice": "Luyện tập (nghe và ghi lại)",
+  "speakingRuntime.exam": "Thi (một lần ghi)",
+  "speakingRuntime.authoredTimers": "Mỗi câu có thời gian chuẩn bị và nói riêng theo đề.",
+
+  "speakingRuntime.saved": "Đã lưu",
+  "speakingRuntime.timedOut": "Đã hết giờ",
+  "speakingRuntime.loadAudio": "Tải bản ghi",
+  "speakingRuntime.loadingAudio": "Đang tải bản ghi…",
+  "speakingRuntime.segment": "Đoạn ghi âm {number}",
+  "speakingRuntime.audioError": "Không thể truy cập bản ghi. Hãy đăng nhập và thử lại.",
+  "speakingRuntime.restored": "Đã khôi phục phiên",
+  "speakingRuntime.recoveredAudio": "Đã khôi phục bản ghi đã lưu",
+  "speakingRuntime.grace": "Tiếp tục ghi âm sau {count}",
+
   "speakingRuntime.setup": "Thiết lập micrô",
   "speakingRuntime.micHint": "Nói một đoạn ngắn để kiểm tra micrô trước khi bắt đầu.",
   "speakingRuntime.check": "Kiểm tra micrô",

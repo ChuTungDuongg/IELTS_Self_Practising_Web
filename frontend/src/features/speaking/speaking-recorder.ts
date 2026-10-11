@@ -13,13 +13,17 @@ export class SpeakingRecorder {
   private recorder: MediaRecorder | null = null;
   private frame: number | null = null;
   private stopping: Promise<void> | null = null;
+  private generation = 0;
   get recording() { return this.recorder?.state === "recording"; }
   async prepare(deviceId?: string) {
     this.close();
+    const generation = this.generation;
     const mime = supportedMime();
     if (!mime || !navigator.mediaDevices?.getUserMedia || typeof AudioContext === "undefined") throw new Error("MICROPHONE_UNSUPPORTED");
     try {
-      this.stream = await navigator.mediaDevices.getUserMedia({ audio: deviceId ? { deviceId: { exact: deviceId } } : true });
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: deviceId ? { deviceId: { exact: deviceId } } : true });
+      if (this.generation !== generation) { stream.getTracks().forEach((track) => track.stop()); throw new Error("MICROPHONE_CANCELLED"); }
+      this.stream = stream;
       this.mimeType = mime;
       this.context = new AudioContext(); await this.context.resume();
       const analyser = this.context.createAnalyser(); analyser.fftSize = 256;
@@ -55,6 +59,7 @@ export class SpeakingRecorder {
     return this.stopping;
   }
   close() {
+    this.generation += 1;
     if (this.recording) this.recorder?.stop();
     if (this.frame !== null) cancelAnimationFrame(this.frame);
     this.frame = null;

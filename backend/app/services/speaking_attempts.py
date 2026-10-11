@@ -251,7 +251,13 @@ class SpeakingAttemptService:
                 raise AppError(
                     "SPEAKING_RESPONSE_NOT_ACTIVE", "The response deadline has not elapsed.", 409
                 )
-            reason = "TIMEOUT" if progress.phase == "FINALIZING" else "USER_DONE"
+            reason = (
+                "INTERRUPTED"
+                if progress.recovery_state == "UNAVAILABLE"
+                else "TIMEOUT"
+                if progress.phase == "FINALIZING"
+                else "USER_DONE"
+            )
             take = await self.repository.take(response.id, take_number)
             from app.services.speaking_media import committed_fingerprint
 
@@ -358,6 +364,9 @@ class SpeakingAttemptService:
             if prompt.prompt_type != "LONG_TURN" or progress.phase not in {
                 "PREPARING",
                 "RECORDING",
+                "STARTING",
+                "INTERRUPTED",
+                "RECOVERY_GRACE",
             }:
                 raise AppError(
                     "SPEAKING_RESPONSE_NOT_ACTIVE", "Scratch notes are unavailable here.", 409
@@ -384,6 +393,7 @@ class SpeakingAttemptService:
                 segment.chunk_count, segment.closed_at = len(chunks), TimerService.now()
 
     async def interrupt(self, attempt_id, prompt_id, take_number, generation):
+        unavailable = False
         async with self.session.begin():
             attempt, progress, prompts = await self._load(attempt_id)
             self._mutable(attempt)
@@ -406,8 +416,6 @@ class SpeakingAttemptService:
                 or progress.phase not in {"PREPARING", "STARTING", "RECORDING"}
                 or progress.phase_deadline_at <= now
                 or progress.last_confirmed_at is None
-                or (now - progress.last_confirmed_at).total_seconds()
-                > get_settings().speaking_recovery_window_seconds
             ):
                 raise AppError(
                     "SPEAKING_RECOVERY_NOT_AVAILABLE", "Recording recovery is unavailable.", 409
@@ -422,13 +430,27 @@ class SpeakingAttemptService:
                         * 1000
                     ),
                 )
-            progress.recovery_phase = progress.phase
-            progress.phase = "INTERRUPTED"
-            progress.interrupted_at = now
-            progress.interruption_generation += 1
-            progress.interruption_count += 1
-            progress.recovery_state = "AWAITING_MICROPHONE"
-            return self._state(attempt, progress, prompts, now)
+            if (
+                now - progress.last_confirmed_at
+            ).total_seconds() > get_settings().speaking_recovery_window_seconds:
+                progress.phase = "FINALIZING"
+                progress.phase_started_at = progress.phase_deadline_at = now
+                progress.last_confirmed_remaining_ms = 0
+                progress.recovery_state = "UNAVAILABLE"
+                unavailable = True
+            else:
+                progress.recovery_phase = progress.phase
+                progress.phase = "INTERRUPTED"
+                progress.interrupted_at = now
+                progress.interruption_generation += 1
+                progress.interruption_count += 1
+                progress.recovery_state = "AWAITING_MICROPHONE"
+            result = self._state(attempt, progress, prompts, now)
+        if unavailable:
+            raise AppError(
+                "SPEAKING_RECOVERY_NOT_AVAILABLE", "The recovery window has expired.", 409
+            )
+        return result
 
     async def resume(self, attempt_id, prompt_id, take_number, generation):
         unavailable = False
@@ -448,6 +470,7 @@ class SpeakingAttemptService:
                     progress.phase = "FINALIZING"
                     progress.phase_started_at = progress.phase_deadline_at = now
                     progress.last_confirmed_remaining_ms = 0
+                    progress.recovery_state = "UNAVAILABLE"
                     unavailable = True
                 else:
                     progress.phase = "RECOVERY_GRACE"

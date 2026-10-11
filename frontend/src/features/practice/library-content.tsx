@@ -14,11 +14,10 @@ import type { TestSummary, VersionDetail } from "@/lib/api/schema";
 import { useTranslation } from "@/lib/i18n/locale-provider";
 import { moduleTranslationKeys, statusTranslationKeys } from "@/lib/i18n/translations";
 
-const moduleOrder = { READING: 0, LISTENING: 1, WRITING: 2 } as const;
+const moduleOrder = { READING: 0, LISTENING: 1, WRITING: 2, SPEAKING: 3 } as const;
 type RuntimeModule = VersionDetail["modules"][number] & { module_type: keyof typeof moduleOrder };
 function runtimeModules(modules: VersionDetail["modules"]) {
-  // P1 authored Speaking remains in Builder until its runtime phase is enabled.
-  return modules.filter((item): item is RuntimeModule => item.module_type !== "SPEAKING")
+  return ([...modules] as RuntimeModule[])
     .sort((left, right) => moduleOrder[left.module_type] - moduleOrder[right.module_type]);
 }
 
@@ -54,7 +53,7 @@ export function LibraryVersionContent({ test, version }: { test: TestSummary; ve
   const { t } = useTranslation();
   const modules = runtimeModules(version.modules);
   const missing = (["LISTENING", "READING", "WRITING"] as const).find((type) => !modules.some((item) => item.module_type === type));
-  const missingDuration = modules.find((item) => !item.recommended_duration_seconds || item.recommended_duration_seconds <= 0);
+  const missingDuration = modules.filter((item) => item.module_type !== "SPEAKING").find((item) => !item.recommended_duration_seconds || item.recommended_duration_seconds <= 0);
   const readinessWarnings = modules.filter((item) => (item.module_type === "READING" || item.module_type === "LISTENING") && item.question_count !== 40).map((item) => t("pages.library.bandWarning", { skill: t(moduleTranslationKeys[item.module_type]), count: item.question_count }));
 
   return <>
@@ -68,11 +67,11 @@ export function LibraryVersionContent({ test, version }: { test: TestSummary; ve
         <div className="practice-card-content">
           <div className="practice-card-topline"><ModuleBadge module={module.module_type} label={t(moduleTranslationKeys[module.module_type])} /></div>
           <div className="practice-card-title"><p className="practice-module-kicker">{t("pages.library.skillPractice", { skill: t(moduleTranslationKeys[module.module_type]) })}</p><h2>{module.title ?? t(moduleTranslationKeys[module.module_type])}</h2><span>{t("pages.library.continue")}</span></div>
-          <dl className="practice-card-meta">
+          {module.module_type === "SPEAKING" ? <p>{t("speakingRuntime.authoredTimers")}</p> : <dl className="practice-card-meta">
             <div><dt>{t("pages.library.version")}</dt><dd>{version.version_number}</dd></div>
             <div><dt>{module.module_type === "WRITING" ? t("common.tasks") : t("common.questions")}</dt><dd>{module.module_type === "WRITING" ? module.writing_task_count : module.question_count}</dd></div>
             <div><dt>{module.module_type === "LISTENING" ? t("common.sections") : module.module_type === "WRITING" ? t("common.suggestedTime") : t("common.passages")}</dt><dd>{module.module_type === "LISTENING" ? module.listening_part_count : module.module_type === "WRITING" ? t("common.minutesShort", { count: Math.round((module.recommended_duration_seconds ?? 3600) / 60) }) : module.passage_count}</dd></div>
-          </dl>
+          </dl>}
           <ContentSummary units={publishedContentSummary(module)} />
           <StartAttempt versionId={version.id} module={module.module_type} />
         </div>

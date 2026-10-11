@@ -148,6 +148,36 @@ async def test_concurrent_recovery_never_reopens_finalization(concurrent_speakin
 
     results = await asyncio.gather(invoke(False), invoke(True), return_exceptions=True)
     assert all(not isinstance(r, Exception) or isinstance(r, AppError) for r in results)
+    from sqlalchemy import select
+
+    from app.models import SpeakingPromptProgress, SpeakingResponse, SpeakingResponseTake
+
+    async with factory() as session:
+        progress = await session.get(SpeakingPromptProgress, aid)
+        responses = list(
+            await session.scalars(
+                select(SpeakingResponse).where(SpeakingResponse.attempt_id == aid)
+            )
+        )
+        takes = list(
+            await session.scalars(
+                select(SpeakingResponseTake).where(
+                    SpeakingResponseTake.response_id == responses[0].id
+                )
+            )
+        )
+        assert len(responses) == len(takes) == 1
+        if race == "resume":
+            assert progress.phase == "RECOVERY_GRACE" and progress.interruption_count == 1
+            assert progress.recovery_grace_used and not responses[0].locked
+            assert takes[0].status == "ACTIVE"
+        elif responses[0].locked:
+            assert progress.prompt_id == prompts[1] and progress.phase == "QUESTION_ENTER"
+            assert takes[0].status == "COMMITTED"
+            assert responses[0].completion_reason == "USER_DONE"
+        else:
+            assert progress.prompt_id == prompts[0] and progress.phase == "INTERRUPTED"
+            assert takes[0].status == "ACTIVE"
     if race == "resume":
         assert results[0].recovery_grace_deadline_at == results[1].recovery_grace_deadline_at
     else:
@@ -246,3 +276,30 @@ async def test_unconfirmed_tail_is_not_in_recovered_manifest(db_session, tmp_pat
     assert hashlib.sha256(unconfirmed).hexdigest() not in manifest.model_dump_json()
     for path in tmp_path.rglob("*.webm"):
         path.unlink()
+
+
+async def test_stale_first_reconnect_closes_speech_without_granting_time(db_session, monkeypatch):
+    from sqlalchemy import select
+
+    from app.models import SpeakingResponse
+
+    now = [TimerService.now()]
+    monkeypatch.setattr(TimerService, "now", staticmethod(lambda: now[0]))
+    service, aid, prompts = await started(db_session, focused=1)
+    await service.begin_prompt(aid, prompts[1])
+    now[0] += timedelta(seconds=63)
+    await service.get_state(aid)
+    now[0] += timedelta(seconds=10)
+    await service.heartbeat(aid, prompts[1], 1)
+    now[0] += timedelta(seconds=46)
+    with pytest.raises(AppError) as error:
+        await service.interrupt(aid, prompts[1], 1, 0)
+    assert error.value.code == "SPEAKING_RECOVERY_NOT_AVAILABLE"
+    state = await service.get_state(aid)
+    assert state.phase == "FINALIZING" and state.remaining_ms == 0
+    await service.finish_current_response(aid, prompts[1], 1, "TIMEOUT")
+    async with db_session.begin():
+        response = await db_session.scalar(
+            select(SpeakingResponse).where(SpeakingResponse.attempt_id == aid)
+        )
+        assert response.completion_reason == "INTERRUPTED" and response.duration_ms == 10000

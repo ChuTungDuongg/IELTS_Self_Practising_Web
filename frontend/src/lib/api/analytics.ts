@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { apiRequest, type ApiRequester } from "./client";
 
-const skillSchema = z.enum(["READING", "LISTENING", "WRITING"]);
+const skillSchema = z.enum(["READING", "LISTENING", "WRITING", "SPEAKING"]);
 const accuracySchema = z.object({ question_type: z.string(), attempted: z.number().int(), correct: z.number().int(), incorrect: z.number().int(), accuracy: z.number().nullable() });
 const bandSummarySchema = z.object({ latest: z.number().nullable(), best: z.number().nullable(), average: z.number().nullable() });
 export const analyticsSchema = z.object({

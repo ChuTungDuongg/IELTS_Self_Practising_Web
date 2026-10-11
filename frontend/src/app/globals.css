@@ -12,6 +12,12 @@
 .speaking-card audio { width: 100%; margin-top: .75rem; }
 @keyframes speaking-enter { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
 @media (prefers-reduced-motion: reduce) { .speaking-question { animation: none; } .speaking-card progress, .speaking-card meter { transition: none; } }
+.speaking-is-recording > span:first-child::before { content: ""; display: inline-block; width: .65rem; height: .65rem; margin-right: .5rem; border-radius: 50%; background: var(--success, #168052); animation: speaking-live 1.8s ease-in-out infinite; }
+.speaking-card summary { cursor: pointer; font-weight: 600; }
+@keyframes speaking-live { 50% { opacity: .45; } }
+.speaking-runner[data-reduced-motion="true"] .speaking-question,
+.speaking-runner[data-reduced-motion="true"] .speaking-is-recording > span:first-child::before { animation: none; }
+@media (prefers-reduced-motion: reduce) { .speaking-is-recording > span:first-child::before { animation: none; } }
 
 /* Authored Speaking Builder only; all colors follow the shared theme/accent. */
 .speaking-builder { display: grid; gap: 24px; }

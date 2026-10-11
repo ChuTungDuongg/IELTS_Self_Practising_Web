@@ -1,4 +1,22 @@
 export const en = {
+  "speakingRuntime.stopped": "Recording stopped",
+  "speakingRuntime.interrupted": "Recording interrupted; accepted audio saved",
+
+  "speakingRuntime.mode": "Speaking mode",
+  "speakingRuntime.practice": "Practice (listen and retry)",
+  "speakingRuntime.exam": "Exam (one take)",
+  "speakingRuntime.authoredTimers": "Each prompt uses its authored preparation and speaking time.",
+
+  "speakingRuntime.saved": "Saved",
+  "speakingRuntime.timedOut": "Time expired",
+  "speakingRuntime.loadAudio": "Load recording",
+  "speakingRuntime.loadingAudio": "Loading recording…",
+  "speakingRuntime.segment": "Recording segment {number}",
+  "speakingRuntime.audioError": "Recording access is unavailable. Try again after signing in.",
+  "speakingRuntime.restored": "Session restored",
+  "speakingRuntime.recoveredAudio": "Previous accepted recording recovered",
+  "speakingRuntime.grace": "Recording resumes in {count}",
+
   "speakingRuntime.setup": "Microphone setup",
   "speakingRuntime.micHint": "Speak briefly to check your microphone before starting.",
   "speakingRuntime.check": "Check microphone",

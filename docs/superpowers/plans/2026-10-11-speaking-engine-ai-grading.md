@@ -285,11 +285,11 @@ git commit -m "Add Speaking content domain model"
 - Recorder emits chunks every configured ~2–5 seconds, retries upload idempotently, flushes before finalization, and opens a new segment after recovery.
 - Review renders Part 1/2/3 response cards with question/cue card, duration, authorized audio player, and later transcript/AI placeholders.
 
-- [ ] **Step 1: Write failing frontend tests** for chunk retry, upload ACK before next prompt, hard-reload resume snapshot/grace countdown, new segment on resumed recorder, failed final upload staying on same prompt, practice Listen/Retry vs exam hidden controls, and per-question review playback.
-- [ ] **Step 2: Run RED** with only Vitest/mocks.
-- [ ] **Step 3: Implement transport/recovery/review UI.** Recovery page shows restored state + 7→1 countdown and pauses original remaining timer during grace.
-- [ ] **Step 4: Run GREEN + typecheck/targeted ESLint.**
-- [ ] **Step 5: Commit:** `git commit -m "Connect Speaking recording recovery and review"`.
+- [x] **Step 1: Write failing frontend tests** for chunk retry, upload ACK before next prompt, hard-reload resume snapshot/grace countdown, new segment on resumed recorder, failed final upload staying on same prompt, practice Listen/Retry vs exam hidden controls, and per-question review playback.
+- [x] **Step 2: Run RED** with only Vitest/mocks.
+- [x] **Step 3: Implement transport/recovery/review UI.** Recovery page shows restored state + 7→1 countdown and pauses original remaining timer during grace.
+- [x] **Step 4: Run GREEN + typecheck/targeted ESLint.**
+- [x] **Step 5: Commit:** `git commit -m "Connect Speaking recording recovery and review"`.
 
 **P3 gate:** Speaking exam/practice recording must now be durably usable without transcript/AI. Verify no private media exposure and no time farming before P4.
 

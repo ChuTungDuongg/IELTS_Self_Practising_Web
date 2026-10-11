@@ -1,3 +1,5 @@
+import { SpeakingReview } from "@/features/speaking/speaking-review";
+import { getSpeakingReview } from "@/lib/api/speaking";
 import { notFound } from "next/navigation";
 import { ReadingReviewView } from "@/features/reading/reading-review";
 import { ListeningReviewView } from "@/features/listening/listening-review";
@@ -11,6 +13,11 @@ export default async function ReviewShellPage({ params }: { params: Promise<{ at
   const { attemptId } = await params;
   const exam = await getExam(attemptId, serverApiRequest).catch(() => null);
   if (!exam) notFound();
+  if (exam.attempt.module === "SPEAKING") {
+    const data = await getSpeakingReview(attemptId, serverApiRequest).catch(() => null);
+    if (!data) notFound();
+    return <SpeakingReview data={data} />;
+  }
   if (exam.attempt.module === "WRITING") {
     const writing = await getWritingReview(attemptId, serverApiRequest).catch(() => null);
     if (!writing) notFound();
