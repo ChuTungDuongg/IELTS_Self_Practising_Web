@@ -2,7 +2,7 @@
 
 Task 1 and Task 2 share the configured `mistralai/Ministral-3-8B-Instruct-2512`
 model, provider adapters and existing Modal/vLLM GPU function. Task 2 retains
-its text-only pipeline with the `mts-task2-v9` cache contract. Task 1
+its text-only pipeline with the `mts-task2-v10` cache contract. Task 1
 uses `mts-task1-scoring-v9`, composite `mts-task1-visual-v9`, and the unchanged
 `mts-task1-visual-v3` perception contract. See
 [the latency engineering case study](enhance_latency.md) for bounded concurrent
@@ -47,10 +47,10 @@ accuracy or speed claim follows from scripted tests.
 Optional `relevance` metadata is stored in the existing run result JSON and exposed
 in full/partial DTOs. Durable `relevance.started`, `.completed`, `.failed` events
 replay through SSE; auxiliary failure continues normal assessment. Historic runs
-without relevance still parse. Effective Task 2 v9 includes old deployed version
-labels through v8, so prior cached results stay readable without being reused.
+without relevance still parse. Effective Task 2 v10 includes old deployed version
+labels through v9, so prior cached results stay readable without being reused.
 Task 1 v9 fingerprints invalidate earlier scoring caches while retaining perception
-v3 and the v7 TA/CC guidance. Offline benchmarks default to v9; frozen v3/v5
+v3 and the v7 TA/CC guidance. Offline benchmarks use the current contract; frozen v3/v5
 retain their historical pre-gate combined-output contracts.
 Task-tab cleanup still stops observation only; explicit Stop cancels grading.
 
@@ -86,43 +86,85 @@ attempt band, History, Analytics or official Full Mock state.
 
 ## Task 2: text-only assessment
 
-This is the project's **multi-trait, rationale-assisted IELTS pipeline**, an
+This is the project's **multi-trait IELTS pipeline**, an
 online adaptation rather than a faithful reproduction of an academic RMTS
 experiment. Four independent criteria use the official IELTS descriptor
 semantics: Task Response (`ta` for compatibility), Coherence and Cohesion,
 Lexical Resource, and Grammatical Range and Accuracy. Each criterion now runs
-**evidence → score-only → feedback**. No other criterion's score is shared.
+**score-only → source evidence selection → structured feedback → public display**.
+Task 1 retains its evidence → score-only → feedback flow. No other criterion's score is shared.
 There is no default band, score offset, ceiling, error-count penalty, dataset
 min-max scaling or outlier clipping. Whole-response descriptor fit remains the
-scoring authority; representative evidence supports it rather than imposing a
-checklist. Half-bands interpolate adjacent official whole-band profiles across
+scoring authority; generated assessments never steer Task 2 score inference.
+Half-bands interpolate adjacent official whole-band profiles across
 0–9, including low bands and supported Band 8/9 outcomes.
 
-The evidence request selects at most four stable source IDs with brief
-Vietnamese assessments. The deterministic essay segmenter retains original
-Unicode, whitespace and offsets. Backend lookup resolves each ID to the exact
-original English slice; the model never reproduces quotations. Unknown IDs and
+The Writing editor is a plain textarea. Its explicit Enter characters travel
+unchanged through JSON submission, `AttemptWritingResponse.content` in PostgreSQL
+and the scoring request; visual soft wrapping adds no newline. The former generic
+segmenter treated only blank lines as paragraph boundaries, so essays using one
+Enter per paragraph appeared as a single P1. Production Task 2 input now carries
+internal textarea provenance: each explicit LF/CRLF/CR separates paragraphs,
+with repeated empty lines ignored. The generic/Task 1 default still treats single
+newlines as possible wrapped lines and blank lines as paragraph boundaries.
+Nothing rewrites the student's lexical content, punctuation, spacing or database
+response. Source IDs P1S1, P2S1, etc. resolve exact original slices and offsets;
+repeated sentences remain independently addressable. All Task 2 inference stages
+and relevance use the same source mapping.
+
+After accepting the score, the evidence request selects at most four stable
+source IDs. Backend lookup resolves each ID to the exact original English slice;
+the model never reproduces evidence quotations. Generated selector assessments
+are replaced with neutral backend-resolved locations and do not enter score or
+feedback prompts. Unknown IDs and
 invalid evidence still receive one repair and then fail that criterion. Making
 recoverable evidence failures optional is a separate follow-up; this change
 keeps primary evidence validation strict.
 
 The `CriterionBandScore` inference schema contains **only `score`**, for example
 `{"score":6.5}`. The existing authoritative 0–9 half-band validator remains.
-The score prompt contains the full segmented essay, selected evidence and the
-same criterion-specific official descriptor context. One invalid score gets one
+The score prompt contains only the question, full segmented essay and the
+same criterion-specific official descriptor context. No generated evidence
+assessment, strength, improvement or feedback is included. One invalid score gets one
 score-only repair; a second invalid or truncated score fails the criterion.
 There is no invented, inferred, default or replacement score. vLLM retains
 temperature 0 and seed 0. Request IDs, timestamps and other trait scores never
 enter semantic prompts; source and evidence ordering remains deterministic.
 
-After score validation, a separate `CriterionFeedbackOutput` request receives
-the fixed band, essay, evidence and descriptor context. It contains only
-`feedback`, `strengths` and `improvements`, with no writable score. Prompts
-request one Vietnamese paragraph (800 characters), at most three strengths and
-three improvements (240 characters each). Backend normalization clips only
-presentation, preserves Unicode prefixes and removes blank bullets. Explicit
-conflicting numeric Band claims or an injected score field are rejected and
-repaired; feedback never alters the accepted numeric band.
+After score validation, a separate internal `Task2FeedbackDraft` request receives
+the fixed band as immutable metadata, full essay, selected source IDs and
+descriptor context. The score is not a target that feedback must rationalize:
+there is no requirement to explain each half-band difference or find defects
+below 9. Empty observations, limitations and improvements are valid; uncertain
+claims must be omitted. This schema has no writable score or free-form summary.
+
+At most six observations carry `source_id`, `kind` (`STRENGTH`, `LIMITATION`,
+`ERROR`, `OPTIONAL_REFINEMENT`), concise Vietnamese `observation`, confidence,
+and optional exact `original_span`/`suggested_revision`. Unknown IDs and nonmatching
+spans trigger bounded repair. Blank spans, low-confidence observations,
+non-HIGH negative claims and trivial unchanged revisions are omitted. GRA/LR
+ERROR claims additionally require an exact, non-blank original span. Arbitrary
+model-written paragraph/sentence labels are rejected; the backend derives display
+locations from validated sources. These checks establish source grounding, not
+proof that a linguistic judgement is true.
+
+Criterion-specific instructions require actual standard-English errors before
+GRA reports a correction, including checking subjects, agreement, articles,
+punctuation, copular constructions and gerund subjects. LR must not swap synonyms
+merely for variety, reject accurate common/topic vocabulary or British/American
+variants, or change meaning, register or collocation. CC accepts clear logical
+progression without extra explicit linkers. Task Response does not require
+research, studies, statistics, citations or named-country case studies: relevant
+reasoning and plausible hypothetical examples may support an argument.
+
+The backend builds the unchanged public `CriterionResult` fields (`feedback`,
+`strengths`, `improvements`, `evidence`) from accepted observations. It never
+uses unvalidated selector assessments or a model-generated summary. Optional
+rewrites use a backend-owned "Gợi ý tùy chọn: có thể diễn đạt…" template rather
+than model-authored factual-error prose. Existing display limits remain one
+summary of 800 characters and at most three strengths/improvements of 240
+characters each. Explicit conflicting numeric Band claims or an injected score
+field are rejected and repaired; feedback never alters the accepted numeric band.
 
 Each stage has at most one correction. Actual completion caps are:
 
@@ -138,7 +180,8 @@ an explicit cap once without truncating input. Unsupported guided-schema string
 constraints remain stripped; backend validation is authoritative.
 
 If feedback still has invalid JSON/schema, empty content, excessive output or
-`finish_reason=length` after its repair, the criterion completes with its fixed
+`finish_reason=length`, unknown source IDs or invented spans after its repair,
+the criterion completes with its fixed
 valid score and validated evidence. Its Vietnamese fallback says detailed
 feedback is unavailable but the advisory criterion score is complete; strengths
 and improvements are empty. Safe internal diagnostics distinguish `score` from
@@ -147,18 +190,22 @@ and improvements are empty. Safe internal diagnostics distinguish `score` from
 explicit Stop and unexpected state/persistence failures remain hard failures.
 Raw provider errors, essays, credentials, prompts and hidden reasoning are never
 logged, persisted as diagnostics or streamed. Existing public SSE stages and
-`CriterionResult` DTOs remain compatible; a feedback failure cannot erase a
+`CriterionResult` DTOs remain compatible. Score-stage public events are buffered
+until evidence is ready to retain the existing public evidence/scoring order;
+internal inference is score-first. A feedback failure cannot erase a
 valid band through the recoverable-output path.
 
-Task 2 now uses **`mts-task2-v9`**. Configured v1–v8 labels resolve to v9, and
-custom labels are prefixed with v9 for cache identity. Existing v8 results remain
+Task 2 now uses **`mts-task2-v10`**. Configured v1–v9 labels resolve to v10, and
+custom labels are prefixed with v10 for cache identity. Existing v9 results remain
 readable and are never reused for the new contract. Legacy combined-output
 schemas/calibration helpers remain available for historical tooling, separate
 from production score-only inference.
 
 Fake-provider regressions verify reliability, isolation, schema validation and
 request determinism. No local human-labelled scoring corpus was available, so
-these checks do not establish improved human agreement or real-model accuracy.
+these checks do not establish improved human-examiner score agreement or real-model
+feedback accuracy. No score calibration or official descriptor semantics change
+is claimed, and no live-model accuracy claim is supported by fake-provider tests.
 The AI score remains advisory. Descriptor guidance continues to use the
 [official IELTS descriptors](https://ielts.org/cdn/ielts-guides/ielts-writing-band-descriptors.pdf)
 (May 2023), as documented by the existing descriptor-fit checks.
@@ -627,7 +674,9 @@ pg_restore --dbname=<target-database> --no-owner --no-acl ./database.dump
   existing guided JSON-schema integration and temperature 0/seed 0 remain;
   current per-stage token budgets are listed above. Evidence assessments are at most 320 characters/two
   requested sentences; separate feedback is at most 800 characters, strengths and
-  improvements at most three each. No global token increase or GPU smoke job is required. Scoring context references selected IDs rather than duplicating quotes.
+  improvements at most three each. Task 2 internal observations are at most six,
+  with 240-character descriptions; Task 2 scoring contains no generated evidence.
+  No global token increase or GPU smoke job is required.
 - **Interrupted run:** wait for the heartbeat lease to expire or revisit review;
   stale state becomes FAILED and Regrade is available.
 - **Trace disconnected:** the client probes saved JSON and reconnects with its
@@ -635,8 +684,9 @@ pg_restore --dbname=<target-database> --no-owner --no-acl ./database.dump
 
 ```powershell
 cd backend
-uv run pytest tests/test_writing_score_first.py tests/test_mts_descriptor_fit.py tests/test_mts_writing_v3.py tests/test_mts_writing_v4.py tests/test_mts_writing_v5.py tests/test_mts_writing_validation.py tests/test_writing_ai_output_normalization.py tests/test_writing_completion_budgets.py tests/test_vllm_context_budget.py tests/test_writing_llm_providers.py tests/test_writing_relevance.py -q
-uv run pytest tests/test_task1_calibration.py tests/test_task1_visual.py tests/test_task1_grounding_regression.py tests/test_task1_grounding_contract.py tests/test_chart_cross_check.py tests/test_task1_benchmark.py tests/test_task1_benchmark_metrics.py tests/test_writing_concurrency.py tests/test_writing_ai_observer_lifecycle.py tests/test_writing_ai.py tests/test_task1_writing_ai.py -q -m 'not integration'
+uv run pytest tests/test_task2_grounded_feedback.py tests/test_writing_paragraph_identity.py tests/test_essay_sources.py tests/test_writing_relevance.py tests/test_mts_writing_validation.py tests/test_writing_ai_output_normalization.py -q
+uv run pytest tests/test_writing_score_first.py tests/test_mts_descriptor_fit.py tests/test_mts_writing_v3.py tests/test_mts_writing_v4.py tests/test_mts_writing_v5.py tests/test_writing_completion_budgets.py tests/test_vllm_context_budget.py tests/test_writing_concurrency.py tests/test_writing_ai_observer_lifecycle.py tests/test_writing_ai.py -q -m 'not integration'
+uv run pytest tests/test_task1_calibration.py tests/test_task1_visual.py tests/test_task1_grounding_contract.py tests/test_task1_writing_ai.py -q -m 'not integration'
 # When a dedicated PostgreSQL test database is available, run the persisted-run checks:
 uv run pytest tests/test_writing_ai.py tests/test_task1_writing_ai.py -q -m integration
 cd ..

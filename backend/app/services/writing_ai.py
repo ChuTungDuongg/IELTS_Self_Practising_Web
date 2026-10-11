@@ -292,7 +292,11 @@ class WritingAIService:
                 ),
             )
         return WritingScoringRequest(
-            attempt_id=attempt_id, writing_task_id=task_id, prompt=task.prompt, response=essay
+            attempt_id=attempt_id,
+            writing_task_id=task_id,
+            prompt=task.prompt,
+            response=essay,
+            paragraph_mode="textarea",
         )
 
     async def recover_stale(self, run: WritingAIGradingRun) -> None:

@@ -2,7 +2,7 @@
 
 import json
 
-from app.domains.scoring.essay_sources import segment_essay
+from app.domains.scoring.essay_sources import request_sources
 
 RELEVANCE_PROMPT_VERSION = "writing-relevance-v1"
 SYSTEM = """Classify only the meaningful task connection of an IELTS Writing response.
@@ -23,7 +23,7 @@ Do not assess plagiarism, memorisation, cheating or authorship.
 
 
 def relevance_messages(request, reference=None):
-    segments = segment_essay(request.response)
+    segments = request_sources(request)
     payload = {
         "task_number": 1 if reference is not None else 2,
         "task_prompt": request.prompt,

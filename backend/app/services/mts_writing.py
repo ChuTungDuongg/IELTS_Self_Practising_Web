@@ -15,13 +15,15 @@ from app.domains.scoring.ai_writing_validation import (
     sanitize_calibration,
     validation_reason,
 )
-from app.domains.scoring.essay_sources import SourceSegment, segment_essay
+from app.domains.scoring.essay_sources import SourceSegment, request_sources, segment_essay
 from app.domains.scoring.mts_prompts import (
     correction_message,
     evidence_messages,
     feedback_messages,
     scoring_messages,
+    task2_feedback_correction,
 )
+from app.domains.scoring.task2_feedback import render_task2_feedback, validate_task2_feedback
 from app.domains.scoring.writing import WritingScoringRequest, WritingScoringResult
 from app.providers.writing_llm.base import (
     CompletionOptions,
@@ -49,6 +51,7 @@ from app.schemas.writing_ai import (
     RawCriterionFeedbackOutput,
     RawScoringOutput,
     ScoringOutput,
+    Task2FeedbackDraft,
     Trait,
 )
 from app.services.writing_execution import (
@@ -212,7 +215,16 @@ class MTSWritingScoringService:
                 with self.latency.attempt(stage, trait, repair + 1) as timing:
                     try:
                         completion = await self.provider.complete(
-                            messages + ([correction_message(reason, stage)] if repair else []),
+                            messages
+                            + (
+                                [
+                                    task2_feedback_correction(reason, trait)
+                                    if schema is Task2FeedbackDraft
+                                    else correction_message(reason, stage)
+                                ]
+                                if repair
+                                else []
+                            ),
                             # Provider display limits remain independent of semantic validation.
                             (
                                 ScoringOutput
@@ -250,6 +262,8 @@ class MTSWritingScoringService:
                 result = schema.model_validate_json(completion.text)
                 if isinstance(result, EvidenceSelection):
                     resolve_evidence(result, sources)
+                if isinstance(result, Task2FeedbackDraft):
+                    result = validate_task2_feedback(result, sources, trait, state.band_score.score)
                 if isinstance(result, RawCriterionFeedbackOutput):
                     result, issues = normalize_criterion_feedback(result, state.band_score.score)
                     if issues:
@@ -355,7 +369,7 @@ class MTSWritingScoringService:
     ) -> AIWritingResult | None:
         self._start_assessment()
         trace = self.protected_trace(trace)
-        segments = segment_essay(request.response)
+        segments = request_sources(request)
 
         async def run(trait):
             if trait == "ta" and await self._relevance_gate(request, None, trace):
@@ -368,6 +382,7 @@ class MTSWritingScoringService:
                 lambda evidence: scoring_messages(
                     request.prompt, request.response, trait, evidence, segments
                 ),
+                assessor=self._assess_task2_criterion,
             )
 
         await gather_isolated(*(run(trait) for trait in TRAITS))
@@ -416,12 +431,20 @@ class MTSWritingScoringService:
         return True
 
     async def _run_criterion(
-        self, request, trait, trace, evidence_prompt, score_prompt, feedback_prompt=None
+        self,
+        request,
+        trait,
+        trace,
+        evidence_prompt,
+        score_prompt,
+        feedback_prompt=None,
+        *,
+        assessor=None,
     ):
         state = self.states[trait]
         await trace("criterion.started", EventPayload(criterion=trait))
         try:
-            state.result = await self.assess_criterion(
+            state.result = await (assessor or self.assess_criterion)(
                 request,
                 trait,
                 trace,
@@ -446,6 +469,90 @@ class MTSWritingScoringService:
         self.latency.completed_criterion()
         await trace("criterion.completed", EventPayload(criterion=trait, result=state.result))
         return state.result
+
+    async def _assess_task2_criterion(
+        self, request, trait, trace, evidence_prompt, score_prompt, _feedback_prompt=None
+    ) -> CriterionResult:
+        segments = request_sources(request)
+        sources = {segment.source_id: segment for segment in segments}
+        buffered_events = []
+
+        async def buffer(event, payload):
+            buffered_events.append((event, payload))
+
+        async def flush():
+            for event, payload in buffered_events:
+                await trace(event, payload)
+            buffered_events.clear()
+
+        # Infer strictly from question + full essay + descriptors BEFORE any
+        # generated assessment. Preserve the public evidence/scoring SSE order.
+        try:
+            self.states[trait].stage = "scoring"
+            score = await self._validated(
+                score_prompt(EvidenceResult(evidence=[])),
+                CriterionBandScore,
+                sources,
+                trait,
+                "score",
+                buffer,
+            )
+            self.states[trait].band_score = score
+            selection = await self._validated(
+                evidence_prompt, EvidenceSelection, sources, trait, "evidence", trace
+            )
+            evidence = resolve_evidence(selection, sources)
+            for item in evidence.evidence:
+                # Selector prose is unverified, never scoring input or public
+                # feedback. Only backend-resolved source locations are shown.
+                item.assessment = (
+                    f"Trích dẫn từ đoạn {sources[item.source_id].paragraph_index} của bài viết."
+                )
+            await trace(
+                "criterion.evidence.completed",
+                EventPayload(criterion=trait, evidence=evidence.evidence),
+            )
+        except Exception:
+            await flush()
+            raise
+        await flush()
+        try:
+            candidate = await self._validated(
+                feedback_messages(
+                    request.prompt, request.response, trait, evidence, score.score, segments
+                ),
+                Task2FeedbackDraft,
+                sources,
+                trait,
+                "feedback",
+                trace,
+            )
+            display, evidence = render_task2_feedback(candidate, sources)
+        except ProviderFailure as exc:
+            recoverable = FEEDBACK_RECOVERABLE_REASONS | {
+                "EVIDENCE_UNKNOWN_SOURCE_ID",
+                "QUOTE_NOT_EXACT",
+            }
+            if (
+                exc.code not in {"INVALID_PROVIDER_OUTPUT", "AI_PROVIDER_BAD_RESPONSE"}
+                or exc.reason not in recoverable
+            ):
+                raise
+            self.states[trait].diagnostics.append(
+                OutputDiagnostic(
+                    stage="feedback", criterion=trait, reason="FEEDBACK_FALLBACK_USED", attempt=2
+                )
+            )
+            logger.warning(
+                "AI feedback fallback: stage=feedback criterion=%s reason=FEEDBACK_FALLBACK_USED",
+                trait,
+            )
+            display = CriterionFeedbackOutput(
+                feedback=FEEDBACK_FALLBACK, strengths=[], improvements=[]
+            )
+        return CriterionResult(
+            score=score.score, **display.model_dump(), evidence=evidence.evidence
+        )
 
     async def assess_criterion(
         self,

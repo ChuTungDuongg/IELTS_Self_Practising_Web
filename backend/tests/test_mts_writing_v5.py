@@ -27,6 +27,16 @@ FEEDBACK = {
     "strengths": CORE["strengths"],
     "improvements": CORE["improvements"],
 }
+OBSERVATIONS = {
+    "observations": [
+        {
+            "source_id": "P1S2",
+            "kind": "STRENGTH",
+            "observation": "Diễn đạt rõ ý chính.",
+            "confidence": "HIGH",
+        }
+    ]
+}
 VERBOSE = (
     "Bài viết sử dụng từ vựng phù hợp để trình bày quan điểm về công viên; "
     "tuy nhiên, một số cách kết hợp từ còn thiếu tự nhiên và làm giảm độ chính xác. "
@@ -62,8 +72,8 @@ class Provider:
         elif properties == {"score"}:
             output = self.lr_score if lr else SCORE
         else:
-            assert properties == {"feedback", "strengths", "improvements"}
-            output = self.lr_feedback if lr else FEEDBACK
+            assert properties == {"observations"}
+            output = self.lr_feedback if lr else OBSERVATIONS
         return (
             output
             if isinstance(output, Completion)
@@ -91,28 +101,27 @@ async def assess(output, score=None):
     return result, provider, service, events
 
 
-@pytest.mark.parametrize(
-    "change,path,error_type",
-    [
-        ({"feedback": VERBOSE}, "feedback", "string_too_long"),
-        ({"strengths": ["Một điểm mạnh.", VERBOSE]}, "strengths.1", "string_too_long"),
-        ({"improvements": [VERBOSE]}, "improvements.0", "string_too_long"),
-        ({"strengths": ["Điểm mạnh."] * 4}, "strengths", "too_long"),
-        ({"improvements": ["Cần cải thiện."] * 4}, "improvements", "too_long"),
-        ({"strengths": ["  ", "Điểm mạnh."]}, "strengths.0", "string_too_short"),
-    ],
-)
-async def test_verbose_lr_completes_without_repair_and_retains_safe_normalization_diagnostics(
-    change, path, error_type, caplog
-):
+async def test_bounded_lr_observations_build_concise_vietnamese_display_without_repair(caplog):
     caplog.set_level("INFO", logger="app.services.mts_writing")
-    result, provider, service, events = await assess({**FEEDBACK, **change})
+    observations = [
+        {
+            "source_id": "P1S2",
+            "kind": kind,
+            "confidence": "HIGH",
+            "observation": VERBOSE[:237] + f"{index}.",
+        }
+        for index, kind in enumerate(["STRENGTH"] * 3 + ["LIMITATION"] * 3)
+    ]
+    result, provider, service, events = await assess({"observations": observations})
     assert result is not None and result.criteria.lr.score == Decimal("6.5")
     assert result.overall_band == Decimal("6.5") and len(provider.calls) == 12
     lr = result.criteria.lr
     assert len(lr.feedback) <= 800
     assert len(lr.strengths) <= 3 and all(0 < len(s) <= 240 for s in lr.strengths)
     assert len(lr.improvements) <= 3 and all(0 < len(s) <= 240 for s in lr.improvements)
+    assert len(lr.strengths) == len(lr.improvements) == 3
+    assert lr.feedback.endswith("…") and lr.feedback.startswith(VERBOSE[:50])
+    assert all(item.startswith("Đoạn 1: ") for item in lr.strengths + lr.improvements)
     assert lr.evidence[0].quote == "They  support communities."
     assert [p.criterion for e, p in events if e == "criterion.completed"] == [
         "ta",
@@ -121,34 +130,34 @@ async def test_verbose_lr_completes_without_repair_and_retains_safe_normalizatio
         "gra",
     ]
     assert not any(e in {"criterion.retrying", "criterion.failed"} for e, _ in events)
-    assert service.diagnostics[0].stage == "feedback"
-    assert service.diagnostics[0].criterion == "lr"
-    assert service.diagnostics[0].reason == "FEEDBACK_PRESENTATION_NORMALIZED"
-    assert (path, error_type) in [
-        (i.field, i.validation_type) for i in service.diagnostics[0].validation_issues
-    ]
+    assert not service.diagnostics
     assert "AI validation failure" not in caplog.text
     assert VERBOSE not in caplog.text + str(service.diagnostics)
     assert "FEEDBACK_PRESENTATION_NORMALIZED" not in str(events)
 
 
 @pytest.mark.parametrize(
-    "change",
+    "bad",
     [
-        {"feedback": "  \n\t"},
-        {"feedback": 42},
-        {"strengths": "invalid"},
-        {"improvements": {}},
-        {"strengths": [42]},
-        {"improvements": [None]},
-        {"unknown": "private"},
-        {"score": 6.3},
-        {"score": 10},
-        {"feedback": "Bài viết phù hợp Band 5."},
+        {"observations": [{**OBSERVATIONS["observations"][0], "observation": "  \n\t"}]},
+        {"observations": [{**OBSERVATIONS["observations"][0], "observation": 42}]},
+        {"observations": "invalid"},
+        {"observations": {}},
+        {"observations": [42]},
+        {"observations": [None]},
+        {**OBSERVATIONS, "unknown": "private"},
+        {**OBSERVATIONS, "score": 6.3},
+        {**OBSERVATIONS, "score": 10},
+        {
+            "observations": [
+                {**OBSERVATIONS["observations"][0], "observation": "Bài viết phù hợp Band 5."}
+            ]
+        },
+        {"observations": [{**OBSERVATIONS["observations"][0], "observation": VERBOSE}]},
     ],
 )
-async def test_invalid_lr_feedback_repairs_once_preserves_fixed_score_and_runs_gra(change):
-    result, provider, service, events = await assess({**FEEDBACK, **change})
+async def test_invalid_lr_feedback_repairs_once_preserves_fixed_score_and_runs_gra(bad):
+    result, provider, service, events = await assess(bad)
     assert result is not None and not service.failures
     assert result.criteria.lr.score == Decimal("6.5")
     assert result.overall_band == Decimal("6.5")
@@ -168,9 +177,9 @@ async def test_invalid_lr_feedback_repairs_once_preserves_fixed_score_and_runs_g
     "score", [{"score": 6.3}, {"score": 10}, {}, {**SCORE, "feedback": VERBOSE}]
 )
 async def test_invalid_lr_score_still_repairs_once_fails_and_runs_gra(score):
-    result, provider, service, events = await assess(FEEDBACK, score)
+    result, provider, service, events = await assess(OBSERVATIONS, score)
     assert result is None and set(service.failures) == {"lr"}
-    assert len(provider.calls) == 12
+    assert len(provider.calls) == 11
     assert sum(e == "criterion.retrying" for e, _ in events) == 1
     assert any(e == "criterion.failed" and p.criterion == "lr" for e, p in events)
     assert any(e == "criterion.completed" and p.criterion == "gra" for e, p in events)
@@ -178,7 +187,7 @@ async def test_invalid_lr_score_still_repairs_once_fails_and_runs_gra(score):
     lr_calls = [
         (m, s) for m, s in provider.calls if "Criterion: Lexical Resource." in m[0]["content"]
     ]
-    assert [set(s["properties"]) for _, s in lr_calls] == [{"evidence"}, {"score"}, {"score"}]
+    assert [set(s["properties"]) for _, s in lr_calls] == [{"score"}, {"score"}]
 
 
 @pytest.mark.parametrize(
@@ -202,6 +211,10 @@ def test_historical_raw_scoring_display_normalization_preserves_accepted_score(
     assert len(result.strengths) <= 3 and all(0 < len(s) <= 240 for s in result.strengths)
     assert len(result.improvements) <= 3 and all(0 < len(s) <= 240 for s in result.improvements)
     assert (path, error_type) in [(i.field, i.validation_type) for i in issues]
+    raw_feedback = RawCriterionFeedbackOutput.model_validate({**FEEDBACK, **change})
+    feedback, feedback_issues = normalize_criterion_feedback(raw_feedback, Decimal("6.5"))
+    assert feedback.model_dump() == result.model_dump(exclude={"score"})
+    assert (path, error_type) in [(i.field, i.validation_type) for i in feedback_issues]
 
 
 def test_raw_feedback_normalization_preserves_vietnamese_and_internal_whitespace():

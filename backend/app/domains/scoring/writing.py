@@ -2,8 +2,9 @@ from decimal import Decimal
 from typing import Any, Protocol
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
+from app.domains.scoring.essay_sources import ParagraphMode
 from app.domains.scoring.ielts_band import round_to_half
 
 WRITING_CRITERION_MIN = Decimal("0.0")
@@ -45,6 +46,9 @@ class WritingScoringRequest(BaseModel):
     writing_task_id: UUID
     prompt: str
     response: str
+    # Input provenance controls paragraph identity internally; durable DTOs and
+    # provider payloads continue to carry the original saved response verbatim.
+    paragraph_mode: ParagraphMode = Field(default="blank_lines", exclude=True, repr=False)
 
 
 class WritingScoringResult(BaseModel):

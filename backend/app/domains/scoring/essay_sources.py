@@ -1,16 +1,27 @@
 """Deterministic essay anchors. Offsets are original Python character indices.
 
-Blank lines separate paragraphs; a single line break may wrap a sentence. IDs
-number non-empty paragraphs/sentences in source order. Abbreviations are handled
-conservatively: merging an ambiguous boundary is safer than inventing a slice.
-No Unicode, punctuation, spelling or internal whitespace is rewritten.
+By default, blank lines separate paragraphs and one line break may wrap a
+sentence. Textarea mode treats each explicit line break as a paragraph boundary;
+visual soft wrapping adds no break to saved content. IDs number non-empty
+paragraphs/sentences in source order. Abbreviations are handled conservatively:
+merging an ambiguous boundary is safer than inventing a slice. No Unicode,
+punctuation, spelling or internal whitespace is rewritten.
 """
+
+from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from typing import TYPE_CHECKING, Literal
+
+if TYPE_CHECKING:
+    from app.domains.scoring.writing import WritingScoringRequest
+
+type ParagraphMode = Literal["blank_lines", "textarea"]
 
 _NEWLINE = r"(?:\r\n|(?<!\r)\n|\r(?!\n))"
 _PARAGRAPH_BREAK = re.compile(rf"{_NEWLINE}[ \t]*(?:{_NEWLINE}[ \t]*)+")
+_TEXTAREA_PARAGRAPH_BREAK = re.compile(rf"{_NEWLINE}[ \t]*")
 _ABBREVIATIONS = {
     "mr",
     "mrs",
@@ -64,11 +75,19 @@ def _period_is_internal(essay: str, index: int, paragraph_start: int) -> bool:
     return False
 
 
-def segment_essay(essay: str) -> list[SourceSegment]:
+def segment_essay(
+    essay: str, *, paragraph_mode: ParagraphMode = "blank_lines"
+) -> list[SourceSegment]:
+    if paragraph_mode == "blank_lines":
+        paragraph_break = _PARAGRAPH_BREAK
+    elif paragraph_mode == "textarea":
+        paragraph_break = _TEXTAREA_PARAGRAPH_BREAK
+    else:
+        raise ValueError("Unsupported essay paragraph mode")
     segments: list[SourceSegment] = []
     paragraph_start = 0
     paragraph_index = 0
-    boundaries = [match.span() for match in _PARAGRAPH_BREAK.finditer(essay)] + [
+    boundaries = [match.span() for match in paragraph_break.finditer(essay)] + [
         (len(essay), len(essay))
     ]
     for paragraph_end, next_start in boundaries:
@@ -124,3 +143,8 @@ def segment_essay(essay: str) -> list[SourceSegment]:
                 )
             )
     return segments
+
+
+def request_sources(request: WritingScoringRequest) -> list[SourceSegment]:
+    """Use the request's input provenance consistently at every scoring stage."""
+    return segment_essay(request.response, paragraph_mode=request.paragraph_mode)

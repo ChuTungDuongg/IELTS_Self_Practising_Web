@@ -15,6 +15,7 @@ from app.domains.scoring.mts_prompts import (
     LOW_BANDS,
     RUBRICS,
     SCOPES,
+    TASK2_DESCRIPTOR_FIT_GUIDANCE,
     TRAIT_NAMES,
     evidence_messages,
     scoring_messages,
@@ -28,7 +29,7 @@ from app.domains.scoring.task1_prompts import (
 from app.domains.scoring.writing import WritingScoringRequest
 from app.providers.writing_llm.base import Completion
 from app.schemas.task1_claims import Task1Analysis
-from app.schemas.writing_ai import TRAITS, EvidenceResult
+from app.schemas.writing_ai import TRAITS, Evidence, EvidenceResult
 from app.services.mts_writing import MTSWritingScoringService
 from app.services.task1_writing import Task1WritingScoringService
 
@@ -79,7 +80,11 @@ def test_all_descriptor_anchors_and_symmetric_half_band_rule_remain(task, trait)
     assert profiles in system
     assert all(f"{band}:" in profiles for band in range(1, 10))
     assert "official IELTS" in system and "May 2023" in system
-    assert system.count(DESCRIPTOR_FIT_GUIDANCE) == 1
+    guidance = DESCRIPTOR_FIT_GUIDANCE if task == 1 else TASK2_DESCRIPTOR_FIT_GUIDANCE
+    assert system.count(guidance) == 1
+    if task == 2:
+        assert "generated assessments do not participate in score inference" in system
+        assert "Use retrieved evidence as representative support" not in system
     assert "Half-bands are interpolation between adjacent official whole-band descriptors" in system
     assert "when performance naturally falls between those profiles" in system
     assert "Do not favor the higher or lower band by default" in system
@@ -164,6 +169,29 @@ def test_scoring_schema_exposes_only_core_output_and_no_extra_justification(task
     assert schema["properties"]["score"]["type"] == "number"
 
 
+@pytest.mark.parametrize("trait", TRAITS)
+def test_task2_score_prompt_is_independent_of_generated_evidence(trait):
+    req = request_for(2, PROFILES[1])
+    empty = EvidenceResult(evidence=[])
+    unrelated = EvidenceResult(
+        evidence=[
+            Evidence(
+                source_id="P1S1",
+                quote="Fictional unrelated generated quote.",
+                assessment="Nội dung do lượt lấy dẫn chứng tạo ra, không được ảnh hưởng điểm.",
+            )
+        ]
+    )
+    without_evidence = scoring_messages(req.prompt, req.response, trait, empty)
+    assert scoring_messages(req.prompt, req.response, trait, unrelated) == without_evidence
+    payload = json.loads(without_evidence[1]["content"])
+    assert "evidence" not in payload
+    assert payload["question"] == req.prompt
+    assert payload["segmented_essay"] == "\n".join(
+        f"[{source.source_id}] {source.text}" for source in segment_essay(req.response)
+    )
+
+
 def test_grounded_ta_inputs_support_understanding_without_count_to_band_mapping():
     for stage in ("evidence", "scoring"):
         system = messages_for(1, "ta", stage)[0]["content"].lower()
@@ -186,7 +214,7 @@ class ProfileProvider(Task1FakeProvider):
 
     async def complete(self, messages, schema, *, options=None):
         properties = schema["properties"]
-        if not {"evidence", "score", "feedback"} & properties.keys():
+        if not {"evidence", "score", "feedback", "observations"} & properties.keys():
             return await super().complete(messages, schema, options=options)
         self.calls.append(messages)
         names = TASK1_TRAIT_NAMES if self.task == 1 else TRAIT_NAMES
@@ -206,6 +234,23 @@ class ProfileProvider(Task1FakeProvider):
                 "evidence": [
                     {"source_id": source_id, "assessment": summary}
                     for source_id in payload["allowed_ids"][: self.evidence_count]
+                ]
+            }
+        elif stage == "feedback" and self.task == 2:
+            sources = segment_essay(self.profile["task2"]["response"])
+            output = {
+                "observations": [
+                    {
+                        "source_id": source.source_id,
+                        "kind": "LIMITATION"
+                        if self.profile["id"] in {"weak", "mid"}
+                        else "STRENGTH",
+                        "observation": summary,
+                        "original_span": None,
+                        "suggested_revision": None,
+                        "confidence": "HIGH",
+                    }
+                    for source in sources[: self.evidence_count]
                 ]
             }
         else:
@@ -236,16 +281,18 @@ async def assess_profile(task, profile, **provider_options):
 
 @pytest.mark.parametrize("task", [1, 2])
 @pytest.mark.parametrize("profile", PROFILES, ids=lambda p: p["id"])
-async def test_profiles_preserve_independent_core_scores_and_evidence_first_flow(task, profile):
+async def test_profiles_preserve_independent_scores_and_task_specific_inference_order(
+    task, profile
+):
     result, service, provider, events, req = await assess_profile(task, profile)
     assert result is not None and not service.failures and not service.diagnostics
     assert len(provider.calls) == (15 if task == 1 else 13)
     for trait in TRAITS:
-        assert [stage for t, stage, *_ in provider.mts_calls if t == trait] == [
-            "evidence",
-            "scoring",
-            "feedback",
-        ]
+        assert [stage for t, stage, *_ in provider.mts_calls if t == trait] == (
+            ["evidence", "scoring", "feedback"]
+            if task == 1
+            else ["scoring", "evidence", "feedback"]
+        )
     assert list(result.criteria.model_dump()) == list(TRAITS)
     assert set(
         payload.criterion for event, payload in events if event == "criterion.completed"
@@ -254,7 +301,9 @@ async def test_profiles_preserve_independent_core_scores_and_evidence_first_flow
     for trait in TRAITS:
         criterion = getattr(result.criteria, trait)
         assert criterion.score == Decimal(str(profile["mock_scores"][trait]))
-        assert "Bài viết phù hợp khoảng Band" in criterion.feedback
+        assert criterion.feedback.strip()
+        if task == 1:
+            assert "Bài viết phù hợp khoảng Band" in criterion.feedback
         assert len(criterion.evidence) == profile["evidence_count"]
         assert [item.quote for item in criterion.evidence] == [
             source.text for source in sources[: profile["evidence_count"]]
@@ -274,10 +323,14 @@ async def test_profiles_preserve_independent_core_scores_and_evidence_first_flow
             assert len(messages) == 2  # No other criterion's interaction or scores.
             assert options.max_tokens == 128
             assert set(schema["properties"]) == {"score"}
+            if task == 2:
+                assert "evidence" not in payload
         elif stage == "feedback":
             assert payload["fixed_score"] == profile["mock_scores"][trait]
             assert options.max_tokens == 1200
-            assert set(schema["properties"]) == {"feedback", "strengths", "improvements"}
+            assert set(schema["properties"]) == (
+                {"feedback", "strengths", "improvements"} if task == 1 else {"observations"}
+            )
         else:
             assert options.max_tokens == 1800
     assert result.raw_mean == sum(

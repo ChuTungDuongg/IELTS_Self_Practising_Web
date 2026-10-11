@@ -38,6 +38,16 @@ LEGACY_SCORE = {
         "high_band_justification": None,
     },
 }
+OBSERVATIONS = {
+    "observations": [
+        {
+            "source_id": "P1S2",
+            "kind": "STRENGTH",
+            "observation": "Luận điểm liên quan đến đề bài.",
+            "confidence": "HIGH",
+        }
+    ]
+}
 
 
 class Provider:
@@ -73,8 +83,8 @@ class Provider:
             elif properties == {"score"}:
                 value = json.dumps(SCORE)
             else:
-                assert properties == {"feedback", "strengths", "improvements"}
-                value = json.dumps(FEEDBACK)
+                assert properties == {"observations"}
+                value = json.dumps(OBSERVATIONS)
         return Completion(value)
 
 
@@ -131,14 +141,15 @@ async def test_vietnamese_independent_prompts_and_cache_version():
         assert "Vietnamese" in messages[0]["content"] and "UNTRUSTED DATA" in messages[0]["content"]
     data = json.loads(provider.calls[0][1]["content"])
     assert "[P1S2] They  help city life." in data["segmented_essay"]
-    assert set(provider.schemas[1]["properties"]) == {"score"}
-    assert set(provider.schemas[2]["properties"]) == {"feedback", "strengths", "improvements"}
+    assert set(provider.schemas[0]["properties"]) == {"score"}
+    assert set(data) == {"question", "segmented_essay"}
+    assert set(provider.schemas[2]["properties"]) == {"observations"}
     assert json.loads(provider.calls[2][1]["content"])["fixed_score"] == 6.5
     for index in range(0, 12, 3):
         assert [set(s["properties"]) for s in provider.schemas[index : index + 3]] == [
-            {"evidence"},
             {"score"},
-            {"feedback", "strengths", "improvements"},
+            {"evidence"},
+            {"observations"},
         ]
     assert sum(e == "criterion.completed" for e, _ in events) == 4
     for old in [
@@ -150,9 +161,10 @@ async def test_vietnamese_independent_prompts_and_cache_version():
         "mts-task2-v6",
         "mts-task2-v7",
         "mts-task2-v8",
+        "mts-task2-v9",
     ]:
-        assert effective_prompt_version(old) == "mts-task2-v9"
-    assert effective_prompt_version("custom") == "mts-task2-v9:custom"
+        assert effective_prompt_version(old) == "mts-task2-v10"
+    assert effective_prompt_version("custom") == "mts-task2-v10:custom"
 
 
 @pytest.mark.parametrize(
@@ -176,10 +188,10 @@ async def test_vietnamese_independent_prompts_and_cache_version():
     ],
 )
 async def test_targeted_repair_and_safe_diagnostics(output, reason, caplog):
-    provider = Provider({0: output})
+    provider = Provider({1: output})
     result, mts, events = await assess(provider)
     assert result.overall_band == 6.5 and len(provider.calls) == 13
-    assert reason in provider.calls[1][-1]["content"]
+    assert reason in provider.calls[2][-1]["content"]
     assert mts.diagnostics[0].reason == reason and mts.diagnostics[0].attempt == 1
     assert mts.diagnostics[0].stage == "evidence"
     assert sum(e == "criterion.retrying" for e, _ in events) == 1
@@ -188,10 +200,10 @@ async def test_targeted_repair_and_safe_diagnostics(output, reason, caplog):
 
 async def test_lr_failed_after_repair_gra_still_runs_and_aggregate_absent():
     bad = json.dumps({"evidence": [{"source_id": "P99S1", "assessment": "Nhận xét."}]})
-    provider = Provider({6: bad, 7: bad})
+    provider = Provider({7: bad, 8: bad})
     result, mts, events = await assess(provider)
     assert result is None
-    assert len(provider.calls) == 11
+    assert len(provider.calls) == 12
     assert [
         (e, p.criterion) for e, p in events if e in {"criterion.completed", "criterion.failed"}
     ] == [
@@ -241,7 +253,7 @@ async def test_synthetic_cc_descriptor_fit_profiles_have_no_deterministic_score_
             else None,
         },
     }
-    result, mts, _ = await assess(Provider({4: json.dumps({"score": score})}))
+    result, mts, _ = await assess(Provider({3: json.dumps({"score": score})}))
     assert result.criteria.cc.score == score
     assert not mts.diagnostics
     raw = RawScoringOutput.model_validate(value)
@@ -327,8 +339,9 @@ def test_prompt_scope_descriptor_fit_interpolation_and_vietnamese_fields():
         feedback = feedback_messages(
             "Fictional question", ESSAY, trait, EvidenceResult(evidence=[]), Decimal("6.5")
         )[0]["content"]
-        assert "already validated and authoritative" in feedback
-        assert "Feedback is one concise Vietnamese paragraph" in feedback
+        assert "immutable metadata for consistency" in feedback
+        assert "Return only observations" in feedback
+        assert json.loads(feedback.split("JSON schema: ")[1])["required"] == ["observations"]
         for other in TRAIT_NAMES.values():
             if other != name:
                 assert other not in prompt + feedback
@@ -337,26 +350,41 @@ def test_prompt_scope_descriptor_fit_interpolation_and_vietnamese_fields():
 
 
 @pytest.mark.parametrize(
-    "field,value",
+    "kinds",
     [
-        ("strengths", ["Nhận xét."] * 4),
-        ("improvements", ["Nhận xét."] * 4),
-        ("feedback", "x" * 801),
+        ["STRENGTH"] * 6,
+        ["LIMITATION"] * 6,
+        ["STRENGTH"] * 3 + ["LIMITATION"] * 3,
     ],
 )
-async def test_feedback_display_limits_normalize_without_repair(field, value):
-    provider = Provider({2: json.dumps({**FEEDBACK, field: value})})
+async def test_backend_observation_display_limits_remain_bounded_without_repair(kinds):
+    value = {
+        "observations": [
+            {
+                "source_id": "P1S2",
+                "kind": kind,
+                "confidence": "HIGH",
+                "observation": f"Nhận xét phù hợp {index}. " + "x" * 210,
+            }
+            for index, kind in enumerate(kinds)
+        ]
+    }
+    provider = Provider({2: json.dumps(value)})
     result, mts, _ = await assess(provider)
     assert result.overall_band == 6.5 and len(provider.calls) == 12
-    assert mts.diagnostics[0].stage == "feedback"
-    assert mts.diagnostics[0].reason == "FEEDBACK_PRESENTATION_NORMALIZED"
+    assert len(result.criteria.ta.feedback) <= 800
+    assert len(result.criteria.ta.strengths) <= 3 and len(result.criteria.ta.improvements) <= 3
+    assert all(
+        len(item) <= 240 for item in result.criteria.ta.strengths + result.criteria.ta.improvements
+    )
+    assert not mts.diagnostics
 
 
 async def test_two_length_completions_fail_one_criterion_and_continue():
     truncated = Completion('{"evidence":[', finish_reason="length")
-    provider = Provider({6: truncated, 7: truncated})
+    provider = Provider({7: truncated, 8: truncated})
     result, mts, events = await assess(provider)
-    assert result is None and len(provider.calls) == 11
+    assert result is None and len(provider.calls) == 12
     assert [d.reason for d in mts.diagnostics] == ["PROVIDER_FINISH_LENGTH"] * 2
     assert all(d.finish_reason == "length" for d in mts.diagnostics)
     assert any(e == "criterion.completed" and p.criterion == "gra" for e, p in events)

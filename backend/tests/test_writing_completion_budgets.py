@@ -23,6 +23,18 @@ FEEDBACK = {
     "strengths": ["Lập trường rõ ràng."],
     "improvements": ["Phát triển ví dụ cụ thể."],
 }
+TASK2_FEEDBACK = {
+    "observations": [
+        {
+            "source_id": "P1S1",
+            "kind": "STRENGTH",
+            "observation": "Câu này trình bày rõ lợi ích của công viên đối với đời sống đô thị.",
+            "original_span": None,
+            "suggested_revision": None,
+            "confidence": "HIGH",
+        }
+    ]
+}
 EVIDENCE = {"evidence": [{"source_id": "P1S1", "assessment": "Dẫn chứng liên quan."}]}
 RELEVANCE = {
     "verdict": "ON_TOPIC",
@@ -33,7 +45,7 @@ RELEVANCE = {
 ESSAY = "Fictional parks improve city life. They support communities."
 STAGE_BUDGETS = {"evidence": 1800, "score": 128, "feedback": 1200}
 REPAIR_BUDGETS = {"evidence": 2056, "score": 256, "feedback": 1400}
-STAGE_OUTPUTS = {"evidence": EVIDENCE, "score": SCORE, "feedback": FEEDBACK}
+STAGE_OUTPUTS = {"evidence": EVIDENCE, "score": SCORE, "feedback": TASK2_FEEDBACK}
 
 
 def completion_stage(schema):
@@ -98,13 +110,13 @@ def public_retry_stages(events):
     return [payload.stage for event, payload in events if event == "criterion.retrying"]
 
 
-async def test_task2_success_runs_evidence_score_then_feedback_once_per_criterion():
+async def test_task2_success_runs_score_evidence_then_feedback_once_per_criterion():
     provider = BudgetProvider()
     result, service, events = await assess(provider)
     assert result.overall_band == Decimal("6.5") and result.raw_mean == Decimal("6.5")
     assert result.criteria.ta.evidence[0].quote == "Fictional parks improve city life."
     assert len(provider.calls) == 12
-    assert [budget(call) for call in provider.calls] == [1800, 128, 1200] * 4
+    assert [budget(call) for call in provider.calls] == [128, 1800, 1200] * 4
     assert all(len(stage_calls(provider, stage)) == 4 for stage in STAGE_BUDGETS)
     assert not service.diagnostics and not service.failures and not public_retry_stages(events)
     assert "reasoning" not in result.model_dump_json()
@@ -119,23 +131,32 @@ async def test_task2_success_runs_evidence_score_then_feedback_once_per_criterio
 async def test_score_and_feedback_have_separate_schema_and_authoritative_prompt_context():
     provider = BudgetProvider()
     await assess(provider)
-    for stage, expected in (("score", {"score"}), ("feedback", set(FEEDBACK))):
+    for stage, expected in (("score", {"score"}), ("feedback", {"observations"})):
         for messages, schema, _options in stage_calls(provider, stage):
             assert set(schema["properties"]) == set(schema["required"]) == expected
             assert schema["additionalProperties"] is False
             prompt_schema = json.loads(messages[0]["content"].split("JSON schema: ", 1)[1])
             assert set(prompt_schema["properties"]) == expected
             payload = json.loads(messages[1]["content"])
-            assert payload["evidence"] == [
-                {"source_id": "P1S1", "assessment": "Dẫn chứng liên quan."}
-            ]
-            assert "quote" not in payload["evidence"][0]
             if stage == "feedback":
                 assert payload["fixed_score"] == 6.5
-                assert schema["properties"]["strengths"]["maxItems"] == 3
-                assert schema["properties"]["improvements"]["maxItems"] == 3
+                item_ref = schema["properties"]["observations"]["items"]["$ref"]
+                item_schema = schema["$defs"][item_ref.rsplit("/", 1)[1]]
+                assert set(item_schema["properties"]) == {
+                    "source_id",
+                    "kind",
+                    "observation",
+                    "original_span",
+                    "suggested_revision",
+                    "confidence",
+                }
+                assert item_schema["additionalProperties"] is False
             else:
-                assert "fixed_score" not in payload
+                assert "evidence" not in payload and "fixed_score" not in payload
+                assert (
+                    payload["segmented_essay"]
+                    == "[P1S1] Fictional parks improve city life.\n[P1S2] They support communities."
+                )
 
 
 def wire_schema(body, provider):
@@ -262,7 +283,7 @@ async def test_production_wire_contract_has_tiny_score_and_separate_feedback(
             schema = wire_schema(body, provider)
             stage = completion_stage(schema)
             output = STAGE_OUTPUTS[stage]
-            expected = {stage} if stage in {"evidence", "score"} else set(FEEDBACK)
+            expected = {stage} if stage in {"evidence", "score"} else {"observations"}
             assert set(schema["properties"]) == set(schema["required"]) == expected
             assert schema["additionalProperties"] is False
             assert body[parameter] == STAGE_BUDGETS[stage]
@@ -283,7 +304,7 @@ async def test_production_wire_contract_has_tiny_score_and_separate_feedback(
 
     result, service, _events = await assess(install_adapter(monkeypatch, handler, provider))
     assert result.overall_band == Decimal("6.5") and not service.diagnostics
-    assert [body[parameter] for body in bodies] == [768] + [1800, 128, 1200] * 4
+    assert [body[parameter] for body in bodies] == [768] + [128, 1800, 1200] * 4
     assert "private ignored reasoning" not in result.model_dump_json()
     other = "max_completion_tokens" if parameter == "max_tokens" else "max_tokens"
     assert all(
@@ -388,7 +409,7 @@ async def test_unknown_evidence_source_repair_keeps_evidence_budget():
     )
     result, service, _events = await assess(provider)
     assert result.criteria.ta.score == Decimal("6.5")
-    assert [budget(call) for call in provider.calls[:4]] == [1800, 1800, 128, 1200]
+    assert [budget(call) for call in provider.calls[:4]] == [128, 1800, 1800, 1200]
     assert service.diagnostics[0].reason == "EVIDENCE_UNKNOWN_SOURCE_ID"
 
 
@@ -406,7 +427,8 @@ async def test_second_score_failure_stops_after_two_inferences_and_continues_oth
     result, service, events = await assess(provider)
     assert result is None and set(service.failures) == {"ta"}
     assert service.failures["ta"].stage == "scoring"
-    assert len(provider.calls) == 12 and len(stage_calls(provider, "feedback")) == 3
+    assert len(provider.calls) == 11 and len(stage_calls(provider, "feedback")) == 3
+    assert len(stage_calls(provider, "evidence")) == 3
     assert [budget(call) for call in stage_calls(provider, "score")] == [
         128,
         256 if reason == "PROVIDER_FINISH_LENGTH" else 128,
@@ -429,9 +451,9 @@ async def test_second_score_failure_stops_after_two_inferences_and_continues_oth
 @pytest.mark.parametrize(
     "invalid,reason",
     [
-        (Completion(json.dumps(FEEDBACK), finish_reason="length"), "PROVIDER_FINISH_LENGTH"),
+        (Completion(json.dumps(TASK2_FEEDBACK), finish_reason="length"), "PROVIDER_FINISH_LENGTH"),
         ({**FEEDBACK, "score": 9}, "FEEDBACK_SCHEMA_INVALID"),
-        ({**FEEDBACK, "feedback": "Bài viết phù hợp Band 9."}, "FEEDBACK_SCORE_MISMATCH"),
+        ({**FEEDBACK, "feedback": "Bài viết phù hợp Band 9."}, "FEEDBACK_SCHEMA_INVALID"),
     ],
 )
 async def test_second_recoverable_feedback_failure_keeps_score_with_visible_fallback(
@@ -541,6 +563,13 @@ async def test_task1_all_traits_use_same_tiny_score_cap_and_separate_feedback():
         if stage in {"score", "feedback"}:
             expected = {"score"} if stage == "score" else set(FEEDBACK)
             assert all(set(call[1]["properties"]) == expected for call in calls)
+    criterion_stages = {}
+    for messages, schema, _options in provider.budget_calls:
+        if {"evidence", "score", "feedback"} & schema["properties"].keys():
+            name = messages[0]["content"].split("Criterion: ", 1)[1].split(".", 1)[0]
+            criterion_stages.setdefault(name, []).append(completion_stage(schema))
+    assert len(criterion_stages) == 4
+    assert all(stages == ["evidence", "score", "feedback"] for stages in criterion_stages.values())
     assert not service.diagnostics and not public_retry_stages(events)
 
 

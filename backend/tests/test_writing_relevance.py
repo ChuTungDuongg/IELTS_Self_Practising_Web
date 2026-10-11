@@ -327,10 +327,12 @@ def test_new_cache_versions_keep_visual_contract_and_reject_old_effective_label(
     assert TASK1_PROMPT_VERSION == "mts-task1-visual-v9"
     assert TASK1_SCORING_PROMPT_VERSION == "mts-task1-scoring-v9"
     assert TASK1_VISUAL_CONTRACT_VERSION == "mts-task1-visual-v3"
-    assert effective_prompt_version("mts-task2-v7") == "mts-task2-v9"
+    assert effective_prompt_version("mts-task2-v7") == "mts-task2-v10"
+    assert effective_prompt_version("mts-task2-v9") == "mts-task2-v10"
     for task, old, new in [
         (1, "mts-task1-visual-v7", TASK1_PROMPT_VERSION),
         (2, "mts-task2-v7", effective_prompt_version("mts-task2-v7")),
+        (2, "mts-task2-v9", effective_prompt_version("mts-task2-v9")),
     ]:
         request = task1_request() if task == 1 else task2_request()
         assert input_fingerprint(request, old, "fake", "fictional") != input_fingerprint(

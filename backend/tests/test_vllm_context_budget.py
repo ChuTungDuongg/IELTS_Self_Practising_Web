@@ -72,7 +72,7 @@ async def test_long_input_accepted_after_one_pre_inference_context_resubmit(monk
 
     provider = install(monkeypatch, handler)
     completion = await provider.complete(
-        [{"role": "user", "content": "PRIVATE long Task 1 input"}],
+        [{"role": "user", "content": "PRIVATE long Writing input"}],
         {"type": "object"},
         options=CompletionOptions(max_tokens=128),
     )
@@ -165,7 +165,7 @@ async def test_default_visual_budget_retains_existing_behavior(monkeypatch):
 @pytest.mark.parametrize(
     "stage,input_tokens", [("evidence", 6500), ("score", 8100), ("feedback", 7100)]
 )
-async def test_mts_length_repair_still_has_only_two_inferences_when_context_is_tight(
+async def test_score_first_mts_length_repair_has_only_two_inferences_when_context_is_tight(
     monkeypatch, stage, input_tokens
 ):
     stage_requests, stage_inferences, bodies, stage_bodies = 0, 0, [], []
@@ -210,6 +210,9 @@ async def test_mts_length_repair_still_has_only_two_inferences_when_context_is_t
     assert stage_bodies[1] == {**stage_bodies[0], "max_tokens": 8192 - input_tokens}
     assert stage_bodies[3] == {**stage_bodies[2], "max_tokens": 8192 - input_tokens - 50}
     assert stage_bodies[2]["messages"][:-1] == stage_bodies[0]["messages"]
+    if stage == "score":
+        payload = json.loads(stage_bodies[0]["messages"][1]["content"])
+        assert "evidence" not in payload
     assert (
         len(service.diagnostics) == 1 and service.diagnostics[0].reason == "PROVIDER_FINISH_LENGTH"
     )

@@ -43,6 +43,12 @@ def safe_validation_issues(error: ValidationError) -> list[ValidationIssue]:
         "focus",
         "quote",
         "calibration",
+        "observations",
+        "kind",
+        "observation",
+        "original_span",
+        "suggested_revision",
+        "confidence",
     }
     error_types = get_args(ErrorType)
     issues = []

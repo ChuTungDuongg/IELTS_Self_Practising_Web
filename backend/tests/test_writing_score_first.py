@@ -24,6 +24,18 @@ from app.services.writing_ai import input_fingerprint
 from app.services.writing_execution import TraceFailure
 
 FEEDBACK = {"feedback": "Nội dung rõ ràng ở tiêu chí này.", "strengths": [], "improvements": []}
+TASK2_FEEDBACK = {
+    "observations": [
+        {
+            "source_id": "P1S1",
+            "kind": "STRENGTH",
+            "observation": "Câu mở đầu nêu rõ lợi ích của công viên đối với cộng đồng.",
+            "original_span": None,
+            "suggested_revision": None,
+            "confidence": "HIGH",
+        }
+    ]
+}
 LENGTH = Completion('{"score":7,"feedback":"' + "verbose " * 100, finish_reason="length")
 
 
@@ -48,7 +60,7 @@ class Provider(Task1FakeProvider):
                     }
                 )
             )
-        if not {"score", "feedback"} & properties.keys():
+        if not {"score", "feedback", "observations"} & properties.keys():
             return await super().complete(messages, schema, options=options)
         trait = next(
             t
@@ -59,9 +71,8 @@ class Provider(Task1FakeProvider):
                 or f"Criterion: {TRAIT_NAMES[t]}." in messages[0]["content"]
             )
         )
-        # Reproduce the current combined contract: the score is available but
-        # its verbose explanation prevents the completion from finishing.
-        if "feedback" in properties and trait == self.failed_trait:
+        # Scripted feedback failures stay verbatim under either inference schema.
+        if {"feedback", "observations"} & properties.keys() and trait == self.failed_trait:
             value = self.feedback
         elif "score" in properties:
             value = (
@@ -72,6 +83,8 @@ class Provider(Task1FakeProvider):
                     **FEEDBACK,
                 }
             )
+        elif "observations" in properties:
+            value = TASK2_FEEDBACK
         else:
             value = FEEDBACK
         if isinstance(value, BaseException):
@@ -147,6 +160,11 @@ async def test_valid_score_survives_two_feedback_length_failures(task, failed_tr
         {**FEEDBACK, "score": 6},
         {**FEEDBACK, "feedback": "Bài viết phù hợp Band 6."},
         {**FEEDBACK, "feedback": "Bài viết phù hợp Band: 6."},
+        {
+            "observations": [
+                {**TASK2_FEEDBACK["observations"][0], "observation": "Bài viết phù hợp Band 6."}
+            ]
+        },
     ],
 )
 async def test_invalid_feedback_cannot_override_fixed_band(feedback):
@@ -156,17 +174,24 @@ async def test_invalid_feedback_cannot_override_fixed_band(feedback):
     assert any(d.reason == "FEEDBACK_FALLBACK_USED" for d in service.diagnostics)
 
 
-async def test_feedback_repair_recovers_without_rescoring():
+@pytest.mark.parametrize("task", [1, 2])
+async def test_feedback_repair_recovers_without_rescoring(task):
     class RepairProvider(Provider):
         async def complete(self, messages, schema, *, options=None):
-            if "feedback" in schema["properties"] and len(messages) == 3:
+            if {"feedback", "observations"} & schema["properties"].keys() and len(messages) == 3:
                 self.requests.append((messages, schema, options))
-                return Completion(json.dumps(FEEDBACK))
+                return Completion(json.dumps(FEEDBACK if task == 1 else TASK2_FEEDBACK))
             return await super().complete(messages, schema, options=options)
 
     provider = RepairProvider(feedback=Completion("broken JSON"))
-    result, service, _, _ = await grade(provider)
-    assert result.criteria.ta.score == 7 and result.criteria.ta.feedback == FEEDBACK["feedback"]
+    result, service, _, _ = await grade(provider, task)
+    assert result.criteria.ta.score == 7
+    if task == 1:
+        assert result.criteria.ta.feedback == FEEDBACK["feedback"]
+    else:
+        assert TASK2_FEEDBACK["observations"][0]["observation"] in " ".join(
+            result.criteria.ta.strengths
+        )
     assert not service.failures
     assert len([s for _, s, _ in provider.requests if "score" in s["properties"]]) == 4
     assert [(d.stage, d.reason) for d in service.diagnostics] == [("feedback", "INVALID_JSON")]
@@ -178,15 +203,16 @@ async def test_score_schema_and_tiny_budget_preserve_valid_half_bands(score):
     result, service, _, _ = await grade(provider)
     assert result.criteria.ta.score == Decimal(str(score)) and not service.diagnostics
     scores = [(m, s, o) for m, s, o in provider.requests if "score" in s["properties"]]
-    feedbacks = [(m, s, o) for m, s, o in provider.requests if "feedback" in s["properties"]]
+    feedbacks = [(m, s, o) for m, s, o in provider.requests if "observations" in s["properties"]]
     assert len(scores) == len(feedbacks) == 4
     for messages, schema, options in scores:
         assert set(schema["properties"]) == set(schema["required"]) == {"score"}
         assert schema["additionalProperties"] is False
         assert 128 <= options.max_tokens <= 256
         assert json.loads(messages[0]["content"].split("JSON schema: ")[1])["required"] == ["score"]
+        assert "evidence" not in json.loads(messages[1]["content"])
     for messages, schema, options in feedbacks:
-        assert set(schema["properties"]) == {"feedback", "strengths", "improvements"}
+        assert set(schema["properties"]) == {"observations"}
         assert schema["additionalProperties"] is False
         assert 800 <= options.max_tokens <= 1400
         assert json.loads(messages[1]["content"])["fixed_score"] == score
@@ -201,7 +227,9 @@ async def test_invalid_score_fails_after_only_one_tiny_score_repair(score):
     calls = [(m, s, o) for m, s, o in provider.requests if "score" in s["properties"]]
     assert len(calls) == 8 and all(o.max_tokens <= 256 for _, _, o in calls)
     assert all(set(s["properties"]) == {"score"} for _, s, _ in calls)
-    assert not any("feedback" in s["properties"] for _, s, _ in provider.requests)
+    assert not any(
+        {"feedback", "observations"} & s["properties"].keys() for _, s, _ in provider.requests
+    )
     assert all(state.result is None for state in service.states.values())
     assert all(d.reason == "INVALID_HALF_BAND" for d in service.diagnostics)
 
@@ -262,14 +290,15 @@ async def test_unrelated_band_one_still_skips_all_ta_calls():
     assert result.criteria.ta.score == 1 and result.relevance.short_circuit_applied
     assert not service.failures
     for messages, schema, _ in provider.requests:
-        if {"evidence", "score", "feedback"} & schema["properties"].keys():
+        if {"evidence", "score", "feedback", "observations"} & schema["properties"].keys():
             assert "Criterion: Task Response." not in messages[0]["content"]
     assert all(getattr(result.criteria, t).score == 7 for t in ("cc", "lr", "gra"))
 
 
 async def test_versions_invalidate_old_cache_and_prompt_content_is_stable():
-    assert effective_prompt_version("mts-task2-v8") == "mts-task2-v9"
-    assert effective_prompt_version("custom") == "mts-task2-v9:custom"
+    assert effective_prompt_version("mts-task2-v8") == "mts-task2-v10"
+    assert effective_prompt_version("mts-task2-v9") == "mts-task2-v10"
+    assert effective_prompt_version("custom") == "mts-task2-v10:custom"
     assert TASK1_PROMPT_VERSION == "mts-task1-visual-v9"
     assert TASK1_SCORING_PROMPT_VERSION == "mts-task1-scoring-v9"
     assert TASK1_VISUAL_CONTRACT_VERSION == "mts-task1-visual-v3"

@@ -54,8 +54,8 @@ def test_fake_call_identity_uses_criterion_header_not_mentions_of_other_traits(
     assert call_identity([{"role": "system", "content": system}], schema) == (stage, trait)
 
 
-async def test_task2_all_evidence_overlaps_and_each_score_waits_for_own_evidence():
-    evidence_started, release_evidence, release_cc = (
+async def test_task2_all_scores_overlap_and_evidence_waits_for_own_score():
+    scores_started, release_scores, release_cc = (
         asyncio.Event(),
         asyncio.Event(),
         asyncio.Event(),
@@ -66,12 +66,14 @@ async def test_task2_all_evidence_overlaps_and_each_score_waits_for_own_evidence
     class Provider(FakeLatencyProvider):
         async def complete(self, messages, schema, *, options=None):
             stage, trait = call_identity(messages, schema)
-            if stage == "evidence":
+            if stage == "scoring":
                 started.add(trait)
                 if len(started) == 4:
-                    evidence_started.set()
-                await release_evidence.wait()
-            if (stage, trait) == ("scoring", "cc"):
+                    scores_started.set()
+                await release_scores.wait()
+            if stage == "evidence":
+                assert any(call[:2] == ("scoring", trait) for call in self.calls)
+            if (stage, trait) == ("evidence", "cc"):
                 await release_cc.wait()
             return await super().complete(messages, schema, options=options)
 
@@ -84,9 +86,9 @@ async def test_task2_all_evidence_overlaps_and_each_score_waits_for_own_evidence
     service = MTSWritingScoringService(provider, max_concurrent_requests=4)
     job = asyncio.create_task(service.assess(synthetic_request(2, load_fixture()), trace))
     try:
-        await wait(evidence_started)
+        await wait(scores_started)
         assert all(call[0] == "relevance" for call in provider.calls)
-        release_evidence.set()
+        release_scores.set()
         await wait(three_completed)
         assert service.states["cc"].result is None
         release_cc.set()

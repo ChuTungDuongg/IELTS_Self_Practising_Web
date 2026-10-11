@@ -13,10 +13,10 @@ from app.domains.scoring.writing import WritingScoringRequest
 from app.providers.writing_llm.base import Completion
 from app.schemas.writing_ai import (
     CriterionBandScore,
-    CriterionFeedbackOutput,
     EvidenceSelection,
     RawScoringOutput,
     ScoringOutput,
+    Task2FeedbackDraft,
 )
 from app.services.mts_writing import MTSWritingScoringService
 
@@ -32,6 +32,16 @@ FEEDBACK = {
     "feedback": CORE["feedback"],
     "strengths": CORE["strengths"],
     "improvements": CORE["improvements"],
+}
+OBSERVATIONS = {
+    "observations": [
+        {
+            "source_id": "P1S1",
+            "kind": "STRENGTH",
+            "observation": "Cấu trúc câu được kiểm soát.",
+            "confidence": "HIGH",
+        }
+    ]
 }
 CALIBRATION = {
     "support": [{"source_id": "P1S2", "assessment": "Cấu trúc câu được kiểm soát."}],
@@ -70,8 +80,8 @@ class CoreProvider:
         elif properties == {"score"}:
             value = SCORE
         else:
-            assert properties == {"feedback", "strengths", "improvements"}
-            value = FEEDBACK
+            assert properties == {"observations"}
+            value = OBSERVATIONS
         return Completion(json.dumps(value), finish_reason="stop")
 
 
@@ -138,9 +148,9 @@ async def test_three_independent_criterion_stages_complete_with_exact_unicode_ev
     assert result is not None and result.overall_band == Decimal("8.5")
     assert len(provider.calls) == 12
     assert [set(schema["properties"]) for _, schema in provider.calls] == [
-        {"evidence"},
         {"score"},
-        {"feedback", "strengths", "improvements"},
+        {"evidence"},
+        {"observations"},
     ] * 4
     assert [p.criterion for e, p in events if e == "criterion.completed"] == [
         "ta",
@@ -155,14 +165,10 @@ async def test_three_independent_criterion_stages_complete_with_exact_unicode_ev
 def test_primary_evidence_schema_stays_strict_and_scoring_schema_is_small():
     evidence = EvidenceSelection.model_json_schema(mode="serialization")
     scoring = CriterionBandScore.model_json_schema(mode="serialization")
-    feedback = CriterionFeedbackOutput.model_json_schema(mode="serialization")
+    feedback = Task2FeedbackDraft.model_json_schema(mode="serialization")
     assert set(scoring["required"]) == set(scoring["properties"]) == {"score"}
     assert scoring["additionalProperties"] is False
-    assert (
-        set(feedback["required"])
-        == set(feedback["properties"])
-        == {"feedback", "strengths", "improvements"}
-    )
+    assert set(feedback["required"]) == set(feedback["properties"]) == {"observations"}
     assert feedback["additionalProperties"] is False
     assert "calibration" not in scoring["properties"]
     assert evidence["$defs"]["EvidenceChoice"]["required"] == ["source_id", "assessment"]
@@ -218,28 +224,28 @@ def test_next_descriptor_is_metadata_derived_from_accepted_score(score, upper):
     ],
 )
 async def test_invalid_score_gets_one_repair_then_only_gra_fails(bad):
-    provider = CoreProvider({10: bad, 11: bad})
+    provider = CoreProvider({9: bad, 10: bad})
     result, service, events = await run(provider)
-    assert result is None and len(provider.calls) == 12
+    assert result is None and len(provider.calls) == 11
     assert set(service.failures) == {"gra"}
     assert [p.criterion for e, p in events if e == "criterion.completed"] == ["ta", "cc", "lr"]
     assert sum(e == "criterion.retrying" for e, _ in events) == 1
     assert sum(e == "criterion.failed" for e, _ in events) == 1
     assert all(d.stage == "score" for d in service.diagnostics)
-    assert all(set(schema["properties"]) == {"score"} for _, schema in provider.calls[10:])
+    assert all(set(schema["properties"]) == {"score"} for _, schema in provider.calls[9:])
 
 
 @pytest.mark.parametrize(
     "bad",
     [
-        {k: v for k, v in FEEDBACK.items() if k != "feedback"},
-        {**FEEDBACK, "feedback": "   "},
-        {**FEEDBACK, "strengths": "Không phải danh sách."},
-        {**FEEDBACK, "improvements": [42]},
-        {**FEEDBACK, "score": 1},
+        {},
+        {"observations": [{**OBSERVATIONS["observations"][0], "observation": "   "}]},
+        {"observations": "Không phải danh sách."},
+        {"observations": [42]},
+        {**OBSERVATIONS, "score": 1},
         Completion("private invalid JSON", finish_reason="stop"),
         Completion(""),
-        Completion('{"feedback":', finish_reason="length"),
+        Completion('{"observations":', finish_reason="length"),
         [],
     ],
 )
@@ -272,9 +278,9 @@ def test_optional_calibration_is_excluded_from_core_serialization_and_repr():
 
 async def test_unknown_primary_id_still_repairs_fails_and_runs_later_criterion():
     bad = {"evidence": [{"source_id": "P99S1", "assessment": "Nhận xét."}]}
-    provider = CoreProvider({6: bad, 7: bad})
+    provider = CoreProvider({7: bad, 8: bad})
     result, service, events = await run(provider)
-    assert result is None and len(provider.calls) == 11
+    assert result is None and len(provider.calls) == 12
     assert set(service.failures) == {"lr"}
     assert [d.reason for d in service.diagnostics] == ["EVIDENCE_UNKNOWN_SOURCE_ID"] * 2
     assert [p.criterion for e, p in events if e == "criterion.completed"] == ["ta", "cc", "gra"]
@@ -282,9 +288,9 @@ async def test_unknown_primary_id_still_repairs_fails_and_runs_later_criterion()
 
 async def test_truncated_score_is_never_accepted():
     truncated = Completion('{"score":8.5', finish_reason="length")
-    provider = CoreProvider({10: truncated, 11: truncated})
+    provider = CoreProvider({9: truncated, 10: truncated})
     result, service, _ = await run(provider)
-    assert result is None and len(provider.calls) == 12
+    assert result is None and len(provider.calls) == 11
     assert [d.reason for d in service.diagnostics] == ["PROVIDER_FINISH_LENGTH"] * 2
     assert all(d.finish_reason == "length" for d in service.diagnostics)
     assert all(d.stage == "score" for d in service.diagnostics)
@@ -292,17 +298,25 @@ async def test_truncated_score_is_never_accepted():
 
 async def test_feedback_failure_logs_safe_field_type_and_masks_untrusted_extra_names(caplog):
     caplog.set_level("INFO", logger="app.services.mts_writing")
-    invalid = {**FEEDBACK, "feedback": 42, "private-secret-key": "private rejected value"}
+    invalid = {
+        "observations": [
+            {
+                **OBSERVATIONS["observations"][0],
+                "observation": 42,
+                "private-secret-key": "private rejected value",
+            }
+        ]
+    }
     result, service, events = await run(CoreProvider({11: invalid, 12: invalid}))
     assert result.criteria.gra.score == Decimal("8.5") and not service.failures
     for diagnostic in service.diagnostics[:2]:
         assert diagnostic.stage == "feedback"
         assert {(i.field, i.validation_type) for i in diagnostic.validation_issues} == {
-            ("feedback", "string_type"),
-            ("<extra>", "extra_forbidden"),
+            ("observations.0.observation", "string_type"),
+            ("observations.0.<extra>", "extra_forbidden"),
         }
-    assert "field=feedback validation_type=string_type" in caplog.text
-    assert "field=<extra> validation_type=extra_forbidden" in caplog.text
+    assert "field=observations.0.observation validation_type=string_type" in caplog.text
+    assert "field=observations.0.<extra> validation_type=extra_forbidden" in caplog.text
     public = str(events)
     assert "validation_type" not in public
     assert "private" not in public

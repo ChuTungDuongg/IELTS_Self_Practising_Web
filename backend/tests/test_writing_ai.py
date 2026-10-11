@@ -392,6 +392,17 @@ class FakeProvider:
                     }
                 ]
             }
+        elif "observations" in schema["properties"]:
+            value = {
+                "observations": [
+                    {
+                        "source_id": "P1S1",
+                        "kind": "STRENGTH",
+                        "observation": "Luận điểm trả lời trực tiếp yêu cầu của đề.",
+                        "confidence": "HIGH",
+                    }
+                ]
+            }
         else:
             value = {
                 "score": {"ta": 6.5, "cc": 6, "lr": 7, "gra": 6}[trait],
@@ -623,11 +634,10 @@ async def test_success_persistence_cache_force_events_and_official_isolation(
             for other in TRAITS
             if other != trait
         )
-        assert json.loads(calls[1][0]["content"].split("JSON schema: ")[1])["required"] == ["score"]
+        assert json.loads(calls[0][0]["content"].split("JSON schema: ")[1])["required"] == ["score"]
+        assert set(json.loads(calls[0][1]["content"])) == {"question", "segmented_essay"}
         assert set(json.loads(calls[2][0]["content"].split("JSON schema: ")[1])["required"]) == {
-            "feedback",
-            "strengths",
-            "improvements",
+            "observations",
         }
         assert (
             json.loads(calls[2][1]["content"])["fixed_score"]
@@ -810,7 +820,7 @@ async def test_second_bad_call_fails_and_preserves_partial_progress(db_session, 
     run, events = await service(db_session, settings).snapshot(created.run_id, 0)
     assert run.status == WritingAIRunStatus.FAILED and run.error_code == "AI_PROVIDER_BAD_RESPONSE"
     assert set(run.progress) == {"ta", "lr", "gra"} and run.result is None
-    assert len(provider.calls) == 13 and events[-1].event_type == "run.failed"
+    assert len(provider.calls) == 12 and events[-1].event_type == "run.failed"
     assert "secret" not in run.model_dump_json() + str(events)
     async with db_session.begin():
         db_session.expire_all()
@@ -842,10 +852,11 @@ async def test_lr_evidence_failure_retains_ta_cc_runs_gra_and_terminates_replay(
     assert set(run.progress) == {"ta", "cc", "gra"}
     assert run.activity.phase == "failed" and run.activity.criterion == "lr"
     assert run.activity.stage == "evidence"
-    assert not any(
+    assert any(
         e.event_type == "criterion.scoring.started" and e.payload.criterion == "lr" for e in events
     )
-    assert len(provider.calls) == 12
+    assert ("lr", "feedback") not in provider.attempts
+    assert len(provider.calls) == 13
     assert set(run.failures) == {"lr"}
     assert [e.sequence for e in events] == list(range(1, len(events) + 1))
     async with db_session.begin():
@@ -996,7 +1007,7 @@ async def test_stored_v8_combined_result_with_optional_calibration_diagnostics_r
         "calibration": calibration,
     }
     # v8 persisted the combined public result after sanitizing optional private
-    # metadata. Read that durable format without sending it through v9 inference.
+    # metadata. Read that durable format without sending it through v10 inference.
     raw = RawScoringOutput.model_validate(gra)
     _, notices = sanitize_calibration(
         raw.calibration, raw.score, {s.source_id: s for s in segment_essay(ESSAY)}
@@ -1115,9 +1126,10 @@ async def test_stored_v8_combined_result_with_optional_calibration_diagnostics_r
         "mts-task2-v6",
         "mts-task2-v7",
         "mts-task2-v8",
+        "mts-task2-v9",
     ],
 )
-async def test_old_cache_is_preserved_but_never_reused_for_v9(
+async def test_old_cache_is_preserved_but_never_reused_for_v10(
     db_session, writing, settings, old_version
 ):
     attempt_id, _, task_id = writing
@@ -1135,14 +1147,14 @@ async def test_old_cache_is_preserved_but_never_reused_for_v9(
     settings.ai_writing_prompt_version = old_version  # Existing deployed secret.
     upgraded = await api.create(attempt_id, task_id, force=False)
     assert upgraded.run_id != legacy.run_id and not upgraded.cache_hit
-    assert (await api.get(upgraded.run_id)).prompt_version == "mts-task2-v9"
+    assert (await api.get(upgraded.run_id)).prompt_version == "mts-task2-v10"
     history = await api.list(attempt_id, task_id)
     assert len(history.items) == 2
     assert history.items[1].prompt_version == old_version and history.items[1].result == old_result
 
 
 @pytest.mark.integration
-async def test_verbose_lr_normalizes_persists_live_and_replays_without_inference(
+async def test_bounded_lr_observation_display_persists_live_and_replays_without_inference(
     db_session, writing, settings
 ):
     attempt_id, _, task_id = writing
@@ -1153,9 +1165,15 @@ async def test_verbose_lr_normalizes_persists_live_and_replays_without_inference
         "Cần lựa chọn từ chính xác hơn và kiểm tra dạng từ trong các ví dụ hỗ trợ. "
     ) * 8
     lr = {
-        "feedback": paragraph,
-        "strengths": ["  ", paragraph, "Từ vựng phù hợp.", "Diễn đạt rõ ý.", "Một ý khác."],
-        "improvements": [paragraph, "Chọn từ chính xác hơn."],
+        "observations": [
+            {
+                "source_id": "P1S1",
+                "kind": kind,
+                "confidence": "HIGH",
+                "observation": paragraph[:237] + f"{index}.",
+            }
+            for index, kind in enumerate(["STRENGTH"] * 3 + ["LIMITATION"] * 3)
+        ]
     }
 
     provider = FakeProvider(
@@ -1180,8 +1198,9 @@ async def test_verbose_lr_normalizes_persists_live_and_replays_without_inference
     assert saved.result.overall_band == Decimal("6.5") and len(provider.calls) == 13
     result = saved.progress["lr"]
     assert result.score == Decimal("6.5") and result.feedback.endswith("…")
-    assert len(result.feedback) <= 800 and paragraph.startswith(result.feedback[:-1])
-    assert len(result.strengths) == 3 and result.strengths[0].endswith("…")
+    assert len(result.feedback) <= 800 and result.feedback.startswith(paragraph[:50])
+    assert len(result.strengths) == len(result.improvements) == 3
+    assert result.strengths[0].startswith("Đoạn 1: ") and result.strengths[0].endswith("…")
     assert all(0 < len(v) <= 240 for v in result.strengths + result.improvements)
     assert result.evidence[0].quote == "Fictional parks improve city life."
     assert not any(e.event_type in {"criterion.retrying", "criterion.failed"} for e in events)
@@ -1202,12 +1221,7 @@ async def test_verbose_lr_normalizes_persists_live_and_replays_without_inference
     async with db_session.begin():
         db_session.expire_all()
         stored = await db_session.get(WritingAIGradingRun, created.run_id)
-        diagnostic = stored.usage_json["diagnostics"][0]
-        assert diagnostic["stage"] == "feedback"
-        assert diagnostic["reason"] == "FEEDBACK_PRESENTATION_NORMALIZED"
-        assert {"field": "feedback", "validation_type": "string_too_long"} in diagnostic[
-            "validation_issues"
-        ]
+        assert stored.usage_json["diagnostics"] == []
         assert paragraph[:50] not in json.dumps(stored.usage_json)
         assert stored.result_json["criteria"]["lr"]["feedback"] == result.feedback
         human = await db_session.scalar(
@@ -1225,7 +1239,9 @@ async def test_feedback_length_fallback_persists_fixed_score_and_replays_without
     attempt_id, _, task_id = writing
     api = service(db_session, settings)
     created = await api.create(attempt_id, task_id, force=False)
-    truncated = Completion('{"feedback":"private unfinished prose', finish_reason="length")
+    truncated = Completion(
+        '{"observations":[{"observation":"private unfinished prose', finish_reason="length"
+    )
     provider = FakeProvider({("lr", "feedback", 1): truncated, ("lr", "feedback", 2): truncated})
     runner = worker(db_session, settings, provider)
     await runner.execute(created.run_id)
@@ -1406,9 +1422,9 @@ async def test_protocol_adapter_and_unknown_source_repair():
     [
         "private malformed JSON",
         Completion(""),
-        Completion('{"feedback":"private incomplete', finish_reason="length"),
-        '{"feedback":"Nhận xét.","strengths":[42],"improvements":[]}',
-        '{"feedback":"Nhận xét.","strengths":[],"improvements":[],"score":1}',
+        Completion('{"observations":[{"observation":"private incomplete', finish_reason="length"),
+        '{"observations":[{"source_id":"P1S1","kind":"STRENGTH","observation":42,"confidence":"HIGH"}]}',
+        '{"observations":[],"score":1}',
     ],
 )
 async def test_protocol_adapter_preserves_score_after_feedback_repair_failure(feedback):
@@ -1450,7 +1466,7 @@ async def test_protocol_adapter_rejects_invalid_score_after_one_repair(score, re
     with pytest.raises(ProviderFailure) as failure:
         await scoring.score(request)
     assert failure.value.code == "AI_PROVIDER_BAD_RESPONSE"
-    assert len(provider.calls) == 13 and set(scoring.failures) == {"lr"}
+    assert len(provider.calls) == 12 and set(scoring.failures) == {"lr"}
     assert ("lr", "feedback") not in provider.attempts
     assert {trait for trait, state in scoring.states.items() if state.result is not None} == {
         "ta",

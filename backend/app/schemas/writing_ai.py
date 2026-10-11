@@ -126,6 +126,26 @@ class CriterionFeedbackOutput(RawCriterionFeedbackOutput):
     )
 
 
+class Task2FeedbackObservation(StrictModel):
+    source_id: SourceID
+    kind: Literal["STRENGTH", "LIMITATION", "ERROR", "OPTIONAL_REFINEMENT"]
+    observation: str = Field(strict=True, min_length=1, max_length=240)
+    original_span: (
+        Annotated[
+            StrictStr, StringConstraints(strip_whitespace=False, min_length=1, max_length=12000)
+        ]
+        | None
+    ) = None
+    suggested_revision: str | None = Field(default=None, strict=True, min_length=1, max_length=240)
+    confidence: Literal["HIGH", "MEDIUM", "LOW"]
+
+
+class Task2FeedbackDraft(StrictModel):
+    """Internal source-linked observations, never a writable score or freeform summary."""
+
+    observations: list[Task2FeedbackObservation] = Field(strict=True, max_length=6)
+
+
 class CriterionResult(TraitScore):
     evidence: list[Evidence] = Field(max_length=6)
 

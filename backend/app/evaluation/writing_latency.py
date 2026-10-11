@@ -1,6 +1,7 @@
 """Offline orchestration comparison: fixed fake completions, identical current prompts.
 
-Sequential references reproduce the old dependency graph; production never selects them.
+Sequential references use current semantic contracts without criterion overlap;
+production never selects them.
 This is not an LLM quality or GPU throughput benchmark.
 """
 
@@ -13,7 +14,7 @@ from statistics import median
 from uuid import uuid4
 
 from app.domains.scoring.deplot_parser import parse_deplot
-from app.domains.scoring.essay_sources import segment_essay
+from app.domains.scoring.essay_sources import request_sources
 from app.domains.scoring.mts_prompts import (
     AI_WRITING_PROMPT_VERSION,
     TRAIT_NAMES,
@@ -118,6 +119,17 @@ class FakeLatencyProvider:
                 output = {
                     name: value for name, value in output.items() if name in schema["properties"]
                 }
+            if "observations" in schema["properties"]:
+                output = {
+                    "observations": [
+                        {
+                            "source_id": self.fixture["evidence"]["evidence"][0]["source_id"],
+                            "kind": "STRENGTH",
+                            "observation": "Ý được diễn đạt rõ ràng.",
+                            "confidence": "HIGH",
+                        }
+                    ]
+                }
             return Completion(
                 json.dumps(
                     output,
@@ -143,7 +155,7 @@ class SequentialTask2Reference(MTSWritingScoringService):
     async def assess(self, request, trace):
         self._start_assessment()
         trace = self.protected_trace(trace)
-        segments = segment_essay(request.response)
+        segments = request_sources(request)
         await self._relevance_gate(request, None, trace)
         for trait in TRAITS:
             await self._run_criterion(
@@ -154,6 +166,7 @@ class SequentialTask2Reference(MTSWritingScoringService):
                 lambda evidence, trait=trait: scoring_messages(
                     request.prompt, request.response, trait, evidence, segments
                 ),
+                assessor=self._assess_task2_criterion,
             )
         return self._task2_result()
 

@@ -9,7 +9,7 @@ from app.domains.scoring.ai_writing_validation import (
     safe_validation_issues,
     validation_reason,
 )
-from app.domains.scoring.essay_sources import segment_essay
+from app.domains.scoring.essay_sources import request_sources
 from app.domains.scoring.mts_prompts import correction_message
 from app.domains.scoring.writing_relevance import relevance_messages
 from app.providers.writing_llm.base import (
@@ -37,7 +37,7 @@ async def classify_relevance(provider, request, reference, trace, usage, diagnos
     attempt = 1
     try:
         messages = relevance_messages(request, reference)
-        sources = {s.source_id: s for s in segment_essay(request.response)}
+        sources = {s.source_id: s for s in request_sources(request)}
         with latency.stage("relevance"):
             for attempt in (1, 2):
                 finish, issues = None, []
