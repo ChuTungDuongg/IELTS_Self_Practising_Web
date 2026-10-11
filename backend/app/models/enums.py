@@ -3,7 +3,60 @@ from enum import StrEnum
 
 class UserRole(StrEnum):
     USER = "USER"
+    TEACHER = "TEACHER"
     ADMIN = "ADMIN"
+
+
+class TestOrigin(StrEnum):
+    ADMIN = "ADMIN"
+    TEACHER = "TEACHER"
+
+
+class ModerationScope(StrEnum):
+    CLASSROOM = "CLASSROOM"
+    PUBLIC = "PUBLIC"
+
+
+class ModerationStatus(StrEnum):
+    PENDING = "PENDING"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+    REVOKED = "REVOKED"
+    CANCELLED = "CANCELLED"
+
+
+class ClassroomStatus(StrEnum):
+    ACTIVE = "ACTIVE"
+    ARCHIVED = "ARCHIVED"
+
+
+class InvitationStatus(StrEnum):
+    PENDING = "PENDING"
+    ACCEPTED = "ACCEPTED"
+    DECLINED = "DECLINED"
+    CANCELLED = "CANCELLED"
+
+
+class AssignmentStatus(StrEnum):
+    ACTIVE = "ACTIVE"
+    ARCHIVED = "ARCHIVED"
+
+
+class NotificationType(StrEnum):
+    CLASSROOM_INVITED = "CLASSROOM_INVITED"
+    CLASSROOM_INVITATION_ACCEPTED = "CLASSROOM_INVITATION_ACCEPTED"
+    CLASSROOM_INVITATION_DECLINED = "CLASSROOM_INVITATION_DECLINED"
+    TEST_CLASSROOM_APPROVED = "TEST_CLASSROOM_APPROVED"
+    TEST_CLASSROOM_REJECTED = "TEST_CLASSROOM_REJECTED"
+    TEST_PUBLIC_APPROVED = "TEST_PUBLIC_APPROVED"
+    TEST_PUBLIC_REJECTED = "TEST_PUBLIC_REJECTED"
+    CLASSROOM_ARCHIVED = "CLASSROOM_ARCHIVED"
+
+
+class NotificationEntityType(StrEnum):
+    INVITATION = "INVITATION"
+    MODERATION = "MODERATION"
+    CLASSROOM = "CLASSROOM"
 
 
 class WritingAIRunStatus(StrEnum):

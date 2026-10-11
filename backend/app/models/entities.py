@@ -35,6 +35,7 @@ from app.models.enums import (
     FinishedReason,
     ModuleType,
     OAuthProvider,
+    TestOrigin,
     TestSessionStatus,
     TimerMode,
     UserRole,
@@ -116,6 +117,17 @@ class RefreshSession(UUIDPrimaryKeyMixin, Base):
 
 class Test(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "tests"
+
+    owner_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), index=True
+    )
+    origin: Mapped[TestOrigin] = mapped_column(
+        Enum(TestOrigin, name="test_origin"),
+        default=TestOrigin.ADMIN,
+        server_default="ADMIN",
+        nullable=False,
+    )
+    owner: Mapped[User | None] = relationship()
 
     title: Mapped[str] = mapped_column(String(240), nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
@@ -200,6 +212,10 @@ class TestModule(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
 class TestSession(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "test_sessions"
+
+    classroom_assignment_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("classroom_assignments.id", ondelete="RESTRICT"), index=True
+    )
 
     user_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id", ondelete="RESTRICT"), index=True
@@ -338,6 +354,10 @@ class Question(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
 class Attempt(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "attempts"
+
+    classroom_assignment_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("classroom_assignments.id", ondelete="RESTRICT"), index=True
+    )
     __table_args__ = (
         CheckConstraint(
             "(scope = 'FULL_MODULE' AND focused_reading_passage_id IS NULL "

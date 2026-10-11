@@ -1,4 +1,11 @@
 from app.models.base import Base
+from app.models.classroom import (
+    Classroom,
+    ClassroomAssignment,
+    ClassroomInvitation,
+    ClassroomMembership,
+)
+from app.models.content_governance import TestVersionModeration
 from app.models.entities import (
     Asset,
     Attempt,
@@ -21,6 +28,7 @@ from app.models.entities import (
     User,
     WritingTask,
 )
+from app.models.notifications import Notification
 from app.models.writing_ai import (
     WritingAIGradingEvent,
     WritingAIGradingRun,
@@ -28,6 +36,12 @@ from app.models.writing_ai import (
 )
 
 __all__ = [
+    "Classroom",
+    "ClassroomAssignment",
+    "ClassroomInvitation",
+    "ClassroomMembership",
+    "TestVersionModeration",
+    "Notification",
     "WritingAIPracticeFeedback",
     "WritingAIGradingEvent",
     "WritingAIGradingRun",
