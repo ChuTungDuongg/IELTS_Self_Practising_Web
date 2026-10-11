@@ -57,15 +57,23 @@ it("keeps sequential navigation compact and secondary inside the rail action are
   expect(declarations(".listening-sequential-navigation button:disabled").opacity).toBe(".45");
 });
 
-it("scopes the dock to exam tokens without fixed positioning, clipping, gradients or workspace accents", () => {
+it("isolates dock geometry and exam surfaces while the selected section uses the personal accent", () => {
   const rules: string[] = [];
+  const examPaletteRules: string[] = [];
   stylesheet.walkRules((rule) => {
-    if (/listening-(audio-dock|navigation|sequential-navigation|previous-icon|section-navigation|question-navigation|player-exam-bar|attempt)/.test(rule.selector)) rules.push(rule.toString());
+    if (/listening-(audio-dock|navigation|sequential-navigation|previous-icon|section-navigation|question-navigation|player-exam-bar|attempt)/.test(rule.selector)) {
+      rules.push(rule.toString());
+      // Personalization deliberately colors this selected control. Keep the
+      // surrounding panels/player on exam tokens and retain all geometry checks.
+      if (rule.selector !== ".listening-section-navigation button.active") examPaletteRules.push(rule.toString());
+    }
   });
   const scoped = rules.join("\n");
   expect(rules.length).toBeGreaterThan(8);
   expect(scoped).toContain("var(--exam-surface)"); expect(scoped).toContain("var(--exam-accent)");
-  expect(scoped).not.toMatch(/position:\s*(fixed|absolute)|overflow(?:-x)?:\s*(hidden|clip)|gradient\(|var\(--(?:accent|surface|listening|glow)[\w-]*\)/);
+  expect(scoped).not.toMatch(/position:\s*(fixed|absolute)|overflow(?:-x)?:\s*(hidden|clip)|gradient\(/);
+  expect(examPaletteRules.join("\n")).not.toMatch(/var\(--(?:accent|surface|listening|glow)[\w-]*\)/);
+  expect(declarations(".listening-section-navigation button.active")).toMatchObject({ "border-color": "var(--accent)", color: "var(--accent-contrast)", background: "var(--accent)" });
   const source = readFileSync(resolve(process.cwd(), "src/features/listening/audio-player.tsx"), "utf8");
   expect(source).not.toMatch(/window\.innerWidth|usePathname|matchMedia/);
 });

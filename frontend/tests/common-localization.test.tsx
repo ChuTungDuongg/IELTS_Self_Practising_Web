@@ -9,18 +9,27 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { AuthProvider } from "@/features/auth/auth-provider";
 import { getCurrentUser, logout } from "@/lib/api/auth";
+import { getPreferences, updatePreferences, type Preferences } from "@/lib/api/preferences";
 import { UiText } from "@/lib/i18n/locale-provider";
 import { renderWithLocale } from "./locale-test-utils";
 
 const navigation = vi.hoisted(() => ({ pathname: "/", push: vi.fn(), refresh: vi.fn() }));
+let preferences: Preferences;
 vi.mock("next/navigation", () => ({ usePathname: () => navigation.pathname, useRouter: () => navigation }));
 vi.mock("@/lib/api/auth", () => ({ getCurrentUser: vi.fn(), logout: vi.fn() }));
+vi.mock("@/lib/api/preferences", () => ({ getPreferences: vi.fn(), updatePreferences: vi.fn() }));
 vi.mock("next/link", () => ({ default: ({ prefetch, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { prefetch?: boolean }) => <a {...props} data-prefetch={prefetch === false ? "disabled" : "automatic"} /> }));
 
 describe("common localization", () => {
   beforeEach(() => {
     vi.resetAllMocks(); window.localStorage.clear(); navigation.pathname = "/";
     document.documentElement.dataset.theme = "light";
+    preferences = { accent_color: "PURPLE", appearance: "LIGHT", locale: "EN" };
+    vi.mocked(getPreferences).mockResolvedValue({ ...preferences });
+    vi.mocked(updatePreferences).mockImplementation(async (patch) => {
+      preferences = { ...preferences, ...patch };
+      return { ...preferences };
+    });
     vi.mocked(getCurrentUser).mockResolvedValue({ id: "user", display_name: "Nguyễn <Learner>", role: "USER" } as Awaited<ReturnType<typeof getCurrentUser>>);
   });
   it("common primitives accept translated nodes and raw authored titles", () => {
@@ -39,6 +48,7 @@ describe("common localization", () => {
     vi.mocked(logout).mockImplementation(() => new Promise<void>((resolve) => { finish = resolve; }));
     renderWithLocale(<AuthProvider><AppShell currentYear={2026}>Content</AppShell></AuthProvider>);
     await screen.findByText("Nguyễn <Learner>");
+    await waitFor(() => expect(screen.getByRole("button", { name: "Use dark theme" })).toBeEnabled());
     fireEvent.click(screen.getByRole("button", { name: "Logout" }));
     const dialog = screen.getByRole("dialog");
     const cancel = within(dialog).getByRole("button", { name: "Cancel" });
@@ -55,6 +65,9 @@ describe("common localization", () => {
     expect(screen.getByText("Luyện tập và biên soạn đề")).toBeInTheDocument();
     expect(screen.getByText("Nguyễn <Learner>")).toBeInTheDocument();
     expect(getCurrentUser).toHaveBeenCalledOnce();
+    expect(getPreferences).toHaveBeenCalledOnce();
+    await waitFor(() => expect(preferences.locale).toBe("VI"));
+    expect(vi.mocked(updatePreferences).mock.calls.map(([patch]) => patch)).toEqual([{ locale: "VI" }]);
     expect(navigation.refresh).not.toHaveBeenCalled();
     fireEvent.click(within(dialog).getByRole("button", { name: "Đăng xuất" }));
     expect(within(dialog).getByRole("button", { name: "Đang xử lý…" })).toBeDisabled();
@@ -71,15 +84,20 @@ describe("common localization", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(message ?? "Không thể kiểm tra phiên đăng nhập.");
     expect(getCurrentUser).toHaveBeenCalledOnce();
   });
-  it("honors explicit dialog labels and keeps preference storage independent", () => {
+  it("honors explicit dialog labels and preserves other personalization values", () => {
     renderWithLocale(<><AppShell currentYear={2026}>Content</AppShell><ConfirmDialog open title="Authored" description="Raw" confirmLabel="Confirm" cancelLabel="Keep" pendingLabel="Wait" pending onCancel={vi.fn()} onConfirm={vi.fn()} /></>);
     const write = vi.spyOn(Storage.prototype, "setItem");
     fireEvent.click(screen.getByText("Switch to Vietnamese"));
-    expect(write.mock.calls.every(([key]) => key === "ielts-locale")).toBe(true);
+    expect(new Set(write.mock.calls.map(([key]) => key))).toEqual(new Set(["ielts-accent", "ielts-theme", "ielts-locale"]));
+    expect(localStorage.getItem("ielts-locale")).toBe("vi");
+    expect(localStorage.getItem("ielts-theme")).toBe("light");
+    expect(localStorage.getItem("ielts-accent")).toBe("PURPLE");
     expect(screen.getByRole("button", { name: "Keep" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Wait" })).toBeDisabled();
     write.mockClear(); fireEvent.click(screen.getByRole("button", { name: "Dùng giao diện tối" }));
-    expect(write).toHaveBeenCalledExactlyOnceWith("ielts-theme", "dark");
+    expect(write).toHaveBeenCalledWith("ielts-theme", "dark");
+    expect(localStorage.getItem("ielts-locale")).toBe("vi");
+    expect(localStorage.getItem("ielts-accent")).toBe("PURPLE");
     write.mockRestore();
   });
   it("does not add a global skip link to attempts", () => {
