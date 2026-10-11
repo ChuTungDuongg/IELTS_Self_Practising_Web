@@ -128,7 +128,7 @@ function payload(): ExamPayload {
   };
 }
 
-describe("Listening footer navigation", () => {
+describe("Listening attempt sidebar navigation", () => {
   const scrolled: Array<{ element: HTMLElement; options: ScrollToOptions }> = [];
   let intersectionCallback: IntersectionObserverCallback = () => undefined;
   let observerCount = 0;
@@ -169,30 +169,108 @@ describe("Listening footer navigation", () => {
 
   afterEach(() => vi.useRealTimers());
 
-  it("renders canonical global navigation in the footer and no in-content flag row", () => {
-    const view = render(<ListeningRunner initial={payload()} />);
-    const footer = view.container.querySelector(".listening-exam-footer")!;
-    const sectionNavigation = within(footer as HTMLElement).getByRole("navigation", { name: "Section navigation" });
-    const questionNavigation = within(footer as HTMLElement).getByRole("navigation", { name: "Question navigation" });
+  it.each(["normal", "full", "mock", "focused"] as const)("places %s Listening content beside a utility rail with canonical navigation and submit", (mode) => {
+    const initial = payload();
+    if (mode !== "normal") initial.attempt = { ...initial.attempt, scope: mode === "focused" ? "FOCUSED_UNIT" : "FULL_MODULE", attempt_context: mode === "mock" ? "FULL_MOCK" : "STANDALONE" };
+    if (mode === "focused") initial.listening_parts = initial.listening_parts.filter((part) => part.id === part1);
+    const view = render(<ListeningRunner initial={initial} />);
+    const pane = screen.getByRole("main");
+    const sidebar = screen.getByRole("complementary", { name: "Question navigation" });
+    const questionNavigation = within(sidebar).getByRole("navigation", { name: "Question navigation" });
 
-    expect(within(sectionNavigation).getAllByRole("button").map((button) => button.textContent)).toEqual(["Section 1", "Section 2", "Section 3", "Section 4"]);
-    expect(within(questionNavigation).getAllByRole("button", { name: /Go to question/ }).map((button) => button.textContent)).toEqual(["1", "2", "3", "15", "25", "40"]);
-    expect(view.container.querySelectorAll(".exam-question-strip")).toHaveLength(1);
+    if (mode === "focused") expect(screen.queryByRole("navigation", { name: "Section navigation" })).not.toBeInTheDocument();
+    else {
+      const sectionNavigation = within(sidebar).getByRole("navigation", { name: "Section navigation" });
+      expect(within(sectionNavigation).getAllByRole("button").map((button) => button.textContent)).toEqual(["Section 1", "Section 2", "Section 3", "Section 4"]);
+    }
+    expect(within(questionNavigation).getAllByRole("button", { name: /Go to question/ }).map((button) => button.textContent)).toEqual(mode === "focused" ? ["1", "2", "3"] : ["1", "2", "3", "15", "25", "40"]);
+    expect(within(questionNavigation).getAllByRole("group").map((section) => section.getAttribute("aria-label"))).toEqual(mode === "focused" ? ["Section 1"] : ["Section 1", "Section 2", "Section 3", "Section 4"]);
+    expect(within(sidebar).getByRole("button", { name: "Go to question 1" })).toHaveAttribute("aria-current", "true");
+    expect(sidebar.querySelector(`[data-nav-question-id="${q1}"]`)).toHaveClass("answered", "current");
+    expect(sidebar.querySelector(`[data-nav-question-id="${q2}"]`)).toHaveClass("unanswered");
+    if (mode !== "focused") expect(sidebar.querySelector(`[data-nav-question-id="${q25}"]`)).toHaveClass("flagged");
+    expect(within(sidebar).getByRole("button", { name: "Submit answers" })).toBeInTheDocument();
+    expect(pane.parentElement).toHaveClass("listening-attempt-body");
+    expect(sidebar.parentElement).toBe(pane.parentElement);
+    expect(pane).toHaveTextContent("Statement 1");
+    expect(view.container.querySelector(".exam-question-strip, .exam-footer, .listening-lower-dock")).toBeNull();
     expect(view.container.querySelector(".exam-flags")).not.toBeInTheDocument();
-    expect(view.container.querySelector(".listening-question-pane")?.contains(questionNavigation)).toBe(false);
+    expect(pane).not.toContainElement(questionNavigation);
   });
 
-  it("places the audio dock after questions and directly above the unchanged footer", () => {
+  it("places only audio controls in the bottom dock after the question content and sidebar", () => {
     const view = render(<ListeningRunner initial={payload()} />);
-    const pane = view.container.querySelector(".listening-question-pane")!;
-    const dock = view.container.querySelector(".listening-audio-dock")!;
-    const footer = view.container.querySelector(".listening-exam-footer")!;
-    expect(dock).toBeInTheDocument();
-    expect(pane.compareDocumentPosition(dock) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(dock.nextElementSibling).toBe(footer);
+    const dock = view.container.querySelector(".listening-audio-dock") as HTMLElement;
+    expect(dock).toHaveClass("listening-audio-dock");
+    expect(view.container.querySelector(".listening-attempt-body")?.nextElementSibling).toBe(dock);
     expect(dock.querySelector(".listening-player-exam-bar")).toBeInTheDocument();
-    expect(dock.querySelector(".exam-question-strip")).toBeNull();
+    expect(within(dock).queryByRole("navigation")).not.toBeInTheDocument();
+    expect(within(dock).queryByRole("button", { name: "Submit answers" })).not.toBeInTheDocument();
+    const audio = dock.querySelector("audio")!;
+    Object.defineProperty(audio, "duration", { configurable: true, value: 120 }); fireEvent.loadedMetadata(audio);
+    audio.currentTime = 42; fireEvent.timeUpdate(audio);
+    expect(dock.querySelector(".player-progress-row")).toContainElement(within(dock).getByRole("slider", { name: "Audio seek" }));
+    expect(dock).toHaveTextContent("00:42 / 02:00");
+    for (const name of ["Mute", "Seek backward 5 seconds", "Play audio", "Seek forward 5 seconds"]) expect(within(dock).getByRole("button", { name })).toBeInTheDocument();
+    expect(within(dock).getByRole("slider", { name: "Volume" })).toBeInTheDocument();
+    expect(within(dock).getByRole("combobox", { name: "Playback speed" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Skip introduction|Bỏ qua giới thiệu/i })).not.toBeInTheDocument();
+  });
+
+  it("groups all forty full-test question buttons by section in the right rail", () => {
+    const initial = payload();
+    initial.attempt = { ...initial.attempt, scope: "FULL_MODULE", attempt_context: "STANDALONE" };
+    initial.listening_parts = [...initial.listening_parts].sort((left, right) => left.order_index - right.order_index).map((part, index) => ({
+      ...part,
+      question_groups: [group(`full-group-${index}`, 0, Array.from({ length: 10 }, (_, offset) => {
+        const number = index * 10 + offset + 1;
+        return { id: `11111111-1111-4111-8111-${String(number).padStart(12, "0")}`, number, value: null, flagged: false };
+      }))],
+    }));
+    const view = render(<ListeningRunner initial={initial} />);
+    const rail = screen.getByRole("complementary", { name: "Question navigation" });
+    const navigation = within(rail).getByRole("navigation", { name: "Question navigation" });
+    expect(within(navigation).getAllByRole("button", { name: /Go to question/ })).toHaveLength(40);
+    within(navigation).getAllByRole("group").forEach((section, index) => {
+      expect(within(section).getAllByRole("button", { name: /Go to question/ }).map((button) => button.textContent)).toEqual(Array.from({ length: 10 }, (_, offset) => String(index * 10 + offset + 1)));
+    });
+    const audio = view.container.querySelector("audio");
+    fireEvent.click(within(rail).getByRole("button", { name: "Go to question 40" }));
+    expect(screen.getByRole("main")).toHaveTextContent("Statement 40");
+    expect(within(rail).getByRole("button", { name: "Go to question 40" })).toHaveAttribute("aria-current", "true");
+    expect(within(rail).getByRole("button", { name: "Section 4" })).toHaveAttribute("aria-current", "page");
+    fireEvent.click(within(rail).getByRole("button", { name: "Section 2" }));
+    expect(within(rail).getByRole("button", { name: "Go to question 11" })).toHaveAttribute("aria-current", "true");
+    expect(screen.getByRole("main")).toHaveTextContent("Statement 11");
+    expect(view.container.querySelector("audio")).toBe(audio);
+  });
+
+  it("preserves the current question, answers, flags and player state through a shell rerender", async () => {
+    const initial = payload();
+    const view = render(<ListeningRunner initial={initial} />);
+    const sidebar = screen.getByRole("complementary", { name: "Question navigation" });
+    const audio = view.container.querySelector("audio")!;
+    Object.defineProperty(audio, "duration", { configurable: true, value: 120 }); fireEvent.loadedMetadata(audio);
+    fireEvent.change(screen.getByLabelText("Audio seek"), { target: { value: "42" } });
+    fireEvent.change(screen.getByLabelText("Playback speed"), { target: { value: "1.5" } });
+    fireEvent.change(screen.getByLabelText("Volume"), { target: { value: "0.35" } });
+    fireEvent.click(screen.getByRole("button", { name: "Mute" })); fireEvent.play(audio);
+    fireEvent.click(within(view.container.querySelector(`[data-question-id="${q2}"]`) as HTMLElement).getByRole("radio", { name: "FALSE" }));
+    fireEvent.click(within(sidebar).getByRole("button", { name: "Flag question 2" }));
+    await waitFor(() => expect(saveAnswer).toHaveBeenCalledWith(attemptId, q2, "FALSE", 0));
+    const calls = [audio.pause, audio.load, saveAnswer, saveFlag, recordNavigation].map((method) => vi.mocked(method).mock.calls.length);
+    view.rerender(<ListeningRunner initial={initial} />);
+    expect(screen.getByRole("complementary", { name: "Question navigation" })).toBe(sidebar);
+    expect(view.container.querySelector("audio")).toBe(audio);
+    expect([audio.currentTime, audio.playbackRate, audio.volume, audio.muted]).toEqual([42, 1.5, 0.35, true]);
+    expect(screen.getByRole("button", { name: "Pause audio" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Unmute" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Playback speed")).toHaveValue("1.5");
+    expect(screen.getByLabelText("Volume")).toHaveValue("0.35");
+    expect(screen.getByRole("button", { name: "Go to question 2" })).toHaveAttribute("aria-current", "true");
+    expect(sidebar.querySelector(`[data-nav-question-id="${q2}"]`)).toHaveClass("current", "answered", "flagged");
+    expect(within(view.container.querySelector(`[data-question-id="${q2}"]`) as HTMLElement).getByRole("radio", { name: "FALSE" })).toBeChecked();
+    expect([audio.pause, audio.load, saveAnswer, saveFlag, recordNavigation].map((method) => vi.mocked(method).mock.calls.length)).toEqual(calls);
   });
 
   it("keeps the dock, player, media state and reset counts while navigating groups and sections", () => {
@@ -540,15 +618,16 @@ describe("Listening footer navigation", () => {
     expect(observerCount).toBe(1);
   });
 
-  it("reveals a distant chip through the horizontal strip only", () => {
+  it.each([{ top: 420, bottom: 470, nextScroll: 270 }, { top: 50, bottom: 90, nextScroll: 50 }])("reveals a chip at $top by scrolling only the sidebar vertically", ({ top, bottom, nextScroll }) => {
     const view = render(<ListeningRunner initial={payload()} />);
-    const strip = view.container.querySelector(".exam-question-strip") as HTMLElement;
+    const rail = view.container.querySelector(".listening-navigation-scroll") as HTMLElement;
     const chip = screen.getByRole("button", { name: "Go to question 40" });
-    strip.getBoundingClientRect = () => ({ left: 100, right: 300 } as DOMRect);
-    chip.getBoundingClientRect = () => ({ left: 420, right: 470 } as DOMRect);
+    rail.scrollTop = 100;
+    rail.getBoundingClientRect = () => ({ top: 100, bottom: 300 } as DOMRect);
+    chip.getBoundingClientRect = () => ({ top, bottom } as DOMRect);
     scrolled.length = 0;
     fireEvent.click(chip);
-    expect(scrolled.some((item) => item.element === strip && item.options.left === 170 && item.options.top === undefined)).toBe(true);
+    expect(scrolled.some((item) => item.element === rail && item.options.top === nextScroll && item.options.left === undefined)).toBe(true);
     expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled();
   });
 
