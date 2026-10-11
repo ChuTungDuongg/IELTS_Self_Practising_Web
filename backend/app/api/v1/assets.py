@@ -7,11 +7,11 @@ from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.dependencies import CurrentUser, require_admin
+from app.api.dependencies import CurrentUser, require_content_author
 from app.core.config import get_settings
 from app.core.database import get_session
 from app.core.exceptions import AppError
-from app.models import Asset
+from app.models import Asset, User
 from app.models.enums import AssetType, UserRole
 from app.schemas.assets import AssetResponse
 from app.services.asset_access import can_user_read_asset
@@ -28,6 +28,7 @@ async def _upload(
     category: str,
     asset_type: AssetType,
     session: AsyncSession,
+    actor: User,
 ) -> AssetResponse:
     settings = get_settings()
     original_name = Path((upload.filename or "upload").replace("\\", "/")).name[:255]
@@ -38,7 +39,7 @@ async def _upload(
         * 1024
     )
     async with session.begin():
-        await TestService(session).ensure_draft(version_id)
+        await TestService(session, actor=actor).ensure_draft(version_id)
         stored = LocalAssetStorage(settings.resolved_storage_root).store(
             category=category,
             mime_type=upload.content_type or "application/octet-stream",
@@ -65,9 +66,10 @@ async def _upload(
     "/images",
     response_model=AssetResponse,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_admin)],
+    dependencies=[Depends(require_content_author)],
 )
 async def upload_image(
+    user: CurrentUser,
     test_version_id: UUID = Form(),
     file: UploadFile = File(),
     session: AsyncSession = Depends(get_session),
@@ -78,6 +80,7 @@ async def upload_image(
         category="images",
         asset_type=AssetType.WRITING_TASK_IMAGE,
         session=session,
+        actor=user,
     )
 
 
@@ -85,9 +88,10 @@ async def upload_image(
     "/question-images",
     response_model=AssetResponse,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_admin)],
+    dependencies=[Depends(require_content_author)],
 )
 async def upload_question_image(
+    user: CurrentUser,
     test_version_id: UUID = Form(),
     file: UploadFile = File(),
     session: AsyncSession = Depends(get_session),
@@ -98,6 +102,7 @@ async def upload_question_image(
         category="images",
         asset_type=AssetType.QUESTION_IMAGE,
         session=session,
+        actor=user,
     )
 
 
@@ -105,9 +110,10 @@ async def upload_question_image(
     "/audio",
     response_model=AssetResponse,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_admin)],
+    dependencies=[Depends(require_content_author)],
 )
 async def upload_audio(
+    user: CurrentUser,
     test_version_id: UUID = Form(),
     file: UploadFile = File(),
     session: AsyncSession = Depends(get_session),
@@ -118,6 +124,7 @@ async def upload_audio(
         category="audio",
         asset_type=AssetType.LISTENING_AUDIO,
         session=session,
+        actor=user,
     )
 
 
@@ -128,7 +135,9 @@ async def get_asset_content(
     asset = await session.scalar(select(Asset).where(Asset.id == asset_id))
     if asset is None:
         raise AppError("ASSET_NOT_FOUND", "The asset does not exist.", 404)
-    if user.role != UserRole.ADMIN and not await can_user_read_asset(session, user.id, asset):
+    if user.role != UserRole.ADMIN and not await can_user_read_asset(
+        session, user.id, asset, actor=user
+    ):
         raise AppError("ASSET_NOT_FOUND", "The asset does not exist.", 404)
     path = LocalAssetStorage(get_settings().resolved_storage_root).resolve(asset.relative_path)
     return FileResponse(

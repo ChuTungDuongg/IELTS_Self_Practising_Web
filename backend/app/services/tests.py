@@ -19,6 +19,7 @@ from app.domains.writing.task_types import WritingTaskType, validate_task_type
 from app.models import (
     Asset,
     Attempt,
+    ClassroomAssignment,
     ListeningPart,
     Question,
     QuestionGroup,
@@ -26,33 +27,63 @@ from app.models import (
     Test,
     TestModule,
     TestVersion,
+    TestVersionModeration,
+    User,
     WritingTask,
 )
-from app.models.enums import AssetType, ModuleType, VersionStatus
+from app.models.enums import AssetType, ModuleType, TestOrigin, UserRole, VersionStatus
 from app.repositories.tests import TestRepository, version_detail_query
 from app.schemas.common import ValidationIssue, ValidationResult
 from app.schemas.content import TextBlock
 from app.schemas.tests import TestCreate, TestDeleteResult, TestUpdate, VersionCreate
+from app.services.access_policy import AccessPolicy
 from app.storage import LocalAssetStorage
 
 
 class TestService:
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(self, session: AsyncSession, actor: User | None = None) -> None:
         self.session = session
+        self.policy = AccessPolicy(session, actor)
         self.repository = TestRepository(session)
 
     async def list_tests(self, *, archived: bool = False) -> list[Test]:
-        return await self.repository.list(archived=archived)
+        records = await self.repository.list(archived=archived)
+        if self.policy.actor.role == UserRole.ADMIN:
+            return records
+        visible = []
+        for test in records:
+            if (
+                self.policy.actor.role == UserRole.TEACHER
+                and test.owner_user_id == self.policy.actor.id
+            ):
+                visible.append(test)
+            elif any([await self.policy.version_access(version) for version in test.versions]):
+                visible.append(test)
+        return visible
 
     async def get_test(self, test_id: uuid.UUID) -> Test:
         test = await self.repository.get(test_id)
         if test is None:
             raise AppError("TEST_NOT_FOUND", "The requested test does not exist.", 404)
+        if (
+            self.policy.actor.role != UserRole.ADMIN
+            and not (
+                self.policy.actor.role == UserRole.TEACHER
+                and test.owner_user_id == self.policy.actor.id
+            )
+            and not any([await self.policy.version_access(version) for version in test.versions])
+        ):
+            raise AppError("TEST_NOT_FOUND", "The requested test does not exist.", 404)
         return test
 
     async def create_test(self, data: TestCreate) -> Test:
+        await self.policy.require_test_create()
         async with self.session.begin():
+            actor = await self.policy.lock_actor()
+            await self.policy.require_test_create()
             test = Test(
+                owner_user_id=actor.id,
+                origin=TestOrigin.ADMIN if actor.role == UserRole.ADMIN else TestOrigin.TEACHER,
                 title=data.title.strip(),
                 description=data.description,
                 source_label=data.source_label,
@@ -66,11 +97,30 @@ class TestService:
 
     async def update_test(self, test_id: uuid.UUID, data: TestUpdate) -> Test:
         async with self.session.begin():
+            await self.policy.lock_actor()
             test = await self.session.scalar(
-                select(Test).where(Test.id == test_id).with_for_update()
+                select(Test)
+                .where(Test.id == test_id)
+                .execution_options(populate_existing=True)
+                .with_for_update()
             )
             if test is None:
                 raise AppError("TEST_NOT_FOUND", "The requested test does not exist.", 404)
+            await self.policy.require_test_edit(test)
+            await self.policy.require_no_pending_test(test.id)
+            if self.policy.actor.role == UserRole.TEACHER:
+                draft = await self.session.scalar(
+                    select(TestVersion)
+                    .where(
+                        TestVersion.test_id == test.id, TestVersion.status == VersionStatus.DRAFT
+                    )
+                    .with_for_update()
+                )
+                if draft is None:
+                    raise AppError(
+                        "TEST_VERSION_IMMUTABLE", "Create a draft before editing this test.", 409
+                    )
+                await self.policy.require_version_mutable(draft)
             if "title" in data.model_fields_set:
                 assert data.title is not None
                 test.title = data.title
@@ -83,11 +133,17 @@ class TestService:
     async def delete_test(self, test_id: uuid.UUID) -> TestDeleteResult:
         deleted_paths: list[str] = []
         async with self.session.begin():
+            await self.policy.lock_actor()
             test = await self.session.scalar(
-                select(Test).where(Test.id == test_id).with_for_update()
+                select(Test)
+                .where(Test.id == test_id)
+                .execution_options(populate_existing=True)
+                .with_for_update()
             )
             if test is None:
                 raise AppError("TEST_NOT_FOUND", "The requested test does not exist.", 404)
+            await self.policy.require_test_edit(test)
+            await self.policy.require_no_pending_test(test.id)
             if test.archived_at is not None:
                 raise AppError(
                     "TEST_ALREADY_ARCHIVED", "The requested test is already archived.", 409
@@ -114,7 +170,16 @@ class TestService:
                 )
                 is not None
             )
-            if has_history or has_attempts:
+            has_moderation = (
+                await self.session.scalar(
+                    select(TestVersionModeration.id)
+                    .join(TestVersion, TestVersionModeration.test_version_id == TestVersion.id)
+                    .where(TestVersion.test_id == test_id)
+                    .limit(1)
+                )
+                is not None
+            )
+            if has_history or has_attempts or has_moderation:
                 test.archived_at = datetime.now(UTC)
                 await self.session.flush()
                 return TestDeleteResult(test_id=test_id, action="ARCHIVED")
@@ -136,13 +201,21 @@ class TestService:
         return TestDeleteResult(test_id=test_id, action="DELETED")
 
     async def permanently_delete_test(self, test_id: uuid.UUID) -> None:
+        await self.policy.require_admin_moderation()
         deleted_paths: list[str] = []
         async with self.session.begin():
+            await self.policy.lock_actor()
+            await self.policy.require_admin_moderation()
             test = await self.session.scalar(
-                select(Test).where(Test.id == test_id).with_for_update()
+                select(Test)
+                .where(Test.id == test_id)
+                .execution_options(populate_existing=True)
+                .with_for_update()
             )
             if test is None:
                 raise AppError("TEST_NOT_FOUND", "The requested test does not exist.", 404)
+            await self.policy.require_test_edit(test)
+            await self.policy.require_no_pending_test(test.id)
             if test.archived_at is None:
                 raise AppError(
                     "TEST_NOT_ARCHIVED",
@@ -155,6 +228,22 @@ class TestService:
                 )
             )
             if version_ids:
+                assignment = await self.session.scalar(
+                    select(ClassroomAssignment.id)
+                    .where(ClassroomAssignment.test_version_id.in_(version_ids))
+                    .limit(1)
+                )
+                moderation = await self.session.scalar(
+                    select(TestVersionModeration.id)
+                    .where(TestVersionModeration.test_version_id.in_(version_ids))
+                    .limit(1)
+                )
+                if assignment is not None or moderation is not None:
+                    raise AppError(
+                        "DELETE_CONFLICT",
+                        "Assignment and moderation history must be preserved.",
+                        409,
+                    )
                 await self.session.execute(
                     delete(Attempt).where(Attempt.test_version_id.in_(version_ids))
                 )
@@ -340,14 +429,18 @@ class TestService:
 
     async def restore_test(self, test_id: uuid.UUID) -> Test:
         async with self.session.begin():
+            await self.policy.lock_actor()
             test = await self.session.scalar(
                 select(Test)
                 .where(Test.id == test_id)
                 .options(selectinload(Test.versions))
+                .execution_options(populate_existing=True)
                 .with_for_update()
             )
             if test is None:
                 raise AppError("TEST_NOT_FOUND", "The requested test does not exist.", 404)
+            await self.policy.require_test_edit(test)
+            await self.policy.require_no_pending_test(test.id)
             if test.archived_at is None:
                 raise AppError("TEST_NOT_ARCHIVED", "Only archived tests can be restored.", 409)
             test.archived_at = None
@@ -358,14 +451,21 @@ class TestService:
     async def delete_draft(self, test_id: uuid.UUID, version_id: uuid.UUID) -> None:
         deleted_paths: list[str] = []
         async with self.session.begin():
+            await self.policy.lock_actor()
             test = await self.session.scalar(
-                select(Test).where(Test.id == test_id).with_for_update()
+                select(Test)
+                .where(Test.id == test_id)
+                .execution_options(populate_existing=True)
+                .with_for_update()
             )
             if test is None:
                 raise AppError("TEST_NOT_FOUND", "The requested test does not exist.", 404)
+            await self.policy.require_test_edit(test)
+            await self.policy.require_no_pending_test(test.id)
             version = await self.session.scalar(
                 select(TestVersion)
                 .where(TestVersion.id == version_id, TestVersion.test_id == test_id)
+                .execution_options(populate_existing=True)
                 .with_for_update()
             )
             if version is None:
@@ -376,6 +476,18 @@ class TestService:
                 )
             if version.status != VersionStatus.DRAFT:
                 raise AppError("VERSION_NOT_DRAFT", "Only draft versions can be deleted.", 409)
+            await self.policy.require_version_mutable(version)
+            moderation = await self.session.scalar(
+                select(TestVersionModeration.id)
+                .where(TestVersionModeration.test_version_id == version_id)
+                .limit(1)
+            )
+            if moderation is not None:
+                raise AppError(
+                    "DELETE_CONFLICT",
+                    "Moderation history must be preserved; archive the test instead.",
+                    409,
+                )
             attempt_id = await self.session.scalar(
                 select(Attempt.id).where(Attempt.test_version_id == version_id).limit(1)
             )
@@ -459,11 +571,16 @@ class TestService:
         created_paths: list[str] = []
         try:
             async with self.session.begin():
+                await self.policy.lock_actor()
                 test = await self.session.scalar(
-                    select(Test).where(Test.id == test_id).with_for_update()
+                    select(Test)
+                    .where(Test.id == test_id)
+                    .execution_options(populate_existing=True)
+                    .with_for_update()
                 )
                 if test is None:
                     raise AppError("TEST_NOT_FOUND", "The requested test does not exist.", 404)
+                await self.policy.require_test_edit(test)
                 if test.archived_at is not None:
                     raise AppError("TEST_ARCHIVED", "Restore this test before editing it.", 409)
                 existing_draft_id = await self.session.scalar(
@@ -1233,10 +1350,15 @@ class TestService:
                 raise ValueError("Every word-list summary question must map to exactly one gap")
 
     async def validate(self, version_id: uuid.UUID) -> ValidationResult:
-        return self.validate_version(await self.get_version(version_id))
+        version = await self.get_version(version_id)
+        await self.policy.require_builder_read(version)
+        return self.validate_version(version)
 
     async def publish(self, version_id: uuid.UUID) -> TestVersion:
+        await self.policy.require_admin_moderation()
         async with self.session.begin():
+            await self.policy.lock_actor()
+            await self.policy.require_admin_moderation()
             test_id = await self.session.scalar(
                 select(TestVersion.test_id).where(TestVersion.id == version_id)
             )
@@ -1245,9 +1367,19 @@ class TestService:
                     "TEST_VERSION_NOT_FOUND", "The requested test version does not exist.", 404
                 )
             test = await self.session.scalar(
-                select(Test).where(Test.id == test_id).with_for_update()
+                select(Test)
+                .where(Test.id == test_id)
+                .execution_options(populate_existing=True)
+                .with_for_update()
             )
             assert test is not None
+            if test.origin == TestOrigin.TEACHER:
+                raise AppError(
+                    "MODERATION_REQUIRED",
+                    "Teacher content must be published through moderation.",
+                    409,
+                )
+            await self.policy.require_no_pending_test(test.id)
             if test.archived_at is not None:
                 raise AppError("TEST_ARCHIVED", "Restore this test before publishing.", 409)
             version = await self.session.scalar(
@@ -1323,16 +1455,4 @@ class TestService:
                     question.answer_key = normalized["answer_key"]
 
     async def ensure_draft(self, version_id: uuid.UUID) -> TestVersion:
-        version = await self.session.scalar(
-            select(TestVersion)
-            .where(TestVersion.id == version_id)
-            .execution_options(populate_existing=True)
-            .with_for_update()
-        )
-        if version is None:
-            raise AppError(
-                "TEST_VERSION_NOT_FOUND", "The requested test version does not exist.", 404
-            )
-        if version.status != VersionStatus.DRAFT:
-            raise AppError("TEST_VERSION_IMMUTABLE", "Published versions cannot be changed.", 409)
-        return version
+        return await self.policy.lock_version(version_id, mutable=True)

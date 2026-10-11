@@ -19,6 +19,7 @@ from app.models import (
     Question,
     QuestionGroup,
     ReadingPassage,
+    User,
     WritingTask,
 )
 from app.models import (
@@ -30,7 +31,7 @@ from app.models import (
 from app.models import (
     TestVersion as VersionRecord,
 )
-from app.models.enums import ModuleType, VersionStatus
+from app.models.enums import ModuleType, UserRole, VersionStatus
 from app.schemas.content import (
     ListeningModuleAudioWrite,
     ListeningPartUpdate,
@@ -52,10 +53,13 @@ from app.services.writing import WritingService
 @dataclass
 class IndependentSessions:
     factory: async_sessionmaker[AsyncSession]
+    actor: User
     create_draft: Callable[..., Awaitable[tuple[UUID, UUID, UUID, UUID | None, UUID | None]]]
 
     def __call__(self) -> AsyncSession:
-        return self.factory()
+        session = self.factory()
+        session.info["current_user_identity"] = self.actor
+        return session
 
 
 @pytest_asyncio.fixture
@@ -67,6 +71,17 @@ async def independent_sessions() -> AsyncIterator[IndependentSessions]:
         raise RuntimeError("TEST_DATABASE_URL must name a test database")
     engine = create_async_engine(url, poolclass=NullPool)
     factory = async_sessionmaker(engine, expire_on_commit=False)
+    actor = User(
+        email=f"concurrency-{uuid4()}@example.com",
+        display_name="Fictional concurrency administrator",
+        role=UserRole.ADMIN,
+        is_active=True,
+        email_verified=True,
+    )
+    async with factory() as session:
+        async with session.begin():
+            session.add(actor)
+            await session.flush()
     created_test_ids: list[UUID] = []
 
     async def create_draft(
@@ -143,7 +158,7 @@ async def independent_sessions() -> AsyncIterator[IndependentSessions]:
         return test.id, version.id, passage.id, part.id if part else None, task.id if task else None
 
     try:
-        yield IndependentSessions(factory=factory, create_draft=create_draft)
+        yield IndependentSessions(factory=factory, actor=actor, create_draft=create_draft)
     finally:
         if created_test_ids:
             async with factory() as session:
@@ -151,6 +166,9 @@ async def independent_sessions() -> AsyncIterator[IndependentSessions]:
                     await session.execute(
                         delete(DomainTest).where(DomainTest.id.in_(created_test_ids))
                     )
+        async with factory() as session:
+            async with session.begin():
+                await session.execute(delete(User).where(User.id == actor.id))
         await engine.dispose()
 
 
@@ -183,11 +201,15 @@ def group_body(prompt: str, question_id: UUID, expected_revision: int = 1) -> Qu
     )
 
 
-def locks_version(statement: object) -> bool:
-    return (
-        getattr(statement, "_for_update_arg", None) is not None
-        and statement.column_descriptions[0]["entity"] is VersionRecord
-    )
+def locks_content_boundary(statement: object) -> bool:
+    # Ownership/moderation serialize through actor, Test, then TestVersion.
+    return getattr(
+        statement, "_for_update_arg", None
+    ) is not None and statement.column_descriptions[0]["entity"] in {
+        User,
+        DomainTest,
+        VersionRecord,
+    }
 
 
 @pytest.mark.integration
@@ -275,13 +297,13 @@ async def test_overlapping_passage_saves_only_one_can_advance_revision_one(
 
         async def pause_first(statement, *args, **kwargs):
             result = await first_scalar(statement, *args, **kwargs)
-            if locks_version(statement):
+            if locks_content_boundary(statement):
                 first_locked.set()
                 await release_first.wait()
             return result
 
         async def observe_second(statement, *args, **kwargs):
-            if locks_version(statement):
+            if locks_content_boundary(statement):
                 second_waiting.set()
             return await second_scalar(statement, *args, **kwargs)
 
@@ -513,13 +535,13 @@ async def test_builder_lock_first_publish_includes_committed_edit(
 
         async def pause_builder(statement, *args, **kwargs):
             result = await builder_scalar(statement, *args, **kwargs)
-            if locks_version(statement):
+            if locks_content_boundary(statement):
                 builder_locked.set()
                 await release_builder.wait()
             return result
 
         async def observe_publish(statement, *args, **kwargs):
-            if locks_version(statement):
+            if locks_content_boundary(statement):
                 publish_waiting.set()
             return await publisher_scalar(statement, *args, **kwargs)
 
@@ -572,13 +594,13 @@ async def test_publish_lock_first_rejects_stale_builder_edit(
 
         async def pause_publish(statement, *args, **kwargs):
             result = await publisher_scalar(statement, *args, **kwargs)
-            if locks_version(statement):
+            if locks_content_boundary(statement):
                 publish_locked.set()
                 await release_publish.wait()
             return result
 
         async def observe_builder(statement, *args, **kwargs):
-            if locks_version(statement):
+            if locks_content_boundary(statement):
                 builder_waiting.set()
             return await builder_scalar(statement, *args, **kwargs)
 

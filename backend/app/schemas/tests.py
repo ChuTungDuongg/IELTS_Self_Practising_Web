@@ -5,7 +5,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.domains.writing.task_types import WritingTaskType
-from app.models.enums import ModuleType, VersionStatus
+from app.models.enums import ModuleType, TestOrigin, VersionStatus
 from app.schemas.listening import ListeningAudioRange
 
 
@@ -61,6 +61,9 @@ class TestSummary(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
+    owner_user_id: UUID | None = None
+    origin: TestOrigin = TestOrigin.ADMIN
+    owner_display_name: str | None = None
     title: str
     description: str | None
     source_label: str | None

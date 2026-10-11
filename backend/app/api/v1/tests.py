@@ -6,6 +6,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.dependencies import AdminUser, CurrentUser
 from app.api.v1.presenters import present_version
 from app.core.database import get_session
+from app.core.exceptions import AppError
+from app.models import User
+from app.models.enums import UserRole
 from app.schemas.common import ValidationResult
 from app.schemas.tests import (
     TestCreate,
@@ -24,78 +27,98 @@ router = APIRouter(tags=["tests"])
 async def list_tests(
     user: CurrentUser,
     archived: bool = False,
+    public_only: bool = False,
     session: AsyncSession = Depends(get_session),
 ) -> list[TestSummary]:
-    records = await TestService(session).list_tests(archived=archived)
-    summaries = [TestSummary.model_validate(record) for record in records]
-    if user.role.value == "ADMIN":
-        return summaries
-    return [
-        summary.model_copy(
-            update={
-                "versions": [item for item in summary.versions if item.status.value == "PUBLISHED"]
-            }
-        )
-        for summary in summaries
-        if any(item.status.value == "PUBLISHED" for item in summary.versions)
-    ]
+    records = await TestService(session, actor=user).list_tests(archived=archived)
+    summaries = []
+    for record in records:
+        summary = TestSummary.model_validate(record)
+        if record.owner_user_id is not None:
+            owner = await session.get(User, record.owner_user_id)
+            summary.owner_display_name = owner.display_name if owner else None
+        if public_only or (
+            user.role != UserRole.ADMIN
+            and not (user.role == UserRole.TEACHER and record.owner_user_id == user.id)
+        ):
+            summary = summary.model_copy(
+                update={
+                    "versions": [
+                        item
+                        for item, version in zip(summary.versions, record.versions, strict=True)
+                        if await TestService(session, actor=user).policy.version_access(version)
+                    ]
+                }
+            )
+        if not public_only or summary.versions:
+            summaries.append(summary)
+    return summaries
 
 
 @router.post("/tests", response_model=TestSummary, status_code=status.HTTP_201_CREATED)
 async def create_test(
-    body: TestCreate, _: AdminUser, session: AsyncSession = Depends(get_session)
+    body: TestCreate, user: CurrentUser, session: AsyncSession = Depends(get_session)
 ) -> TestSummary:
-    return TestSummary.model_validate(await TestService(session).create_test(body))
+    return TestSummary.model_validate(await TestService(session, actor=user).create_test(body))
 
 
 @router.get("/tests/{test_id}", response_model=TestSummary)
 async def get_test(
     test_id: UUID, user: CurrentUser, session: AsyncSession = Depends(get_session)
 ) -> TestSummary:
-    summary = TestSummary.model_validate(await TestService(session).get_test(test_id))
-    if user.role.value == "ADMIN":
+    service = TestService(session, actor=user)
+    record = await service.get_test(test_id)
+    summary = TestSummary.model_validate(record)
+    if record.owner_user_id is not None:
+        owner = await session.get(User, record.owner_user_id)
+        summary.owner_display_name = owner.display_name if owner else None
+    if user.role == UserRole.ADMIN or (
+        user.role == UserRole.TEACHER and record.owner_user_id == user.id
+    ):
         return summary
-    published = [item for item in summary.versions if item.status.value == "PUBLISHED"]
-    if not published:
-        from app.core.exceptions import AppError
-
-        raise AppError("TEST_NOT_FOUND", "The requested test does not exist.", 404)
-    return summary.model_copy(update={"versions": published})
+    versions = [
+        item
+        for item, version in zip(summary.versions, record.versions, strict=True)
+        if await service.policy.version_access(version)
+    ]
+    return summary.model_copy(update={"versions": versions})
 
 
 @router.patch("/tests/{test_id}", response_model=TestSummary)
 async def update_test(
-    test_id: UUID, body: TestUpdate, _: AdminUser, session: AsyncSession = Depends(get_session)
+    test_id: UUID, body: TestUpdate, user: CurrentUser, session: AsyncSession = Depends(get_session)
 ) -> TestSummary:
-    return TestSummary.model_validate(await TestService(session).update_test(test_id, body))
+    return TestSummary.model_validate(
+        await TestService(session, actor=user).update_test(test_id, body)
+    )
 
 
 @router.delete("/tests/{test_id}", response_model=TestDeleteResult)
 async def delete_test(
-    test_id: UUID, _: AdminUser, session: AsyncSession = Depends(get_session)
+    test_id: UUID, user: CurrentUser, session: AsyncSession = Depends(get_session)
 ) -> TestDeleteResult:
-    return await TestService(session).delete_test(test_id)
+    return await TestService(session, actor=user).delete_test(test_id)
 
 
 @router.post("/tests/{test_id}/restore", response_model=TestSummary)
 async def restore_test(
-    test_id: UUID, _: AdminUser, session: AsyncSession = Depends(get_session)
+    test_id: UUID, user: CurrentUser, session: AsyncSession = Depends(get_session)
 ) -> TestSummary:
-    return TestSummary.model_validate(await TestService(session).restore_test(test_id))
+    return TestSummary.model_validate(await TestService(session, actor=user).restore_test(test_id))
 
 
 @router.delete("/tests/{test_id}/permanent", status_code=status.HTTP_204_NO_CONTENT)
 async def permanently_delete_test(
-    test_id: UUID, _: AdminUser, session: AsyncSession = Depends(get_session)
+    test_id: UUID, user: AdminUser, session: AsyncSession = Depends(get_session)
 ) -> None:
-    await TestService(session).permanently_delete_test(test_id)
+    await TestService(session, actor=user).permanently_delete_test(test_id)
 
 
 @router.delete("/test-modules/{module_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_module(
-    module_id: UUID, _: AdminUser, session: AsyncSession = Depends(get_session)
+    module_id: UUID, user: CurrentUser, session: AsyncSession = Depends(get_session)
 ) -> None:
-    await TestService(session).delete_module(module_id)
+    await TestService(session, actor=user).delete_module(module_id)
 
 
 @router.post(
@@ -106,10 +129,10 @@ async def delete_module(
 async def create_version(
     test_id: UUID,
     body: VersionCreate,
-    _: AdminUser,
+    user: CurrentUser,
     session: AsyncSession = Depends(get_session),
 ) -> VersionDetail:
-    version = await TestService(session).create_version(test_id, body)
+    version = await TestService(session, actor=user).create_version(test_id, body)
     return present_version(version)
 
 
@@ -117,37 +140,40 @@ async def create_version(
 async def delete_draft(
     test_id: UUID,
     version_id: UUID,
-    _: AdminUser,
+    user: CurrentUser,
     session: AsyncSession = Depends(get_session),
 ) -> None:
-    await TestService(session).delete_draft(test_id, version_id)
+    await TestService(session, actor=user).delete_draft(test_id, version_id)
 
 
 @router.get("/test-versions/{version_id}", response_model=VersionDetail)
 async def get_version(
-    version_id: UUID, user: CurrentUser, session: AsyncSession = Depends(get_session)
+    version_id: UUID,
+    user: CurrentUser,
+    public_only: bool = False,
+    session: AsyncSession = Depends(get_session),
 ) -> VersionDetail:
-    version = await TestService(session).get_version(version_id)
-    if user.role.value != "ADMIN":
-        from app.core.exceptions import AppError
-        from app.models.enums import VersionStatus
-
-        if version.status != VersionStatus.PUBLISHED:
+    service = TestService(session, actor=user)
+    version = await service.get_version(version_id)
+    if public_only:
+        if not await service.policy.version_access(version):
             raise AppError(
                 "TEST_VERSION_NOT_FOUND", "The requested test version does not exist.", 404
             )
+    else:
+        await service.policy.require_version_read(version)
     return present_version(version)
 
 
 @router.post("/test-versions/{version_id}/validate", response_model=ValidationResult)
 async def validate_version(
-    version_id: UUID, _: AdminUser, session: AsyncSession = Depends(get_session)
+    version_id: UUID, user: CurrentUser, session: AsyncSession = Depends(get_session)
 ) -> ValidationResult:
-    return await TestService(session).validate(version_id)
+    return await TestService(session, actor=user).validate(version_id)
 
 
 @router.post("/test-versions/{version_id}/publish", response_model=VersionDetail)
 async def publish_version(
-    version_id: UUID, _: AdminUser, session: AsyncSession = Depends(get_session)
+    version_id: UUID, user: AdminUser, session: AsyncSession = Depends(get_session)
 ) -> VersionDetail:
-    return present_version(await TestService(session).publish(version_id))
+    return present_version(await TestService(session, actor=user).publish(version_id))

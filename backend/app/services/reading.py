@@ -21,9 +21,10 @@ from app.models import (
     ReadingPassage,
     TestModule,
     TestVersion,
+    User,
     WritingTask,
 )
-from app.models.enums import AssetType, ModuleType, VersionStatus
+from app.models.enums import AssetType, ModuleType
 from app.repositories.tests import TestRepository
 from app.schemas.assets import AssetResponse
 from app.schemas.content import (
@@ -43,17 +44,20 @@ from app.schemas.content import (
     QuestionGroupWrite,
     QuestionWrite,
 )
+from app.services.access_policy import AccessPolicy
 from app.services.draft_revisions import advance_revision
 
 
 class ReadingService:
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(self, session: AsyncSession, actor: User | None = None) -> None:
         self.session = session
+        self.policy = AccessPolicy(session, actor)
 
     async def builder_version(self, version_id: uuid.UUID) -> BuilderVersion:
         version = await TestRepository(self.session).get_version(version_id)
         if version is None:
             raise AppError("TEST_VERSION_NOT_FOUND", "The test version does not exist.", 404)
+        await self.policy.require_builder_read(version)
         return self._present_version(version)
 
     async def create_module(self, version_id: uuid.UUID, body: ModuleCreate) -> BuilderModule:
@@ -163,6 +167,9 @@ class ReadingService:
         )
         if passage is None:
             raise AppError("PASSAGE_NOT_FOUND", "The passage does not exist.", 404)
+        await self.policy.require_builder_read(
+            await self.session.get(TestVersion, passage.module.test_version_id)
+        )
         return self._present_passage(passage)
 
     async def create_group(
@@ -217,7 +224,7 @@ class ReadingService:
                     from app.services.tests import TestService
 
                     repaired, copied_path = await TestService(
-                        self.session
+                        self.session, actor=self.policy.actor
                     ).resolve_owned_or_inherited_asset(
                         target_version=group.module.test_version,
                         requested_asset_id=body.image_asset_id,
@@ -287,9 +294,9 @@ class ReadingService:
                 if previous_image_asset_id and previous_image_asset_id != group.image_asset_id:
                     from app.services.tests import TestService
 
-                    deleted_path = await TestService(self.session).cleanup_asset_if_unreferenced(
-                        previous_image_asset_id
-                    )
+                    deleted_path = await TestService(
+                        self.session, actor=self.policy.actor
+                    ).cleanup_asset_if_unreferenced(previous_image_asset_id)
                 saved = await self.get_group(group_id)
         except BaseException:
             if copied_path:
@@ -315,9 +322,9 @@ class ReadingService:
             if image_asset_id:
                 from app.services.tests import TestService
 
-                deleted_path = await TestService(self.session).cleanup_asset_if_unreferenced(
-                    image_asset_id
-                )
+                deleted_path = await TestService(
+                    self.session, actor=self.policy.actor
+                ).cleanup_asset_if_unreferenced(image_asset_id)
         if deleted_path:
             from app.services.tests import TestService
 
@@ -334,7 +341,7 @@ class ReadingService:
                 raise AppError("TEST_MODULE_NOT_FOUND", "The test module does not exist.", 404)
             from app.services.tests import TestService
 
-            await TestService(self.session).ensure_draft(version_id)
+            await TestService(self.session, actor=self.policy.actor).ensure_draft(version_id)
             module = await self.session.scalar(
                 select(TestModule)
                 .where(TestModule.id == module_id)
@@ -442,6 +449,10 @@ class ReadingService:
         )
         if group is None:
             raise AppError("QUESTION_GROUP_NOT_FOUND", "The question group does not exist.", 404)
+        version_id = await self.session.scalar(
+            select(TestModule.test_version_id).where(TestModule.id == group.module_id)
+        )
+        await self.policy.require_builder_read(await self.session.get(TestVersion, version_id))
         blocks = (
             normalize_passage_blocks(group.passage.content_json, group.passage.id)
             if group.passage
@@ -450,18 +461,7 @@ class ReadingService:
         return self._present_group(group, blocks)
 
     async def _draft_version(self, version_id: uuid.UUID) -> TestVersion:
-        version = await self.session.scalar(
-            select(TestVersion)
-            .where(TestVersion.id == version_id)
-            .options(selectinload(TestVersion.modules))
-            .execution_options(populate_existing=True)
-            .with_for_update()
-        )
-        if version is None:
-            raise AppError("TEST_VERSION_NOT_FOUND", "The test version does not exist.", 404)
-        if version.status != VersionStatus.DRAFT:
-            raise AppError("TEST_VERSION_IMMUTABLE", "Published versions cannot be changed.", 409)
-        return version
+        return await self.policy.lock_version(version_id, mutable=True)
 
     async def _draft_passage(self, passage_id: uuid.UUID) -> ReadingPassage:
         version_id = await self.session.scalar(
@@ -473,7 +473,7 @@ class ReadingService:
             raise AppError("PASSAGE_NOT_FOUND", "The passage does not exist.", 404)
         from app.services.tests import TestService
 
-        await TestService(self.session).ensure_draft(version_id)
+        await TestService(self.session, actor=self.policy.actor).ensure_draft(version_id)
         passage = await self.session.scalar(
             self._passage_query().where(ReadingPassage.id == passage_id).with_for_update()
         )
@@ -491,7 +491,7 @@ class ReadingService:
             raise AppError("QUESTION_GROUP_NOT_FOUND", "The question group does not exist.", 404)
         from app.services.tests import TestService
 
-        await TestService(self.session).ensure_draft(version_id)
+        await TestService(self.session, actor=self.policy.actor).ensure_draft(version_id)
         group = await self.session.scalar(
             select(QuestionGroup)
             .where(QuestionGroup.id == group_id)

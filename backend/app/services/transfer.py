@@ -33,9 +33,10 @@ from app.models import (
     Test,
     TestModule,
     TestVersion,
+    User,
     WritingTask,
 )
-from app.models.enums import AssetType, ModuleType, VersionStatus
+from app.models.enums import AssetType, ModuleType, TestOrigin, VersionStatus
 from app.repositories.tests import version_detail_query
 from app.schemas.transfer import (
     TRANSFER_FORMAT,
@@ -54,6 +55,7 @@ from app.schemas.transfer import (
     TransferImportResult,
     TransferManifest,
 )
+from app.services.access_policy import AccessPolicy
 from app.services.tests import TestService
 from app.storage import LocalAssetStorage
 
@@ -66,12 +68,16 @@ class ValidatedPackage:
 
 
 class TransferService:
-    def __init__(self, session: AsyncSession, settings: Settings) -> None:
+    def __init__(
+        self, session: AsyncSession, settings: Settings, actor: User | None = None
+    ) -> None:
         self.session = session
+        self.policy = AccessPolicy(session, actor)
         self.settings = settings
         self.storage = LocalAssetStorage(settings.resolved_storage_root)
 
     async def export(self, test_ids: list[uuid.UUID], destination: Path) -> None:
+        await self.policy.require_admin_moderation()
         tests: list[Test] = []
         for test_id in test_ids:
             test = await self.session.scalar(
@@ -236,8 +242,12 @@ class TransferService:
         version_count = 0
         try:
             async with self.session.begin():
+                actor = await self.policy.lock_actor()
+                await self.policy.require_admin_moderation()
                 for portable_test in package.tests:
                     test = Test(
+                        owner_user_id=actor.id,
+                        origin=TestOrigin.ADMIN,
                         id=maps["tests"][portable_test.id],
                         title=portable_test.title,
                         description=portable_test.description,

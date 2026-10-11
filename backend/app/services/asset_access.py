@@ -5,22 +5,71 @@ from uuid import UUID
 from sqlalchemy import String, and_, cast, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Asset, Attempt, QuestionGroup, TestModule, TestVersion, WritingTask
-from app.models.enums import ModuleType, VersionStatus
+from app.models import (
+    Asset,
+    Attempt,
+    Classroom,
+    ClassroomAssignment,
+    QuestionGroup,
+    Test,
+    TestModule,
+    TestSession,
+    TestVersion,
+    User,
+    WritingTask,
+)
+from app.models.enums import ModuleType, UserRole, VersionStatus
+from app.services.access_policy import AccessPolicy
 
 
-async def can_user_read_asset(session: AsyncSession, user_id: UUID, asset: Asset) -> bool:
+async def can_user_read_asset(
+    session: AsyncSession, user_id: UUID, asset: Asset, *, actor: User | None = None
+) -> bool:
     """Allow current published assets or an owned archived module's referenced asset."""
-    version_status = await session.scalar(
-        select(TestVersion.status).where(TestVersion.id == asset.test_version_id)
-    )
-    if version_status == VersionStatus.PUBLISHED:
+    version = await session.get(TestVersion, asset.test_version_id)
+    if version is None:
+        return False
+    identity = actor or await session.get(User, user_id)
+    if identity is None:
+        return False
+    policy = AccessPolicy(session, identity)
+    if identity.role == UserRole.ADMIN:
         return True
-    if version_status != VersionStatus.ARCHIVED:
+    test = await session.get(Test, version.test_id)
+    if identity.role == UserRole.TEACHER and test is not None and test.owner_user_id == user_id:
+        return True
+    if await policy.version_access(version):
+        return True
+    if version.status == VersionStatus.DRAFT:
         return False
 
+    teacher_standalone = (
+        select(1)
+        .select_from(ClassroomAssignment)
+        .join(Classroom)
+        .where(
+            ClassroomAssignment.id == Attempt.classroom_assignment_id,
+            Classroom.teacher_id == user_id,
+        )
+        .exists()
+    )
+    teacher_session = (
+        select(1)
+        .select_from(TestSession)
+        .join(ClassroomAssignment, TestSession.classroom_assignment_id == ClassroomAssignment.id)
+        .join(Classroom)
+        .where(
+            TestSession.id == Attempt.test_session_id,
+            Classroom.teacher_id == user_id,
+        )
+        .exists()
+    )
+
     owned_module = and_(
-        Attempt.user_id == user_id,
+        or_(
+            Attempt.user_id == user_id,
+            and_(identity.role == UserRole.TEACHER, or_(teacher_standalone, teacher_session)),
+        ),
         Attempt.test_version_id == asset.test_version_id,
         Attempt.test_version_id == TestModule.test_version_id,
         # These columns use distinct PostgreSQL enum types.

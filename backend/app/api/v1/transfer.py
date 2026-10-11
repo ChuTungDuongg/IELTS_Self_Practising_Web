@@ -7,7 +7,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.background import BackgroundTask
 
-from app.api.dependencies import require_admin
+from app.api.dependencies import AdminUser, require_admin
 from app.core.config import get_settings
 from app.core.database import get_session
 from app.core.exceptions import AppError
@@ -24,13 +24,14 @@ def _remove(path: Path) -> None:
 @router.post("/export", response_class=FileResponse)
 async def export_tests(
     body: TransferExportRequest,
+    admin: AdminUser,
     session: AsyncSession = Depends(get_session),
 ) -> FileResponse:
     handle = tempfile.NamedTemporaryFile(prefix="ielts-transfer-", suffix=".zip", delete=False)
     path = Path(handle.name)
     handle.close()
     try:
-        await TransferService(session, get_settings()).export(body.test_ids, path)
+        await TransferService(session, get_settings(), actor=admin).export(body.test_ids, path)
     except Exception:
         _remove(path)
         raise
@@ -44,6 +45,7 @@ async def export_tests(
 
 @router.post("/import", response_model=TransferImportResult)
 async def import_tests(
+    admin: AdminUser,
     file: UploadFile = File(),
     session: AsyncSession = Depends(get_session),
 ) -> TransferImportResult:
@@ -66,6 +68,6 @@ async def import_tests(
                 destination.write(chunk)
         if size == 0:
             raise AppError("TRANSFER_FILE_INVALID", "The uploaded ZIP is empty.", 422)
-        service = TransferService(session, settings)
+        service = TransferService(session, settings, actor=admin)
         package = service.validate_archive(archive_path, root)
         return await service.import_package(package)

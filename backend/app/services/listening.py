@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.exceptions import AppError
-from app.models import Asset, ListeningPart, Question, QuestionGroup, TestModule, TestVersion
+from app.models import Asset, ListeningPart, Question, QuestionGroup, TestModule, TestVersion, User
 from app.models.enums import AssetType, ModuleType
 from app.schemas.content import (
     BuilderListeningPart,
@@ -18,14 +18,16 @@ from app.schemas.content import (
     QuestionGroupWrite,
     QuestionWrite,
 )
+from app.services.access_policy import AccessPolicy
 from app.services.draft_revisions import advance_revision
 from app.services.reading import ReadingService
 
 
 class ListeningService:
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(self, session: AsyncSession, actor: User | None = None) -> None:
         self.session = session
-        self.shared = ReadingService(session)
+        self.policy = AccessPolicy(session, actor)
+        self.shared = ReadingService(session, actor=self.policy.actor)
 
     async def create_part(
         self, version_id: uuid.UUID, body: ListeningPartWrite
@@ -88,7 +90,7 @@ class ListeningService:
                     from app.services.tests import TestService
 
                     repaired, copied_path = await TestService(
-                        self.session
+                        self.session, actor=self.policy.actor
                     ).resolve_owned_or_inherited_asset(
                         target_version=module.test_version,
                         requested_asset_id=body.asset_id,
@@ -130,9 +132,9 @@ class ListeningService:
                 if previous_asset_id is not None and previous_asset_id != module.audio_asset_id:
                     from app.services.tests import TestService
 
-                    deleted_path = await TestService(self.session).cleanup_asset_if_unreferenced(
-                        previous_asset_id
-                    )
+                    deleted_path = await TestService(
+                        self.session, actor=self.policy.actor
+                    ).cleanup_asset_if_unreferenced(previous_asset_id)
                 version_id = module.test_version_id
                 version = await self.shared.builder_version(version_id)
                 saved = next(item for item in version.modules if item.id == module_id)
@@ -192,7 +194,7 @@ class ListeningService:
                     from app.services.tests import TestService
 
                     repaired, copied_path = await TestService(
-                        self.session
+                        self.session, actor=self.policy.actor
                     ).resolve_owned_or_inherited_asset(
                         target_version=group.module.test_version,
                         requested_asset_id=body.image_asset_id,
@@ -237,9 +239,9 @@ class ListeningService:
                 if previous_image_asset_id and previous_image_asset_id != group.image_asset_id:
                     from app.services.tests import TestService
 
-                    deleted_path = await TestService(self.session).cleanup_asset_if_unreferenced(
-                        previous_image_asset_id
-                    )
+                    deleted_path = await TestService(
+                        self.session, actor=self.policy.actor
+                    ).cleanup_asset_if_unreferenced(previous_image_asset_id)
                 saved = await self.get_group(group_id)
         except BaseException:
             if copied_path:
@@ -257,6 +259,9 @@ class ListeningService:
         part = await self.session.scalar(self._part_query().where(ListeningPart.id == part_id))
         if part is None:
             raise AppError("LISTENING_PART_NOT_FOUND", "The Listening part does not exist.", 404)
+        await self.policy.require_builder_read(
+            await self.session.get(TestVersion, part.module.test_version_id)
+        )
         return ReadingService._present_listening_part(part)
 
     async def get_group(self, group_id: uuid.UUID) -> BuilderQuestionGroup:
@@ -270,12 +275,16 @@ class ListeningService:
         )
         if group is None or group.listening_part_id is None:
             raise AppError("QUESTION_GROUP_NOT_FOUND", "The question group does not exist.", 404)
+        version_id = await self.session.scalar(
+            select(TestModule.test_version_id).where(TestModule.id == group.module_id)
+        )
+        await self.policy.require_builder_read(await self.session.get(TestVersion, version_id))
         return ReadingService._present_group(group, [], module_type=ModuleType.LISTENING)
 
     async def _draft_module_for_version(self, version_id: uuid.UUID) -> TestModule:
         from app.services.tests import TestService
 
-        await TestService(self.session).ensure_draft(version_id)
+        await TestService(self.session, actor=self.policy.actor).ensure_draft(version_id)
         version = await self.session.scalar(
             select(TestVersion)
             .where(TestVersion.id == version_id)
@@ -302,7 +311,7 @@ class ListeningService:
             )
         from app.services.tests import TestService
 
-        await TestService(self.session).ensure_draft(version_id)
+        await TestService(self.session, actor=self.policy.actor).ensure_draft(version_id)
         module = await self.session.scalar(
             select(TestModule)
             .where(TestModule.id == module_id, TestModule.module_type == ModuleType.LISTENING)
@@ -325,7 +334,7 @@ class ListeningService:
             raise AppError("LISTENING_PART_NOT_FOUND", "The Listening part does not exist.", 404)
         from app.services.tests import TestService
 
-        await TestService(self.session).ensure_draft(version_id)
+        await TestService(self.session, actor=self.policy.actor).ensure_draft(version_id)
         part = await self.session.scalar(
             self._part_query().where(ListeningPart.id == part_id).with_for_update()
         )
@@ -343,7 +352,7 @@ class ListeningService:
             raise AppError("QUESTION_GROUP_NOT_FOUND", "The question group does not exist.", 404)
         from app.services.tests import TestService
 
-        await TestService(self.session).ensure_draft(version_id)
+        await TestService(self.session, actor=self.policy.actor).ensure_draft(version_id)
         group = await self.session.scalar(
             select(QuestionGroup)
             .where(QuestionGroup.id == group_id)

@@ -3,7 +3,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.dependencies import require_admin
+from app.api.dependencies import CurrentUser, require_content_author
 from app.core.database import get_session
 from app.schemas.content import (
     BuilderModule,
@@ -20,14 +20,14 @@ from app.schemas.content import (
 )
 from app.services.reading import ReadingService
 
-router = APIRouter(tags=["builder"], dependencies=[Depends(require_admin)])
+router = APIRouter(dependencies=[Depends(require_content_author)], tags=["builder"])
 
 
 @router.get("/test-versions/{version_id}/builder", response_model=BuilderVersion)
 async def get_builder_version(
-    version_id: UUID, session: AsyncSession = Depends(get_session)
+    version_id: UUID, user: CurrentUser, session: AsyncSession = Depends(get_session)
 ) -> BuilderVersion:
-    return await ReadingService(session).builder_version(version_id)
+    return await ReadingService(session, actor=user).builder_version(version_id)
 
 
 @router.post(
@@ -36,16 +36,22 @@ async def get_builder_version(
     status_code=status.HTTP_201_CREATED,
 )
 async def create_module(
-    version_id: UUID, body: ModuleCreate, session: AsyncSession = Depends(get_session)
+    version_id: UUID,
+    body: ModuleCreate,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
 ) -> BuilderModule:
-    return await ReadingService(session).create_module(version_id, body)
+    return await ReadingService(session, actor=user).create_module(version_id, body)
 
 
 @router.patch("/test-modules/{module_id}", response_model=BuilderModule)
 async def update_module(
-    module_id: UUID, body: ModuleUpdate, session: AsyncSession = Depends(get_session)
+    module_id: UUID,
+    body: ModuleUpdate,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
 ) -> BuilderModule:
-    return await ReadingService(session).update_module(module_id, body)
+    return await ReadingService(session, actor=user).update_module(module_id, body)
 
 
 @router.post(
@@ -54,23 +60,29 @@ async def update_module(
     status_code=status.HTTP_201_CREATED,
 )
 async def create_passage(
-    version_id: UUID, body: PassageWrite, session: AsyncSession = Depends(get_session)
+    version_id: UUID,
+    body: PassageWrite,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
 ) -> BuilderPassage:
-    return await ReadingService(session).create_passage(version_id, body)
+    return await ReadingService(session, actor=user).create_passage(version_id, body)
 
 
 @router.put("/reading/passages/{passage_id}", response_model=BuilderPassage)
 async def update_passage(
-    passage_id: UUID, body: PassageUpdate, session: AsyncSession = Depends(get_session)
+    passage_id: UUID,
+    body: PassageUpdate,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
 ) -> BuilderPassage:
-    return await ReadingService(session).update_passage(passage_id, body)
+    return await ReadingService(session, actor=user).update_passage(passage_id, body)
 
 
 @router.delete("/reading/passages/{passage_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_passage(
-    passage_id: UUID, session: AsyncSession = Depends(get_session)
+    passage_id: UUID, user: CurrentUser, session: AsyncSession = Depends(get_session)
 ) -> Response:
-    await ReadingService(session).delete_passage(passage_id)
+    await ReadingService(session, actor=user).delete_passage(passage_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -82,25 +94,27 @@ async def delete_passage(
 async def create_question_group(
     passage_id: UUID,
     body: QuestionGroupWrite,
+    user: CurrentUser,
     session: AsyncSession = Depends(get_session),
 ) -> BuilderQuestionGroup:
-    return await ReadingService(session).create_group(passage_id, body)
+    return await ReadingService(session, actor=user).create_group(passage_id, body)
 
 
 @router.put("/question-groups/{group_id}", response_model=BuilderQuestionGroup)
 async def update_question_group(
     group_id: UUID,
     body: QuestionGroupUpdate,
+    user: CurrentUser,
     session: AsyncSession = Depends(get_session),
 ) -> BuilderQuestionGroup:
-    return await ReadingService(session).update_group(group_id, body)
+    return await ReadingService(session, actor=user).update_group(group_id, body)
 
 
 @router.delete("/question-groups/{group_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_question_group(
-    group_id: UUID, session: AsyncSession = Depends(get_session)
+    group_id: UUID, user: CurrentUser, session: AsyncSession = Depends(get_session)
 ) -> Response:
-    await ReadingService(session).delete_group(group_id)
+    await ReadingService(session, actor=user).delete_group(group_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -108,6 +122,7 @@ async def delete_question_group(
 async def reorder_question_groups(
     module_id: UUID,
     body: QuestionGroupOrderWrite,
+    user: CurrentUser,
     session: AsyncSession = Depends(get_session),
 ) -> BuilderModule:
-    return await ReadingService(session).reorder_groups(module_id, body)
+    return await ReadingService(session, actor=user).reorder_groups(module_id, body)

@@ -26,12 +26,14 @@ from app.models import (
     Test,
     TestModule,
     TestVersion,
+    User,
     WritingTask,
 )
-from app.models.enums import AssetType, ModuleType, VersionStatus
+from app.models.enums import AssetType, ModuleType, TestOrigin, UserRole, VersionStatus
 from app.repositories.tests import TestRepository
 from app.schemas.content import QuestionGroupWrite, QuestionWrite, TextBlock
 from app.schemas.draft_import import DraftImportManifest, ImportGroup, ImportOption, ImportQuestion
+from app.services.access_policy import AccessPolicy
 from app.services.reading import ReadingService
 from app.services.tests import TestService
 from app.storage import LocalAssetStorage
@@ -420,8 +422,9 @@ def _compile_group(
 
 
 class DraftImportService:
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(self, session: AsyncSession, actor: User | None = None) -> None:
         self.session = session
+        self.policy = AccessPolicy(session, actor)
         self.settings = get_settings()
         self.storage = LocalAssetStorage(self.settings.resolved_storage_root)
 
@@ -514,6 +517,12 @@ class DraftImportService:
         test.versions.append(version)
         try:
             async with self.session.begin():
+                actor = await self.policy.lock_actor()
+                await self.policy.require_test_create()
+                test.owner_user_id = actor.id
+                test.origin = (
+                    TestOrigin.ADMIN if actor.role == UserRole.ADMIN else TestOrigin.TEACHER
+                )
                 self.session.add(test)
                 for module_index, source in enumerate(manifest.modules):
                     module_type = ModuleType(source.type)

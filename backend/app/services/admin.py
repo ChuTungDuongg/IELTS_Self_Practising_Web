@@ -5,8 +5,31 @@ from sqlalchemy import delete, distinct, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import AppError
-from app.models import Attempt, OAuthAccount, RefreshSession, TestSession, User
-from app.models.enums import AttemptStatus, ModuleType, TestSessionStatus, UserRole
+from app.models import (
+    Attempt,
+    Classroom,
+    ClassroomAssignment,
+    ClassroomInvitation,
+    ClassroomMembership,
+    Notification,
+    OAuthAccount,
+    RefreshSession,
+    Test,
+    TestSession,
+    TestVersion,
+    TestVersionModeration,
+    User,
+)
+from app.models.enums import (
+    AttemptStatus,
+    ClassroomStatus,
+    ModerationStatus,
+    ModuleType,
+    TestOrigin,
+    TestSessionStatus,
+    UserRole,
+    VersionStatus,
+)
 from app.schemas.admin import (
     AdminStats,
     AdminUserDetail,
@@ -148,17 +171,19 @@ class AdminService:
                     select(User.id)
                     .where(User.role == UserRole.ADMIN, User.is_active.is_(True))
                     .order_by(User.id)
-                    .with_for_update()
+                    .with_for_update(key_share=True)
                 )
             )
             user = await self.session.scalar(
-                select(User).where(User.id == user_id).with_for_update()
+                select(User).where(User.id == user_id).with_for_update(key_share=True)
             )
             if user is None:
                 raise AppError("USER_NOT_FOUND", "The requested user does not exist.", 404)
 
             next_role = data.role if data.role is not None else user.role
             next_active = data.is_active if data.is_active is not None else user.is_active
+            if user.role == UserRole.TEACHER and (next_role != UserRole.TEACHER or not next_active):
+                await self._require_teacher_resources_resolved(user.id)
             removes_active_admin = (
                 user.role == UserRole.ADMIN
                 and user.is_active
@@ -191,10 +216,44 @@ class AdminService:
         )
         return response
 
+    async def _require_teacher_resources_resolved(self, user_id: uuid.UUID) -> None:
+        active_classroom = await self.session.scalar(
+            select(Classroom.id)
+            .where(Classroom.teacher_id == user_id, Classroom.status == ClassroomStatus.ACTIVE)
+            .limit(1)
+        )
+        pending = await self.session.scalar(
+            select(TestVersionModeration.id)
+            .join(TestVersion, TestVersionModeration.test_version_id == TestVersion.id)
+            .join(Test, TestVersion.test_id == Test.id)
+            .where(
+                Test.owner_user_id == user_id,
+                TestVersionModeration.status == ModerationStatus.PENDING,
+            )
+            .limit(1)
+        )
+        draft = await self.session.scalar(
+            select(TestVersion.id)
+            .join(Test)
+            .where(
+                Test.owner_user_id == user_id,
+                Test.origin == TestOrigin.TEACHER,
+                Test.archived_at.is_(None),
+                TestVersion.status == VersionStatus.DRAFT,
+            )
+            .limit(1)
+        )
+        if active_classroom is not None or pending is not None or draft is not None:
+            raise AppError(
+                "TEACHER_HAS_ACTIVE_RESOURCES",
+                "Resolve active classrooms, drafts and pending reviews before demotion.",
+                409,
+            )
+
     async def delete_user(self, actor_id: uuid.UUID, user_id: uuid.UUID) -> None:
         async with self.session.begin():
             user = await self.session.scalar(
-                select(User).where(User.id == user_id).with_for_update()
+                select(User).where(User.id == user_id).with_for_update(key_share=True)
             )
             if user is None:
                 raise AppError("USER_NOT_FOUND", "The requested user does not exist.", 404)
@@ -204,6 +263,47 @@ class AdminService:
                 raise AppError(
                     "USER_DELETE_REQUIRES_DEACTIVATION",
                     "Deactivate this user before deleting the account.",
+                    409,
+                )
+
+            # Classroom and authored-content attribution is historical. Existing
+            # account deletion must not cascade into that new academic domain.
+            resources = (
+                select(Notification.id).where(Notification.user_id == user_id),
+                select(Test.id).where(Test.owner_user_id == user_id),
+                select(Classroom.id).where(Classroom.teacher_id == user_id),
+                select(ClassroomMembership.id).where(
+                    or_(
+                        ClassroomMembership.user_id == user_id,
+                        ClassroomMembership.removed_by_user_id == user_id,
+                    )
+                ),
+                select(ClassroomAssignment.id).where(
+                    ClassroomAssignment.created_by_user_id == user_id
+                ),
+                select(ClassroomInvitation.id).where(
+                    or_(
+                        ClassroomInvitation.invited_user_id == user_id,
+                        ClassroomInvitation.invited_by_user_id == user_id,
+                    )
+                ),
+                select(TestVersionModeration.id).where(
+                    or_(
+                        TestVersionModeration.submitted_by_user_id == user_id,
+                        TestVersionModeration.reviewed_by_user_id == user_id,
+                        TestVersionModeration.revoked_by_user_id == user_id,
+                    )
+                ),
+            )
+            if any(
+                [
+                    await self.session.scalar(statement.limit(1)) is not None
+                    for statement in resources
+                ]
+            ):
+                raise AppError(
+                    "USER_HAS_ACADEMIC_RESOURCES",
+                    "Authored content and classroom history must be preserved; keep this account inactive.",
                     409,
                 )
 

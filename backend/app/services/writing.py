@@ -6,17 +6,19 @@ from sqlalchemy.orm import selectinload
 
 from app.core.exceptions import AppError
 from app.domains.writing.task_types import validate_task_type
-from app.models import Asset, TestModule, WritingTask
+from app.models import Asset, TestModule, TestVersion, User, WritingTask
 from app.models.enums import AssetType, ModuleType
 from app.schemas.content import BuilderWritingTask, WritingTaskUpdate
+from app.services.access_policy import AccessPolicy
 from app.services.draft_revisions import advance_revision
 from app.services.reading import ReadingService
 from app.storage import LocalAssetStorage
 
 
 class WritingService:
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(self, session: AsyncSession, actor: User | None = None) -> None:
         self.session = session
+        self.policy = AccessPolicy(session, actor)
 
     async def update_task(self, task_id: uuid.UUID, body: WritingTaskUpdate) -> BuilderWritingTask:
         deleted_path: str | None = None
@@ -37,7 +39,7 @@ class WritingService:
                     )
                 from app.services.tests import TestService
 
-                await TestService(self.session).ensure_draft(version_id)
+                await TestService(self.session, actor=self.policy.actor).ensure_draft(version_id)
                 task = await self.session.scalar(
                     self._task_query().where(WritingTask.id == task_id).with_for_update()
                 )
@@ -66,7 +68,7 @@ class WritingService:
                     from app.services.tests import TestService
 
                     repaired, copied_path = await TestService(
-                        self.session
+                        self.session, actor=self.policy.actor
                     ).resolve_owned_or_inherited_asset(
                         target_version=task.module.test_version,
                         requested_asset_id=body.image_asset_id,
@@ -105,9 +107,9 @@ class WritingService:
                 if previous_asset_id is not None and previous_asset_id != task.image_asset_id:
                     from app.services.tests import TestService
 
-                    deleted_path = await TestService(self.session).cleanup_asset_if_unreferenced(
-                        previous_asset_id
-                    )
+                    deleted_path = await TestService(
+                        self.session, actor=self.policy.actor
+                    ).cleanup_asset_if_unreferenced(previous_asset_id)
                 saved = await self.get_task(task_id)
         except BaseException:
             if copied_path:
@@ -125,6 +127,9 @@ class WritingService:
         task = await self.session.scalar(self._task_query().where(WritingTask.id == task_id))
         if task is None or task.module.module_type != ModuleType.WRITING:
             raise AppError("WRITING_TASK_NOT_FOUND", "The Writing task does not exist.", 404)
+        await self.policy.require_builder_read(
+            await self.session.get(TestVersion, task.module.test_version_id)
+        )
         return ReadingService._present_writing_task(task)
 
     @staticmethod

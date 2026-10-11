@@ -53,5 +53,11 @@ async def require_admin(user: Annotated[User, Depends(get_current_user)]) -> Use
     return user
 
 
+async def require_content_author(user: Annotated[User, Depends(get_current_user)]) -> User:
+    if user.role not in {UserRole.ADMIN, UserRole.TEACHER}:
+        raise AppError("TEACHER_REQUIRED", "Teacher or administrator access is required.", 403)
+    return user
+
+
 CurrentUser = Annotated[User, Depends(get_current_user)]
 AdminUser = Annotated[User, Depends(require_admin)]
