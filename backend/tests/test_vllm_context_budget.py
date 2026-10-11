@@ -162,6 +162,15 @@ async def test_mts_length_repair_still_has_only_two_inferences_when_context_is_t
         body = json.loads(request.content)
         bodies.append(body)
         schema = body["response_format"]["json_schema"]["schema"]
+        if "verdict" in schema["properties"]:
+            return success(
+                {
+                    "verdict": "ON_TOPIC",
+                    "confidence": "HIGH",
+                    "source_ids": [],
+                    "reason": "Có liên hệ với đề bài.",
+                }
+            )
         if "evidence" in schema["properties"]:
             return success(EVIDENCE)
         scoring_requests += 1
@@ -178,8 +187,15 @@ async def test_mts_length_repair_still_has_only_two_inferences_when_context_is_t
     assert result is not None
     assert result.criteria.ta.score == 6.5
     assert scoring_inferences == 5  # Two TA inferences, one for each remaining trait.
-    assert len(bodies) == 11  # Nine logical completions plus two validation-only 400s.
-    assert [body["max_tokens"] for body in bodies[:5]] == [1800, 3072, 2192, 4096, 2142]
+    assert len(bodies) == 12  # One relevance + nine MTS completions + two validation-only 400s.
+    relevance = [
+        body
+        for body in bodies
+        if "verdict" in body["response_format"]["json_schema"]["schema"]["properties"]
+    ]
+    assert len(relevance) == 1 and relevance[0]["max_tokens"] == 768
+    mts_bodies = [body for body in bodies if body not in relevance]
+    assert [body["max_tokens"] for body in mts_bodies[:5]] == [1800, 3072, 2192, 4096, 2142]
     assert (
         len(service.diagnostics) == 1 and service.diagnostics[0].reason == "PROVIDER_FINISH_LENGTH"
     )

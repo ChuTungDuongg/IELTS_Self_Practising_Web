@@ -43,3 +43,5 @@ npx eslint src/features/writing/writing-ai-assessment.tsx src/features/writing/w
 ```
 
 108 tests passed across seven files; TypeScript and targeted ESLint passed. Ruff check/format check passed on changed/new Python files using `backend/pyproject.toml`; `git diff --check` passed. The approved spec and frozen v5 prompts were not edited. Tests establish orchestration, persistence/security and UI behavior, not live-model accuracy or pixel-perfect browser layout.
+
+Post-push CI found one additional legacy HTTP mock in `test_vllm_context_budget.py` (1 failed, 1456 passed). The focused command `uv run pytest tests/test_vllm_context_budget.py -q --tb=short` reproduced it. The mock now returns the dedicated relevance schema without consuming scoring overrides, while retaining the five scoring inferences, two TA inferences, exact context clamps and one scoring repair. Relevance is counted separately as one 768-token completion; no provider/scoring production change was needed.
