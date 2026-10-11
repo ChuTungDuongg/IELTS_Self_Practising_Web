@@ -296,9 +296,10 @@ async def test_unrelated_band_one_still_skips_all_ta_calls():
 
 
 async def test_versions_invalidate_old_cache_and_prompt_content_is_stable():
-    assert effective_prompt_version("mts-task2-v8") == "mts-task2-v10"
-    assert effective_prompt_version("mts-task2-v9") == "mts-task2-v10"
-    assert effective_prompt_version("custom") == "mts-task2-v10:custom"
+    assert effective_prompt_version("mts-task2-v8") == "mts-task2-v11"
+    assert effective_prompt_version("mts-task2-v9") == "mts-task2-v11"
+    assert effective_prompt_version("mts-task2-v10") == "mts-task2-v11"
+    assert effective_prompt_version("custom") == "mts-task2-v11:custom"
     assert TASK1_PROMPT_VERSION == "mts-task1-visual-v9"
     assert TASK1_SCORING_PROMPT_VERSION == "mts-task1-scoring-v9"
     assert TASK1_VISUAL_CONTRACT_VERSION == "mts-task1-visual-v3"

@@ -81,9 +81,14 @@ def validation_reason(
             return "INVALID_JSON"
         if location and location[0] == "score" and stage != "feedback":
             return "INVALID_HALF_BAND"
-        if location == ("evidence",) and kind == "too_long":
+        if stage != "feedback" and location == ("evidence",) and kind == "too_long":
             return "TOO_MANY_EVIDENCE_ITEMS"
-        if location and location[0] == "evidence" and kind == "string_too_long":
+        if (
+            stage != "feedback"
+            and location
+            and location[0] == "evidence"
+            and kind == "string_too_long"
+        ):
             return "EVIDENCE_ITEM_TOO_LONG"
     if stage:
         if stage == "feedback":

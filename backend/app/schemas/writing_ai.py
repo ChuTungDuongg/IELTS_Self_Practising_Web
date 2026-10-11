@@ -9,6 +9,7 @@ from pydantic import (
     Field,
     StrictStr,
     StringConstraints,
+    WithJsonSchema,
     field_serializer,
     field_validator,
 )
@@ -70,6 +71,20 @@ class EvidenceChoice(StrictModel):
 
 class EvidenceSelection(StrictModel):
     evidence: list[EvidenceChoice] = Field(max_length=4)
+
+
+class RawTask2EvidenceChoice(StrictModel):
+    source_id: StrictStr
+    assessment: StrictStr
+    focus: StrictStr | None = None
+
+
+class RawTask2EvidenceSelection(StrictModel):
+    # Guide each item's shape, but parse items independently in the sanitizer.
+    # One malformed optional item must not invalidate the whole provider list.
+    evidence: list[Annotated[Any, WithJsonSchema(RawTask2EvidenceChoice.model_json_schema())]] = (
+        Field(strict=True)
+    )
 
 
 class WritingRelevanceAssessment(StrictModel):
@@ -144,6 +159,21 @@ class Task2FeedbackDraft(StrictModel):
     """Internal source-linked observations, never a writable score or freeform summary."""
 
     observations: list[Task2FeedbackObservation] = Field(strict=True, max_length=6)
+
+
+class RawTask2FeedbackObservation(StrictModel):
+    source_id: StrictStr
+    kind: Literal["STRENGTH", "LIMITATION", "ERROR", "OPTIONAL_REFINEMENT"]
+    observation: StrictStr
+    original_span: Annotated[StrictStr, StringConstraints(strip_whitespace=False)] | None = None
+    suggested_revision: StrictStr | None = None
+    confidence: Literal["HIGH", "MEDIUM", "LOW"]
+
+
+class RawTask2FeedbackDraft(StrictModel):
+    observations: list[
+        Annotated[Any, WithJsonSchema(RawTask2FeedbackObservation.model_json_schema())]
+    ] = Field(strict=True)
 
 
 class CriterionResult(TraitScore):

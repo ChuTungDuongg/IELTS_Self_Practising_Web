@@ -162,58 +162,69 @@ async def test_vietnamese_independent_prompts_and_cache_version():
         "mts-task2-v7",
         "mts-task2-v8",
         "mts-task2-v9",
+        "mts-task2-v10",
     ]:
-        assert effective_prompt_version(old) == "mts-task2-v10"
-    assert effective_prompt_version("custom") == "mts-task2-v10:custom"
+        assert effective_prompt_version(old) == "mts-task2-v11"
+    assert effective_prompt_version("custom") == "mts-task2-v11:custom"
 
 
 @pytest.mark.parametrize(
-    "output,reason",
+    "output,reason,repair",
     [
-        ("private malformed", "INVALID_JSON"),
+        ("private malformed", "INVALID_JSON", True),
         (
             json.dumps({"evidence": [{"source_id": "P99S1", "assessment": "Nhận xét."}]}),
-            "EVIDENCE_UNKNOWN_SOURCE_ID",
+            "EVIDENCE_ITEM_DROPPED",
+            False,
         ),
         (
             json.dumps({"evidence": [{"quote": "private copy", "assessment": "Nhận xét."}]}),
-            "EVIDENCE_SCHEMA_INVALID",
+            "EVIDENCE_ITEM_DROPPED",
+            False,
         ),
-        (json.dumps({"evidence": EVIDENCE["evidence"] * 5}), "TOO_MANY_EVIDENCE_ITEMS"),
+        (
+            json.dumps({"evidence": EVIDENCE["evidence"] * 5}),
+            "EVIDENCE_PRESENTATION_NORMALIZED",
+            False,
+        ),
         (
             json.dumps({"evidence": [{"source_id": "P1S1", "assessment": "x" * 321}]}),
-            "EVIDENCE_ITEM_TOO_LONG",
+            "EVIDENCE_PRESENTATION_NORMALIZED",
+            False,
         ),
-        (Completion('{"evidence":[', finish_reason="length"), "PROVIDER_FINISH_LENGTH"),
+        (Completion('{"evidence":[', finish_reason="length"), "PROVIDER_FINISH_LENGTH", True),
     ],
 )
-async def test_targeted_repair_and_safe_diagnostics(output, reason, caplog):
+async def test_evidence_repairs_structure_but_normalizes_items_locally(
+    output, reason, repair, caplog
+):
     provider = Provider({1: output})
     result, mts, events = await assess(provider)
-    assert result.overall_band == 6.5 and len(provider.calls) == 13
-    assert reason in provider.calls[2][-1]["content"]
+    assert result.overall_band == 6.5 and len(provider.calls) == 12 + int(repair)
+    if repair:
+        assert reason in provider.calls[2][-1]["content"]
     assert mts.diagnostics[0].reason == reason and mts.diagnostics[0].attempt == 1
     assert mts.diagnostics[0].stage == "evidence"
-    assert sum(e == "criterion.retrying" for e, _ in events) == 1
+    assert sum(e == "criterion.retrying" for e, _ in events) == int(repair)
     assert "private" not in caplog.text + str(mts.diagnostics) + str(events)
 
 
-async def test_lr_failed_after_repair_gra_still_runs_and_aggregate_absent():
+async def test_unusable_lr_evidence_keeps_fixed_score_and_later_criteria():
     bad = json.dumps({"evidence": [{"source_id": "P99S1", "assessment": "Nhận xét."}]})
-    provider = Provider({7: bad, 8: bad})
+    provider = Provider({7: bad})
     result, mts, events = await assess(provider)
-    assert result is None
+    assert result.overall_band == 6.5
     assert len(provider.calls) == 12
     assert [
         (e, p.criterion) for e, p in events if e in {"criterion.completed", "criterion.failed"}
     ] == [
         ("criterion.completed", "ta"),
         ("criterion.completed", "cc"),
-        ("criterion.failed", "lr"),
+        ("criterion.completed", "lr"),
         ("criterion.completed", "gra"),
     ]
-    assert mts.failures["lr"].error_code == "AI_PROVIDER_BAD_RESPONSE"
-    assert [d.reason for d in mts.diagnostics] == ["EVIDENCE_UNKNOWN_SOURCE_ID"] * 2
+    assert not mts.failures
+    assert [d.reason for d in mts.diagnostics] == ["EVIDENCE_ITEM_DROPPED"]
 
 
 @pytest.mark.parametrize(
@@ -380,13 +391,15 @@ async def test_backend_observation_display_limits_remain_bounded_without_repair(
     assert not mts.diagnostics
 
 
-async def test_two_length_completions_fail_one_criterion_and_continue():
+async def test_two_auxiliary_evidence_length_failures_keep_score_and_continue():
     truncated = Completion('{"evidence":[', finish_reason="length")
     provider = Provider({7: truncated, 8: truncated})
     result, mts, events = await assess(provider)
-    assert result is None and len(provider.calls) == 12
-    assert [d.reason for d in mts.diagnostics] == ["PROVIDER_FINISH_LENGTH"] * 2
-    assert all(d.finish_reason == "length" for d in mts.diagnostics)
+    assert result.overall_band == 6.5 and len(provider.calls) == 13 and not mts.failures
+    assert [d.reason for d in mts.diagnostics] == ["PROVIDER_FINISH_LENGTH"] * 2 + [
+        "EVIDENCE_FALLBACK_USED"
+    ]
+    assert all(d.finish_reason == "length" for d in mts.diagnostics[:2])
     assert any(e == "criterion.completed" and p.criterion == "gra" for e, p in events)
 
 

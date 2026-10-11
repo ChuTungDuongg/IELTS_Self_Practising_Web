@@ -140,8 +140,7 @@ async def test_score_and_feedback_have_separate_schema_and_authoritative_prompt_
             payload = json.loads(messages[1]["content"])
             if stage == "feedback":
                 assert payload["fixed_score"] == 6.5
-                item_ref = schema["properties"]["observations"]["items"]["$ref"]
-                item_schema = schema["$defs"][item_ref.rsplit("/", 1)[1]]
+                item_schema = schema["properties"]["observations"]["items"]
                 assert set(item_schema["properties"]) == {
                     "source_id",
                     "kind",
@@ -403,14 +402,14 @@ async def test_non_length_score_repair_keeps_tiny_budget(output, reason):
     assert public_retry_stages(events) == ["scoring"]
 
 
-async def test_unknown_evidence_source_repair_keeps_evidence_budget():
+async def test_unknown_auxiliary_source_is_dropped_without_evidence_repair():
     provider = BudgetProvider(
         evidence=[{"evidence": [{"source_id": "P99S1", "assessment": "Dẫn chứng."}]}]
     )
     result, service, _events = await assess(provider)
     assert result.criteria.ta.score == Decimal("6.5")
-    assert [budget(call) for call in provider.calls[:4]] == [128, 1800, 1800, 1200]
-    assert service.diagnostics[0].reason == "EVIDENCE_UNKNOWN_SOURCE_ID"
+    assert [budget(call) for call in provider.calls[:3]] == [128, 1800, 1200]
+    assert len(provider.calls) == 12 and service.diagnostics[0].reason == "EVIDENCE_ITEM_DROPPED"
 
 
 @pytest.mark.parametrize(

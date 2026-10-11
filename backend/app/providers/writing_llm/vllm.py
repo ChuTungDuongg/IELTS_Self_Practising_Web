@@ -11,6 +11,8 @@ def guided_json_schema(schema: dict[str, Any]) -> dict[str, Any]:
 
     Walk schema nodes, preserving property names and definitions even if a
     property happens to be called 'format'. Pydantic remains authoritative.
+    Guided decoding enforces supported shape/enums; backend sanitizers enforce
+    Task 2 display lengths before constructing bounded domain results.
     """
     unsupported = {"pattern", "minLength", "maxLength", "format"}
     maps = {"properties", "$defs", "definitions", "patternProperties"}

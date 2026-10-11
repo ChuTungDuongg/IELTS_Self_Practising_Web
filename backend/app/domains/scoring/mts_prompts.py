@@ -12,12 +12,12 @@ from app.providers.writing_llm.base import Message, OutputFailureReason
 from app.schemas.writing_ai import (
     CriterionBandScore,
     EvidenceResult,
-    EvidenceSelection,
-    Task2FeedbackDraft,
+    RawTask2EvidenceSelection,
+    RawTask2FeedbackDraft,
     Trait,
 )
 
-AI_WRITING_PROMPT_VERSION = "mts-task2-v10"
+AI_WRITING_PROMPT_VERSION = "mts-task2-v11"
 
 
 def effective_prompt_version(configured: str) -> str:
@@ -36,6 +36,7 @@ def effective_prompt_version(configured: str) -> str:
             "mts-task2-v7",
             "mts-task2-v8",
             "mts-task2-v9",
+            "mts-task2-v10",
             AI_WRITING_PROMPT_VERSION,
         }
         else f"{AI_WRITING_PROMPT_VERSION}:{configured}"[:80]
@@ -195,7 +196,7 @@ def evidence_messages(
     prompt: str, essay: str, trait: Trait, sources: list[SourceSegment] | None = None
 ) -> list[Message]:
     sources = sources if sources is not None else segment_essay(essay)
-    schema = EvidenceSelection.model_json_schema(mode="serialization")
+    schema = RawTask2EvidenceSelection.model_json_schema(mode="serialization")
     return [
         {
             "role": "system",
@@ -265,7 +266,7 @@ def feedback_messages(prompt, essay, trait, evidence, score, sources=None) -> li
                 "Semantic authority: official IELTS Writing Task 2 Band Descriptors (May 2023); "
                 f"faithful whole-band paraphrases: {RUBRICS[trait]} {LOW_BANDS[trait]} {COMMON_LOW_GUIDANCE}\n"
                 f"{TASK2_FEEDBACK_GUIDANCE}\n{TASK2_FEEDBACK_GUARDS[trait]}\nJSON schema: "
-                f"{json.dumps(Task2FeedbackDraft.model_json_schema(mode='serialization'))}"
+                f"{json.dumps(RawTask2FeedbackDraft.model_json_schema(mode='serialization'))}"
             ),
         },
         {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
@@ -275,8 +276,9 @@ def feedback_messages(prompt, essay, trait, evidence, score, sources=None) -> li
 def task2_feedback_correction(reason: OutputFailureReason, trait: Trait) -> Message:
     return {
         "role": "system",
-        "content": f"Correction ({reason}): Use only allowed source_id values and exact source substrings. "
-        f"Omit ungrounded or uncertain claims. {TASK2_FEEDBACK_GUIDANCE} {TASK2_FEEDBACK_GUARDS[trait]}",
+        "content": f"Correction ({reason}): Return one complete JSON object matching the observations schema; "
+        "include required fields and supported kinds/confidence, no score or extra fields. "
+        "Use allowed source IDs and exact spans; omit uncertain claims. Keep descriptions/revisions at most 240 characters.",
     }
 
 

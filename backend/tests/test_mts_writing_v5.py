@@ -137,39 +137,50 @@ async def test_bounded_lr_observations_build_concise_vietnamese_display_without_
 
 
 @pytest.mark.parametrize(
-    "bad",
+    "bad,policy",
     [
-        {"observations": [{**OBSERVATIONS["observations"][0], "observation": "  \n\t"}]},
-        {"observations": [{**OBSERVATIONS["observations"][0], "observation": 42}]},
-        {"observations": "invalid"},
-        {"observations": {}},
-        {"observations": [42]},
-        {"observations": [None]},
-        {**OBSERVATIONS, "unknown": "private"},
-        {**OBSERVATIONS, "score": 6.3},
-        {**OBSERVATIONS, "score": 10},
-        {
-            "observations": [
-                {**OBSERVATIONS["observations"][0], "observation": "Bài viết phù hợp Band 5."}
-            ]
-        },
-        {"observations": [{**OBSERVATIONS["observations"][0], "observation": VERBOSE}]},
+        ({"observations": [{**OBSERVATIONS["observations"][0], "observation": "  \n\t"}]}, "drop"),
+        ({"observations": [{**OBSERVATIONS["observations"][0], "observation": 42}]}, "drop"),
+        ({"observations": "invalid"}, "repair"),
+        ({"observations": {}}, "repair"),
+        ({"observations": [42]}, "drop"),
+        ({"observations": [None]}, "drop"),
+        ({**OBSERVATIONS, "unknown": "private"}, "repair"),
+        ({**OBSERVATIONS, "score": 6.3}, "repair"),
+        ({**OBSERVATIONS, "score": 10}, "repair"),
+        (
+            {
+                "observations": [
+                    {**OBSERVATIONS["observations"][0], "observation": "Bài viết phù hợp Band 5."}
+                ]
+            },
+            "drop",
+        ),
+        (
+            {"observations": [{**OBSERVATIONS["observations"][0], "observation": VERBOSE}]},
+            "normalize",
+        ),
     ],
 )
-async def test_invalid_lr_feedback_repairs_once_preserves_fixed_score_and_runs_gra(bad):
+async def test_lr_feedback_handles_items_locally_and_repairs_only_structure(bad, policy):
     result, provider, service, events = await assess(bad)
     assert result is not None and not service.failures
     assert result.criteria.lr.score == Decimal("6.5")
     assert result.overall_band == Decimal("6.5")
-    assert result.criteria.lr.strengths == result.criteria.lr.improvements == []
-    assert "chưa khả dụng" in result.criteria.lr.feedback
+    if policy == "normalize":
+        assert result.criteria.lr.strengths and len(result.criteria.lr.strengths[0]) <= 240
+        assert service.diagnostics[0].reason == "FEEDBACK_PRESENTATION_NORMALIZED"
+    else:
+        assert result.criteria.lr.strengths == result.criteria.lr.improvements == []
+        assert "chưa khả dụng" in result.criteria.lr.feedback
     assert result.criteria.lr.evidence[0].quote == "They  support communities."
-    assert len(provider.calls) == 13
-    assert sum(e == "criterion.retrying" for e, _ in events) == 1
+    assert len(provider.calls) == 12 + int(policy == "repair")
+    assert sum(e == "criterion.retrying" for e, _ in events) == int(policy == "repair")
     assert not any(e == "criterion.failed" for e, _ in events)
     assert any(e == "criterion.completed" and p.criterion == "gra" for e, p in events)
-    assert [d.stage for d in service.diagnostics] == ["feedback"] * 3
-    assert service.diagnostics[-1].reason == "FEEDBACK_FALLBACK_USED"
+    assert all(d.stage == "feedback" for d in service.diagnostics)
+    if policy != "normalize":
+        assert service.diagnostics[-1].reason == "FEEDBACK_FALLBACK_USED"
     assert all(getattr(result.criteria, t).score == Decimal("6.5") for t in ("ta", "cc", "gra"))
 
 

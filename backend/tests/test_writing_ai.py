@@ -835,44 +835,45 @@ async def test_second_bad_call_fails_and_preserves_partial_progress(db_session, 
 
 
 @pytest.mark.integration
-async def test_lr_evidence_failure_retains_ta_cc_runs_gra_and_terminates_replay(
+async def test_lr_unusable_evidence_keeps_scores_and_completes_persisted_replay(
     db_session, writing, settings
 ):
     attempt_id, _, task_id = writing
     api = service(db_session, settings)
     created = await api.create(attempt_id, task_id, force=False)
     invalid_source = json.dumps({"evidence": [{"source_id": "P99S1", "assessment": "Nhận xét."}]})
-    provider = FakeProvider(
-        {("lr", "evidence", 1): invalid_source, ("lr", "evidence", 2): invalid_source}
-    )
+    provider = FakeProvider({("lr", "evidence", 1): invalid_source})
     runner = worker(db_session, settings, provider)
     await runner.execute(created.run_id)
     run, events = await api.snapshot(created.run_id, 0)
-    assert run.status == WritingAIRunStatus.FAILED and run.result is None
-    assert set(run.progress) == {"ta", "cc", "gra"}
-    assert run.activity.phase == "failed" and run.activity.criterion == "lr"
-    assert run.activity.stage == "evidence"
+    assert run.status == WritingAIRunStatus.COMPLETED and run.result is not None
+    assert set(run.progress) == {"ta", "cc", "lr", "gra"}
+    assert run.activity.phase == "completed"
     assert any(
         e.event_type == "criterion.scoring.started" and e.payload.criterion == "lr" for e in events
     )
-    assert ("lr", "feedback") not in provider.attempts
+    assert provider.attempts[("lr", "feedback")] == 1
     assert len(provider.calls) == 13
-    assert set(run.failures) == {"lr"}
+    assert not run.failures
     assert [e.sequence for e in events] == list(range(1, len(events) + 1))
     async with db_session.begin():
         db_session.expire_all()
         stored = await db_session.get(WritingAIGradingRun, run.id)
-        assert stored.raw_mean is None and stored.overall_band is None
+        assert (
+            stored.raw_mean == run.result.raw_mean
+            and stored.overall_band == run.result.overall_band
+        )
         assert stored.usage_json["diagnostics"] == [
             {
                 "stage": "evidence",
                 "criterion": "lr",
-                "reason": "EVIDENCE_UNKNOWN_SOURCE_ID",
-                "attempt": n,
+                "reason": "EVIDENCE_ITEM_DROPPED",
+                "attempt": 1,
                 "finish_reason": "stop",
-                "validation_issues": [],
+                "validation_issues": [
+                    {"field": "evidence.0.source_id", "validation_type": "value_error"}
+                ],
             }
-            for n in [1, 2]
         ]
         assert "private invented" not in json.dumps(stored.usage_json) + json.dumps(
             stored.result_json
@@ -891,7 +892,7 @@ async def test_lr_evidence_failure_retains_ta_cc_runs_gra_and_terminates_replay(
             )
         ]
     )
-    assert "event: run.failed" in stream
+    assert "event: run.completed" in stream
     assert "QUOTE_NOT_EXACT" not in stream + run.model_dump_json()
     assert "private invented" not in stream + run.model_dump_json()
     assert "event: criterion.completed" in stream
@@ -1007,7 +1008,7 @@ async def test_stored_v8_combined_result_with_optional_calibration_diagnostics_r
         "calibration": calibration,
     }
     # v8 persisted the combined public result after sanitizing optional private
-    # metadata. Read that durable format without sending it through v10 inference.
+    # metadata. Read that durable format without sending it through v11 inference.
     raw = RawScoringOutput.model_validate(gra)
     _, notices = sanitize_calibration(
         raw.calibration, raw.score, {s.source_id: s for s in segment_essay(ESSAY)}
@@ -1127,9 +1128,10 @@ async def test_stored_v8_combined_result_with_optional_calibration_diagnostics_r
         "mts-task2-v7",
         "mts-task2-v8",
         "mts-task2-v9",
+        "mts-task2-v10",
     ],
 )
-async def test_old_cache_is_preserved_but_never_reused_for_v10(
+async def test_old_cache_is_preserved_but_never_reused_for_v11(
     db_session, writing, settings, old_version
 ):
     attempt_id, _, task_id = writing
@@ -1147,7 +1149,7 @@ async def test_old_cache_is_preserved_but_never_reused_for_v10(
     settings.ai_writing_prompt_version = old_version  # Existing deployed secret.
     upgraded = await api.create(attempt_id, task_id, force=False)
     assert upgraded.run_id != legacy.run_id and not upgraded.cache_hit
-    assert (await api.get(upgraded.run_id)).prompt_version == "mts-task2-v10"
+    assert (await api.get(upgraded.run_id)).prompt_version == "mts-task2-v11"
     history = await api.list(attempt_id, task_id)
     assert len(history.items) == 2
     assert history.items[1].prompt_version == old_version and history.items[1].result == old_result
@@ -1405,7 +1407,7 @@ async def test_sse_api_replay_auth_disconnect_and_no_raw_content(
         app.dependency_overrides.clear()
 
 
-async def test_protocol_adapter_and_unknown_source_repair():
+async def test_protocol_adapter_omits_unknown_auxiliary_source_without_repair():
     request = WritingScoringRequest(
         attempt_id=uuid4(), writing_task_id=uuid4(), prompt="Fictional parks?", response=ESSAY
     )
@@ -1414,36 +1416,43 @@ async def test_protocol_adapter_and_unknown_source_repair():
     )
     scoring: WritingScoringProvider = MTSWritingScoringService(provider)
     result = await scoring.score(request)
-    assert result.overall_band == 6.5 and len(provider.calls) == 14
+    assert result.overall_band == 6.5 and len(provider.calls) == 13
 
 
 @pytest.mark.parametrize(
-    "feedback",
+    "feedback,repair",
     [
-        "private malformed JSON",
-        Completion(""),
-        Completion('{"observations":[{"observation":"private incomplete', finish_reason="length"),
-        '{"observations":[{"source_id":"P1S1","kind":"STRENGTH","observation":42,"confidence":"HIGH"}]}',
-        '{"observations":[],"score":1}',
+        ("private malformed JSON", True),
+        (Completion(""), True),
+        (
+            Completion(
+                '{"observations":[{"observation":"private incomplete', finish_reason="length"
+            ),
+            True,
+        ),
+        (
+            '{"observations":[{"source_id":"P1S1","kind":"STRENGTH","observation":42,"confidence":"HIGH"}]}',
+            False,
+        ),
+        ('{"observations":[],"score":1}', True),
     ],
 )
-async def test_protocol_adapter_preserves_score_after_feedback_repair_failure(feedback):
+async def test_protocol_adapter_preserves_score_after_feedback_drop_or_repair(feedback, repair):
     request = WritingScoringRequest(
         attempt_id=uuid4(), writing_task_id=uuid4(), prompt="Fictional parks?", response=ESSAY
     )
     provider = FakeProvider({("lr", "feedback", 1): feedback, ("lr", "feedback", 2): feedback})
     scoring = MTSWritingScoringService(provider)
     result = await scoring.score(request)
-    assert result.overall_band == 6.5 and len(provider.calls) == 14
+    assert result.overall_band == 6.5 and len(provider.calls) == 13 + int(repair)
     assert result.criterion_scores == {"ta": 6.5, "cc": 6, "lr": 7, "gra": 6}
     assert "chưa khả dụng" in result.feedback["lr"]["feedback"]
     assert result.feedback["lr"]["strengths"] == result.feedback["lr"]["improvements"] == []
     assert result.feedback["lr"]["evidence"][0]["quote"] == "Fictional parks improve city life."
     assert not scoring.failures
+    attempts = [1, 2, 2] if repair else [1, 1]
     assert [(d.stage, d.criterion, d.attempt) for d in scoring.diagnostics] == [
-        ("feedback", "lr", 1),
-        ("feedback", "lr", 2),
-        ("feedback", "lr", 2),
+        ("feedback", "lr", attempt) for attempt in attempts
     ]
     assert scoring.diagnostics[-1].reason == "FEEDBACK_FALLBACK_USED"
     assert "private" not in str(scoring.diagnostics) + str(result.feedback)

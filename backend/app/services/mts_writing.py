@@ -23,7 +23,8 @@ from app.domains.scoring.mts_prompts import (
     scoring_messages,
     task2_feedback_correction,
 )
-from app.domains.scoring.task2_feedback import render_task2_feedback, validate_task2_feedback
+from app.domains.scoring.task2_explanations import normalize_task2_evidence
+from app.domains.scoring.task2_feedback import normalize_task2_feedback, render_task2_feedback
 from app.domains.scoring.writing import WritingScoringRequest, WritingScoringResult
 from app.providers.writing_llm.base import (
     CompletionOptions,
@@ -50,8 +51,9 @@ from app.schemas.writing_ai import (
     OutputDiagnostic,
     RawCriterionFeedbackOutput,
     RawScoringOutput,
+    RawTask2EvidenceSelection,
+    RawTask2FeedbackDraft,
     ScoringOutput,
-    Task2FeedbackDraft,
     Trait,
 )
 from app.services.writing_execution import (
@@ -85,6 +87,17 @@ FEEDBACK_RECOVERABLE_REASONS = frozenset(
         "SCHEMA_VALIDATION",
         "FEEDBACK_SCHEMA_INVALID",
         "FEEDBACK_SCORE_MISMATCH",
+        "EMPTY_MODEL_CONTENT",
+        "MALFORMED_COMPLETION_ENVELOPE",
+        "OUTPUT_TOO_LARGE",
+        "PROVIDER_FINISH_LENGTH",
+    }
+)
+EVIDENCE_RECOVERABLE_REASONS = frozenset(
+    {
+        "INVALID_JSON",
+        "SCHEMA_VALIDATION",
+        "EVIDENCE_SCHEMA_INVALID",
         "EMPTY_MODEL_CONTENT",
         "MALFORMED_COMPLETION_ENVELOPE",
         "OUTPUT_TOO_LARGE",
@@ -219,7 +232,7 @@ class MTSWritingScoringService:
                             + (
                                 [
                                     task2_feedback_correction(reason, trait)
-                                    if schema is Task2FeedbackDraft
+                                    if schema is RawTask2FeedbackDraft
                                     else correction_message(reason, stage)
                                 ]
                                 if repair
@@ -260,10 +273,58 @@ class MTSWritingScoringService:
                         EventPayload(criterion=trait, stage=public_stage),
                     )
                 result = schema.model_validate_json(completion.text)
+                if isinstance(result, (RawTask2EvidenceSelection, RawTask2FeedbackDraft)):
+                    result, explanation_issues = (
+                        normalize_task2_evidence(result, sources)
+                        if isinstance(result, RawTask2EvidenceSelection)
+                        else normalize_task2_feedback(
+                            result, sources, trait, state.band_score.score
+                        )
+                    )
+                    for notice_reason, items in (
+                        (
+                            "EVIDENCE_PRESENTATION_NORMALIZED"
+                            if stage == "evidence"
+                            else "FEEDBACK_PRESENTATION_NORMALIZED",
+                            explanation_issues.normalized,
+                        ),
+                        (
+                            "EVIDENCE_ITEM_DROPPED"
+                            if stage == "evidence"
+                            else "FEEDBACK_OBSERVATION_DROPPED",
+                            explanation_issues.dropped,
+                        ),
+                    ):
+                        if items:
+                            state.diagnostics.append(
+                                OutputDiagnostic(
+                                    stage=stage,
+                                    criterion=trait,
+                                    reason=notice_reason,
+                                    attempt=repair + 1,
+                                    finish_reason=finish_reason,
+                                    validation_issues=items[:8],
+                                )
+                            )
+                            logger.info(
+                                "AI explanation normalization: stage=%s criterion=%s reason=%s attempt=%s item_issues=%s",
+                                stage,
+                                trait,
+                                notice_reason,
+                                repair + 1,
+                                len(items),
+                            )
+                            for issue in items[:8]:
+                                logger.info(
+                                    "AI explanation detail: stage=%s criterion=%s reason=%s field=%s validation_type=%s",
+                                    stage,
+                                    trait,
+                                    notice_reason,
+                                    issue.field,
+                                    issue.validation_type,
+                                )
                 if isinstance(result, EvidenceSelection):
                     resolve_evidence(result, sources)
-                if isinstance(result, Task2FeedbackDraft):
-                    result = validate_task2_feedback(result, sources, trait, state.band_score.score)
                 if isinstance(result, RawCriterionFeedbackOutput):
                     result, issues = normalize_criterion_feedback(result, state.band_score.score)
                     if issues:
@@ -498,10 +559,19 @@ class MTSWritingScoringService:
                 buffer,
             )
             self.states[trait].band_score = score
-            selection = await self._validated(
-                evidence_prompt, EvidenceSelection, sources, trait, "evidence", trace
-            )
-            evidence = resolve_evidence(selection, sources)
+            try:
+                selection = await self._validated(
+                    evidence_prompt, RawTask2EvidenceSelection, sources, trait, "evidence", trace
+                )
+                evidence = resolve_evidence(selection, sources)
+            except ProviderFailure as exc:
+                if (
+                    exc.code not in {"INVALID_PROVIDER_OUTPUT", "AI_PROVIDER_BAD_RESPONSE"}
+                    or exc.reason not in EVIDENCE_RECOVERABLE_REASONS
+                ):
+                    raise
+                self._explanation_fallback(trait, "evidence", 2)
+                evidence = EvidenceResult(evidence=[])
             for item in evidence.evidence:
                 # Selector prose is unverified, never scoring input or public
                 # feedback. Only backend-resolved source locations are shown.
@@ -521,37 +591,51 @@ class MTSWritingScoringService:
                 feedback_messages(
                     request.prompt, request.response, trait, evidence, score.score, segments
                 ),
-                Task2FeedbackDraft,
+                RawTask2FeedbackDraft,
                 sources,
                 trait,
                 "feedback",
                 trace,
             )
-            display, evidence = render_task2_feedback(candidate, sources)
+            if candidate.observations:
+                display, evidence = render_task2_feedback(candidate, sources)
+            else:
+                attempt = (
+                    2
+                    if any(
+                        d.stage == "feedback" and d.reason in FEEDBACK_RECOVERABLE_REASONS
+                        for d in self.states[trait].diagnostics
+                    )
+                    else 1
+                )
+                # Intentionally empty drafts are valid, with no error notice.
+                # A draft emptied by sanitization records the safe fallback.
+                if any(d.stage == "feedback" for d in self.states[trait].diagnostics):
+                    self._explanation_fallback(trait, "feedback", attempt)
+                display = CriterionFeedbackOutput(
+                    feedback=FEEDBACK_FALLBACK, strengths=[], improvements=[]
+                )
         except ProviderFailure as exc:
-            recoverable = FEEDBACK_RECOVERABLE_REASONS | {
-                "EVIDENCE_UNKNOWN_SOURCE_ID",
-                "QUOTE_NOT_EXACT",
-            }
             if (
                 exc.code not in {"INVALID_PROVIDER_OUTPUT", "AI_PROVIDER_BAD_RESPONSE"}
-                or exc.reason not in recoverable
+                or exc.reason not in FEEDBACK_RECOVERABLE_REASONS
             ):
                 raise
-            self.states[trait].diagnostics.append(
-                OutputDiagnostic(
-                    stage="feedback", criterion=trait, reason="FEEDBACK_FALLBACK_USED", attempt=2
-                )
-            )
-            logger.warning(
-                "AI feedback fallback: stage=feedback criterion=%s reason=FEEDBACK_FALLBACK_USED",
-                trait,
-            )
+            self._explanation_fallback(trait, "feedback", 2)
             display = CriterionFeedbackOutput(
                 feedback=FEEDBACK_FALLBACK, strengths=[], improvements=[]
             )
         return CriterionResult(
             score=score.score, **display.model_dump(), evidence=evidence.evidence
+        )
+
+    def _explanation_fallback(self, trait, stage, attempt):
+        reason = "EVIDENCE_FALLBACK_USED" if stage == "evidence" else "FEEDBACK_FALLBACK_USED"
+        self.states[trait].diagnostics.append(
+            OutputDiagnostic(stage=stage, criterion=trait, reason=reason, attempt=attempt)
+        )
+        logger.warning(
+            "AI explanation fallback: stage=%s criterion=%s reason=%s", stage, trait, reason
         )
 
     async def assess_criterion(

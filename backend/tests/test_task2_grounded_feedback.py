@@ -10,7 +10,7 @@ from pydantic import ValidationError
 from app.domains.scoring.essay_sources import segment_essay
 from app.domains.scoring.mts_prompts import TRAIT_NAMES, feedback_messages, scoring_messages
 from app.domains.scoring.writing import WritingScoringRequest
-from app.providers.writing_llm.base import Completion, ProviderFailure
+from app.providers.writing_llm.base import Completion
 from app.schemas.writing_ai import CriterionBandScore, EvidenceResult
 from app.services.mts_writing import MTSWritingScoringService
 
@@ -136,20 +136,21 @@ def test_criterion_feedback_guards_preserve_conservative_semantics(trait, guards
 
 
 @pytest.mark.parametrize(
-    "changes,reason",
+    "changes",
     [
-        ({"source_id": "P8S1"}, "EVIDENCE_UNKNOWN_SOURCE_ID"),
-        ({"original_span": "not in the essay"}, "QUOTE_NOT_EXACT"),
-        ({"observation": "Sai ở đoạn 8, câu 99."}, "FEEDBACK_SCHEMA_INVALID"),
-        ({"observation": "Phù hợp Band 6."}, "FEEDBACK_SCORE_MISMATCH"),
+        {"source_id": "P8S1"},
+        {"kind": "ERROR", "original_span": "not in the essay"},
+        {"observation": "Sai ở đoạn 8, câu 99."},
+        {"observation": "Phù hợp Band 6."},
     ],
 )
-def test_feedback_claims_must_resolve_to_real_source_and_span(changes, reason):
+def test_ungrounded_feedback_claims_are_omitted_locally(changes):
     from app.domains.scoring.task2_feedback import validate_task2_feedback
 
-    with pytest.raises(ProviderFailure) as failure:
-        validate_task2_feedback(draft(**changes), sources(), "gra", Decimal("7.5"))
-    assert failure.value.reason == reason
+    assert (
+        validate_task2_feedback(draft(**changes), sources(), "gra", Decimal("7.5")).observations
+        == []
+    )
 
 
 @pytest.mark.parametrize(
@@ -273,7 +274,7 @@ async def test_real_orchestration_scores_before_generated_assessment_and_keeps_p
         Completion("broken JSON"),
         Completion("", finish_reason="length"),
         {"observations": [observation(source_id="P8S1")]},
-        {"observations": [observation(original_span="invented quote")]},
+        {"observations": [observation(kind="ERROR", original_span="invented quote")]},
         {"observations": [], "score": 9},
     ],
 )

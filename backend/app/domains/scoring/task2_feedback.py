@@ -8,15 +8,21 @@ import re
 import unicodedata
 from decimal import Decimal
 
+from pydantic import ValidationError
+
 from app.domains.scoring.ai_writing_normalization import normalize_feedback
 from app.domains.scoring.essay_sources import SourceSegment
-from app.providers.writing_llm.base import ProviderFailure
+from app.domains.scoring.task2_explanations import ExplanationIssues
 from app.schemas.writing_ai import (
     CriterionFeedbackOutput,
     Evidence,
     EvidenceResult,
+    RawTask2FeedbackDraft,
+    RawTask2FeedbackObservation,
     Task2FeedbackDraft,
+    Task2FeedbackObservation,
     Trait,
+    ValidationIssue,
 )
 
 _MODEL_LOCATION = re.compile(
@@ -29,43 +35,97 @@ def _trivial_normalization(text: str) -> str:
     return " ".join(unicodedata.normalize("NFC", text).split()).casefold()
 
 
-def validate_task2_feedback(
-    draft: Task2FeedbackDraft, sources: dict[str, SourceSegment], trait: Trait, score: Decimal
-) -> Task2FeedbackDraft:
+def normalize_task2_feedback(
+    draft: RawTask2FeedbackDraft, sources: dict[str, SourceSegment], trait: Trait, score: Decimal
+) -> tuple[Task2FeedbackDraft, ExplanationIssues]:
+    issues = ExplanationIssues()
     accepted = []
-    for item in draft.observations:
-        source = sources.get(item.source_id)
-        if source is None:
-            raise ProviderFailure("AI_PROVIDER_BAD_RESPONSE", reason="EVIDENCE_UNKNOWN_SOURCE_ID")
-        if item.original_span is not None and item.original_span not in source.text:
-            raise ProviderFailure("AI_PROVIDER_BAD_RESPONSE", reason="QUOTE_NOT_EXACT")
-        if item.original_span is not None and not item.original_span.strip():
+    if len(draft.observations) > 6:
+        issues.normalized.append(ValidationIssue(field="observations", validation_type="too_long"))
+    for index, value in enumerate(draft.observations):
+        if len(accepted) == 6:
+            break
+        prefix = f"observations.{index}"
+        try:
+            item = RawTask2FeedbackObservation.model_validate(value)
+        except ValidationError as error:
+            issues.invalid_item(prefix, error)
             continue
-        for text in (item.observation, item.suggested_revision or ""):
-            if _MODEL_LOCATION.search(text):
-                raise ProviderFailure("AI_PROVIDER_BAD_RESPONSE", reason="FEEDBACK_SCHEMA_INVALID")
-            if any(Decimal(m[1].replace(",", ".")) != score for m in _BAND.finditer(text)):
-                raise ProviderFailure("AI_PROVIDER_BAD_RESPONSE", reason="FEEDBACK_SCORE_MISMATCH")
+        source = sources.get(item.source_id)
+        if source is None or len(source.text) > 12000:
+            issues.drop(f"{prefix}.source_id")
+            continue
+        # Inspect complete prose BEFORE display truncation: unsafe claims at the
+        # end of oversized text must not be hidden by clipping.
+        prose = (item.observation, item.suggested_revision or "")
+        if any(
+            _MODEL_LOCATION.search(text)
+            or any(Decimal(match[1].replace(",", ".")) != score for match in _BAND.finditer(text))
+            for text in prose
+        ):
+            issues.drop(f"{prefix}.observation")
+            continue
         if item.confidence == "LOW":
+            issues.drop(f"{prefix}.confidence")
             continue
         if item.kind in {"ERROR", "LIMITATION"} and item.confidence != "HIGH":
+            issues.drop(f"{prefix}.confidence")
             continue
-        if item.kind == "ERROR" and trait in {"gra", "lr"} and item.original_span is None:
-            continue
-        if item.suggested_revision is not None:
-            if item.original_span is None or _trivial_normalization(
-                item.original_span
-            ) == _trivial_normalization(item.suggested_revision):
+        span, revision = item.original_span, item.suggested_revision
+        if span is not None and (not span.strip() or span not in source.text):
+            if item.kind not in {"STRENGTH", "LIMITATION"}:
+                issues.drop(f"{prefix}.original_span")
                 continue
-        if item.kind == "OPTIONAL_REFINEMENT" and (
-            item.original_span is None or item.suggested_revision is None
-        ):
+            # A source-linked observation can survive an unusable optional quote;
+            # its dependent rewrite cannot. Never clip a quote into exactness.
+            issues.normalized.append(
+                ValidationIssue(field=f"{prefix}.original_span", validation_type="value_error")
+            )
+            span = revision = None
+        if item.kind == "ERROR" and trait in {"gra", "lr"} and span is None:
+            issues.drop(f"{prefix}.original_span")
             continue
+        if revision is not None:
+            if (
+                span is None
+                or not revision.strip()
+                or _trivial_normalization(span) == _trivial_normalization(revision)
+            ):
+                issues.drop(f"{prefix}.suggested_revision")
+                continue
+        if item.kind == "OPTIONAL_REFINEMENT" and (span is None or revision is None):
+            issues.drop(f"{prefix}.suggested_revision")
+            continue
+        text = issues.bound(item.observation, 240, f"{prefix}.observation")
+        if not text:
+            issues.drop(f"{prefix}.observation", "string_too_short")
+            continue
+        revision = (
+            issues.bound(revision, 240, f"{prefix}.suggested_revision")
+            if revision is not None
+            else None
+        )
+        item = Task2FeedbackObservation(
+            source_id=item.source_id,
+            kind=item.kind,
+            observation=text,
+            original_span=span,
+            suggested_revision=revision,
+            confidence=item.confidence,
+        )
         if item not in accepted:
             accepted.append(item)
     # Stable source order, independent of the model's observation ordering.
     accepted.sort(key=lambda item: (sources[item.source_id].start, item.kind, item.observation))
-    return Task2FeedbackDraft(observations=accepted)
+    return Task2FeedbackDraft(observations=accepted), issues
+
+
+def validate_task2_feedback(
+    draft: Task2FeedbackDraft, sources: dict[str, SourceSegment], trait: Trait, score: Decimal
+) -> Task2FeedbackDraft:
+    """Apply the same conservative policy to already-bounded internal drafts."""
+    raw = RawTask2FeedbackDraft.model_validate(draft.model_dump())
+    return normalize_task2_feedback(raw, sources, trait, score)[0]
 
 
 def render_task2_feedback(

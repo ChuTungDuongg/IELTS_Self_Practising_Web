@@ -236,31 +236,31 @@ async def test_invalid_score_gets_one_repair_then_only_gra_fails(bad):
 
 
 @pytest.mark.parametrize(
-    "bad",
+    "bad,repair",
     [
-        {},
-        {"observations": [{**OBSERVATIONS["observations"][0], "observation": "   "}]},
-        {"observations": "Không phải danh sách."},
-        {"observations": [42]},
-        {**OBSERVATIONS, "score": 1},
-        Completion("private invalid JSON", finish_reason="stop"),
-        Completion(""),
-        Completion('{"observations":', finish_reason="length"),
-        [],
+        ({}, True),
+        ({"observations": [{**OBSERVATIONS["observations"][0], "observation": "   "}]}, False),
+        ({"observations": "Không phải danh sách."}, True),
+        ({"observations": [42]}, False),
+        ({**OBSERVATIONS, "score": 1}, True),
+        (Completion("private invalid JSON", finish_reason="stop"), True),
+        (Completion(""), True),
+        (Completion('{"observations":', finish_reason="length"), True),
+        ([], True),
     ],
 )
-async def test_invalid_feedback_repairs_once_preserves_gra_score_and_uses_safe_fallback(bad):
+async def test_invalid_feedback_repairs_only_structure_and_preserves_gra_score(bad, repair):
     provider = CoreProvider({11: bad, 12: bad})
     result, service, events = await run(provider)
-    assert result is not None and len(provider.calls) == 13
+    assert result is not None and len(provider.calls) == 12 + int(repair)
     assert result.criteria.gra.score == Decimal("8.5") and result.overall_band == Decimal("8.5")
     assert result.criteria.gra.strengths == result.criteria.gra.improvements == []
     assert "chưa khả dụng" in result.criteria.gra.feedback
     assert result.criteria.gra.evidence[0].quote == "“Fictional parks”—useful, aren’t they?"
     assert not service.failures
-    assert [d.stage for d in service.diagnostics] == ["feedback"] * 3
+    assert [d.stage for d in service.diagnostics] == ["feedback"] * (3 if repair else 2)
     assert service.diagnostics[-1].reason == "FEEDBACK_FALLBACK_USED"
-    assert sum(e == "criterion.retrying" for e, _ in events) == 1
+    assert sum(e == "criterion.retrying" for e, _ in events) == int(repair)
     assert not any(e == "criterion.failed" for e, _ in events)
     assert [p.criterion for e, p in events if e == "criterion.completed"] == [
         "ta",
@@ -276,14 +276,18 @@ def test_optional_calibration_is_excluded_from_core_serialization_and_repr():
     assert "private" not in repr(parsed)
 
 
-async def test_unknown_primary_id_still_repairs_fails_and_runs_later_criterion():
+async def test_unknown_auxiliary_id_is_omitted_and_all_criteria_complete():
     bad = {"evidence": [{"source_id": "P99S1", "assessment": "Nhận xét."}]}
-    provider = CoreProvider({7: bad, 8: bad})
+    provider = CoreProvider({7: bad})
     result, service, events = await run(provider)
-    assert result is None and len(provider.calls) == 12
-    assert set(service.failures) == {"lr"}
-    assert [d.reason for d in service.diagnostics] == ["EVIDENCE_UNKNOWN_SOURCE_ID"] * 2
-    assert [p.criterion for e, p in events if e == "criterion.completed"] == ["ta", "cc", "gra"]
+    assert result.overall_band == 8.5 and len(provider.calls) == 12 and not service.failures
+    assert [d.reason for d in service.diagnostics] == ["EVIDENCE_ITEM_DROPPED"]
+    assert [p.criterion for e, p in events if e == "criterion.completed"] == [
+        "ta",
+        "cc",
+        "lr",
+        "gra",
+    ]
 
 
 async def test_truncated_score_is_never_accepted():
@@ -309,7 +313,7 @@ async def test_feedback_failure_logs_safe_field_type_and_masks_untrusted_extra_n
     }
     result, service, events = await run(CoreProvider({11: invalid, 12: invalid}))
     assert result.criteria.gra.score == Decimal("8.5") and not service.failures
-    for diagnostic in service.diagnostics[:2]:
+    for diagnostic in service.diagnostics[:1]:
         assert diagnostic.stage == "feedback"
         assert {(i.field, i.validation_type) for i in diagnostic.validation_issues} == {
             ("observations.0.observation", "string_type"),
