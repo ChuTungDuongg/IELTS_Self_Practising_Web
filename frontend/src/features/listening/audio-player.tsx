@@ -3,6 +3,7 @@
 import { useTranslation } from "@/lib/i18n/locale-provider";
 
 import { useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
+import { ForwardFiveIcon, RewindFiveIcon } from "@/components/ui/icons";
 import { formatAudioTime, validAudioClip, type AudioClip } from "./audio-time";
 
 const speeds = [0.75, 1, 1.25, 1.5, 2];
@@ -86,11 +87,11 @@ export function ListeningAudioPlayer({ src, clip, policy = { allowSeeking: true,
 
   const skipSeconds = layout === "exam-bar" ? 5 : 10;
   const playPause = <button type="button" className="player-main" disabled={unavailable || (Boolean(activeClip) && !duration)} onClick={() => void toggle()} aria-label={playing ? t("runner.pauseAudio") : t("runner.playAudio")}>{playing ? "❚❚" : "▶"}</button>;
-  const backward = <button type="button" className="player-skip" disabled={!policy.allowSeeking || unavailable} onClick={() => seek(current - skipSeconds)} aria-label={t(layout === "exam-bar" ? "runner.seekBackFive" : "runner.seekBack")}>−{skipSeconds}</button>;
+  const backward = <button type="button" className="player-skip" disabled={!policy.allowSeeking || unavailable} onClick={() => seek(current - skipSeconds)} aria-label={t(layout === "exam-bar" ? "runner.seekBackFive" : "runner.seekBack")}>{layout === "exam-bar" ? <RewindFiveIcon width={24} height={24} focusable="false" /> : <>−{skipSeconds}</>}</button>;
   const elapsed = <span className="player-time">{formatAudioTime(Math.max(0, current - start))}</span>;
   const progress = <input aria-label={t("runner.audioSeek")} type="range" min={0} max={length} step={0.1} value={Math.max(0, Math.min(current - start, length))} disabled={!policy.allowSeeking || unavailable} onChange={(event) => seek(start + Number(event.target.value))} />;
   const total = <span className="player-time">{unavailable ? t("runner.audioError") : state === "loading" && !duration ? t("runner.audioLoading") : formatAudioTime(length)}</span>;
-  const forward = <button type="button" className="player-skip" disabled={!policy.allowSeeking || unavailable} onClick={() => seek(current + skipSeconds)} aria-label={t(layout === "exam-bar" ? "runner.seekForwardFive" : "runner.seekForward")}>+{skipSeconds}</button>;
+  const forward = <button type="button" className="player-skip" disabled={!policy.allowSeeking || unavailable} onClick={() => seek(current + skipSeconds)} aria-label={t(layout === "exam-bar" ? "runner.seekForwardFive" : "runner.seekForward")}>{layout === "exam-bar" ? <ForwardFiveIcon width={24} height={24} focusable="false" /> : <>+{skipSeconds}</>}</button>;
   const speed = <select aria-label={t("runner.speed")} value={rate} disabled={!policy.allowSpeed} onChange={(event) => { const next = Number(event.target.value); setRate(next); if (audioRef.current) audioRef.current.playbackRate = next; }}>{speeds.map((speed) => <option key={speed} value={speed}>{speed}x</option>)}</select>;
   const mute = <button type="button" className="player-mute" onClick={() => { const next = !muted; setMuted(next); if (audioRef.current) audioRef.current.muted = next; }} aria-label={muted ? t("runner.unmute") : t("runner.mute")}>{muted ? "🔇" : "🔊"}</button>;
   const volumeControl = <input aria-label={t("runner.volume")} type="range" min={0} max={1} step={0.05} value={volume} onChange={(event) => { const next = Number(event.target.value); setVolume(next); if (audioRef.current) audioRef.current.volume = next; }} />;

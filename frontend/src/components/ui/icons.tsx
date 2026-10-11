@@ -51,6 +51,22 @@ export function HeadphonesIcon(props: IconProps) {
   return <IconBase {...props}><path d="M4 14v-2a8 8 0 0 1 16 0v2" /><path d="M4 14h3v6H5a1 1 0 0 1-1-1ZM20 14h-3v6h2a1 1 0 0 0 1-1Z" /></IconBase>;
 }
 
+export function RewindFiveIcon(props: IconProps) {
+  return <IconBase {...props}>
+    <path d="m7 4-3 3 3 3" />
+    <path d="M4 7h8a7 7 0 1 1-7 7" />
+    <text x="12" y="17" textAnchor="middle" fill="currentColor" stroke="none" fontSize="8" fontWeight="700">5</text>
+  </IconBase>;
+}
+
+export function ForwardFiveIcon(props: IconProps) {
+  return <IconBase {...props}>
+    <path d="m17 4 3 3-3 3" />
+    <path d="M20 7h-8a7 7 0 1 0 7 7" />
+    <text x="12" y="17" textAnchor="middle" fill="currentColor" stroke="none" fontSize="8" fontWeight="700">5</text>
+  </IconBase>;
+}
+
 export function SparkleIcon(props: IconProps) {
   return <IconBase {...props}><path d="M12 3c.5 4.8 2.2 6.5 7 7-4.8.5-6.5 2.2-7 7-.5-4.8-2.2-6.5-7-7 4.8-.5 6.5-2.2 7-7Z" /><path d="M19 16c.2 1.7.8 2.3 2.5 2.5-1.7.2-2.3.8-2.5 2.5-.2-1.7-.8-2.3-2.5-2.5 1.7-.2 2.3-.8 2.5-2.5Z" /></IconBase>;
 }

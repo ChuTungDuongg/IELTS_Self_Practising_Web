@@ -752,7 +752,7 @@ export const vi = {
   "runner.seekBack": "Tua lùi 10 giây",
   "runner.seekForward": "Tua tiến 10 giây",
   "runner.seekBackFive": "Tua lùi 5 giây",
-  "runner.seekForwardFive": "Tua tiến 5 giây",
+  "runner.seekForwardFive": "Tua tới 5 giây",
   "runner.speedLabel": "Tốc độ",
   "runner.audioSeek": "Tua âm thanh",
   "runner.speed": "Tốc độ phát",

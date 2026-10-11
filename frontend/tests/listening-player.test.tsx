@@ -98,7 +98,7 @@ describe("Listening audio and templates", () => {
     expect([...row.children].map((node) => node.className)).toEqual(["player-left-controls", "player-transport", "player-speed-control"]);
     expect(row.querySelector(".player-left-controls")).toHaveTextContent("00:08 / 06:12");
     expect(row.querySelector(".player-left-controls")).toContainElement(screen.getByLabelText("Volume"));
-    expect(within(row.querySelector(".player-transport") as HTMLElement).getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual(["Seek backward 5 seconds", "Play audio", "Seek forward 5 seconds"]);
+    expect(within(row.querySelector(".player-transport") as HTMLElement).getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual(["Rewind 5 seconds", "Play audio", "Forward 5 seconds"]);
     expect(row.querySelector(".player-speed-control")).toHaveTextContent("Speed:");
     expect([...((screen.getByLabelText("Playback speed") as HTMLSelectElement).options)].map((option) => option.value)).toEqual(["0.75", "1", "1.25", "1.5", "2"]);
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Play audio" })));
@@ -110,17 +110,41 @@ describe("Listening audio and templates", () => {
     expect(screen.queryByRole("button", { name: /Skip introduction|Bỏ qua giới thiệu/i })).not.toBeInTheDocument();
   });
 
+  it.each([
+    { locale: "en", backward: "Rewind 5 seconds", forward: "Forward 5 seconds" },
+    { locale: "vi", backward: "Tua lùi 5 giây", forward: "Tua tới 5 giây" },
+  ])("renders five-second seek icons with localized $locale accessible names", ({ locale, backward, forward }) => {
+    localStorage.clear();
+    const view = renderWithLocale(<ListeningAudioPlayer src="/part-1.mp3" layout="exam-bar" />);
+    if (locale === "vi") fireEvent.click(screen.getByRole("button", { name: "Switch to Vietnamese" }));
+    const rewind = screen.getByRole("button", { name: backward });
+    const advance = screen.getByRole("button", { name: forward });
+    for (const button of [rewind, advance]) {
+      expect(button).toHaveTextContent(/^5$/);
+      const icon = button.querySelector("svg");
+      expect(icon).toHaveAttribute("aria-hidden", "true");
+      expect(icon).toHaveAttribute("focusable", "false");
+      expect(icon?.querySelectorAll("path")).toHaveLength(2);
+    }
+    expect(rewind.querySelector("path")?.getAttribute("d")).not.toBe(advance.querySelector("path")?.getAttribute("d"));
+    const audio = view.container.querySelector("audio")!;
+    Object.defineProperty(audio, "duration", { configurable: true, value: 120 }); fireEvent.loadedMetadata(audio);
+    audio.currentTime = 42; fireEvent.timeUpdate(audio);
+    fireEvent.click(rewind); expect(audio.currentTime).toBe(37);
+    fireEvent.click(advance); expect(audio.currentTime).toBe(42);
+  });
+
   it("seeks exactly five seconds in the exam bar and clamps to recording boundaries", () => {
     const view = render(<ListeningAudioPlayer src="/part-1.mp3" layout="exam-bar" />);
     const audio = view.container.querySelector("audio")!;
     Object.defineProperty(audio, "duration", { configurable: true, value: 120 }); fireEvent.loadedMetadata(audio);
     audio.currentTime = 42; fireEvent.timeUpdate(audio);
-    fireEvent.click(screen.getByRole("button", { name: "Seek backward 5 seconds" })); expect(audio.currentTime).toBe(37);
-    fireEvent.click(screen.getByRole("button", { name: "Seek forward 5 seconds" })); expect(audio.currentTime).toBe(42);
+    fireEvent.click(screen.getByRole("button", { name: "Rewind 5 seconds" })); expect(audio.currentTime).toBe(37);
+    fireEvent.click(screen.getByRole("button", { name: "Forward 5 seconds" })); expect(audio.currentTime).toBe(42);
     audio.currentTime = 118; fireEvent.timeUpdate(audio);
-    fireEvent.click(screen.getByRole("button", { name: "Seek forward 5 seconds" })); expect(audio.currentTime).toBe(120);
+    fireEvent.click(screen.getByRole("button", { name: "Forward 5 seconds" })); expect(audio.currentTime).toBe(120);
     audio.currentTime = 2; fireEvent.timeUpdate(audio);
-    fireEvent.click(screen.getByRole("button", { name: "Seek backward 5 seconds" })); expect(audio.currentTime).toBe(0);
+    fireEvent.click(screen.getByRole("button", { name: "Rewind 5 seconds" })); expect(audio.currentTime).toBe(0);
   });
 
   it.each([{ allowSeeking: false, allowSpeed: false }, { allowSeeking: false, allowSpeed: true }, { allowSeeking: true, allowSpeed: false }])("keeps independent exam playback restrictions %j", (policy) => {
@@ -128,12 +152,12 @@ describe("Listening audio and templates", () => {
     const audio = view.container.querySelector("audio")!;
     Object.defineProperty(audio, "duration", { configurable: true, value: 120 }); fireEvent.loadedMetadata(audio);
     audio.currentTime = 42; fireEvent.timeUpdate(audio);
-    for (const label of ["Seek backward 5 seconds", "Seek forward 5 seconds"]) expect((screen.getByRole("button", { name: label }) as HTMLButtonElement).disabled).toBe(!policy.allowSeeking);
+    for (const label of ["Rewind 5 seconds", "Forward 5 seconds"]) expect((screen.getByRole("button", { name: label }) as HTMLButtonElement).disabled).toBe(!policy.allowSeeking);
     const seek = screen.getByLabelText("Audio seek");
     expect((seek as HTMLInputElement).disabled).toBe(!policy.allowSeeking);
     expect((screen.getByLabelText("Playback speed") as HTMLSelectElement).disabled).toBe(!policy.allowSpeed);
     if (!policy.allowSeeking) {
-      fireEvent.click(screen.getByRole("button", { name: "Seek forward 5 seconds" }));
+      fireEvent.click(screen.getByRole("button", { name: "Forward 5 seconds" }));
       fireEvent.keyDown(seek, { key: "ArrowRight" }); fireEvent.change(seek, { target: { value: "90" } });
       expect(audio.currentTime).toBe(42);
     }
@@ -150,7 +174,9 @@ describe("Listening audio and templates", () => {
     fireEvent.change(screen.getByLabelText("Volume"), { target: { value: "0.35" } }); fireEvent.click(screen.getByRole("button", { name: "Mute" }));
     const calls = [audio.play, audio.pause, audio.load].map((method) => vi.mocked(method).mock.calls.length);
     fireEvent.click(screen.getByRole("button", { name: "Switch to Vietnamese" }));
-    expect(screen.getByRole("button", { name: "Tua lùi 5 giây" })).toBeInTheDocument(); expect(screen.getByText("Tốc độ:")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Tua lùi 5 giây" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Tua tới 5 giây" })).toBeInTheDocument();
+    expect(screen.getByText("Tốc độ:")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Bỏ qua giới thiệu/i })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Switch to English" }));
     view.rerender(<LocaleProvider><ListeningAudioPlayer src="/part-1.mp3" layout="inline" /><LocaleControls /></LocaleProvider>);
@@ -158,6 +184,8 @@ describe("Listening audio and templates", () => {
     expect([audio.currentTime, audio.playbackRate, audio.volume, audio.muted]).toEqual([42, 1.5, 0.35, true]);
     expect([audio.play, audio.pause, audio.load].map((method) => vi.mocked(method).mock.calls.length)).toEqual(calls);
     expect(screen.getByRole("button", { name: "Seek backward 10 seconds" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Seek backward 10 seconds" })).toHaveTextContent("−10");
+    expect(screen.getByRole("button", { name: "Seek forward 10 seconds" })).toHaveTextContent("+10");
     expect(view.container.querySelector(".player-progress-row")).toBeNull();
   });
 

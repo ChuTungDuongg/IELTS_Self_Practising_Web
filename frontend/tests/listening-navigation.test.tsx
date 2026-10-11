@@ -211,7 +211,7 @@ describe("Listening attempt sidebar navigation", () => {
     audio.currentTime = 42; fireEvent.timeUpdate(audio);
     expect(dock.querySelector(".player-progress-row")).toContainElement(within(dock).getByRole("slider", { name: "Audio seek" }));
     expect(dock).toHaveTextContent("00:42 / 02:00");
-    for (const name of ["Mute", "Seek backward 5 seconds", "Play audio", "Seek forward 5 seconds"]) expect(within(dock).getByRole("button", { name })).toBeInTheDocument();
+    for (const name of ["Mute", "Rewind 5 seconds", "Play audio", "Forward 5 seconds"]) expect(within(dock).getByRole("button", { name })).toBeInTheDocument();
     expect(within(dock).getByRole("slider", { name: "Volume" })).toBeInTheDocument();
     expect(within(dock).getByRole("combobox", { name: "Playback speed" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Skip introduction|Bỏ qua giới thiệu/i })).not.toBeInTheDocument();
@@ -686,9 +686,9 @@ describe("Listening attempt sidebar navigation", () => {
       expect(screen.getByLabelText("Audio seek")).not.toBeDisabled();
       expect(screen.getByLabelText("Playback speed")).not.toBeDisabled();
       if (missing === "none") {
-        fireEvent.click(screen.getByRole("button", { name: "Seek backward 5 seconds" })); expect(audio!.currentTime).toBe(468);
+        fireEvent.click(screen.getByRole("button", { name: "Rewind 5 seconds" })); expect(audio!.currentTime).toBe(468);
         fireEvent.change(screen.getByLabelText("Audio seek"), { target: { value: "460" } });
-        fireEvent.click(screen.getByRole("button", { name: "Seek forward 5 seconds" })); expect(audio!.currentTime).toBe(931);
+        fireEvent.click(screen.getByRole("button", { name: "Forward 5 seconds" })); expect(audio!.currentTime).toBe(931);
       }
       if (missing === "range") {
         expect(screen.getByText("Section audio range is not configured. Full recording is available.")).toHaveClass("notice");
@@ -725,8 +725,8 @@ describe("Listening attempt sidebar navigation", () => {
       expect(screen.getByLabelText("Audio seek")).toBeDisabled();
       expect(screen.getByLabelText("Playback speed")).toBeDisabled();
       expect(screen.getByText("Exam mode · Seeking locked")).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "Seek backward 5 seconds" })).toBeDisabled();
-      expect(screen.getByRole("button", { name: "Seek forward 5 seconds" })).toBeDisabled();
+      expect(screen.getByRole("button", { name: "Rewind 5 seconds" })).toBeDisabled();
+      expect(screen.getByRole("button", { name: "Forward 5 seconds" })).toBeDisabled();
       fireEvent.change(screen.getByLabelText("Audio seek"), { target: { value: "90" } }); expect(audio.currentTime).toBe(0);
     } else {
       expect(screen.getByLabelText("Audio seek")).not.toBeDisabled();
