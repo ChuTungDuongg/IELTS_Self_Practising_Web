@@ -79,7 +79,7 @@ OCR/ChatGPT chuẩn bị JSON có cấu trúc **bên ngoài** ứng dụng; ứn
 
 ```powershell
 Set-Location backend
-uv run python -m app.import_draft path/to/manifest.json
+uv run python -m app.import_draft path/to/manifest.json --owner-user-id ADMIN_UUID
 ```
 
 Kết quả luôn là phiên bản `DRAFT`. ADMIN mở trong Builder để kiểm tra, chỉnh sửa và Publish theo quy trình thường. Định dạng và manifest hư cấu: [docs/draft-import-format.md](docs/draft-import-format.md).
@@ -329,7 +329,9 @@ Binary không nằm trong PostgreSQL. Backend kiểm tra MIME, đuôi file, kíc
 
 ### Quản trị tài khoản
 
-ADMIN xem thống kê nền tảng, danh sách USER/ADMIN đang hoạt động hoặc đã vô hiệu hóa, nâng/hạ quyền và kích hoạt lại tài khoản. Xóa vĩnh viễn chỉ thực hiện sau khi vô hiệu hóa; thao tác xóa lịch sử học cá nhân của tài khoản đó (attempt và test session), không xóa nội dung đề dùng chung đã được tạo trong Builder.
+ADMIN xem thống kê nền tảng, danh sách USER/TEACHER/ADMIN đang hoạt động hoặc đã vô hiệu hóa, nâng/hạ quyền và kích hoạt lại tài khoản. TEACHER giữ các quyền luyện tập của USER và có thêm Builder đề của mình, lớp học, bài giao và kết quả học sinh chỉ đọc theo nguồn bài giao. Hạ quyền/vô hiệu hóa Teacher yêu cầu xử lý lớp đang hoạt động, yêu cầu duyệt và bản nháp trước. Xóa vĩnh viễn tài khoản đã vô hiệu hóa bị chặn nếu có tham chiếu nội dung/lớp học/thông báo cần giữ lại.
+
+Quy trình duyệt CLASSROOM/PUBLIC, lời mời qua email chưa có tài khoản, thông báo EN/VI và ranh giới riêng tư của kết quả: [docs/teacher-classrooms.md](docs/teacher-classrooms.md).
 
 ## 🔌 API chính
 
@@ -397,7 +399,7 @@ Lỗi ứng dụng có cấu trúc ổn định:
 
 ## 🛣️ Trạng thái phát triển
 
-- **Hiện có:** Reading/Listening/Writing, Full Mock, pause/resume, chấm Writing thủ công, Builder autosave, Transfer ZIP, Draft Import CLI, History/Analytics, xác thực, Profile/mục tiêu IELTS và quản trị tài khoản.
+- **Hiện có:** Reading/Listening/Writing, Full Mock, pause/resume, chấm Writing thủ công, Builder autosave, Transfer ZIP, Draft Import CLI, History/Analytics, xác thực, Profile/mục tiêu IELTS, quản trị tài khoản và Teacher/Classroom với duyệt nội dung, bài giao, kết quả chỉ đọc, thông báo trong ứng dụng.
 - **Tiếp theo:** tăng độ sâu của analytics, accessibility và độ bền của Builder workflow.
 - **Cố ý không làm:** module luyện/chấm Speaking (chỉ có Speaking target trong Profile), OCR tích hợp, thanh toán và AI chấm Writing Task 1.
 
