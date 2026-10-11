@@ -108,13 +108,21 @@ async def drain_media_cleanup(session, *, storage=None):
 
 async def cleanup_private_media():
     """Startup/deletion hook; failed jobs remain durable for the next invocation."""
-    from app.core.database import SessionFactory
+    from sqlalchemy.exc import SQLAlchemyError
+    from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+    from sqlalchemy.pool import NullPool
 
-    async with SessionFactory() as session:
-        try:
-            await drain_media_cleanup(session)
-        except (OSError, AppError):
-            pass  # No private paths/bodies/exception text; outbox retains failed jobs.
+    # Maintenance owns its short-lived connection; never borrow a connection tied
+    # to another request/event loop (also supports startup/CLI invocation).
+    engine = create_async_engine(get_settings().database_url, poolclass=NullPool)
+    try:
+        async with AsyncSession(engine) as session:
+            try:
+                await drain_media_cleanup(session)
+            except (OSError, AppError, SQLAlchemyError):
+                pass  # Safe best effort; failed jobs remain in the outbox.
+    finally:
+        await engine.dispose()
 
 
 class SpeakingMediaService:
@@ -344,3 +352,4 @@ class SpeakingMediaService:
                 self.storage.resolve(c.storage_key)
                 for c in await ordered_chunks(self.session, segment.id)
             ], segment.mime_type
+

@@ -395,7 +395,7 @@ async def concurrent_speaking():
 @pytest.mark.asyncio
 @pytest.mark.parametrize("race", ["duplicate", "timeout", "retry"])
 async def test_independent_requests_serialize_one_commit(concurrent_speaking, monkeypatch, race):
-    from app.models.speaking import SpeakingResponse, SpeakingResponseTake
+    from app.models.speaking import SpeakingPromptProgress, SpeakingResponse, SpeakingResponseTake
     from app.services.speaking_attempts import SpeakingAttemptService
 
     factory, owner, attempt_id, prompts = concurrent_speaking
@@ -409,7 +409,7 @@ async def test_independent_requests_serialize_one_commit(concurrent_speaking, mo
             if second and race == "retry":
                 return await service.retry_current_response(attempt_id, prompts[0], 1)
             if second and race == "timeout":
-                return await service.get_state(attempt_id)
+                return await service.finish_current_response(attempt_id, prompts[0], 1, "TIMEOUT")
             return await service.finish_current_response(attempt_id, prompts[0], 1, "USER_DONE")
 
     outcomes = await asyncio.gather(invoke(False), invoke(True), return_exceptions=True)
@@ -428,6 +428,11 @@ async def test_independent_requests_serialize_one_commit(concurrent_speaking, mo
         if response.locked:
             assert sum(t.status == "COMMITTED" for t in takes) == 1
             assert len(takes) == 1  # retry cannot supersede after the winning finalization
+            assert response.completion_reason == ("TIMEOUT" if race == "timeout" else "USER_DONE")
+            state = await session.get(SpeakingPromptProgress, attempt_id)
+            assert state.prompt_id == prompts[1] and state.phase == "QUESTION_ENTER"
+            if race in {"duplicate", "timeout"}:
+                assert outcomes[0].current_prompt.id == outcomes[1].current_prompt.id == prompts[1]
         else:
             assert race == "retry" and response.active_take_number == 2
             assert [t.status for t in sorted(takes, key=lambda t: t.take_number)] == [
@@ -435,3 +440,38 @@ async def test_independent_requests_serialize_one_commit(concurrent_speaking, mo
                 "ACTIVE",
             ]
             assert sum(isinstance(outcome, AppError) for outcome in outcomes) == 1
+
+
+async def test_part2_duplicate_begin_and_timeout_preserve_one_take(db_session, monkeypatch):
+    from app.models import SpeakingResponse, SpeakingResponseTake
+
+    now = [TimerService.now()]
+    monkeypatch.setattr(TimerService, "now", staticmethod(lambda: now[0]))
+    service, aid, prompts = await started(db_session, focused=1)
+    prep = await service.begin_prompt(aid, prompts[1])
+    now[0] += timedelta(seconds=10)
+    duplicate = await service.begin_prompt(aid, prompts[1])
+    assert duplicate.response_id == prep.response_id and duplicate.remaining_ms == 50000
+    assert duplicate.phase_deadline_at == prep.phase_deadline_at
+    now[0] += timedelta(seconds=50)
+    assert (await service.begin_prompt(aid, prompts[1])).phase == "STARTING"
+    now[0] += timedelta(seconds=3)
+    assert (await service.begin_prompt(aid, prompts[1])).remaining_ms == 120000
+    now[0] += timedelta(seconds=120)
+    assert (await service.get_state(aid)).phase == "FINALIZING"
+    for _ in range(2):
+        assert (
+            await service.finish_current_response(aid, prompts[1], 1, "TIMEOUT")
+        ).phase == "COMPLETED"
+    async with db_session.begin():
+        response = await db_session.get(SpeakingResponse, prep.response_id)
+        takes = list(
+            await db_session.scalars(
+                select(SpeakingResponseTake).where(SpeakingResponseTake.response_id == response.id)
+            )
+        )
+        assert response.duration_ms == 120000 and response.completion_reason == "TIMEOUT"
+        assert len(takes) == 1 and takes[0].status == "COMMITTED"
+    with pytest.raises(AppError) as error:
+        await service.retry_current_response(aid, prompts[1], 1)
+    assert error.value.code == "ATTEMPT_FINALIZED"

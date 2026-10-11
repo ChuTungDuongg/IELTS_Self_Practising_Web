@@ -154,3 +154,95 @@ async def test_concurrent_recovery_never_reopens_finalization(concurrent_speakin
         async with factory() as session:
             state = await SpeakingAttemptService(session, owner).get_state(aid)
             assert state.current_prompt.id == prompts[1] or state.phase == "INTERRUPTED"
+
+
+async def test_many_reload_calls_remain_monotonic_and_finalized_generation_rejected(
+    db_session, monkeypatch
+):
+    from sqlalchemy import select
+
+    from app.models import SpeakingPromptProgress, SpeakingResponse, SpeakingResponseTake
+
+    service, aid, prompts, now, first = await interrupted(db_session, monkeypatch)
+    await service.resume(aid, prompts[0], 1, first.interruption_generation)
+    for elapsed in [1, 2, 4]:
+        now[0] += timedelta(seconds=elapsed)
+        state = await service.resume(aid, prompts[0], 1, first.interruption_generation)
+        assert state.remaining_ms == 31000
+    previous = 31000
+    for _ in range(4):
+        now[0] += timedelta(seconds=1)
+        state = await service.interrupt(aid, prompts[0], 1, first.interruption_generation)
+        state = await service.resume(aid, prompts[0], 1, first.interruption_generation)
+        assert state.remaining_ms == previous - 1000
+        previous = state.remaining_ms
+    await service.finish_current_response(aid, prompts[0], 1, "USER_DONE")
+    with pytest.raises(AppError) as error:
+        await service.resume(aid, prompts[0], 1, first.interruption_generation)
+    assert error.value.code == "SPEAKING_PREVIOUS_PROMPT_LOCKED"
+    async with db_session.begin():
+        progress = await db_session.get(SpeakingPromptProgress, aid)
+        rows = list(
+            await db_session.scalars(
+                select(SpeakingResponse).where(SpeakingResponse.attempt_id == aid)
+            )
+        )
+        takes = list(
+            await db_session.scalars(
+                select(SpeakingResponseTake).where(SpeakingResponseTake.response_id == rows[0].id)
+            )
+        )
+        assert progress.interruption_count == 1 and progress.prompt_id == prompts[1]
+        assert len(rows) == len(takes) == 1 and takes[0].status == "COMMITTED"
+
+
+async def test_part2_prep_recovery_preserves_notes_and_original_31_seconds(
+    db_session, monkeypatch, tmp_path
+):
+    from app.services.speaking_media import SpeakingMediaService
+    from app.storage.local import LocalAssetStorage
+
+    now = [TimerService.now()]
+    monkeypatch.setattr(TimerService, "now", staticmethod(lambda: now[0]))
+    service, aid, prompts = await started(db_session, focused=1)
+    await service.begin_prompt(aid, prompts[1])
+    marker = "SPEAKING_PRIVATE_NOTE_SHOULD_NEVER_BE_GRADED"
+    await service.save_notes(aid, prompts[1], marker)
+    now[0] += timedelta(seconds=29)
+    await service.heartbeat(aid, prompts[1], 1)
+    now[0] += timedelta(seconds=1)
+    interrupted_state = await service.interrupt(aid, prompts[1], 1, 0)
+    assert interrupted_state.remaining_ms == 31000 and interrupted_state.scratch_notes == marker
+    await service.resume(aid, prompts[1], 1, interrupted_state.interruption_generation)
+    now[0] += timedelta(seconds=7)
+    resumed = await service.get_state(aid)
+    assert resumed.phase == "PREPARING" and resumed.remaining_ms == 31000
+    media = SpeakingMediaService(
+        db_session, db_session.info["current_user_identity"], storage=LocalAssetStorage(tmp_path)
+    )
+    manifest = await media.manifest(aid, resumed.response_id)
+    assert (
+        marker not in manifest.model_dump_json()
+        and "scratch_notes" not in manifest.model_dump_json()
+    )
+    now[0] += timedelta(seconds=31)
+    assert (await service.get_state(aid)).phase == "STARTING"
+    now[0] += timedelta(seconds=3)
+    assert (await service.get_state(aid)).remaining_ms == 120000
+
+
+async def test_unconfirmed_tail_is_not_in_recovered_manifest(db_session, tmp_path):
+    import hashlib
+
+    from test_speaking_media import recording
+
+    service, media, aid, prompts, state, segment = await recording(db_session, tmp_path)
+    accepted = await media.upload_chunk(aid, segment.id, 0, b"accepted")
+    unconfirmed = b"lost in memory"
+    await service.interrupt(aid, prompts[0], 1, 0)
+    manifest = await media.manifest(aid, state.response_id)
+    assert manifest.segments[0].chunk_count == 1
+    assert [c.sha256 for c in manifest.segments[0].chunks] == [accepted.sha256]
+    assert hashlib.sha256(unconfirmed).hexdigest() not in manifest.model_dump_json()
+    for path in tmp_path.rglob("*.webm"):
+        path.unlink()
