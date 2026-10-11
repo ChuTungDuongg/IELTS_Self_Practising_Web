@@ -1,4 +1,5 @@
 "use client";
+import { roleTranslationKeys } from "@/lib/i18n/translations";
 
 import { useEffect, useState, type FormEvent } from "react";
 import type { TranslationKey } from "@/lib/i18n/types";
@@ -109,7 +110,7 @@ export default function ProfilePage() {
     <PageHeading eyebrow={t("profile.profile")} title={t("profile.account")} description={t("profile.description")} />
     <form className="profile-form" onSubmit={(event) => void save(event)}>
       <section className="surface-card profile-card"><h2 className="section-title">{t("profile.accountInformation")}</h2><div className="profile-grid">
-        <Detail label={t("profile.email")} value={profile.email} /><Detail label={t("profile.role")} value={t(profile.role === "ADMIN" ? "shell.roleAdmin" : "shell.roleUser")} />
+        <Detail label={t("profile.email")} value={profile.email} /><Detail label={t("profile.role")} value={t(roleTranslationKeys[profile.role])} />
         <Detail label={t("profile.status")} value={profile.is_active ? t("profile.active") : t("profile.inactive")} />
         <Detail label={t("profile.memberSince")} value={formatProjectDateTime(profile.created_at)} />
         <Detail label={t("profile.lastLogin")} value={profile.last_login_at ? formatProjectDateTime(profile.last_login_at) : t("profile.never")} />

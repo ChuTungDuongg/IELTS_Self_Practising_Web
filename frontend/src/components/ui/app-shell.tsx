@@ -7,7 +7,7 @@ import { AppFooter } from "./app-footer";
 import { useTranslation } from "@/lib/i18n/locale-provider";
 
 function isBuilderPreview(pathname: string): boolean {
-  return /^\/admin\/tests\/[^/]+\/versions\/[^/]+\/preview\/?$/.test(pathname);
+  return /^\/(admin|teacher)\/tests\/[^/]+\/versions\/[^/]+\/preview\/?$/.test(pathname);
 }
 
 function contentWidth(pathname: string): "standard" | "wide" {
@@ -21,7 +21,7 @@ function contentWidth(pathname: string): "standard" | "wide" {
 
   if (
     ["/library", "/practice", "/history", "/analytics", "/admin", "/admin/users", "/admin/tests", "/transfer"].includes(path) ||
-    path.startsWith("/admin/tests/")
+    path.startsWith("/admin/tests/") || path.startsWith("/teacher") || path.startsWith("/classrooms") || path.startsWith("/admin/moderation")
   ) return "wide";
 
   return "standard";

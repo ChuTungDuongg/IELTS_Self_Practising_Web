@@ -13,6 +13,14 @@ export const moduleTranslationKeys: Record<"READING" | "LISTENING" | "WRITING", 
   READING: "common.reading", LISTENING: "common.listening", WRITING: "common.writing",
 };
 
+export const roleTranslationKeys: Record<"USER" | "TEACHER" | "ADMIN", TranslationKey> = {
+  USER: "shell.roleUser", TEACHER: "shell.roleTeacher", ADMIN: "shell.roleAdmin",
+};
+
+export const moderationTranslationKeys: Record<"PENDING" | "APPROVED" | "REJECTED" | "CANCELLED" | "REVOKED", TranslationKey> = {
+  PENDING: "moderation.pending", APPROVED: "moderation.approved", REJECTED: "moderation.rejected", CANCELLED: "moderation.cancelled", REVOKED: "moderation.revoked",
+};
+
 export const statusTranslationKeys: Readonly<Record<string, TranslationKey>> = {
   DRAFT: "common.draft", PUBLISHED: "common.published", ARCHIVED: "common.archived",
   IN_PROGRESS: "common.inProgress", PAUSED: "common.paused", SUBMITTED: "common.submitted",

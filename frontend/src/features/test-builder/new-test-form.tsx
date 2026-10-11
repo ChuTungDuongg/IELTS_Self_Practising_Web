@@ -9,7 +9,7 @@ import { useRouter } from "next/navigation";
 import { ApiError } from "@/lib/api/client";
 import { createTest } from "@/lib/api/tests";
 
-export function NewTestForm() {
+export function NewTestForm({ namespace = "admin" }: { namespace?: "admin" | "teacher" } = {}) {
   const { t } = useTranslation();
   const router = useRouter();
   const [error, setError] = useState<string | { message: TranslationKey; params?: TranslationParams } | null>(null);
@@ -26,7 +26,8 @@ export function NewTestForm() {
         title: String(form.get("title") ?? ""),
         description: String(form.get("description") ?? ""),
       });
-      router.push(`/admin/tests/${test.id}`);
+      const draft = test.versions.find(version => version.status === "DRAFT");
+      router.push(namespace === "teacher" && draft ? `/teacher/tests/${test.id}/versions/${draft.id}/edit` : `/${namespace}/tests/${test.id}`);
       router.refresh();
     } catch (caught) {
       setError(caught instanceof ApiError ? caught.message : { message: "builder.createFailed" });

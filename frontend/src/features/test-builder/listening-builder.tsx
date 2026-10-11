@@ -35,7 +35,7 @@ import { AutosaveLink } from "./autosave-link";
 import { ModuleDurationEditor } from "./module-duration-editor";
 import { QuestionGroupEditor } from "./question-group-editor";
 
-export function ListeningBuilder({ version }: { version: BuilderVersion }) {
+export function ListeningBuilder({ version, namespace = "admin" }: { version: BuilderVersion; namespace?: "admin" | "teacher" }) {
   const { t } = useTranslation();
   const router = useRouter();
   const { deleting, transitioning, flushAutosaves, runMutation } = useBuilderLifecycle();
@@ -176,7 +176,7 @@ export function ListeningBuilder({ version }: { version: BuilderVersion }) {
       <section className="listening-builder">
         <div className="section-header">
           <div><p className="page-eyebrow listening-eyebrow">{t("builder.moduleListening")}</p><h2>{t("builder.editorListening")}</h2><p>{t("builder.listeningHelp")}</p></div>
-          <div className="flex flex-wrap gap-2"><AutosaveLink href={builderPreviewPath(version.test_id, version.id, "listening")} className="btn btn-secondary">{t("builder.previewListening")}</AutosaveLink><span className="module-state">{parts.reduce((total, item) => total + item.question_groups.reduce((count, group) => count + groupQuestionCount(group), 0), 0)} / 40 {t("common.questions")}</span><button onClick={() => setConfirmingModuleDelete(true)} className="btn btn-danger-ghost">{t("builder.deleteModule")}</button></div>
+          <div className="flex flex-wrap gap-2"><AutosaveLink href={builderPreviewPath(version.test_id, version.id, "listening", namespace)} className="btn btn-secondary">{t("builder.previewListening")}</AutosaveLink><span className="module-state">{parts.reduce((total, item) => total + item.question_groups.reduce((count, group) => count + groupQuestionCount(group), 0), 0)} / 40 {t("common.questions")}</span><button onClick={() => setConfirmingModuleDelete(true)} className="btn btn-danger-ghost">{t("builder.deleteModule")}</button></div>
         </div>
 
         <ModuleDurationEditor module={listening} onPersisted={(saved) => { moduleRevision.current = saved.revision; setSavedModule(saved); }} />

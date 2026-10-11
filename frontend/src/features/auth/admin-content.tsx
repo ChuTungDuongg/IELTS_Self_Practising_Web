@@ -1,4 +1,5 @@
 "use client";
+import { roleTranslationKeys } from "@/lib/i18n/translations";
 
 import type { ReactElement } from "react";
 import Link from "next/link";
@@ -33,7 +34,7 @@ function AdminMetric({ label, value }: { label: string; value: string | number }
 export function AdminUserDetailContent({ detail }: { detail: AdminUserDetail }): ReactElement {
   const { t } = useTranslation();
   return <>
-    <PageHeading eyebrow={t("admin.record")} title={detail.user.display_name} description={`${detail.user.email} · ${t(detail.user.role === "ADMIN" ? "shell.roleAdmin" : "shell.roleUser")} · ${t(detail.user.is_active ? "profile.active" : "profile.inactive")}`} action={<AdminUserActions userId={detail.user.id} role={detail.user.role} isActive={detail.user.is_active} />} />
+    <PageHeading eyebrow={t("admin.record")} title={detail.user.display_name} description={`${detail.user.email} · ${t(roleTranslationKeys[detail.user.role])} · ${t(detail.user.is_active ? "profile.active" : "profile.inactive")}`} action={<AdminUserActions userId={detail.user.id} role={detail.user.role} isActive={detail.user.is_active} />} />
     <section className="admin-stat-grid"><AdminDetail label={t("admin.attempts")} value={detail.history.total} /><AdminDetail label={t("admin.finalized")} value={detail.analytics.total_finalized_attempts} /><AdminDetail label={t("admin.mocks")} value={detail.analytics.completed_full_mocks} /><AdminDetail label={t("profile.lastLogin")} value={detail.user.last_login_at ? formatProjectDateTime(detail.user.last_login_at) : t("profile.never")} /></section>
     <section className="admin-users surface-card profile-card"><h2 className="section-title">{t("profile.profile")}</h2><div className="profile-grid">
       <ProfileDetail label={t("profile.phone")} value={detail.user.phone_number} />

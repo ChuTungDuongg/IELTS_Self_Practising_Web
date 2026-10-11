@@ -8,6 +8,8 @@ import { ThemeToggle } from "./theme-toggle";
 import { TRANSFER_ROUTE } from "@/lib/routes";
 import { useAuth } from "@/features/auth/auth-provider";
 import { useLocale, useTranslation } from "@/lib/i18n/locale-provider";
+import { roleTranslationKeys } from "@/lib/i18n/translations";
+import { NotificationCenter } from "@/features/notifications/notification-center";
 
 const navigation = [
   { message: "shell.overview", href: "/" },
@@ -20,7 +22,10 @@ const adminNavigation = [
   { message: "shell.admin", href: "/admin" },
   { message: "shell.builder", href: "/admin/tests" },
   { message: "shell.transfer", href: TRANSFER_ROUTE },
+  { message: "shell.moderation", href: "/admin/moderation" },
+  { message: "shell.classrooms", href: "/classrooms" },
 ] as const;
+const teacherNavigation = [{ message: "shell.builder", href: "/teacher/tests" }, { message: "shell.classrooms", href: "/teacher/classrooms" }] as const;
 
 function isCurrent(pathname: string, href: string) {
   return href === "/" || href === "/admin" ? pathname === href : pathname.startsWith(href);
@@ -29,7 +34,7 @@ function isCurrent(pathname: string, href: string) {
 function PrimaryNavigation({ pathname }: { pathname: string }) {
   const { user } = useAuth();
   const { t } = useTranslation();
-  const visibleNavigation = user ? [...navigation, ...(user.role === "ADMIN" ? adminNavigation : [])] : [navigation[0]];
+  const visibleNavigation = user ? [...navigation, ...(user.role === "ADMIN" ? adminNavigation : user.role === "TEACHER" ? teacherNavigation : [{ message: "shell.classrooms" as const, href: "/classrooms" }])] : [navigation[0]];
   return (
     <nav aria-label={t("shell.primary")} className="primary-nav">
       <ul className="primary-nav-list">
@@ -57,8 +62,9 @@ function HeaderActions({ loggingOut, onLogout }: { loggingOut: boolean; onLogout
   return <div className="header-actions">
     <LocaleSwitcher />
     <ThemeToggle />
+    {user ? <NotificationCenter key={user.id} userId={user.id} /> : null}
     {sessionError ? <p role="alert" className="notice">{sessionError}</p> : null}
-    {!loading && user ? <><Link href="/profile" prefetch={false} className="auth-user-label"><span className="auth-user-name">{user.display_name}</span><small>{t(user.role === "ADMIN" ? "shell.roleAdmin" : "shell.roleUser")}</small></Link><button type="button" className="btn btn-ghost" disabled={loggingOut} onClick={onLogout}>{t("shell.logout")}</button></> : !loading && !sessionError ? <><Link href="/login" prefetch={false} className="btn btn-ghost">{t("shell.login")}</Link><Link href="/register" prefetch={false} className="btn btn-primary">{t("shell.register")}</Link></> : null}
+    {!loading && user ? <><Link href="/profile" prefetch={false} className="auth-user-label"><span className="auth-user-name">{user.display_name}</span><small>{t(roleTranslationKeys[user.role])}</small></Link><button type="button" className="btn btn-ghost" disabled={loggingOut} onClick={onLogout}>{t("shell.logout")}</button></> : !loading && !sessionError ? <><Link href="/login" prefetch={false} className="btn btn-ghost">{t("shell.login")}</Link><Link href="/register" prefetch={false} className="btn btn-primary">{t("shell.register")}</Link></> : null}
   </div>;
 }
 

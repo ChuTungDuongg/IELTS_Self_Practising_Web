@@ -16,9 +16,9 @@ export function BuilderWorkspaceRow({ active, disabled, href, icon, label, statu
   return href && !disabled ? <AutosaveLink href={href} aria-current={active ? "page" : undefined} className={className}>{content}</AutosaveLink> : <span aria-disabled="true" className={className}>{content}</span>;
 }
 
-export function BuilderWorkspaceNavigation({ testId, versionId, workspace, moduleTypes = [] }: { testId: string; versionId: string; workspace: BuilderWorkspace; moduleTypes?: Array<"READING" | "LISTENING" | "WRITING"> }) {
+export function BuilderWorkspaceNavigation({ testId, versionId, workspace, moduleTypes = [], namespace = "admin" }: { testId: string; versionId: string; workspace: BuilderWorkspace; namespace?: "admin" | "teacher"; moduleTypes?: Array<"READING" | "LISTENING" | "WRITING"> }) {
   const { t } = useTranslation();
-  const base = builderEditPath(testId, versionId);
+  const base = builderEditPath(testId, versionId, namespace);
   const exists = (type: "READING" | "LISTENING" | "WRITING") => moduleTypes.includes(type);
   return (
     <aside className="builder-local-nav" aria-label={t("builder.sections")}>

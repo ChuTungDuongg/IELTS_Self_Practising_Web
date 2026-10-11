@@ -34,6 +34,26 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 describe("focused personal AI feedback", () => {
+  it("TEACHER retains personal focused practice feedback without ADMIN copy controls", async () => {
+    auth.role = "TEACHER";
+    render(<WritingReviewView data={review("FOCUSED_UNIT")} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Save AI feedback to practice" }));
+    await waitFor(() => expect(saveAIPracticeFeedback).toHaveBeenCalledExactlyOnceWith(attemptId, taskId, runId));
+    expect(screen.queryByText("Chép gợi ý AI vào biểu mẫu")).not.toBeInTheDocument();
+  });
+  it("teacher assignment review never mounts AI observers or grading mutations", () => {
+    auth.role = "TEACHER";
+    render(<WritingReviewView data={review("FOCUSED_UNIT")} readOnly />);
+    expect(screen.getByText("Fictional parks help.")).toBeInTheDocument();
+    for (const field of screen.getAllByRole("combobox")) expect(field).toBeDisabled();
+    for (const field of screen.getAllByRole("textbox")) expect(field).toHaveAttribute("readonly");
+    expect(screen.queryByText("Save AI feedback to practice")).not.toBeInTheDocument();
+    expect(screen.queryByText("Chấm lại với AI")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Save Task/ })).not.toBeInTheDocument();
+    expect(listAIWritingRuns).not.toHaveBeenCalled();
+    expect(getAIPracticeFeedback).not.toHaveBeenCalled();
+    expect(saveWritingTaskScore).not.toHaveBeenCalled();
+  });
   it("USER saves only a source run ID and sees four advisory scores separately", async () => {
     render(<WritingReviewView data={review("FOCUSED_UNIT")} />);
     fireEvent.click(await screen.findByRole("button", { name: "Save AI feedback to practice" }));

@@ -55,7 +55,7 @@ export async function getAdminUser(userId: string, request: ApiRequester = apiRe
 
 export async function updateAdminUser(
   userId: string,
-  update: { role?: "USER" | "ADMIN"; is_active?: boolean },
+  update: { role?: "USER" | "TEACHER" | "ADMIN"; is_active?: boolean },
 ) {
   return userSchema.parse(await apiRequest<unknown>(`/admin/users/${encodeURIComponent(userId)}`, {
     method: "PATCH",

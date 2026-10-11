@@ -12,6 +12,9 @@ export const versionSchema = z.object({
 export const testSchema = z.object({
   id: z.string().uuid(),
   title: z.string(),
+  origin: z.enum(["ADMIN", "TEACHER"]).optional(),
+  owner_user_id: z.string().uuid().nullable().optional(),
+  owner_display_name: z.string().nullable().optional(),
   description: z.string().nullable(),
   source_label: z.string().nullable(),
   test_number: z.number().int().nullable(),

@@ -34,7 +34,7 @@ import { useBuilderAutosave, useBuilderLifecycle } from "./builder-lifecycle";
 import { AutosaveLink } from "./autosave-link";
 import { ModuleDurationEditor } from "./module-duration-editor";
 
-export function ReadingBuilder({ version }: { version: BuilderVersion }) {
+export function ReadingBuilder({ version, namespace = "admin" }: { version: BuilderVersion; namespace?: "admin" | "teacher" }) {
   const { t } = useTranslation();
   const router = useRouter();
   const { deleting, transitioning, flushAutosaves, runMutation } = useBuilderLifecycle();
@@ -155,7 +155,7 @@ export function ReadingBuilder({ version }: { version: BuilderVersion }) {
             <h2>{t("builder.editorReading")}</h2>
             <p>{t("builder.readingHelp")}</p>
           </div>
-          <div className="flex flex-wrap gap-2"><AutosaveLink href={builderPreviewPath(version.test_id, version.id, "reading")} className="btn btn-secondary">{t("builder.previewReading")}</AutosaveLink><button onClick={() => void editPassage("new")} className="btn btn-primary"><PlusIcon className="size-4" /> {t("builder.addPassage")}</button><button onClick={() => setConfirmingModuleDelete(true)} className="btn btn-danger-ghost">{t("builder.deleteModule")}</button></div>
+          <div className="flex flex-wrap gap-2"><AutosaveLink href={builderPreviewPath(version.test_id, version.id, "reading", namespace)} className="btn btn-secondary">{t("builder.previewReading")}</AutosaveLink><button onClick={() => void editPassage("new")} className="btn btn-primary"><PlusIcon className="size-4" /> {t("builder.addPassage")}</button><button onClick={() => setConfirmingModuleDelete(true)} className="btn btn-danger-ghost">{t("builder.deleteModule")}</button></div>
         </div>
 
         <ModuleDurationEditor module={reading} onPersisted={(saved) => { moduleRevision.current = saved.revision; setSavedModule(saved); }} />

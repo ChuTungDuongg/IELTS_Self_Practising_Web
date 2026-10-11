@@ -9,7 +9,7 @@ vi.mock("next/navigation", () => ({ usePathname: () => state.pathname }));
 vi.mock("@/features/auth/auth-provider", () => ({ useAuth: () => ({ user: state.role ? { role: state.role, display_name: state.name } : null, loading: state.loading, sessionError: state.sessionError, logout: state.logout }) }));
 vi.mock("next/link", () => ({ default: ({ prefetch, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { prefetch?: boolean | null }) => <a {...props} data-prefetch={prefetch === false ? "disabled" : "automatic"} /> }));
 
-const routes = ["/", "/library", "/practice", "/history", "/analytics", "/admin", "/admin/tests", "/transfer"];
+const routes = ["/", "/library", "/practice", "/history", "/analytics", "/admin", "/admin/tests", "/transfer", "/admin/moderation", "/classrooms"];
 beforeEach(() => { state.pathname = "/"; state.role = null; state.loading = false; state.sessionError = null; state.name = "Learner"; window.localStorage.clear(); document.documentElement.dataset.theme = "light"; });
 
 describe("horizontal application shell", () => {
@@ -55,7 +55,7 @@ describe("horizontal application shell", () => {
     const nav = screen.getByRole("navigation", { name: "Primary" });
     expect(screen.getAllByRole("navigation")).toHaveLength(1);
     const links = within(nav).getAllByRole("link");
-    expect(links.map((link) => link.getAttribute("href"))).toEqual(routes.slice(0, role === "ADMIN" ? 8 : role === "USER" ? 5 : 1));
+    expect(links.map((link) => link.getAttribute("href"))).toEqual(role === "ADMIN" ? routes : role === "USER" ? [...routes.slice(0, 5), "/classrooms"] : ["/"]);
     for (const link of links) expect(link).toHaveAttribute("data-prefetch", link.getAttribute("href") === "/" ? "automatic" : "disabled");
     expect(links[0]).toHaveAttribute("aria-current", "page");
     expect(nav.closest("header")).toBe(screen.getByRole("banner"));
@@ -90,7 +90,7 @@ describe("horizontal application shell", () => {
     expect(english).toHaveTextContent("EN");
     fireEvent.click(vietnamese);
     const translated = within(screen.getByRole("navigation", { name: "Chính" })).getAllByRole("link");
-    expect(translated.map((link) => link.textContent)).toEqual(["Tổng quan", "Thư viện đề", "Luyện từng kỹ năng", "Lịch sử luyện tập", "Thống kê", "Quản trị", "Biên soạn đề", "Chuyển đề"]);
+    expect(translated.map((link) => link.textContent)).toEqual(["Tổng quan", "Thư viện đề", "Luyện từng kỹ năng", "Lịch sử luyện tập", "Thống kê", "Quản trị", "Biên soạn đề", "Chuyển đề", "Duyệt nội dung", "Lớp học"]);
     expect(translated.map((link) => link.getAttribute("href"))).toEqual(routes);
     expect(screen.getAllByRole("navigation")).toHaveLength(1);
     expect(screen.getByRole("banner").querySelector(".app-header-inner")).toContainElement(language);
@@ -145,8 +145,8 @@ describe("horizontal application shell", () => {
     const header = screen.getByRole("banner");
     const focusable = Array.from(header.querySelectorAll<HTMLAnchorElement | HTMLButtonElement>('a[href], button'));
     expect(header.querySelectorAll("nav")).toHaveLength(1);
-    expect(focusable.slice(1, 9).map((node) => node.getAttribute("href"))).toEqual(routes);
-    expect(focusable.slice(9).map((node) => node.getAttribute("aria-label") ?? node.textContent)).toEqual(["English", "Tiếng Việt", "Use dark theme", expect.stringContaining("Learner"), "Logout"]);
+    expect(focusable.slice(1, 1 + routes.length).map((node) => node.getAttribute("href"))).toEqual(routes);
+    expect(focusable.slice(1 + routes.length).map((node) => node.getAttribute("aria-label") ?? node.textContent)).toEqual(["English", "Tiếng Việt", "Use dark theme", expect.stringContaining("Learner"), "Logout"]);
     expect(focusable.every((node) => node.tabIndex === 0)).toBe(true);
     expect(container.querySelector('[tabindex]:not([tabindex="0"]):not([tabindex="-1"])')).toBeNull();
   });

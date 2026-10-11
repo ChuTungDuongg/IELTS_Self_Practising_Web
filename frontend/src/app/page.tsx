@@ -10,10 +10,10 @@ import { getProfile } from "@/lib/api/profile";
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
-  const [tests, history, user] = await Promise.all([
-    getTests(undefined, serverApiRequest).catch(() => []),
+  const user = await getHomepageUser();
+  const [tests, history] = await Promise.all([
+    getTests(user?.role === "ADMIN" ? undefined : { publicOnly: true }, serverApiRequest).catch(() => []),
     getHistory(serverApiRequest).catch(() => ({ items: [], groups: [], total: 0 })),
-    getHomepageUser(),
   ]);
   const [adminStats, profile] = await Promise.all([
     user?.role === "ADMIN" ? getAdminStats(serverApiRequest) : null,

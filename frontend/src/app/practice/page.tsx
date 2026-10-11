@@ -8,12 +8,12 @@ import type { VersionDetail } from "@/lib/api/schema";
 export const dynamic = "force-dynamic";
 
 export default async function PracticePage() {
-  const tests = await getTests(undefined, serverApiRequest).catch(() => []);
+  const tests = await getTests({ publicOnly: true }, serverApiRequest).catch(() => []);
   const published = tests.filter((test) => !test.archived_at).flatMap((test) => {
     const version = [...test.versions].reverse().find((item) => item.status === "PUBLISHED");
     return version ? [version] : [];
   });
-  const details = await Promise.all(published.map((version) => getVersion(version.id, serverApiRequest).catch(() => null)));
+  const details = await Promise.all(published.map((version) => getVersion(version.id, serverApiRequest, { publicOnly: true }).catch(() => null)));
   const available = details.filter((detail): detail is VersionDetail => detail !== null && detail.status === "PUBLISHED");
 
   return <>

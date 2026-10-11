@@ -59,7 +59,7 @@ function toPayload(draft: TaskDraft): Omit<WritingTaskUpdate, "expected_revision
   };
 }
 
-export function WritingBuilder({ version }: { version: BuilderVersion }) {
+export function WritingBuilder({ version, namespace = "admin" }: { version: BuilderVersion; namespace?: "admin" | "teacher" }) {
   const { t } = useTranslation();
   const router = useRouter();
   const { beginDelete, deleting, transitioning, flushAutosaves, runAutosave, runMutation } = useBuilderLifecycle();
@@ -248,7 +248,7 @@ export function WritingBuilder({ version }: { version: BuilderVersion }) {
     <section className="writing-builder">
       <div className="section-header">
         <div><p className="page-eyebrow writing-eyebrow">{t("builder.moduleWriting")}</p><h2>{t("builder.editorWriting")}</h2><p>{t("builder.writingHelp")}</p></div>
-        <div className="flex flex-wrap gap-2"><AutosaveLink href={builderPreviewPath(version.test_id, version.id, "writing")} className="btn btn-secondary">{t("builder.previewWriting")}</AutosaveLink><span className="module-state">{tasks.filter((task) => drafts[task.id]?.prompt.trim()).length} / 2 {t("builder.promptsReady")}</span><button onClick={() => setConfirmingDelete(true)} className="btn btn-danger-ghost">{t("builder.deleteModule")}</button></div>
+        <div className="flex flex-wrap gap-2"><AutosaveLink href={builderPreviewPath(version.test_id, version.id, "writing", namespace)} className="btn btn-secondary">{t("builder.previewWriting")}</AutosaveLink><span className="module-state">{tasks.filter((task) => drafts[task.id]?.prompt.trim()).length} / 2 {t("builder.promptsReady")}</span><button onClick={() => setConfirmingDelete(true)} className="btn btn-danger-ghost">{t("builder.deleteModule")}</button></div>
       </div>
       {message ? <p role="status" className="notice mt-4">{messageText}</p> : null}
       {error ? <p role="alert" className="notice notice-error mt-4">{errorText}</p> : null}

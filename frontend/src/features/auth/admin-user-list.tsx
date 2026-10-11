@@ -1,4 +1,5 @@
 "use client";
+import { roleTranslationKeys } from "@/lib/i18n/translations";
 
 import type { TranslationKey, TranslationParams } from "@/lib/i18n/types";
 
@@ -131,7 +132,7 @@ export function AdminUserList({ users, status, search, stats }: {
     {success ? <p role="status" className="notice notice-success">{successText}</p> : null}
     {items.length ? <div className="admin-user-list">{items.map((user) => <div key={user.id} className={`admin-user-row admin-user-management-row ${status === "deactivated" ? "admin-user-row-inactive" : ""}`}>
       <span><Link href={`/admin/users/${user.id}`}><strong>{user.display_name}</strong></Link><small>{user.email}</small>{status === "deactivated" ? <StatusBadge status="DEACTIVATED" label={t("admin.deactivated")} /> : null}</span>
-      <span>{t(user.role === "ADMIN" ? "shell.roleAdmin" : "shell.roleUser")}</span>
+      <span>{t(roleTranslationKeys[user.role])}</span>
       <span>{t("admin.attemptCount", { count: user.attempt_count })}</span>
       <span className="admin-user-actions"><small>{user.last_activity_at ? formatProjectDateTime(user.last_activity_at) : t("admin.noActivity")}</small>
         {status === "active" ? <button type="button" className="btn btn-ghost" disabled={pendingId !== null} aria-label={t("admin.deactivateNamed", { name: user.display_name })} onClick={() => void changeStatus(user, false)}>{t("admin.deactivate")}</button>

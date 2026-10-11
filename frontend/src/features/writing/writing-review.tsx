@@ -50,7 +50,7 @@ function initialFeedback(data: WritingReviewPayload): Record<string, TaskFeedbac
   ]));
 }
 
-export function WritingReviewView({ data }: { data: WritingReviewPayload }) {
+export function WritingReviewView({ data, readOnly = false }: { data: WritingReviewPayload; readOnly?: boolean }) {
   const { t } = useTranslation();
   const { user } = useAuth();
   const [reviewData, setReviewData] = useState(data);
@@ -83,13 +83,14 @@ export function WritingReviewView({ data }: { data: WritingReviewPayload }) {
   }
 
   function copyAISuggestions(taskId: string, result: AIWritingResult) {
-    if (user?.role !== "ADMIN") return;
+    if (readOnly || user?.role !== "ADMIN") return;
     setSelections((current) => ({ ...current, [taskId]: Object.fromEntries(aiTraits.map((key) => [key, result.criteria[key].score.toFixed(1)])) as TaskSelection }));
     setFeedback((current) => ({ ...current, [taskId]: Object.fromEntries(aiTraits.map((key) => [key, presentAIFeedback(result.criteria[key].feedback)])) as TaskFeedback }));
     setMessages((current) => ({ ...current, [taskId]: { message: "runner.aiCopied" } }));
   }
 
   async function saveTaskScores(taskId: string, taskNumber: number) {
+    if (readOnly) return;
     const selection = selections[taskId];
     if (!selection || Object.values(selection).some((value) => value === "")) return;
     setSavingTaskId(taskId);
@@ -143,9 +144,9 @@ export function WritingReviewView({ data }: { data: WritingReviewPayload }) {
         return <section key={scoreTask.writing_task_id} className="writing-assessment-card" aria-label={t("runner.taskAssessment", { number: scoreTask.task_number })}>
           <div className="writing-assessment-card-heading"><div><p className="writing-review-kicker">{t("runner.writingTask", { number: scoreTask.task_number })}</p><h2>{t("runner.taskAssessment", { number: scoreTask.task_number })}</h2></div><strong>{scoreTask.score ? `${focused ? t("runner.taskScore") : t("runner.overall")} ${scoreTask.score.overall.toFixed(2)}` : focused ? t("runner.notGraded") : t("runner.awaitingScores")}</strong></div>
           <div className="writing-criteria-grid">
-            {criteria.map(([key, abbreviation, fullName]) => <div key={key} className="writing-criterion-field"><label><span><b>{abbreviation}</b><small>{key === "ta" && scoreTask.task_number === 2 ? t("runner.taskResponse") : t(fullName)}</small></span><select aria-label={t("runner.taskCriterion", { number: scoreTask.task_number, criterion: abbreviation })} className="select-field" value={selection?.[key] ?? ""} onChange={(event) => updateCriterion(scoreTask.writing_task_id, key, event.target.value)}><option value="">{t("runner.notScored")}</option>{bands.map((band) => <option key={band} value={band}>{band}</option>)}</select></label><label className="field-label">{t("runner.criterionFeedback", { criterion: abbreviation })} <span className="font-normal text-[var(--muted)]">{t("runner.optional")}</span><textarea aria-label={t("runner.taskCriterionFeedback", { number: scoreTask.task_number, criterion: abbreviation })} className="textarea-field mt-2" rows={3} maxLength={4000} value={feedback[scoreTask.writing_task_id]?.[key] ?? ""} onChange={(event) => updateFeedback(scoreTask.writing_task_id, key, event.target.value)} /></label></div>)}
+            {criteria.map(([key, abbreviation, fullName]) => <div key={key} className="writing-criterion-field"><label><span><b>{abbreviation}</b><small>{key === "ta" && scoreTask.task_number === 2 ? t("runner.taskResponse") : t(fullName)}</small></span><select disabled={readOnly} aria-label={t("runner.taskCriterion", { number: scoreTask.task_number, criterion: abbreviation })} className="select-field" value={selection?.[key] ?? ""} onChange={(event) => updateCriterion(scoreTask.writing_task_id, key, event.target.value)}><option value="">{t("runner.notScored")}</option>{bands.map((band) => <option key={band} value={band}>{band}</option>)}</select></label><label className="field-label">{t("runner.criterionFeedback", { criterion: abbreviation })} <span className="font-normal text-[var(--muted)]">{t("runner.optional")}</span><textarea readOnly={readOnly} aria-label={t("runner.taskCriterionFeedback", { number: scoreTask.task_number, criterion: abbreviation })} className="textarea-field mt-2" rows={3} maxLength={4000} value={feedback[scoreTask.writing_task_id]?.[key] ?? ""} onChange={(event) => updateFeedback(scoreTask.writing_task_id, key, event.target.value)} /></label></div>)}
           </div>
-          <button type="button" className="btn btn-writing" disabled={!complete || saving} onClick={() => void saveTaskScores(scoreTask.writing_task_id, scoreTask.task_number)}>{saving ? t("common.saving") : t("runner.saveTaskScores", { number: scoreTask.task_number })}</button>
+          {!readOnly ? <button type="button" className="btn btn-writing" disabled={!complete || saving} onClick={() => void saveTaskScores(scoreTask.writing_task_id, scoreTask.task_number)}>{saving ? t("common.saving") : t("runner.saveTaskScores", { number: scoreTask.task_number })}</button> : null}
           {messages[scoreTask.writing_task_id] ? <p role="status" className="notice notice-success">{t(messages[scoreTask.writing_task_id]!.message, { number: messages[scoreTask.writing_task_id]!.number ?? "" })}</p> : null}
           {errors[scoreTask.writing_task_id] ? <p role="alert" className="notice notice-error">{t(errors[scoreTask.writing_task_id]!.message, { number: errors[scoreTask.writing_task_id]!.number ?? "" })}</p> : null}
         </section>;
@@ -167,7 +168,7 @@ export function WritingReviewView({ data }: { data: WritingReviewPayload }) {
         </div>
       </article>
     </main>
-    {task.task_number === 1 || task.task_number === 2 ? <WritingAIAssessment key={task.writing_task_id} taskNumber={task.task_number} attemptId={reviewData.review.attempt.attempt_id} taskId={task.writing_task_id} hasEssay={Boolean(task.content.trim())} canCopy={user?.role === "ADMIN"} canSavePersonalFeedback={user?.role === "USER" && focused && !reviewData.review.attempt.test_session_id && reviewData.review.attempt.focused_unit?.kind === "WRITING_TASK" && reviewData.review.attempt.focused_unit.id === task.writing_task_id} onCopy={(result) => copyAISuggestions(task.writing_task_id, result)} /> : null}
+    {!readOnly && (task.task_number === 1 || task.task_number === 2) ? <WritingAIAssessment key={task.writing_task_id} taskNumber={task.task_number} attemptId={reviewData.review.attempt.attempt_id} taskId={task.writing_task_id} hasEssay={Boolean(task.content.trim())} canCopy={user?.role === "ADMIN"} canSavePersonalFeedback={(user?.role === "USER" || user?.role === "TEACHER") && focused && !reviewData.review.attempt.test_session_id && reviewData.review.attempt.focused_unit?.kind === "WRITING_TASK" && reviewData.review.attempt.focused_unit.id === task.writing_task_id} onCopy={(result) => copyAISuggestions(task.writing_task_id, result)} /> : null}
   </div>;
 }
 

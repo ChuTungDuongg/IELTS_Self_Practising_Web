@@ -47,6 +47,11 @@ const test: TestSummary = {
 };
 
 describe("Skill practice", () => {
+  it("requests public eligibility for personal skill practice", async () => {
+    render(await PracticePage());
+    expect(getTests).toHaveBeenCalledWith({ publicOnly: true }, expect.any(Function));
+    expect(getVersion).toHaveBeenCalledWith(version.id, expect.any(Function), { publicOnly: true });
+  });
   it("keeps focused start pending and its single request guard through locale changes", async () => {
     window.localStorage.clear();
     let finish!: (result: Awaited<ReturnType<typeof startAttempt>>) => void;
@@ -98,7 +103,7 @@ describe("Skill practice", () => {
   it("adds authenticated workspace navigation in order with active route", () => {
     render(<AppShell currentYear={2026}>Content</AppShell>);
     const links = within(screen.getByRole("navigation", { name: "Primary" })).getAllByRole("link");
-    expect(links.map((link) => link.textContent)).toEqual(["Overview", "Test library", "Skill practice", "Attempt history", "Analytics"]);
+    expect(links.map((link) => link.textContent)).toEqual(["Overview", "Test library", "Skill practice", "Attempt history", "Analytics", "Classrooms"]);
     expect(screen.getByRole("link", { name: "Skill practice" })).toHaveAttribute("aria-current", "page");
   });
 

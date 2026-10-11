@@ -74,6 +74,17 @@ describe("Practice library", () => {
     expect(screen.queryByRole("button", { name: /Start/ })).not.toBeInTheDocument();
   });
 
+  it("requests public eligibility for the Library even when the viewer owns teacher content", async () => {
+    render(await LibraryPage());
+    expect(getTests).toHaveBeenCalledWith({ publicOnly: true }, expect.any(Function));
+    expect(getVersion).toHaveBeenCalledWith(versionId, expect.any(Function), { publicOnly: true });
+  });
+
+  it("requires public eligibility on direct Library version links", async () => {
+    render(await TestVersionLibraryPage({ params: Promise.resolve({ versionId }) }));
+    expect(getVersion).toHaveBeenCalledWith(versionId, expect.any(Function), { publicOnly: true });
+  });
+
   it("shows available modules on the version detail route in canonical order", async () => {
     render(await TestVersionLibraryPage({ params: Promise.resolve({ versionId }) }));
     const starts = screen.getAllByRole("button", { name: /Start/ });

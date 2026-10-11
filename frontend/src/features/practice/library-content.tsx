@@ -16,6 +16,11 @@ import { moduleTranslationKeys, statusTranslationKeys } from "@/lib/i18n/transla
 
 const moduleOrder = { READING: 0, LISTENING: 1, WRITING: 2 } as const;
 
+export function TestAttribution({ test }: { test: TestSummary }) {
+  const { t } = useTranslation();
+  return <p className="practice-module-kicker">{test.origin === "TEACHER" ? t("library.community", { name: test.owner_display_name ?? t("library.contributor") }) : t("library.official")}</p>;
+}
+
 export function LibraryContent({ items }: { items: Array<{ test: TestSummary; version: TestSummary["versions"][number]; detail: VersionDetail }> }): ReactElement {
   const { t } = useTranslation();
   return <>
@@ -26,6 +31,7 @@ export function LibraryContent({ items }: { items: Array<{ test: TestSummary; ve
         return <article key={version.id} className="practice-card practice-test-card">
           <div className="practice-card-accent" aria-hidden="true" />
           <div className="practice-card-content">
+            <TestAttribution test={test} />
             <div className="practice-card-topline"><span className="practice-version">{t("common.versionNumber", { number: version.version_number })}</span><StatusBadge status={version.status} label={t(statusTranslationKeys[version.status])} /></div>
             <div className="practice-card-title"><p className="practice-module-kicker">{t("pages.library.complete")}</p><h2>{test.title}</h2><span>{test.description ?? t("pages.library.fallback")}</span></div>
             <div className="practice-module-chips" aria-label={t("pages.library.skillsLabel", { title: test.title })}>{modules.map((module) => <ModuleBadge key={module.id} module={module.module_type} label={t(moduleTranslationKeys[module.module_type])} />)}</div>
@@ -48,6 +54,7 @@ export function LibraryVersionContent({ test, version }: { test: TestSummary; ve
   return <>
     <Link href="/library" className="practice-back-link">← {t("pages.library.back")}</Link>
     <PageHeading eyebrow={t("pages.library.publishedVersion", { number: version.version_number })} title={test.title} description={test.description ?? t("pages.library.detailFallback")} />
+    <TestAttribution test={test} />
     <StartFullMock versionId={version.id} warnings={readinessWarnings} unavailableReason={missing ? t("pages.library.missingModule", { skill: t(moduleTranslationKeys[missing]) }) : missingDuration ? t("pages.library.missingDuration", { skill: t(moduleTranslationKeys[missingDuration.module_type]) }) : undefined} />
     <h2 className="mt-8 mb-4">{t("pages.library.individual")}</h2><div className="practice-skill-grid">
       {modules.map((module) => <article key={module.id} className={`practice-card practice-card-${module.module_type.toLowerCase()}`}>

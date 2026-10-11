@@ -5,7 +5,7 @@ export const userSchema = z.object({
   id: z.string().uuid(),
   email: z.string().email(),
   display_name: z.string(),
-  role: z.enum(["USER", "ADMIN"]),
+  role: z.enum(["USER", "TEACHER", "ADMIN"]),
   is_active: z.boolean(),
   created_at: z.string(),
   updated_at: z.string(),

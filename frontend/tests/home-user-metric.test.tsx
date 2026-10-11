@@ -32,6 +32,17 @@ const profile = {
 };
 
 describe("homepage metrics and personal IELTS goals", () => {
+  it("keeps the ADMIN Builder count based on all authored tests", async () => {
+    render(await DashboardPage());
+    expect(getTests).toHaveBeenCalledWith(undefined, serverApiRequest);
+  });
+
+  it("uses public practice eligibility for a teacher's personal overview", async () => {
+    vi.mocked(serverApiRequest).mockResolvedValue({ ...user, role: "TEACHER" });
+    render(await DashboardPage());
+    expect(getTests).toHaveBeenCalledWith({ publicOnly: true }, serverApiRequest);
+    expect(getAdminStats).not.toHaveBeenCalled();
+  });
   it("translates overview goals without repeating the server loaders", async () => {
     window.localStorage.clear();
     renderWithLocale(await DashboardPage());

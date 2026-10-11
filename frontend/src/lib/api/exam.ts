@@ -100,7 +100,7 @@ export async function getListeningReview(attemptId: string, request: ApiRequeste
   }>(`/attempts/${attemptId}/listening-review`);
 }
 
-const writingReviewTaskSchema = z.object({
+export const writingReviewTaskSchema = z.object({
   writing_task_id: z.string().uuid(),
   task_number: z.number().int(),
   prompt: z.string(),
@@ -123,7 +123,7 @@ const writingReviewTaskSchema = z.object({
   }).nullable().default(null),
 });
 
-const writingReviewSchema = z.object({
+export const writingReviewSchema = z.object({
   review: z.object({
     attempt: attemptResponseSchema,
     test_title: z.string(),
@@ -140,6 +140,29 @@ const writingReviewSchema = z.object({
 });
 
 export type WritingReviewPayload = z.infer<typeof writingReviewSchema>;
+
+const reviewQuestionSchema = z.object({
+  id: z.string().uuid(), number: z.number(), prompt: z.string(),
+  config: z.record(z.string(), z.unknown()), answer_key: z.record(z.string(), z.unknown()),
+  explanation: z.string().nullable(), order_index: z.number(),
+});
+const reviewGroupSchema = groupSchema.extend({ questions: z.array(reviewQuestionSchema) });
+const reviewSummarySchema = z.object({
+  attempt: attemptResponseSchema, test_title: z.string(),
+  answers: z.array(z.object({
+    question_id: z.string().uuid(), question_number: z.number(), prompt: z.string(),
+    value: z.unknown(), answer_key: z.record(z.string(), z.unknown()),
+    is_correct: z.boolean().nullable(), explanation: z.string().nullable(),
+  })),
+});
+export const readingReviewSchema = z.object({
+  review: reviewSummarySchema, highlights: z.array(highlightSchema),
+  passages: z.array(passageSchema.extend({ question_groups: z.array(reviewGroupSchema) })),
+});
+export const listeningReviewSchema = z.object({
+  review: reviewSummarySchema, highlights: z.array(highlightSchema), audio_asset: assetSchema.nullable(),
+  parts: z.array(listeningPartSchema.extend({ question_groups: z.array(reviewGroupSchema) })),
+});
 
 export async function getWritingReview(attemptId: string, request: ApiRequester = apiRequest): Promise<WritingReviewPayload> {
   return writingReviewSchema.parse(

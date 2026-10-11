@@ -11,8 +11,11 @@ const updateTestInput = z.object({
   description: z.string().trim().max(4000).nullable().optional().transform((value) => value === "" ? null : value),
 });
 
-export async function getTests(options?: { archived?: boolean }, request: ApiRequester = apiRequest): Promise<TestSummary[]> {
-  const query = options?.archived ? "?archived=true" : "";
+export async function getTests(options?: { archived?: boolean; publicOnly?: boolean }, request: ApiRequester = apiRequest): Promise<TestSummary[]> {
+  const parameters = new URLSearchParams();
+  if (options?.archived) parameters.set("archived", "true");
+  if (options?.publicOnly) parameters.set("public_only", "true");
+  const query = parameters.size ? `?${parameters.toString()}` : "";
   return z.array(testSchema).parse(await request<unknown>(`/tests${query}`));
 }
 
@@ -38,8 +41,9 @@ export async function updateTest(testId: string, input: z.input<typeof updateTes
   }));
 }
 
-export async function getVersion(versionId: string, request: ApiRequester = apiRequest): Promise<VersionDetail> {
-  return versionDetailSchema.parse(await request<unknown>(`/test-versions/${versionId}`));
+export async function getVersion(versionId: string, request: ApiRequester = apiRequest, options?: { publicOnly?: boolean }): Promise<VersionDetail> {
+  const query = options?.publicOnly ? "?public_only=true" : "";
+  return versionDetailSchema.parse(await request<unknown>(`/test-versions/${versionId}${query}`));
 }
 
 export async function cloneVersion(testId: string, sourceVersionId: string): Promise<VersionDetail> {
