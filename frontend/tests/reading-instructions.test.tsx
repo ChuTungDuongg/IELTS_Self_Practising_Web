@@ -4,6 +4,7 @@ import { ReadingRunner } from "@/features/reading/reading-runner";
 import { ReadingReviewView } from "@/features/reading/reading-review";
 import type { ExamPayload } from "@/lib/api/exam";
 import { deleteAllHighlights } from "@/lib/api/exam";
+import { LocaleProvider } from "@/lib/i18n/locale-provider";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }) }));
 vi.mock("@/lib/api/attempts", async (importOriginal) => {
@@ -42,13 +43,14 @@ describe("Reading question group instructions", () => {
   });
 
   it("changes the application theme without resetting candidate answers", () => {
+    localStorage.clear();
     document.documentElement.dataset.theme = "light";
     const initial = {
       attempt, test_title: "Practice", highlights: [], listening_audio_asset: null, listening_parts: [], writing_tasks: [],
       passages: [{ id: passageId, title: "Passage", order_index: 2, blocks: [{ id: "44444444-4444-4444-8444-444444444444", type: "paragraph", label: "A", text: "Fictional text." }], question_groups: [{ id: groupId, question_type: "true_false_not_given", instruction: "", config: {}, order_index: 0, questions: [{ id: questionId, number: 1, prompt: "Statement", config: {}, order_index: 0, value: null, flagged: false, answer_revision: 0 }] }] }],
     } as ExamPayload;
 
-    render(<ReadingRunner initial={initial} />);
+    render(<LocaleProvider><ReadingRunner initial={initial} /></LocaleProvider>);
     fireEvent.click(screen.getByRole("radio", { name: "TRUE" }));
     fireEvent.click(screen.getByRole("button", { name: "Use dark theme" }));
 

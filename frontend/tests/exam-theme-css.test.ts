@@ -5,7 +5,45 @@ import { describe, expect, it } from "vitest";
 
 const css = readFileSync(resolve(process.cwd(), "src/app/globals.css"), "utf8");
 
+function declarationsFor(selector: string) {
+  const declarations: Record<string, string> = {};
+  postcss.parse(css).walkRules(rule => {
+    if (postcss.list.comma(rule.selector).includes(selector)) {
+      rule.walkDecls(decl => { declarations[decl.prop] = decl.value; });
+    }
+  });
+  return declarations;
+}
+
 describe("exam theme CSS", () => {
+  it("centers fixed SVGs and text with flex gaps in both theme states", () => {
+    expect(declarationsFor(".theme-toggle")).toMatchObject({ display: "inline-flex", "align-items": "center", "min-height": "38px" });
+    for (const selector of [".theme-light-label", ".theme-dark-label"]) {
+      expect(declarationsFor(selector)).toMatchObject({ "align-items": "center", gap: "6px" });
+    }
+    expect(declarationsFor(".theme-light-label").display).toBe("inline-flex");
+    expect(declarationsFor(".theme-dark-label").display).toBe("none");
+    expect(declarationsFor(':root[data-theme="dark"] .theme-light-label').display).toBe("none");
+    expect(declarationsFor(':root[data-theme="dark"] .theme-dark-label').display).toBe("inline-flex");
+    expect(declarationsFor(".theme-icon")).toMatchObject({ display: "block", width: "18px", height: "18px", "flex-shrink": "0" });
+    expect(declarationsFor(".theme-icon")["margin-right"]).toBeUndefined();
+    let padding: string | undefined;
+    postcss.parse(css).walkRules(rule => {
+      if (rule.selector === ".theme-toggle" && rule.parent?.type === "root") rule.walkDecls("padding", decl => { padding = decl.value; });
+    });
+    expect(padding).toBe("0 10px");
+  });
+
+  it("preserves authored Reading newlines in one text column beside its first-line label", () => {
+    expect(declarationsFor(".reading-passage-text")).toMatchObject({ "white-space": "pre-line", "min-width": "0" });
+    expect(declarationsFor(".reading-passage-paragraph")).toMatchObject({ display: "flex", "align-items": "baseline" });
+    expect(declarationsFor(".reading-passage-paragraph > b")["flex-shrink"]).toBe("0");
+    expect(declarationsFor(".exam-passage-body")).toMatchObject({ "font-family": 'Georgia, "Times New Roman", serif', "line-height": "1.9" });
+    expect(declarationsFor(".review-passage-body")).toMatchObject({ "font-family": 'Georgia, "Times New Roman", serif', "line-height": "1.85" });
+    expect(declarationsFor(".exam-passage-body h3")["white-space"]).toBeUndefined();
+    expect(declarationsFor(".review-passage-body h3")["white-space"]).toBeUndefined();
+  });
+
   it("defines every custom property referenced by exam and highlight styles", () => {
     const definitions = new Set([...css.matchAll(/--([\w-]+)\s*:/g)].map((match) => match[1]));
     const examRules: string[] = [];

@@ -23,11 +23,12 @@ export function ReadingReviewView({ data }: { data: ReviewData }) {
 
   if (!passage) return <p>{t("runner.noReadingReview")}</p>;
 
-  const highlightBlock = (block: { id: string; text: string }) => (
+  const highlightBlock = (block: { id: string; type: "paragraph" | "heading"; text: string }) => (
     <SelectableText
       text={block.text}
       target={{ target_kind: "PASSAGE_BLOCK", target_id: passage.id, segment_id: block.id }}
       controller={highlighting}
+      className={block.type === "paragraph" ? "reading-passage-text" : undefined}
     />
   );
 
@@ -63,7 +64,7 @@ export function ReadingReviewView({ data }: { data: ReviewData }) {
             {passage.blocks.map((block) => block.type === "heading" ? (
               <h3 key={block.id}>{highlightBlock(block)}</h3>
             ) : (
-              <p key={block.id}><b>{block.label}</b>{highlightBlock(block)}</p>
+              <p key={block.id} className="reading-passage-paragraph"><b>{block.label}</b>{highlightBlock(block)}</p>
             ))}
           </div>
         </article>
