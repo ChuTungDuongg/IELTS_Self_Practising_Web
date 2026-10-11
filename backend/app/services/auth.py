@@ -63,6 +63,7 @@ class AuthService:
             )
             self.session.add(user)
             await self.session.flush()
+            await self._bind_classroom_invitations(user)
         return user
 
     async def authenticate(self, email: str, password: str) -> User:
@@ -77,6 +78,7 @@ class AuthService:
             user.last_login_at = datetime.now(UTC)
             await self.session.flush()
             await self.session.refresh(user)
+            await self._bind_classroom_invitations(user)
         return user
 
     async def issue_session(self, user: User) -> IssuedSession:
@@ -304,7 +306,13 @@ class AuthService:
             user.last_login_at = datetime.now(UTC)
             await self.session.flush()
             await self.session.refresh(user)
+            await self._bind_classroom_invitations(user)
         return user
+
+    async def _bind_classroom_invitations(self, user: User) -> None:
+        from app.services.classrooms import ClassroomService
+
+        await ClassroomService(self.session, user).bind_pending_invitations(user)
 
     def _decode_refresh(self, token: str) -> TokenClaims:
         return decode_token(
