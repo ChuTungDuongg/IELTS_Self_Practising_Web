@@ -50,10 +50,17 @@ it("narrows the tablet rail and stacks it only on small screens with CSS", () =>
   expect(declarations(".listening-player-exam-bar .player-transport .player-skip")).toMatchObject({ display: "grid", "min-height": "44px" });
 });
 
+it("keeps sequential navigation compact and secondary inside the rail action area", () => {
+  expect(declarations(".listening-sequential-navigation")).toMatchObject({ display: "flex", "justify-content": "center", gap: "8px" });
+  expect(declarations(".listening-sequential-navigation button")).toMatchObject({ display: "grid", width: "40px", "min-height": "36px", "place-items": "center", color: "var(--exam-muted)", background: "var(--exam-control-bg)" });
+  expect(declarations(".listening-previous-icon").transform).toBe("rotate(180deg)");
+  expect(declarations(".listening-sequential-navigation button:disabled").opacity).toBe(".45");
+});
+
 it("scopes the dock to exam tokens without fixed positioning, clipping, gradients or workspace accents", () => {
   const rules: string[] = [];
   stylesheet.walkRules((rule) => {
-    if (/listening-(audio-dock|navigation|section-navigation|question-navigation|player-exam-bar|attempt)/.test(rule.selector)) rules.push(rule.toString());
+    if (/listening-(audio-dock|navigation|sequential-navigation|previous-icon|section-navigation|question-navigation|player-exam-bar|attempt)/.test(rule.selector)) rules.push(rule.toString());
   });
   const scoped = rules.join("\n");
   expect(rules.length).toBeGreaterThan(8);

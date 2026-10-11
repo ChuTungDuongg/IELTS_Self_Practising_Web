@@ -6,6 +6,7 @@ import { getAttempt, recordNavigation, saveAnswer } from "@/lib/api/attempts";
 import { ApiError } from "@/lib/api/client";
 import type { ExamPayload, Highlight } from "@/lib/api/exam";
 import { createHighlight, deleteAllHighlights, deleteHighlight, saveFlag, submitAttempt } from "@/lib/api/exam";
+import { renderWithLocale } from "./locale-test-utils";
 
 const push = vi.fn();
 
@@ -128,6 +129,18 @@ function payload(): ExamPayload {
   };
 }
 
+function multiSlotPayload(): ExamPayload {
+  const initial = payload();
+  const part = initial.listening_parts.find((item) => item.id === part1)!;
+  const multi = part.question_groups.find((item) => item.order_index === 0)!;
+  multi.question_type = "multiple_choice_multiple";
+  multi.questions = [{ ...multi.questions[0], value: [], answer_revision: 0, config: {
+    min_selections: 2, max_selections: 2,
+    options: [{ id: "a", label: "A", text: "Fictional option A" }, { id: "b", label: "B", text: "Fictional option B" }, { id: "c", label: "C", text: "Fictional option C" }],
+  } }];
+  return initial;
+}
+
 describe("Listening attempt sidebar navigation", () => {
   const scrolled: Array<{ element: HTMLElement; options: ScrollToOptions }> = [];
   let intersectionCallback: IntersectionObserverCallback = () => undefined;
@@ -190,6 +203,13 @@ describe("Listening attempt sidebar navigation", () => {
     expect(sidebar.querySelector(`[data-nav-question-id="${q2}"]`)).toHaveClass("unanswered");
     if (mode !== "focused") expect(sidebar.querySelector(`[data-nav-question-id="${q25}"]`)).toHaveClass("flagged");
     expect(within(sidebar).getByRole("button", { name: "Submit answers" })).toBeInTheDocument();
+    const previous = within(sidebar).getByRole("button", { name: "Previous question" });
+    const next = within(sidebar).getByRole("button", { name: "Next question" });
+    expect(previous).toBeDisabled(); expect(next).toBeEnabled();
+    for (const button of [previous, next]) {
+      expect(button.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
+      expect(button).toHaveTextContent(/^$/);
+    }
     expect(pane.parentElement).toHaveClass("listening-attempt-body");
     expect(sidebar.parentElement).toBe(pane.parentElement);
     expect(pane).toHaveTextContent("Statement 1");
@@ -206,6 +226,8 @@ describe("Listening attempt sidebar navigation", () => {
     expect(dock.querySelector(".listening-player-exam-bar")).toBeInTheDocument();
     expect(within(dock).queryByRole("navigation")).not.toBeInTheDocument();
     expect(within(dock).queryByRole("button", { name: "Submit answers" })).not.toBeInTheDocument();
+    expect(within(dock).queryByRole("button", { name: "Previous question" })).not.toBeInTheDocument();
+    expect(within(dock).queryByRole("button", { name: "Next question" })).not.toBeInTheDocument();
     const audio = dock.querySelector("audio")!;
     Object.defineProperty(audio, "duration", { configurable: true, value: 120 }); fireEvent.loadedMetadata(audio);
     audio.currentTime = 42; fireEvent.timeUpdate(audio);
@@ -215,6 +237,206 @@ describe("Listening attempt sidebar navigation", () => {
     expect(within(dock).getByRole("slider", { name: "Volume" })).toBeInTheDocument();
     expect(within(dock).getByRole("combobox", { name: "Playback speed" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Skip introduction|Bỏ qua giới thiệu/i })).not.toBeInTheDocument();
+  });
+
+  it.each(["normal", "full", "mock", "focused"] as const)("sequential controls follow the existing %s slot order and stop at both endpoints", (mode) => {
+    const initial = payload();
+    if (mode !== "normal") initial.attempt = { ...initial.attempt, scope: mode === "focused" ? "FOCUSED_UNIT" : "FULL_MODULE", attempt_context: mode === "mock" ? "FULL_MOCK" : "STANDALONE" };
+    if (mode === "mock") initial.audio_policy = { allow_seeking: false, allow_speed: false };
+    if (mode === "focused") initial.listening_parts = initial.listening_parts.filter((part) => part.id === part1);
+    const view = render(<ListeningRunner initial={initial} />);
+    const rail = screen.getByRole("complementary", { name: "Question navigation" });
+    const previous = within(rail).getByRole("button", { name: "Previous question" });
+    const next = within(rail).getByRole("button", { name: "Next question" });
+    const numbers = within(rail).getAllByRole("button", { name: /Go to question/ }).map((button) => button.textContent);
+    expect(previous).toBeDisabled();
+    for (const number of numbers.slice(1)) {
+      fireEvent.click(next);
+      expect(within(rail).getByRole("button", { name: `Go to question ${number}` })).toHaveAttribute("aria-current", "true");
+      expect(previous).toBeEnabled();
+    }
+    expect(next).toBeDisabled();
+    fireEvent.click(next);
+    expect(submitAttempt).not.toHaveBeenCalled();
+    for (const number of numbers.slice(0, -1).reverse()) {
+      fireEvent.click(previous);
+      expect(within(rail).getByRole("button", { name: `Go to question ${number}` })).toHaveAttribute("aria-current", "true");
+    }
+    expect(previous).toBeDisabled();
+    fireEvent.click(previous);
+    expect(within(rail).getByRole("button", { name: "Go to question 1" })).toHaveAttribute("aria-current", "true");
+    expect(submitAttempt).not.toHaveBeenCalled();
+    expect(view.container.querySelector(".listening-audio-dock")?.querySelector(".listening-sequential-navigation")).toBeNull();
+    if (mode === "mock") { expect(screen.getByLabelText("Audio seek")).toBeDisabled(); expect(screen.getByLabelText("Playback speed")).toBeDisabled(); }
+  });
+
+  it("sequential navigation crosses group and section boundaries through the existing navigation activity records", () => {
+    const view = render(<ListeningRunner initial={payload()} />);
+    const next = screen.getByRole("button", { name: "Next question" });
+    const previous = screen.getByRole("button", { name: "Previous question" });
+    fireEvent.click(next);
+    expect(screen.getByRole("button", { name: "Go to question 2" })).toHaveAttribute("aria-current", "true");
+    fireEvent.click(next);
+    expect(view.container.querySelector(`[data-question-id="${q3}"]`)).toBeInTheDocument();
+    fireEvent.click(next);
+    expect(screen.getByRole("button", { name: "Section 2" })).toHaveAttribute("aria-current", "page");
+    expect(view.container.querySelector(`[data-question-id="${q15}"]`)).toBeInTheDocument();
+    fireEvent.click(previous);
+    expect(screen.getByRole("button", { name: "Section 1" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("button", { name: "Go to question 3" })).toHaveAttribute("aria-current", "true");
+    expect(vi.mocked(recordNavigation).mock.calls.filter((call) => call[1] === "QUESTION").map((call) => call[2])).toEqual([q1, q2, q3, q15, q3]);
+    expect(vi.mocked(recordNavigation).mock.calls.filter((call) => call[1] === "LISTENING_PART").map((call) => call[2])).toEqual([part1, part2, part1]);
+    expect(submitAttempt).not.toHaveBeenCalled();
+  });
+
+  it("sequential navigation visits each multi-slot number without changing shared question tracking or recording duplicate navigation", () => {
+    const view = render(<ListeningRunner initial={multiSlotPayload()} />);
+    const next = screen.getByRole("button", { name: "Next question" });
+    const previous = screen.getByRole("button", { name: "Previous question" });
+    const group = view.container.querySelector("[data-question-group-id]");
+    const controls = [...view.container.querySelectorAll('input[type="checkbox"]')];
+    fireEvent.click(next);
+    expect(previous).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Go to question 2" })).toHaveAttribute("aria-current", "true");
+    expect(view.container.querySelector("[data-question-group-id]")).toBe(group);
+    expect([...view.container.querySelectorAll('input[type="checkbox"]')]).toEqual(controls);
+    expect(vi.mocked(recordNavigation).mock.calls.filter((call) => call[1] === "QUESTION")).toHaveLength(1);
+    fireEvent.click(next);
+    expect(screen.getByRole("button", { name: "Go to question 3" })).toHaveAttribute("aria-current", "true");
+    fireEvent.click(previous);
+    expect(screen.getByRole("button", { name: "Go to question 2" })).toHaveAttribute("aria-current", "true");
+    expect(previous).toBeEnabled();
+    fireEvent.click(previous);
+    expect(previous).toBeDisabled();
+    expect(vi.mocked(recordNavigation).mock.calls.filter((call) => call[1] === "QUESTION").map((call) => call[2])).toEqual([q1, q3, q1]);
+  });
+
+  it("numbered multi-slot buttons and manual section selection anchor the same sequential cursor", () => {
+    render(<ListeningRunner initial={multiSlotPayload()} />);
+    const next = screen.getByRole("button", { name: "Next question" });
+    const previous = screen.getByRole("button", { name: "Previous question" });
+    fireEvent.click(screen.getByRole("button", { name: "Go to question 2" }));
+    expect(previous).toBeEnabled();
+    fireEvent.click(next);
+    expect(screen.getByRole("button", { name: "Go to question 3" })).toHaveAttribute("aria-current", "true");
+    fireEvent.click(previous);
+    expect(previous).toBeEnabled();
+    fireEvent.focus(screen.getAllByRole("checkbox")[0]);
+    expect(previous).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "Go to question 2" }));
+    fireEvent.click(screen.getByRole("button", { name: "Section 1" }));
+    expect(previous).toBeDisabled();
+    fireEvent.click(next); fireEvent.click(next);
+    expect(screen.getByRole("button", { name: "Go to question 3" })).toHaveAttribute("aria-current", "true");
+    fireEvent.click(screen.getByRole("button", { name: "Go to question 1" }));
+    expect(previous).toBeDisabled();
+  });
+
+  it("sequential navigation preserves the selected multi-slot number while answering its shared question", async () => {
+    render(<ListeningRunner initial={multiSlotPayload()} />);
+    const next = screen.getByRole("button", { name: "Next question" });
+    const previous = screen.getByRole("button", { name: "Previous question" });
+    fireEvent.click(next);
+    fireEvent.click(screen.getByRole("checkbox", { name: "A. Fictional option A" }));
+    expect(previous).toBeEnabled();
+    fireEvent.click(next);
+    expect(screen.getByRole("button", { name: "Go to question 3" })).toHaveAttribute("aria-current", "true");
+    fireEvent.click(previous);
+    expect(screen.getByRole("checkbox", { name: "A. Fictional option A" })).toBeChecked();
+    expect(previous).toBeEnabled();
+    fireEvent.click(previous); expect(previous).toBeDisabled();
+    await waitFor(() => expect(saveAnswer).toHaveBeenCalledExactlyOnceWith(attemptId, q1, ["a"], 0));
+  });
+
+  it("sequential navigation crosses a section boundary after the last slot of a shared question", () => {
+    const initial = multiSlotPayload();
+    const part = initial.listening_parts.find((item) => item.id === part1)!;
+    part.question_groups = part.question_groups.filter((item) => item.order_index === 0);
+    render(<ListeningRunner initial={initial} />);
+    const next = screen.getByRole("button", { name: "Next question" });
+    const previous = screen.getByRole("button", { name: "Previous question" });
+    fireEvent.click(next); fireEvent.click(next);
+    expect(screen.getByRole("button", { name: "Section 2" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("button", { name: "Go to question 15" })).toHaveAttribute("aria-current", "true");
+    fireEvent.click(previous);
+    expect(screen.getByRole("button", { name: "Section 1" })).toHaveAttribute("aria-current", "page");
+    expect(previous).toBeEnabled();
+    fireEvent.click(previous); expect(previous).toBeDisabled();
+  });
+
+  it("sequential navigation disables Next on the last slot even when a focused attempt has only one shared question", () => {
+    const initial = multiSlotPayload();
+    initial.attempt = { ...initial.attempt, scope: "FOCUSED_UNIT" };
+    initial.listening_parts = initial.listening_parts.filter((item) => item.id === part1);
+    initial.listening_parts[0].question_groups = initial.listening_parts[0].question_groups.filter((item) => item.order_index === 0);
+    render(<ListeningRunner initial={initial} />);
+    const next = screen.getByRole("button", { name: "Next question" });
+    const previous = screen.getByRole("button", { name: "Previous question" });
+    expect(previous).toBeDisabled(); expect(next).toBeEnabled();
+    fireEvent.click(next); expect(previous).toBeEnabled(); expect(next).toBeDisabled();
+    fireEvent.click(next); expect(submitAttempt).not.toHaveBeenCalled();
+    fireEvent.click(previous); expect(previous).toBeDisabled(); expect(next).toBeEnabled();
+  });
+
+  it("sequential navigation preserves a pending answer save, timer, highlights, flags and audio state", async () => {
+    vi.useFakeTimers();
+    const initial = payload();
+    initial.highlights = [highlight(q2)];
+    initial.listening_parts.find((item) => item.id === part1)!.question_groups.find((item) => item.order_index === 0)!.questions[1].flagged = true;
+    const pending = deferred();
+    vi.mocked(saveAnswer).mockReturnValueOnce(pending.promise);
+    const view = render(<ListeningRunner initial={initial} />);
+    const audio = view.container.querySelector("audio")!;
+    const dock = view.container.querySelector(".listening-audio-dock");
+    const timer = view.container.querySelector(".exam-timer");
+    const timerText = timer?.textContent;
+    Object.defineProperty(audio, "duration", { configurable: true, value: 120 }); fireEvent.loadedMetadata(audio);
+    fireEvent.change(screen.getByLabelText("Audio seek"), { target: { value: "42" } });
+    fireEvent.change(screen.getByLabelText("Playback speed"), { target: { value: "1.5" } });
+    fireEvent.change(screen.getByLabelText("Volume"), { target: { value: "0.35" } });
+    fireEvent.click(screen.getByRole("button", { name: "Mute" })); fireEvent.play(audio);
+    fireEvent.click(within(view.container.querySelector(`[data-question-id="${q2}"]`) as HTMLElement).getByRole("radio", { name: "TRUE" }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(400); });
+    const resets = [audio.pause, audio.load].map((method) => vi.mocked(method).mock.calls.length);
+    for (const direction of ["Next question", "Next question", "Previous question", "Previous question"]) {
+      fireEvent.click(screen.getByRole("button", { name: direction }));
+      expect(view.container.querySelector("audio")).toBe(audio);
+      expect(view.container.querySelector(".listening-audio-dock")).toBe(dock);
+      expect([audio.currentTime, audio.playbackRate, audio.volume, audio.muted]).toEqual([42, 1.5, 0.35, true]);
+      expect([audio.pause, audio.load].map((method) => vi.mocked(method).mock.calls.length)).toEqual(resets);
+      expect(view.container.querySelector(".exam-timer")).toBe(timer); expect(timer).toHaveTextContent(timerText!);
+      expect(screen.getByRole("button", { name: "Pause audio" })).toBeInTheDocument();
+    }
+    expect(screen.getByRole("button", { name: "Go to question 2" })).toHaveAttribute("aria-current", "true");
+    expect(within(view.container.querySelector(`[data-question-id="${q2}"]`) as HTMLElement).getByRole("radio", { name: "TRUE" })).toBeChecked();
+    expect(view.container.querySelector(`[data-nav-question-id="${q2}"]`)).toHaveClass("flagged", "answered");
+    expect(view.container.querySelector(`[data-question-id="${q2}"] mark`)).toHaveTextContent("Statement");
+    expect(saveAnswer).toHaveBeenCalledExactlyOnceWith(attemptId, q2, "TRUE", 0);
+    expect(submitAttempt).not.toHaveBeenCalled();
+    await act(async () => { pending.resolve(); });
+    expect(screen.getByText("Saved")).toBeInTheDocument();
+    expect(saveAnswer).toHaveBeenCalledOnce();
+  });
+
+  it("sequential controls localize without resetting the current shared-question slot", () => {
+    localStorage.clear();
+    const view = renderWithLocale(<ListeningRunner initial={multiSlotPayload()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Next question" }));
+    const audio = view.container.querySelector("audio");
+    const records = [...vi.mocked(recordNavigation).mock.calls];
+    fireEvent.click(screen.getByRole("button", { name: "Switch to Vietnamese" }));
+    expect(screen.getByRole("button", { name: "Câu trước" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Câu tiếp theo" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Đến câu hỏi 2" })).toHaveAttribute("aria-current", "true");
+    expect(vi.mocked(recordNavigation).mock.calls).toEqual(records);
+    fireEvent.click(screen.getByRole("button", { name: "Câu tiếp theo" }));
+    expect(screen.getByRole("button", { name: "Đến câu hỏi 3" })).toHaveAttribute("aria-current", "true");
+    fireEvent.click(screen.getByRole("button", { name: "Câu trước" }));
+    fireEvent.click(screen.getByRole("button", { name: "Switch to English" }));
+    expect(screen.getByRole("button", { name: "Previous question" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "Previous question" }));
+    expect(screen.getByRole("button", { name: "Previous question" })).toBeDisabled();
+    expect(view.container.querySelector("audio")).toBe(audio);
   });
 
   it("groups all forty full-test question buttons by section in the right rail", () => {

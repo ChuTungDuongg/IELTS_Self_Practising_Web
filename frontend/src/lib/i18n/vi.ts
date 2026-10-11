@@ -675,6 +675,8 @@ export const vi = {
   "runner.deleteAll": "Xóa tất cả",
   "runner.conflict": "Câu trả lời này đã thay đổi ở tab hoặc phiên khác.",
   "runner.questionNavigation": "Điều hướng câu hỏi",
+  "runner.previousQuestion": "Câu trước",
+  "runner.nextQuestion": "Câu tiếp theo",
   "runner.submitting": "Đang nộp…",
   "runner.submitAnswers": "Nộp câu trả lời",
   "runner.deleteHighlightsTitle": "Xóa tất cả phần tô sáng?",

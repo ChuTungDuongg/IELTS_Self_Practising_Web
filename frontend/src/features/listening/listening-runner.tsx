@@ -5,6 +5,7 @@ import { useTranslation } from "@/lib/i18n/locale-provider";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { ArrowIcon } from "@/components/ui/icons";
 import { PauseAttemptControl } from "@/features/exam/pause-attempt-control";
 import { AttemptStoppedError, useAttemptLifecycle } from "@/features/exam/attempt-lifecycle";
 import { RevisionAutosaveQueue } from "@/features/exam/revision-autosave";
@@ -45,7 +46,15 @@ export function ListeningRunner({ initial }: { initial: ExamPayload }) {
   const [partIndex, setPartIndex] = useState(0);
   const initialResponses = useMemo(() => questions.map((question) => ({ id: question.id, value: question.value, revision: question.answer_revision })), [questions]);
   const [flags, setFlags] = useState<Record<string, boolean>>(() => Object.fromEntries(questions.map((question) => [question.id, question.flagged])));
-  const [activeQuestionId, setActiveQuestionId] = useState<string | null>(() => questions[0]?.id ?? null);
+  // The slot offset is UI selection only; renderers and activity still use the question ID.
+  const [activeSelection, setActiveSelection] = useState<{ questionId: string | null; slotIndex: number }>(() => ({ questionId: questions[0]?.id ?? null, slotIndex: 0 }));
+  const { questionId: activeQuestionId, slotIndex: activeSlotIndex } = activeSelection;
+  const setActiveQuestionId = useCallback((questionId: string | null) => {
+    setActiveSelection((current) => current.questionId === questionId ? current : { questionId, slotIndex: 0 });
+  }, []);
+  const activeNavigationIndex = navigationSlots.findIndex((slot) => slot.id === activeQuestionId && slot.slotIndex === activeSlotIndex);
+  const previousSlot = activeNavigationIndex > 0 ? navigationSlots[activeNavigationIndex - 1] : undefined;
+  const nextSlot = activeNavigationIndex >= 0 ? navigationSlots[activeNavigationIndex + 1] : undefined;
   const [actionError, setActionError] = useState<import("@/lib/i18n/types").TranslationKey | "">("");
   const [highlights, setHighlights] = useState(() => initial.highlights);
   const [highlightError, setHighlightError] = useState<import("@/lib/i18n/types").TranslationKey | "">("");
@@ -132,7 +141,7 @@ export function ListeningRunner({ initial }: { initial: ExamPayload }) {
   useEffect(() => {
     const rail = questionNavigationPane.current;
     if (!activeQuestionId || !rail) return;
-    const chip = questionChips.current.get(activeQuestionId);
+    const chip = questionChips.current.get(`${activeQuestionId}:${activeSlotIndex}`);
     if (!chip) return;
     const railRect = rail.getBoundingClientRect();
     const chipRect = chip.getBoundingClientRect();
@@ -140,7 +149,7 @@ export function ListeningRunner({ initial }: { initial: ExamPayload }) {
       ? chipRect.top - railRect.top
       : chipRect.bottom > railRect.bottom ? chipRect.bottom - railRect.bottom : 0;
     if (delta !== 0) rail.scrollTo({ top: rail.scrollTop + delta, behavior: "auto" });
-  }, [activeQuestionId]);
+  }, [activeQuestionId, activeSlotIndex]);
 
   const seconds = initial.attempt.timer_mode === "COUNTDOWN" && initial.attempt.deadline_at
     ? remainingSeconds(initial.attempt.deadline_at, offset, clock)
@@ -195,7 +204,7 @@ export function ListeningRunner({ initial }: { initial: ExamPayload }) {
     }, { root: pane, threshold: [0.35, 0.65] });
     pane.querySelectorAll(".exam-question-target[data-question-id]").forEach((target) => observer.observe(target));
     return () => observer.disconnect();
-  }, [activeGroup?.id, partIndex]);
+  }, [activeGroup?.id, partIndex, setActiveQuestionId]);
 
   useEffect(() => {
     if (part && !stopped.current) void runMutation(() => recordNavigation(attemptId, "LISTENING_PART", part.id)).catch(() => undefined);
@@ -226,16 +235,16 @@ export function ListeningRunner({ initial }: { initial: ExamPayload }) {
     const firstQuestionId = questions.find((question) => question.partIndex === index)?.id ?? null;
     holdNavigation(firstQuestionId);
     setPartIndex(index);
-    setActiveQuestionId(firstQuestionId);
+    setActiveSelection({ questionId: firstQuestionId, slotIndex: 0 });
     if (questionPane.current) questionPane.current.scrollTop = 0;
   }
 
-  function navigateToQuestion(questionId: string, ownerPartIndex: number) {
+  function navigateToQuestion(questionId: string, ownerPartIndex: number, slotIndex = 0) {
     const target = questions.find((question) => question.id === questionId);
     const currentGroupId = activeGroup?.id;
     holdNavigation(questionId);
     if (ownerPartIndex !== partIndex || target?.groupId !== currentGroupId) pendingQuestion.current = questionId;
-    setActiveQuestionId(questionId);
+    setActiveSelection({ questionId, slotIndex });
     if (ownerPartIndex !== partIndex) {
       setPartIndex(ownerPartIndex);
       return;
@@ -301,13 +310,17 @@ export function ListeningRunner({ initial }: { initial: ExamPayload }) {
               const flagged = Boolean(flags[question.id]);
               const current = activeQuestionId === question.id;
               return <div key={`${question.id}:${question.slotIndex}`} data-nav-question-id={question.id} className={`exam-question-chip ${answered ? "answered" : "unanswered"} ${flagged ? "flagged" : ""} ${current ? "current" : ""}`}>
-                <button ref={question.slotIndex === 0 ? (element) => { if (element) questionChips.current.set(question.id, element); else questionChips.current.delete(question.id); } : undefined} type="button" className="exam-question-number" onClick={() => navigateToQuestion(question.id, question.partIndex)} aria-label={t("runner.goQuestion", { number: question.number })} aria-current={current ? "true" : undefined}>{question.number}</button>
+                <button ref={(element) => { const key = `${question.id}:${question.slotIndex}`; if (element) questionChips.current.set(key, element); else questionChips.current.delete(key); }} type="button" className="exam-question-number" onClick={() => navigateToQuestion(question.id, question.partIndex, question.slotIndex)} aria-label={t("runner.goQuestion", { number: question.number })} aria-current={current ? "true" : undefined}>{question.number}</button>
                 <button type="button" className="exam-question-flag" onClick={() => void toggleFlag(question.id)} aria-label={t(flagged ? "runner.unflagQuestion" : "runner.flagQuestion", { number: question.number })} aria-pressed={flagged}><span aria-hidden="true">{flagged ? "⚑" : "⚐"}</span></button>
               </div>;
             })}</div>
           </div>)}</nav>
         </div>
         <div className="listening-navigation-actions">
+          <div className="listening-sequential-navigation">
+            <button type="button" disabled={!previousSlot} aria-label={t("runner.previousQuestion")} title={t("runner.previousQuestion")} onClick={() => { if (previousSlot) navigateToQuestion(previousSlot.id, previousSlot.partIndex, previousSlot.slotIndex); }}><ArrowIcon className="listening-previous-icon" width={18} height={18} focusable="false" /></button>
+            <button type="button" disabled={!nextSlot} aria-label={t("runner.nextQuestion")} title={t("runner.nextQuestion")} onClick={() => { if (nextSlot) navigateToQuestion(nextSlot.id, nextSlot.partIndex, nextSlot.slotIndex); }}><ArrowIcon width={18} height={18} focusable="false" /></button>
+          </div>
           {initial.listening_audio_asset && initial.audio_policy?.allow_seeking === false ? <p className="exam-mode-label">{t("runner.seekingLocked")}</p> : null}
           <button type="button" onClick={() => void submit()} disabled={submitting} className="exam-submit">{submitting ? t("runner.submitting") : t("runner.submitAnswers")}</button>
         </div>

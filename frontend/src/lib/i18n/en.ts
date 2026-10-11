@@ -673,6 +673,8 @@ export const en = {
   "runner.deleteAll": "Delete all",
   "runner.conflict": "This response changed in another tab or session.",
   "runner.questionNavigation": "Question navigation",
+  "runner.previousQuestion": "Previous question",
+  "runner.nextQuestion": "Next question",
   "runner.submitting": "Submitting…",
   "runner.submitAnswers": "Submit answers",
   "runner.deleteHighlightsTitle": "Delete all highlights?",

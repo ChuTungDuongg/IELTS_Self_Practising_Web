@@ -95,7 +95,7 @@ it.each((["READING", "LISTENING", "WRITING"] as const).flatMap((module) => [fals
   // Change units before editing, so the identity assertions exercise a non-default selection.
   if (!focused) {
     if (module === "WRITING") fireEvent.click(screen.getByRole("tab", { name: /^Task 2/ }));
-    else fireEvent.click(screen.getByRole("button", { name: module === "READING" ? "Passage 2" : "Section 2" }));
+    else fireEvent.click(screen.getByRole("button", { name: module === "READING" ? "Passage 2" : "Next question" }));
   }
   if (module !== "WRITING") {
     fireEvent.click(screen.getByRole("button", { name: `Unflag question ${focused ? 1 : 2}` }));
@@ -120,6 +120,11 @@ it.each((["READING", "LISTENING", "WRITING"] as const).flatMap((module) => [fals
   for (const locale of ["vi", "en"] as const) {
     switchLocale(locale);
     expect(screen.getByRole("button", { name: locale === "vi" ? "Tạm dừng và thoát" : "Pause & exit" })).toBeInTheDocument();
+    if (module === "LISTENING") {
+      expect((screen.getByRole("button", { name: locale === "vi" ? "Câu trước" : "Previous question" }) as HTMLButtonElement).disabled).toBe(focused);
+      expect(screen.getByRole("button", { name: locale === "vi" ? "Câu tiếp theo" : "Next question" })).toBeDisabled();
+      expect(screen.getByRole("button", { name: `${locale === "vi" ? "Đến câu hỏi" : "Go to question"} ${focused ? 1 : 2}` })).toHaveAttribute("aria-current", "true");
+    } else expect(screen.queryByRole("button", { name: /Previous question|Next question|Câu trước|Câu tiếp theo/ })).not.toBeInTheDocument();
     expect(view.container.querySelector(".exam-runner")).toBe(runner);
     expect(screen.getByRole("textbox")).toBe(input);
     expect(input).toHaveValue("Untranslated latest draft");
