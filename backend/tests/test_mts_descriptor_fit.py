@@ -236,6 +236,10 @@ class ProfileProvider(Task1FakeProvider):
                     for source_id in payload["allowed_ids"][: self.evidence_count]
                 ]
             }
+        elif stage == "feedback" and self.task == 1:
+            # These profiles exercise numeric descriptor fit, not chart/language
+            # assertions. Empty structured explanations need no invented defects.
+            output = {"observations": []}
         elif stage == "feedback" and self.task == 2:
             sources = segment_essay(self.profile["task2"]["response"])
             output = {
@@ -303,7 +307,8 @@ async def test_profiles_preserve_independent_scores_and_task_specific_inference_
         assert criterion.score == Decimal(str(profile["mock_scores"][trait]))
         assert criterion.feedback.strip()
         if task == 1:
-            assert "Bài viết phù hợp khoảng Band" in criterion.feedback
+            assert "Bài viết phù hợp khoảng Band" not in criterion.feedback
+            assert criterion.strengths == criterion.improvements == []
         assert len(criterion.evidence) == profile["evidence_count"]
         assert [item.quote for item in criterion.evidence] == [
             source.text for source in sources[: profile["evidence_count"]]
@@ -328,9 +333,7 @@ async def test_profiles_preserve_independent_scores_and_task_specific_inference_
         elif stage == "feedback":
             assert payload["fixed_score"] == profile["mock_scores"][trait]
             assert options.max_tokens == 1200
-            assert set(schema["properties"]) == (
-                {"feedback", "strengths", "improvements"} if task == 1 else {"observations"}
-            )
+            assert set(schema["properties"]) == {"observations"}
         else:
             assert options.max_tokens == 1800
     assert result.raw_mean == sum(
