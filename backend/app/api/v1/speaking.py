@@ -24,6 +24,7 @@ from app.schemas.speaking import (
     SpeakingPartWrite,
     SpeakingPromptCreate,
     SpeakingPromptOrderWrite,
+    SpeakingRecovery,
     SpeakingSegmentClose,
     SpeakingSegmentCreate,
     SpeakingSegmentData,
@@ -35,6 +36,30 @@ from app.services.speaking_media import SpeakingMediaService
 
 router = APIRouter(dependencies=[Depends(require_content_author)], tags=["speaking-builder"])
 runtime_router = APIRouter(prefix="/speaking-attempts", tags=["speaking-runtime"])
+
+
+@runtime_router.post("/{attempt_id}/interrupt", response_model=SpeakingState)
+async def interrupt_recording(
+    attempt_id: UUID,
+    body: SpeakingRecovery,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+):
+    return await SpeakingAttemptService(session, user.id).interrupt(
+        attempt_id, body.prompt_id, body.take_number, body.interruption_generation
+    )
+
+
+@runtime_router.post("/{attempt_id}/resume", response_model=SpeakingState)
+async def resume_recording(
+    attempt_id: UUID,
+    body: SpeakingRecovery,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+):
+    return await SpeakingAttemptService(session, user.id).resume(
+        attempt_id, body.prompt_id, body.take_number, body.interruption_generation
+    )
 
 
 @runtime_router.post("/{attempt_id}/segments", response_model=SpeakingSegmentData)

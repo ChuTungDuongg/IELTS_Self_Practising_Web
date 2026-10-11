@@ -1,0 +1,13 @@
+# Speaking recording protocol (P2/P3)
+
+FastAPI owns prompt phases and deadlines. Speaking uses an attempt count-up clock and authored per-prompt allowances. A three-second server phase separates Part 2 preparation from recording. Expiry closes speech in `FINALIZING`; the client stops/flushes, acknowledges all chunks and the segment manifest, then requests idempotent finalization. It cannot advance before that acknowledgement.
+
+Heartbeats and accepted chunks confirm server-derived remaining time; client countdown values never grant quota. State reads display the live deadline without replacing the last acknowledged snapshot. Recovery must be requested before an already-expired prompt is finalized and within `SPEAKING_RECOVERY_WINDOW_SECONDS` (default 45 seconds) of the last acknowledgement. After interruption, microphone readiness must resume within the same bounded window.
+
+Each active take has one recoverable interruption generation and one seven-second preparation grace. Repeated interruption/resume calls use that generation; after grace the original deadline continues, and additional reloads of that take cannot freeze or rewind it or get another grace. A new prompt/practice take has its own eligibility. Stale generations/takes and finalized responses fail closed. An expired reconnect moves to final saving without extending speech quota.
+
+A resumed native MediaRecorder always creates a new physical segment. Only chunks from the same segment are concatenated for playback; independently initialized WebM containers are separate players. Recovery seals accepted contiguous chunks in the abandoned segment. Lost in-memory chunks are not claimed as recovered. An inconsistent/gapped manifest fails closed.
+
+Candidate files live in `storage/speaking-private`, never in published `Asset` records. Storage keys are internal. All metadata/playback requests check attempt ownership or existing assignment provenance; exam playback unlocks after attempt finalization (and parent mock completion, if applicable). Assignment teachers can read only finalized assignment work. Private notes exist only on runtime progress and never in response/media/review DTOs.
+
+Personal attempt/history deletion queues owned files in a transactional cleanup outbox. Deletion and application startup drain the queue, checking remaining references before removal; failed filesystem cleanup remains queued for a later invocation. Assignment Speaking history and its required media are retained. Chunk limits default to 2 MiB per chunk and 32 MiB per take. No speech processing or external provider runs in P2/P3.

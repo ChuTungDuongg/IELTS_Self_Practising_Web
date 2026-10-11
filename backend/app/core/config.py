@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     max_audio_upload_mb: int = Field(default=100, gt=0)
     speaking_max_chunk_bytes: int = Field(default=2 * 1024 * 1024, ge=1024, le=10 * 1024 * 1024)
     speaking_max_response_bytes: int = Field(default=32 * 1024 * 1024, ge=1024)
+    speaking_recovery_window_seconds: int = Field(default=45, ge=10, le=120)
     max_transfer_zip_mb: int = Field(default=300, gt=0)
     max_transfer_uncompressed_mb: int = Field(default=600, gt=0)
     max_transfer_files: int = Field(default=5000, gt=0)

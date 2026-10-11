@@ -123,6 +123,11 @@ class SpeakingPromptProgress(TimestampMixin, Base):
     last_resumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Private convenience data lives ONLY here; never on spoken response/take DTOs.
     scratch_notes: Mapped[str] = mapped_column(Text, default="")
+    last_confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    interrupted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    recovery_phase: Mapped[str | None] = mapped_column(String(24))
+    recovery_grace_deadline_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    next_segment_index: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
 
 class SpeakingAudioSegment(UUIDPrimaryKeyMixin, TimestampMixin, Base):

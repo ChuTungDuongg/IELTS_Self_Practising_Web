@@ -157,6 +157,10 @@ class SpeakingState(BaseModel):
     recovery_state: str | None = None
     recovery_grace_used: bool = False
     last_resumed_at: datetime | None = None
+    recovery_grace_deadline_at: datetime | None = None
+    recovery_grace_seconds: int = 7
+    recovery_allowed: bool = False
+    next_segment_index: int = 0
 
 
 class SpeakingBegin(BaseModel):
@@ -170,6 +174,10 @@ class SpeakingCurrentTake(SpeakingBegin):
 
 class SpeakingHeartbeat(SpeakingCurrentTake):
     client_remaining_ms: int | None = Field(default=None, ge=0)
+
+
+class SpeakingRecovery(SpeakingCurrentTake):
+    interruption_generation: int = Field(ge=0)
 
 
 class SpeakingFinish(SpeakingCurrentTake):

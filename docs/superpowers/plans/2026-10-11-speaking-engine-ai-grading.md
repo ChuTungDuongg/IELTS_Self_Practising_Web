@@ -263,11 +263,11 @@ git commit -m "Add Speaking content domain model"
 - Resume response returns server-authorized `remaining_ms`, `recovery_grace_seconds=7`, current prompt/take/next segment identity, and whether recovery is allowed.
 - Add a bounded reconnect eligibility window setting (conservative default chosen in implementation, documented and tested); this bounds abuse/outage recovery but never changes the visible 7-second grace contract.
 
-- [ ] **Step 1: Write failing tests** for 31s snapshot → 7s grace → 31s resumed; repeated refresh during same generation not stacking grace; stale resume token/generation rejected; completed prompt not reopened; late/unrecoverable interruption fails closed; heartbeat/chunk confirmation can decrease but never increase remaining; concurrent resume idempotency.
-- [ ] **Step 2: Run RED:** `cd backend && uv run pytest tests/test_speaking_recovery.py -q`.
-- [ ] **Step 3: Implement transaction-safe recovery.** Persist audit-safe state only; do not log transcript/audio bodies.
-- [ ] **Step 4: Run GREEN + Ruff.**
-- [ ] **Step 5: Commit:** `git commit -m "Add Speaking crash recovery protocol"`.
+- [x] **Step 1: Write failing tests** for 31s snapshot → 7s grace → 31s resumed; repeated refresh during same generation not stacking grace; stale resume token/generation rejected; completed prompt not reopened; late/unrecoverable interruption fails closed; heartbeat/chunk confirmation can decrease but never increase remaining; concurrent resume idempotency.
+- [x] **Step 2: Run RED:** `cd backend && uv run pytest tests/test_speaking_recovery.py -q`.
+- [x] **Step 3: Implement transaction-safe recovery.** Persist audit-safe state only; do not log transcript/audio bodies.
+- [x] **Step 4: Run GREEN + Ruff.**
+- [x] **Step 5: Commit:** `git commit -m "Add Speaking crash recovery protocol"`.
 
 ### Task 8: Connect chunk transport/recovery to runner and build review playback
 

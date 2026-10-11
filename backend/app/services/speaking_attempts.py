@@ -10,6 +10,7 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.core.exceptions import AppError
 from app.domains.timers import TimerService
 from app.models import (
@@ -67,11 +68,22 @@ class SpeakingAttemptService:
         progress.phase_started_at = now
         progress.phase_deadline_at = now + timedelta(seconds=seconds)
         progress.last_confirmed_remaining_ms = seconds * 1000
+        progress.last_confirmed_at = now
 
-    async def _synchronize(self, attempt, progress, prompts, now):
+    async def _synchronize(self, attempt, progress, prompts, now, *, confirm=False):
         if attempt.status != AttemptStatus.IN_PROGRESS:
             return
         prompt = self._prompt(progress, prompts)
+        if progress.phase == "RECOVERY_GRACE" and now >= progress.recovery_grace_deadline_at:
+            start = progress.recovery_grace_deadline_at
+            progress.phase = progress.recovery_phase
+            progress.phase_started_at = start
+            progress.phase_deadline_at = start + timedelta(
+                milliseconds=progress.last_confirmed_remaining_ms
+            )
+            progress.last_resumed_at = start
+            progress.recovery_state = "RESUMED"
+            progress.last_confirmed_at = start
         if progress.phase == "PREPARING" and now >= progress.phase_deadline_at:
             self._set_phase(progress, "STARTING", progress.phase_deadline_at, 3)
         if progress.phase == "STARTING" and now >= progress.phase_deadline_at:
@@ -81,9 +93,11 @@ class SpeakingAttemptService:
             take.started_at = start
         if progress.phase in {"PREPARING", "STARTING", "RECORDING"}:
             remaining = max(0, int((progress.phase_deadline_at - now).total_seconds() * 1000))
-            progress.last_confirmed_remaining_ms = min(
-                progress.last_confirmed_remaining_ms, remaining
-            )
+            if confirm:
+                progress.last_confirmed_remaining_ms = min(
+                    progress.last_confirmed_remaining_ms, remaining
+                )
+                progress.last_confirmed_at = now
             if progress.phase == "RECORDING" and remaining == 0:
                 progress.phase = "FINALIZING"
         # Do not touch last_active_at on polling reads: heartbeats represent activity.
@@ -120,7 +134,18 @@ class SpeakingAttemptService:
             take_number=progress.take_number if active else None,
             phase_started_at=progress.phase_started_at if active else None,
             phase_deadline_at=progress.phase_deadline_at if active else None,
-            remaining_ms=progress.last_confirmed_remaining_ms if active else 0,
+            remaining_ms=(
+                min(
+                    progress.last_confirmed_remaining_ms,
+                    max(0, int((progress.phase_deadline_at - now).total_seconds() * 1000)),
+                )
+                if progress.phase in {"PREPARING", "STARTING", "RECORDING"}
+                else 0
+                if progress.phase == "FINALIZING"
+                else progress.last_confirmed_remaining_ms
+            )
+            if active
+            else 0,
             server_time=now,
             can_retry=can_repeat,
             can_replay=can_repeat,
@@ -130,6 +155,9 @@ class SpeakingAttemptService:
             recovery_state=progress.recovery_state,
             recovery_grace_used=progress.recovery_grace_used,
             last_resumed_at=progress.last_resumed_at,
+            recovery_grace_deadline_at=progress.recovery_grace_deadline_at,
+            recovery_allowed=active and progress.phase in {"INTERRUPTED", "RECOVERY_GRACE"},
+            next_segment_index=progress.next_segment_index,
         )
 
     async def get_state(self, attempt_id: UUID) -> SpeakingState:
@@ -191,7 +219,7 @@ class SpeakingAttemptService:
             await self._require_current(attempt, progress, prompt_id, take_number)
             now = TimerService.now()
             # Client values are informational only, never authority for quota/deadlines.
-            await self._synchronize(attempt, progress, prompts, now)
+            await self._synchronize(attempt, progress, prompts, now, confirm=True)
             attempt.last_active_at = now
             return self._state(attempt, progress, prompts, now)
 
@@ -229,7 +257,9 @@ class SpeakingAttemptService:
 
             response.committed_audio_fingerprint = await committed_fingerprint(self.session, take)
             end = min(now, progress.phase_deadline_at)
-            duration_ms = max(0, int((end - take.started_at).total_seconds() * 1000))
+            duration_ms = take.duration_ms + max(
+                0, int((end - progress.phase_started_at).total_seconds() * 1000)
+            )
             take.status, take.completed_at, take.duration_ms = "COMMITTED", end, duration_ms
             response.status, response.locked = "COMPLETED", True
             response.completed_at, response.duration_ms, response.completion_reason = (
@@ -246,6 +276,10 @@ class SpeakingAttemptService:
             progress.phase = "QUESTION_ENTER" if progress.prompt_id is not None else "COMPLETED"
             progress.recovery_state = None
             progress.recovery_grace_used = False
+            progress.recovery_phase = progress.recovery_grace_deadline_at = (
+                progress.interrupted_at
+            ) = None
+            progress.next_segment_index = 0
             attempt.last_active_at = now
             if progress.phase == "COMPLETED":
                 AttemptService._finalize(
@@ -292,6 +326,10 @@ class SpeakingAttemptService:
             )
             progress.recovery_state = None
             progress.recovery_grace_used = False
+            progress.recovery_phase = progress.recovery_grace_deadline_at = (
+                progress.interrupted_at
+            ) = None
+            progress.next_segment_index = 0
             attempt.last_active_at = now
             return self._state(attempt, progress, prompts, now)
 
@@ -331,3 +369,99 @@ class SpeakingAttemptService:
             progress.scratch_notes = scratch_notes
             attempt.last_active_at = now
             return self._state(attempt, progress, prompts, now)
+
+    async def _seal_interrupted_segments(self, progress):
+        from app.services.speaking_media import ordered_chunks, ordered_segments
+
+        take = await self.repository.take(progress.response_id, progress.take_number)
+        for segment in await ordered_segments(self.session, take.id):
+            if segment.chunk_count is None:
+                chunks = await ordered_chunks(self.session, segment.id)
+                if [c.sequence for c in chunks] != list(range(len(chunks))):
+                    raise AppError(
+                        "SPEAKING_RECOVERY_NOT_AVAILABLE", "Recording recovery is unavailable.", 409
+                    )
+                segment.chunk_count, segment.closed_at = len(chunks), TimerService.now()
+
+    async def interrupt(self, attempt_id, prompt_id, take_number, generation):
+        async with self.session.begin():
+            attempt, progress, prompts = await self._load(attempt_id)
+            self._mutable(attempt)
+            await self._require_current(attempt, progress, prompt_id, take_number)
+            now = TimerService.now()
+            if progress.recovery_state is not None:
+                if generation not in {
+                    progress.interruption_generation,
+                    progress.interruption_generation - 1,
+                }:
+                    raise AppError(
+                        "SPEAKING_RECOVERY_NOT_AVAILABLE", "Recovery generation is stale.", 409
+                    )
+                await self._synchronize(attempt, progress, prompts, now)
+                if progress.phase in {"RECORDING", "PREPARING", "STARTING"}:
+                    await self._seal_interrupted_segments(progress)
+                return self._state(attempt, progress, prompts, now)
+            if (
+                generation != progress.interruption_generation
+                or progress.phase not in {"PREPARING", "STARTING", "RECORDING"}
+                or progress.phase_deadline_at <= now
+                or progress.last_confirmed_at is None
+                or (now - progress.last_confirmed_at).total_seconds()
+                > get_settings().speaking_recovery_window_seconds
+            ):
+                raise AppError(
+                    "SPEAKING_RECOVERY_NOT_AVAILABLE", "Recording recovery is unavailable.", 409
+                )
+            await self._seal_interrupted_segments(progress)
+            if progress.phase == "RECORDING":
+                take = await self.repository.take(progress.response_id, take_number)
+                take.duration_ms += max(
+                    0,
+                    int(
+                        (progress.last_confirmed_at - progress.phase_started_at).total_seconds()
+                        * 1000
+                    ),
+                )
+            progress.recovery_phase = progress.phase
+            progress.phase = "INTERRUPTED"
+            progress.interrupted_at = now
+            progress.interruption_generation += 1
+            progress.interruption_count += 1
+            progress.recovery_state = "AWAITING_MICROPHONE"
+            return self._state(attempt, progress, prompts, now)
+
+    async def resume(self, attempt_id, prompt_id, take_number, generation):
+        unavailable = False
+        async with self.session.begin():
+            attempt, progress, prompts = await self._load(attempt_id)
+            self._mutable(attempt)
+            await self._require_current(attempt, progress, prompt_id, take_number)
+            now = TimerService.now()
+            if generation != progress.interruption_generation or progress.recovery_state is None:
+                raise AppError(
+                    "SPEAKING_RECOVERY_NOT_AVAILABLE", "Recovery generation is stale.", 409
+                )
+            if progress.phase == "INTERRUPTED":
+                if (
+                    now - progress.interrupted_at
+                ).total_seconds() > get_settings().speaking_recovery_window_seconds:
+                    progress.phase = "FINALIZING"
+                    progress.phase_started_at = progress.phase_deadline_at = now
+                    progress.last_confirmed_remaining_ms = 0
+                    unavailable = True
+                else:
+                    progress.phase = "RECOVERY_GRACE"
+                    progress.recovery_state = "GRACE"
+                    progress.recovery_grace_used = True
+                    progress.recovery_grace_deadline_at = now + timedelta(seconds=7)
+            elif progress.phase not in {"RECOVERY_GRACE", "PREPARING", "STARTING", "RECORDING"}:
+                raise AppError(
+                    "SPEAKING_RECOVERY_NOT_AVAILABLE", "This response cannot be resumed.", 409
+                )
+            await self._synchronize(attempt, progress, prompts, now)
+            result = self._state(attempt, progress, prompts, now)
+        if unavailable:
+            raise AppError(
+                "SPEAKING_RECOVERY_NOT_AVAILABLE", "The recovery window has expired.", 409
+            )
+        return result

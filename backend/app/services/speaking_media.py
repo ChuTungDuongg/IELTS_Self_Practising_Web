@@ -156,6 +156,7 @@ class SpeakingMediaService:
             )
             self.session.add(segment)
             await self.session.flush()
+            progress.next_segment_index = segment_index + 1
             return SpeakingSegmentData.model_validate(segment)
 
     async def _segment(self, aid, segment_id):
@@ -203,7 +204,9 @@ class SpeakingMediaService:
                 await self.runtime._require_current(
                     attempt, progress, response.prompt_id, take.take_number
                 )
-                await self.runtime._synchronize(attempt, progress, prompts, TimerService.now())
+                await self.runtime._synchronize(
+                    attempt, progress, prompts, TimerService.now(), confirm=True
+                )
                 if (
                     response.locked
                     or take.status != "ACTIVE"
@@ -300,7 +303,21 @@ class SpeakingMediaService:
             response = await self.session.get(SpeakingResponse, response_id)
             if response is None or response.attempt_id != aid:
                 raise AppError("SPEAKING_MEDIA_NOT_FOUND", "Recording not found.", 404)
-            await self._read_access(aid, response)
+            playable = True
+            try:
+                await self._read_access(aid, response)
+            except AppError:
+                attempt = await self.session.get(Attempt, aid)
+                progress = await self.runtime.repository.progress(aid)
+                if (
+                    attempt is None
+                    or attempt.user_id != self.actor.id
+                    or response.locked
+                    or progress is None
+                    or progress.response_id != response.id
+                ):
+                    raise
+                playable = False  # Owner may restore metadata; exam audio stays unavailable.
             take = await self.runtime.repository.take(response.id, response.active_take_number)
             segments = []
             for segment in await ordered_segments(self.session, take.id):
@@ -309,7 +326,9 @@ class SpeakingMediaService:
                     SpeakingChunkData.model_validate(c)
                     for c in await ordered_chunks(self.session, segment.id)
                 ]
-                dto.content_url = f"/speaking-attempts/{aid}/segments/{segment.id}/content"
+                dto.content_url = (
+                    f"/speaking-attempts/{aid}/segments/{segment.id}/content" if playable else None
+                )
                 segments.append(dto)
             return SpeakingManifest(
                 response=SpeakingResponseData.model_validate(response), segments=segments
