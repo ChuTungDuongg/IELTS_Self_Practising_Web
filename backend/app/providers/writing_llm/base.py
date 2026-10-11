@@ -62,6 +62,18 @@ def safe_finish_reason(value: object) -> SafeFinishReason:
     return value if isinstance(value, str) and value in get_args(SafeFinishReason) else "other"
 
 
+def safe_completion_usage(value: object) -> dict[str, int]:
+    if not isinstance(value, dict):
+        return {}
+    return {
+        key: count
+        for key, count in value.items()
+        if key in {"prompt_tokens", "completion_tokens", "total_tokens"}
+        and type(count) is int
+        and 0 <= count <= 10_000_000
+    }
+
+
 OutputFailureReason = Literal[
     "RELEVANCE_AUXILIARY_FAILED",
     "INVALID_JSON",
@@ -77,6 +89,8 @@ OutputFailureReason = Literal[
     "EVIDENCE_UNKNOWN_SOURCE_ID",
     "EVIDENCE_SCHEMA_INVALID",
     "SCORE_SCHEMA_INVALID",
+    "FEEDBACK_SCHEMA_INVALID",
+    "FEEDBACK_SCORE_MISMATCH",
     "SCORE_CALIBRATION_INVALID",  # Historical diagnostics only; not emitted by v4 validation.
     "PROVIDER_FINISH_LENGTH",
     "PROVIDER_FINISH_ABORT",
@@ -91,7 +105,11 @@ CalibrationDiagnosticReason = Literal[
     "CALIBRATION_METADATA_NORMALIZED",
 ]
 
-PresentationDiagnosticReason = Literal["SCORE_PRESENTATION_NORMALIZED"]
+PresentationDiagnosticReason = Literal[
+    "SCORE_PRESENTATION_NORMALIZED",
+    "FEEDBACK_PRESENTATION_NORMALIZED",
+    "FEEDBACK_FALLBACK_USED",
+]
 
 
 class ProviderFailure(Exception):
@@ -119,6 +137,7 @@ class ProviderFailure(Exception):
         *,
         reason: OutputFailureReason | None = None,
         finish_reason: str | None = None,
+        usage: dict | None = None,
     ) -> None:
         self.code = code
         self.message = self.MESSAGES[code]
@@ -126,6 +145,7 @@ class ProviderFailure(Exception):
         self.finish_reason = (
             safe_finish_reason(finish_reason) if finish_reason is not None else None
         )
+        self.usage = safe_completion_usage(usage)
         super().__init__(self.message)
 
 

@@ -110,7 +110,7 @@ async def test_task2_all_evidence_overlaps_and_each_score_waits_for_own_evidence
                 assert all(
                     other not in json.loads(messages[1]["content"]) for other in other_scores
                 )
-                assert options.max_tokens in {1800, 3072}
+                assert options.max_tokens in {1800, 128, 1200}
 
 
 @pytest.mark.parametrize("enabled", [False, True])
@@ -316,7 +316,7 @@ async def test_fake_comparison_preserves_outputs_prompts_schemas_budgets_and_cou
     groups = Counter()
     for row in report["rows"]:
         assert row["equivalent_outputs_and_requests"]
-        assert row["llm_calls"] == (9 if row["task_number"] == 2 else 12)
+        assert row["llm_calls"] == (13 if row["task_number"] == 2 else 16)
         assert row["total_tokens"] == row["llm_calls"] * 150
         assert row["specialist_calls"] == int(row["specialist_enabled"])
         assert row["peak_active_llm_requests"] <= row["limit"]
@@ -338,7 +338,7 @@ async def test_concurrent_repairs_retain_criterion_identity_and_length_headroom(
                 await asyncio.sleep(0)
                 return Completion("{}", finish_reason="length" if trait == "cc" else "stop")
             if (stage, trait) == ("scoring", "cc"):
-                assert options.max_tokens == 4096
+                assert options.max_tokens == 256
             return await super().complete(messages, schema, options=options)
 
     service = MTSWritingScoringService(Provider(load_fixture(), 0), max_concurrent_requests=2)
@@ -346,12 +346,11 @@ async def test_concurrent_repairs_retain_criterion_identity_and_length_headroom(
     assert result is not None
     assert {(item.criterion, item.stage, item.reason) for item in service.diagnostics} == {
         ("lr", "evidence", "EVIDENCE_SCHEMA_INVALID"),
-        ("cc", "scoring", "PROVIDER_FINISH_LENGTH"),
+        ("cc", "score", "PROVIDER_FINISH_LENGTH"),
     }
     assert service.provider.peak_active <= 2
     assert (
-        service.latency.summary()["stages"]["cc.scoring"]["attempts"][0]["finish_reason"]
-        == "length"
+        service.latency.summary()["stages"]["cc.score"]["attempts"][0]["finish_reason"] == "length"
     )
     assert all(item.criterion == "lr" for item in service.states["lr"].diagnostics)
 

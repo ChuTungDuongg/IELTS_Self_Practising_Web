@@ -17,6 +17,7 @@ from app.schemas.writing_ai import (
     AssessmentStage,
     BandComparison,
     BandSupport,
+    CompletionStage,
     Evidence,
     EvidenceResult,
     EvidenceSelection,
@@ -65,20 +66,22 @@ def safe_validation_issues(error: ValidationError) -> list[ValidationIssue]:
 
 
 def validation_reason(
-    error: ValidationError, stage: AssessmentStage | None = None
+    error: ValidationError, stage: AssessmentStage | CompletionStage | None = None
 ) -> OutputFailureReason:
     # Inspect types/field paths only. Never retain Pydantic input/context/messages.
     for item in error.errors(include_url=False, include_context=False, include_input=False):
         location, kind = item["loc"], item["type"]
         if kind == "json_invalid":
             return "INVALID_JSON"
-        if location and location[0] == "score":
+        if location and location[0] == "score" and stage != "feedback":
             return "INVALID_HALF_BAND"
         if location == ("evidence",) and kind == "too_long":
             return "TOO_MANY_EVIDENCE_ITEMS"
         if location and location[0] == "evidence" and kind == "string_too_long":
             return "EVIDENCE_ITEM_TOO_LONG"
     if stage:
+        if stage == "feedback":
+            return "FEEDBACK_SCHEMA_INVALID"
         return "EVIDENCE_SCHEMA_INVALID" if stage == "evidence" else "SCORE_SCHEMA_INVALID"
     return "SCHEMA_VALIDATION"
 

@@ -375,9 +375,11 @@ def test_descriptor_fit_contract_and_separate_task_achievement():
             "Half-bands are interpolation",
             "No score offsets, hard caps, error-count rules or cross-criterion penalties",
             "Vietnamese",
-            "only four fields",
+            "Return ONLY one field: score",
         ]:
             assert wording in system
+        schema = json.loads(system.split("JSON schema: ", 1)[1])
+        assert set(schema["properties"]) == set(schema["required"]) == {"score"}
     system = score_prompt(request(), "ta", evidence, Task1Analysis(visual_family="chart_table"))[0][
         "content"
     ]

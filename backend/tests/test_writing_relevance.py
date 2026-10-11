@@ -125,7 +125,7 @@ async def test_only_high_confidence_wholly_unrelated_skips_ta(
     assert result.relevance.short_circuit_applied is short_circuit
     assert result.relevance.evidence[0].quote == request.response.split(".")[0] + "."
     ta_calls = [call for call in provider.calls if "Criterion: Task " in call[0][0]["content"]]
-    assert len(ta_calls) == (0 if short_circuit else 2)
+    assert len(ta_calls) == (0 if short_circuit else 3)
     assert {p.criterion for e, p in events if e == "criterion.completed"} == {
         "ta",
         "cc",
@@ -324,10 +324,10 @@ def test_new_cache_versions_keep_visual_contract_and_reject_old_effective_label(
     )
     from app.services.writing_ai import input_fingerprint
 
-    assert TASK1_PROMPT_VERSION == "mts-task1-visual-v8"
-    assert TASK1_SCORING_PROMPT_VERSION == "mts-task1-scoring-v8"
+    assert TASK1_PROMPT_VERSION == "mts-task1-visual-v9"
+    assert TASK1_SCORING_PROMPT_VERSION == "mts-task1-scoring-v9"
     assert TASK1_VISUAL_CONTRACT_VERSION == "mts-task1-visual-v3"
-    assert effective_prompt_version("mts-task2-v7") == "mts-task2-v8"
+    assert effective_prompt_version("mts-task2-v7") == "mts-task2-v9"
     for task, old, new in [
         (1, "mts-task1-visual-v7", TASK1_PROMPT_VERSION),
         (2, "mts-task2-v7", effective_prompt_version("mts-task2-v7")),

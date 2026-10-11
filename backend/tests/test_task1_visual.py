@@ -534,6 +534,7 @@ class Task1FakeProvider:
                 "strengths": ["Rõ ràng."],
                 "improvements": ["Nêu chi tiết."],
             }
+            output = {key: value for key, value in output.items() if key in properties}
         return Completion(json.dumps(output), {"total_tokens": 10})
 
 
@@ -579,7 +580,7 @@ async def test_fake_provider_failure_targets_only_the_explicit_criterion(trait, 
 async def test_task1_pipeline_grounded_ta_text_only_languages_and_exact_quotes():
     provider = Task1FakeProvider()
     service, result, events = await assess(provider)
-    assert result is not None and result.overall_band == Decimal(7) and len(provider.calls) == 11
+    assert result is not None and result.overall_band == Decimal(7) and len(provider.calls) == 15
     assert result.task_number == 1 and result.task1_analysis.claims[0].verdict == "SUPPORTED"
     assert result.task1_analysis.claims[0].quote == "A increased from 20 to 50."
     assert all(
@@ -596,7 +597,7 @@ async def test_task1_pipeline_grounded_ta_text_only_languages_and_exact_quotes()
             continue
         assert all(isinstance(message["content"], str) for message in call)
     score_calls = [
-        call for call in provider.calls if "Return only four fields" in call[0]["content"]
+        call for call in provider.calls if "Return ONLY one field: score" in call[0]["content"]
     ]
     ta_call = next(
         call for call in score_calls if "Criterion: Task Achievement." in call[0]["content"]

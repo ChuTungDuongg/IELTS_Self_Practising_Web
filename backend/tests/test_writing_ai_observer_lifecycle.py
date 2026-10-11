@@ -102,6 +102,32 @@ class WaitingTask2Provider(WaitForRelease, FakeProvider):
     pass
 
 
+async def test_feedback_fallback_persists_fixed_band_and_replays_without_new_inference(lifecycle):
+    from test_writing_score_first import Provider
+
+    provider = Provider()
+    lifecycle.runner.provider = provider
+    row = lifecycle.store.row
+    await lifecycle.runner.execute(row.id)
+    saved, events = await lifecycle.api.snapshot(row.id, 0)
+    assert saved.status == WritingAIRunStatus.COMPLETED and not saved.failures
+    assert saved.progress["ta"].score == 7 and saved.result.criteria.ta.score == 7
+    assert "chưa khả dụng" in saved.progress["ta"].feedback
+    assert saved.result.criteria.ta.evidence == saved.progress["ta"].evidence
+    assert saved.result.criteria.ta.strengths == saved.result.criteria.ta.improvements == []
+    assert row.usage_json["diagnostics"][-1]["reason"] == "FEEDBACK_FALLBACK_USED"
+    completed = next(
+        e for e in events if e.event_type == "criterion.completed" and e.payload.criterion == "ta"
+    )
+    restored, replay = await lifecycle.api.snapshot(row.id, completed.sequence - 1)
+    assert restored == saved and replay[0].payload.result == saved.progress["ta"]
+    before = len(provider.requests)
+    await lifecycle.runner.execute(row.id)
+    assert len(provider.requests) == before
+    public = saved.model_dump_json() + "".join(e.model_dump_json() for e in events)
+    assert "FEEDBACK_FALLBACK_USED" not in public and "diagnostics" not in public
+
+
 @pytest.fixture(params=[1, 2])
 def lifecycle(request, monkeypatch):
     settings = Settings(

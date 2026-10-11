@@ -4,14 +4,22 @@ import json
 
 import httpx
 import pytest
-from test_writing_completion_budgets import CORE, EVIDENCE, assess
+from test_writing_completion_budgets import (
+    RELEVANCE,
+    REPAIR_BUDGETS,
+    SCORE,
+    STAGE_BUDGETS,
+    STAGE_OUTPUTS,
+    assess,
+    completion_stage,
+)
 
 from app.core.config import Settings
 from app.providers.writing_llm import create_provider
 from app.providers.writing_llm.base import CompletionOptions, ProviderFailure
 
 
-def rejection(requested=3072, context=8192, input_tokens=6000):
+def rejection(requested=128, context=8192, input_tokens=8100):
     # Exact vLLM 0.13 pre-inference validation error, not a token estimate.
     return {
         "error": {
@@ -28,7 +36,7 @@ def rejection(requested=3072, context=8192, input_tokens=6000):
     }
 
 
-def success(output=CORE, finish="stop"):
+def success(output=SCORE, finish="stop"):
     return httpx.Response(
         200,
         json={"choices": [{"finish_reason": finish, "message": {"content": json.dumps(output)}}]},
@@ -66,13 +74,13 @@ async def test_long_input_accepted_after_one_pre_inference_context_resubmit(monk
     completion = await provider.complete(
         [{"role": "user", "content": "PRIVATE long Task 1 input"}],
         {"type": "object"},
-        options=CompletionOptions(max_tokens=3072),
+        options=CompletionOptions(max_tokens=128),
     )
-    assert json.loads(completion.text) == CORE
+    assert json.loads(completion.text) == SCORE
     assert len(bodies) == 2 and len(inferences) == 1
-    assert [body["max_tokens"] for body in bodies] == [3072, 2192]
-    assert bodies[1] == {**bodies[0], "max_tokens": 2192}
-    assert "PRIVATE" not in caplog.text and "6000" not in caplog.text
+    assert [body["max_tokens"] for body in bodies] == [128, 92]
+    assert bodies[1] == {**bodies[0], "max_tokens": 92}
+    assert "PRIVATE" not in caplog.text and "8100" not in caplog.text
 
 
 async def test_context_resubmit_never_retries_length_or_accepts_its_json(monkeypatch):
@@ -86,7 +94,7 @@ async def test_context_resubmit_never_retries_length_or_accepts_its_json(monkeyp
 
     provider = install(monkeypatch, handler)
     with pytest.raises(ProviderFailure) as failed:
-        await provider.complete([], {}, options=CompletionOptions(max_tokens=3072))
+        await provider.complete([], {}, options=CompletionOptions(max_tokens=128))
     assert failed.value.reason == "PROVIDER_FINISH_LENGTH" and len(bodies) == 2
 
 
@@ -97,14 +105,14 @@ async def test_repeated_context_rejection_fails_after_one_resubmit(monkeypatch, 
         body = json.loads(request.content)
         bodies.append(body)
         return httpx.Response(
-            400, json=rejection(body["max_tokens"], input_tokens=6000 + 100 * (len(bodies) - 1))
+            400, json=rejection(body["max_tokens"], input_tokens=8100 + 20 * (len(bodies) - 1))
         )
 
     provider = install(monkeypatch, handler)
     with pytest.raises(ProviderFailure) as failed:
-        await provider.complete([], {}, options=CompletionOptions(max_tokens=3072))
+        await provider.complete([], {}, options=CompletionOptions(max_tokens=128))
     assert failed.value.code == "AI_PROVIDER_ENDPOINT_ERROR"
-    assert [body["max_tokens"] for body in bodies] == [3072, 2192]
+    assert [body["max_tokens"] for body in bodies] == [128, 92]
     assert "input tokens" not in caplog.text + str(vars(failed.value))
 
 
@@ -113,10 +121,10 @@ async def test_repeated_context_rejection_fails_after_one_resubmit(monkeypatch, 
     [
         {"message": "PRIVATE unrelated bad request"},
         {"message": rejection()["error"]["message"] + " PRIVATE suffix"},
-        {"message": rejection(4096)["error"]["message"]},
+        {"message": rejection(256)["error"]["message"]},
         {"message": rejection(input_tokens=8192)["error"]["message"]},
         {"message": rejection(context=10_000_001)["error"]["message"]},
-        {"message": rejection()["error"]["message"].replace("(3072 >", "(4096 >")},
+        {"message": rejection()["error"]["message"].replace("(128 >", "(256 >")},
         {"type": "UnexpectedError"},
         {"code": 404},
         {"param": "unrelated"},
@@ -135,7 +143,7 @@ async def test_unverified_context_errors_are_not_resubmitted_or_exposed(
 
     provider = install(monkeypatch, handler)
     with pytest.raises(ProviderFailure) as failed:
-        await provider.complete([], {}, options=CompletionOptions(max_tokens=3072))
+        await provider.complete([], {}, options=CompletionOptions(max_tokens=128))
     assert failed.value.code == "AI_PROVIDER_ENDPOINT_ERROR" and len(bodies) == 1
     assert "PRIVATE" not in caplog.text + str(vars(failed.value))
 
@@ -154,49 +162,56 @@ async def test_default_visual_budget_retains_existing_behavior(monkeypatch):
     assert len(bodies) == 1 and bodies[0]["max_tokens"] == 1800
 
 
-async def test_mts_length_repair_still_has_only_two_inferences_when_context_is_tight(monkeypatch):
-    scoring_requests, scoring_inferences, bodies = 0, 0, []
+@pytest.mark.parametrize(
+    "stage,input_tokens", [("evidence", 6500), ("score", 8100), ("feedback", 7100)]
+)
+async def test_mts_length_repair_still_has_only_two_inferences_when_context_is_tight(
+    monkeypatch, stage, input_tokens
+):
+    stage_requests, stage_inferences, bodies, stage_bodies = 0, 0, [], []
 
     def handler(request):
-        nonlocal scoring_requests, scoring_inferences
+        nonlocal stage_requests, stage_inferences
         body = json.loads(request.content)
         bodies.append(body)
         schema = body["response_format"]["json_schema"]["schema"]
         if "verdict" in schema["properties"]:
-            return success(
-                {
-                    "verdict": "ON_TOPIC",
-                    "confidence": "HIGH",
-                    "source_ids": [],
-                    "reason": "Có liên hệ với đề bài.",
-                }
-            )
-        if "evidence" in schema["properties"]:
-            return success(EVIDENCE)
-        scoring_requests += 1
-        if scoring_requests <= 4:
-            input_tokens = 6000 if scoring_requests <= 2 else 6050
-            if body["max_tokens"] + input_tokens > 8192:
-                return httpx.Response(
-                    400, json=rejection(body["max_tokens"], input_tokens=input_tokens)
-                )
-        scoring_inferences += 1
-        return success(finish="length" if scoring_inferences == 1 else "stop")
+            return success(RELEVANCE)
+        actual_stage = completion_stage(schema)
+        if actual_stage != stage:
+            return success(STAGE_OUTPUTS[actual_stage])
+        stage_bodies.append(body)
+        stage_requests += 1
+        if stage_requests <= 4:
+            tokens = input_tokens if stage_requests <= 2 else input_tokens + 50
+            if body["max_tokens"] + tokens > 8192:
+                return httpx.Response(400, json=rejection(body["max_tokens"], input_tokens=tokens))
+        stage_inferences += 1
+        return success(STAGE_OUTPUTS[stage], finish="length" if stage_inferences == 1 else "stop")
 
     result, service, events = await assess(install(monkeypatch, handler))
     assert result is not None
     assert result.criteria.ta.score == 6.5
-    assert scoring_inferences == 5  # Two TA inferences, one for each remaining trait.
-    assert len(bodies) == 12  # One relevance + nine MTS completions + two validation-only 400s.
+    assert stage_inferences == 5  # Two TA inferences, one for each remaining trait.
+    assert len(bodies) == 16  # One relevance + thirteen MTS completions + two validation-only 400s.
     relevance = [
         body
         for body in bodies
         if "verdict" in body["response_format"]["json_schema"]["schema"]["properties"]
     ]
     assert len(relevance) == 1 and relevance[0]["max_tokens"] == 768
-    mts_bodies = [body for body in bodies if body not in relevance]
-    assert [body["max_tokens"] for body in mts_bodies[:5]] == [1800, 3072, 2192, 4096, 2142]
+    assert [body["max_tokens"] for body in stage_bodies] == [
+        STAGE_BUDGETS[stage],
+        8192 - input_tokens,
+        REPAIR_BUDGETS[stage],
+        8192 - input_tokens - 50,
+        *([STAGE_BUDGETS[stage]] * 3),
+    ]
+    assert stage_bodies[1] == {**stage_bodies[0], "max_tokens": 8192 - input_tokens}
+    assert stage_bodies[3] == {**stage_bodies[2], "max_tokens": 8192 - input_tokens - 50}
+    assert stage_bodies[2]["messages"][:-1] == stage_bodies[0]["messages"]
     assert (
         len(service.diagnostics) == 1 and service.diagnostics[0].reason == "PROVIDER_FINISH_LENGTH"
     )
+    assert service.diagnostics[0].stage == stage
     assert sum(event == "criterion.retrying" for event, _ in events) == 1

@@ -1,4 +1,4 @@
-"""Core IELTS results survive imperfect optional explanation metadata."""
+"""Strict score inference and historical optional explanation compatibility."""
 
 import json
 from decimal import Decimal
@@ -6,10 +6,18 @@ from uuid import uuid4
 
 import pytest
 
+from app.domains.scoring.ai_writing_normalization import normalize_scoring_output
+from app.domains.scoring.ai_writing_validation import sanitize_calibration
 from app.domains.scoring.essay_sources import segment_essay
 from app.domains.scoring.writing import WritingScoringRequest
 from app.providers.writing_llm.base import Completion
-from app.schemas.writing_ai import EvidenceSelection, ScoringOutput
+from app.schemas.writing_ai import (
+    CriterionBandScore,
+    CriterionFeedbackOutput,
+    EvidenceSelection,
+    RawScoringOutput,
+    ScoringOutput,
+)
 from app.services.mts_writing import MTSWritingScoringService
 
 ESSAY = "“Fictional parks”—useful, aren’t they?  They  help city life.\r\n\r\nCosts matter–too."
@@ -18,6 +26,12 @@ CORE = {
     "feedback": "Cấu trúc câu đa dạng và phần lớn chính xác; một vài lỗi dấu câu còn xuất hiện.",
     "strengths": ["Sử dụng linh hoạt câu phức."],
     "improvements": ["Rà soát dấu câu ở các mệnh đề dài."],
+}
+SCORE = {"score": 8.5}
+FEEDBACK = {
+    "feedback": CORE["feedback"],
+    "strengths": CORE["strengths"],
+    "improvements": CORE["improvements"],
 }
 CALIBRATION = {
     "support": [{"source_id": "P1S2", "assessment": "Cấu trúc câu được kiểm soát."}],
@@ -34,7 +48,7 @@ class CoreProvider:
 
     async def complete(self, messages, schema, *, options=None):
         if "verdict" in schema["properties"]:
-            # Keep legacy index-based overrides scoped to evidence/scoring calls.
+            # Keep index-based overrides scoped to the three criterion stages.
             return Completion(
                 json.dumps(
                     {
@@ -50,11 +64,14 @@ class CoreProvider:
         if index in self.overrides:
             value = self.overrides[index]
             return value if isinstance(value, Completion) else Completion(json.dumps(value))
-        value = (
-            {"evidence": [{"source_id": "P1S1", "assessment": "Dẫn chứng liên quan."}]}
-            if "evidence" in schema["properties"]
-            else CORE
-        )
+        properties = set(schema["properties"])
+        if properties == {"evidence"}:
+            value = {"evidence": [{"source_id": "P1S1", "assessment": "Dẫn chứng liên quan."}]}
+        elif properties == {"score"}:
+            value = SCORE
+        else:
+            assert properties == {"feedback", "strengths", "improvements"}
+            value = FEEDBACK
         return Completion(json.dumps(value), finish_reason="stop")
 
 
@@ -103,30 +120,50 @@ async def run(provider):
         "malformed-fields",
     ],
 )
-async def test_valid_gra_core_completes_without_calibration_retry(metadata, caplog):
-    provider = CoreProvider({7: {**CORE, **metadata}})
+def test_historical_valid_core_survives_optional_calibration_metadata(metadata):
+    raw = RawScoringOutput.model_validate({**CORE, **metadata})
+    calibration, reasons = sanitize_calibration(
+        raw.calibration, raw.score, {s.source_id: s for s in segment_essay(ESSAY)}
+    )
+    result, issues = normalize_scoring_output(raw)
+    assert result.score == Decimal("8.5") and not issues
+    assert result.model_dump(mode="json") == CORE
+    assert all(reason.startswith("CALIBRATION_") for reason in reasons)
+    assert "private" not in repr(raw) + repr(result) + repr(calibration) + str(reasons)
+
+
+async def test_three_independent_criterion_stages_complete_with_exact_unicode_evidence():
+    provider = CoreProvider()
     result, service, events = await run(provider)
-    assert result is not None
-    assert result.criteria.gra.score == Decimal("8.5")
-    assert result.overall_band == Decimal("8.5")
-    assert len(provider.calls) == 8  # Four evidence calls and four scoring calls.
+    assert result is not None and result.overall_band == Decimal("8.5")
+    assert len(provider.calls) == 12
+    assert [set(schema["properties"]) for _, schema in provider.calls] == [
+        {"evidence"},
+        {"score"},
+        {"feedback", "strengths", "improvements"},
+    ] * 4
     assert [p.criterion for e, p in events if e == "criterion.completed"] == [
         "ta",
         "cc",
         "lr",
         "gra",
     ]
-    assert not any(e in {"criterion.retrying", "criterion.failed"} for e, _ in events)
-    assert not service.failures
-    assert all(d.reason != "SCORE_CALIBRATION_INVALID" for d in service.diagnostics)
+    assert not service.failures and not service.diagnostics
     assert result.criteria.gra.evidence[0].quote == "“Fictional parks”—useful, aren’t they?"
-    assert "private" not in caplog.text + str(service.diagnostics) + str(events)
 
 
 def test_primary_evidence_schema_stays_strict_and_scoring_schema_is_small():
     evidence = EvidenceSelection.model_json_schema(mode="serialization")
-    scoring = ScoringOutput.model_json_schema(mode="serialization")
-    assert set(scoring["required"]) == {"score", "feedback", "strengths", "improvements"}
+    scoring = CriterionBandScore.model_json_schema(mode="serialization")
+    feedback = CriterionFeedbackOutput.model_json_schema(mode="serialization")
+    assert set(scoring["required"]) == set(scoring["properties"]) == {"score"}
+    assert scoring["additionalProperties"] is False
+    assert (
+        set(feedback["required"])
+        == set(feedback["properties"])
+        == {"feedback", "strengths", "improvements"}
+    )
+    assert feedback["additionalProperties"] is False
     assert "calibration" not in scoring["properties"]
     assert evidence["$defs"]["EvidenceChoice"]["required"] == ["source_id", "assessment"]
     assert "quote" not in evidence["$defs"]["EvidenceChoice"]["properties"]
@@ -169,26 +206,62 @@ def test_next_descriptor_is_metadata_derived_from_accepted_score(score, upper):
 @pytest.mark.parametrize(
     "bad",
     [
-        {**CORE, "score": 6.3},
-        {**CORE, "score": -0.5},
-        {**CORE, "score": 9.5},
-        {k: v for k, v in CORE.items() if k != "score"},
-        {k: v for k, v in CORE.items() if k != "feedback"},
-        {**CORE, "feedback": "   "},
-        {**CORE, "strengths": "Không phải danh sách."},
-        {**CORE, "improvements": [42]},
+        {"score": 6.3},
+        {"score": -0.5},
+        {"score": 9.5},
+        {},
+        {**SCORE, "feedback": CORE["feedback"]},
+        {**SCORE, "calibration": CALIBRATION},
+        {**SCORE, "calibration": "malformed private metadata"},
         Completion("private invalid JSON", finish_reason="stop"),
         [],
     ],
 )
-async def test_invalid_core_gets_one_repair_then_only_gra_fails(bad):
-    provider = CoreProvider({7: bad, 8: bad})
+async def test_invalid_score_gets_one_repair_then_only_gra_fails(bad):
+    provider = CoreProvider({10: bad, 11: bad})
     result, service, events = await run(provider)
-    assert result is None and len(provider.calls) == 9
+    assert result is None and len(provider.calls) == 12
     assert set(service.failures) == {"gra"}
     assert [p.criterion for e, p in events if e == "criterion.completed"] == ["ta", "cc", "lr"]
     assert sum(e == "criterion.retrying" for e, _ in events) == 1
     assert sum(e == "criterion.failed" for e, _ in events) == 1
+    assert all(d.stage == "score" for d in service.diagnostics)
+    assert all(set(schema["properties"]) == {"score"} for _, schema in provider.calls[10:])
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        {k: v for k, v in FEEDBACK.items() if k != "feedback"},
+        {**FEEDBACK, "feedback": "   "},
+        {**FEEDBACK, "strengths": "Không phải danh sách."},
+        {**FEEDBACK, "improvements": [42]},
+        {**FEEDBACK, "score": 1},
+        Completion("private invalid JSON", finish_reason="stop"),
+        Completion(""),
+        Completion('{"feedback":', finish_reason="length"),
+        [],
+    ],
+)
+async def test_invalid_feedback_repairs_once_preserves_gra_score_and_uses_safe_fallback(bad):
+    provider = CoreProvider({11: bad, 12: bad})
+    result, service, events = await run(provider)
+    assert result is not None and len(provider.calls) == 13
+    assert result.criteria.gra.score == Decimal("8.5") and result.overall_band == Decimal("8.5")
+    assert result.criteria.gra.strengths == result.criteria.gra.improvements == []
+    assert "chưa khả dụng" in result.criteria.gra.feedback
+    assert result.criteria.gra.evidence[0].quote == "“Fictional parks”—useful, aren’t they?"
+    assert not service.failures
+    assert [d.stage for d in service.diagnostics] == ["feedback"] * 3
+    assert service.diagnostics[-1].reason == "FEEDBACK_FALLBACK_USED"
+    assert sum(e == "criterion.retrying" for e, _ in events) == 1
+    assert not any(e == "criterion.failed" for e, _ in events)
+    assert [p.criterion for e, p in events if e == "criterion.completed"] == [
+        "ta",
+        "cc",
+        "lr",
+        "gra",
+    ]
 
 
 def test_optional_calibration_is_excluded_from_core_serialization_and_repr():
@@ -199,29 +272,31 @@ def test_optional_calibration_is_excluded_from_core_serialization_and_repr():
 
 async def test_unknown_primary_id_still_repairs_fails_and_runs_later_criterion():
     bad = {"evidence": [{"source_id": "P99S1", "assessment": "Nhận xét."}]}
-    provider = CoreProvider({4: bad, 5: bad})
+    provider = CoreProvider({6: bad, 7: bad})
     result, service, events = await run(provider)
-    assert result is None and len(provider.calls) == 8
+    assert result is None and len(provider.calls) == 11
     assert set(service.failures) == {"lr"}
     assert [d.reason for d in service.diagnostics] == ["EVIDENCE_UNKNOWN_SOURCE_ID"] * 2
     assert [p.criterion for e, p in events if e == "criterion.completed"] == ["ta", "cc", "gra"]
 
 
-async def test_truncated_scoring_core_is_never_accepted():
-    truncated = Completion('{"score":8.5,"feedback":', finish_reason="length")
-    provider = CoreProvider({7: truncated, 8: truncated})
+async def test_truncated_score_is_never_accepted():
+    truncated = Completion('{"score":8.5', finish_reason="length")
+    provider = CoreProvider({10: truncated, 11: truncated})
     result, service, _ = await run(provider)
-    assert result is None and len(provider.calls) == 9
+    assert result is None and len(provider.calls) == 12
     assert [d.reason for d in service.diagnostics] == ["PROVIDER_FINISH_LENGTH"] * 2
     assert all(d.finish_reason == "length" for d in service.diagnostics)
+    assert all(d.stage == "score" for d in service.diagnostics)
 
 
-async def test_scoring_failure_logs_safe_field_type_and_masks_untrusted_extra_names(caplog):
+async def test_feedback_failure_logs_safe_field_type_and_masks_untrusted_extra_names(caplog):
     caplog.set_level("INFO", logger="app.services.mts_writing")
-    invalid = {**CORE, "feedback": 42, "private-secret-key": "private rejected value"}
-    result, service, events = await run(CoreProvider({7: invalid, 8: invalid}))
-    assert result is None
-    for diagnostic in service.diagnostics:
+    invalid = {**FEEDBACK, "feedback": 42, "private-secret-key": "private rejected value"}
+    result, service, events = await run(CoreProvider({11: invalid, 12: invalid}))
+    assert result.criteria.gra.score == Decimal("8.5") and not service.failures
+    for diagnostic in service.diagnostics[:2]:
+        assert diagnostic.stage == "feedback"
         assert {(i.field, i.validation_type) for i in diagnostic.validation_issues} == {
             ("feedback", "string_type"),
             ("<extra>", "extra_forbidden"),

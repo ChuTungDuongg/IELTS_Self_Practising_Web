@@ -87,11 +87,10 @@ class WritingRelevanceResult(StrictModel):
     short_circuit_applied: bool
 
 
-class TraitScore(StrictModel):
+class CriterionBandScore(StrictModel):
+    """Authoritative score-only inference contract, independent of presentation."""
+
     score: Decimal = Field(ge=0, le=9, allow_inf_nan=False)
-    feedback: str = Field(min_length=1, max_length=2000)
-    strengths: list[ShortText] = Field(max_length=5)
-    improvements: list[ShortText] = Field(max_length=5)
 
     @field_validator("score")
     @classmethod
@@ -101,6 +100,30 @@ class TraitScore(StrictModel):
     @field_serializer("score", return_type=float)
     def serialize_score(self, value: Decimal) -> float:
         return float(value)
+
+
+class TraitScore(CriterionBandScore):
+    feedback: str = Field(min_length=1, max_length=2000)
+    strengths: list[ShortText] = Field(max_length=5)
+    improvements: list[ShortText] = Field(max_length=5)
+
+
+class RawCriterionFeedbackOutput(StrictModel):
+    """Validate structure before applying display limits; cannot supply a score."""
+
+    feedback: str = Field(strict=True, min_length=1)
+    strengths: list[StrictStr] = Field(strict=True)
+    improvements: list[StrictStr] = Field(strict=True)
+
+
+class CriterionFeedbackOutput(RawCriterionFeedbackOutput):
+    feedback: str = Field(strict=True, min_length=1, max_length=800)
+    strengths: list[Annotated[StrictStr, Field(min_length=1, max_length=240)]] = Field(
+        strict=True, max_length=3
+    )
+    improvements: list[Annotated[StrictStr, Field(min_length=1, max_length=240)]] = Field(
+        strict=True, max_length=3
+    )
 
 
 class CriterionResult(TraitScore):
@@ -256,8 +279,11 @@ class ValidationIssue(StrictModel):
     validation_type: str = Field(min_length=1, max_length=80)
 
 
+CompletionStage = Literal["evidence", "score", "feedback"]
+
+
 class OutputDiagnostic(StrictModel):
-    stage: AssessmentStage
+    stage: AssessmentStage | CompletionStage
     criterion: Trait
     reason: OutputFailureReason | CalibrationDiagnosticReason | PresentationDiagnosticReason
     attempt: int = Field(ge=1, le=2)

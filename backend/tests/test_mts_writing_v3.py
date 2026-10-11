@@ -1,23 +1,29 @@
 import json
+from decimal import Decimal
 from uuid import uuid4
 
 import pytest
 
-from app.domains.scoring.ai_writing_validation import resolve_evidence
+from app.domains.scoring.ai_writing_normalization import normalize_scoring_output
+from app.domains.scoring.ai_writing_validation import resolve_evidence, sanitize_calibration
 from app.domains.scoring.essay_sources import segment_essay
 from app.domains.scoring.mts_prompts import effective_prompt_version
 from app.domains.scoring.writing import WritingScoringRequest
 from app.providers.writing_llm.base import Completion, ProviderFailure
-from app.schemas.writing_ai import EvidenceSelection
+from app.schemas.writing_ai import EvidenceSelection, RawScoringOutput
 from app.services.mts_writing import MTSWritingScoringService
 
 ESSAY = "“Fictional parks”—useful, aren’t they?  They  help city life.\r\n\r\nCosts matter–too."
 EVIDENCE = {"evidence": [{"source_id": "P1S2", "assessment": "Luận điểm liên quan đến đề bài."}]}
-SCORE = {
-    "score": 6.5,
+SCORE = {"score": 6.5}
+FEEDBACK = {
     "feedback": "Luận điểm rõ nhưng cần phát triển ví dụ để đạt mức cao hơn.",
     "strengths": ["Lập trường rõ ràng."],
     "improvements": ["Phát triển dẫn chứng."],
+}
+LEGACY_SCORE = {
+    **SCORE,
+    **FEEDBACK,
     "calibration": {
         "support": [{"source_id": "P1S2", "assessment": "Luận điểm có liên hệ rõ."}],
         "next_band": 7.0,
@@ -37,10 +43,11 @@ SCORE = {
 class Provider:
     def __init__(self, overrides=None):
         self.overrides, self.calls = overrides or {}, []
+        self.schemas = []
 
     async def complete(self, messages, schema, *, options=None):
         if "verdict" in schema["properties"]:
-            # Keep legacy index-based overrides scoped to evidence/scoring calls.
+            # Keep index-based overrides scoped to the three criterion stages.
             return Completion(
                 json.dumps(
                     {
@@ -53,16 +60,22 @@ class Provider:
             )
         index = len(self.calls)
         self.calls.append(messages)
+        self.schemas.append(schema)
         value = self.overrides.get(index)
         if isinstance(value, ProviderFailure):
             raise value
         if isinstance(value, Completion):
             return value
-        return Completion(
-            value
-            if value is not None
-            else json.dumps(EVIDENCE if "evidence" in schema["properties"] else SCORE)
-        )
+        if value is None:
+            properties = set(schema["properties"])
+            if properties == {"evidence"}:
+                value = json.dumps(EVIDENCE)
+            elif properties == {"score"}:
+                value = json.dumps(SCORE)
+            else:
+                assert properties == {"feedback", "strengths", "improvements"}
+                value = json.dumps(FEEDBACK)
+        return Completion(value)
 
 
 async def assess(provider):
@@ -113,13 +126,20 @@ async def test_vietnamese_independent_prompts_and_cache_version():
     provider = Provider()
     result, mts, events = await assess(provider)
     assert result.criteria.lr.evidence[0].quote == "They  help city life."
-    assert len(provider.calls) == 8 and not mts.diagnostics
+    assert len(provider.calls) == 12 and not mts.diagnostics
     for messages in provider.calls:
         assert "Vietnamese" in messages[0]["content"] and "UNTRUSTED DATA" in messages[0]["content"]
     data = json.loads(provider.calls[0][1]["content"])
     assert "[P1S2] They  help city life." in data["segmented_essay"]
-    for field in ["feedback", "strengths", "improvements"]:
-        assert field in provider.calls[1][0]["content"]
+    assert set(provider.schemas[1]["properties"]) == {"score"}
+    assert set(provider.schemas[2]["properties"]) == {"feedback", "strengths", "improvements"}
+    assert json.loads(provider.calls[2][1]["content"])["fixed_score"] == 6.5
+    for index in range(0, 12, 3):
+        assert [set(s["properties"]) for s in provider.schemas[index : index + 3]] == [
+            {"evidence"},
+            {"score"},
+            {"feedback", "strengths", "improvements"},
+        ]
     assert sum(e == "criterion.completed" for e, _ in events) == 4
     for old in [
         "mts-task2-v1",
@@ -128,9 +148,11 @@ async def test_vietnamese_independent_prompts_and_cache_version():
         "mts-task2-v4",
         "mts-task2-v5",
         "mts-task2-v6",
+        "mts-task2-v7",
+        "mts-task2-v8",
     ]:
-        assert effective_prompt_version(old) == "mts-task2-v8"
-    assert effective_prompt_version("custom") == "mts-task2-v8:custom"
+        assert effective_prompt_version(old) == "mts-task2-v9"
+    assert effective_prompt_version("custom") == "mts-task2-v9:custom"
 
 
 @pytest.mark.parametrize(
@@ -156,17 +178,20 @@ async def test_vietnamese_independent_prompts_and_cache_version():
 async def test_targeted_repair_and_safe_diagnostics(output, reason, caplog):
     provider = Provider({0: output})
     result, mts, events = await assess(provider)
-    assert result.overall_band == 6.5 and len(provider.calls) == 9
+    assert result.overall_band == 6.5 and len(provider.calls) == 13
     assert reason in provider.calls[1][-1]["content"]
     assert mts.diagnostics[0].reason == reason and mts.diagnostics[0].attempt == 1
+    assert mts.diagnostics[0].stage == "evidence"
     assert sum(e == "criterion.retrying" for e, _ in events) == 1
     assert "private" not in caplog.text + str(mts.diagnostics) + str(events)
 
 
 async def test_lr_failed_after_repair_gra_still_runs_and_aggregate_absent():
     bad = json.dumps({"evidence": [{"source_id": "P99S1", "assessment": "Nhận xét."}]})
-    result, mts, events = await assess(Provider({4: bad, 5: bad}))
+    provider = Provider({6: bad, 7: bad})
+    result, mts, events = await assess(provider)
     assert result is None
+    assert len(provider.calls) == 11
     assert [
         (e, p.criterion) for e, p in events if e in {"criterion.completed", "criterion.failed"}
     ] == [
@@ -193,7 +218,7 @@ async def test_synthetic_cc_descriptor_fit_profiles_have_no_deterministic_score_
     score, next_band, severity
 ):
     value = {
-        **SCORE,
+        **LEGACY_SCORE,
         "score": score,
         "calibration": {
             "support": [
@@ -216,17 +241,25 @@ async def test_synthetic_cc_descriptor_fit_profiles_have_no_deterministic_score_
             else None,
         },
     }
-    result, mts, _ = await assess(Provider({3: json.dumps(value)}))
+    result, mts, _ = await assess(Provider({4: json.dumps({"score": score})}))
     assert result.criteria.cc.score == score
     assert not mts.diagnostics
+    raw = RawScoringOutput.model_validate(value)
+    calibration, reasons = sanitize_calibration(
+        raw.calibration, raw.score, {s.source_id: s for s in segment_essay(ESSAY)}
+    )
+    historical, issues = normalize_scoring_output(raw)
+    assert historical.score == Decimal(str(score))
+    assert calibration.next_band == next_band
+    assert not reasons and not issues
 
 
 @pytest.mark.parametrize(
     "mutation", ["missing_justification", "wrong_next_band", "no_blockers", "unknown_source"]
 )
-async def test_high_band_optional_explanation_artifacts_never_gate_score(mutation):
+def test_historical_high_band_optional_explanation_artifacts_never_gate_score(mutation):
     c = {
-        **SCORE["calibration"],
+        **LEGACY_SCORE["calibration"],
         "next_band": 9,
         "support": [
             {"source_id": "P1S1", "assessment": "Liên kết rõ."},
@@ -249,11 +282,17 @@ async def test_high_band_optional_explanation_artifacts_never_gate_score(mutatio
         c["next_band_blockers"] = []
     if mutation == "unknown_source":
         c["support"][0]["source_id"] = "P99S1"
-    provider = Provider({1: json.dumps({**SCORE, "score": 8.5, "calibration": c})})
-    result, mts, events = await assess(provider)
-    assert result.criteria.ta.score == 8.5 and len(provider.calls) == 8
-    assert not any(e in {"criterion.retrying", "criterion.failed"} for e, _ in events)
-    assert all(d.reason.startswith("CALIBRATION_") for d in mts.diagnostics)
+    raw = RawScoringOutput.model_validate({**LEGACY_SCORE, "score": 8.5, "calibration": c})
+    calibration, reasons = sanitize_calibration(
+        raw.calibration, raw.score, {s.source_id: s for s in segment_essay(ESSAY)}
+    )
+    result, issues = normalize_scoring_output(raw)
+    assert result.score == Decimal("8.5") and calibration.next_band == 9
+    assert not issues
+    assert all(reason.startswith("CALIBRATION_") for reason in reasons)
+    if mutation == "unknown_source":
+        assert [item.source_id for item in calibration.support] == ["P1S2"]
+        assert "CALIBRATION_SOURCE_DROPPED" in reasons
 
 
 def test_long_original_sentence_survives_without_legacy_copy_limit():
@@ -266,7 +305,7 @@ def test_long_original_sentence_survives_without_legacy_copy_limit():
 
 
 def test_prompt_scope_descriptor_fit_interpolation_and_vietnamese_fields():
-    from app.domains.scoring.mts_prompts import TRAIT_NAMES, scoring_messages
+    from app.domains.scoring.mts_prompts import TRAIT_NAMES, feedback_messages, scoring_messages
     from app.schemas.writing_ai import EvidenceResult
 
     forbidden = {
@@ -283,13 +322,18 @@ def test_prompt_scope_descriptor_fit_interpolation_and_vietnamese_fields():
         assert "official IELTS Writing Task 2 Band Descriptors" in prompt
         assert "interpolation between adjacent official whole-band descriptors" in prompt
         assert "Do not favor the higher or lower band by default" in prompt
-        assert "Keep score and feedback consistent" in prompt
-        assert "Feedback is one concise Vietnamese paragraph" in prompt
+        assert "Return ONLY one field: score" in prompt
+        assert json.loads(prompt.split("JSON schema: ")[1])["required"] == ["score"]
+        feedback = feedback_messages(
+            "Fictional question", ESSAY, trait, EvidenceResult(evidence=[]), Decimal("6.5")
+        )[0]["content"]
+        assert "already validated and authoritative" in feedback
+        assert "Feedback is one concise Vietnamese paragraph" in feedback
         for other in TRAIT_NAMES.values():
             if other != name:
-                assert other not in prompt
+                assert other not in prompt + feedback
         for concept in forbidden[trait]:
-            assert concept not in prompt.lower()
+            assert concept not in (prompt + feedback).lower()
 
 
 @pytest.mark.parametrize(
@@ -300,18 +344,19 @@ def test_prompt_scope_descriptor_fit_interpolation_and_vietnamese_fields():
         ("feedback", "x" * 801),
     ],
 )
-async def test_score_display_limits_normalize_without_repair(field, value):
-    provider = Provider({1: json.dumps({**SCORE, field: value})})
+async def test_feedback_display_limits_normalize_without_repair(field, value):
+    provider = Provider({2: json.dumps({**FEEDBACK, field: value})})
     result, mts, _ = await assess(provider)
-    assert result.overall_band == 6.5 and len(provider.calls) == 8
-    assert mts.diagnostics[0].reason == "SCORE_PRESENTATION_NORMALIZED"
+    assert result.overall_band == 6.5 and len(provider.calls) == 12
+    assert mts.diagnostics[0].stage == "feedback"
+    assert mts.diagnostics[0].reason == "FEEDBACK_PRESENTATION_NORMALIZED"
 
 
 async def test_two_length_completions_fail_one_criterion_and_continue():
     truncated = Completion('{"evidence":[', finish_reason="length")
-    provider = Provider({4: truncated, 5: truncated})
+    provider = Provider({6: truncated, 7: truncated})
     result, mts, events = await assess(provider)
-    assert result is None and len(provider.calls) == 8
+    assert result is None and len(provider.calls) == 11
     assert [d.reason for d in mts.diagnostics] == ["PROVIDER_FINISH_LENGTH"] * 2
     assert all(d.finish_reason == "length" for d in mts.diagnostics)
     assert any(e == "criterion.completed" and p.criterion == "gra" for e, p in events)
@@ -335,17 +380,21 @@ def test_low_band_guidance_preserves_distinct_criterion_meanings():
     assert "wholly unrelated" not in prompts["cc"] + prompts["lr"] + prompts["gra"]
 
 
-async def test_band_nine_unavailable_higher_descriptor_metadata_is_normalized_only():
+def test_historical_band_nine_unavailable_higher_descriptor_metadata_is_normalized_only():
     value = {
-        **SCORE,
+        **LEGACY_SCORE,
         "score": 9,
         "calibration": {
-            **SCORE["calibration"],
+            **LEGACY_SCORE["calibration"],
             "next_band": None,
             "high_band_justification": "Dẫn chứng phù hợp mức cao nhất.",
         },
     }
-    provider = Provider({1: json.dumps(value)})
-    result, mts, _ = await assess(provider)
-    assert result.criteria.ta.score == 9 and len(provider.calls) == 8
-    assert mts.diagnostics[0].reason == "CALIBRATION_METADATA_NORMALIZED"
+    raw = RawScoringOutput.model_validate(value)
+    calibration, reasons = sanitize_calibration(
+        raw.calibration, raw.score, {s.source_id: s for s in segment_essay(ESSAY)}
+    )
+    result, issues = normalize_scoring_output(raw)
+    assert result.score == 9 and calibration.next_band is None
+    assert calibration.next_band_blockers == [] and not issues
+    assert reasons == ["CALIBRATION_METADATA_NORMALIZED"]

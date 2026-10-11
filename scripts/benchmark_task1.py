@@ -8,9 +8,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-from app.core.config import Settings  # noqa: E402
-from app.evaluation.task1.manifest import BenchmarkInputError, load_manifest  # noqa: E402
-from app.evaluation.task1.runner import configurations, run_benchmark  # noqa: E402
+from app.core.config import Settings
+from app.evaluation.task1.manifest import (
+    BenchmarkInputError,
+    load_manifest,
+)
+from app.evaluation.task1.runner import configurations, run_benchmark
 
 
 def main(argv=None) -> int:
@@ -27,12 +30,14 @@ def main(argv=None) -> int:
     parser.add_argument(
         "--limit", type=int, help="Maximum samples, before configuration expansion."
     )
-    parser.add_argument("--chart-specialist", choices=["off", "on", "both"], default="off")
+    parser.add_argument(
+        "--chart-specialist", choices=["off", "on", "both"], default="off"
+    )
     parser.add_argument(
         "--scoring-version",
-        choices=["v3", "v5", "v7", "v8", "both"],
-        default="v8",
-        help="v8 production candidate (default); both compares v5 baseline with v8; v3/v7 are historical",
+        choices=["v3", "v5", "v7", "v8", "v9", "both"],
+        default="v9",
+        help="v9 production candidate (default); both compares v5 baseline with v9; v3/v7/v8 are historical",
     )
     parser.add_argument(
         "--dry-run",
@@ -45,7 +50,9 @@ def main(argv=None) -> int:
         help="Reuse matching successful checkpoints; retry failed samples.",
     )
     parser.add_argument(
-        "--output", type=Path, help="Local output directory; defaults to ignored benchmark reports."
+        "--output",
+        type=Path,
+        help="Local output directory; defaults to ignored benchmark reports.",
     )
     args = parser.parse_args(argv)
     output = (
@@ -62,7 +69,12 @@ def main(argv=None) -> int:
         configs = configurations(settings, args.scoring_version, args.chart_specialist)
         report = asyncio.run(
             run_benchmark(
-                items, configs, output, resume=args.resume, dry_run=args.dry_run, settings=settings
+                items,
+                configs,
+                output,
+                resume=args.resume,
+                dry_run=args.dry_run,
+                settings=settings,
             )
         )
     except BenchmarkInputError as exc:
@@ -74,7 +86,7 @@ def main(argv=None) -> int:
             file=sys.stderr,
         )
         return 130
-    except Exception:
+    except Exception:  # noqa: BLE001 - CLI suppresses potentially sensitive provider errors.
         # No traceback, provider body, settings or invalid sample data on stdout.
         print(
             "BENCHMARK_FAILED: check local paths/configuration; safe reports may be available.",

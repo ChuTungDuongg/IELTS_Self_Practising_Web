@@ -150,7 +150,7 @@ def test_task2_scope_is_criterion_specific_for_evidence_feedback_and_scoring(tra
             assert TRAIT_NAMES[other] not in system
             assert RUBRICS[other] not in system
     if stage == "scoring":
-        assert "why the returned band best fits this criterion" in system
+        assert "Return ONLY one field: score" in system
 
 
 @pytest.mark.parametrize("task", [1, 2])
@@ -158,10 +158,9 @@ def test_task2_scope_is_criterion_specific_for_evidence_feedback_and_scoring(tra
 def test_scoring_schema_exposes_only_core_output_and_no_extra_justification(task, trait):
     system = messages_for(task, trait, "scoring")[0]["content"]
     schema = json.loads(system.split("JSON schema: ", 1)[1])
-    core = {"score", "feedback", "strengths", "improvements"}
+    core = {"score"}
     assert set(schema["required"]) == set(schema["properties"]) == core
     assert schema["additionalProperties"] is False
-    assert "next" not in schema["properties"]["feedback"]["description"].lower()
     assert schema["properties"]["score"]["type"] == "number"
 
 
@@ -187,12 +186,18 @@ class ProfileProvider(Task1FakeProvider):
 
     async def complete(self, messages, schema, *, options=None):
         properties = schema["properties"]
-        if not {"evidence", "score"} & properties.keys():
+        if not {"evidence", "score", "feedback"} & properties.keys():
             return await super().complete(messages, schema, options=options)
         self.calls.append(messages)
         names = TASK1_TRAIT_NAMES if self.task == 1 else TRAIT_NAMES
         trait = next(t for t in TRAITS if f"Criterion: {names[t]}." in messages[0]["content"])
-        stage = "evidence" if "evidence" in properties else "scoring"
+        stage = (
+            "evidence"
+            if "evidence" in properties
+            else "scoring"
+            if "score" in properties
+            else "feedback"
+        )
         self.mts_calls.append((trait, stage, messages, schema, options))
         summary = self.profile[f"task{self.task}"]["trait_profiles"][trait]
         if stage == "evidence":
@@ -212,6 +217,7 @@ class ProfileProvider(Task1FakeProvider):
                 "strengths": [],
                 "improvements": [],
             }
+            output = {key: value for key, value in output.items() if key in properties}
         return Completion(json.dumps(output, ensure_ascii=False), finish_reason="stop")
 
 
@@ -233,11 +239,12 @@ async def assess_profile(task, profile, **provider_options):
 async def test_profiles_preserve_independent_core_scores_and_evidence_first_flow(task, profile):
     result, service, provider, events, req = await assess_profile(task, profile)
     assert result is not None and not service.failures and not service.diagnostics
-    assert len(provider.calls) == (11 if task == 1 else 9)
+    assert len(provider.calls) == (15 if task == 1 else 13)
     for trait in TRAITS:
         assert [stage for t, stage, *_ in provider.mts_calls if t == trait] == [
             "evidence",
             "scoring",
+            "feedback",
         ]
     assert list(result.criteria.model_dump()) == list(TRAITS)
     assert set(
@@ -265,8 +272,12 @@ async def test_profiles_preserve_independent_core_scores_and_evidence_first_flow
         assert "trait_profiles" not in str(messages) and "mock_scores" not in str(messages)
         if stage == "scoring":
             assert len(messages) == 2  # No other criterion's interaction or scores.
-            assert options.max_tokens == (4096 if task == 1 and trait == "ta" else 3072)
-            assert set(schema["properties"]) == {"score", "feedback", "strengths", "improvements"}
+            assert options.max_tokens == 128
+            assert set(schema["properties"]) == {"score"}
+        elif stage == "feedback":
+            assert payload["fixed_score"] == profile["mock_scores"][trait]
+            assert options.max_tokens == 1200
+            assert set(schema["properties"]) == {"feedback", "strengths", "improvements"}
         else:
             assert options.max_tokens == 1800
     assert result.raw_mean == sum(
@@ -283,4 +294,4 @@ async def test_full_half_band_range_survives_without_evidence_minimum_or_metadat
     assert result is not None and not service.diagnostics
     assert all(getattr(result.criteria, trait).score == Decimal(str(score)) for trait in TRAITS)
     assert result.raw_mean == result.overall_band == Decimal(str(score))
-    assert len(provider.calls) == (11 if task == 1 else 9)
+    assert len(provider.calls) == (15 if task == 1 else 13)

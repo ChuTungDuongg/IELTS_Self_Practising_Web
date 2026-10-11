@@ -141,12 +141,12 @@ def test_task1_evidence_preserves_exact_source_data_and_instruction_guard(trait)
 
 
 def test_task1_scoring_version_changes_cache_without_changing_visual_contract():
-    assert task1_input.TASK1_PROMPT_VERSION == "mts-task1-visual-v8"
+    assert task1_input.TASK1_PROMPT_VERSION == "mts-task1-visual-v9"
     assert getattr(task1_input, "TASK1_VISUAL_CONTRACT_VERSION", None) == "mts-task1-visual-v3"
-    assert getattr(task1_input, "TASK1_SCORING_PROMPT_VERSION", None) == "mts-task1-scoring-v8"
+    assert getattr(task1_input, "TASK1_SCORING_PROMPT_VERSION", None) == "mts-task1-scoring-v9"
     req = request()
     assert input_fingerprint(req, task1_input.TASK1_PROMPT_VERSION, "vllm", "model") != (
-        input_fingerprint(req, "mts-task1-visual-v6", "vllm", "model")
+        input_fingerprint(req, "mts-task1-visual-v8", "vllm", "model")
     )
 
 
@@ -254,15 +254,20 @@ def test_ta_evidence_is_representative_without_error_mining_or_quotas():
 
 
 @pytest.mark.parametrize("trait", ["lr", "gra"])
-def test_lr_and_gra_prompts_are_exactly_v5(trait):
+def test_lr_and_gra_descriptor_context_and_evidence_remain_v5(trait):
     req, grounded = request(), analysis()
     assert evidence_prompt(req, trait, grounded) == baseline_v5_prompts.evidence_prompt(
         req, trait, grounded
     )
     evidence = EvidenceResult(evidence=[])
-    assert score_prompt(req, trait, evidence, grounded) == baseline_v5_prompts.score_prompt(
-        req, trait, evidence, grounded
+    current = score_prompt(req, trait, evidence, grounded)
+    baseline = baseline_v5_prompts.score_prompt(req, trait, evidence, grounded)
+    assert current[1] == baseline[1]
+    assert (
+        current[0]["content"].split("Score 0 through 9")[0]
+        == baseline[0]["content"].split("Score 0 through 9")[0]
     )
+    assert "Return ONLY one field: score" in current[0]["content"]
 
 
 @pytest.mark.parametrize("stage", ["evidence", "scoring"])
@@ -283,19 +288,38 @@ def test_cc_prompts_differ_from_v5_only_by_their_own_guidance(stage):
     assert current[1] == baseline[1]
     assert current[0]["content"] != baseline[0]["content"]
     assert current[0]["content"].count(guidance) == 1
-    assert current[0]["content"].replace(guidance + "\n", "") == baseline[0]["content"]
+    current_context = current[0]["content"].split("Score 0 through 9")[0]
+    baseline_context = baseline[0]["content"].split("Score 0 through 9")[0]
+    assert current_context.replace(guidance + "\n", "") == baseline_context
 
 
 @pytest.mark.parametrize(
     "stage,expected_hash",
     [
         ("evidence", "b25fdba15bd6c2c77edb85a8c7bdbb3a0a428d8c009cfa4153ffbed8c435cb4c"),
-        ("scoring", "9db5d26d440047f9d68da91499c323e6597653fd5f5aec685bfc57a974728301"),
+        ("scoring", "18d236555fed6f39a705d759dcb2ea4a97145ee23d44175fe5d1381128d8101d"),
     ],
 )
-def test_ta_system_prompts_preserve_the_existing_v6_contract(stage, expected_hash):
+def test_ta_descriptor_context_preserves_the_existing_v6_contract(stage, expected_hash):
     # v6 also refined TA's Band 7 profile, so v5 is not its complete baseline.
-    assert hashlib.sha256(messages("ta", stage)[0]["content"].encode()).hexdigest() == expected_hash
+    system = messages("ta", stage)[0]["content"]
+    if stage == "scoring":
+        system = system.split("Score 0 through 9")[0]
+    assert hashlib.sha256(system.encode()).hexdigest() == expected_hash
+
+
+def test_historical_v8_benchmark_preserves_combined_prompt_contract():
+    from app.evaluation.task1.pre_score_first import PreScoreFirstTask1WritingScoringService
+
+    service = PreScoreFirstTask1WritingScoringService(Task1FakeProvider())
+    system = service._score_prompt(request(), "ta", EvidenceResult(evidence=[]), analysis())[0][
+        "content"
+    ]
+    assert (
+        hashlib.sha256(system.encode()).hexdigest()
+        == "9db5d26d440047f9d68da91499c323e6597653fd5f5aec685bfc57a974728301"
+    )
+    assert service.score_schema.__name__ == "RawScoringOutput"
 
 
 def test_cc_judges_progression_before_local_devices():
@@ -519,12 +543,7 @@ async def test_cc_keeps_every_valid_fake_provider_half_band_without_adjustment(b
                 "score" in schema["properties"]
                 and "Criterion: Coherence and Cohesion." in messages[0]["content"]
             ):
-                assert set(schema["properties"]) == {
-                    "score",
-                    "feedback",
-                    "strengths",
-                    "improvements",
-                }
+                assert set(schema["properties"]) == {"score"}
                 payload = json.loads(result.text)
                 payload["score"] = band
                 return Completion(json.dumps(payload), result.usage)
@@ -566,9 +585,9 @@ async def test_preserves_fake_provider_ta_score_and_v5_grounding(band):
         result is not None and result.criteria.ta.score == Decimal(str(band)) for result in results
     )
     assert results[0].task1_analysis == results[1].task1_analysis
-    assert len(providers[0].calls) == len(providers[1].calls) == 11
+    assert [len(p.calls) for p in providers] == [11, 15]
 
-    # Perception/claims and LR/GRA evidence/scoring remain identical to frozen v5.
+    # Perception/claims and LR/GRA evidence remain identical to frozen v5.
     def unchanged_calls(provider):
         return [
             call
@@ -576,6 +595,12 @@ async def test_preserves_fake_provider_ta_score_and_v5_grounding(band):
             if not any(
                 name in call[0]["content"]
                 for name in ("Criterion: Task Achievement.", "Criterion: Coherence and Cohesion.")
+            )
+            and (
+                isinstance(call[1]["content"], list)
+                or "allowed_ids" in call[1]["content"]
+                or "Extract at most" in call[0]["content"]
+                or "Classify only" in call[0]["content"]
             )
         ]
 
@@ -606,7 +631,7 @@ async def test_benchmark_legacy_uses_original_v3_guidance_with_same_perception_a
     assert all(result is not None and result.overall_band == Decimal(7) for result in results)
     assert results[0].task1_analysis == results[1].task1_analysis
     assert timelines[0] == timelines[1]
-    assert len(providers[0].calls) == len(providers[1].calls) == 11
+    assert [len(p.calls) for p in providers] == [15, 11]
 
     def auxiliary(call):
         return (
@@ -619,7 +644,11 @@ async def test_benchmark_legacy_uses_original_v3_guidance_with_same_perception_a
         call for call in providers[1].calls if auxiliary(call)
     ]
     for production, legacy in zip(
-        [call for call in providers[0].calls if not auxiliary(call)],
+        [
+            call
+            for call in providers[0].calls
+            if not auxiliary(call) and '"fixed_score"' not in call[1]["content"]
+        ],
         [call for call in providers[1].calls if not auxiliary(call)],
         strict=True,
     ):

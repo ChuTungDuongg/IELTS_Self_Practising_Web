@@ -9,6 +9,7 @@ import httpx
 from app.providers.writing_llm.base import (
     Completion,
     ProviderFailure,
+    safe_completion_usage,
     safe_finish_reason,
     validate_finish,
 )
@@ -203,7 +204,21 @@ class ChatCompletionHTTP:
             choice = data["choices"][0]
             finish = safe_finish_reason(choice.get("finish_reason"))
             logger.info("AI provider completion: finish_reason=%s", finish)
-            validate_finish(finish)
+            # Usage is safe metadata even when output was truncated. Preserve it
+            # for stage/attempt diagnostics without retaining incomplete content.
+            usage = data.get("usage") or {}
+            safe_usage = safe_completion_usage(usage)
+            try:
+                validate_finish(finish)
+            except ProviderFailure as exc:
+                exc.usage = safe_usage
+                raise
+            # Abort/error finishes remain hard failures even if optional usage
+            # metadata is malformed; feedback fallback must not mask them.
+            if not isinstance(usage, dict):
+                raise ProviderFailure(
+                    "AI_PROVIDER_BAD_RESPONSE", reason="MALFORMED_COMPLETION_ENVELOPE"
+                )
             text = choice["message"]["content"]
             if not isinstance(text, str):
                 raise ProviderFailure(
@@ -212,14 +227,6 @@ class ChatCompletionHTTP:
             if not text.strip():
                 raise ProviderFailure("AI_PROVIDER_BAD_RESPONSE", reason="EMPTY_MODEL_CONTENT")
             # Discard reasoning fields, provider metadata and arbitrary usage properties.
-            usage = data.get("usage") or {}
-            safe_usage = {
-                key: value
-                for key, value in usage.items()
-                if key in {"prompt_tokens", "completion_tokens", "total_tokens"}
-                and type(value) is int
-                and 0 <= value <= 10_000_000
-            }
             return Completion(text, safe_usage, finish)
         except (ValueError, KeyError, IndexError, TypeError, AttributeError):
             raise ProviderFailure(

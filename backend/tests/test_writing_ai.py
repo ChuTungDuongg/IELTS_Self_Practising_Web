@@ -35,7 +35,13 @@ from app.models import TestVersion as DomainVersion
 from app.models.enums import AttemptStatus, ModuleType, TimerMode, VersionStatus, WritingAIRunStatus
 from app.providers.writing_llm import create_provider, is_configured
 from app.providers.writing_llm.base import Completion, ProviderFailure
-from app.schemas.writing_ai import TRAITS, CriterionResult, EventPayload, TraitScore
+from app.schemas.writing_ai import (
+    TRAITS,
+    CriterionBandScore,
+    CriterionResult,
+    EventPayload,
+    TraitScore,
+)
 from app.services.mts_writing import MTSWritingScoringService
 from app.services.writing_ai import CANCELLATION_CODE, WritingAIService, input_fingerprint
 from app.services.writing_ai_worker import RunStopped, WritingAIWorker
@@ -362,7 +368,13 @@ class FakeProvider:
                 {"total_tokens": 10},
             )
         trait = next(trait for trait in TRAITS if TRAIT_NAMES[trait] in messages[0]["content"])
-        stage = "evidence" if "evidence" in schema["properties"] else "scoring"
+        stage = (
+            "evidence"
+            if "evidence" in schema["properties"]
+            else "scoring"
+            if "score" in schema["properties"]
+            else "feedback"
+        )
         self.attempts[trait, stage] = self.attempts.get((trait, stage), 0) + 1
         identity = trait, stage, self.attempts[trait, stage]
         self.calls.append(messages)
@@ -370,7 +382,7 @@ class FakeProvider:
             output = self.overrides[identity]
             if isinstance(output, Exception):
                 raise output
-            return Completion(output)
+            return output if isinstance(output, Completion) else Completion(output)
         if "evidence" in schema["properties"]:
             value = {
                 "evidence": [
@@ -387,7 +399,8 @@ class FakeProvider:
                 "strengths": ["Diễn đạt rõ ràng."],
                 "improvements": ["Bổ sung một ví dụ cụ thể."],
             }
-            self.scored += 1
+            self.scored += int(stage == "scoring")
+            value = {key: item for key, item in value.items() if key in schema["properties"]}
         return Completion(json.dumps(value), {"total_tokens": 10})
 
 
@@ -508,18 +521,21 @@ async def test_concurrent_out_of_order_checkpoints_are_canonical_replayable_and_
         assert metrics["provider_ready_ms"] >= 0
         assert metrics["llm_concurrency_limit"] == 2 and metrics["peak_active_llm_requests"] <= 2
         assert set(metrics["stages"]) == {"provider_ready", "relevance"} | {
-            f"{trait}.{stage}" for trait in TRAITS for stage in ("evidence", "scoring")
+            f"{trait}.{stage}" for trait in TRAITS for stage in ("evidence", "score", "feedback")
         }
         assert ESSAY not in json.dumps(metrics)
 
 
 @pytest.mark.parametrize("score", [Decimal(i) / 2 for i in range(19)])
 def test_ai_half_band_validation(score):
+    assert CriterionBandScore(score=score).score == score
     assert TraitScore(score=score, feedback="Useful.", strengths=[], improvements=[]).score == score
 
 
 @pytest.mark.parametrize("score", [-0.5, 9.5, 7.25, "NaN", "Infinity", "-Infinity"])
 def test_invalid_ai_scores(score):
+    with pytest.raises(ValidationError):
+        CriterionBandScore(score=score)
     with pytest.raises(ValidationError):
         TraitScore(score=score, feedback="Useful.", strengths=[], improvements=[])
 
@@ -583,7 +599,7 @@ async def test_success_persistence_cache_force_events_and_official_isolation(
         "criterion.started",
     ]
     assert events[0].event_type == "run.started" and events[-1].event_type == "run.completed"
-    assert len(provider.calls) == 9
+    assert len(provider.calls) == 13
     for trait in TRAITS:
         assert [
             event.event_type
@@ -600,9 +616,22 @@ async def test_success_persistence_cache_force_events_and_official_isolation(
         ]
         assert all(event.created_at is not None for event in events)
         calls = [call for call in provider.calls if TRAIT_NAMES[trait] in call[0]["content"]]
-        assert len(calls) == 2
+        assert len(calls) == 3
         assert all(
-            TRAIT_NAMES[other] not in calls[1][0]["content"] for other in TRAITS if other != trait
+            TRAIT_NAMES[other] not in call[0]["content"]
+            for call in calls
+            for other in TRAITS
+            if other != trait
+        )
+        assert json.loads(calls[1][0]["content"].split("JSON schema: ")[1])["required"] == ["score"]
+        assert set(json.loads(calls[2][0]["content"].split("JSON schema: ")[1])["required"]) == {
+            "feedback",
+            "strengths",
+            "improvements",
+        }
+        assert (
+            json.loads(calls[2][1]["content"])["fixed_score"]
+            == getattr(saved.result.criteria, trait).score
         )
         assert "UNTRUSTED DATA" in calls[0][0]["content"]
     cached = await api.create(attempt_id, task_id, force=False)
@@ -620,7 +649,7 @@ async def test_success_persistence_cache_force_events_and_official_isolation(
         )
         run = await db_session.get(WritingAIGradingRun, created.run_id)
         assert run.raw_mean == Decimal("6.375")
-        assert run.usage_json["calls"] == [{"total_tokens": 10}] * 9
+        assert run.usage_json["calls"] == [{"total_tokens": 10}] * 13
         assert run.usage_json["diagnostics"] == []
         assert run.usage_json["activity"]["phase"] == "completed"
         assert attempt.band_score == Decimal("7.0")
@@ -743,8 +772,9 @@ async def test_task_from_other_version_rejected(db_session, writing, settings):
     "bad",
     [
         "not json",
-        '{"score":7.25,"feedback":"x","strengths":[],"improvements":[]}',
-        '{"score":10,"feedback":"x","strengths":[],"improvements":[]}',
+        '{"score":7.25}',
+        '{"score":10}',
+        '{"score":6.5,"calibration":{"next_band":7}}',
     ],
 )
 async def test_bad_trait_call_repaired_once(db_session, writing, settings, bad):
@@ -755,12 +785,12 @@ async def test_bad_trait_call_repaired_once(db_session, writing, settings, bad):
     assert (
         await service(db_session, settings).get(created.run_id)
     ).status == WritingAIRunStatus.COMPLETED
-    assert len(provider.calls) == 10
+    assert len(provider.calls) == 14
     ta_scores = [
         call
         for call in provider.calls
         if TRAIT_NAMES["ta"] in call[0]["content"]
-        and "Return only four fields" in call[0]["content"]
+        and "Return ONLY one field: score" in call[0]["content"]
     ]
     assert len(ta_scores) == 2 and "Correction (" in ta_scores[1][-1]["content"]
     assert ta_scores[0][0] == ta_scores[1][0]
@@ -780,8 +810,16 @@ async def test_second_bad_call_fails_and_preserves_partial_progress(db_session, 
     run, events = await service(db_session, settings).snapshot(created.run_id, 0)
     assert run.status == WritingAIRunStatus.FAILED and run.error_code == "AI_PROVIDER_BAD_RESPONSE"
     assert set(run.progress) == {"ta", "lr", "gra"} and run.result is None
-    assert len(provider.calls) == 10 and events[-1].event_type == "run.failed"
+    assert len(provider.calls) == 13 and events[-1].event_type == "run.failed"
     assert "secret" not in run.model_dump_json() + str(events)
+    async with db_session.begin():
+        db_session.expire_all()
+        stored = await db_session.get(WritingAIGradingRun, run.id)
+        assert [
+            (d["stage"], d["criterion"], d["reason"], d["attempt"])
+            for d in stored.usage_json["diagnostics"]
+        ] == [("score", "cc", "INVALID_JSON", 1), ("score", "cc", "INVALID_JSON", 2)]
+    assert ("cc", "feedback") not in provider.attempts
     retried = await service(db_session, settings).create(attempt_id, task_id, force=False)
     assert retried.run_id != run.id
 
@@ -807,7 +845,7 @@ async def test_lr_evidence_failure_retains_ta_cc_runs_gra_and_terminates_replay(
     assert not any(
         e.event_type == "criterion.scoring.started" and e.payload.criterion == "lr" for e in events
     )
-    assert len(provider.calls) == 9
+    assert len(provider.calls) == 12
     assert set(run.failures) == {"lr"}
     assert [e.sequence for e in events] == list(range(1, len(events) + 1))
     async with db_session.begin():
@@ -849,7 +887,7 @@ async def test_lr_evidence_failure_retains_ta_cc_runs_gra_and_terminates_replay(
     forced = await api.create(attempt_id, task_id, force=True)
     fresh = FakeProvider()
     await worker(db_session, settings, fresh).execute(forced.run_id)
-    assert len(fresh.calls) == 9
+    assert len(fresh.calls) == 13
     assert (await api.get(run.id)).progress == run.progress
 
 
@@ -939,9 +977,14 @@ async def test_partial_checkpoint_visible_during_concurrent_work_and_heartbeat_i
         "malformed private metadata",
     ],
 )
-async def test_gra_optional_calibration_completes_persists_and_replays_without_retry(
+async def test_stored_v8_combined_result_with_optional_calibration_diagnostics_remains_readable(
     db_session, writing, settings, calibration
 ):
+    from app.domains.scoring.ai_writing_normalization import normalize_scoring_output
+    from app.domains.scoring.ai_writing_validation import sanitize_calibration
+    from app.domains.scoring.essay_sources import segment_essay
+    from app.schemas.writing_ai import AIWritingResult, RawScoringOutput
+
     attempt_id, _, task_id = writing
     api = service(db_session, settings)
     created = await api.create(attempt_id, task_id, force=False)
@@ -952,14 +995,84 @@ async def test_gra_optional_calibration_completes_persists_and_replays_without_r
         "improvements": ["Kiểm tra dấu câu ở các mệnh đề dài."],
         "calibration": calibration,
     }
-    provider = FakeProvider({("gra", "scoring", 1): json.dumps(gra)})
+    # v8 persisted the combined public result after sanitizing optional private
+    # metadata. Read that durable format without sending it through v9 inference.
+    raw = RawScoringOutput.model_validate(gra)
+    _, notices = sanitize_calibration(
+        raw.calibration, raw.score, {s.source_id: s for s in segment_essay(ESSAY)}
+    )
+    display, issues = normalize_scoring_output(raw)
+    assert not issues
+    criteria = {
+        trait: CriterionResult(
+            score=score,
+            feedback=gra["feedback"],
+            strengths=gra["strengths"],
+            improvements=gra["improvements"],
+            evidence=[
+                {
+                    "source_id": "P1S1",
+                    "quote": "Fictional parks improve city life.",
+                    "assessment": "Luận điểm trả lời yêu cầu của đề.",
+                }
+            ],
+        )
+        for trait, score in {"ta": 6.5, "cc": 6, "lr": 7, "gra": display.score}.items()
+    }
+    legacy_result = AIWritingResult(criteria=criteria, raw_mean=7, overall_band=7)
+    async with db_session.begin():
+        request = await api.input(attempt_id, task_id)
+        stored = await db_session.get(WritingAIGradingRun, created.run_id)
+        stored.status = WritingAIRunStatus.COMPLETED
+        stored.prompt_version = "mts-task2-v8"
+        stored.input_fingerprint = input_fingerprint(
+            request, stored.prompt_version, stored.provider, stored.model
+        )
+        stored.result_json = legacy_result.model_dump(mode="json")
+        stored.raw_mean = stored.overall_band = Decimal("7")
+        stored.started_at = stored.completed_at = stored.updated_at = datetime.now(UTC)
+        stored.usage_json = {
+            "calls": [{"total_tokens": 10}] * 9,
+            "diagnostics": [
+                {
+                    "stage": "scoring",
+                    "criterion": "gra",
+                    "reason": reason,
+                    "attempt": 1,
+                    "finish_reason": "stop",
+                    "validation_issues": [],
+                }
+                for reason in notices
+            ],
+        }
+        db_session.add_all(
+            [
+                WritingAIGradingEvent(
+                    run_id=created.run_id,
+                    sequence=index,
+                    event_type="criterion.completed",
+                    payload=EventPayload(criterion=trait, result=result).model_dump(mode="json"),
+                )
+                for index, (trait, result) in enumerate(criteria.items(), 1)
+            ]
+        )
+        db_session.add(
+            WritingAIGradingEvent(
+                run_id=created.run_id,
+                sequence=5,
+                event_type="run.completed",
+                payload=EventPayload().model_dump(mode="json"),
+            )
+        )
+    provider = FakeProvider()
     runner = worker(db_session, settings, provider)
-    await runner.execute(created.run_id)
     saved, events = await api.snapshot(created.run_id, 0)
     assert saved.status == WritingAIRunStatus.COMPLETED and not saved.failures
     assert saved.result.criteria.gra.score == Decimal("8.5")
     assert saved.result.raw_mean == Decimal("7") and saved.result.overall_band == Decimal("7")
-    assert set(saved.progress) == set(TRAITS) and len(provider.calls) == 9
+    assert saved.prompt_version == "mts-task2-v8" and saved.result == legacy_result
+    assert set(saved.progress) == set(TRAITS) and provider.calls == []
+    assert (await api.list(attempt_id, task_id)).items[0].result == legacy_result
     assert not any(e.event_type in {"criterion.retrying", "criterion.failed"} for e in events)
     completed = [e for e in events if e.event_type == "criterion.completed"]
     assert {e.payload.criterion for e in completed} == set(TRAITS)
@@ -974,7 +1087,7 @@ async def test_gra_optional_calibration_completes_persists_and_replays_without_r
     assert restored.progress == saved.progress
     assert [e.event_type for e in replay] == ["criterion.completed", "run.completed"]
     await runner.execute(created.run_id)
-    assert len(provider.calls) == 9
+    assert provider.calls == []
     assert "private" not in saved.model_dump_json() + str(events)
     async with db_session.begin():
         db_session.expire_all()
@@ -1000,9 +1113,11 @@ async def test_gra_optional_calibration_completes_persists_and_replays_without_r
         "mts-task2-v4",
         "mts-task2-v5",
         "mts-task2-v6",
+        "mts-task2-v7",
+        "mts-task2-v8",
     ],
 )
-async def test_old_cache_is_preserved_but_never_reused_for_v8(
+async def test_old_cache_is_preserved_but_never_reused_for_v9(
     db_session, writing, settings, old_version
 ):
     attempt_id, _, task_id = writing
@@ -1020,7 +1135,7 @@ async def test_old_cache_is_preserved_but_never_reused_for_v8(
     settings.ai_writing_prompt_version = old_version  # Existing deployed secret.
     upgraded = await api.create(attempt_id, task_id, force=False)
     assert upgraded.run_id != legacy.run_id and not upgraded.cache_hit
-    assert (await api.get(upgraded.run_id)).prompt_version == "mts-task2-v8"
+    assert (await api.get(upgraded.run_id)).prompt_version == "mts-task2-v9"
     history = await api.list(attempt_id, task_id)
     assert len(history.items) == 2
     assert history.items[1].prompt_version == old_version and history.items[1].result == old_result
@@ -1038,13 +1153,14 @@ async def test_verbose_lr_normalizes_persists_live_and_replays_without_inference
         "Cần lựa chọn từ chính xác hơn và kiểm tra dạng từ trong các ví dụ hỗ trợ. "
     ) * 8
     lr = {
-        "score": 6.5,
         "feedback": paragraph,
         "strengths": ["  ", paragraph, "Từ vựng phù hợp.", "Diễn đạt rõ ý.", "Một ý khác."],
         "improvements": [paragraph, "Chọn từ chính xác hơn."],
     }
 
-    provider = FakeProvider({("lr", "scoring", 1): json.dumps(lr)})
+    provider = FakeProvider(
+        {("lr", "scoring", 1): '{"score":6.5}', ("lr", "feedback", 1): json.dumps(lr)}
+    )
     runner = worker(db_session, settings, provider)
     original = runner._checkpoint
 
@@ -1061,7 +1177,7 @@ async def test_verbose_lr_normalizes_persists_live_and_replays_without_inference
     await runner.execute(created.run_id)
     saved, events = await api.snapshot(created.run_id, 0)
     assert saved.status == WritingAIRunStatus.COMPLETED
-    assert saved.result.overall_band == Decimal("6.5") and len(provider.calls) == 9
+    assert saved.result.overall_band == Decimal("6.5") and len(provider.calls) == 13
     result = saved.progress["lr"]
     assert result.score == Decimal("6.5") and result.feedback.endswith("…")
     assert len(result.feedback) <= 800 and paragraph.startswith(result.feedback[:-1])
@@ -1080,14 +1196,15 @@ async def test_verbose_lr_normalizes_persists_live_and_replays_without_inference
     assert snapshot.progress == saved.progress
     assert replay[0].payload.result == result
     await runner.execute(created.run_id)
-    assert len(provider.calls) == 9
+    assert len(provider.calls) == 13
     public = saved.model_dump_json() + str(events)
-    assert "SCORE_PRESENTATION_NORMALIZED" not in public and "validation_issues" not in public
+    assert "FEEDBACK_PRESENTATION_NORMALIZED" not in public and "validation_issues" not in public
     async with db_session.begin():
         db_session.expire_all()
         stored = await db_session.get(WritingAIGradingRun, created.run_id)
         diagnostic = stored.usage_json["diagnostics"][0]
-        assert diagnostic["reason"] == "SCORE_PRESENTATION_NORMALIZED"
+        assert diagnostic["stage"] == "feedback"
+        assert diagnostic["reason"] == "FEEDBACK_PRESENTATION_NORMALIZED"
         assert {"field": "feedback", "validation_type": "string_too_long"} in diagnostic[
             "validation_issues"
         ]
@@ -1099,6 +1216,54 @@ async def test_verbose_lr_normalizes_persists_live_and_replays_without_inference
         assert human.lr == 7 and (await db_session.get(Attempt, attempt_id)).band_score == Decimal(
             "7"
         )
+
+
+@pytest.mark.integration
+async def test_feedback_length_fallback_persists_fixed_score_and_replays_without_inference(
+    db_session, writing, settings
+):
+    attempt_id, _, task_id = writing
+    api = service(db_session, settings)
+    created = await api.create(attempt_id, task_id, force=False)
+    truncated = Completion('{"feedback":"private unfinished prose', finish_reason="length")
+    provider = FakeProvider({("lr", "feedback", 1): truncated, ("lr", "feedback", 2): truncated})
+    runner = worker(db_session, settings, provider)
+    await runner.execute(created.run_id)
+    saved, events = await api.snapshot(created.run_id, 0)
+    assert saved.status == WritingAIRunStatus.COMPLETED and not saved.failures
+    assert saved.result.criteria.lr.score == Decimal("7")
+    assert saved.result.raw_mean == Decimal("6.375") and saved.result.overall_band == Decimal("6.5")
+    assert set(saved.progress) == set(TRAITS) and len(provider.calls) == 14
+    lr = saved.progress["lr"]
+    assert "chưa khả dụng" in lr.feedback and lr.strengths == lr.improvements == []
+    assert lr.evidence[0].quote == "Fictional parks improve city life."
+    assert not any(e.event_type == "criterion.failed" for e in events)
+    completed = next(
+        e for e in events if e.event_type == "criterion.completed" and e.payload.criterion == "lr"
+    )
+    restored, replay = await api.snapshot(created.run_id, completed.sequence - 1)
+    assert restored == saved and replay[0].payload.result == lr
+    await runner.execute(created.run_id)
+    assert len(provider.calls) == 14
+    assert "private" not in saved.model_dump_json() + str(events)
+    async with db_session.begin():
+        db_session.expire_all()
+        stored = await db_session.get(WritingAIGradingRun, created.run_id)
+        assert [
+            (d["stage"], d["criterion"], d["reason"], d["attempt"])
+            for d in stored.usage_json["diagnostics"]
+        ] == [
+            ("feedback", "lr", "PROVIDER_FINISH_LENGTH", 1),
+            ("feedback", "lr", "PROVIDER_FINISH_LENGTH", 2),
+            ("feedback", "lr", "FEEDBACK_FALLBACK_USED", 2),
+        ]
+        assert stored.result_json["criteria"]["lr"] == lr.model_dump(mode="json")
+        assert "private" not in json.dumps(stored.usage_json)
+        human = await db_session.scalar(
+            select(AttemptWritingScore).where(AttemptWritingScore.attempt_id == attempt_id)
+        )
+        assert (human.lr, human.ta_feedback) == (7, "Human feedback stays.")
+        assert (await db_session.get(Attempt, attempt_id)).band_score == Decimal("7")
 
 
 @pytest.mark.integration
@@ -1233,7 +1398,70 @@ async def test_protocol_adapter_and_unknown_source_repair():
     )
     scoring: WritingScoringProvider = MTSWritingScoringService(provider)
     result = await scoring.score(request)
-    assert result.overall_band == 6.5 and len(provider.calls) == 10
+    assert result.overall_band == 6.5 and len(provider.calls) == 14
+
+
+@pytest.mark.parametrize(
+    "feedback",
+    [
+        "private malformed JSON",
+        Completion(""),
+        Completion('{"feedback":"private incomplete', finish_reason="length"),
+        '{"feedback":"Nhận xét.","strengths":[42],"improvements":[]}',
+        '{"feedback":"Nhận xét.","strengths":[],"improvements":[],"score":1}',
+    ],
+)
+async def test_protocol_adapter_preserves_score_after_feedback_repair_failure(feedback):
+    request = WritingScoringRequest(
+        attempt_id=uuid4(), writing_task_id=uuid4(), prompt="Fictional parks?", response=ESSAY
+    )
+    provider = FakeProvider({("lr", "feedback", 1): feedback, ("lr", "feedback", 2): feedback})
+    scoring = MTSWritingScoringService(provider)
+    result = await scoring.score(request)
+    assert result.overall_band == 6.5 and len(provider.calls) == 14
+    assert result.criterion_scores == {"ta": 6.5, "cc": 6, "lr": 7, "gra": 6}
+    assert "chưa khả dụng" in result.feedback["lr"]["feedback"]
+    assert result.feedback["lr"]["strengths"] == result.feedback["lr"]["improvements"] == []
+    assert result.feedback["lr"]["evidence"][0]["quote"] == "Fictional parks improve city life."
+    assert not scoring.failures
+    assert [(d.stage, d.criterion, d.attempt) for d in scoring.diagnostics] == [
+        ("feedback", "lr", 1),
+        ("feedback", "lr", 2),
+        ("feedback", "lr", 2),
+    ]
+    assert scoring.diagnostics[-1].reason == "FEEDBACK_FALLBACK_USED"
+    assert "private" not in str(scoring.diagnostics) + str(result.feedback)
+
+
+@pytest.mark.parametrize(
+    "score,reason",
+    [
+        ('{"score":6.3}', "INVALID_HALF_BAND"),
+        ('{"score":6.5,"calibration":{"private":"metadata"}}', "SCORE_SCHEMA_INVALID"),
+        ("private malformed JSON", "INVALID_JSON"),
+    ],
+)
+async def test_protocol_adapter_rejects_invalid_score_after_one_repair(score, reason):
+    request = WritingScoringRequest(
+        attempt_id=uuid4(), writing_task_id=uuid4(), prompt="Fictional parks?", response=ESSAY
+    )
+    provider = FakeProvider({("lr", "scoring", 1): score, ("lr", "scoring", 2): score})
+    scoring = MTSWritingScoringService(provider)
+    with pytest.raises(ProviderFailure) as failure:
+        await scoring.score(request)
+    assert failure.value.code == "AI_PROVIDER_BAD_RESPONSE"
+    assert len(provider.calls) == 13 and set(scoring.failures) == {"lr"}
+    assert ("lr", "feedback") not in provider.attempts
+    assert {trait for trait, state in scoring.states.items() if state.result is not None} == {
+        "ta",
+        "cc",
+        "gra",
+    }
+    assert [(d.stage, d.criterion, d.reason, d.attempt) for d in scoring.diagnostics] == [
+        ("score", "lr", reason, 1),
+        ("score", "lr", reason, 2),
+    ]
+    assert "private" not in str(scoring.diagnostics)
 
 
 @pytest.mark.integration

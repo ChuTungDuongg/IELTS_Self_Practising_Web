@@ -72,7 +72,13 @@ def call_identity(messages, schema):
         + "."
         in system
     )
-    return ("evidence" if "evidence" in properties else "scoring"), trait
+    return (
+        "evidence"
+        if "evidence" in properties
+        else "scoring"
+        if "score" in properties
+        else "feedback"
+    ), trait
 
 
 class FakeLatencyProvider:
@@ -96,17 +102,25 @@ class FakeLatencyProvider:
                 "claim_extraction": "claims",
                 "claim_verification": "verification",
                 "scoring": "score",
+                "feedback": "score",
             }.get(stage, stage)
+            output = (
+                {
+                    "verdict": "ON_TOPIC",
+                    "confidence": "HIGH",
+                    "source_ids": [],
+                    "reason": "Có liên hệ với đề bài.",
+                }
+                if stage == "relevance"
+                else self.fixture[key]
+            )
+            if stage in {"scoring", "feedback"}:
+                output = {
+                    name: value for name, value in output.items() if name in schema["properties"]
+                }
             return Completion(
                 json.dumps(
-                    {
-                        "verdict": "ON_TOPIC",
-                        "confidence": "HIGH",
-                        "source_ids": [],
-                        "reason": "Có liên hệ với đề bài.",
-                    }
-                    if stage == "relevance"
-                    else self.fixture[key],
+                    output,
                     ensure_ascii=False,
                 ),
                 dict(self.fixture["usage_per_call"]),

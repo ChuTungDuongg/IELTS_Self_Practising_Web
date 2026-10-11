@@ -17,7 +17,7 @@ from app.evaluation.task1.legacy_task2_v6 import (
 )
 from app.providers.writing_llm.base import Message
 from app.schemas.task1_claims import Task1Analysis
-from app.schemas.writing_ai import EvidenceResult, EvidenceSelection, Trait
+from app.schemas.writing_ai import EvidenceResult, EvidenceSelection, RawScoringOutput, Trait
 from app.services.task1_input import Task1ScoringRequest
 from app.services.task1_writing import Task1WritingScoringService
 
@@ -113,6 +113,8 @@ def score_prompt(
 
 class LegacyTask1WritingScoringService(Task1WritingScoringService):
     """Reuse current perception and validation with actual v3 prompt guidance."""
+
+    score_schema = RawScoringOutput
 
     def _evidence_prompt(
         self, request: Task1ScoringRequest, trait: Trait, analysis: Task1Analysis

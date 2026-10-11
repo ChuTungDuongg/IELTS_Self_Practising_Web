@@ -2,7 +2,7 @@ import logging
 
 from app.domains.scoring.ai_writing import aggregate_ai_task_two
 from app.domains.scoring.task1_facts import derive_facts
-from app.domains.scoring.task1_prompts import evidence_prompt, score_prompt
+from app.domains.scoring.task1_prompts import evidence_prompt, feedback_prompt, score_prompt
 from app.domains.writing.visual_families import visual_family
 from app.providers.chart_derendering import ChartDerenderingProvider
 from app.providers.writing_llm.base import LLMProvider, Message
@@ -270,6 +270,9 @@ class Task1WritingScoringService(MTSWritingScoringService):
             trace,
             lambda: self._evidence_prompt(request, trait, analysis),
             lambda evidence: self._score_prompt(request, trait, evidence, analysis),
+            lambda evidence, score: feedback_prompt(
+                request, trait, evidence, analysis, score.score
+            ),
         )
 
     def _task1_result(self, analysis):

@@ -6,8 +6,13 @@ from uuid import uuid4
 
 import pytest
 
+from app.domains.scoring.ai_writing_normalization import (
+    normalize_criterion_feedback,
+    normalize_scoring_output,
+)
 from app.domains.scoring.writing import WritingScoringRequest
 from app.providers.writing_llm.base import Completion
+from app.schemas.writing_ai import RawCriterionFeedbackOutput, RawScoringOutput
 from app.services.mts_writing import MTSWritingScoringService
 
 CORE = {
@@ -15,6 +20,12 @@ CORE = {
     "feedback": "Từ vựng nhìn chung phù hợp, nhưng vài cách kết hợp từ thiếu tự nhiên.",
     "strengths": ["Diễn đạt rõ ý chính."],
     "improvements": ["Rà soát cách kết hợp từ."],
+}
+SCORE = {"score": 6.5}
+FEEDBACK = {
+    "feedback": CORE["feedback"],
+    "strengths": CORE["strengths"],
+    "improvements": CORE["improvements"],
 }
 VERBOSE = (
     "Bài viết sử dụng từ vựng phù hợp để trình bày quan điểm về công viên; "
@@ -25,13 +36,14 @@ ESSAY = "Fictional parks improve city life. They  support communities."
 
 
 class Provider:
-    def __init__(self, lr_score):
-        self.lr_score = lr_score
+    def __init__(self, lr_feedback, lr_score=None):
+        self.lr_feedback = lr_feedback
+        self.lr_score = SCORE if lr_score is None else lr_score
         self.calls = []
 
     async def complete(self, messages, schema, *, options=None):
         if "verdict" in schema["properties"]:
-            # Keep legacy index-based overrides scoped to evidence/scoring calls.
+            # Keep call counts scoped to the three criterion stages.
             return Completion(
                 json.dumps(
                     {
@@ -43,20 +55,24 @@ class Provider:
                 )
             )
         self.calls.append((messages, schema))
-        evidence = "evidence" in schema["properties"]
         lr = "Criterion: Lexical Resource." in messages[0]["content"]
-        output = (
-            {"evidence": [{"source_id": "P1S2", "assessment": "Dẫn chứng liên quan."}]}
-            if evidence
-            else self.lr_score
-            if lr
-            else CORE
+        properties = set(schema["properties"])
+        if properties == {"evidence"}:
+            output = {"evidence": [{"source_id": "P1S2", "assessment": "Dẫn chứng liên quan."}]}
+        elif properties == {"score"}:
+            output = self.lr_score if lr else SCORE
+        else:
+            assert properties == {"feedback", "strengths", "improvements"}
+            output = self.lr_feedback if lr else FEEDBACK
+        return (
+            output
+            if isinstance(output, Completion)
+            else Completion(json.dumps(output), finish_reason="stop")
         )
-        return Completion(json.dumps(output), finish_reason="stop")
 
 
-async def assess(output):
-    provider = Provider(output)
+async def assess(output, score=None):
+    provider = Provider(output, score)
     service = MTSWritingScoringService(provider)
     events = []
 
@@ -90,9 +106,9 @@ async def test_verbose_lr_completes_without_repair_and_retains_safe_normalizatio
     change, path, error_type, caplog
 ):
     caplog.set_level("INFO", logger="app.services.mts_writing")
-    result, provider, service, events = await assess({**CORE, **change})
+    result, provider, service, events = await assess({**FEEDBACK, **change})
     assert result is not None and result.criteria.lr.score == Decimal("6.5")
-    assert result.overall_band == Decimal("6.5") and len(provider.calls) == 8
+    assert result.overall_band == Decimal("6.5") and len(provider.calls) == 12
     lr = result.criteria.lr
     assert len(lr.feedback) <= 800
     assert len(lr.strengths) <= 3 and all(0 < len(s) <= 240 for s in lr.strengths)
@@ -105,20 +121,20 @@ async def test_verbose_lr_completes_without_repair_and_retains_safe_normalizatio
         "gra",
     ]
     assert not any(e in {"criterion.retrying", "criterion.failed"} for e, _ in events)
-    assert service.diagnostics[0].reason == "SCORE_PRESENTATION_NORMALIZED"
+    assert service.diagnostics[0].stage == "feedback"
+    assert service.diagnostics[0].criterion == "lr"
+    assert service.diagnostics[0].reason == "FEEDBACK_PRESENTATION_NORMALIZED"
     assert (path, error_type) in [
         (i.field, i.validation_type) for i in service.diagnostics[0].validation_issues
     ]
     assert "AI validation failure" not in caplog.text
     assert VERBOSE not in caplog.text + str(service.diagnostics)
-    assert "SCORE_PRESENTATION_NORMALIZED" not in str(events)
+    assert "FEEDBACK_PRESENTATION_NORMALIZED" not in str(events)
 
 
 @pytest.mark.parametrize(
     "change",
     [
-        {"score": 6.3},
-        {"score": 10},
         {"feedback": "  \n\t"},
         {"feedback": 42},
         {"strengths": "invalid"},
@@ -126,12 +142,74 @@ async def test_verbose_lr_completes_without_repair_and_retains_safe_normalizatio
         {"strengths": [42]},
         {"improvements": [None]},
         {"unknown": "private"},
+        {"score": 6.3},
+        {"score": 10},
+        {"feedback": "Bài viết phù hợp Band 5."},
     ],
 )
-async def test_invalid_semantic_lr_still_repairs_once_fails_and_runs_gra(change):
-    result, provider, service, events = await assess({**CORE, **change})
+async def test_invalid_lr_feedback_repairs_once_preserves_fixed_score_and_runs_gra(change):
+    result, provider, service, events = await assess({**FEEDBACK, **change})
+    assert result is not None and not service.failures
+    assert result.criteria.lr.score == Decimal("6.5")
+    assert result.overall_band == Decimal("6.5")
+    assert result.criteria.lr.strengths == result.criteria.lr.improvements == []
+    assert "chưa khả dụng" in result.criteria.lr.feedback
+    assert result.criteria.lr.evidence[0].quote == "They  support communities."
+    assert len(provider.calls) == 13
+    assert sum(e == "criterion.retrying" for e, _ in events) == 1
+    assert not any(e == "criterion.failed" for e, _ in events)
+    assert any(e == "criterion.completed" and p.criterion == "gra" for e, p in events)
+    assert [d.stage for d in service.diagnostics] == ["feedback"] * 3
+    assert service.diagnostics[-1].reason == "FEEDBACK_FALLBACK_USED"
+    assert all(getattr(result.criteria, t).score == Decimal("6.5") for t in ("ta", "cc", "gra"))
+
+
+@pytest.mark.parametrize(
+    "score", [{"score": 6.3}, {"score": 10}, {}, {**SCORE, "feedback": VERBOSE}]
+)
+async def test_invalid_lr_score_still_repairs_once_fails_and_runs_gra(score):
+    result, provider, service, events = await assess(FEEDBACK, score)
     assert result is None and set(service.failures) == {"lr"}
-    assert len(provider.calls) == 9
+    assert len(provider.calls) == 12
     assert sum(e == "criterion.retrying" for e, _ in events) == 1
     assert any(e == "criterion.failed" and p.criterion == "lr" for e, p in events)
     assert any(e == "criterion.completed" and p.criterion == "gra" for e, p in events)
+    assert all(d.stage == "score" for d in service.diagnostics)
+    lr_calls = [
+        (m, s) for m, s in provider.calls if "Criterion: Lexical Resource." in m[0]["content"]
+    ]
+    assert [set(s["properties"]) for _, s in lr_calls] == [{"evidence"}, {"score"}, {"score"}]
+
+
+@pytest.mark.parametrize(
+    "change,path,error_type",
+    [
+        ({"feedback": VERBOSE}, "feedback", "string_too_long"),
+        ({"strengths": ["Một điểm mạnh.", VERBOSE]}, "strengths.1", "string_too_long"),
+        ({"improvements": [VERBOSE]}, "improvements.0", "string_too_long"),
+        ({"strengths": ["Điểm mạnh."] * 4}, "strengths", "too_long"),
+        ({"improvements": ["Cần cải thiện."] * 4}, "improvements", "too_long"),
+        ({"strengths": ["  ", "Điểm mạnh."]}, "strengths.0", "string_too_short"),
+    ],
+)
+def test_historical_raw_scoring_display_normalization_preserves_accepted_score(
+    change, path, error_type
+):
+    raw = RawScoringOutput.model_validate({**CORE, **change})
+    result, issues = normalize_scoring_output(raw)
+    assert result.score == Decimal("6.5")
+    assert len(result.feedback) <= 800
+    assert len(result.strengths) <= 3 and all(0 < len(s) <= 240 for s in result.strengths)
+    assert len(result.improvements) <= 3 and all(0 < len(s) <= 240 for s in result.improvements)
+    assert (path, error_type) in [(i.field, i.validation_type) for i in issues]
+
+
+def test_raw_feedback_normalization_preserves_vietnamese_and_internal_whitespace():
+    text = "  Từ vựng  rõ ràng; aren’t “parks” useful?  "
+    raw = RawCriterionFeedbackOutput.model_validate(
+        {"feedback": text, "strengths": [text], "improvements": []}
+    )
+    result, issues = normalize_criterion_feedback(raw, Decimal("6.5"))
+    assert result.feedback == text.strip()
+    assert result.strengths == [text.strip()]
+    assert not issues

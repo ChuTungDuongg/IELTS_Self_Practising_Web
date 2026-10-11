@@ -9,9 +9,15 @@ import json
 
 from app.domains.scoring.essay_sources import SourceSegment, segment_essay
 from app.providers.writing_llm.base import Message, OutputFailureReason
-from app.schemas.writing_ai import EvidenceResult, EvidenceSelection, ScoringOutput, Trait
+from app.schemas.writing_ai import (
+    CriterionBandScore,
+    CriterionFeedbackOutput,
+    EvidenceResult,
+    EvidenceSelection,
+    Trait,
+)
 
-AI_WRITING_PROMPT_VERSION = "mts-task2-v8"
+AI_WRITING_PROMPT_VERSION = "mts-task2-v9"
 
 
 def effective_prompt_version(configured: str) -> str:
@@ -28,6 +34,7 @@ def effective_prompt_version(configured: str) -> str:
             "mts-task2-v5",
             "mts-task2-v6",
             "mts-task2-v7",
+            "mts-task2-v8",
             AI_WRITING_PROMPT_VERSION,
         }
         else f"{AI_WRITING_PROMPT_VERSION}:{configured}"[:80]
@@ -110,6 +117,21 @@ GUARD = (
     "Write all explanatory fields in natural Vietnamese. Source quotations remain original English and are supplied by backend lookup, never translated. "
     "Give concise, specific, respectful and actionable content based on the essay. No generic filler or headings: the application owns headings."
 )
+SCORE_ONLY_GUIDANCE = (
+    "Score 0 through 9 in increments of 0.5 only. Return ONLY one field: score. "
+    "Do not return feedback, strengths, improvements, rationale, calibration or metadata. "
+    'Return a tiny complete JSON object, for example {"score":6.5}.'
+)
+FEEDBACK_GUIDANCE = (
+    "The supplied fixed_score is already validated and authoritative. Do not rescore, "
+    "return a score field or suggest a different band. Explain this fixed band using only "
+    "this criterion's descriptor context, the whole essay and representative evidence. "
+    "If mentioning a numeric Band, mention only fixed_score; describe improvements without "
+    "other numeric band labels. Return only feedback, strengths, improvements. "
+    "Feedback is one concise Vietnamese paragraph (at most 800 characters). "
+    "Strengths and improvements are Vietnamese, at most 3 each and at most 240 characters "
+    "per item. Do not invent strengths or weaknesses to fill a quota. No hidden reasoning."
+)
 
 
 def source_text(sources: list[SourceSegment]) -> str:
@@ -147,7 +169,7 @@ def scoring_messages(
     evidence: EvidenceResult,
     sources: list[SourceSegment] | None = None,
 ) -> list[Message]:
-    schema = ScoringOutput.model_json_schema(mode="serialization")
+    schema = CriterionBandScore.model_json_schema(mode="serialization")
     sources = sources if sources is not None else segment_essay(essay)
     return [
         {
@@ -157,14 +179,7 @@ def scoring_messages(
                 "Semantic authority: official IELTS Writing Task 2 Band Descriptors (May 2023); "
                 f"faithful whole-band paraphrases: {RUBRICS[trait]} {LOW_BANDS[trait]} {COMMON_LOW_GUIDANCE}\n"
                 f"{DESCRIPTOR_FIT_GUIDANCE}\n"
-                "Score 0 through 9 in increments of 0.5 only.\n"
-                "Return only four fields: score, feedback, strengths, improvements. "
-                "Feedback is one concise Vietnamese paragraph (at most 800 characters) explaining why "
-                "the returned band best fits this criterion, using notable strengths and meaningful "
-                "limitations where present. "
-                "Strengths and improvements are Vietnamese, at most 3 each and at most 240 characters per item. "
-                "Keep score and feedback consistent with this criterion's descriptor fit. "
-                f"Do not return nested calibration metadata or hidden reasoning. JSON schema: {json.dumps(schema)}"
+                f"{SCORE_ONLY_GUIDANCE}\nJSON schema: {json.dumps(schema)}"
             ),
         },
         {
@@ -186,13 +201,35 @@ def scoring_messages(
     ]
 
 
-def correction_message(reason: OutputFailureReason) -> Message:
+def feedback_messages(prompt, essay, trait, evidence, score, sources=None) -> list[Message]:
+    # The complete source context is identical to scoring, with only this trait's
+    # accepted band added. No IDs, clocks or another trait's score enter the prompt.
+    payload = json.loads(scoring_messages(prompt, essay, trait, evidence, sources)[1]["content"])
+    payload["fixed_score"] = float(score)
+    return [
+        {
+            "role": "system",
+            "content": (
+                f"{GUARD}\nCriterion: {TRAIT_NAMES[trait]}. {SCOPES[trait]}\n"
+                "Semantic authority: official IELTS Writing Task 2 Band Descriptors (May 2023); "
+                f"faithful whole-band paraphrases: {RUBRICS[trait]} {LOW_BANDS[trait]} {COMMON_LOW_GUIDANCE}\n"
+                f"{FEEDBACK_GUIDANCE}\nJSON schema: "
+                f"{json.dumps(CriterionFeedbackOutput.model_json_schema(mode='serialization'))}"
+            ),
+        },
+        {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
+    ]
+
+
+def correction_message(reason: OutputFailureReason, stage=None) -> Message:
     guidance = {
         "INVALID_JSON": "Return only valid JSON matching the supplied schema; no markdown or extra fields.",
         "SCHEMA_VALIDATION": "Return only JSON matching every required field and supplied schema; no markdown or extra fields.",
         "EVIDENCE_UNKNOWN_SOURCE_ID": "Return only source_id values from the provided allowed IDs. Never return or reproduce a quote.",
         "EVIDENCE_SCHEMA_INVALID": "Return only the evidence selection JSON schema, with allowed source_id and Vietnamese assessment; no quote field.",
-        "SCORE_SCHEMA_INVALID": "Return only score, bounded Vietnamese feedback, strengths and improvements matching the scoring schema.",
+        "SCORE_SCHEMA_INVALID": "Return only JSON matching the supplied scoring schema, without extra fields.",
+        "FEEDBACK_SCHEMA_INVALID": "Return only non-blank Vietnamese feedback and string lists strengths/improvements; no score or extra fields.",
+        "FEEDBACK_SCORE_MISMATCH": "Explain only the supplied fixed_score. Do not rescore or mention any different numeric Band.",
         # Compatibility with old provider adapters only; v5 never emits this
         # failure for optional metadata and never repairs metadata alone.
         "SCORE_CALIBRATION_INVALID": "Return only the core score, Vietnamese feedback, strengths and improvements; omit optional metadata.",
@@ -211,5 +248,12 @@ def correction_message(reason: OutputFailureReason) -> Message:
     }
     return {
         "role": "system",
-        "content": f"Correction ({reason}): {guidance[reason]} Write all explanatory fields in natural Vietnamese; preserve original English quotes. Do not include hidden reasoning.",
+        "content": f"Correction ({reason}): {guidance[reason]} "
+        + (
+            SCORE_ONLY_GUIDANCE
+            if stage == "score"
+            else FEEDBACK_GUIDANCE
+            if stage == "feedback"
+            else "Write all explanatory fields in natural Vietnamese; preserve original English quotes. Do not include hidden reasoning."
+        ),
     }

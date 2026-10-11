@@ -2,11 +2,19 @@
 
 import re
 import unicodedata
+from decimal import Decimal
 
 from pydantic import ValidationError
 
 from app.domains.scoring.ai_writing_validation import safe_validation_issues
-from app.schemas.writing_ai import RawScoringOutput, ScoringOutput, ValidationIssue
+from app.providers.writing_llm.base import ProviderFailure
+from app.schemas.writing_ai import (
+    CriterionFeedbackOutput,
+    RawCriterionFeedbackOutput,
+    RawScoringOutput,
+    ScoringOutput,
+    ValidationIssue,
+)
 
 
 def normalize_feedback(text: str, max_chars: int = 800) -> str:
@@ -47,6 +55,27 @@ def normalize_bullets(values: list[str], max_items: int = 3, max_chars: int = 24
         if value.strip():
             items.append(normalize_feedback(value, max_chars))
     return items
+
+
+def normalize_criterion_feedback(
+    raw: RawCriterionFeedbackOutput, score
+) -> tuple[CriterionFeedbackOutput, list[ValidationIssue]]:
+    # Reject explicit conflicting band claims, including in bullets. The feedback
+    # prompt permits only the fixed band's numeric label, not adjacent-band prose.
+    for text in [raw.feedback, *raw.strengths, *raw.improvements]:
+        for match in re.finditer(r"\bband\s*[:=–-]?\s*(\d+(?:[.,]\d+)?)", text, re.IGNORECASE):
+            if Decimal(match[1].replace(",", ".")) != score:
+                raise ProviderFailure("AI_PROVIDER_BAD_RESPONSE", reason="FEEDBACK_SCORE_MISMATCH")
+    data = raw.model_dump()
+    try:
+        return CriterionFeedbackOutput.model_validate(data), []
+    except ValidationError as error:
+        issues = safe_validation_issues(error)
+    return CriterionFeedbackOutput(
+        feedback=normalize_feedback(raw.feedback),
+        strengths=normalize_bullets(raw.strengths),
+        improvements=normalize_bullets(raw.improvements),
+    ), issues
 
 
 def normalize_scoring_output(

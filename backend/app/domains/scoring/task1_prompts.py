@@ -8,10 +8,21 @@ Descriptor fit determines bands; perception confidence is not a band criterion.
 import json
 
 from app.domains.scoring.essay_sources import segment_essay
-from app.domains.scoring.mts_prompts import DESCRIPTOR_FIT_GUIDANCE, source_text
+from app.domains.scoring.mts_prompts import (
+    DESCRIPTOR_FIT_GUIDANCE,
+    FEEDBACK_GUIDANCE,
+    SCORE_ONLY_GUIDANCE,
+    source_text,
+)
 from app.providers.writing_llm.base import Message
 from app.schemas.task1_claims import Task1Analysis
-from app.schemas.writing_ai import EvidenceResult, EvidenceSelection, ScoringOutput, Trait
+from app.schemas.writing_ai import (
+    CriterionBandScore,
+    CriterionFeedbackOutput,
+    EvidenceResult,
+    EvidenceSelection,
+    Trait,
+)
 from app.services.task1_input import Task1ScoringRequest
 
 DATA_GUARD = (
@@ -346,8 +357,12 @@ def evidence_prompt(
     ]
 
 
-def score_prompt(
-    request: Task1ScoringRequest, trait: Trait, evidence: EvidenceResult, analysis: Task1Analysis
+def _assessment_prompt(
+    request: Task1ScoringRequest,
+    trait: Trait,
+    evidence: EvidenceResult,
+    analysis: Task1Analysis,
+    fixed_score=None,
 ) -> list[Message]:
     ta_guidance = f"{TASK1_TA_DESCRIPTOR_DISCRIMINATION_GUIDANCE}\n" if trait == "ta" else ""
     cc_guidance = f"{TASK1_CC_DESCRIPTOR_DISCRIMINATION_GUIDANCE}\n" if trait == "cc" else ""
@@ -363,6 +378,9 @@ def score_prompt(
     if trait == "ta":
         payload["task_type"] = request.task_type.value
         payload.update(grounded_context(analysis))
+    if fixed_score is not None:
+        payload["fixed_score"] = float(fixed_score)
+    schema = CriterionBandScore if fixed_score is None else CriterionFeedbackOutput
     return [
         {
             "role": "system",
@@ -375,16 +393,17 @@ def score_prompt(
                 f"{ta_guidance}"
                 f"{cc_guidance}"
                 f"{GROUNDED_TA_GUIDANCE if trait == 'ta' else ''}\n"
-                "Score 0 through 9 in increments of 0.5 only. Return only four fields: score, "
-                "feedback, strengths, improvements. Feedback is one concise Vietnamese paragraph "
-                "(at most 800 characters) explaining why the returned band best fits this criterion, "
-                "using notable strengths and meaningful limitations where present. Strengths "
-                "and improvements are Vietnamese, at most 3 each and at most 240 characters per "
-                "item. Keep score and feedback consistent with this criterion's descriptor fit; give "
-                "specific, respectful and actionable advice without generic filler or headings. "
-                "Do not return nested calibration metadata or hidden reasoning. "
-                f"JSON schema: {json.dumps(ScoringOutput.model_json_schema(mode='serialization'))}"
+                f"{SCORE_ONLY_GUIDANCE if fixed_score is None else FEEDBACK_GUIDANCE}\n"
+                f"JSON schema: {json.dumps(schema.model_json_schema(mode='serialization'))}"
             ),
         },
         {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
     ]
+
+
+def score_prompt(request, trait, evidence, analysis) -> list[Message]:
+    return _assessment_prompt(request, trait, evidence, analysis)
+
+
+def feedback_prompt(request, trait, evidence, analysis, score) -> list[Message]:
+    return _assessment_prompt(request, trait, evidence, analysis, fixed_score=score)

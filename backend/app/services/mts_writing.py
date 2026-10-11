@@ -5,7 +5,10 @@ from typing import TypeVar
 from pydantic import BaseModel, ValidationError
 
 from app.domains.scoring.ai_writing import aggregate_ai_task_two
-from app.domains.scoring.ai_writing_normalization import normalize_scoring_output
+from app.domains.scoring.ai_writing_normalization import (
+    normalize_criterion_feedback,
+    normalize_scoring_output,
+)
 from app.domains.scoring.ai_writing_validation import (
     resolve_evidence,
     safe_validation_issues,
@@ -13,7 +16,12 @@ from app.domains.scoring.ai_writing_validation import (
     validation_reason,
 )
 from app.domains.scoring.essay_sources import SourceSegment, segment_essay
-from app.domains.scoring.mts_prompts import correction_message, evidence_messages, scoring_messages
+from app.domains.scoring.mts_prompts import (
+    correction_message,
+    evidence_messages,
+    feedback_messages,
+    scoring_messages,
+)
 from app.domains.scoring.writing import WritingScoringRequest, WritingScoringResult
 from app.providers.writing_llm.base import (
     CompletionOptions,
@@ -27,14 +35,18 @@ from app.schemas.writing_ai import (
     TRAITS,
     AIWritingResult,
     AssessmentStage,
+    CompletionStage,
     Criteria,
+    CriterionBandScore,
     CriterionFailure,
+    CriterionFeedbackOutput,
     CriterionResult,
     EventPayload,
     EventType,
     EvidenceResult,
     EvidenceSelection,
     OutputDiagnostic,
+    RawCriterionFeedbackOutput,
     RawScoringOutput,
     ScoringOutput,
     Trait,
@@ -52,22 +64,39 @@ T = TypeVar("T", bound=BaseModel)
 TraceCallback = Callable[[EventType, EventPayload], Awaitable[None]]
 logger = logging.getLogger(__name__)
 
-# Evidence selects at most four IDs/short assessments. Scoring allows an
-# 800-character paragraph plus six 240-character bullets, with headroom over
-# the observed 1800-token truncation. A length repair adds at most 1024 tokens;
-# the 4096 hard cap stays within half of the deployed 8192-token context.
-# The adapter may lower it to verified remaining context without truncating input.
+# Independent caps protect the score from explanation verbosity. One length
+# repair adds only stage-specific headroom; input is never truncated.
 EVIDENCE_MAX_TOKENS = 1800
+SCORE_MAX_TOKENS = 128
+FEEDBACK_MAX_TOKENS = 1200
+STAGE_REPAIR_HEADROOM = {"evidence": 256, "score": 128, "feedback": 200, "scoring": 1024}
+# Frozen evaluation baselines retain their original combined-output cap.
 SCORING_MAX_TOKENS = 3072
-LENGTH_REPAIR_HEADROOM_TOKENS = 1024
 COMPLETION_MAX_TOKENS = 4096
+FEEDBACK_FALLBACK = (
+    "Nhận xét chi tiết hiện chưa khả dụng; điểm tham khảo cho tiêu chí này đã được chấm hoàn tất."
+)
+FEEDBACK_RECOVERABLE_REASONS = frozenset(
+    {
+        "INVALID_JSON",
+        "SCHEMA_VALIDATION",
+        "FEEDBACK_SCHEMA_INVALID",
+        "FEEDBACK_SCORE_MISMATCH",
+        "EMPTY_MODEL_CONTENT",
+        "MALFORMED_COMPLETION_ENVELOPE",
+        "OUTPUT_TOO_LARGE",
+        "PROVIDER_FINISH_LENGTH",
+    }
+)
 
 
 class MTSWritingScoringService:
     """Implements the existing WritingScoringProvider concept with an LLM boundary.
 
-    Each trait owns two fresh logical turns. No other trait's score is shared.
+    Each trait owns evidence, score-only and feedback turns. Scores are independent.
     """
+
+    score_schema = CriterionBandScore
 
     def __init__(
         self,
@@ -137,46 +166,67 @@ class MTSWritingScoringService:
         schema: type[T],
         sources: dict[str, SourceSegment],
         trait: Trait,
-        stage: AssessmentStage,
+        stage: AssessmentStage | CompletionStage,
         trace: TraceCallback,
     ) -> T:
         state = self.states[trait]
-        state.stage = stage
+        # Keep the public SSE stage vocabulary compatible with existing clients.
+        state.stage = "scoring" if stage in {"score", "feedback"} else stage
         with self.latency.stage(stage, trait):
             return await self._validated_stage(messages, schema, sources, trait, stage, trace)
 
-    def _normal_completion_budget(self, trait: Trait, stage: AssessmentStage) -> int:
-        return EVIDENCE_MAX_TOKENS if stage == "evidence" else SCORING_MAX_TOKENS
+    def _normal_completion_budget(
+        self, trait: Trait, stage: AssessmentStage | CompletionStage
+    ) -> int:
+        return {
+            "evidence": EVIDENCE_MAX_TOKENS,
+            "score": SCORE_MAX_TOKENS,
+            "feedback": FEEDBACK_MAX_TOKENS,
+            "scoring": SCORING_MAX_TOKENS,
+        }[stage]
 
     async def _validated_stage(self, messages, schema, sources, trait, stage, trace):
         state = self.states[trait]
         reason = "SCHEMA_VALIDATION"
         normal_max_tokens = self._normal_completion_budget(trait, stage)
-        await trace(
-            "evidence.request.started" if stage == "evidence" else "criterion.scoring.started",
-            EventPayload(criterion=trait, stage=stage),
-        )
+        public_stage = "scoring" if stage in {"score", "feedback"} else stage
+        if stage != "feedback":
+            await trace(
+                "evidence.request.started" if stage == "evidence" else "criterion.scoring.started",
+                EventPayload(criterion=trait, stage=public_stage),
+            )
         for repair in range(2):
             finish_reason = None
             issues = []
+            repair_headroom = (
+                1024 if self.score_schema is RawScoringOutput else STAGE_REPAIR_HEADROOM[stage]
+            )
             max_tokens = (
-                min(normal_max_tokens + LENGTH_REPAIR_HEADROOM_TOKENS, COMPLETION_MAX_TOKENS)
+                normal_max_tokens + repair_headroom
                 if repair and reason == "PROVIDER_FINISH_LENGTH"
                 else normal_max_tokens
             )
+            if self.score_schema is RawScoringOutput:
+                max_tokens = min(max_tokens, COMPLETION_MAX_TOKENS)
             try:
                 with self.latency.attempt(stage, trait, repair + 1) as timing:
                     try:
                         completion = await self.provider.complete(
-                            messages + ([correction_message(reason)] if repair else []),
+                            messages + ([correction_message(reason, stage)] if repair else []),
                             # Provider display limits remain independent of semantic validation.
                             (
-                                ScoringOutput if schema is RawScoringOutput else schema
+                                ScoringOutput
+                                if schema is RawScoringOutput
+                                else CriterionFeedbackOutput
+                                if schema is RawCriterionFeedbackOutput
+                                else schema
                             ).model_json_schema(mode="serialization"),
                             options=CompletionOptions(max_tokens=max_tokens),
                         )
                     except ProviderFailure as exc:
-                        self.latency.completion(timing, exc.finish_reason, {})
+                        self.latency.completion(timing, exc.finish_reason, exc.usage)
+                        if exc.usage:
+                            state.usage.append(exc.usage)
                         raise
                     self.latency.completion(timing, completion.finish_reason, completion.usage)
                 state.usage.append(completion.usage)
@@ -190,15 +240,29 @@ class MTSWritingScoringService:
                     timing.get("completion_tokens"),
                 )
                 validate_finish(completion.finish_reason)
-                await trace(
-                    "evidence.validation.started"
-                    if stage == "evidence"
-                    else "criterion.scoring.validation.started",
-                    EventPayload(criterion=trait, stage=stage),
-                )
+                if stage != "feedback":
+                    await trace(
+                        "evidence.validation.started"
+                        if stage == "evidence"
+                        else "criterion.scoring.validation.started",
+                        EventPayload(criterion=trait, stage=public_stage),
+                    )
                 result = schema.model_validate_json(completion.text)
                 if isinstance(result, EvidenceSelection):
                     resolve_evidence(result, sources)
+                if isinstance(result, RawCriterionFeedbackOutput):
+                    result, issues = normalize_criterion_feedback(result, state.band_score.score)
+                    if issues:
+                        state.diagnostics.append(
+                            OutputDiagnostic(
+                                stage=stage,
+                                criterion=trait,
+                                reason="FEEDBACK_PRESENTATION_NORMALIZED",
+                                attempt=repair + 1,
+                                finish_reason=finish_reason,
+                                validation_issues=issues,
+                            )
+                        )
                 if isinstance(result, RawScoringOutput):
                     calibration, notices = sanitize_calibration(
                         result.calibration, result.score, sources
@@ -263,12 +327,13 @@ class MTSWritingScoringService:
             )
             state.diagnostics.append(diagnostic)
             logger.warning(
-                "AI validation failure: stage=%s criterion=%s reason=%s attempt=%s finish_reason=%s",
+                "AI validation failure: stage=%s criterion=%s reason=%s attempt=%s finish_reason=%s completion_tokens=%s",
                 stage,
                 trait,
                 reason,
                 repair + 1,
                 finish_reason,
+                timing.get("completion_tokens"),
             )
             for issue in issues:
                 logger.warning(
@@ -282,7 +347,7 @@ class MTSWritingScoringService:
                     issue.validation_type,
                 )
             if not repair:
-                await trace("criterion.retrying", EventPayload(criterion=trait, stage=stage))
+                await trace("criterion.retrying", EventPayload(criterion=trait, stage=public_stage))
         raise ProviderFailure("AI_PROVIDER_BAD_RESPONSE", reason=reason)
 
     async def assess(
@@ -350,7 +415,9 @@ class MTSWritingScoringService:
         await trace("criterion.completed", EventPayload(criterion="ta", result=result))
         return True
 
-    async def _run_criterion(self, request, trait, trace, evidence_prompt, score_prompt):
+    async def _run_criterion(
+        self, request, trait, trace, evidence_prompt, score_prompt, feedback_prompt=None
+    ):
         state = self.states[trait]
         await trace("criterion.started", EventPayload(criterion=trait))
         try:
@@ -360,6 +427,7 @@ class MTSWritingScoringService:
                 trace,
                 evidence_prompt() if callable(evidence_prompt) else evidence_prompt,
                 score_prompt,
+                feedback_prompt,
             )
         except TraceFailure:
             raise
@@ -386,6 +454,8 @@ class MTSWritingScoringService:
         trace: TraceCallback,
         evidence_prompt: list[Message],
         score_prompt: Callable[[EvidenceResult], list[Message]],
+        feedback_prompt: Callable[[EvidenceResult, CriterionBandScore], list[Message]]
+        | None = None,
     ) -> CriterionResult:
         """Shared source validation/normalization for task-specific criterion prompts."""
         sources = {segment.source_id: segment for segment in segment_essay(request.response)}
@@ -399,10 +469,47 @@ class MTSWritingScoringService:
         )
         self.states[trait].stage = "scoring"
         score = await self._validated(
-            score_prompt(evidence), RawScoringOutput, sources, trait, "scoring", trace
+            score_prompt(evidence),
+            self.score_schema,
+            sources,
+            trait,
+            "scoring" if self.score_schema is RawScoringOutput else "score",
+            trace,
         )
+        if isinstance(score, RawScoringOutput):
+            # Evaluation-only frozen baselines keep their combined contract.
+            return CriterionResult(
+                **score.model_dump(exclude={"calibration"}), evidence=evidence.evidence
+            )
+        self.states[trait].band_score = score
+        messages = (
+            feedback_prompt(evidence, score)
+            if feedback_prompt
+            else feedback_messages(request.prompt, request.response, trait, evidence, score.score)
+        )
+        try:
+            feedback = await self._validated(
+                messages, RawCriterionFeedbackOutput, sources, trait, "feedback", trace
+            )
+        except ProviderFailure as exc:
+            if (
+                exc.code not in {"INVALID_PROVIDER_OUTPUT", "AI_PROVIDER_BAD_RESPONSE"}
+                or exc.reason not in FEEDBACK_RECOVERABLE_REASONS
+            ):
+                raise
+            diagnostic = OutputDiagnostic(
+                stage="feedback", criterion=trait, reason="FEEDBACK_FALLBACK_USED", attempt=2
+            )
+            self.states[trait].diagnostics.append(diagnostic)
+            logger.warning(
+                "AI feedback fallback: stage=feedback criterion=%s reason=FEEDBACK_FALLBACK_USED",
+                trait,
+            )
+            feedback = CriterionFeedbackOutput(
+                feedback=FEEDBACK_FALLBACK, strengths=[], improvements=[]
+            )
         return CriterionResult(
-            **score.model_dump(exclude={"calibration"}), evidence=evidence.evidence
+            score=score.score, **feedback.model_dump(), evidence=evidence.evidence
         )
 
     async def score(self, request: WritingScoringRequest) -> WritingScoringResult:

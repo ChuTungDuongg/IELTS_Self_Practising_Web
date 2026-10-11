@@ -10,6 +10,7 @@ from time import perf_counter
 from app.providers.writing_llm.base import LLMProvider, safe_finish_reason
 from app.schemas.writing_ai import (
     AssessmentStage,
+    CriterionBandScore,
     CriterionFailure,
     CriterionResult,
     OutputDiagnostic,
@@ -27,6 +28,7 @@ class CriterionExecutionState:
     diagnostics: list[OutputDiagnostic] = field(default_factory=list)
     failure: CriterionFailure | None = None
     result: CriterionResult | None = None
+    band_score: CriterionBandScore | None = None
 
 
 class TraceFailure(Exception):
@@ -52,6 +54,8 @@ class WritingLatencyMetrics:
             "relevance",
             "evidence",
             "scoring",
+            "score",
+            "feedback",
             "visual_grounding",
             "chart_specialist",
             "chart_reconciliation",
@@ -70,7 +74,11 @@ class WritingLatencyMetrics:
     def key(self, stage: str, trait: Trait | None):
         if stage not in self.STAGES:
             raise ValueError("Invalid latency stage")
-        return f"{trait}.{stage}" if trait and stage in {"evidence", "scoring"} else stage
+        return (
+            f"{trait}.{stage}"
+            if trait and stage in {"evidence", "scoring", "score", "feedback"}
+            else stage
+        )
 
     @contextmanager
     def stage(self, stage: str, trait: Trait | None = None) -> Iterator[None]:
