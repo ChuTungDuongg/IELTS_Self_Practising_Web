@@ -61,11 +61,13 @@ def call_identity(messages, schema):
     trait = next(
         trait
         for trait in TRAITS
-        if (
+        if "Criterion: "
+        + (
             "Task Achievement"
             if trait == "ta" and "Academic Writing Task 1" in system
             else TRAIT_NAMES[trait]
         )
+        + "."
         in system
     )
     return ("evidence" if "evidence" in properties else "scoring"), trait

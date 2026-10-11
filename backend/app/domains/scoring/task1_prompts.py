@@ -205,6 +205,73 @@ TASK1_TA_EVIDENCE_SELECTION_GUIDANCE = (
     "An omission may be explained using a relevant allowed source_id, but never invent a source "
     "for absent text. Evidence supports understanding, not a score at this stage."
 )
+TASK1_CC_DESCRIPTOR_DISCRIMINATION_GUIDANCE = (
+    "Coherence and Cohesion adjacent-descriptor discrimination: judge in this order: "
+    "1. whole-response progression; 2. logical grouping and paragraphing; "
+    "3. relationships between pieces of information; 4. within-paragraph sequencing; "
+    "5. local cohesive devices; 6. reference/substitution where naturally useful. "
+    "Do not begin by counting linking words or infer the overall CC band from one or two explicit connectors.\n"
+    "The fact that a cohesive device is visible or conventional does not make it mechanical. "
+    "Although, meanwhile, by contrast, however, after which, while, whereas and respectively "
+    "can be entirely natural and effective. Treat their use as a limitation only when it is "
+    "repetitive, unnecessary, inaccurate, formulaic enough to interrupt flow, logically misleading "
+    "or noticeably overused. Do not penalise a response merely because the reader can identify "
+    "the device. Unobtrusive cohesion means it does not distract from reading; it does not mean "
+    "markers must be hidden or lexically exotic.\n"
+    "Academic Task 1 often needs repeated entity names for precision, such as United Kingdom, "
+    "Sweden, Italy, Portugal, emissions, figures or years. Repeating an entity name is not "
+    "automatically weak reference/substitution. Do not encourage pronouns or substitutions "
+    "that would make a chart comparison ambiguous. Repetition is a CC weakness only when "
+    "unnecessary, awkward or burdensome to progression. Low density of pronouns/substitution "
+    "is not itself evidence of Band 6; judge reference/substitution by discourse need, not raw frequency.\n"
+    "Band 6 versus Band 7: Band 6 best fits coherent arrangement and overall progression with "
+    "noticeable local cohesion limitations: for example recurrent mechanical/faulty links, "
+    "unclear relationships, repetitive referencing that genuinely burdens reading, inconsistent "
+    "paragraph focus/boundaries or locally abrupt progression. These are examples of descriptor "
+    "fit, not a checklist. Do not assign Band 6 merely because transitions are simple or explicit, "
+    "only a few types of linker appear, or country names are repeated for clarity. Band 7 best "
+    "fits logical organisation, clear progression, generally effective paragraphs and cohesive "
+    "devices/reference/substitution sufficiently flexible for the discourse, while allowing "
+    "some misuse, overuse or underuse, an occasional awkward transition or a minor local lapse. "
+    "Band 7 does not require invisible or sophisticated cohesion.\n"
+    "Band 7 versus Band 8: Band 8 best fits a report that is easy to follow, logically sequenced "
+    "and appropriately grouped; cohesive relationships are well managed, paragraphing is "
+    "sufficient and appropriate, and only occasional local lapses remain. Band 8 is not reserved "
+    "for a wide variety of discourse markers. Ordinary linking language can fit Band 8 when "
+    "overall flow is easy, natural and well controlled; conversely, a large variety of linkers "
+    "does not earn Band 8 when relationships or progression are weak.\n"
+    "Band 8 versus Band 9: Band 9 best fits when progression is effortless across the whole "
+    "report, paragraphing is skilfully managed, cohesion rarely attracts attention, local "
+    "relationships are consistently clear and lapses are minimal. Band 9 does not require "
+    "zero explicit linking phrases, maximal reference/substitution, exotic cohesive vocabulary "
+    "or a fixed number of paragraphs. Band 9 remains exceptional; a noticeable recurrent "
+    "cohesion weakness does not fit that exceptional profile.\n"
+    "6.5, 7.5 and 8.5 are genuine interpolation between adjacent whole-band profiles. Do not "
+    "use .5 automatically because of uncertainty or choose 6.5 because 6 seems harsh and 7 "
+    "seems generous. Choose the descriptor that best fits across the full 0–9 range, including "
+    "lower bands when appropriate; never score offsets, floors/caps or count-to-band rules.\n"
+    "Claims that cohesion is mechanical, reference is repetitive, transitions are faulty or "
+    "paragraph focus is inconsistent must identify an actual observable pattern in the "
+    "supplied response and its effect on flow. A single ordinary explicit linker is not "
+    "evidence of a recurrent problem. If the response is easy to follow and no meaningful "
+    "CC limitation is present, do not manufacture a limitation just to supply an improvement; "
+    "there is no fixed balance of strengths and improvements. Keep CC criterion-pure: ignore "
+    "vocabulary sophistication/lexical range, grammatical complexity, numerical correctness "
+    "and Task Achievement feature selection unless an issue genuinely disrupts coherence. "
+    "Explain that disruption rather than judging another criterion. Do not score CC high "
+    "merely because language sounds advanced."
+)
+TASK1_CC_EVIDENCE_SELECTION_GUIDANCE = (
+    "For Coherence and Cohesion, select evidence representing whole-response progression: "
+    "paragraph progression and logical grouping, transitions between information groups, "
+    "within-paragraph sequence, actual local cohesion strengths or faults, and actual "
+    "reference/substitution behaviour where relevant. Do not mine only transition words or "
+    "select the four most visible connectors. Do not assume an explicit connector or repeated "
+    "noun is a weakness; judge its actual role in the discourse. Do not require a weakness "
+    "item or a strength item; there is no positive/negative quota. Evidence selection remains "
+    "score-neutral. Use allowed source_ids to represent how the whole response is organised "
+    "and connected, never invent a source for absent text."
+)
 GROUNDED_TA_GUIDANCE = (
     "Use only supplied grounded reference, deterministic facts and claim verdicts for visual accuracy. "
     "Perception disagreements are not student errors and their count never implies a band penalty. "
@@ -249,6 +316,7 @@ def evidence_prompt(
 ) -> list[Message]:
     sources = segment_essay(request.response)
     ta_guidance = f"{TASK1_TA_EVIDENCE_SELECTION_GUIDANCE}\n" if trait == "ta" else ""
+    cc_guidance = f"{TASK1_CC_EVIDENCE_SELECTION_GUIDANCE}\n" if trait == "cc" else ""
     payload = {
         "task_type": request.task_type.value,
         "question": request.prompt,
@@ -269,6 +337,7 @@ def evidence_prompt(
                 "The source_id is the only evidence identity; optional focus is only a display hint. "
                 "Return an empty evidence list if no relevant source exists. "
                 f"{ta_guidance}"
+                f"{cc_guidance}"
                 f"{GROUNDED_TA_GUIDANCE if trait == 'ta' else ''}\n"
                 f"JSON schema: {json.dumps(EvidenceSelection.model_json_schema(mode='serialization'))}"
             ),
@@ -281,6 +350,7 @@ def score_prompt(
     request: Task1ScoringRequest, trait: Trait, evidence: EvidenceResult, analysis: Task1Analysis
 ) -> list[Message]:
     ta_guidance = f"{TASK1_TA_DESCRIPTOR_DISCRIMINATION_GUIDANCE}\n" if trait == "ta" else ""
+    cc_guidance = f"{TASK1_CC_DESCRIPTOR_DISCRIMINATION_GUIDANCE}\n" if trait == "cc" else ""
     payload = {
         "question": request.prompt,
         "segmented_essay": source_text(segment_essay(request.response)),
@@ -303,6 +373,7 @@ def score_prompt(
                 f"(May 2023); faithful whole-band paraphrases: {TASK1_BAND_PROFILES[trait]}\n"
                 f"{OFFICIAL_LOW_RESPONSE_GUIDANCE}\n{DESCRIPTOR_FIT_GUIDANCE}\n"
                 f"{ta_guidance}"
+                f"{cc_guidance}"
                 f"{GROUNDED_TA_GUIDANCE if trait == 'ta' else ''}\n"
                 "Score 0 through 9 in increments of 0.5 only. Return only four fields: score, "
                 "feedback, strengths, improvements. Feedback is one concise Vietnamese paragraph "

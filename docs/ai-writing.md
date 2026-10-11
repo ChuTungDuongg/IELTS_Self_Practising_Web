@@ -3,7 +3,7 @@
 Task 1 and Task 2 share the configured `mistralai/Ministral-3-8B-Instruct-2512`
 model, provider adapters and existing Modal/vLLM GPU function. Task 2 retains
 its text-only MTS pipeline and current local `mts-task2-v7` cache contract. Task 1
-uses `mts-task1-scoring-v6`, composite `mts-task1-visual-v6`, and the unchanged
+uses `mts-task1-scoring-v7`, composite `mts-task1-visual-v7`, and the unchanged
 `mts-task1-visual-v3` perception contract. See
 [the latency engineering case study](enhance_latency.md) for bounded concurrent
 execution, serving settings, measurements and reproduction.
@@ -178,13 +178,38 @@ qualitative significance, never arithmetic penalties.
 
 TA evidence selection represents overview, features, main comparisons, support
 and material limitations rather than mining errors. Its four-source maximum and
-source-ID contract remain intact. Factual verification, uncertainty safeguards,
-perception/reconciliation v3, CC/LR/GRA and Task 2 scoring are unchanged. The v6
-composite fingerprint prevents reuse of v5 scoring runs while keeping their
-history readable. The [Task 1 benchmark](../benchmarks/writing_task1/README.md)
-compares frozen v5 baseline prompts with v6 under the same provider/model and
-specialist settings. Signed TA bias, MAE and agreement on a labelled human-scored
-set are needed to establish improvement; synthetic contract tests do not prove it.
+source-ID contract remain intact.
+
+Task 1 scoring v7 adds CC-specific adjacent-descriptor discrimination. Judge
+whole-response progression, grouping/paragraphing and information relationships
+before local devices or reference/substitution. Conventional visible connectors
+can be natural; precise repeated entity names can avoid ambiguous comparisons.
+Neither linker variety nor pronoun density determines a band. Band 6 needs
+noticeable cohesion limitations; Band 7 allows minor local lapses, Band 8 has
+easy-to-follow sequencing and well-managed cohesion, and exceptional Band 9 has
+effortless progression and skilfully managed paragraphing. Half-bands interpolate
+adjacent profiles, not uncertainty. Negative claims need an observable pattern
+and an effect on flow; feedback need not invent improvements or meet a quota.
+CC evidence represents paragraph progression, grouping, transitions, internal
+sequence and actual cohesive behaviour, without band targets or connector mining.
+These are descriptor-fit clarifications, never offsets, floors, caps or score bonuses.
+
+TA prompt semantics, LR/GRA, Task 2, visual grounding/reconciliation v3, output
+schemas and provider/model settings are unchanged. The v7 composite fingerprint
+prevents reuse of v6 or older scoring runs while preserving readable history.
+The historical v5 prompt baseline remains frozen. The
+[Task 1 benchmark](../benchmarks/writing_task1/README.md) compares that baseline
+with current production prompts under the same provider/model and specialist
+settings. Signed criterion bias, MAE and agreement on a labelled human-scored set
+are needed to establish calibration improvement; synthetic contract tests do not prove it.
+
+Task 1 TA scoring uses the existing 4096-token completion cap on its first
+request to avoid the observed 3072-token length failure followed by repair.
+CC/LR/GRA scoring and all Task 2 scoring retain 3072 tokens; normal evidence
+retains 1800 tokens. The single repair, correction message, finish-reason checks
+and diagnostics remain: a Task 1 TA length repair stays at 4096, other scoring
+length repairs go from 3072 to 4096, and truncated output is never accepted.
+This execution-only budget change adds no separate prompt/cache version bump.
 
 `HIGH`/`MEDIUM` grounding supports normal factual comparison. `LOW` shows a visible
 Vietnamese caution and allows only cautious TA judgment; deterministic numeric

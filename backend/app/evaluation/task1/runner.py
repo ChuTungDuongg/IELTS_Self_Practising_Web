@@ -73,14 +73,14 @@ def implementation_hash() -> str:
 def configurations(
     settings: Settings, scoring_version: str, chart_specialist: str
 ) -> list[BenchmarkConfig]:
-    versions = ["v5", "v6"] if scoring_version == "both" else [scoring_version]
+    versions = ["v5", "v7"] if scoring_version == "both" else [scoring_version]
     specialists = [False, True] if chart_specialist == "both" else [chart_specialist == "on"]
-    if not set(versions) <= {"v3", "v5", "v6"} or chart_specialist not in {"off", "on", "both"}:
+    if not set(versions) <= {"v3", "v5", "v7"} or chart_specialist not in {"off", "on", "both"}:
         raise ValueError("BENCHMARK_CONFIGURATION_INVALID")
     contracts = {
         "v3": ("legacy", LEGACY_TASK1_PROMPT_VERSION, LEGACY_TASK1_SCORING_PROMPT_VERSION),
         "v5": ("baseline", BASELINE_TASK1_PROMPT_VERSION, BASELINE_TASK1_SCORING_PROMPT_VERSION),
-        "v6": ("current", TASK1_PROMPT_VERSION, TASK1_SCORING_PROMPT_VERSION),
+        "v7": ("current", TASK1_PROMPT_VERSION, TASK1_SCORING_PROMPT_VERSION),
     }
     provider, model = provider_identity(settings)
     endpoint = (
@@ -287,7 +287,7 @@ async def evaluate(
         scorer_type = {
             "v3": LegacyTask1WritingScoringService,
             "v5": BaselineV5Task1WritingScoringService,
-            "v6": Task1WritingScoringService,
+            "v7": Task1WritingScoringService,
         }[config.scoring_version]
         scorer = scorer_type(
             provider,

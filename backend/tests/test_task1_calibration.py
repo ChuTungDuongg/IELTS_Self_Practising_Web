@@ -1,12 +1,16 @@
 """Task 1 prompt contracts; synthetic text and fake providers, no live scoring."""
 
+import hashlib
 import importlib.util
 import json
+import re
 from decimal import Decimal
 
 import pytest
 from test_task1_visual import Task1FakeProvider, chart, request
 
+from app.domains.scoring import task1_prompts
+from app.domains.scoring.essay_sources import segment_essay
 from app.domains.scoring.task1_prompts import (
     GROUNDED_TA_GUIDANCE,
     TASK1_TA_DESCRIPTOR_DISCRIMINATION_GUIDANCE,
@@ -17,7 +21,7 @@ from app.domains.scoring.task1_prompts import (
 from app.evaluation.task1 import baseline_v5_prompts
 from app.providers.writing_llm.base import Completion
 from app.schemas.task1_claims import Task1Analysis
-from app.schemas.writing_ai import TRAITS, EvidenceResult
+from app.schemas.writing_ai import TRAITS, Evidence, EvidenceResult
 from app.services import task1_input
 from app.services.task1_writing import Task1WritingScoringService
 from app.services.writing_ai import input_fingerprint
@@ -137,18 +141,18 @@ def test_task1_evidence_preserves_exact_source_data_and_instruction_guard(trait)
 
 
 def test_task1_scoring_version_changes_cache_without_changing_visual_contract():
-    assert task1_input.TASK1_PROMPT_VERSION == "mts-task1-visual-v6"
+    assert task1_input.TASK1_PROMPT_VERSION == "mts-task1-visual-v7"
     assert getattr(task1_input, "TASK1_VISUAL_CONTRACT_VERSION", None) == "mts-task1-visual-v3"
-    assert getattr(task1_input, "TASK1_SCORING_PROMPT_VERSION", None) == "mts-task1-scoring-v6"
+    assert getattr(task1_input, "TASK1_SCORING_PROMPT_VERSION", None) == "mts-task1-scoring-v7"
     req = request()
     assert input_fingerprint(req, task1_input.TASK1_PROMPT_VERSION, "vllm", "model") != (
-        input_fingerprint(req, "mts-task1-visual-v5", "vllm", "model")
+        input_fingerprint(req, "mts-task1-visual-v6", "vllm", "model")
     )
 
 
 @pytest.mark.parametrize("trait", TRAITS)
 @pytest.mark.parametrize("stage", ["evidence", "scoring"])
-def test_adjacent_band_calibration_is_only_in_ta_scoring(trait, stage):
+def test_criterion_calibration_is_isolated_to_ta_and_cc_stages(trait, stage):
     system = messages(trait, stage)[0]["content"]
     assert (TASK1_TA_DESCRIPTOR_DISCRIMINATION_GUIDANCE in system) == (
         trait == "ta" and stage == "scoring"
@@ -156,8 +160,16 @@ def test_adjacent_band_calibration_is_only_in_ta_scoring(trait, stage):
     assert (TASK1_TA_EVIDENCE_SELECTION_GUIDANCE in system) == (
         trait == "ta" and stage == "evidence"
     )
-    if trait == "ta" and stage == "scoring":
-        assert system.count(TASK1_TA_DESCRIPTOR_DISCRIMINATION_GUIDANCE) == 1
+    guidance_by_trait = {
+        "ta": (TASK1_TA_EVIDENCE_SELECTION_GUIDANCE, TASK1_TA_DESCRIPTOR_DISCRIMINATION_GUIDANCE),
+        "cc": (
+            task1_prompts.TASK1_CC_EVIDENCE_SELECTION_GUIDANCE,
+            task1_prompts.TASK1_CC_DESCRIPTOR_DISCRIMINATION_GUIDANCE,
+        ),
+    }
+    for criterion, guidance in guidance_by_trait.items():
+        for expected_stage, text in zip(("evidence", "scoring"), guidance, strict=True):
+            assert system.count(text) == int(trait == criterion and stage == expected_stage)
 
 
 def test_ta_discriminates_adjacent_descriptors_without_safe_default_or_perfection():
@@ -241,8 +253,8 @@ def test_ta_evidence_is_representative_without_error_mining_or_quotas():
     assert "Band 7" not in system and "Band 8" not in system
 
 
-@pytest.mark.parametrize("trait", ["cc", "lr", "gra"])
-def test_v6_linguistic_prompts_are_exactly_v5(trait):
+@pytest.mark.parametrize("trait", ["lr", "gra"])
+def test_lr_and_gra_prompts_are_exactly_v5(trait):
     req, grounded = request(), analysis()
     assert evidence_prompt(req, trait, grounded) == baseline_v5_prompts.evidence_prompt(
         req, trait, grounded
@@ -253,8 +265,280 @@ def test_v6_linguistic_prompts_are_exactly_v5(trait):
     )
 
 
+@pytest.mark.parametrize("stage", ["evidence", "scoring"])
+def test_cc_prompts_differ_from_v5_only_by_their_own_guidance(stage):
+    trait = "cc"
+    req, grounded = request(), analysis()
+    if stage == "evidence":
+        current = evidence_prompt(req, trait, grounded)
+        baseline = baseline_v5_prompts.evidence_prompt(req, trait, grounded)
+        guidance = getattr(task1_prompts, f"TASK1_{trait.upper()}_EVIDENCE_SELECTION_GUIDANCE")
+    else:
+        selected = EvidenceResult(evidence=[])
+        current = score_prompt(req, trait, selected, grounded)
+        baseline = baseline_v5_prompts.score_prompt(req, trait, selected, grounded)
+        guidance = getattr(
+            task1_prompts, f"TASK1_{trait.upper()}_DESCRIPTOR_DISCRIMINATION_GUIDANCE"
+        )
+    assert current[1] == baseline[1]
+    assert current[0]["content"] != baseline[0]["content"]
+    assert current[0]["content"].count(guidance) == 1
+    assert current[0]["content"].replace(guidance + "\n", "") == baseline[0]["content"]
+
+
+@pytest.mark.parametrize(
+    "stage,expected_hash",
+    [
+        ("evidence", "b25fdba15bd6c2c77edb85a8c7bdbb3a0a428d8c009cfa4153ffbed8c435cb4c"),
+        ("scoring", "9db5d26d440047f9d68da91499c323e6597653fd5f5aec685bfc57a974728301"),
+    ],
+)
+def test_ta_system_prompts_preserve_the_existing_v6_contract(stage, expected_hash):
+    # v6 also refined TA's Band 7 profile, so v5 is not its complete baseline.
+    assert hashlib.sha256(messages("ta", stage)[0]["content"].encode()).hexdigest() == expected_hash
+
+
+def test_cc_judges_progression_before_local_devices():
+    system = messages("cc", "scoring")[0]["content"]
+    guidance_start = system.index("Coherence and Cohesion adjacent-descriptor discrimination:")
+    guidance = system[guidance_start:]
+    ordered_concepts = [
+        "whole-response progression",
+        "logical grouping and paragraphing",
+        "relationships between pieces of information",
+        "within-paragraph sequencing",
+        "local cohesive devices",
+        "reference/substitution where naturally useful",
+    ]
+    positions = [guidance.index(concept) for concept in ordered_concepts]
+    assert positions == sorted(positions)
+    assert "Do not begin by counting linking words" in guidance
+    assert "one or two explicit connectors" in guidance
+
+
+def test_cc_distinguishes_visible_devices_and_precise_repetition_from_actual_faults():
+    system = messages("cc", "scoring")[0]["content"]
+    for concept in [
+        "visible or conventional does not make it mechanical",
+        "can be entirely natural and effective",
+        "repetitive, unnecessary, inaccurate",
+        "formulaic enough to interrupt flow",
+        "logically misleading or noticeably overused",
+        "does not distract from reading",
+        "does not mean markers must be hidden or lexically exotic",
+        "repeated entity names for precision",
+        "not automatically weak reference/substitution",
+        "make a chart comparison ambiguous",
+        "unnecessary, awkward or burdensome to progression",
+        "Low density of pronouns/substitution is not itself evidence of Band 6",
+        "discourse need, not raw frequency",
+    ]:
+        assert concept in system
+    for connector in (
+        "although",
+        "meanwhile",
+        "by contrast",
+        "however",
+        "after which",
+        "while",
+        "whereas",
+        "respectively",
+    ):
+        assert connector in system.lower()
+
+
+def test_cc_adjacent_bands_use_whole_response_fit_with_allowed_lapses():
+    system = messages("cc", "scoring")[0]["content"]
+    for concept in [
+        "Band 6 versus Band 7",
+        "noticeable local cohesion limitations",
+        "recurrent mechanical/faulty links",
+        "unclear relationships",
+        "inconsistent paragraph focus/boundaries",
+        "locally abrupt progression",
+        "not a checklist",
+        "transitions are simple or explicit",
+        "country names are repeated for clarity",
+        "sufficiently flexible for the discourse",
+        "some misuse, overuse or underuse",
+        "minor local lapse",
+        "Band 7 does not require invisible or sophisticated cohesion",
+        "Band 7 versus Band 8",
+        "easy to follow, logically sequenced and appropriately grouped",
+        "cohesive relationships are well managed",
+        "paragraphing is sufficient and appropriate",
+        "Band 8 is not reserved for a wide variety of discourse markers",
+        "ordinary linking language",
+        "a large variety of linkers does not earn Band 8",
+        "Band 8 versus Band 9",
+        "progression is effortless across the whole report",
+        "cohesion rarely attracts attention",
+        "local relationships are consistently clear",
+        "Band 9 does not require zero explicit linking phrases",
+        "maximal reference/substitution",
+        "a fixed number of paragraphs",
+        "Band 9 remains exceptional",
+        "noticeable recurrent cohesion weakness",
+    ]:
+        assert concept.lower() in system.lower()
+
+
+def test_cc_half_bands_and_negative_claims_require_real_evidence():
+    system = messages("cc", "scoring")[0]["content"]
+    for concept in [
+        "6.5, 7.5 and 8.5 are genuine interpolation between adjacent whole-band profiles",
+        "Do not use .5 automatically because of uncertainty",
+        "6 seems harsh and 7 seems generous",
+        "must identify an actual observable pattern",
+        "A single ordinary explicit linker is not evidence of a recurrent problem",
+        "do not manufacture a limitation just to supply an improvement",
+        "no fixed balance of strengths and improvements",
+        "Task Achievement feature selection",
+        "Do not score CC high merely because language sounds advanced",
+        "never score offsets, floors/caps or count-to-band rules",
+    ]:
+        assert concept in system
+
+
+def test_cc_evidence_is_score_neutral_and_represents_the_whole_response():
+    system = messages("cc", "evidence")[0]["content"]
+    for concept in [
+        "whole-response progression",
+        "paragraph progression and logical grouping",
+        "transitions between information groups",
+        "within-paragraph sequence",
+        "actual local cohesion strengths or faults",
+        "actual reference/substitution behaviour where relevant",
+        "Do not mine only transition words or select the four most visible connectors",
+        "Do not assume an explicit connector or repeated noun is a weakness",
+        "Do not require a weakness item or a strength item",
+        "no positive/negative quota",
+        "Evidence selection remains score-neutral",
+    ]:
+        assert concept in system
+    assert not re.search(r"\b[Bb]ands?\s*\d", system)
+    assert "Select up to four allowed source_ids" in system
+    assert "never invent quote text" in system
+
+
+def test_cc_guidance_has_no_score_boosts_or_count_rules():
+    for guidance in (
+        task1_prompts.TASK1_CC_DESCRIPTOR_DISCRIMINATION_GUIDANCE,
+        task1_prompts.TASK1_CC_EVIDENCE_SELECTION_GUIDANCE,
+    ):
+        for hack in (
+            "add 0.5",
+            "+0.5",
+            "minimum cc band",
+            "minimum band 7",
+            "prefer 7",
+            "prefer higher band",
+            "four paragraphs =",
+            "few linkers =",
+            "many linkers =",
+        ):
+            assert hack not in guidance.lower()
+
+
+# Fictional countries/data: a prompt regression fixture, never a scoring oracle.
+SYNTHETIC_CC_RESPONSE = (
+    "The line graph compares per-person emissions in Norland, Westmere, Eastford and Southport "
+    "between 2000 and 2020.\n\n"
+    "Overall, Norland and Westmere ended below their initial levels, while Eastford and Southport "
+    "rose. Although Norland remained the largest emitter, Westmere recorded the sharpest fall.\n\n"
+    "Norland declined steadily from 12 to 8 tonnes. Meanwhile, Westmere rose from 10 to 11 tonnes "
+    "by 2005, after which Westmere fell to 4 tonnes in 2020.\n\n"
+    "By contrast, Eastford increased from 2 to 6 tonnes. Southport climbed from 1 to 5 tonnes, "
+    "so Eastford and Southport finished only one tonne apart."
+)
+
+
+def test_synthetic_cc_response_keeps_paragraphs_sources_and_neutral_guidance():
+    req = request().model_copy(
+        update={
+            "prompt": "Summarise the fictional emissions chart for four invented countries.",
+            "response": SYNTHETIC_CC_RESPONSE,
+        }
+    )
+    sources = segment_essay(req.response)
+    assert [s.source_id for s in sources] == [
+        "P1S1",
+        "P2S1",
+        "P2S2",
+        "P3S1",
+        "P3S2",
+        "P4S1",
+        "P4S2",
+    ]
+    for i, paragraph in enumerate(req.response.split("\n\n"), start=1):
+        assert " ".join(s.text for s in sources if s.paragraph_index == i) == paragraph
+    assert all(req.response[s.start : s.end] == s.text for s in sources)
+    selected = EvidenceResult(
+        evidence=[
+            Evidence(source_id=s.source_id, quote=s.text, assessment="Thông tin được nhóm rõ ràng.")
+            for s in (sources[0], sources[1], sources[3], sources[5])
+        ]
+    )
+    evidence_messages = evidence_prompt(req, "cc", analysis())
+    scoring_messages = score_prompt(req, "cc", selected, analysis())
+    for prompt in (evidence_messages, scoring_messages):
+        payload = json.loads(prompt[1]["content"])
+        assert payload["segmented_essay"] == "\n".join(f"[{s.source_id}] {s.text}" for s in sources)
+        assert payload["question"] == req.prompt
+        assert req.response not in prompt[0]["content"]
+    assert json.loads(evidence_messages[1]["content"])["allowed_ids"] == [
+        s.source_id for s in sources
+    ]
+    assert [e["source_id"] for e in json.loads(scoring_messages[1]["content"])["evidence"]] == [
+        "P1S1",
+        "P2S1",
+        "P3S1",
+        "P4S1",
+    ]
+    assert (
+        "Do not assume an explicit connector or repeated noun is a weakness"
+        in evidence_messages[0]["content"]
+    )
+    assert (
+        "Low density of pronouns/substitution is not itself evidence of Band 6"
+        in scoring_messages[0]["content"]
+    )
+    assert (
+        "Do not assign Band 6 merely because transitions are simple or explicit"
+        in scoring_messages[0]["content"]
+    )
+    assert req.response == SYNTHETIC_CC_RESPONSE
+
+
+@pytest.mark.parametrize("band", [i / 2 for i in range(19)])
+async def test_cc_keeps_every_valid_fake_provider_half_band_without_adjustment(band):
+    class Provider(Task1FakeProvider):
+        async def complete(self, messages, schema, *, options=None):
+            result = await super().complete(messages, schema, options=options)
+            if (
+                "score" in schema["properties"]
+                and "Criterion: Coherence and Cohesion." in messages[0]["content"]
+            ):
+                assert set(schema["properties"]) == {
+                    "score",
+                    "feedback",
+                    "strengths",
+                    "improvements",
+                }
+                payload = json.loads(result.text)
+                payload["score"] = band
+                return Completion(json.dumps(payload), result.usage)
+            return result
+
+    async def trace(_event, _payload):
+        pass
+
+    result = await Task1WritingScoringService(Provider()).assess(request(), trace)
+    assert result is not None and result.criteria.cc.score == Decimal(str(band))
+
+
 @pytest.mark.parametrize("band", [6, 6.5, 7, 7.5, 8])
-async def test_v6_preserves_fake_provider_ta_score_and_v5_grounding(band):
+async def test_preserves_fake_provider_ta_score_and_v5_grounding(band):
     class Provider(Task1FakeProvider):
         async def complete(self, messages, schema, *, options=None):
             result = await super().complete(messages, schema, options=options)
@@ -284,12 +568,15 @@ async def test_v6_preserves_fake_provider_ta_score_and_v5_grounding(band):
     assert results[0].task1_analysis == results[1].task1_analysis
     assert len(providers[0].calls) == len(providers[1].calls) == 10
 
-    # Neither perception/claims nor linguistic evidence/scoring changes between versions.
+    # Perception/claims and LR/GRA evidence/scoring remain identical to frozen v5.
     def unchanged_calls(provider):
         return [
             call
             for call in provider.calls
-            if "Criterion: Task Achievement." not in call[0]["content"]
+            if not any(
+                name in call[0]["content"]
+                for name in ("Criterion: Task Achievement.", "Criterion: Coherence and Cohesion.")
+            )
         ]
 
     assert unchanged_calls(providers[0]) == unchanged_calls(providers[1])

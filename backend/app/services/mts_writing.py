@@ -53,7 +53,7 @@ logger = logging.getLogger(__name__)
 
 # Evidence selects at most four IDs/short assessments. Scoring allows an
 # 800-character paragraph plus six 240-character bullets, with headroom over
-# the observed 1800-token truncation. Only a length repair adds 1024 tokens;
+# the observed 1800-token truncation. A length repair adds at most 1024 tokens;
 # the 4096 hard cap stays within half of the deployed 8192-token context.
 # The adapter may lower it to verified remaining context without truncating input.
 EVIDENCE_MAX_TOKENS = 1800
@@ -140,10 +140,13 @@ class MTSWritingScoringService:
         with self.latency.stage(stage, trait):
             return await self._validated_stage(messages, schema, sources, trait, stage, trace)
 
+    def _normal_completion_budget(self, trait: Trait, stage: AssessmentStage) -> int:
+        return EVIDENCE_MAX_TOKENS if stage == "evidence" else SCORING_MAX_TOKENS
+
     async def _validated_stage(self, messages, schema, sources, trait, stage, trace):
         state = self.states[trait]
         reason = "SCHEMA_VALIDATION"
-        normal_max_tokens = EVIDENCE_MAX_TOKENS if stage == "evidence" else SCORING_MAX_TOKENS
+        normal_max_tokens = self._normal_completion_budget(trait, stage)
         await trace(
             "evidence.request.started" if stage == "evidence" else "criterion.scoring.started",
             EventPayload(criterion=trait, stage=stage),

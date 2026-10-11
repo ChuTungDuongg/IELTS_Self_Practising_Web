@@ -2,20 +2,27 @@
 
 The CLI reuses production visual grounding, optional fail-open DePlot,
 deterministic facts, claim verification, source evidence and four-criterion MTS.
-It needs no database. Production uses composite fingerprint `mts-task1-visual-v6`
-with perception contract `mts-task1-visual-v3` and scoring guidance `mts-task1-scoring-v6`.
-The default candidate is v6. `--scoring-version both` compares a frozen v5 baseline
-with v6, reusing the same essays, human scores, perception pipeline/contract,
+It needs no database. Production uses composite fingerprint `mts-task1-visual-v7`
+with perception contract `mts-task1-visual-v3` and scoring guidance `mts-task1-scoring-v7`.
+The default candidate is v7. `--scoring-version both` compares a frozen v5 baseline
+with v7, reusing the same essays, human scores, perception pipeline/contract,
 provider/model and chart-specialist setting. Historical v3 prompts remain explicitly
-available with `--scoring-version v3`; v4 is not an alias. Task 2 is not run by this CLI.
+available with `--scoring-version v3`; unfrozen v4/v6 are not aliases for current prompts.
+Old v6 report metadata remains readable. Task 2 is not run by this CLI.
 
-V6 targets conservative Task Achievement compression through clearer adjacent
+V6 introduced Task Achievement discrimination through adjacent
 descriptor fit: Band 7 permits a few local omissions/lapses and Band 8 permits
 occasional ones, without requiring perfection or overlooking material weaknesses.
 TA evidence selection represents whole-response fulfilment instead of mining errors.
 There are no offsets, floors, caps or automatic generosity. Factual grounding,
-perception v3 and CC/LR/GRA prompts are unchanged. No accuracy improvement is
-claimed without a labelled human-scored comparison.
+perception v3 and LR/GRA prompts remain unchanged.
+
+V7 preserves that TA guidance and adds CC discrimination based on whole-response
+progression, grouping, relationships and actual cohesion. Visible conventional
+connectors and precise entity repetition are not automatically weaknesses. CC
+evidence represents the whole response without band targets or quotas. There
+are no score offsets, floors or bonuses. No accuracy improvement is claimed
+without a labelled human-scored comparison.
 
 ## Local dataset
 
@@ -57,19 +64,19 @@ or checkpoints; only IDs, hashes, scores, counts and safe status codes remain.
 From `backend/`, first validate your local data without inference:
 
 ```powershell
-uv run python ../scripts/benchmark_task1.py --manifest ../benchmarks/writing_task1/private/manifest.jsonl --split dev --scoring-version v6 --chart-specialist off --dry-run --output ../benchmarks/writing_task1/reports/dev-plan
+uv run python ../scripts/benchmark_task1.py --manifest ../benchmarks/writing_task1/private/manifest.jsonl --split dev --scoring-version v7 --chart-specialist off --dry-run --output ../benchmarks/writing_task1/reports/dev-plan
 ```
 
 An explicit one-sample real smoke, using existing backend provider settings:
 
 ```powershell
-uv run python ../scripts/benchmark_task1.py --manifest ../benchmarks/writing_task1/private/manifest.jsonl --split dev --limit 1 --scoring-version v6 --chart-specialist off --resume --output ../benchmarks/writing_task1/reports/dev-smoke
+uv run python ../scripts/benchmark_task1.py --manifest ../benchmarks/writing_task1/private/manifest.jsonl --split dev --limit 1 --scoring-version v7 --chart-specialist off --resume --output ../benchmarks/writing_task1/reports/dev-smoke
 ```
 
-Controlled v5 baseline / v6 candidate comparison at a fixed specialist setting:
+Controlled v5 baseline / v7 candidate comparison at a fixed specialist setting:
 
 ```powershell
-uv run python ../scripts/benchmark_task1.py --manifest ../benchmarks/writing_task1/private/manifest.jsonl --split dev --scoring-version both --chart-specialist off --resume --output ../benchmarks/writing_task1/reports/dev-v5-v6
+uv run python ../scripts/benchmark_task1.py --manifest ../benchmarks/writing_task1/private/manifest.jsonl --split dev --scoring-version both --chart-specialist off --resume --output ../benchmarks/writing_task1/reports/dev-v5-v7
 ```
 
 To also compare DePlot off/on:
@@ -78,8 +85,8 @@ To also compare DePlot off/on:
 uv run python ../scripts/benchmark_task1.py --manifest ../benchmarks/writing_task1/private/manifest.jsonl --split dev --scoring-version both --chart-specialist both --resume --output ../benchmarks/writing_task1/reports/dev-ablation
 ```
 
-`both` × `both` runs four configurations **per sample**: v5/v6 × DePlot off/on.
-Scoring ablations report v5 as baseline and v6 as candidate, with candidate-minus-baseline
+`both` × `both` runs four configurations **per sample**: v5/v7 × DePlot off/on.
+Scoring ablations report v5 as baseline and v7 as candidate, with candidate-minus-baseline
 TA signed bias, MAE and agreement deltas. `--limit` limits unique
 samples, not the number of provider requests. Specialist-on applies only to
 chart/table families, remains fail-open, and may fall back if unavailable.
@@ -134,7 +141,7 @@ these statistics cover completed attempt records only.
 
 Positive signed bias means generosity; negative bias means under-scoring. Read
 each criterion separately so mixed errors cannot cancel in overall.
-For v5/v6, inspect signed TA bias, MAE and exact/within-band agreement together;
+For v5/v7, inspect signed TA bias, MAE and exact/within-band agreement together;
 an upward shift alone is not evidence of better accuracy. Both versions invoke
 the same perception pipeline, but live perception can still vary between runs.
 Use the primary/reconciled perception metrics to identify that confound rather

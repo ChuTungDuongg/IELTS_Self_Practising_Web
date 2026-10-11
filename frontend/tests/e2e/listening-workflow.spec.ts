@@ -26,7 +26,8 @@ test("takes and reviews a fictional Listening practice attempt", async ({ page, 
     await expect(player.locator("audio")).toHaveAttribute("src", /\/assets\/[0-9a-f-]+\/content$/);
     await expect(player.getByRole("button", { name: "Play audio" })).toBeVisible();
     await expect(player.getByLabel("Audio seek")).toBeEnabled();
-    await expect(player.getByRole("button", { name: "Seek forward 10 seconds" })).toBeEnabled();
+    await expect(player.getByRole("button", { name: "Rewind 5 seconds", exact: true })).toBeEnabled();
+    await expect(player.getByRole("button", { name: "Forward 5 seconds", exact: true })).toBeEnabled();
     await player.getByLabel("Playback speed").selectOption("1.25");
     await expect(player.getByLabel("Playback speed")).toHaveValue("1.25");
 

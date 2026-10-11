@@ -8,6 +8,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.core.config import Settings
+from app.domains.scoring.mts_prompts import TRAIT_NAMES
 from app.evaluation.writing_latency import (
     FakeLatencyProvider,
     FakeLatencySpecialist,
@@ -35,6 +36,22 @@ async def noop(event, payload):
 async def wait(event):
     # Timeout is a deadlock guard, never a speed assertion.
     await asyncio.wait_for(event.wait(), 5)
+
+
+@pytest.mark.parametrize("task_number", [1, 2])
+@pytest.mark.parametrize("trait", TRAITS)
+@pytest.mark.parametrize("stage", ["evidence", "scoring"])
+def test_fake_call_identity_uses_criterion_header_not_mentions_of_other_traits(
+    task_number, trait, stage
+):
+    name = "Task Achievement" if task_number == 1 and trait == "ta" else TRAIT_NAMES[trait]
+    system = (
+        f"Academic Writing Task {task_number}. Criterion: {name}. "
+        "Do not rescore Task Achievement, Task Response, Coherence and Cohesion, "
+        "Lexical Resource or Grammatical Range and Accuracy from another criterion."
+    )
+    schema = {"properties": {"evidence": {}} if stage == "evidence" else {"score": {}}}
+    assert call_identity([{"role": "system", "content": system}], schema) == (stage, trait)
 
 
 async def test_task2_all_evidence_overlaps_and_each_score_waits_for_own_evidence():

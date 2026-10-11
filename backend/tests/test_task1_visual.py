@@ -520,7 +520,9 @@ class Task1FakeProvider:
         else:
             system = messages[0]["content"]
             output = {
-                "score": 6.3 if self.fail_trait and self.fail_trait in system else 7,
+                "score": 6.3
+                if self.fail_trait and f"Criterion: {self.fail_trait}." in system
+                else 7,
                 "feedback": "Nhận xét tại P1S1.",
                 "strengths": ["Rõ ràng."],
                 "improvements": ["Nêu chi tiết."],
@@ -550,6 +552,23 @@ async def assess(provider):
     return service, result, events
 
 
+@pytest.mark.parametrize(
+    "trait,name",
+    [
+        ("ta", "Task Achievement"),
+        ("cc", "Coherence and Cohesion"),
+        ("lr", "Lexical Resource"),
+        ("gra", "Grammatical Range and Accuracy"),
+    ],
+)
+async def test_fake_provider_failure_targets_only_the_explicit_criterion(trait, name):
+    service, result, _ = await assess(Task1FakeProvider(fail_trait=name))
+    assert result is None and list(service.failures) == [trait]
+    assert all(
+        service.states[other].result.score == 7 for other in service.states if other != trait
+    )
+
+
 async def test_task1_pipeline_grounded_ta_text_only_languages_and_exact_quotes():
     provider = Task1FakeProvider()
     service, result, events = await assess(provider)
@@ -572,7 +591,9 @@ async def test_task1_pipeline_grounded_ta_text_only_languages_and_exact_quotes()
     score_calls = [
         call for call in provider.calls if "Return only four fields" in call[0]["content"]
     ]
-    ta_call = next(call for call in score_calls if "Task Achievement" in call[0]["content"])
+    ta_call = next(
+        call for call in score_calls if "Criterion: Task Achievement." in call[0]["content"]
+    )
     assert "visual_reference" in ta_call[1]["content"]
     assert all(
         "visual_reference" not in call[1]["content"]

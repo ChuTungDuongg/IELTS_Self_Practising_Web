@@ -220,10 +220,11 @@ async def test_second_length_failure_stops_after_two_scoring_calls_and_continues
 
 
 class Task1BudgetProvider(Task1FakeProvider):
-    def __init__(self):
+    def __init__(self, ta_length_failures=1):
         super().__init__()
         self.budget_calls = []
         self.ta_calls = 0
+        self.ta_length_failures = ta_length_failures
 
     async def complete(self, messages, schema, *, options=None):
         self.budget_calls.append((messages, schema, options))
@@ -233,9 +234,24 @@ class Task1BudgetProvider(Task1FakeProvider):
             and "Criterion: Task Achievement." in messages[0]["content"]
         ):
             self.ta_calls += 1
-            if self.ta_calls == 1:
-                return Completion('{"score":', finish_reason="length")
+            if self.ta_calls <= self.ta_length_failures:
+                # Even complete JSON must be rejected when the provider reports length.
+                return Completion(json.dumps({**CORE, "score": 9}), finish_reason="length")
         return completion
+
+
+async def test_task1_success_gives_only_ta_scoring_first_pass_headroom():
+    provider = Task1BudgetProvider(ta_length_failures=0)
+    result, service, events = await assess(provider, Task1WritingScoringService, task1_request())
+    assert result is not None and provider.ta_calls == 1
+    assert len(provider.budget_calls) == 10
+    scores = [call for call in provider.budget_calls if "score" in call[1]["properties"]]
+    ta_scores = [call for call in scores if "Criterion: Task Achievement." in call[0][0]["content"]]
+    assert [budget(call) for call in ta_scores] == [4096]
+    assert all(budget(call) == 3072 for call in scores if call not in ta_scores)
+    evidence = [call for call in provider.budget_calls if "evidence" in call[1]["properties"]]
+    assert len(evidence) == 4 and all(budget(call) == 1800 for call in evidence)
+    assert not service.diagnostics and not any(event == "criterion.retrying" for event, _ in events)
 
 
 async def test_task1_ta_and_counted_provider_forward_budget_without_changing_perception():
@@ -253,18 +269,43 @@ async def test_task1_ta_and_counted_provider_forward_budget_without_changing_per
         if {"reference", "claims", "items"} & schema["properties"].keys()
     )
     scores = [call for call in provider.budget_calls if "score" in call[1]["properties"]]
-    ta_scores = [call for call in scores if "Task Achievement" in call[0][0]["content"]]
-    assert [budget(call) for call in ta_scores] == [3072, 4096]
+    ta_scores = [call for call in scores if "Criterion: Task Achievement." in call[0][0]["content"]]
+    assert [budget(call) for call in ta_scores] == [4096, 4096]
     assert all(budget(call) == 3072 for call in scores if call not in ta_scores)
     assert service.diagnostics[0].reason == "PROVIDER_FINISH_LENGTH"
     assert sum(event == "criterion.retrying" for event, _ in events) == 1
+
+
+async def test_task1_second_ta_length_failure_stays_invalid_with_no_third_attempt():
+    provider = Task1BudgetProvider(ta_length_failures=2)
+    result, service, events = await assess(provider, Task1WritingScoringService, task1_request())
+    assert result is None and set(service.failures) == {"ta"}
+    assert provider.ta_calls == 2 and len(provider.budget_calls) == 11
+    ta_scores = [
+        call
+        for call in provider.budget_calls
+        if "score" in call[1]["properties"]
+        and "Criterion: Task Achievement." in call[0][0]["content"]
+    ]
+    assert [budget(call) for call in ta_scores] == [4096, 4096]
+    assert "Correction (PROVIDER_FINISH_LENGTH)" in ta_scores[1][0][-1]["content"]
+    assert [(d.reason, d.attempt, d.finish_reason) for d in service.diagnostics] == [
+        ("PROVIDER_FINISH_LENGTH", 1, "length"),
+        ("PROVIDER_FINISH_LENGTH", 2, "length"),
+    ]
+    assert sum(event == "criterion.retrying" for event, _ in events) == 1
+    assert {payload.criterion for event, payload in events if event == "criterion.completed"} == {
+        "cc",
+        "lr",
+        "gra",
+    }
 
 
 @pytest.mark.parametrize(
     "provider,parameter,default",
     [("vllm", "max_tokens", 1800), ("openai", "max_completion_tokens", 4096)],
 )
-@pytest.mark.parametrize("requested", [None, 3072])
+@pytest.mark.parametrize("requested", [None, 3072, 4096])
 async def test_provider_adapters_map_typed_budget_and_preserve_defaults(
     monkeypatch, provider, parameter, default, requested
 ):

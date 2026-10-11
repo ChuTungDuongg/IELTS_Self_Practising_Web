@@ -9,6 +9,7 @@ from app.providers.writing_llm.base import LLMProvider, Message
 from app.schemas.task1_claims import ExtractedClaims, Task1Analysis
 from app.schemas.writing_ai import (
     TRAITS,
+    AssessmentStage,
     Criteria,
     CriterionFailure,
     EventPayload,
@@ -16,7 +17,7 @@ from app.schemas.writing_ai import (
     Task1WritingResult,
     Trait,
 )
-from app.services.mts_writing import MTSWritingScoringService, TraceCallback
+from app.services.mts_writing import COMPLETION_MAX_TOKENS, MTSWritingScoringService, TraceCallback
 from app.services.task1_chart_cross_check import (
     apply_chart_cross_check,
     extract_chart,
@@ -44,6 +45,11 @@ class Task1WritingScoringService(MTSWritingScoringService):
     ) -> None:
         super().__init__(provider, max_concurrent_requests=max_concurrent_requests, latency=latency)
         self.chart_derenderer, self.chart_timeout = chart_derenderer, chart_timeout
+
+    def _normal_completion_budget(self, trait: Trait, stage: AssessmentStage) -> int:
+        if trait == "ta" and stage == "scoring":
+            return COMPLETION_MAX_TOKENS
+        return super()._normal_completion_budget(trait, stage)
 
     def _evidence_prompt(
         self, request: Task1ScoringRequest, trait: Trait, analysis: Task1Analysis
