@@ -352,4 +352,3 @@ class SpeakingMediaService:
                 self.storage.resolve(c.storage_key)
                 for c in await ordered_chunks(self.session, segment.id)
             ], segment.mime_type
-
