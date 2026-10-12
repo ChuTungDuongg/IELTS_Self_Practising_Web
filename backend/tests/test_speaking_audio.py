@@ -157,3 +157,16 @@ def test_sample_level_thresholds(threshold, offset, tmp_path):
         )
     config = AudioQualityConfig(**{threshold: exact + offset})
     assert assess_audio_quality(pcm(tmp_path, samples), config).state == expected
+
+
+def test_impossible_quality_metadata_and_contradictory_thresholds_are_rejected():
+    with pytest.raises(ValidationError):
+        AudioMetrics(
+            duration_seconds=1,
+            speech_seconds=2,
+            rms=0.1,
+            clipping_ratio=0,
+            background_proxy_ratio=0,
+        )
+    with pytest.raises(ValidationError):
+        AudioQualityConfig(silence_floor_rms=0.01, minimum_rms=0.005)

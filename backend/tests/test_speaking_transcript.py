@@ -367,6 +367,40 @@ async def test_normalized_derivatives_are_queued_on_personal_deletion(db_session
     assert not normalized.path.exists() and list(tmp_path.rglob("*.webm")) == []
 
 
+async def test_derived_cleanup_cannot_remove_another_attempt_reference(db_session, tmp_path):
+    from app.models.speaking_transcript import SpeakingNormalizedAudio
+    from app.services.attempts import AttemptService
+    from app.services.speaking_media import drain_media_cleanup
+
+    first_id, first_response, media = await completed(db_session, tmp_path)
+    second_id, second_response, _ = await completed(db_session, tmp_path)
+    settings = Settings(storage_root=tmp_path)
+    first = await normalize_committed_take(
+        db_session, first_response, settings, storage=media.storage, executor=fake_decode
+    )
+    await normalize_committed_take(
+        db_session, second_response, settings, storage=media.storage, executor=fake_decode
+    )
+    async with db_session.begin():
+        owner_row = await db_session.scalar(
+            select(SpeakingNormalizedAudio).where(
+                SpeakingNormalizedAudio.response_id == first_response
+            )
+        )
+        other_row = await db_session.scalar(
+            select(SpeakingNormalizedAudio).where(
+                SpeakingNormalizedAudio.response_id == second_response
+            )
+        )
+        other_row.storage_key = owner_row.storage_key
+    await AttemptService(db_session).delete_attempt(first_id)
+    await drain_media_cleanup(db_session, storage=media.storage)
+    assert first.path.is_file()
+    await AttemptService(db_session).delete_attempt(second_id)
+    await drain_media_cleanup(db_session, storage=media.storage)
+    assert not first.path.exists()
+
+
 async def test_stale_worker_token_cannot_persist_or_finish_recovered_run(db_session, tmp_path):
     from app.models.speaking_transcript import SpeakingTranscriptRun
 
@@ -637,6 +671,13 @@ async def test_fresh_sessions_concurrent_worker_dedup_durable_artifacts_and_even
                 transcript.provider_json["model"] == "fixture"
                 and transcript.word_timing_json[0]["confidence"] == 0.8
             )
+            bundle = transcript.provider_json["evidence"]
+            assert bundle["source_audio_fingerprint"] == transcript.source_audio_fingerprint
+            assert (
+                bundle["quality"]["state"] == "AUDIO_OK"
+                and bundle["fluency"]["timing_status"] == "PARTIAL"
+            )
+            assert "THIS_SECRET_NOTE_MUST_NOT_ENTER_SPEECH_ANALYSIS_98765" not in str(bundle)
         events = list(
             await session.scalars(
                 select(SpeakingTranscriptEvent)
@@ -1051,3 +1092,55 @@ async def test_quality_gate_persists_before_asr_and_versions_run_cache(db_sessio
     current = SpeakingTranscriptService(db_session, actor, settings, identity=FakeASR.identity)
     assert await current.latest(aid) is None
     assert (await current.create(aid)).run_id != created.run_id
+
+
+async def test_part2_bundle_round_trip_and_unavailable_pr_preserve_transcript(durable_transcript):
+    factory, actor, aid, ids, storage, settings = durable_transcript
+    settings.speaking_pronunciation_enabled = False
+
+    class Aligned(FakeASR):
+        async def transcribe(self, audio):
+            self.calls.append(audio)
+            return ASRResult(
+                text="He go",
+                words=[
+                    WordTiming(word="He", start=0, end=0.2, confidence=0.9),
+                    WordTiming(word="go", start=0.2, end=0.4, confidence=0.9),
+                ],
+                provider="fake",
+                model="fixture",
+                version="v1",
+            )
+
+    created = await create_durable(durable_transcript)
+    await SpeakingTranscriptWorker(
+        factory, settings, provider=Aligned(), storage=storage, executor=fake_decode
+    ).execute(created.run_id)
+    async with factory() as session, session.begin():
+        rows = list(
+            await session.scalars(
+                select(SpeakingTranscript).where(
+                    SpeakingTranscript.run_id == created.run_id,
+                    SpeakingTranscript.kind == "VERBATIM",
+                )
+            )
+        )
+        assert len(rows) == 4
+        by_id = {r.response_id: r.provider_json["evidence"] for r in rows}
+        assert by_id[ids[1]]["fluency"]["part2_sustained_seconds"] == 0.4
+        assert by_id[ids[0]]["fluency"]["part2_sustained_seconds"] is None
+        assert by_id[ids[2]]["fluency"]["part2_sustained_seconds"] is None  # authored follow-up
+        assert all(
+            b["pronunciation"]["error_code"] == "PROVIDER_UNAVAILABLE" for b in by_id.values()
+        )
+        assert "THIS_SECRET_NOTE_MUST_NOT_ENTER_SPEECH_ANALYSIS_98765" not in str(by_id)
+    async with factory() as session:
+        current = SpeakingTranscriptService(session, actor, settings, identity=FakeASR.identity)
+        assert (await current.get(aid, created.run_id)).status == "COMPLETED"
+        settings.speaking_pronunciation.version = "prosody-next"
+        assert (
+            await SpeakingTranscriptService(
+                session, actor, settings, identity=FakeASR.identity
+            ).latest(aid)
+            is None
+        )

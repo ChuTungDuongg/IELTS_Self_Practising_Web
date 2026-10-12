@@ -23,6 +23,7 @@ from app.schemas.speaking_ai import (
     WordTiming,
 )
 from app.services.speaking_audio import fingerprint, normalization_identity
+from app.services.speaking_features import feature_identity
 from app.services.speaking_media import SpeakingMediaService
 from app.services.speaking_quality import quality_identity
 
@@ -46,6 +47,7 @@ class SpeakingTranscriptService:
             "asr": identity or provider_identity(settings),
             "normalizer": normalization_identity(settings),
             "quality": quality_identity(settings),
+            "features": feature_identity(settings),
             "clean_version": "format-v1",
         }
         self.repository = SpeakingTranscriptRepository(session)

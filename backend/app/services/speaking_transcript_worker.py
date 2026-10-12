@@ -10,6 +10,7 @@ from sqlalchemy.dialects.postgresql import insert
 
 from app.core.exceptions import AppError
 from app.domains.timers import TimerService
+from app.models.speaking import SpeakingPart, SpeakingPrompt, SpeakingResponse
 from app.models.speaking_transcript import SpeakingTranscript, SpeakingTranscriptRun
 from app.providers.speaking_asr import create_provider
 from app.repositories.speaking_transcript import SpeakingTranscriptRepository
@@ -19,6 +20,7 @@ from app.services.speaking_audio import (
     normalization_identity,
     normalize_committed_take,
 )
+from app.services.speaking_features import build_feature_bundle, feature_identity
 from app.services.speaking_quality import (
     assess_audio_quality,
     persist_quality_result,
@@ -49,7 +51,7 @@ class SpeakingTranscriptWorker:
         task.add_done_callback(discard)
 
     async def _checkpoint(
-        self, run_id, token, rid=None, result=None, error=None, *, complete=False
+        self, run_id, token, rid=None, result=None, error=None, *, complete=False, evidence=None
     ):
         async with self.sessions() as session, session.begin():
             repository = SpeakingTranscriptRepository(session)
@@ -87,6 +89,7 @@ class SpeakingTranscriptWorker:
                                     "version": result.version,
                                     "language": result.language,
                                     "mean_confidence": result.mean_confidence,
+                                    "evidence": evidence,
                                 },
                             )
                             .on_conflict_do_nothing(
@@ -142,6 +145,7 @@ class SpeakingTranscriptWorker:
                         provider.identity != identity["asr"]
                         or normalization_identity(self.settings) != identity["normalizer"]
                         or quality_identity(self.settings) != identity.get("quality")
+                        or feature_identity(self.settings) != identity.get("features")
                     ):
                         raise AppError(
                             "TRANSCRIPT_CONFIGURATION_CHANGED",
@@ -156,6 +160,24 @@ class SpeakingTranscriptWorker:
                             storage=self.storage,
                             executor=self.executor,
                         )
+                        async with session.begin():
+                            prompt_context = (
+                                await session.execute(
+                                    select(SpeakingPart.part_number, SpeakingPrompt.prompt_type)
+                                    .join(
+                                        SpeakingPrompt,
+                                        SpeakingPrompt.speaking_part_id == SpeakingPart.id,
+                                    )
+                                    .join(
+                                        SpeakingResponse,
+                                        SpeakingResponse.prompt_id == SpeakingPrompt.id,
+                                    )
+                                    .where(SpeakingResponse.id == UUID(rid))
+                                )
+                            ).one()
+                            part_number = (
+                                prompt_context[0] if prompt_context[1] == "LONG_TURN" else None
+                            )
                     if audio.source_audio_fingerprint != item["audio_fingerprint"]:
                         raise AppError("TRANSCRIPT_SOURCE_CHANGED", "Recording changed.", 409)
                     quality = await asyncio.to_thread(
@@ -171,7 +193,7 @@ class SpeakingTranscriptWorker:
                             self.settings.speaking_processing_timeout_seconds,
                         )
                     )
-                    if any(w.end > audio.duration_ms / 1000 + 0.1 for w in result.words):
+                    if any(w.end > audio.duration_ms / 1000 for w in result.words):
                         raise ValueError("Word timing exceeds audio")
                     asr_succeeded = True
                     quality = await asyncio.to_thread(
@@ -179,7 +201,12 @@ class SpeakingTranscriptWorker:
                     )
                     async with self.sessions() as session:
                         await persist_quality_result(session, audio, quality)
-                    await self._checkpoint(run_id, token, rid, result)
+                    bundle = await build_feature_bundle(
+                        audio, result, self.settings, part_number=part_number
+                    )
+                    await self._checkpoint(
+                        run_id, token, rid, result, evidence=bundle.model_dump(mode="json")
+                    )
                 except asyncio.CancelledError:
                     raise
                 except Exception as error:

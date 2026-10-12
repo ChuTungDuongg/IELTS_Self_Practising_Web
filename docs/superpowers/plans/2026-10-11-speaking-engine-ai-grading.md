@@ -382,11 +382,11 @@ git commit -m "Add Speaking content domain model"
 - `extract_fluency_features(audio, verbatim_transcript, words) -> FluencyEvidence` computes duration, speech/silence ratio, WPM, articulation rate, pauses, long pauses, filler/repetition/false-start/self-correction signals, average turn length, Part 2 sustained duration.
 - `PronunciationEvidenceProvider.analyse(audio, transcript, alignment) -> PronunciationEvidence` provides audio-derived alignment/segmental-clarity proxies, low-confidence/unaligned spans, stress/rhythm/intonation/pitch-energy/prosody summaries, and intelligibility/listener-effort proxies. These are evidence, never direct IELTS band mappings.
 
-- [ ] **Step 1: Write failing deterministic feature tests** for known timestamp fixtures, divide-by-zero/empty speech, long-pause distribution, disfluency preservation, Part 2 duration, and provider-unavailable/low-evidence states.
-- [ ] **Step 2: Run RED.**
-- [ ] **Step 3: Implement pure feature code + replaceable pronunciation provider.** Baseline may use ASR/forced-alignment confidence plus acoustic/prosodic features; do not call SpeechOcean/GOPT scores “IELTS bands” and do not use transcript text alone for PR.
-- [ ] **Step 4: Run GREEN + Ruff.** No real acoustic model/GPU invocation.
-- [ ] **Step 5: Commit:** `git commit -m "Add Speaking fluency and pronunciation evidence"`.
+- [x] **Step 1: Write failing deterministic feature tests** for known timestamp fixtures, divide-by-zero/empty speech, long-pause distribution, disfluency preservation, Part 2 duration, and provider-unavailable/low-evidence states.
+- [x] **Step 2: Run RED.**
+- [x] **Step 3: Implement pure feature code + replaceable pronunciation provider.** Baseline may use ASR/forced-alignment confidence plus acoustic/prosodic features; do not call SpeechOcean/GOPT scores “IELTS bands” and do not use transcript text alone for PR.
+- [x] **Step 4: Run GREEN + Ruff.** No real acoustic model/GPU invocation.
+- [x] **Step 5: Commit:** `git commit -m "Add Speaking fluency and pronunciation evidence"`.
 
 **P5 gate:** preprocessing outputs explainable evidence only. Review specifically that no threshold accidentally became a band rule.
 
