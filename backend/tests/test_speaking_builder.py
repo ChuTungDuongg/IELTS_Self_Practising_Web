@@ -485,7 +485,7 @@ async def test_speaking_builder_routes_use_authenticated_mutations(db_session, a
         app.dependency_overrides.pop(get_session, None)
 
 
-def test_p1_does_not_enable_candidate_speaking_attempt_requests():
+def test_speaking_attempt_and_assignment_require_prompt_timers():
     from app.schemas.attempts import AttemptCreate
     from app.schemas.classroom_assignments import AssignmentStart
 
@@ -496,10 +496,13 @@ def test_p1_does_not_enable_candidate_speaking_attempt_requests():
             timer={"mode": "COUNTDOWN", "duration_seconds": 600},
         )
     with pytest.raises(ValidationError):
-        AssignmentStart(mode="MODULE", module="SPEAKING", timer={"mode": "COUNT_UP"})
+        AssignmentStart(mode="MODULE", module="SPEAKING", timer={"mode": "COUNTDOWN", "duration_seconds": 600})
+    attempt = AttemptCreate(test_version_id=uuid4(), module="SPEAKING", timer={"mode": "COUNT_UP"})
+    assignment = AssignmentStart(mode="MODULE", module="SPEAKING", timer={"mode": "COUNT_UP"})
+    assert attempt.speaking_mode == assignment.speaking_mode == "PRACTICE"
 
 
-async def test_p1_keeps_analytics_runtime_skill_contract_at_three():
+async def test_analytics_exposes_all_four_skills_after_speaking_integration():
     from unittest.mock import AsyncMock
 
     from app.services.analytics import AnalyticsService
@@ -508,4 +511,4 @@ async def test_p1_keeps_analytics_runtime_skill_contract_at_three():
     service._attempts = AsyncMock(return_value=[])
     service._sessions = AsyncMock(return_value=[])
     dashboard = await service.dashboard()
-    assert set(dashboard.bands) == {"READING", "LISTENING", "WRITING"}
+    assert set(dashboard.bands) == {"READING", "LISTENING", "WRITING", "SPEAKING"}

@@ -9,8 +9,6 @@ import { BuilderWorkspaceNavigation } from "@/features/test-builder/builder-work
 import { BuilderEditorPage } from "@/features/test-builder/builder-editor-page";
 import { builderContentSummary } from "@/features/test-builder/content-summary";
 import { ModerationPreview } from "@/features/classrooms/moderation-preview";
-import { AssignmentList } from "@/features/classrooms/assignment-list";
-import type { ClassroomAssignment } from "@/lib/api/classrooms";
 import * as api from "@/lib/api/builder";
 import { getVersionModeration } from "@/lib/api/content-governance";
 import { renderWithLocale } from "./locale-test-utils";
@@ -229,13 +227,6 @@ describe("P1 Speaking Builder", () => {
     expect(screen.getByRole("tab", { name: "Speaking" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("textbox", { name: "Cue-card prompt" })).toBeDisabled();
     expect(api.updateSpeakingPart).not.toHaveBeenCalled();
-  });
-
-  it("does not expose candidate Speaking starts through classroom version metadata", () => {
-    const assignment = { id: crypto.randomUUID(), classroom_id: crypto.randomUUID(), status: "ACTIVE", title: "Fictional class task", note: null, version: { id: versionId, test_title: "Fictional", modules: [{ id: crypto.randomUUID(), module_type: "SPEAKING", recommended_duration_seconds: null }] } } as ClassroomAssignment;
-    render(<AssignmentList assignments={[assignment]} />);
-    expect(screen.queryByRole("option", { name: "Speaking" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Start assignment" })).toBeDisabled();
   });
 
   it("uses scoped short motion and disables it under reduced motion", () => {
