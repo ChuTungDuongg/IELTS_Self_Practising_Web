@@ -4,6 +4,8 @@ import { attemptResponseSchema } from "./attempts";
 import { aiRunSchema } from "./writing-ai";
 import { appendPageQuery, type PageOptions } from "./pagination";
 import { readingReviewSchema, listeningReviewSchema, writingReviewSchema, writingReviewTaskSchema } from "./exam";
+import { speakingReviewSchema } from "./speaking";
+import { speakingAIRunSchema } from "./speaking-ai";
 const summarySchema = z.object({
   student_id: z.string().uuid(),
   student_display_name: z.string(),
@@ -15,6 +17,8 @@ const detailSchema = summarySchema.extend({
   reading_review: readingReviewSchema.nullable(),
   listening_review: listeningReviewSchema.nullable(),
   writing_review: writingReviewSchema.nullable(),
+  speaking_review: speakingReviewSchema.nullable().optional(),
+  speaking_ai_run: speakingAIRunSchema.nullable().optional(),
   ai_runs: z.array(aiRunSchema),
   submitted_answers: z.array(z.object({
     question_id: z.string().uuid(),

@@ -10,13 +10,15 @@ class SpeakingAIRepository:
     def __init__(self, session):
         self.session = session
 
-    async def run(self, run_id, *, lock=False):
+    async def run(self, run_id, *, lock=False, shared=False):
         query = (
             select(SpeakingAIGradingRun)
             .where(SpeakingAIGradingRun.id == run_id)
             .execution_options(populate_existing=True)
         )
-        return await self.session.scalar(query.with_for_update() if lock else query)
+        if lock or shared:
+            query = query.with_for_update(read=shared and not lock)
+        return await self.session.scalar(query)
 
     async def append(self, run, event_type, payload=None):
         # Caller owns the new run or holds its row lock.

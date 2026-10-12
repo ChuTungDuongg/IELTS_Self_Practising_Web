@@ -507,11 +507,11 @@ git commit -m "Add Speaking content domain model"
 - Teacher read-only view can inspect assignment-originated Speaking responses/audio/transcripts/attached advisory result only through the existing assignment provenance predicate; personal practice on the same version remains private.
 - Focused Speaking practice can target a prompt/part according to the approved attempt scope without weakening exam behavior.
 
-- [ ] **Step 1: Add failing privacy/integration tests** for teacher assignment access vs unrelated personal practice, membership removal preserving historical assignment read access, focused retry semantics, history rendering/deletion, and explicit Speaking analytics enumeration where present.
-- [ ] **Step 2: Run RED.**
-- [ ] **Step 3: Implement integration using existing provenance/access policy; no new teacher-wide student lookup shortcut.**
-- [ ] **Step 4: Run GREEN + frontend typecheck/targeted lint.**
-- [ ] **Step 5: Commit:** `git commit -m "Integrate Speaking history and classroom results"`.
+- [x] **Step 1: Add failing privacy/integration tests** for teacher assignment access vs unrelated personal practice, membership removal preserving historical assignment read access, focused retry semantics, history rendering/deletion, and explicit Speaking analytics enumeration where present.
+- [x] **Step 2: Run RED.**
+- [x] **Step 3: Implement integration using existing provenance/access policy; no new teacher-wide student lookup shortcut.**
+- [x] **Step 4: Run GREEN + frontend typecheck/targeted lint.**
+- [x] **Step 5: Commit:** `git commit -m "Integrate Speaking history and classroom results"`.
 
 **P7 gate:** verify all four skills coexist; old three-skill historical sessions remain readable rather than being retroactively invalidated. New Full Mock starts require Speaking.
 

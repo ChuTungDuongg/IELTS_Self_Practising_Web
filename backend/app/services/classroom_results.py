@@ -139,6 +139,19 @@ class ClassroomResultService:
             or attempt.test_session.status != TestSessionStatus.IN_PROGRESS
         )
         if finalized and mock_unlocked:
+            if attempt.module_type == ModuleType.SPEAKING:
+                from app.core.config import get_settings
+                from app.services.speaking_ai import SpeakingAIService
+                from app.services.speaking_media import SpeakingMediaService
+
+                result.speaking_review = await SpeakingMediaService(
+                    self.session, self.policy.actor
+                ).review(attempt_id)
+                result.speaking_review.can_generate_transcript = False
+                result.speaking_ai_run = await SpeakingAIService(
+                    self.session, self.policy.actor, get_settings()
+                ).latest(attempt_id)
+                return result
             result.review = await service.review(attempt_id)
             if attempt.module_type == ModuleType.READING:
                 result.reading_review = await service.reading_review(attempt_id)

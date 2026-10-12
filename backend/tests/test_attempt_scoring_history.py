@@ -339,7 +339,7 @@ async def test_history_groups_exact_versions_and_uses_latest_finalized_attempt_p
     assert first_group.reading.attempt_id == latest_reading.id
     assert first_group.listening is not None
     assert first_group.writing is not None
-    assert first_group.overall_band_score == 7.0
+    assert first_group.speaking is None and first_group.overall_band_score is None
     assert second_group.reading is not None
     assert second_group.reading.attempt_id == second_version_reading.id
     assert second_group.listening is None

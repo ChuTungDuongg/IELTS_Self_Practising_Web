@@ -1,10 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
-import { deleteAdminUser, getAdminUsers } from "@/lib/api/admin";
+import { deleteAdminUser, getAdminStats, getAdminUsers } from "@/lib/api/admin";
 import type { ApiRequester } from "@/lib/api/client";
 
 const emptyList = { items: [], total: 0, offset: 0, limit: 50 };
 
 describe("admin user API", () => {
+  it("accepts Speaking counts while keeping historical three-skill payloads readable", async () => {
+    const stats = { total_users: 1, active_users: 1, users_with_attempts: 1, total_attempts: 4, active_attempts: 0, completed_attempts: 4, completed_full_mocks: 0, attempts_by_skill: { READING: 1, LISTENING: 1, WRITING: 1, SPEAKING: 1 } };
+    expect((await getAdminStats(vi.fn().mockResolvedValue(stats))).attempts_by_skill.SPEAKING).toBe(1);
+    const legacy = { READING: 1, LISTENING: 1, WRITING: 1 };
+    expect((await getAdminStats(vi.fn().mockResolvedValue({ ...stats, attempts_by_skill: legacy }))).attempts_by_skill.READING).toBe(1);
+  });
   it("requests only the selected status and sends search to the server", async () => {
     const request = vi.fn().mockResolvedValue(emptyList) as unknown as ApiRequester;
 

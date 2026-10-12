@@ -3,6 +3,7 @@
 import { ReadingReviewView } from "@/features/reading/reading-review";
 import { ListeningReviewView } from "@/features/listening/listening-review";
 import { WritingReviewView } from "@/features/writing/writing-review";
+import { SpeakingReview } from "@/features/speaking/speaking-review";
 import { CriterionAssessmentCard } from "@/features/writing/writing-ai-criterion-card";
 import { WritingRelevanceNotice } from "@/features/writing/writing-ai-practice-feedback";
 import { aiTraits } from "@/lib/api/writing-ai";
@@ -30,7 +31,8 @@ export function TeacherResultView({ data }: {
     {data.reading_review ? <ReadingReviewView data={data.reading_review} /> : null}
     {data.listening_review ? <ListeningReviewView data={data.listening_review} /> : null}
     {data.writing_review ? <WritingReviewView data={data.writing_review} readOnly /> : null}
-    {!data.reading_review && !data.listening_review && !data.writing_review ? <section className="surface-card p-5">
+    {data.speaking_review ? <SpeakingReview data={{ ...data.speaking_review, can_generate_transcript: false }} /> : null}
+    {!data.reading_review && !data.listening_review && !data.writing_review && !data.speaking_review ? <section className="surface-card p-5">
       <h2>{t("runner.savedResponse")}</h2>{data.writing_responses.map(response => <article key={response.writing_task_id}>
         <h3>{t("common.taskNumber", { number: response.task_number })}</h3>
         <p className="whitespace-pre-wrap">{response.content}</p>

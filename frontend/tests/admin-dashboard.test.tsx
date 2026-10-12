@@ -22,6 +22,11 @@ const stats = {
 };
 
 describe("AdminDashboardPage", () => {
+  it("shows Speaking in the existing skill-count metric", async () => {
+    vi.mocked(getAdminStats).mockResolvedValue({ ...stats, attempts_by_skill: { ...stats.attempts_by_skill, SPEAKING: 9 } });
+    render(await AdminDashboardPage({ searchParams: Promise.resolve({}) }));
+    expect(screen.getByText("Listening / Reading / Writing / Speaking").parentElement).toHaveTextContent("0 / 4 / 0 / 9");
+  });
   it("localizes the existing forbidden guard without exposing protected content", () => {
     window.localStorage.clear();
     renderWithLocale(<AdminGuard><p>Protected content</p></AdminGuard>);

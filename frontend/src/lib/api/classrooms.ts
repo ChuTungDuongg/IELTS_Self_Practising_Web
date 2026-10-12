@@ -112,10 +112,11 @@ export async function archiveAssignment(classroomId: string, id: string) {
 }
 export type AssignmentStart = {
   mode: "MODULE";
-  module: "READING" | "LISTENING" | "WRITING";
+  module: "READING" | "LISTENING" | "WRITING" | "SPEAKING";
+  speaking_mode?: "PRACTICE" | "EXAM";
   scope: "FULL_MODULE" | "FOCUSED_UNIT";
   focused_unit?: {
-    kind: "READING_PASSAGE" | "LISTENING_PART" | "WRITING_TASK";
+    kind: "READING_PASSAGE" | "LISTENING_PART" | "WRITING_TASK" | "SPEAKING_PROMPT";
     id: string;
   };
   timer: {

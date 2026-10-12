@@ -131,6 +131,7 @@ async def test_admin_can_access_admin_and_builder_boundaries_without_secret_fiel
     stats = await client.get("/api/v1/admin/stats")
     assert stats.status_code == 200
     assert stats.json()["total_users"] >= 1
+    assert set(stats.json()["attempts_by_skill"]) == {"READING", "LISTENING", "WRITING", "SPEAKING"}
 
     created = await client.post("/api/v1/tests", json={"title": "Admin-created test"})
     assert created.status_code == 201

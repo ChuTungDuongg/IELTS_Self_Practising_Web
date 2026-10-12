@@ -51,6 +51,10 @@ class LatestMockSummary(BaseModel):
     reading_band: float | None
     listening_band: float | None
     writing_band: float | None
+    speaking_band: float | None = None
+    module_order: list[ModuleType] = Field(
+        default_factory=lambda: [ModuleType.LISTENING, ModuleType.READING, ModuleType.WRITING]
+    )
     overall_band: float | None
 
 

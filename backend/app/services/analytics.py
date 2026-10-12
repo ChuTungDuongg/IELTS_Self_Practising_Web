@@ -7,7 +7,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.exceptions import AppError
-from app.domains.scoring import calculate_task_overall, project_overall_band
+from app.domains.scoring import (
+    calculate_task_overall,
+    legacy_three_skill_overall_band,
+    project_overall_band,
+)
 from app.models import (
     Attempt,
     AttemptAnswer,
@@ -17,7 +21,6 @@ from app.models import (
     TestVersion,
 )
 from app.models.enums import (
-    RUNTIME_MODULE_TYPES,
     AttemptScope,
     AttemptStatus,
     EventType,
@@ -59,7 +62,7 @@ class AnalyticsService:
         time_attempts = [item for item in attempts if skill is None or item.module_type == skill]
         band_attempts = [item for item in filtered if item.band_score is not None]
         bands: dict[str, SkillBandSummary] = {}
-        for module in RUNTIME_MODULE_TYPES:
+        for module in ModuleType:
             candidates = [
                 item
                 for item in finalized
@@ -232,12 +235,13 @@ class AnalyticsService:
                     key=lambda item: item.finished_at or item.started_at,
                     default=None,
                 )
-                for module in RUNTIME_MODULE_TYPES
+                for module in ModuleType
             }
             overall = project_overall_band(
                 latest[ModuleType.READING].band_score if latest[ModuleType.READING] else None,
                 latest[ModuleType.LISTENING].band_score if latest[ModuleType.LISTENING] else None,
                 latest[ModuleType.WRITING].band_score if latest[ModuleType.WRITING] else None,
+                latest[ModuleType.SPEAKING].band_score if latest[ModuleType.SPEAKING] else None,
             )
             if overall is not None:
                 candidates.append(
@@ -251,10 +255,15 @@ class AnalyticsService:
             return None
         item = max(sessions, key=lambda row: row.finished_at or row.started_at)
         bands = {attempt.module_type: attempt.band_score for attempt in item.attempts}
-        overall = project_overall_band(
+        scores = (
             bands.get(ModuleType.READING),
             bands.get(ModuleType.LISTENING),
             bands.get(ModuleType.WRITING),
+        )
+        overall = (
+            project_overall_band(*scores, bands.get(ModuleType.SPEAKING))
+            if "SPEAKING" in item.module_order_json
+            else legacy_three_skill_overall_band(*scores)
         )
         return LatestMockSummary(
             session_id=item.id,
@@ -269,6 +278,10 @@ class AnalyticsService:
             writing_band=float(bands[ModuleType.WRITING])
             if bands.get(ModuleType.WRITING) is not None
             else None,
+            speaking_band=float(bands[ModuleType.SPEAKING])
+            if bands.get(ModuleType.SPEAKING) is not None
+            else None,
+            module_order=item.module_order_json,
             overall_band=float(overall) if overall is not None else None,
         )
 

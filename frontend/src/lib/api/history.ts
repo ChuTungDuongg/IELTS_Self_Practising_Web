@@ -24,6 +24,8 @@ const historyItemSchema = z.object({
   band_score: z.number().nullable(),
   task_score: z.number().nullable().optional(),
   review_available: z.boolean().optional(),
+  deletion_allowed: z.boolean().optional(),
+  speaking_summary: z.object({ transcript_status: z.string().nullable(), ai_status: z.string().nullable(), advisory_overall_band: z.number().min(0).max(9).multipleOf(0.5).nullable(), ai_run_id: z.string().uuid().nullable() }).nullable().optional(),
 });
 
 const historyGroupSchema = z.object({
@@ -34,13 +36,14 @@ const historyGroupSchema = z.object({
   reading: historyItemSchema.nullable(),
   listening: historyItemSchema.nullable(),
   writing: historyItemSchema.nullable(),
+  speaking: historyItemSchema.nullable().optional(),
   overall_band_score: z.number().nullable(),
 });
 
 const historySchema = z.object({
   items: z.array(historyItemSchema),
   groups: z.array(historyGroupSchema),
-  sessions: z.array(z.object({ session_id: z.string().uuid(), test_version_id: z.string().uuid(), test_title: z.string(), version_number: z.number().int(), status: z.enum(["IN_PROGRESS", "COMPLETED", "ABANDONED"]), started_at: z.string(), finished_at: z.string().nullable(), reading: historyItemSchema.nullable(), listening: historyItemSchema.nullable(), writing: historyItemSchema.nullable(), overall_band_score: z.number().nullable() })).optional(),
+  sessions: z.array(z.object({ session_id: z.string().uuid(), test_version_id: z.string().uuid(), test_title: z.string(), version_number: z.number().int(), status: z.enum(["IN_PROGRESS", "COMPLETED", "ABANDONED"]), started_at: z.string(), finished_at: z.string().nullable(), reading: historyItemSchema.nullable(), listening: historyItemSchema.nullable(), writing: historyItemSchema.nullable(), speaking: historyItemSchema.nullable().optional(), module_order: z.array(z.enum(["LISTENING", "READING", "WRITING", "SPEAKING"])).optional(), deletion_allowed: z.boolean().optional(), overall_band_score: z.number().nullable() })).optional(),
   total: z.number().int(),
 });
 export type HistoryItem = z.infer<typeof historyItemSchema>;

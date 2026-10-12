@@ -1,5 +1,6 @@
 """Private grading orchestration; advisory results never change official bands."""
 
+from contextlib import nullcontext
 from datetime import timedelta
 
 from sqlalchemy import func, select
@@ -102,7 +103,9 @@ class SpeakingAIService:
 
     async def _snapshot(self, aid, run_id, after=0):
         current = await self.manifest(aid)
-        run = await self.repository.run(run_id)
+        # Keep criterion/status data and its event cursor in the same checkpoint.
+        # Parallel observers may share this lock; worker writes wait until read ends.
+        run = await self.repository.run(run_id, shared=True)
         if not run or run.attempt_id != aid:
             raise AppError("SPEAKING_MEDIA_NOT_FOUND", "Speaking grading run not found.", 404)
         stale = current != run.manifest_json
@@ -171,7 +174,7 @@ class SpeakingAIService:
         return (await self.snapshot(aid, run_id))[0]
 
     async def latest(self, aid):
-        async with self.session.begin():
+        async with nullcontext() if self.session.in_transaction() else self.session.begin():
             manifest = await self.manifest(aid)
             run_id = await self.session.scalar(
                 select(SpeakingAIGradingRun.id).where(

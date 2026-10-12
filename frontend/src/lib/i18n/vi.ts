@@ -1,6 +1,12 @@
 import type { TranslationDictionary } from "./types";
 
 export const vi = {
+  "history.speakingTranscript": "Bản chép lời: {status}",
+  "history.speakingAssessment": "Đánh giá AI: {status}",
+  "history.speakingAdvisory": "Band AI tham khảo {score}",
+  "history.speakingNotGenerated": "Chưa tạo",
+  "history.speakingPartial": "Có một phần",
+  "history.speakingUnavailable": "Chưa có",
   "speakingAI.title": "Đánh giá bài Nói bằng AI",
   "speakingAI.grade": "Chấm bằng AI",
   "speakingAI.stop": "Dừng chấm",
@@ -506,7 +512,7 @@ export const vi = {
   "admin.finalized": "Đã kết thúc",
   "admin.attempts": "Bài làm",
   "admin.record": "Hồ sơ học tập người dùng",
-  "admin.skillCounts": "Nghe / Đọc / Viết",
+  "admin.skillCounts": "Nghe / Đọc / Viết / Nói",
   "admin.completedMocks": "Full Mock đã hoàn tất",
   "admin.completedAttempts": "Bài làm đã hoàn tất",
   "admin.activeAttempts": "Bài làm đang hoạt động",
@@ -581,8 +587,8 @@ export const vi = {
   "history.fullMock": "Bài thi thử đầy đủ",
   "history.resumeMock": "Tiếp tục bài thi thử",
   "history.delete": "Xóa",
-  "history.mockDescription": "Thao tác này xóa vĩnh viễn bài thi thử và các lượt Nghe, Đọc, Viết, bao gồm câu trả lời và lịch sử xem lại. Đề đã xuất bản vẫn được giữ nguyên.",
-  "history.groupDescription": "Xóa vĩnh viễn các lượt luyện riêng Nghe, Đọc và Viết của bạn cho {title}, Phiên bản {number}. Bài thi thử và đề đã xuất bản vẫn được giữ nguyên.",
+  "history.mockDescription": "Thao tác này xóa vĩnh viễn bài thi thử và tất cả lượt làm của các kỹ năng, gồm câu trả lời, bản ghi âm và lịch sử xem lại. Đề đã xuất bản vẫn được giữ nguyên.",
+  "history.groupDescription": "Xóa vĩnh viễn các lượt luyện cá nhân riêng ở mọi kỹ năng của {title}, Phiên bản {number}. Bài làm được giữ theo chính sách lớp học vẫn còn. Bài thi thử và đề đã xuất bản không bị xóa.",
   "history.notFinalized": "Lượt làm này chưa hoàn tất. ",
   "history.attemptDescription": "Xóa vĩnh viễn lượt làm cùng câu trả lời, đánh dấu, cờ và lịch sử hoạt động. Đề vẫn được giữ nguyên.",
   "history.started": "Bắt đầu {date}",

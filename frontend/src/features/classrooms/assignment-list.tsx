@@ -8,22 +8,22 @@ import { useTranslation } from "@/lib/i18n/locale-provider";
 import { moduleTranslationKeys } from "@/lib/i18n/translations";
 import { ApiError } from "@/lib/api/client";
 import { ResourceAction } from "./resource-action";
-type ModuleType = "READING" | "LISTENING" | "WRITING";
+type ModuleType = "READING" | "LISTENING" | "WRITING" | "SPEAKING";
 function StartAssignment({ assignment }: {
   assignment: ClassroomAssignment;
 }) {
   const { t } = useTranslation();
   const router = useRouter();
-  const available = assignment.version?.modules.map(item => item.module_type).filter((kind): kind is ModuleType => kind !== "SPEAKING")
+  const available = assignment.version?.modules.map(item => item.module_type)
     ?? ["READING", "LISTENING", "WRITING"] as ModuleType[];
-  const fullMockReady = ["LISTENING", "READING", "WRITING"].every(kind => assignment.version?.modules.some(item => item.module_type === kind && (item.recommended_duration_seconds ?? 0) > 0));
+  const fullMockReady = ["LISTENING", "READING", "WRITING", "SPEAKING"].every(kind => assignment.version?.modules.some(item => item.module_type === kind && (item.recommended_duration_seconds ?? 0) > 0));
   const [mode, setMode] = useState<string>(available[0] ?? "READING");
   const [focusedId, setFocusedId] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const moduleRecord = assignment.version?.modules.find(item => item.module_type === mode);
   const units = mode === "READING" ? moduleRecord?.reading_passages
-    : mode === "LISTENING" ? moduleRecord?.listening_sections : moduleRecord?.writing_tasks;
+    : mode === "LISTENING" ? moduleRecord?.listening_sections : mode === "WRITING" ? moduleRecord?.writing_tasks : undefined;
   async function start() {
     if (pending)
       return;
@@ -35,6 +35,7 @@ function StartAssignment({ assignment }: {
         : {
           mode: "MODULE",
           module: mode as ModuleType,
+          ...(mode === "SPEAKING" ? { speaking_mode: "EXAM" as const } : {}),
           scope: focusedId ? "FOCUSED_UNIT" : "FULL_MODULE",
           ...(focusedId ? {
             focused_unit: {

@@ -22,6 +22,7 @@ from app.domains.scoring import (
     calculate_final_writing_band,
     calculate_task_overall,
     calculate_weighted_writing_overall,
+    legacy_three_skill_overall_band,
     listening_raw_to_band,
     project_overall_band,
     reading_raw_to_band,
@@ -827,6 +828,11 @@ class AttemptService:
 
     async def history(self) -> AttemptList:
         attempts = await self.repository.list_history(self.user_id)
+        from app.services.speaking_history import speaking_history_summaries
+
+        speaking = await speaking_history_summaries(
+            self.session, [item.id for item in attempts if item.module_type == ModuleType.SPEAKING]
+        )
         history_now = TimerService.now()
         items: list[HistoryItem] = []
         for item in attempts:
@@ -883,6 +889,11 @@ class AttemptService:
                     max_score=item.max_score,
                     band_score=item.band_score,
                     task_score=task_score,
+                    speaking_summary=speaking.get(item.id),
+                    deletion_allowed=item.test_session_id is None
+                    and not (
+                        item.module_type == ModuleType.SPEAKING and item.classroom_assignment_id
+                    ),
                     review_available=(
                         item.test_session is None
                         or item.test_session.status == TestSessionStatus.COMPLETED
@@ -932,6 +943,7 @@ class AttemptService:
             reading = latest_finalized(version_attempts, ModuleType.READING)
             listening = latest_finalized(version_attempts, ModuleType.LISTENING)
             writing = latest_finalized(version_attempts, ModuleType.WRITING)
+            spoken = latest_finalized(version_attempts, ModuleType.SPEAKING)
             groups.append(
                 HistoryGroup(
                     test_id=version.test_id,
@@ -941,10 +953,12 @@ class AttemptService:
                     reading=reading,
                     listening=listening,
                     writing=writing,
+                    speaking=spoken,
                     overall_band_score=project_overall_band(
                         reading.band_score if reading else None,
                         listening.band_score if listening else None,
                         writing.band_score if writing else None,
+                        spoken.band_score if spoken else None,
                     ),
                 )
             )
@@ -958,6 +972,19 @@ class AttemptService:
             session_items = {
                 item.module: item for item in items if item.test_session_id == test_session.id
             }
+            scores = [
+                session_items[module].band_score if module in session_items else None
+                for module in (ModuleType.READING, ModuleType.LISTENING, ModuleType.WRITING)
+            ]
+            if "SPEAKING" in test_session.module_order_json:
+                overall = project_overall_band(
+                    *scores,
+                    session_items[ModuleType.SPEAKING].band_score
+                    if ModuleType.SPEAKING in session_items
+                    else None,
+                )
+            else:
+                overall = legacy_three_skill_overall_band(*scores)
             mock_groups.append(
                 MockHistoryGroup(
                     session_id=test_session.id,
@@ -970,17 +997,11 @@ class AttemptService:
                     reading=session_items.get(ModuleType.READING),
                     listening=session_items.get(ModuleType.LISTENING),
                     writing=session_items.get(ModuleType.WRITING),
-                    overall_band_score=project_overall_band(
-                        session_items.get(ModuleType.READING).band_score
-                        if session_items.get(ModuleType.READING)
-                        else None,
-                        session_items.get(ModuleType.LISTENING).band_score
-                        if session_items.get(ModuleType.LISTENING)
-                        else None,
-                        session_items.get(ModuleType.WRITING).band_score
-                        if session_items.get(ModuleType.WRITING)
-                        else None,
-                    ),
+                    speaking=session_items.get(ModuleType.SPEAKING),
+                    module_order=test_session.module_order_json,
+                    deletion_allowed=test_session.classroom_assignment_id is None
+                    and not any(a.classroom_assignment_id for a in test_session.attempts),
+                    overall_band_score=overall,
                 )
             )
         return AttemptList(items=items, groups=groups, sessions=mock_groups, total=len(items))

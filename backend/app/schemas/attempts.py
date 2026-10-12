@@ -68,7 +68,9 @@ class FocusedUnitResponse(BaseModel):
 class AttemptCreate(BaseModel):
     model_config = {"extra": "forbid"}
     test_version_id: UUID
-    module: Literal[ModuleType.READING, ModuleType.LISTENING, ModuleType.WRITING, ModuleType.SPEAKING]
+    module: Literal[
+        ModuleType.READING, ModuleType.LISTENING, ModuleType.WRITING, ModuleType.SPEAKING
+    ]
     speaking_mode: Literal["PRACTICE", "EXAM"] | None = None
     scope: AttemptScope = AttemptScope.FULL_MODULE
     focused_unit: FocusedUnit | None = None
@@ -215,6 +217,13 @@ class AttemptReview(BaseModel):
     flags: list[dict[str, Any]]
 
 
+class SpeakingHistorySummary(BaseModel):
+    transcript_status: Literal["PENDING", "RUNNING", "COMPLETED", "PARTIAL", "FAILED"] | None = None
+    ai_status: Literal["PENDING", "RUNNING", "COMPLETED", "FAILED", "CANCELLED"] | None = None
+    advisory_overall_band: float | None = None
+    ai_run_id: UUID | None = None
+
+
 class HistoryItem(BaseModel):
     attempt_id: UUID
     test_id: UUID
@@ -237,6 +246,8 @@ class HistoryItem(BaseModel):
     band_score: float | None
     task_score: float | None = None
     review_available: bool = True
+    speaking_summary: SpeakingHistorySummary | None = None
+    deletion_allowed: bool = True
 
 
 class HistoryGroup(BaseModel):
@@ -247,6 +258,7 @@ class HistoryGroup(BaseModel):
     reading: HistoryItem | None = None
     listening: HistoryItem | None = None
     writing: HistoryItem | None = None
+    speaking: HistoryItem | None = None
     overall_band_score: float | None = None
 
 
@@ -268,4 +280,9 @@ class MockHistoryGroup(BaseModel):
     reading: HistoryItem | None = None
     listening: HistoryItem | None = None
     writing: HistoryItem | None = None
+    speaking: HistoryItem | None = None
+    module_order: list[ModuleType] = Field(
+        default_factory=lambda: [ModuleType.LISTENING, ModuleType.READING, ModuleType.WRITING]
+    )
     overall_band_score: float | None = None
+    deletion_allowed: bool = True

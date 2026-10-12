@@ -275,7 +275,7 @@ describe("AttemptHistoryList", () => {
     fireEvent.click(within(card as HTMLElement).getByRole("button", { name: "Delete Full Mock" }));
     const dialog = screen.getByRole("dialog");
     expect(dialog).toHaveTextContent("Delete this Full Mock?");
-    expect(dialog).toHaveTextContent("Listening, Reading and Writing attempts");
+    expect(dialog).toHaveTextContent("all its skill attempts");
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
     expect(deleteTestSession).not.toHaveBeenCalled();
     fireEvent.click(within(card as HTMLElement).getByRole("button", { name: "Delete Full Mock" }));

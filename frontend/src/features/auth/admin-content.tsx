@@ -21,7 +21,7 @@ export function AdminDashboardContent({ stats, users, search, status, offset }: 
       <AdminMetric label={t("admin.activeAttempts")} value={stats.active_attempts} />
       <AdminMetric label={t("admin.completedAttempts")} value={stats.completed_attempts} />
       <AdminMetric label={t("admin.completedMocks")} value={stats.completed_full_mocks} />
-      <AdminMetric label={t("admin.skillCounts")} value={`${stats.attempts_by_skill.LISTENING} / ${stats.attempts_by_skill.READING} / ${stats.attempts_by_skill.WRITING}`} />
+      <AdminMetric label={t("admin.skillCounts")} value={`${stats.attempts_by_skill.LISTENING} / ${stats.attempts_by_skill.READING} / ${stats.attempts_by_skill.WRITING} / ${stats.attempts_by_skill.SPEAKING ?? 0}`} />
     </section> : <p className="notice">{t("admin.statsUnavailable")}</p>}
     {users ? <AdminUserList key={`${status}:${search}:${offset}`} users={users} status={status} search={search} stats={stats} /> : <section className="admin-users surface-card"><p role="alert" className="notice notice-error">{t("admin.usersUnavailable")}</p></section>}
   </>;

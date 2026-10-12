@@ -33,7 +33,11 @@ class AssignmentResponse(BaseModel):
 class AssignmentStart(BaseModel):
     model_config = ConfigDict(extra="forbid")
     mode: Literal["MODULE", "FULL_MOCK"]
-    module: Literal[ModuleType.READING, ModuleType.LISTENING, ModuleType.WRITING] | None = None
+    module: (
+        Literal[ModuleType.READING, ModuleType.LISTENING, ModuleType.WRITING, ModuleType.SPEAKING]
+        | None
+    ) = None
+    speaking_mode: Literal["PRACTICE", "EXAM"] | None = None
     scope: AttemptScope = AttemptScope.FULL_MODULE
     focused_unit: FocusedUnit | None = None
     timer: TimerRequest = Field(default_factory=lambda: TimerRequest(mode=TimerMode.COUNT_UP))
@@ -43,9 +47,22 @@ class AssignmentStart(BaseModel):
         if self.mode == "MODULE" and self.module is None:
             raise ValueError("A module is required")
         if self.mode == "FULL_MOCK" and (
-            self.module or self.focused_unit or self.scope != AttemptScope.FULL_MODULE
+            self.module
+            or self.focused_unit
+            or self.speaking_mode
+            or self.scope != AttemptScope.FULL_MODULE
         ):
             raise ValueError("Full Mock cannot select a module or focused unit")
+        if self.module != ModuleType.SPEAKING and self.speaking_mode is not None:
+            raise ValueError("Speaking mode is only available for Speaking")
+        if self.module == ModuleType.SPEAKING:
+            self.speaking_mode = self.speaking_mode or "PRACTICE"
+            if self.timer.mode != TimerMode.COUNT_UP or (
+                self.scope == AttemptScope.FOCUSED_UNIT and self.speaking_mode != "PRACTICE"
+            ):
+                raise ValueError(
+                    "Speaking uses prompt deadlines; focused Speaking is practice only"
+                )
         return self
 
 

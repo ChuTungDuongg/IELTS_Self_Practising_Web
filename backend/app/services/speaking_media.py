@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+from contextlib import nullcontext
 
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
@@ -323,7 +324,8 @@ class SpeakingMediaService:
         raise AppError("SPEAKING_MEDIA_FORBIDDEN", "Recording access is unavailable.", 403)
 
     async def manifest(self, aid, response_id):
-        async with self.session.begin():
+        # Classroom review composes private reads in its existing transaction.
+        async with nullcontext() if self.session.in_transaction() else self.session.begin():
             response = await self.session.get(SpeakingResponse, response_id)
             if response is None or response.attempt_id != aid:
                 raise AppError("SPEAKING_MEDIA_NOT_FOUND", "Recording not found.", 404)
@@ -379,7 +381,7 @@ class SpeakingMediaService:
         )
 
         # Each manifest read reauthorizes; only immutable committed active takes enter review.
-        async with self.session.begin():
+        async with nullcontext() if self.session.in_transaction() else self.session.begin():
             attempt = await self.session.get(Attempt, aid)
             if (
                 attempt is None

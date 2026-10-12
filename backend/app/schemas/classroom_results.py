@@ -4,6 +4,8 @@ from pydantic import BaseModel, Field
 
 from app.schemas.attempts import AnswerResponse, AttemptResponse, AttemptReview, WritingReview
 from app.schemas.content import ListeningReview, ReadingReview, WritingAttemptReview
+from app.schemas.speaking import SpeakingReviewData
+from app.schemas.speaking_ai_runs import SpeakingAIRunData
 from app.schemas.writing_ai import RunResponse
 
 
@@ -22,3 +24,5 @@ class AssignmentResultDetail(AssignmentResultSummary):
     submitted_answers: list[AnswerResponse] = Field(default_factory=list)
     writing_responses: list[WritingReview] = Field(default_factory=list)
     ai_runs: list[RunResponse] = Field(default_factory=list)
+    speaking_review: SpeakingReviewData | None = None
+    speaking_ai_run: SpeakingAIRunData | None = None

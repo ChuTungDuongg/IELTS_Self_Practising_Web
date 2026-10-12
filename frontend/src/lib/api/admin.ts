@@ -5,7 +5,6 @@ import { analyticsSchema, type AnalyticsDashboard } from "./analytics";
 import type { HistoryResponse } from "./history";
 import { apiRequest, type ApiRequester } from "./client";
 
-const skillSchema = z.enum(["READING", "LISTENING", "WRITING"]);
 const statsSchema = z.object({
   total_users: z.number().int(),
   active_users: z.number().int(),
@@ -14,7 +13,7 @@ const statsSchema = z.object({
   active_attempts: z.number().int(),
   completed_attempts: z.number().int(),
   completed_full_mocks: z.number().int(),
-  attempts_by_skill: z.record(skillSchema, z.number().int()),
+  attempts_by_skill: z.object({ READING: z.number().int(), LISTENING: z.number().int(), WRITING: z.number().int(), SPEAKING: z.number().int().optional() }),
 });
 const adminUserSchema = userSchema.pick({
   id: true, email: true, display_name: true, role: true, is_active: true,

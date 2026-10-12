@@ -175,6 +175,7 @@ class ClassroomAssignmentService:
                 module=data.module,
                 scope=data.scope,
                 focused_unit=data.focused_unit,
+                speaking_mode=data.speaking_mode,
                 timer=data.timer,
             ),
             _classroom_assignment_id=assignment_id,

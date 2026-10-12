@@ -39,14 +39,20 @@ export function AttemptHistoryList({ initialHistory }: { initialHistory: History
     !deletedAttemptIds.has(item.attempt_id)
     && (item.test_session_id
       ? !deletedSessionIds.has(item.test_session_id)
-      : !deletedVersionIds.has(item.test_version_id)),
+      : item.deletion_allowed === false || !deletedVersionIds.has(item.test_version_id)),
   );
   const sessions = (initialHistory.sessions ?? []).filter((session) => !deletedSessionIds.has(session.session_id));
-  const groups = initialHistory.groups.filter((group) => !deletedVersionIds.has(group.test_version_id));
+  const groups = initialHistory.groups.flatMap((group) => {
+    if (!deletedVersionIds.has(group.test_version_id)) return [group];
+    const retained = (item: HistoryItem | null | undefined) => item?.deletion_allowed === false ? item : null;
+    const remaining = { ...group, reading: retained(group.reading), listening: retained(group.listening), writing: retained(group.writing), speaking: retained(group.speaking), overall_band_score: null };
+    return remaining.reading || remaining.listening || remaining.writing || remaining.speaking ? [remaining] : [];
+  });
   const skillItems = items.filter((item) => item.scope !== "FOCUSED_UNIT");
   const focusedItems = items.filter((item) => item.scope === "FOCUSED_UNIT");
 
   function chooseAttempt(item: HistoryItem) {
+    if (item.deletion_allowed === false) return;
     setSelected(item);
     setSelectedSession(null);
     setSelectedGroup(null);
@@ -54,6 +60,7 @@ export function AttemptHistoryList({ initialHistory }: { initialHistory: History
   }
 
   function chooseSession(session: MockHistoryGroup) {
+    if (session.deletion_allowed === false) return;
     setSelectedSession(session);
     setSelected(null);
     setSelectedGroup(null);
@@ -249,6 +256,7 @@ function HistoryRow({
               : item.elapsed_seconds === null ? t("history.timeProgress") : formatDuration(item.elapsed_seconds)}
         </span>
         <AttemptScore item={item} />
+        <SpeakingHistorySummary item={item} />
       </div>
       <div className="history-actions">
         {item.status === "PAUSED" ? (
@@ -264,7 +272,7 @@ function HistoryRow({
             {t("common.continue")}
           </Link>
         ) : item.test_session_id ? <Link href={`/test-session/${item.test_session_id}`} className="btn btn-secondary">{t("history.resumeMock")}</Link> : null}
-        {item.test_session_id ? null : <button
+        {item.test_session_id || item.deletion_allowed === false ? null : <button
           type="button"
           disabled={pending}
           aria-label={t("history.deleteNamed", { title: item.test_title })}
@@ -288,6 +296,7 @@ function AttemptScore({ item }: { item: HistoryItem }) {
     return <span className="history-score history-score-state" data-testid={`history-score-${item.attempt_id}`}>{t("history.progress")}</span>;
   }
   if (item.scope === "FOCUSED_UNIT") {
+    if (item.module === "SPEAKING") return <span className="history-score history-score-state" data-testid={`history-score-${item.attempt_id}`}>{item.band_score === null ? t("history.notGraded") : t("runner.band", { score: item.band_score.toFixed(1) })}</span>;
     return <span className="history-score history-score-result" data-testid={`history-score-${item.attempt_id}`}>
       {item.module === "WRITING" ? item.task_score == null ? t("history.notGraded") : t("history.taskScore", { score: item.task_score.toFixed(1) }) : <>
         <strong>{t("history.correct", { raw: item.raw_score ?? "—", max: item.max_score ?? "—" })}</strong>
@@ -298,8 +307,8 @@ function AttemptScore({ item }: { item: HistoryItem }) {
   if (item.band_score === null) {
     return (
       <span className="history-score history-score-unavailable" data-testid={`history-score-${item.attempt_id}`}>
-        {item.module === "WRITING" ? t("history.notGraded") : t("history.officialUnavailable")}
-        {item.module !== "WRITING" && item.raw_score !== null && item.max_score !== null ? <small>{t("history.correct", { raw: item.raw_score, max: item.max_score })}</small> : null}
+        {item.module === "WRITING" || item.module === "SPEAKING" ? t("history.notGraded") : t("history.officialUnavailable")}
+        {item.module !== "WRITING" && item.module !== "SPEAKING" && item.raw_score !== null && item.max_score !== null ? <small>{t("history.correct", { raw: item.raw_score, max: item.max_score })}</small> : null}
       </span>
     );
   }
@@ -308,9 +317,29 @@ function AttemptScore({ item }: { item: HistoryItem }) {
     <span className="history-score history-score-result" data-testid={`history-score-${item.attempt_id}`}>
       <span className="history-band-label">{t("history.band")}</span>
       <strong className="history-band-value">{item.band_score.toFixed(1)}</strong>
-      {item.module !== "WRITING" ? <small>{item.raw_score === null || item.max_score === null ? t("history.rawUnavailable") : t("history.correct", { raw: item.raw_score, max: item.max_score })}</small> : null}
+      {item.module !== "WRITING" && item.module !== "SPEAKING" ? <small>{item.raw_score === null || item.max_score === null ? t("history.rawUnavailable") : t("history.correct", { raw: item.raw_score, max: item.max_score })}</small> : null}
     </span>
   );
+}
+
+function SpeakingHistorySummary({ item }: { item: HistoryItem }) {
+  const { t } = useTranslation(); const summary = item.speaking_summary;
+  if (item.module !== "SPEAKING" || !summary) return null;
+  function statusLabel(status: string | null) {
+    if (!status) return t("history.speakingNotGenerated");
+    if (status === "COMPLETED" || status === "READY") return t("speakingTranscript.ready");
+    if (status === "PENDING" || status === "WAITING") return t("speakingTranscript.waiting");
+    if (status === "RUNNING" || status === "PROCESSING") return t("speakingTranscript.processing");
+    if (status === "FAILED") return t("speakingTranscript.failed");
+    if (status === "CANCELLED") return t("speakingAI.stage.CANCELLED");
+    if (status === "PARTIAL") return t("history.speakingPartial");
+    return t("history.speakingUnavailable");
+  }
+  return <div className="history-record-date">
+    <p>{t("history.speakingTranscript", { status: statusLabel(summary.transcript_status) })}</p>
+    <p>{t("history.speakingAssessment", { status: statusLabel(summary.ai_status) })}</p>
+    {summary.advisory_overall_band !== null ? <p>{t("history.speakingAdvisory", { score: summary.advisory_overall_band.toFixed(1) })}</p> : null}
+  </div>;
 }
 
 function HistoryGroupCard({ group, pending, onDelete }: {
@@ -319,6 +348,8 @@ function HistoryGroupCard({ group, pending, onDelete }: {
   onDelete: (group: HistoryGroup) => void;
 }) {
   const { t } = useTranslation();
+  const groupItems = [group.reading, group.listening, group.writing, group.speaking].filter((item): item is HistoryItem => Boolean(item));
+  const retainedOnly = groupItems.length > 0 && groupItems.every((item) => item.deletion_allowed === false);
   return (
     <li className="history-group-card">
       <div className="history-group-heading">
@@ -333,28 +364,31 @@ function HistoryGroupCard({ group, pending, onDelete }: {
         </strong>
       </div>
       <ul className="history-group-skills">
-        <HistoryGroupSkill label="Reading" item={group.reading} />
-        <HistoryGroupSkill label="Listening" item={group.listening} />
-        <HistoryGroupSkill label="Writing" item={group.writing} />
+        {group.reading || !retainedOnly ? <HistoryGroupSkill module="READING" item={group.reading} /> : null}
+        {group.listening || !retainedOnly ? <HistoryGroupSkill module="LISTENING" item={group.listening} /> : null}
+        {group.writing || !retainedOnly ? <HistoryGroupSkill module="WRITING" item={group.writing} /> : null}
+        {group.speaking || !retainedOnly ? <HistoryGroupSkill module="SPEAKING" item={group.speaking ?? null} /> : null}
       </ul>
       <div className="history-group-footer">
-        <button type="button" className="btn btn-danger-ghost" disabled={pending} onClick={() => onDelete(group)}>
+        {retainedOnly ? null : <button type="button" className="btn btn-danger-ghost" disabled={pending} onClick={() => onDelete(group)}>
           {t("history.deleteGroup")}
-        </button>
+        </button>}
       </div>
     </li>
   );
 }
 
-function HistoryGroupSkill({ label, item }: { label: string; item: HistoryItem | null }) {
+function HistoryGroupSkill({ module, item }: { module: HistoryItem["module"]; item: HistoryItem | null }) {
   const { t } = useTranslation();
+  const label = t(moduleTranslationKeys[module]);
   return (
     <li className="history-group-skill">
-      <span>{t(label === "Reading" ? "common.reading" : label === "Listening" ? "common.listening" : "common.writing")}</span>
-      <span>{!item ? "—" : item.band_score === null ? label === "Writing" ? t("history.notGraded") : "—" : item.band_score.toFixed(1)}</span>
+      <span>{label}</span>
+      <span>{!item ? "—" : item.band_score === null ? module === "WRITING" || module === "SPEAKING" ? t("history.notGraded") : "—" : item.band_score.toFixed(1)}</span>
+      {item ? <SpeakingHistorySummary item={item} /> : null}
       {item && item.review_available !== false ? (
         <Link href={`/review/${item.attempt_id}`} className="btn btn-secondary">
-          {t("history.reviewSkill", { skill: t(label === "Reading" ? "common.reading" : label === "Listening" ? "common.listening" : "common.writing") })}
+          {t("history.reviewSkill", { skill: label })}
         </Link>
       ) : (
         <span>{t("history.noFinal")}</span>
@@ -369,6 +403,8 @@ function MockSessionCard({ session, pending, onDelete }: {
   onDelete: (session: MockHistoryGroup) => void;
 }) {
   const { t } = useTranslation();
+  const items = { LISTENING: session.listening, READING: session.reading, WRITING: session.writing, SPEAKING: session.speaking ?? null };
+  const moduleOrder: NonNullable<MockHistoryGroup["module_order"]> = session.module_order ?? ["LISTENING", "READING", "WRITING"];
   return (
     <li className="history-group-card history-session-card">
       <div className="history-group-heading">
@@ -384,9 +420,7 @@ function MockSessionCard({ session, pending, onDelete }: {
         </strong>
       </div>
       <ul className="history-group-skills">
-        <HistoryGroupSkill label="Listening" item={session.listening} />
-        <HistoryGroupSkill label="Reading" item={session.reading} />
-        <HistoryGroupSkill label="Writing" item={session.writing} />
+        {moduleOrder.map((module) => <HistoryGroupSkill key={module} module={module} item={items[module]} />)}
       </ul>
       <div className="history-group-footer">
         {session.status === "IN_PROGRESS" ? (
@@ -394,9 +428,9 @@ function MockSessionCard({ session, pending, onDelete }: {
             {t("history.resumeMock")}
           </Link>
         ) : null}
-        <button type="button" className="btn btn-danger-ghost" disabled={pending} onClick={() => onDelete(session)}>
+        {session.deletion_allowed === false ? null : <button type="button" className="btn btn-danger-ghost" disabled={pending} onClick={() => onDelete(session)}>
           {t("history.deleteMock")}
-        </button>
+        </button>}
       </div>
     </li>
   );
