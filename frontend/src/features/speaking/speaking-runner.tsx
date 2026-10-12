@@ -1,7 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "@/lib/i18n/locale-provider";
-import { ThemeToggle } from "@/components/ui/theme-toggle";
 import type { ExamPayload } from "@/lib/api/exam";
 import { ApiError } from "@/lib/api/client";
 import { closeSpeakingSegment, getSpeakingManifest, openSpeakingSegment, uploadSpeakingChunk, interruptSpeaking, resumeSpeaking, type SpeakingManifest, beginSpeaking, finishSpeaking, getSpeakingState, heartbeatSpeaking, retrySpeaking, saveSpeakingNotes, type SpeakingState } from "@/lib/api/speaking";
@@ -176,7 +175,7 @@ export function SpeakingRunner({ initial }: { initial: ExamPayload }) {
   const seconds = Math.ceil(milliseconds / 1000); const time = `${Math.floor(seconds / 60).toString().padStart(2,"0")}:${(seconds % 60).toString().padStart(2,"0")}`;
   const grace = state?.recovery_grace_deadline_at ? Math.max(0, Math.ceil((new Date(state.recovery_grace_deadline_at).getTime() - new Date(state.server_time).getTime() - Math.max(0, clock - received)) / 1000)) : 0;
   return <main className="exam-runner speaking-runner" data-reduced-motion={reducedMotion}>
-    <header className="exam-header"><h1>{initial.test_title}</h1><ThemeToggle /></header>
+    <header className="exam-header"><h1>{initial.test_title}</h1></header>
     {error ? <div className="notice notice-error" role="alert">{t("speakingRuntime.saveError")}<button className="btn btn-secondary" disabled={saving} onClick={() => void (state?.phase === "FINALIZING" ? finish("TIMEOUT") : state?.phase === "RECORDING" && ready ? physicalReady ? finish("USER_DONE") : startPhysicalSegment(state) : restore(!ready))}>{t("speakingRuntime.saveAgain")}</button></div> : null}
     {!state ? <p role="status">{t("speakingRuntime.loading")}</p> : state.phase === "COMPLETED" ? <div className="speaking-card"><h2>{t("speakingRuntime.completed")}</h2><a className="btn btn-primary" href={`/review/${id}`}>{t("speakingRuntime.review")}</a></div> : <>
       {restored ? <p role="status">{t("speakingRuntime.restored")}{manifest?.segments.some((segment) => segment.chunks.length) ? ` · ${t("speakingRuntime.recoveredAudio")}` : ""}</p> : null}

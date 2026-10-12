@@ -4,7 +4,6 @@ import { useTranslation } from "@/lib/i18n/locale-provider";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
-import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { elapsedFromSnapshot, estimateServerOffset, formatDuration, remainingSeconds } from "@/features/exam/timer";
 import { PauseAttemptControl } from "@/features/exam/pause-attempt-control";
 import { AttemptStoppedError, useAttemptLifecycle } from "@/features/exam/attempt-lifecycle";
@@ -120,7 +119,7 @@ export function WritingRunner({ initial }: { initial: ExamPayload }) {
   return <div className="exam-runner writing-exam">
     <header className="exam-header">
       <div><p>{initial.attempt.scope === "FOCUSED_UNIT" ? t("runner.writingFocused") : t("runner.writingTaskUpper", { number: task.task_number })}</p><h1>{initial.test_title}</h1>{focusedUnitLabel(initial.attempt, t) ? <p>{focusedUnitLabel(initial.attempt, t)}</p> : null}</div>
-      <div className="exam-header-tools"><PauseAttemptControl attemptId={attemptId} beforePause={flushForSubmission} /><ThemeToggle /><div className="exam-header-status"><span aria-label={t(initial.attempt.timer_mode === "COUNTDOWN" ? "runner.timeRemaining" : "runner.timeElapsed")} className={`exam-timer ${initial.attempt.timer_mode === "COUNTDOWN" && seconds < 300 ? "exam-timer-warning" : ""}`}>{initial.attempt.timer_mode === "COUNT_UP" ? t("runner.timeUsed") : ""}{formatDuration(seconds)}</span><span className={`exam-save-state exam-save-${saveState}`}>{saveState === "saving" ? t("common.saving") : saveState === "conflict" ? t("runner.shortConflict") : saveState === "error" ? t("runner.saveFailed") : saveState === "dirty" ? t("runner.unsaved") : t("common.saved")}</span></div></div>
+      <div className="exam-header-tools"><PauseAttemptControl attemptId={attemptId} beforePause={flushForSubmission} /><div className="exam-header-status"><span aria-label={t(initial.attempt.timer_mode === "COUNTDOWN" ? "runner.timeRemaining" : "runner.timeElapsed")} className={`exam-timer ${initial.attempt.timer_mode === "COUNTDOWN" && seconds < 300 ? "exam-timer-warning" : ""}`}>{initial.attempt.timer_mode === "COUNT_UP" ? t("runner.timeUsed") : ""}{formatDuration(seconds)}</span><span className={`exam-save-state exam-save-${saveState}`}>{saveState === "saving" ? t("common.saving") : saveState === "conflict" ? t("runner.shortConflict") : saveState === "error" ? t("runner.saveFailed") : saveState === "dirty" ? t("runner.unsaved") : t("common.saved")}</span></div></div>
     </header>
     {initial.attempt.scope !== "FOCUSED_UNIT" || tasks.length > 1 ? <div className="writing-task-tabs" role="tablist" aria-label={t("runner.writingTasks")}>
       {tasks.map((item, index) => <button key={item.id} type="button" role="tab" aria-selected={index === taskIndex} className={index === taskIndex ? "active" : ""} onClick={() => setTaskIndex(index)}><b>{t("common.taskNumber", { number: item.task_number })}</b><span>{t("runner.wordCount", { count: countWords(contents[item.id] ?? "") })}</span></button>)}

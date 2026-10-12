@@ -16,22 +16,11 @@ function declarationsFor(selector: string) {
 }
 
 describe("exam theme CSS", () => {
-  it("centers fixed SVGs and text with flex gaps in both theme states", () => {
-    expect(declarationsFor(".theme-toggle")).toMatchObject({ display: "inline-flex", "align-items": "center", "min-height": "38px" });
-    for (const selector of [".theme-light-label", ".theme-dark-label"]) {
-      expect(declarationsFor(selector)).toMatchObject({ "align-items": "center", gap: "6px" });
-    }
-    expect(declarationsFor(".theme-light-label").display).toBe("inline-flex");
-    expect(declarationsFor(".theme-dark-label").display).toBe("none");
-    expect(declarationsFor(':root[data-theme="dark"] .theme-light-label').display).toBe("none");
-    expect(declarationsFor(':root[data-theme="dark"] .theme-dark-label').display).toBe("inline-flex");
-    expect(declarationsFor(".theme-icon")).toMatchObject({ display: "block", width: "18px", height: "18px", "flex-shrink": "0" });
-    expect(declarationsFor(".theme-icon")["margin-right"]).toBeUndefined();
-    let padding: string | undefined;
-    postcss.parse(css).walkRules(rule => {
-      if (rule.selector === ".theme-toggle" && rule.parent?.type === "root") rule.walkDecls("padding", decl => { padding = decl.value; });
-    });
-    expect(padding).toBe("0 10px");
+  it("keeps Personalization in a responsive, themed, reduced-motion modal", () => {
+    expect(declarationsFor(".personalization-backdrop")).toMatchObject({ position: "fixed", "z-index": "100" });
+    expect(declarationsFor(".personalization-dialog")).toMatchObject({ display: "flex", "flex-direction": "column", "backdrop-filter": "blur(22px) saturate(1.25)" });
+    expect(declarationsFor(".personalization-dialog").background).toContain("var(--surface-raised)");
+    expect(css).toContain("@media (prefers-reduced-motion: reduce) { .personalization-backdrop, .personalization-dialog { animation: none; } }");
   });
 
   it("preserves authored Reading newlines in one text column beside its first-line label", () => {
@@ -206,7 +195,7 @@ it("workspace typography excludes attempts, paused gates and embedded DraftPrevi
   const wrappers = ["exam-shell", "exam-runner draft-preview"];
   for (const wrapper of wrappers) {
     const root = document.createElement("div"); root.className = wrapper;
-    root.innerHTML = '<div class="page-heading exam-header"><h1>Authored title</h1></div><button class="btn btn-primary theme-toggle">Action</button><label class="field-label"><input class="field"></label><span class="status-badge module-badge">Status</span><p class="page-description">Content</p>';
+    root.innerHTML = '<div class="page-heading exam-header"><h1>Authored title</h1></div><button class="btn btn-primary">Action</button><label class="field-label"><input class="field"></label><span class="status-badge module-badge">Status</span><p class="page-description">Content</p>';
     document.body.append(root);
     scoped.walkRules((rule) => {
       if (!rule.selector.includes(":not(:where(")) return;

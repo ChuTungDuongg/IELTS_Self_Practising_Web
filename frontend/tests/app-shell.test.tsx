@@ -86,7 +86,7 @@ describe("horizontal application shell", () => {
     expect(translated.map((link) => link.getAttribute("href"))).toEqual(routes);
     expect(screen.getAllByRole("navigation")).toHaveLength(1);
     expect(screen.getByRole("banner").querySelector(".app-header-inner")).toContainElement(translated[0]);
-    expect(screen.getByRole("button", { name: "Dùng giao diện tối" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Dùng giao diện tối" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Đăng xuất" })).toBeInTheDocument();
     translated.forEach((link, index) => expect(link).toBe(links[index]));
     expect(translated[6]).toHaveAttribute("aria-current", "page");
@@ -119,7 +119,7 @@ describe("horizontal application shell", () => {
     if (mode === "error") expect(screen.getByRole("alert")).toHaveTextContent("Session unavailable");
   });
 
-  it.each([null, "USER", "ADMIN"] as const)("omits header language quick controls and keeps theme and account action order (%s)", (role) => {
+  it.each([null, "USER", "ADMIN"] as const)("omits quick theme and language controls and keeps account action order (%s)", (role) => {
     state.role = role;
     state.name = "A very long fictional learner display name that must remain fully accessible";
     const { container } = render(<AppShell currentYear={2026}>Content</AppShell>);
@@ -128,8 +128,8 @@ describe("horizontal application shell", () => {
     expect(header.queryAllByRole("button", { name: /^(English|Tiếng Việt|EN|VI)$/ })).toHaveLength(0);
     expect(header.queryByRole("group", { name: "Language" })).not.toBeInTheDocument();
     expect(header.queryAllByText(/^(EN|VI)$/)).toHaveLength(0);
-    expect(header.getByRole("button", { name: "Use dark theme" })).toBeInTheDocument();
-    expect(Array.from(actions.children).map((child) => child.tagName.toLowerCase())).toEqual(role ? ["button", "a", "a", "button"] : ["button", "a", "a"]);
+    expect(header.queryByRole("button", { name: "Use dark theme" })).not.toBeInTheDocument();
+    expect(Array.from(actions.children).map((child) => child.tagName.toLowerCase())).toEqual(role ? ["button", "a", "button"] : ["a", "a"]);
     if (role) expect(screen.getByRole("link", { name: new RegExp(state.name) })).toHaveAttribute("href", "/profile");
   });
 
@@ -140,7 +140,7 @@ describe("horizontal application shell", () => {
     const focusable = Array.from(header.querySelectorAll<HTMLAnchorElement | HTMLButtonElement>('a[href], button'));
     expect(header.querySelectorAll("nav")).toHaveLength(1);
     expect(focusable.slice(1, 1 + routes.length).map((node) => node.getAttribute("href"))).toEqual(routes);
-    expect(focusable.slice(1 + routes.length).map((node) => node.getAttribute("aria-label") ?? node.textContent)).toEqual(["Use dark theme", "Personalization", expect.stringContaining("Learner"), "Logout"]);
+    expect(focusable.slice(1 + routes.length).map((node) => node.getAttribute("aria-label") ?? node.textContent)).toEqual(["Personalization", expect.stringContaining("Learner"), "Logout"]);
     expect(focusable.every((node) => node.tabIndex === 0)).toBe(true);
     expect(container.querySelector('[tabindex]:not([tabindex="0"]):not([tabindex="-1"])')).toBeNull();
   });

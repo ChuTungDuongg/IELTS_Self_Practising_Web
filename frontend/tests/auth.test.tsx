@@ -87,12 +87,15 @@ describe("authentication UI", () => {
     function Child() { useEffect(() => { mounts += 1; }, []); return <input aria-label="Existing answer" defaultValue="kept" />; }
     renderWithLocale(<AuthProvider><AppShell currentYear={2026}><Child /></AppShell></AuthProvider>);
     await screen.findByText("Student");
-    await waitFor(() => expect(screen.getByRole("button", { name: "Use dark theme" })).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Personalization" })).toBeEnabled());
     const input = screen.getByLabelText("Existing answer");
     fireEvent.change(input, { target: { value: "draft" } });
-    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Switch to Vietnamese" })));
-    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Dùng giao diện tối" })));
-    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Switch to English" })));
+    fireEvent.click(screen.getByRole("button", { name: "Personalization" }));
+    const dialog = screen.getByRole("dialog", { name: "Personalization" });
+    await act(async () => fireEvent.click(within(dialog).getByRole("button", { name: "Tiếng Việt" })));
+    await act(async () => fireEvent.click(within(dialog).getByRole("button", { name: "Tối" })));
+    await act(async () => fireEvent.click(within(dialog).getByRole("button", { name: "English" })));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close Personalization" }));
     expect(screen.getByLabelText("Existing answer")).toBe(input);
     expect(input).toHaveValue("draft");
     expect(mounts).toBe(1);

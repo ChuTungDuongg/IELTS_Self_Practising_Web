@@ -12,6 +12,7 @@ import { getCurrentUser, logout } from "@/lib/api/auth";
 import { getPreferences, updatePreferences, type Preferences } from "@/lib/api/preferences";
 import { UiText } from "@/lib/i18n/locale-provider";
 import { renderWithLocale } from "./locale-test-utils";
+import { usePersonalization } from "@/features/personalization/personalization-provider";
 
 const navigation = vi.hoisted(() => ({ pathname: "/", push: vi.fn(), refresh: vi.fn() }));
 let preferences: Preferences;
@@ -48,7 +49,7 @@ describe("common localization", () => {
     vi.mocked(logout).mockImplementation(() => new Promise<void>((resolve) => { finish = resolve; }));
     renderWithLocale(<AuthProvider><AppShell currentYear={2026}>Content</AppShell></AuthProvider>);
     await screen.findByText("Nguyễn <Learner>");
-    await waitFor(() => expect(screen.getByRole("button", { name: "Use dark theme" })).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Personalization" })).toBeEnabled());
     fireEvent.click(screen.getByRole("button", { name: "Logout" }));
     const dialog = screen.getByRole("dialog");
     const cancel = within(dialog).getByRole("button", { name: "Cancel" });
@@ -85,7 +86,8 @@ describe("common localization", () => {
     expect(getCurrentUser).toHaveBeenCalledOnce();
   });
   it("honors explicit dialog labels and preserves other personalization values", () => {
-    renderWithLocale(<><AppShell currentYear={2026}>Content</AppShell><ConfirmDialog open title="Authored" description="Raw" confirmLabel="Confirm" cancelLabel="Keep" pendingLabel="Wait" pending onCancel={vi.fn()} onConfirm={vi.fn()} /></>);
+    function AppearanceDriver() { const { setAppearance } = usePersonalization(); return <button onClick={() => setAppearance("DARK")}>Change appearance</button>; }
+    renderWithLocale(<><AppShell currentYear={2026}>Content</AppShell><AppearanceDriver /><ConfirmDialog open title="Authored" description="Raw" confirmLabel="Confirm" cancelLabel="Keep" pendingLabel="Wait" pending onCancel={vi.fn()} onConfirm={vi.fn()} /></>);
     const write = vi.spyOn(Storage.prototype, "setItem");
     fireEvent.click(screen.getByText("Switch to Vietnamese"));
     expect(new Set(write.mock.calls.map(([key]) => key))).toEqual(new Set(["ielts-accent", "ielts-theme", "ielts-locale"]));
@@ -94,7 +96,7 @@ describe("common localization", () => {
     expect(localStorage.getItem("ielts-accent")).toBe("PURPLE");
     expect(screen.getByRole("button", { name: "Keep" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Wait" })).toBeDisabled();
-    write.mockClear(); fireEvent.click(screen.getByRole("button", { name: "Dùng giao diện tối" }));
+    write.mockClear(); fireEvent.click(screen.getByRole("button", { name: "Change appearance" }));
     expect(write).toHaveBeenCalledWith("ielts-theme", "dark");
     expect(localStorage.getItem("ielts-locale")).toBe("vi");
     expect(localStorage.getItem("ielts-accent")).toBe("PURPLE");

@@ -4,6 +4,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { AppShell } from "@/components/ui/app-shell";
 import { themeInitializationScript } from "@/app/layout";
 import { LocaleProvider, useLocale } from "@/lib/i18n/locale-provider";
+import { usePersonalization } from "@/features/personalization/personalization-provider";
 import { AuthProvider } from "@/features/auth/auth-provider";
 import { AuthForm } from "@/features/auth/auth-form";
 import { SkillPractice } from "@/features/practice/skill-practice";
@@ -57,7 +58,8 @@ const draft: BuilderVersion = { id: id(3), test_id: id(4), test_title: "Fictiona
 const practiceVersion: VersionDetail = { id: id(3), test_id: id(4), test_title: draft.test_title, version_number: 1, status: "PUBLISHED", created_at: time, published_at: time, modules: ["READING", "LISTENING"].map((module_type, index) => ({ id: id(5 + index), module_type: module_type as "READING" | "LISTENING", title: null, recommended_duration_seconds: 1800, passage_count: module_type === "READING" ? 1 : 0, listening_part_count: module_type === "LISTENING" ? 1 : 0, writing_task_count: 0, question_count: 1, has_audio: false,
   reading_passages: module_type === "READING" ? [{ id: id(10), title: "Section 2", order_index: 1, question_groups: [{ question_type: "short_answer", start_number: 2, end_number: 2, question_count: 1 }] }] : [], listening_sections: module_type === "LISTENING" ? [{ id: id(11), title: "Section 2", order_index: 1, question_groups: [{ question_type: "short_answer", start_number: 2, end_number: 2, question_count: 1 }] }] : [] })) };
 let changeLocale: (locale: "en" | "vi") => void;
-function LocaleDriver() { const { setLocale } = useLocale(); useEffect(() => { changeLocale = setLocale; }, [setLocale]); return null; }
+let changeAppearance: (appearance: "LIGHT" | "DARK") => void;
+function LocaleDriver() { const { setLocale } = useLocale(); const { setAppearance } = usePersonalization(); useEffect(() => { changeLocale = setLocale; changeAppearance = setAppearance; }, [setLocale, setAppearance]); return null; }
 async function composition(feature: ReactElement) {
   let view!: RenderResult;
   await act(async () => { view = render(<LocaleProvider><AuthProvider><AppShell currentYear={2026}>{feature}</AppShell></AuthProvider><LocaleDriver /></LocaleProvider>); });
@@ -122,6 +124,7 @@ it.each((["READING", "LISTENING", "WRITING"] as const).flatMap((module) => [fals
   route.pathname = `/attempt/${id(2)}`; const data = exam(module, focused); const raw = JSON.stringify(data);
   const Runner = module === "READING" ? ReadingRunner : module === "LISTENING" ? ListeningRunner : WritingRunner;
   const view = await composition(<Runner initial={data} />); await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+  expect(screen.queryByRole("button", { name: /Use (dark|light) theme/ })).not.toBeInTheDocument();
   const runner = view.container.querySelector(".exam-runner"); const input = screen.getByRole("textbox"); fireEvent.change(input, { target: { value: "Exact unsaved response" } });
   const audio = view.container.querySelector("audio"); if (audio) { Object.defineProperty(audio, "duration", { configurable: true, value: 100 }); fireEvent.loadedMetadata(audio); audio.currentTime = 25; audio.playbackRate = 1.25; }
   const before = requests(); await act(async () => changeLocale("vi"));
@@ -142,7 +145,7 @@ it("keeps logout dialog node, focus and one-request guard across locale and them
   await composition(<p>Workspace</p>); fireEvent.click(screen.getByRole("button", { name: "Logout" }));
   const dialog = screen.getByRole("dialog"); const focus = document.activeElement;
   await act(async () => changeLocale("vi")); expect(screen.getByRole("dialog")).toBe(dialog); expect(document.activeElement).toBe(focus);
-  fireEvent.click(screen.getByRole("button", { name: "Dùng giao diện tối" })); expect(document.documentElement.lang).toBe("vi"); expect(document.documentElement.dataset.theme).toBe("dark");
+  await act(async () => changeAppearance("DARK")); expect(document.documentElement.lang).toBe("vi"); expect(document.documentElement.dataset.theme).toBe("dark");
   const confirm = within(dialog).getByRole("button", { name: "Đăng xuất" }); fireEvent.click(confirm); fireEvent.click(confirm);
   expect(authApi.logout).toHaveBeenCalledTimes(1); expect(authApi.getCurrentUser).toHaveBeenCalledTimes(1); await act(async () => changeLocale("en")); expect(screen.getByRole("dialog")).toBe(dialog);
   await act(async () => finish()); expect(route.push).toHaveBeenCalledExactlyOnceWith("/login");
@@ -152,6 +155,6 @@ it.each(["invalid", "throwing"])("independent preferences remain usable after %s
   localStorage.setItem("ielts-locale", "unknown"); localStorage.setItem("ielts-theme", "system");
   if (mode === "throwing") { vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => { throw new Error("blocked read"); }); vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new Error("blocked write"); }); }
   window.eval(themeInitializationScript); await composition(<input aria-label="Draft" defaultValue="kept" />); const input = screen.getByLabelText("Draft");
-  expect(document.documentElement.lang).toBe("en"); expect(document.documentElement.dataset.theme).toBe("light"); await act(async () => changeLocale("vi")); fireEvent.click(screen.getByRole("button", { name: "Dùng giao diện tối" }));
+  expect(document.documentElement.lang).toBe("en"); expect(document.documentElement.dataset.theme).toBe("light"); await act(async () => changeLocale("vi")); await act(async () => changeAppearance("DARK"));
   expect(document.documentElement.lang).toBe("vi"); expect(document.documentElement.dataset.theme).toBe("dark"); expect(screen.getByLabelText("Draft")).toBe(input); expect(input).toHaveValue("kept"); expect(screen.queryByRole("alert")).not.toBeInTheDocument(); expect(authApi.getCurrentUser).toHaveBeenCalledTimes(1); expect(route.refresh).not.toHaveBeenCalled();
 });

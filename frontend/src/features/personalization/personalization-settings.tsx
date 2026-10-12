@@ -19,7 +19,6 @@ export function PersonalizationError() {
 
 export function PersonalizationSettings() {
   const { user, loading: authLoading, sessionError, confirmSession } = useAuth();
-  const { accentColor, appearance, locale, loading, saving, canUpdate, setAccentColor, setAppearance, setLocale } = usePersonalization();
   const { t } = useTranslation();
   const router = useRouter();
   useEffect(() => {
@@ -29,6 +28,14 @@ export function PersonalizationSettings() {
   if (authLoading || !user) return <p role="status">{t("common.loading")}</p>;
   return <div className="personalization-settings">
     <div className="page-heading"><div><h1>{t("personalization.title")}</h1><p className="page-description">{t("personalization.description")}</p></div></div>
+    <PersonalizationControls />
+  </div>;
+}
+
+export function PersonalizationControls() {
+  const { accentColor, appearance, locale, loading, saving, canUpdate, setAccentColor, setAppearance, setLocale } = usePersonalization();
+  const { t } = useTranslation();
+  return <div className="personalization-controls">
     <PersonalizationError />
     {loading ? <p role="status">{t("personalization.loading")}</p> : null}
     <fieldset className="surface-card personalization-card" disabled={!canUpdate}>

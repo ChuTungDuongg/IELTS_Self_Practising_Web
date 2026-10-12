@@ -106,6 +106,7 @@ describe("WritingRunner", () => {
 
   it("restores both task drafts, shows Task 1 image, and switches tabs", () => {
     render(<WritingRunner initial={payload()} />);
+    expect(screen.queryByRole("button", { name: /Use (dark|light) theme/ })).not.toBeInTheDocument();
 
     expect(screen.getByText("Writing Task 1")).toHaveClass("writing-task-kicker");
     expect(screen.getByAltText("Writing Task 1 reference")).toBeInTheDocument();

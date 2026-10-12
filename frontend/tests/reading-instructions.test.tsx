@@ -42,7 +42,7 @@ describe("Reading question group instructions", () => {
     expect(screen.getAllByText(intro)).toHaveLength(1);
   });
 
-  it("changes the application theme without resetting candidate answers", () => {
+  it("keeps candidate answers without a standalone theme action", () => {
     localStorage.clear();
     document.documentElement.dataset.theme = "light";
     const initial = {
@@ -52,9 +52,7 @@ describe("Reading question group instructions", () => {
 
     render(<LocaleProvider><ReadingRunner initial={initial} /></LocaleProvider>);
     fireEvent.click(screen.getByRole("radio", { name: "TRUE" }));
-    fireEvent.click(screen.getByRole("button", { name: "Use dark theme" }));
-
-    expect(document.documentElement.dataset.theme).toBe("dark");
+    expect(screen.queryByRole("button", { name: /Use (dark|light) theme/ })).not.toBeInTheDocument();
     expect(screen.getByRole("radio", { name: "TRUE" })).toBeChecked();
   });
 

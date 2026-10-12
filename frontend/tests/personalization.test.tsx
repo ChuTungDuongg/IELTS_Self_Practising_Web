@@ -7,7 +7,6 @@ import { GlobalHeader } from "@/components/ui/global-header";
 import { apiRequest } from "@/lib/api/client";
 import PersonalizationPage from "@/app/settings/personalization/page";
 import { usePersonalization } from "@/features/personalization/personalization-provider";
-import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { renderToString } from "react-dom/server";
 import { hydrateRoot } from "react-dom/client";
 
@@ -41,8 +40,8 @@ beforeEach(() => {
 });
 afterEach(() => { Object.defineProperty(window, "localStorage", storageDescriptor); vi.restoreAllMocks(); });
 
-function Application({ children }: { children?: ReactNode }) {
-  return <LocaleProvider><AuthProvider><GlobalHeader pathname={children ? "/settings/personalization" : "/"} />{children}</AuthProvider></LocaleProvider>;
+function Application({ children, pathname }: { children?: ReactNode; pathname?: string }) {
+  return <LocaleProvider><AuthProvider><div className="app-shell"><GlobalHeader pathname={pathname ?? (children ? "/settings/personalization" : "/")} />{children}</div></AuthProvider></LocaleProvider>;
 }
 
 function AccountControls() {
@@ -60,14 +59,23 @@ async function settingsReady() {
   await waitFor(() => expect(screen.getByRole("button", { name: "Blue" })).toBeEnabled());
 }
 
-it("header theme changes persist to the authenticated account", async () => {
+it("header opens Personalization without navigation and appearance persists to the authenticated account", async () => {
   render(<Application />);
   await screen.findByText("Person");
-  await waitFor(() => expect(screen.getByRole("button", { name: "Use dark theme" })).toBeEnabled());
-  fireEvent.click(screen.getByRole("button", { name: "Use dark theme" }));
+  const trigger = screen.getByRole("button", { name: "Personalization" });
+  expect(screen.queryByRole("button", { name: /Use (dark|light) theme/ })).not.toBeInTheDocument();
+  fireEvent.click(trigger);
+  const dialog = screen.getByRole("dialog", { name: "Personalization" });
+  expect(within(dialog).getAllByRole("group")).toHaveLength(3);
+  expect(router.push).not.toHaveBeenCalled();
+  expect(router.replace).not.toHaveBeenCalled();
+  fireEvent.click(within(dialog).getByRole("button", { name: "Dark" }));
   await waitFor(() => expect(saved.appearance).toBe("DARK"));
   expect(document.documentElement.dataset.theme).toBe("dark");
-  expect(screen.getByRole("button", { name: "Use light theme" })).toBeInTheDocument();
+  fireEvent.click(within(dialog).getByRole("button", { name: "Light" }));
+  await waitFor(() => expect(saved.appearance).toBe("LIGHT"));
+  expect(document.documentElement.dataset.theme).toBe("light");
+  expect(patches().map(([, init]) => JSON.parse(String(init?.body)))).toEqual([{ appearance: "DARK" }, { appearance: "LIGHT" }]);
 });
 
 it("backend account settings override another accounts stale browser cache", async () => {
@@ -84,17 +92,16 @@ it("backend account settings override another accounts stale browser cache", asy
   expect(localStorage.getItem("ielts-locale")).toBe("en");
 });
 
-it("authenticated header keeps theme, personalization, notifications, profile and logout in order", async () => {
+it("authenticated header keeps personalization, notifications, profile and logout in order", async () => {
   render(<Application />);
   await screen.findByText("Person");
   const header = within(screen.getByRole("banner"));
-  const settings = header.getByRole("link", { name: "Personalization" });
+  const settings = header.getByRole("button", { name: "Personalization" });
   const profile = header.getByRole("link", { name: /^Person\s*User$/ });
-  expect(settings).toHaveAttribute("href", "/settings/personalization");
+  expect(settings).not.toHaveAttribute("href");
   expect(settings).toHaveClass("icon-button");
   expect(profile).toHaveAttribute("href", "/profile");
   expect(Array.from(screen.getByRole("banner").querySelector(".header-actions")!.querySelectorAll("a[href], button"))).toEqual([
-    header.getByRole("button", { name: "Use dark theme" }),
     settings,
     header.getByRole("button", { name: "Notifications (0 unread)" }),
     profile,
@@ -102,9 +109,80 @@ it("authenticated header keeps theme, personalization, notifications, profile an
   ]);
 });
 
+it("keeps current work mounted, traps focus, and restores the settings trigger on Escape", async () => {
+  let mounts = 0;
+  let unmounts = 0;
+  function Work() {
+    const [answer, setAnswer] = useState("");
+    useEffect(() => { mounts++; return () => { unmounts++; }; }, []);
+    return <><input aria-label="Current answer" value={answer} onChange={event => setAnswer(event.target.value)} /><audio aria-label="Current recording" /></>;
+  }
+  render(<Application pathname="/review/speaking"><Work /></Application>);
+  await screen.findByText("Person");
+  const answer = screen.getByRole("textbox", { name: "Current answer" });
+  fireEvent.change(answer, { target: { value: "My unfinished answer" } });
+  const trigger = screen.getByRole("button", { name: "Personalization" });
+  trigger.focus();
+  fireEvent.click(trigger);
+  const dialog = screen.getByRole("dialog", { name: "Personalization" });
+  expect(document.activeElement).toBe(within(dialog).getByRole("button", { name: "Close Personalization" }));
+  expect(document.querySelector(".app-shell")).toHaveAttribute("inert");
+  expect(answer).toHaveValue("My unfinished answer");
+  expect(mounts).toBe(1);
+  expect(unmounts).toBe(0);
+  expect(router.push).not.toHaveBeenCalled();
+  expect(router.replace).not.toHaveBeenCalled();
+  fireEvent.keyDown(document, { key: "Tab", shiftKey: true });
+  expect(document.activeElement).toBe(within(dialog).getByRole("button", { name: "Tiếng Việt" }));
+  answer.focus();
+  expect(document.activeElement).toBe(within(dialog).getByRole("button", { name: "Close Personalization" }));
+  fireEvent.keyDown(document, { key: "Escape" });
+  expect(screen.queryByRole("dialog", { name: "Personalization" })).not.toBeInTheDocument();
+  expect(document.activeElement).toBe(trigger);
+  expect(document.querySelector(".app-shell")).not.toHaveAttribute("inert");
+  expect(answer).toHaveValue("My unfinished answer");
+  expect(unmounts).toBe(0);
+});
+
+it("keeps the dialog open when accent and language change, and closes from its visible button", async () => {
+  render(<Application />);
+  await screen.findByText("Person");
+  const trigger = screen.getByRole("button", { name: "Personalization" });
+  fireEvent.click(trigger);
+  const dialog = screen.getByRole("dialog", { name: "Personalization" });
+  fireEvent.click(within(dialog).getByRole("button", { name: "Blue" }));
+  await waitFor(() => expect(saved.accent_color).toBe("BLUE"));
+  fireEvent.click(within(dialog).getByRole("button", { name: "Tiếng Việt" }));
+  await waitFor(() => expect(saved.locale).toBe("VI"));
+  expect(document.documentElement.lang).toBe("vi");
+  expect(screen.getByRole("dialog", { name: "Cá nhân hóa" })).toBe(dialog);
+  fireEvent.click(within(dialog).getByRole("button", { name: "Đóng Cá nhân hóa" }));
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(document.activeElement).toBe(trigger);
+});
+
+it("shows preference failures and Retry inside the dialog without shifting header controls", async () => {
+  const normal = vi.mocked(apiRequest).getMockImplementation()!;
+  let failing = true;
+  vi.mocked(apiRequest).mockImplementation((path, init) => path === "/me/preferences" && failing ? Promise.reject(new Error("offline")) : normal(path, init));
+  render(<Application />);
+  await screen.findByText("Person");
+  const header = screen.getByRole("banner");
+  expect(within(header).queryByRole("alert")).not.toBeInTheDocument();
+  fireEvent.click(within(header).getByRole("button", { name: "Personalization" }));
+  const dialog = screen.getByRole("dialog", { name: "Personalization" });
+  expect(await within(dialog).findByRole("alert")).toHaveTextContent("Couldn't load");
+  expect(within(dialog).getByRole("button", { name: "Blue" })).toBeDisabled();
+  failing = false;
+  fireEvent.click(within(dialog).getByRole("button", { name: "Retry" }));
+  await waitFor(() => expect(within(dialog).queryByRole("alert")).not.toBeInTheDocument());
+  expect(within(dialog).getByRole("button", { name: "Blue" })).toBeEnabled();
+});
+
 it("settings exposes exactly three groups, ten preset swatches and the Purple default", async () => {
   render(<Application><PersonalizationPage /></Application>);
   await settingsReady();
+  expect(screen.queryByRole("button", { name: "Personalization" })).not.toBeInTheDocument();
   expect(screen.getAllByRole("group").map(node => node.getAttribute("aria-label") ?? node.querySelector("legend")?.textContent)).toEqual(["Accent color", "Appearance", "Language"]);
   const palette = screen.getByRole("group", { name: "Accent color" });
   const buttons = within(palette).getAllByRole("button").filter(node => node.hasAttribute("aria-pressed"));
@@ -187,7 +265,7 @@ it("settings switches both languages and persists locale while keeping header th
   await settingsReady();
   fireEvent.click(screen.getByRole("button", { name: "Dark" }));
   await waitFor(() => expect(saved.appearance).toBe("DARK"));
-  expect(screen.getByRole("button", { name: "Use light theme" })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Use light theme" })).not.toBeInTheDocument();
   const language = screen.getByRole("group", { name: "Language" });
   const english = within(language).getByRole("button", { name: "English" });
   const vietnamese = within(language).getByRole("button", { name: "Tiếng Việt" });
@@ -201,7 +279,7 @@ it("settings switches both languages and persists locale while keeping header th
   expect(vietnamese).toHaveAttribute("aria-pressed", "true");
   expect(english).toHaveAttribute("aria-pressed", "false");
   expect(screen.getByRole("heading", { name: "Cá nhân hóa" })).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Dùng giao diện sáng" })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Dùng giao diện sáng" })).not.toBeInTheDocument();
   expect(screen.getByRole("group", { name: "Ngôn ngữ" })).toBe(language);
   fireEvent.click(english);
   await waitFor(() => expect(saved.locale).toBe("EN"));
@@ -210,7 +288,7 @@ it("settings switches both languages and persists locale while keeping header th
   expect(english).toHaveAttribute("aria-pressed", "true");
   expect(vietnamese).toHaveAttribute("aria-pressed", "false");
   expect(screen.getByRole("heading", { name: "Personalization" })).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Use light theme" })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Use light theme" })).not.toBeInTheDocument();
   expect(patches().map(([, init]) => JSON.parse(String(init?.body)))).toEqual([{ appearance: "DARK" }, { locale: "VI" }, { locale: "EN" }]);
 });
 
@@ -310,15 +388,15 @@ it("logout does not patch the account and subsequent guest controls only update 
   await waitFor(() => expect(document.documentElement.dataset.accent).toBe("pink"));
   fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
   await screen.findByRole("link", { name: "Login" });
-  fireEvent.click(screen.getByRole("button", { name: "Use light theme" }));
-  expect(document.documentElement.dataset.theme).toBe("light");
+  expect(screen.queryByRole("button", { name: "Personalization" })).not.toBeInTheDocument();
+  expect(document.documentElement.dataset.theme).toBe("dark");
   expect(saved).toEqual({ accent_color: "PINK", appearance: "DARK", locale: "EN" });
   expect(patches()).toHaveLength(0);
 });
 
 function GuestControls() {
-  const { accentColor, setAccentColor } = usePersonalization();
-  return <><p>{accentColor}</p><button onClick={() => setAccentColor("BLUE")}>Choose Blue</button><ThemeToggle /></>;
+  const { accentColor, setAccentColor, setAppearance } = usePersonalization();
+  return <><p>{accentColor}</p><button onClick={() => setAccentColor("BLUE")}>Choose Blue</button><button onClick={() => setAppearance("DARK")}>Choose dark locally</button></>;
 }
 it.each(["#ff0000", "blue", "INVALID", "", null])("invalid cached accents fall back to Purple (%s)", value => {
   if (value !== null) localStorage.setItem("ielts-accent", value);
@@ -332,7 +410,7 @@ it.each(["getter", "getItem", "setItem"] as const)("blocked local storage still 
   else vi.spyOn(Storage.prototype, failure).mockImplementation(() => { throw new Error("blocked"); });
   render(<LocaleProvider><GuestControls /></LocaleProvider>);
   fireEvent.click(screen.getByRole("button", { name: "Choose Blue" }));
-  fireEvent.click(screen.getByRole("button", { name: "Use dark theme" }));
+  fireEvent.click(screen.getByRole("button", { name: "Choose dark locally" }));
   expect(document.documentElement.dataset.accent).toBe("blue");
   expect(document.documentElement.dataset.theme).toBe("dark");
   expect(patches()).toHaveLength(0);
@@ -346,7 +424,8 @@ it("settings hydrates deterministic markup then restores account preferences wit
   const read = vi.spyOn(Storage.prototype, "getItem");
   const tree = <Application><PersonalizationPage /></Application>;
   const markup = renderToString(tree);
-  expect(markup).toContain("Use dark theme");
+  expect(markup).toContain("Loading");
+  expect(markup).not.toContain("Use dark theme");
   expect(read).not.toHaveBeenCalled();
   expect(apiRequest).not.toHaveBeenCalled();
   const container = document.createElement("div");
