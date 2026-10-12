@@ -210,3 +210,13 @@ def test_modal_ai_overrides_and_asr_remain_independent(monkeypatch):
     module.configure_ai_environment(False, "bundled-model", None)
     disabled = Settings(_env_file=None)
     assert not disabled.speaking_ai_enabled and disabled.speaking_asr_enabled
+
+
+def test_safe_config_probe_failure_never_blocks_web_startup(monkeypatch):
+    import subprocess
+
+    def unavailable(*_args, **_kwargs):
+        raise subprocess.TimeoutExpired("python", 15)
+
+    monkeypatch.setattr(module.subprocess, "run", unavailable)
+    assert module.safe_ai_configuration() == {"inspection": "unavailable"}

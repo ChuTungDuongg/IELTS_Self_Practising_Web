@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import subprocess
+import sys
 import time
 import urllib.error
 import urllib.request
@@ -23,19 +24,35 @@ def configure_ai_environment(enabled: bool, model: str, endpoint: str | None) ->
 
 def safe_ai_configuration() -> dict[str, bool | str]:
     """Log effective AI wiring without URLs, credentials, or candidate content."""
-    from app.core.config import Settings
-    from app.providers.speaking_llm import is_configured, provider_identity
-
-    settings = Settings()
-    provider, model = provider_identity(settings)
-    return {
-        "speaking_ai_enabled": settings.speaking_ai_enabled,
-        "speaking_ai_configured": is_configured(settings),
-        "speaking_provider": provider,
-        "speaking_model": model,
-        "writing_vllm_transport_url_configured": bool(settings.ai_writing_vllm_base_url),
-        "speaking_asr_enabled": settings.speaking_asr_enabled,
-    }
+    # Modal imports its entry point as `app`, which shadows the backend's `app`
+    # package in this process. Resolve effective Settings in the same cwd as uvicorn.
+    probe = """import json
+from app.core.config import Settings
+from app.providers.speaking_llm import is_configured, provider_identity
+settings = Settings()
+provider, model = provider_identity(settings)
+print(json.dumps({
+    'speaking_ai_enabled': settings.speaking_ai_enabled,
+    'speaking_ai_configured': is_configured(settings),
+    'speaking_provider': provider,
+    'speaking_model': model,
+    'writing_vllm_transport_url_configured': bool(settings.ai_writing_vllm_base_url),
+    'speaking_asr_enabled': settings.speaking_asr_enabled,
+}))"""
+    try:
+        result = subprocess.run(
+            [sys.executable, "-c", probe],
+            cwd=Path(__file__).resolve().parents[2] / "backend",
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        if result.returncode == 0:
+            return json.loads(result.stdout)
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        pass
+    # Diagnostics must never prevent the existing application from starting.
+    return {"inspection": "unavailable"}
 
 
 def configure_chart_environment(
