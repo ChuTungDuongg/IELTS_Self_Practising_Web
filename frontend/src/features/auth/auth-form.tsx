@@ -61,7 +61,7 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
   if (sessionError) return <p role="alert" className="notice">{sessionError}</p>;
 
   return <section className="auth-card">
-    <div><p className="page-eyebrow">{t("auth.account")}</p><h1>{mode === "login" ? t("auth.welcome") : t("auth.createTitle")}</h1><p>{mode === "login" ? t("auth.signInDescription") : t("auth.registerDescription")}</p></div>
+    <div className="auth-page-heading"><p className="page-eyebrow page-context-kicker">{t("auth.account")}</p><h1>{mode === "login" ? t("auth.welcome") : t("auth.createTitle")}</h1><p className="page-description">{mode === "login" ? t("auth.signInDescription") : t("auth.registerDescription")}</p></div>
     <form onSubmit={submit} className="auth-form">
       {mode === "register" ? <label>{t("auth.name")}<input name="display_name" required minLength={1} maxLength={160} autoComplete="name" /></label> : null}
       <label>{t("auth.email")}<input name="email" type="email" required autoComplete="email" /></label>

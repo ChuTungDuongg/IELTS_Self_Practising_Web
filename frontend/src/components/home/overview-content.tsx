@@ -23,7 +23,7 @@ export function OverviewContent({ publishedCount, resumableCount, testCount, isA
     <div className="home-page">
       <section className="home-hero" aria-labelledby="home-title">
         <div className="home-hero-content">
-          <p className="page-eyebrow"><SparkleIcon className="size-4" /> {t("pages.overview.observatory")}</p>
+          <p className="page-eyebrow page-context-kicker"><SparkleIcon className="size-4" /> {t("pages.overview.observatory")}</p>
           <h1 id="home-title">{t("pages.overview.build")}<br /><span>{t("pages.overview.focus")}</span></h1>
           <p className="home-hero-description">{t("pages.overview.hero")}</p>
           <div className="home-hero-actions">
