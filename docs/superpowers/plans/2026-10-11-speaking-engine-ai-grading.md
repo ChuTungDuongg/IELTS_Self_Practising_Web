@@ -486,11 +486,11 @@ git commit -m "Add Speaking content domain model"
 - `project_overall_band(reading, listening, writing, speaking)` returns `None` until all four exist and uses existing IELTS overall half-band policy.
 - Full Mock completes after final Speaking attempt, not Writing.
 
-- [ ] **Step 1: Write failing backend/frontend tests** for four required modules/durations, Writing→Speaking transition, session completion after Speaking, missing Speaking rejection, four-band overall, and history deletion still deleting whole session safely.
-- [ ] **Step 2: Run RED.**
-- [ ] **Step 3: Implement order/duration/overall changes.** Choose a sensible Speaking recommended module duration default compatible with the authored prompt timers; do not use the old 11–14 minute official duration as a rigid per-attempt database invariant.
-- [ ] **Step 4: Run GREEN + typecheck/Ruff as applicable.**
-- [ ] **Step 5: Commit:** `git commit -m "Integrate Speaking into Full Mock"`.
+- [x] **Step 1: Write failing backend/frontend tests** for four required modules/durations, Writing→Speaking transition, session completion after Speaking, missing Speaking rejection, four-band overall, and history deletion still deleting whole session safely.
+- [x] **Step 2: Run RED.**
+- [x] **Step 3: Implement order/duration/overall changes.** Choose a sensible Speaking recommended module duration default compatible with the authored prompt timers; do not use the old 11–14 minute official duration as a rigid per-attempt database invariant.
+- [x] **Step 4: Run GREEN + typecheck/Ruff as applicable.**
+- [x] **Step 5: Commit:** `git commit -m "Integrate Speaking into Full Mock"`.
 
 ### Task 17: History, focused practice, analytics, classroom assignment results and privacy
 

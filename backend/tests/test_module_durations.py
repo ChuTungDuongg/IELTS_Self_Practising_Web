@@ -29,6 +29,7 @@ async def test_module_creation_defaults_and_edit_preserve_seconds(db_session: As
         (ModuleType.READING, 3600),
         (ModuleType.LISTENING, 1800),
         (ModuleType.WRITING, 3600),
+        (ModuleType.SPEAKING, 900),
     ):
         created = await service.create_module(version_id, ModuleCreate(module_type=kind))
         assert created.recommended_duration_seconds == expected
@@ -57,6 +58,7 @@ async def test_module_creation_defaults_and_edit_preserve_seconds(db_session: As
         3300,
         1800,
         3600,
+        900,
     ]
 
 

@@ -7,7 +7,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.exceptions import AppError
 from app.domains.questions.numbering import group_slots
-from app.domains.scoring import project_overall_band
+from app.domains.scoring import legacy_three_skill_overall_band, project_overall_band
 from app.domains.timers import TimerService
 from app.models import Attempt, QuestionGroup, Test, TestModule, TestSession, TestVersion
 from app.models.enums import (
@@ -25,7 +25,8 @@ from app.schemas.test_sessions import (
     TestSessionStartResponse,
 )
 
-MODULE_ORDER = (ModuleType.LISTENING, ModuleType.READING, ModuleType.WRITING)
+LEGACY_MODULE_ORDER = (ModuleType.LISTENING, ModuleType.READING, ModuleType.WRITING)
+MODULE_ORDER = (*LEGACY_MODULE_ORDER, ModuleType.SPEAKING)
 FINAL_STATUSES = {
     AttemptStatus.SUBMITTED,
     AttemptStatus.AUTO_SUBMITTED,
@@ -106,6 +107,7 @@ class TestSessionService:
                 classroom_assignment_id=_classroom_assignment_id,
                 user_id=self.user_id,
                 test_version_id=version.id,
+                module_order_json=[module.value for module in MODULE_ORDER],
                 status=TestSessionStatus.IN_PROGRESS,
                 started_at=now,
             )
@@ -127,7 +129,7 @@ class TestSessionService:
                 await self._synchronize_timeout(current)
             if (
                 current is not None
-                and current.module_type == ModuleType.WRITING
+                and current.module_type == self._module_order(test_session)[-1]
                 and current.status in FINAL_STATUSES
                 and test_session.status == TestSessionStatus.IN_PROGRESS
             ):
@@ -137,15 +139,19 @@ class TestSessionService:
 
     async def delete(self, session_id: uuid.UUID) -> None:
         async with self.session.begin():
-            deleted_id = await self.session.scalar(
-                delete(TestSession)
-                .where(TestSession.id == session_id, TestSession.user_id == self.user_id)
-                .returning(TestSession.id)
-            )
-            if deleted_id is None:
+            test_session = await self._require(session_id, for_update=True)
+            if test_session.classroom_assignment_id or any(
+                attempt.classroom_assignment_id for attempt in test_session.attempts
+            ):
                 raise AppError(
-                    "TEST_SESSION_NOT_FOUND", "The Full Mock session does not exist.", 404
+                    "ASSIGNMENT_HISTORY_RETAINED", "Assignment Full Mock history is retained.", 409
                 )
+            from app.services.speaking_media import queue_media_cleanup
+
+            await queue_media_cleanup(
+                self.session, [attempt.id for attempt in test_session.attempts]
+            )
+            await self.session.execute(delete(TestSession).where(TestSession.id == test_session.id))
 
     async def advance(self, session_id: uuid.UUID) -> TestSessionResponse:
         now = TimerService.now()
@@ -153,9 +159,10 @@ class TestSessionService:
             test_session = await self._require(session_id, for_update=True)
             if test_session.status != TestSessionStatus.IN_PROGRESS:
                 return await self._present(test_session)
+            module_order = self._module_order(test_session)
             current = self._current_attempt(test_session)
             if current is None:
-                next_module = ModuleType.LISTENING
+                next_module = module_order[0]
             else:
                 await self._synchronize_timeout(current)
                 if current.status not in FINAL_STATUSES:
@@ -164,12 +171,12 @@ class TestSessionService:
                         "Finish the current module before continuing.",
                         409,
                     )
-                current_index = MODULE_ORDER.index(current.module_type)
-                if current_index == len(MODULE_ORDER) - 1:
+                current_index = module_order.index(current.module_type)
+                if current_index == len(module_order) - 1:
                     test_session.status = TestSessionStatus.COMPLETED
                     test_session.finished_at = current.finished_at or now
                     return await self._present(test_session)
-                next_module = MODULE_ORDER[current_index + 1]
+                next_module = module_order[current_index + 1]
             existing = next(
                 (
                     attempt
@@ -234,19 +241,37 @@ class TestSessionService:
             test_version_id=test_session.test_version_id,
             test_session=test_session,
             module_type=module.module_type,
+            speaking_mode="EXAM" if module.module_type == ModuleType.SPEAKING else None,
             scope=AttemptScope.FULL_MODULE,
-            timer_mode=TimerMode.COUNTDOWN,
-            timer_limit_seconds=module.recommended_duration_seconds,
+            # Speaking uses authored phase deadlines and bounded recovery, rather
+            # than consuming a generic module countdown during microphone setup.
+            timer_mode=TimerMode.COUNT_UP
+            if module.module_type == ModuleType.SPEAKING
+            else TimerMode.COUNTDOWN,
+            timer_limit_seconds=None
+            if module.module_type == ModuleType.SPEAKING
+            else module.recommended_duration_seconds,
             started_at=now,
             last_active_at=now,
             status=AttemptStatus.IN_PROGRESS,
         )
 
     @staticmethod
+    def _module_order(test_session: TestSession) -> tuple[ModuleType, ...]:
+        """Use persisted session semantics; never infer them from version coverage."""
+        order = tuple(ModuleType(item) for item in test_session.module_order_json)
+        if order not in {LEGACY_MODULE_ORDER, MODULE_ORDER}:
+            raise AppError("FULL_MOCK_ORDER_INVALID", "The Full Mock module order is invalid.", 409)
+        return order
+
+    @staticmethod
     def _current_attempt(test_session: TestSession) -> Attempt | None:
         if not test_session.attempts:
             return None
-        return max(test_session.attempts, key=lambda item: MODULE_ORDER.index(item.module_type))
+        module_order = TestSessionService._module_order(test_session)
+        if any(item.module_type not in module_order for item in test_session.attempts):
+            raise AppError("FULL_MOCK_ORDER_INVALID", "The Full Mock module order is invalid.", 409)
+        return max(test_session.attempts, key=lambda item: module_order.index(item.module_type))
 
     async def _synchronize_timeout(self, attempt: Attempt) -> None:
         from app.services.attempts import AttemptService
@@ -262,12 +287,13 @@ class TestSessionService:
         return AttemptService._to_response(attempt, now)
 
     async def _present(self, test_session: TestSession) -> TestSessionResponse:
+        module_order = self._module_order(test_session)
         current = self._current_attempt(test_session)
-        current_index = MODULE_ORDER.index(current.module_type) if current is not None else -1
+        current_index = module_order.index(current.module_type) if current is not None else -1
         current_final = current is not None and current.status in FINAL_STATUSES
         next_module = (
-            MODULE_ORDER[current_index + 1]
-            if current_final and current_index + 1 < len(MODULE_ORDER)
+            module_order[current_index + 1]
+            if current_final and current_index + 1 < len(module_order)
             else None
         )
         current_module = (
@@ -282,10 +308,15 @@ class TestSessionService:
             )
         )
         bands = {attempt.module_type: attempt.band_score for attempt in test_session.attempts}
-        overall = project_overall_band(
+        score_inputs = (
             bands.get(ModuleType.READING),
             bands.get(ModuleType.LISTENING),
             bands.get(ModuleType.WRITING),
+        )
+        overall = (
+            legacy_three_skill_overall_band(*score_inputs)
+            if module_order == LEGACY_MODULE_ORDER
+            else project_overall_band(*score_inputs, bands.get(ModuleType.SPEAKING))
         )
         warnings: list[str] = []
         for module in test_session.test_version.modules:
@@ -300,7 +331,7 @@ class TestSessionService:
                     f"{module.module_type.value.title()} has {count} questions. An official band will not be calculated."
                 )
         attempts = sorted(
-            test_session.attempts, key=lambda item: MODULE_ORDER.index(item.module_type)
+            test_session.attempts, key=lambda item: module_order.index(item.module_type)
         )
         return TestSessionResponse(
             session_id=test_session.id,
@@ -310,6 +341,7 @@ class TestSessionService:
             status=test_session.status,
             started_at=test_session.started_at,
             finished_at=test_session.finished_at,
+            module_order=list(module_order),
             current_module=current_module,
             next_module=next_module,
             current_attempt=(

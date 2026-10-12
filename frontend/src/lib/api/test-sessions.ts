@@ -2,7 +2,7 @@ import { z } from "zod";
 import { attemptResponseSchema } from "./attempts";
 import { apiRequest, type ApiRequester } from "./client";
 
-const moduleSchema = z.enum(["LISTENING", "READING", "WRITING"]);
+const moduleSchema = z.enum(["LISTENING", "READING", "WRITING", "SPEAKING"]);
 const sessionAttemptSchema = z.object({
   attempt_id: z.string().uuid(), module: moduleSchema, status: z.string(),
   band_score: z.number().nullable(), raw_score: z.number().int().nullable(),
@@ -13,6 +13,7 @@ export const testSessionSchema = z.object({
   version_number: z.number().int(), status: z.enum(["IN_PROGRESS", "COMPLETED", "ABANDONED"]),
   started_at: z.string(), finished_at: z.string().nullable(), current_module: moduleSchema.nullable(),
   next_module: moduleSchema.nullable(), current_attempt: attemptResponseSchema.nullable(),
+  module_order: z.array(moduleSchema).min(3).max(4).optional(),
   attempts: z.array(sessionAttemptSchema), warnings: z.array(z.string()), overall_band_score: z.number().nullable(),
 });
 export type TestSession = z.infer<typeof testSessionSchema>;

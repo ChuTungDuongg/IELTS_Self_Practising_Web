@@ -52,8 +52,8 @@ export function LibraryContent({ items }: { items: Array<{ test: TestSummary; ve
 export function LibraryVersionContent({ test, version }: { test: TestSummary; version: VersionDetail }): ReactElement {
   const { t } = useTranslation();
   const modules = runtimeModules(version.modules);
-  const missing = (["LISTENING", "READING", "WRITING"] as const).find((type) => !modules.some((item) => item.module_type === type));
-  const missingDuration = modules.filter((item) => item.module_type !== "SPEAKING").find((item) => !item.recommended_duration_seconds || item.recommended_duration_seconds <= 0);
+  const missing = (["LISTENING", "READING", "WRITING", "SPEAKING"] as const).find((type) => !modules.some((item) => item.module_type === type));
+  const missingDuration = modules.find((item) => !item.recommended_duration_seconds || item.recommended_duration_seconds <= 0);
   const readinessWarnings = modules.filter((item) => (item.module_type === "READING" || item.module_type === "LISTENING") && item.question_count !== 40).map((item) => t("pages.library.bandWarning", { skill: t(moduleTranslationKeys[item.module_type]), count: item.question_count }));
 
   return <>

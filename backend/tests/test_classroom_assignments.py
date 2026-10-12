@@ -237,7 +237,9 @@ async def test_full_mock_uses_session_provenance_without_duplicating_children(db
 
     teacher, student, classroom_id, version_id = await classroom_fixture(db_session)
     async with db_session.begin():
-        for order, module_type in enumerate([ModuleType.LISTENING, ModuleType.READING], start=1):
+        for order, module_type in enumerate(
+            [ModuleType.LISTENING, ModuleType.READING, ModuleType.SPEAKING], start=1
+        ):
             db_session.add(
                 Module(
                     test_version_id=version_id,

@@ -294,6 +294,7 @@ class SpeakingAttemptService:
                     reason=FinishedReason.USER_SUBMIT,
                     now=now,
                 )
+                AttemptService._complete_mock_if_last_module(attempt, now)
             return self._state(attempt, progress, prompts, now)
 
     async def retry_current_response(

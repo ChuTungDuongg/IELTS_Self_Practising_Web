@@ -30,6 +30,7 @@ class TestSessionResponse(BaseModel):
     status: TestSessionStatus
     started_at: datetime
     finished_at: datetime | None
+    module_order: list[ModuleType]
     current_module: ModuleType | None
     next_module: ModuleType | None
     current_attempt: AttemptResponse | None

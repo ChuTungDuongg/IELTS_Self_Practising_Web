@@ -47,7 +47,22 @@ def project_overall_band(
     reading: BandInput,
     listening: BandInput,
     writing: BandInput,
+    speaking: BandInput = None,
 ) -> float | None:
+    """New project overall requires four official skill bands, never advisory AI bands."""
+    scores = (reading, listening, writing, speaking)
+    if any(score is None for score in scores):
+        return None
+    decimal_scores = [Decimal(str(score)) for score in scores if score is not None]
+    return float(round_to_half(sum(decimal_scores) / Decimal(4)))
+
+
+def legacy_three_skill_overall_band(
+    reading: BandInput,
+    listening: BandInput,
+    writing: BandInput,
+) -> float | None:
+    """Compatibility only for sessions whose persisted order freezes the legacy three skills."""
     scores = (reading, listening, writing)
     if any(score is None for score in scores):
         return None

@@ -547,7 +547,7 @@ class AttemptService:
                         created_at=now,
                     )
                 )
-                self._complete_mock_if_writing(attempt, now)
+                self._complete_mock_if_last_module(attempt, now)
             response = self._to_response(attempt, now)
         return response
 
@@ -1612,7 +1612,7 @@ class AttemptService:
                 reason=FinishedReason.TIME_EXPIRED,
                 now=now,
             )
-            self._complete_mock_if_writing(attempt, now)
+            self._complete_mock_if_last_module(attempt, now)
         elif TimerService.is_afk(attempt.last_active_at, now):
             await self._score(attempt)
             self._finalize(
@@ -1621,7 +1621,7 @@ class AttemptService:
                 reason=FinishedReason.AFK_TIMEOUT,
                 now=now,
             )
-            self._complete_mock_if_writing(attempt, now)
+            self._complete_mock_if_last_module(attempt, now)
             self.session.add(
                 AttemptEvent(
                     attempt_id=attempt.id,
@@ -1654,10 +1654,10 @@ class AttemptService:
         attempt.elapsed_seconds = timer.elapsed_seconds
 
     @staticmethod
-    def _complete_mock_if_writing(attempt: Attempt, now: datetime) -> None:
+    def _complete_mock_if_last_module(attempt: Attempt, now: datetime) -> None:
         if (
-            attempt.module_type == ModuleType.WRITING
-            and attempt.test_session is not None
+            attempt.test_session is not None
+            and attempt.module_type == attempt.test_session.module_order_json[-1]
             and attempt.test_session.status == TestSessionStatus.IN_PROGRESS
         ):
             attempt.test_session.status = TestSessionStatus.COMPLETED

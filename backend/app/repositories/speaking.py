@@ -14,6 +14,7 @@ from app.models import (
     SpeakingResponse,
     SpeakingResponseTake,
     TestModule,
+    TestSession,
 )
 
 
@@ -22,11 +23,21 @@ class SpeakingRepository:
         self.session = session
 
     async def lock_attempt(self, attempt_id: UUID, user_id: UUID):
-        # Every runtime/media/recovery mutation must take this parent lock first.
+        # Full Mock transitions take the session lock before the attempt lock.
+        # Use the same order when the final Speaking prompt completes the session.
+        await self.session.scalar(
+            select(TestSession)
+            .join(Attempt, Attempt.test_session_id == TestSession.id)
+            .where(Attempt.id == attempt_id, Attempt.user_id == user_id)
+            .with_for_update(of=TestSession)
+            .execution_options(populate_existing=True)
+        )
+        # Every runtime/media/recovery mutation serializes on the owning attempt.
         # Refresh identity-map state after waiting for a concurrent commit.
         return await self.session.scalar(
             select(Attempt)
             .where(Attempt.id == attempt_id, Attempt.user_id == user_id)
+            .options(selectinload(Attempt.test_session))
             .with_for_update()
             .execution_options(populate_existing=True)
         )

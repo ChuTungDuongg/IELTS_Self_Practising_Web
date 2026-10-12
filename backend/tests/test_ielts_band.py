@@ -3,6 +3,7 @@ from decimal import Decimal
 import pytest
 
 from app.domains.scoring.ielts_band import (
+    legacy_three_skill_overall_band,
     listening_raw_to_band,
     project_overall_band,
     reading_raw_to_band,
@@ -88,7 +89,19 @@ def test_round_to_half_uses_decimal_half_up(value: Decimal, expected: Decimal) -
         ((None, 7.5, 7.0), None),
     ],
 )
-def test_project_overall_requires_three_bands_and_rounds_once(
+def test_frozen_legacy_overall_requires_three_bands_and_rounds_once(
     scores: tuple[float | None, float | None, float | None], expected: float | None
 ) -> None:
+    assert legacy_three_skill_overall_band(*scores) == expected
+
+
+@pytest.mark.parametrize(("scores", "expected"), [
+    ((7, 7.5, 6.5, 7), 7), ((7, 7, 7.5, 7.5), 7.5),
+    ((7, 7, 7, None), None), ((None, 7, 7, 7), None),
+])
+def test_project_overall_requires_four_bands_and_rounds_once(scores, expected):
     assert project_overall_band(*scores) == expected
+
+
+def test_three_scores_do_not_fabricate_four_skill_overall():
+    assert project_overall_band(7, 7, 7) is None

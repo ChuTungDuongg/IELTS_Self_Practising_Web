@@ -229,6 +229,12 @@ class TestSession(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     test_version_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("test_versions.id", ondelete="RESTRICT"), index=True
     )
+    module_order_json: Mapped[list[str]] = mapped_column(
+        JSONB,
+        default=lambda: ["LISTENING", "READING", "WRITING"],
+        server_default=text("'[\"LISTENING\",\"READING\",\"WRITING\"]'::jsonb"),
+        nullable=False,
+    )
     status: Mapped[TestSessionStatus] = mapped_column(
         Enum(TestSessionStatus, name="test_session_status"),
         default=TestSessionStatus.IN_PROGRESS,

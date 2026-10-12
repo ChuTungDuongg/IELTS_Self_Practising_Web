@@ -1,4 +1,5 @@
 from app.domains.scoring.ielts_band import (
+    legacy_three_skill_overall_band,
     listening_raw_to_band,
     project_overall_band,
     reading_raw_to_band,
@@ -18,6 +19,7 @@ __all__ = [
     "calculate_task_overall",
     "calculate_weighted_writing_overall",
     "listening_raw_to_band",
+    "legacy_three_skill_overall_band",
     "project_overall_band",
     "reading_raw_to_band",
     "round_to_half",

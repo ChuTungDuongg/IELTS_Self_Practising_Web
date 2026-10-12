@@ -23,7 +23,7 @@ def _published_full_test() -> DomainTest:
             recommended_duration_seconds=2400 if module == ModuleType.LISTENING else 3600,
         )
         for index, module in enumerate(
-            (ModuleType.LISTENING, ModuleType.READING, ModuleType.WRITING)
+            (ModuleType.LISTENING, ModuleType.READING, ModuleType.WRITING, ModuleType.SPEAKING)
         )
     )
     test.versions.append(version)
@@ -164,10 +164,24 @@ async def test_full_mock_lazily_creates_attempts_locks_review_and_completes(
     assert writing_session.current_attempt.module == ModuleType.WRITING
     await AttemptService(db_session).submit(writing_session.current_attempt.attempt_id)
 
+    awaiting_speaking = await SessionService(db_session).get(started.session.session_id)
+    assert awaiting_speaking.status == SessionStatus.IN_PROGRESS
+    assert awaiting_speaking.next_module == ModuleType.SPEAKING
+    speaking_session = await SessionService(db_session).advance(started.session.session_id)
+    assert speaking_session.current_attempt.module == ModuleType.SPEAKING
+    # The detailed prompt deadline/ack flow is covered by test_full_mock_speaking.
+    async with db_session.begin():
+        from app.domains.timers import TimerService
+        from app.models import Attempt
+
+        speaking = await db_session.get(Attempt, speaking_session.current_attempt.attempt_id)
+        speaking.status = AttemptStatus.SUBMITTED
+        speaking.finished_at = TimerService.now()
+
     completed = await SessionService(db_session).get(started.session.session_id)
     assert completed.status == SessionStatus.COMPLETED
     assert completed.finished_at is not None
-    assert len(completed.attempts) == 3
+    assert len(completed.attempts) == 4
     review = await AttemptService(db_session).review(listening.attempt_id)
     assert review.attempt.status == AttemptStatus.SUBMITTED
 

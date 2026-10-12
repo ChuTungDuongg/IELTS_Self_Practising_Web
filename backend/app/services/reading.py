@@ -71,11 +71,7 @@ class ReadingService:
                 title=body.title,
                 recommended_duration_seconds=(
                     body.recommended_duration_seconds
-                    or (
-                        None
-                        if body.module_type == ModuleType.SPEAKING
-                        else default_module_duration(body.module_type)
-                    )
+                    or default_module_duration(body.module_type)
                 ),
                 order_index=len(version.modules),
             )

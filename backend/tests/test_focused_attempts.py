@@ -129,6 +129,24 @@ async def content(session, *, status=VersionStatus.PUBLISHED, archived=False):
                         )
                     )
             units[skill].append(unit)
+    from app.models import SpeakingPart, SpeakingPrompt
+
+    speaking = ModuleRecord(
+        module_type=ModuleType.SPEAKING, order_index=3, recommended_duration_seconds=900
+    )
+    part = SpeakingPart(part_number=1, order_index=0)
+    part.prompts.append(
+        SpeakingPrompt(
+            order_index=0,
+            prompt_type="SHORT_ANSWER",
+            prompt_text="Describe a fictional garden.",
+            preparation_seconds=0,
+            response_seconds=60,
+            config_json={},
+        )
+    )
+    speaking.speaking_parts.append(part)
+    version.modules.append(speaking)
     async with session.begin():
         session.add(test)
         await session.flush()
@@ -471,6 +489,19 @@ async def test_history_analytics_and_full_mock_exclude_focused_results(db_sessio
         assert snapshot.current_attempt.scope == AttemptScope.FULL_MODULE
         await service.submit(snapshot.current_attempt.attempt_id)
         await SessionService(db_session).advance(mock.session.session_id)
+    snapshot = await SessionService(db_session).get(mock.session.session_id)
+    assert (
+        snapshot.current_attempt.module == ModuleType.SPEAKING
+        and snapshot.current_attempt.scope == AttemptScope.FULL_MODULE
+    )
+    from app.services.speaking_attempts import SpeakingAttemptService
+
+    runtime = SpeakingAttemptService(db_session)
+    state = await runtime.get_state(snapshot.current_attempt.attempt_id)
+    await runtime.begin_prompt(snapshot.current_attempt.attempt_id, state.current_prompt.id)
+    await runtime.finish_current_response(
+        snapshot.current_attempt.attempt_id, state.current_prompt.id, 1, "USER_DONE"
+    )
     assert (await SessionService(db_session).get(mock.session.session_id)).status == "COMPLETED"
 
 

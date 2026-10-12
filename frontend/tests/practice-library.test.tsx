@@ -30,8 +30,8 @@ const detail: VersionDetail = {
 };
 
 describe("Practice library", () => {
-  it("enables durable Speaking starts and preserves three-skill Full Mock readiness", async () => {
-    vi.mocked(getVersion).mockResolvedValue({ ...detail, modules: [...detail.modules, { ...detail.modules[0], id: crypto.randomUUID(), module_type: "SPEAKING", recommended_duration_seconds: null, writing_task_count: 0, writing_tasks: [] }] });
+  it("enables durable Speaking starts and four-skill Full Mock readiness", async () => {
+    vi.mocked(getVersion).mockResolvedValue({ ...detail, modules: [...detail.modules, { ...detail.modules[0], id: crypto.randomUUID(), module_type: "SPEAKING", recommended_duration_seconds: 900, writing_task_count: 0, writing_tasks: [] }] });
     render(await TestVersionLibraryPage({ params: Promise.resolve({ versionId }) }));
     expect(screen.getAllByRole("button", { name: /Start/ }).map(button => button.textContent)).toEqual(["Start Full Mock", "Start READING", "Start LISTENING", "Start WRITING", "Start SPEAKING"]);
     expect(screen.getByRole("button", { name: "Start Full Mock" })).toBeEnabled();
@@ -94,7 +94,7 @@ describe("Practice library", () => {
   it("shows available modules on the version detail route in canonical order", async () => {
     render(await TestVersionLibraryPage({ params: Promise.resolve({ versionId }) }));
     const starts = screen.getAllByRole("button", { name: /Start/ });
-    expect(starts.map((button) => button.textContent)).toEqual(["Start Full Mock", "Start READING", "Start LISTENING", "Start WRITING"]);
+    expect(starts.map((button) => button.textContent)).toEqual(["Start READING", "Start LISTENING", "Start WRITING"]);
     expect(screen.getByText("Reading practice")).toHaveClass("practice-module-kicker");
     expect(screen.getByText("Writing practice")).toHaveClass("practice-module-kicker");
     expect(screen.queryByText("SPEAKING")).not.toBeInTheDocument();
@@ -109,9 +109,9 @@ describe("Practice library", () => {
   it("keeps Full Mock unavailable when a published module has no duration", async () => {
     vi.mocked(getVersion).mockResolvedValue({
       ...detail,
-      modules: detail.modules.map((module) => module.module_type === "READING"
+      modules: [...detail.modules.map((module) => module.module_type === "READING"
         ? { ...module, recommended_duration_seconds: null }
-        : module),
+        : module), { ...detail.modules[0], id: crypto.randomUUID(), module_type: "SPEAKING", recommended_duration_seconds: 900, writing_task_count: 0, writing_tasks: [] }],
     });
     render(await TestVersionLibraryPage({ params: Promise.resolve({ versionId }) }));
     expect(screen.getByText("Full Mock unavailable: Reading recommended duration is missing.")).toBeInTheDocument();
