@@ -6,7 +6,12 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.router import api_router
 from app.core.config import get_settings
+from app.core.database import SessionFactory
 from app.core.exceptions import AppError, app_error_handler
+from app.services.speaking_transcript_worker import (
+    SpeakingTranscriptWorker,
+    stop_speaking_transcript_workers,
+)
 from app.services.writing_ai_worker import stop_writing_ai_workers
 
 settings = get_settings()
@@ -19,8 +24,12 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     from app.services.speaking_media import cleanup_private_media
 
     await cleanup_private_media()
-    yield
-    await stop_writing_ai_workers()
+    await SpeakingTranscriptWorker(SessionFactory, settings).recover()
+    try:
+        yield
+    finally:
+        await stop_speaking_transcript_workers()
+        await stop_writing_ai_workers()
 
 
 app = FastAPI(

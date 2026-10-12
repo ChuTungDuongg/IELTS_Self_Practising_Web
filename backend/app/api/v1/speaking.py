@@ -2,7 +2,7 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Request, status
+from fastapi import APIRouter, Depends, Header, Query, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.routing import APIRoute
@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import CurrentUser, require_content_author
 from app.core.config import get_settings
-from app.core.database import get_session
+from app.core.database import SessionFactory, get_session
 from app.core.exceptions import AppError
 from app.schemas.speaking import (
     BuilderSpeakingPart,
@@ -34,9 +34,12 @@ from app.schemas.speaking import (
     SpeakingSegmentData,
     SpeakingState,
 )
+from app.schemas.speaking_ai import TranscriptCreated, TranscriptRunData, TranscriptRunList
 from app.services.speaking_attempts import SpeakingAttemptService
 from app.services.speaking_builder import SpeakingBuilderService
 from app.services.speaking_media import SpeakingMediaService
+from app.services.speaking_transcript import TERMINAL, SpeakingTranscriptService
+from app.services.speaking_transcript_worker import SpeakingTranscriptWorker
 
 
 class SpeakingRuntimeRoute(APIRoute):
@@ -72,6 +75,82 @@ router = APIRouter(dependencies=[Depends(require_content_author)], tags=["speaki
 runtime_router = APIRouter(
     prefix="/speaking-attempts", tags=["speaking-runtime"], route_class=SpeakingRuntimeRoute
 )
+
+
+def get_transcript_worker():
+    return SpeakingTranscriptWorker(SessionFactory, get_settings())
+
+
+@runtime_router.post("/{attempt_id}/transcript-runs", response_model=TranscriptCreated)
+async def create_transcript_run(
+    attempt_id: UUID,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+    worker: SpeakingTranscriptWorker = Depends(get_transcript_worker),
+):
+    result = await SpeakingTranscriptService(session, user, get_settings()).create(attempt_id)
+    if not result.cache_hit:
+        worker.launch(result.run_id)
+    return result
+
+
+@runtime_router.get("/{attempt_id}/transcript-runs", response_model=TranscriptRunList)
+async def latest_transcript_run(
+    attempt_id: UUID, user: CurrentUser, session: AsyncSession = Depends(get_session)
+):
+    return TranscriptRunList(
+        run=await SpeakingTranscriptService(session, user, get_settings()).latest(attempt_id)
+    )
+
+
+@runtime_router.get("/{attempt_id}/transcript-runs/{run_id}", response_model=TranscriptRunData)
+async def transcript_run(
+    attempt_id: UUID, run_id: UUID, user: CurrentUser, session: AsyncSession = Depends(get_session)
+):
+    return await SpeakingTranscriptService(session, user, get_settings()).get(attempt_id, run_id)
+
+
+async def transcript_event_stream(request, aid, run_id, actor, worker, cursor):
+    import asyncio
+
+    while not await request.is_disconnected():
+        async with worker.sessions() as session:
+            run, events = await SpeakingTranscriptService(session, actor, worker.settings).snapshot(
+                aid, run_id, cursor
+            )
+        for event in events:
+            cursor = event.sequence
+            yield f"id: {cursor}\nevent: {event.event_type}\ndata: {event.model_dump_json()}\n\n"
+        if run.status in TERMINAL and len(events) < 100:
+            return
+        await asyncio.sleep(1)
+
+
+@runtime_router.get("/{attempt_id}/transcript-runs/{run_id}/events")
+async def transcript_events(
+    attempt_id: UUID,
+    run_id: UUID,
+    request: Request,
+    user: CurrentUser,
+    after: int = Query(default=0, ge=0),
+    last_event_id: str | None = Header(default=None),
+    session: AsyncSession = Depends(get_session),
+    worker: SpeakingTranscriptWorker = Depends(get_transcript_worker),
+):
+    await SpeakingTranscriptService(session, user, get_settings()).get(attempt_id, run_id)
+    try:
+        cursor = max(after, int(last_event_id or 0))
+        if int(last_event_id or 0) < 0:
+            raise ValueError
+    except ValueError:
+        raise AppError(
+            "INVALID_EVENT_CURSOR", "The transcript event cursor is invalid.", 422
+        ) from None
+    return StreamingResponse(
+        transcript_event_stream(request, attempt_id, run_id, user, worker, cursor),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache, no-store", "X-Accel-Buffering": "no"},
+    )
 
 
 @runtime_router.get("/{attempt_id}/review", response_model=SpeakingReviewData)

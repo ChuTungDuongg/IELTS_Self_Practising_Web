@@ -40,6 +40,12 @@ from app.models.speaking import (
     SpeakingResponse,
     SpeakingResponseTake,
 )
+from app.models.speaking_transcript import (
+    SpeakingNormalizedAudio,
+    SpeakingTranscript,
+    SpeakingTranscriptEvent,
+    SpeakingTranscriptRun,
+)
 from app.models.writing_ai import (
     WritingAIGradingEvent,
     WritingAIGradingRun,
@@ -47,6 +53,10 @@ from app.models.writing_ai import (
 )
 
 __all__ = [
+    "SpeakingNormalizedAudio",
+    "SpeakingTranscript",
+    "SpeakingTranscriptEvent",
+    "SpeakingTranscriptRun",
     "SpeakingAudioChunk",
     "SpeakingAudioSegment",
     "SpeakingMediaCleanup",

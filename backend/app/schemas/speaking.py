@@ -233,4 +233,5 @@ class SpeakingReviewPart(BaseModel):
 class SpeakingReviewData(BaseModel):
     attempt_id: UUID
     test_title: str
+    can_generate_transcript: bool = True
     parts: list[SpeakingReviewPart]

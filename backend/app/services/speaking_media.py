@@ -67,6 +67,8 @@ async def committed_fingerprint(session, take):
 
 
 async def queue_media_cleanup(session, attempt_ids):
+    from app.models.speaking_transcript import SpeakingNormalizedAudio
+
     keys = list(
         await session.scalars(
             select(SpeakingAudioChunk.storage_key)
@@ -79,6 +81,13 @@ async def queue_media_cleanup(session, attempt_ids):
             .where(SpeakingResponse.attempt_id.in_(attempt_ids))
         )
     )
+    keys.extend(
+        await session.scalars(
+            select(SpeakingNormalizedAudio.storage_key)
+            .join(SpeakingResponse, SpeakingNormalizedAudio.response_id == SpeakingResponse.id)
+            .where(SpeakingResponse.attempt_id.in_(attempt_ids))
+        )
+    )
     for key in set(keys):
         await session.execute(
             insert(SpeakingMediaCleanup)
@@ -88,6 +97,8 @@ async def queue_media_cleanup(session, attempt_ids):
 
 
 async def drain_media_cleanup(session, *, storage=None):
+    from app.models.speaking_transcript import SpeakingNormalizedAudio
+
     storage = storage or LocalAssetStorage(get_settings().resolved_storage_root)
     async with session.begin():
         jobs = list(
@@ -101,7 +112,12 @@ async def drain_media_cleanup(session, *, storage=None):
                 .where(SpeakingAudioChunk.storage_key == job.storage_key)
                 .limit(1)
             )
-            if referenced is None:
+            derived = await session.scalar(
+                select(SpeakingNormalizedAudio.id)
+                .where(SpeakingNormalizedAudio.storage_key == job.storage_key)
+                .limit(1)
+            )
+            if referenced is None and derived is None:
                 storage.delete(job.storage_key)
             await session.delete(job)
 
@@ -420,6 +436,7 @@ class SpeakingMediaService:
         return SpeakingReviewData(
             attempt_id=aid,
             test_title=title,
+            can_generate_transcript=attempt.user_id == self.actor.id,
             parts=[
                 SpeakingReviewPart(
                     part_number=n, responses=sorted(cards, key=lambda c: c.prompt.order_index)

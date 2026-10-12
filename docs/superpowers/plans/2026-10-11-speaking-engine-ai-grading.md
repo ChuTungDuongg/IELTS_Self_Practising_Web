@@ -318,11 +318,11 @@ git commit -m "Add Speaking content domain model"
 - Persist `SpeakingTranscriptRun` + monotonic events and two transcript records per successful response (`VERBATIM`, `CLEAN`) keyed by audio fingerprint + ASR/alignment version/config.
 - Matching active/completed runs are reused; different fingerprint/version invalidates cache.
 
-- [ ] **Step 1: Write failing tests** using a fake provider: per-response isolation, one failed response does not delete successful transcripts, matching active run reuse, cache hit, retry-audio invalidation, word timing validation, and clean normalization preserving grammar errors (e.g. `He go to school` must not become `He goes...`).
-- [ ] **Step 2: Run RED:** `cd backend && uv run pytest tests/test_speaking_transcript.py -q`.
-- [ ] **Step 3: Implement provider abstraction + durable job with fake-friendly factory.** The optional faster-whisper adapter is import-lazy; ordinary app/test import succeeds without the speech extra installed. No diarization in v1.
-- [ ] **Step 4: Run GREEN + Ruff.** Do not download/run a real Whisper model.
-- [ ] **Step 5: Commit:** `git commit -m "Add durable Speaking transcription pipeline"`.
+- [x] **Step 1: Write failing tests** using a fake provider: per-response isolation, one failed response does not delete successful transcripts, matching active run reuse, cache hit, retry-audio invalidation, word timing validation, and clean normalization preserving grammar errors (e.g. `He go to school` must not become `He goes...`).
+- [x] **Step 2: Run RED:** `cd backend && uv run pytest tests/test_speaking_transcript.py -q`.
+- [x] **Step 3: Implement provider abstraction + durable job with fake-friendly factory.** The optional faster-whisper adapter is import-lazy; ordinary app/test import succeeds without the speech extra installed. No diarization in v1.
+- [x] **Step 4: Run GREEN + Ruff.** Do not download/run a real Whisper model.
+- [x] **Step 5: Commit:** `git commit -m "Add durable Speaking transcription pipeline"`.
 
 ### Task 10: Transcript action, SSE/reconciliation, and per-question read-only UI
 

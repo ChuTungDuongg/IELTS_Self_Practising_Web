@@ -16,6 +16,16 @@ class Settings(BaseSettings):
     speaking_max_chunk_bytes: int = Field(default=2 * 1024 * 1024, ge=1024, le=10 * 1024 * 1024)
     speaking_max_response_bytes: int = Field(default=32 * 1024 * 1024, ge=1024)
     speaking_recovery_window_seconds: int = Field(default=45, ge=10, le=120)
+    speaking_normalizer_version: str = Field(default="pcm-v1", min_length=1, max_length=80)
+    speaking_ffmpeg_path: str = "ffmpeg"
+    speaking_processing_timeout_seconds: int = Field(default=120, ge=5, le=600)
+    speaking_max_decoded_seconds: int = Field(default=600, ge=1, le=1800)
+    speaking_asr_enabled: bool = False
+    speaking_asr_model_directory: str = ""
+    speaking_asr_model: str = Field(default="local-model", min_length=1, max_length=200)
+    speaking_asr_version: str = Field(default="faster-whisper-v1", min_length=1, max_length=80)
+    speaking_asr_language: str = Field(default="en", min_length=2, max_length=12)
+    speaking_transcript_stale_seconds: int = Field(default=300, ge=60, le=1800)
     max_transfer_zip_mb: int = Field(default=300, gt=0)
     max_transfer_uncompressed_mb: int = Field(default=600, gt=0)
     max_transfer_files: int = Field(default=5000, gt=0)
