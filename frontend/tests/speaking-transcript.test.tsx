@@ -12,7 +12,8 @@ const run: TranscriptRun = { run_id: "11111111-1111-4111-8111-111111111111", att
 beforeEach(() => { vi.clearAllMocks(); vi.mocked(api.latestTranscriptRun).mockResolvedValue(null); vi.mocked(api.createTranscriptRun).mockResolvedValue({ run_id: run.run_id, cache_hit: false, existing_active: false }); vi.mocked(api.getTranscriptRun).mockResolvedValue(run); vi.mocked(api.watchTranscriptRun).mockReturnValue(vi.fn()); });
 function view() { return render(<SpeakingTranscriptSession attemptId={run.attempt_id}><section aria-label="Question 1"><SpeakingTranscriptResponse responseId={run.responses[0].response_id} /></section><section aria-label="Question 2"><SpeakingTranscriptResponse responseId={run.responses[1].response_id} /></section></SpeakingTranscriptSession>); }
 it("generates read-only per-question transcripts and preserves one successful response", async () => {
-  view(); fireEvent.click(await screen.findByText("Generate Transcript"));
+  view(); const generate = screen.getByRole("button", { name: "Generate Transcript" });
+  await waitFor(() => expect(generate).toBeEnabled()); fireEvent.click(generate);
   expect(await screen.findByText("um, He go to school.")).toBeInTheDocument();
   expect(within(screen.getByRole("region", { name: "Question 1" })).getByText("Ready")).toBeInTheDocument();
   expect(within(screen.getByRole("region", { name: "Question 2" })).getByText("Failed")).toBeInTheDocument();
@@ -30,8 +31,11 @@ it("restores an active run on reload and disconnects only observation on unmount
 });
 it("shows safe localized configuration error without private exception text", async () => {
   vi.mocked(api.createTranscriptRun).mockRejectedValue(new Error("SECRET path /raw"));
-  view(); fireEvent.click(await screen.findByText("Generate Transcript"));
+  view(); const generate = screen.getByRole("button", { name: "Generate Transcript" });
+  // The label exists during restoration; clicking is valid only after it finishes.
+  await waitFor(() => expect(generate).toBeEnabled()); fireEvent.click(generate);
   expect(await screen.findByRole("alert")).toHaveTextContent("Transcript is unavailable"); expect(screen.queryByText(/SECRET/)).toBeNull();
+  expect(api.createTranscriptRun).toHaveBeenCalledExactlyOnceWith(run.attempt_id);
 });
 it("waits for the restored run before enabling another generation request", async () => {
   let resolve!: (run: TranscriptRun | null) => void;
