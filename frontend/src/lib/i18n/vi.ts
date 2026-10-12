@@ -122,6 +122,7 @@ export const vi = {
   "speaking.summaryShortAnswer": "Trả lời ngắn",
   "speaking.summaryLongTurn": "Trình bày dài",
   "speaking.summaryFollowUp": "Câu hỏi phụ",
+  "speaking.summaryViewQuestions": "Xem câu hỏi",
   "speaking.cuePrompt": "Đề bài thẻ chủ đề",
   "speaking.cuePoints": "Các ý gợi ý",
   "speaking.cueHelp": "Mỗi dòng một ý gợi ý (tối đa 12).",

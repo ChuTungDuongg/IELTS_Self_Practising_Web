@@ -120,6 +120,7 @@ export const en = {
   "speaking.summaryShortAnswer": "Short answer",
   "speaking.summaryLongTurn": "Long turn",
   "speaking.summaryFollowUp": "Follow-up",
+  "speaking.summaryViewQuestions": "View questions",
   "speaking.cuePrompt": "Cue-card prompt",
   "speaking.cuePoints": "Cue points",
   "speaking.cueHelp": "One cue point per line (up to 12).",

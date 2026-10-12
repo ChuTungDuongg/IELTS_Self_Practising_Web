@@ -49,7 +49,7 @@ const speakingModule: VersionDetail["modules"][number] = {
 };
 
 describe("Practice library", () => {
-  it("shows four skill cards and every published Speaking prompt in authored order", async () => {
+  it("summarizes Speaking by Part and discloses authored prompts only on request", async () => {
     const published = versionDetailSchema.parse({ ...detail, version_number: 13, modules: [...detail.modules, speakingModule] });
     vi.mocked(getVersion).mockResolvedValue(published);
     const view = renderWithLocale(await TestVersionLibraryPage({ params: Promise.resolve({ versionId }) }));
@@ -65,23 +65,40 @@ describe("Practice library", () => {
     expect(within(speaking).getAllByRole("heading", { level: 3 }).map((heading) => heading.textContent)).toEqual(["Speaking Part 1", "Speaking Part 2", "Speaking Part 3"]);
     expect(within(speaking).getByText("Individual Long Turn")).toBeInTheDocument();
     expect(within(speaking).getByText("Introduction and Interview")).toBeInTheDocument();
-    const prompts = [...speaking.querySelectorAll(".practice-speaking-prompt-text")].map((item) => item.textContent);
-    expect(prompts).toEqual([
-      "Are you working or studying?", "What do you enjoy about studying?",
-      "Describe a fictional garden beside a river.", "Would you recommend this fictional garden?",
-      "Why are public gardens useful?",
-    ]);
-    expect(within(speaking).getByText("Long turn")).toBeInTheDocument();
-    expect(within(speaking).getByText("Follow-up")).toBeInTheDocument();
-    expect(within(speaking).getByText("Where it is")).toBeInTheDocument();
+    const parts = [...speaking.querySelectorAll<HTMLDetailsElement>(".practice-speaking-disclosure")];
+    expect(parts).toHaveLength(3);
+    expect(parts.every((part) => !part.open)).toBe(true);
+    expect(within(speaking).getAllByText("2 questions")).toHaveLength(2);
+    expect(within(speaking).getByText("1 question")).toBeInTheDocument();
+    expect([...speaking.querySelectorAll(".practice-speaking-part-summary > p:nth-child(2)")].map((item) => item.textContent)).toEqual(["Short answer", "Long turn · Follow-up", "Short answer"]);
+    expect(within(speaking).getAllByText("View questions")).toHaveLength(3);
+    expect(within(speaking).getByText("Are you working or studying?")).not.toBeVisible();
+    fireEvent.click(within(parts[0]).getByText("View questions"));
+    expect(parts[0].open).toBe(true);
+    expect(within(parts[0]).getAllByText(/^Q[12]$/).map((item) => item.textContent)).toEqual(["Q1", "Q2"]);
+    expect(within(parts[0]).getByText("Are you working or studying?")).toBeVisible();
+    expect(within(parts[0]).getByText("What do you enjoy about studying?")).toBeVisible();
+    fireEvent.click(within(parts[0]).getByText("View questions"));
+    expect(parts[0].open).toBe(false);
+    expect(within(parts[0]).getByText("Are you working or studying?")).not.toBeVisible();
+    fireEvent.click(within(parts[1]).getByText("View questions"));
+    expect(parts[1].open).toBe(true);
+    expect([...parts[1].querySelectorAll(".practice-speaking-prompt-text")].map((item) => item.textContent)).toEqual(["Describe a fictional garden beside a river.", "Would you recommend this fictional garden?"]);
+    expect(within(parts[1]).getByText("Long turn")).toBeInTheDocument();
+    expect(within(parts[1]).getByText("Follow-up")).toBeInTheDocument();
+    expect(within(parts[1]).getByText("Where it is")).toBeVisible();
+    expect(within(parts[1]).getByText("Why you like it")).toBeVisible();
+    fireEvent.click(within(parts[2]).getByText("View questions"));
+    expect(within(parts[2]).getByText("Why are public gardens useful?")).toBeVisible();
     expect(within(cards[0] as HTMLElement).getByText("A fictional ship")).toBeInTheDocument();
     expect(within(cards[1] as HTMLElement).getByText("A fictional tour")).toBeInTheDocument();
     expect(within(cards[2] as HTMLElement).getByText("Describe fictional charts.")).toBeInTheDocument();
     fireEvent.click(screen.getByText("Switch to Vietnamese"));
     expect(within(speaking).getByText("Phần Nói 1")).toBeInTheDocument();
-    expect(within(speaking).getByText("Trình bày dài")).toBeInTheDocument();
+    expect(within(speaking).getAllByText("Xem câu hỏi")).toHaveLength(3);
+    expect(within(parts[1]).getByText("Trình bày dài")).toBeInTheDocument();
     expect(within(speaking).getByText("Câu hỏi")).toBeInTheDocument();
-    expect(within(speaking).queryByText("speaking.summaryLongTurn")).not.toBeInTheDocument();
+    expect(within(speaking).queryByText("speaking.summaryViewQuestions")).not.toBeInTheDocument();
   });
   it("enables durable Speaking starts and four-skill Full Mock readiness", async () => {
     vi.mocked(getVersion).mockResolvedValue({ ...detail, modules: [...detail.modules, { ...detail.modules[0], id: crypto.randomUUID(), module_type: "SPEAKING", recommended_duration_seconds: 900, writing_task_count: 0, writing_tasks: [] }] });

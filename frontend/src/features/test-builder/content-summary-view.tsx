@@ -15,11 +15,17 @@ export function ContentSummary({ units }: { units: SummaryUnit[] }) {
       {unit.questionTypes ? <div className="mt-2 flex flex-wrap gap-1.5">{unit.questionTypes.map((type) => <span key={type} className="rounded-full border border-[var(--border)] px-2 py-0.5 text-xs">{questionTypeTranslationKeys[type] ? t(questionTypeTranslationKeys[type]) : questionTypeLabel(type)}</span>)}</div> : null}
       {unit.taskType !== undefined ? <span className="mt-2 inline-block rounded-full border border-[var(--border)] px-2 py-0.5 text-xs">{t(unit.taskType ? writingTaskTranslationKeys[unit.taskType] : "common.unclassified")}</span> : null}
       {unit.excerpt ? <p className="mt-1 line-clamp-2 text-xs text-[var(--muted)]">{unit.excerpt}</p> : null}
-      {unit.prompts ? <ol className="practice-speaking-prompts">{unit.prompts.map((prompt) => <li key={prompt.ordinal}>
-        <div className="practice-speaking-prompt-meta"><span>{t("speaking.summaryQuestion", { number: prompt.ordinal })}</span><span>{t(speakingPromptTranslationKeys[prompt.type])}</span></div>
-        <p className="practice-speaking-prompt-text" title={prompt.text}>{prompt.text}</p>
-        {prompt.type === "LONG_TURN" && prompt.cuePoints.length ? <ul className="practice-speaking-cues" aria-label={t("speaking.cuePoints")}>{prompt.cuePoints.map((point, index) => <li key={`${index}-${point}`}>{point}</li>)}</ul> : null}
-      </li>)}</ol> : null}
+      {unit.prompts ? <div className="practice-speaking-part-summary">
+        <p>{t(unit.prompts.length === 1 ? "common.questionCount" : "common.questionsCount", { count: unit.prompts.length })}</p>
+        <p>{[...new Set(unit.prompts.map((prompt) => prompt.type))].map((type) => t(speakingPromptTranslationKeys[type])).join(" · ")}</p>
+        <details className="practice-speaking-disclosure"><summary>{t("speaking.summaryViewQuestions")}</summary>
+          <ol className="practice-speaking-prompts">{unit.prompts.map((prompt) => <li key={prompt.ordinal}>
+            <div className="practice-speaking-prompt-meta"><span>{t("speaking.summaryQuestion", { number: prompt.ordinal })}</span><span>{t(speakingPromptTranslationKeys[prompt.type])}</span></div>
+            <p className="practice-speaking-prompt-text" title={prompt.text}>{prompt.text}</p>
+            {prompt.type === "LONG_TURN" && prompt.cuePoints.length ? <ul className="practice-speaking-cues" aria-label={t("speaking.cuePoints")}>{prompt.cuePoints.map((point, index) => <li key={`${index}-${point}`}>{point}</li>)}</ul> : null}
+          </li>)}</ol>
+        </details>
+      </div> : null}
     </div>)}
   </div>;
 }

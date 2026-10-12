@@ -608,12 +608,17 @@ input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--mute
 .practice-skill-grid .practice-start { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); }
 .practice-skill-grid .practice-start select, .practice-skill-grid .practice-start .btn { width: 100%; }
 .practice-skill-grid .practice-start p { margin-block: 9px 12px; color: var(--muted); font-size: 11px; line-height: 1.45; }
+.practice-speaking-part-summary { margin-top: 8px; color: var(--muted); font-size: 12px; line-height: 1.45; }
+.practice-speaking-part-summary > p + p { margin-top: 3px; }
+.practice-speaking-disclosure { margin-top: 8px; }
+.practice-speaking-disclosure summary { width: fit-content; cursor: pointer; color: var(--accent); font-size: 12px; font-weight: 700; }
+.practice-speaking-disclosure summary:hover { color: var(--ink); }
 .practice-speaking-prompts { display: grid; gap: 9px; margin: 10px 0 0; padding: 0; list-style: none; }
 .practice-speaking-prompts > li { min-width: 0; }
 .practice-speaking-prompts > li + li { padding-top: 9px; border-top: 1px solid var(--line); }
 .practice-speaking-prompt-meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: 5px 8px; color: var(--muted); font-size: 10px; font-weight: 700; }
 .practice-speaking-prompt-meta > :first-child { color: var(--accent); }
-.practice-speaking-prompt-text { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 3; margin-top: 3px; font-size: 12px; line-height: 1.4; overflow-wrap: anywhere; }
+.practice-speaking-prompt-text { margin-top: 3px; font-size: 12px; line-height: 1.4; overflow-wrap: anywhere; }
 .practice-speaking-cues { margin: 5px 0 0; padding-inline-start: 16px; color: var(--muted); font-size: 11px; line-height: 1.35; overflow-wrap: anywhere; }
 @media (max-width: 1179px) { .practice-skill-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 700px) { .practice-skill-grid { grid-template-columns: minmax(0, 1fr); } }
