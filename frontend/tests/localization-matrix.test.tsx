@@ -101,7 +101,7 @@ it.each(rows)("role locale theme route matrix preserves chrome and feature ident
   expect(view.container.querySelectorAll(".primary-nav")).toHaveLength(1); expect(view.container.querySelector(".app-header")).toBeInTheDocument();
   expect(document.documentElement.lang).toBe(row.locale); expect(document.documentElement.dataset.theme).toBe(row.theme);
   if (row.feature === "preview") { expect(view.container.querySelector(".app-footer")).toBeNull(); expect(view.container.querySelector(".exam-footer")).toBeInTheDocument(); }
-  else expect(view.container.querySelector(".app-footer")).toHaveTextContent("© 2026 IELTS Studio");
+  else expect(view.container.querySelector(".app-footer")).toHaveTextContent("© 2026 BandPilot");
   let node: Element | null = null;
   if (row.feature === "auth") { node = screen.getByLabelText("Email"); fireEvent.change(node, { target: { value: "raw@email.test" } }); }
   if (row.feature === "practice") { fireEvent.click(screen.getByRole("button", { name: "Nghe" })); node = screen.getByRole("searchbox"); fireEvent.change(node, { target: { value: "Section 2" } }); }

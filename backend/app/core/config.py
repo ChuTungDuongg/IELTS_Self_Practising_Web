@@ -9,7 +9,7 @@ from app.schemas.speaking_ai import AudioQualityConfig, PronunciationConfig
 
 
 class Settings(BaseSettings):
-    app_name: str = "DevWebLocalforIELTS API"
+    app_name: str = "BandPilot API"
     api_v1_prefix: str = "/api/v1"
     database_url: str = "postgresql+asyncpg://ielts:ielts@localhost:5433/ielts"
     frontend_origin: str = "http://localhost:3000"

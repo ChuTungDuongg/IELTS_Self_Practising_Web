@@ -415,9 +415,9 @@ input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--mute
 .home-orbit { position: relative; z-index: 1; min-height: 280px; isolation: isolate; perspective: 780px; touch-action: auto; }
 .home-orbit-scene { position: absolute; inset: 0; opacity: .86; pointer-events: none; transform: rotateX(var(--orbit-rx)) rotateY(var(--orbit-ry)); transform-style: preserve-3d; transition: opacity 420ms ease; will-change: transform; }
 .home-orbit-glow { position: absolute; z-index: -1; top: 50%; left: 50%; width: 210px; height: 210px; transform: translate(-50%, -50%) translate3d(var(--glow-x), var(--glow-y), -20px); border-radius: 50%; background: none; opacity: .72; transition: opacity 420ms ease; will-change: transform; }
-.home-orbit-core { position: absolute; z-index: 3; top: 50%; left: 50%; display: grid; width: 126px; height: 126px; place-items: center; transform: translate(-50%, -50%) translate3d(var(--planet-shift-x), var(--planet-shift-y), 42px); border-radius: 50%; will-change: transform; }
+.home-orbit-core { position: absolute; z-index: 3; top: 50%; left: 50%; display: grid; width: 126px; height: 126px; place-items: center; transform: translate(-50%, -50%) translate3d(var(--brand-shift-x), var(--brand-shift-y), 42px); border-radius: 50%; will-change: transform; }
 .home-orbit-core::before { position: absolute; inset: 15px; border: 1px solid color-mix(in srgb, var(--accent-cyan) 25%, transparent); border-radius: 50%; background: var(--surface-soft); box-shadow: none; content: ""; }
-.home-orbit-logo { position: relative; z-index: 1; display: grid; place-items: center; animation: home-planet-float 9s ease-in-out infinite; transition: scale 420ms cubic-bezier(.2, .75, .25, 1); }
+.home-orbit-logo { position: relative; z-index: 1; display: grid; place-items: center; animation: home-brand-float 9s ease-in-out infinite; transition: scale 420ms cubic-bezier(.2, .75, .25, 1); }
 .home-orbit-core .app-logo { width: 112px; height: 112px; filter: none; }
 .home-orbit-ring { position: absolute; z-index: 1; top: 50%; left: 50%; border-radius: 50%; transform-style: preserve-3d; transition: opacity 420ms ease, scale 380ms cubic-bezier(.2, .75, .25, 1); will-change: transform; }
 .home-orbit-ring::before { position: absolute; inset: 0; border: 1px solid color-mix(in srgb, var(--accent) 38%, transparent); border-radius: inherit; content: ""; }
@@ -434,16 +434,16 @@ input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--mute
 .home-orbit-interactive.is-active .home-orbit-glow { opacity: .94; }
 .home-orbit-interactive.is-active .home-orbit-logo { scale: 1.02; }
 .home-orbit-interactive.is-active .home-orbit-star { opacity: 1; }
-.home-orbit-interactive.is-pressed .home-orbit-logo { animation: home-planet-press 400ms cubic-bezier(.2, .85, .3, 1); }
+.home-orbit-interactive.is-pressed .home-orbit-logo { animation: home-brand-press 400ms cubic-bezier(.2, .85, .3, 1); }
 .home-orbit-interactive.is-pressed .home-orbit-ring { scale: 1.025; }
 .home-orbit-interactive.is-pressed .home-orbit-star { opacity: 1; }
 
-@keyframes home-planet-float {
+@keyframes home-brand-float {
   0%, 100% { transform: translateY(-2px); }
   50% { transform: translateY(3px); }
 }
 
-@keyframes home-planet-press {
+@keyframes home-brand-press {
   0%, 100% { transform: translateY(0) scale(1); }
   38% { transform: translateY(1px) scale(.965); }
   72% { transform: translateY(-1px) scale(1.025); }
@@ -2087,7 +2087,7 @@ input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--mute
 :root[data-theme="dark"] :is(.exam-shell, .exam-runner) .dialog-backdrop { backdrop-filter: blur(4px); }
 
 /* Dark-only treatments for decoration that cannot be quieted by palette alone.
-   Light styles, geometry, responsive rules and planet interactions stay above. */
+   Light styles, geometry, responsive rules and brand-orbit interactions stay above. */
 :root[data-theme="dark"] body { background: var(--app-bg); }
 :root[data-theme="dark"] :is(.app-header, .builder-toolbar, .library-toolbar) { background: var(--surface-glass); box-shadow: var(--shadow-sm); backdrop-filter: none; }
 :root[data-theme="dark"] .primary-nav-link-active { background: color-mix(in srgb, var(--accent) 8%, var(--surface-raised)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 18%, var(--line)); }
@@ -2097,7 +2097,7 @@ input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--mute
 :root[data-theme="dark"] :is(.passage-editor, .group-editor) { border-color: var(--line-strong); box-shadow: var(--shadow-sm); }
 :root[data-theme="dark"] .panel { background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
 
-/* Let the existing interactive planet be the homepage's richest element. */
+/* Let the interactive brand orbit be the homepage's richest element. */
 :root[data-theme="dark"] .home-hero { border-color: var(--line); background: var(--surface); box-shadow: var(--shadow-sm); }
 :root[data-theme="dark"] .learning-path-blue::before { background: var(--accent); }
 :root[data-theme="dark"] .practice-card-accent { background: var(--reading); }

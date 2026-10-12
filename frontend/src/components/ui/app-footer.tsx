@@ -8,7 +8,7 @@ export function AppFooter({ year }: { year: number }): ReactElement {
   const { t } = useTranslation();
   return <footer className="app-footer">
     <div className="app-footer-inner">
-      <div><strong>IELTS Studio</strong><p>{t("footer.description")}</p></div>
+      <div><strong>BandPilot</strong><p lang="en">{t("footer.tagline")}</p><p>{t("footer.description")}</p></div>
       <div><p>{t("footer.copyright", { year })}</p><span lang={locale}>{t("footer.language")}</span></div>
     </div>
   </footer>;

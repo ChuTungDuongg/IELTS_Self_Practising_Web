@@ -15,13 +15,16 @@ describe("shared footer", () => {
   it("shows real product information and the current language without extra links or controls", () => {
     renderWithLocale(<AppFooter year={2026} />);
     const footer = screen.getByRole("contentinfo");
-    expect(footer).toHaveTextContent("IELTS Studio");
+    expect(footer).toHaveTextContent("BandPilot");
+    expect(footer).not.toHaveTextContent("IELTS Studio");
+    expect(within(footer).getByText("Practice smarter. Reach your band.")).toHaveAttribute("lang", "en");
     expect(footer).toHaveTextContent("Practice & authoring");
-    expect(footer).toHaveTextContent("© 2026 IELTS Studio");
+    expect(footer).toHaveTextContent("© 2026 BandPilot");
     expect(within(footer).getByText("English")).toHaveAttribute("lang", "en");
     fireEvent.click(screen.getByRole("button", { name: "Switch to Vietnamese" }));
     expect(screen.getByRole("contentinfo")).toBe(footer);
     expect(footer).toHaveTextContent("Luyện tập và biên soạn đề");
+    expect(footer).toHaveTextContent("Practice smarter. Reach your band.");
     expect(within(footer).getByText("Tiếng Việt")).toHaveAttribute("lang", "vi");
     expect(footer.querySelector("a, button, select")).toBeNull();
   });
@@ -30,7 +33,7 @@ describe("shared footer", () => {
     window.localStorage.setItem("ielts-locale", "vi");
     const tree = <LocaleProvider><AppFooter year={2026} /></LocaleProvider>;
     const markup = renderToString(tree);
-    expect(markup).toContain("© 2026 IELTS Studio");
+    expect(markup).toContain("© 2026 BandPilot");
     expect(markup).toContain("Practice &amp; authoring");
     expect(markup).toContain("English");
     const container = document.createElement("div");
@@ -39,7 +42,7 @@ describe("shared footer", () => {
     const recoverable = vi.fn();
     let root: ReturnType<typeof hydrateRoot>;
     await act(async () => { root = hydrateRoot(container, tree, { onRecoverableError: recoverable }); });
-    expect(container).toHaveTextContent("© 2026 IELTS Studio");
+    expect(container).toHaveTextContent("© 2026 BandPilot");
     expect(container).toHaveTextContent("Luyện tập và biên soạn đề");
     expect(recoverable).not.toHaveBeenCalled();
     await act(async () => root!.unmount());

@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import DashboardPage from "@/app/page";
-import { InteractivePlanet } from "@/components/home/interactive-planet";
+import { BrandOrbit } from "@/components/home/brand-orbit";
 
 vi.mock("@/lib/api/history", () => ({
   getHistory: vi.fn().mockResolvedValue({ items: [], groups: [], total: 0 }),
@@ -34,7 +34,7 @@ function installMatchMedia({ reducedMotion = false, finePointer = true }: MediaQ
   })));
 }
 
-describe("InteractivePlanet", () => {
+describe("BrandOrbit", () => {
   let animationFrames: FrameRequestCallback[];
 
   beforeEach(() => {
@@ -51,8 +51,8 @@ describe("InteractivePlanet", () => {
     vi.unstubAllGlobals();
   });
 
-  it("uses the planet AppLogo and remains purely decorative", () => {
-    const { container } = render(<InteractivePlanet />);
+  it("uses the BandPilot Compass Ribbon AppLogo and remains purely decorative", () => {
+    const { container } = render(<BrandOrbit />);
     const orbit = container.querySelector(".home-orbit-interactive");
 
     expect(orbit).toHaveAttribute("aria-hidden", "true");
@@ -61,7 +61,7 @@ describe("InteractivePlanet", () => {
   });
 
   it("updates CSS motion variables without cancelling pointer actions", () => {
-    const { container } = render(<InteractivePlanet />);
+    const { container } = render(<BrandOrbit />);
     const orbit = container.querySelector<HTMLElement>(".home-orbit-interactive")!;
     vi.spyOn(orbit, "getBoundingClientRect").mockReturnValue({
       x: 0,
@@ -80,8 +80,8 @@ describe("InteractivePlanet", () => {
     expect(animationFrames).toHaveLength(1);
 
     animationFrames.shift()?.(16);
-    expect(Number.parseFloat(orbit.style.getPropertyValue("--planet-shift-x"))).toBeGreaterThan(0);
-    expect(Number.parseFloat(orbit.style.getPropertyValue("--planet-shift-y"))).toBeLessThan(0);
+    expect(Number.parseFloat(orbit.style.getPropertyValue("--brand-shift-x"))).toBeGreaterThan(0);
+    expect(Number.parseFloat(orbit.style.getPropertyValue("--brand-shift-y"))).toBeLessThan(0);
 
     const press = new Event("pointerdown", { bubbles: true, cancelable: true });
     orbit.dispatchEvent(press);
@@ -93,7 +93,7 @@ describe("InteractivePlanet", () => {
 
   it("stays static when reduced motion is requested", () => {
     installMatchMedia({ reducedMotion: true });
-    const { container } = render(<InteractivePlanet />);
+    const { container } = render(<BrandOrbit />);
     const orbit = container.querySelector<HTMLElement>(".home-orbit-interactive")!;
 
     fireEvent.pointerEnter(orbit, { clientX: 200, clientY: 20 });
@@ -101,8 +101,8 @@ describe("InteractivePlanet", () => {
 
     expect(requestAnimationFrame).not.toHaveBeenCalled();
     expect(orbit).not.toHaveClass("is-active");
-    expect(orbit.style.getPropertyValue("--planet-shift-x")).toBe("0.000px");
-    expect(orbit.style.getPropertyValue("--planet-shift-y")).toBe("0.000px");
+    expect(orbit.style.getPropertyValue("--brand-shift-x")).toBe("0.000px");
+    expect(orbit.style.getPropertyValue("--brand-shift-y")).toBe("0.000px");
   });
 
   it("is rendered by the server homepage with the guest practice action", async () => {

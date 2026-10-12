@@ -6,8 +6,8 @@ import { accentPresets } from "@/features/personalization/accent-palette";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "IELTS Studio",
-  description: "A focused IELTS learning, practice, and authoring workspace",
+  title: "BandPilot — IELTS Practice & AI Feedback",
+  description: "An independent IELTS practice platform for Reading, Listening, Writing and Speaking, with structured mock tests, advisory feedback and learning tools.",
 };
 
 export const themeInitializationScript = `(function(){var root=document.documentElement;root.dataset.theme="light";root.dataset.accent="purple";try{var saved=localStorage.getItem("ielts-theme");root.dataset.theme=saved==="dark"?"dark":"light";var accent=localStorage.getItem("ielts-accent");root.dataset.accent=${JSON.stringify(accentPresets)}.indexOf(accent)!==-1?accent.toLowerCase():"purple"}catch(e){}})();`;

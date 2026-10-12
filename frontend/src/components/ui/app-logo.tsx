@@ -1,3 +1,5 @@
+import { useId } from "react";
+
 type AppLogoVariant = "primary" | "monochrome" | "icon";
 
 type AppLogoProps = {
@@ -6,33 +8,16 @@ type AppLogoProps = {
   title?: string;
 };
 
-export function AppLogo({
-  variant = "primary",
-  className = "",
-  title,
-}: AppLogoProps) {
+// One rounded, folded ribbon, repeated around a shared negative-space target.
+const ribbonPath = "M30 5.5C32.1 4.3 34.5 5.8 34.5 8.2V16.5C34.5 18.4 36.1 20 38 20H44.5C46.4 20 47.1 22.5 45.5 23.5L43 25C42 25.6 40.9 26 39.7 26H31C27.4 26 24.5 23.1 24.5 19.5V11.7C24.5 10.5 25.1 9.4 26.1 8.8Z";
+
+export function AppLogo({ variant = "primary", className = "", title }: AppLogoProps) {
+  const gradientId = `bandpilot-ribbon-${useId()}`;
+  const monochrome = variant === "monochrome";
   const accessibility = title
     ? { role: "img", "aria-label": title }
     : { "aria-hidden": true };
 
-  if (variant === "monochrome") {
-    return (
-      <svg
-        viewBox="0 0 64 64"
-        className={`app-logo app-logo-monochrome ${className}`.trim()}
-        fill="none"
-        xmlns="http://www.w3.org/2000/svg"
-        {...accessibility}
-      >
-        <path d="M7.5 37.5C10.7 24.2 28.3 13.9 45.1 17.2c9.2 1.8 14.1 7 11.4 13.1" stroke="currentColor" strokeWidth="4.5" strokeLinecap="round" />
-        <circle cx="32" cy="32" r="17.5" stroke="currentColor" strokeWidth="4.5" />
-        <path d="M17.2 24.3c8.2 4.2 21.4 4.6 29.8-.6M14.8 32.2c9.1 4.2 24.4 4.7 34.2-.9M17.4 40c8.1 3.5 20.3 3.8 28.3-.8" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
-        <path d="M56.5 30.3c-3.5 13.2-21 22-37.8 18.3C9.8 46.7 5 41.7 7.5 37.5" stroke="currentColor" strokeWidth="4.5" strokeLinecap="round" />
-      </svg>
-    );
-  }
-
-  const compact = variant === "icon";
   return (
     <svg
       viewBox="0 0 64 64"
@@ -41,13 +26,21 @@ export function AppLogo({
       xmlns="http://www.w3.org/2000/svg"
       {...accessibility}
     >
-      <path d="M7.5 37.5C10.7 24.2 28.3 13.9 45.1 17.2c9.2 1.8 14.1 7 11.4 13.1" stroke="#22D3EE" strokeWidth={compact ? 5.5 : 5} strokeLinecap="round" />
-      <circle cx="32" cy="32" r="18" fill="#4F46E5" stroke="#312E81" strokeWidth="2" />
-      <path d="M18.2 23.8c7.8 4.5 20.8 5 28.2.2" stroke="#A5F3FC" strokeWidth={compact ? 4 : 3.5} strokeLinecap="round" />
-      <path d="M14.7 32.1c9.4 4.5 24.8 5 34.5-.8" stroke="#C4B5FD" strokeWidth={compact ? 4 : 3.5} strokeLinecap="round" />
-      {!compact ? <path d="M17.5 40.2c8 3.6 20.4 3.7 28.3-1" stroke="#818CF8" strokeWidth="3.5" strokeLinecap="round" /> : null}
-      <path d="M56.5 30.3c-3.5 13.2-21 22-37.8 18.3C9.8 46.7 5 41.7 7.5 37.5" stroke="#67E8F9" strokeWidth={compact ? 5.5 : 5} strokeLinecap="round" />
-      {!compact ? <circle cx="42.8" cy="25.5" r="2.2" fill="#EEF2FF" opacity=".88" /> : null}
+      {title ? <title>{title}</title> : null}
+      {!monochrome ? (
+        <defs>
+          <linearGradient id={gradientId} x1="0" y1="0" x2="1" y2="1">
+            <stop stopColor="#4F46E5" />
+            <stop offset=".5" stopColor="#3B82F6" />
+            <stop offset="1" stopColor="#22B8CF" />
+          </linearGradient>
+        </defs>
+      ) : null}
+      <g fill={monochrome ? "currentColor" : `url(#${gradientId})`}>
+        {[0, 90, 180, 270].map(rotation => (
+          <path key={rotation} d={ribbonPath} transform={`rotate(${rotation} 32 32)`} />
+        ))}
+      </g>
     </svg>
   );
 }

@@ -11,8 +11,8 @@ const EASING = 0.09;
 type MotionPoint = { x: number; y: number };
 
 const initialStyle = {
-  "--planet-shift-x": "0px",
-  "--planet-shift-y": "0px",
+  "--brand-shift-x": "0px",
+  "--brand-shift-y": "0px",
   "--orbit-rx": "0deg",
   "--orbit-ry": "0deg",
   "--ring-one-x": "0px",
@@ -32,8 +32,8 @@ function clamp(value: number) {
 }
 
 function applyMotion(element: HTMLElement, { x, y }: MotionPoint) {
-  element.style.setProperty("--planet-shift-x", `${(x * 8).toFixed(3)}px`);
-  element.style.setProperty("--planet-shift-y", `${(y * 7).toFixed(3)}px`);
+  element.style.setProperty("--brand-shift-x", `${(x * 8).toFixed(3)}px`);
+  element.style.setProperty("--brand-shift-y", `${(y * 7).toFixed(3)}px`);
   element.style.setProperty("--orbit-rx", `${(y * -4).toFixed(3)}deg`);
   element.style.setProperty("--orbit-ry", `${(x * 7).toFixed(3)}deg`);
   element.style.setProperty("--ring-one-x", `${(x * 4.5).toFixed(3)}px`);
@@ -48,7 +48,7 @@ function applyMotion(element: HTMLElement, { x, y }: MotionPoint) {
   element.style.setProperty("--glow-y", `${(y * 3).toFixed(3)}px`);
 }
 
-export function InteractivePlanet() {
+export function BrandOrbit() {
   const rootRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<number | null>(null);
   const pressTimerRef = useRef<number | null>(null);

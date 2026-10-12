@@ -15,7 +15,7 @@ vi.mock("@/lib/api/history", () => ({ getHistory: vi.fn() }));
 vi.mock("@/lib/api/tests", () => ({ getTests: vi.fn() }));
 vi.mock("@/lib/api/profile", () => ({ getProfile: vi.fn() }));
 vi.mock("@/features/auth/admin-only", () => ({ AdminOnly: ({ children }: { children: React.ReactNode }) => children }));
-vi.mock("@/components/home/interactive-planet", () => ({ InteractivePlanet: () => null }));
+vi.mock("@/components/home/brand-orbit", () => ({ BrandOrbit: () => null }));
 
 const user = {
   id: "11111111-1111-4111-8111-111111111111",

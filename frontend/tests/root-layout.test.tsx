@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { Children, type ReactElement, type ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import RootLayout, { themeInitializationScript } from "@/app/layout";
+import RootLayout, { metadata, themeInitializationScript } from "@/app/layout";
 import { PersonalizationProvider } from "@/features/personalization/personalization-provider";
 import { AuthProvider } from "@/features/auth/auth-provider";
 import { AppShell } from "@/components/ui/app-shell";
@@ -12,6 +12,10 @@ vi.mock("next/navigation", () => ({
 }));
 
 describe("RootLayout theme initialization", () => {
+  it("presents BandPilot in document metadata with an accurate independent practice description", () => {
+    expect(metadata.title).toBe("BandPilot — IELTS Practice & AI Feedback");
+    expect(metadata.description).toBe("An independent IELTS practice platform for Reading, Listening, Writing and Speaking, with structured mock tests, advisory feedback and learning tools.");
+  });
   afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); vi.unstubAllGlobals(); window.localStorage.clear(); });
 
   it("keeps the server composition English/light with central personalization above auth and a server year", () => {
@@ -31,7 +35,7 @@ describe("RootLayout theme initialization", () => {
     expect(markup).toContain('lang="en"');
     expect(markup).toContain('data-theme="light"');
     expect(markup).not.toContain("Use dark theme");
-    expect(markup).toContain("© 2026 IELTS Studio");
+    expect(markup).toContain("© 2026 BandPilot");
     expect(markup).not.toContain("Dùng giao diện");
   });
 

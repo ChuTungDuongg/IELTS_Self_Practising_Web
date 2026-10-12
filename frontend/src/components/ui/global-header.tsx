@@ -84,7 +84,7 @@ export function GlobalHeader({ pathname }: { pathname: string }): ReactElement {
   return <>
     <header className="app-header">
       <div className="app-header-inner">
-        <Link href="/" className="brand" aria-label={t("shell.brandOverview")}><span className="brand-mark" aria-hidden="true"><AppLogo variant="primary" /></span><strong>IELTS Studio</strong></Link>
+        <Link href="/" className="brand" aria-label={t("shell.brandOverview")}><span className="brand-mark" aria-hidden="true"><AppLogo variant="primary" /></span><strong>BandPilot</strong></Link>
         <PrimaryNavigation pathname={pathname} />
         <HeaderActions loggingOut={loggingOut} onLogout={() => setConfirmingLogout(true)} onPersonalization={() => setPersonalizationOpen(true)} settingsButtonRef={settingsButtonRef} pathname={pathname} />
       </div>

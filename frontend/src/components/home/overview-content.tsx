@@ -2,7 +2,7 @@
 
 import type { ReactElement } from "react";
 import Link from "next/link";
-import { InteractivePlanet } from "./interactive-planet";
+import { BrandOrbit } from "./brand-orbit";
 import { ArrowIcon, BuilderIcon, HeadphonesIcon, HistoryIcon, LibraryIcon, ReadingIcon, SparkleIcon } from "@/components/ui/icons";
 import { AdminOnly } from "@/features/auth/admin-only";
 import type { AdminStats } from "@/lib/api/admin";
@@ -31,7 +31,7 @@ export function OverviewContent({ publishedCount, resumableCount, testCount, isA
             <AdminOnly><Link href="/admin/tests" className="btn btn-secondary"><BuilderIcon className="size-4" /> {t("pages.overview.builderAction")}</Link></AdminOnly>
           </div>
         </div>
-        <InteractivePlanet />
+        <BrandOrbit />
       </section>
 
       <section className={`home-metrics${isAdmin ? " home-metrics-admin" : ""}`} aria-label={t("pages.overview.summary")}>

@@ -30,6 +30,7 @@ describe("Builder workspace page", () => {
     window.localStorage.clear();
     vi.mocked(getBuilderVersion).mockResolvedValue({ id: versionId, test_id: testId, test_title: "Section 2", test_description: "Đề <raw>", version_number: 1, status: "DRAFT", modules: [] });
     renderWithLocale(await VersionEditorPage({ params: Promise.resolve({ testId, versionId }), searchParams: Promise.resolve({ workspace: "listening" }) }));
+    expect(screen.getByText("BandPilot · Exam Builder")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Edit test details" }));
     const input = screen.getByRole("textbox", { name: "Test name" });
     const description = screen.getByRole("textbox", { name: "Description" });
@@ -37,6 +38,7 @@ describe("Builder workspace page", () => {
     fireEvent.change(description, { target: { value: "Đề <raw> edited" } });
     const selected = screen.getByRole("link", { name: /ListeningNot created/ });
     fireEvent.click(screen.getByText("Switch to Vietnamese"));
+    expect(screen.getByText("BandPilot · Biên soạn đề")).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "Tên đề" })).toBe(input);
     expect(input).toHaveValue("Section 2 edited");
     expect(description).toHaveValue("Đề <raw> edited");

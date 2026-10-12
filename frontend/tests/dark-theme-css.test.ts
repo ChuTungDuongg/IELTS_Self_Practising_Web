@@ -176,7 +176,7 @@ describe("editorial dark theme", () => {
     }
   });
 
-  it("removes ambient shell lighting and flat-card hover glows while retaining the planet", () => {
+  it("removes ambient shell lighting and flat-card hover glows while retaining the brand orbit", () => {
     expect(css).not.toContain(".app-shell::before");
     const navigation = declarations(stylesheet, `${darkSelector} .primary-nav-link-active`);
     expect(navigation.background).toContain("var(--surface-raised)");

@@ -46,8 +46,10 @@ describe("authentication UI", () => {
     vi.mocked(getCurrentUser).mockRejectedValue(new ApiError("AUTHENTICATION_REQUIRED", "Sign in", 401));
     renderWithLocale(<AuthProvider><AuthForm mode={mode} /></AuthProvider>);
     const email = await screen.findByLabelText("Email"); const password = screen.getByLabelText("Password");
+    expect(screen.getByText("BandPilot account")).toBeInTheDocument();
     fireEvent.change(email, { target: { value: "learner@example.com" } }); fireEvent.change(password, { target: { value: "draft-password" } });
     fireEvent.click(screen.getByText("Switch to Vietnamese"));
+    expect(screen.getByText("Tài khoản BandPilot")).toBeInTheDocument();
     expect(screen.getByLabelText("Email")).toBe(email); expect(screen.getByLabelText("Mật khẩu")).toBe(password);
     expect(email).toHaveValue("learner@example.com"); expect(password).toHaveValue("draft-password");
     expect(screen.getByRole("heading", { name: mode === "login" ? "Chào mừng trở lại" : "Tạo tài khoản của bạn" })).toBeInTheDocument();

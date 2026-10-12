@@ -13,6 +13,14 @@ const routes = ["/", "/library", "/practice", "/history", "/analytics", "/admin"
 beforeEach(() => { state.pathname = "/"; state.role = null; state.loading = false; state.sessionError = null; state.name = "Learner"; window.localStorage.clear(); document.documentElement.dataset.theme = "light"; });
 
 describe("horizontal application shell", () => {
+  it("links the compact BandPilot lockup to home", () => {
+    render(<AppShell currentYear={2026}>Content</AppShell>);
+    const brand = screen.getByRole("link", { name: "BandPilot overview" });
+    expect(brand).toHaveAttribute("href", "/");
+    expect(brand).toHaveTextContent("BandPilot");
+    expect(brand.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
+    expect(screen.getByRole("banner")).not.toHaveTextContent("IELTS Studio");
+  });
   it.each([
     ["/", "standard"], ["/review/attempt", "standard"], ["/library/version", "standard"],
     ["/admin/users/user", "standard"], ["/admin/tests/test", "standard"], ["/admin/tests/new", "standard"],
@@ -37,7 +45,7 @@ describe("horizontal application shell", () => {
     const { container } = render(<AppShell currentYear={2026}>Content</AppShell>);
     const footer = screen.getByRole("contentinfo");
     expect(footer).toHaveClass("app-footer");
-    expect(footer).toHaveTextContent("© 2026 IELTS Studio");
+    expect(footer).toHaveTextContent("© 2026 BandPilot");
     expect(container.querySelector(".app-content")?.nextElementSibling).toBe(footer);
     expect(screen.getByRole("banner")).toBeInTheDocument();
   });
