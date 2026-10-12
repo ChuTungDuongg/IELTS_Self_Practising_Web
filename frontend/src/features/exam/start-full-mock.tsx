@@ -22,5 +22,16 @@ export function StartFullMock({ versionId, unavailableReason, warnings = [] }: {
       setPending(false);
     }
   }
-  return <section className="full-mock-card"><div><p className="practice-module-kicker">{t("practice.fullMock")}</p><h2>{t("practice.mockOrder")}</h2><span>{t("practice.mockDescription")}</span>{warnings.map((warning, index) => <p className="notice mt-3" key={index}>{warning}</p>)}</div>{unavailableReason ? <p className="notice">{t("practice.mockUnavailable", { reason: unavailableReason })}</p> : <button type="button" className="btn btn-primary" disabled={pending} onClick={() => void start()}>{pending ? t("practice.starting") : t("practice.startMock")}</button>}{error ? <p role="alert" className="notice notice-error">{typeof error === "string" ? error : error ? t(error.message) : null}</p> : null}</section>;
+  return <section className="practice-full-mock-strip">
+    <div className="practice-full-mock-copy">
+      <p className="practice-full-mock-title">{t("practice.fullMock")}</p>
+      <h2>{t("practice.mockOrder")}</h2>
+      <span className="practice-full-mock-helper">{t("practice.mockDescription")}</span>
+      {warnings.map((warning, index) => <p className="notice mt-3" key={index}>{warning}</p>)}
+    </div>
+    <div className="practice-full-mock-action">
+      {unavailableReason ? <p className="notice">{t("practice.mockUnavailable", { reason: unavailableReason })}</p> : <button type="button" className="btn btn-primary" disabled={pending} onClick={() => void start()}>{pending ? t("practice.starting") : t("practice.startMock")}</button>}
+    </div>
+    {error ? <p role="alert" className="notice notice-error">{typeof error === "string" ? error : error ? t(error.message) : null}</p> : null}
+  </section>;
 }

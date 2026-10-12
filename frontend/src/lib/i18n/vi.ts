@@ -739,7 +739,7 @@ export const vi = {
   "practice.mockFailed": "Không thể bắt đầu bài thi thử.",
   "practice.fullMock": "Bài thi thử đầy đủ",
   "practice.mockOrder": "Nghe → Đọc → Viết → Nói",
-  "practice.mockDescription": "Hoàn thành bốn kỹ năng trong luồng thi thử của ứng dụng, theo thời gian mô-đun đã cấu hình.",
+  "practice.mockDescription": "Sử dụng thời gian đã cấu hình cho từng kỹ năng.",
   "practice.mockUnavailable": "Không thể làm bài thi thử: {reason}",
   "practice.startMock": "Bắt đầu bài thi thử",
   "auth.passwordMismatch": "Mật khẩu không khớp.",

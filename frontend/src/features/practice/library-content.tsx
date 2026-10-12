@@ -21,9 +21,10 @@ function runtimeModules(modules: VersionDetail["modules"]) {
     .sort((left, right) => moduleOrder[left.module_type] - moduleOrder[right.module_type]);
 }
 
-export function TestAttribution({ test }: { test: TestSummary }) {
+export function TestAttribution({ test, compact = false }: { test: TestSummary; compact?: boolean }) {
   const { t } = useTranslation();
-  return <p className="practice-module-kicker">{test.origin === "TEACHER" ? t("library.community", { name: test.owner_display_name ?? t("library.contributor") }) : t("library.official")}</p>;
+  const label = test.origin === "TEACHER" ? t("library.community", { name: test.owner_display_name ?? t("library.contributor") }) : t("library.official");
+  return compact ? <span className="practice-detail-origin">{label}</span> : <p className="practice-module-kicker">{label}</p>;
 }
 
 export function LibraryContent({ items }: { items: Array<{ test: TestSummary; version: TestSummary["versions"][number]; detail: VersionDetail }> }): ReactElement {
@@ -57,11 +58,19 @@ export function LibraryVersionContent({ test, version }: { test: TestSummary; ve
   const readinessWarnings = modules.filter((item) => (item.module_type === "READING" || item.module_type === "LISTENING") && item.question_count !== 40).map((item) => t("pages.library.bandWarning", { skill: t(moduleTranslationKeys[item.module_type]), count: item.question_count }));
 
   return <>
-    <Link href="/library" className="practice-back-link">← {t("pages.library.back")}</Link>
-    <PageHeading eyebrow={t("pages.library.publishedVersion", { number: version.version_number })} title={test.title} description={test.description ?? t("pages.library.detailFallback")} />
-    <TestAttribution test={test} />
+    <div className="practice-detail-header">
+      <Link href="/library" className="practice-back-link practice-detail-back-link">← {t("pages.library.back")}</Link>
+      <div className="practice-detail-title-row">
+        <h1>{test.title}</h1>
+        <div className="practice-detail-meta">
+          <TestAttribution test={test} compact />
+          <StatusBadge status={version.status} label={t("pages.library.publishedVersion", { number: version.version_number })} />
+        </div>
+      </div>
+      {test.description ? <p className="practice-detail-description">{test.description}</p> : null}
+    </div>
     <StartFullMock versionId={version.id} warnings={readinessWarnings} unavailableReason={missing ? t("pages.library.missingModule", { skill: t(moduleTranslationKeys[missing]) }) : missingDuration ? t("pages.library.missingDuration", { skill: t(moduleTranslationKeys[missingDuration.module_type]) }) : undefined} />
-    <h2 className="mt-8 mb-4">{t("pages.library.individual")}</h2><div className="practice-skill-grid">
+    <h2 className="practice-detail-individual-heading">{t("pages.library.individual")}</h2><div className="practice-skill-grid">
       {modules.map((module) => <article key={module.id} className={`practice-card practice-card-${module.module_type.toLowerCase()}`}>
         <div className="practice-card-accent" aria-hidden="true" />
         <div className="practice-card-content">

@@ -737,7 +737,7 @@ export const en = {
   "practice.mockFailed": "Could not start the Full Mock.",
   "practice.fullMock": "Full Mock",
   "practice.mockOrder": "Listening → Reading → Writing → Speaking",
-  "practice.mockDescription": "Complete all four skills in this application's Full Mock flow, using the configured module timings.",
+  "practice.mockDescription": "Uses the configured module timings.",
   "practice.mockUnavailable": "Full Mock unavailable: {reason}",
   "practice.startMock": "Start Full Mock",
   "auth.passwordMismatch": "Passwords do not match.",

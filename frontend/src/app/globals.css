@@ -2087,6 +2087,36 @@ input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--mute
 :is(.exam-shell, .exam-runner) .dialog-backdrop { backdrop-filter: blur(8px); }
 :root[data-theme="dark"] :is(.exam-shell, .exam-runner) .dialog-backdrop { backdrop-filter: blur(4px); }
 
+/* Compact overview for the published Test Library version detail. */
+.practice-detail-header { min-width: 0; margin-bottom: 22px; }
+.practice-detail-header .practice-detail-back-link { margin-bottom: 16px; color: var(--muted); font-weight: 500; }
+.practice-detail-header .practice-detail-back-link:hover { color: var(--accent); }
+.practice-detail-title-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; min-width: 0; }
+.practice-detail-title-row h1 { flex: 1 1 28rem; min-width: 0; margin: 0; color: var(--ink); font-size: 32px; font-weight: 600; line-height: 1.2; letter-spacing: -.02em; overflow-wrap: anywhere; }
+.practice-detail-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; max-width: 100%; }
+.practice-detail-origin { display: inline-flex; max-width: 100%; border: 1px solid var(--line); border-radius: 999px; padding: 5px 9px; color: var(--muted); background: var(--surface-soft); font-size: 12px; font-weight: 500; line-height: 1.4; overflow-wrap: anywhere; }
+.practice-detail-meta .status-badge { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+.practice-detail-meta .status-dot { flex-shrink: 0; }
+.practice-detail-description { max-width: 72ch; margin: 8px 0 0; color: var(--muted); font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
+.practice-full-mock-strip { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px 24px; min-width: 0; border: 1px solid var(--line); border-radius: 14px; padding: 16px 20px; background: var(--surface-soft); }
+.practice-full-mock-copy { display: grid; gap: 4px; min-width: 0; }
+.practice-full-mock-title { margin: 0; color: var(--ink); font-size: 14px; font-weight: 600; line-height: 1.4; }
+.practice-full-mock-copy h2 { margin: 0; color: var(--ink-soft); font-size: 14px; font-weight: 500; line-height: 1.5; overflow-wrap: anywhere; }
+.practice-full-mock-helper { color: var(--muted); font-size: 13px; line-height: 1.5; }
+.practice-full-mock-copy .notice { margin: 8px 0 0; }
+.practice-full-mock-action { min-width: 0; max-width: 32ch; }
+.practice-full-mock-action .btn { max-width: 100%; text-align: center; white-space: normal; }
+.practice-full-mock-action .notice { margin: 0; }
+.practice-full-mock-strip > .notice-error { grid-column: 1 / -1; margin: 0; }
+.practice-detail-individual-heading { margin: 28px 0 14px; color: var(--ink); font-size: 18px; font-weight: 600; line-height: 1.4; }
+@media (max-width: 767px) {
+  .practice-detail-title-row { align-items: flex-start; gap: 12px; }
+  .practice-detail-title-row h1 { flex-basis: 100%; font-size: 28px; }
+  .practice-full-mock-strip { grid-template-columns: minmax(0, 1fr); gap: 14px; padding: 16px; }
+  .practice-full-mock-action { max-width: none; }
+  .practice-full-mock-action .btn { width: 100%; }
+}
+
 /* Dark-only treatments for decoration that cannot be quieted by palette alone.
    Light styles, geometry, responsive rules and brand-orbit interactions stay above. */
 :root[data-theme="dark"] body { background: var(--app-bg); }
