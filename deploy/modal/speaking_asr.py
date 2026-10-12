@@ -74,48 +74,57 @@ def load_model():
 
 def transcribe_wav(content: bytes, model) -> dict:
     duration = validate_wav(content)
+    stage = "model_call"
     # Temporary candidate bytes stay outside the mounted model-cache Volume.
-    with tempfile.TemporaryDirectory(prefix="speaking-asr-") as directory:
-        path = Path(directory) / "normalized.wav"
-        path.write_bytes(content)
-        segments, _ = model.transcribe(
-            str(path),
-            language="en",
-            word_timestamps=True,
-            vad_filter=True,
-            beam_size=5,
-            temperature=0.0,
-            condition_on_previous_text=False,
-        )
-        text_parts, words, text_length = [], [], 0
-        for segment in segments:
-            text_parts.append(segment.text)
-            text_length += len(segment.text)
-            if text_length > 60000:
-                raise ValueError("Transcript too long")
-            for word in segment.words or []:
-                start, end = float(word.start), float(word.end)
-                confidence = None if word.probability is None else float(word.probability)
-                if (
-                    not math.isfinite(start)
-                    or not math.isfinite(end)
-                    or start < 0
-                    or end < start
-                    or end > duration
-                    or (words and start < words[-1]["end"])
-                    or not word.word
-                    or len(word.word) > 200
-                    or (
-                        confidence is not None
-                        and (not math.isfinite(confidence) or not 0 <= confidence <= 1)
+    try:
+        with tempfile.TemporaryDirectory(prefix="speaking-asr-") as directory:
+            path = Path(directory) / "normalized.wav"
+            path.write_bytes(content)
+            segments, _ = model.transcribe(
+                str(path),
+                language="en",
+                word_timestamps=True,
+                vad_filter=True,
+                beam_size=5,
+                temperature=0.0,
+                condition_on_previous_text=False,
+            )
+            text_parts, words, text_length = [], [], 0
+            stage = "segment_iteration"
+            for segment in segments:
+                stage = "segment_validation"
+                text_parts.append(segment.text)
+                text_length += len(segment.text)
+                if text_length > 60000:
+                    raise ValueError("Transcript too long")
+                for word in segment.words or []:
+                    start, end = float(word.start), float(word.end)
+                    confidence = None if word.probability is None else float(word.probability)
+                    if (
+                        not math.isfinite(start)
+                        or not math.isfinite(end)
+                        or start < 0
+                        or end < start
+                        or end > duration
+                        or (words and start < words[-1]["end"])
+                        or not word.word
+                        or len(word.word) > 200
+                        or (
+                            confidence is not None
+                            and (not math.isfinite(confidence) or not 0 <= confidence <= 1)
+                        )
+                    ):
+                        raise ValueError("Invalid word timing")
+                    words.append(
+                        {"word": word.word, "start": start, "end": end, "confidence": confidence}
                     )
-                ):
-                    raise ValueError("Invalid word timing")
-                words.append(
-                    {"word": word.word, "start": start, "end": end, "confidence": confidence}
-                )
-                if len(words) > 10000:
-                    raise ValueError("Too many words")
+                    if len(words) > 10000:
+                        raise ValueError("Too many words")
+                stage = "segment_iteration"
+    except Exception as error:
+        # Only a fixed stage and class; upstream errors may contain private paths.
+        logging.getLogger(__name__).warning("ASR %s failed (%s)", stage, type(error).__name__)
+        raise
     text = "".join(text_parts).strip()
     if not text:
         raise NoSpeechError("No speech")
@@ -175,7 +184,11 @@ def serve_asr():
                 return await asyncio.to_thread(transcribe_wav, bytes(content), model)
             except NoSpeechError:
                 raise HTTPException(422, "No usable speech was detected.") from None
-            except Exception:
+            except Exception as error:
+                # Class only: provider exceptions may contain private paths or audio context.
+                logging.getLogger(__name__).warning(
+                    "ASR inference failed (%s)", type(error).__name__
+                )
                 raise HTTPException(503, "Transcription is unavailable.") from None
 
     return api

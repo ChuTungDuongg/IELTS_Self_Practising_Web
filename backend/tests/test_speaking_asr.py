@@ -255,7 +255,7 @@ def test_service_has_pinned_separate_gpu_and_proxy_auth(service):
     [("valid", 200), ("webm", 422), ("stereo", 422), ("rate", 422), ("size", 413), ("mime", 415), ("empty", 422), ("failure", 503)],
 )
 async def test_service_endpoint_validates_before_inference_and_cleans_temp(
-    service, monkeypatch, tmp_path, case, status
+    service, monkeypatch, tmp_path, caplog, case, status
 ):
     module, _ = service
     paths = []
@@ -294,6 +294,7 @@ async def test_service_endpoint_validates_before_inference_and_cleans_temp(
         assert (await client.get("/health")).status_code == 200
     assert response.status_code == status
     assert "private audio" not in response.text and "secret" not in response.text
+    assert "private audio" not in caplog.text and "secret" not in caplog.text
     loader.assert_called_once()
     if case in {"valid", "failure", "empty"}:
         assert paths and not paths[0].exists()
