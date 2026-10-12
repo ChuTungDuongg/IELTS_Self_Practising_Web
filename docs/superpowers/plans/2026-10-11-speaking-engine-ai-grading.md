@@ -533,11 +533,17 @@ git commit -m "Add Speaking content domain model"
 - Report per-criterion and overall MAE, RMSE, Pearson/Spearman when sample size permits, Quadratic Weighted Kappa, within ±0.5/±1.0, failure/nonscorable rate, and optional subgroup slices only when sample sizes are responsible.
 - Store scorer/provider/prompt/ASR/acoustic version metadata with every evaluation output so calibration changes are reproducible.
 
-- [ ] **Step 1: Write failing metric/manifest tests** with synthetic labels/predictions, including missing/nonscorable rows and deterministic metric output.
-- [ ] **Step 2: Run RED:** `cd backend && uv run pytest tests/test_speaking_benchmark.py -q`.
-- [ ] **Step 3: Implement offline evaluation CLI and docs.** Explain that Speak & Improve/SpeechOcean/L2-ARCTIC may inform research but are not direct IELTS-labelled ground truth; do not add automatic dataset downloads or redistribution.
-- [ ] **Step 4: Run GREEN + Ruff.**
-- [ ] **Step 5: Commit:** `git commit -m "Add Speaking grading benchmark tooling"`.
+- [x] **Step 1: Write failing metric/manifest tests** with synthetic labels/predictions, including missing/nonscorable rows and deterministic metric output.
+- [x] **Step 2: Run RED:** `cd backend && uv run pytest tests/test_speaking_benchmark.py -q`.
+- [x] **Step 3: Implement offline evaluation CLI and docs.** Explain that Speak & Improve/SpeechOcean/L2-ARCTIC may inform research but are not direct IELTS-labelled ground truth; do not add automatic dataset downloads or redistribution.
+- [x] **Step 4: Run GREEN + Ruff.**
+- [x] **Step 5: Commit:** `git commit -m "Add Speaking grading benchmark tooling"`.
+
+P8 verification: 142 focused tests passed (`test_speaking_ai.py`,
+`test_speaking_benchmark.py`, `test_speaking_benchmark_metrics.py`); targeted Ruff
+and `git diff --check` passed. Harness/CLI follow existing `app/evaluation` and
+root `scripts` conventions. No live providers, production score changes or new
+database migration were introduced by P8.
 
 ---
 

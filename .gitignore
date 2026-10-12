@@ -35,3 +35,12 @@ storage/speaking-derived/*
 /benchmarks/writing_task1/reports/*
 !/benchmarks/writing_task1/reports/.gitkeep
 /benchmarks/writing_latency/reports/
+/benchmarks/speaking/private/
+/benchmarks/speaking/reports/
+/benchmarks/speaking/**/*.jsonl
+/benchmarks/speaking/**/*.json
+/benchmarks/speaking/**/*.wav
+/benchmarks/speaking/**/*.webm
+/benchmarks/speaking/**/*.ogg
+/benchmarks/speaking/**/*.mp4
+/benchmarks/speaking/**/*.m4a

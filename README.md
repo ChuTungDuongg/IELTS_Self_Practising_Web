@@ -30,8 +30,8 @@
 
 ### Luyện thi và Full Mock
 
-- ✅ Reading, Listening và Writing Builder/runner/review hoàn chỉnh
-- ✅ Full Mock theo thứ tự Listening → Reading → Writing, tạo attempt theo từng chặng để timer không chạy sớm
+- ✅ Reading, Listening, Writing và Speaking Builder/runner/review
+- ✅ Full Mock mới theo thứ tự Listening → Reading → Writing → Speaking, tạo attempt theo từng chặng để timer không chạy sớm
 - ✅ Full Mock dùng thời lượng khuyến nghị của module; review/key chỉ mở khi toàn bộ mock hoàn tất
 - ✅ Listening practice cho seek, ±10 giây và tốc độ; Full Mock khóa seek và tốc độ bằng policy từ backend
 - ✅ Pause/Resume giữ nguyên attempt và thời gian active; History nhóm theo skill, test version và Full Mock
@@ -39,7 +39,8 @@
 - ✅ Writing lưu riêng từng task, đếm từ và chấm thủ công theo TA/CC/LR/GRA, kèm feedback tùy chọn cho từng tiêu chí
 - ✅ AI Writing Task 2: nhận xét tham khảo theo bốn tiêu chí, Scoring Trace trực tiếp; điểm chính thức vẫn cần người chấm Save. [Cấu hình và Modal deployment](docs/ai-writing.md).
 - ✅ Chạy Next.js + FastAPI + GPU AI riêng bằng một lệnh `modal serve deploy/modal/app.py`; backend tự lấy URL của Ministral 3 8B. [Thiết lập, web-only và PostgreSQL Volume](docs/modal-web.md).
-- ✅ Band khách quan chỉ chính thức khi module có 40 câu; overall dùng Reading + Listening + Writing
+- ✅ Speaking: ghi âm riêng tư theo từng câu, recovery, transcript và AI tham khảo theo FC/LR/GRA/PR; tích hợp History/Classroom và benchmark offline. [Kiến trúc và đánh giá](docs/ai-speaking.md).
+- ✅ Band khách quan chỉ chính thức khi module có 40 câu; overall dự án cần đủ bốn kỹ năng, Speaking AI luôn là tham khảo
 - ✅ Analytics: tổng thời gian active, band trend, độ chính xác theo loại câu, weak areas, so sánh attempt và timing theo nội dung
 
 ### Reading
@@ -71,7 +72,7 @@ Các family dùng chung editor/renderer/evaluator khi data shape giống nhau; k
 
 Đăng ký không yêu cầu hoàn tất profile. Tại `/profile`, người dùng có thể lưu thông tin cá nhân, bốn band mục tiêu và ngày thi dự kiến; hiện không có ảnh đại diện. Tài khoản dùng mật khẩu local có thể đổi mật khẩu; tài khoản chỉ dùng Google hiện không dùng chức năng Change Password.
 
-Overall **mục tiêu cá nhân** = trung bình của **đủ bốn** band mục tiêu Listening, Reading, Writing, Speaking, rồi làm tròn đến band 0,5 gần nhất (mốc giữa làm tròn lên). Thiếu bất kỳ kỹ năng nào thì Overall mục tiêu chưa có. Ví dụ `6.0 + 6.5 + 7.5 + 8.5` cho Overall mục tiêu `7.0`. Giá trị này không phải điểm bài làm. Điểm thực tế hiện dựa trên Reading, Listening và Writing theo logic chấm hiện có; Speaking chỉ là trường **mục tiêu** trong profile, không có module luyện/chấm Speaking.
+Overall **mục tiêu cá nhân** = trung bình của **đủ bốn** band mục tiêu Listening, Reading, Writing, Speaking, rồi làm tròn đến band 0,5 gần nhất (mốc giữa làm tròn lên). Thiếu bất kỳ kỹ năng nào thì Overall mục tiêu chưa có. Ví dụ `6.0 + 6.5 + 7.5 + 8.5` cho Overall mục tiêu `7.0`. Giá trị này không phải điểm bài làm. Speaking có module luyện và đánh giá AI tham khảo riêng; overall kết quả dự án cần đủ bốn band kỹ năng và không phải chứng nhận IELTS.
 
 ### Draft Import
 
