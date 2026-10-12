@@ -1,5 +1,13 @@
 export const en = {
   "speakingRuntime.stopped": "Recording stopped",
+  "speakingTranscript.generate": "Generate Transcript",
+  "speakingTranscript.retry": "Retry Transcript",
+  "speakingTranscript.title": "Transcript",
+  "speakingTranscript.ready": "Ready",
+  "speakingTranscript.failed": "Failed",
+  "speakingTranscript.waiting": "Waiting",
+  "speakingTranscript.processing": "Processing",
+  "speakingTranscript.error": "Transcript is unavailable. Check local transcription setup or try again.",
   "speakingRuntime.interrupted": "Recording interrupted; accepted audio saved",
 
   "speakingRuntime.mode": "Speaking mode",

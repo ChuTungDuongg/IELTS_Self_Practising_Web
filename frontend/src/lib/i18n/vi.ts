@@ -2,6 +2,14 @@ import type { TranslationDictionary } from "./types";
 
 export const vi = {
   "speakingRuntime.stopped": "Đã dừng ghi âm",
+  "speakingTranscript.generate": "Tạo bản chép lời",
+  "speakingTranscript.retry": "Thử tạo bản chép lời lại",
+  "speakingTranscript.title": "Bản chép lời",
+  "speakingTranscript.ready": "Sẵn sàng",
+  "speakingTranscript.failed": "Thất bại",
+  "speakingTranscript.waiting": "Đang chờ",
+  "speakingTranscript.processing": "Đang xử lý",
+  "speakingTranscript.error": "Chưa thể tạo bản chép lời. Kiểm tra cấu hình xử lý trên máy hoặc thử lại.",
   "speakingRuntime.interrupted": "Ghi âm bị gián đoạn; phần đã nhận được lưu",
 
   "speakingRuntime.mode": "Chế độ bài Nói",

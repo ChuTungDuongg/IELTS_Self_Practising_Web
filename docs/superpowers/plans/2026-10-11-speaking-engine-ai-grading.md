@@ -338,11 +338,11 @@ git commit -m "Add Speaking content domain model"
 - Review exposes `Generate Transcript` separately from `Grade with AI`.
 - Event watcher follows Writing semantics: sequence monotonicity, duplicate suppression, JSON snapshot reconciliation, view cleanup disconnects observation only.
 
-- [ ] **Step 1: Write failing tests** for button state, per-question Ready/Processing/Failed, read-only transcript, no merged Full Transcript, SSE duplicate/reconnect handling, and navigation cleanup not calling cancel.
-- [ ] **Step 2: Run RED.**
-- [ ] **Step 3: Implement typed/Zod API + live panel.**
-- [ ] **Step 4: Run GREEN + typecheck/ESLint.**
-- [ ] **Step 5: Commit:** `git commit -m "Add Speaking transcript review UI"`.
+- [x] **Step 1: Write failing tests** for button state, per-question Ready/Processing/Failed, read-only transcript, no merged Full Transcript, SSE duplicate/reconnect handling, and navigation cleanup not calling cancel.
+- [x] **Step 2: Run RED.**
+- [x] **Step 3: Implement typed/Zod API + live panel.**
+- [x] **Step 4: Run GREEN + typecheck/ESLint.**
+- [x] **Step 5: Commit:** `git commit -m "Add Speaking transcript review UI"`.
 
 **P4 gate:** transcription can be used without grading; transcript cannot be edited and failures remain per response.
 

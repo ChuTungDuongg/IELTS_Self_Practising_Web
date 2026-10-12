@@ -3,6 +3,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { SpeakingReview } from "@/features/speaking/speaking-review";
 import * as api from "@/lib/api/speaking";
 vi.mock("@/lib/api/speaking", () => ({ fetchSpeakingAudio: vi.fn() }));
+vi.mock("@/lib/api/speaking-transcript", () => ({ latestTranscriptRun: vi.fn().mockResolvedValue(null), activeTranscript: () => false }));
 const data = { attempt_id: "a", test_title: "Fictional review", parts: [{ part_number: 1, responses: [{ prompt: { id: "p", prompt_text: "Fictional reviewed question", config_json: {}, part_number: 1 }, response: { id: "r", duration_ms: 31000, completion_reason: "USER_DONE", status: "COMPLETED" }, segments: [{ id: "s", content_url: "/speaking-attempts/a/segments/s/content", mime_type: "audio/webm", chunks: [{ byte_size: 10 }] }] }] }] } as unknown as api.SpeakingReviewData;
 beforeEach(() => { vi.clearAllMocks(); vi.stubGlobal("URL", { ...URL, createObjectURL: () => "blob:private", revokeObjectURL: vi.fn() }); });
 afterEach(() => vi.unstubAllGlobals());
@@ -10,7 +11,7 @@ it("groups authored responses and plays authorized audio by prompt", async () =>
   vi.mocked(api.fetchSpeakingAudio).mockResolvedValue(new Blob(["private"])); render(<SpeakingReview data={data} />);
   fireEvent.click(screen.getByText("Fictional reviewed question")); fireEvent.click(screen.getByText("Load recording"));
   expect(await screen.findByLabelText("Recording segment 1")).toHaveAttribute("src", "blob:private");
-  expect(screen.getByText("31 s")).toBeInTheDocument(); expect(screen.queryByText("Generate Transcript")).toBeNull(); expect(screen.queryByText("Grade with AI")).toBeNull();
+  expect(screen.getByText("31 s")).toBeInTheDocument(); expect(screen.getByText("Generate Transcript")).toBeInTheDocument(); expect(screen.queryByText("Grade with AI")).toBeNull();
 });
 it("displays safe authorization error", async () => {
   vi.mocked(api.fetchSpeakingAudio).mockRejectedValue(new Error("secret internal path")); render(<SpeakingReview data={data} />);

@@ -14,6 +14,8 @@
 @media (prefers-reduced-motion: reduce) { .speaking-question { animation: none; } .speaking-card progress, .speaking-card meter { transition: none; } }
 .speaking-is-recording > span:first-child::before { content: ""; display: inline-block; width: .65rem; height: .65rem; margin-right: .5rem; border-radius: 50%; background: var(--success, #168052); animation: speaking-live 1.8s ease-in-out infinite; }
 .speaking-card summary { cursor: pointer; font-weight: 600; }
+.speaking-transcript { border-top: 1px solid var(--line); margin-top: 1rem; padding-top: 1rem; }
+.speaking-transcript-text { white-space: pre-wrap; overflow-wrap: anywhere; }
 @keyframes speaking-live { 50% { opacity: .45; } }
 .speaking-runner[data-reduced-motion="true"] .speaking-question,
 .speaking-runner[data-reduced-motion="true"] .speaking-is-recording > span:first-child::before { animation: none; }

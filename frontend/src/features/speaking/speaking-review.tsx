@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { useTranslation } from "@/lib/i18n/locale-provider";
 import { fetchSpeakingAudio, type SpeakingReviewData, type SpeakingManifest } from "@/lib/api/speaking";
+import { SpeakingTranscriptResponse, SpeakingTranscriptSession } from "./speaking-transcript-panel";
 
 export function SpeakingAudioPlayer({ segments }: Pick<SpeakingManifest, "segments">) {
   const { t } = useTranslation(); const [urls, setUrls] = useState<string[]>([]); const [error, setError] = useState(false); const [loading, setLoading] = useState(false);
@@ -19,11 +20,13 @@ export function SpeakingAudioPlayer({ segments }: Pick<SpeakingManifest, "segmen
 export function SpeakingReview({ data }: { data: SpeakingReviewData }) {
   const { t } = useTranslation();
   return <main className="speaking-runner"><header className="exam-header"><h1>{data.test_title}</h1><ThemeToggle /></header>
+    <SpeakingTranscriptSession attemptId={data.attempt_id} canGenerate={data.can_generate_transcript}>
     {data.parts.map((part) => <section key={part.part_number} aria-label={t("speaking.part", { number: part.part_number })}><h2>{t("speaking.part", { number: part.part_number })}</h2>
       {part.responses.map(({ prompt, response, segments }) => <details key={response.id} className="speaking-card speaking-question"><summary>{prompt.prompt_text}</summary>
         {prompt.config_json.cue_points?.length ? <ul>{prompt.config_json.cue_points.map((point, index) => <li key={index}>{point}</li>)}</ul> : null}
         <p>{Math.round(response.duration_ms / 1000)} s</p><p>{t(response.completion_reason === "TIMEOUT" ? "speakingRuntime.timedOut" : response.completion_reason === "INTERRUPTED" ? "speakingRuntime.interrupted" : "speakingRuntime.saved")}</p>
-        <SpeakingAudioPlayer segments={segments} /></details>)}
+        <SpeakingAudioPlayer segments={segments} /><SpeakingTranscriptResponse responseId={response.id} /></details>)}
     </section>)}
+    </SpeakingTranscriptSession>
   </main>;
 }
