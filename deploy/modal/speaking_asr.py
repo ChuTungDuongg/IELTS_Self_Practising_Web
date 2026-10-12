@@ -13,8 +13,9 @@ MODEL = "Systran/faster-whisper-large-v3"
 REVISION = "edaa852ec7e145841d8ffdb056a99866b5f0a478"
 FASTER_WHISPER_VERSION = "1.2.1"
 CTRANSLATE2_VERSION = "4.8.2"
+PYAV_VERSION = "18.1.0"
 COMPUTE_TYPE = "int8_float16"
-SERVICE_VERSION = "fw1.2.1-ct2-4.8.2-int8fp16-beam5-v1-edaa852"
+SERVICE_VERSION = "fw1.2.1-av18.1.0-ct2-4.8.2-int8fp16-beam5-v2-edaa852"
 MAX_WAV_BYTES = 20 * 1024 * 1024
 MAX_SECONDS = 600
 
@@ -26,6 +27,7 @@ image = (
     .pip_install(
         f"faster-whisper=={FASTER_WHISPER_VERSION}",
         f"ctranslate2=={CTRANSLATE2_VERSION}",
+        f"av=={PYAV_VERSION}",
         "fastapi==0.135.1",
     )
     .env({"HF_HOME": "/cache/huggingface", "HF_HUB_DISABLE_TELEMETRY": "1"})

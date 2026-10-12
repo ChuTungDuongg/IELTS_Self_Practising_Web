@@ -22,7 +22,7 @@ from app.services.speaking_transcript import response_cache
 ROOT = Path(__file__).resolve().parents[2]
 MODEL = "Systran/faster-whisper-large-v3"
 REVISION = "edaa852ec7e145841d8ffdb056a99866b5f0a478"
-VERSION = "fw1.2.1-ct2-4.8.2-int8fp16-beam5-v1-edaa852"
+VERSION = "fw1.2.1-av18.1.0-ct2-4.8.2-int8fp16-beam5-v2-edaa852"
 
 
 def wav_bytes(seconds=1, *, channels=1, rate=16000):
@@ -238,6 +238,8 @@ def test_service_has_pinned_separate_gpu_and_proxy_auth(service):
     assert module.serve_asr.__name__ == "serve_asr"  # Distinct from included Ministral serve.
     assert module.MODEL == MODEL and module.REVISION == REVISION
     assert module.FASTER_WHISPER_VERSION == "1.2.1"
+    assert module.PYAV_VERSION == "18.1.0"
+    assert "av==18.1.0" in modal.Image.from_registry.return_value.pip_install.call_args.args
     assert module.COMPUTE_TYPE == "int8_float16"
     kwargs = modal.App.return_value.function.call_args.kwargs
     assert kwargs["gpu"] == "T4" and kwargs["cpu"] == 4 and kwargs["memory"] == 16384

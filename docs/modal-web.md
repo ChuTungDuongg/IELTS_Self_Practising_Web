@@ -39,7 +39,8 @@ The web/database container keeps one CPU replica running to preserve PostgreSQL.
 The included `ielts-speaking-asr` function runs faster-whisper 1.2.1 with
 `Systran/faster-whisper-large-v3` pinned to revision
 `edaa852ec7e145841d8ffdb056a99866b5f0a478`. It uses CTranslate2 4.8.2,
-`int8_float16`, English decoding, word timestamps, T4, 4 CPU, 16 GiB host RAM,
+PyAV 18.1.0 (faster-whisper 1.2.1's decoder is incompatible with PyAV 19),
+`int8_float16` compute, English decoding, word timestamps, T4, 4 CPU, 16 GiB host RAM,
 one maximum container, and the dedicated `ielts-speaking-asr-model-cache` Volume.
 The service has no public unauthenticated inference path: Modal requires proxy
 authentication for its `/health` and `/transcribe` routes. Only bounded mono
