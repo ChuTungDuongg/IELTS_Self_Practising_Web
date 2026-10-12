@@ -35,6 +35,7 @@ export const en = {
   "speakingAI.criterionFailed": "This criterion could not be assessed. No score has been estimated.",
   "speakingAI.failed": "Grading could not be completed. Any scores already saved remain visible.",
   "speakingAI.error": "Unable to load or grade Speaking. Progress will reconnect automatically; try again if the issue persists.",
+  "speakingAI.notConfigured": "Speaking AI is temporarily unavailable because the grading service is not configured.",
   "speakingAI.loading": "Loading saved assessment…",
   "speakingAI.ready": "Grade the complete performance. Existing transcripts are reused; missing transcripts are generated automatically.",
   "speakingAI.strengths": "Strengths",

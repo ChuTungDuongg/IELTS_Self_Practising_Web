@@ -34,6 +34,14 @@ dev URLs. No URL needs copying on each restart. The private
 ASR endpoint. See [ai-writing.md](ai-writing.md) for LLM details.
 The web/database container keeps one CPU replica running to preserve PostgreSQL.
 
+When `IELTS_WEB_AI_ENABLED=true`, Web enables both Writing and Speaking AI grading.
+Speaking uses the same protected Writing vLLM transport and hydrated Ministral
+model by default, without a second LLM container. Optional backend-only
+`SPEAKING_AI_PROVIDER` and `SPEAKING_AI_MODEL` overrides can select a different
+configured Writing transport/model. The startup log reports only safe enablement,
+provider/model identity and transport-presence flags; it never prints endpoint
+URLs, proxy credentials or candidate content. Speaking ASR remains independent.
+
 ## Speaking ASR deployment
 
 The included `ielts-speaking-asr` function runs faster-whisper 1.2.1 with

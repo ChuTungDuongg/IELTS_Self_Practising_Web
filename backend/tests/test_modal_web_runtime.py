@@ -158,5 +158,55 @@ def test_web_only_is_disabled_and_external_openai_selection_is_preserved(monkeyp
     monkeypatch.setenv("AI_WRITING_OPENAI_MODEL", "account-model")
     module.configure_ai_environment(False, "bundled-model", None)
     assert os.environ["AI_WRITING_ENABLED"] == "false"
+    assert os.environ["SPEAKING_AI_ENABLED"] == "false"
     module.configure_ai_environment(True, "bundled-model", "https://unused.example")
     assert os.environ["AI_WRITING_OPENAI_MODEL"] == "account-model"
+
+
+def test_modal_ai_enables_speaking_on_shared_ministral_transport(monkeypatch):
+    from app.core.config import Settings
+    from app.providers.speaking_llm import create_provider, provider_identity
+    from app.providers.writing_llm.vllm import VLLMProvider
+
+    model = "mistralai/Ministral-3-8B-Instruct-2512"
+    monkeypatch.setenv("AI_WRITING_PROVIDER", "vllm")
+    monkeypatch.setenv("AI_WRITING_MODAL_KEY", "private-key")
+    monkeypatch.setenv("AI_WRITING_MODAL_SECRET", "private-secret")
+    monkeypatch.setenv("SPEAKING_AI_ENABLED", "false")  # Stale Secret must not disable it.
+    monkeypatch.delenv("SPEAKING_AI_PROVIDER", raising=False)
+    monkeypatch.delenv("SPEAKING_AI_MODEL", raising=False)
+    module.configure_ai_environment(True, model, "https://fictional.modal.run")
+    settings = Settings(_env_file=None)
+
+    assert settings.ai_writing_enabled and settings.speaking_ai_enabled
+    assert provider_identity(settings) == ("vllm", model)
+    assert isinstance(create_provider(settings).delegate, VLLMProvider)
+    assert settings.ai_writing_vllm_base_url == "https://fictional.modal.run/v1"
+    summary = module.safe_ai_configuration()
+    assert summary["speaking_ai_enabled"] and summary["speaking_ai_configured"]
+    assert summary["speaking_provider"] == "vllm" and summary["speaking_model"] == model
+    assert summary["writing_vllm_transport_url_configured"]
+    assert "private-key" not in json.dumps(summary)
+    assert "private-secret" not in json.dumps(summary)
+    assert "fictional.modal.run" not in json.dumps(summary)
+
+
+def test_modal_ai_overrides_and_asr_remain_independent(monkeypatch):
+    from app.core.config import Settings
+    from app.providers.speaking_llm import create_provider, provider_identity
+    from app.providers.writing_llm.openai import OpenAIProvider
+
+    monkeypatch.setenv("AI_WRITING_PROVIDER", "vllm")
+    monkeypatch.setenv("SPEAKING_AI_PROVIDER", "openai")
+    monkeypatch.setenv("SPEAKING_AI_MODEL", "independent-model")
+    monkeypatch.setenv("AI_WRITING_OPENAI_API_KEY", "fixture-key")
+    monkeypatch.setenv("SPEAKING_ASR_ENABLED", "true")
+    monkeypatch.setenv("SPEAKING_ASR_PROVIDER", "modal")
+    module.configure_ai_environment(True, "bundled-model", "https://fictional.modal.run")
+    settings = Settings(_env_file=None)
+    assert provider_identity(settings) == ("openai", "independent-model")
+    assert isinstance(create_provider(settings).delegate, OpenAIProvider)
+    assert settings.speaking_asr_enabled and settings.speaking_asr_provider == "modal"
+    module.configure_ai_environment(False, "bundled-model", None)
+    disabled = Settings(_env_file=None)
+    assert not disabled.speaking_ai_enabled and disabled.speaking_asr_enabled

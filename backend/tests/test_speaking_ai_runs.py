@@ -577,9 +577,46 @@ async def test_disabled_grader_fails_safely_without_creating_run(db_session, tmp
         assert (
             await db_session.scalar(
                 select(SpeakingAIGradingRun.id).where(SpeakingAIGradingRun.attempt_id == aid)
-            )
+        )
             is None
         )
+
+
+async def test_configured_modal_transport_post_creates_durable_run_without_llm_call(
+    db_session, tmp_path, monkeypatch
+):
+    from teacher_helpers import api_client
+
+    from app.api.v1.speaking_ai import get_speaking_ai_worker
+    from app.main import app
+
+    aid, _, _ = await completed(db_session, tmp_path)
+    settings = Settings(
+        storage_root=tmp_path,
+        speaking_ai_enabled=True,
+        ai_writing_enabled=True,
+        ai_writing_provider="vllm",
+        ai_writing_vllm_base_url="https://fictional.modal.run/v1",
+        ai_writing_modal_key="fixture-key",
+        ai_writing_modal_secret="fixture-secret",
+    )
+    worker = SpeakingAIWorker(
+        None, settings, llm_identity=IDENTITY, transcript_identity=FakeASR.identity
+    )
+    launched = []
+    monkeypatch.setattr(worker, "launch", lambda run_id, **_: launched.append(run_id))
+    app.dependency_overrides[get_speaking_ai_worker] = lambda: worker
+    try:
+        async with api_client(db_session, db_session.info["current_user_identity"]) as client:
+            result = await client.post(f"/api/v1/speaking-attempts/{aid}/ai-runs")
+        assert result.status_code == 200, result.json()
+        run_id = UUID(result.json()["run_id"])
+        assert launched == [run_id]
+        async with db_session.begin():
+            saved = await db_session.get(SpeakingAIGradingRun, run_id)
+            assert saved is not None and saved.attempt_id == aid and saved.status == "PENDING"
+    finally:
+        app.dependency_overrides.pop(get_speaking_ai_worker, None)
 
 
 async def test_cancel_then_immediate_retry_hands_off_after_old_task_cleanup(db_session, tmp_path):

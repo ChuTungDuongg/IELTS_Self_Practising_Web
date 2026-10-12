@@ -12,10 +12,30 @@ from pathlib import Path
 
 def configure_ai_environment(enabled: bool, model: str, endpoint: str | None) -> None:
     os.environ["AI_WRITING_ENABLED"] = str(enabled).lower()
+    # Both graders share the Writing transport. The explicit Speaking provider/model
+    # overrides remain optional; the adapter inherits the hydrated Writing defaults.
+    os.environ["SPEAKING_AI_ENABLED"] = str(enabled).lower()
     if enabled and os.environ.get("AI_WRITING_PROVIDER", "vllm") == "vllm":
         # Resolve this App's hydrated function URL: no temporary URL in .env.
         os.environ["AI_WRITING_VLLM_BASE_URL"] = endpoint.rstrip("/") + "/v1" if endpoint else ""
         os.environ["AI_WRITING_VLLM_MODEL"] = model
+
+
+def safe_ai_configuration() -> dict[str, bool | str]:
+    """Log effective AI wiring without URLs, credentials, or candidate content."""
+    from app.core.config import Settings
+    from app.providers.speaking_llm import is_configured, provider_identity
+
+    settings = Settings()
+    provider, model = provider_identity(settings)
+    return {
+        "speaking_ai_enabled": settings.speaking_ai_enabled,
+        "speaking_ai_configured": is_configured(settings),
+        "speaking_provider": provider,
+        "speaking_model": model,
+        "writing_vllm_transport_url_configured": bool(settings.ai_writing_vllm_base_url),
+        "speaking_asr_enabled": settings.speaking_asr_enabled,
+    }
 
 
 def configure_chart_environment(

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { SpeakingAIAssessment } from "@/features/speaking/speaking-ai-assessment";
 import * as api from "@/lib/api/speaking-ai";
 import { LocaleProvider } from "@/lib/i18n/locale-provider";
+import { ApiError } from "@/lib/api/client";
 
 vi.mock("@/lib/api/speaking-ai", () => ({ latestSpeakingAIRun: vi.fn(), createSpeakingAIRun: vi.fn(), getSpeakingAIRun: vi.fn(), cancelSpeakingAIRun: vi.fn(), watchSpeakingAIRun: vi.fn(), activeSpeakingAI: (run: api.SpeakingAIRun | null) => run?.status === "PENDING" || run?.status === "RUNNING" }));
 const criterion: api.SpeakingAIRun["criteria"]["fc"] = { status: "WAITING", score: null, feedback_status: "PENDING", feedback: null, strengths: [], improvements: [], error_code: null, evidence_summary: {} };
@@ -89,6 +90,26 @@ it("maps private provider failures to localized safe messages", async () => {
   render(<LocaleProvider><SpeakingAIAssessment attemptId={base.attempt_id} /></LocaleProvider>);
   expect(await screen.findByRole("alert")).not.toHaveTextContent("PRIVATE_MODEL_SECRET");
   expect(screen.getByRole("alert")).toHaveTextContent("Không thể tải hoặc chấm bài Nói");
+});
+it.each([
+  ["en", "Speaking AI is temporarily unavailable because the grading service is not configured."],
+  ["vi", "AI chấm Speaking hiện chưa khả dụng vì dịch vụ chấm điểm chưa được cấu hình."],
+])("shows the safe configuration error in %s without claiming reconnect will fix it", async (locale, message) => {
+  localStorage.setItem("ielts-locale", locale);
+  vi.mocked(api.createSpeakingAIRun).mockRejectedValue(new ApiError("SPEAKING_AI_NOT_CONFIGURED", "PRIVATE_CONFIG_DETAIL", 503));
+  render(<LocaleProvider><SpeakingAIAssessment attemptId={base.attempt_id} /></LocaleProvider>);
+  fireEvent.click(await screen.findByRole("button", { name: locale === "vi" ? "Chấm bằng AI" : "Grade with AI" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent(message);
+  expect(screen.getByRole("alert")).not.toHaveTextContent("PRIVATE_CONFIG_DETAIL");
+  expect(api.createSpeakingAIRun).toHaveBeenCalledOnce();
+  expect(api.getSpeakingAIRun).not.toHaveBeenCalled();
+});
+it("keeps the reconnect message for a transient grading request failure", async () => {
+  vi.mocked(api.createSpeakingAIRun).mockRejectedValue(new ApiError("NETWORK_ERROR", "PRIVATE_NETWORK_DETAIL", 0));
+  render(<SpeakingAIAssessment attemptId={base.attempt_id} />);
+  fireEvent.click(await screen.findByRole("button", { name: "Grade with AI" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("Progress will reconnect automatically");
+  expect(screen.getByRole("alert")).not.toHaveTextContent("PRIVATE_NETWORK_DETAIL");
 });
 it("keeps quality failure explicit while retaining any previously saved criterion score", async () => {
   vi.mocked(api.latestSpeakingAIRun).mockResolvedValue({ ...base, status: "FAILED", stage: "FAILED", error_code: "SPEAKING_AUDIO_UNASSESSABLE", criteria: { ...base.criteria, lr: { ...criterion, status: "SCORED", score: 0, feedback_status: "FALLBACK" }, pr: { ...criterion, status: "UNAVAILABLE" } } });

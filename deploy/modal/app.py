@@ -1,5 +1,6 @@
 """Single command: modal serve deploy/modal/app.py (persistent: modal deploy)."""
 
+import json
 import os
 import sys
 import threading
@@ -103,7 +104,11 @@ web_secrets = [
     modal.Secret.from_name("ielts-web-config"),
     # Keep the same dependency graph locally and remotely. Remote containers
     # already contain these variables; this API returns an empty Secret there.
-    modal.Secret.from_local_environ([key for key in os.environ if key.startswith("AI_WRITING_")]),
+    modal.Secret.from_local_environ([
+        key for key in os.environ
+        if key.startswith("AI_WRITING_")
+        or key in {"SPEAKING_AI_PROVIDER", "SPEAKING_AI_MODEL"}
+    ]),
 ]
 
 
@@ -128,6 +133,7 @@ class Web:
             WebRuntime,
             configure_ai_environment,
             configure_speaking_asr_environment,
+            safe_ai_configuration,
         )
 
         configure_ai_environment(AI_ENABLED, MODEL, llm_serve.get_web_url() if AI_ENABLED else None)
@@ -146,6 +152,7 @@ class Web:
             DEPLOT_REVISION,
             chart_serve.get_web_url() if CHART_SPECIALIST_ENABLED else None,
         )
+        print("Modal AI configuration: " + json.dumps(safe_ai_configuration()), flush=True)
 
         self.owner = uuid4().hex
         self.stop_heartbeat = threading.Event()

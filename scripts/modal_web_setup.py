@@ -37,6 +37,12 @@ def main() -> None:
         if name.startswith("ai_writing_"):
             value = getattr(settings, name)
             values[name.upper()] = str(value).lower() if isinstance(value, bool) else str(value)
+    # Speaking inherits the Writing transport and credentials. Only intentional
+    # provider/model overrides belong in the persistent Secret; runtime owns enablement.
+    for name in ("speaking_ai_provider", "speaking_ai_model"):
+        value = getattr(settings, name)
+        if value:
+            values[name.upper()] = value
     with tempfile.TemporaryDirectory(prefix="ielts-modal-secret-") as temporary:
         file = Path(temporary) / "config.json"
         file.write_text(json.dumps(values), encoding="utf-8")

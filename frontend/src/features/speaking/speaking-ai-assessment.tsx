@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "@/lib/i18n/locale-provider";
+import { ApiError } from "@/lib/api/client";
 import { activeSpeakingAI, cancelSpeakingAIRun, createSpeakingAIRun, getSpeakingAIRun, latestSpeakingAIRun, watchSpeakingAIRun, type SpeakingAICriterion, type SpeakingAIRun } from "@/lib/api/speaking-ai";
 import { SpeakingAIProgress } from "./speaking-ai-progress";
 
@@ -10,7 +11,7 @@ export function SpeakingAIAssessment({ attemptId, canGrade = true, onTranscriptA
 }
 function AssessmentSession({ attemptId, canGrade, onTranscriptAvailable }: { attemptId: string; canGrade: boolean; onTranscriptAvailable?: () => void }) {
   const { t } = useTranslation(); const [run, setRun] = useState<SpeakingAIRun | null>(null);
-  const [loading, setLoading] = useState(true); const [busy, setBusy] = useState(false); const [error, setError] = useState(false); const [reducedMotion, setReducedMotion] = useState(false);
+  const [loading, setLoading] = useState(true); const [busy, setBusy] = useState(false); const [error, setError] = useState<"generic" | "notConfigured" | null>(null); const [reducedMotion, setReducedMotion] = useState(false);
   const alive = useRef(true); const pending = useRef(false); const current = useRef<SpeakingAIRun | null>(null);
   const announcedTranscripts = useRef(new Set<string>());
   const runId = run?.run_id; const active = activeSpeakingAI(run);
@@ -22,15 +23,15 @@ function AssessmentSession({ attemptId, canGrade, onTranscriptAvailable }: { att
       // Only the response to an explicit Grade request may reopen a logical run.
       if (!activeSpeakingAI(previous) && activeSpeakingAI(next) && (!acknowledgedRetry || next.last_sequence <= previous.last_sequence)) return;
     }
-    current.current = next; setRun(next); setError(false);
+    current.current = next; setRun(next); setError(null);
   }
   useEffect(() => {
-    alive.current = true; void latestSpeakingAIRun(attemptId).then((next) => { if (next) accept(next); }).catch(() => { if (alive.current) setError(true); }).finally(() => { if (alive.current) setLoading(false); });
+    alive.current = true; void latestSpeakingAIRun(attemptId).then((next) => { if (next) accept(next); }).catch(() => { if (alive.current) setError("generic"); }).finally(() => { if (alive.current) setLoading(false); });
     return () => { alive.current = false; };
   }, [attemptId]);
   useEffect(() => {
     if (!runId || !active) return;
-    return watchSpeakingAIRun(attemptId, runId, { event: () => undefined, snapshot: accept, error: () => { if (alive.current) setError(true); } }, current.current?.last_sequence ?? 0);
+    return watchSpeakingAIRun(attemptId, runId, { event: () => undefined, snapshot: accept, error: () => { if (alive.current) setError("generic"); } }, current.current?.last_sequence ?? 0);
   }, [attemptId, runId, active]);
   useEffect(() => {
     if (!run || !onTranscriptAvailable || announcedTranscripts.current.has(run.run_id)) return;
@@ -46,18 +47,18 @@ function AssessmentSession({ attemptId, canGrade, onTranscriptAvailable }: { att
   }, []);
   async function grade() {
     if (pending.current || loading || !canGrade || activeSpeakingAI(current.current)) return;
-    pending.current = true; setBusy(true); setError(false);
+    pending.current = true; setBusy(true); setError(null);
     try {
       const next = await createSpeakingAIRun(attemptId); const snapshot = await getSpeakingAIRun(attemptId, next.run_id);
       accept(snapshot, !next.cache_hit && snapshot.run_id === next.run_id);
     }
-    catch { if (alive.current) setError(true); } finally { pending.current = false; if (alive.current) setBusy(false); }
+    catch (caught) { if (alive.current) setError(caught instanceof ApiError && caught.code === "SPEAKING_AI_NOT_CONFIGURED" ? "notConfigured" : "generic"); } finally { pending.current = false; if (alive.current) setBusy(false); }
   }
   async function stop() {
     if (pending.current || !canGrade || !current.current || !activeSpeakingAI(current.current)) return;
-    pending.current = true; setBusy(true); setError(false);
+    pending.current = true; setBusy(true); setError(null);
     try { accept(await cancelSpeakingAIRun(attemptId, current.current.run_id)); }
-    catch { if (alive.current) setError(true); } finally { pending.current = false; if (alive.current) setBusy(false); }
+    catch { if (alive.current) setError("generic"); } finally { pending.current = false; if (alive.current) setBusy(false); }
   }
   return <section className="speaking-card speaking-ai-assessment" aria-label={t("speakingAI.title")} data-reduced-motion={reducedMotion}>
     <div className="speaking-controls"><h2>{t("speakingAI.title")}</h2>{canGrade ? <div className="speaking-ai-actions">
@@ -65,7 +66,7 @@ function AssessmentSession({ attemptId, canGrade, onTranscriptAvailable }: { att
       {active ? <button className="btn btn-secondary" disabled={busy} onClick={() => void stop()}>{t("speakingAI.stop")}</button> : null}
     </div> : null}</div>
     <p className="speaking-ai-advisory">{t("speakingAI.advisory")}</p>
-    {error ? <p role="alert" className="notice notice-error">{t("speakingAI.error")}</p> : null}
+    {error ? <p role="alert" className="notice notice-error">{t(error === "notConfigured" ? "speakingAI.notConfigured" : "speakingAI.error")}</p> : null}
     {run ? <><SpeakingAIProgress run={run} />
       {run.status === "FAILED" ? <p className="notice notice-error">{t(run.error_code === "SPEAKING_AUDIO_UNASSESSABLE" ? "speakingAI.audioUnavailable" : "speakingAI.failed")}</p> : null}
       <div className="speaking-ai-overall"><h3>{t("speakingAI.overall")}</h3><p className="speaking-ai-score">{run.overall_band === null ? t("speakingAI.overallWaiting") : run.overall_band.toFixed(1)}</p>

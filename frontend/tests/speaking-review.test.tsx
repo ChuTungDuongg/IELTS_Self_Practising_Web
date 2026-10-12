@@ -12,10 +12,13 @@ beforeEach(() => { vi.clearAllMocks(); vi.mocked(transcriptApi.latestTranscriptR
 afterEach(() => vi.unstubAllGlobals());
 it("groups authored responses and plays authorized audio by prompt", async () => {
   vi.mocked(api.fetchSpeakingAudio).mockResolvedValue(new Blob(["private"])); render(<SpeakingReview data={data} />);
+  expect(screen.getByRole("heading", { name: "Fictional review" })).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: /Use (dark|light) theme/ })).not.toBeInTheDocument();
   fireEvent.click(screen.getByText("Fictional reviewed question")); fireEvent.click(screen.getByText("Load recording"));
   expect(await screen.findByLabelText("Recording segment 1")).toHaveAttribute("src", "blob:private");
   expect(screen.getByText("31 s")).toBeInTheDocument(); expect(screen.getByText("Generate Transcript")).toBeInTheDocument(); expect(screen.getByText("Grade with AI")).toBeInTheDocument();
+  expect(screen.getByRole("region", { name: "Transcript" })).toBeInTheDocument();
+  expect(transcriptApi.latestTranscriptRun).toHaveBeenCalledOnce(); expect(aiApi.latestSpeakingAIRun).toHaveBeenCalledOnce();
 });
 it("displays safe authorization error", async () => {
   vi.mocked(api.fetchSpeakingAudio).mockRejectedValue(new Error("secret internal path")); render(<SpeakingReview data={data} />);

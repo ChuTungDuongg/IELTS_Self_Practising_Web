@@ -96,6 +96,18 @@ def test_secret_dependency_count_is_stable_after_remote_injection(monkeypatch, l
     assert modal.App.return_value.cls.call_args.kwargs["secrets"] == module.web_secrets
 
 
+def test_speaking_overrides_are_ephemeral_backend_only(monkeypatch):
+    monkeypatch.setenv("SPEAKING_AI_PROVIDER", "openai")
+    monkeypatch.setenv("SPEAKING_AI_MODEL", "independent-model")
+    monkeypatch.setenv("SPEAKING_AI_ENABLED", "false")
+    _, modal, _ = load_app(monkeypatch)
+    passed = modal.Secret.from_local_environ.call_args.args[0]
+    assert "SPEAKING_AI_PROVIDER" in passed and "SPEAKING_AI_MODEL" in passed
+    assert "SPEAKING_AI_ENABLED" not in passed
+    image_env = [call.args[0] for call in modal.Image.from_registry.return_value.env.call_args_list]
+    assert all(not any(key.startswith("SPEAKING_AI_") for key in values) for values in image_env)
+
+
 def test_full_entry_point_includes_the_shared_gpu_function(monkeypatch):
     module, modal, llm = load_app(monkeypatch)
     assert [call.args[0] for call in modal.App.return_value.include.call_args_list] == [

@@ -37,6 +37,7 @@ export const vi = {
   "speakingAI.criterionFailed": "Chưa thể đánh giá tiêu chí này. Không có điểm ước đoán.",
   "speakingAI.failed": "Chưa thể hoàn thành chấm bài. Các điểm đã lưu vẫn được hiển thị.",
   "speakingAI.error": "Không thể tải hoặc chấm bài Nói. Tiến trình sẽ tự kết nối lại; hãy thử lại nếu lỗi vẫn xảy ra.",
+  "speakingAI.notConfigured": "AI chấm Speaking hiện chưa khả dụng vì dịch vụ chấm điểm chưa được cấu hình.",
   "speakingAI.loading": "Đang tải đánh giá đã lưu…",
   "speakingAI.ready": "Chấm toàn bộ bài nói. Bản chép lời hiện có được dùng lại; bản còn thiếu được tạo tự động.",
   "speakingAI.strengths": "Điểm mạnh",
