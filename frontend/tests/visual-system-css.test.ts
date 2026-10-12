@@ -87,11 +87,15 @@ describe("paper workspace visual system", () => {
     expect(css).toMatch(/@media \(max-width:\s*560px\)[\s\S]*?\.brand-mark\s*\{[^}]*width:\s*36px[^}]*height:\s*36px/);
   });
 
-  it("uses quiet semantic review states and shared raised overlay surfaces", () => {
+  it("uses quiet semantic review states and readable glass on floating panels", () => {
     expect(css).toMatch(/\.review-answer-correct\s*\{[^}]*background:\s*var\(--success-soft\)/);
     expect(css).toMatch(/\.review-answer-wrong\s*\{[^}]*background:\s*var\(--danger-soft\)/);
-    expect(css).toMatch(/\.dialog-panel\s*\{[^}]*background:\s*var\(--surface-raised\)[^}]*box-shadow:\s*var\(--shadow-lg\)/);
-    expect(css).toMatch(/\.highlight-popover\s*\{[\s\S]*?background:\s*var\(--surface-raised\)[\s\S]*?box-shadow:\s*var\(--shadow-md\)/);
+    expect(workspaceValues(".dialog-panel").background).toContain("var(--surface-raised)");
+    expect(workspaceValues(".dialog-panel")["backdrop-filter"]).toBe("blur(18px) saturate(1.2)");
+    expect(workspaceValues(".notification-panel.surface-card").background).toContain("var(--surface-raised)");
+    expect(workspaceValues(".notification-panel.surface-card")["backdrop-filter"]).toBe("blur(16px) saturate(1.2)");
+    expect(workspaceValues(".highlight-popover").background).toBe("color-mix(in srgb, var(--surface-raised) 90%, transparent)");
+    expect(workspaceValues(".highlight-popover")["backdrop-filter"]).toBe("blur(12px) saturate(1.1)");
   });
 
   it("includes narrow-screen review and Candidate layout safeguards", () => {
@@ -194,7 +198,7 @@ describe("workspace typography and primitive scale", () => {
  it("uses the approved radius, elevation and spacing rhythm", () => {
    expect(workspaceValues(`.surface-card${workspaceOnly}`)).toMatchObject({ "border-radius": "12px", "box-shadow": "none" });
    expect(workspaceValues(`.field${workspaceOnly}`)["border-radius"]).toBe("8px");
-   expect(workspaceValues(`.dialog-panel${workspaceOnly}`)).toMatchObject({ "border-radius": "14px", "box-shadow": "var(--shadow-lg)" });
+   expect(workspaceValues(`.dialog-panel${workspaceOnly}`)).toMatchObject({ "border-radius": "24px", "box-shadow": expect.stringContaining("var(--shadow-lg)") });
    expect(workspaceValues(`.page-heading${workspaceOnly}`)["margin-bottom"]).toBe("24px");
    expect(workspaceValues(`.page-eyebrow${workspaceOnly}`).margin).toBe("0 0 8px");
    expect(workspaceValues(`.page-description${workspaceOnly}`).margin).toBe("12px 0 0");
@@ -261,7 +265,8 @@ describe("final workspace hover focus and reduced-motion contracts", () => {
     expect(workspaceValues(".primary-nav-link-active")).toMatchObject({ "border-bottom-color": "var(--accent)", background: "var(--surface-raised)" });
     const nav = document.createElement("a"); nav.className = "primary-nav-link"; document.body.append(nav);
     expect(interactionValues(nav, "focus")).toMatchObject({ "outline-color": "var(--accent)", "outline-offset": "3px" }); nav.remove();
-    for (const selector of [".app-header", ".dialog-backdrop", ".app-footer"]) expect(workspaceValues(selector)["backdrop-filter"] ?? "none").toBe("none");
+    for (const selector of [".app-header", ".app-footer"]) expect(workspaceValues(selector)["backdrop-filter"] ?? "none").toBe("none");
+    expect(workspaceValues(".dialog-backdrop")["backdrop-filter"]).toBe("blur(6px)");
     for (const selector of [".header-actions a", ".header-actions button"]) {
       expect(workspaceValues(selector, "(width < 768px)")["min-height"]).toBe("44px");
     }
