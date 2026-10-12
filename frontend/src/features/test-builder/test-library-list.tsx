@@ -115,7 +115,7 @@ export function TestLibraryList({
 
   return (
     <>
-      <div className="library-toolbar surface-card">
+      <div className="library-toolbar library-toolbar-flat">
         <div className="segmented-control" role="tablist" aria-label={t("builder.testStatus")}>
           <button type="button" role="tab" aria-selected={view === "active"} onClick={() => setView("active")}>
             {t("builder.activeTab")} <span>({activeTests.length})</span>
@@ -156,11 +156,11 @@ export function TestLibraryList({
                   <h2>{test.title}</h2>
                   <p>{test.description || t("builder.descriptionEmpty")}</p>
                 </div>
-                <div className="test-card-stats">
-                  <div><strong>{test.versions.length}</strong><span>{t(test.versions.length === 1 ? "builder.versionSingular" : "builder.versions")}</span></div>
-                  <div><strong>{test.versions.filter((version) => version.status === "PUBLISHED").length}</strong><span>{t("common.published")}</span></div>
-                  <div><strong>{draft ? t("common.yes") : "—"}</strong><span>{t("builder.openDraft")}</span></div>
-                </div>
+                <p className="test-card-meta-summary">
+                  <span>{test.versions.length} {t(test.versions.length === 1 ? "builder.versionSingular" : "builder.versions")}</span>{" · "}
+                  <span>{test.versions.filter((version) => version.status === "PUBLISHED").length} {t("common.published")}</span>{" · "}
+                  <span>{t(draft ? "builder.openDraft" : "builder.noDraft")}</span>
+                </p>
                 <div className="test-card-meta">
                   <span>{t("builder.updated", { date: formatUpdated(test.updated_at, t("builder.recently")) })}</span>
                   {latest ? <span>{t("builder.latest", { number: latest.version_number })}</span> : <span>{t("builder.noVersions")}</span>}

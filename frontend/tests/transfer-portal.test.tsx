@@ -91,6 +91,10 @@ describe("Test transfer portal", () => {
     vi.mocked(exportTests).mockResolvedValue({ blob: new Blob(["zip"]), filename: "tests.zip" });
     render(<TransferPortal tests={options} />);
     const button = screen.getByRole("button", { name: "Export selected" });
+    const workspace = button.closest(".transfer-workspace");
+    expect(workspace).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "Import test package" }).closest(".transfer-workspace")).toBe(workspace);
+    expect(screen.getByLabelText("Select Fictional portable test").closest("label")).toHaveClass("transfer-test-row");
     expect(button).toBeDisabled();
     fireEvent.click(screen.getByLabelText("Select Fictional portable test"));
     expect(button).toBeEnabled();

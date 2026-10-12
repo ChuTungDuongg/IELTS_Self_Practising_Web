@@ -26,6 +26,9 @@ describe("AdminDashboardPage", () => {
     vi.mocked(getAdminStats).mockResolvedValue({ ...stats, attempts_by_skill: { ...stats.attempts_by_skill, SPEAKING: 9 } });
     render(await AdminDashboardPage({ searchParams: Promise.resolve({}) }));
     expect(screen.getByText("Listening / Reading / Writing / Speaking").parentElement).toHaveTextContent("0 / 4 / 0 / 9");
+    const strip = screen.getByText("Listening / Reading / Writing / Speaking").closest("section")!;
+    expect(strip).toHaveClass("admin-stat-strip");
+    expect([...strip.querySelectorAll("strong")].map(value => value.textContent)).toEqual(["5", "2", "1", "3", "0", "0 / 4 / 0 / 9"]);
   });
   it("localizes the existing forbidden guard without exposing protected content", () => {
     window.localStorage.clear();

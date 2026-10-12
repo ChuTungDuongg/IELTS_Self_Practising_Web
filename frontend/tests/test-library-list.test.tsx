@@ -86,6 +86,11 @@ describe("TestLibraryList", () => {
 
     expect(screen.getByRole("tab", { name: "Active (1)" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByPlaceholderText("Search tests…")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Search tests…").closest(".library-toolbar")).not.toHaveClass("surface-card");
+    const summary = screen.getByRole("heading", { name: "Fictional draft" }).closest("article")?.querySelector(".test-card-meta-summary");
+    expect(summary).toHaveTextContent("1 Version");
+    expect(summary).toHaveTextContent("0 Published");
+    expect(summary).toHaveTextContent("Open draft");
     expect(screen.getByRole("link", { name: /Continue draft/ })).toHaveClass("btn-primary");
     expect(screen.getByRole("button", { name: "Delete Fictional draft" })).toHaveClass("btn-danger-ghost");
     expect(screen.getByText("IELTS Test")).toHaveClass("test-type");
@@ -108,6 +113,7 @@ describe("TestLibraryList", () => {
       modules: [],
     });
     render(<TestLibraryList activeTests={[published]} archivedTests={[]} />);
+    expect(screen.getByText("No draft")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
 

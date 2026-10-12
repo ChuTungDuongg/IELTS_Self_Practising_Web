@@ -259,6 +259,7 @@ export const vi = {
   "builder.latest": "Mới nhất · v{number}",
   "builder.updated": "Cập nhật {date}",
   "builder.openDraft": "Bản nháp đang mở",
+  "builder.noDraft": "Không có bản nháp",
   "common.yes": "Có",
   "builder.versionSingular": "Phiên bản",
   "builder.descriptionEmpty": "Chưa thêm mô tả.",

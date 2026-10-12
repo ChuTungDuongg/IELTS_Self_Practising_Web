@@ -65,13 +65,12 @@ export function TransferPortal({ tests }: { tests: TransferTestOption[] }) {
     }
   }
 
-  return <div className="grid gap-6 lg:grid-cols-2">
-    <section className="panel p-6" aria-labelledby="transfer-export-title">
-      <p className="page-eyebrow">{t("transfer.machineA")}</p>
+  return <div className="transfer-workspace">
+    <section className="transfer-column" aria-labelledby="transfer-export-title">
       <h2 id="transfer-export-title" className="section-title">{t("transfer.export")}</h2>
       <p className="section-description">{t("transfer.exportHelp")}</p>
-      <div className="mt-5 grid gap-3">
-        {tests.map((test) => <label key={test.id} className="question-group-card cursor-pointer">
+      <div className="transfer-test-list">
+        {tests.map((test) => <label key={test.id} className="transfer-test-row">
           <input type="checkbox" checked={selected.includes(test.id)} onChange={() => toggle(test.id)} aria-label={t("transfer.select", { title: test.title })} />
           <span className="min-w-0 flex-1"><b className="block">{test.title}</b><small className="text-[var(--muted)]">{test.latestVersion ? t("transfer.latest", { number: test.latestVersion }) : t("builder.noVersions")} · {test.states.map((state) => statusTranslationKeys[state] ? t(statusTranslationKeys[state]) : state).join(" / ") || t("transfer.noState")} · {test.skills.map((skill) => skill === "SPEAKING" ? t("common.speaking") : moduleTranslationKeys[skill as keyof typeof moduleTranslationKeys] ? t(moduleTranslationKeys[skill as keyof typeof moduleTranslationKeys]) : skill).join(", ") || t("transfer.noModules")}{test.archived ? t("transfer.archived") : ""}</small></span>
         </label>)}
@@ -80,8 +79,7 @@ export function TransferPortal({ tests }: { tests: TransferTestOption[] }) {
       <button type="button" className="btn btn-primary mt-5" disabled={!selected.length || exporting} onClick={() => void download()}>{exporting ? t("transfer.exporting") : t("transfer.exportSelected")}</button>
     </section>
 
-    <section className="panel p-6" aria-labelledby="transfer-import-title">
-      <p className="page-eyebrow">{t("transfer.machineB")}</p>
+    <section className="transfer-column" aria-labelledby="transfer-import-title">
       <h2 id="transfer-import-title" className="section-title">{t("transfer.importTitle")}</h2>
       <p className="section-description">{t("transfer.importHelp")}</p>
       <label className="field-label mt-5 block">{t("transfer.chooseZIP")}<input aria-label={t("transfer.packageZIP")} className="field mt-2" type="file" accept=".zip,application/zip" onChange={(event) => { setFile(event.target.files?.[0] ?? null); setResult(null); setError(null); }} /></label>
@@ -91,8 +89,8 @@ export function TransferPortal({ tests }: { tests: TransferTestOption[] }) {
       {error ? <p role="alert" className="notice notice-error mt-4">{errorText}</p> : null}
     </section>
 
-    <section className="panel p-6 lg:col-span-2" aria-label={t("transfer.packageContents")}>
-      <div className="grid gap-6 sm:grid-cols-2"><div><h2 className="section-title">{t("transfer.included")}</h2><p>{t("transfer.contents")}</p></div><div><h2 className="section-title">{t("transfer.notIncluded")}</h2><p>{t("transfer.excluded")}</p></div></div>
+    <section className="transfer-package-summary" aria-label={t("transfer.packageContents")}>
+      <div><h2 className="section-title">{t("transfer.included")}</h2><p>{t("transfer.contents")}</p></div><div><h2 className="section-title">{t("transfer.notIncluded")}</h2><p>{t("transfer.excluded")}</p></div>
     </section>
   </div>;
 }

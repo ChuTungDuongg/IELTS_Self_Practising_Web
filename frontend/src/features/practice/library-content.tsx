@@ -37,9 +37,8 @@ export function LibraryContent({ items }: { items: Array<{ test: TestSummary; ve
         return <article key={version.id} className="practice-card practice-test-card">
           <div className="practice-card-accent" aria-hidden="true" />
           <div className="practice-card-content">
-            <TestAttribution test={test} />
-            <div className="practice-card-topline"><span className="practice-version">{t("common.versionNumber", { number: version.version_number })}</span><StatusBadge status={version.status} label={t(statusTranslationKeys[version.status])} /></div>
-            <div className="practice-card-title"><p className="practice-module-kicker">{t("pages.library.complete")}</p><h2>{test.title}</h2><span>{test.description ?? t("pages.library.fallback")}</span></div>
+            <div className="practice-card-topline"><div className="practice-test-meta"><TestAttribution test={test} compact /><span className="practice-version">{t("common.versionNumber", { number: version.version_number })}</span></div><StatusBadge status={version.status} label={t(statusTranslationKeys[version.status])} /></div>
+            <div className="practice-card-title"><h2>{test.title}</h2><span>{test.description ?? t("pages.library.fallback")}</span></div>
             <div className="practice-module-chips" aria-label={t("pages.library.skillsLabel", { title: test.title })}>{modules.map((module) => <ModuleBadge key={module.id} module={module.module_type} label={t(moduleTranslationKeys[module.module_type])} />)}</div>
             <p className="practice-skill-count">{t("pages.library.skillsCount", { count: modules.length })}</p>
             <Link className="btn btn-primary practice-open-test" href={`/library/${version.id}`}>{t("pages.library.open")} <ArrowIcon className="size-4" /></Link>

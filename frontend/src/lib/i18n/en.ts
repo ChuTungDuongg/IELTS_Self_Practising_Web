@@ -257,6 +257,7 @@ export const en = {
   "builder.latest": "Latest · v{number}",
   "builder.updated": "Updated {date}",
   "builder.openDraft": "Open draft",
+  "builder.noDraft": "No draft",
   "common.yes": "Yes",
   "builder.versionSingular": "Version",
   "builder.descriptionEmpty": "No description has been added yet.",

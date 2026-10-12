@@ -142,6 +142,9 @@ describe("Practice library", () => {
   it("shows one landing card per published test version", async () => {
     render(await LibraryPage());
     const card = screen.getByRole("heading", { name: publishedTest.title }).closest("article")!;
+    expect(within(card).queryByText("Complete test", { exact: true })).not.toBeInTheDocument();
+    expect(within(card).getByText("Official").closest(".practice-test-meta")).toContainElement(within(card).getByText("Version 2"));
+    expect(within(card).getByText("Published")).toBeInTheDocument();
     expect(within(card).getByText("3 skills available")).toBeInTheDocument();
     expect(within(card).getByText("Reading")).toBeInTheDocument();
     expect(within(card).getByText("Listening")).toBeInTheDocument();

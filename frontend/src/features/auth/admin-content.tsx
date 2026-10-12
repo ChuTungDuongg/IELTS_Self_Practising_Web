@@ -15,7 +15,7 @@ export function AdminDashboardContent({ stats, users, search, status, offset }: 
   const { t } = useTranslation();
   return <>
     <PageHeading eyebrow={t("admin.administration")} title={t("admin.dashboard")} description={t("admin.dashboardDescription")} action={<Link className="btn btn-primary" href="/admin/tests">{t("pages.overview.builderAction")}</Link>} />
-    {stats ? <section className="admin-stat-grid" aria-label={t("admin.statistics")}>
+    {stats ? <section className="admin-stat-strip" aria-label={t("admin.statistics")}>
       <AdminMetric label={t("admin.registered")} value={stats.total_users} />
       <AdminMetric label={t("admin.withAttempts")} value={stats.users_with_attempts} />
       <AdminMetric label={t("admin.activeAttempts")} value={stats.active_attempts} />
@@ -28,7 +28,7 @@ export function AdminDashboardContent({ stats, users, search, status, offset }: 
 }
 
 function AdminMetric({ label, value }: { label: string; value: string | number }) {
-  return <article className="analytics-metric"><span>{label}</span><strong>{value}</strong></article>;
+  return <div className="admin-stat-item"><span>{label}</span><strong>{value}</strong></div>;
 }
 
 export function AdminUserDetailContent({ detail }: { detail: AdminUserDetail }): ReactElement {
