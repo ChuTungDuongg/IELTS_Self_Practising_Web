@@ -29,6 +29,21 @@ def configure_chart_environment(
         os.environ["AI_WRITING_DEPLOT_BASE_URL"] = endpoint.rstrip("/") if endpoint else ""
 
 
+def configure_speaking_asr_environment(
+    enabled: bool, model: str, revision: str, version: str, endpoint: str | None
+) -> None:
+    os.environ["SPEAKING_ASR_ENABLED"] = str(enabled).lower()
+    if enabled:
+        os.environ["SPEAKING_ASR_PROVIDER"] = "modal"
+        os.environ["SPEAKING_ASR_BASE_URL"] = endpoint.rstrip("/") if endpoint else ""
+        os.environ["SPEAKING_ASR_MODEL"] = model
+        os.environ["SPEAKING_ASR_MODEL_REVISION"] = revision
+        os.environ["SPEAKING_ASR_VERSION"] = version
+        os.environ["SPEAKING_ASR_LANGUAGE"] = "en"
+        # Includes the first pinned-model download; transcript jobs still heartbeat.
+        os.environ["SPEAKING_PROCESSING_TIMEOUT_SECONDS"] = "600"
+
+
 class WebRuntime:
     def __init__(self) -> None:
         self.processes: list[subprocess.Popen] = []

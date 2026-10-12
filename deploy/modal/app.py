@@ -11,6 +11,11 @@ from deploy.modal.chart_derenderer import MODEL as DEPLOT_MODEL
 from deploy.modal.chart_derenderer import REVISION as DEPLOT_REVISION
 from deploy.modal.chart_derenderer import app as chart_app
 from deploy.modal.chart_derenderer import serve as chart_serve
+from deploy.modal.speaking_asr import MODEL as ASR_MODEL
+from deploy.modal.speaking_asr import REVISION as ASR_REVISION
+from deploy.modal.speaking_asr import SERVICE_VERSION as ASR_VERSION
+from deploy.modal.speaking_asr import app as asr_app
+from deploy.modal.speaking_asr import serve as asr_serve
 from deploy.modal.writing_llm import MODEL
 from deploy.modal.writing_llm import app as llm_app
 from deploy.modal.writing_llm import serve as llm_serve
@@ -25,6 +30,11 @@ AI_ENABLED = os.environ.get(
 ).lower() in {"true", "1", "yes"}
 if AI_ENABLED:
     app.include(llm_app)
+ASR_ENABLED = os.environ.get("IELTS_WEB_SPEAKING_ASR_ENABLED", str(AI_ENABLED)).lower() in {
+    "true", "1", "yes"
+}
+if ASR_ENABLED:
+    app.include(asr_app)
 CHART_SPECIALIST_ENABLED = AI_ENABLED and os.environ.get(
     "IELTS_WEB_CHART_SPECIALIST_ENABLED",
     os.environ.get("AI_WRITING_CHART_SPECIALIST_ENABLED", "false"),
@@ -42,7 +52,7 @@ owners = modal.Dict.from_name("ielts-web-database-owner", create_if_missing=True
 image = (
     modal.Image.from_registry("postgres:17-bookworm", add_python="3.12")
     .entrypoint([])
-    .apt_install("nginx", "curl", "xz-utils")
+    .apt_install("nginx", "curl", "xz-utils", "ffmpeg")
     .run_commands(
         "curl -fsSL https://nodejs.org/dist/v24.21.0/node-v24.21.0-linux-x64.tar.xz -o /tmp/node.tar.xz",
         "tar -xJf /tmp/node.tar.xz -C /usr/local --strip-components=1",
@@ -114,9 +124,20 @@ class Web:
         import sys
 
         sys.path.insert(0, "/workspace/deploy/modal")
-        from web_runtime import WebRuntime, configure_ai_environment
+        from web_runtime import (
+            WebRuntime,
+            configure_ai_environment,
+            configure_speaking_asr_environment,
+        )
 
         configure_ai_environment(AI_ENABLED, MODEL, llm_serve.get_web_url() if AI_ENABLED else None)
+        configure_speaking_asr_environment(
+            ASR_ENABLED,
+            ASR_MODEL,
+            ASR_REVISION,
+            ASR_VERSION,
+            asr_serve.get_web_url() if ASR_ENABLED else None,
+        )
         from web_runtime import configure_chart_environment
 
         configure_chart_environment(

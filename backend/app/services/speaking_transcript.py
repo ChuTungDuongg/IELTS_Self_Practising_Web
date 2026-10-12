@@ -13,7 +13,7 @@ from app.models.speaking_transcript import (
     SpeakingTranscriptEvent,
     SpeakingTranscriptRun,
 )
-from app.providers.speaking_asr import provider_identity
+from app.providers.speaking_asr import create_provider, provider_identity
 from app.repositories.speaking_transcript import SpeakingTranscriptRepository
 from app.schemas.speaking_ai import (
     TranscriptCreated,
@@ -111,13 +111,8 @@ class SpeakingTranscriptService:
                 )
             ):
                 return TranscriptCreated(run_id=run.id, cache_hit=False, existing_active=True)
-            if not self.injected and (
-                not self.settings.speaking_asr_enabled
-                or not self.settings.speaking_asr_model_directory
-            ):
-                raise AppError(
-                    "SPEAKING_ASR_UNAVAILABLE", "Local transcription is not configured.", 503
-                )
+            if not self.injected:
+                create_provider(self.settings)  # Validate configuration without loading a model.
             if run is None:
                 run = SpeakingTranscriptRun(
                     attempt_id=aid,

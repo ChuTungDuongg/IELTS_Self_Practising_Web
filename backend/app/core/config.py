@@ -1,5 +1,6 @@
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -23,8 +24,11 @@ class Settings(BaseSettings):
     speaking_processing_timeout_seconds: int = Field(default=120, ge=5, le=600)
     speaking_max_decoded_seconds: int = Field(default=600, ge=1, le=1800)
     speaking_asr_enabled: bool = False
+    speaking_asr_provider: Literal["local", "modal"] = "local"
+    speaking_asr_base_url: str = ""
     speaking_asr_model_directory: str = ""
     speaking_asr_model: str = Field(default="local-model", min_length=1, max_length=200)
+    speaking_asr_model_revision: str = Field(default="local", min_length=1, max_length=80)
     speaking_asr_version: str = Field(default="faster-whisper-v1", min_length=1, max_length=80)
     speaking_asr_language: str = Field(default="en", min_length=2, max_length=12)
     speaking_transcript_stale_seconds: int = Field(default=300, ge=60, le=1800)

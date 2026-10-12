@@ -19,6 +19,14 @@ The pipeline is committed raw audio → normalized mono 16 kHz PCM → quality g
 → verbatim ASR with word timing → clean formatting and versioned fluency/acoustic
 features → holistic FC/LR/GRA/PR assessment. Recovery containers are decoded
 separately before combining PCM. Clean text preserves candidate words and grammar.
+On Modal, Web runs FFmpeg, quality, fluency and pronunciation evidence on CPU;
+only the normalized WAV travels from FastAPI to a separate, proxy-protected
+faster-whisper T4 service. Its pinned large-v3 model cache is on
+`ielts-speaking-asr-model-cache`; request audio uses disposable private temp
+files outside that Volume. The existing Ministral L4 service serves both Writing
+and Speaking criterion scoring. Both GPU services have zero minimum containers,
+so a Web startup alone does not load either model. A first transcription can
+incur model download/load and queueing; do not infer steady-state latency from it.
 Timing-derived features describe speech; they do not mechanically assign bands.
 Pronunciation needs measured audio evidence and cannot succeed from transcript
 text or ASR confidence alone. Unassessable audio or insufficient pronunciation
@@ -118,9 +126,16 @@ uv run pytest tests/test_speaking_benchmark.py tests/test_speaking_benchmark_met
 
 Live scoring requires explicit `--allow-live`. The CLI reads the same backend
 `Settings` as production; `--config` selects a private dotenv file without putting
-secrets in command arguments. Configure Speaking ASR with an already installed
-local model directory and enable the existing Speaking LLM transport and
-pronunciation provider. No dataset/model downloader is added here.
+secrets in command arguments. For local ASR, set `SPEAKING_ASR_PROVIDER=local`,
+install the optional `backend[speech]` extra, and point
+`SPEAKING_ASR_MODEL_DIRECTORY` at a complete local model. For Modal ASR, set
+`SPEAKING_ASR_PROVIDER=modal`, `SPEAKING_ASR_ENABLED=true`, the protected
+`SPEAKING_ASR_BASE_URL`, pinned `SPEAKING_ASR_MODEL`,
+`SPEAKING_ASR_MODEL_REVISION` and `SPEAKING_ASR_VERSION`, plus backend-only
+`AI_WRITING_MODAL_KEY`/`AI_WRITING_MODAL_SECRET`. Production Web hydrates these
+settings automatically; local manual evaluation needs private configuration.
+Enable the existing Speaking LLM transport and pronunciation provider separately.
+No dataset/model downloader is added to the benchmark workflow.
 
 ```powershell
 uv run python ../scripts/evaluate_speaking.py --manifest ../benchmarks/speaking/private/manifest.jsonl --allow-live --config ../benchmarks/speaking/private/providers.env --output ../benchmarks/speaking/reports/candidate --resume

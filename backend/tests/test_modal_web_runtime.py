@@ -11,6 +11,38 @@ module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 
 
+def test_speaking_asr_uses_hydrated_backend_only_url_and_pinned_identity(monkeypatch):
+    import os
+
+    for name in (
+        "SPEAKING_ASR_ENABLED",
+        "SPEAKING_ASR_PROVIDER",
+        "SPEAKING_ASR_BASE_URL",
+        "SPEAKING_ASR_MODEL",
+        "SPEAKING_ASR_MODEL_REVISION",
+        "SPEAKING_ASR_VERSION",
+        "SPEAKING_ASR_LANGUAGE",
+        "SPEAKING_PROCESSING_TIMEOUT_SECONDS",
+    ):
+        monkeypatch.setenv(name, "__placeholder__")
+    module.configure_speaking_asr_environment(
+        True,
+        "Systran/faster-whisper-large-v3",
+        "pinned-revision",
+        "service-v1",
+        "https://fictional-asr.modal.run/",
+    )
+    assert os.environ["SPEAKING_ASR_PROVIDER"] == "modal"
+    assert os.environ["SPEAKING_ASR_BASE_URL"] == "https://fictional-asr.modal.run"
+    assert os.environ["SPEAKING_ASR_MODEL_REVISION"] == "pinned-revision"
+    assert os.environ["SPEAKING_ASR_VERSION"] == "service-v1"
+    assert os.environ["SPEAKING_ASR_LANGUAGE"] == "en"
+    assert os.environ["SPEAKING_PROCESSING_TIMEOUT_SECONDS"] == "600"
+    assert "AI_WRITING_MODAL_SECRET" not in os.environ["SPEAKING_ASR_BASE_URL"]
+    module.configure_speaking_asr_environment(False, "unused", "unused", "unused", None)
+    assert os.environ["SPEAKING_ASR_ENABLED"] == "false"
+
+
 def test_chart_configuration_uses_hydrated_backend_only_url(monkeypatch):
     import os
 

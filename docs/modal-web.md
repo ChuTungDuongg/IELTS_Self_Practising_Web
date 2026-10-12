@@ -6,14 +6,14 @@ After the one-time setup below, from the repository root:
 modal serve deploy/modal/app.py
 ```
 
-One command makes both Web and the protected Writing LLM available. The existing
+One command makes Web and the protected LLM and Speaking ASR services available. The existing
 Next.js frontend, FastAPI backend and a private PostgreSQL 17 process share one
-CPU container. A separate L4 GPU function serves the unified
+CPU container; FFmpeg normalizes private segmented Speaking audio there. A separate L4 GPU function serves the unified
 `mistralai/Ministral-3-8B-Instruct-2512` text/vision model on demand. Modal prints the public
 HTTPS URL. Nginx forwards `/api/` to FastAPI and other paths to Next.js, including
 unbuffered SSE. Browser API calls use `/api/v1`; server component/proxy requests
 use `API_INTERNAL_BASE_URL` over loopback. Cookies use the same HTTPS origin.
-No browser connects to PostgreSQL or to the LLM provider.
+No browser connects to PostgreSQL, the LLM, or the Speaking ASR provider.
 
 `modal serve` keeps the app available while that command runs. Modal's source
 watching/live reload is currently unsupported on Windows; restart the command
@@ -24,13 +24,48 @@ deployment that stays available after the terminal exits:
 modal deploy deploy/modal/app.py
 ```
 
-The included GPU function scales to zero after 60 idle seconds. It starts on the
-first backend readiness request, not during the web image build. Web resolves its
-hydrated function's URL and sets the backend `/v1` base automatically, including
-temporary dev URLs. No URL needs copying on each restart. The private
+Both included GPU functions have zero minimum containers and scale down after
+60 idle seconds. Neither starts merely because Web starts; Ministral starts on
+its first backend readiness request, while ASR starts on the first transcript
+request. Web resolves their hydrated URLs automatically, including temporary
+dev URLs. No URL needs copying on each restart. The private
 `ielts-web-config` Secret must contain `AI_WRITING_MODAL_KEY` and
-`AI_WRITING_MODAL_SECRET`. See [ai-writing.md](ai-writing.md) for model details.
+`AI_WRITING_MODAL_SECRET`; the backend reuses this proxy token for the protected
+ASR endpoint. See [ai-writing.md](ai-writing.md) for LLM details.
 The web/database container keeps one CPU replica running to preserve PostgreSQL.
+
+## Speaking ASR deployment
+
+The included `ielts-speaking-asr` function runs faster-whisper 1.2.1 with
+`Systran/faster-whisper-large-v3` pinned to revision
+`edaa852ec7e145841d8ffdb056a99866b5f0a478`. It uses CTranslate2 4.8.2,
+`int8_float16`, English decoding, word timestamps, T4, 4 CPU, 16 GiB host RAM,
+one maximum container, and the dedicated `ielts-speaking-asr-model-cache` Volume.
+The service has no public unauthenticated inference path: Modal requires proxy
+authentication for its `/health` and `/transcribe` routes. Only bounded mono
+16 kHz signed-16-bit normalized WAV is accepted. Raw WebM remains in private Web
+storage, request WAV stays in a disposable ASR temp directory, and neither audio
+nor transcript bodies are logged by application code. The model cache contains
+model artifacts only. The Web image installs FFmpeg but not faster-whisper.
+
+Production Web sets `SPEAKING_ASR_ENABLED`, `SPEAKING_ASR_PROVIDER=modal`, the
+hydrated backend-only base URL, model, revision, service version and a 600-second
+processing bound before FastAPI starts. `IELTS_WEB_SPEAKING_ASR_ENABLED=false`
+disables this function explicitly; it otherwise follows `IELTS_WEB_AI_ENABLED`.
+Local development can keep `SPEAKING_ASR_PROVIDER=local` with `backend[speech]`
+and a complete local model directory. Changing model, revision or decoding
+version invalidates transcript cache; rotating only the endpoint URL does not.
+No database migration is needed for this deployment configuration.
+
+For one manual smoke, prepare a short synthetic spoken English mono 16 kHz WAV
+outside git, use the existing backend proxy credentials from a private dotenv,
+and call the configured backend `ModalASRProvider.transcribe` once. Check that
+the result has nonempty text, valid word timings and the pinned model/version.
+The protected endpoint also accepts a direct `POST /transcribe` with `audio/wav`
+and `Modal-Key`/`Modal-Secret` headers; keep their values out of commands, logs
+and reports. Check `modal app logs ielts-practice-web` for startup failures and
+`modal container list` for GPU scale-down without printing request bodies. Delete
+the synthetic WAV after the check. One sentence cannot establish IELTS accuracy.
 
 For web only, explicitly disable AI before the same command:
 
