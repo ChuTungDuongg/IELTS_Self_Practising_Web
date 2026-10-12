@@ -1,4 +1,4 @@
-# 🗺️ Lộ trình phát triển
+# 🗺️ Lộ trình phát triển BandPilot
 
 ## ✅ Phase 1 — Nền tảng
 
@@ -49,17 +49,29 @@ exam renderer, backend evaluator, review renderer và tests.
 
 - [x] Task 1 + hình ảnh, Task 2
 - [x] Plain-text editor, word count, autosave, timer, AFK, history/review
-- [x] Chấm thủ công theo TA/CC/LR/GRA và band tổng hợp
-- [x] Feedback plain text tùy chọn theo từng tiêu chí TA/CC/LR/GRA
-- [ ] AI scoring (chỉ triển khai khi có yêu cầu riêng)
+- [x] Chấm thủ công theo TA/TR, CC, LR, GRA và band tổng hợp
+- [x] Feedback plain text tùy chọn theo từng tiêu chí
+- [x] AI Academic Writing Task 1/Task 2: score-first và phản hồi tham khảo; [kiến trúc/giới hạn hiện tại](ai-writing.md)
 
 ## ✅ Phase 6 — Full Mock và Analytics nền tảng
 
-- Full Mock session liên kết ba attempt theo Listening → Reading → Writing và chỉ tạo attempt khi bắt đầu module.
-- Pause/resume, chuyển module, review lock, History và overall sau khi Writing được chấm.
+- Full Mock mới liên kết bốn attempt theo Listening → Reading → Writing → Speaking và chỉ tạo attempt khi bắt đầu module; lịch sử mock ba kỹ năng cũ vẫn đọc được.
+- Pause/resume theo policy kỹ năng, chuyển module, review lock đến khi toàn bộ mock hoàn tất, History và overall khi có đủ bốn band; Speaking AI luôn là tham khảo.
 - Overview band/time, band trend, độ chính xác theo loại câu, weak areas với ngưỡng 5 câu.
 - So sánh hai attempt và timing active theo passage/Listening part/Writing task cho dữ liệu mới.
 - Dữ liệu cũ không có event timing vẫn hiển thị an toàn.
+
+## ✅ Speaking P1–P8
+
+- [x] Builder ba phần, prompt có cấu trúc và published version bất biến
+- [x] Runner với microphone preflight, timestamp/deadline phía server và recovery
+- [x] Chunk upload riêng tư, container segment tách biệt sau recovery và review có kiểm tra quyền
+- [x] FFmpeg normalization, transcript verbatim/clean, quality/fluency/pronunciation evidence
+- [x] Advisory AI score-first theo FC/LR/GRA/PR, durable worker/event và xử lý thiếu bằng chứng
+- [x] Full Mock, History và kết quả lớp học chỉ đọc theo assignment provenance
+- [x] Benchmark tooling offline/configured; chưa xác lập độ chính xác tương đương giám khảo
+
+Chi tiết: [ai-speaking.md](ai-speaking.md). Trên Modal, faster-whisper ASR dùng T4 riêng; Web xử lý normalization trên CPU, Writing/Speaking dùng chung Ministral/vLLM L4, hai GPU scale-to-zero. Xem [modal-web.md](modal-web.md).
 
 ## ✅ Builder resilience và Test Transfer
 
@@ -71,7 +83,8 @@ Chi tiết contract ZIP: [TEST_TRANSFER_FORMAT.md](TEST_TRANSFER_FORMAT.md).
 
 ## ✅ MVP engineering baseline
 
-- Reading, Listening, Writing và Full Mock; authentication/phiên đăng nhập liên tục giữa các tab, Profile và quản trị tài khoản đã triển khai.
+- Reading, Listening, Writing, Speaking và Full Mock; authentication/phiên đăng nhập liên tục giữa các tab, Profile và quản trị tài khoản đã triển khai.
+- Personalization cho Accent Color, Light/Dark và EN/VI theo tài khoản; Teacher/Classroom với duyệt nội dung, bài giao và kết quả chỉ đọc.
 - Published version bất biến; historical asset access; autosave/revision và xử lý xung đột, khôi phục draft sau reload/mất mạng ngắn hạn.
 - Transfer ZIP cho nội dung đề; backup/restore offline cho toàn bộ PostgreSQL và binary storage.
 - Pytest, Vitest, Playwright golden paths và GitHub Actions CI/E2E là các gate kiểm thử hiện có.
@@ -82,5 +95,4 @@ Mốc này là baseline kỹ thuật của MVP, **không đồng nghĩa sẵn s�
 
 - Mở rộng drill-down analytics và bộ lọc ngày/test version.
 - Tiếp tục cải thiện accessibility, keyboard navigation và Builder ergonomics.
-- Triển khai cloud/observability và bảo vệ backup khi có nhu cầu vận hành production.
-- Luyện/chấm Speaking và AI Writing scoring vẫn ngoài phạm vi hiện tại; authentication/Profile/admin đã có.
+- Tăng độ bền deployment/observability và bảo vệ backup khi có nhu cầu vận hành production; deployment Modal hiện có không đồng nghĩa dữ liệu local/cloud tự đồng bộ.

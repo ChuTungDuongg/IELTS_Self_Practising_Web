@@ -1,4 +1,4 @@
-# Advisory AI Academic Writing
+# BandPilot advisory AI Academic Writing
 
 Task 1 and Task 2 share the configured `mistralai/Ministral-3-8B-Instruct-2512`
 model, provider adapters and existing Modal/vLLM GPU function. Task 2 retains

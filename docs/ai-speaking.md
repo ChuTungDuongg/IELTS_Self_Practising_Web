@@ -1,4 +1,4 @@
-# Speaking architecture and evaluation
+# BandPilot Speaking architecture and evaluation
 
 Speaking P1–P8 is implemented. All AI bands and feedback are advisory: this
 project has no benchmark evidence establishing examiner-equivalent accuracy.

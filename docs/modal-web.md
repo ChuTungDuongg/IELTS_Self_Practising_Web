@@ -1,4 +1,4 @@
-# Run Next.js and FastAPI together on Modal
+# Run BandPilot on Modal
 
 After the one-time setup below, from the repository root:
 

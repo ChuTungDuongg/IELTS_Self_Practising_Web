@@ -1,6 +1,10 @@
-# ✨ DevWebLocalforIELTS
+# BandPilot
 
-Ứng dụng luyện thi IELTS trên máy tính, ưu tiên chạy cục bộ và riêng tư. Dự án cho phép tạo đề bằng giao diện, xuất bản phiên bản bất biến, làm bài nhiều lần, tự động lưu đáp án, chấm câu hỏi khách quan ở backend và xem lại lịch sử.
+**Practice smarter. Reach your band.**
+
+<img src="frontend/public/brand/bandpilot-compass-ribbon.svg" alt="BandPilot Compass Ribbon logo" width="64" height="64" />
+
+BandPilot là nền tảng luyện tập IELTS độc lập cho **Reading, Listening, Writing và Speaking**, kết hợp đề thi thử có cấu trúc, phản hồi AI tham khảo, công cụ biên soạn đề, lớp học và theo dõi tiến trình. Có thể chạy cục bộ để giữ dữ liệu riêng tư hoặc triển khai trên Modal theo cấu hình của repository. BandPilot không liên kết chính thức với các đơn vị sở hữu hay tổ chức kỳ thi IELTS; điểm và phản hồi của ứng dụng không phải chứng nhận IELTS.
 
 > 📚 Nội dung mẫu trong repository là nội dung hư cấu do dự án tự tạo, không chứa đề Cambridge/IELTS có bản quyền.
 
@@ -16,7 +20,7 @@
 - ✅ Attempt riêng biệt, lịch sử không bị ghi đè
 - ✅ Countdown 70/60/50/40 phút và count-up không giới hạn
 - ✅ Backend kiểm tra deadline, AFK 5 phút và trạng thái attempt
-- ✅ Light/Dark mode theo hệ điều hành, có nút chuyển trên header 🌙☀️
+- ✅ Personalization popup trên header: Accent Color presets, giao diện Light/Dark và ngôn ngữ EN/VI, lưu theo tài khoản; không có nút đổi theme riêng trên header
 
 ### Tài khoản, mục tiêu và quản trị
 
@@ -24,7 +28,10 @@
 - ✅ `/profile`: thông tin cá nhân tùy chọn, ngày thi mục tiêu và band mục tiêu Listening, Reading, Writing, Speaking
 - ✅ Overall **mục tiêu** tự tính từ đủ bốn band kỹ năng; không nhập Overall riêng
 - ✅ Đổi mật khẩu cho tài khoản dùng mật khẩu local
-- ✅ ADMIN: Builder, Transfer ZIP, thống kê nền tảng và danh sách tài khoản đang hoạt động/đã vô hiệu hóa
+- ✅ USER / TEACHER / ADMIN: quyền luyện tập, biên soạn và quản trị theo vai trò
+- ✅ TEACHER: Builder đề riêng, yêu cầu duyệt CLASSROOM/PUBLIC, lớp học, lời mời và bài giao gắn với phiên bản đề đã đóng băng
+- ✅ Kết quả bài giao chỉ đọc theo assignment provenance; giáo viên không được xem bài luyện cá nhân không liên quan
+- ✅ ADMIN: Builder, Transfer ZIP, duyệt nội dung, thống kê nền tảng và danh sách tài khoản đang hoạt động/đã vô hiệu hóa
 - ✅ ADMIN có thể nâng/hạ quyền, vô hiệu hóa/kích hoạt lại và xóa vĩnh viễn tài khoản đã vô hiệu hóa
 - ✅ Draft Import CLI chuyển JSON có cấu trúc do OCR/ChatGPT chuẩn bị bên ngoài thành Builder DRAFT để quản trị viên rà soát
 
@@ -34,14 +41,14 @@
 - ✅ Full Mock mới theo thứ tự Listening → Reading → Writing → Speaking, tạo attempt theo từng chặng để timer không chạy sớm
 - ✅ Full Mock dùng thời lượng khuyến nghị của module; review/key chỉ mở khi toàn bộ mock hoàn tất
 - ✅ Listening practice cho seek, ±10 giây và tốc độ; Full Mock khóa seek và tốc độ bằng policy từ backend
-- ✅ Pause/Resume giữ nguyên attempt và thời gian active; History nhóm theo skill, test version và Full Mock
+- ✅ Pause/Resume giữ nguyên attempt và thời gian active theo policy từng kỹ năng; Speaking có lifecycle/recovery riêng. History nhóm theo skill, test version và Full Mock
 - ✅ Autosave có revision/concurrency check; bản nháp chưa lưu có thể khôi phục sau reload hoặc mất mạng ngắn hạn
-- ✅ Writing lưu riêng từng task, đếm từ và chấm thủ công theo TA/CC/LR/GRA, kèm feedback tùy chọn cho từng tiêu chí
-- ✅ AI Writing Task 2: nhận xét tham khảo theo bốn tiêu chí, Scoring Trace trực tiếp; điểm chính thức vẫn cần người chấm Save. [Cấu hình và Modal deployment](docs/ai-writing.md).
-- ✅ Chạy Next.js + FastAPI + GPU AI riêng bằng một lệnh `modal serve deploy/modal/app.py`; backend tự lấy URL của Ministral 3 8B. [Thiết lập, web-only và PostgreSQL Volume](docs/modal-web.md).
-- ✅ Speaking: ghi âm riêng tư theo từng câu, recovery, transcript và AI tham khảo theo FC/LR/GRA/PR; tích hợp History/Classroom và benchmark offline. [Kiến trúc và đánh giá](docs/ai-speaking.md).
-- ✅ Band khách quan chỉ chính thức khi module có 40 câu; overall dự án cần đủ bốn kỹ năng, Speaking AI luôn là tham khảo
-- ✅ Analytics: tổng thời gian active, band trend, độ chính xác theo loại câu, weak areas, so sánh attempt và timing theo nội dung
+- ✅ Writing lưu riêng từng task, đếm từ và chấm thủ công theo TA/TR, CC, LR, GRA, kèm feedback tùy chọn cho từng tiêu chí
+- ✅ AI Academic Writing Task 1 và Task 2: score-first, phản hồi tham khảo theo bốn tiêu chí và Scoring Trace; lỗi feedback không làm mất điểm AI hợp lệ đã lưu. Chấm thủ công và AI tham khảo có quy trình riêng. [Cấu hình và giới hạn](docs/ai-writing.md).
+- ✅ Speaking P1–P8: ghi âm riêng tư theo từng câu, recovery thành các container segment riêng, transcript, bằng chứng quality/fluency/pronunciation và AI tham khảo theo FC/LR/GRA/PR; tích hợp History/Classroom và công cụ benchmark offline. [Kiến trúc và đánh giá](docs/ai-speaking.md).
+- ✅ Modal: Web chạy Next.js + FastAPI + PostgreSQL với persistent Volume và FFmpeg; faster-whisper ASR có dịch vụ GPU riêng, Writing/Speaking dùng chung Ministral/vLLM. GPU scale-to-zero khi rảnh. [Thiết lập và triển khai](docs/modal-web.md).
+- ✅ Band quy đổi cho Reading/Listening chỉ được tính khi module có 40 câu; overall dự án cần đủ bốn kỹ năng, Speaking AI luôn là tham khảo
+- ✅ History tích hợp bốn kỹ năng; Analytics có tổng thời gian active, band trend, độ chính xác theo loại câu, weak areas, so sánh attempt và timing theo nội dung, tùy dữ liệu đã chấm
 
 ### Reading
 
@@ -56,7 +63,7 @@
 - ✅ Submit/chấm điểm ở FastAPI và review giữ nguyên bố cục câu hỏi
 - ✅ Active Exam DTO không gửi answer key trước khi nộp bài
 - ✅ Builder tự lưu draft sau khoảng 1 giây, hiển thị Saved/Unsaved/Saving/Error và flush trước Preview/Validate/Publish
-- ✅ Transfer Portal xuất/nhập test, version, câu hỏi, hình và audio bằng ZIP có checksum; không chứa attempt/history
+- ✅ Transfer Portal xuất/nhập nội dung bốn kỹ năng, test/version, câu hỏi/key và asset đề bằng ZIP có checksum; không chứa attempt/history hay bản ghi âm riêng tư của người học
 
 Các dạng câu hỏi Reading hiện có:
 
@@ -67,6 +74,16 @@ Các dạng câu hỏi Reading hiện có:
 5. Diagram Label Completion và Short Answer
 
 Các family dùng chung editor/renderer/evaluator khi data shape giống nhau; key và chấm điểm vẫn do backend quản lý.
+
+### Speaking và phản hồi AI
+
+Speaking đã triển khai các phase P1–P8: Builder có ba phần và prompt có cấu trúc; runner kiểm tra microphone, ghi âm/upload theo chunk và khôi phục sau reload; audio riêng tư được lưu theo segment. FastAPI quản lý chuyển prompt, deadline và quyền truy cập. Review mở sau khi attempt hoàn tất; bài trong Full Mock còn phải đợi cả mock hoàn tất.
+
+Pipeline dùng audio đã chuẩn hóa để tạo transcript verbatim/clean, bằng chứng chất lượng âm thanh, fluency và pronunciation, rồi chấm AI tham khảo theo FC/LR/GRA/PR. Tiêu chí thiếu bằng chứng được đánh dấu không khả dụng; không tự bịa điểm. History và kết quả lớp học tái sử dụng dữ liệu đã lưu, với quyền chỉ đọc theo nguồn bài giao. P8 bổ sung công cụ benchmark, **chưa có bằng chứng xác lập độ chính xác tương đương giám khảo**. Chi tiết: [AI Speaking](docs/ai-speaking.md), [recording/recovery](docs/speaking-recording.md), [transcript/evidence](docs/speaking-transcription.md) và [advisory grading](docs/speaking-grading.md).
+
+### Transfer và tên nội bộ ổn định
+
+BandPilot là tên sản phẩm công khai. Tên repository `IELTS_Self_Practising_Web`, các package `devweblocalforielts*`, database/Volume, biến môi trường, khóa local storage và API vẫn giữ nguyên. Transfer ZIP tiếp tục dùng protocol `devweblocalforielts-test-bundle`, schema version `1`; backup manifest giữ nhãn `DevWebLocalforIELTS`. Đây là identifier kỹ thuật cũ được giữ để tương thích ngược, không phải tên hiển thị trong giao diện. Xem [định dạng Transfer ZIP](docs/TEST_TRANSFER_FORMAT.md).
 
 ### Profile và IELTS goals
 
@@ -89,6 +106,8 @@ Kết quả luôn là phiên bản `DRAFT`. ADMIN mở trong Builder để kiể
 
 Ảnh chụp từ giao diện local với tài khoản và mục tiêu hư cấu. Overall `7.0` được tính từ bốn mục tiêu `6.0 / 6.5 / 7.5 / 8.5`.
 
+Một số ảnh chụp lịch sử còn nhận diện **IELTS Studio** và bố cục/theme controls trước khi dự án đổi tên thành BandPilot; chúng không phản ánh đầy đủ giao diện hiện tại.
+
 **Trang chủ (desktop)**
 
 ![Trang chủ với IELTS goals](docs/screenshots/homepage-goals-desktop.png)
@@ -103,26 +122,39 @@ Kết quả luôn là phiên bản `DRAFT`. ADMIN mở trong Builder để kiể
 
 ## 🧭 Kiến trúc
 
+### Local
+
 ```text
 Trình duyệt
-    │
-    ▼
-Next.js frontend (cổng 3000)
-    │  HTTP / REST /api/v1
-    ▼
-FastAPI backend (cổng 8000)
-    │
-    ├── Application services
-    ├── Question registry + evaluator
-    ├── Timer / AFK / attempt state machine
-    ├── Repository + SQLAlchemy async
-    └── Local asset storage
-    │
-    ▼
-PostgreSQL
+    └── Next.js frontend (3000)
+            └── HTTP / REST /api/v1 → FastAPI (8000)
+                    ├── Domain services, registry + evaluator
+                    ├── Timer / deadline / attempt lifecycle
+                    ├── PostgreSQL (Docker Compose: 5433)
+                    └── Storage: asset đề + audio Speaking riêng tư
+
+AI tùy chọn, qua backend đã cấu hình:
+FastAPI ──┬── Speaking ASR → faster-whisper GPU service
+          └── Writing/Speaking AI → Ministral/vLLM GPU service
 ```
 
 Frontend không kết nối trực tiếp PostgreSQL. Mọi thao tác thay đổi dữ liệu, publish, deadline và chấm điểm đều đi qua FastAPI.
+
+### Modal
+
+```text
+Trình duyệt HTTPS
+    └── Web CPU container: Nginx
+            ├── Next.js
+            └── FastAPI
+                    ├── PostgreSQL process → persistent PostgreSQL Volume
+                    ├── Private storage → assets Volume
+                    ├── FFmpeg normalization + audio evidence (CPU)
+                    ├── Speaking ASR → faster-whisper T4 (scale-to-zero)
+                    └── Writing/Speaking AI → Ministral/vLLM L4 (scale-to-zero)
+```
+
+Web/PostgreSQL giữ một CPU replica; hai dịch vụ GPU có zero minimum containers. ASR chỉ nhận WAV đã chuẩn hóa, model cache nằm trên Volume riêng; Ministral được dùng chung cho Writing và Speaking. Web không nạp model GPU khi chỉ khởi động ứng dụng. Local, Modal dev và Modal production có database riêng; **không tự đồng bộ dữ liệu**. Sau thiết lập một lần, `modal serve deploy/modal/app.py` phục vụ phiên dev; `modal deploy deploy/modal/app.py` tạo deployment lâu dài. Xem [docs/modal-web.md](docs/modal-web.md) để chuẩn bị Secret, snapshot và Volume đúng quy trình.
 
 ## 📁 Cấu trúc repository
 
@@ -131,9 +163,11 @@ backend/              FastAPI, domain, model, service, Alembic, pytest
 frontend/             Next.js App Router, API client, Vitest, Playwright
 storage/audio/        File âm thanh cục bộ, không commit binary
 storage/images/       File hình ảnh cục bộ, không commit binary
+storage/speaking-private/  Bản ghi âm Speaking riêng tư, không commit
+deploy/modal/         Web/PostgreSQL, shared LLM và Speaking ASR services
 docs/ROADMAP.md       Lộ trình và phạm vi từng phase
 docker-compose.yml    PostgreSQL cho môi trường local
-.env.example          Mẫu cấu hình
+backend/.env.example  Mẫu cấu hình backend
 scripts/              Backup/restore PostgreSQL + local asset storage
 AGENTS.md             Các nguyên tắc kiến trúc bắt buộc
 ```
@@ -238,13 +272,13 @@ Root npm scripts dùng lệnh `npm run dev` của frontend và `uv --directory b
 ### 5. Luồng dùng thử đề xuất
 
 1. Đăng ký/đăng nhập; có thể đặt mục tiêu tại **Profile**. ADMIN vào **Builder** → **New test**.
-2. Mở Version 1 → tạo Reading, Listening và Writing module cùng thời lượng khuyến nghị.
-3. Thêm passage, Listening parts/audio và Writing tasks.
+2. Mở Version 1 → tạo Reading, Listening, Writing và Speaking module; Full Mock mới cần đủ bốn kỹ năng.
+3. Thêm passage, Listening parts/audio, Writing tasks và prompt Speaking cho ba phần.
 4. Thêm question group bằng registry loại câu hỏi dùng chung.
 5. Nhập câu hỏi và answer key ngay trong editor.
 6. Bấm **Preview**, sau đó **Validate** và **Publish**.
 7. Vào **Library** để bắt đầu Full Mock hoặc luyện riêng từng skill với timer tự chọn.
-8. Trả lời, flag/highlight nếu cần, rồi **Submit**; Full Mock chuyển sang module kế tiếp.
+8. Trả lời, flag/highlight nếu cần; Speaking cần cho phép microphone và hoàn tất upload. Nộp bài rồi tiếp tục từng chặng Full Mock theo thứ tự Listening → Reading → Writing → Speaking.
 9. Mở **History** → **Review** hoặc **Analytics** để xem kết quả và tiến trình.
 
 ## 🧪 Chạy kiểm thử
@@ -281,7 +315,7 @@ npm run test:e2e
 
 Kiểm tra riêng phiên đăng nhập: tạo admin local bằng `uv run python -m app.bootstrap_admin` từ `backend/` với các giá trị `INITIAL_ADMIN_*` trong `backend/.env`. Sau đó đặt `E2E_ADMIN_EMAIL` và `E2E_ADMIN_PASSWORD` tương ứng trong terminal chạy frontend và dùng `npx playwright test tests/e2e/auth-session.spec.ts`. Spec tự tạo USER thử nghiệm; không commit mật khẩu hoặc JWT secret.
 
-GitHub Actions chạy backend lint/format, Alembic và pytest; frontend typecheck, lint và Vitest. Workflow **Golden path E2E** build Next.js ở production mode và chạy ba luồng Listening, Writing, Full Mock trên Chromium. Các gate này đã pass tại commit `06e3ae7`; xem trạng thái mới nhất trên GitHub Actions.
+GitHub Actions chạy backend lint/format, Alembic và pytest; frontend typecheck, lint và Vitest. Workflow **Golden path E2E** build Next.js ở production mode và chạy ba luồng Listening, Writing, Full Mock trên Chromium. Trạng thái phụ thuộc từng commit; xem [GitHub Actions](https://github.com/ChuTungDuongg/IELTS_Self_Practising_Web/actions) để kiểm tra kết quả hiện tại.
 
 ## 💾 Backup & Restore
 
@@ -326,7 +360,7 @@ Frontend chỉ vẽ đồng hồ. Thời gian thật được suy ra từ `start
 
 ### Asset
 
-Binary không nằm trong PostgreSQL. Backend kiểm tra MIME, đuôi file, kích thước, tạo tên UUID và chỉ ghi vào `storage/audio` hoặc `storage/images`.
+Binary không nằm trong PostgreSQL. Backend kiểm tra MIME, đuôi file, kích thước và tạo tên UUID cho asset đề trong `storage/audio` hoặc `storage/images`. Audio người học nằm trong `storage/speaking-private`, được kiểm tra quyền theo attempt/assignment; raw segment và các bản chuẩn hóa không phải asset đề công khai. Backup phải bao gồm toàn bộ `STORAGE_ROOT`, kể cả audio riêng tư và bản dẫn xuất.
 
 ### Quản trị tài khoản
 
@@ -400,8 +434,8 @@ Lỗi ứng dụng có cấu trúc ổn định:
 
 ## 🛣️ Trạng thái phát triển
 
-- **Hiện có:** Reading/Listening/Writing, Full Mock, pause/resume, chấm Writing thủ công, Builder autosave, Transfer ZIP, Draft Import CLI, History/Analytics, xác thực, Profile/mục tiêu IELTS, quản trị tài khoản và Teacher/Classroom với duyệt nội dung, bài giao, kết quả chỉ đọc, thông báo trong ứng dụng.
+- **Hiện có:** đủ bốn kỹ năng Reading/Listening/Writing/Speaking, Full Mock bốn chặng, pause/resume theo policy từng kỹ năng, Writing thủ công và AI tham khảo Task 1/Task 2, Speaking recording/recovery/transcript/evidence/advisory AI và benchmark tooling, Builder autosave, Transfer ZIP, Draft Import CLI, History/Analytics, Personalization, xác thực/Profile/mục tiêu IELTS, quản trị tài khoản và Teacher/Classroom với duyệt nội dung, bài giao, kết quả chỉ đọc, thông báo trong ứng dụng.
 - **Tiếp theo:** tăng độ sâu của analytics, accessibility và độ bền của Builder workflow.
-- **Cố ý không làm:** module luyện/chấm Speaking (chỉ có Speaking target trong Profile), OCR tích hợp, thanh toán và AI chấm Writing Task 1.
+- **Ngoài phạm vi hiện tại:** OCR tích hợp, thanh toán và chứng nhận điểm IELTS chính thức. AI chỉ hỗ trợ luyện tập; không có cam kết tăng band hay độ chính xác tương đương giám khảo.
 
 Xem checklist chi tiết tại [docs/ROADMAP.md](docs/ROADMAP.md). 💫
