@@ -411,11 +411,11 @@ git commit -m "Add Speaking content domain model"
 - FC consumes timing/verbatim/semantic evidence; LR/GRA consume transcript evidence; PR refuses to score without acceptable audio-derived pronunciation evidence.
 - `speaking_overall(criteria) -> (raw_mean, overall_band)` uses equal weights and project half-band presentation policy, while result remains labelled advisory.
 
-- [ ] **Step 1: Write failing tests** for descriptor evidence separation, whole-attempt input, no per-question averaging, 0.5 validation, tiny score token cap, one bounded score repair, feedback cannot override score, feedback failure retaining score with safe fallback, score failure never fabricating a default, PR missing acoustic evidence => explicit unavailable/failure, and equal-weight overall arithmetic.
-- [ ] **Step 2: Run RED:** `cd backend && uv run pytest tests/test_speaking_ai.py -q`.
-- [ ] **Step 3: Implement scorer using a Speaking LLM adapter that delegates to the configured structured LLM provider contract without renaming/refactoring Writing provider internals.** Keep Speaking prompt/version namespace independent so cache/version bumps never alter Writing v9 history.
-- [ ] **Step 4: Run GREEN + Ruff.** Use fake completions only.
-- [ ] **Step 5: Commit:** `git commit -m "Add score-first Speaking criterion scorer"`.
+- [x] **Step 1: Write failing tests** for descriptor evidence separation, whole-attempt input, no per-question averaging, 0.5 validation, tiny score token cap, one bounded score repair, feedback cannot override score, feedback failure retaining score with safe fallback, score failure never fabricating a default, PR missing acoustic evidence => explicit unavailable/failure, and equal-weight overall arithmetic.
+- [x] **Step 2: Run RED:** `cd backend && uv run pytest tests/test_speaking_ai.py -q`.
+- [x] **Step 3: Implement scorer using a Speaking LLM adapter that delegates to the configured structured LLM provider contract without renaming/refactoring Writing provider internals.** Keep Speaking prompt/version namespace independent so cache/version bumps never alter Writing v9 history.
+- [x] **Step 4: Run GREEN + Ruff.** Use fake completions only.
+- [x] **Step 5: Commit:** `git commit -m "Add score-first Speaking criterion scorer"`.
 
 ### Task 14: Durable AI grading runs, cache, cancellation, and SSE
 
