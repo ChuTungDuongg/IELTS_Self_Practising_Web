@@ -141,7 +141,7 @@ def transcribe_wav(content: bytes, model) -> dict:
     timeout=600,
 )
 @modal.asgi_app(requires_proxy_auth=True)
-def serve():
+def serve_asr():
     import asyncio
 
     from fastapi import FastAPI, HTTPException, Request

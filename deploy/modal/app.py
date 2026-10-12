@@ -15,7 +15,7 @@ from deploy.modal.speaking_asr import MODEL as ASR_MODEL
 from deploy.modal.speaking_asr import REVISION as ASR_REVISION
 from deploy.modal.speaking_asr import SERVICE_VERSION as ASR_VERSION
 from deploy.modal.speaking_asr import app as asr_app
-from deploy.modal.speaking_asr import serve as asr_serve
+from deploy.modal.speaking_asr import serve_asr as asr_serve
 from deploy.modal.writing_llm import MODEL
 from deploy.modal.writing_llm import app as llm_app
 from deploy.modal.writing_llm import serve as llm_serve

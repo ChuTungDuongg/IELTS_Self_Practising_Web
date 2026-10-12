@@ -235,6 +235,7 @@ def service(monkeypatch):
 
 def test_service_has_pinned_separate_gpu_and_proxy_auth(service):
     module, modal = service
+    assert module.serve_asr.__name__ == "serve_asr"  # Distinct from included Ministral serve.
     assert module.MODEL == MODEL and module.REVISION == REVISION
     assert module.FASTER_WHISPER_VERSION == "1.2.1"
     assert module.COMPUTE_TYPE == "int8_float16"
@@ -277,7 +278,7 @@ async def test_service_endpoint_validates_before_inference_and_cleans_temp(
     monkeypatch.setattr(module, "load_model", loader)
     if case == "size":
         monkeypatch.setattr(module, "MAX_WAV_BYTES", 100)
-    api = module.serve()
+    api = module.serve_asr()
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=api), base_url="http://test"
     ) as client:

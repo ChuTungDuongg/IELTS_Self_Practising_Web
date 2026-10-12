@@ -51,7 +51,7 @@ def load_app(
     asr.REVISION = "edaa852ec7e145841d8ffdb056a99866b5f0a478"
     asr.SERVICE_VERSION = "pinned-asr"
     asr.app = object()
-    asr.serve = MagicMock()
+    asr.serve_asr = MagicMock()
     monkeypatch.setitem(sys.modules, "deploy.modal.speaking_asr", asr)
     chart = ModuleType("deploy.modal.chart_derenderer")
     chart.MODEL, chart.REVISION, chart.app, chart.serve = (
