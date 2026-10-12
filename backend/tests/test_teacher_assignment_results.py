@@ -13,21 +13,29 @@ from app.models import (
     AttemptWritingScore,
     Classroom,
     ClassroomMembership,
+    SpeakingPart,
+    SpeakingPrompt,
     WritingAIGradingRun,
     WritingTask,
 )
+from app.models import TestModule as Module
 from app.models.enums import (
     AttemptStatus,
     ClassroomStatus,
     ModerationStatus,
     ModuleType,
+    SpeakingPromptType,
     UserRole,
     WritingAIRunStatus,
+)
+from app.models.enums import (
+    TestSessionStatus as SessionStatus,
 )
 from app.schemas.classroom_assignments import AssignmentCreate, AssignmentStart
 from app.services.attempts import AttemptService
 from app.services.classroom_assignments import ClassroomAssignmentService
 from app.services.classroom_results import ClassroomResultService
+from app.services.speaking_attempts import SpeakingAttemptService
 from app.services.test_sessions import TestSessionService as SessionService
 
 
@@ -97,6 +105,27 @@ async def test_full_mock_all_child_results_derive_session_origin_and_keep_person
 ):
     teacher, student, classroom_id, version_id = await classroom_fixture(db_session, official=True)
     await add_objective_modules(db_session, version_id)
+    async with db_session.begin():
+        prompt = SpeakingPrompt(
+            order_index=0,
+            prompt_type=SpeakingPromptType.SHORT_ANSWER,
+            prompt_text="Describe a fictional classroom activity.",
+            preparation_seconds=0,
+            response_seconds=5,
+            config_json={},
+        )
+        module = Module(
+            test_version_id=version_id,
+            module_type=ModuleType.SPEAKING,
+            order_index=3,
+            recommended_duration_seconds=1200,
+            speaking_parts=[
+                SpeakingPart(part_number=1, order_index=0, prompts=[prompt]),
+            ],
+        )
+        db_session.add(module)
+        await db_session.flush()
+        speaking_prompt_id = prompt.id
     assignment = await ClassroomAssignmentService(db_session, teacher).create(
         classroom_id, AssignmentCreate(test_version_id=version_id)
     )
@@ -115,7 +144,14 @@ async def test_full_mock_all_child_results_derive_session_origin_and_keep_person
     await AttemptService(db_session, student.id).submit(reading.current_attempt.attempt_id)
     writing = await SessionService(db_session, student.id).advance(assigned.test_session_id)
     await AttemptService(db_session, student.id).submit(writing.current_attempt.attempt_id)
-    await SessionService(db_session, student.id).get(assigned.test_session_id)
+    speaking = await SessionService(db_session, student.id).advance(assigned.test_session_id)
+    runtime = SpeakingAttemptService(db_session, student.id)
+    await runtime.begin_prompt(speaking.current_attempt.attempt_id, speaking_prompt_id)
+    await runtime.finish_current_response(
+        speaking.current_attempt.attempt_id, speaking_prompt_id, 1, "USER_DONE"
+    )
+    completed = await SessionService(db_session, student.id).get(assigned.test_session_id)
+    assert completed.status == SessionStatus.COMPLETED and len(completed.attempts) == 4
     async with db_session.begin():
         member = await db_session.scalar(
             select(ClassroomMembership).where(
@@ -131,16 +167,33 @@ async def test_full_mock_all_child_results_derive_session_origin_and_keep_person
         retry.attempt_id,
         reading.current_attempt.attempt_id,
         writing.current_attempt.attempt_id,
+        speaking.current_attempt.attempt_id,
     }
     for attempt_id in [
         assigned.attempt_id,
         reading.current_attempt.attempt_id,
         writing.current_attempt.attempt_id,
+        speaking.current_attempt.attempt_id,
     ]:
-        result = await service.detail(classroom_id, assignment.id, attempt_id)
-        assert result.session_id == assigned.test_session_id and result.review is not None
         stored = await db_session.get(Attempt, attempt_id)
+        before = (stored.status, stored.finished_at, stored.last_active_at, stored.updated_at)
+        result = await service.detail(classroom_id, assignment.id, attempt_id)
+        assert result.session_id == assigned.test_session_id
+        if result.attempt.module == ModuleType.SPEAKING:
+            assert result.speaking_review is not None
+            assert result.speaking_review.can_generate_transcript is False
+            assert result.speaking_ai_run is None
+        else:
+            assert result.review is not None
+        await db_session.refresh(stored)
+        assert (
+            stored.status,
+            stored.finished_at,
+            stored.last_active_at,
+            stored.updated_at,
+        ) == before
         assert stored.classroom_assignment_id is None
+        assert stored.test_session_id == assigned.test_session_id
     await db_session.rollback()
     with pytest.raises(AppError) as error:
         await service.detail(classroom_id, assignment.id, personal.current_attempt.attempt_id)

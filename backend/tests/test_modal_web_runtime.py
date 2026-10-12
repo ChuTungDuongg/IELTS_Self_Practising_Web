@@ -1,7 +1,9 @@
 import hashlib
 import importlib.util
 import json
+import os
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -9,6 +11,13 @@ source = Path(__file__).resolve().parents[2] / "deploy/modal/web_runtime.py"
 spec = importlib.util.spec_from_file_location("ielts_web_runtime", source)
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
+
+
+@pytest.fixture(autouse=True)
+def isolated_runtime_environment():
+    # Runtime helpers write os.environ directly, outside monkeypatch's bookkeeping.
+    with patch.dict(os.environ):
+        yield
 
 
 def test_speaking_asr_uses_hydrated_backend_only_url_and_pinned_identity(monkeypatch):
