@@ -30,6 +30,12 @@ function atWidth(selector: string, width: number): Record<string, string> {
 }
 
 describe("shell layout contracts", () => {
+  it("centers only the navigation in the desktop middle zone", () => {
+    expect(atWidth(".primary-nav", 1536)).toMatchObject({ "justify-self": "center", "max-width": "100%", "min-width": "0" });
+    expect(atWidth(".header-actions", 1536)).toMatchObject({ "grid-area": "actions", "justify-self": "end", "flex-wrap": "nowrap" });
+    expect(atWidth(".brand", 1536)["grid-area"]).toBe("brand");
+    for (const width of [1440, 1000, 320]) expect(atWidth(".primary-nav", width)["justify-self"]).toBeUndefined();
+  });
   it("caps centered border-box content and chrome at their approved outer widths", () => {
     expect(declarations(".app-content-standard")["max-width"]).toBe("1280px");
     expect(declarations(".app-content-wide")["max-width"]).toBe("1440px");

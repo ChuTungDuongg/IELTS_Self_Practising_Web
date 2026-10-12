@@ -1459,10 +1459,11 @@ input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--mute
 
 @media (width >= 1536px) {
   .app-header-inner { grid-template-areas: "brand nav actions"; grid-template-columns: auto minmax(0, 1fr) auto; column-gap: 10px; }
+  .primary-nav { justify-self: center; max-width: 100%; }
   .primary-nav-list { flex-wrap: nowrap; gap: 4px; }
   .primary-nav-list li { flex: none; }
   .primary-nav-link { padding-inline: 5px; white-space: nowrap; overflow-wrap: normal; }
-  .header-actions { flex-wrap: nowrap; gap: 6px; }
+  .header-actions { justify-self: end; flex-wrap: nowrap; gap: 6px; }
 }
 
 @media (768px <= width < 1536px) {
