@@ -4,7 +4,7 @@ import { AppShell } from "@/components/ui/app-shell";
 import Link from "next/link";
 import { renderWithLocale } from "./locale-test-utils";
 
-const state = vi.hoisted(() => ({ pathname: "/", role: null as "USER" | "ADMIN" | null, loading: false, sessionError: null as string | null, name: "Learner", logout: vi.fn() }));
+const state = vi.hoisted(() => ({ pathname: "/", role: null as "USER" | "TEACHER" | "ADMIN" | null, loading: false, sessionError: null as string | null, name: "Learner", logout: vi.fn() }));
 vi.mock("next/navigation", () => ({ usePathname: () => state.pathname }));
 vi.mock("@/features/auth/auth-provider", () => ({ useAuth: () => ({ user: state.role ? { role: state.role, display_name: state.name } : null, loading: state.loading, sessionError: state.sessionError, logout: state.logout }) }));
 vi.mock("next/link", () => ({ default: ({ prefetch, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { prefetch?: boolean | null }) => <a {...props} data-prefetch={prefetch === false ? "disabled" : "automatic"} /> }));
@@ -56,6 +56,7 @@ describe("horizontal application shell", () => {
     expect(screen.getAllByRole("navigation")).toHaveLength(1);
     const links = within(nav).getAllByRole("link");
     expect(links.map((link) => link.getAttribute("href"))).toEqual(role === "ADMIN" ? routes : role === "USER" ? [...routes.slice(0, 5), "/classrooms"] : ["/"]);
+    if (role === "ADMIN") expect(links.map((link) => link.textContent)).toEqual(["Overview", "Test library", "Skill practice", "Attempt history", "Analytics", "Admin", "Builder", "Transfer", "Moderation", "Classrooms"]);
     for (const link of links) expect(link).toHaveAttribute("data-prefetch", link.getAttribute("href") === "/" ? "automatic" : "disabled");
     expect(links[0]).toHaveAttribute("aria-current", "page");
     expect(nav.closest("header")).toBe(screen.getByRole("banner"));
@@ -67,6 +68,15 @@ describe("horizontal application shell", () => {
       expect(screen.getByRole("link", { name: "Login" })).toHaveAttribute("href", "/login");
       expect(screen.getByRole("link", { name: "Register" })).toHaveAttribute("href", "/register");
     }
+  });
+
+  it("keeps teacher Classrooms beside Builder in the same primary navigation", () => {
+    state.role = "TEACHER";
+    render(<AppShell currentYear={2026}>Content</AppShell>);
+    const links = within(screen.getByRole("navigation", { name: "Primary" })).getAllByRole("link");
+    expect(links.map((link) => link.getAttribute("href"))).toEqual(["/", "/library", "/practice", "/history", "/analytics", "/teacher/tests", "/teacher/classrooms"]);
+    expect(links.slice(-2).map((link) => link.textContent)).toEqual(["Builder", "Classrooms"]);
+    expect(screen.queryByRole("button", { name: /Use (dark|light) theme/ })).not.toBeInTheDocument();
   });
 
   it.each([["/admin", "/admin"], ["/admin/tests", "/admin/tests"], ["/admin/tests/test/versions/version/edit", "/admin/tests"], ["/transfer", "/transfer"], ["/profile", null], ["/review/id", null], ["/test-session/id", null]])("admin active matching is exact (%s)", (path, active) => {

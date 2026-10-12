@@ -293,7 +293,7 @@ input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--mute
 
 .app-shell { position: relative; isolation: isolate; display: flex; flex-direction: column; min-height: 100vh; min-height: 100dvh; }
 .app-header { position: sticky; z-index: 30; top: 0; display: flex; min-width: 0; min-height: 72px; height: auto; border-bottom: 1px solid color-mix(in srgb, var(--line) 82%, transparent); background: var(--surface-glass); box-shadow: 0 1px 0 color-mix(in srgb, var(--ink) 4%, transparent); backdrop-filter: none; }
-.app-header-inner { box-sizing: border-box; display: grid; align-items: center; gap: 12px 16px; width: 100%; max-width: 1440px; margin: 0 auto; padding-block: 12px; padding-inline: 32px; }
+.app-header-inner { box-sizing: border-box; display: grid; align-items: center; gap: 12px 16px; width: 100%; max-width: 1600px; margin: 0 auto; padding-block: 12px; padding-inline: 32px; }
 .brand { grid-area: brand; display: flex; align-items: center; gap: 11px; flex: 0 0 auto; }
 .brand-mark { display: grid; width: 42px; height: 42px; flex: 0 0 auto; place-items: center; color: var(--accent); }
 .app-logo { display: block; width: 100%; height: 100%; overflow: visible; }
@@ -1457,12 +1457,19 @@ input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--mute
   .dialog-actions .btn { width: 100%; }
 }
 
-@media (width >= 1440px) {
-  .app-header-inner { grid-template-areas: "brand nav actions"; grid-template-columns: auto minmax(0, 1fr) auto; }
+@media (width >= 1536px) {
+  .app-header-inner { grid-template-areas: "brand nav actions"; grid-template-columns: auto minmax(0, 1fr) auto; column-gap: 10px; }
+  .primary-nav-list { flex-wrap: nowrap; gap: 4px; }
+  .primary-nav-list li { flex: none; }
+  .primary-nav-link { padding-inline: 5px; white-space: nowrap; overflow-wrap: normal; }
+  .header-actions { flex-wrap: nowrap; gap: 6px; }
+}
+
+@media (768px <= width < 1536px) {
+  .app-header-inner { grid-template-areas: "brand actions" "nav nav"; grid-template-columns: minmax(0, 1fr) auto; }
 }
 
 @media (768px <= width < 1440px) {
-  .app-header-inner { grid-template-areas: "brand actions" "nav nav"; grid-template-columns: minmax(0, 1fr) auto; }
   .app-header-inner, .app-footer-inner { padding-inline: 24px; }
   .app-content { padding: 32px 24px 40px; }
 }
