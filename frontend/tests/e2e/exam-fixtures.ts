@@ -6,12 +6,16 @@ if (!["localhost", "127.0.0.1", "[::1]"].includes(new URL(apiBase).hostname)) {
   throw new Error("Golden-path fixtures may only run against a local API.");
 }
 
-type Module = "LISTENING" | "READING" | "WRITING";
+type Module = "LISTENING" | "READING" | "WRITING" | "SPEAKING";
 type TestRecord = { id: string; versions: Array<{ id: string }> };
 type BuilderModule = {
   id: string;
   revision: number;
   writing_tasks: Array<{ id: string; revision: number; task_number: number }>;
+  speaking_parts: Array<{
+    id: string; revision: number; part_number: 1 | 2 | 3;
+    prompts: Array<{ id: string; prompt_type: "SHORT_ANSWER" | "LONG_TURN" | "FOLLOW_UP" }>;
+  }>;
 };
 export type PublishedExam = { testId: string; versionId: string; title: string };
 
@@ -57,7 +61,7 @@ export async function createPublishedExam(request: APIRequestContext, modules: M
       const builderModule = await post<BuilderModule>(request, `/test-versions/${versionId}/modules`, {
         module_type: moduleType,
         title: moduleType.charAt(0) + moduleType.slice(1).toLowerCase(),
-        recommended_duration_seconds: moduleType === "LISTENING" ? 1800 : 3600,
+        recommended_duration_seconds: moduleType === "LISTENING" ? 1800 : moduleType === "SPEAKING" ? 900 : 3600,
       });
       if (moduleType === "LISTENING") {
         const upload = await request.post(`${apiBase}/assets/audio`, {
@@ -110,6 +114,36 @@ export async function createPublishedExam(request: APIRequestContext, modules: M
             },
           });
           expect(response.ok(), `writing task: ${response.status()} ${await response.text()}`).toBe(true);
+        }
+      }
+      if (moduleType === "SPEAKING") {
+        for (const part of builderModule.speaking_parts) {
+          const prompts = part.part_number === 2 ? [{
+            id: part.prompts.find((prompt) => prompt.prompt_type === "LONG_TURN")!.id,
+            order_index: 0, prompt_type: "LONG_TURN",
+            prompt_text: "Describe a fictional garden you would like to visit.",
+            // A short authored preparation still exercises the server deadline and count-in.
+            preparation_seconds: 1, response_seconds: 30,
+            config_json: { cue_points: ["Where the fictional garden is", "What you would do there"] },
+          }, {
+            order_index: 1, prompt_type: "FOLLOW_UP",
+            prompt_text: "Would you return to this fictional garden?",
+            preparation_seconds: 0, response_seconds: 30, config_json: {},
+          }] : [{
+            order_index: 0, prompt_type: "SHORT_ANSWER",
+            prompt_text: part.part_number === 1
+              ? "What is a favourite place in your fictional town?"
+              : "How could fictional towns make public gardens more useful?",
+            preparation_seconds: 0, response_seconds: 30, config_json: {},
+          }];
+          const response = await request.put(`${apiBase}/speaking/parts/${part.id}`, {
+            data: {
+              expected_revision: part.revision,
+              title: `Fictional Speaking Part ${part.part_number}`,
+              instructions: "Respond to the fictional prompt.", prompts,
+            },
+          });
+          expect(response.ok(), `speaking part: ${response.status()} ${await response.text()}`).toBe(true);
         }
       }
     }

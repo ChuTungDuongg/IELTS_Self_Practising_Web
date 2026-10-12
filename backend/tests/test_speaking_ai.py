@@ -32,55 +32,86 @@ class FakeProvider:
 
 
 def evidence(*, features=None):
-    return build_attempt_evidence([
-        {
-            "response_id": uuid4(), "prompt_id": uuid4(), "part_number": part,
-            "prompt_type": "LONG_TURN" if part == 2 else "SHORT_ANSWER",
-            "prompt_text": f"Fictional practice prompt {part}", "cue_points": ["A fictional detail"],
-            "verbatim": f"I um enjoy a fictional activity in part {part}.",
-            "clean": f"I enjoy a fictional activity in part {part}.",
-            "words": [], "features": features,
-            "scratch_notes": "PRIVATE_SCRATCH_MARKER", "storage_key": "/private/audio.webm",
-            "unknown_metadata": "PRIVATE_UNKNOWN_MARKER",
-        }
-        for part in (1, 2, 3)
-    ])
+    return build_attempt_evidence(
+        [
+            {
+                "response_id": uuid4(),
+                "prompt_id": uuid4(),
+                "part_number": part,
+                "prompt_type": "LONG_TURN" if part == 2 else "SHORT_ANSWER",
+                "prompt_text": f"Fictional practice prompt {part}",
+                "cue_points": ["A fictional detail"],
+                "verbatim": f"I um enjoy a fictional activity in part {part}.",
+                "clean": f"I enjoy a fictional activity in part {part}.",
+                "words": [],
+                "features": features,
+                "scratch_notes": "PRIVATE_SCRATCH_MARKER",
+                "storage_key": "/private/audio.webm",
+                "unknown_metadata": "PRIVATE_UNKNOWN_MARKER",
+            }
+            for part in (1, 2, 3)
+        ]
+    )
 
 
 def feature_bundle():
     return {
-        "cache_key": "features", "source_audio_fingerprint": "audio",
+        "cache_key": "features",
+        "source_audio_fingerprint": "audio",
         "quality": {
-            "state": "AUDIO_OK", "assessable": True, "cache_key": "quality",
-            "source_audio_fingerprint": "audio", "config": {},
-            "metrics": {"duration_seconds": 10, "speech_seconds": 8, "rms": .1,
-                        "clipping_ratio": 0, "background_proxy_ratio": 0},
+            "state": "AUDIO_OK",
+            "assessable": True,
+            "cache_key": "quality",
+            "source_audio_fingerprint": "audio",
+            "config": {},
+            "metrics": {
+                "duration_seconds": 10,
+                "speech_seconds": 8,
+                "rms": 0.1,
+                "clipping_ratio": 0,
+                "background_proxy_ratio": 0,
+            },
         },
         "fluency": {
-            "timing_status": "COMPLETE", "total_duration_seconds": 10, "word_count": 8,
-            "aligned_word_count": 8, "timing_coverage": 1,
-            "filled_pause_count": 1, "token_repetition_count": 0,
-            "phrase_repetition_count": 0, "false_start_count": 0, "self_correction_count": 0,
+            "timing_status": "COMPLETE",
+            "total_duration_seconds": 10,
+            "word_count": 8,
+            "aligned_word_count": 8,
+            "timing_coverage": 1,
+            "filled_pause_count": 1,
+            "token_repetition_count": 0,
+            "phrase_repetition_count": 0,
+            "false_start_count": 0,
+            "self_correction_count": 0,
         },
         "pronunciation": {
-            "status": "AVAILABLE", "version": "alignment-prosody-v1",
-            "source_audio_fingerprint": "audio", "alignment_word_count": 8,
-            "alignment_coverage": 1, "confidence_coverage": 1,
-            "mean_alignment_confidence": .9, "rms": .1, "energy_cv": .2,
-            "acoustic_frame_count": 30, "word_duration_cv": .3,
+            "status": "AVAILABLE",
+            "version": "alignment-prosody-v1",
+            "source_audio_fingerprint": "audio",
+            "alignment_word_count": 8,
+            "alignment_coverage": 1,
+            "confidence_coverage": 1,
+            "mean_alignment_confidence": 0.9,
+            "rms": 0.1,
+            "energy_cv": 0.2,
+            "acoustic_frame_count": 30,
+            "word_duration_cv": 0.3,
         },
     }
 
 
-FEEDBACK = {"feedback": "The response develops ideas with some hesitation.",
-            "strengths": ["Clear fictional examples"], "improvements": ["Link ideas smoothly"]}
+FEEDBACK = {
+    "feedback": "The response develops ideas with some hesitation.",
+    "strengths": ["Clear fictional examples"],
+    "improvements": ["Link ideas smoothly"],
+}
 
 
 async def checkpoint(_result):
     return None
 
 
-@pytest.mark.parametrize("score", [0, .5, 6, 6.5, 9])
+@pytest.mark.parametrize("score", [0, 0.5, 6, 6.5, 9])
 def test_half_bands_accept_valid_numbers(score):
     assert CriterionBandScore(score=score).score == score
 
@@ -155,8 +186,9 @@ async def test_repair_failure_never_fabricates_score_or_calls_feedback():
     assert result.error_code == "SPEAKING_AI_INVALID_SCORE" and len(provider.calls) == 2
 
 
-@pytest.mark.parametrize("failure", [RuntimeError("SECRET_TOKEN private transcript"),
-                                     {**FEEDBACK, "score": 9}])
+@pytest.mark.parametrize(
+    "failure", [RuntimeError("SECRET_TOKEN private transcript"), {**FEEDBACK, "score": 9}]
+)
 async def test_feedback_failure_preserves_score_and_safe_evidence(failure):
     provider = FakeProvider({"score": 6.5}, failure)
     result = await SpeakingScorer(provider).score_criterion("gra", evidence(), checkpoint)
@@ -185,7 +217,9 @@ async def test_provider_failure_safe_no_score_and_no_repair():
     assert len(provider.calls) == 1 and "SECRET_TOKEN" not in result.model_dump_json()
 
 
-@pytest.mark.parametrize("mutation", ["text_only", "unavailable", "low", "quality", "fake_available"])
+@pytest.mark.parametrize(
+    "mutation", ["text_only", "unavailable", "low", "quality", "fake_available"]
+)
 async def test_pr_refuses_insufficient_or_bad_audio(mutation):
     bundle = feature_bundle()
     if mutation == "unavailable":
@@ -205,14 +239,21 @@ async def test_pr_refuses_insufficient_or_bad_audio(mutation):
         "pr", evidence(features=None if mutation == "text_only" else bundle), checkpoint
     )
     assert result.status == "UNAVAILABLE" and result.score is None
-    assert result.error_code == (
-        "SPEAKING_AUDIO_UNASSESSABLE" if mutation == "quality" else "SPEAKING_PR_UNASSESSABLE"
-    ) and not provider.calls
+    assert (
+        result.error_code
+        == ("SPEAKING_AUDIO_UNASSESSABLE" if mutation == "quality" else "SPEAKING_PR_UNASSESSABLE")
+        and not provider.calls
+    )
 
 
-@pytest.mark.parametrize("completion", [Completion('{"score":6.5}', finish_reason="length"),
-                                       Completion('{"score":6.5,"reasoning":"secret"}'),
-                                       Completion("x" * 2000)])
+@pytest.mark.parametrize(
+    "completion",
+    [
+        Completion('{"score":6.5}', finish_reason="length"),
+        Completion('{"score":6.5,"reasoning":"secret"}'),
+        Completion("x" * 2000),
+    ],
+)
 async def test_unsafe_score_envelopes_get_bounded_repair(completion):
     provider = FakeProvider(completion, {"score": 6}, FEEDBACK)
     result = await SpeakingScorer(provider).score_criterion("fc", evidence(), checkpoint)
@@ -235,11 +276,16 @@ def test_provider_config_independent_and_never_mutates_writing(monkeypatch):
 
     settings = Settings(ai_writing_enabled=False, ai_writing_provider="vllm")
     monkeypatch.setattr(configured, "create_writing_provider", lambda value: value)
-    overrides = SimpleNamespace(**{
-        **settings.model_dump(), "speaking_ai_enabled": True, "speaking_ai_provider": "openai",
-        "speaking_ai_model": "fictional-speaking-model", "speaking_ai_request_timeout_seconds": 20,
-        "speaking_ai_startup_timeout_seconds": 30,
-    })
+    overrides = SimpleNamespace(
+        **{
+            **settings.model_dump(),
+            "speaking_ai_enabled": True,
+            "speaking_ai_provider": "openai",
+            "speaking_ai_model": "fictional-speaking-model",
+            "speaking_ai_request_timeout_seconds": 20,
+            "speaking_ai_startup_timeout_seconds": 30,
+        }
+    )
     delegated = configured.create_provider(overrides).delegate
     assert delegated.ai_writing_enabled is True
     assert delegated.ai_writing_provider == "openai"
@@ -251,12 +297,14 @@ def test_provider_config_independent_and_never_mutates_writing(monkeypatch):
 async def test_low_evidence_with_measured_prosody_can_score_with_caveats():
     bundle = feature_bundle()
     bundle["pronunciation"]["status"] = "LOW_EVIDENCE"
-    bundle["pronunciation"]["alignment_coverage"] = .5
+    bundle["pronunciation"]["alignment_coverage"] = 0.5
     bundle["pronunciation"]["word_duration_cv"] = None
     bundle["pronunciation"]["voiced_pitch_frames"] = 12
     bundle["pronunciation"]["pitch_mean_hz"] = 140
     provider = FakeProvider({"score": 6}, FEEDBACK)
-    result = await SpeakingScorer(provider).score_criterion("pr", evidence(features=bundle), checkpoint)
+    result = await SpeakingScorer(provider).score_criterion(
+        "pr", evidence(features=bundle), checkpoint
+    )
     assert result.score == 6
     assert "LOW_EVIDENCE" in result.evidence.responses[0].pronunciation.limitations
 
@@ -297,10 +345,14 @@ def test_provider_cache_identity_tracks_transport_and_caps_without_secrets():
 
     settings = Settings(ai_writing_vllm_api_key="PRIVATE_KEY_MARKER")
     original = config_identity(settings)
-    changed = config_identity(settings.model_copy(update={
-        "ai_writing_vllm_base_url": "http://fictional.invalid/v1",
-        "speaking_ai_score_max_tokens": 256,
-    }))
+    changed = config_identity(
+        settings.model_copy(
+            update={
+                "ai_writing_vllm_base_url": "http://fictional.invalid/v1",
+                "speaking_ai_score_max_tokens": 256,
+            }
+        )
+    )
     assert original != changed
     assert "PRIVATE_KEY_MARKER" not in json.dumps(original)
     assert "fictional.invalid" not in json.dumps(changed)
@@ -330,13 +382,27 @@ def test_checkpoint_contract_rejects_boolean_band():
     from app.schemas.speaking_grading import CriterionResult
 
     with pytest.raises(ValidationError):
-        CriterionResult(criterion="fc", status="SCORE_READY", score=True,
-                        evidence=criterion_evidence("fc", evidence()))
+        CriterionResult(
+            criterion="fc",
+            status="SCORE_READY",
+            score=True,
+            evidence=criterion_evidence("fc", evidence()),
+        )
 
 
 @pytest.mark.parametrize("criterion", ["fc", "lr", "gra", "pr"])
-@pytest.mark.parametrize("state", ["NO_SPEECH", "TOO_SHORT", "AUDIO_CORRUPT", "VERY_LOW_SIGNAL",
-                                  "SEVERE_CLIPPING", "BACKGROUND_DOMINANT", "ASR_UNUSABLE"])
+@pytest.mark.parametrize(
+    "state",
+    [
+        "NO_SPEECH",
+        "TOO_SHORT",
+        "AUDIO_CORRUPT",
+        "VERY_LOW_SIGNAL",
+        "SEVERE_CLIPPING",
+        "BACKGROUND_DOMINANT",
+        "ASR_UNUSABLE",
+    ],
+)
 async def test_any_criterion_refuses_supplied_unassessable_quality(criterion, state):
     bundle = feature_bundle()
     bundle["quality"].update(state=state, assessable=False)
@@ -361,10 +427,15 @@ async def test_any_criterion_refuses_inconsistent_assessable_flag(criterion):
 
 def test_gra_utterances_preserve_verbatim_errors_and_are_criterion_specific():
     item = evidence(features=feature_bundle())
-    item.responses[0].verbatim = "I um go yesterday.  She don't agree! Why we was late? A false- start"
+    item.responses[
+        0
+    ].verbatim = "I um go yesterday.  She don't agree! Why we was late? A false- start"
     gra = criterion_evidence("gra", item)
     assert gra.responses[0].utterances == [
-        "I um go yesterday.", "She don't agree!", "Why we was late?", "A false- start",
+        "I um go yesterday.",
+        "She don't agree!",
+        "Why we was late?",
+        "A false- start",
     ]
     for criterion in ("fc", "lr", "pr"):
         assert criterion_evidence(criterion, item).responses[0].utterances is None

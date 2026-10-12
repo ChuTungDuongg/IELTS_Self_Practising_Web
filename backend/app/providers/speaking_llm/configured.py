@@ -10,7 +10,9 @@ from app.providers.writing_llm import is_configured as writing_is_configured
 
 def transport_settings(settings):
     source = settings.model_dump() if hasattr(settings, "model_dump") else vars(settings)
-    copied = Settings.model_validate({k: v for k, v in source.items() if k in Settings.model_fields})
+    copied = Settings.model_validate(
+        {k: v for k, v in source.items() if k in Settings.model_fields}
+    )
     update = {"ai_writing_enabled": bool(getattr(settings, "speaking_ai_enabled", False))}
     provider = getattr(settings, "speaking_ai_provider", None) or copied.ai_writing_provider
     update["ai_writing_provider"] = provider
@@ -36,7 +38,8 @@ def config_identity(settings) -> dict:
     provider, model = provider_identity(settings)
     base = getattr(delegated, f"ai_writing_{provider}_base_url", "")
     return {
-        "provider": provider, "model": model,
+        "provider": provider,
+        "model": model,
         "transport_fingerprint": hashlib.sha256(base.encode()).hexdigest(),
         "prompt_version": getattr(settings, "speaking_ai_prompt_version", "speaking-score-v1"),
         "rubric_version": getattr(settings, "speaking_ai_rubric_version", "speaking-rubric-v1"),

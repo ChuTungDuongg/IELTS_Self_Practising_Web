@@ -144,11 +144,16 @@ class CriterionResult(StrictDTO):
     score: float | None = None
     feedback: CriterionFeedback | None = None
     feedback_status: Literal["PENDING", "READY", "FAILED", "UNAVAILABLE"] = "PENDING"
-    error_code: Literal[
-        "SPEAKING_AI_PROVIDER_FAILED", "SPEAKING_AI_INVALID_SCORE",
-        "SPEAKING_AI_FEEDBACK_FAILED", "SPEAKING_PR_UNASSESSABLE",
-        "SPEAKING_AUDIO_UNASSESSABLE",
-    ] | None = None
+    error_code: (
+        Literal[
+            "SPEAKING_AI_PROVIDER_FAILED",
+            "SPEAKING_AI_INVALID_SCORE",
+            "SPEAKING_AI_FEEDBACK_FAILED",
+            "SPEAKING_PR_UNASSESSABLE",
+            "SPEAKING_AUDIO_UNASSESSABLE",
+        ]
+        | None
+    ) = None
     evidence: CriterionEvidence
     advisory: Literal[True] = True
 

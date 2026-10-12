@@ -11,5 +11,9 @@ class SpeakingLLMProvider(Protocol):
     async def ensure_ready(self) -> None: ...
 
     async def complete(
-        self, messages: list[Message], schema: dict, *, options: CompletionOptions | None = None,
+        self,
+        messages: list[Message],
+        schema: dict,
+        *,
+        options: CompletionOptions | None = None,
     ) -> Completion: ...

@@ -577,7 +577,7 @@ async def test_disabled_grader_fails_safely_without_creating_run(db_session, tmp
         assert (
             await db_session.scalar(
                 select(SpeakingAIGradingRun.id).where(SpeakingAIGradingRun.attempt_id == aid)
-        )
+            )
             is None
         )
 

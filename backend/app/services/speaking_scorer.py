@@ -25,13 +25,21 @@ from app.schemas.speaking_grading import (
 )
 
 _FLUENCY_LIMITATIONS = {
-    "LEXICAL_DISFLUENCY_PROXIES", "WORD_TIMING_INCOMPLETE", "RECOVERY_GAP_BOUNDARIES_UNAVAILABLE",
+    "LEXICAL_DISFLUENCY_PROXIES",
+    "WORD_TIMING_INCOMPLETE",
+    "RECOVERY_GAP_BOUNDARIES_UNAVAILABLE",
 }
 _PR_LIMITATIONS = {
-    "PHONEME_ALIGNMENT_UNAVAILABLE", "LINGUISTIC_STRESS_UNAVAILABLE",
-    "LISTENER_EFFORT_UNAVAILABLE", "ASR_CONFIDENCE_PROXY_ONLY", "PITCH_ENERGY_PROXIES",
-    "RECOVERY_GAP_BOUNDARIES_UNAVAILABLE", "ALIGNMENT_INCOMPLETE", "AUDIO_UNAVAILABLE",
-    "AUDIO_QUALITY_UNAVAILABLE", "LOW_EVIDENCE",
+    "PHONEME_ALIGNMENT_UNAVAILABLE",
+    "LINGUISTIC_STRESS_UNAVAILABLE",
+    "LISTENER_EFFORT_UNAVAILABLE",
+    "ASR_CONFIDENCE_PROXY_ONLY",
+    "PITCH_ENERGY_PROXIES",
+    "RECOVERY_GAP_BOUNDARIES_UNAVAILABLE",
+    "ALIGNMENT_INCOMPLETE",
+    "AUDIO_UNAVAILABLE",
+    "AUDIO_QUALITY_UNAVAILABLE",
+    "LOW_EVIDENCE",
 }
 
 
@@ -40,19 +48,30 @@ def build_attempt_evidence(responses: Iterable[Mapping]) -> SpeakingAttemptEvide
     rows = []
     for response in responses:
         # The outer allowlist is deliberate: ORM/runtime dictionaries also hold notes/paths.
-        row = {key: response[key] for key in SpeakingResponseEvidence.model_fields if key in response}
+        row = {
+            key: response[key] for key in SpeakingResponseEvidence.model_fields if key in response
+        }
         feature = row.get("features")
         if feature is not None and hasattr(feature, "model_dump"):
-            row["features"] = feature.model_dump(exclude={"quality": {"metrics": {
-                "silence_seconds", "speech_ratio", "silence_ratio",
-            }}})
+            row["features"] = feature.model_dump(
+                exclude={
+                    "quality": {
+                        "metrics": {
+                            "silence_seconds",
+                            "speech_ratio",
+                            "silence_ratio",
+                        }
+                    }
+                }
+            )
         elif isinstance(feature, dict):
             # Persisted P5 dumps can contain these computed presentation fields.
             # Remove only those known derivatives; unknown nested fields still fail validation.
             quality = feature.get("quality")
             if isinstance(quality, dict) and isinstance(quality.get("metrics"), dict):
                 metrics = {
-                    key: value for key, value in quality["metrics"].items()
+                    key: value
+                    for key, value in quality["metrics"].items()
                     if key not in {"silence_seconds", "speech_ratio", "silence_ratio"}
                 }
                 row["features"] = {**feature, "quality": {**quality, "metrics": metrics}}
@@ -70,7 +89,8 @@ def _pronunciation(row):
 
 
 def criterion_evidence(
-    criterion: SpeakingCriterion, evidence: SpeakingAttemptEvidence,
+    criterion: SpeakingCriterion,
+    evidence: SpeakingAttemptEvidence,
 ) -> CriterionEvidence:
     if criterion not in CRITERIA:
         raise ValueError("Unsupported Speaking criterion")
@@ -78,18 +98,30 @@ def criterion_evidence(
     responses = []
     for row in evidence.responses:
         values = {
-            key: getattr(row, key) for key in (
-                "response_id", "prompt_id", "part_number", "prompt_type", "prompt_text",
-                "cue_points", "verbatim", "clean", "words",
+            key: getattr(row, key)
+            for key in (
+                "response_id",
+                "prompt_id",
+                "part_number",
+                "prompt_type",
+                "prompt_text",
+                "cue_points",
+                "verbatim",
+                "clean",
+                "words",
             )
         }
         if criterion == "gra":
             # Punctuation/line boundaries only: preserve candidate words and grammar.
             # The final item contains the remaining text when the 200-item cap is reached.
             values["utterances"] = [
-                segment.strip() for segment in re.split(
-                    r"(?<=[.!?])\s+|\n+", row.verbatim, maxsplit=199,
-                ) if segment.strip()
+                segment.strip()
+                for segment in re.split(
+                    r"(?<=[.!?])\s+|\n+",
+                    row.verbatim,
+                    maxsplit=199,
+                )
+                if segment.strip()
             ]
         if row.features:
             values["quality_state"] = row.features.quality.state
@@ -127,12 +159,16 @@ def pronunciation_assessable(evidence: SpeakingAttemptEvidence) -> bool:
         # alignment. Neither transcript-only confidence nor RMS alone is sufficient.
         if (
             pronunciation.acoustic_frame_count < 2
-            or pronunciation.rms is None or pronunciation.rms <= 0
+            or pronunciation.rms is None
+            or pronunciation.rms <= 0
             or pronunciation.energy_cv is None
             or not (
                 pronunciation.word_duration_cv is not None
                 or pronunciation.word_energy_cv is not None
-                or (pronunciation.voiced_pitch_frames > 0 and pronunciation.pitch_mean_hz is not None)
+                or (
+                    pronunciation.voiced_pitch_frames > 0
+                    and pronunciation.pitch_mean_hz is not None
+                )
             )
         ):
             return False
@@ -146,7 +182,9 @@ def speaking_overall(criteria: Mapping[str, float | Decimal | None]):
     validated = []
     for criterion in CRITERIA:
         value = criteria[criterion]
-        validated.append(CriterionBandScore(score=float(value) if isinstance(value, Decimal) else value))
+        validated.append(
+            CriterionBandScore(score=float(value) if isinstance(value, Decimal) else value)
+        )
     raw_mean = sum(Decimal(str(item.score)) for item in validated) / Decimal(4)
     return float(raw_mean), float(round_to_half(raw_mean))
 
@@ -175,7 +213,9 @@ def _validate_output(completion, schema, maximum_bytes):
         raise _InvalidOutput()
     try:
         value = json.loads(
-            completion.text, object_pairs_hook=_no_duplicates, parse_constant=_invalid_constant,
+            completion.text,
+            object_pairs_hook=_no_duplicates,
+            parse_constant=_invalid_constant,
         )
         return schema.model_validate(value)
     except (ValueError, ValidationError, TypeError, RecursionError):
@@ -184,7 +224,11 @@ def _validate_output(completion, schema, maximum_bytes):
 
 class SpeakingScorer:
     def __init__(
-        self, provider: SpeakingLLMProvider, *, score_max_tokens=192, feedback_max_tokens=1024,
+        self,
+        provider: SpeakingLLMProvider,
+        *,
+        score_max_tokens=192,
+        feedback_max_tokens=1024,
     ):
         if type(score_max_tokens) is not int or not 128 <= score_max_tokens <= 256:
             raise ValueError("Invalid Speaking score output cap")
@@ -195,7 +239,9 @@ class SpeakingScorer:
         self.feedback_options = CompletionOptions(max_tokens=feedback_max_tokens)
 
     async def score_criterion(
-        self, criterion: SpeakingCriterion, evidence: SpeakingAttemptEvidence,
+        self,
+        criterion: SpeakingCriterion,
+        evidence: SpeakingAttemptEvidence,
         checkpoint: Callable[[CriterionResult], Awaitable[None]],
     ) -> CriterionResult:
         projected = criterion_evidence(criterion, evidence)
@@ -205,13 +251,19 @@ class SpeakingScorer:
             for row in evidence.responses
         ):
             return CriterionResult(
-                criterion=criterion, status="UNAVAILABLE", feedback_status="UNAVAILABLE",
-                error_code="SPEAKING_AUDIO_UNASSESSABLE", evidence=projected,
+                criterion=criterion,
+                status="UNAVAILABLE",
+                feedback_status="UNAVAILABLE",
+                error_code="SPEAKING_AUDIO_UNASSESSABLE",
+                evidence=projected,
             )
         if criterion == "pr" and not pronunciation_assessable(evidence):
             return CriterionResult(
-                criterion=criterion, status="UNAVAILABLE", feedback_status="UNAVAILABLE",
-                error_code="SPEAKING_PR_UNASSESSABLE", evidence=projected,
+                criterion=criterion,
+                status="UNAVAILABLE",
+                feedback_status="UNAVAILABLE",
+                error_code="SPEAKING_PR_UNASSESSABLE",
+                evidence=projected,
             )
         for repair in (False, True):
             messages = [
@@ -220,12 +272,17 @@ class SpeakingScorer:
             ]
             try:
                 completion = await self.provider.complete(
-                    messages, CriterionBandScore.model_json_schema(), options=self.score_options,
+                    messages,
+                    CriterionBandScore.model_json_schema(),
+                    options=self.score_options,
                 )
             except Exception:
                 return CriterionResult(
-                    criterion=criterion, status="FAILED", feedback_status="UNAVAILABLE",
-                    error_code="SPEAKING_AI_PROVIDER_FAILED", evidence=projected,
+                    criterion=criterion,
+                    status="FAILED",
+                    feedback_status="UNAVAILABLE",
+                    error_code="SPEAKING_AI_PROVIDER_FAILED",
+                    evidence=projected,
                 )
             try:
                 score = _validate_output(completion, CriterionBandScore, 1024)
@@ -233,18 +290,26 @@ class SpeakingScorer:
             except _InvalidOutput:
                 if repair:
                     return CriterionResult(
-                        criterion=criterion, status="FAILED", feedback_status="UNAVAILABLE",
-                        error_code="SPEAKING_AI_INVALID_SCORE", evidence=projected,
+                        criterion=criterion,
+                        status="FAILED",
+                        feedback_status="UNAVAILABLE",
+                        error_code="SPEAKING_AI_INVALID_SCORE",
+                        evidence=projected,
                     )
         stored = CriterionResult(
-            criterion=criterion, status="SCORE_READY", score=score.score, evidence=projected,
+            criterion=criterion,
+            status="SCORE_READY",
+            score=score.score,
+            evidence=projected,
         )
         # Do not catch checkpoint failures: no feedback may start before durable commit.
         await checkpoint(stored)
         return await self.feedback_for_scored(criterion, evidence, stored)
 
     async def feedback_for_scored(
-        self, criterion: SpeakingCriterion, evidence: SpeakingAttemptEvidence,
+        self,
+        criterion: SpeakingCriterion,
+        evidence: SpeakingAttemptEvidence,
         stored: CriterionResult,
     ) -> CriterionResult:
         """Resume after a worker restart without re-scoring a checkpointed band."""
@@ -254,26 +319,42 @@ class SpeakingScorer:
             raise ValueError("Stored Speaking score evidence does not match")
         messages = [
             {"role": "system", "content": system_prompt(criterion, feedback=True)},
-            {"role": "user", "content": json.dumps({
-                "persisted_score": stored.score,
-                "evidence": projected.model_dump(mode="json", exclude_none=True),
-            })},
+            {
+                "role": "user",
+                "content": json.dumps(
+                    {
+                        "persisted_score": stored.score,
+                        "evidence": projected.model_dump(mode="json", exclude_none=True),
+                    }
+                ),
+            },
         ]
         try:
             completion = await self.provider.complete(
-                messages, CriterionFeedback.model_json_schema(), options=self.feedback_options,
+                messages,
+                CriterionFeedback.model_json_schema(),
+                options=self.feedback_options,
             )
             feedback = _validate_output(completion, CriterionFeedback, 12000)
         except Exception:
             return CriterionResult(
-                criterion=criterion, status="FEEDBACK_FAILED", score=stored.score,
-                feedback_status="FAILED", error_code="SPEAKING_AI_FEEDBACK_FAILED",
+                criterion=criterion,
+                status="FEEDBACK_FAILED",
+                score=stored.score,
+                feedback_status="FAILED",
+                error_code="SPEAKING_AI_FEEDBACK_FAILED",
                 feedback=CriterionFeedback(
                     feedback="Your score was saved. Feedback is temporarily unavailable.",
-                    strengths=[], improvements=[],
-                ), evidence=projected,
+                    strengths=[],
+                    improvements=[],
+                ),
+                evidence=projected,
             )
         return CriterionResult(
-            criterion=criterion, status="COMPLETED", score=stored.score,
-            feedback_status="READY", feedback=feedback, evidence=projected,
+            criterion=criterion,
+            status="COMPLETED",
+            score=stored.score,
+            feedback_status="READY",
+            feedback=feedback,
+            evidence=projected,
         )

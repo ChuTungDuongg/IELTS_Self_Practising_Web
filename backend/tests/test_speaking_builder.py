@@ -496,7 +496,9 @@ def test_speaking_attempt_and_assignment_require_prompt_timers():
             timer={"mode": "COUNTDOWN", "duration_seconds": 600},
         )
     with pytest.raises(ValidationError):
-        AssignmentStart(mode="MODULE", module="SPEAKING", timer={"mode": "COUNTDOWN", "duration_seconds": 600})
+        AssignmentStart(
+            mode="MODULE", module="SPEAKING", timer={"mode": "COUNTDOWN", "duration_seconds": 600}
+        )
     attempt = AttemptCreate(test_version_id=uuid4(), module="SPEAKING", timer={"mode": "COUNT_UP"})
     assignment = AssignmentStart(mode="MODULE", module="SPEAKING", timer={"mode": "COUNT_UP"})
     assert attempt.speaking_mode == assignment.speaking_mode == "PRACTICE"

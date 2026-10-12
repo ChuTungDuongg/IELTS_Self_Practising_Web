@@ -6,8 +6,10 @@ PROMPT_VERSION = "speaking-score-v1"
 RUBRIC_VERSION = "speaking-rubric-v1"
 
 CRITERION_NAMES = {
-    "fc": "Fluency and Coherence", "lr": "Lexical Resource",
-    "gra": "Grammatical Range and Accuracy", "pr": "Pronunciation",
+    "fc": "Fluency and Coherence",
+    "lr": "Lexical Resource",
+    "gra": "Grammatical Range and Accuracy",
+    "pr": "Pronunciation",
 }
 
 # Whole-band anchors are descriptor semantics, not feature-to-band thresholds.
@@ -61,30 +63,32 @@ ANCHORS = {
 
 EVIDENCE_RULES = {
     "fc": "Use verbatim disfluencies, word timing, fluency facts and coherent idea development. "
-          "Do not treat the clean transcript as a fluent performance.",
+    "Do not treat the clean transcript as a fluent performance.",
     "lr": "Use the full verbatim and clean transcripts for lexical range, precision, collocation "
-          "and paraphrasing. Judge spoken production rather than topic knowledge.",
+    "and paraphrasing. Judge spoken production rather than topic knowledge.",
     "gra": "Use the full candidate transcripts for structural range and accuracy across utterances. "
-           "The supplied utterances are bounded punctuation-based segments of VERBATIM speech; "
-           "they preserve candidate wording and errors, and do not guarantee spoken sentence breaks. "
-           "Do not correct their language before assessing it.",
+    "The supplied utterances are bounded punctuation-based segments of VERBATIM speech; "
+    "they preserve candidate wording and errors, and do not guarantee spoken sentence breaks. "
+    "Do not correct their language before assessing it.",
     "pr": "Use only the supplied audio-derived acoustic, prosodic and alignment evidence for "
-          "pronunciation judgments. Transcript vocabulary or spelling cannot prove pronunciation. "
-          "Energy/pitch and ASR-confidence are limited proxies: do not invent phoneme substitutions, "
-          "linguistic stress accuracy or listener-effort observations. Respect missing measurements "
-          "and LOW_EVIDENCE caveats; accent identity must not determine a band.",
+    "pronunciation judgments. Transcript vocabulary or spelling cannot prove pronunciation. "
+    "Energy/pitch and ASR-confidence are limited proxies: do not invent phoneme substitutions, "
+    "linguistic stress accuracy or listener-effort observations. Respect missing measurements "
+    "and LOW_EVIDENCE caveats; accent identity must not determine a band.",
 }
 
 
 def system_prompt(criterion: SpeakingCriterion, *, feedback=False, repair=False):
     if criterion not in CRITERION_NAMES:
         raise ValueError("Unsupported Speaking criterion")
-    anchors = "\n".join(f"{band}: {description}" for band, description in ANCHORS[criterion].items())
+    anchors = "\n".join(
+        f"{band}: {description}" for band, description in ANCHORS[criterion].items()
+    )
     stage = (
         "Explain the persisted criterion score concisely. Return only JSON with feedback, strengths "
         "and improvements. Never output a score field, new band, private reasoning or chain-of-thought."
-        if feedback else
-        'Return exactly one tiny JSON object: {"score": number}. No explanation or other fields. '
+        if feedback
+        else 'Return exactly one tiny JSON object: {"score": number}. No explanation or other fields. '
         "Valid numbers are 0 through 9 in increments of 0.5."
     )
     return (
@@ -99,5 +103,9 @@ def system_prompt(criterion: SpeakingCriterion, *, feedback=False, repair=False)
         "Use whole-band anchors and half-band interpolation where performance lies between anchors. "
         "No arbitrary offsets, band caps, or metric-to-band rules.\n"
         f"{EVIDENCE_RULES[criterion]}\n{anchors}\n{stage}"
-        + ("\nRepair the output shape once; return a valid score-only JSON object." if repair else "")
+        + (
+            "\nRepair the output shape once; return a valid score-only JSON object."
+            if repair
+            else ""
+        )
     )

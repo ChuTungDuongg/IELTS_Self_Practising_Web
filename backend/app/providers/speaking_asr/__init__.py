@@ -12,7 +12,11 @@ def provider_identity(settings):
             "language": settings.speaking_asr_language,
             # Endpoint rotation and proxy secrets are transport details, not model identity.
             "config_hash": fingerprint(
-                [settings.speaking_asr_model_revision, settings.speaking_asr_version, "wav16k-s16le"]
+                [
+                    settings.speaking_asr_model_revision,
+                    settings.speaking_asr_version,
+                    "wav16k-s16le",
+                ]
             ),
         }
     return {

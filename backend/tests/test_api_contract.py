@@ -190,23 +190,35 @@ def test_published_speaking_summary_includes_ordered_authored_prompts() -> None:
     part_two.prompts.extend(
         [
             SpeakingPrompt(
-                id=uuid4(), order_index=1, prompt_type=SpeakingPromptType.FOLLOW_UP,
-                prompt_text="Would you visit again?", preparation_seconds=0,
-                response_seconds=60, config_json={},
+                id=uuid4(),
+                order_index=1,
+                prompt_type=SpeakingPromptType.FOLLOW_UP,
+                prompt_text="Would you visit again?",
+                preparation_seconds=0,
+                response_seconds=60,
+                config_json={},
             ),
             SpeakingPrompt(
-                id=uuid4(), order_index=0, prompt_type=SpeakingPromptType.LONG_TURN,
-                prompt_text="Describe a fictional garden.", preparation_seconds=60,
-                response_seconds=120, config_json={"cue_points": ["Where it is"]},
+                id=uuid4(),
+                order_index=0,
+                prompt_type=SpeakingPromptType.LONG_TURN,
+                prompt_text="Describe a fictional garden.",
+                preparation_seconds=60,
+                response_seconds=120,
+                config_json={"cue_points": ["Where it is"]},
             ),
         ]
     )
     part_one = SpeakingPart(id=uuid4(), part_number=1, title="Interview", order_index=0)
     part_one.prompts.append(
         SpeakingPrompt(
-            id=uuid4(), order_index=0, prompt_type=SpeakingPromptType.SHORT_ANSWER,
-            prompt_text="Do you study?", preparation_seconds=0,
-            response_seconds=60, config_json={},
+            id=uuid4(),
+            order_index=0,
+            prompt_type=SpeakingPromptType.SHORT_ANSWER,
+            prompt_text="Do you study?",
+            preparation_seconds=0,
+            response_seconds=60,
+            config_json={},
         )
     )
     module.speaking_parts.extend([part_two, part_one])
@@ -216,10 +228,13 @@ def test_published_speaking_summary_includes_ordered_authored_prompts() -> None:
     speaking = summary["modules"][0]
     assert speaking["question_count"] == 3
     assert [(part["part_number"], part["title"]) for part in speaking["speaking_parts"]] == [
-        (1, "Interview"), (2, "Long turn")
+        (1, "Interview"),
+        (2, "Long turn"),
     ]
     prompts = speaking["speaking_parts"][1]["prompts"]
-    assert [(prompt["order_index"], prompt["prompt_type"], prompt["prompt_text"]) for prompt in prompts] == [
+    assert [
+        (prompt["order_index"], prompt["prompt_type"], prompt["prompt_text"]) for prompt in prompts
+    ] == [
         (0, "LONG_TURN", "Describe a fictional garden."),
         (1, "FOLLOW_UP", "Would you visit again?"),
     ]

@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import type { SpeakingReviewData, SpeakingState } from "../../src/lib/api/speaking";
 import {
   apiBase, captureBrowserErrors, cleanUpFixture, createPublishedExam,
   registerFixtureLearner, signInFixtureAdmin,
@@ -6,15 +7,16 @@ import {
 
 type Session = {
   status: string;
+  next_module: string | null;
   attempts: Array<{ attempt_id: string; module: string; status: string }>;
 };
 
-test("completes fictional Full Mock in Listening, Reading, Writing order and unlocks review", async ({ page, request }) => {
+test("completes fictional Full Mock in Listening, Reading, Writing, Speaking order and unlocks review", async ({ page, request }) => {
   test.skip(!process.env.E2E_ADMIN_EMAIL || !process.env.E2E_ADMIN_PASSWORD,
     "Set E2E_ADMIN_EMAIL and E2E_ADMIN_PASSWORD for the local bootstrap administrator.");
   const assertNoBrowserErrors = captureBrowserErrors(page);
   await signInFixtureAdmin(request);
-  const exam = await createPublishedExam(request, ["LISTENING", "READING", "WRITING"]);
+  const exam = await createPublishedExam(request, ["LISTENING", "READING", "WRITING", "SPEAKING"]);
   let learnerId: string | undefined;
   try {
     learnerId = (await registerFixtureLearner(page)).id;
@@ -77,8 +79,74 @@ test("completes fictional Full Mock in Listening, Reading, Writing order and unl
     await page.getByRole("textbox", { name: "Response for Task 2" }).fill("Fictional public gardens give residents a peaceful shared place.");
     await page.getByRole("button", { name: "Submit Writing" }).click();
     await expect(page).toHaveURL(`/test-session/${sessionId}`);
+    await expect(page.getByRole("heading", { name: "Writing complete" })).toBeVisible();
+    expect(await sessionState()).toMatchObject({ status: "IN_PROGRESS", next_module: "SPEAKING" });
+    const writingCompleteLocked = await page.request.get(`${apiBase}/attempts/${listeningId}/listening-review`);
+    expect(writingCompleteLocked.status()).toBe(409);
+
+    await page.getByRole("button", { name: "Continue to Speaking" }).click();
+    await expect(page).toHaveURL(/\/attempt\/[0-9a-f-]+$/);
+    await expect(page.locator(".speaking-runner")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "What is a favourite place in your fictional town?" })).toBeVisible();
+    const speakingId = page.url().split("/").at(-1)!;
+    expect((await sessionState()).attempts.map((attempt) => attempt.module)).toEqual(["LISTENING", "READING", "WRITING", "SPEAKING"]);
+    const speakingLocked = await page.request.get(`${apiBase}/speaking-attempts/${speakingId}/review`);
+    expect(speakingLocked.status()).toBe(409);
+
+    const speakingState = async (): Promise<SpeakingState> => {
+      const response = await page.request.get(`${apiBase}/speaking-attempts/${speakingId}/state`);
+      expect(response.ok(), await response.text()).toBe(true);
+      return await response.json() as SpeakingState;
+    };
+    let state = await speakingState();
+    // Silent responses exercise the real lifecycle without microphone devices or AI services.
+    for (const expectedPrompt of [
+      { part_number: 1, prompt_type: "SHORT_ANSWER" },
+      { part_number: 2, prompt_type: "LONG_TURN" },
+      { part_number: 2, prompt_type: "FOLLOW_UP" },
+      { part_number: 3, prompt_type: "SHORT_ANSWER" },
+    ]) {
+      expect(state).toMatchObject({ phase: "QUESTION_ENTER", mode: "EXAM", can_retry: false, can_replay: false });
+      expect(state.current_prompt).toMatchObject(expectedPrompt);
+      const promptId = state.current_prompt!.id;
+      const begun = await page.request.post(`${apiBase}/speaking-attempts/${speakingId}/begin`, {
+        data: { prompt_id: promptId },
+      });
+      expect(begun.ok(), await begun.text()).toBe(true);
+      state = await begun.json() as SpeakingState;
+      const takeNumber = state.take_number!;
+      if (expectedPrompt.prompt_type === "LONG_TURN") {
+        expect(state.phase).toBe("PREPARING");
+        expect(state.phase_deadline_at).toBeTruthy();
+      }
+      // Observe server phase transitions; never fast-forward browser time or override deadlines.
+      await expect.poll(async () => {
+        state = await speakingState();
+        return state.phase;
+      }, { timeout: 10_000, message: "Speaking recording must wait for server preparation and count-in" }).toBe("RECORDING");
+      expect(state).toMatchObject({ can_retry: false, can_replay: false });
+      const finished = await page.request.post(`${apiBase}/speaking-attempts/${speakingId}/finish`, {
+        data: { prompt_id: promptId, take_number: takeNumber, completion_reason: "USER_DONE" },
+      });
+      expect(finished.ok(), await finished.text()).toBe(true);
+      state = await finished.json() as SpeakingState;
+    }
+    expect(state.phase).toBe("COMPLETED");
+    await page.goto(`/test-session/${sessionId}`);
     await expect(page.getByText("Full Mock complete")).toBeVisible();
     await expect.poll(async () => (await sessionState()).status).toBe("COMPLETED");
+    expect((await sessionState()).attempts.map((attempt) => [attempt.module, attempt.status])).toEqual([
+      ["LISTENING", "SUBMITTED"], ["READING", "SUBMITTED"], ["WRITING", "SUBMITTED"], ["SPEAKING", "SUBMITTED"],
+    ]);
+    const speakingUnlocked = await page.request.get(`${apiBase}/speaking-attempts/${speakingId}/review`);
+    expect(speakingUnlocked.ok(), await speakingUnlocked.text()).toBe(true);
+    const speakingReview = await speakingUnlocked.json() as SpeakingReviewData;
+    expect(speakingReview.parts.map((part) => part.responses.map((response) => response.prompt.prompt_type)))
+      .toEqual([["SHORT_ANSWER"], ["LONG_TURN", "FOLLOW_UP"], ["SHORT_ANSWER"]]);
+    for (const response of speakingReview.parts.flatMap((part) => part.responses)) {
+      expect(response.response).toMatchObject({ status: "COMPLETED", locked: true, completion_reason: "USER_DONE" });
+      expect(response.segments).toEqual([]);
+    }
     const unlocked = await page.request.get(`${apiBase}/attempts/${listeningId}/listening-review`);
     expect(unlocked.ok()).toBe(true);
     const unlockedPage = await page.request.get(`${new URL(page.url()).origin}/review/${listeningId}`);
@@ -89,6 +157,7 @@ test("completes fictional Full Mock in Listening, Reading, Writing order and unl
     const completedCard = mockHistory.locator(".history-group-card").filter({ hasText: exam.title });
     await expect(completedCard).toContainText("Full Mock");
     await expect(completedCard.getByRole("link", { name: "Review Listening" })).toBeVisible();
+    await expect(completedCard.getByRole("link", { name: "Review Speaking" })).toBeVisible();
     await completedCard.getByRole("link", { name: "Review Listening" }).click();
     await expect(page).toHaveURL(`/review/${listeningId}`);
     await expect(page.locator(".listening-review")).toBeVisible();

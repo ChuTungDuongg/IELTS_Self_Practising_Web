@@ -135,8 +135,7 @@ class AttemptScopeGuard:
                 label = (
                     f"Prompt {unit.order_index + 1}"
                     if kind == "SPEAKING_PROMPT"
-                    else
-                    f"Task {unit.task_number}"
+                    else f"Task {unit.task_number}"
                     if kind == "WRITING_TASK"
                     else f"{'Passage' if kind == 'READING_PASSAGE' else 'Section'} {unit.order_index + 1}"
                 )

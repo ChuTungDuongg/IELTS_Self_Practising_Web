@@ -118,9 +118,7 @@ async def test_remote_sends_only_bounded_normalized_wav_and_validates_result(tmp
     assert "fictional-secret" not in result.model_dump_json()
 
 
-@pytest.mark.parametrize(
-    "case", ["webm", "oversize", "stereo", "wrong_rate", "duration"]
-)
+@pytest.mark.parametrize("case", ["webm", "oversize", "stereo", "wrong_rate", "duration"])
 async def test_remote_rejects_non_normalized_or_oversized_input_before_network(tmp_path, case):
     calls = []
 
@@ -134,7 +132,9 @@ async def test_remote_rejects_non_normalized_or_oversized_input_before_network(t
     elif case == "oversize":
         audio.path.write_bytes(b"x" * (MAX_WAV_BYTES + 1))
     elif case == "duration":
-        audio = NormalizedAudio(audio.path, audio.source_audio_fingerprint, "pcm-v1", "b" * 64, 2000)
+        audio = NormalizedAudio(
+            audio.path, audio.source_audio_fingerprint, "pcm-v1", "b" * 64, 2000
+        )
     else:
         output = io.BytesIO()
         with wave.open(output, "wb") as wav:
@@ -144,7 +144,9 @@ async def test_remote_rejects_non_normalized_or_oversized_input_before_network(t
             wav.writeframes(b"\x00\x20" * 16000)
         audio.path.write_bytes(output.getvalue())
     with pytest.raises(AppError) as error:
-        await ModalASRProvider(modal_settings(), transport=httpx.MockTransport(handler)).transcribe(audio)
+        await ModalASRProvider(modal_settings(), transport=httpx.MockTransport(handler)).transcribe(
+            audio
+        )
     assert error.value.code == "SPEAKING_AUDIO_UNASSESSABLE"
     assert not calls
 
@@ -155,8 +157,16 @@ async def test_remote_rejects_non_normalized_or_oversized_input_before_network(t
         (httpx.Response(503, text="private path and secret"), "SPEAKING_ASR_UNAVAILABLE"),
         (httpx.Response(422, json={"detail": "No speech"}), "ASR_UNUSABLE"),
         (httpx.Response(200, content=b"not json"), "SPEAKING_ASR_UNAVAILABLE"),
-        (httpx.Response(200, json=response_body(words=[{"word": "bad", "start": -1, "end": 1}])), "SPEAKING_ASR_UNAVAILABLE"),
-        (httpx.Response(200, json=response_body(words=[{"word": "bad", "start": 0.5, "end": 0.1}])), "SPEAKING_ASR_UNAVAILABLE"),
+        (
+            httpx.Response(200, json=response_body(words=[{"word": "bad", "start": -1, "end": 1}])),
+            "SPEAKING_ASR_UNAVAILABLE",
+        ),
+        (
+            httpx.Response(
+                200, json=response_body(words=[{"word": "bad", "start": 0.5, "end": 0.1}])
+            ),
+            "SPEAKING_ASR_UNAVAILABLE",
+        ),
         (httpx.Response(200, json=response_body(model="wrong")), "SPEAKING_ASR_UNAVAILABLE"),
     ],
 )
@@ -167,9 +177,9 @@ async def test_remote_failures_are_safe_and_never_log_private_bodies(
         return response
 
     with caplog.at_level(logging.DEBUG), pytest.raises(AppError) as error:
-        await ModalASRProvider(
-            modal_settings(), transport=httpx.MockTransport(handler)
-        ).transcribe(normalized(tmp_path))
+        await ModalASRProvider(modal_settings(), transport=httpx.MockTransport(handler)).transcribe(
+            normalized(tmp_path)
+        )
     assert error.value.code == code
     assert "private path" not in error.value.message + caplog.text
     assert "fictional-secret" not in error.value.message + caplog.text
@@ -207,7 +217,16 @@ async def test_remote_network_error_and_redirect_fail_closed(tmp_path):
     assert all(request.url.host == "fictional-asr.modal.run" for request in requests)
 
 
-@pytest.mark.parametrize("url", ["http://asr.modal.run", "https://evil.example", "https://asr.modal.run/redirect", "https://user:secret@asr.modal.run", "https://[broken"])
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://asr.modal.run",
+        "https://evil.example",
+        "https://asr.modal.run/redirect",
+        "https://user:secret@asr.modal.run",
+        "https://[broken",
+    ],
+)
 def test_remote_rejects_untrusted_endpoint_before_credentials_are_sent(url):
     settings = modal_settings().model_copy(update={"speaking_asr_base_url": url})
     with pytest.raises(AppError) as error:
@@ -254,7 +273,16 @@ def test_service_has_pinned_separate_gpu_and_proxy_auth(service):
 
 @pytest.mark.parametrize(
     "case,status",
-    [("valid", 200), ("webm", 422), ("stereo", 422), ("rate", 422), ("size", 413), ("mime", 415), ("empty", 422), ("failure", 503)],
+    [
+        ("valid", 200),
+        ("webm", 422),
+        ("stereo", 422),
+        ("rate", 422),
+        ("size", 413),
+        ("mime", 415),
+        ("empty", 422),
+        ("failure", 503),
+    ],
 )
 async def test_service_endpoint_validates_before_inference_and_cleans_temp(
     service, monkeypatch, tmp_path, caplog, case, status
@@ -289,7 +317,9 @@ async def test_service_endpoint_validates_before_inference_and_cleans_temp(
             content=(
                 b"raw-webm"
                 if case == "webm"
-                else wav_bytes(channels=2 if case == "stereo" else 1, rate=8000 if case == "rate" else 16000)
+                else wav_bytes(
+                    channels=2 if case == "stereo" else 1, rate=8000 if case == "rate" else 16000
+                )
             ),
             headers={"Content-Type": "audio/webm" if case == "mime" else "audio/wav"},
         )

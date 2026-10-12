@@ -40,7 +40,9 @@ def _normalized_bytes(audio: NormalizedAudio, maximum_seconds: int) -> bytes:
                 raise ValueError("Invalid normalized WAV")
         return content
     except (OSError, ValueError, EOFError, wave.Error):
-        raise AppError("SPEAKING_AUDIO_UNASSESSABLE", "Normalized audio is unavailable.", 409) from None
+        raise AppError(
+            "SPEAKING_AUDIO_UNASSESSABLE", "Normalized audio is unavailable.", 409
+        ) from None
 
 
 class ModalASRProvider:
@@ -66,7 +68,9 @@ class ModalASRProvider:
         except ValueError:
             valid = False
         if not valid:
-            raise AppError("SPEAKING_ASR_UNAVAILABLE", "Remote transcription is not configured.", 503)
+            raise AppError(
+                "SPEAKING_ASR_UNAVAILABLE", "Remote transcription is not configured.", 503
+            )
         self.endpoint = settings.speaking_asr_base_url.rstrip("/") + "/transcribe"
         self.timeout = max(5.0, float(settings.speaking_processing_timeout_seconds) - 5.0)
 
@@ -89,7 +93,9 @@ class ModalASRProvider:
         except AppError:
             raise
         except (httpx.HTTPError, TimeoutError, ValueError, ValidationError, json.JSONDecodeError):
-            raise AppError("SPEAKING_ASR_UNAVAILABLE", "Remote transcription is unavailable.", 503) from None
+            raise AppError(
+                "SPEAKING_ASR_UNAVAILABLE", "Remote transcription is unavailable.", 503
+            ) from None
 
     async def _request(self, content: bytes) -> bytes:
         headers = {
@@ -100,11 +106,15 @@ class ModalASRProvider:
         async with httpx.AsyncClient(
             timeout=self.timeout, transport=self.transport, follow_redirects=False, trust_env=False
         ) as client:
-            async with client.stream("POST", self.endpoint, content=content, headers=headers) as response:
+            async with client.stream(
+                "POST", self.endpoint, content=content, headers=headers
+            ) as response:
                 if response.status_code == 422:
                     raise AppError("ASR_UNUSABLE", "Transcription found no usable speech.", 409)
                 if response.status_code != 200:
-                    raise AppError("SPEAKING_ASR_UNAVAILABLE", "Remote transcription is unavailable.", 503)
+                    raise AppError(
+                        "SPEAKING_ASR_UNAVAILABLE", "Remote transcription is unavailable.", 503
+                    )
                 payload = bytearray()
                 async for chunk in response.aiter_bytes():
                     payload.extend(chunk)

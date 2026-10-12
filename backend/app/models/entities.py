@@ -232,7 +232,7 @@ class TestSession(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     module_order_json: Mapped[list[str]] = mapped_column(
         JSONB,
         default=lambda: ["LISTENING", "READING", "WRITING"],
-        server_default=text("'[\"LISTENING\",\"READING\",\"WRITING\"]'::jsonb"),
+        server_default=text('\'["LISTENING","READING","WRITING"]\'::jsonb'),
         nullable=False,
     )
     status: Mapped[TestSessionStatus] = mapped_column(

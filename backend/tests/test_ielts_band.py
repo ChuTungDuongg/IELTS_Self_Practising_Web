@@ -95,10 +95,15 @@ def test_frozen_legacy_overall_requires_three_bands_and_rounds_once(
     assert legacy_three_skill_overall_band(*scores) == expected
 
 
-@pytest.mark.parametrize(("scores", "expected"), [
-    ((7, 7.5, 6.5, 7), 7), ((7, 7, 7.5, 7.5), 7.5),
-    ((7, 7, 7, None), None), ((None, 7, 7, 7), None),
-])
+@pytest.mark.parametrize(
+    ("scores", "expected"),
+    [
+        ((7, 7.5, 6.5, 7), 7),
+        ((7, 7, 7.5, 7.5), 7.5),
+        ((7, 7, 7, None), None),
+        ((None, 7, 7, 7), None),
+    ],
+)
 def test_project_overall_requires_four_bands_and_rounds_once(scores, expected):
     assert project_overall_band(*scores) == expected
 
