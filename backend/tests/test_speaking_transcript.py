@@ -503,7 +503,8 @@ async def test_optional_adapter_local_only_boundary_with_fake_model(tmp_path, mo
     ]
 
 
-async def test_lifespan_exception_still_stops_both_worker_registries(tmp_path, monkeypatch):
+@pytest.mark.parametrize("failure", ["body", "recovery"])
+async def test_lifespan_exception_still_stops_all_worker_registries(tmp_path, monkeypatch, failure):
     from unittest.mock import AsyncMock
 
     import app.main as main
@@ -512,12 +513,19 @@ async def test_lifespan_exception_still_stops_both_worker_registries(tmp_path, m
     monkeypatch.setattr(main.settings, "storage_root", tmp_path)
     monkeypatch.setattr(media, "cleanup_private_media", AsyncMock())
     monkeypatch.setattr(SpeakingTranscriptWorker, "recover", AsyncMock())
-    speaking, writing = AsyncMock(), AsyncMock()
+    monkeypatch.setattr(
+        main.SpeakingAIWorker,
+        "recover",
+        AsyncMock(side_effect=RuntimeError("fixture shutdown") if failure == "recovery" else None),
+    )
+    grading, speaking, writing = AsyncMock(), AsyncMock(), AsyncMock()
+    monkeypatch.setattr(main, "stop_speaking_ai_workers", grading)
     monkeypatch.setattr(main, "stop_speaking_transcript_workers", speaking)
     monkeypatch.setattr(main, "stop_writing_ai_workers", writing)
     with pytest.raises(RuntimeError, match="fixture shutdown"):
         async with main.lifespan(main.app):
             raise RuntimeError("fixture shutdown")
+    grading.assert_awaited_once()
     speaking.assert_awaited_once()
     writing.assert_awaited_once()
 
@@ -1020,6 +1028,57 @@ async def test_shutdown_and_stale_restart_preserve_checkpoints(durable_transcrip
             ).get(aid, created.run_id)
             assert snapshot.status == "COMPLETED" and len(provider.calls) == 3
     finally:
+        await stop_speaking_transcript_workers()
+
+
+async def test_retry_while_cancelled_transcript_worker_is_cleaning_up_is_not_lost(
+    db_session, tmp_path
+):
+    import asyncio
+
+    from app.services.speaking_transcript_worker import _tasks, stop_speaking_transcript_workers
+
+    aid, _, media = await completed(db_session, tmp_path)
+    settings = Settings(storage_root=tmp_path)
+    service = SpeakingTranscriptService(
+        db_session, db_session.info["current_user_identity"], settings, identity=FakeASR.identity
+    )
+    created = await service.create(aid)
+    entered, cleaning, release = asyncio.Event(), asyncio.Event(), asyncio.Event()
+
+    class Cleanup(FakeASR):
+        blocked = True
+
+        async def transcribe(self, audio):
+            if self.blocked:
+                entered.set()
+                try:
+                    await asyncio.Event().wait()
+                except asyncio.CancelledError:
+                    self.blocked = False
+                    cleaning.set()
+                    await release.wait()
+                    raise
+            return await super().transcribe(audio)
+
+    provider = Cleanup()
+    worker = worker_for(db_session, settings, media.storage, provider)
+    worker.launch(created.run_id)
+    try:
+        await asyncio.wait_for(entered.wait(), 5)
+        previous = _tasks[created.run_id]
+        previous.cancel()
+        await asyncio.wait_for(cleaning.wait(), 5)
+        retry = await service.create(aid)
+        worker.launch(retry.run_id, restart=not retry.existing_active)
+        successor = _tasks[created.run_id]
+        assert successor is not previous
+        release.set()
+        await asyncio.wait_for(successor, 5)
+        assert (await service.get(aid, created.run_id)).status == "COMPLETED"
+        assert len(provider.calls) == 1
+    finally:
+        release.set()
         await stop_speaking_transcript_workers()
 
 

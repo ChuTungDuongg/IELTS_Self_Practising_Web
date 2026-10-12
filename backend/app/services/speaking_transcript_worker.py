@@ -36,10 +36,20 @@ class SpeakingTranscriptWorker:
         self.sessions, self.settings = sessions, settings
         self.provider, self.storage, self.executor = provider, storage, executor
 
-    def launch(self, run_id):
-        if run_id in _tasks and not _tasks[run_id].done():
-            return
-        task = asyncio.create_task(self.execute(run_id), name=f"speaking-transcript-{run_id}")
+    def launch(self, run_id, *, restart=False):
+        previous = _tasks.get(run_id)
+        if previous and not previous.done():
+            if not restart and not previous.cancelling():
+                return
+            if not previous.cancelling():
+                previous.cancel()
+
+        async def execute_after_cleanup():
+            if previous and not previous.done():
+                await asyncio.gather(previous, return_exceptions=True)
+            await self.execute(run_id)
+
+        task = asyncio.create_task(execute_after_cleanup(), name=f"speaking-transcript-{run_id}")
         _tasks[run_id] = task
 
         def discard(done):

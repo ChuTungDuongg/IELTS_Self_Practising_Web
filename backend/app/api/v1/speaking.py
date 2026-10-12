@@ -90,7 +90,7 @@ async def create_transcript_run(
 ):
     result = await SpeakingTranscriptService(session, user, get_settings()).create(attempt_id)
     if not result.cache_hit:
-        worker.launch(result.run_id)
+        worker.launch(result.run_id, restart=not result.existing_active)
     return result
 
 

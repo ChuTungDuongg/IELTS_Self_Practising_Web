@@ -8,6 +8,7 @@ from app.api.v1.router import api_router
 from app.core.config import get_settings
 from app.core.database import SessionFactory
 from app.core.exceptions import AppError, app_error_handler
+from app.services.speaking_ai_worker import SpeakingAIWorker, stop_speaking_ai_workers
 from app.services.speaking_transcript_worker import (
     SpeakingTranscriptWorker,
     stop_speaking_transcript_workers,
@@ -23,13 +24,19 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     (settings.resolved_storage_root / "images").mkdir(parents=True, exist_ok=True)
     from app.services.speaking_media import cleanup_private_media
 
-    await cleanup_private_media()
-    await SpeakingTranscriptWorker(SessionFactory, settings).recover()
     try:
+        await cleanup_private_media()
+        await SpeakingTranscriptWorker(SessionFactory, settings).recover()
+        await SpeakingAIWorker(SessionFactory, settings).recover()
         yield
     finally:
-        await stop_speaking_transcript_workers()
-        await stop_writing_ai_workers()
+        try:
+            await stop_speaking_ai_workers()
+        finally:
+            try:
+                await stop_speaking_transcript_workers()
+            finally:
+                await stop_writing_ai_workers()
 
 
 app = FastAPI(

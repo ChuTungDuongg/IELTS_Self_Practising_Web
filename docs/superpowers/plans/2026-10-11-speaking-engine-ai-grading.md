@@ -436,11 +436,11 @@ git commit -m "Add Speaking content domain model"
 - `Grade with AI` reuses matching transcript run/result or waits on matching active ASR work; it does not launch duplicate transcription.
 - SSE uses monotonic `(run_id, sequence)` events, `Last-Event-ID`/`after` reconciliation, no proxy caching, and browser disconnect never cancels worker. Explicit Stop is the only user cancellation.
 
-- [ ] **Step 1: Add failing persistence/API tests** for cache hit, stale-audio miss, duplicate active run, transcript reuse, worker surviving request/SSE disconnect, explicit cancel, restart/stale-run handling, score checkpoint durability before feedback, and event sequence uniqueness.
-- [ ] **Step 2: Run RED.**
-- [ ] **Step 3: Implement run repository/worker/router modeled on Writing’s durable semantics but in Speaking-specific tables/modules.** Avoid broad Writing refactors.
-- [ ] **Step 4: Run GREEN + Ruff.** No live provider/model.
-- [ ] **Step 5: Commit:** `git commit -m "Add durable Speaking AI grading runs"`.
+- [x] **Step 1: Add failing persistence/API tests** for cache hit, stale-audio miss, duplicate active run, transcript reuse, worker surviving request/SSE disconnect, explicit cancel, restart/stale-run handling, score checkpoint durability before feedback, and event sequence uniqueness.
+- [x] **Step 2: Run RED.**
+- [x] **Step 3: Implement run repository/worker/router modeled on Writing’s durable semantics but in Speaking-specific tables/modules.** Avoid broad Writing refactors.
+- [x] **Step 4: Run GREEN + Ruff.** No live provider/model.
+- [x] **Step 5: Commit:** `git commit -m "Add durable Speaking AI grading runs"`.
 
 ### Task 15: Dynamic AI assessment UI
 

@@ -31,6 +31,26 @@ class Settings(BaseSettings):
     speaking_quality: AudioQualityConfig = Field(default_factory=AudioQualityConfig)
     speaking_pronunciation_enabled: bool = True
     speaking_pronunciation: PronunciationConfig = Field(default_factory=PronunciationConfig)
+    speaking_ai_enabled: bool = False
+    speaking_ai_provider: str | None = Field(default=None, max_length=20)
+    speaking_ai_model: str | None = Field(default=None, max_length=200)
+    speaking_ai_prompt_version: str = Field(
+        default="speaking-score-v1", min_length=1, max_length=80
+    )
+    speaking_ai_rubric_version: str = Field(
+        default="speaking-rubric-v1", min_length=1, max_length=80
+    )
+    speaking_ai_score_max_tokens: int = Field(default=192, ge=128, le=256)
+    speaking_ai_feedback_max_tokens: int = Field(default=1024, ge=256, le=2048)
+    speaking_ai_request_timeout_seconds: float | None = Field(
+        default=None, ge=5, le=600, allow_inf_nan=False
+    )
+    speaking_ai_startup_timeout_seconds: float | None = Field(
+        default=None, ge=5, le=1800, allow_inf_nan=False
+    )
+    speaking_ai_stale_seconds: int = Field(default=300, ge=60, le=1800)
+    speaking_ai_transcript_wait_seconds: int = Field(default=900, ge=5, le=1800)
+    speaking_ai_max_input_characters: int = Field(default=60000, ge=5000, le=200000)
     max_transfer_zip_mb: int = Field(default=300, gt=0)
     max_transfer_uncompressed_mb: int = Field(default=600, gt=0)
     max_transfer_files: int = Field(default=5000, gt=0)
