@@ -4,6 +4,8 @@ from pathlib import Path
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.schemas.speaking_ai import AudioQualityConfig
+
 
 class Settings(BaseSettings):
     app_name: str = "DevWebLocalforIELTS API"
@@ -26,6 +28,7 @@ class Settings(BaseSettings):
     speaking_asr_version: str = Field(default="faster-whisper-v1", min_length=1, max_length=80)
     speaking_asr_language: str = Field(default="en", min_length=2, max_length=12)
     speaking_transcript_stale_seconds: int = Field(default=300, ge=60, le=1800)
+    speaking_quality: AudioQualityConfig = Field(default_factory=AudioQualityConfig)
     max_transfer_zip_mb: int = Field(default=300, gt=0)
     max_transfer_uncompressed_mb: int = Field(default=600, gt=0)
     max_transfer_files: int = Field(default=5000, gt=0)

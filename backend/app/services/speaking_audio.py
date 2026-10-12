@@ -33,6 +33,7 @@ def normalization_identity(settings):
         "rate": 16000,
         "channels": 1,
         "codec": "pcm_s16le",
+        "segment_metadata_version": 1,
         "maximum_seconds": settings.speaking_max_decoded_seconds,
     }
 
@@ -46,6 +47,7 @@ class NormalizedAudio:
     duration_ms: int
     sample_rate: int = 16000
     channels: int = 1
+    segment_count: int = 1
 
 
 def execute_ffmpeg(args, timeout):
@@ -170,7 +172,12 @@ async def normalize_committed_take(
                 if wav_duration(path, settings.speaking_max_decoded_seconds) != cached.duration_ms:
                     raise ValueError("Invalid cached duration")
                 return NormalizedAudio(
-                    path, source, cached.normalizer_version, key, cached.duration_ms
+                    path,
+                    source,
+                    cached.normalizer_version,
+                    key,
+                    cached.duration_ms,
+                    segment_count=cached.metadata_json.get("segment_count", 1),
                 )
             except (AppError, OSError, ValueError, wave.Error, EOFError):
                 await session.execute(
@@ -234,14 +241,23 @@ async def normalize_committed_take(
                     normalizer_version=settings.speaking_normalizer_version,
                     storage_key=f"speaking-derived/{candidate.name}",
                     duration_ms=duration,
-                    metadata_json={"sample_rate": 16000, "channels": 1},
+                    metadata_json={
+                        "sample_rate": 16000,
+                        "channels": 1,
+                        "segment_count": len(groups),
+                    },
                 )
                 .on_conflict_do_nothing(index_elements=["response_id", "cache_key"])
                 .returning(SpeakingNormalizedAudio.id)
             )
             if row_id:
                 result = NormalizedAudio(
-                    candidate, source, settings.speaking_normalizer_version, key, duration
+                    candidate,
+                    source,
+                    settings.speaking_normalizer_version,
+                    key,
+                    duration,
+                    segment_count=len(groups),
                 )
             else:
                 row = await session.scalar(
@@ -256,6 +272,7 @@ async def normalize_committed_take(
                     row.normalizer_version,
                     key,
                     row.duration_ms,
+                    segment_count=row.metadata_json.get("segment_count", 1),
                 )
         saved = row_id is not None
         return result

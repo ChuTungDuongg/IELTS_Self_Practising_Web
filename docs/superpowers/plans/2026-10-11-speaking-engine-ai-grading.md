@@ -362,11 +362,11 @@ git commit -m "Add Speaking content domain model"
 - `normalize_committed_take(...) -> NormalizedAudio` assembles ordered segments/chunks through FFmpeg into derived 16 kHz mono PCM/WAV without mutating raw source.
 - `assess_audio_quality(...) -> AudioQualityResult` emits at least `AUDIO_OK`, `NO_SPEECH`, `TOO_SHORT`, `AUDIO_CORRUPT`, `VERY_LOW_SIGNAL`, `SEVERE_CLIPPING`, `BACKGROUND_DOMINANT`, `ASR_UNUSABLE`.
 
-- [ ] **Step 1: Write failing tests** around subprocess command construction/path safety and tiny synthetic/fixture metadata; nonscorable conditions must be explicit and never return a band.
-- [ ] **Step 2: Run RED.**
-- [ ] **Step 3: Implement bounded FFmpeg wrapper/quality contract.** Keep raw assets immutable; derived artifacts may be cached by fingerprint/version.
-- [ ] **Step 4: Run GREEN + Ruff.** No external FFmpeg/model integration run is required; mock subprocess where appropriate.
-- [ ] **Step 5: Commit:** `git commit -m "Add Speaking audio quality preprocessing"`.
+- [x] **Step 1: Write failing tests** around subprocess command construction/path safety and tiny synthetic/fixture metadata; nonscorable conditions must be explicit and never return a band.
+- [x] **Step 2: Run RED.**
+- [x] **Step 3: Implement bounded FFmpeg wrapper/quality contract.** Keep raw assets immutable; derived artifacts may be cached by fingerprint/version.
+- [x] **Step 4: Run GREEN + Ruff.** No external FFmpeg/model integration run is required; mock subprocess where appropriate.
+- [x] **Step 5: Commit:** `git commit -m "Add Speaking audio quality preprocessing"`.
 
 ### Task 12: Deterministic fluency and audio-derived pronunciation evidence
 

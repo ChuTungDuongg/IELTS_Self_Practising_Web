@@ -19,6 +19,11 @@ from app.services.speaking_audio import (
     normalization_identity,
     normalize_committed_take,
 )
+from app.services.speaking_quality import (
+    assess_audio_quality,
+    persist_quality_result,
+    quality_identity,
+)
 from app.services.speaking_transcript import format_transcript, response_cache
 
 _tasks: dict[UUID, asyncio.Task] = {}
@@ -130,11 +135,13 @@ class SpeakingTranscriptWorker:
                     continue
                 if not await self._checkpoint(run_id, token, rid):
                     return
+                audio, quality, asr_succeeded = None, None, False
                 try:
                     provider = provider or create_provider(self.settings)
                     if (
                         provider.identity != identity["asr"]
                         or normalization_identity(self.settings) != identity["normalizer"]
+                        or quality_identity(self.settings) != identity.get("quality")
                     ):
                         raise AppError(
                             "TRANSCRIPT_CONFIGURATION_CHANGED",
@@ -151,6 +158,13 @@ class SpeakingTranscriptWorker:
                         )
                     if audio.source_audio_fingerprint != item["audio_fingerprint"]:
                         raise AppError("TRANSCRIPT_SOURCE_CHANGED", "Recording changed.", 409)
+                    quality = await asyncio.to_thread(
+                        assess_audio_quality, audio, self.settings.speaking_quality
+                    )
+                    async with self.sessions() as session:
+                        await persist_quality_result(session, audio, quality)
+                    if not quality.assessable:
+                        raise AppError(quality.state, "Recording quality is unavailable.", 409)
                     result = ASRResult.model_validate(
                         await asyncio.wait_for(
                             provider.transcribe(audio),
@@ -159,10 +173,25 @@ class SpeakingTranscriptWorker:
                     )
                     if any(w.end > audio.duration_ms / 1000 + 0.1 for w in result.words):
                         raise ValueError("Word timing exceeds audio")
+                    asr_succeeded = True
+                    quality = await asyncio.to_thread(
+                        assess_audio_quality, audio, self.settings.speaking_quality, asr_usable=True
+                    )
+                    async with self.sessions() as session:
+                        await persist_quality_result(session, audio, quality)
                     await self._checkpoint(run_id, token, rid, result)
                 except asyncio.CancelledError:
                     raise
                 except Exception as error:
+                    if audio and quality and quality.assessable and not asr_succeeded:
+                        unusable = await asyncio.to_thread(
+                            assess_audio_quality,
+                            audio,
+                            self.settings.speaking_quality,
+                            asr_usable=False,
+                        )
+                        async with self.sessions() as session:
+                            await persist_quality_result(session, audio, unusable)
                     # Allowlisted codes only: no transcript/input/exception body in events or logs.
                     code = (
                         error.code
@@ -173,6 +202,13 @@ class SpeakingTranscriptWorker:
                             "SPEAKING_AUDIO_UNASSESSABLE",
                             "TRANSCRIPT_SOURCE_CHANGED",
                             "TRANSCRIPT_CONFIGURATION_CHANGED",
+                            "NO_SPEECH",
+                            "TOO_SHORT",
+                            "AUDIO_CORRUPT",
+                            "VERY_LOW_SIGNAL",
+                            "SEVERE_CLIPPING",
+                            "BACKGROUND_DOMINANT",
+                            "ASR_UNUSABLE",
                         }
                         else "TRANSCRIPT_GENERATION_FAILED"
                     )

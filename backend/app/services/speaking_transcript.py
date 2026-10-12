@@ -24,6 +24,7 @@ from app.schemas.speaking_ai import (
 )
 from app.services.speaking_audio import fingerprint, normalization_identity
 from app.services.speaking_media import SpeakingMediaService
+from app.services.speaking_quality import quality_identity
 
 TERMINAL = {"COMPLETED", "PARTIAL", "FAILED"}
 
@@ -44,6 +45,7 @@ class SpeakingTranscriptService:
         self.identity = {
             "asr": identity or provider_identity(settings),
             "normalizer": normalization_identity(settings),
+            "quality": quality_identity(settings),
             "clean_version": "format-v1",
         }
         self.repository = SpeakingTranscriptRepository(session)

@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 
 class WordTiming(BaseModel):
@@ -75,3 +75,67 @@ class TranscriptEventData(BaseModel):
 
 class TranscriptRunList(BaseModel):
     run: TranscriptRunData | None
+
+
+class AudioQualityConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    version: str = Field(default="energy-quality-v1", min_length=1, max_length=80)
+    minimum_duration_seconds: float = Field(default=1, gt=0, le=30, allow_inf_nan=False)
+    minimum_speech_seconds: float = Field(default=0.5, gt=0, le=30, allow_inf_nan=False)
+    minimum_rms: float = Field(default=0.005, gt=0, le=0.2, allow_inf_nan=False)
+    silence_floor_rms: float = Field(default=0.00001, ge=0, le=0.01, allow_inf_nan=False)
+    activity_rms: float = Field(default=0.01, gt=0, le=0.3, allow_inf_nan=False)
+    clipping_amplitude: float = Field(default=0.98, ge=0.8, le=1, allow_inf_nan=False)
+    maximum_clipping_ratio: float = Field(default=0.1, gt=0, le=1, allow_inf_nan=False)
+    noise_zero_crossing_ratio: float = Field(default=0.35, gt=0, le=1, allow_inf_nan=False)
+    maximum_background_ratio: float = Field(default=0.85, gt=0, le=1, allow_inf_nan=False)
+
+
+class AudioMetrics(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    duration_seconds: float = Field(ge=0, le=1800, allow_inf_nan=False)
+    speech_seconds: float = Field(ge=0, le=1800, allow_inf_nan=False)
+    rms: float = Field(ge=0, le=1, allow_inf_nan=False)
+    clipping_ratio: float = Field(ge=0, le=1, allow_inf_nan=False)
+    background_proxy_ratio: float = Field(ge=0, le=1, allow_inf_nan=False)
+    segment_count: int = Field(default=1, ge=1, le=1000)
+    recovery_gaps_known: bool = True
+    activity_method: Literal["frame-energy-proxy-v1"] = "frame-energy-proxy-v1"
+
+    @computed_field
+    @property
+    def silence_seconds(self) -> float:
+        return max(0, self.duration_seconds - self.speech_seconds)
+
+    @computed_field
+    @property
+    def speech_ratio(self) -> float:
+        return self.speech_seconds / self.duration_seconds if self.duration_seconds else 0
+
+    @computed_field
+    @property
+    def silence_ratio(self) -> float:
+        return self.silence_seconds / self.duration_seconds if self.duration_seconds else 0
+
+
+QualityState = Literal[
+    "AUDIO_OK",
+    "NO_SPEECH",
+    "TOO_SHORT",
+    "AUDIO_CORRUPT",
+    "VERY_LOW_SIGNAL",
+    "SEVERE_CLIPPING",
+    "BACKGROUND_DOMINANT",
+    "ASR_UNUSABLE",
+]
+
+
+class AudioQualityResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    state: QualityState
+    assessable: bool
+    cache_key: str
+    source_audio_fingerprint: str
+    config: AudioQualityConfig
+    metrics: AudioMetrics | None = None
+    asr_usable: bool | None = None

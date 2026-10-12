@@ -1016,3 +1016,38 @@ async def test_invalid_provider_outputs_never_become_ready(db_session, tmp_path,
         "SPEAKING_ASR_UNAVAILABLE" if failure == "unavailable" else "TRANSCRIPT_GENERATION_FAILED"
     )
     assert "PRIVATE" not in snapshot.model_dump_json()
+
+
+async def test_quality_gate_persists_before_asr_and_versions_run_cache(db_session, tmp_path):
+    from app.models.speaking_transcript import SpeakingNormalizedAudio
+
+    aid, _, media = await completed(db_session, tmp_path)
+    settings = Settings(storage_root=tmp_path)
+    actor = db_session.info["current_user_identity"]
+    service = SpeakingTranscriptService(db_session, actor, settings, identity=FakeASR.identity)
+    created = await service.create(aid)
+
+    def silent_decode(args, timeout):
+        with wave.open(str(args[-1]), "wb") as output:
+            output.setnchannels(1)
+            output.setsampwidth(2)
+            output.setframerate(16000)
+            output.writeframes(b"\0\0" * 16000)
+
+    provider = FakeASR()
+    worker = worker_for(db_session, settings, media.storage, provider)
+    worker.executor = silent_decode
+    await worker.execute(created.run_id)
+    result = await service.get(aid, created.run_id)
+    assert (
+        result.status == "FAILED"
+        and result.responses[0].error_code == "NO_SPEECH"
+        and not provider.calls
+    )
+    async with db_session.begin():
+        row = await db_session.scalar(select(SpeakingNormalizedAudio))
+        assert row.metadata_json["quality"]["state"] == "NO_SPEECH"
+    settings.speaking_quality.version = "quality-next"
+    current = SpeakingTranscriptService(db_session, actor, settings, identity=FakeASR.identity)
+    assert await current.latest(aid) is None
+    assert (await current.create(aid)).run_id != created.run_id
