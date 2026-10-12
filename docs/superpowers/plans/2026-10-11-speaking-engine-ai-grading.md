@@ -457,11 +457,11 @@ git commit -m "Add Speaking content domain model"
 - Review keeps two actions: Generate Transcript and Grade with AI. Grade button works without prior transcript button.
 - Assessment displays advisory overall + FC/LR/GRA/PR, evidence/feedback, fluency/Part 2/pronunciation analysis, and live stage progress. Valid criterion scores already persisted remain visible even if later feedback fails.
 
-- [ ] **Step 1: Write failing tests** for staged progress, SSE reconnect/duplicate suppression, Stop calling cancel, component unmount not cancelling, feedback fallback display, quality-unassessable messaging, advisory label, theme/reduced-motion behavior.
-- [ ] **Step 2: Run RED.**
-- [ ] **Step 3: Implement UI following Writing watcher semantics without coupling Speaking contracts to Writing trait names.**
-- [ ] **Step 4: Run GREEN + `npm run typecheck` + targeted ESLint.**
-- [ ] **Step 5: Commit:** `git commit -m "Add Speaking AI assessment UI"`.
+- [x] **Step 1: Write failing tests** for staged progress, SSE reconnect/duplicate suppression, Stop calling cancel, component unmount not cancelling, feedback fallback display, quality-unassessable messaging, advisory label, theme/reduced-motion behavior.
+- [x] **Step 2: Run RED.**
+- [x] **Step 3: Implement UI following Writing watcher semantics without coupling Speaking contracts to Writing trait names.**
+- [x] **Step 4: Run GREEN + `npm run typecheck` + targeted ESLint.**
+- [x] **Step 5: Commit:** `git commit -m "Add Speaking AI assessment UI"`.
 
 **P6 gate:** no claim of examiner accuracy. Confirm PR cannot succeed from text-only evidence and score checkpoint survives feedback failure.
 

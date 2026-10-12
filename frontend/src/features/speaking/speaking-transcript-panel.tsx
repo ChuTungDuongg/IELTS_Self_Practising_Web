@@ -4,12 +4,16 @@ import { useTranslation } from "@/lib/i18n/locale-provider";
 import { activeTranscript, createTranscriptRun, getTranscriptRun, latestTranscriptRun, watchTranscriptRun, type TranscriptRun } from "@/lib/api/speaking-transcript";
 
 const TranscriptContext = createContext<TranscriptRun | null>(null);
-export function SpeakingTranscriptSession({ attemptId, canGenerate = true, children }: { attemptId: string; canGenerate?: boolean; children: ReactNode }) {
+export function SpeakingTranscriptSession({ attemptId, canGenerate = true, refreshKey = 0, children }: { attemptId: string; canGenerate?: boolean; refreshKey?: number; children: ReactNode }) {
   const { t } = useTranslation(); const [run, setRun] = useState<TranscriptRun | null>(null); const [busy, setBusy] = useState(false); const [error, setError] = useState(false);
   const alive = useRef(true); const pending = useRef(false); const cursor = useRef(0);
   const [loading, setLoading] = useState(true);
   const runId = run?.run_id; const isActive = activeTranscript(run);
-  useEffect(() => { alive.current = true; void latestTranscriptRun(attemptId).then((next) => { if (alive.current) { cursor.current = next?.last_sequence ?? 0; setRun(next); } }).catch(() => { if (alive.current) setError(true); }).finally(() => { if (alive.current) setLoading(false); }); return () => { alive.current = false; }; }, [attemptId]);
+  useEffect(() => {
+    let cancelled = false; alive.current = true;
+    void latestTranscriptRun(attemptId).then((next) => { if (!cancelled && alive.current) { cursor.current = next?.last_sequence ?? 0; setRun(next); setError(false); } }).catch(() => { if (!cancelled && alive.current) setError(true); }).finally(() => { if (!cancelled && alive.current) setLoading(false); });
+    return () => { cancelled = true; alive.current = false; };
+  }, [attemptId, refreshKey]);
   useEffect(() => {
     if (!runId || !isActive) return;
     return watchTranscriptRun(attemptId, runId, { event: () => undefined, snapshot: (next) => { if (alive.current) { cursor.current = next.last_sequence; setRun(next); setError(false); } }, error: () => { if (alive.current) setError(true); } }, cursor.current);

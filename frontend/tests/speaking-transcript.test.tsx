@@ -69,3 +69,17 @@ it("keeps long ready text beside processing and failed questions without editabl
   expect(within(screen.getByRole("region", { name: "Question 4" })).getByText(/^Q4 spoken/)).toBeInTheDocument();
   expect(screen.queryByRole("textbox")).toBeNull();
 });
+it("refreshes grading-generated transcripts through latest GET without starting transcription", async () => {
+  const session = (refreshKey: number) => <SpeakingTranscriptSession attemptId={run.attempt_id} refreshKey={refreshKey}><SpeakingTranscriptResponse responseId={run.responses[0].response_id} /></SpeakingTranscriptSession>;
+  const mounted = render(session(0)); await act(async () => undefined); expect(screen.queryByText("um, He go to school.")).toBeNull();
+  vi.mocked(api.latestTranscriptRun).mockResolvedValue(run); mounted.rerender(session(1));
+  expect(await screen.findByText("um, He go to school.")).toBeInTheDocument(); expect(api.latestTranscriptRun).toHaveBeenCalledTimes(2); expect(api.createTranscriptRun).not.toHaveBeenCalled();
+});
+it("ignores older latest responses after refresh and ignores pending refresh after unmount", async () => {
+  let first!: (value: TranscriptRun | null) => void; let last!: (value: TranscriptRun | null) => void;
+  vi.mocked(api.latestTranscriptRun).mockImplementationOnce(() => new Promise((resolve) => { first = resolve; })).mockResolvedValueOnce(run).mockImplementationOnce(() => new Promise((resolve) => { last = resolve; }));
+  const session = (refreshKey: number) => <SpeakingTranscriptSession attemptId={run.attempt_id} refreshKey={refreshKey}><SpeakingTranscriptResponse responseId={run.responses[0].response_id} /></SpeakingTranscriptSession>;
+  const mounted = render(session(0)); mounted.rerender(session(1)); expect(await screen.findByText("um, He go to school.")).toBeInTheDocument();
+  await act(async () => first(null)); expect(screen.getByText("um, He go to school.")).toBeInTheDocument();
+  mounted.rerender(session(2)); mounted.unmount(); await act(async () => last(run)); expect(api.createTranscriptRun).not.toHaveBeenCalled(); expect(api.watchTranscriptRun).not.toHaveBeenCalled();
+});

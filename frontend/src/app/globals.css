@@ -1,5 +1,25 @@
 @import "tailwindcss";
 
+.speaking-ai-assessment { color: var(--ink); }
+.speaking-ai-actions { display: flex; flex-wrap: wrap; gap: .75rem; }
+.speaking-ai-advisory, .speaking-ai-evidence > p { color: var(--muted); }
+.speaking-ai-overall { padding: 1rem; margin-block: 1rem; border: 1px solid var(--accent); border-radius: 12px; background: var(--accent-soft); }
+.speaking-ai-score { font-size: 2rem; font-weight: 700; font-variant-numeric: tabular-nums; min-height: 3rem; }
+.speaking-ai-criteria { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr)); gap: 1rem; }
+.speaking-ai-criterion { min-width: 0; border: 1px solid var(--line); border-radius: 12px; padding: 1rem; background: var(--surface-raised); overflow-wrap: anywhere; }
+.speaking-ai-criterion h3, .speaking-ai-evidence h3 { font-size: 1.1rem; font-weight: 650; }
+.speaking-ai-criterion h4, .speaking-ai-evidence h4 { margin-top: .75rem; font-weight: 600; }
+.speaking-ai-criterion ul, .speaking-ai-evidence ul { list-style: disc; padding-inline-start: 1.25rem; }
+.speaking-ai-evidence { border-top: 1px solid var(--line); margin-top: 1.25rem; padding-top: 1rem; }
+.speaking-ai-progress[data-active="true"] > p::before { content: ""; display: inline-block; width: .65rem; height: .65rem; margin-inline-end: .5rem; border-radius: 50%; background: var(--accent); animation: speaking-live 1.8s ease-in-out infinite; }
+.speaking-ai-assessment :is(button, progress):focus-visible { outline: 3px solid var(--focus-ring, var(--accent)); outline-offset: 3px; }
+.speaking-ai-assessment[data-reduced-motion="true"] .speaking-ai-progress > p::before { animation: none; }
+.speaking-ai-assessment[data-reduced-motion="true"] progress { transition: none; }
+@media (prefers-reduced-motion: reduce) {
+  .speaking-ai-progress > p::before { animation: none; }
+  .speaking-ai-assessment progress { transition: none; }
+}
+
 .speaking-runner { max-width: 960px; margin: auto; }
 .speaking-card { border: 1px solid var(--line); border-radius: 16px; background: var(--surface); padding: 1.5rem; margin: 1rem 0; }
 .speaking-card h2 { font-size: 1.4rem; margin-bottom: .8rem; }

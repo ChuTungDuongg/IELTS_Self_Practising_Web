@@ -1,9 +1,10 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { useTranslation } from "@/lib/i18n/locale-provider";
 import { fetchSpeakingAudio, type SpeakingReviewData, type SpeakingManifest } from "@/lib/api/speaking";
 import { SpeakingTranscriptResponse, SpeakingTranscriptSession } from "./speaking-transcript-panel";
+import { SpeakingAIAssessment } from "./speaking-ai-assessment";
 
 export function SpeakingAudioPlayer({ segments }: Pick<SpeakingManifest, "segments">) {
   const { t } = useTranslation(); const [urls, setUrls] = useState<string[]>([]); const [error, setError] = useState(false); const [loading, setLoading] = useState(false);
@@ -19,8 +20,11 @@ export function SpeakingAudioPlayer({ segments }: Pick<SpeakingManifest, "segmen
 }
 export function SpeakingReview({ data }: { data: SpeakingReviewData }) {
   const { t } = useTranslation();
+  const [transcriptRefreshKey, setTranscriptRefreshKey] = useState(0);
+  const refreshTranscript = useCallback(() => setTranscriptRefreshKey((key) => key + 1), []);
   return <main className="speaking-runner"><header className="exam-header"><h1>{data.test_title}</h1><ThemeToggle /></header>
-    <SpeakingTranscriptSession attemptId={data.attempt_id} canGenerate={data.can_generate_transcript}>
+    <SpeakingTranscriptSession attemptId={data.attempt_id} canGenerate={data.can_generate_transcript} refreshKey={transcriptRefreshKey}>
+    <SpeakingAIAssessment attemptId={data.attempt_id} canGrade={data.can_generate_transcript} onTranscriptAvailable={refreshTranscript} />
     {data.parts.map((part) => <section key={part.part_number} aria-label={t("speaking.part", { number: part.part_number })}><h2>{t("speaking.part", { number: part.part_number })}</h2>
       {part.responses.map(({ prompt, response, segments }) => <details key={response.id} className="speaking-card speaking-question"><summary>{prompt.prompt_text}</summary>
         {prompt.config_json.cue_points?.length ? <ul>{prompt.config_json.cue_points.map((point, index) => <li key={index}>{point}</li>)}</ul> : null}
