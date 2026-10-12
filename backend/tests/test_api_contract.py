@@ -13,12 +13,14 @@ from app.models import (
     Question,
     QuestionGroup,
     ReadingPassage,
+    SpeakingPart,
+    SpeakingPrompt,
     WritingTask,
 )
 from app.models import Test as DomainTest
 from app.models import TestModule as DomainModule
 from app.models import TestVersion as DomainVersion
-from app.models.enums import ModuleType, VersionStatus
+from app.models.enums import ModuleType, SpeakingPromptType, VersionStatus
 from app.schemas.content import HighlightCreate, QuestionGroupWrite
 from app.services.attempts import AttemptService
 from app.services.reading import ReadingService
@@ -170,6 +172,59 @@ def test_published_version_summary_contains_safe_content_metadata() -> None:
     assert "answer_key" not in str(summary)
     assert "Private explanation" not in str(summary)
     assert "secret" not in str(summary)
+
+
+def test_published_speaking_summary_includes_ordered_authored_prompts() -> None:
+    test = DomainTest(id=uuid4(), title="Fictional Speaking test")
+    version = DomainVersion(
+        id=uuid4(),
+        test_id=test.id,
+        version_number=13,
+        status=VersionStatus.PUBLISHED,
+        created_at=datetime.now(UTC),
+        published_at=datetime.now(UTC),
+    )
+    test.versions.append(version)
+    module = DomainModule(id=uuid4(), module_type=ModuleType.SPEAKING, order_index=0)
+    part_two = SpeakingPart(id=uuid4(), part_number=2, title="Long turn", order_index=1)
+    part_two.prompts.extend(
+        [
+            SpeakingPrompt(
+                id=uuid4(), order_index=1, prompt_type=SpeakingPromptType.FOLLOW_UP,
+                prompt_text="Would you visit again?", preparation_seconds=0,
+                response_seconds=60, config_json={},
+            ),
+            SpeakingPrompt(
+                id=uuid4(), order_index=0, prompt_type=SpeakingPromptType.LONG_TURN,
+                prompt_text="Describe a fictional garden.", preparation_seconds=60,
+                response_seconds=120, config_json={"cue_points": ["Where it is"]},
+            ),
+        ]
+    )
+    part_one = SpeakingPart(id=uuid4(), part_number=1, title="Interview", order_index=0)
+    part_one.prompts.append(
+        SpeakingPrompt(
+            id=uuid4(), order_index=0, prompt_type=SpeakingPromptType.SHORT_ANSWER,
+            prompt_text="Do you study?", preparation_seconds=0,
+            response_seconds=60, config_json={},
+        )
+    )
+    module.speaking_parts.extend([part_two, part_one])
+    version.modules.append(module)
+
+    summary = present_version(version).model_dump(mode="json")
+    speaking = summary["modules"][0]
+    assert speaking["question_count"] == 3
+    assert [(part["part_number"], part["title"]) for part in speaking["speaking_parts"]] == [
+        (1, "Interview"), (2, "Long turn")
+    ]
+    prompts = speaking["speaking_parts"][1]["prompts"]
+    assert [(prompt["order_index"], prompt["prompt_type"], prompt["prompt_text"]) for prompt in prompts] == [
+        (0, "LONG_TURN", "Describe a fictional garden."),
+        (1, "FOLLOW_UP", "Would you visit again?"),
+    ]
+    assert prompts[0]["cue_points"] == ["Where it is"]
+    assert "response_seconds" not in prompts[0]
 
 
 def test_group_summary_counts_actual_slots_instead_of_number_range() -> None:

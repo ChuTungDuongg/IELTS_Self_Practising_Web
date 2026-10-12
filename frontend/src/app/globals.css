@@ -511,14 +511,20 @@ input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--mute
 .practice-card { position: relative; overflow: hidden; border: 1px solid var(--line); border-radius: 17px; background: var(--surface); box-shadow: var(--shadow-sm); transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease; }
 .practice-card:hover { border-color: color-mix(in srgb, var(--reading) 34%, var(--line)); box-shadow: var(--shadow-md); transform: translateY(-3px); }
 .practice-card-listening:hover { border-color: color-mix(in srgb, var(--listening) 34%, var(--line)); }
+.practice-card-writing:hover { border-color: color-mix(in srgb, var(--writing) 34%, var(--line)); }
+.practice-card-speaking:hover { border-color: color-mix(in srgb, var(--accent) 34%, var(--line)); }
 .practice-card-accent { height: 3px; background: var(--reading); }
 .practice-card-listening .practice-card-accent { background: var(--listening); }
+.practice-card-writing .practice-card-accent { background: var(--writing); }
+.practice-card-speaking .practice-card-accent { background: var(--accent); }
 .practice-card-content { padding: 23px; }
 .practice-card-topline { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .practice-card-title { margin-top: 24px; }
 .practice-card-title > p { margin: 0; color: var(--reading); font-size: 9px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
 .practice-card-title > .practice-module-kicker { color: var(--reading); font-size: 13px; font-weight: 780; letter-spacing: .03em; line-height: 1.35; text-transform: none; }
 .practice-card-listening .practice-card-title > p { color: var(--listening); }
+.practice-card-writing .practice-card-title > p { color: var(--writing); }
+.practice-card-speaking .practice-card-title > p { color: var(--accent); }
 .practice-card-title h2 { margin: 6px 0 0; font-size: 21px; font-weight: 730; letter-spacing: -.028em; }
 .practice-card-title > span { display: block; min-height: 44px; margin-top: 8px; color: var(--muted); font-size: 13px; line-height: 1.65; }
 .practice-card-meta { display: grid; grid-template-columns: repeat(3, 1fr); margin: 20px 0 0; border-block: 1px solid var(--line); }
@@ -587,7 +593,24 @@ input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--mute
   .practice-browser .practice-grid { grid-template-columns: minmax(0, 1fr); }
   .practice-search { width: 100%; }
 }
-.practice-skill-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 310px), 1fr)); gap: 18px; }
+.practice-skill-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: start; gap: 18px; }
+.practice-skill-grid .practice-card { min-width: 0; }
+.practice-skill-grid .practice-card-content { min-width: 0; padding: 20px; }
+.practice-skill-grid .practice-card-title { margin-top: 18px; }
+.practice-skill-grid .practice-card-meta { margin-top: 14px; }
+.practice-skill-grid .practice-card-meta > div { min-width: 0; padding-inline: 5px; }
+.practice-skill-grid .practice-start { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); }
+.practice-skill-grid .practice-start select, .practice-skill-grid .practice-start .btn { width: 100%; }
+.practice-skill-grid .practice-start p { margin-block: 9px 12px; color: var(--muted); font-size: 11px; line-height: 1.45; }
+.practice-speaking-prompts { display: grid; gap: 9px; margin: 10px 0 0; padding: 0; list-style: none; }
+.practice-speaking-prompts > li { min-width: 0; }
+.practice-speaking-prompts > li + li { padding-top: 9px; border-top: 1px solid var(--line); }
+.practice-speaking-prompt-meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: 5px 8px; color: var(--muted); font-size: 10px; font-weight: 700; }
+.practice-speaking-prompt-meta > :first-child { color: var(--accent); }
+.practice-speaking-prompt-text { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 3; margin-top: 3px; font-size: 12px; line-height: 1.4; overflow-wrap: anywhere; }
+.practice-speaking-cues { margin: 5px 0 0; padding-inline-start: 16px; color: var(--muted); font-size: 11px; line-height: 1.35; overflow-wrap: anywhere; }
+@media (max-width: 1179px) { .practice-skill-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 700px) { .practice-skill-grid { grid-template-columns: minmax(0, 1fr); } }
 
 .history-surface { overflow: hidden; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); box-shadow: var(--shadow-sm); }
 .history-list { margin: 0; padding: 0; list-style: none; }

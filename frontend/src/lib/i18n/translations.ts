@@ -13,6 +13,12 @@ export const moduleTranslationKeys: Record<"READING" | "LISTENING" | "WRITING" |
   READING: "common.reading", LISTENING: "common.listening", WRITING: "common.writing", SPEAKING: "common.speaking",
 };
 
+export const speakingPromptTranslationKeys: Record<"SHORT_ANSWER" | "LONG_TURN" | "FOLLOW_UP", TranslationKey> = {
+  SHORT_ANSWER: "speaking.summaryShortAnswer",
+  LONG_TURN: "speaking.summaryLongTurn",
+  FOLLOW_UP: "speaking.summaryFollowUp",
+};
+
 export const roleTranslationKeys: Record<"USER" | "TEACHER" | "ADMIN", TranslationKey> = {
   USER: "shell.roleUser", TEACHER: "shell.roleTeacher", ADMIN: "shell.roleAdmin",
 };

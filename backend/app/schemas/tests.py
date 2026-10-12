@@ -5,7 +5,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.domains.writing.task_types import WritingTaskType
-from app.models.enums import ModuleType, TestOrigin, VersionStatus
+from app.models.enums import ModuleType, SpeakingPromptType, TestOrigin, VersionStatus
 from app.schemas.listening import ListeningAudioRange
 
 
@@ -79,6 +79,22 @@ class TestDeleteResult(BaseModel):
     action: Literal["DELETED", "ARCHIVED"]
 
 
+class SpeakingPromptSummary(BaseModel):
+    id: UUID
+    order_index: int
+    prompt_type: SpeakingPromptType
+    prompt_text: str
+    cue_points: list[str] = Field(default_factory=list)
+
+
+class SpeakingPartSummary(BaseModel):
+    id: UUID
+    part_number: Literal[1, 2, 3]
+    order_index: int
+    title: str | None
+    prompts: list[SpeakingPromptSummary] = Field(default_factory=list)
+
+
 class ModuleSummary(BaseModel):
     id: UUID
     module_type: ModuleType
@@ -92,6 +108,7 @@ class ModuleSummary(BaseModel):
     reading_passages: list["ReadingPassageSummary"] = Field(default_factory=list)
     listening_sections: list["ListeningSectionSummary"] = Field(default_factory=list)
     writing_tasks: list["WritingTaskSummary"] = Field(default_factory=list)
+    speaking_parts: list[SpeakingPartSummary] = Field(default_factory=list)
 
 
 class QuestionGroupSummary(BaseModel):

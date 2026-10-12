@@ -67,11 +67,11 @@ export function LibraryVersionContent({ test, version }: { test: TestSummary; ve
         <div className="practice-card-content">
           <div className="practice-card-topline"><ModuleBadge module={module.module_type} label={t(moduleTranslationKeys[module.module_type])} /></div>
           <div className="practice-card-title"><p className="practice-module-kicker">{t("pages.library.skillPractice", { skill: t(moduleTranslationKeys[module.module_type]) })}</p><h2>{module.title ?? t(moduleTranslationKeys[module.module_type])}</h2><span>{t("pages.library.continue")}</span></div>
-          {module.module_type === "SPEAKING" ? <p>{t("speakingRuntime.authoredTimers")}</p> : <dl className="practice-card-meta">
+          <dl className="practice-card-meta">
             <div><dt>{t("pages.library.version")}</dt><dd>{version.version_number}</dd></div>
             <div><dt>{module.module_type === "WRITING" ? t("common.tasks") : t("common.questions")}</dt><dd>{module.module_type === "WRITING" ? module.writing_task_count : module.question_count}</dd></div>
-            <div><dt>{module.module_type === "LISTENING" ? t("common.sections") : module.module_type === "WRITING" ? t("common.suggestedTime") : t("common.passages")}</dt><dd>{module.module_type === "LISTENING" ? module.listening_part_count : module.module_type === "WRITING" ? t("common.minutesShort", { count: Math.round((module.recommended_duration_seconds ?? 3600) / 60) }) : module.passage_count}</dd></div>
-          </dl>}
+            <div><dt>{module.module_type === "LISTENING" ? t("common.sections") : module.module_type === "WRITING" ? t("common.suggestedTime") : module.module_type === "SPEAKING" ? t("common.parts") : t("common.passages")}</dt><dd>{module.module_type === "LISTENING" ? module.listening_part_count : module.module_type === "WRITING" ? t("common.minutesShort", { count: Math.round((module.recommended_duration_seconds ?? 3600) / 60) }) : module.module_type === "SPEAKING" ? module.speaking_parts?.length ?? 0 : module.passage_count}</dd></div>
+          </dl>
           <ContentSummary units={publishedContentSummary(module)} />
           <StartAttempt versionId={version.id} module={module.module_type} />
         </div>

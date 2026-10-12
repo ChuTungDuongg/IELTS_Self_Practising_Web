@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import LibraryPage from "@/app/library/page";
 import TestVersionLibraryPage from "@/app/library/[versionId]/page";
 import { getTest, getTests, getVersion } from "@/lib/api/tests";
-import type { TestSummary, VersionDetail } from "@/lib/api/schema";
+import { versionDetailSchema, type TestSummary, type VersionDetail } from "@/lib/api/schema";
 
 vi.mock("next/navigation", () => ({ notFound: vi.fn(), useRouter: () => ({ push: vi.fn() }) }));
 vi.mock("@/lib/api/tests", () => ({ getTests: vi.fn(), getTest: vi.fn(), getVersion: vi.fn() }));
@@ -29,7 +29,60 @@ const detail: VersionDetail = {
   ],
 };
 
+const speakingModule: VersionDetail["modules"][number] = {
+  id: "88888888-8888-4888-8888-888888888888", module_type: "SPEAKING", title: null,
+  recommended_duration_seconds: 900, passage_count: 0, listening_part_count: 0,
+  writing_task_count: 0, question_count: 5,
+  speaking_parts: [
+    { id: "99999999-9999-4999-8999-999999999992", part_number: 2, order_index: 1, title: "Individual Long Turn", prompts: [
+      { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2", order_index: 1, prompt_type: "FOLLOW_UP", prompt_text: "Would you recommend this fictional garden?", cue_points: [] },
+      { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1", order_index: 0, prompt_type: "LONG_TURN", prompt_text: "Describe a fictional garden beside a river.", cue_points: ["Where it is", "Why you like it"] },
+    ] },
+    { id: "99999999-9999-4999-8999-999999999991", part_number: 1, order_index: 0, title: "Introduction and Interview", prompts: [
+      { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa4", order_index: 1, prompt_type: "SHORT_ANSWER", prompt_text: "What do you enjoy about studying?", cue_points: [] },
+      { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3", order_index: 0, prompt_type: "SHORT_ANSWER", prompt_text: "Are you working or studying?", cue_points: [] },
+    ] },
+    { id: "99999999-9999-4999-8999-999999999993", part_number: 3, order_index: 2, title: "Two-way Discussion", prompts: [
+      { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa5", order_index: 0, prompt_type: "SHORT_ANSWER", prompt_text: "Why are public gardens useful?", cue_points: [] },
+    ] },
+  ],
+};
+
 describe("Practice library", () => {
+  it("shows four skill cards and every published Speaking prompt in authored order", async () => {
+    const published = versionDetailSchema.parse({ ...detail, version_number: 13, modules: [...detail.modules, speakingModule] });
+    vi.mocked(getVersion).mockResolvedValue(published);
+    const view = renderWithLocale(await TestVersionLibraryPage({ params: Promise.resolve({ versionId }) }));
+    const cards = [...view.container.querySelectorAll(".practice-skill-grid > article")];
+    expect(cards).toHaveLength(4);
+    expect(cards.map((card) => within(card as HTMLElement).getByRole("heading", { level: 2 }).textContent)).toEqual(["Reading", "Listening", "Writing", "Speaking"]);
+    const speaking = cards[3] as HTMLElement;
+    const metadata = within(speaking).getByText("Version").closest("dl")!;
+    expect(metadata.textContent).toContain("Version13");
+    expect(metadata.textContent).toContain("Questions5");
+    expect(metadata.textContent).toContain("Parts3");
+    expect(within(speaking).queryByText("No content added yet.")).not.toBeInTheDocument();
+    expect(within(speaking).getAllByRole("heading", { level: 3 }).map((heading) => heading.textContent)).toEqual(["Speaking Part 1", "Speaking Part 2", "Speaking Part 3"]);
+    expect(within(speaking).getByText("Individual Long Turn")).toBeInTheDocument();
+    expect(within(speaking).getByText("Introduction and Interview")).toBeInTheDocument();
+    const prompts = [...speaking.querySelectorAll(".practice-speaking-prompt-text")].map((item) => item.textContent);
+    expect(prompts).toEqual([
+      "Are you working or studying?", "What do you enjoy about studying?",
+      "Describe a fictional garden beside a river.", "Would you recommend this fictional garden?",
+      "Why are public gardens useful?",
+    ]);
+    expect(within(speaking).getByText("Long turn")).toBeInTheDocument();
+    expect(within(speaking).getByText("Follow-up")).toBeInTheDocument();
+    expect(within(speaking).getByText("Where it is")).toBeInTheDocument();
+    expect(within(cards[0] as HTMLElement).getByText("A fictional ship")).toBeInTheDocument();
+    expect(within(cards[1] as HTMLElement).getByText("A fictional tour")).toBeInTheDocument();
+    expect(within(cards[2] as HTMLElement).getByText("Describe fictional charts.")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Switch to Vietnamese"));
+    expect(within(speaking).getByText("Phần Nói 1")).toBeInTheDocument();
+    expect(within(speaking).getByText("Trình bày dài")).toBeInTheDocument();
+    expect(within(speaking).getByText("Câu hỏi")).toBeInTheDocument();
+    expect(within(speaking).queryByText("speaking.summaryLongTurn")).not.toBeInTheDocument();
+  });
   it("enables durable Speaking starts and four-skill Full Mock readiness", async () => {
     vi.mocked(getVersion).mockResolvedValue({ ...detail, modules: [...detail.modules, { ...detail.modules[0], id: crypto.randomUUID(), module_type: "SPEAKING", recommended_duration_seconds: 900, writing_task_count: 0, writing_tasks: [] }] });
     render(await TestVersionLibraryPage({ params: Promise.resolve({ versionId }) }));

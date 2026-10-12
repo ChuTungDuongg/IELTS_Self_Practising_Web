@@ -1,10 +1,13 @@
 from app.domains.questions.numbering import group_slots
 from app.models import TestVersion
+from app.models.enums import ModuleType
 from app.schemas.tests import (
     ListeningSectionSummary,
     ModuleSummary,
     QuestionGroupSummary,
     ReadingPassageSummary,
+    SpeakingPartSummary,
+    SpeakingPromptSummary,
     VersionDetail,
     WritingTaskSummary,
 )
@@ -41,9 +44,13 @@ def present_version(version: TestVersion) -> VersionDetail:
                 listening_part_count=len(module.listening_parts),
                 has_audio=module.audio_asset_id is not None,
                 writing_task_count=len(module.writing_tasks),
-                question_count=sum(
-                    len(group_slots(group.question_type, group.questions))
-                    for group in module.question_groups
+                question_count=(
+                    sum(len(part.prompts) for part in module.speaking_parts)
+                    if module.module_type == ModuleType.SPEAKING
+                    else sum(
+                        len(group_slots(group.question_type, group.questions))
+                        for group in module.question_groups
+                    )
                 ),
                 reading_passages=[
                     ReadingPassageSummary(
@@ -87,6 +94,25 @@ def present_version(version: TestVersion) -> VersionDetail:
                         recommended_duration_seconds=task.recommended_duration_seconds,
                     )
                     for task in sorted(module.writing_tasks, key=lambda item: item.order_index)
+                ],
+                speaking_parts=[
+                    SpeakingPartSummary(
+                        id=part.id,
+                        part_number=part.part_number,
+                        order_index=part.order_index,
+                        title=part.title,
+                        prompts=[
+                            SpeakingPromptSummary(
+                                id=prompt.id,
+                                order_index=prompt.order_index,
+                                prompt_type=prompt.prompt_type,
+                                prompt_text=prompt.prompt_text,
+                                cue_points=prompt.config_json.get("cue_points", []),
+                            )
+                            for prompt in sorted(part.prompts, key=lambda item: item.order_index)
+                        ],
+                    )
+                    for part in sorted(module.speaking_parts, key=lambda item: item.order_index)
                 ],
             )
             for module in version.modules

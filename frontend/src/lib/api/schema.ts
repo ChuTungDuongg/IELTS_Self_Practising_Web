@@ -52,6 +52,19 @@ export const moduleSchema = z.object({
     minimum_recommended_words: z.number().int().nullable(),
     recommended_duration_seconds: z.number().int().nullable(),
   })).optional(),
+  speaking_parts: z.array(z.object({
+    id: z.string().uuid(),
+    part_number: z.union([z.literal(1), z.literal(2), z.literal(3)]),
+    order_index: z.number().int().nonnegative(),
+    title: z.string().nullable(),
+    prompts: z.array(z.object({
+      id: z.string().uuid(),
+      order_index: z.number().int().nonnegative(),
+      prompt_type: z.enum(["SHORT_ANSWER", "LONG_TURN", "FOLLOW_UP"]),
+      prompt_text: z.string(),
+      cue_points: z.array(z.string()),
+    })),
+  })).optional(),
 });
 
 export const versionDetailSchema = versionSchema.extend({
