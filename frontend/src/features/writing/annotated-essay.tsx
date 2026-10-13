@@ -13,6 +13,19 @@ const noAnnotations: WritingAnnotation[] = [];
 const viewportMargin = 14;
 const anchorGap = 8;
 
+/** Keep paragraph and separator ranges in the original UTF-16 coordinate space. */
+function essayRanges(content: string) {
+  const ranges: { start: number; end: number; separator: boolean }[] = [];
+  let start = 0;
+  for (const match of content.matchAll(/(?:\r\n|\r|\n)+/g)) {
+    if (start < match.index) ranges.push({ start, end: match.index, separator: false });
+    start = match.index + match[0].length;
+    ranges.push({ start: match.index, end: start, separator: true });
+  }
+  if (start < content.length) ranges.push({ start, end: content.length, separator: false });
+  return ranges;
+}
+
 /** Defensive display validation. Backend alone resolves and judges the issue. */
 export function validEssayAnnotations(content: string, annotations: WritingAnnotation[]) {
   const seen = new Set<string>();
@@ -60,16 +73,18 @@ export function AnnotatedEssay({ content, annotations = noAnnotations, onViewFee
   const popover = useRef<HTMLElement | null>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [opened, setOpened] = useState<{ key: string; pinned: boolean } | null>(null);
+  const ranges = useMemo(() => essayRanges(content), [content]);
   const segments = useMemo(() => {
     const accepted = validEssayAnnotations(content, annotations);
-    const boundaries = [...new Set([0, content.length, ...accepted.flatMap(annotation => [annotation.start_offset, annotation.end_offset])])].sort((a, b) => a - b);
+    const boundaries = [...new Set([0, content.length, ...ranges.flatMap(range => [range.start, range.end]),
+      ...accepted.flatMap(annotation => [annotation.start_offset, annotation.end_offset])])].sort((a, b) => a - b);
     return boundaries.slice(0, -1).map((start, index) => {
       const end = boundaries[index + 1];
       const issues = accepted.filter(annotation => annotation.start_offset <= start && annotation.end_offset >= end)
         .sort((a, b) => severity[a.kind] - severity[b.kind] || a.id.localeCompare(b.id));
-      return { key: `${start}:${end}:${issues.map(issue => issue.id).join(":")}`, text: content.slice(start, end), issues };
+      return { start, end, key: `${start}:${end}:${issues.map(issue => issue.id).join(":")}`, text: content.slice(start, end), issues };
     });
-  }, [content, annotations]);
+  }, [content, annotations, ranges]);
   const current = segments.find(segment => segment.key === opened?.key);
   const pinned = Boolean(current && opened?.pinned);
 
@@ -154,7 +169,10 @@ export function AnnotatedEssay({ content, annotations = noAnnotations, onViewFee
 
   return <div ref={root} className={styles.root} onMouseEnter={cancelClose} onMouseLeave={event => leave(event.relatedTarget)}
     onBlur={event => { if (!pinned && !isInside(event.relatedTarget)) close(); }}>
-    <p data-essay-text className={styles.essay}>{segments.map(segment => segment.issues.length
+    <div data-essay-text className={styles.essay}>{ranges.map(range => range.separator
+      // Hidden separators preserve exact textContent without adding visual blank lines.
+      ? <span key={range.start} hidden className={styles.separator}>{content.slice(range.start, range.end)}</span>
+      : <p key={range.start} className={styles.paragraph}>{segments.filter(segment => segment.start >= range.start && segment.end <= range.end).map(segment => segment.issues.length
       ? <span key={segment.key} role="button" tabIndex={0} className={styles.annotation}
         data-severity={segment.issues[0].kind} data-annotation-ids={segment.issues.map(issue => issue.id).join(" ")}
         aria-label={`${t("writingAI.suggestionCount", { count: segment.issues.length })}: ${segment.text}`}
@@ -164,7 +182,7 @@ export function AnnotatedEssay({ content, annotations = noAnnotations, onViewFee
         onClick={event => open(segment.key, event.currentTarget, true)}
         onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); open(segment.key, event.currentTarget, true); } }}>
         {segment.text}
-      </span> : segment.text)}</p>
+      </span> : segment.text)}</p>)}</div>
     {current ? createPortal(<aside ref={popover} id={popoverId} role="dialog" aria-label={t("writingAI.suggestionCount", { count: current.issues.length })}
       className={styles.popover} onMouseEnter={cancelClose} onMouseLeave={event => leave(event.relatedTarget)}>
       <button type="button" className={styles.close} aria-label={t("writingAI.closeSuggestions")} onClick={close}>×</button>

@@ -163,6 +163,24 @@ describe("WritingReviewView", () => {
     expect(saveWritingTaskScore).not.toHaveBeenCalled();
   });
 
+  it.each([
+    [1, ["The two fictional pie charts compare...", "Overall, Spanish was...", "In 2000, 30% of students...", "By 2010, the proportion..."]],
+    [2, ["A fictional proposition raises several questions.", "One argument concerns its benefits.", "Another argument concerns its costs.", "In conclusion, both deserve consideration."]],
+  ] as const)("renders saved Task %i through the shared paragraph renderer", (taskNumber, paragraphs) => {
+    const data = reviewPayload();
+    const content = paragraphs.join("\r\n\r\n");
+    data.tasks[taskNumber - 1].content = content;
+    render(<WritingReviewView data={data} />);
+    if (taskNumber === 2) fireEvent.click(screen.getByRole("tab", { name: /Task 2/ }));
+    const reader = screen.getByRole("article", { name: `Saved Task ${taskNumber} response` });
+    const essay = reader.querySelector("[data-essay-text]")!;
+    expect([...essay.querySelectorAll("p")].map(paragraph => paragraph.textContent)).toEqual(paragraphs);
+    expect(essay.querySelectorAll("[hidden]")).toHaveLength(3);
+    expect(essay.textContent).toBe(content);
+    expect(data.tasks[taskNumber - 1].content).toBe(content);
+    expect(saveWritingTaskScore).not.toHaveBeenCalled();
+  });
+
   it("keeps a response without line breaks as one paragraph without inventing breaks", () => {
     const data = reviewPayload();
     data.tasks[0].content = "One sentence. Another sentence! A final sentence?";

@@ -31,6 +31,115 @@ function openMeasuredEssay() {
 }
 
 describe("AnnotatedEssay", () => {
+  it("renders plain essays as three separate paragraph blocks", () => {
+    const content = "First paragraph.\n\nSecond paragraph.\n\nThird paragraph.";
+    const { container } = render(<AnnotatedEssay content={content} />);
+    const essay = container.querySelector("[data-essay-text]")!;
+    expect([...essay.querySelectorAll("p")].map(paragraph => paragraph.textContent))
+      .toEqual(["First paragraph.", "Second paragraph.", "Third paragraph."]);
+    expect(essay.textContent).toBe(content);
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
+  });
+
+  it.each(["\n", "\r\n", "\r"])("treats a single %j newline as a paragraph separator", separator => {
+    const content = `First paragraph.${separator}Second paragraph.`;
+    const { container } = render(<AnnotatedEssay content={content} />);
+    const essay = container.querySelector("[data-essay-text]")!;
+    expect(essay.querySelectorAll("p")).toHaveLength(2);
+    expect(essay.querySelector("[hidden]")?.textContent).toBe(separator);
+    expect(essay.textContent).toBe(content);
+  });
+
+  it("collapses the visual space of a long mixed newline run without changing its text", () => {
+    const separator = "\n\n\r\n\r\n\r\r\n";
+    const content = `First paragraph.${separator}Second paragraph.`;
+    const { container } = render(<AnnotatedEssay content={content} annotations={[]} />);
+    const essay = container.querySelector("[data-essay-text]")!;
+    expect([...essay.querySelectorAll("p")].map(paragraph => paragraph.textContent))
+      .toEqual(["First paragraph.", "Second paragraph."]);
+    const separators = essay.querySelectorAll("[hidden]");
+    expect(separators).toHaveLength(1);
+    expect(separators[0]).toHaveTextContent("");
+    expect(separators[0].textContent).toBe(separator);
+    expect(separators[0]).not.toBeVisible();
+    expect(essay.textContent).toBe(content);
+  });
+
+  it("preserves edge separators, spaces and UTF-16 offsets for GRA in paragraph two and LR in paragraph three", () => {
+    const leading = "\r\n\n";
+    const first = "  😀 people tends.";
+    const second = "people tends in paragraph two.  ";
+    const third = "A goverment decision. ";
+    const beforeSecond = `${leading}${first}\r\n\r\n`;
+    const beforeThird = `${beforeSecond}${second}\n\n`;
+    const content = `${beforeThird}${third}\r\r\n`;
+    const grammar = { ...issue, start_offset: beforeSecond.length, end_offset: beforeSecond.length + 12 };
+    const spelling: WritingAnnotation = {
+      ...issue, id: "spelling", criterion: "lr", category: "spelling", original_span: "goverment",
+      start_offset: beforeThird.length + 2, end_offset: beforeThird.length + 11,
+      suggested_revision: "government", message: "Correct the spelling.",
+    };
+    const { container } = render(<AnnotatedEssay content={content} annotations={[grammar, spelling]} />);
+    const essay = container.querySelector("[data-essay-text]")!;
+    const paragraphs = essay.querySelectorAll("p");
+    expect([...paragraphs].map(paragraph => paragraph.textContent)).toEqual([first, second, third]);
+    expect(paragraphs[0].querySelector('[role="button"]')).toBeNull();
+    const gra = within(paragraphs[1]).getByRole("button", { name: /people tends/ });
+    expect(gra.textContent).toBe(content.slice(grammar.start_offset, grammar.end_offset));
+    expect(gra).toHaveAttribute("data-annotation-ids", issue.id);
+    fireEvent.focus(gra);
+    expect(screen.getByRole("dialog")).toHaveTextContent("GRA · Grammar");
+    const lr = within(paragraphs[2]).getByRole("button", { name: /goverment/ });
+    expect(lr.textContent).toBe(content.slice(spelling.start_offset, spelling.end_offset));
+    fireEvent.focus(lr);
+    expect(screen.getByRole("dialog")).toHaveTextContent("LR · Spelling");
+    expect(screen.getByRole("dialog")).toHaveTextContent("government");
+    expect(essay.textContent).toBe(content);
+    expect(essay.firstElementChild).toHaveAttribute("hidden");
+    expect(essay.lastElementChild).toHaveAttribute("hidden");
+  });
+
+  it("keeps newline-only content without empty visual paragraphs", () => {
+    const content = "\n\r\n\r";
+    const { container } = render(<AnnotatedEssay content={content} />);
+    const essay = container.querySelector("[data-essay-text]")!;
+    expect(essay.querySelectorAll("p")).toHaveLength(0);
+    expect(essay.textContent).toBe(content);
+    expect(essay.firstElementChild).not.toBeVisible();
+  });
+
+  it("splits a cross-paragraph annotation into safe fragments with the same identity", () => {
+    const content = "people tends\r\n\r\npeople agree.";
+    const cross: WritingAnnotation = { ...issue, start_offset: 7, end_offset: 22, original_span: "tends\r\n\r\npeople" };
+    const { container } = render(<AnnotatedEssay content={content} annotations={[cross]} />);
+    const essay = container.querySelector("[data-essay-text]")!;
+    const fragments = essay.querySelectorAll('[data-annotation-ids="grammar-1"]');
+    expect([...fragments].map(fragment => fragment.textContent)).toEqual(["tends", "people"]);
+    expect(essay.querySelectorAll("p")).toHaveLength(2);
+    expect(essay.querySelector("[hidden] [role=button]")).toBeNull();
+    for (const fragment of fragments) {
+      expect(fragment.querySelector('[role="button"]')).toBeNull();
+      fireEvent.focus(fragment);
+      expect(screen.getByRole("dialog").querySelector("p")?.textContent).toBe(cross.original_span);
+    }
+    expect(essay.textContent).toBe(content);
+  });
+
+  it("retains overlapping GRA and LR spans inside a later paragraph", () => {
+    const prefix = "😀 First paragraph.\r\n\r\n";
+    const content = `${prefix}people tends to help.`;
+    const grammar = { ...issue, start_offset: prefix.length, end_offset: prefix.length + 12 };
+    const lexical: WritingAnnotation = { ...grammar, id: "lexical", criterion: "lr", start_offset: prefix.length + 7, original_span: "tends", suggested_revision: "supports", kind: "OPTIONAL_REFINEMENT" };
+    const { container } = render(<AnnotatedEssay content={content} annotations={[grammar, lexical]} />);
+    const essay = container.querySelector("[data-essay-text]")!;
+    const overlap = within(essay.querySelectorAll("p")[1]).getByRole("button", { name: /2 suggestions.*tends/ });
+    expect(overlap).toHaveAttribute("data-annotation-ids", "grammar-1 lexical");
+    fireEvent.focus(overlap);
+    expect(screen.getByRole("dialog")).toHaveTextContent("people tend");
+    expect(screen.getByRole("dialog")).toHaveTextContent("supports");
+    expect(essay.textContent).toBe(content);
+  });
+
   it("keeps the exact saved text including CRLF, spacing and emoji", () => {
     const content = "  😀\r\n\r\npeople tends to help.\r\n";
     const { container } = render(<AnnotatedEssay content={content} annotations={[{ ...issue, start_offset: 8, end_offset: 20 }]} />);

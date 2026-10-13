@@ -1,5 +1,8 @@
 .root { position: relative; min-width: 0; }
-.essay { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.essay { margin: 0; overflow-wrap: anywhere; }
+.paragraph { margin: 0; white-space: pre-wrap; }
+.paragraph ~ .paragraph { margin-top: .9em; }
+.separator { display: none; }
 .annotation { cursor: help; text-decoration-line: underline; text-decoration-style: wavy; text-decoration-color: var(--danger); text-decoration-thickness: 1px; text-underline-offset: 4px; }
 .annotation[data-severity="LIMITATION"] { text-decoration-style: dotted; text-decoration-color: var(--writing); }
 .annotation[data-severity="OPTIONAL_REFINEMENT"] { text-decoration-style: dotted; text-decoration-color: var(--muted); }
