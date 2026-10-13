@@ -165,6 +165,6 @@ def test_config_technical_identity_excludes_presentation_label():
     assert config.key == config.model_copy(update={"label": "Different caption"}).key
     assert config.key != config.model_copy(update={"max_concurrent_llm_requests": 4}).key
     assert not any(
-        field in config.model_fields
+        field in BenchmarkConfig.model_fields
         for field in ("dataset_version", "image", "endpoint", "api_key")
     )

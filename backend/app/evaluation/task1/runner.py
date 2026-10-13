@@ -2,13 +2,9 @@
 
 import hashlib
 import time
-from collections import Counter
 from decimal import Decimal
 from pathlib import Path
-from typing import Any
 from uuid import NAMESPACE_URL, uuid5
-
-from pydantic import ValidationError
 
 from app.core.config import Settings
 from app.domains.writing.visual_families import visual_family
@@ -27,10 +23,13 @@ from app.evaluation.task1.metrics import overall_score, perception_metrics
 from app.evaluation.task1.models import BenchmarkConfig, EvaluationRecord, digest
 from app.evaluation.task1.pre_score_first import PreScoreFirstTask1WritingScoringService
 from app.evaluation.task1.score_first_v11_prompts import ScoreFirstV11Task1WritingScoringService
+from app.evaluation.writing import checkpoints as shared_checkpoints
+from app.evaluation.writing.checkpoints import atomic_write as atomic_write
+from app.evaluation.writing.checkpoints import save_attempt as save_attempt
+from app.evaluation.writing.runtime import CountedProvider as CountedProvider
 from app.providers.chart_derendering import ChartSpecialistFailure
 from app.providers.chart_derendering.deplot import DePlotChartDerenderingProvider
 from app.providers.writing_llm import create_provider, provider_identity
-from app.providers.writing_llm.base import Completion, CompletionOptions, Message
 from app.schemas.chart_cross_check import ChartSpecialistIdentity
 from app.schemas.task1_claims import Task1Analysis
 from app.services.task1_input import (
@@ -142,86 +141,16 @@ def fingerprint(item: LoadedSample, config: BenchmarkConfig) -> tuple[str, str, 
     )
 
 
-def atomic_write(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(path.suffix + ".tmp")
-    temporary.write_text(text, encoding="utf-8")
-    temporary.replace(path)
-
-
 def cached_record(
     path: Path, cache_key: str, config_key: str, sample_id: str
 ) -> EvaluationRecord | None:
-    attempts = sorted((path.parent.parent / "attempts" / cache_key).glob("*.json"))
-    # An attempt is written before its latest checkpoint. Recover a completed
-    # attempt after interrupted/corrupt checkpoint writes without another call.
-    if attempts:
-        path = attempts[-1]
-    try:
-        record = EvaluationRecord.model_validate_json(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError, ValidationError):
-        return None
-    if (record.cache_key, record.config_key, record.sample_id, record.status) != (
-        cache_key,
-        config_key,
-        sample_id,
-        "COMPLETED",
-    ):
-        return None
-    return record.model_copy(update={"cache_hit": True})
-
-
-def save_attempt(output: Path, record: EvaluationRecord) -> None:
-    directory = output / "attempts" / record.cache_key
-    existing = [
-        int(path.stem)
-        for path in directory.glob("*.json")
-        if path.stem.isdecimal() and len(path.stem) <= 9
-    ]
-    number = max(existing, default=0) + 1
-    atomic_write(directory / f"{number:06d}.json", record.model_dump_json(indent=2))
+    return shared_checkpoints.cached_record(
+        path, cache_key, config_key, sample_id, record_type=EvaluationRecord
+    )
 
 
 def attempt_history(output: Path, records: list[EvaluationRecord]) -> list[EvaluationRecord]:
-    result = []
-    for record in records:
-        files = sorted((output / "attempts" / record.cache_key).glob("*.json"))
-        for path in files:
-            try:
-                attempt = EvaluationRecord.model_validate_json(path.read_text(encoding="utf-8"))
-            except (OSError, ValueError, ValidationError):
-                continue
-            if (attempt.cache_key, attempt.config_key, attempt.sample_id) == (
-                record.cache_key,
-                record.config_key,
-                record.sample_id,
-            ):
-                result.append(attempt)
-    return result
-
-
-class CountedProvider:
-    def __init__(self, provider):
-        self.provider, self.calls, self.usage = provider, 0, Counter()
-
-    async def ensure_ready(self):
-        await self.provider.ensure_ready()
-
-    async def complete(
-        self,
-        messages: list[Message],
-        schema: dict[str, Any],
-        *,
-        options: CompletionOptions | None = None,
-    ) -> Completion:
-        self.calls += 1
-        completion = await self.provider.complete(messages, schema, options=options)
-        # Only known numeric usage counters, never arbitrary provider fields.
-        for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
-            value = completion.usage.get(key)
-            if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
-                self.usage[key] += value
-        return completion
+    return shared_checkpoints.attempt_history(output, records, record_type=EvaluationRecord)
 
 
 class CountedSpecialist:
