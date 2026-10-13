@@ -27,7 +27,7 @@ This change does not:
 - add adaptive AI-examiner questions;
 - add classroom assignment authoring for whole Speaking Parts;
 - alter Full Mock or exam-mode navigation/retry restrictions;
-- change IELTS Speaking scoring prompts/calibration;
+- change IELTS Speaking scoring prompts/calibration merely to force Part scoring;
 - turn a Part-level AI/final practice score into a full-module Speaking band;
 - add focused Speaking records to full-module Analytics;
 - invoke live ASR/LLM/GPU services during implementation verification.
@@ -72,6 +72,8 @@ speaking_mode: PRACTICE | EXAM
 - `speaking_practice_flow=FREE` enables learner-directed prompt navigation within the selected Part.
 
 A focused Speaking attempt must target exactly one of `focused_speaking_prompt_id` or `focused_speaking_part_id`, never both.
+
+For backward compatibility, `speaking_practice_flow` is nullable on historical/full-module/prompt-focused records. For a new `SPEAKING_PART` Practice request, omitted flow defaults to `GUIDED`; `FREE` must be explicit. The backend rejects a non-null `speaking_practice_flow` where it is not meaningful rather than letting unrelated Speaking attempts inherit Free semantics accidentally.
 
 ## 2. Migration
 
@@ -128,7 +130,7 @@ else:
     return the complete Speaking module
 ```
 
-Every Speaking mutation continues to prove the prompt belongs to the attempt's scoped prompt set. A Part 1 attempt must not be able to begin, record, upload, retry, replay or finalize a Part 2/3 prompt even if a client manually sends its UUID.
+Every Speaking mutation continues to prove the prompt belongs to the attempt's scoped prompt set. A Part 1 attempt must not be able to begin, record, upload, retry, replay, select or finalize a Part 2/3 prompt even if a client manually sends its UUID.
 
 The browser must never send an authoritative list of allowed prompt IDs.
 
@@ -186,7 +188,7 @@ preparation -> long turn -> authored follow-up(s) -> finish
 
 Existing microphone preflight, chunk transport, retry/replay permissions, recovery grace, scratch-note behavior, timers and backend acknowledgement requirements remain in force.
 
-No free question picker is shown in Guided mode.
+No free question picker is shown in Guided mode. Existing Guided behavior may continue auto-entering the current prompt after preflight according to the current runner contract.
 
 ## 7. Free question practice
 
@@ -198,13 +200,41 @@ The runner shows an accessible prompt picker, for example:
 [1] [2✓] [3] [4✓] [5] ...
 ```
 
-plus Previous/Next convenience controls. A learner may navigate in any order, for example Q1 -> Q5 -> Q3 -> Q8. Each prompt maintains independent server-backed response state such as unanswered, current/recording, committed and retried.
+plus Previous/Next convenience controls. A learner may navigate in any order, for example Q1 -> Q5 -> Q3 -> Q8. Each prompt maintains independent server-backed response state such as unanswered, selected, recording, committed and retried.
 
-A committed prompt is revisit-able in Free mode for Practice purposes. The learner may return to it, listen to its committed take and retry it according to the existing Practice take/supersession model. Retrying one prompt must not erase another prompt's recording.
+Unlike Guided mode, selecting a Free prompt must **not** automatically start recording. The learner explicitly presses `Record`. This preserves the intended self-practice workflow: choose a question, think/read it, record when ready, then navigate freely.
+
+A committed prompt is revisit-able in Free mode. The learner may return to it, listen to its committed take and retry it. Retrying one prompt must not erase another prompt's recording.
 
 This is a deliberate exception to Guided Practice's prior-prompt lock UX; it applies only when the attempt itself is persisted as `FREE`.
 
-### 7.1 Switching while recording
+### 7.1 Free state contract
+
+The current sequential runtime cannot simply reuse "finish last canonical prompt => submit attempt". Free mode needs an explicit safe idle/browsing state or equivalent server representation.
+
+Conceptually:
+
+```text
+BROWSING / IDLE
+  -> select prompt
+QUESTION_ENTER / READY
+  -> explicit Record
+PREPARING? -> STARTING? -> RECORDING
+  -> durable finish
+BROWSING / IDLE
+```
+
+Exact phase naming may follow existing conventions, but the semantics are required:
+
+- a new Free attempt is not forced to begin Q1 automatically;
+- finishing Q8 first must **not** complete the attempt merely because Q8 is last in authored order;
+- committing one response returns to a safe state from which another allowed prompt can be selected;
+- attempt completion is a separate explicit `Finish practice` operation;
+- canonical prompt order still drives picker labels and Previous/Next, not completion authority.
+
+The public Speaking state for a Free Part must include enough bounded server data to reconstruct the picker after refresh, for example the selected prompt plus a prompt navigation summary containing prompt ID/order and safe status (`UNANSWERED`, `COMMITTED`, current). The frontend must not infer authoritative completion from its local component state.
+
+### 7.2 Switching while recording
 
 Free navigation must never silently discard an active recording. If the learner selects another question while capture is active, show a confirmation with equivalent actions:
 
@@ -225,13 +255,23 @@ There is no optimistic prompt switch before acknowledgement.
 
 If persistence fails, stay on the current prompt and show the normal actionable save/retry error.
 
-### 7.2 Server navigation operation
+### 7.3 Server prompt selection
 
 Free navigation needs an explicit server-authoritative operation/state transition to select a prompt from the attempt's scoped Part. It must not be implemented as a frontend-only rewrite of `SpeakingPromptProgress.prompt_id` assumptions.
 
-The server permits switching only when the current state is safe to leave. It rejects targets outside the Part. A committed historical response may be selected for replay/retry without pretending it is a never-answered prompt.
+The server permits selection only from a safe non-recording state, except that the client may first execute the acknowledged `Stop & switch` flow above. It rejects targets outside the Part.
 
 Exact route naming follows existing Speaking API conventions; no generic arbitrary-progress mutation endpoint is introduced.
+
+### 7.4 Replaying and retrying committed prompts
+
+The existing sequential runtime treats previously committed responses as locked. Free mode deliberately needs a narrow server-authorized exception for committed prompts within the selected Part.
+
+Selecting a committed prompt must be able to expose its committed response for replay without reopening unrelated prompts or bypassing Part scope.
+
+If the learner chooses Retry on a committed Free response, the previous committed take must remain the valid fallback until a replacement take is durably committed. A failed/abandoned retry must not destroy the last good recording. On successful replacement commit, update the response's active committed take/fingerprint atomically and mark the superseded take according to existing provenance conventions.
+
+This behavior is Free-only; Guided, Exam and Full Mock lock semantics do not change.
 
 ## 8. Part 2 rule
 
@@ -243,9 +283,9 @@ The backend rejects `Part 2 + FREE`; the frontend does not offer that option. Do
 
 Guided Part practice completes through the existing sequential flow when the selected Part's prompt sequence is complete.
 
-Free Part practice may finish without answering every prompt. It must require at least one durably committed response so an empty click-through does not create a meaningless completed practice record.
+Free Part practice completes only through an explicit `Finish practice` action. It may finish without answering every prompt, but it must require at least one durably committed response and must reject completion while an unresolved active recording/recovery transition is in progress.
 
-Completion must not manufacture responses for unanswered prompts. Review may present them as `Not answered` based on the Part's authored prompt list.
+Completion must not manufacture responses for unanswered prompts. Review presents them as `Not answered` based on the Part's authored prompt list.
 
 The attempt is a single focused attempt for the Part, not one attempt per question.
 
@@ -256,18 +296,20 @@ The attempt is a single focused attempt for the Part, not one attempt per questi
 After refresh, the backend remains authoritative for:
 
 - selected Part and flow;
-- active prompt/phase;
+- selected/current prompt and phase;
 - committed responses and active take numbers;
 - interrupted/recovery state;
-- prompt eligibility.
+- prompt eligibility and picker statuses.
 
-The UI reconstructs picker status from backend data. Existing segmented-audio recovery remains unchanged: a crash/reload does not fabricate audio, reset response quota or switch to a different prompt.
+The UI reconstructs the picker from backend state. Existing segmented-audio recovery remains unchanged: a crash/reload does not fabricate audio, reset response quota or switch to a different prompt.
+
+If a crash occurs during a Free retry, the existing committed take remains the fallback unless/until the replacement take was durably committed.
 
 ## 11. Review
 
-Part-focused review shows only the selected Part's authored prompts and responses.
+Part-focused review shows the selected Part's full authored prompt list and response status, while audio/transcript controls exist only for answered prompts.
 
-Examples:
+Example:
 
 ```text
 Speaking · Part 1
@@ -374,13 +416,17 @@ No historical attempt is rewritten from prompt scope to part scope.
 
 Mitigation: add explicit server transitions for Free prompt selection and keep the Part-scoped allowed-prompt set authoritative. Do not mutate progress locally in React.
 
+### Finishing the authored last prompt could accidentally submit a Free attempt
+
+Mitigation: branch completion semantics on persisted `speaking_practice_flow`. Free response commit returns to browsing/safe state; only explicit `Finish practice` submits the attempt.
+
 ### Navigating during recording can lose audio
 
 Mitigation: require stop -> flush/close -> durable finish ACK -> switch. Never discard a current recording implicitly.
 
-### Revisit/retry can corrupt take provenance
+### Retrying an already committed answer can lose the last good recording
 
-Mitigation: reuse existing response/take supersession rules per prompt and serialize mutations on the owning Attempt row.
+Mitigation: preserve the committed take until the replacement is durably committed; switch the active committed take atomically.
 
 ### Part practice can pollute full-skill statistics
 
@@ -394,7 +440,7 @@ Mitigation: make Part targeting additive, keep `focused_speaking_prompt_id`, tes
 
 Implementation MUST begin by inspecting the current `origin/main` GitHub Actions result and actual failing job logs before feature coding.
 
-At specification time, `main` is:
+At specification time, the feature baseline before documentation commits is:
 
 ```text
 0a4a757c0788a2c0ce63ea671295770a12062bad
@@ -428,18 +474,23 @@ The implementation plan must therefore enforce this sequence:
 Backend coverage should include at minimum:
 
 - `SPEAKING_PART` request/schema contract;
+- default `GUIDED` behavior when Part flow is omitted and invalid flow placement rejection;
 - Part belongs to exact published version/module;
 - Part 1/3 Guided + Free accepted;
 - Part 2 Free rejected;
 - `SPEAKING_PART + EXAM` rejected for this flow;
 - real migration + scope CHECK behavior;
 - Part repository returns all and only Part prompts in canonical order;
-- out-of-Part prompt begin/media/retry/replay/navigation rejected;
+- out-of-Part prompt begin/media/retry/replay/select/finalize rejected;
 - legacy `SPEAKING_PROMPT` behavior retained;
 - Guided progression retained;
-- Free out-of-order selection and revisit/retry supported;
+- Free starts without auto-recording and allows explicit Record;
+- Free out-of-order selection and picker-state reconstruction;
+- committing authored-last prompt does not auto-submit a Free attempt;
+- explicit Free finish requires >=1 committed response, permits unanswered prompts, and rejects unresolved active capture;
+- committed prompt replay/retry works only in Free Part scope;
+- failed committed-response retry preserves the prior committed recording;
 - switch-while-recording cannot bypass durable finalization;
-- Free finish requires at least one committed response but not all prompts;
 - refresh/recovery retains Part/flow/current state;
 - review contains selected Part and unanswered entries only;
 - focused Part remains excluded from full-module History/Analytics/Full Mock band promotion;
@@ -453,12 +504,15 @@ Frontend Vitest/RTL coverage should include at minimum:
 - Part 2 offers Guided only;
 - Speaking uses count-up rather than generic minute presets;
 - Guided runner has no Free picker;
+- Free picker does not auto-start recording;
+- explicit Record starts the selected prompt;
 - Free picker navigates out of order;
 - completed/unanswered/current statuses are accessible;
 - revisit retains replay/retry behavior;
 - active-recording navigation asks for confirmation;
 - `Stop & switch` waits for persistence acknowledgement before moving;
 - failed persistence leaves the user on the current prompt;
+- explicit Finish Practice behavior and >=1-response guard;
 - refresh reconstruction uses backend state;
 - existing Speaking exam/full-mock restrictions do not change.
 
@@ -472,17 +526,19 @@ The feature is complete only when:
 2. Starting a card creates one Part-focused Practice attempt.
 3. Part 1/3 support both Guided and Free flows; Part 2 is Guided only.
 4. Guided behavior remains equivalent to the existing sequential Speaking practice within the selected Part.
-5. Free mode permits safe out-of-order navigation, revisit, Listen and Retry while preserving recordings per prompt.
-6. Navigating during active capture cannot lose/skip unacknowledged recording persistence.
-7. Backend rejects any prompt outside the selected Part.
-8. Refresh/recovery reconstructs the persisted flow and response state.
-9. Review/history identify the Part and flow correctly; unanswered Free prompts are represented without fabrication.
-10. Part-level AI/human scores remain advisory/focused and never become a full Speaking module or Full Mock band.
-11. Legacy prompt-focused and full-module Speaking attempts still work.
-12. Current classroom/provenance-aware final grading remains intact.
-13. Alembic remains one head and the new migration passes against a fresh PostgreSQL database.
-14. The pre-existing red CI baseline is resolved before feature completion.
-15. GitHub Actions for the final pushed SHA is inspected and the relevant CI workflow is green.
+5. Free mode permits safe out-of-order selection and does not auto-start recording.
+6. Free mode permits revisit, Listen and safe Retry while preserving recordings per prompt and the last good committed take on failed replacement.
+7. Navigating during active capture cannot lose/skip unacknowledged recording persistence.
+8. Finishing a response in Free mode never auto-submits merely because it is the last authored prompt; explicit Finish Practice controls completion.
+9. Backend rejects any prompt outside the selected Part.
+10. Refresh/recovery reconstructs the persisted flow, selected prompt and response/picker state.
+11. Review/history identify the Part and flow correctly; unanswered Free prompts are represented without fabrication.
+12. Part-level AI/human scores remain advisory/focused and never become a full Speaking module or Full Mock band.
+13. Legacy prompt-focused and full-module Speaking attempts still work.
+14. Current classroom/provenance-aware final grading remains intact.
+15. Alembic remains one head and the new migration passes against a fresh PostgreSQL database.
+16. The pre-existing red CI baseline is resolved before feature completion.
+17. GitHub Actions for the final pushed SHA is inspected and the relevant CI workflow is green.
 
 ## 23. Execution constraints for the later implementation plan
 
