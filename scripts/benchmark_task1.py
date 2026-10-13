@@ -9,12 +9,12 @@ ROOT = Path(__file__).resolve().parents[1]
 # Direct execution needs the backend package on the import path before app imports.
 sys.path.insert(0, str(ROOT / "backend"))
 
-from app.core.config import Settings
-from app.evaluation.task1.manifest import (
+from app.core.config import Settings  # noqa: E402
+from app.evaluation.task1.manifest import (  # noqa: E402
     BenchmarkInputError,
     load_manifest,
 )
-from app.evaluation.task1.runner import configurations, run_benchmark
+from app.evaluation.task1.runner import configurations, run_benchmark  # noqa: E402
 
 
 def main(argv=None) -> int:
@@ -31,9 +31,7 @@ def main(argv=None) -> int:
     parser.add_argument(
         "--limit", type=int, help="Maximum samples, before configuration expansion."
     )
-    parser.add_argument(
-        "--chart-specialist", choices=["off", "on", "both"], default="off"
-    )
+    parser.add_argument("--chart-specialist", choices=["off", "on", "both"], default="off")
     parser.add_argument(
         "--scoring-version",
         choices=["v3", "v5", "v7", "v8", "v11", "v12", "both"],
