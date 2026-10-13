@@ -58,6 +58,7 @@ def implementation_hash() -> str:
         "schemas/chart_cross_check.py",
         "schemas/visual_number.py",
         "evaluation/task1/*.py",
+        "evaluation/writing/*.py",
         "core/config.py",
     )
     files = {path for pattern in patterns for path in root.glob(pattern)}
