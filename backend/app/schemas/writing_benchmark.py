@@ -105,3 +105,24 @@ class BenchmarkCompletionFailure(Exception):
     def __init__(self, issues: list[BenchmarkFieldIssue]):
         self.issues = issues
         super().__init__("Required benchmark fields are incomplete.")
+
+
+class BenchmarkBandCount(BaseModel):
+    band: float
+    actual: int
+    suggested: int | None
+
+
+class BenchmarkTaskSummary(BaseModel):
+    task_number: Literal[1, 2]
+    capacity: Literal[100] = 100
+    total: int = 0
+    draft: int = 0
+    complete: int = 0
+    split_counts: dict[str, int]
+    split_targets: dict[str, int]
+    overall_distribution: list[BenchmarkBandCount]
+
+
+class BenchmarkBankSummary(BaseModel):
+    tasks: list[BenchmarkTaskSummary]

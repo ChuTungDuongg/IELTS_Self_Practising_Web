@@ -16,6 +16,7 @@ from app.models.enums import WritingBenchmarkStatus
 from app.models.writing_benchmark import WritingBenchmarkSample
 from app.repositories.writing_benchmark import WritingBenchmarkRepository
 from app.schemas.writing_benchmark import (
+    BenchmarkBankSummary,
     BenchmarkCompletionFailure,
     BenchmarkFieldIssue,
     BenchmarkMutation,
@@ -23,12 +24,16 @@ from app.schemas.writing_benchmark import (
     BenchmarkSampleDetail,
     BenchmarkSampleListItem,
     BenchmarkSamplePatch,
+    BenchmarkTaskSummary,
 )
 from app.services.draft_revisions import advance_revision
 from app.storage import LocalAssetStorage
 
 SCORE_MAP = {"cc": "human_cc", "lr": "human_lr", "gra": "human_gra"}
 logger = logging.getLogger(__name__)
+SUGGESTED_OVERALL = dict(
+    zip([4 + i / 2 for i in range(11)], [8, 8, 9, 10, 11, 12, 12, 10, 8, 6, 6], strict=True)
+)
 
 
 def owns_image_key(sample_id: UUID, key: str | None) -> bool:
@@ -151,6 +156,37 @@ class WritingBenchmarkService:
     async def list(self, task_number):
         async with self.session.begin():
             return [present(row, detail=False) for row in await self.repo.list_rows(task_number)]
+
+    async def summary(self):
+        async with self.session.begin():
+            rows = await self.repo.summary_labels()
+        tasks = []
+        for number in (1, 2):
+            selected = [row for row in rows if row.task_number == number]
+            complete = [row for row in selected if row.status == WritingBenchmarkStatus.COMPLETE]
+            bands = [float(overall(row)) for row in complete]
+            tasks.append(
+                BenchmarkTaskSummary(
+                    task_number=number,
+                    total=len(selected),
+                    draft=len(selected) - len(complete),
+                    complete=len(complete),
+                    split_counts={
+                        split: sum(row.split == split for row in complete)
+                        for split in ("DEV", "HOLDOUT")
+                    },
+                    split_targets={"DEV": 80, "HOLDOUT": 20},
+                    overall_distribution=[
+                        dict(
+                            band=i / 2,
+                            actual=bands.count(i / 2),
+                            suggested=SUGGESTED_OVERALL.get(i / 2),
+                        )
+                        for i in range(19)
+                    ],
+                )
+            )
+        return BenchmarkBankSummary(tasks=tasks)
 
     async def patch(self, sample_id, body: BenchmarkSamplePatch):
         async with self.session.begin():

@@ -8,6 +8,7 @@ from app.api.dependencies import AdminUser
 from app.core.config import get_settings
 from app.core.database import get_session
 from app.schemas.writing_benchmark import (
+    BenchmarkBankSummary,
     BenchmarkCompletionFailure,
     BenchmarkMutation,
     BenchmarkSampleCreate,
@@ -18,6 +19,11 @@ from app.schemas.writing_benchmark import (
 from app.services.writing_benchmark import WritingBenchmarkService
 
 router = APIRouter(prefix="/admin/writing-benchmark", tags=["admin-writing-benchmark"])
+
+
+@router.get("/summary", response_model=BenchmarkBankSummary)
+async def summary(_: AdminUser, session: AsyncSession = Depends(get_session)):
+    return await WritingBenchmarkService(session).summary()
 
 
 @router.get("/samples", response_model=list[BenchmarkSampleListItem])
