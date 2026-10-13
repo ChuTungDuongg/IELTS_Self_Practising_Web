@@ -45,6 +45,15 @@ def owns_image_key(sample_id: UUID, key: str | None) -> bool:
     )
 
 
+def owned_image_path(storage, sample_id, key):
+    if not owns_image_key(sample_id, key):
+        raise AppError("BENCHMARK_IMAGE_NOT_FOUND", "The private image is unavailable.", 404)
+    candidate = storage.root / key
+    if candidate.resolve() != candidate:
+        raise AppError("BENCHMARK_IMAGE_NOT_FOUND", "The private image is unavailable.", 404)
+    return storage.resolve(key)
+
+
 def scores(row):
     first = "ta" if row.task_number == 1 else "tr"
     return {
@@ -242,13 +251,7 @@ class WritingBenchmarkService:
         self._cleanup_image(sample_id, old_key)
 
     def owned_image_path(self, sample_id, key):
-        if not owns_image_key(sample_id, key):
-            raise AppError("BENCHMARK_IMAGE_NOT_FOUND", "The private image is unavailable.", 404)
-        candidate = self.storage.root / key
-        # Reject symlinks even when they point to another file within storage.
-        if candidate.resolve() != candidate:
-            raise AppError("BENCHMARK_IMAGE_NOT_FOUND", "The private image is unavailable.", 404)
-        return self.storage.resolve(key)
+        return owned_image_path(self.storage, sample_id, key)
 
     def _cleanup_image(self, sample_id, key):
         if not key:

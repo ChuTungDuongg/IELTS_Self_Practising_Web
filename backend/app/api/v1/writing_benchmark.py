@@ -1,8 +1,12 @@
+import asyncio
+import tempfile
+from pathlib import Path
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.background import BackgroundTask
 
 from app.api.dependencies import AdminUser
 from app.core.config import get_settings
@@ -17,6 +21,7 @@ from app.schemas.writing_benchmark import (
     BenchmarkSamplePatch,
 )
 from app.services.writing_benchmark import WritingBenchmarkService
+from app.services.writing_benchmark_export import WritingBenchmarkExportService
 
 router = APIRouter(prefix="/admin/writing-benchmark", tags=["admin-writing-benchmark"])
 
@@ -24,6 +29,25 @@ router = APIRouter(prefix="/admin/writing-benchmark", tags=["admin-writing-bench
 @router.get("/summary", response_model=BenchmarkBankSummary)
 async def summary(_: AdminUser, session: AsyncSession = Depends(get_session)):
     return await WritingBenchmarkService(session).summary()
+
+
+@router.get("/export", response_class=FileResponse)
+async def export(_: AdminUser, session: AsyncSession = Depends(get_session)):
+    handle = tempfile.NamedTemporaryFile(prefix="writing-benchmark-", suffix=".zip", delete=False)
+    path = Path(handle.name)
+    handle.close()
+    try:
+        await WritingBenchmarkExportService(session).export(path)
+    except BaseException:
+        await asyncio.to_thread(path.unlink, missing_ok=True)
+        raise
+    return FileResponse(
+        path,
+        media_type="application/zip",
+        filename="writing-benchmark.zip",
+        headers={"Cache-Control": "no-store"},
+        background=BackgroundTask(path.unlink, missing_ok=True),
+    )
 
 
 @router.get("/samples", response_model=list[BenchmarkSampleListItem])
