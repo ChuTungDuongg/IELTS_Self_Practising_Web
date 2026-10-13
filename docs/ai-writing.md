@@ -1,5 +1,11 @@
 # BandPilot advisory AI Academic Writing
 
+The standalone ADMIN [Writing benchmark bank](writing-benchmark-bank.md) stores
+human ground truth only and exports JSONL/images/CSV for offline Task 1/Task 2
+evaluation. Task 2 reuses production MTS scoring and shared score metrics. Reports
+remain in CLI/Colab output; labels never enter inference and no scoring prompts,
+calibration or provider defaults are changed by the bank.
+
 Task 1 and Task 2 share the configured `mistralai/Ministral-3-8B-Instruct-2512`
 model, provider adapters and existing Modal/vLLM GPU function. Task 2 retains
 its text-only pipeline with the `mts-task2-v12` cache contract. Task 1

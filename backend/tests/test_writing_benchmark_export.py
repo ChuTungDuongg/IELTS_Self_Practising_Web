@@ -4,6 +4,7 @@ import io
 import json
 import threading
 import zipfile
+from pathlib import Path
 from uuid import uuid4
 
 import pytest
@@ -31,6 +32,40 @@ ROOT_FILES = {
     "manifest.schema.json",
     "README.txt",
 }
+
+
+def test_task2_shipped_schema_and_colab_docs_match_current_contract():
+    from app.evaluation.task2.models import BenchmarkSample
+
+    root = Path(__file__).parents[2]
+    schema = json.loads(
+        (root / "benchmarks/writing_task2/manifest.schema.json").read_text(encoding="utf-8")
+    )
+    assert schema == BenchmarkSample.model_json_schema()
+    assert schema["$defs"]["HumanScores"]["properties"]["tr"]["anyOf"][0]["multipleOf"] == 0.5
+    assert "image_path" not in schema["properties"]
+    doc = (root / "docs/writing-benchmark-bank.md").read_text(encoding="utf-8")
+    for token in (
+        "Colab",
+        "benchmark_task1.py",
+        "benchmark_task2.py",
+        "--dry-run",
+        "--max-concurrent-llm-requests",
+        "No production PostgreSQL credentials",
+        "schema_version",
+        "Ctrl/Cmd+Enter",
+    ):
+        assert token in doc
+
+
+def test_task1_benchmark_readme_tracks_actual_current_contract():
+    from app.services.task1_input import TASK1_PROMPT_VERSION, TASK1_SCORING_PROMPT_VERSION
+
+    doc = (Path(__file__).parents[2] / "benchmarks/writing_task1/README.md").read_text(
+        encoding="utf-8"
+    )
+    assert TASK1_PROMPT_VERSION in doc and TASK1_SCORING_PROMPT_VERSION in doc
+    assert "--scoring-version v12" in doc
 
 
 async def seed(session, storage, task=1, slot=1, **edits):

@@ -26,7 +26,8 @@ storage/speaking-derived/*
 !storage/speaking-derived/.gitkeep
 
 # Evaluation datasets/outputs can contain private student or licensed material.
-/benchmarks/writing_task1/private/
+/benchmarks/writing_task1/private/*
+!/benchmarks/writing_task1/private/.gitkeep
 /benchmarks/writing_task1/**/*.jsonl
 /benchmarks/writing_task1/**/*.png
 /benchmarks/writing_task1/**/*.jpg
@@ -35,6 +36,18 @@ storage/speaking-derived/*
 /benchmarks/writing_task1/reports/*
 !/benchmarks/writing_task1/reports/.gitkeep
 /benchmarks/writing_latency/reports/
+storage/benchmark/*
+!storage/benchmark/.gitkeep
+/benchmarks/writing_task2/private/*
+!/benchmarks/writing_task2/private/.gitkeep
+/benchmarks/writing_task2/**/*.jsonl
+/benchmarks/writing_task2/**/*.png
+/benchmarks/writing_task2/**/*.jpg
+/benchmarks/writing_task2/**/*.jpeg
+/benchmarks/writing_task2/**/*.webp
+/benchmarks/writing_task2/**/*.zip
+/benchmarks/writing_task2/reports/*
+!/benchmarks/writing_task2/reports/.gitkeep
 /benchmarks/speaking/private/
 /benchmarks/speaking/reports/
 /benchmarks/speaking/**/*.jsonl

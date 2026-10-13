@@ -1,0 +1,141 @@
+{
+  "$defs": {
+    "HumanScores": {
+      "additionalProperties": false,
+      "properties": {
+        "tr": {
+          "anyOf": [
+            {
+              "maximum": 9.0,
+              "minimum": 0.0,
+              "multipleOf": 0.5,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            }
+          ],
+          "title": "Tr"
+        },
+        "cc": {
+          "anyOf": [
+            {
+              "maximum": 9.0,
+              "minimum": 0.0,
+              "multipleOf": 0.5,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            }
+          ],
+          "title": "Cc"
+        },
+        "lr": {
+          "anyOf": [
+            {
+              "maximum": 9.0,
+              "minimum": 0.0,
+              "multipleOf": 0.5,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            }
+          ],
+          "title": "Lr"
+        },
+        "gra": {
+          "anyOf": [
+            {
+              "maximum": 9.0,
+              "minimum": 0.0,
+              "multipleOf": 0.5,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            }
+          ],
+          "title": "Gra"
+        }
+      },
+      "required": [
+        "tr",
+        "cc",
+        "lr",
+        "gra"
+      ],
+      "title": "HumanScores",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$",
+      "title": "Id",
+      "type": "string"
+    },
+    "split": {
+      "enum": [
+        "dev",
+        "holdout"
+      ],
+      "title": "Split",
+      "type": "string"
+    },
+    "prompt": {
+      "maxLength": 20000,
+      "minLength": 1,
+      "title": "Prompt",
+      "type": "string"
+    },
+    "essay": {
+      "maxLength": 100000,
+      "minLength": 1,
+      "title": "Essay",
+      "type": "string"
+    },
+    "human_scores": {
+      "$ref": "#/$defs/HumanScores"
+    },
+    "raters": {
+      "const": 1,
+      "default": 1,
+      "title": "Raters",
+      "type": "integer"
+    },
+    "provenance": {
+      "maxLength": 2000,
+      "minLength": 1,
+      "title": "Provenance",
+      "type": "string"
+    },
+    "redistributable": {
+      "title": "Redistributable",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "schema_version",
+    "id",
+    "split",
+    "prompt",
+    "essay",
+    "human_scores",
+    "provenance",
+    "redistributable"
+  ],
+  "title": "BenchmarkSample",
+  "type": "object"
+}

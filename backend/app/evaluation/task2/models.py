@@ -14,7 +14,7 @@ BENCHMARK_CONTRACT_VERSION = "task2-benchmark-v1"
 TRAITS = ("tr", "cc", "lr", "gra")
 Trait = Literal["tr", "cc", "lr", "gra"]
 Split = Literal["dev", "holdout"]
-Band = Annotated[Decimal, Field(ge=0, le=9, allow_inf_nan=False)]
+Band = Annotated[Decimal, Field(ge=0, le=9, multiple_of=Decimal("0.5"), allow_inf_nan=False)]
 
 
 def digest(value: Any) -> str:
