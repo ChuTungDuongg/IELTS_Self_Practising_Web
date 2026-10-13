@@ -19,6 +19,7 @@ const completed: AIWritingRun = { id: runId, attempt_id: attemptId, writing_task
 const saved = { id: otherRun, attempt_id: attemptId, writing_task_id: taskId, source_run_id: runId, criteria: Object.fromEntries(Object.entries(result.criteria).map(([key, item]) => [key, { score: item.score, feedback: item.feedback }])), created_at: "2026-10-11T00:00:00Z", updated_at: "2026-10-11T01:00:00Z", relevance: null };
 function review(scope: "FOCUSED_UNIT" | "FULL_MODULE", mock = false): WritingReviewPayload {
   return {
+    grading: { context: "PERSONAL", can_edit_final: true, can_copy_ai_to_final: true, waiting_for_teacher: false },
     review: { attempt: { attempt_id: attemptId, test_version_id: taskId, module: "WRITING", status: "SUBMITTED", scope, focused_unit: scope === "FOCUSED_UNIT" ? { kind: "WRITING_TASK", id: taskId, order_index: 1, label: "Task 2", title: null } : null, test_session_id: mock ? otherRun : null, finished_reason: "USER_SUBMIT", timer_mode: "COUNT_UP", timer_limit_seconds: null, started_at: saved.created_at, last_active_at: saved.created_at, finished_at: saved.created_at, paused_at: null, total_paused_seconds: 0, deadline_at: null, elapsed_seconds: 100, remaining_seconds: null, raw_score: null, max_score: null, band_score: null, server_time: saved.created_at }, test_title: "Fictional practice", answers: [], writing_responses: [], highlights: [], flags: [] },
     tasks: [{ writing_task_id: taskId, task_number: 2, prompt: "Discuss fictional parks.", image_asset_id: null, image_asset: null, minimum_recommended_words: 250, recommended_duration_seconds: 2400, content: "Fictional parks help.", word_count: 3, score: null }],
     task1_overall: null, task2_overall: null, weighted_overall: null, band_score: null,
@@ -34,19 +35,20 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 describe("focused personal AI feedback", () => {
-  it("TEACHER retains personal focused practice feedback without ADMIN copy controls", async () => {
+  it("TEACHER retains personal focused feedback and explicit final-form copying", async () => {
     auth.role = "TEACHER";
     render(<WritingReviewView data={review("FOCUSED_UNIT")} />);
     fireEvent.click(await screen.findByRole("button", { name: "Save AI feedback to practice" }));
     await waitFor(() => expect(saveAIPracticeFeedback).toHaveBeenCalledExactlyOnceWith(attemptId, taskId, runId));
-    expect(screen.queryByText("Chép gợi ý AI vào biểu mẫu")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Chép gợi ý AI vào biểu mẫu" })).toBeInTheDocument();
+    expect(saveWritingTaskScore).not.toHaveBeenCalled();
   });
   it("teacher assignment review never mounts AI observers or grading mutations", () => {
     auth.role = "TEACHER";
     render(<WritingReviewView data={review("FOCUSED_UNIT")} readOnly />);
     expect(screen.getByText("Fictional parks help.")).toBeInTheDocument();
-    for (const field of screen.getAllByRole("combobox")) expect(field).toBeDisabled();
-    for (const field of screen.getAllByRole("textbox")) expect(field).toHaveAttribute("readonly");
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
     expect(screen.queryByText("Save AI feedback to practice")).not.toBeInTheDocument();
     expect(screen.queryByText("Chấm lại với AI")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Save Task/ })).not.toBeInTheDocument();
@@ -64,13 +66,14 @@ describe("focused personal AI feedback", () => {
     expect(within(card).getAllByText("7.0")).toHaveLength(4);
     expect(within(card).getByText(/Updated/)).toBeInTheDocument();
     expect(saveWritingTaskScore).not.toHaveBeenCalled();
-    expect(screen.queryByRole("button", { name: "Chép gợi ý AI vào biểu mẫu" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Chép gợi ý AI vào biểu mẫu" })).toBeInTheDocument();
   });
-  it.each([["FULL_MODULE", false], ["FULL_MODULE", true], ["FOCUSED_UNIT", true]] as const)("USER %s mock=%s has neither save nor admin-copy action", async (scope, mock) => {
+  it.each([["FULL_MODULE", false], ["FULL_MODULE", true], ["FOCUSED_UNIT", true]] as const)("unlocked personal %s mock=%s allows final copying but no focused snapshot save", async (scope, mock) => {
     render(<WritingReviewView data={review(scope, mock)} />);
     await screen.findByText("Chấm lại với AI");
     expect(screen.queryByText("Save AI feedback to practice")).not.toBeInTheDocument();
-    expect(screen.queryByText("Chép gợi ý AI vào biểu mẫu")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Chép gợi ý AI vào biểu mẫu" })).toBeInTheDocument();
+    expect(saveWritingTaskScore).not.toHaveBeenCalled();
     expect(getAIPracticeFeedback).not.toHaveBeenCalled();
   });
   it("ADMIN keeps copying to official form and explicit manual save", async () => {

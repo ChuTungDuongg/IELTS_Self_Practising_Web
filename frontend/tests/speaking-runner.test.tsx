@@ -8,7 +8,7 @@ import { ApiError } from "@/lib/api/client";
 
 const fakeRecorder = vi.hoisted(() => ({ start: vi.fn(), stop: vi.fn().mockResolvedValue(undefined), close: vi.fn(), onChunk: undefined as ((blob: Blob) => void) | undefined, onLevel: undefined, mimeType: "audio/webm;codecs=opus", recording: false }));
 vi.mock("@/features/speaking/speaking-preflight", () => ({ SpeakingPreflight: ({ onReady }: { onReady(value: unknown): void }) => <button onClick={() => onReady(fakeRecorder)}>Ready microphone</button> }));
-vi.mock("@/lib/api/speaking", () => ({ getSpeakingState: vi.fn(), beginSpeaking: vi.fn(), heartbeatSpeaking: vi.fn(), finishSpeaking: vi.fn(), retrySpeaking: vi.fn(), saveSpeakingNotes: vi.fn(), openSpeakingSegment: vi.fn(), closeSpeakingSegment: vi.fn(), uploadSpeakingChunk: vi.fn(), getSpeakingManifest: vi.fn(), interruptSpeaking: vi.fn(), resumeSpeaking: vi.fn(), fetchSpeakingAudio: vi.fn() }));
+vi.mock("@/lib/api/speaking", async original => ({ ...await original<typeof api>(), getSpeakingState: vi.fn(), beginSpeaking: vi.fn(), heartbeatSpeaking: vi.fn(), finishSpeaking: vi.fn(), retrySpeaking: vi.fn(), saveSpeakingNotes: vi.fn(), openSpeakingSegment: vi.fn(), closeSpeakingSegment: vi.fn(), uploadSpeakingChunk: vi.fn(), getSpeakingManifest: vi.fn(), interruptSpeaking: vi.fn(), resumeSpeaking: vi.fn(), fetchSpeakingAudio: vi.fn() }));
 export const state: SpeakingState = {
   attempt_id: "11111111-1111-4111-8111-111111111111", mode: "PRACTICE", phase: "QUESTION_ENTER",
   current_prompt: { id: "22222222-2222-4222-8222-222222222222", part_number: 1, part_title: null, instructions: null, order_index: 0, prompt_type: "SHORT_ANSWER", prompt_text: "Fictional current question", preparation_seconds: 0, response_seconds: 60, config_json: {} },

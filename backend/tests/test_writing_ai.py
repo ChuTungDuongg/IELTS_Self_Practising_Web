@@ -503,7 +503,11 @@ async def test_concurrent_out_of_order_checkpoints_are_canonical_replayable_and_
         if event == "criterion.completed":
             completed.append(payload.criterion)
             partial = await api.get(run_id)
-            assert list(partial.progress) == [trait for trait in TRAITS if trait in completed]
+            # Score-first checkpoints can arrive before their feedback completes.
+            assert set(completed) <= set(partial.progress)
+            assert list(partial.progress) == [
+                trait for trait in TRAITS if trait in partial.progress
+            ]
             if len(completed) == 3:
                 assert "cc" not in partial.progress and partial.result is None
                 release_cc.set()
@@ -1227,7 +1231,10 @@ async def test_bounded_lr_observation_display_persists_live_and_replays_without_
     async with db_session.begin():
         db_session.expire_all()
         stored = await db_session.get(WritingAIGradingRun, created.run_id)
-        assert stored.usage_json["diagnostics"] == []
+        diagnostics = stored.usage_json["diagnostics"]
+        assert len(diagnostics) == 1
+        assert diagnostics[0]["reason"] == "FEEDBACK_PRESENTATION_NORMALIZED"
+        assert diagnostics[0]["criterion"] == "lr"
         assert paragraph[:50] not in json.dumps(stored.usage_json)
         assert stored.result_json["criteria"]["lr"]["feedback"] == result.feedback
         human = await db_session.scalar(

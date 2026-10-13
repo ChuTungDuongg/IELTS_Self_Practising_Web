@@ -5,8 +5,8 @@ import { getExam } from "@/lib/api/exam";
 import { getSpeakingReview } from "@/lib/api/speaking";
 
 vi.mock("next/navigation", () => ({ notFound: () => { throw new Error("NOT_FOUND"); } }));
-vi.mock("@/lib/api/exam", () => ({ getExam: vi.fn() }));
-vi.mock("@/lib/api/speaking", () => ({ getSpeakingReview: vi.fn() }));
+vi.mock("@/lib/api/exam", async original => ({ ...await original<typeof import("@/lib/api/exam")>(), getExam: vi.fn() }));
+vi.mock("@/lib/api/speaking", async original => ({ ...await original<typeof import("@/lib/api/speaking")>(), getSpeakingReview: vi.fn() }));
 vi.mock("@/features/speaking/speaking-review", () => ({ SpeakingReview: () => <p>Speaking review selected</p> }));
 const attemptId = "11111111-1111-4111-8111-111111111111";
 beforeEach(() => { vi.clearAllMocks(); vi.mocked(getExam).mockResolvedValue({ attempt: { module: "SPEAKING", status: "SUBMITTED" } } as never); });

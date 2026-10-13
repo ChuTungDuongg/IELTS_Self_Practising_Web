@@ -119,9 +119,9 @@ async def test_bounded_lr_observations_build_concise_vietnamese_display_without_
     assert len(lr.feedback) <= 800
     assert len(lr.strengths) <= 3 and all(0 < len(s) <= 240 for s in lr.strengths)
     assert len(lr.improvements) <= 3 and all(0 < len(s) <= 240 for s in lr.improvements)
-    assert len(lr.strengths) == len(lr.improvements) == 3
-    assert lr.feedback.endswith("…") and lr.feedback.startswith(VERBOSE[:50])
-    assert all(item.startswith("Đoạn 1: ") for item in lr.strengths + lr.improvements)
+    assert len(lr.strengths) == 1 and len(lr.improvements) == 3
+    assert lr.feedback.endswith(".") and lr.feedback.startswith(VERBOSE[:50])
+    assert all(not item.startswith("Đoạn 1: ") for item in lr.strengths + lr.improvements)
     assert lr.evidence[0].quote == "They  support communities."
     assert [p.criterion for e, p in events if e == "criterion.completed"] == [
         "ta",
@@ -130,7 +130,9 @@ async def test_bounded_lr_observations_build_concise_vietnamese_display_without_
         "gra",
     ]
     assert not any(e in {"criterion.retrying", "criterion.failed"} for e, _ in events)
-    assert not service.diagnostics
+    assert len(service.diagnostics) == 1
+    assert service.diagnostics[0].reason == "FEEDBACK_PRESENTATION_NORMALIZED"
+    assert service.diagnostics[0].criterion == "lr"
     assert "AI validation failure" not in caplog.text
     assert VERBOSE not in caplog.text + str(service.diagnostics)
     assert "FEEDBACK_PRESENTATION_NORMALIZED" not in str(events)
@@ -224,8 +226,13 @@ def test_historical_raw_scoring_display_normalization_preserves_accepted_score(
     assert (path, error_type) in [(i.field, i.validation_type) for i in issues]
     raw_feedback = RawCriterionFeedbackOutput.model_validate({**FEEDBACK, **change})
     feedback, feedback_issues = normalize_criterion_feedback(raw_feedback, Decimal("6.5"))
-    assert feedback.model_dump() == result.model_dump(exclude={"score"})
-    assert (path, error_type) in [(i.field, i.validation_type) for i in feedback_issues]
+    if error_type == "too_long":
+        # Current feedback accepts four bullets; frozen historical scoring accepts three.
+        assert len(getattr(feedback, path)) == 4
+        assert not feedback_issues
+    else:
+        assert feedback.model_dump() == result.model_dump(exclude={"score"})
+        assert (path, error_type) in [(i.field, i.validation_type) for i in feedback_issues]
 
 
 def test_raw_feedback_normalization_preserves_vietnamese_and_internal_whitespace():

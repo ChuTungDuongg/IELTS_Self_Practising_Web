@@ -321,7 +321,7 @@ async def test_concurrent_saves_converge_on_one_row(db_session, focused):
             await session.execute(delete(User).where(User.id == owner))
 
 
-async def test_user_api_only_accepts_run_id_and_cannot_officially_grade(
+async def test_snapshot_accepts_only_run_id_and_personal_final_save_is_explicit(
     db_session, focused, test_user
 ):
     attempt_id, task_id, run_id, _ = focused
@@ -349,7 +349,9 @@ async def test_user_api_only_accepts_run_id_and_cannot_officially_grade(
                 f"/api/v1/attempts/{attempt_id}/writing-scores/{task_id}",
                 json={"ta": 9, "cc": 9, "lr": 9, "gra": 9},
             )
-            assert official.status_code == 403
+            assert official.status_code == 200
+            assert official.json()["tasks"][0]["score"]["ta"] == 9
+            assert (await client.get(path)).json() == response.json()
     finally:
         app.dependency_overrides.clear()
         app.dependency_overrides.update(previous)
