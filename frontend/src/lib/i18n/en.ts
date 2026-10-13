@@ -1,4 +1,19 @@
 export const en = {
+  "grading.criterion": "Final {criterion}",
+  "grading.feedback": "Final {criterion} feedback",
+  "grading.readOnly": "Read-only result",
+
+  "grading.waiting": "Waiting for teacher grading",
+  "grading.teacherFinal": "Teacher final score",
+  "grading.practiceFinal": "Final practice score",
+  "grading.selfAssessed": "Self-assessed",
+  "grading.save": "Save final score",
+  "grading.saved": "Final score saved",
+  "grading.error": "Could not save final score",
+  "grading.copy": "Copy AI scores to form",
+  "grading.reviewAssignment": "Review assignment result",
+  "grading.teacherGrading": "Teacher grading",
+
   "history.speakingTranscript": "Transcript: {status}",
   "history.speakingAssessment": "AI assessment: {status}",
   "history.speakingAdvisory": "AI advisory band {score}",

@@ -8,6 +8,7 @@ from app.domains.writing.task_types import WritingTaskType
 from app.models.enums import ModuleType, VersionStatus
 from app.schemas.assets import AssetResponse
 from app.schemas.attempts import AttemptResponse, AttemptReview, WritingReview
+from app.schemas.grading import GradingCapabilities
 from app.schemas.listening import ListeningAudioRange
 from app.schemas.speaking import BuilderSpeakingPart
 
@@ -346,6 +347,7 @@ class ListeningReview(BaseModel):
 
 
 class WritingAttemptReview(BaseModel):
+    grading: GradingCapabilities = Field(default_factory=GradingCapabilities)
     review: AttemptReview
     tasks: list[WritingReview]
     task1_overall: float | None = None

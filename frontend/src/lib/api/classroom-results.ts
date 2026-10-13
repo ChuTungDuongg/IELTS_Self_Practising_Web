@@ -1,3 +1,6 @@
+import { gradingSchema } from "./grading";
+import type { WritingCriteriaInput } from "./exam";
+import type { SpeakingCriteriaInput } from "./speaking";
 import { z } from "zod";
 import { apiRequest, type ApiRequester } from "./client";
 import { attemptResponseSchema } from "./attempts";
@@ -14,6 +17,7 @@ const summarySchema = z.object({
 });
 export type AssignmentResultSummary = z.infer<typeof summarySchema>;
 const detailSchema = summarySchema.extend({
+  grading: gradingSchema.optional(),
   reading_review: readingReviewSchema.nullable(),
   listening_review: listeningReviewSchema.nullable(),
   writing_review: writingReviewSchema.nullable(),
@@ -34,4 +38,11 @@ export async function listAssignmentResults(classroomId: string, assignmentId: s
 }
 export async function getAssignmentResult(classroomId: string, assignmentId: string, attemptId: string, request: ApiRequester = apiRequest): Promise<AssignmentResultDetail> {
   return detailSchema.parse(await request<unknown>(`${base(classroomId, assignmentId)}/attempts/${encodeURIComponent(attemptId)}`));
+}
+
+export async function saveAssignmentWritingScore(classroomId: string, assignmentId: string, attemptId: string, taskId: string, scores: WritingCriteriaInput) {
+  return writingReviewSchema.parse(await apiRequest(`${base(classroomId, assignmentId)}/attempts/${encodeURIComponent(attemptId)}/writing-scores/${encodeURIComponent(taskId)}`, { method: "PUT", body: JSON.stringify(scores) }));
+}
+export async function saveAssignmentSpeakingScore(classroomId: string, assignmentId: string, attemptId: string, scores: SpeakingCriteriaInput) {
+  return speakingReviewSchema.parse(await apiRequest(`${base(classroomId, assignmentId)}/attempts/${encodeURIComponent(attemptId)}/speaking-score`, { method: "PUT", body: JSON.stringify(scores) }));
 }

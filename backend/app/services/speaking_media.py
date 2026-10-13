@@ -18,6 +18,7 @@ from app.models.speaking import (
     SpeakingResponse,
     SpeakingResponseTake,
 )
+from app.repositories.attempts import AttemptRepository
 from app.schemas.speaking import (
     SpeakingChunkData,
     SpeakingManifest,
@@ -25,7 +26,9 @@ from app.schemas.speaking import (
     SpeakingSegmentData,
 )
 from app.services.access_policy import AccessPolicy
+from app.services.grading_policy import GradingPolicy, assignment_origin, require_review_unlocked
 from app.services.speaking_attempts import SpeakingAttemptService
+from app.services.speaking_final import present_final_score
 from app.storage.local import LocalAssetStorage
 
 MIMES = {"audio/webm", "audio/webm;codecs=opus", "audio/mp4", "audio/ogg;codecs=opus"}
@@ -299,6 +302,8 @@ class SpeakingMediaService:
         if attempt.test_session_id:
             parent = await self.session.get(TestSession, attempt.test_session_id)
             finalized = finalized and parent.status != "IN_PROGRESS"
+        if self.actor.role == "ADMIN" and response.locked and finalized:
+            return
         if attempt.user_id == self.actor.id:
             if response.locked and finalized:
                 return
@@ -391,6 +396,20 @@ class SpeakingMediaService:
                 raise AppError(
                     "SPEAKING_REVIEW_UNAVAILABLE", "Finalize Speaking before opening review.", 409
                 )
+            attempt = await AttemptRepository(self.session).get(aid)
+            if attempt.user_id != self.actor.id and self.actor.role != "ADMIN":
+                origin = assignment_origin(attempt)
+                assignment = await self.session.get(ClassroomAssignment, origin) if origin else None
+                if assignment is None:
+                    raise AppError(
+                        "SPEAKING_MEDIA_FORBIDDEN", "Recording access is unavailable.", 403
+                    )
+                await AccessPolicy(self.session, self.actor).require_assignment_view(assignment)
+            require_review_unlocked(attempt)
+            final_score = await present_final_score(self.session, aid)
+            grading = GradingPolicy(self.session, self.actor).capabilities(
+                attempt, has_final=final_score is not None
+            )
             prompts = await self.runtime.repository.prompts(attempt)
             rows = list(
                 await self.session.scalars(
@@ -399,8 +418,6 @@ class SpeakingMediaService:
                     )
                 )
             )
-            if attempt.user_id != self.actor.id and not rows:
-                raise AppError("SPEAKING_MEDIA_FORBIDDEN", "Recording access is unavailable.", 403)
             for response in rows:
                 await self._read_access(aid, response)
             title = await self.session.scalar(
@@ -436,6 +453,8 @@ class SpeakingMediaService:
                 SpeakingReviewedResponse(prompt=prompt, **manifest.model_dump())
             )
         return SpeakingReviewData(
+            grading=grading,
+            final_score=final_score,
             attempt_id=aid,
             test_title=title,
             can_generate_transcript=attempt.user_id == self.actor.id,

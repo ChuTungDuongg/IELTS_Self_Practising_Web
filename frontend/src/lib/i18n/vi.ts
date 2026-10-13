@@ -1,6 +1,21 @@
 import type { TranslationDictionary } from "./types";
 
 export const vi = {
+  "grading.criterion": "Điểm cuối {criterion}",
+  "grading.feedback": "Nhận xét cuối {criterion}",
+  "grading.readOnly": "Kết quả chỉ đọc",
+
+  "grading.waiting": "Đang chờ giáo viên chấm",
+  "grading.teacherFinal": "Điểm cuối cùng của giáo viên",
+  "grading.practiceFinal": "Điểm luyện tập cuối cùng",
+  "grading.selfAssessed": "Tự đánh giá",
+  "grading.save": "Lưu điểm cuối cùng",
+  "grading.saved": "Đã lưu điểm cuối cùng",
+  "grading.error": "Không thể lưu điểm cuối cùng",
+  "grading.copy": "Chép điểm AI vào biểu mẫu",
+  "grading.reviewAssignment": "Xem kết quả bài tập",
+  "grading.teacherGrading": "Giáo viên chấm điểm",
+
   "history.speakingTranscript": "Bản chép lời: {status}",
   "history.speakingAssessment": "Đánh giá AI: {status}",
   "history.speakingAdvisory": "Band AI tham khảo {score}",

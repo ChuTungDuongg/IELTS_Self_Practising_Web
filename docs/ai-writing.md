@@ -74,14 +74,13 @@ The attempt must belong to the caller, be standalone WRITING/FOCUSED_UNIT and se
 that task. The source run must match the attempt/task/requester and contain a complete
 validated result. Full-module/Full Mock, foreign attempts/tasks/runs, pending/running/failed
 runs and malformed/incomplete results are rejected. Snapshot foreign keys cascade with
-attempt/user removal. Official manual grading remains ADMIN-only.
+attempt/user removal. Human final grading follows attempt provenance: personal owners and ADMIN may save final criteria; classroom students cannot.
 
 USER review exposes Save/Update only for focused Writing. The separately loaded card
 shows four criterion scores, feedback, saved/update times and an advisory badge in
 EN/VI. Regrading does not overwrite the card; another explicit save replaces it. An
 unrelated source run shows its explanation alongside the independent linguistic scores.
-ADMIN retains copy-to-manual-form → edit → explicit official Save. Full-module/Full Mock
-USER review exposes neither action. Snapshot saves never modify `AttemptWritingScore`,
+Personal owners and ADMIN may copy AI criteria into the final form, edit and explicitly Save. Classroom teachers use the assignment-scoped form. Snapshot saves never modify `AttemptWritingScore`,
 attempt band, History, Analytics or official Full Mock state.
 
 Inline annotations belong to the source AI run's criterion results. The saved
@@ -255,11 +254,10 @@ equal-weight mean and rounds it with the existing `round_to_half` helper:
 criteria succeed. Otherwise the run ends FAILED after attempting all criteria,
 with successful results and individual failures preserved and no aggregate.
 **AI Task 2 Overall** is advisory. It never updates `AttemptWritingScore`,
-`Attempt.band_score`, official Writing, History or Analytics. An admin can copy
-scores/feedback into the existing editable form; the existing explicit human
-Save is still required. The official Task 1 × 1 / Task 2 × 2 rule is unchanged.
-Other users retain their existing permissions and cannot use AI to gain manual
-grading access. Speaking remains outside this feature.
+`Attempt.band_score`, official Writing, History or Analytics. An authorized personal owner or admin can copy
+scores/feedback into the final form; explicit human Save is required. Classroom
+teachers enter final criteria through the assignment form while consulting advisory results. The official Task 1 × 1 / Task 2 × 2 rule is unchanged.
+Classroom students cannot use AI to gain final grading access. Speaking AI remains a separate feature.
 
 ## Shared concise feedback and inline annotations
 
@@ -1002,3 +1000,10 @@ The backend timeout defaults to 90 seconds (maximum 120), including cold-start
 waiting. Deploy/cache/cost details and the measured smoke result are documented in
 [Modal deployment](modal-web.md#optional-t1-b-chart-service). TinyChart remains a future comparison candidate; T1-C,
 model voting and evaluation dashboards are not implemented.
+
+
+## Human final Writing grading
+
+AI remains advisory. Personal owners may manually self-assess or copy completed AI criteria into the final practice form, edit, then explicitly Save. Copying does not persist; annotations never enter score arithmetic. Classroom students see read-only teacher final results or “Waiting for teacher grading” (VI: “Đang chờ giáo viên chấm”). The exact classroom owner teacher may save/revise criteria through an assignment-scoped route; ADMIN retains authority.
+
+Both standalone assignment IDs and parent Full Mock assignment IDs count as classroom provenance. Existing review locks and focused task-only band behavior remain. Review DTOs expose backend `grading` capabilities; mutation routes recheck them. See [teacher-classrooms.md](teacher-classrooms.md#human-final-subjective-grading) for the shared policy and routes. The existing focused AI practice snapshot is separate from human final grading.

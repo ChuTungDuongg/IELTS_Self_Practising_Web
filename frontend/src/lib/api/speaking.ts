@@ -1,3 +1,4 @@
+import { gradingSchema } from "./grading";
 import { z } from "zod";
 import { apiRequest, apiResponse, type ApiRequester } from "./client";
 
@@ -36,6 +37,17 @@ export async function uploadSpeakingChunk(id: string, segment: string, sequence:
 export async function closeSpeakingSegment(id: string, segment: string, chunk_count: number) { return segmentSchema.parse(await apiRequest(`/speaking-attempts/${id}/segments/${segment}/close`, { method: "POST", body: JSON.stringify({ chunk_count }) })); }
 export async function getSpeakingManifest(id: string, response: string) { return manifestSchema.parse(await apiRequest(`/speaking-attempts/${id}/responses/${response}/manifest`)); }
 export async function fetchSpeakingAudio(path: string) { if (!/^\/speaking-attempts\/[^/]+\/segments\/[^/]+\/content$/.test(path)) throw new Error("SPEAKING_MEDIA_INVALID"); return (await apiResponse(path)).blob(); }
-export const speakingReviewSchema = z.object({ attempt_id: z.string().uuid(), test_title: z.string(), can_generate_transcript: z.boolean().default(true), parts: z.array(z.object({ part_number: z.number().int(), responses: z.array(manifestSchema.extend({ prompt: speakingPromptSchema })) })) });
+const finalBandSchema = z.number().min(0).max(9).multipleOf(0.5);
+export const speakingFinalScoreSchema = z.object({
+  fc: finalBandSchema, lr: finalBandSchema, gra: finalBandSchema, pr: finalBandSchema, overall_band: finalBandSchema,
+  fc_feedback: z.string().nullable().optional(), lr_feedback: z.string().nullable().optional(),
+  gra_feedback: z.string().nullable().optional(), pr_feedback: z.string().nullable().optional(),
+});
+export type SpeakingCriteriaInput = Omit<z.infer<typeof speakingFinalScoreSchema>, "overall_band">;
+export const speakingReviewSchema = z.object({ grading: gradingSchema.optional(), final_score: speakingFinalScoreSchema.nullable().optional(), attempt_id: z.string().uuid(), test_title: z.string(), can_generate_transcript: z.boolean().default(true), parts: z.array(z.object({ part_number: z.number().int(), responses: z.array(manifestSchema.extend({ prompt: speakingPromptSchema })) })) });
 export type SpeakingReviewData = z.infer<typeof speakingReviewSchema>;
 export async function getSpeakingReview(id: string, request: ApiRequester = apiRequest) { return speakingReviewSchema.parse(await request(`/speaking-attempts/${id}/review`)); }
+
+export async function saveSpeakingFinalScore(id: string, scores: SpeakingCriteriaInput) {
+  return speakingReviewSchema.parse(await apiRequest(`/speaking-attempts/${id}/final-score`, { method: "PUT", body: JSON.stringify(scores) }));
+}

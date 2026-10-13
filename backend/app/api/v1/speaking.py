@@ -13,6 +13,7 @@ from app.api.dependencies import CurrentUser, require_content_author
 from app.core.config import get_settings
 from app.core.database import SessionFactory, get_session
 from app.core.exceptions import AppError
+from app.schemas.grading import SpeakingScoreUpdate
 from app.schemas.speaking import (
     BuilderSpeakingPart,
     SpeakingBegin,
@@ -37,6 +38,7 @@ from app.schemas.speaking import (
 from app.schemas.speaking_ai import TranscriptCreated, TranscriptRunData, TranscriptRunList
 from app.services.speaking_attempts import SpeakingAttemptService
 from app.services.speaking_builder import SpeakingBuilderService
+from app.services.speaking_final import SpeakingFinalService
 from app.services.speaking_media import SpeakingMediaService
 from app.services.speaking_transcript import TERMINAL, SpeakingTranscriptService
 from app.services.speaking_transcript_worker import SpeakingTranscriptWorker
@@ -426,3 +428,13 @@ async def update_prompt(
     session: AsyncSession = Depends(get_session),
 ):
     return await SpeakingBuilderService(session, actor=user).update_prompt(part_id, prompt_id, body)
+
+
+@runtime_router.put("/{attempt_id}/final-score", response_model=SpeakingReviewData)
+async def save_final_score(
+    attempt_id: UUID,
+    body: SpeakingScoreUpdate,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+):
+    return await SpeakingFinalService(session, user).save(attempt_id, body)

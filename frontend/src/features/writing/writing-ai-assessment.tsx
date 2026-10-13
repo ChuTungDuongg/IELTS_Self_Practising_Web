@@ -222,7 +222,7 @@ export function WritingAIAssessment({ attemptId, taskId, taskNumber = 2, hasEssa
         {starting ? "Đang bắt đầu chấm AI…" : active ? "Đang chấm với AI…" : run ? "Chấm lại với AI" : `Chấm Task ${taskNumber} với AI`}
       </button>
       {active ? <button type="button" className="btn btn-secondary" disabled={stopping} onClick={() => { setStopError(""); setConfirmStop(true); }}>{stopping ? "Đang dừng…" : "Dừng chấm"}</button> : null}
-      {run?.result && canCopy ? <button type="button" className="btn" disabled={active || starting || stopping} onClick={() => { onCopy(run.result!); setNotice(`Đã chép gợi ý AI. Bạn có thể chỉnh sửa; cần bấm Save Task ${taskNumber} scores để lưu điểm chính thức.`); }}>Chép gợi ý AI vào biểu mẫu</button> : null}
+      {run?.status === "COMPLETED" && run.result && canCopy ? <button type="button" className="btn" disabled={active || starting || stopping} onClick={() => { onCopy(run.result!); setNotice(`Đã chép gợi ý AI. Bạn có thể chỉnh sửa; cần bấm Save Task ${taskNumber} scores để lưu điểm chính thức.`); }}>Chép gợi ý AI vào biểu mẫu</button> : null}
       {canSavePersonalFeedback && run?.status === "COMPLETED" && run.result ? <button type="button" className="btn" disabled={active || starting || stopping || feedbackLoading || feedbackSaving || personalFeedback?.source_run_id === run.id} onClick={() => void savePersonalFeedback()}>
         {t(feedbackSaving ? "writingAI.savingFeedback" : personalFeedback?.source_run_id === run.id ? "writingAI.feedbackSaved" : personalFeedback ? "writingAI.updateFeedback" : "writingAI.saveFeedback")}
       </button> : null}

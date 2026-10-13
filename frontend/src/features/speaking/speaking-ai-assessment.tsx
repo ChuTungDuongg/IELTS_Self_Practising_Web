@@ -6,11 +6,11 @@ import { activeSpeakingAI, cancelSpeakingAIRun, createSpeakingAIRun, getSpeaking
 import { SpeakingAIProgress } from "./speaking-ai-progress";
 
 const criteria: SpeakingAICriterion[] = ["fc", "lr", "gra", "pr"];
-export function SpeakingAIAssessment({ attemptId, canGrade = true, onTranscriptAvailable }: { attemptId: string; canGrade?: boolean; onTranscriptAvailable?: () => void }) {
-  return <AssessmentSession key={`${attemptId}:${canGrade}`} attemptId={attemptId} canGrade={canGrade} onTranscriptAvailable={onTranscriptAvailable} />;
+export function SpeakingAIAssessment({ attemptId, canGrade = true, onTranscriptAvailable, onCopy, canCopy = false, initialRun }: { attemptId: string; canGrade?: boolean; onTranscriptAvailable?: () => void; canCopy?: boolean; onCopy?: (run: SpeakingAIRun) => void; initialRun?: SpeakingAIRun | null }) {
+  return <AssessmentSession key={`${attemptId}:${canGrade}`} attemptId={attemptId} canGrade={canGrade} onTranscriptAvailable={onTranscriptAvailable} canCopy={canCopy} onCopy={onCopy} initialRun={initialRun} />;
 }
-function AssessmentSession({ attemptId, canGrade, onTranscriptAvailable }: { attemptId: string; canGrade: boolean; onTranscriptAvailable?: () => void }) {
-  const { t } = useTranslation(); const [run, setRun] = useState<SpeakingAIRun | null>(null);
+function AssessmentSession({ attemptId, canGrade, onTranscriptAvailable, onCopy, canCopy, initialRun }: { attemptId: string; canGrade: boolean; onTranscriptAvailable?: () => void; canCopy: boolean; onCopy?: (run: SpeakingAIRun) => void; initialRun?: SpeakingAIRun | null }) {
+  const { t } = useTranslation(); const [run, setRun] = useState<SpeakingAIRun | null>(initialRun ?? null);
   const [loading, setLoading] = useState(true); const [busy, setBusy] = useState(false); const [error, setError] = useState<"generic" | "notConfigured" | null>(null); const [reducedMotion, setReducedMotion] = useState(false);
   const alive = useRef(true); const pending = useRef(false); const current = useRef<SpeakingAIRun | null>(null);
   const announcedTranscripts = useRef(new Set<string>());
@@ -26,9 +26,9 @@ function AssessmentSession({ attemptId, canGrade, onTranscriptAvailable }: { att
     current.current = next; setRun(next); setError(null);
   }
   useEffect(() => {
-    alive.current = true; void latestSpeakingAIRun(attemptId).then((next) => { if (next) accept(next); }).catch(() => { if (alive.current) setError("generic"); }).finally(() => { if (alive.current) setLoading(false); });
+    alive.current = true; void (initialRun ? Promise.resolve(initialRun) : latestSpeakingAIRun(attemptId)).then((next) => { if (next) accept(next); }).catch(() => { if (alive.current) setError("generic"); }).finally(() => { if (alive.current) setLoading(false); });
     return () => { alive.current = false; };
-  }, [attemptId]);
+  }, [attemptId, initialRun]);
   useEffect(() => {
     if (!runId || !active) return;
     return watchSpeakingAIRun(attemptId, runId, { event: () => undefined, snapshot: accept, error: () => { if (alive.current) setError("generic"); } }, current.current?.last_sequence ?? 0);
@@ -68,6 +68,7 @@ function AssessmentSession({ attemptId, canGrade, onTranscriptAvailable }: { att
     <p className="speaking-ai-advisory">{t("speakingAI.advisory")}</p>
     {error ? <p role="alert" className="notice notice-error">{t(error === "notConfigured" ? "speakingAI.notConfigured" : "speakingAI.error")}</p> : null}
     {run ? <><SpeakingAIProgress run={run} />
+      {canCopy && onCopy && run.attempt_id === attemptId && run.status === "COMPLETED" && criteria.every(key => run.criteria[key].status === "COMPLETED" && run.criteria[key].score !== null) ? <button type="button" className="btn btn-secondary" onClick={() => onCopy(run)}>{t("grading.copy")}</button> : null}
       {run.status === "FAILED" ? <p className="notice notice-error">{t(run.error_code === "SPEAKING_AUDIO_UNASSESSABLE" ? "speakingAI.audioUnavailable" : "speakingAI.failed")}</p> : null}
       <div className="speaking-ai-overall"><h3>{t("speakingAI.overall")}</h3><p className="speaking-ai-score">{run.overall_band === null ? t("speakingAI.overallWaiting") : run.overall_band.toFixed(1)}</p>
         {run.raw_mean !== null ? <p>{t("speakingAI.rawMean", { value: run.raw_mean })}</p> : null}</div>

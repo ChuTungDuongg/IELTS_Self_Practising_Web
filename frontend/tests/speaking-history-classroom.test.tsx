@@ -105,3 +105,23 @@ it("requires all four configured skills before offering assignment Full Mock", a
   expect(screen.getByRole("option", { name: "Full Mock" })).toBeInTheDocument(); fireEvent.change(screen.getByRole("combobox", { name: "Practice mode" }), { target: { value: "FULL_MOCK" } }); fireEvent.click(screen.getByRole("button", { name: "Start assignment" }));
   await waitFor(() => expect(push).toHaveBeenCalledExactlyOnceWith(`/test-session/${id(7)}`)); expect(JSON.parse(vi.mocked(apiRequest).mock.calls[0][1]!.body as string)).toEqual({ mode: "FULL_MOCK" });
 });
+
+it("shows authorized owning teacher Speaking grading while preserving transcript and audio action restrictions", async () => {
+  const grading = { context: "CLASSROOM" as const, can_edit_final: true, can_copy_ai_to_final: true, waiting_for_teacher: false };
+  const parsed = await getAssignmentResult(id(2), id(3), id(1), vi.fn().mockResolvedValue({ ...detail, grading, speaking_review: { ...review, grading } }));
+  render(<TeacherResultView data={parsed} classroomId={id(2)} assignmentId={id(3)} />);
+  expect(screen.getByText("Teacher grading")).toBeInTheDocument();
+  expect(screen.getByLabelText("Final FC")).toBeEnabled(); expect(screen.getByRole("button", { name: "Save final score" })).toBeDisabled();
+  await screen.findByText("Assessment complete");
+  expect(screen.getByRole("button", { name: "Copy AI scores to form" })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /Generate Transcript|Grade with AI|Stop grading|Retry recording/ })).toBeNull();
+  expect(transcriptApi.createTranscriptRun).not.toHaveBeenCalled(); expect(aiApi.createSpeakingAIRun).not.toHaveBeenCalled();
+});
+
+it("keeps objective classroom Reading results read-only even in an assignment grading page", async () => {
+  const readingAttempt = { ...attempt, module: "READING" };
+  const parsed = await getAssignmentResult(id(2), id(3), id(1), vi.fn().mockResolvedValue({ ...detail, attempt: readingAttempt, speaking_review: null, speaking_ai_run: null, reading_review: { review: { attempt: readingAttempt, test_title: "Fictional objective review", answers: [] }, highlights: [], passages: [{ id: id(5), title: "Fictional passage", order_index: 0, blocks: [{ id: id(6), type: "paragraph", text: "Fictional saved passage." }], question_groups: [] }] }, grading: { context: "CLASSROOM", can_edit_final: false, can_copy_ai_to_final: false, waiting_for_teacher: false } }));
+  render(<TeacherResultView data={parsed} classroomId={id(2)} assignmentId={id(3)} />);
+  expect(screen.getByText("Read-only result")).toBeInTheDocument(); expect(screen.getByText("Fictional saved passage.")).toBeInTheDocument();
+  expect(screen.queryByRole("combobox")).toBeNull(); expect(screen.queryByRole("textbox")).toBeNull(); expect(screen.queryByRole("button", { name: /Save final|Save Task|Copy AI/ })).toBeNull();
+});

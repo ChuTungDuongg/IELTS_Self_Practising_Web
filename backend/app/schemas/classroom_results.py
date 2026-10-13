@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 
 from app.schemas.attempts import AnswerResponse, AttemptResponse, AttemptReview, WritingReview
 from app.schemas.content import ListeningReview, ReadingReview, WritingAttemptReview
+from app.schemas.grading import GradingCapabilities
 from app.schemas.speaking import SpeakingReviewData
 from app.schemas.speaking_ai_runs import SpeakingAIRunData
 from app.schemas.writing_ai import RunResponse
@@ -17,6 +18,7 @@ class AssignmentResultSummary(BaseModel):
 
 
 class AssignmentResultDetail(AssignmentResultSummary):
+    grading: GradingCapabilities = Field(default_factory=GradingCapabilities)
     review: AttemptReview | None = None
     reading_review: ReadingReview | None = None
     listening_review: ListeningReview | None = None

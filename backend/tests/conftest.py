@@ -19,6 +19,30 @@ async def db_session() -> AsyncIterator[AsyncSession]:
     test_engine = create_async_engine(get_settings().database_url, poolclass=NullPool)
     async with test_engine.connect() as connection:
         transaction = await connection.begin()
+
+        # New schema is exercised only inside the rollback-only test transaction.
+        # This never upgrades or resets the configured database persistently.
+        def add_test_schema(conn):
+            from importlib.util import module_from_spec, spec_from_file_location
+            from pathlib import Path
+
+            from alembic.migration import MigrationContext
+            from alembic.operations import Operations
+            from sqlalchemy import inspect
+
+            if inspect(conn).has_table("attempt_speaking_scores"):
+                return
+            path = (
+                Path(__file__).parents[1]
+                / "alembic/versions/20261013_0033_speaking_final_scores.py"
+            )
+            spec = spec_from_file_location("speaking_final_migration", path)
+            migration = module_from_spec(spec)
+            spec.loader.exec_module(migration)
+            with Operations.context(MigrationContext.configure(conn)):
+                migration.upgrade()
+
+        await connection.run_sync(add_test_schema)
         session_factory = async_sessionmaker(
             bind=connection,
             class_=AsyncSession,

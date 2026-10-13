@@ -13,6 +13,7 @@ from sqlalchemy import (
     Enum,
     ForeignKey,
     Integer,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -159,3 +160,27 @@ class SpeakingMediaCleanup(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     __tablename__ = "speaking_media_cleanup"
     storage_key: Mapped[str] = mapped_column(String(512), unique=True)
+
+
+class AttemptSpeakingScore(TimestampMixin, Base):
+    """Human final assessment; deliberately independent of advisory AI runs."""
+
+    __tablename__ = "attempt_speaking_scores"
+    __table_args__ = tuple(
+        CheckConstraint(
+            f"{criterion} BETWEEN 0 AND 9 AND {criterion} * 2 = floor({criterion} * 2)",
+            name=f"{criterion}_half_band",
+        )
+        for criterion in ("fc", "lr", "gra", "pr")
+    )
+    attempt_id: Mapped[UUID] = mapped_column(
+        ForeignKey("attempts.id", ondelete="CASCADE"), primary_key=True
+    )
+    fc: Mapped[float] = mapped_column(Numeric(3, 1))
+    lr: Mapped[float] = mapped_column(Numeric(3, 1))
+    gra: Mapped[float] = mapped_column(Numeric(3, 1))
+    pr: Mapped[float] = mapped_column(Numeric(3, 1))
+    fc_feedback: Mapped[str | None] = mapped_column(Text)
+    lr_feedback: Mapped[str | None] = mapped_column(Text)
+    gra_feedback: Mapped[str | None] = mapped_column(Text)
+    pr_feedback: Mapped[str | None] = mapped_column(Text)

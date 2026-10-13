@@ -3,7 +3,7 @@ from uuid import UUID
 from fastapi import APIRouter, BackgroundTasks, Depends, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.dependencies import AdminUser, CurrentUser
+from app.api.dependencies import CurrentUser
 from app.core.database import get_session
 from app.schemas.attempts import (
     ActivityRequest,
@@ -162,7 +162,7 @@ async def get_listening_review(
 async def get_writing_review(
     attempt_id: UUID, user: CurrentUser, session: AsyncSession = Depends(get_session)
 ) -> WritingAttemptReview:
-    return await AttemptService(session, user.id).writing_review(attempt_id)
+    return await AttemptService(session, user.id, grading_actor=user).writing_review(attempt_id)
 
 
 @router.put(
@@ -173,12 +173,12 @@ async def save_writing_task_score(
     attempt_id: UUID,
     writing_task_id: UUID,
     body: WritingTaskScoreUpdate,
-    admin: AdminUser,
+    user: CurrentUser,
     session: AsyncSession = Depends(get_session),
 ) -> WritingAttemptReview:
-    return await AttemptService(session, admin.id, allow_any_user=True).grade_writing_task(
-        attempt_id, writing_task_id, body
-    )
+    return await AttemptService(
+        session, user.id, allow_any_user=user.role == "ADMIN", grading_actor=user
+    ).grade_writing_task(attempt_id, writing_task_id, body)
 
 
 @router.put("/{attempt_id}/flags/{question_id}", response_model=FlagResponse)

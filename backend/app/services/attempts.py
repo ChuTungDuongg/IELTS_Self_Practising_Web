@@ -89,11 +89,13 @@ from app.schemas.content import (
     ReadingReview,
     WritingAttemptReview,
 )
+from app.services.access_policy import resolve_actor
 from app.services.attempt_scope import (
     AttemptScopeGuard,
     resolve_focused_target,
     validate_start_scope,
 )
+from app.services.grading_policy import GradingPolicy
 from app.services.reading import ReadingService
 
 
@@ -104,12 +106,16 @@ class AttemptService:
         user_id: uuid.UUID | None = None,
         *,
         allow_any_user: bool = False,
+        grading_actor: User | None = None,
+        grading_scope: tuple[uuid.UUID, uuid.UUID] | None = None,
     ) -> None:
         self.session = session
         self.user_id = user_id or session.info.get("current_user_id")
         if not isinstance(self.user_id, uuid.UUID):
             raise ValueError("AttemptService requires an authenticated user id")
         self.allow_any_user = allow_any_user
+        self.grading_actor = grading_actor or session.info.get("current_user_identity")
+        self.grading_scope = grading_scope
         self.repository = AttemptRepository(session)
 
     async def start(
@@ -657,7 +663,18 @@ class AttemptService:
                 "Writing review is only available for a Writing attempt.",
                 422,
             )
-        return self._present_writing_attempt_review(review)
+        response = self._present_writing_attempt_review(review)
+        await self._set_grading(response, attempt_id)
+        return response
+
+    async def _set_grading(self, response: WritingAttemptReview, attempt_id: uuid.UUID) -> None:
+        if self.grading_actor is not None:
+            attempt = await self._require(attempt_id)
+            response.grading = GradingPolicy(self.session, self.grading_actor).capabilities(
+                attempt,
+                has_final=bool(attempt.writing_scores),
+                assignment_authorized=self.grading_scope is not None,
+            )
 
     @staticmethod
     def _present_writing_attempt_review(review: AttemptReview) -> WritingAttemptReview:
@@ -685,7 +702,14 @@ class AttemptService:
         body: WritingTaskScoreUpdate,
     ) -> WritingAttemptReview:
         async with self.session.begin():
+            if self.grading_scope is not None:
+                self.user_id = await GradingPolicy(
+                    self.session, self.grading_actor
+                ).require_assignment_attempt(*self.grading_scope, attempt_id)
             attempt = await self._require(attempt_id, for_update=True)
+            await GradingPolicy(
+                self.session, resolve_actor(self.session, self.grading_actor)
+            ).require_final(attempt, assignment_scope=self.grading_scope)
             if attempt.module_type != ModuleType.WRITING:
                 raise AppError(
                     "WRITING_ATTEMPT_REQUIRED",
@@ -776,6 +800,7 @@ class AttemptService:
                 else calculate_final_writing_band(weighted_overall)
             )
             response = self._present_writing_attempt_review(await self.review(attempt_id))
+            await self._set_grading(response, attempt_id)
         return response
 
     @staticmethod

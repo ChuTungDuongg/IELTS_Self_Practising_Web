@@ -37,8 +37,9 @@ checkpoint, and then requests bounded feedback. Feedback failure keeps the valid
 score. The production overall uses equal FC/LR/GRA/PR weights and the project's
 half-band rounding; any missing criterion leaves overall unavailable. Durable
 workers and events support cancellation, reconnect and restart. Speaking joins
-Full Mock, history and classroom results. Teachers get read-only access only
-through assignment provenance; unrelated personal attempts remain private.
+Full Mock, history and classroom results. Teachers read recordings/transcripts and advisory AI through assignment provenance,
+and may explicitly save human final criteria for their classroom assignments.
+Unrelated personal attempts remain private.
 
 ## Private benchmark inputs
 
@@ -215,3 +216,10 @@ Use results to identify bias, compare versions, detect regressions and decide
 whether calibration is needed. A small run does not justify production offsets.
 Any future transformation must be explicit, versioned, separately reviewed and
 validated on held-out data. P8 contains no hidden calibration or score manipulation.
+
+
+## Human final Speaking grading
+
+Personal owners may manually enter FC/LR/GRA/PR or copy a completed current AI result into the form, edit and explicitly Save. AI itself never writes a final score. Classroom students receive read-only teacher final results or “Waiting for teacher grading” (VI: “Đang chờ giáo viên chấm”). The owning classroom teacher may save/revise human criteria through exact assignment provenance; ADMIN retains grading authority. Teacher grading never grants transcript regeneration or raw media mutation.
+
+Human criteria and optional feedback are stored independently in `attempt_speaking_scores`, introduced by non-destructive Alembic `20261013_0033`. Overall uses the existing holistic equal-weight Speaking helper. Focused scores do not create a whole-module analytics band. Full Mock review locks remain authoritative. `SpeakingReviewData.final_score` carries this assessment, and `grading` carries backend capabilities. See [teacher-classrooms.md](teacher-classrooms.md#human-final-subjective-grading) for the shared authority policy and routes.

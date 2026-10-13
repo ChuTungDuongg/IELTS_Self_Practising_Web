@@ -1,3 +1,4 @@
+import { gradingSchema } from "./grading";
 import { z } from "zod";
 import { attemptResponseSchema } from "./attempts";
 import { apiRequest, type ApiRequester } from "./client";
@@ -124,6 +125,7 @@ export const writingReviewTaskSchema = z.object({
 });
 
 export const writingReviewSchema = z.object({
+  grading: gradingSchema.optional(),
   review: z.object({
     attempt: attemptResponseSchema,
     test_title: z.string(),

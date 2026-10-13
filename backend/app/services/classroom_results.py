@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from sqlalchemy import or_, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import AppError
@@ -12,6 +12,8 @@ from app.schemas.classroom_results import AssignmentResultDetail, AssignmentResu
 from app.services.access_policy import AccessPolicy
 from app.services.attempt_scope import AttemptScopeGuard
 from app.services.attempts import AttemptService
+from app.services.grading_policy import GradingPolicy, assignment_origin_clause
+from app.services.speaking_final import present_final_score
 from app.services.writing_ai import present_run
 
 
@@ -34,20 +36,13 @@ class ClassroomResultService:
         await self.policy.require_assignment_view(assignment)
         return assignment
 
-    @staticmethod
-    def _origin(assignment_id):
-        return or_(
-            Attempt.classroom_assignment_id == assignment_id,
-            TestSession.classroom_assignment_id == assignment_id,
-        )
-
     async def list(self, classroom_id, assignment_id, *, student_id=None, limit=100, offset=0):
         await self._authorize(classroom_id, assignment_id)
         statement = (
             select(Attempt.id, User.id, User.display_name)
             .outerjoin(TestSession, Attempt.test_session_id == TestSession.id)
             .join(User, Attempt.user_id == User.id)
-            .where(self._origin(assignment_id))
+            .where(assignment_origin_clause(assignment_id))
             .order_by(Attempt.started_at.desc(), Attempt.id)
             .limit(limit)
             .offset(offset)
@@ -73,7 +68,7 @@ class ClassroomResultService:
         user_id = await self.session.scalar(
             select(Attempt.user_id)
             .outerjoin(TestSession, Attempt.test_session_id == TestSession.id)
-            .where(Attempt.id == attempt_id, self._origin(assignment_id))
+            .where(Attempt.id == attempt_id, assignment_origin_clause(assignment_id))
         )
         if user_id is None:
             raise AppError(
@@ -91,6 +86,14 @@ class ClassroomResultService:
             student_display_name=student.display_name,
             attempt=service._to_response(attempt),
             session_id=attempt.test_session_id,
+        )
+        has_final = (
+            bool(attempt.writing_scores) if attempt.module_type == ModuleType.WRITING else False
+        )
+        if attempt.module_type == ModuleType.SPEAKING:
+            has_final = await present_final_score(self.session, attempt_id) is not None
+        result.grading = GradingPolicy(self.session, self.policy.actor).capabilities(
+            attempt, has_final=has_final, assignment_authorized=True
         )
         result.submitted_answers = [
             AnswerResponse(
@@ -148,6 +151,7 @@ class ClassroomResultService:
                     self.session, self.policy.actor
                 ).review(attempt_id)
                 result.speaking_review.can_generate_transcript = False
+                result.speaking_review.grading = result.grading
                 result.speaking_ai_run = await SpeakingAIService(
                     self.session, self.policy.actor, get_settings()
                 ).latest(attempt_id)
@@ -159,4 +163,5 @@ class ClassroomResultService:
                 result.listening_review = await service.listening_review(attempt_id)
             else:
                 result.writing_review = service._present_writing_attempt_review(result.review)
+                result.writing_review.grading = result.grading
         return result

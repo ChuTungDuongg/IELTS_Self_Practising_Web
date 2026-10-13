@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import CurrentUser
 from app.core.database import get_session
+from app.schemas.attempts import WritingTaskScoreUpdate
 from app.schemas.classroom_assignments import (
     AssignmentCreate,
     AssignmentResponse,
@@ -12,8 +13,13 @@ from app.schemas.classroom_assignments import (
     AssignmentStartResponse,
 )
 from app.schemas.classroom_results import AssignmentResultDetail, AssignmentResultSummary
+from app.schemas.content import WritingAttemptReview
+from app.schemas.grading import SpeakingScoreUpdate
+from app.schemas.speaking import SpeakingReviewData
+from app.services.attempts import AttemptService
 from app.services.classroom_assignments import ClassroomAssignmentService
 from app.services.classroom_results import ClassroomResultService
+from app.services.speaking_final import SpeakingFinalService
 
 router = APIRouter(tags=["classroom-assignments"])
 
@@ -123,4 +129,39 @@ async def result_detail(
 ):
     return await ClassroomResultService(session, user).detail(
         classroom_id, assignment_id, attempt_id
+    )
+
+
+@router.put(
+    "/classrooms/{classroom_id}/assignments/{assignment_id}/attempts/{attempt_id}/writing-scores/{writing_task_id}",
+    response_model=WritingAttemptReview,
+)
+async def grade_writing(
+    classroom_id: UUID,
+    assignment_id: UUID,
+    attempt_id: UUID,
+    writing_task_id: UUID,
+    body: WritingTaskScoreUpdate,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+):
+    return await AttemptService(
+        session, user.id, grading_actor=user, grading_scope=(classroom_id, assignment_id)
+    ).grade_writing_task(attempt_id, writing_task_id, body)
+
+
+@router.put(
+    "/classrooms/{classroom_id}/assignments/{assignment_id}/attempts/{attempt_id}/speaking-score",
+    response_model=SpeakingReviewData,
+)
+async def grade_speaking(
+    classroom_id: UUID,
+    assignment_id: UUID,
+    attempt_id: UUID,
+    body: SpeakingScoreUpdate,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+):
+    return await SpeakingFinalService(session, user).save(
+        attempt_id, body, assignment_scope=(classroom_id, assignment_id)
     )

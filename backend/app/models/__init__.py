@@ -31,6 +31,7 @@ from app.models.entities import (
 from app.models.notifications import Notification
 from app.models.preferences import UserPreference
 from app.models.speaking import (
+    AttemptSpeakingScore,
     SpeakingAudioChunk,
     SpeakingAudioSegment,
     SpeakingMediaCleanup,
@@ -84,6 +85,7 @@ __all__ = [
     "AttemptEvent",
     "AttemptWritingResponse",
     "AttemptWritingScore",
+    "AttemptSpeakingScore",
     "Base",
     "Highlight",
     "ListeningPart",

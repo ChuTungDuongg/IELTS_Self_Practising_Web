@@ -7,6 +7,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.models.enums import SpeakingPromptType
+from app.schemas.grading import GradingCapabilities, SpeakingFinalScore
 
 
 class SpeakingPromptConfig(BaseModel):
@@ -231,6 +232,8 @@ class SpeakingReviewPart(BaseModel):
 
 
 class SpeakingReviewData(BaseModel):
+    final_score: SpeakingFinalScore | None = None
+    grading: GradingCapabilities = Field(default_factory=GradingCapabilities)
     attempt_id: UUID
     test_title: str
     can_generate_transcript: bool = True

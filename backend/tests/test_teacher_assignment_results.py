@@ -96,7 +96,7 @@ async def test_other_teacher_student_and_grading_mutations_stay_forbidden(db_ses
             f"/api/v1/attempts/{started.attempt_id}/writing-scores/00000000-0000-4000-8000-000000000001",
             json={"ta": 6, "cc": 6, "lr": 6, "gra": 6},
         )
-        assert response.status_code == 403
+        assert response.status_code == 404
         assert (await client.delete(f"/api/v1/attempts/{started.attempt_id}")).status_code == 404
 
 

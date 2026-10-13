@@ -48,6 +48,7 @@ function panel() { return render(<WritingAIAssessment attemptId={attemptId} task
 function review(): WritingReviewPayload {
   const now = "2026-10-08T00:00:00Z";
   return {
+    grading: { context: "PERSONAL", can_edit_final: true, can_copy_ai_to_final: true, waiting_for_teacher: false },
     review: { attempt: { attempt_id: attemptId, test_version_id: taskId, module: "WRITING", status: "SUBMITTED", finished_reason: "USER_SUBMIT", timer_mode: "COUNT_UP", timer_limit_seconds: null, started_at: now, last_active_at: now, finished_at: now, paused_at: null, total_paused_seconds: 0, deadline_at: null, elapsed_seconds: 100, remaining_seconds: null, raw_score: null, max_score: null, band_score: null, server_time: now }, test_title: "Fictional review", answers: [], writing_responses: [], highlights: [], flags: [] },
     tasks: [1, 2].map((number) => ({ writing_task_id: number === 2 ? taskId : runId, task_number: number, prompt: "Fictional prompt.", image_asset_id: null, image_asset: null, minimum_recommended_words: 250, recommended_duration_seconds: 2400, content: "Fictional parks help.", word_count: 3, score: null })),
     task1_overall: null, task2_overall: null, weighted_overall: null, band_score: null,
@@ -554,7 +555,8 @@ describe("Writing AI assessment", () => {
     expect(screen.getByRole("button")).toBeDisabled();
   });
 
-  it("copies into the human form without saving, and leaves values editable", async () => {
+  it.each(["USER", "TEACHER", "ADMIN"])("copies into the personal %s form without saving and leaves values editable", async (role) => {
+    auth.role = role;
     vi.mocked(listAIWritingRuns).mockResolvedValue({ configured: true, items: [completed] });
     render(<WritingReviewView data={review()} />);
     expect(screen.getByRole("heading", { name: "Đánh giá AI · Task 1" })).toBeInTheDocument();
@@ -576,9 +578,14 @@ describe("Writing AI assessment", () => {
   it("does not offer copying for a user without manual grading permission", async () => {
     auth.role = "USER";
     vi.mocked(listAIWritingRuns).mockResolvedValue({ configured: true, items: [completed] });
-    render(<WritingReviewView data={review()} />);
+    const data = review(); data.grading = { context: "CLASSROOM", can_edit_final: false, can_copy_ai_to_final: false, waiting_for_teacher: true };
+    render(<WritingReviewView data={data} />);
     fireEvent.click(screen.getByRole("tab", { name: /Task 2/ }));
     await screen.findByRole("region", { name: "AI Task 2 overall summary" });
+    expect(screen.getByText("Waiting for teacher grading")).toBeInTheDocument();
+    expect(screen.queryByRole("combobox")).toBeNull();
+    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(screen.queryByRole("button", { name: /Save Task/ })).toBeNull();
     expect(screen.queryByRole("button", { name: "Chép gợi ý AI vào biểu mẫu" })).not.toBeInTheDocument();
   });
 

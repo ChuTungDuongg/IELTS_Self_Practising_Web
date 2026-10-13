@@ -1,3 +1,5 @@
+import { LocaleProvider } from "@/lib/i18n/locale-provider";
+import { saveAssignmentWritingScore } from "@/lib/api/classroom-results";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { WritingReviewView } from "@/features/writing/writing-review";
@@ -14,6 +16,8 @@ vi.mock("@/lib/api/exam", async (importOriginal) => {
   return { ...actual, saveWritingTaskScore: vi.fn() };
 });
 
+vi.mock("@/lib/api/classroom-results", async (original) => ({ ...await original<typeof import("@/lib/api/classroom-results")>(), saveAssignmentWritingScore: vi.fn() }));
+
 const attemptId = "11111111-1111-4111-8111-111111111111";
 const taskOneId = "33333333-3333-4333-8333-333333333333";
 const taskTwoId = "55555555-5555-4555-8555-555555555555";
@@ -27,6 +31,7 @@ function reviewPayload({ taskOne = null, taskTwo = null }: {
   const now = new Date().toISOString();
   const completed = taskOne !== null && taskTwo !== null;
   return {
+    grading: { context: "PERSONAL", can_edit_final: true, can_copy_ai_to_final: true, waiting_for_teacher: false },
     review: {
       attempt: {
         attempt_id: attemptId,
@@ -268,4 +273,29 @@ describe("WritingReviewView", () => {
     render(<WritingReviewView data={reviewPayload({ taskOne: scoredWithFeedback })} />);
     expect(screen.getByLabelText("Task 1 TA feedback")).toHaveValue("Previously saved feedback.");
   });
+});
+
+it("saves teacher Writing only through exact assignment scope", async () => {
+  const data = reviewPayload(); data.grading = { context: "CLASSROOM", can_edit_final: true, can_copy_ai_to_final: true, waiting_for_teacher: false };
+  vi.mocked(saveAssignmentWritingScore).mockResolvedValue(data);
+  render(<WritingReviewView data={data} assignmentScope={{ classroomId: "class", assignmentId: "assignment" }} />);
+  selectTaskScores(1, ["7.0", "6.5", "7.0", "6.5"]);
+  fireEvent.click(screen.getByRole("button", { name: "Save Task 1 scores" }));
+  await waitFor(() => expect(saveAssignmentWritingScore).toHaveBeenCalledWith("class", "assignment", attemptId, taskOneId, expect.objectContaining({ ta: 7, cc: 6.5 })));
+  expect(saveWritingTaskScore).not.toHaveBeenCalled();
+});
+it("defaults missing capabilities to read-only even for historical data", () => {
+  const data = reviewPayload({ taskOne: taskOneScore }); delete data.grading;
+  render(<WritingReviewView data={data} />);
+  expect(screen.queryByRole("combobox")).toBeNull(); expect(screen.queryByRole("textbox")).toBeNull();
+  expect(screen.queryByRole("button", { name: /Save Task/ })).toBeNull();
+});
+
+it.each(["en", "vi"] as const)("classroom Writing student sees %s teacher result read-only", (locale) => {
+  localStorage.setItem("ielts-locale", locale);
+  const data = reviewPayload(); data.grading = { context: "CLASSROOM", can_edit_final: false, can_copy_ai_to_final: false, waiting_for_teacher: true };
+  render(<LocaleProvider><WritingReviewView data={data} /></LocaleProvider>);
+  expect(screen.getByText(locale === "en" ? "Waiting for teacher grading" : "Đang chờ giáo viên chấm")).toBeInTheDocument();
+  expect(screen.queryByRole("combobox")).toBeNull(); expect(screen.queryByRole("textbox")).toBeNull();
+  expect(screen.queryByRole("button", { name: /Save Task|Lưu điểm Task/ })).toBeNull(); localStorage.clear();
 });

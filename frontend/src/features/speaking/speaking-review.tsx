@@ -3,6 +3,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "@/lib/i18n/locale-provider";
 import { fetchSpeakingAudio, type SpeakingReviewData, type SpeakingManifest } from "@/lib/api/speaking";
 import { SpeakingTranscriptResponse, SpeakingTranscriptSession } from "./speaking-transcript-panel";
+import { SpeakingFinalScore } from "./speaking-final-score";
+import type { AssignmentGradingScope } from "@/lib/api/grading";
+import type { SpeakingAIRun } from "@/lib/api/speaking-ai";
 import { SpeakingAIAssessment } from "./speaking-ai-assessment";
 
 export function SpeakingAudioPlayer({ segments }: Pick<SpeakingManifest, "segments">) {
@@ -17,13 +20,15 @@ export function SpeakingAudioPlayer({ segments }: Pick<SpeakingManifest, "segmen
   }
   return <div>{!urls.length ? <button className="btn btn-secondary" disabled={loading || !segments.some((s) => s.chunks.length && s.content_url)} onClick={() => void load()}>{t(loading ? "speakingRuntime.loadingAudio" : "speakingRuntime.loadAudio")}</button> : urls.map((url, index) => <audio key={url} controls preload="metadata" src={url} aria-label={t("speakingRuntime.segment", { number: index + 1 })} />)}{error ? <p role="alert" className="notice notice-error">{t("speakingRuntime.audioError")}</p> : null}</div>;
 }
-export function SpeakingReview({ data }: { data: SpeakingReviewData }) {
+export function SpeakingReview({ data, assignmentScope, initialAIRun }: { data: SpeakingReviewData; assignmentScope?: AssignmentGradingScope; initialAIRun?: SpeakingAIRun | null }) {
   const { t } = useTranslation();
+  const [copiedRun, setCopiedRun] = useState<SpeakingAIRun | null>(null);
   const [transcriptRefreshKey, setTranscriptRefreshKey] = useState(0);
   const refreshTranscript = useCallback(() => setTranscriptRefreshKey((key) => key + 1), []);
   return <main className="speaking-runner"><header className="exam-header"><h1>{data.test_title}</h1></header>
+    <SpeakingFinalScore key={data.attempt_id} data={data} assignmentScope={assignmentScope} copiedRun={copiedRun} />
     <SpeakingTranscriptSession attemptId={data.attempt_id} canGenerate={data.can_generate_transcript} refreshKey={transcriptRefreshKey}>
-    <SpeakingAIAssessment attemptId={data.attempt_id} canGrade={data.can_generate_transcript} onTranscriptAvailable={refreshTranscript} />
+    <SpeakingAIAssessment attemptId={data.attempt_id} canGrade={data.can_generate_transcript} onTranscriptAvailable={refreshTranscript} initialRun={initialAIRun} canCopy={data.grading?.can_edit_final === true && data.grading?.can_copy_ai_to_final === true} onCopy={run => setCopiedRun({ ...run })} />
     {data.parts.map((part) => <section key={part.part_number} aria-label={t("speaking.part", { number: part.part_number })}><h2>{t("speaking.part", { number: part.part_number })}</h2>
       {part.responses.map(({ prompt, response, segments }) => <details key={response.id} className="speaking-card speaking-question"><summary>{prompt.prompt_text}</summary>
         {prompt.config_json.cue_points?.length ? <ul>{prompt.config_json.cue_points.map((point, index) => <li key={index}>{point}</li>)}</ul> : null}

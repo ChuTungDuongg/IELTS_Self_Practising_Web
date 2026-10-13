@@ -52,11 +52,11 @@ Students may leave and owners may remove them. Membership periods retain `joined
 
 Notifications are recipient-scoped events with a type, structured payload, entity reference and read timestamp. The header bell fetches an unread count and list, with Load more for older entries. Opening it does not mark notifications read; mark-one and mark-all are explicit actions. EN/VI text is rendered from payloads. Event creation is in the domain transaction and deduplicated; notifications grant no authority. The UI resets notification state when the signed-in recipient changes.
 
-## Assignments and read-only results
+## Assignments and results
 
 An assignment references one immutable version. The owner can use their own actively CLASSROOM/PUBLIC-approved teacher content or published official ADMIN content. Another teacher's community content is not assignable to the owner's classroom. One approval can be used in multiple classrooms belonging to its author. Retries are allowed.
 
-Assignment start supports available Reading/Listening/Writing modules, focused units and Full Mock. Existing lifecycle services create the attempts. Inside that transaction, the backend locks and checks the active account, version eligibility, classroom, assignment and membership. Browser-supplied provenance is rejected by ordinary attempt/session DTOs.
+Assignment start supports available Reading/Listening/Writing/Speaking modules, focused units and Full Mock. Existing lifecycle services create the attempts. Inside that transaction, the backend locks and checks the active account, version eligibility, classroom, assignment and membership. Browser-supplied provenance is rejected by ordinary attempt/session DTOs.
 
 - Standalone and focused attempts store `Attempt.classroom_assignment_id`.
 - Full Mock stores `TestSession.classroom_assignment_id`; its child attempts derive provenance from their parent session and keep their own assignment field null. A database check disallows dual provenance.
@@ -64,7 +64,7 @@ Assignment start supports available Reading/Listening/Writing modules, focused u
 
 A teacher result query must match the actual assignment provenance and the classroom's current teacher owner. `student_id + test_version_id`, membership or knowledge of UUIDs is insufficient. Personal practice on the same version stays private. Assignment-originated history remains readable after membership ends, classroom archival or approval revocation.
 
-Result views reuse the existing student-owned read services only after this authorization. They show saved/submitted answers, objective correctness/reviews when unlocked, Writing text and existing manual/advisory AI results. They do not change timestamps, synchronize timers, edit answers, invoke assessment, mutate scores or allow teacher grading. Full Mock answer-key review remains locked until the session finishes. Result lists and the moderation queue provide Previous/Next pages, retaining filters and stable ordering.
+Result views reuse the existing student-owned read services only after this authorization. They show saved/submitted answers, objective correctness/reviews when unlocked, Writing text and existing manual/advisory AI results. Result reads do not change timestamps, synchronize timers, edit answers or invoke assessment. Authorized teachers explicitly save Writing/Speaking human final criteria through separate assignment-scoped mutations; objective results remain read-only. Full Mock answer-key review remains locked until the session finishes. Result lists and the moderation queue provide Previous/Next pages, retaining filters and stable ordering.
 
 ## Surfaces and API groups
 
@@ -73,7 +73,7 @@ Result views reuse the existing student-owned read services only after this auth
 | `/teacher/tests`, `/teacher/tests/new`, `/teacher/tests/{testId}/versions/{versionId}/edit` | Owned Builder and moderation submission/cancellation. |
 | `/teacher/classrooms` and classroom detail | Owner management, invitations, members, assignments and result navigation. |
 | `/classrooms` and classroom detail | Invitation inbox, membership history and assignment starts for any signed-in role. |
-| Classroom assignment result routes under `/teacher/classrooms/...` and `/classrooms/...` | Shared read-only result UI; neutral routes also support authorized ADMIN inspection. |
+| Classroom assignment result routes under `/teacher/classrooms/...` and `/classrooms/...` | Shared result UI with teacher subjective grading and read-only objective results; neutral routes also support authorized ADMIN inspection. |
 | `/admin/moderation`, `/admin/moderation/{requestId}` | ADMIN queue, preview and decisions. |
 | Existing header, Library and ADMIN users | Notification bell, official/community attribution, TEACHER role controls and localized conflict messages. |
 
@@ -87,7 +87,7 @@ API groups under `/api/v1`:
 
 ## Deliberate v1 limits
 
-No email delivery, realtime notification transport, co-teachers, ownership transfer, deadlines, retry limits, teacher grading, organization tenancy, full classroom analytics or Speaking was added. Existing scoring, timer, autosave, renderer, audio-policy and personal-practice behavior remains in the existing engines.
+No email delivery, realtime notification transport, co-teachers, ownership transfer, deadlines, retry limits, organization tenancy or full classroom analytics was added. Writing/Speaking human final grading is supported as described below. Existing scoring, timer, autosave, renderer, audio-policy and personal-practice behavior remains in the existing engines.
 
 ## Focused verification
 
@@ -122,3 +122,16 @@ npx eslint @changedTs
 ```
 
 Ruff check/format passed for 57 Python files; ESLint passed for 75 TS/TSX files. `git diff --check` is run before committing. The implementation plan records the regression coverage and review outcomes.
+
+
+## Human final subjective grading
+
+Writing and Speaking AI assessments remain advisory. In personal practice, the attempt owner may enter criteria or copy a completed AI assessment into the form, edit it, and explicitly Save a final practice score. Copying never persists a score. Writing annotations remain pedagogical feedback and do not enter grading arithmetic.
+
+For classroom attempts, students cannot enter, revise, or copy AI into final scores. They see “Waiting for teacher grading” (VI: “Đang chờ giáo viên chấm”) until a human final score exists. The owning classroom teacher grades through assignment-scoped routes; administrators retain final grading authority. A teacher cannot grade personal work even when the student and test version match an assignment. Historical assignment results remain gradeable after membership ends.
+
+Classroom provenance means either the attempt has a classroom assignment ID or its parent Full Mock TestSession has one. Both skills use the same authorization policy. Active attempts and children of an IN_PROGRESS Full Mock remain locked. Objective classroom results remain read-only.
+
+Speaking final FC/LR/GRA/PR criteria and optional feedback are stored independently in `attempt_speaking_scores` (Alembic `20261013_0033`). Explicit human Save uses the existing equal-weight Speaking overall calculation. AI workers never write human final scores. Focused Speaking keeps its final criterion assessment without creating a whole-module analytics band; focused Writing likewise preserves task-only grading.
+
+The backend exposes `grading.context`, `can_edit_final`, `can_copy_ai_to_final`, and `waiting_for_teacher` in subjective reviews and classroom result detail. Clients render these capabilities; mutation routes recheck authorization. Generic owner/admin routes are `PUT /attempts/{id}/writing-scores/{task_id}` and `PUT /speaking-attempts/{id}/final-score`. Teacher routes are `PUT /classrooms/{classroom_id}/assignments/{assignment_id}/attempts/{id}/writing-scores/{task_id}` and the same assignment prefix ending in `/speaking-score`.

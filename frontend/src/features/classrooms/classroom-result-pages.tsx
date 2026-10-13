@@ -21,7 +21,7 @@ export async function ClassroomResultsPage({ params, namespace = "teacher", sear
   const items = page.slice(0, GOVERNANCE_PAGE_SIZE);
   const prefix = namespace === "teacher" ? "/teacher" : "";
   return <>
-    <PageHeading title={<UiText message="assignment.results" />} description={<UiText message="assignment.readOnly" />} />
+    <PageHeading title={<UiText message="assignment.results" />} description={<UiText message="grading.reviewAssignment" />} />
     {items.length ? <div className="test-card-grid">
       {items.map(item => <article key={item.attempt.attempt_id} className="surface-card p-5">
         <h2>{item.student_display_name}</h2>
@@ -47,5 +47,5 @@ export async function ClassroomResultPage({ params }: {
   }>;
 }) {
   const { classroomId, assignmentId, attemptId } = await params;
-  return <TeacherResultView data={await getAssignmentResult(classroomId, assignmentId, attemptId, serverApiRequest)} />;
+  return <TeacherResultView classroomId={classroomId} assignmentId={assignmentId} data={await getAssignmentResult(classroomId, assignmentId, attemptId, serverApiRequest)} />;
 }
