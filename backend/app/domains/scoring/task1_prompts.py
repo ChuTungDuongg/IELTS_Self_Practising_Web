@@ -409,6 +409,11 @@ TASK1_CONSERVATIVE_FEEDBACK = (
     "Use source IDs only, never model-generated paragraph/sentence locations. Revisions must "
     "preserve meaning. ERROR requires HIGH confidence and exact original_span for GRA/LR. "
     "Stylistic alternatives are at most OPTIONAL_REFINEMENT, never factual errors. "
+    "Select at most 4 meaningful distinct observations, no forced positive/negative balance. Each is one complete "
+    "concise Vietnamese sentence, around 180 characters where practical and at most 240 characters. "
+    "No rubric lecture, filler, repeated score explanation or exhaustive proofreading. Prioritize factual "
+    "HIGH-confidence ERROR, recurring/high-impact limitations, then clarity/control; optional refinements last and sparse. "
+    "Exact spans and complete revisions must never be shortened into a partial quote or rewrite. Revisions at most 240 characters. "
     "Return observations only: no score, feedback summary or arbitrary strengths/improvements."
 )
 TASK1_FEEDBACK_GUARDS = {
@@ -427,12 +432,16 @@ TASK1_FEEDBACK_GUARDS = {
     "lr": "Do not synonym-swap merely for variety. Repeated fixed chart labels, entity names "
     "and necessary topic terms are valid. Accurate natural common phrases are not weaknesses. "
     "British and American standard usage are both valid. A replacement must preserve meaning, "
-    "register and collocation; an alternative is not automatically an improvement.",
+    "register and collocation; an alternative is not automatically an improvement. Spelling and word formation "
+    "belong to LR; grammar and punctuation belong to GRA. No fancier synonym for an accurate common word.",
     "gra": "Report only sentence structures, grammar and punctuation. Before reporting ERROR "
     "verify the original is actually ungrammatical in standard English; no invented subjects, "
     "agreement, article or punctuation errors. Do not classify conceptual transitions, discourse "
     "markers, chart comparisons or Task Achievement omissions as grammar weaknesses. "
-    "Stylistic rewriting belongs at most to OPTIONAL_REFINEMENT. If uncertain, omit.",
+    "Valid gerund subjects, linking/copular verbs with complements, long grammatical sentences, optional Oxford commas, "
+    "British/American variation and reasonable punctuation alternatives must not be flagged. "
+    "Spelling and word formation belong to LR. Do not downgrade valid grammar into OPTIONAL_REFINEMENT to fill output. "
+    "If uncertain, omit.",
 }
 
 

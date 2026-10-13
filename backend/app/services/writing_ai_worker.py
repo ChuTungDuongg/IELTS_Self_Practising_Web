@@ -300,8 +300,8 @@ class WritingAIWorker:
                             for trait in TRAITS:
                                 if (
                                     trait not in stored.get("criteria", {})
-                                    and trait not in failures
-                                ):
+                                    or stored["criteria"][trait].get("feedback_status") == "PENDING"
+                                ) and trait not in failures:
                                     failure = CriterionFailure(
                                         error_code=code,
                                         error_message="Không thể hoàn tất tiêu chí này.",

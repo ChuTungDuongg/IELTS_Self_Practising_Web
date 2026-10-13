@@ -7,6 +7,7 @@ from app.domains.scoring.essay_sources import request_sources
 from app.domains.scoring.task1_facts import derive_facts
 from app.domains.scoring.task1_feedback import normalize_task1_feedback, render_task1_feedback
 from app.domains.scoring.task1_prompts import evidence_prompt, feedback_prompt, score_prompt
+from app.domains.scoring.writing_annotations import build_writing_annotations
 from app.domains.writing.visual_families import visual_family
 from app.providers.chart_derendering import ChartDerenderingProvider
 from app.providers.writing_llm.base import LLMProvider, Message, ProviderFailure
@@ -339,6 +340,9 @@ class Task1WritingScoringService(MTSWritingScoringService):
             score_messages(evidence), CriterionBandScore, sources, trait, "score", trace
         )
         self.states[trait].band_score = score
+        await self._feedback_started(trait, score, display_evidence, trace)
+        annotations = []
+        feedback_status = "COMPLETED"
         try:
             raw = await self._validated(
                 feedback_messages(evidence, score),
@@ -370,6 +374,9 @@ class Task1WritingScoringService(MTSWritingScoringService):
                         len(items),
                     )
             display, grounded_evidence = render_task1_feedback(draft, sources)
+            annotations = build_writing_annotations(
+                request.response, sources, trait, draft.observations
+            )
             if grounded_evidence.evidence:
                 display_evidence = grounded_evidence
         except ProviderFailure as exc:
@@ -382,9 +389,16 @@ class Task1WritingScoringService(MTSWritingScoringService):
             display = CriterionFeedbackOutput(
                 feedback=FEEDBACK_FALLBACK, strengths=[], improvements=[]
             )
-        return CriterionResult(
-            score=score.score, **display.model_dump(), evidence=display_evidence.evidence
+            feedback_status = "UNAVAILABLE"
+        result = CriterionResult(
+            score=score.score,
+            **display.model_dump(),
+            evidence=display_evidence.evidence,
+            annotations=annotations,
+            feedback_status=feedback_status,
         )
+        await self._feedback_completed(trait, result, trace)
+        return result
 
     def _task1_result(self, analysis):
         if self.failures:

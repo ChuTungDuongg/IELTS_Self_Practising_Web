@@ -17,7 +17,7 @@ from app.schemas.writing_ai import (
     Trait,
 )
 
-AI_WRITING_PROMPT_VERSION = "mts-task2-v11"
+AI_WRITING_PROMPT_VERSION = "mts-task2-v12"
 
 
 def effective_prompt_version(configured: str) -> str:
@@ -37,6 +37,7 @@ def effective_prompt_version(configured: str) -> str:
             "mts-task2-v8",
             "mts-task2-v9",
             "mts-task2-v10",
+            "mts-task2-v11",
             AI_WRITING_PROMPT_VERSION,
         }
         else f"{AI_WRITING_PROMPT_VERSION}:{configured}"[:80]
@@ -139,7 +140,7 @@ FEEDBACK_GUIDANCE = (
     "Strengths and improvements are Vietnamese, at most 3 each and at most 240 characters "
     "per item. Do not invent strengths or weaknesses to fill a quota. No hidden reasoning."
 )
-# Task 1 retains FEEDBACK_GUIDANCE above and its v9 inference contract.
+# Frozen combined-output evaluation contracts retain FEEDBACK_GUIDANCE above.
 TASK2_FEEDBACK_GUIDANCE = (
     "Independently report only observable strengths and limitations directly supported by the essay. "
     "fixed_score is immutable metadata for consistency, not a target to rationalize. "
@@ -150,8 +151,12 @@ TASK2_FEEDBACK_GUIDANCE = (
     "An alternative wording does not make the original incorrect. Suggestions must preserve intended meaning. "
     "Return only observations: source_id, kind, observation, original_span, suggested_revision, confidence. "
     "Use only source_id for locations, never paragraph/sentence labels or IDs inside observation prose. "
-    "Write observations in concise natural Vietnamese, at most 240 characters, no headings or hidden reasoning. "
-    "Select at most 6 observations, with no minimum. original_span must be an exact substring of its source. "
+    "Write each observation as one complete concise Vietnamese sentence, around 180 characters where practical, "
+    "at most 240 characters. No rubric lecture, filler, repeated score explanation, headings or hidden reasoning. "
+    "Select at most 4 meaningful distinct observations, with no minimum or forced positive/negative balance. "
+    "Prioritize factual HIGH-confidence ERROR, recurring/high-impact limitations, then issues materially affecting "
+    "clarity/control; optional refinement is last and sparse. No exhaustive proofreading or duplicate fixes. "
+    "original_span must be an exact substring of its source; suggested_revision is complete, at most 240 characters. "
     "ERROR requires HIGH confidence; GRA/LR errors require an exact original_span. "
     "LIMITATION requires HIGH confidence; OPTIONAL_REFINEMENT is optional style, never a factual error. "
     "An optional rewrite needs an exact original_span and a meaning-preserving suggested_revision. "
@@ -162,15 +167,20 @@ TASK2_FEEDBACK_GUARDS = {
         "Before reporting an ERROR, verify the original is actually ungrammatical in standard English. "
         "Linking/copular verbs such as remain, seem and become plus a complement can be grammatical. "
         "Gerund clauses can be subjects. Do not invent missing subjects, subject-verb agreement errors, "
-        "article errors or punctuation errors. Stylistic alternatives to valid grammar belong at most "
-        "to OPTIONAL_REFINEMENT, never ERROR. If uncertain, omit."
+        "article errors or punctuation errors. Grammar and punctuation belong to GRA; spelling and word formation belong to LR. "
+        "Do not flag long sentences, valid gerund subjects, valid copular complements, optional Oxford commas, "
+        "accepted British/American variation, reasonable punctuation alternatives or informal/formal preference. "
+        "Do not downgrade correct grammar to OPTIONAL_REFINEMENT merely to add an item. If uncertain, omit."
     ),
     "lr": (
         "Do not recommend synonyms merely for variety. Repetition of accurate topic terminology "
         "is not automatically a weakness. Common words can be accurate, natural and appropriate. "
         "British and American standard English variants are both valid. Revisions must preserve meaning, register and collocation. "
         "Never narrow, broaden or change intended meaning just to vary vocabulary. Do not call a word imprecise "
-        "without demonstrating its actual contextual issue. If uncertain, omit."
+        "without demonstrating its actual contextual issue. Spelling and word formation belong to LR; "
+        "grammar and punctuation belong to GRA. Actual spelling/form errors require HIGH confidence and exact spans. "
+        "Do not flag correct common words merely to offer fancier synonyms. Optional vocabulary refinements must be useful, "
+        "sparse and explicitly optional. If uncertain, omit."
     ),
     "cc": (
         "Cohesion is not the number of linking words. Do not require an explicit connector between every sentence or paragraph. "

@@ -55,6 +55,8 @@ def persist_activity(run: WritingAIGradingRun, event: EventType, payload: EventP
         "criterion.evidence.completed": "evidence_collected",
         "criterion.scoring.started": "scoring",
         "criterion.scoring.validation.started": "validating_score",
+        "criterion.feedback.started": "generating_feedback",
+        "criterion.feedback.completed": "feedback_completed",
         "criterion.retrying": "retrying",
         "criterion.completed": "completed",
         "criterion.failed": "failed",
@@ -183,29 +185,26 @@ async def fail_run(
         stage=stage or previous.get("stage"),
     )
     stored = run.result_json or {}
-    if (
-        code != CANCELLATION_CODE
-        and payload.criterion
-        and payload.criterion not in stored.get("criteria", {})
-        and payload.criterion not in stored.get("failures", {})
-    ):
-        # Shutdown/stale recovery can interrupt a later criterion after an
-        # earlier local failure. Preserve both; never mark a completed one failed.
-        failure = CriterionFailure(
-            error_code=code, error_message="Không thể hoàn tất tiêu chí này.", stage=payload.stage
-        )
-        run.result_json = {
-            **stored,
-            "failures": {
-                **stored.get("failures", {}),
-                payload.criterion: failure.model_dump(mode="json"),
-            },
-        }
-        await repository.append_event(
-            run,
-            "criterion.failed",
-            EventPayload(criterion=payload.criterion, **failure.model_dump()),
-        )
+    if code != CANCELLATION_CODE:
+        criteria = stored.get("criteria", {})
+        failures = dict(stored.get("failures", {}))
+        for trait in TRAITS:
+            pending_feedback = criteria.get(trait, {}).get("feedback_status") == "PENDING"
+            contextual_failure = trait == payload.criterion and trait not in criteria
+            if trait in failures or not (pending_feedback or contextual_failure):
+                continue
+            # A checkpointed band is safe to retain, but its pending feedback is
+            # unfinished. Persist every concurrent interruption for replay.
+            failure = CriterionFailure(
+                error_code=code,
+                error_message="Không thể hoàn tất tiêu chí này.",
+                stage="feedback" if pending_feedback else payload.stage,
+            )
+            failures[trait] = failure.model_dump(mode="json")
+            run.result_json = {**stored, "failures": failures}
+            await repository.append_event(
+                run, "criterion.failed", EventPayload(criterion=trait, **failure.model_dump())
+            )
     persist_activity(run, "run.failed", payload)
     await repository.append_event(run, "run.failed", payload)
 

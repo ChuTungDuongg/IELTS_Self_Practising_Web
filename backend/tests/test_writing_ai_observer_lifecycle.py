@@ -65,7 +65,16 @@ class MemoryRepository:
                 created_at=datetime.now(UTC),
             )
         )
-        if len((self.store.row.result_json or {}).get("criteria", {})) == 3:
+        # Accepted-band checkpoints now precede feedback. Wait for three fully
+        # completed criteria so this fixture pauses at a stable worker boundary.
+        criteria = (self.store.row.result_json or {}).get("criteria", {})
+        if (
+            event_type == "criterion.completed"
+            and sum(
+                item.get("feedback_status", "COMPLETED") != "PENDING" for item in criteria.values()
+            )
+            == 3
+        ):
             self.store.partial_ready.set()
 
 

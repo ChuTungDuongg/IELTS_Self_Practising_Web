@@ -194,7 +194,14 @@ async def test_long_feedback_display_strings_are_bounded_without_retry(field):
     assert result is not None and len(provider.calls) == 12 and not service.failures
     card = result.criteria.ta
     assert all(0 < len(s) <= 240 for s in card.strengths + card.improvements)
-    assert any(d.reason == "FEEDBACK_PRESENTATION_NORMALIZED" for d in service.diagnostics)
+    reason = (
+        "FEEDBACK_OBSERVATION_DROPPED"
+        if field == "suggested_revision"
+        else "FEEDBACK_PRESENTATION_NORMALIZED"
+    )
+    assert any(d.reason == reason for d in service.diagnostics)
+    if field == "suggested_revision":
+        assert card.annotations == [] and card.improvements == []
 
 
 @pytest.mark.parametrize("stage", ["evidence", "feedback"])
@@ -300,9 +307,7 @@ def test_raw_provider_schema_guides_structure_and_local_sanitizer_enforces_bound
         }
     )
     selected, _ = normalize_task2_feedback(raw, sources, "gra", Decimal("6.5"))
-    assert selected.observations[0].original_span == "share tools"
-    assert selected.observations[0].suggested_revision.endswith("…")
-    assert len(selected.observations[0].suggested_revision) <= 240
+    assert selected.observations == []  # Never clip a rewrite into a partial suggestion.
     guided = guided_json_schema(RawTask2FeedbackDraft.model_json_schema())
     item = guided["properties"]["observations"]["items"]
     assert item["properties"]["observation"]["type"] == "string"
@@ -411,7 +416,7 @@ def test_feedback_item_cap_does_not_let_invalid_items_hide_valid_observations():
         + [changed_observation(observation=f"Ý hỗ trợ rõ ràng {i}.") for i in range(8)]
     )
     value, issues = normalize_task2_feedback(raw, sources, "gra", Decimal("6.5"))
-    assert len(value.observations) == 6 and issues.normalized and issues.dropped
+    assert len(value.observations) == 4 and issues.normalized and issues.dropped
 
 
 def test_high_confidence_language_error_retains_its_exact_span_and_kind():

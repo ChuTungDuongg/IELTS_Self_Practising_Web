@@ -340,7 +340,7 @@ async def test_length_repair_uses_only_its_stage_headroom_and_correction(stage, 
         stage,
         "PROVIDER_FINISH_LENGTH",
     )
-    assert public_retry_stages(events) == ["evidence" if stage == "evidence" else "scoring"]
+    assert public_retry_stages(events) == ["scoring" if stage == "score" else stage]
     for other in STAGE_BUDGETS.keys() - {stage}:
         assert [budget(call) for call in stage_calls(provider, other)] == [STAGE_BUDGETS[other]] * 4
 
@@ -477,7 +477,7 @@ async def test_second_recoverable_feedback_failure_keeps_score_with_visible_fall
         ("feedback", reason, 2),
         ("feedback", "FEEDBACK_FALLBACK_USED", 2),
     ]
-    assert public_retry_stages(events) == ["scoring"]
+    assert public_retry_stages(events) == ["feedback"]
     assert {payload.criterion for event, payload in events if event == "criterion.completed"} == {
         "ta",
         "cc",
@@ -490,7 +490,7 @@ async def test_feedback_transport_failure_remains_failure_without_fallback_or_re
     provider = BudgetProvider(feedback=[ProviderFailure("AI_PROVIDER_TIMEOUT")])
     result, service, events = await assess(provider)
     assert result is None and set(service.failures) == {"ta"}
-    assert service.failures["ta"].stage == "scoring"
+    assert service.failures["ta"].stage == "feedback"
     assert service.failures["ta"].error_code == "AI_PROVIDER_TIMEOUT"
     assert len(provider.calls) == 12 and not service.diagnostics and not public_retry_stages(events)
 

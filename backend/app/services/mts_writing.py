@@ -26,6 +26,7 @@ from app.domains.scoring.mts_prompts import (
 from app.domains.scoring.task2_explanations import normalize_task2_evidence
 from app.domains.scoring.task2_feedback import normalize_task2_feedback, render_task2_feedback
 from app.domains.scoring.writing import WritingScoringRequest, WritingScoringResult
+from app.domains.scoring.writing_annotations import build_writing_annotations
 from app.providers.writing_llm.base import (
     CompletionOptions,
     LLMProvider,
@@ -186,8 +187,7 @@ class MTSWritingScoringService:
         trace: TraceCallback,
     ) -> T:
         state = self.states[trait]
-        # Keep the public SSE stage vocabulary compatible with existing clients.
-        state.stage = "scoring" if stage in {"score", "feedback"} else stage
+        state.stage = "scoring" if stage == "score" else stage
         with self.latency.stage(stage, trait):
             return await self._validated_stage(messages, schema, sources, trait, stage, trace)
 
@@ -212,7 +212,7 @@ class MTSWritingScoringService:
         state = self.states[trait]
         reason = "SCHEMA_VALIDATION"
         normal_max_tokens = self._normal_completion_budget(trait, stage)
-        public_stage = "scoring" if stage in {"score", "feedback"} else stage
+        public_stage = "scoring" if stage == "score" else stage
         if stage != "feedback":
             await trace(
                 "evidence.request.started" if stage == "evidence" else "criterion.scoring.started",
@@ -589,6 +589,9 @@ class MTSWritingScoringService:
             await flush()
             raise
         await flush()
+        await self._feedback_started(trait, score, evidence, trace)
+        annotations = []
+        feedback_status = "COMPLETED"
         try:
             candidate = await self._validated(
                 feedback_messages(
@@ -602,6 +605,9 @@ class MTSWritingScoringService:
             )
             if candidate.observations:
                 display, evidence = render_task2_feedback(candidate, sources)
+                annotations = build_writing_annotations(
+                    request.response, sources, trait, candidate.observations
+                )
             else:
                 attempt = (
                     2
@@ -615,9 +621,12 @@ class MTSWritingScoringService:
                 # A draft emptied by sanitization records the safe fallback.
                 if any(d.stage == "feedback" for d in self.states[trait].diagnostics):
                     self._explanation_fallback(trait, "feedback", attempt)
-                display = CriterionFeedbackOutput(
-                    feedback=FEEDBACK_FALLBACK, strengths=[], improvements=[]
-                )
+                    feedback_status = "UNAVAILABLE"
+                    display = CriterionFeedbackOutput(
+                        feedback=FEEDBACK_FALLBACK, strengths=[], improvements=[]
+                    )
+                else:
+                    display, _ = render_task2_feedback(candidate, sources)
         except ProviderFailure as exc:
             if (
                 exc.code not in {"INVALID_PROVIDER_OUTPUT", "AI_PROVIDER_BAD_RESPONSE"}
@@ -625,11 +634,49 @@ class MTSWritingScoringService:
             ):
                 raise
             self._explanation_fallback(trait, "feedback", 2)
+            feedback_status = "UNAVAILABLE"
             display = CriterionFeedbackOutput(
                 feedback=FEEDBACK_FALLBACK, strengths=[], improvements=[]
             )
-        return CriterionResult(
-            score=score.score, **display.model_dump(), evidence=evidence.evidence
+        result = CriterionResult(
+            score=score.score,
+            **display.model_dump(),
+            evidence=evidence.evidence,
+            annotations=annotations,
+            feedback_status=feedback_status,
+        )
+        await self._feedback_completed(trait, result, trace)
+        return result
+
+    async def _feedback_started(self, trait, score, evidence, trace):
+        self.states[trait].stage = "feedback"
+        # Existing worker result checkpoints make the accepted band durable
+        # before feedback generation, even if feedback subsequently fails.
+        await trace(
+            "criterion.feedback.started",
+            EventPayload(
+                criterion=trait,
+                stage="feedback",
+                result=CriterionResult(
+                    score=score.score,
+                    feedback=FEEDBACK_FALLBACK,
+                    strengths=[],
+                    improvements=[],
+                    evidence=evidence.evidence,
+                    feedback_status="PENDING",
+                ),
+            ),
+        )
+
+    async def _feedback_completed(self, trait, result, trace):
+        for annotation in result.annotations:
+            await trace(
+                "criterion.feedback.annotation",
+                EventPayload(criterion=trait, stage="feedback", annotation=annotation),
+            )
+        await trace(
+            "criterion.feedback.completed",
+            EventPayload(criterion=trait, stage="feedback", result=result),
         )
 
     def _explanation_fallback(self, trait, stage, attempt):
@@ -681,6 +728,8 @@ class MTSWritingScoringService:
             if feedback_prompt
             else feedback_messages(request.prompt, request.response, trait, evidence, score.score)
         )
+        await self._feedback_started(trait, score, evidence, trace)
+        feedback_status = "COMPLETED"
         try:
             feedback = await self._validated(
                 messages, RawCriterionFeedbackOutput, sources, trait, "feedback", trace
@@ -702,9 +751,15 @@ class MTSWritingScoringService:
             feedback = CriterionFeedbackOutput(
                 feedback=FEEDBACK_FALLBACK, strengths=[], improvements=[]
             )
-        return CriterionResult(
-            score=score.score, **feedback.model_dump(), evidence=evidence.evidence
+            feedback_status = "UNAVAILABLE"
+        result = CriterionResult(
+            score=score.score,
+            **feedback.model_dump(),
+            evidence=evidence.evidence,
+            feedback_status=feedback_status,
         )
+        await self._feedback_completed(trait, result, trace)
+        return result
 
     async def score(self, request: WritingScoringRequest) -> WritingScoringResult:
         async def no_trace(_event: EventType, _payload: EventPayload) -> None:

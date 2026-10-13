@@ -601,8 +601,8 @@ async def test_success_persistence_cache_force_events_and_official_isolation(
     assert saved.status == WritingAIRunStatus.COMPLETED
     assert saved.result.raw_mean == Decimal("6.375")
     assert saved.result.overall_band == Decimal("6.5")
-    assert len(events) == 34
-    assert [event.sequence for event in events] == list(range(1, 35))
+    assert len(events) == 42
+    assert [event.sequence for event in events] == list(range(1, 43))
     assert [event.event_type for event in events[1:5]] == [
         "provider.starting",
         "provider.ready",
@@ -623,6 +623,8 @@ async def test_success_persistence_cache_force_events_and_official_isolation(
             "criterion.evidence.completed",
             "criterion.scoring.started",
             "criterion.scoring.validation.started",
+            "criterion.feedback.started",
+            "criterion.feedback.completed",
             "criterion.completed",
         ]
         assert all(event.created_at is not None for event in events)
@@ -1151,7 +1153,7 @@ async def test_old_cache_is_preserved_but_never_reused_for_v11(
     settings.ai_writing_prompt_version = old_version  # Existing deployed secret.
     upgraded = await api.create(attempt_id, task_id, force=False)
     assert upgraded.run_id != legacy.run_id and not upgraded.cache_hit
-    assert (await api.get(upgraded.run_id)).prompt_version == "mts-task2-v11"
+    assert (await api.get(upgraded.run_id)).prompt_version == "mts-task2-v12"
     history = await api.list(attempt_id, task_id)
     assert len(history.items) == 2
     assert history.items[1].prompt_version == old_version and history.items[1].result == old_result
@@ -1174,7 +1176,7 @@ async def test_bounded_lr_observation_display_persists_live_and_replays_without_
                 "source_id": "P1S1",
                 "kind": kind,
                 "confidence": "HIGH",
-                "observation": paragraph[:237] + f"{index}.",
+                "observation": f"Nhận xét {index}: " + paragraph,
             }
             for index, kind in enumerate(["STRENGTH"] * 3 + ["LIMITATION"] * 3)
         ]
@@ -1201,10 +1203,10 @@ async def test_bounded_lr_observation_display_persists_live_and_replays_without_
     assert saved.status == WritingAIRunStatus.COMPLETED
     assert saved.result.overall_band == Decimal("6.5") and len(provider.calls) == 13
     result = saved.progress["lr"]
-    assert result.score == Decimal("6.5") and result.feedback.endswith("…")
-    assert len(result.feedback) <= 800 and result.feedback.startswith(paragraph[:50])
-    assert len(result.strengths) == len(result.improvements) == 3
-    assert result.strengths[0].startswith("Đoạn 1: ") and result.strengths[0].endswith("…")
+    assert result.score == Decimal("6.5") and result.feedback.endswith(".")
+    assert len(result.feedback) <= 800 and "…" not in result.feedback
+    assert len(result.strengths) == 1 and len(result.improvements) == 3
+    assert not result.strengths[0].startswith("Đoạn 1: ") and result.strengths[0].endswith(".")
     assert all(0 < len(v) <= 240 for v in result.strengths + result.improvements)
     assert result.evidence[0].quote == "Fictional parks improve city life."
     assert not any(e.event_type in {"criterion.retrying", "criterion.failed"} for e in events)
@@ -1382,7 +1384,7 @@ async def test_sse_api_replay_auth_disconnect_and_no_raw_content(
             assert (
                 await client.get(url + "/events", headers={"Last-Event-ID": "bad"})
             ).status_code == 422
-            assert (await client.get(url + "/events?after=34")).text == ""
+            assert (await client.get(url + "/events?after=42")).text == ""
             assert len((await client.get(path)).json()["items"]) == 1
             assert (await client.post(path, json={})).json()["cache_hit"]
             assert (await client.post(path, json={"force": True})).json()["run_id"] != str(run_id)

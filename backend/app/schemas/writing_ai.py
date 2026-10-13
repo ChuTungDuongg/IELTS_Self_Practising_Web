@@ -12,6 +12,7 @@ from pydantic import (
     WithJsonSchema,
     field_serializer,
     field_validator,
+    model_validator,
 )
 
 from app.domains.scoring import validate_writing_criterion_score
@@ -134,10 +135,10 @@ class RawCriterionFeedbackOutput(StrictModel):
 class CriterionFeedbackOutput(RawCriterionFeedbackOutput):
     feedback: str = Field(strict=True, min_length=1, max_length=800)
     strengths: list[Annotated[StrictStr, Field(min_length=1, max_length=240)]] = Field(
-        strict=True, max_length=3
+        strict=True, max_length=4
     )
     improvements: list[Annotated[StrictStr, Field(min_length=1, max_length=240)]] = Field(
-        strict=True, max_length=3
+        strict=True, max_length=4
     )
 
 
@@ -158,7 +159,7 @@ class Task2FeedbackObservation(StrictModel):
 class Task2FeedbackDraft(StrictModel):
     """Internal source-linked observations, never a writable score or freeform summary."""
 
-    observations: list[Task2FeedbackObservation] = Field(strict=True, max_length=6)
+    observations: list[Task2FeedbackObservation] = Field(strict=True, max_length=4)
 
 
 class RawTask2FeedbackObservation(StrictModel):
@@ -176,8 +177,45 @@ class RawTask2FeedbackDraft(StrictModel):
     ] = Field(strict=True)
 
 
+AnnotationCategory = Literal[
+    "grammar",
+    "punctuation",
+    "spelling",
+    "word_formation",
+    "word_choice",
+    "collocation",
+    "lexical_precision",
+]
+
+
+class WritingAnnotation(StrictModel):
+    """Offsets are UTF-16 code units into the exact persisted essay, including CRLF."""
+
+    id: str = Field(min_length=1, max_length=80)
+    criterion: Trait
+    kind: Literal["ERROR", "LIMITATION", "OPTIONAL_REFINEMENT"]
+    source_id: SourceID
+    start_offset: int = Field(strict=True, ge=0)
+    end_offset: int = Field(strict=True, gt=0)
+    original_span: Annotated[
+        StrictStr, StringConstraints(strip_whitespace=False, min_length=1, max_length=12000)
+    ]
+    suggested_revision: str | None = Field(default=None, strict=True, min_length=1, max_length=240)
+    message: str = Field(strict=True, min_length=1, max_length=240)
+    confidence: Literal["HIGH", "MEDIUM"]
+    category: AnnotationCategory | None = None
+
+    @model_validator(mode="after")
+    def nonempty_range(self):
+        if self.end_offset <= self.start_offset:
+            raise ValueError("Annotation range must be nonempty")
+        return self
+
+
 class CriterionResult(TraitScore):
     evidence: list[Evidence] = Field(max_length=6)
+    annotations: list[WritingAnnotation] = Field(default_factory=list, max_length=4)
+    feedback_status: Literal["PENDING", "COMPLETED", "UNAVAILABLE"] = "COMPLETED"
 
 
 class BandSupport(StrictModel):
@@ -279,6 +317,7 @@ AssessmentStage = Literal[
     "relevance",
     "evidence",
     "scoring",
+    "feedback",
     "visual_grounding",
     "derived_facts",
     "claim_extraction",
@@ -296,6 +335,8 @@ ActivityPhase = Literal[
     "evidence_collected",
     "scoring",
     "validating_score",
+    "generating_feedback",
+    "feedback_completed",
     "retrying",
     "completed",
     "failed",
@@ -387,6 +428,9 @@ EventType = Literal[
     "criterion.evidence.completed",
     "criterion.scoring.started",
     "criterion.scoring.validation.started",
+    "criterion.feedback.started",
+    "criterion.feedback.annotation",
+    "criterion.feedback.completed",
     "criterion.retrying",
     "criterion.completed",
     "criterion.failed",
@@ -416,6 +460,7 @@ class EventPayload(StrictModel):
     stage: AssessmentStage | None = None
     evidence: list[Evidence] | None = Field(default=None, max_length=6)
     result: CriterionResult | None = None
+    annotation: WritingAnnotation | None = None
     error_code: str | None = Field(default=None, max_length=80)
     error_message: str | None = Field(default=None, max_length=300)
     task1_analysis: Task1Analysis | None = None

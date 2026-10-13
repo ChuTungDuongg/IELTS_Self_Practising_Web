@@ -176,7 +176,7 @@ def test_unconfident_or_ungrounded_negative_claims_and_noop_rewrites_are_omitted
     )
 
 
-def test_optional_rewrite_is_presented_as_optional_without_model_error_prose():
+def test_optional_error_accusation_is_omitted_without_fabricated_rewrite():
     from app.domains.scoring.task2_feedback import render_task2_feedback, validate_task2_feedback
 
     value = draft(
@@ -188,10 +188,8 @@ def test_optional_rewrite_is_presented_as_optional_without_model_error_prose():
     value = validate_task2_feedback(value, sources(), "gra", Decimal("7.5"))
     display, evidence = render_task2_feedback(value, sources())
     public = display.model_dump_json() + evidence.model_dump_json()
-    assert "Gợi ý tùy chọn" in public and "Sai ngữ pháp" not in public
-    assert len(display.improvements) == 1 and not display.strengths
-    assert "Đoạn 2" in display.improvements[0]
-    assert evidence.evidence[0].quote == "Gardening creates shared routines."
+    assert "Sai ngữ pháp" not in public and "builds shared routines" not in public
+    assert display.improvements == display.strengths == evidence.evidence == []
 
 
 class Provider:

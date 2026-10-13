@@ -2,8 +2,8 @@
 
 Task 1 and Task 2 share the configured `mistralai/Ministral-3-8B-Instruct-2512`
 model, provider adapters and existing Modal/vLLM GPU function. Task 2 retains
-its text-only pipeline with the `mts-task2-v11` cache contract. Task 1
-uses `mts-task1-scoring-v10`, composite `mts-task1-visual-v10`, and the unchanged
+its text-only pipeline with the `mts-task2-v12` cache contract. Task 1
+uses `mts-task1-scoring-v11`, composite `mts-task1-visual-v11`, and the unchanged
 `mts-task1-visual-v3` perception contract. See
 [the latency engineering case study](enhance_latency.md) for bounded concurrent
 execution, serving settings, measurements and reproduction.
@@ -47,9 +47,9 @@ accuracy or speed claim follows from scripted tests.
 Optional `relevance` metadata is stored in the existing run result JSON and exposed
 in full/partial DTOs. Durable `relevance.started`, `.completed`, `.failed` events
 replay through SSE; auxiliary failure continues normal assessment. Historic runs
-without relevance still parse. Effective Task 2 v11 includes old deployed version
-labels through v10, so prior cached results stay readable without being reused.
-Task 1 v10 fingerprints invalidate earlier scoring caches while retaining perception
+without relevance still parse. Effective Task 2 v12 includes old deployed version
+labels through v11, so prior cached results stay readable without being reused.
+Task 1 v11 fingerprints invalidate earlier scoring caches while retaining perception
 v3 and the v7 TA/CC guidance. Offline benchmarks use the current contract; frozen v3/v5
 retain their historical pre-gate combined-output contracts.
 Task-tab cleanup still stops observation only; explicit Stop cancels grading.
@@ -83,6 +83,10 @@ unrelated source run shows its explanation alongside the independent linguistic 
 ADMIN retains copy-to-manual-form → edit → explicit official Save. Full-module/Full Mock
 USER review exposes neither action. Snapshot saves never modify `AttemptWritingScore`,
 attempt band, History, Analytics or official Full Mock state.
+
+Inline annotations belong to the source AI run's criterion results. The saved
+practice snapshot retains its compatible score/text summary; saving it creates
+no separate annotation columns or annotation history.
 
 ## Task 2: text-only assessment
 
@@ -151,15 +155,16 @@ claims must be omitted. This schema has no writable score or free-form summary.
 
 The provider contract guides supported object shapes/enums while accepting raw
 explanatory string lengths. Backend sanitizers validate items separately before
-constructing a bounded `Task2FeedbackDraft`. At most six accepted observations carry
+constructing a bounded `Task2FeedbackDraft`. At most four representative observations carry
 `source_id`, `kind` (`STRENGTH`, `LIMITATION`,
 `ERROR`, `OPTIONAL_REFINEMENT`), concise Vietnamese `observation`, confidence,
 and optional exact `original_span`/`suggested_revision`. Observation/revision prose
-is locally bounded to 240 characters, with no whole-response retry for length.
+is bounded to complete sentences of at most 240 characters, with no whole-response retry for length.
+An oversized rewrite is omitted rather than clipped into a partial correction.
 Unknown source IDs, malformed items, model-generated location prose, conflicting
 Band claims, low-confidence observations, non-HIGH negative claims and unusable
 optional rewrites are dropped individually. Remaining valid observations survive.
-Complete prose is checked before clipping so forbidden claims cannot hide beyond
+Complete prose is checked before bounding so forbidden claims cannot hide beyond
 the display limit. The backend derives locations from validated source metadata.
 
 GRA/LR ERROR claims still require an exact, non-blank source span. ERROR claims
@@ -179,13 +184,15 @@ progression without extra explicit linkers. Task Response does not require
 research, studies, statistics, citations or named-country case studies: relevant
 reasoning and plausible hypothetical examples may support an argument.
 
-The backend builds the unchanged public `CriterionResult` fields (`feedback`,
+The backend retains the compatible public `CriterionResult` fields (`feedback`,
 `strengths`, `improvements`, `evidence`) from accepted observations. It never
 uses unvalidated selector assessments or a model-generated summary. Optional
 rewrites use a backend-owned "Gợi ý tùy chọn: có thể diễn đạt…" template rather
 than model-authored factual-error prose. Existing display limits remain one
-summary of 800 characters and at most three strengths/improvements of 240
-characters each. A conflicting Band claim is dropped with its observation; an
+summary of 800 characters, assembled from at most two whole observations, and
+structured strengths/improvements of 240 characters each. All four accepted
+observations remain in their structured lists even if they do not fit the summary.
+A conflicting Band claim is dropped with its observation; an
 injected top-level score field is a structural failure and receives bounded repair.
 Feedback never alters the accepted numeric band.
 
@@ -227,8 +234,8 @@ until auxiliary evidence is ready (possibly empty) to retain the existing public
 internal inference is score-first. A feedback failure cannot erase a
 valid band through the recoverable-output path.
 
-Task 2 now uses **`mts-task2-v11`**. Configured v1–v10 labels resolve to v11, and
-custom labels are prefixed with v11 for cache identity. Existing v10 results remain
+Task 2 now uses **`mts-task2-v12`**. Configured v1–v11 labels resolve to v12, and
+custom labels are prefixed with v12 for cache identity. Existing v11 results remain
 readable and are never reused for the new contract. Legacy combined-output
 schemas/calibration helpers remain available for historical tooling, separate
 from production score-only inference.
@@ -254,21 +261,77 @@ Save is still required. The official Task 1 × 1 / Task 2 × 2 rule is unchanged
 Other users retain their existing permissions and cannot use AI to gain manual
 grading access. Speaking remains outside this feature.
 
+## Shared concise feedback and inline annotations
+
+Both tasks request zero to four useful observations per criterion, normally one
+sentence of about 180 characters. High-confidence errors take priority over
+recurring limitations and sparse optional refinements. There is no required
+positive/negative balance, generic rubric lecture or exhaustive proofreading.
+Long prose is kept only at complete sentence boundaries or omitted; summaries
+never cut a word or thought, and exact spans/revisions are never clipped.
+
+Each public criterion adds `annotations`, defaulting to `[]` for historical
+results, and `feedback_status` (`PENDING`, `COMPLETED`, `UNAVAILABLE`), defaulting
+to `COMPLETED` for historical DTOs. This separates an accepted band checkpoint
+from finished feedback even when several criteria generate concurrently.
+A `WritingAnnotation` carries a deterministic ID, criterion, kind,
+source ID, original span, optional suggested revision, concise message,
+confidence and an optional controlled category. ERROR requires HIGH confidence;
+LOW never survives normalization. GRA owns grammar and punctuation; LR owns
+spelling, word formation, word choice and collocation. Valid copular/gerund
+constructions, common synonyms and accepted British/American variants are
+conservatively protected. Location checks cannot prove every linguistic judgement.
+
+The backend resolves a span inside its validated `SourceSegment`, requiring
+exactly one occurrence in that source and verifying the absolute saved-essay
+slice. Repeated phrases in different sources are disambiguated by source ID.
+Ambiguous occurrences inside one source remain panel feedback without an inline
+annotation. Public `start_offset`/`end_offset` are **UTF-16 code units into the
+exact persisted essay string**, with an exclusive end. Internal source offsets
+remain Python character indices. CRLF, whitespace and non-BMP characters are
+preserved, so JavaScript `content.slice(start_offset, end_offset)` matches the
+original span without fuzzy search or line-ending normalization.
+
+The shared read-only `AnnotatedEssay` decorates GRA/LR only, with a restrained
+error underline and a softer optional/limitation underline. Hover, keyboard focus
+and tap expose the criterion, message and original → suggested revision; Escape
+or Close dismisses the popover. Overlaps split into non-overlapping text segments
+that can expose multiple suggestions while rendering essay text once. Semantic
+styles support light/dark themes and reduced motion. Normal density is at most
+four GRA plus four LR annotations; zero is valid. TA/CC stay in criterion panels.
+
+After the accepted score checkpoint, durable `criterion.feedback.started` with
+`stage=feedback` exposes `generating_feedback` activity before the provider call.
+Only complete parsed and validated annotations produce individual
+`criterion.feedback.annotation` events. `criterion.feedback.completed` carries
+the final criterion block and `feedback_completed` activity, followed by existing
+`criterion.completed`. These are semantic events, **not raw token streaming** or
+partially parsed JSON. They use the existing sequence/replay storage; the client
+deduplicates annotation IDs, shows live feedback and underlines, and reconciles
+against the authoritative final snapshot. A selected/new run has its own state;
+failed runs clear underlines while preserving accepted scores and the saved essay.
+
+Annotations are advisory teaching evidence. Their count/severity never determines
+a band, applies a hidden penalty or changes an accepted score. Official/manual
+scores, Task 1 grounding, Task 2 relevance and provider settings remain unchanged.
+Final annotations and events use existing JSONB storage; this redesign requires
+no database migration and does not mutate historical results.
+
 ## Task 1: visual grounding before assessment
 
 Task 1 also uses score-only inference followed by fixed-band feedback, with the
 same stage budgets and recoverable feedback fallback as Task 2. Its current
-composite version is **`mts-task1-visual-v10`** and scoring version is
-**`mts-task1-scoring-v10`**; the visual contract remains **`mts-task1-visual-v3`**.
+composite version is **`mts-task1-visual-v11`** and scoring version is
+**`mts-task1-scoring-v11`**; the visual contract remains **`mts-task1-visual-v3`**.
 TA scoring retains the visual reference, deterministic facts and verified claims;
 feedback selects validated claims and uses backend-owned factual display text.
 Task 1 TA/CC calibration
 and linguistic criterion boundaries remain intact. Frozen v3/v5 offline
 benchmark services retain their original combined-output contracts and budgets.
-Current benchmark configurations identify v10 accurately. Historical v7/v8
+Current benchmark configurations identify v11 accurately. Historical v7/v8
 retain their combined-output prompts and budgets; report/result schemas remain readable.
-The benchmark CLI defaults to `--scoring-version v10`; `both` compares frozen v5
-with current v10. Historical v9 report records still parse, but v9 is not reused
+The benchmark CLI defaults to `--scoring-version v11`; `both` compares frozen v5
+with current v11. Historical report records still parse, but old versions are not reused
 as a label for the new production candidate.
 
 ### Task 1 paragraph and feedback reliability (v10)
@@ -303,8 +366,8 @@ Empty observation/improvement lists are valid. Unknown sources, malformed items,
 non-HIGH negatives, non-exact GRA/LR errors, no-op rewrites and detectable criterion
 leakage are dropped individually, leaving other valid items intact. Whole-JSON errors
 get at most one repair; recoverable feedback failure preserves the accepted score.
-Public `CriterionResult`, Task 1 analysis DTOs and SSE stages remain compatible, so
-no frontend change is required. Selector assessments are not public factual feedback:
+Public `CriterionResult` adds the shared annotation default; Task 1 analysis DTOs
+remain compatible. Selector assessments are not public factual feedback:
 displayed evidence uses exact backend quotes and neutral backend locations.
 
 For TA, `observation` must be null: the model chooses a verified claim rather than
@@ -350,8 +413,9 @@ INSUFFICIENT_EVIDENCE; existing reliability thresholds are unchanged. The struct
 bug is reproduced with fictional fixtures, but the original 1/14 live run was not
 available to establish that every insufficient verdict had this cause.
 
-Scoring/composite v10 invalidates v9 caches; old persisted DTOs remain readable.
-Raw visual perception v3 and Task 2 v11 remain unchanged. Fake-provider regressions
+The paragraph/factual reliability work shipped in v10; v11 invalidates earlier
+feedback caches while keeping that behavior and raw visual perception v3 unchanged.
+Task 2 uses its separate v12 contract. Old persisted DTOs remain readable. Fake-provider regressions
 prove contracts and deterministic grounding only, not live-model feedback accuracy
 or improved agreement with human examiners. No live inference was used.
 
@@ -603,13 +667,16 @@ logging is added.
 
 Provider requests remain `stream=false` for reliable structured JSON. Public
 workflow events distinguish preparing, collecting evidence, validating evidence,
-scoring, validating scores, retrying and terminal states. New events are
+scoring, validating scores, generating feedback, feedback ready, retrying and terminal states. Events include
 `evidence.request.started`, `evidence.validation.started`,
-`criterion.scoring.validation.started` and `criterion.retrying`. Safe activity
+`criterion.scoring.validation.started`, `criterion.feedback.started`,
+`criterion.feedback.annotation`, `criterion.feedback.completed` and `criterion.retrying`. Safe activity
 with a stage timestamp is persisted in the existing run JSON metadata and
 included in snapshots; no migration is needed. The vertical timeline reconstructs
 from activity, progress and terminal status after refresh. Criterion cards appear
-as soon as their individual completion event arrives. Elapsed time is display-only,
+as soon as their individual completion event arrives; accepted bands appear at
+feedback start, and validated annotation items/underlines appear before run completion.
+Elapsed time is display-only,
 with no estimated percentage, and subtle animation respects reduced motion.
 Heartbeat events advance the replay cursor without invoking React UI callbacks.
 
@@ -797,7 +864,7 @@ pg_restore --dbname=<target-database> --no-owner --no-acl ./database.dump
   existing guided JSON-schema integration and temperature 0/seed 0 remain;
   current per-stage token budgets are listed above. Evidence assessments are at most 320 characters/two
   requested sentences; separate feedback is at most 800 characters, strengths and
-  improvements at most three each. Task 2 internal observations are at most six,
+  improvements preserve up to four accepted observations. Both tasks' internal observations are at most four,
   with 240-character descriptions; Task 2 scoring contains no generated evidence.
   No global token increase or GPU smoke job is required.
 - **Interrupted run:** wait for the heartbeat lease to expire or revisit review;

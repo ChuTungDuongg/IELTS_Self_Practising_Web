@@ -164,8 +164,8 @@ async def test_vietnamese_independent_prompts_and_cache_version():
         "mts-task2-v9",
         "mts-task2-v10",
     ]:
-        assert effective_prompt_version(old) == "mts-task2-v11"
-    assert effective_prompt_version("custom") == "mts-task2-v11:custom"
+        assert effective_prompt_version(old) == "mts-task2-v12"
+    assert effective_prompt_version("custom") == "mts-task2-v12:custom"
 
 
 @pytest.mark.parametrize(
@@ -384,11 +384,11 @@ async def test_backend_observation_display_limits_remain_bounded_without_repair(
     result, mts, _ = await assess(provider)
     assert result.overall_band == 6.5 and len(provider.calls) == 12
     assert len(result.criteria.ta.feedback) <= 800
-    assert len(result.criteria.ta.strengths) <= 3 and len(result.criteria.ta.improvements) <= 3
+    assert len(result.criteria.ta.strengths) + len(result.criteria.ta.improvements) == 4
     assert all(
         len(item) <= 240 for item in result.criteria.ta.strengths + result.criteria.ta.improvements
     )
-    assert not mts.diagnostics
+    assert all(d.reason == "FEEDBACK_PRESENTATION_NORMALIZED" for d in mts.diagnostics)
 
 
 async def test_two_auxiliary_evidence_length_failures_keep_score_and_continue():

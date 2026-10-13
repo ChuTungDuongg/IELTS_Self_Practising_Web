@@ -8,7 +8,11 @@ from pydantic import ValidationError
 from app.domains.scoring.essay_sources import SourceSegment
 from app.domains.scoring.task1_facts import DerivedFact
 from app.domains.scoring.task2_explanations import ExplanationIssues
-from app.domains.scoring.task2_feedback import normalize_task2_feedback, render_task2_feedback
+from app.domains.scoring.task2_feedback import (
+    normalize_task2_feedback,
+    render_task2_feedback,
+    select_feedback_observations,
+)
 from app.schemas.task1_claims import Task1Analysis
 from app.schemas.task1_feedback import RawTask1FeedbackDraft, RawTask1FeedbackObservation
 from app.schemas.task1_visual import ChartTableVisualReference
@@ -188,8 +192,7 @@ def normalize_task1_feedback(
         for candidate in normalized.observations:
             if candidate not in accepted:
                 accepted.append(candidate)
-    accepted.sort(key=lambda item: (sources[item.source_id].start, item.kind, item.observation))
-    return Task2FeedbackDraft(observations=accepted[:6]), issues
+    return Task2FeedbackDraft(observations=select_feedback_observations(accepted, sources)), issues
 
 
 def render_task1_feedback(draft, sources):

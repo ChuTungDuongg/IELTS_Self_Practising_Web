@@ -324,12 +324,12 @@ def test_new_cache_versions_keep_visual_contract_and_reject_old_effective_label(
     )
     from app.services.writing_ai import input_fingerprint
 
-    assert TASK1_PROMPT_VERSION == "mts-task1-visual-v10"
-    assert TASK1_SCORING_PROMPT_VERSION == "mts-task1-scoring-v10"
+    assert TASK1_PROMPT_VERSION == "mts-task1-visual-v11"
+    assert TASK1_SCORING_PROMPT_VERSION == "mts-task1-scoring-v11"
     assert TASK1_VISUAL_CONTRACT_VERSION == "mts-task1-visual-v3"
-    assert effective_prompt_version("mts-task2-v7") == "mts-task2-v11"
-    assert effective_prompt_version("mts-task2-v9") == "mts-task2-v11"
-    assert effective_prompt_version("mts-task2-v10") == "mts-task2-v11"
+    assert effective_prompt_version("mts-task2-v7") == "mts-task2-v12"
+    assert effective_prompt_version("mts-task2-v9") == "mts-task2-v12"
+    assert effective_prompt_version("mts-task2-v10") == "mts-task2-v12"
     for task, old, new in [
         (1, "mts-task1-visual-v7", TASK1_PROMPT_VERSION),
         (2, "mts-task2-v7", effective_prompt_version("mts-task2-v7")),

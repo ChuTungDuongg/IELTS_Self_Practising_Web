@@ -90,7 +90,8 @@ def test_supported_report_is_not_an_omission_and_empty_weaknesses_are_valid():
     )
     assert len(output.strengths) == len(evidence.evidence) == 1
     assert output.improvements == [] and len(issues.dropped) == 1
-    assert "Đoạn 2" in output.strengths[0] and evidence.evidence[0].source_id == "P2S1"
+    assert "Đoạn 2" not in output.strengths[0] and evidence.evidence[0].source_id == "P2S1"
+    assert "Đoạn 2" in evidence.evidence[0].assessment
     assert "Cần thêm" not in output.feedback
 
 
@@ -202,7 +203,7 @@ def test_exact_punctuation_error_survives_and_style_stays_optional():
         "observation": "Sai nghiêm trọng.",
     }
     output, _, _ = display([optional], "gra")
-    assert "Gợi ý tùy chọn" in output.feedback and "Sai nghiêm trọng" not in output.feedback
+    assert output.improvements == [] and "Sai nghiêm trọng" not in output.feedback
 
 
 @pytest.mark.parametrize(

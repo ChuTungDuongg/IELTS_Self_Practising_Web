@@ -81,11 +81,11 @@ def test_invalid_manifest_has_safe_diagnostics(benchmark_files, failure):
 def test_configuration_identity_separates_prompt_and_specialist_versions():
     configs = configurations(Settings(_env_file=None), "both", "both")
     assert len(configs) == 4 and len({config.key for config in configs}) == 4
-    assert {config.scoring_version for config in configs} == {"v5", "v10"}
+    assert {config.scoring_version for config in configs} == {"v5", "v11"}
     assert all(config.visual_contract_version == "mts-task1-visual-v3" for config in configs)
-    current = [config for config in configs if config.scoring_version == "v10"]
-    assert all(config.prompt_version == "mts-task1-visual-v10" for config in current)
-    assert all(config.scoring_prompt_version == "mts-task1-scoring-v10" for config in current)
+    current = [config for config in configs if config.scoring_version == "v11"]
+    assert all(config.prompt_version == "mts-task1-visual-v11" for config in current)
+    assert all(config.scoring_prompt_version == "mts-task1-scoring-v11" for config in current)
     baseline = [config for config in configs if config.scoring_version == "v5"]
     assert all(config.prompt_version == "mts-task1-visual-v5" for config in baseline)
     assert all(config.scoring_prompt_version == "mts-task1-scoring-v5" for config in baseline)
@@ -113,7 +113,7 @@ def test_old_unfrozen_versions_are_not_silently_aliased_to_current_benchmark_sco
 
 
 def test_old_v6_report_configuration_remains_readable():
-    old = configurations(Settings(_env_file=None), "v10", "off")[0].model_dump()
+    old = configurations(Settings(_env_file=None), "v11", "off")[0].model_dump()
     old.update(
         label="task1-v6-current:deplot-off",
         scoring_version="v6",
@@ -265,7 +265,7 @@ async def test_interruption_keeps_completed_checkpoints_and_resume_retries_failu
     assert report["records"][1]["status"] == "COMPLETED"
 
 
-@pytest.mark.parametrize("version", [None, "both", "v3", "v5", "v7", "v8", "v10"])
+@pytest.mark.parametrize("version", [None, "both", "v3", "v5", "v7", "v8", "v11"])
 def test_cli_dry_run_and_rejected_input_are_content_safe(benchmark_files, tmp_path, version):
     path, sample = benchmark_files
     script = Path(__file__).resolve().parents[2] / "scripts" / "benchmark_task1.py"
@@ -286,7 +286,7 @@ def test_cli_dry_run_and_rejected_input_are_content_safe(benchmark_files, tmp_pa
     assert result.returncode == 0 and "DRY_RUN: samples=1 runs=0 failed=0" in result.stdout
     assert sample["essay"] not in result.stdout + result.stderr
     plan = json.loads((tmp_path / "cli" / "report.json").read_text())
-    expected = {"v5", "v10"} if version == "both" else {version or "v10"}
+    expected = {"v5", "v11"} if version == "both" else {version or "v11"}
     assert {
         entry["configuration"]["scoring_version"] for entry in plan["configurations"].values()
     } == expected
@@ -298,7 +298,7 @@ def test_cli_dry_run_and_rejected_input_are_content_safe(benchmark_files, tmp_pa
 
 
 @pytest.mark.parametrize("reverse", [False, True])
-async def test_scoring_ablation_is_v5_baseline_to_v10_candidate(benchmark_files, tmp_path, reverse):
+async def test_scoring_ablation_is_v5_baseline_to_v11_candidate(benchmark_files, tmp_path, reverse):
     path, _sample = benchmark_files
     configs = configurations(Settings(_env_file=None), "both", "off")
     if reverse:
@@ -330,14 +330,14 @@ async def test_scoring_ablation_is_v5_baseline_to_v10_candidate(benchmark_files,
     entries = report["configurations"]
     assert comparison["kind"] == "scoring_prompt"
     assert entries[comparison["baseline"]]["configuration"]["scoring_version"] == "v5"
-    assert entries[comparison["candidate"]]["configuration"]["scoring_version"] == "v10"
+    assert entries[comparison["candidate"]]["configuration"]["scoring_version"] == "v11"
     assert comparison["paired_criterion_counts"]["ta"] == 1
     # Fake provider scores establish direction and arithmetic, not calibration accuracy.
     assert comparison["criterion_deltas"]["ta"]["signed_bias"] == 1
     assert comparison["criterion_deltas"]["ta"]["mae"] == 1
     assert comparison["criterion_deltas"]["ta"]["exact_agreement"] == -1
     markdown = (tmp_path / "paired" / "report.md").read_text(encoding="utf-8")
-    assert "task1-v5-baseline:deplot-off → task1-v10-current:deplot-off" in markdown
+    assert "task1-v5-baseline:deplot-off → task1-v11-current:deplot-off" in markdown
     assert "ΔTA bias" in markdown and "ΔTA exact agreement" in markdown
 
 

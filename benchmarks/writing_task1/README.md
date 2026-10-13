@@ -2,10 +2,12 @@
 
 The CLI reuses production visual grounding, optional fail-open DePlot,
 deterministic facts, claim verification, source evidence and four-criterion MTS.
-It needs no database. Production uses composite fingerprint `mts-task1-visual-v9`
-with perception contract `mts-task1-visual-v3` and scoring guidance `mts-task1-scoring-v9`.
-The default candidate is v9, including the conservative relevance gate. Historical v7/v8 retain their combined-output contracts; historical reports remain readable. `--scoring-version both` compares a frozen v5 baseline
-with v9, reusing the same essays, human scores, perception pipeline/contract,
+It needs no database. Production uses composite fingerprint `mts-task1-visual-v11`
+with perception contract `mts-task1-visual-v3` and scoring guidance `mts-task1-scoring-v11`.
+The default candidate is v11, including concise feedback and advisory inline annotations.
+Score prompt semantics are unchanged from v10. Historical v7/v8 retain their combined-output contracts;
+historical reports remain readable. `--scoring-version both` compares a frozen v5 baseline
+with v11, reusing the same essays, human scores, perception pipeline/contract,
 provider/model and chart-specialist setting. Historical v3 prompts remain explicitly
 available with `--scoring-version v3`; unfrozen v4/v6 are not aliases for current prompts.
 Old v6 report metadata remains readable. Task 2 is not run by this CLI.
@@ -64,19 +66,19 @@ or checkpoints; only IDs, hashes, scores, counts and safe status codes remain.
 From `backend/`, first validate your local data without inference:
 
 ```powershell
-uv run python ../scripts/benchmark_task1.py --manifest ../benchmarks/writing_task1/private/manifest.jsonl --split dev --scoring-version v9 --chart-specialist off --dry-run --output ../benchmarks/writing_task1/reports/dev-plan
+uv run python ../scripts/benchmark_task1.py --manifest ../benchmarks/writing_task1/private/manifest.jsonl --split dev --scoring-version v11 --chart-specialist off --dry-run --output ../benchmarks/writing_task1/reports/dev-plan
 ```
 
 An explicit one-sample real smoke, using existing backend provider settings:
 
 ```powershell
-uv run python ../scripts/benchmark_task1.py --manifest ../benchmarks/writing_task1/private/manifest.jsonl --split dev --limit 1 --scoring-version v9 --chart-specialist off --resume --output ../benchmarks/writing_task1/reports/dev-smoke
+uv run python ../scripts/benchmark_task1.py --manifest ../benchmarks/writing_task1/private/manifest.jsonl --split dev --limit 1 --scoring-version v11 --chart-specialist off --resume --output ../benchmarks/writing_task1/reports/dev-smoke
 ```
 
-Controlled v5 baseline / v9 candidate comparison at a fixed specialist setting:
+Controlled v5 baseline / v11 candidate comparison at a fixed specialist setting:
 
 ```powershell
-uv run python ../scripts/benchmark_task1.py --manifest ../benchmarks/writing_task1/private/manifest.jsonl --split dev --scoring-version both --chart-specialist off --resume --output ../benchmarks/writing_task1/reports/dev-v5-v9
+uv run python ../scripts/benchmark_task1.py --manifest ../benchmarks/writing_task1/private/manifest.jsonl --split dev --scoring-version both --chart-specialist off --resume --output ../benchmarks/writing_task1/reports/dev-v5-v11
 ```
 
 To also compare DePlot off/on:
@@ -85,8 +87,8 @@ To also compare DePlot off/on:
 uv run python ../scripts/benchmark_task1.py --manifest ../benchmarks/writing_task1/private/manifest.jsonl --split dev --scoring-version both --chart-specialist both --resume --output ../benchmarks/writing_task1/reports/dev-ablation
 ```
 
-`both` × `both` runs four configurations **per sample**: v5/v9 × DePlot off/on.
-Scoring ablations report v5 as baseline and v9 as candidate, with candidate-minus-baseline
+`both` × `both` runs four configurations **per sample**: v5/v11 × DePlot off/on.
+Scoring ablations report v5 as baseline and v11 as candidate, with candidate-minus-baseline
 TA signed bias, MAE and agreement deltas. `--limit` limits unique
 samples, not the number of provider requests. Specialist-on applies only to
 chart/table families, remains fail-open, and may fall back if unavailable.
@@ -141,7 +143,7 @@ these statistics cover completed attempt records only.
 
 Positive signed bias means generosity; negative bias means under-scoring. Read
 each criterion separately so mixed errors cannot cancel in overall.
-For v5/v9, inspect signed TA bias, MAE and exact/within-band agreement together;
+For v5/v11, inspect signed TA bias, MAE and exact/within-band agreement together;
 an upward shift alone is not evidence of better accuracy. Both versions invoke
 the same perception pipeline, but live perception can still vary between runs.
 Use the primary/reconciled perception metrics to identify that confound rather
