@@ -175,7 +175,7 @@ async def run_benchmark(
     records = []
     try:
         for item in items:
-            _, key = fingerprint(item, config)
+            input_hash, key = fingerprint(item, config)
             path = output / "cache" / f"{key}.json"
             record = (
                 checkpoints.cached_record(
@@ -184,6 +184,13 @@ async def run_benchmark(
                 if resume
                 else None
             )
+            if record is not None and (
+                record.input_hash != input_hash
+                or record.split != item.sample.split
+                or record.target != item.sample.human_scores.scores()
+                or record.target_overall != item.sample.human_overall
+            ):
+                record = None
             if record is None:
                 record = await evaluate(item, config, factory)
                 checkpoints.save_attempt(output, record)
