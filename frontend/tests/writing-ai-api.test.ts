@@ -1,6 +1,18 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { ApiError, resetAuthRequestStateForTests } from "@/lib/api/client";
-import { cancelAIWritingRun, getAIPracticeFeedback, saveAIPracticeFeedback, isCancelledAIRun, watchAIWritingRun } from "@/lib/api/writing-ai";
+import { aiCriterionSchema, aiEventSchema, cancelAIWritingRun, getAIPracticeFeedback, saveAIPracticeFeedback, isCancelledAIRun, watchAIWritingRun } from "@/lib/api/writing-ai";
+
+it("restores historical criteria with empty annotations and parses bounded semantic feedback events", () => {
+  const criterion = { score: 6.5, feedback: "Complete feedback.", strengths: [], improvements: [], evidence: [] };
+  expect(aiCriterionSchema.parse(criterion).annotations).toEqual([]);
+  expect(aiCriterionSchema.parse(criterion).feedback_status).toBe("COMPLETED");
+  const annotation = { id: "stable", criterion: "gra", kind: "ERROR", source_id: "P1S1", start_offset: 0, end_offset: 12, original_span: "people tends", suggested_revision: "people tend", message: "Use a plural verb.", confidence: "HIGH" };
+  expect(aiEventSchema.parse({ sequence: 1, event_type: "criterion.feedback.annotation", payload: { criterion: "gra", stage: "feedback", annotation } }).payload.annotation).toMatchObject(annotation);
+  const withoutRevision = { ...annotation, suggested_revision: undefined, category: undefined };
+  expect(aiEventSchema.parse({ sequence: 2, event_type: "criterion.feedback.annotation", payload: { criterion: "gra", stage: "feedback", annotation: withoutRevision } }).payload.annotation).toMatchObject({ suggested_revision: null, category: null });
+  expect(aiEventSchema.safeParse({ sequence: 2, event_type: "criterion.feedback.annotation", payload: { annotation: { ...annotation, end_offset: 0 } } }).success).toBe(false);
+  expect(aiCriterionSchema.safeParse({ ...criterion, annotations: Array(5).fill(annotation) }).success).toBe(false);
+});
 
 const runId = "11111111-1111-4111-8111-111111111111";
 const cancelled = {

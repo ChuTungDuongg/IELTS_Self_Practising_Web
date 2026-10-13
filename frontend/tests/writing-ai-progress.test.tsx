@@ -8,6 +8,45 @@ import { aiEventSchema, type AIWritingRun } from "@/lib/api/writing-ai";
 
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 
+it("shows feedback generation with an accepted band checkpoint instead of completion", () => {
+  const checkpoint = { ...criterion, score: 6, feedback: "Detailed feedback temporarily unavailable." };
+  const view = render(<ScoringProgress run={{ ...active, progress: { gra: checkpoint }, activity: { ...active.activity!, phase: "generating_feedback", criterion: "gra", stage: "feedback" } }} />);
+  const row = screen.getByLabelText("Tiến trình Grammatical Range & Accuracy");
+  expect(row).toHaveAttribute("data-state", "ACTIVE");
+  expect(row).toHaveTextContent("Band 6.0");
+  expect(row).toHaveTextContent("Generating feedback…");
+  view.rerender(<ScoringProgress run={{ ...active, progress: { gra: checkpoint }, activity: { ...active.activity!, phase: "feedback_completed", criterion: "gra", stage: "feedback" } }} />);
+  expect(row).toHaveTextContent("Feedback ready");
+  expect(row).not.toHaveTextContent("Generating feedback…");
+});
+
+it("restores concurrent pending feedback without counting accepted checkpoints as finished", () => {
+  const pending = { ...criterion, feedback_status: "PENDING" as const };
+  render(<ScoringProgress run={{ ...active, progress: { ta: criterion, cc: criterion, lr: pending, gra: pending }, activity: { ...active.activity!, phase: "generating_feedback", criterion: "gra", stage: "feedback" } }} />);
+  expect(screen.getByText("2 / 4 tiêu chí hoàn tất")).toBeInTheDocument();
+  for (const name of ["Lexical Resource", "Grammatical Range & Accuracy"]) {
+    const row = screen.getByLabelText(`Tiến trình ${name}`);
+    expect(row).toHaveAttribute("data-state", "ACTIVE");
+    expect(row).toHaveTextContent("Band 7.5");
+    expect(row).toHaveTextContent("Generating feedback…");
+  }
+});
+
+it("keeps an accepted band visible while feedback failure outranks its pending checkpoint", () => {
+  render(<ScoringProgress run={{ ...active, status: "FAILED", progress: { ta: criterion, gra: { ...criterion, feedback_status: "PENDING" } }, failures: { gra: { error_code: "AI_PROVIDER_TIMEOUT", error_message: "Feedback unavailable.", stage: "feedback" } }, activity: { ...active.activity!, phase: "failed", criterion: "gra", stage: "feedback" } }} />);
+  const row = screen.getByLabelText("Tiến trình Grammatical Range & Accuracy");
+  expect(row).toHaveAttribute("data-state", "FAILED");
+  expect(row).toHaveTextContent("Band 7.5");
+  expect(row).not.toHaveTextContent("Generating feedback…");
+  expect(screen.getByText("1 / 4 tiêu chí hoàn tất")).toBeInTheDocument();
+});
+
+it("counts concurrent pending feedback as active beside another criterion failure", () => {
+  const pending = { ...criterion, feedback_status: "PENDING" as const };
+  render(<ScoringProgress run={{ ...active, progress: { ta: criterion, lr: pending, gra: pending }, failures: { cc: { error_code: "AI_PROVIDER_TIMEOUT", error_message: "Unavailable." } }, activity: { ...active.activity!, phase: "generating_feedback", criterion: "gra", stage: "feedback" } }} />);
+  expect(screen.getByText("1 hoàn tất · 1 lỗi · 2 đang chấm")).toBeInTheDocument();
+});
+
 it.each(["collecting_evidence", "retrying"] as const)("animates only the active marker in phase %s", (phase) => {
   render(<ScoringProgress run={{ ...active, activity: { ...active.activity!, phase } }} />);
   const current = screen.getByLabelText("Tiến trình Task Response");
@@ -57,7 +96,7 @@ it.each([
   expect(screen.queryByText("Không thể hoàn tất tiêu chí này.")).not.toBeInTheDocument();
 });
 
-const criterion = { score: 7.5, feedback: "Lập trường nhất quán.", strengths: [], improvements: [], evidence: [] };
+const criterion = { feedback_status: "COMPLETED" as const, annotations: [], score: 7.5, feedback: "Lập trường nhất quán.", strengths: [], improvements: [], evidence: [] };
 const active: AIWritingRun = {
   id: "11111111-1111-4111-8111-111111111111", attempt_id: "22222222-2222-4222-8222-222222222222", writing_task_id: "33333333-3333-4333-8333-333333333333",
   status: "RUNNING", provider: "fake", model: "fake", prompt_version: "mts-task2-v2",

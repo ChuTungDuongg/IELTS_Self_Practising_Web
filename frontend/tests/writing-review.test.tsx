@@ -152,10 +152,7 @@ describe("WritingReviewView", () => {
     const reader = screen.getByRole("article", { name: "Saved Task 1 response" });
     expect(within(reader).getByRole("heading", { name: "Task 1 response" })).toBeInTheDocument();
     expect(within(reader).getByText("293 words")).toBeInTheDocument();
-    expect([...reader.querySelectorAll(".writing-review-response-body > p")].map((paragraph) => paragraph.textContent)).toEqual([
-      "  First fictional paragraph.", "Second fictional paragraph.",
-      "Third paragraph with https://example.test/a-long-path.", "Fourth paragraph.",
-    ]);
+    expect(reader.querySelector("[data-essay-text]")?.textContent).toBe(content);
     expect(data.tasks[0].content).toBe(content);
     expect(within(reader).queryByRole("textbox")).not.toBeInTheDocument();
     expect(saveWritingTaskScore).not.toHaveBeenCalled();
@@ -165,7 +162,7 @@ describe("WritingReviewView", () => {
     const data = reviewPayload();
     data.tasks[0].content = "One sentence. Another sentence! A final sentence?";
     render(<WritingReviewView data={data} />);
-    const paragraphs = screen.getByRole("article", { name: "Saved Task 1 response" }).querySelectorAll(".writing-review-response-body > p");
+    const paragraphs = screen.getByRole("article", { name: "Saved Task 1 response" }).querySelectorAll("[data-essay-text]");
     expect(paragraphs).toHaveLength(1);
     expect(paragraphs[0].textContent).toBe(data.tasks[0].content);
   });
@@ -189,7 +186,7 @@ describe("WritingReviewView", () => {
     const reader = screen.getByRole("article", { name: "Saved Task 2 response" });
     expect(within(reader).getByRole("heading", { name: "Task 2 response" })).toBeInTheDocument();
     expect(within(reader).getByText("7 words")).toBeInTheDocument();
-    expect([...reader.querySelectorAll(".writing-review-response-body > p")].map((paragraph) => paragraph.textContent)).toEqual(["Task two introduction.", "Task two conclusion."]);
+    expect(reader.querySelector("[data-essay-text]")?.textContent).toBe("Task two introduction.\n\nTask two conclusion.");
     expect(screen.getByText("Discuss a fictional proposition.")).toBeInTheDocument();
     expect(screen.queryByText("A saved fictional response.")).not.toBeInTheDocument();
     expect(screen.queryByAltText("Writing Task 1 reference")).not.toBeInTheDocument();

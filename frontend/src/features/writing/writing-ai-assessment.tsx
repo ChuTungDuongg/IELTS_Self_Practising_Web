@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   aiTraits, traitNamesForTask, cancelAIWritingRun, createAIWritingRun, getAIWritingRun, isActiveAIRun, isCancelledAIRun, listAIWritingRuns,
   watchAIWritingRun, type AIWritingEvent, type AIWritingResult, type AIWritingRun,
   getAIPracticeFeedback, saveAIPracticeFeedback, type AIPracticeFeedback,
+  type AITrait, type WritingAnnotation,
 } from "@/lib/api/writing-ai";
 import { ApiError } from "@/lib/api/client";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -14,12 +15,32 @@ import styles from "./writing-ai-assessment.module.css";
 import { Task1VisualStatus } from "./writing-ai-visual-details";
 import { useTranslation } from "@/lib/i18n/locale-provider";
 import { SavedAIPracticeFeedback, WritingRelevanceNotice } from "./writing-ai-practice-feedback";
+import { AnnotationDetails, validEssayAnnotations } from "./annotated-essay";
 
-export function WritingAIAssessment({ attemptId, taskId, taskNumber = 2, hasEssay, canCopy, canSavePersonalFeedback = false, onCopy }: {
+export type EssayAnnotationState = { runId: string | null; annotations: WritingAnnotation[] };
+type LiveFeedback = { runId: string; annotations: Partial<Record<AITrait, WritingAnnotation[]>>; phases: Partial<Record<AITrait, "generating" | "completed">> };
+
+function reconcileFeedbackSnapshot(saved: AIWritingRun, previous: LiveFeedback | null): LiveFeedback | null {
+  if (!isActiveAIRun(saved)) return null;
+  const current = previous?.runId === saved.id ? previous : { runId: saved.id, annotations: {}, phases: {} };
+  const annotations = { ...current.annotations }, phases = { ...current.phases };
+  for (const trait of aiTraits) {
+    const assessment = saved.result?.criteria[trait] ?? saved.progress[trait];
+    if (saved.failures?.[trait] || (assessment && assessment.feedback_status !== "PENDING")) {
+      annotations[trait] = []; phases[trait] = "completed";
+    } else if (assessment?.feedback_status === "PENDING") phases[trait] = "generating";
+  }
+  return { runId: saved.id, annotations, phases };
+}
+
+export function WritingAIAssessment({ attemptId, taskId, taskNumber = 2, hasEssay, canCopy, canSavePersonalFeedback = false, onCopy, essayContent, onAnnotationsChange, onViewAnnotation }: {
   attemptId: string; taskId: string; hasEssay: boolean; canCopy: boolean;
   taskNumber?: 1 | 2;
   canSavePersonalFeedback?: boolean;
   onCopy: (result: AIWritingResult) => void;
+  essayContent?: string;
+  onAnnotationsChange?: (state: EssayAnnotationState) => void;
+  onViewAnnotation?: (id: string) => void;
 }) {
   const { t } = useTranslation();
   const [personalFeedback, setPersonalFeedback] = useState<AIPracticeFeedback | null>(null);
@@ -29,6 +50,7 @@ export function WritingAIAssessment({ attemptId, taskId, taskNumber = 2, hasEssa
   const [feedbackSaveError, setFeedbackSaveError] = useState(false);
   const [runs, setRuns] = useState<AIWritingRun[]>([]);
   const [run, setRun] = useState<AIWritingRun | null>(null);
+  const [liveFeedback, setLiveFeedback] = useState<LiveFeedback | null>(null);
   const [terminal, setTerminal] = useState<"FAILED" | "COMPLETED" | null>(null);
   const [configured, setConfigured] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
@@ -46,6 +68,17 @@ export function WritingAIAssessment({ attemptId, taskId, taskNumber = 2, hasEssa
   const cancelled = isCancelledAIRun(visibleRun);
   const aiTraitNames = traitNamesForTask(taskNumber);
   const visualAnalysis = run?.task1_analysis ?? (run?.result?.task_number === 1 ? run.result.task1_analysis : null);
+  const annotations = useMemo(() => {
+    if (!run || terminal === "FAILED" || run.status === "FAILED") return [];
+    const combined = aiTraits.flatMap(trait => run.result
+      ? run.result.criteria[trait].annotations ?? []
+      : [...(run.progress[trait]?.annotations ?? []), ...(liveFeedback?.runId === run.id ? liveFeedback.annotations[trait] ?? [] : [])]);
+    const unique = [...new Map(combined.map(annotation => [annotation.id, annotation])).values()];
+    return essayContent === undefined ? unique.filter(annotation => (annotation.criterion === "gra" || annotation.criterion === "lr") && (annotation.kind !== "ERROR" || annotation.confidence === "HIGH")) : validEssayAnnotations(essayContent, unique);
+  }, [run, terminal, liveFeedback, essayContent]);
+  const feedbackPhases = liveFeedback && liveFeedback.runId === runId ? liveFeedback.phases : undefined;
+
+  useEffect(() => { onAnnotationsChange?.({ runId: runId ?? null, annotations }); }, [runId, annotations, onAnnotationsChange]);
 
   useEffect(() => {
     if (!canSavePersonalFeedback) return;
@@ -72,7 +105,9 @@ export function WritingAIAssessment({ attemptId, taskId, taskNumber = 2, hasEssa
       if (disposed) return;
       setConfigured(saved.configured);
       setRuns(saved.items);
-      setRun(saved.items.find(isActiveAIRun) ?? saved.items[0] ?? null);
+      const selected = saved.items.find(isActiveAIRun) ?? saved.items[0] ?? null;
+      setRun(selected);
+      setLiveFeedback(selected ? reconcileFeedbackSnapshot(selected, null) : null);
     }).catch(() => { if (!disposed) setError("Không thể tải các bài chấm AI đã lưu. Bạn có thể thử chấm lại."); })
       .finally(() => { if (!disposed) setLoading(false); });
     return () => { disposed = true; };
@@ -81,12 +116,37 @@ export function WritingAIAssessment({ attemptId, taskId, taskNumber = 2, hasEssa
   useEffect(() => {
     if (!runId || !observing) return;
     let disposed = false;
+    let sequence = 0;
     const stopObserving = watchAIWritingRun(runId, {
       event(event: AIWritingEvent) {
-        if (disposed) return;
+        if (disposed || event.sequence <= sequence) return;
+        sequence = event.sequence;
         const activity = activityFromEvent(event);
         const trait = event.payload.criterion;
-        setRun((current) => current?.id === runId ? {
+        const annotation = event.payload.annotation;
+        if (event.event_type.startsWith("criterion.feedback.") || event.event_type === "criterion.completed" || event.event_type === "criterion.failed") {
+          setLiveFeedback(previous => {
+            const current = previous?.runId === runId ? previous : { runId, annotations: {}, phases: {} };
+            if (!trait) return current;
+            if (current.phases[trait] === "completed" && (event.event_type === "criterion.feedback.started" || event.event_type === "criterion.feedback.annotation")) return current;
+            if (event.event_type === "criterion.feedback.annotation" && annotation?.criterion === trait) {
+              const items = current.annotations[trait] ?? [];
+              return items.some(item => item.id === annotation.id) || items.length >= 4 ? current
+                : { ...current, annotations: { ...current.annotations, [trait]: [...items, annotation] } };
+            }
+            if (event.event_type === "criterion.feedback.started") return { ...current, annotations: { ...current.annotations, [trait]: [] }, phases: { ...current.phases, [trait]: "generating" } };
+            if (event.event_type === "criterion.feedback.completed" || event.event_type === "criterion.completed" || event.event_type === "criterion.failed") {
+              return { ...current, annotations: { ...current.annotations, [trait]: [] }, phases: { ...current.phases, [trait]: "completed" } };
+            }
+            return current;
+          });
+        }
+        setRun((current) => {
+          if (current?.id !== runId) return current;
+          // A replayed generation checkpoint cannot supersede persisted feedback.
+          const finalized = trait && current.progress[trait] && current.progress[trait]?.feedback_status !== "PENDING";
+          if (finalized && event.event_type === "criterion.feedback.started") return current;
+          return {
           ...current,
           error_code: event.event_type === "run.failed" ? event.payload.error_code ?? current.error_code : current.error_code,
           activity: activity ? { ...activity, criterion: event.event_type === "run.failed" ? activity.criterion ?? current.activity?.criterion ?? null : activity.criterion } : current.activity,
@@ -97,14 +157,16 @@ export function WritingAIAssessment({ attemptId, taskId, taskNumber = 2, hasEssa
             error_code: event.payload.error_code ?? "AI_GRADING_FAILED",
             error_message: "Không thể hoàn tất tiêu chí này.", stage: event.payload.stage,
           } } : current.failures,
-        } : current);
+          };
+        });
         // Terminal UI overrides transient phases immediately. Keep observation
         // alive until JSON reconciliation finishes, including during an outage.
-        if (event.event_type === "run.failed") { setTerminal("FAILED"); setError(event.payload.error_code === "AI_GRADING_CANCELLED" ? "" : aiErrorMessage(event.payload.error_code)); }
+        if (event.event_type === "run.failed") { setLiveFeedback(null); setTerminal("FAILED"); setError(event.payload.error_code === "AI_GRADING_CANCELLED" ? "" : aiErrorMessage(event.payload.error_code)); }
         if (event.event_type === "run.completed") setTerminal("COMPLETED");
       },
       snapshot(saved) {
         if (disposed || saved.id !== runId) return;
+        setLiveFeedback(previous => reconcileFeedbackSnapshot(saved, previous));
         setRun((current) => current?.id === saved.id && !(isCancelledAIRun(current) && isActiveAIRun(saved)) ? { ...saved, progress: { ...current.progress, ...saved.progress }, failures: { ...current.failures, ...saved.failures }, activity: saved.activity ?? current.activity } : current);
         setTerminal(null);
         setError("");
@@ -123,6 +185,7 @@ export function WritingAIAssessment({ attemptId, taskId, taskNumber = 2, hasEssa
       const created = await createAIWritingRun(attemptId, taskId, force);
       const saved = await getAIWritingRun(created.run_id);
       setRun(saved);
+      setLiveFeedback(reconcileFeedbackSnapshot(saved, null));
       setTerminal(null);
       setConfigured(true);
       setRuns((current) => [saved, ...current.filter((item) => item.id !== saved.id)]);
@@ -168,7 +231,7 @@ export function WritingAIAssessment({ attemptId, taskId, taskNumber = 2, hasEssa
     {notice ? <p role="status">{notice}</p> : null}
     {cancelled ? <p role="status">Đã dừng chấm AI. Các tiêu chí hoàn tất trước đó vẫn được giữ lại.</p> : null}
     {error || (visibleRun?.status === "FAILED" && !cancelled) ? <p role="alert" className="notice notice-error">{visibleRun?.status === "FAILED" && !cancelled ? aiErrorMessage(visibleRun.error_code) : error}</p> : null}
-    <ScoringProgress run={visibleRun} taskNumber={taskNumber} />
+    <ScoringProgress run={visibleRun} taskNumber={taskNumber} feedbackPhases={feedbackPhases} annotationCount={annotations.length} />
     {taskNumber === 1 && visualAnalysis ? <Task1VisualStatus analysis={visualAnalysis} /> : null}
     <WritingRelevanceNotice relevance={run?.result?.relevance ?? run?.relevance} />
     {canSavePersonalFeedback && feedbackLoadError ? <p role="alert">{t("writingAI.loadFeedbackError")}</p> : null}
@@ -190,9 +253,16 @@ export function WritingAIAssessment({ attemptId, taskId, taskNumber = 2, hasEssa
         </div>)}
       </dl>
     </section> : null}
+    {annotations.length || run?.status === "COMPLETED" ? <section className={styles.trace} aria-label={t("writingAI.feedbackTitle")}>
+      <h3>{t("writingAI.feedbackTitle")}</h3>
+      {annotations.length ? <ul className={styles.annotations}>{annotations.map(annotation => <li key={annotation.id} tabIndex={-1} data-feedback-annotation-id={annotation.id}>
+        <AnnotationDetails annotation={annotation} />
+        {onViewAnnotation ? <button type="button" className="btn btn-secondary" onClick={() => onViewAnnotation(annotation.id)}>{t("writingAI.viewInEssay")}</button> : null}
+      </li>)}</ul> : <p>{t(run?.result && ["gra", "lr"].some(trait => run.result!.criteria[trait as "gra" | "lr"].feedback_status === "UNAVAILABLE") ? "writingAI.feedbackUnavailable" : "writingAI.noLanguageIssues")}</p>}
+    </section> : null}
     <div className={styles.criteria}>{aiTraits.map((trait) => {
       const assessment = run?.result?.criteria[trait] ?? run?.progress[trait];
-      return assessment ? <CriterionAssessmentCard key={trait} trait={trait} assessment={assessment} taskNumber={taskNumber} visualAnalysis={visualAnalysis} /> : null;
+      return assessment ? <CriterionAssessmentCard key={trait} trait={trait} assessment={assessment} taskNumber={taskNumber} visualAnalysis={visualAnalysis} generatingFeedback={active && feedbackPhases?.[trait] === "generating"} feedbackFailed={!run?.result?.criteria[trait] && (Boolean(run?.failures?.[trait]) || (visibleRun?.status === "FAILED" && assessment.feedback_status === "PENDING"))} /> : null;
     })}</div>
     {runs.some((item) => item.status === "COMPLETED" && item.id !== run?.id) ? <details className={styles.history}><summary>Các bài chấm AI trước</summary><ul>{runs.filter((item) => item.status === "COMPLETED").map((item) => <li key={item.id}><button type="button" className="btn" disabled={active || starting || stopping} onClick={() => { setRun(item); setTerminal(null); setError(""); setNotice(""); }}>{new Date(item.created_at).toLocaleString("vi-VN")} · {item.result?.overall_band.toFixed(1)} · {item.prompt_version}</button></li>)}</ul></details> : null}
   </section>;

@@ -73,3 +73,8 @@
 :global(:root[data-theme="dark"]) .panel { border-color: var(--line); }
 :global(:root[data-theme="dark"]) .overall { border-color: var(--line); background: var(--surface-raised); }
 :global(:root[data-theme="dark"]) .card { background: var(--surface-raised); }
+
+.annotations { display: grid; gap: 12px; padding: 0; margin-top: 12px; list-style: none; }
+.annotations > li { padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.annotations > li:focus { outline: 2px solid var(--focus-ring, var(--accent)); outline-offset: 3px; }
+.annotations button { margin-top: 8px; }

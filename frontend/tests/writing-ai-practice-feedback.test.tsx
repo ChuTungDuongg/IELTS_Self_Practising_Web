@@ -13,7 +13,7 @@ const attemptId = "11111111-1111-4111-8111-111111111111";
 const taskId = "22222222-2222-4222-8222-222222222222";
 const runId = "33333333-3333-4333-8333-333333333333";
 const otherRun = "44444444-4444-4444-8444-444444444444";
-const criterion = { score: 7, feedback: "Fictional saved feedback.", strengths: [], improvements: [], evidence: [] };
+const criterion = { feedback_status: "COMPLETED" as const, annotations: [], score: 7, feedback: "Fictional saved feedback.", strengths: [], improvements: [], evidence: [] };
 const result = { criteria: { ta: criterion, cc: criterion, lr: criterion, gra: criterion }, raw_mean: 7, overall_band: 7 };
 const completed: AIWritingRun = { id: runId, attempt_id: attemptId, writing_task_id: taskId, status: "COMPLETED", provider: "fake", model: "fictional", prompt_version: "mts-task2-v8", result, progress: result.criteria, error_code: null, error_message: null, started_at: null, completed_at: "2026-10-11T00:00:00Z", created_at: "2026-10-11T00:00:00Z" };
 const saved = { id: otherRun, attempt_id: attemptId, writing_task_id: taskId, source_run_id: runId, criteria: Object.fromEntries(Object.entries(result.criteria).map(([key, item]) => [key, { score: item.score, feedback: item.feedback }])), created_at: "2026-10-11T00:00:00Z", updated_at: "2026-10-11T01:00:00Z", relevance: null };

@@ -18,7 +18,7 @@ vi.mock("@/lib/api/exam", async (original) => ({ ...await original<typeof import
 const attemptId = "11111111-1111-4111-8111-111111111111";
 const taskId = "22222222-2222-4222-8222-222222222222";
 const runId = "33333333-3333-4333-8333-333333333333";
-const criterion = { score: 6.5, feedback: "Cần phát triển ví dụ cụ thể.", strengths: ["Lập trường rõ ràng."], improvements: ["Giải thích chi tiết hỗ trợ."], evidence: [{ quote: "Fictional parks help.", assessment: "Luận điểm trực tiếp trả lời đề bài." }] };
+const criterion = { feedback_status: "COMPLETED" as const, annotations: [], score: 6.5, feedback: "Cần phát triển ví dụ cụ thể.", strengths: ["Lập trường rõ ràng."], improvements: ["Giải thích chi tiết hỗ trợ."], evidence: [{ quote: "Fictional parks help.", assessment: "Luận điểm trực tiếp trả lời đề bài." }] };
 const result = { criteria: { ta: criterion, cc: { ...criterion, score: 6 }, lr: { ...criterion, score: 7 }, gra: { ...criterion, score: 6 } }, raw_mean: 6.375, overall_band: 6.5 };
 const pending: AIWritingRun = { id: runId, attempt_id: attemptId, writing_task_id: taskId, status: "PENDING", provider: "fake", model: "fictional", prompt_version: "mts-task2-v2", result: null, progress: {}, error_code: null, error_message: null, started_at: null, completed_at: null, created_at: "2026-10-08T00:00:00Z" };
 const completed: AIWritingRun = { ...pending, status: "COMPLETED", result, progress: result.criteria };
@@ -101,6 +101,134 @@ describe("AI feedback presentation", () => {
 });
 
 describe("Writing AI assessment", () => {
+  it("displays only the selected historical run and replaces its underlines on forced regrade", async () => {
+    const data = review(); data.tasks = [data.tasks[1]]; data.tasks[0].content = "people tends to help.";
+    const annotation = { id: "latest-issue", criterion: "gra" as const, kind: "ERROR" as const, source_id: "P1S1", start_offset: 0, end_offset: 12, original_span: "people tends", suggested_revision: "people tend", message: "Latest feedback.", confidence: "HIGH" as const, category: "grammar" as const };
+    const latest = { ...completed, result: { ...result, criteria: { ...result.criteria, gra: { ...criterion, annotations: [annotation] } } } };
+    const older = { ...completed, id: "44444444-4444-4444-8444-444444444444", prompt_version: "older-version", result: { ...result, criteria: { ...result.criteria, gra: { ...criterion, annotations: [{ ...annotation, id: "older-issue", message: "Older feedback." }] } } } };
+    vi.mocked(listAIWritingRuns).mockResolvedValue({ configured: true, items: [latest, older] });
+    render(<WritingReviewView data={data} />);
+    expect(await screen.findByText("Latest feedback.")).toBeInTheDocument();
+    const reader = screen.getByRole("article", { name: "Saved Task 2 response" });
+    await waitFor(() => expect(within(reader).getByRole("button", { name: /people tends/ })).toHaveAttribute("data-annotation-ids", "latest-issue"));
+    fireEvent.click(screen.getByRole("button", { name: /older-version/ }));
+    expect(await screen.findByText("Older feedback.")).toBeInTheDocument();
+    expect(screen.queryByText("Latest feedback.")).not.toBeInTheDocument();
+    await waitFor(() => expect(within(reader).getByRole("button", { name: /people tends/ })).toHaveAttribute("data-annotation-ids", "older-issue"));
+    vi.mocked(getAIWritingRun).mockResolvedValue(pending);
+    fireEvent.click(screen.getByRole("button", { name: "Chấm lại với AI" }));
+    await waitFor(() => expect(MockEventSource.instances).toHaveLength(1));
+    expect(within(reader).queryByRole("button", { name: /people tends/ })).not.toBeInTheDocument();
+    expect(screen.queryByText("Older feedback.")).not.toBeInTheDocument();
+  });
+
+  it("keeps a fallback band and unavailable feedback without claiming there were no language issues", async () => {
+    vi.mocked(listAIWritingRuns).mockResolvedValue({ configured: true, items: [{ ...completed, result: { ...result, criteria: { ...result.criteria, gra: { ...criterion, feedback_status: "UNAVAILABLE", feedback: "Fallback feedback." } } } }] });
+    panel();
+    const card = await screen.findByRole("article", { name: "AI Grammatical Range & Accuracy" });
+    expect(card).toHaveTextContent("Band 6.5");
+    expect(card).toHaveTextContent("Detailed feedback temporarily unavailable.");
+    expect(screen.queryByText("No high-confidence language issues were identified.")).not.toBeInTheDocument();
+  });
+
+  it("uses the shared live essay annotation renderer for Task 1 LR spelling feedback", async () => {
+    const data = review(); data.tasks = [data.tasks[0]]; data.tasks[0].content = "Fictional goverment helps.";
+    vi.mocked(listAIWritingRuns).mockResolvedValue({ configured: true, items: [{ ...pendingTaskOne, writing_task_id: data.tasks[0].writing_task_id, status: "RUNNING" }] });
+    render(<WritingReviewView data={data} />);
+    await waitFor(() => expect(MockEventSource.instances).toHaveLength(1));
+    const annotation = { id: "task1-spelling", criterion: "lr", kind: "ERROR", source_id: "P1S1", start_offset: 10, end_offset: 19, original_span: "goverment", suggested_revision: "government", message: "Correct the spelling.", confidence: "HIGH", category: "spelling" };
+    act(() => MockEventSource.instances[0].emit("criterion.feedback.annotation", 1, { criterion: "lr", stage: "feedback", annotation }));
+    const reader = screen.getByRole("article", { name: "Saved Task 1 response" });
+    const span = within(reader).getByRole("button", { name: /goverment/ });
+    expect(reader.querySelector("[data-essay-text]")?.textContent).toBe("Fictional goverment helps.");
+    fireEvent.focus(span);
+    expect(screen.getByRole("dialog")).toHaveTextContent("LR · Spelling");
+    expect(screen.getByRole("dialog")).toHaveTextContent("government");
+    expect(saveWritingTaskScore).not.toHaveBeenCalled();
+  });
+
+  it("reconciles active snapshot feedback readiness and discards superseded live annotations", async () => {
+    const onAnnotationsChange = vi.fn();
+    vi.mocked(listAIWritingRuns).mockResolvedValue({ configured: true, items: [{ ...pending, status: "RUNNING" }] });
+    render(<WritingAIAssessment attemptId={attemptId} taskId={taskId} hasEssay canCopy onCopy={vi.fn()} essayContent="people tends to help." onAnnotationsChange={onAnnotationsChange} />);
+    await waitFor(() => expect(MockEventSource.instances).toHaveLength(1));
+    const stream = MockEventSource.instances[0];
+    const checkpoint = { ...criterion, feedback_status: "PENDING" };
+    const annotation = { id: "transient", criterion: "gra", kind: "ERROR", source_id: "P1S1", start_offset: 0, end_offset: 12, original_span: "people tends", suggested_revision: "people tend", message: "Superseded live feedback.", confidence: "HIGH" };
+    act(() => { stream.emit("criterion.feedback.started", 1, { criterion: "gra", stage: "feedback", result: checkpoint }); stream.emit("criterion.feedback.annotation", 2, { criterion: "gra", annotation }); });
+    expect(screen.getByText("Superseded live feedback.")).toBeInTheDocument();
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(async () => new Response(JSON.stringify({ ...pending, status: "RUNNING", progress: { gra: criterion, lr: checkpoint }, activity: { phase: "generating_feedback", criterion: "lr", stage: "feedback", started_at: pending.created_at } }), { status: 200 })));
+    act(() => stream.onerror?.());
+    await waitFor(() => expect(screen.getByLabelText("Tiến trình Grammatical Range & Accuracy")).toHaveAttribute("data-state", "COMPLETED"));
+    expect(screen.getByRole("article", { name: "AI Grammatical Range & Accuracy" })).not.toHaveTextContent("Generating feedback…");
+    expect(screen.getByLabelText("Tiến trình Lexical Resource")).toHaveTextContent("Generating feedback…");
+    expect(screen.getByText("1 / 4 tiêu chí hoàn tất")).toBeInTheDocument();
+    expect(screen.queryByText("Superseded live feedback.")).not.toBeInTheDocument();
+    expect(onAnnotationsChange).toHaveBeenLastCalledWith({ runId, annotations: [] });
+  });
+  it("streams validated feedback into the saved essay, deduplicates replay and reconciles final annotations", async () => {
+    const data = review();
+    data.tasks = [data.tasks[1]];
+    data.tasks[0].content = "😀\r\npeople tends to help.";
+    vi.mocked(listAIWritingRuns).mockResolvedValue({ configured: true, items: [{ ...pending, status: "RUNNING" }] });
+    render(<WritingReviewView data={data} />);
+    await waitFor(() => expect(MockEventSource.instances).toHaveLength(1));
+    const stream = MockEventSource.instances[0];
+    const annotation = { id: "stable-gra", criterion: "gra", kind: "ERROR", source_id: "P1S1", start_offset: 4, end_offset: 16, original_span: "people tends", suggested_revision: "people tend", message: "Use a plural verb.", confidence: "HIGH", category: "grammar" };
+    act(() => stream.emit("criterion.feedback.started", 1, { criterion: "gra", stage: "feedback", result: { ...criterion, feedback: "Detailed feedback temporarily unavailable.", strengths: [], improvements: [], annotations: [] } }));
+    expect(screen.getByLabelText("Tiến trình Grammatical Range & Accuracy")).toHaveTextContent("Generating feedback…");
+    const generatingCard = screen.getByRole("article", { name: "AI Grammatical Range & Accuracy" });
+    expect(generatingCard).toHaveTextContent("Band 6.5");
+    expect(generatingCard).toHaveTextContent("Generating feedback…");
+    expect(generatingCard).not.toHaveTextContent("Detailed feedback temporarily unavailable.");
+    act(() => stream.emit("criterion.feedback.annotation", 2, { criterion: "gra", stage: "feedback", annotation }));
+    const reader = screen.getByRole("article", { name: "Saved Task 2 response" });
+    expect(within(reader).getByRole("button", { name: /people tends/ })).toBeInTheDocument();
+    expect(screen.getAllByText("Use a plural verb.")).toHaveLength(1);
+    expect(screen.getByRole("status")).toHaveTextContent("1 language suggestions found");
+    expect(reader.querySelector("[data-essay-text]")?.textContent).toBe(data.tasks[0].content);
+    act(() => { stream.emit("criterion.feedback.annotation", 2, { criterion: "gra", annotation }); stream.emit("criterion.feedback.annotation", 3, { criterion: "gra", annotation }); });
+    expect(screen.getAllByText("Use a plural verb.")).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "View in essay" }));
+    expect(within(reader).getByRole("button", { name: /people tends/ })).toHaveFocus();
+    expect(screen.getByRole("dialog")).toHaveTextContent("Use a plural verb.");
+    fireEvent.click(screen.getByRole("button", { name: "View feedback" }));
+    expect(screen.getByText("Use a plural verb.").closest("li")).toHaveFocus();
+    act(() => stream.emit("criterion.feedback.completed", 4, { criterion: "gra", stage: "feedback", result: { ...criterion, annotations: [annotation] } }));
+    expect(screen.getByLabelText("Tiến trình Grammatical Range & Accuracy")).toHaveTextContent("Feedback ready");
+    expect(screen.getAllByText("Use a plural verb.")).toHaveLength(1);
+    const final = { ...completed, result: { ...result, criteria: { ...result.criteria, gra: { ...criterion, annotations: [] } } } };
+    vi.mocked(getAIWritingRun).mockResolvedValue(final);
+    act(() => stream.emit("run.completed", 5));
+    await waitFor(() => expect(within(reader).queryByRole("button", { name: /people tends/ })).not.toBeInTheDocument());
+    expect(screen.queryByText("Use a plural verb.")).not.toBeInTheDocument();
+  });
+
+  it("clears partial annotations after failure and when a new run replaces the current run", async () => {
+    const data = review(); data.tasks = [data.tasks[1]]; data.tasks[0].content = "people tends to help.";
+    vi.mocked(listAIWritingRuns).mockResolvedValue({ configured: true, items: [{ ...pending, status: "RUNNING" }] });
+    render(<WritingReviewView data={data} />);
+    await waitFor(() => expect(MockEventSource.instances).toHaveLength(1));
+    const annotation = { id: "old", criterion: "gra", kind: "ERROR", source_id: "P1S1", start_offset: 0, end_offset: 12, original_span: "people tends", suggested_revision: "people tend", message: "Old feedback.", confidence: "HIGH" };
+    const reader = screen.getByRole("article", { name: "Saved Task 2 response" });
+    act(() => MockEventSource.instances[0].emit("criterion.feedback.annotation", 1, { criterion: "gra", annotation }));
+    expect(within(reader).getByRole("button", { name: /people tends/ })).toBeInTheDocument();
+    vi.mocked(getAIWritingRun).mockResolvedValue({ ...pending, status: "FAILED", error_code: "AI_PROVIDER_TIMEOUT" });
+    act(() => MockEventSource.instances[0].emit("run.failed", 2, { error_code: "AI_PROVIDER_TIMEOUT" }));
+    expect(within(reader).queryByRole("button", { name: /people tends/ })).not.toBeInTheDocument();
+    expect(screen.queryByText("Old feedback.")).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Chấm lại với AI" })).toBeEnabled());
+    const nextId = "44444444-4444-4444-8444-444444444444";
+    vi.mocked(createAIWritingRun).mockResolvedValue({ run_id: nextId, cache_hit: false, existing_active: false });
+    vi.mocked(getAIWritingRun).mockResolvedValue({ ...pending, id: nextId });
+    fireEvent.click(screen.getByRole("button", { name: "Chấm lại với AI" }));
+    await waitFor(() => expect(MockEventSource.instances).toHaveLength(2));
+    act(() => MockEventSource.instances[0].emit("criterion.feedback.annotation", 3, { criterion: "gra", annotation }));
+    expect(within(reader).queryByRole("button", { name: /people tends/ })).not.toBeInTheDocument();
+    act(() => MockEventSource.instances[1].emit("criterion.feedback.annotation", 1, { criterion: "gra", annotation: { ...annotation, id: "new", message: "New feedback." } }));
+    expect(screen.getByText("New feedback.")).toBeInTheDocument();
+    expect(screen.queryByText("Old feedback.")).not.toBeInTheDocument();
+  });
   it.each(["COMPLETED", "UNAVAILABLE", "PARSE_FAILED", "RECONCILIATION_FAILED"] as const)("shows safe chart cross-check diagnostics and accepts old Task 1 history: %s", (status) => {
     const crossCheck = { specialist_used: status === "COMPLETED", specialist_model: "google/deplot", specialist_revision: "pinned", status, agreement_count: 6, disagreement_count: 0, unmatched_primary_count: 0, unmatched_specialist_count: 0, unknown_count: 0, warnings: [] };
     const analysis = { ...visualAnalysis, confidence: "HIGH" as const, visual_family: "chart_table" as const, cross_check: crossCheck };

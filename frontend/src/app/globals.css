@@ -1005,6 +1005,7 @@ input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--mute
 .writing-review-word-count { border: 1px solid var(--line); border-radius: 999px; padding: 6px 10px; color: var(--ink-soft); background: var(--surface); font-size: 12px; font-weight: 750; font-variant-numeric: tabular-nums; }
 .writing-review-response-body { min-width: 0; border: 1px solid var(--line); border-radius: 12px; padding: clamp(18px, 2.2vw, 28px); color: var(--ink); background: var(--surface-raised); box-shadow: var(--shadow-sm); }
 .writing-review-response-body > p { max-width: 72ch; margin: 0 auto; overflow-wrap: anywhere; font-family: Georgia, "Times New Roman", serif; font-size: 1rem; line-height: 1.85; white-space: pre-wrap; }
+.writing-review-response-body [data-essay-text] { max-width: 72ch; margin: 0 auto; font-family: Georgia, "Times New Roman", serif; font-size: 1rem; line-height: 1.85; }
 .writing-review-response-body > p + p { margin-top: 1.1em; }
 .writing-review-response-body > .writing-review-response-empty { color: var(--muted); font-family: inherit; }
 

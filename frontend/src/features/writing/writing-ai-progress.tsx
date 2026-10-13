@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { aiTraits, traitNamesForTask, isActiveAIRun, isCancelledAIRun, type AIActivity, type AIWritingEvent, type AIWritingRun } from "@/lib/api/writing-ai";
+import { aiTraits, traitNamesForTask, isActiveAIRun, isCancelledAIRun, type AIActivity, type AITrait, type AIWritingEvent, type AIWritingRun } from "@/lib/api/writing-ai";
 import { useTranslation } from "@/lib/i18n/locale-provider";
 import type { TranslationFunction } from "@/lib/i18n/types";
 import styles from "./writing-ai-assessment.module.css";
@@ -17,6 +17,7 @@ export function activityFromEvent(event: AIWritingEvent): AIActivity | null {
     "criterion.started": "preparing", "evidence.request.started": "collecting_evidence",
     "evidence.validation.started": "validating_evidence", "criterion.evidence.completed": "evidence_collected",
     "criterion.scoring.started": "scoring", "criterion.scoring.validation.started": "validating_score",
+    "criterion.feedback.started": "generating_feedback", "criterion.feedback.completed": "feedback_completed",
     "criterion.retrying": "retrying", "criterion.completed": "completed", "criterion.failed": "failed", "run.failed": "failed", "run.completed": "completed",
     "visual_grounding.started": "visual_grounding", "visual_grounding.completed": "visual_grounded",
     "chart_specialist.started": "chart_cross_check", "chart_specialist.completed": "chart_read",
@@ -55,6 +56,8 @@ function phaseLabel(activity: AIActivity | null | undefined, t: TranslationFunct
     case "validating_evidence": return "Đang kiểm tra dẫn chứng…";
     case "evidence_collected": return "Đã thu thập dẫn chứng";
     case "scoring": return "Đang chấm điểm…";
+    case "generating_feedback": return t("writingAI.generatingFeedback");
+    case "feedback_completed": return t("writingAI.feedbackReady");
     case "validating_score": return "Đang kiểm tra điểm và nhận xét…";
     case "chart_cross_check": return "Đang đối chiếu dữ liệu biểu đồ…";
     case "chart_read": return "Đã đọc dữ liệu bằng bộ đọc biểu đồ chuyên dụng";
@@ -75,38 +78,43 @@ function phaseLabel(activity: AIActivity | null | undefined, t: TranslationFunct
   }
 }
 
-export function ScoringProgress({ run, taskNumber = 2 }: { run: AIWritingRun | null; taskNumber?: 1 | 2 }) {
+export function ScoringProgress({ run, taskNumber = 2, feedbackPhases, annotationCount = 0 }: { run: AIWritingRun | null; taskNumber?: 1 | 2; feedbackPhases?: Partial<Record<AITrait, "generating" | "completed">>; annotationCount?: number }) {
   const { t } = useTranslation();
   const aiTraitNames = traitNamesForTask(taskNumber);
   const active = isActiveAIRun(run);
   const cancelled = isCancelledAIRun(run);
-  const count = aiTraits.filter((trait) => run?.progress[trait] || run?.result?.criteria[trait]).length;
   const activity = run?.activity;
-  const failedTraits = new Set(aiTraits.filter((trait) => run?.failures?.[trait] && !run?.progress[trait] && !run?.result?.criteria[trait]));
+  const pendingFeedback = (trait: AITrait) => !run?.result?.criteria[trait] && (run?.progress[trait]?.feedback_status === "PENDING" || (active && (feedbackPhases?.[trait] === "generating" || (activity?.criterion === trait && activity.phase === "generating_feedback"))));
+  const failedTraits = new Set(aiTraits.filter((trait) => run?.failures?.[trait] && !run?.result?.criteria[trait]));
+  const count = aiTraits.filter((trait) => (run?.progress[trait] || run?.result?.criteria[trait]) && !pendingFeedback(trait) && !failedTraits.has(trait)).length;
   // Legacy failed rows contain progress but no persisted activity. Sequential
   // grading identifies the first unfinished criterion after completed results.
   const terminalTrait = run?.status === "FAILED" && !cancelled ? activity?.criterion
     ?? (failedTraits.size === 0 && (count > 0 || ["AI_PROVIDER_BAD_RESPONSE", "INVALID_PROVIDER_OUTPUT"].includes(run.error_code ?? ""))
       ? aiTraits.find((trait) => !run.progress[trait]) : null) : null;
-  if (terminalTrait && !run?.progress[terminalTrait] && !run?.result?.criteria[terminalTrait]) failedTraits.add(terminalTrait);
+  if (terminalTrait && (!run?.progress[terminalTrait] || pendingFeedback(terminalTrait)) && !run?.result?.criteria[terminalTrait]) failedTraits.add(terminalTrait);
   const failedCount = failedTraits.size;
-  const activeCount = active && activity?.criterion && !run?.progress[activity.criterion] && !run?.failures?.[activity.criterion] ? 1 : 0;
+  const activeCount = active ? aiTraits.filter(trait => !failedTraits.has(trait) && !run?.result?.criteria[trait]
+    && (pendingFeedback(trait) || (activity?.criterion === trait && !run?.progress[trait]))).length : 0;
   const summary = cancelled ? "Đã dừng chấm AI." : run?.status === "FAILED" ? "Chưa thể hoàn tất toàn bộ bài chấm."
     : run?.status === "COMPLETED" ? "Chấm bài hoàn tất"
     : activity?.phase === "starting_model" ? "Đang khởi động mô hình AI…"
     : active && activity && ["checking_relevance", "relevance_checked", "relevance_failed", "visual_grounding", "visual_grounded", "deriving_facts", "derived_facts_failed", "extracting_claims", "claims_extracted", "verifying_claims", "claims_verified", "claim_extraction_failed", "claim_verification_failed", "chart_cross_check", "chart_read", "chart_fallback", "chart_reconciled"].includes(activity.phase) ? phaseLabel(activity, t)
+    : active && activity?.phase === "generating_feedback" ? t("writingAI.generatingFeedback")
     : active ? "Đang chấm bài…" : `Sẵn sàng chấm Task ${taskNumber}`;
 
   return <section className={styles.trace} aria-label="Scoring Trace">
     <div className={styles.traceHeading}><h3>Scoring Trace · Tiến trình chấm</h3><span>{count} / 4 tiêu chí hoàn tất</span></div>
     {failedCount ? <p className={styles.progressCounts}>{count} hoàn tất · {failedCount} lỗi{activeCount ? ` · ${activeCount} đang chấm` : active ? ` · ${4 - count - failedCount} đang chờ` : ""}</p> : null}
-    <p role="status" aria-live="polite">{summary}</p>
-    <ol className={styles.timeline} aria-live="polite" aria-label="Tiến trình tiêu chí">
+    <p role="status" aria-live="polite">{summary}{annotationCount ? ` · ${t("writingAI.languageSuggestionsFound", { count: annotationCount })}` : ""}</p>
+    <ol className={styles.timeline} aria-label="Tiến trình tiêu chí">
       {aiTraits.map((trait) => {
-        const completed = run?.progress[trait] ?? run?.result?.criteria[trait];
+        const completed = run?.result?.criteria[trait] ?? run?.progress[trait];
+        const generatingFeedback = active && pendingFeedback(trait) && !failedTraits.has(trait);
+        const feedbackReady = feedbackPhases?.[trait] === "completed" || (activity?.criterion === trait && activity.phase === "feedback_completed");
         const failed = failedTraits.has(trait);
-        const current = active && !completed && !failed && activity?.criterion === trait;
-        const state = completed || run?.status === "COMPLETED" ? "COMPLETED" : failed ? "FAILED"
+        const current = generatingFeedback || (active && !completed && !failed && activity?.criterion === trait);
+        const state = failed ? "FAILED" : generatingFeedback ? "ACTIVE" : (completed && !pendingFeedback(trait)) || run?.status === "COMPLETED" ? "COMPLETED"
           : cancelled ? "STOPPED" : current ? activity?.phase === "retrying" ? "RETRYING" : "ACTIVE" : "WAITING";
         const evidenceCollected = completed || (activity?.criterion === trait && ["scoring", "validating_score", "evidence_collected"].includes(activity.phase))
           || (activity?.criterion === trait && activity.stage === "scoring");
@@ -116,10 +124,10 @@ export function ScoringProgress({ run, taskNumber = 2 }: { run: AIWritingRun | n
             <div className={styles.stepTitle}><strong>{aiTraitNames[trait]}</strong>{completed ? <b>Band {completed.score.toFixed(1)}</b> : null}</div>
             <small>{traitSubtitles[trait]}</small>
             {evidenceCollected ? <p>✓ Đã thu thập dẫn chứng</p> : null}
-            <p>{state === "COMPLETED" ? "Đã chấm xong" : state === "FAILED" ? "Không thể hoàn tất tiêu chí này."
+            <p>{generatingFeedback ? t("writingAI.generatingFeedback") : completed?.feedback_status === "UNAVAILABLE" ? t("writingAI.feedbackUnavailable") : feedbackReady && completed ? t("writingAI.feedbackReady") : state === "COMPLETED" ? "Đã chấm xong" : state === "FAILED" ? "Không thể hoàn tất tiêu chí này."
               : state === "STOPPED" ? "Chưa hoàn tất do bạn đã dừng chấm"
               : current ? phaseLabel(activity, t) : run?.status === "FAILED" ? "Chưa thực hiện" : "Đang chờ"}</p>
-            {current && activity ? <StageElapsed startedAt={activity.started_at} /> : null}
+            {current && activity?.criterion === trait ? <StageElapsed startedAt={activity.started_at} /> : null}
           </div>
         </li>;
       })}

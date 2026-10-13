@@ -2,10 +2,11 @@
 
 import { useTranslation } from "@/lib/i18n/locale-provider";
 
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import Image from "next/image";
 import { useAuth } from "@/features/auth/auth-provider";
-import { WritingAIAssessment } from "./writing-ai-assessment";
+import { WritingAIAssessment, type EssayAnnotationState } from "./writing-ai-assessment";
+import { AnnotatedEssay } from "./annotated-essay";
 import { presentAIFeedback } from "./ai-feedback-presentation";
 import { aiTraits, type AIWritingResult } from "@/lib/api/writing-ai";
 import { assetContentUrl } from "@/lib/api/assets";
@@ -62,9 +63,26 @@ export function WritingReviewView({ data, readOnly = false }: { data: WritingRev
   const [errors, setErrors] = useState<Record<string, { message: import("@/lib/i18n/types").TranslationKey; number?: number } | null>>({});
   const task = reviewData.tasks[taskIndex];
   const focused = reviewData.review.attempt.scope === "FOCUSED_UNIT";
+  const reviewRoot = useRef<HTMLDivElement>(null);
+  const [essayState, setEssayState] = useState<EssayAnnotationState & { taskId: string } | null>(null);
+  const selectedTaskId = task?.writing_task_id;
+  const receiveAnnotations = useCallback((state: EssayAnnotationState) => {
+    if (selectedTaskId) setEssayState({ ...state, taskId: selectedTaskId });
+  }, [selectedTaskId]);
+  const currentEssayState = !readOnly && essayState?.taskId === selectedTaskId ? essayState : null;
+
+  function focusAnnotation(id: string) {
+    const span = [...(reviewRoot.current?.querySelectorAll<HTMLElement>("[data-annotation-ids]") ?? [])]
+      .find(element => element.dataset.annotationIds?.split(" ").includes(id));
+    span?.scrollIntoView?.({ block: "center", behavior: "auto" }); span?.focus();
+  }
+  function focusFeedback(id: string) {
+    const item = [...(reviewRoot.current?.querySelectorAll<HTMLElement>("[data-feedback-annotation-id]") ?? [])]
+      .find(element => element.dataset.feedbackAnnotationId === id);
+    item?.scrollIntoView?.({ block: "center", behavior: "auto" }); item?.focus();
+  }
 
   if (!task) return <p>{t("runner.noWritingReview")}</p>;
-  const paragraphs = task.content.replace(/\r\n/g, "\n").split(/\n+/).filter((paragraph) => paragraph.trim());
 
   function updateCriterion(taskId: string, criterion: Criterion, value: string) {
     setSelections((current) => ({
@@ -120,7 +138,7 @@ export function WritingReviewView({ data, readOnly = false }: { data: WritingRev
     }
   }
 
-  return <div className="writing-review">
+  return <div ref={reviewRoot} className="writing-review">
     <header className="review-header">
       <div><p className="writing-review-kicker">{focused ? t("runner.writingFocused") : t("runner.writingReview")}</p><h1>{reviewData.review.test_title}</h1>{focusedUnitLabel(reviewData.review.attempt, t) ? <p>{focusedUnitLabel(reviewData.review.attempt, t)}</p> : null}</div>
       <p className="review-score"><span className="review-result-label">{focused ? t("runner.taskScore") : t("runner.finalAssessment")}</span><b>{focused ? task.score ? task.score.overall.toFixed(2) : t("runner.notGraded") : reviewData.band_score === null ? t("runner.pending") : t("runner.band", { score: reviewData.band_score.toFixed(1) })}</b></p>
@@ -164,11 +182,11 @@ export function WritingReviewView({ data, readOnly = false }: { data: WritingRev
           <span className="writing-review-word-count">{t("runner.wordCount", { count: task.word_count })}</span>
         </header>
         <div className="writing-review-response-body">
-          {paragraphs.length ? paragraphs.map((paragraph, index) => <p key={index}>{paragraph}</p>) : <p className="writing-review-response-empty">{t("runner.noSavedResponse")}</p>}
+          {task.content.trim() ? <AnnotatedEssay key={`${task.writing_task_id}:${currentEssayState?.runId ?? "none"}`} content={task.content} annotations={currentEssayState?.annotations} onViewFeedback={focusFeedback} /> : <p className="writing-review-response-empty">{t("runner.noSavedResponse")}</p>}
         </div>
       </article>
     </main>
-    {!readOnly && (task.task_number === 1 || task.task_number === 2) ? <WritingAIAssessment key={task.writing_task_id} taskNumber={task.task_number} attemptId={reviewData.review.attempt.attempt_id} taskId={task.writing_task_id} hasEssay={Boolean(task.content.trim())} canCopy={user?.role === "ADMIN"} canSavePersonalFeedback={(user?.role === "USER" || user?.role === "TEACHER") && focused && !reviewData.review.attempt.test_session_id && reviewData.review.attempt.focused_unit?.kind === "WRITING_TASK" && reviewData.review.attempt.focused_unit.id === task.writing_task_id} onCopy={(result) => copyAISuggestions(task.writing_task_id, result)} /> : null}
+    {!readOnly && (task.task_number === 1 || task.task_number === 2) ? <WritingAIAssessment key={task.writing_task_id} taskNumber={task.task_number} attemptId={reviewData.review.attempt.attempt_id} taskId={task.writing_task_id} hasEssay={Boolean(task.content.trim())} canCopy={user?.role === "ADMIN"} canSavePersonalFeedback={(user?.role === "USER" || user?.role === "TEACHER") && focused && !reviewData.review.attempt.test_session_id && reviewData.review.attempt.focused_unit?.kind === "WRITING_TASK" && reviewData.review.attempt.focused_unit.id === task.writing_task_id} essayContent={task.content} onAnnotationsChange={receiveAnnotations} onViewAnnotation={focusAnnotation} onCopy={(result) => copyAISuggestions(task.writing_task_id, result)} /> : null}
   </div>;
 }
 

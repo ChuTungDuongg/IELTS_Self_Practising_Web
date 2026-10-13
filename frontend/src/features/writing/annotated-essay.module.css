@@ -1,0 +1,17 @@
+.root { position: relative; min-width: 0; }
+.essay { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.annotation { cursor: help; text-decoration-line: underline; text-decoration-style: wavy; text-decoration-color: var(--danger); text-decoration-thickness: 1px; text-underline-offset: 4px; }
+.annotation[data-severity="LIMITATION"] { text-decoration-style: dotted; text-decoration-color: var(--writing); }
+.annotation[data-severity="OPTIONAL_REFINEMENT"] { text-decoration-style: dotted; text-decoration-color: var(--muted); }
+.annotation:focus-visible { outline: 2px solid var(--focus-ring, var(--accent)); outline-offset: 3px; border-radius: 2px; }
+.popover { position: absolute; z-index: 20; inset-inline-start: 0; width: min(360px, 100%); padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-raised, var(--surface)); color: var(--ink); box-shadow: var(--shadow-md); font-family: var(--font-sans), sans-serif; font-size: .9rem; line-height: 1.6; overflow-wrap: anywhere; }
+.popover > div + div { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+.details { display: grid; gap: 6px; }
+.details strong { padding-inline-end: 24px; }
+.details small { color: var(--muted); }
+.details p { margin: 0; }
+.original { white-space: pre-wrap; color: var(--ink-soft); }
+.revision { white-space: pre-wrap; }
+.revision > span { font-size: .8rem; color: var(--muted); }
+.close { float: right; padding: 0 8px; color: var(--muted); font-size: 1.2rem; cursor: pointer; }
+.navigation { margin-top: 8px; color: var(--writing); text-decoration: underline; cursor: pointer; }
