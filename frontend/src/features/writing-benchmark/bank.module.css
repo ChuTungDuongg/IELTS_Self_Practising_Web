@@ -1,0 +1,16 @@
+.layout { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(0, 3fr); gap: 1.25rem; align-items: start; margin-top: 1rem; }
+.list, .editor { min-width: 0; padding: 1.25rem; }
+.rows { display: grid; gap: .5rem; margin-top: 1rem; max-height: 65vh; overflow-y: auto; }
+.row { display: grid; grid-template-columns: 1fr 1fr; gap: .25rem; padding: .8rem; text-align: start; background: var(--surface); color: inherit; border: 1px solid var(--border); border-radius: .65rem; overflow-wrap: anywhere; cursor: pointer; }
+.row[aria-current="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.row:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.fields { display: grid; gap: 1.1rem; border: 0; padding: 0; margin: 1rem 0; min-width: 0; }
+.field { display: grid; gap: .4rem; min-width: 0; }
+.field textarea, .field select, .field input { width: 100%; max-width: 100%; min-width: 0; }
+.field textarea { min-height: 8rem; resize: vertical; }
+.criteria { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: .7rem; margin: .7rem 0; }
+.image { display: grid; gap: .75rem; min-width: 0; }
+.preview { width: 100%; height: auto; object-fit: contain; max-height: 400px; }
+@media (max-width: 900px) { .layout { grid-template-columns: minmax(0, 1fr); } .rows { max-height: 20rem; } }
+@media (max-width: 540px) { .criteria { grid-template-columns: minmax(0, 1fr); } .list, .editor { padding: 1rem; } }

@@ -14,7 +14,7 @@ import { AdminUserList } from "./admin-user-list";
 export function AdminDashboardContent({ stats, users, search, status, offset }: { stats: AdminStats | null; users: AdminUserListData | null; search: string; status: "active" | "deactivated"; offset: number }): ReactElement {
   const { t } = useTranslation();
   return <>
-    <PageHeading eyebrow={t("admin.administration")} title={t("admin.dashboard")} description={t("admin.dashboardDescription")} action={<Link className="btn btn-primary" href="/admin/tests">{t("pages.overview.builderAction")}</Link>} />
+    <PageHeading eyebrow={t("admin.administration")} title={t("admin.dashboard")} description={t("admin.dashboardDescription")} action={<div className="flex flex-wrap gap-2"><Link className="btn btn-secondary" href="/admin/writing-benchmark">{t("benchmark.title")}</Link><Link className="btn btn-primary" href="/admin/tests">{t("pages.overview.builderAction")}</Link></div>} />
     {stats ? <section className="admin-stat-strip" aria-label={t("admin.statistics")}>
       <AdminMetric label={t("admin.registered")} value={stats.total_users} />
       <AdminMetric label={t("admin.withAttempts")} value={stats.users_with_attempts} />

@@ -11,8 +11,8 @@ export function benchmarkSample(overrides: Record<string, unknown> = {}) {
 }
 
 export function benchmarkList(overrides: Record<string, unknown> = {}) {
-  const { prompt: _prompt, essay: _essay, task1_task_type: _type, source_note: _source, redistributable: _rights, ...item } = benchmarkSample(overrides);
-  return item;
+  const omit = new Set(["prompt", "essay", "task1_task_type", "source_note", "redistributable"]);
+  return Object.fromEntries(Object.entries(benchmarkSample(overrides)).filter(([key]) => !omit.has(key)));
 }
 
 export function benchmarkSummary() {

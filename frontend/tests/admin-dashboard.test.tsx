@@ -22,6 +22,10 @@ const stats = {
 };
 
 describe("AdminDashboardPage", () => {
+  it("links the standalone admin Writing benchmark bank", async () => {
+    render(await AdminDashboardPage({ searchParams: Promise.resolve({}) }));
+    expect(screen.getByRole("link", { name: "Writing benchmark bank" })).toHaveAttribute("href", "/admin/writing-benchmark");
+  });
   it("shows Speaking in the existing skill-count metric", async () => {
     vi.mocked(getAdminStats).mockResolvedValue({ ...stats, attempts_by_skill: { ...stats.attempts_by_skill, SPEAKING: 9 } });
     render(await AdminDashboardPage({ searchParams: Promise.resolve({}) }));
