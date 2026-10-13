@@ -66,6 +66,16 @@ class WritingAIRunStatus(StrEnum):
     FAILED = "FAILED"
 
 
+class WritingBenchmarkStatus(StrEnum):
+    DRAFT = "DRAFT"
+    COMPLETE = "COMPLETE"
+
+
+class WritingBenchmarkSplit(StrEnum):
+    DEV = "DEV"
+    HOLDOUT = "HOLDOUT"
+
+
 class OAuthProvider(StrEnum):
     GOOGLE = "GOOGLE"
 

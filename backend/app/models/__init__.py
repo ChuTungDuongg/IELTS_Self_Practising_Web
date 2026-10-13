@@ -53,8 +53,10 @@ from app.models.writing_ai import (
     WritingAIGradingRun,
     WritingAIPracticeFeedback,
 )
+from app.models.writing_benchmark import WritingBenchmarkSample
 
 __all__ = [
+    "WritingBenchmarkSample",
     "SpeakingAIGradingEvent",
     "SpeakingAIGradingRun",
     "SpeakingNormalizedAudio",
