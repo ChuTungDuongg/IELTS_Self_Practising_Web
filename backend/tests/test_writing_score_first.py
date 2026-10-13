@@ -316,8 +316,8 @@ async def test_versions_invalidate_old_cache_and_prompt_content_is_stable():
     assert effective_prompt_version("mts-task2-v9") == "mts-task2-v12"
     assert effective_prompt_version("mts-task2-v10") == "mts-task2-v12"
     assert effective_prompt_version("custom") == "mts-task2-v12:custom"
-    assert TASK1_PROMPT_VERSION == "mts-task1-visual-v11"
-    assert TASK1_SCORING_PROMPT_VERSION == "mts-task1-scoring-v11"
+    assert TASK1_PROMPT_VERSION == "mts-task1-visual-v12"
+    assert TASK1_SCORING_PROMPT_VERSION == "mts-task1-scoring-v12"
     assert TASK1_VISUAL_CONTRACT_VERSION == "mts-task1-visual-v3"
     providers = [Provider(failed_trait=None), Provider(failed_trait=None)]
     runs = [await grade(p) for p in providers]

@@ -14,7 +14,11 @@ from app.domains.scoring.task2_feedback import (
     select_feedback_observations,
 )
 from app.schemas.task1_claims import Task1Analysis
-from app.schemas.task1_feedback import RawTask1FeedbackDraft, RawTask1FeedbackObservation
+from app.schemas.task1_feedback import (
+    RawTask1FeedbackDraft,
+    RawTask1FeedbackObservation,
+    Task1LanguageFeedbackVerification,
+)
 from app.schemas.task1_visual import ChartTableVisualReference
 from app.schemas.writing_ai import RawTask2FeedbackDraft, Task2FeedbackDraft, Trait
 
@@ -195,5 +199,43 @@ def normalize_task1_feedback(
     return Task2FeedbackDraft(observations=select_feedback_observations(accepted, sources)), issues
 
 
+def apply_language_verification(
+    draft: Task2FeedbackDraft, verification: Task1LanguageFeedbackVerification
+) -> Task2FeedbackDraft:
+    candidates = {
+        index: item
+        for index, item in enumerate(draft.observations)
+        if item.kind in {"ERROR", "LIMITATION"}
+    }
+    decisions = {item.observation_index: item for item in verification.decisions}
+    if len(decisions) != len(verification.decisions) or decisions.keys() != candidates.keys():
+        raise ValueError("Incomplete language verification decisions")
+    for index, decision in decisions.items():
+        expected = (
+            "CLEAR_LANGUAGE_ERROR"
+            if candidates[index].kind == "ERROR"
+            else "MATERIAL_RECURRENT_LIMITATION"
+        )
+        if decision.accept and decision.reason_code != expected:
+            raise ValueError("Language verification kind mismatch")
+    return draft.model_copy(
+        update={
+            "observations": [
+                item
+                for index, item in enumerate(draft.observations)
+                if index not in candidates or decisions[index].accept
+            ]
+        }
+    )
+
+
 def render_task1_feedback(draft, sources):
-    return render_task2_feedback(draft, sources)
+    # Style alternatives are not Task 1 mistakes, summary evidence or Fix next.
+    public = draft.model_copy(
+        update={
+            "observations": [
+                item for item in draft.observations if item.kind != "OPTIONAL_REFINEMENT"
+            ]
+        }
+    )
+    return render_task2_feedback(public, sources)

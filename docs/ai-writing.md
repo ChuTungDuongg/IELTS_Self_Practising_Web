@@ -3,7 +3,7 @@
 Task 1 and Task 2 share the configured `mistralai/Ministral-3-8B-Instruct-2512`
 model, provider adapters and existing Modal/vLLM GPU function. Task 2 retains
 its text-only pipeline with the `mts-task2-v12` cache contract. Task 1
-uses `mts-task1-scoring-v11`, composite `mts-task1-visual-v11`, and the unchanged
+uses `mts-task1-scoring-v12`, composite `mts-task1-visual-v12`, and the unchanged
 `mts-task1-visual-v3` perception contract. See
 [the latency engineering case study](enhance_latency.md) for bounded concurrent
 execution, serving settings, measurements and reproduction.
@@ -49,7 +49,7 @@ in full/partial DTOs. Durable `relevance.started`, `.completed`, `.failed` event
 replay through SSE; auxiliary failure continues normal assessment. Historic runs
 without relevance still parse. Effective Task 2 v12 includes old deployed version
 labels through v11, so prior cached results stay readable without being reused.
-Task 1 v11 fingerprints invalidate earlier scoring caches while retaining perception
+Task 1 v12 fingerprints invalidate earlier scoring caches while retaining perception
 v3 and the v7 TA/CC guidance. Offline benchmarks use the current contract; frozen v3/v5
 retain their historical pre-gate combined-output contracts.
 Task-tab cleanup still stops observation only; explicit Stop cancels grading.
@@ -319,18 +319,57 @@ no database migration and does not mutate historical results.
 
 Task 1 also uses score-only inference followed by fixed-band feedback, with the
 same stage budgets and recoverable feedback fallback as Task 2. Its current
-composite version is **`mts-task1-visual-v11`** and scoring version is
-**`mts-task1-scoring-v11`**; the visual contract remains **`mts-task1-visual-v3`**.
+composite version is **`mts-task1-visual-v12`** and scoring version is
+**`mts-task1-scoring-v12`**; the visual contract remains **`mts-task1-visual-v3`**.
 TA scoring retains the visual reference, deterministic facts and verified claims;
 feedback selects validated claims and uses backend-owned factual display text.
 Task 1 TA/CC calibration
 and linguistic criterion boundaries remain intact. Frozen v3/v5 offline
 benchmark services retain their original combined-output contracts and budgets.
-Current benchmark configurations identify v11 accurately. Historical v7/v8
+Current benchmark configurations identify v12 accurately. Historical v7/v8
 retain their combined-output prompts and budgets; report/result schemas remain readable.
-The benchmark CLI defaults to `--scoring-version v11`; `both` compares frozen v5
-with current v11. Historical report records still parse, but old versions are not reused
+The benchmark CLI defaults to `--scoring-version v12`; `both` compares frozen v5
+with current v12. Frozen score-first v11 remains available explicitly, alongside v3/v5/v7/v8.
+Historical report records still parse, but old versions are not reused
 as a label for the new production candidate.
+
+### Task 1 skeptical language feedback and adjacent-band calibration (v12)
+
+Task 1 follows **candidate feedback → source/schema sanitization → skeptical LR/GRA
+linguistic verification → public feedback/annotations**. The accepted score is already
+fixed before verification; decisions cannot change it or trigger rescoring. Source
+matching proves a quotation's location, not the truth of a language criticism.
+
+Only sanitized LR/GRA ERROR or LIMITATION candidates trigger verification: one
+batched call per affected criterion, at most four indexed decisions, 384 output
+tokens and a 30-second timeout, with no auxiliary retry. TA/CC, empty candidates,
+strengths and optional-only drafts add no verifier call. Independent linguistic
+criteria retain the existing run-local provider concurrency limit.
+
+The verifier assumes standard English is acceptable and rejects uncertain criticisms,
+stylistic preferences and valid alternatives. ERROR requires a genuinely necessary
+language correction; LIMITATION requires material or recurring evidence across the
+essay. The strict decision contract contains no score, explanation or learner-visible
+prose. Missing/duplicate/foreign decisions, inconsistent reasons, malformed output,
+non-stop completion, timeout and provider failure omit all unverified negatives while
+retaining safe strengths and the accepted band. Internal diagnostics record only
+`LANGUAGE_FEEDBACK_VERIFICATION_UNAVAILABLE`; provider internals never reach the UI.
+
+Only verified HIGH-confidence exact-span LR/GRA ERROR items may become inline
+annotations. Verified material LIMITATION items stay in the criterion panel. Optional
+stylistic rewrites are omitted from Task 1 public feedback, summaries, evidence and
+Fix next; zero inline issues is a valid successful result. Task 2 keeps its existing
+display and scoring semantics, and historical runs are not rewritten.
+
+Task 1 scoring separately strengthens LR/GRA adjacent-band discrimination: Band 8
+permits occasional slips, rewards precise natural vocabulary and mostly accurate,
+task-appropriate structural range, and requires neither a thesaurus nor perfection.
+CC accepts natural explicit markers and effective introduction/overview/year-detail
+organisation; 6.5/7 are not compromise defaults. Language evidence represents the
+whole response's quality instead of mining defects. TA guidance, visual grounding,
+facts and claim verification remain intact. There are no score offsets, floors/caps,
+error-count penalties or feedback-driven score adjustments. Fake-provider tests verify
+these boundaries, without claiming measured live-model calibration improvement.
 
 ### Task 1 paragraph and feedback reliability (v10)
 

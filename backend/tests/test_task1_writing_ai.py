@@ -34,6 +34,75 @@ from app.services.task1_input import TASK1_PROMPT_VERSION
 from app.services.writing_ai import input_fingerprint
 
 
+@pytest.mark.parametrize("unavailable", [False, True])
+async def test_language_verification_omission_persists_and_replays_without_losing_scores(
+    db_session, task1, settings, unavailable
+):
+    from app.providers.writing_llm.base import Completion, ProviderFailure
+
+    class Provider(Task1FakeProvider):
+        async def complete(self, messages, schema, *, options=None):
+            if "decisions" in schema["properties"]:
+                if unavailable:
+                    raise ProviderFailure("AI_PROVIDER_TIMEOUT")
+                return Completion(
+                    json.dumps(
+                        {
+                            "decisions": [
+                                {
+                                    "observation_index": 0,
+                                    "accept": False,
+                                    "reason_code": "ACCEPTABLE_ALTERNATIVE",
+                                }
+                            ]
+                        }
+                    )
+                )
+            if (
+                "observations" in schema["properties"]
+                and "Criterion: Grammatical Range and Accuracy." in messages[0]["content"]
+            ):
+                return Completion(
+                    json.dumps(
+                        {
+                            "observations": [
+                                {
+                                    "source_id": "P1S1",
+                                    "kind": "ERROR",
+                                    "aspect": "grammar",
+                                    "observation": "Cần sửa cách diễn đạt này.",
+                                    "original_span": "A increased from 20 to 50.",
+                                    "suggested_revision": "A rose from 20 to 50.",
+                                    "confidence": "HIGH",
+                                }
+                            ]
+                        }
+                    )
+                )
+            return await super().complete(messages, schema, options=options)
+
+    api = service(db_session, settings)
+    created = await api.create(task1[0], task1[1], force=False)
+    await worker(db_session, settings, Provider()).execute(created.run_id)
+    run, events = await api.snapshot(created.run_id, 0)
+    assert run.status == "COMPLETED" and run.result.criteria.gra.score == Decimal("7")
+    assert run.result.criteria.gra.improvements == run.result.criteria.gra.annotations == []
+    assert run.result.criteria.gra.feedback_status == "COMPLETED"
+    assert not any(e.event_type == "criterion.feedback.annotation" for e in events)
+    completed = next(
+        e.payload.result
+        for e in events
+        if e.event_type == "criterion.feedback.completed" and e.payload.criterion == "gra"
+    )
+    assert completed == run.result.criteria.gra
+    async with db_session.begin():
+        stored = await db_session.get(WritingAIGradingRun, run.id)
+        reasons = {d["reason"] for d in stored.usage_json["diagnostics"]}
+    assert ("LANGUAGE_FEEDBACK_VERIFICATION_UNAVAILABLE" in reasons) == unavailable
+    public = run.model_dump_json() + "".join(e.model_dump_json() for e in events)
+    assert "LANGUAGE_FEEDBACK_VERIFICATION_UNAVAILABLE" not in public
+
+
 async def test_failed_early_claim_extraction_keeps_warning_in_partial_analysis(
     db_session, task1, settings
 ):
@@ -207,6 +276,7 @@ async def test_unexpected_optional_failure_persists_safe_analysis_and_completed_
         "mts-task1-visual-v6",
         "mts-task1-visual-v7",
         "mts-task1-visual-v8",
+        "mts-task1-visual-v11",
     ],
 )
 async def test_old_task1_prompt_cache_remains_readable_but_is_not_reused(

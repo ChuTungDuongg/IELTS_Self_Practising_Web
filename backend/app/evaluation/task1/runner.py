@@ -26,6 +26,7 @@ from app.evaluation.task1.manifest import LoadedSample
 from app.evaluation.task1.metrics import overall_score, perception_metrics
 from app.evaluation.task1.models import BenchmarkConfig, EvaluationRecord, digest
 from app.evaluation.task1.pre_score_first import PreScoreFirstTask1WritingScoringService
+from app.evaluation.task1.score_first_v11_prompts import ScoreFirstV11Task1WritingScoringService
 from app.providers.chart_derendering import ChartSpecialistFailure
 from app.providers.chart_derendering.deplot import DePlotChartDerenderingProvider
 from app.providers.writing_llm import create_provider, provider_identity
@@ -75,9 +76,9 @@ def implementation_hash() -> str:
 def configurations(
     settings: Settings, scoring_version: str, chart_specialist: str
 ) -> list[BenchmarkConfig]:
-    versions = ["v5", "v11"] if scoring_version == "both" else [scoring_version]
+    versions = ["v5", "v12"] if scoring_version == "both" else [scoring_version]
     specialists = [False, True] if chart_specialist == "both" else [chart_specialist == "on"]
-    if not set(versions) <= {"v3", "v5", "v7", "v8", "v11"} or chart_specialist not in {
+    if not set(versions) <= {"v3", "v5", "v7", "v8", "v11", "v12"} or chart_specialist not in {
         "off",
         "on",
         "both",
@@ -88,7 +89,8 @@ def configurations(
         "v5": ("baseline", BASELINE_TASK1_PROMPT_VERSION, BASELINE_TASK1_SCORING_PROMPT_VERSION),
         "v7": ("historical", "mts-task1-visual-v7", "mts-task1-scoring-v7"),
         "v8": ("historical", "mts-task1-visual-v8", "mts-task1-scoring-v8"),
-        "v11": ("current", TASK1_PROMPT_VERSION, TASK1_SCORING_PROMPT_VERSION),
+        "v11": ("historical", "mts-task1-visual-v11", "mts-task1-scoring-v11"),
+        "v12": ("current", TASK1_PROMPT_VERSION, TASK1_SCORING_PROMPT_VERSION),
     }
     provider, model = provider_identity(settings)
     endpoint = (
@@ -297,14 +299,15 @@ async def evaluate(
             "v5": BaselineV5Task1WritingScoringService,
             "v7": PreScoreFirstTask1WritingScoringService,
             "v8": PreScoreFirstTask1WritingScoringService,
-            "v11": Task1WritingScoringService,
+            "v11": ScoreFirstV11Task1WritingScoringService,
+            "v12": Task1WritingScoringService,
         }[config.scoring_version]
         scorer = scorer_type(
             provider,
             specialist,
             chart_timeout=config.specialist_timeout_seconds,
             max_concurrent_requests=config.max_concurrent_llm_requests,
-            relevance_enabled=config.scoring_version in {"v8", "v11"},
+            relevance_enabled=config.scoring_version in {"v8", "v11", "v12"},
         )
         await provider.ensure_ready()
         # Deliberately construct only production inputs; no target/truth/provenance.

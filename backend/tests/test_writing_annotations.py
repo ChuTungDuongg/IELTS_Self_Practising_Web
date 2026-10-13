@@ -340,6 +340,21 @@ async def test_feedback_events_follow_accepted_score_and_emit_only_valid_annotat
 
     class Provider(base):
         async def complete(self, messages, schema, *, options=None):
+            if "decisions" in schema["properties"]:
+                assert task == 1
+                return Completion(
+                    json.dumps(
+                        {
+                            "decisions": [
+                                {
+                                    "observation_index": 0,
+                                    "accept": True,
+                                    "reason_code": "CLEAR_LANGUAGE_ERROR",
+                                }
+                            ]
+                        }
+                    )
+                )
             if "observations" in schema["properties"]:
                 trait = (
                     "gra" if "Grammatical Range and Accuracy" in messages[0]["content"] else "ta"
@@ -425,8 +440,8 @@ def test_concise_prompts_and_versions_preserve_score_only_meaning():
     from app.services.task1_input import TASK1_PROMPT_VERSION, TASK1_SCORING_PROMPT_VERSION
 
     assert AI_WRITING_PROMPT_VERSION == effective_prompt_version("mts-task2-v11") == "mts-task2-v12"
-    assert TASK1_PROMPT_VERSION == "mts-task1-visual-v11"
-    assert TASK1_SCORING_PROMPT_VERSION == "mts-task1-scoring-v11"
+    assert TASK1_PROMPT_VERSION == "mts-task1-visual-v12"
+    assert TASK1_SCORING_PROMPT_VERSION == "mts-task1-scoring-v12"
     assert "at most 4" in TASK2_FEEDBACK_GUIDANCE and "at most 4" in TASK1_CONSERVATIVE_FEEDBACK
     assert SCORE_ONLY_GUIDANCE == (
         "Score 0 through 9 in increments of 0.5 only. Return ONLY one field: score. "
@@ -441,9 +456,9 @@ def test_task1_current_benchmark_version_is_explicit_and_old_reports_remain_read
     from app.evaluation.task1.runner import configurations
 
     configs = configurations(Settings(_env_file=None), "both", "off")
-    assert {c.scoring_version for c in configs} == {"v5", "v11"}
-    current = next(c for c in configs if c.scoring_version == "v11")
-    assert current.prompt_version == "mts-task1-visual-v11"
+    assert {c.scoring_version for c in configs} == {"v5", "v12"}
+    current = next(c for c in configs if c.scoring_version == "v12")
+    assert current.prompt_version == "mts-task1-visual-v12"
     with pytest.raises(ValueError, match="BENCHMARK_CONFIGURATION_INVALID"):
         configurations(Settings(_env_file=None), "v10", "off")
     old = {

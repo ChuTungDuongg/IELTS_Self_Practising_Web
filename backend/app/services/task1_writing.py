@@ -43,6 +43,7 @@ from app.services.task1_chart_cross_check import (
 from app.services.task1_claims import Task1ClaimService
 from app.services.task1_grounding import Task1VisualGroundingService
 from app.services.task1_input import Task1ScoringRequest
+from app.services.task1_language_feedback import verify_language_feedback
 from app.services.writing_execution import TraceFailure, WritingLatencyMetrics, gather_isolated
 
 logger = logging.getLogger(__name__)
@@ -50,6 +51,8 @@ logger = logging.getLogger(__name__)
 
 class Task1WritingScoringService(MTSWritingScoringService):
     """Independent linguistic criteria overlap perception; TA waits for its dependencies."""
+
+    language_verification_enabled = True
 
     def __init__(
         self,
@@ -106,6 +109,12 @@ class Task1WritingScoringService(MTSWritingScoringService):
             ),
             Task1ClaimService(self.provider, self.aux_usage, self.aux_diagnostics, self.latency),
         )
+
+    def _feedback_prompt(self, request, trait, evidence, analysis, score):
+        return feedback_prompt(request, trait, evidence, analysis, score)
+
+    def _render_feedback(self, draft, sources):
+        return render_task1_feedback(draft, sources)
 
     async def assess(
         self, request: Task1ScoringRequest, trace: TraceCallback
@@ -300,7 +309,7 @@ class Task1WritingScoringService(MTSWritingScoringService):
             trace,
             lambda: self._evidence_prompt(request, trait, analysis),
             lambda evidence: self._score_prompt(request, trait, evidence, analysis),
-            lambda evidence, score: feedback_prompt(
+            lambda evidence, score: self._feedback_prompt(
                 request, trait, evidence, analysis, score.score
             ),
             # Frozen evaluation baselines retain their original combined schema.
@@ -373,9 +382,18 @@ class Task1WritingScoringService(MTSWritingScoringService):
                         reason,
                         len(items),
                     )
-            display, grounded_evidence = render_task1_feedback(draft, sources)
+            if self.language_verification_enabled:
+                draft = await verify_language_feedback(
+                    self.provider, request, trait, draft, sources, self.states[trait], self.latency
+                )
+            display, grounded_evidence = self._render_feedback(draft, sources)
             annotations = build_writing_annotations(
-                request.response, sources, trait, draft.observations
+                request.response,
+                sources,
+                trait,
+                [item for item in draft.observations if item.kind == "ERROR"]
+                if self.language_verification_enabled
+                else draft.observations,
             )
             if grounded_evidence.evidence:
                 display_evidence = grounded_evidence

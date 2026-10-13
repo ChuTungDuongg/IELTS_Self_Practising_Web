@@ -38,6 +38,68 @@ def messages(trait, stage):
     return score_prompt(req, trait, EvidenceResult(evidence=[]), analysis())
 
 
+@pytest.mark.parametrize(
+    "trait,concepts",
+    [
+        (
+            "gra",
+            [
+                "Band 7 versus Band 8",
+                "MOST sentences are error-free",
+                "occasional non-systematic errors",
+                "does not require zero grammar errors",
+                "exotic sentence forms",
+                "concise Academic Task 1",
+                "7 is not a safe default",
+                "Do not manufacture errors",
+            ],
+        ),
+        (
+            "lr",
+            [
+                "precise common task vocabulary",
+                "natural collocation",
+                "percentage points",
+                "account for",
+                "acceptable synonym",
+                "Band 8 permits occasional lexical",
+                "thesaurus-like vocabulary",
+                "7 is not a safe default",
+            ],
+        ),
+        (
+            "cc",
+            [
+                "introduction, overview, one detail paragraph per year",
+                "Overall",
+                "6.5 and 7 are not safe defaults",
+            ],
+        ),
+    ],
+)
+def test_language_adjacent_band_calibration_has_no_conservative_compromise(trait, concepts):
+    system = messages(trait, "scoring")[0]["content"]
+    for concept in concepts:
+        assert concept in system
+    assert "No feedback-driven rescore" in system
+    assert "no score offsets" in system.lower()
+    assert "count-to-band rules" in system
+
+
+@pytest.mark.parametrize("trait", ["lr", "gra"])
+def test_language_evidence_represents_control_and_quality_instead_of_mining_defects(trait):
+    system = messages(trait, "evidence")[0]["content"]
+    for concept in [
+        "well-controlled",
+        "Do not mine defects",
+        "no positive/negative quota",
+        "whole-response",
+        "score-neutral",
+    ]:
+        assert concept in system
+    assert not re.search(r"\b[Bb]ands?\s*\d", system)
+
+
 @pytest.mark.parametrize("stage", ["evidence", "scoring"])
 @pytest.mark.parametrize(
     "trait,scope,excluded",
@@ -141,9 +203,9 @@ def test_task1_evidence_preserves_exact_source_data_and_instruction_guard(trait)
 
 
 def test_task1_scoring_version_changes_cache_without_changing_visual_contract():
-    assert task1_input.TASK1_PROMPT_VERSION == "mts-task1-visual-v11"
+    assert task1_input.TASK1_PROMPT_VERSION == "mts-task1-visual-v12"
     assert getattr(task1_input, "TASK1_VISUAL_CONTRACT_VERSION", None) == "mts-task1-visual-v3"
-    assert getattr(task1_input, "TASK1_SCORING_PROMPT_VERSION", None) == "mts-task1-scoring-v11"
+    assert getattr(task1_input, "TASK1_SCORING_PROMPT_VERSION", None) == "mts-task1-scoring-v12"
     req = request()
     assert input_fingerprint(req, task1_input.TASK1_PROMPT_VERSION, "vllm", "model") != (
         input_fingerprint(req, "mts-task1-visual-v8", "vllm", "model")
@@ -152,7 +214,7 @@ def test_task1_scoring_version_changes_cache_without_changing_visual_contract():
 
 @pytest.mark.parametrize("trait", TRAITS)
 @pytest.mark.parametrize("stage", ["evidence", "scoring"])
-def test_criterion_calibration_is_isolated_to_ta_and_cc_stages(trait, stage):
+def test_criterion_calibration_is_isolated_to_its_own_stages(trait, stage):
     system = messages(trait, stage)[0]["content"]
     assert (TASK1_TA_DESCRIPTOR_DISCRIMINATION_GUIDANCE in system) == (
         trait == "ta" and stage == "scoring"
@@ -166,10 +228,22 @@ def test_criterion_calibration_is_isolated_to_ta_and_cc_stages(trait, stage):
             task1_prompts.TASK1_CC_EVIDENCE_SELECTION_GUIDANCE,
             task1_prompts.TASK1_CC_DESCRIPTOR_DISCRIMINATION_GUIDANCE,
         ),
+        **{
+            t: (
+                task1_prompts.TASK1_LANGUAGE_EVIDENCE_SELECTION_GUIDANCE,
+                task1_prompts.TASK1_LANGUAGE_DESCRIPTOR_DISCRIMINATION_GUIDANCE[t],
+            )
+            for t in ("lr", "gra")
+        },
     }
     for criterion, guidance in guidance_by_trait.items():
         for expected_stage, text in zip(("evidence", "scoring"), guidance, strict=True):
-            assert system.count(text) == int(trait == criterion and stage == expected_stage)
+            expected = (
+                trait in {"lr", "gra"}
+                if expected_stage == "evidence" and criterion in {"lr", "gra"}
+                else trait == criterion
+            )
+            assert system.count(text) == int(expected and stage == expected_stage)
 
 
 def test_ta_discriminates_adjacent_descriptors_without_safe_default_or_perfection():
@@ -254,17 +328,25 @@ def test_ta_evidence_is_representative_without_error_mining_or_quotas():
 
 
 @pytest.mark.parametrize("trait", ["lr", "gra"])
-def test_lr_and_gra_descriptor_context_and_evidence_remain_v5(trait):
+def test_lr_and_gra_add_only_criterion_specific_guidance_to_frozen_v5(trait):
     req, grounded = request(), analysis()
-    assert evidence_prompt(req, trait, grounded) == baseline_v5_prompts.evidence_prompt(
-        req, trait, grounded
+    current_evidence = evidence_prompt(req, trait, grounded)
+    baseline_evidence = baseline_v5_prompts.evidence_prompt(req, trait, grounded)
+    assert current_evidence[1] == baseline_evidence[1]
+    assert (
+        current_evidence[0]["content"].replace(
+            task1_prompts.TASK1_LANGUAGE_EVIDENCE_SELECTION_GUIDANCE, ""
+        )
+        == baseline_evidence[0]["content"]
     )
     evidence = EvidenceResult(evidence=[])
     current = score_prompt(req, trait, evidence, grounded)
     baseline = baseline_v5_prompts.score_prompt(req, trait, evidence, grounded)
     assert current[1] == baseline[1]
     assert (
-        current[0]["content"].split("Score 0 through 9")[0]
+        current[0]["content"]
+        .split("Score 0 through 9")[0]
+        .replace(task1_prompts.TASK1_LANGUAGE_DESCRIPTOR_DISCRIMINATION_GUIDANCE[trait], "")
         == baseline[0]["content"].split("Score 0 through 9")[0]
     )
     assert "Return ONLY one field: score" in current[0]["content"]
@@ -587,10 +669,10 @@ async def test_preserves_fake_provider_ta_score_and_v5_grounding(band):
     assert results[0].task1_analysis == results[1].task1_analysis
     assert [len(p.calls) for p in providers] == [11, 15]
 
-    # Perception/claims and LR/GRA evidence remain identical to frozen v5.
+    # Perception/claims and linguistic source inputs remain identical to frozen v5.
     def unchanged_calls(provider):
         return [
-            call
+            call[1]
             for call in provider.calls
             if not any(
                 name in call[0]["content"]

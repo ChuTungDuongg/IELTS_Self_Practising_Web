@@ -2,7 +2,15 @@
 
 from typing import Annotated, Any, Literal
 
-from pydantic import Field, StrictStr, StringConstraints, WithJsonSchema
+from pydantic import (
+    Field,
+    StrictBool,
+    StrictInt,
+    StrictStr,
+    StringConstraints,
+    WithJsonSchema,
+    model_validator,
+)
 
 from app.schemas.writing_ai import StrictModel
 
@@ -49,3 +57,36 @@ class RawTask1FeedbackDraft(StrictModel):
     observations: list[
         Annotated[Any, WithJsonSchema(RawTask1FeedbackObservation.model_json_schema())]
     ] = Field(strict=True)
+
+
+LanguageVerificationReason = Literal[
+    "CLEAR_LANGUAGE_ERROR",
+    "MATERIAL_RECURRENT_LIMITATION",
+    "VALID_STANDARD_ENGLISH",
+    "ACCEPTABLE_ALTERNATIVE",
+    "STYLE_ONLY",
+    "CRITERION_MISMATCH",
+    "INSUFFICIENT_EVIDENCE",
+]
+
+
+class Task1LanguageFeedbackDecision(StrictModel):
+    observation_index: StrictInt = Field(ge=0, le=3)
+    accept: StrictBool
+    reason_code: LanguageVerificationReason
+
+    @model_validator(mode="after")
+    def consistent_decision(self):
+        accepted_reason = self.reason_code in {
+            "CLEAR_LANGUAGE_ERROR",
+            "MATERIAL_RECURRENT_LIMITATION",
+        }
+        if self.accept != accepted_reason:
+            raise ValueError("Inconsistent language verification decision")
+        return self
+
+
+class Task1LanguageFeedbackVerification(StrictModel):
+    """Internal bounded decisions only; no score or learner-visible prose."""
+
+    decisions: list[Task1LanguageFeedbackDecision] = Field(strict=True, max_length=4)
