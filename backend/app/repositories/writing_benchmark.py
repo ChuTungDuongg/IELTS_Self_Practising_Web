@@ -41,13 +41,27 @@ class WritingBenchmarkRepository:
         return await self.session.scalar(query.execution_options(populate_existing=True))
 
     async def list_rows(self, task_number: int):
-        return list(
-            await self.session.scalars(
-                select(WritingBenchmarkSample)
-                .where(WritingBenchmarkSample.task_number == task_number)
-                .order_by(WritingBenchmarkSample.sequence_number)
+        model = WritingBenchmarkSample
+        columns = [
+            getattr(model, field)
+            for field in (
+                "id",
+                "task_number",
+                "sequence_number",
+                "status",
+                "split",
+                *SCORE_FIELDS,
+                "revision",
+                "created_at",
+                "updated_at",
             )
+        ]
+        query = (
+            select(*columns, model.task1_image_key.is_not(None).label("has_image"))
+            .where(model.task_number == task_number)
+            .order_by(model.sequence_number)
         )
+        return (await self.session.execute(query)).all()
 
     async def complete_rows(self, *, lock_shared: bool = False):
         query = (

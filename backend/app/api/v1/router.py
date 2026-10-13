@@ -22,6 +22,7 @@ from app.api.v1 import (
     transfer,
     writing,
     writing_ai,
+    writing_benchmark,
 )
 
 api_router = APIRouter()
@@ -42,6 +43,7 @@ api_router.include_router(speaking_ai.router)
 api_router.include_router(listening.router)
 api_router.include_router(writing.router)
 api_router.include_router(writing_ai.router)
+api_router.include_router(writing_benchmark.router)
 api_router.include_router(transfer.router)
 api_router.include_router(content_governance.router)
 api_router.include_router(classrooms.router)
