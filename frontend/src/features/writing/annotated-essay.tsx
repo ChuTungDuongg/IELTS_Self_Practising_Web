@@ -1,6 +1,7 @@
 "use client";
 
-import { useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { type WritingAnnotation } from "@/lib/api/writing-ai";
 import { useTranslation } from "@/lib/i18n/locale-provider";
 import type { TranslationFunction } from "@/lib/i18n/types";
@@ -9,6 +10,8 @@ import styles from "./annotated-essay.module.css";
 
 const severity = { ERROR: 0, LIMITATION: 1, OPTIONAL_REFINEMENT: 2 };
 const noAnnotations: WritingAnnotation[] = [];
+const viewportMargin = 14;
+const anchorGap = 8;
 
 /** Defensive display validation. Backend alone resolves and judges the issue. */
 export function validEssayAnnotations(content: string, annotations: WritingAnnotation[]) {
@@ -54,7 +57,9 @@ export function AnnotatedEssay({ content, annotations = noAnnotations, onViewFee
   const popoverId = useId();
   const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLSpanElement | null>(null);
-  const [opened, setOpened] = useState<{ key: string; pinned: boolean; top: number } | null>(null);
+  const popover = useRef<HTMLElement | null>(null);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [opened, setOpened] = useState<{ key: string; pinned: boolean } | null>(null);
   const segments = useMemo(() => {
     const accepted = validEssayAnnotations(content, annotations);
     const boundaries = [...new Set([0, content.length, ...accepted.flatMap(annotation => [annotation.start_offset, annotation.end_offset])])].sort((a, b) => a - b);
@@ -68,18 +73,87 @@ export function AnnotatedEssay({ content, annotations = noAnnotations, onViewFee
   const current = segments.find(segment => segment.key === opened?.key);
   const pinned = Boolean(current && opened?.pinned);
 
-  function open(key: string, element: HTMLSpanElement, pinned: boolean) {
-    trigger.current = element;
-    setOpened(previous => ({ key, pinned: pinned || (previous?.key === key && previous.pinned) || false, top: element.offsetTop + element.offsetHeight + 8 }));
-  }
-  function close() {
-    if (root.current?.contains(document.activeElement) && document.activeElement !== trigger.current) trigger.current?.focus();
+  const cancelClose = useCallback(() => {
+    if (closeTimer.current !== null) clearTimeout(closeTimer.current);
+    closeTimer.current = null;
+  }, []);
+  const close = useCallback(() => {
+    cancelClose();
+    if (popover.current?.contains(document.activeElement)) trigger.current?.focus();
     setOpened(null);
+  }, [cancelClose]);
+
+  useEffect(() => cancelClose, [cancelClose]);
+
+  useLayoutEffect(() => {
+    if (!current || !trigger.current || !popover.current) return;
+    const anchor = trigger.current;
+    const floating = popover.current;
+    function reposition() {
+      const viewport = window.visualViewport;
+      const leftEdge = (viewport?.offsetLeft ?? 0) + viewportMargin;
+      const topEdge = (viewport?.offsetTop ?? 0) + viewportMargin;
+      const rightEdge = (viewport?.offsetLeft ?? 0) + (viewport?.width ?? window.innerWidth) - viewportMargin;
+      const bottomEdge = (viewport?.offsetTop ?? 0) + (viewport?.height ?? window.innerHeight) - viewportMargin;
+      const width = Math.max(0, Math.min(360, rightEdge - leftEdge));
+      floating.style.width = `${width}px`;
+      const bounds = anchor.getBoundingClientRect();
+      const measured = floating.getBoundingClientRect();
+      // scrollHeight retains the full content height when the panel is constrained.
+      const naturalHeight = Math.max(measured.height, floating.scrollHeight + floating.offsetHeight - floating.clientHeight);
+      const below = Math.max(0, bottomEdge - bounds.bottom - anchorGap);
+      const above = Math.max(0, bounds.top - topEdge - anchorGap);
+      const flip = naturalHeight > below && above > below;
+      const available = flip ? above : below;
+      const maxHeight = Math.max(0, Math.min(bottomEdge - topEdge, available || bottomEdge - topEdge));
+      const height = Math.min(naturalHeight, maxHeight);
+      const desiredTop = flip ? bounds.top - anchorGap - height : bounds.bottom + anchorGap;
+      const desiredLeft = getComputedStyle(anchor).direction === "rtl" ? bounds.right - width : bounds.left;
+      floating.style.left = `${Math.max(leftEdge, Math.min(desiredLeft, rightEdge - width))}px`;
+      floating.style.top = `${Math.max(topEdge, Math.min(desiredTop, bottomEdge - height))}px`;
+      floating.style.maxHeight = `${maxHeight}px`;
+      floating.style.visibility = "visible";
+      floating.dataset.placement = flip ? "above" : "below";
+    }
+    reposition();
+    window.addEventListener("resize", reposition);
+    // Capture also observes scrolling inside essay/review containers.
+    window.addEventListener("scroll", reposition, true);
+    window.visualViewport?.addEventListener("resize", reposition);
+    window.visualViewport?.addEventListener("scroll", reposition);
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(reposition);
+    observer?.observe(floating);
+    function onEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") { event.preventDefault(); close(); }
+    }
+    document.addEventListener("keydown", onEscape);
+    return () => {
+      window.removeEventListener("resize", reposition);
+      window.removeEventListener("scroll", reposition, true);
+      window.visualViewport?.removeEventListener("resize", reposition);
+      window.visualViewport?.removeEventListener("scroll", reposition);
+      observer?.disconnect();
+      document.removeEventListener("keydown", onEscape);
+    };
+  }, [current, close]);
+
+  function open(key: string, element: HTMLSpanElement, pinned: boolean) {
+    cancelClose();
+    trigger.current = element;
+    setOpened(previous => ({ key, pinned: pinned || (previous?.key === key && previous.pinned) || false }));
+  }
+  function isInside(target: EventTarget | null) {
+    return target instanceof Node && (root.current?.contains(target) || popover.current?.contains(target));
+  }
+  function leave(target: EventTarget | null) {
+    if (pinned || isInside(target)) return;
+    cancelClose();
+    // Let the pointer cross the small gap between the anchor and portal.
+    closeTimer.current = setTimeout(() => setOpened(null), 160);
   }
 
-  return <div ref={root} className={styles.root} onMouseLeave={() => { if (!pinned) setOpened(null); }}
-    onBlur={event => { if (!pinned && !event.currentTarget.contains(event.relatedTarget)) setOpened(null); }}
-    onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); close(); } }}>
+  return <div ref={root} className={styles.root} onMouseEnter={cancelClose} onMouseLeave={event => leave(event.relatedTarget)}
+    onBlur={event => { if (!pinned && !isInside(event.relatedTarget)) close(); }}>
     <p data-essay-text className={styles.essay}>{segments.map(segment => segment.issues.length
       ? <span key={segment.key} role="button" tabIndex={0} className={styles.annotation}
         data-severity={segment.issues[0].kind} data-annotation-ids={segment.issues.map(issue => issue.id).join(" ")}
@@ -91,12 +165,12 @@ export function AnnotatedEssay({ content, annotations = noAnnotations, onViewFee
         onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); open(segment.key, event.currentTarget, true); } }}>
         {segment.text}
       </span> : segment.text)}</p>
-    {current ? <aside id={popoverId} role="dialog" aria-label={t("writingAI.suggestionCount", { count: current.issues.length })}
-      className={styles.popover} style={{ top: opened?.top }}>
+    {current ? createPortal(<aside ref={popover} id={popoverId} role="dialog" aria-label={t("writingAI.suggestionCount", { count: current.issues.length })}
+      className={styles.popover} onMouseEnter={cancelClose} onMouseLeave={event => leave(event.relatedTarget)}>
       <button type="button" className={styles.close} aria-label={t("writingAI.closeSuggestions")} onClick={close}>×</button>
       {current.issues.map(annotation => <div key={annotation.id}><AnnotationDetails annotation={annotation} />
         {onViewFeedback ? <button type="button" className={styles.navigation} onClick={() => onViewFeedback(annotation.id)}>{t("writingAI.viewFeedback")}</button> : null}
       </div>)}
-    </aside> : null}
+    </aside>, document.body) : null}
   </div>;
 }

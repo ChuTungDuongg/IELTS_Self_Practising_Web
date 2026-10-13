@@ -1,5 +1,5 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { AnnotatedEssay } from "@/features/writing/annotated-essay";
 import type { WritingAnnotation } from "@/lib/api/writing-ai";
 
@@ -8,6 +8,27 @@ const issue: WritingAnnotation = {
   start_offset: 0, end_offset: 12, original_span: "people tends",
   suggested_revision: "people tend", message: "Use a plural verb.", confidence: "HIGH", category: "grammar",
 };
+
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers(); });
+
+function mockLayout({ x = 200, y = 100, width = 100, height = 20, panelHeight = 200, viewportWidth = 1000, viewportHeight = 800 } = {}) {
+  vi.stubGlobal("innerWidth", viewportWidth);
+  vi.stubGlobal("innerHeight", viewportHeight);
+  const anchor = { x, y, width, height };
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+    const rect = this.getAttribute("role") === "dialog"
+      ? { x: 0, y: 0, width: 360, height: panelHeight } : anchor;
+    return { ...rect, left: rect.x, top: rect.y, right: rect.x + rect.width, bottom: rect.y + rect.height, toJSON: () => rect };
+  });
+  vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(panelHeight);
+  return anchor;
+}
+
+function openMeasuredEssay() {
+  const view = render(<AnnotatedEssay content="people tends to help." annotations={[issue]} />);
+  fireEvent.mouseEnter(screen.getByRole("button", { name: /people tends/ }));
+  return { ...view, panel: screen.getByRole("dialog") };
+}
 
 describe("AnnotatedEssay", () => {
   it("keeps the exact saved text including CRLF, spacing and emoji", () => {
@@ -112,6 +133,130 @@ describe("AnnotatedEssay", () => {
     expect(span.className).toMatch(/annotation/);
     expect(span).not.toHaveAttribute("style");
     fireEvent.focus(span);
-    expect(container.querySelector('[role="dialog"]')).toBeInTheDocument();
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    expect(screen.getByRole("dialog").parentElement).toBe(document.body);
+  });
+
+  it("positions a normal annotation below its viewport rectangle in a body portal", () => {
+    mockLayout();
+    const { panel, container } = openMeasuredEssay();
+    expect(panel).toHaveAttribute("data-placement", "below");
+    expect(panel).toHaveStyle({ top: "128px", left: "200px", width: "360px" });
+    expect(panel.parentElement).toBe(document.body);
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
+  });
+
+  it("flips above an annotation near the bottom", () => {
+    mockLayout({ y: 750 });
+    const { panel } = openMeasuredEssay();
+    expect(panel).toHaveAttribute("data-placement", "above");
+    expect(panel).toHaveStyle({ top: "542px" });
+    expect(Number.parseFloat(panel.style.top) + 200).toBeLessThan(786);
+  });
+
+  it("constrains a tall panel to available space for internal scrolling", () => {
+    mockLayout({ y: 350, panelHeight: 900 });
+    const { panel } = openMeasuredEssay();
+    expect(panel).toHaveAttribute("data-placement", "below");
+    expect(panel).toHaveStyle({ top: "378px", maxHeight: "408px" });
+    expect(Number.parseFloat(panel.style.top) + Number.parseFloat(panel.style.maxHeight)).toBe(786);
+    expect(within(panel).getByText("people tend")).toBeInTheDocument();
+    expect(within(panel).getByText("Use a plural verb.")).toBeInTheDocument();
+  });
+
+  it.each([{ x: 980, left: "626px" }, { x: -20, left: "14px" }])("clamps horizontal position at x=$x", ({ x, left }) => {
+    mockLayout({ x });
+    expect(openMeasuredEssay().panel).toHaveStyle({ left });
+  });
+
+  it("fits very narrow viewports without horizontal overflow", () => {
+    mockLayout({ x: 220, viewportWidth: 240 });
+    expect(openMeasuredEssay().panel).toHaveStyle({ width: "212px", left: "14px" });
+  });
+
+  it("uses right-aligned anchors for RTL text while retaining viewport margins", () => {
+    mockLayout({ x: 600, width: 100 });
+    render(<AnnotatedEssay content="people tends" annotations={[issue]} />);
+    const anchor = screen.getByRole("button", { name: /people tends/ });
+    anchor.style.direction = "rtl";
+    fireEvent.mouseEnter(anchor);
+    const panel = screen.getByRole("dialog");
+    expect(panel.style.left).toBe("340px");
+  });
+
+  it("recalculates placement after viewport resize", () => {
+    mockLayout({ y: 200 });
+    const { panel } = openMeasuredEssay();
+    expect(panel).toHaveAttribute("data-placement", "below");
+    vi.stubGlobal("innerHeight", 300);
+    fireEvent(window, new Event("resize"));
+    expect(panel).toHaveAttribute("data-placement", "above");
+    expect(panel).toHaveStyle({ top: "14px", maxHeight: "178px" });
+  });
+
+  it("recalculates placement when an ancestor container scrolls", () => {
+    const anchor = mockLayout();
+    const { panel, container } = openMeasuredEssay();
+    anchor.y = 750;
+    fireEvent.scroll(container);
+    expect(panel).toHaveAttribute("data-placement", "above");
+    expect(panel).toHaveStyle({ top: "542px" });
+  });
+
+  it("respects the visible viewport when a mobile viewport changes", () => {
+    mockLayout({ y: 450 });
+    const viewport = Object.assign(new EventTarget(), { offsetLeft: 0, offsetTop: 100, width: 320, height: 400 });
+    vi.stubGlobal("visualViewport", viewport);
+    const { panel } = openMeasuredEssay();
+    expect(panel).toHaveStyle({ width: "292px", left: "14px", top: "242px" });
+    viewport.offsetTop = 200;
+    act(() => viewport.dispatchEvent(new Event("scroll")));
+    expect(panel.style.top).toBe("242px");
+    expect(panel.style.maxHeight).toBe("228px");
+  });
+
+  it("allows a hovered pointer to cross into the portal and activate View feedback", () => {
+    vi.useFakeTimers();
+    mockLayout();
+    const onViewFeedback = vi.fn();
+    const { container } = render(<AnnotatedEssay content="people tends" annotations={[issue]} onViewFeedback={onViewFeedback} />);
+    fireEvent.mouseEnter(screen.getByRole("button", { name: /people tends/ }));
+    const panel = screen.getByRole("dialog");
+    fireEvent.mouseLeave(container.firstElementChild!, { relatedTarget: document.body });
+    fireEvent.mouseEnter(panel);
+    act(() => vi.advanceTimersByTime(200));
+    fireEvent.click(within(panel).getByRole("button", { name: "View feedback" }));
+    expect(onViewFeedback).toHaveBeenCalledWith(issue.id);
+  });
+
+  it("keeps a pinned portal usable and restores anchor focus on Escape", () => {
+    mockLayout();
+    const onViewFeedback = vi.fn();
+    const { container } = render(<AnnotatedEssay content="people tends" annotations={[issue]} onViewFeedback={onViewFeedback} />);
+    const anchor = screen.getByRole("button", { name: /people tends/ });
+    fireEvent.click(anchor);
+    fireEvent.mouseLeave(container.firstElementChild!);
+    const panel = screen.getByRole("dialog");
+    const action = within(panel).getByRole("button", { name: "View feedback" });
+    act(() => action.focus());
+    fireEvent.click(action);
+    expect(onViewFeedback).toHaveBeenCalledWith(issue.id);
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    fireEvent.keyDown(action, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(anchor).toHaveFocus();
+  });
+
+  it("removes open-panel listeners on close and unmount", () => {
+    mockLayout();
+    const remove = vi.spyOn(window, "removeEventListener");
+    const { unmount } = openMeasuredEssay();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(remove).toHaveBeenCalledWith("resize", expect.any(Function));
+    expect(remove).toHaveBeenCalledWith("scroll", expect.any(Function), true);
+    fireEvent.click(screen.getByRole("button", { name: /people tends/ }));
+    remove.mockClear();
+    unmount();
+    expect(remove).toHaveBeenCalledWith("scroll", expect.any(Function), true);
   });
 });

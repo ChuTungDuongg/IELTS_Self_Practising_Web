@@ -4,7 +4,7 @@
 .annotation[data-severity="LIMITATION"] { text-decoration-style: dotted; text-decoration-color: var(--writing); }
 .annotation[data-severity="OPTIONAL_REFINEMENT"] { text-decoration-style: dotted; text-decoration-color: var(--muted); }
 .annotation:focus-visible { outline: 2px solid var(--focus-ring, var(--accent)); outline-offset: 3px; border-radius: 2px; }
-.popover { position: absolute; z-index: 20; inset-inline-start: 0; width: min(360px, 100%); padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-raised, var(--surface)); color: var(--ink); box-shadow: var(--shadow-md); font-family: var(--font-sans), sans-serif; font-size: .9rem; line-height: 1.6; overflow-wrap: anywhere; }
+.popover { position: fixed; z-index: 20; visibility: hidden; box-sizing: border-box; width: min(360px, calc(100vw - 28px)); max-height: calc(100dvh - 28px); overflow-y: auto; overscroll-behavior: contain; padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-raised, var(--surface)); color: var(--ink); box-shadow: var(--shadow-md); font-family: var(--font-sans), sans-serif; font-size: .9rem; line-height: 1.6; overflow-wrap: anywhere; }
 .popover > div + div { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
 .details { display: grid; gap: 6px; }
 .details strong { padding-inline-end: 24px; }
