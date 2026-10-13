@@ -1,9 +1,10 @@
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from app.core.exceptions import AppError
+from app.providers.writing_llm.base import ImagePart
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,6 +76,16 @@ class LocalAssetStorage:
         self, *, category: str, mime_type: str, original_name: str, size: int, max_bytes: int
     ) -> tuple[Path, str]:
         allowed = self.IMAGE_TYPES if category == "images" else self.AUDIO_TYPES
+        extension = self._validate_upload(allowed, mime_type, original_name, size, max_bytes)
+        directory = (self.root / category).resolve()
+        if self.root not in directory.parents:
+            raise AppError("ASSET_UPLOAD_INVALID", "Invalid storage destination.", 422)
+        directory.mkdir(parents=True, exist_ok=True)
+        filename = f"{uuid4().hex}{extension}"
+        return directory / filename, f"{category}/{filename}"
+
+    @staticmethod
+    def _validate_upload(allowed, mime_type, original_name, size, max_bytes):
         extension = allowed.get(mime_type)
         supplied_extension = Path(original_name).suffix.lower()
         compatible_extensions = {extension} if extension != ".jpg" else {".jpg", ".jpeg"}
@@ -87,12 +98,38 @@ class LocalAssetStorage:
             raise AppError(
                 "ASSET_UPLOAD_INVALID", "The uploaded file type or size is invalid.", 422
             )
-        directory = (self.root / category).resolve()
-        if self.root not in directory.parents:
+        return extension
+
+    def store_benchmark_writing_image(
+        self, sample_id: UUID, mime_type: str, original_name: str, content: bytes, max_bytes: int
+    ) -> StoredAsset:
+        extension = self._validate_upload(
+            self.IMAGE_TYPES,
+            mime_type,
+            original_name,
+            len(content),
+            min(max_bytes, 10 * 1024 * 1024),
+        )
+        try:
+            ImagePart(mime_type, content)
+        except ValueError:
+            raise AppError(
+                "ASSET_UPLOAD_INVALID", "The uploaded image signature is invalid.", 422
+            ) from None
+        key = f"benchmark/writing/task1/{sample_id}/{uuid4().hex}{extension}"
+        destination = self.root / key
+        if destination.resolve() != destination:
             raise AppError("ASSET_UPLOAD_INVALID", "Invalid storage destination.", 422)
-        directory.mkdir(parents=True, exist_ok=True)
-        filename = f"{uuid4().hex}{extension}"
-        return directory / filename, f"{category}/{filename}"
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            with destination.open("xb") as output:
+                output.write(content)
+        except OSError as error:
+            destination.unlink(missing_ok=True)
+            raise AppError(
+                "BENCHMARK_STORAGE_UNAVAILABLE", "Image storage is unavailable.", 503
+            ) from error
+        return StoredAsset(relative_path=key, size=len(content))
 
     def resolve(self, relative_path: str) -> Path:
         candidate = (self.root / relative_path).resolve()

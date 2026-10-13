@@ -1,5 +1,6 @@
 """Admin ground-truth lifecycle; no learner records or provider calls."""
 
+import logging
 import re
 from uuid import UUID
 
@@ -27,6 +28,7 @@ from app.services.draft_revisions import advance_revision
 from app.storage import LocalAssetStorage
 
 SCORE_MAP = {"cc": "human_cc", "lr": "human_lr", "gra": "human_gra"}
+logger = logging.getLogger(__name__)
 
 
 def owns_image_key(sample_id: UUID, key: str | None) -> bool:
@@ -124,9 +126,7 @@ class WritingBenchmarkService:
         issues = completion_issues(row)
         if row.task_number == 1 and row.task1_image_key:
             try:
-                if not owns_image_key(row.id, row.task1_image_key):
-                    raise BenchmarkInputError("BENCHMARK_IMAGE_INVALID")
-                load_image(self.storage.resolve(row.task1_image_key))
+                load_image(self.owned_image_path(row.id, row.task1_image_key))
             except (AppError, BenchmarkInputError):
                 issues.append(
                     BenchmarkFieldIssue(path="image", message="Upload a valid private image.")
@@ -201,4 +201,82 @@ class WritingBenchmarkService:
             await self.repo.lock_task_capacity(task)
             row = await self._get(sample_id, lock=True)
             advance_revision(row, body.expected_revision)
+            old_key = row.task1_image_key
             await self.session.delete(row)
+        self._cleanup_image(sample_id, old_key)
+
+    def owned_image_path(self, sample_id, key):
+        if not owns_image_key(sample_id, key):
+            raise AppError("BENCHMARK_IMAGE_NOT_FOUND", "The private image is unavailable.", 404)
+        candidate = self.storage.root / key
+        # Reject symlinks even when they point to another file within storage.
+        if candidate.resolve() != candidate:
+            raise AppError("BENCHMARK_IMAGE_NOT_FOUND", "The private image is unavailable.", 404)
+        return self.storage.resolve(key)
+
+    def _cleanup_image(self, sample_id, key):
+        if not key:
+            return
+        try:
+            self.owned_image_path(sample_id, key)
+            self.storage.delete(key)
+        except (AppError, OSError):
+            logger.warning("BENCHMARK_IMAGE_CLEANUP_UNAVAILABLE")
+
+    async def replace_image(self, sample_id, body, mime_type, original_name, content):
+        new_key = None
+        committing = False
+        try:
+            async with self.session.begin():
+                row = await self._get(sample_id, lock=True)
+                if row.task_number != 1:
+                    raise AppError("BENCHMARK_TASK_MISMATCH", "Task 2 samples are text only.", 422)
+                advance_revision(row, body.expected_revision)
+                old_key = row.task1_image_key
+                maximum = min(get_settings().max_image_upload_mb, 10) * 1024 * 1024
+                stored = self.storage.store_benchmark_writing_image(
+                    sample_id, mime_type, original_name, content, maximum
+                )
+                new_key = stored.relative_path
+                row.task1_image_key = new_key
+                await self.session.flush()
+                await self.session.refresh(row)
+                response = present(row)
+                # Once commit starts, a lost ACK is not proof that the image is
+                # uncommitted. Retain it on uncertain errors/cancellation.
+                committing = True
+        except BaseException:
+            if new_key and not committing:
+                self._cleanup_image(sample_id, new_key)
+            raise
+        self._cleanup_image(sample_id, old_key)
+        return response
+
+    async def remove_image(self, sample_id, body):
+        async with self.session.begin():
+            row = await self._get(sample_id, lock=True)
+            if row.task_number != 1:
+                raise AppError("BENCHMARK_TASK_MISMATCH", "Task 2 samples are text only.", 422)
+            advance_revision(row, body.expected_revision)
+            old_key = row.task1_image_key
+            row.task1_image_key = None
+            row.status = WritingBenchmarkStatus.DRAFT
+            await self.session.flush()
+            await self.session.refresh(row)
+            response = present(row)
+        self._cleanup_image(sample_id, old_key)
+        return response
+
+    async def image_content(self, sample_id):
+        async with self.session.begin():
+            row = await self._get(sample_id, lock=True)
+            path = self.owned_image_path(sample_id, row.task1_image_key)
+            try:
+                image = load_image(path)
+            except BenchmarkInputError:
+                raise AppError(
+                    "BENCHMARK_IMAGE_NOT_FOUND", "The private image is unavailable.", 404
+                ) from None
+            # Copy bounded bytes while the row lock prevents replacement/deletion;
+            # the HTTP response never races a later unlink of the source file.
+            return image.data, image.mime_type, row.code + path.suffix
