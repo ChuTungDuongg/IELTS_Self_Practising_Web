@@ -244,6 +244,7 @@ function HistoryRow({
         </div>
         <p className="history-record-title">{item.test_title}</p>
         {item.scope === "FOCUSED_UNIT" && item.focused_unit?.title ? <p className="history-record-date">{item.focused_unit.title}</p> : null}
+        {item.focused_unit?.kind === "SPEAKING_PART" && item.speaking_practice_flow ? <p className="history-record-date">{t(item.speaking_practice_flow === "FREE" ? "speakingPractice.free" : "speakingPractice.guided")}</p> : null}
         <p className="history-record-date">{t("history.started", { date: formatProjectDateTime(item.started_at) })}</p>
       </div>
       <div className="history-state">

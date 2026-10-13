@@ -288,6 +288,23 @@ async def begin_prompt(
     )
 
 
+@runtime_router.post("/{attempt_id}/select-prompt", response_model=SpeakingState)
+async def select_practice_prompt(
+    attempt_id: UUID,
+    body: SpeakingBegin,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+):
+    return await SpeakingAttemptService(session, user.id).select_prompt(attempt_id, body.prompt_id)
+
+
+@runtime_router.post("/{attempt_id}/finish-practice", response_model=SpeakingState)
+async def finish_free_practice(
+    attempt_id: UUID, user: CurrentUser, session: AsyncSession = Depends(get_session)
+):
+    return await SpeakingAttemptService(session, user.id).finish_practice(attempt_id)
+
+
 @runtime_router.post("/{attempt_id}/heartbeat", response_model=SpeakingState)
 async def heartbeat(
     attempt_id: UUID,

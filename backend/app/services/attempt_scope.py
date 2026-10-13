@@ -24,6 +24,7 @@ UNITS = {
     "LISTENING_PART": (ModuleType.LISTENING, ListeningPart, "focused_listening_part"),
     "WRITING_TASK": (ModuleType.WRITING, WritingTask, "focused_writing_task"),
     "SPEAKING_PROMPT": (ModuleType.SPEAKING, SpeakingPrompt, "focused_speaking_prompt"),
+    "SPEAKING_PART": (ModuleType.SPEAKING, SpeakingPart, "focused_speaking_part"),
 }
 FOCUSED_PRESETS = {
     ModuleType.READING: frozenset({1200, 1500, 1800}),
@@ -81,6 +82,8 @@ async def resolve_focused_target(
             "The selected unit is not available for this module and version.",
             422,
         )
+    if model is SpeakingPart and target.part_number == 2 and data.speaking_practice_flow == "FREE":
+        raise AppError("SPEAKING_FREE_NOT_ALLOWED", "Part 2 supports Guided practice only.", 422)
     return {f"{field}_id": target.id}
 
 
@@ -130,10 +133,15 @@ class AttemptScopeGuard:
         if not self.focused:
             return None
         for kind, (module, _, field) in UNITS.items():
-            if self.attempt.module_type == module:
+            if (
+                self.attempt.module_type == module
+                and getattr(self.attempt, f"{field}_id") is not None
+            ):
                 unit = getattr(self.attempt, field)
                 label = (
-                    f"Prompt {unit.order_index + 1}"
+                    f"Part {unit.part_number}"
+                    if kind == "SPEAKING_PART"
+                    else f"Prompt {unit.order_index + 1}"
                     if kind == "SPEAKING_PROMPT"
                     else f"Task {unit.task_number}"
                     if kind == "WRITING_TASK"
@@ -142,7 +150,9 @@ class AttemptScopeGuard:
                 return FocusedUnitResponse(
                     kind=kind,
                     id=unit.id,
-                    order_index=unit.order_index,
+                    order_index=unit.part_number - 1
+                    if kind == "SPEAKING_PART"
+                    else unit.order_index,
                     label=label,
                     title=getattr(unit, "title", None),
                 )

@@ -54,9 +54,18 @@ class SpeakingRepository:
             .options(selectinload(SpeakingPrompt.part))
             .order_by(SpeakingPart.part_number, SpeakingPrompt.order_index)
         )
-        if attempt.focused_speaking_prompt_id is not None:
+        if attempt.focused_speaking_part_id is not None:
+            query = query.where(SpeakingPart.id == attempt.focused_speaking_part_id)
+        elif attempt.focused_speaking_prompt_id is not None:
             query = query.where(SpeakingPrompt.id == attempt.focused_speaking_prompt_id)
         return list(await self.session.scalars(query))
+
+    async def responses(self, attempt_id: UUID):
+        return list(
+            await self.session.scalars(
+                select(SpeakingResponse).where(SpeakingResponse.attempt_id == attempt_id)
+            )
+        )
 
     async def progress(self, attempt_id: UUID):
         return await self.session.get(SpeakingPromptProgress, attempt_id, populate_existing=True)

@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
 import { SpeakingRunner } from "@/features/speaking/speaking-runner";
 import * as api from "@/lib/api/speaking";
@@ -8,7 +8,7 @@ import { ApiError } from "@/lib/api/client";
 
 const fakeRecorder = vi.hoisted(() => ({ start: vi.fn(), stop: vi.fn().mockResolvedValue(undefined), close: vi.fn(), onChunk: undefined as ((blob: Blob) => void) | undefined, onLevel: undefined, mimeType: "audio/webm;codecs=opus", recording: false }));
 vi.mock("@/features/speaking/speaking-preflight", () => ({ SpeakingPreflight: ({ onReady }: { onReady(value: unknown): void }) => <button onClick={() => onReady(fakeRecorder)}>Ready microphone</button> }));
-vi.mock("@/lib/api/speaking", async original => ({ ...await original<typeof api>(), getSpeakingState: vi.fn(), beginSpeaking: vi.fn(), heartbeatSpeaking: vi.fn(), finishSpeaking: vi.fn(), retrySpeaking: vi.fn(), saveSpeakingNotes: vi.fn(), openSpeakingSegment: vi.fn(), closeSpeakingSegment: vi.fn(), uploadSpeakingChunk: vi.fn(), getSpeakingManifest: vi.fn(), interruptSpeaking: vi.fn(), resumeSpeaking: vi.fn(), fetchSpeakingAudio: vi.fn() }));
+vi.mock("@/lib/api/speaking", async original => ({ ...await original<typeof api>(), getSpeakingState: vi.fn(), beginSpeaking: vi.fn(), heartbeatSpeaking: vi.fn(), finishSpeaking: vi.fn(), retrySpeaking: vi.fn(), saveSpeakingNotes: vi.fn(), openSpeakingSegment: vi.fn(), closeSpeakingSegment: vi.fn(), uploadSpeakingChunk: vi.fn(), getSpeakingManifest: vi.fn(), interruptSpeaking: vi.fn(), resumeSpeaking: vi.fn(), fetchSpeakingAudio: vi.fn(), selectSpeakingPrompt: vi.fn(), finishSpeakingPractice: vi.fn() }));
 export const state: SpeakingState = {
   attempt_id: "11111111-1111-4111-8111-111111111111", mode: "PRACTICE", phase: "QUESTION_ENTER",
   current_prompt: { id: "22222222-2222-4222-8222-222222222222", part_number: 1, part_title: null, instructions: null, order_index: 0, prompt_type: "SHORT_ANSWER", prompt_text: "Fictional current question", preparation_seconds: 0, response_seconds: 60, config_json: {} },
@@ -18,6 +18,98 @@ export const state: SpeakingState = {
 const initial = { test_title: "Fictional Speaking", attempt: { attempt_id: state.attempt_id } } as ExamPayload;
 beforeEach(() => { vi.clearAllMocks(); fakeRecorder.recording = false; fakeRecorder.start.mockImplementation(() => { fakeRecorder.recording = true; }); fakeRecorder.stop.mockImplementation(async () => { fakeRecorder.recording = false; }); vi.mocked(api.getSpeakingState).mockResolvedValue(state); vi.mocked(api.beginSpeaking).mockResolvedValue({ ...state, phase: "RECORDING" }); vi.mocked(api.heartbeatSpeaking).mockResolvedValue({ ...state, phase: "RECORDING" }); vi.mocked(api.openSpeakingSegment).mockResolvedValue({ id: "segment", segment_index: 0, mime_type: "audio/webm;codecs=opus", closed_at: null, chunk_count: null, chunks: [], content_url: null }); vi.mocked(api.closeSpeakingSegment).mockResolvedValue({} as never); vi.mocked(api.uploadSpeakingChunk).mockResolvedValue({} as never); vi.mocked(api.getSpeakingManifest).mockResolvedValue({ response: {} as never, segments: [] }); });
 async function ready() { render(<SpeakingRunner initial={initial} />); fireEvent.click(await screen.findByText("Ready microphone")); await screen.findByText("Recording"); await waitFor(() => expect(screen.getByText("Done / Next")).toBeEnabled()); }
+
+const freePrompts = [0, 1, 2].map(index => ({ ...state.current_prompt!, id: `22222222-2222-4222-8222-${String(index + 1).padStart(12, "0")}`, order_index: index, prompt_text: `Fictional free question ${index + 1}` }));
+function freeState(index: number | null = null, phase: SpeakingState["phase"] = "BROWSING", committed: number[] = []): SpeakingState {
+  const answered = index !== null && committed.includes(index);
+  return { ...state, phase, current_prompt: index === null ? null : freePrompts[index], response_id: index !== null && (answered || phase === "RECORDING") ? state.response_id : null, take_number: index !== null && (answered || phase === "RECORDING") ? 1 : null, practice_flow: "FREE", focused_part_number: 1, can_retry: answered || phase === "RECORDING", can_replay: answered || phase === "RECORDING", can_finish_practice: committed.length > 0 && ["BROWSING", "QUESTION_ENTER"].includes(phase), navigation: freePrompts.map((p, position) => ({ id: p.id, order_index: position, current: position === index, status: committed.includes(position) ? "COMMITTED" : "UNANSWERED" })) };
+}
+async function readyFree(snapshot = freeState()) {
+  vi.mocked(api.getSpeakingState).mockResolvedValue(snapshot);
+  vi.mocked(api.selectSpeakingPrompt).mockImplementation(async (_id, prompt) => freeState(freePrompts.findIndex(p => p.id === prompt), "QUESTION_ENTER"));
+  vi.mocked(api.beginSpeaking).mockImplementation(async (_id, prompt) => freeState(freePrompts.findIndex(p => p.id === prompt), "RECORDING"));
+  vi.mocked(api.heartbeatSpeaking).mockImplementation(async (_id, prompt) => freeState(freePrompts.findIndex(p => p.id === prompt), "RECORDING"));
+  render(<SpeakingRunner initial={initial} />);
+  fireEvent.click(await screen.findByText("Ready microphone"));
+  await screen.findByRole("navigation", { name: "Practice questions" });
+}
+it("reconstructs Free picker from server state and selects arbitrary questions without recording", async () => {
+  await readyFree(freeState(1, "BROWSING", [1]));
+  expect(screen.getByRole("button", { name: "Question 2 · Answered" })).toHaveAttribute("aria-current", "step");
+  expect(screen.getByRole("button", { name: "Finish Practice" })).toBeEnabled();
+  expect(screen.getByRole("button", { name: "Listen" })).toBeEnabled();
+  expect(screen.getByRole("button", { name: "Retry recording" })).toBeEnabled();
+  fireEvent.click(screen.getByRole("button", { name: "Question 3 · Not answered" }));
+  await screen.findByText("Fictional free question 3");
+  fireEvent.click(screen.getByRole("button", { name: "Question 1 · Not answered" }));
+  await screen.findByText("Fictional free question 1");
+  expect(api.selectSpeakingPrompt).toHaveBeenNthCalledWith(1, state.attempt_id, freePrompts[2].id);
+  expect(api.selectSpeakingPrompt).toHaveBeenNthCalledWith(2, state.attempt_id, freePrompts[0].id);
+  expect(api.beginSpeaking).not.toHaveBeenCalled(); expect(fakeRecorder.start).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Record" }));
+  await screen.findByText("Recording");
+  expect(api.beginSpeaking).toHaveBeenCalledExactlyOnceWith(state.attempt_id, freePrompts[0].id);
+});
+it("Free stop and switch waits for physical stop, chunk close and durable finish ACK", async () => {
+  await readyFree(freeState(0, "QUESTION_ENTER"));
+  fireEvent.click(screen.getByRole("button", { name: "Record" }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Done / Next" })).toBeEnabled());
+  let acknowledge!: (next: SpeakingState) => void;
+  vi.mocked(api.finishSpeaking).mockImplementation(() => new Promise(resolve => { acknowledge = resolve; }));
+  fireEvent.click(screen.getByRole("button", { name: "Question 3 · Not answered" }));
+  expect(screen.getByRole("dialog", { name: "Switch question?" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Continue recording" }));
+  expect(api.finishSpeaking).not.toHaveBeenCalled(); expect(fakeRecorder.recording).toBe(true);
+  fireEvent.click(screen.getByRole("button", { name: "Question 3 · Not answered" }));
+  fireEvent.click(screen.getByRole("button", { name: "Stop & switch" }));
+  await waitFor(() => expect(api.finishSpeaking).toHaveBeenCalled());
+  expect(fakeRecorder.recording).toBe(false); expect(api.closeSpeakingSegment).toHaveBeenCalled();
+  expect(api.selectSpeakingPrompt).not.toHaveBeenCalled(); expect(screen.getByText("Fictional free question 1")).toBeInTheDocument();
+  await act(async () => acknowledge(freeState(0, "BROWSING", [0])));
+  await screen.findByText("Fictional free question 3");
+  expect(api.selectSpeakingPrompt).toHaveBeenCalledExactlyOnceWith(state.attempt_id, freePrompts[2].id);
+  expect(api.beginSpeaking).toHaveBeenCalledTimes(1);
+});
+it("failed Free switch persistence retains current prompt and recoverable selection", async () => {
+  await readyFree(freeState(0, "QUESTION_ENTER"));
+  fireEvent.click(screen.getByRole("button", { name: "Record" }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Done / Next" })).toBeEnabled());
+  vi.mocked(api.finishSpeaking).mockRejectedValueOnce(new Error("fictional save failure"));
+  fireEvent.click(screen.getByRole("button", { name: "Question 3 · Not answered" }));
+  fireEvent.click(screen.getByRole("button", { name: "Stop & switch" }));
+  await screen.findByRole("alert");
+  expect(api.selectSpeakingPrompt).not.toHaveBeenCalled(); expect(screen.getByText("Fictional free question 1")).toBeInTheDocument();
+});
+it("Free does not auto-finish last question and uses explicit confirmed Finish Practice", async () => {
+  await readyFree(freeState(2, "BROWSING", [2]));
+  expect(api.finishSpeakingPractice).not.toHaveBeenCalled(); expect(api.beginSpeaking).not.toHaveBeenCalled();
+  vi.mocked(api.finishSpeakingPractice).mockResolvedValue({ ...freeState(2, "COMPLETED", [2]), current_prompt: null });
+  fireEvent.click(screen.getByRole("button", { name: "Finish Practice" }));
+  expect(api.finishSpeakingPractice).not.toHaveBeenCalled();
+  fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Finish Practice" }));
+  expect(await screen.findByRole("link", { name: "Review recording" })).toBeInTheDocument();
+  expect(api.finishSpeakingPractice).toHaveBeenCalledExactlyOnceWith(state.attempt_id);
+});
+it("Free cannot finish with zero saved responses and Guided has no question picker", async () => {
+  const view = render(<SpeakingRunner initial={initial} />);
+  await screen.findByText("Ready microphone");
+  expect(screen.queryByRole("navigation", { name: "Practice questions" })).toBeNull();
+  view.unmount();
+  await readyFree();
+  expect(screen.getByRole("button", { name: "Finish Practice" })).toBeDisabled();
+  expect(api.beginSpeaking).not.toHaveBeenCalled();
+});
+it("Free revisits a committed question, listens, and retries only its server-backed take", async () => {
+  await readyFree(freeState(1, "BROWSING", [1]));
+  fireEvent.click(screen.getByRole("button", { name: "Listen" }));
+  await waitFor(() => expect(api.getSpeakingManifest).toHaveBeenCalledWith(state.attempt_id, state.response_id));
+  vi.mocked(api.retrySpeaking).mockResolvedValue({ ...freeState(1, "RECORDING", [1]), take_number: 2 });
+  fireEvent.click(screen.getByRole("button", { name: "Retry recording" }));
+  fireEvent.click(screen.getByRole("button", { name: "Confirm retry" }));
+  await waitFor(() => expect(api.retrySpeaking).toHaveBeenCalledExactlyOnceWith(state.attempt_id, freePrompts[1].id, 1));
+  await screen.findByText("Recording");
+  expect(api.selectSpeakingPrompt).not.toHaveBeenCalled(); expect(api.finishSpeakingPractice).not.toHaveBeenCalled();
+});
 it("renders current prompt and server recording state without a quick theme action", async () => { await ready(); expect(screen.getByText(state.current_prompt!.prompt_text)).toBeInTheDocument(); expect(screen.getByRole("timer")).toHaveTextContent("01:00"); expect(screen.getByRole("button", { name: "Done / Next" })).toBeEnabled(); expect(screen.queryByRole("button", { name: /Use (dark|light) theme/ })).not.toBeInTheDocument(); });
 it("keeps current question until final acknowledgement and on failure", async () => {
   await ready(); let reject!: (reason: Error) => void;

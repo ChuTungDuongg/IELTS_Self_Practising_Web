@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "@/lib/i18n/locale-provider";
 import type { ExamPayload } from "@/lib/api/exam";
 import { ApiError } from "@/lib/api/client";
-import { closeSpeakingSegment, getSpeakingManifest, openSpeakingSegment, uploadSpeakingChunk, interruptSpeaking, resumeSpeaking, type SpeakingManifest, beginSpeaking, finishSpeaking, getSpeakingState, heartbeatSpeaking, retrySpeaking, saveSpeakingNotes, type SpeakingState } from "@/lib/api/speaking";
+import { closeSpeakingSegment, getSpeakingManifest, openSpeakingSegment, uploadSpeakingChunk, interruptSpeaking, resumeSpeaking, selectSpeakingPrompt, finishSpeakingPractice, type SpeakingManifest, beginSpeaking, finishSpeaking, getSpeakingState, heartbeatSpeaking, retrySpeaking, saveSpeakingNotes, type SpeakingState } from "@/lib/api/speaking";
 import { SpeakingPreflight } from "./speaking-preflight";
 import type { SpeakingRecorder } from "./speaking-recorder";
 import { SpeakingChunkTransport } from "./speaking-transport";
@@ -30,6 +30,8 @@ export function SpeakingRunner({ initial }: { initial: ExamPayload }) {
   const mounted = useRef(true);
   const [error, setError] = useState(false);
   const [confirmRetry, setConfirmRetry] = useState(false);
+  const [switchTarget, setSwitchTarget] = useState<string | null>(null);
+  const [confirmFinish, setConfirmFinish] = useState(false);
   const [manifest, setManifest] = useState<SpeakingManifest | null>(null);
   const [restored, setRestored] = useState(false);
   const [notes, setNotes] = useState("");
@@ -82,7 +84,7 @@ export function SpeakingRunner({ initial }: { initial: ExamPayload }) {
     let running = false;
     const tick = window.setInterval(() => {
       setClock(Date.now()); const snapshot = current.current;
-      if (running || busy.current || !snapshot?.current_prompt || !snapshot.take_number) return;
+      if (running || busy.current || !snapshot?.current_prompt || !snapshot.take_number || ["BROWSING", "QUESTION_ENTER"].includes(snapshot.phase)) return;
       running = true;
       void heartbeatSpeaking(id, snapshot.current_prompt.id, snapshot.take_number).then((next) => {
         if (!busy.current && current.current?.current_prompt?.id === snapshot.current_prompt?.id && current.current?.take_number === snapshot.take_number) accept(next);
@@ -102,14 +104,15 @@ export function SpeakingRunner({ initial }: { initial: ExamPayload }) {
   }, [id]);
   const finish = useCallback(async (reason: "USER_DONE" | "TIMEOUT") => {
     const snapshot = current.current;
-    if (busy.current || !snapshot?.current_prompt || !snapshot.take_number) return;
+    if (busy.current || !snapshot?.current_prompt || !snapshot.take_number) return null;
     busy.current = true; setSaving(true); setError(false);
     try {
       await seal();
       const next = await finishSpeaking(id, snapshot.current_prompt.id, snapshot.take_number, reason);
       if (next.phase === "COMPLETED") recorder.current?.close();
       transport.current = null; listening.current = false; setPhysicalReady(false); setManifest(null); setRestored(false); setSaved(true); busy.current = false; setSaving(false); accept(next);
-    } catch { if (mounted.current) setError(true); }
+      return next;
+    } catch { if (mounted.current) setError(true); return null; }
     finally { busy.current = false; if (mounted.current) setSaving(false); }
   }, [id, accept, seal]);
   const startPhysicalSegment = useCallback(async (snapshot: SpeakingState) => {
@@ -129,7 +132,7 @@ export function SpeakingRunner({ initial }: { initial: ExamPayload }) {
     if (!state || busy.current) return;
     if (state.phase === "FINALIZING") { void Promise.resolve().then(() => finish("TIMEOUT")); return; }
     if (!ready) return;
-    if (state.phase === "QUESTION_ENTER" && state.current_prompt) {
+    if (state.phase === "QUESTION_ENTER" && state.current_prompt && state.practice_flow !== "FREE") {
       busy.current = true;
       void beginSpeaking(id, state.current_prompt.id).then((next) => { busy.current = false; accept(next); }).catch(() => setError(true)).finally(() => { busy.current = false; });
     } else if (state.phase === "RECORDING") void Promise.resolve().then(() => startPhysicalSegment(state));
@@ -168,6 +171,41 @@ export function SpeakingRunner({ initial }: { initial: ExamPayload }) {
     catch { setError(true); } finally { busy.current = false; setSaving(false); }
   }
   const prompt = state?.current_prompt;
+  async function recordSelected() {
+    const snapshot = current.current;
+    if (busy.current || !ready || !snapshot?.current_prompt || snapshot.phase !== "QUESTION_ENTER") return;
+    busy.current = true; setSaving(true); setError(false);
+    try { const next = await beginSpeaking(id, snapshot.current_prompt.id); setSaved(false); accept(next); }
+    catch { setError(true); } finally { busy.current = false; setSaving(false); }
+  }
+  async function selectPrompt(promptId: string) {
+    if (busy.current) return;
+    busy.current = true; setSaving(true); setError(false);
+    try {
+      const next = await selectSpeakingPrompt(id, promptId);
+      transport.current = null; listening.current = false; setManifest(null); setPhysicalReady(false); setSaved(false); setSwitchTarget(null); accept(next);
+    } catch { setError(true); } finally { busy.current = false; setSaving(false); }
+  }
+  function choosePrompt(promptId: string) {
+    if (busy.current || current.current?.current_prompt?.id === promptId) return;
+    if (current.current && !["BROWSING", "QUESTION_ENTER"].includes(current.current.phase)) setSwitchTarget(promptId);
+    else void selectPrompt(promptId);
+  }
+  async function stopAndSwitch() {
+    if (!switchTarget || busy.current) return;
+    if (["BROWSING", "QUESTION_ENTER"].includes(current.current?.phase ?? "")) { await selectPrompt(switchTarget); return; }
+    const next = await finish(current.current?.phase === "FINALIZING" ? "TIMEOUT" : "USER_DONE");
+    if (next?.phase === "BROWSING") await selectPrompt(switchTarget);
+  }
+  async function finishPractice() {
+    if (busy.current || !current.current?.can_finish_practice) return;
+    busy.current = true; setSaving(true); setError(false);
+    try { const next = await finishSpeakingPractice(id); recorder.current?.close(); setConfirmFinish(false); accept(next); }
+    catch { setError(true); } finally { busy.current = false; setSaving(false); }
+  }
+  const free = state?.practice_flow === "FREE" && state.mode === "PRACTICE" && (state.focused_part_number === 1 || state.focused_part_number === 3);
+  const navigation = state?.navigation ?? [];
+  const selectedIndex = navigation.findIndex(p => p.current);
   const milliseconds = state ? Math.max(0, state.remaining_ms - (state.phase === "PREPARING" || state.phase === "RECORDING" || state.phase === "STARTING" ? Math.max(0, clock - received) : 0)) : 0;
   useEffect(() => {
     if (ready && state?.phase === "RECORDING" && milliseconds === 0) void Promise.resolve().then(() => finish("TIMEOUT"));
@@ -176,10 +214,16 @@ export function SpeakingRunner({ initial }: { initial: ExamPayload }) {
   const grace = state?.recovery_grace_deadline_at ? Math.max(0, Math.ceil((new Date(state.recovery_grace_deadline_at).getTime() - new Date(state.server_time).getTime() - Math.max(0, clock - received)) / 1000)) : 0;
   return <main className="exam-runner speaking-runner" data-reduced-motion={reducedMotion}>
     <header className="exam-header"><h1>{initial.test_title}</h1></header>
+    {state?.focused_part_number ? <p className="speaking-practice-context">{t("speaking.part", { number: state.focused_part_number })} · {t(free ? "speakingPractice.free" : "speakingPractice.guided")}</p> : null}
     {error ? <div className="notice notice-error" role="alert">{t("speakingRuntime.saveError")}<button className="btn btn-secondary" disabled={saving} onClick={() => void (state?.phase === "FINALIZING" ? finish("TIMEOUT") : state?.phase === "RECORDING" && ready ? physicalReady ? finish("USER_DONE") : startPhysicalSegment(state) : restore(!ready))}>{t("speakingRuntime.saveAgain")}</button></div> : null}
     {!state ? <p role="status">{t("speakingRuntime.loading")}</p> : state.phase === "COMPLETED" ? <div className="speaking-card"><h2>{t("speakingRuntime.completed")}</h2><a className="btn btn-primary" href={`/review/${id}`}>{t("speakingRuntime.review")}</a></div> : <>
       {restored ? <p role="status">{t("speakingRuntime.restored")}{manifest?.segments.some((segment) => segment.chunks.length) ? ` · ${t("speakingRuntime.recoveredAudio")}` : ""}</p> : null}
       {!ready && state.phase !== "FINALIZING" ? <SpeakingPreflight key={preflightGeneration} onReady={onReady} /> : null}
+      {free ? <nav className="speaking-prompt-picker speaking-card" aria-label={t("speakingPractice.questions")}>
+        <div className="speaking-picker-buttons">{navigation.map((item, index) => <button type="button" key={item.id} className="btn btn-secondary" disabled={saving || ["INTERRUPTED", "RECOVERY_GRACE", "PREPARING", "STARTING"].includes(state.phase) || (state.phase === "RECORDING" && !physicalReady && !error)} aria-current={item.current ? "step" : undefined} aria-label={t("speakingPractice.questionState", { number: index + 1, status: t(item.status === "COMMITTED" ? "speakingPractice.answered" : "speakingPractice.unanswered") })} onClick={() => choosePrompt(item.id)}>{index + 1}{item.status === "COMMITTED" ? " ✓" : ""}</button>)}</div>
+        <div className="speaking-controls"><button className="btn btn-secondary" disabled={saving || selectedIndex <= 0 || !["BROWSING", "QUESTION_ENTER", "RECORDING"].includes(state.phase) || (state.phase === "RECORDING" && !physicalReady)} onClick={() => choosePrompt(navigation[selectedIndex - 1].id)}>{t("common.previous")}</button><button className="btn btn-secondary" disabled={saving || selectedIndex < 0 || selectedIndex >= navigation.length - 1 || !["BROWSING", "QUESTION_ENTER", "RECORDING"].includes(state.phase) || (state.phase === "RECORDING" && !physicalReady)} onClick={() => choosePrompt(navigation[selectedIndex + 1].id)}>{t("common.next")}</button>
+        <button className="btn btn-primary" id="speaking-finish-practice" disabled={saving || !state.can_finish_practice} onClick={() => setConfirmFinish(true)}>{t("speakingPractice.finish")}</button></div>
+      </nav> : null}
       {prompt ? <section className="speaking-card speaking-question" key={prompt.id} aria-labelledby="speaking-question">
         <p>{t("speaking.part", { number: prompt.part_number })}</p><h2 id="speaking-question" tabIndex={-1}>{prompt.prompt_text}</h2>
         {prompt.instructions ? <p>{prompt.instructions}</p> : null}
@@ -189,8 +233,9 @@ export function SpeakingRunner({ initial }: { initial: ExamPayload }) {
           <meter aria-label={t("speakingRuntime.level")} min={0} max={1} value={level} />
           {prompt.prompt_type === "LONG_TURN" ? <label className="field-label">{t("speakingRuntime.notes")}<textarea aria-label={t("speakingRuntime.notes")} value={notes} maxLength={20000} disabled={saving} onChange={(event) => { notesDirty.current = true; notesDraft.current = event.target.value; setNotes(event.target.value); }} /><small>{t("speakingRuntime.notesHint")}</small></label> : null}
           <div className="speaking-controls">
-            {state.can_replay ? <button className="btn btn-secondary" disabled={saving || !physicalReady} onClick={() => void listen()}>{t("speakingRuntime.listen")}</button> : null}
-            {state.can_retry ? <button className="btn btn-secondary" id="speaking-retry" disabled={saving || !physicalReady} onClick={() => setConfirmRetry(true)}>{t("speakingRuntime.retry")}</button> : null}
+            {free && state.phase === "QUESTION_ENTER" ? <button className="btn btn-primary" disabled={saving} onClick={() => void recordSelected()}>{t("speakingPractice.record")}</button> : null}
+            {state.can_replay ? <button className="btn btn-secondary" disabled={saving || (!physicalReady && state.phase !== "BROWSING")} onClick={() => void listen()}>{t("speakingRuntime.listen")}</button> : null}
+            {state.can_retry ? <button className="btn btn-secondary" id="speaking-retry" disabled={saving || (!physicalReady && state.phase !== "BROWSING")} onClick={() => setConfirmRetry(true)}>{t("speakingRuntime.retry")}</button> : null}
             <button className="btn btn-primary" disabled={saving || !["RECORDING","FINALIZING"].includes(state.phase) || (state.phase === "RECORDING" && !physicalReady)} onClick={() => void finish(state.phase === "FINALIZING" ? "TIMEOUT" : "USER_DONE")}>{t("speakingRuntime.done")}</button>
           </div>{manifest && state.can_replay ? <SpeakingAudioPlayer segments={manifest.segments} /> : null}{saved ? <p role="status">{t("speakingRuntime.saved")}</p> : null}
         </> : null}
@@ -199,6 +244,10 @@ export function SpeakingRunner({ initial }: { initial: ExamPayload }) {
     {confirmRetry ? <div role="dialog" aria-modal="true" aria-label={t("speakingRuntime.retry")} className="speaking-card" onKeyDown={(event) => {
       if (event.key === "Escape") { setConfirmRetry(false); document.getElementById("speaking-retry")?.focus(); }
       if (event.key === "Tab") { const buttons = event.currentTarget.querySelectorAll("button"); event.preventDefault(); (event.target === buttons[0] ? buttons[1] : buttons[0]).focus(); }
-    }}><p>{t("speakingRuntime.retryHint")}</p><button className="btn btn-primary" autoFocus onClick={() => void retry()}>{t("speakingRuntime.confirmRetry")}</button><button className="btn btn-secondary" onClick={() => { setConfirmRetry(false); document.getElementById("speaking-retry")?.focus(); }}>{t("common.cancel")}</button></div> : null}
+    }}><p>{t(free ? "speakingPractice.retryHint" : "speakingRuntime.retryHint")}</p><button className="btn btn-primary" autoFocus onClick={() => void retry()}>{t("speakingRuntime.confirmRetry")}</button><button className="btn btn-secondary" onClick={() => { setConfirmRetry(false); document.getElementById("speaking-retry")?.focus(); }}>{t("common.cancel")}</button></div> : null}
+    {switchTarget || confirmFinish ? <div role="dialog" aria-modal="true" aria-label={t(switchTarget ? "speakingPractice.switchTitle" : "speakingPractice.finishTitle")} className="speaking-card" onKeyDown={event => {
+      if (event.key === "Escape" && !saving) { setSwitchTarget(null); setConfirmFinish(false); document.getElementById("speaking-question")?.focus(); }
+      if (event.key === "Tab") { const buttons = event.currentTarget.querySelectorAll<HTMLButtonElement>("button"); event.preventDefault(); (event.target === buttons[0] ? buttons[1] : buttons[0]).focus(); }
+    }}><p>{t(switchTarget ? "speakingPractice.switchHint" : "speakingPractice.finishHint")}</p><button className="btn btn-secondary" autoFocus disabled={saving} onClick={() => { setSwitchTarget(null); setConfirmFinish(false); document.getElementById("speaking-question")?.focus(); }}>{t(switchTarget ? "speakingPractice.continue" : "common.cancel")}</button><button className="btn btn-primary" disabled={saving || (switchTarget !== null && !["RECORDING", "FINALIZING", "BROWSING", "QUESTION_ENTER"].includes(state?.phase ?? ""))} onClick={() => void (switchTarget ? stopAndSwitch() : finishPractice())}>{t(switchTarget ? "speakingPractice.stopSwitch" : "speakingPractice.finish")}</button></div> : null}
   </main>;
 }

@@ -22,7 +22,7 @@ from app.models import (
 )
 from app.models.enums import AttemptStatus, FinishedReason, ModuleType
 from app.repositories.speaking import SpeakingRepository
-from app.schemas.speaking import CurrentSpeakingPrompt, SpeakingState
+from app.schemas.speaking import CurrentSpeakingPrompt, SpeakingNavigationPrompt, SpeakingState
 from app.services.attempts import AttemptService
 
 
@@ -43,7 +43,11 @@ class SpeakingAttemptService:
             raise AppError("SPEAKING_MODULE_INCOMPLETE", "No Speaking prompts are available.", 409)
         progress = await self.repository.progress(attempt.id)
         if progress is None:
-            progress = SpeakingPromptProgress(attempt_id=attempt.id, prompt_id=prompts[0].id)
+            progress = SpeakingPromptProgress(
+                attempt_id=attempt.id,
+                prompt_id=None if self.free(attempt) else prompts[0].id,
+                phase="BROWSING" if self.free(attempt) else "QUESTION_ENTER",
+            )
             self.session.add(progress)
             await self.session.flush()
         return attempt, progress, prompts
@@ -52,6 +56,21 @@ class SpeakingAttemptService:
     def mode(attempt: Attempt) -> str:
         # Full Mock always has exam restrictions, even if mode was set to practice.
         return "EXAM" if attempt.test_session_id is not None else (attempt.speaking_mode or "EXAM")
+
+    @classmethod
+    def free(cls, attempt: Attempt) -> bool:
+        return bool(
+            attempt.focused_speaking_part_id
+            and attempt.speaking_practice_flow == "FREE"
+            and cls.mode(attempt) == "PRACTICE"
+            and attempt.classroom_assignment_id is None
+        )
+
+    async def _require_scoped_prompt(self, attempt, prompt_id):
+        if not any(p.id == prompt_id for p in await self.repository.prompts(attempt)):
+            raise AppError(
+                "ATTEMPT_TARGET_OUT_OF_SCOPE", "The prompt is outside this practice scope.", 422
+            )
 
     @staticmethod
     def _mutable(attempt: Attempt):
@@ -102,10 +121,24 @@ class SpeakingAttemptService:
                 progress.phase = "FINALIZING"
         # Do not touch last_active_at on polling reads: heartbeats represent activity.
 
-    def _state(self, attempt, progress, prompts, now) -> SpeakingState:
+    async def _state(self, attempt, progress, prompts, now) -> SpeakingState:
         prompt = self._prompt(progress, prompts)
         active = attempt.status == AttemptStatus.IN_PROGRESS
-        can_repeat = active and self.mode(attempt) == "PRACTICE" and progress.phase == "RECORDING"
+        responses = {r.prompt_id: r for r in await self.repository.responses(attempt.id)}
+        scoped_ids = {p.id for p in prompts}
+        committed = {pid for pid, r in responses.items() if r.locked and pid in scoped_ids}
+        can_repeat = (
+            active
+            and self.mode(attempt) == "PRACTICE"
+            and (
+                progress.phase == "RECORDING"
+                or (
+                    self.free(attempt)
+                    and progress.phase == "BROWSING"
+                    and progress.prompt_id in committed
+                )
+            )
+        )
         current = None
         if active and prompt is not None:
             current = CurrentSpeakingPrompt(
@@ -126,6 +159,25 @@ class SpeakingAttemptService:
                 instructions=prompt.part.instructions,
             )
         return SpeakingState(
+            practice_flow=attempt.speaking_practice_flow,
+            focused_part_number=prompts[0].part.part_number
+            if attempt.focused_speaking_part_id
+            else None,
+            navigation=[
+                SpeakingNavigationPrompt(
+                    id=p.id,
+                    order_index=p.order_index,
+                    status="COMMITTED" if p.id in committed else "UNANSWERED",
+                    current=p.id == progress.prompt_id,
+                )
+                for p in prompts
+            ]
+            if self.free(attempt)
+            else [],
+            can_finish_practice=active
+            and self.free(attempt)
+            and bool(committed)
+            and progress.phase in {"BROWSING", "QUESTION_ENTER"},
             attempt_id=attempt.id,
             mode=self.mode(attempt),
             phase=progress.phase if active else "COMPLETED",
@@ -165,7 +217,7 @@ class SpeakingAttemptService:
             attempt, progress, prompts = await self._load(attempt_id)
             now = TimerService.now()
             await self._synchronize(attempt, progress, prompts, now)
-            return self._state(attempt, progress, prompts, now)
+            return await self._state(attempt, progress, prompts, now)
 
     async def begin_prompt(self, attempt_id: UUID, prompt_id: UUID) -> SpeakingState:
         async with self.session.begin():
@@ -192,9 +244,10 @@ class SpeakingAttemptService:
                     prompt.preparation_seconds or prompt.response_seconds,
                 )
             attempt.last_active_at = now
-            return self._state(attempt, progress, prompts, now)
+            return await self._state(attempt, progress, prompts, now)
 
     async def _require_current(self, attempt, progress, prompt_id, take_number=None):
+        await self._require_scoped_prompt(attempt, prompt_id)
         if progress.prompt_id != prompt_id:
             prior = await self.repository.response(attempt.id, prompt_id)
             if prior is not None and prior.locked:
@@ -221,7 +274,7 @@ class SpeakingAttemptService:
             # Client values are informational only, never authority for quota/deadlines.
             await self._synchronize(attempt, progress, prompts, now, confirm=True)
             attempt.last_active_at = now
-            return self._state(attempt, progress, prompts, now)
+            return await self._state(attempt, progress, prompts, now)
 
     async def finish_current_response(
         self, attempt_id: UUID, prompt_id: UUID, take_number: int, completion_reason: str
@@ -229,6 +282,7 @@ class SpeakingAttemptService:
         async with self.session.begin():
             attempt, progress, prompts = await self._load(attempt_id)
             now = TimerService.now()
+            await self._require_scoped_prompt(attempt, prompt_id)
             response = await self.repository.response(attempt.id, prompt_id)
             # Idempotency is tied to the committed prompt/take, never "whatever is current".
             if (
@@ -237,7 +291,7 @@ class SpeakingAttemptService:
                 and response.active_take_number == take_number
             ):
                 await self._synchronize(attempt, progress, prompts, now)
-                return self._state(attempt, progress, prompts, now)
+                return await self._state(attempt, progress, prompts, now)
             self._mutable(attempt)
             await self._require_current(attempt, progress, prompt_id, take_number)
             await self._synchronize(attempt, progress, prompts, now)
@@ -261,12 +315,19 @@ class SpeakingAttemptService:
             take = await self.repository.take(response.id, take_number)
             from app.services.speaking_media import committed_fingerprint
 
-            response.committed_audio_fingerprint = await committed_fingerprint(self.session, take)
+            response.committed_audio_fingerprint = await committed_fingerprint(
+                self.session, take, require_audio=self.free(attempt) and response.locked
+            )
             end = min(now, progress.phase_deadline_at)
             duration_ms = take.duration_ms + max(
                 0, int((end - progress.phase_started_at).total_seconds() * 1000)
             )
             take.status, take.completed_at, take.duration_ms = "COMMITTED", end, duration_ms
+            if self.free(attempt) and response.active_take_number != take_number:
+                previous = await self.repository.take(response.id, response.active_take_number)
+                if previous.status == "COMMITTED":
+                    previous.status = "SUPERSEDED"
+            response.active_take_number = take_number
             response.status, response.locked = "COMPLETED", True
             response.completed_at, response.duration_ms, response.completion_reason = (
                 end,
@@ -274,12 +335,25 @@ class SpeakingAttemptService:
                 reason,
             )
             index = next(i for i, p in enumerate(prompts) if p.id == prompt_id)
-            progress.prompt_id = prompts[index + 1].id if index + 1 < len(prompts) else None
-            progress.response_id = progress.take_number = None
+            progress.prompt_id = (
+                prompt_id
+                if self.free(attempt)
+                else prompts[index + 1].id
+                if index + 1 < len(prompts)
+                else None
+            )
+            progress.response_id = response.id if self.free(attempt) else None
+            progress.take_number = take_number if self.free(attempt) else None
             progress.phase_started_at = progress.phase_deadline_at = None
             progress.last_confirmed_remaining_ms = 0
             progress.scratch_notes = ""
-            progress.phase = "QUESTION_ENTER" if progress.prompt_id is not None else "COMPLETED"
+            progress.phase = (
+                "BROWSING"
+                if self.free(attempt)
+                else "QUESTION_ENTER"
+                if progress.prompt_id is not None
+                else "COMPLETED"
+            )
             progress.recovery_state = None
             progress.recovery_grace_used = False
             progress.recovery_phase = progress.recovery_grace_deadline_at = (
@@ -295,7 +369,7 @@ class SpeakingAttemptService:
                     now=now,
                 )
                 AttemptService._complete_mock_if_last_module(attempt, now)
-            return self._state(attempt, progress, prompts, now)
+            return await self._state(attempt, progress, prompts, now)
 
     async def retry_current_response(
         self, attempt_id: UUID, prompt_id: UUID, take_number: int
@@ -310,19 +384,22 @@ class SpeakingAttemptService:
             await self._require_current(attempt, progress, prompt_id)
             now = TimerService.now()
             await self._synchronize(attempt, progress, prompts, now)
-            if progress.phase != "RECORDING":
+            committed_retry = self.free(attempt) and progress.phase == "BROWSING"
+            if progress.phase != "RECORDING" and not committed_retry:
                 raise AppError(
                     "SPEAKING_RETRY_NOT_ALLOWED", "Only an active recording may be retried.", 409
                 )
             if progress.take_number == take_number + 1:
-                return self._state(attempt, progress, prompts, now)
+                return await self._state(attempt, progress, prompts, now)
             await self._require_current(attempt, progress, prompt_id, take_number)
             response = await self.repository.response(attempt.id, prompt_id)
             take = await self.repository.take(response.id, take_number)
-            take.status, take.completed_at = "SUPERSEDED", now
-            take.duration_ms = max(0, int((now - take.started_at).total_seconds() * 1000))
-            response.active_take_number += 1
-            progress.take_number = response.active_take_number
+            if not (self.free(attempt) and take.status == "COMMITTED"):
+                take.status, take.completed_at = "SUPERSEDED", now
+                take.duration_ms = max(0, int((now - take.started_at).total_seconds() * 1000))
+            progress.take_number = take_number + 1
+            if not self.free(attempt):
+                response.active_take_number = progress.take_number
             self.session.add(
                 SpeakingResponseTake(
                     response_id=response.id, take_number=progress.take_number, started_at=now
@@ -338,7 +415,7 @@ class SpeakingAttemptService:
             ) = None
             progress.next_segment_index = 0
             attempt.last_active_at = now
-            return self._state(attempt, progress, prompts, now)
+            return await self._state(attempt, progress, prompts, now)
 
     async def authorize_current_replay(self, attempt_id: UUID, prompt_id: UUID, take_number: int):
         async with self.session.begin():
@@ -346,11 +423,78 @@ class SpeakingAttemptService:
             self._mutable(attempt)
             await self._require_current(attempt, progress, prompt_id, take_number)
             await self._synchronize(attempt, progress, prompts, TimerService.now())
-            if self.mode(attempt) != "PRACTICE" or progress.phase != "RECORDING":
+            if self.mode(attempt) != "PRACTICE" or (
+                progress.phase != "RECORDING"
+                and not (self.free(attempt) and progress.phase == "BROWSING")
+            ):
                 raise AppError(
                     "SPEAKING_REPLAY_NOT_ALLOWED", "Replay is unavailable for this response.", 409
                 )
             return progress.response_id
+
+    async def select_prompt(self, attempt_id: UUID, prompt_id: UUID) -> SpeakingState:
+        async with self.session.begin():
+            attempt, progress, prompts = await self._load(attempt_id)
+            self._mutable(attempt)
+            if not self.free(attempt):
+                raise AppError(
+                    "SPEAKING_FREE_NOT_ALLOWED",
+                    "Question selection is available only in Free Part practice.",
+                    409,
+                )
+            await self._require_scoped_prompt(attempt, prompt_id)
+            if progress.phase not in {"BROWSING", "QUESTION_ENTER"}:
+                raise AppError(
+                    "SPEAKING_RESPONSE_NOT_ACTIVE",
+                    "Save the active recording before switching questions.",
+                    409,
+                )
+            response = await self.repository.response(attempt.id, prompt_id)
+            progress.prompt_id = prompt_id
+            progress.response_id = response.id if response and response.locked else None
+            progress.take_number = (
+                response.active_take_number if response and response.locked else None
+            )
+            progress.phase = "BROWSING" if response and response.locked else "QUESTION_ENTER"
+            progress.phase_started_at = progress.phase_deadline_at = None
+            progress.last_confirmed_remaining_ms = progress.next_segment_index = 0
+            progress.scratch_notes = ""
+            attempt.last_active_at = TimerService.now()
+            return await self._state(attempt, progress, prompts, attempt.last_active_at)
+
+    async def finish_practice(self, attempt_id: UUID) -> SpeakingState:
+        async with self.session.begin():
+            attempt, progress, prompts = await self._load(attempt_id)
+            if not self.free(attempt):
+                raise AppError(
+                    "SPEAKING_FREE_NOT_ALLOWED",
+                    "Explicit finish is available only in Free Part practice.",
+                    409,
+                )
+            now = TimerService.now()
+            if attempt.status == AttemptStatus.SUBMITTED:
+                return await self._state(attempt, progress, prompts, now)
+            self._mutable(attempt)
+            if progress.phase not in {"BROWSING", "QUESTION_ENTER"}:
+                raise AppError(
+                    "SPEAKING_RESPONSE_NOT_ACTIVE",
+                    "Save the active recording before finishing practice.",
+                    409,
+                )
+            if not any(
+                r.locked and r.prompt_id in {p.id for p in prompts}
+                for r in await self.repository.responses(attempt.id)
+            ):
+                raise AppError(
+                    "SPEAKING_COMMITTED_RESPONSE_REQUIRED",
+                    "Record at least one answer before finishing practice.",
+                    409,
+                )
+            AttemptService._finalize(
+                attempt, status=AttemptStatus.SUBMITTED, reason=FinishedReason.USER_SUBMIT, now=now
+            )
+            progress.phase = "COMPLETED"
+            return await self._state(attempt, progress, prompts, now)
 
     async def save_notes(
         self, attempt_id: UUID, prompt_id: UUID, scratch_notes: str
@@ -378,7 +522,7 @@ class SpeakingAttemptService:
                 )
             progress.scratch_notes = scratch_notes
             attempt.last_active_at = now
-            return self._state(attempt, progress, prompts, now)
+            return await self._state(attempt, progress, prompts, now)
 
     async def _seal_interrupted_segments(self, progress):
         from app.services.speaking_media import ordered_chunks, ordered_segments
@@ -411,7 +555,7 @@ class SpeakingAttemptService:
                 await self._synchronize(attempt, progress, prompts, now)
                 if progress.phase in {"RECORDING", "PREPARING", "STARTING"}:
                     await self._seal_interrupted_segments(progress)
-                return self._state(attempt, progress, prompts, now)
+                return await self._state(attempt, progress, prompts, now)
             if (
                 generation != progress.interruption_generation
                 or progress.phase not in {"PREPARING", "STARTING", "RECORDING"}
@@ -446,7 +590,7 @@ class SpeakingAttemptService:
                 progress.interruption_generation += 1
                 progress.interruption_count += 1
                 progress.recovery_state = "AWAITING_MICROPHONE"
-            result = self._state(attempt, progress, prompts, now)
+            result = await self._state(attempt, progress, prompts, now)
         if unavailable:
             raise AppError(
                 "SPEAKING_RECOVERY_NOT_AVAILABLE", "The recovery window has expired.", 409
@@ -483,7 +627,7 @@ class SpeakingAttemptService:
                     "SPEAKING_RECOVERY_NOT_AVAILABLE", "This response cannot be resumed.", 409
                 )
             await self._synchronize(attempt, progress, prompts, now)
-            result = self._state(attempt, progress, prompts, now)
+            result = await self._state(attempt, progress, prompts, now)
         if unavailable:
             raise AppError(
                 "SPEAKING_RECOVERY_NOT_AVAILABLE", "The recovery window has expired.", 409

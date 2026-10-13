@@ -7,7 +7,7 @@ const english: TranslationFunction = (key, params) => translate("en", key, param
 export function focusedUnitLabel(attempt: Pick<AttemptResponse, "scope" | "focused_unit">, t: TranslationFunction = english): string | null {
   if (attempt.scope !== "FOCUSED_UNIT" || !attempt.focused_unit) return null;
   const { kind, order_index, title } = attempt.focused_unit;
-  const label = t(kind === "SPEAKING_PROMPT" ? "speaking.promptNumber" : kind === "READING_PASSAGE" ? "common.passageNumber" : kind === "LISTENING_PART" ? "common.sectionNumber" : "common.taskNumber", { number: order_index + 1 });
+  const label = t(kind === "SPEAKING_PART" ? "speaking.part" : kind === "SPEAKING_PROMPT" ? "speaking.promptNumber" : kind === "READING_PASSAGE" ? "common.passageNumber" : kind === "LISTENING_PART" ? "common.sectionNumber" : "common.taskNumber", { number: order_index + 1 });
   return title ? `${label} · ${title}` : label;
 }
 

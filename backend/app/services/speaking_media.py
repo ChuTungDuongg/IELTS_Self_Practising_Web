@@ -26,6 +26,7 @@ from app.schemas.speaking import (
     SpeakingSegmentData,
 )
 from app.services.access_policy import AccessPolicy
+from app.services.attempt_scope import AttemptScopeGuard
 from app.services.grading_policy import GradingPolicy, assignment_origin, require_review_unlocked
 from app.services.speaking_attempts import SpeakingAttemptService
 from app.services.speaking_final import present_final_score
@@ -54,7 +55,7 @@ async def ordered_chunks(session, segment_id):
     )
 
 
-async def committed_fingerprint(session, take):
+async def committed_fingerprint(session, take, *, require_audio=False):
     manifest = []
     for segment in await ordered_segments(session, take.id):
         chunks = await ordered_chunks(session, segment.id)
@@ -65,6 +66,12 @@ async def committed_fingerprint(session, take):
                 "SPEAKING_UPLOAD_INCOMPLETE", "Wait for recording upload acknowledgement.", 409
             )
         manifest.append([segment.segment_index, segment.mime_type, [c.sha256 for c in chunks]])
+    if require_audio and not any(entry[2] for entry in manifest):
+        raise AppError(
+            "SPEAKING_UPLOAD_INCOMPLETE",
+            "Record replacement audio before replacing the saved answer.",
+            409,
+        )
     return hashlib.sha256(
         json.dumps([str(take.id), take.take_number, manifest], separators=(",", ":")).encode()
     ).hexdigest()
@@ -213,6 +220,7 @@ class SpeakingMediaService:
             async with self.session.begin():
                 attempt, progress, prompts = await self.runtime._load(aid)
                 segment, take, response = await self._segment(aid, segment_id)
+                await self.runtime._require_scoped_prompt(attempt, response.prompt_id)
                 digest = hashlib.sha256(content).hexdigest()
                 existing = await self.session.scalar(
                     select(SpeakingAudioChunk).where(
@@ -236,7 +244,13 @@ class SpeakingMediaService:
                     attempt, progress, prompts, TimerService.now(), confirm=True
                 )
                 if (
-                    response.locked
+                    (
+                        response.locked
+                        and not (
+                            self.runtime.free(attempt)
+                            and progress.take_number != response.active_take_number
+                        )
+                    )
                     or take.status != "ACTIVE"
                     or segment.chunk_count is not None
                     or progress.phase not in {"RECORDING", "FINALIZING"}
@@ -278,6 +292,7 @@ class SpeakingMediaService:
         async with self.session.begin():
             attempt, progress, _ = await self.runtime._load(aid)
             segment, take, response = await self._segment(aid, segment_id)
+            await self.runtime._require_scoped_prompt(attempt, response.prompt_id)
             if segment.chunk_count is not None:
                 if segment.chunk_count != chunk_count:
                     raise AppError(
@@ -298,6 +313,7 @@ class SpeakingMediaService:
         attempt = await self.session.get(Attempt, aid)
         if attempt is None or attempt.module_type != "SPEAKING":
             raise AppError("SPEAKING_MEDIA_NOT_FOUND", "Recording not found.", 404)
+        await self.runtime._require_scoped_prompt(attempt, response.prompt_id)
         finalized = attempt.status not in {"IN_PROGRESS", "PAUSED"}
         if attempt.test_session_id:
             parent = await self.session.get(TestSession, attempt.test_session_id)
@@ -306,6 +322,14 @@ class SpeakingMediaService:
             return
         if attempt.user_id == self.actor.id:
             if response.locked and finalized:
+                return
+            progress = await self.runtime.repository.progress(aid)
+            if (
+                self.runtime.free(attempt)
+                and response.locked
+                and progress
+                and progress.prompt_id == response.prompt_id
+            ):
                 return
             if not response.locked:
                 progress = await self.runtime.repository.progress(aid)
@@ -350,6 +374,16 @@ class SpeakingMediaService:
                     raise
                 playable = False  # Owner may restore metadata; exam audio stays unavailable.
             take = await self.runtime.repository.take(response.id, response.active_take_number)
+            progress = await self.runtime.repository.progress(aid)
+            attempt = await self.session.get(Attempt, aid)
+            if (
+                progress
+                and self.runtime.free(attempt)
+                and self.actor.id == attempt.user_id
+                and progress.response_id == response.id
+                and progress.take_number != response.active_take_number
+            ):
+                take = await self.runtime.repository.take(response.id, progress.take_number)
             segments = []
             for segment in await ordered_segments(self.session, take.id):
                 dto = SpeakingSegmentData.model_validate(segment)
@@ -369,7 +403,18 @@ class SpeakingMediaService:
         async with self.session.begin():
             segment, take, response = await self._segment(aid, segment_id)
             await self._read_access(aid, response)
-            if take.take_number != response.active_take_number or take.status == "SUPERSEDED":
+            progress = await self.runtime.repository.progress(aid)
+            attempt = await self.session.get(Attempt, aid)
+            pending = (
+                progress
+                and self.runtime.free(attempt)
+                and progress.response_id == response.id
+                and progress.take_number == take.take_number
+                and self.actor.id == attempt.user_id
+            )
+            if (
+                take.take_number != response.active_take_number and not pending
+            ) or take.status == "SUPERSEDED":
                 raise AppError("SPEAKING_MEDIA_FORBIDDEN", "Recording access is unavailable.", 403)
             return [
                 self.storage.resolve(c.storage_key)
@@ -414,7 +459,9 @@ class SpeakingMediaService:
             rows = list(
                 await self.session.scalars(
                     select(SpeakingResponse).where(
-                        SpeakingResponse.attempt_id == aid, SpeakingResponse.locked.is_(True)
+                        SpeakingResponse.attempt_id == aid,
+                        SpeakingResponse.locked.is_(True),
+                        SpeakingResponse.prompt_id.in_([p.id for p in prompts]),
                     )
                 )
             )
@@ -446,6 +493,9 @@ class SpeakingMediaService:
                 for p in prompts
             }
         parts = {}
+        if attempt.focused_speaking_part_id:
+            for prompt in prompts:
+                parts.setdefault(prompt.part.part_number, [])
         for response in rows:
             manifest = await self.manifest(aid, response.id)
             prompt = authored[response.prompt_id]
@@ -460,8 +510,18 @@ class SpeakingMediaService:
             can_generate_transcript=attempt.user_id == self.actor.id,
             parts=[
                 SpeakingReviewPart(
-                    part_number=n, responses=sorted(cards, key=lambda c: c.prompt.order_index)
+                    part_number=n,
+                    responses=sorted(cards, key=lambda c: c.prompt.order_index),
+                    unanswered_prompts=[
+                        authored[p.id]
+                        for p in prompts
+                        if p.part.part_number == n and p.id not in {r.prompt_id for r in rows}
+                    ]
+                    if attempt.focused_speaking_part_id
+                    else [],
                 )
                 for n, cards in sorted(parts.items())
             ],
+            focused_unit=AttemptScopeGuard(attempt).presentation(),
+            practice_flow=attempt.speaking_practice_flow,
         )

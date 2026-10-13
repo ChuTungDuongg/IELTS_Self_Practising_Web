@@ -46,6 +46,33 @@ const test: TestSummary = {
   versions: [version],
 };
 
+const speakingVersion: VersionDetail = { ...version, modules: [{ id: id(70), module_type: "SPEAKING", title: null, recommended_duration_seconds: 1200, passage_count: 0, listening_part_count: 0, writing_task_count: 0, question_count: 0, speaking_parts: ([1, 2, 3] as const).map(part => ({ id: id(70 + part), part_number: part, order_index: part - 1, title: part === 1 ? "Fictional introduction" : null, prompts: [{ id: id(80 + part), order_index: 0, prompt_type: part === 2 ? "LONG_TURN" : "SHORT_ANSWER", prompt_text: `Fictional part ${part} question`, cue_points: [] }] })) }] };
+
+it("discovers one whole Speaking Part per card and filters Part 1/2/3", () => {
+  render(<SkillPractice versions={[speakingVersion]} />);
+  fireEvent.click(screen.getByRole("button", { name: "Speaking" }));
+  const filters = screen.getByRole("group", { name: "Speaking filters" });
+  expect(within(filters).getByRole("button", { name: "All parts" })).toBeInTheDocument();
+  expect(screen.getAllByRole("article")).toHaveLength(3);
+  expect(screen.getByRole("heading", { name: "Fictional introduction" })).toBeInTheDocument();
+  expect(screen.getAllByText("1 question")).toHaveLength(3);
+  fireEvent.click(within(filters).getByRole("button", { name: "Part 2" }));
+  expect(screen.getAllByRole("article")).toHaveLength(1);
+  expect(screen.getByRole("heading", { name: "Part 2" })).toBeInTheDocument();
+});
+
+it.each([1, 2, 3] as const)("starts Speaking Part %s with COUNT_UP and appropriate Guided/Free control", async part => {
+  render(<SkillPractice versions={[speakingVersion]} />);
+  fireEvent.click(screen.getByRole("button", { name: "Speaking" }));
+  fireEvent.click(within(screen.getByRole("group", { name: "Speaking filters" })).getByRole("button", { name: `Part ${part}` }));
+  const card = screen.getByRole("article");
+  expect(within(card).queryByText("Practice timer")).toBeNull();
+  if (part === 2) { expect(within(card).queryByRole("combobox")).toBeNull(); expect(within(card).getByText("Guided practice")).toBeInTheDocument(); }
+  else { const select = within(card).getByRole("combobox", { name: "Practice style" }); fireEvent.change(select, { target: { value: "FREE" } }); }
+  await act(async () => fireEvent.click(within(card).getByRole("button", { name: "Start focused practice" })));
+  expect(startAttempt).toHaveBeenCalledWith({ test_version_id: version.id, module: "SPEAKING", scope: "FOCUSED_UNIT", focused_unit: { kind: "SPEAKING_PART", id: id(70 + part) }, speaking_mode: "PRACTICE", speaking_practice_flow: part === 2 ? "GUIDED" : "FREE", timer: { mode: "COUNT_UP" } });
+});
+
 describe("Skill practice", () => {
   it("requests public eligibility for personal skill practice", async () => {
     render(await PracticePage());
@@ -131,7 +158,7 @@ describe("Skill practice", () => {
     expect(within(filters).getByRole("button", { name: "Reading" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Reading" })).toBeInTheDocument();
-    expect(screen.getByText("Practise one Reading passage, Listening section, or Writing task at a time.")).toBeInTheDocument();
+    expect(screen.getByText("Practise a Reading passage, Listening section, Writing task, or Speaking Part.")).toBeInTheDocument();
   });
 
   it("shows accurate counts without inventing ranges for gaps, with Reading timers", async () => {
@@ -356,4 +383,18 @@ describe("Skill practice", () => {
     expect(screen.getByText("Published tests with Listening content will appear here.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Start focused practice" })).not.toBeInTheDocument();
   });
+});
+
+it('localizes Speaking Part filters and practice style without resetting selection', () => {
+  localStorage.clear();
+  renderWithLocale(<SkillPractice versions={[speakingVersion]} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Speaking' }));
+  fireEvent.click(within(screen.getByRole('group', { name: 'Speaking filters' })).getByRole('button', { name: 'Part 3' }));
+  const select = screen.getByRole('combobox', { name: 'Practice style' });
+  fireEvent.change(select, { target: { value: 'FREE' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Switch to Vietnamese' }));
+  expect(screen.getByRole('combobox', { name: 'Cách luyện tập' })).toBe(select);
+  expect(select).toHaveValue('FREE');
+  expect(screen.getByRole('heading', { name: 'Phần 3' })).toBeInTheDocument();
+  expect(startAttempt).not.toHaveBeenCalled();
 });

@@ -44,6 +44,8 @@ class AssignmentStart(BaseModel):
 
     @model_validator(mode="after")
     def valid_mode(self):
+        if self.focused_unit is not None and self.focused_unit.kind == "SPEAKING_PART":
+            raise ValueError("Whole-Part Speaking practice is available only in Skill Practice")
         if self.mode == "MODULE" and self.module is None:
             raise ValueError("A module is required")
         if self.mode == "FULL_MOCK" and (

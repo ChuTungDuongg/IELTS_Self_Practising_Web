@@ -378,18 +378,26 @@ class Attempt(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         CheckConstraint(
             "(scope = 'FULL_MODULE' AND focused_reading_passage_id IS NULL "
             "AND focused_listening_part_id IS NULL AND focused_writing_task_id IS NULL "
-            "AND focused_speaking_prompt_id IS NULL) OR "
+            "AND focused_speaking_prompt_id IS NULL AND focused_speaking_part_id IS NULL) OR "
             "(scope = 'FOCUSED_UNIT' AND ((module_type = 'READING' "
             "AND focused_reading_passage_id IS NOT NULL AND focused_listening_part_id IS NULL "
-            "AND focused_writing_task_id IS NULL AND focused_speaking_prompt_id IS NULL) OR (module_type = 'LISTENING' "
+            "AND focused_writing_task_id IS NULL AND focused_speaking_prompt_id IS NULL AND focused_speaking_part_id IS NULL) OR (module_type = 'LISTENING' "
             "AND focused_listening_part_id IS NOT NULL AND focused_reading_passage_id IS NULL "
-            "AND focused_writing_task_id IS NULL AND focused_speaking_prompt_id IS NULL) OR (module_type = 'WRITING' "
+            "AND focused_writing_task_id IS NULL AND focused_speaking_prompt_id IS NULL AND focused_speaking_part_id IS NULL) OR (module_type = 'WRITING' "
             "AND focused_writing_task_id IS NOT NULL AND focused_reading_passage_id IS NULL "
-            "AND focused_listening_part_id IS NULL AND focused_speaking_prompt_id IS NULL) OR "
-            "(module_type = 'SPEAKING' AND focused_speaking_prompt_id IS NOT NULL "
+            "AND focused_listening_part_id IS NULL AND focused_speaking_prompt_id IS NULL AND focused_speaking_part_id IS NULL) OR "
+            "(module_type = 'SPEAKING' AND ((focused_speaking_prompt_id IS NOT NULL AND focused_speaking_part_id IS NULL) OR (focused_speaking_prompt_id IS NULL AND focused_speaking_part_id IS NOT NULL)) "
             "AND focused_reading_passage_id IS NULL AND focused_listening_part_id IS NULL "
             "AND focused_writing_task_id IS NULL)))",
             name="scope_target",
+        ),
+        CheckConstraint(
+            "(focused_speaking_part_id IS NULL OR speaking_practice_flow IS NOT NULL) AND "
+            "(speaking_practice_flow IS NULL OR (speaking_practice_flow IN ('GUIDED', 'FREE') "
+            "AND focused_speaking_part_id IS NOT NULL AND scope = 'FOCUSED_UNIT' "
+            "AND module_type = 'SPEAKING' AND speaking_mode IS NOT NULL AND speaking_mode = 'PRACTICE' "
+            "AND timer_mode = 'COUNT_UP' AND classroom_assignment_id IS NULL))",
+            name="speaking_practice_flow",
         ),
         CheckConstraint(
             "test_session_id IS NULL OR scope = 'FULL_MODULE'", name="session_full_module"
@@ -434,6 +442,10 @@ class Attempt(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         ForeignKey("speaking_prompts.id", ondelete="RESTRICT")
     )
     speaking_mode: Mapped[str | None] = mapped_column(String(16))
+    focused_speaking_part_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("speaking_parts.id", ondelete="RESTRICT")
+    )
+    speaking_practice_flow: Mapped[str | None] = mapped_column(String(16))
     timer_mode: Mapped[TimerMode] = mapped_column(
         Enum(TimerMode, name="timer_mode"), nullable=False
     )
@@ -461,6 +473,7 @@ class Attempt(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     focused_listening_part: Mapped[ListeningPart | None] = relationship()
     focused_writing_task: Mapped[WritingTask | None] = relationship()
     focused_speaking_prompt: Mapped[SpeakingPrompt | None] = relationship()
+    focused_speaking_part: Mapped[SpeakingPart | None] = relationship()
     user: Mapped[User] = relationship(back_populates="attempts")
     test_session: Mapped[TestSession | None] = relationship(back_populates="attempts")
     answers: Mapped[list[AttemptAnswer]] = relationship(

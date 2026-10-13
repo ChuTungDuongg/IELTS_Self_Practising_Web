@@ -30,17 +30,20 @@ async def db_session() -> AsyncIterator[AsyncSession]:
             from alembic.operations import Operations
             from sqlalchemy import inspect
 
-            if inspect(conn).has_table("attempt_speaking_scores"):
-                return
-            path = (
-                Path(__file__).parents[1]
-                / "alembic/versions/20261013_0033_speaking_final_scores.py"
-            )
-            spec = spec_from_file_location("speaking_final_migration", path)
-            migration = module_from_spec(spec)
-            spec.loader.exec_module(migration)
-            with Operations.context(MigrationContext.configure(conn)):
-                migration.upgrade()
+            revisions = []
+            if not inspect(conn).has_table("attempt_speaking_scores"):
+                revisions.append("20261013_0033_speaking_final_scores.py")
+            if "focused_speaking_part_id" not in {
+                c["name"] for c in inspect(conn).get_columns("attempts")
+            }:
+                revisions.append("20261013_0034_speaking_part_practice.py")
+            for filename in revisions:
+                path = Path(__file__).parents[1] / "alembic/versions" / filename
+                spec = spec_from_file_location("speaking_test_migration", path)
+                migration = module_from_spec(spec)
+                spec.loader.exec_module(migration)
+                with Operations.context(MigrationContext.configure(conn)):
+                    migration.upgrade()
 
         await connection.run_sync(add_test_schema)
         session_factory = async_sessionmaker(

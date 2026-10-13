@@ -629,3 +629,14 @@ describe("AttemptHistoryList", () => {
     expect(screen.queryByRole("link", { name: "Review Writing" })).not.toBeInTheDocument();
   });
 });
+
+it("keeps Speaking Part/Free history in Focused practice without a full-skill band", () => {
+  const part: HistoryItem = { ...submitted, module: "SPEAKING", scope: "FOCUSED_UNIT", focused_unit: { kind: "SPEAKING_PART", id: submitted.attempt_id, order_index: 2, label: "Part 3", title: null }, speaking_practice_flow: "FREE", band_score: null, raw_score: null, max_score: null };
+  render(<AttemptHistoryList initialHistory={history([part], [])} />);
+  expect(screen.queryByText(part.test_title)).toBeNull();
+  fireEvent.click(screen.getByRole("tab", { name: "Focused practice" }));
+  expect(screen.getByText("Speaking Part 3")).toBeInTheDocument();
+  expect(screen.getByText("Free question practice")).toBeInTheDocument();
+  expect(screen.getByText(part.test_title)).toBeInTheDocument();
+  expect(screen.queryByText("Band 8.0")).toBeNull();
+});

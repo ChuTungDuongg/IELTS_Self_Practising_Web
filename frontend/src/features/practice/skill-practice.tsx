@@ -12,7 +12,7 @@ import type { VersionDetail } from "@/lib/api/schema";
 import { StartFocusedPractice } from "./start-focused-practice";
 
 type Skill = keyof typeof moduleTranslationKeys;
-const skillOrder: Skill[] = ["READING", "LISTENING", "WRITING"];
+const skillOrder: Skill[] = ["READING", "LISTENING", "WRITING", "SPEAKING"];
 type Selection = { skill: Skill; unitIndex: number | null };
 type PracticeUnit = {
   versionId: string;
@@ -30,6 +30,7 @@ type PracticeUnit = {
   promptFallback?: boolean;
   taskType?: keyof typeof writingTaskTranslationKeys | null;
   words?: number | null;
+  questionCount?: number;
   audio?: { kind: "none" | "full" | "clip"; start?: number; end?: number };
 };
 type GroupSummary = { start_number: number; end_number: number; question_count: number };
@@ -69,6 +70,12 @@ function practiceUnits(versions: VersionDetail[]): PracticeUnit[] {
         };
       });
     }
+    if (module.module_type === "SPEAKING") {
+      return [...(module.speaking_parts ?? [])].sort((a, b) => a.part_number - b.part_number).filter(part => part.prompts.length > 0).map(part => ({
+        ...provenance, target: { module: "SPEAKING", unitId: part.id, partNumber: part.part_number }, unitIndex: part.part_number,
+        title: part.title ?? `Part ${part.part_number}`, generatedTitle: part.title === null, questionCount: part.prompts.length, summary: String(part.prompts.length),
+      }));
+    }
     return [...(module.writing_tasks ?? [])].sort((a, b) => a.task_number - b.task_number).map((task) => ({
       ...provenance, target: { module: "WRITING", unitId: task.id, taskNumber: task.task_number }, unitIndex: task.task_number,
       title: `Task ${task.task_number}`, generatedTitle: true, typeLabel: writingTaskTypeLabel(task.task_type), taskType: task.task_type, promptFallback: task.prompt_excerpt === null, words: task.minimum_recommended_words,
@@ -92,8 +99,8 @@ function PracticeFilterPanel({ units, selection, onSelect }: {
       return <div key={skill} data-skill={skill} className={`practice-filter-group${active ? " is-active" : ""}`} role="group" aria-label={t("practice.skillFilters", { skill: t(moduleTranslationKeys[skill]) })}>
         <button type="button" className="practice-filter-skill" aria-pressed={active} onClick={() => onSelect({ skill, unitIndex: null })}>{t(moduleTranslationKeys[skill])}</button>
         <div className="practice-unit-filters">
-          <button type="button" className="practice-unit-filter" aria-current={active && selection.unitIndex === null ? "true" : undefined} onClick={() => onSelect({ skill, unitIndex: null })}>{t(skill === "READING" ? "practice.allPassages" : skill === "LISTENING" ? "practice.allSections" : "practice.allTasks")}</button>
-          {indexes.map((unitIndex) => <button key={unitIndex} type="button" className="practice-unit-filter" aria-current={active && selection.unitIndex === unitIndex ? "true" : undefined} onClick={() => onSelect({ skill, unitIndex })}>{t(skill === "READING" ? "common.passageNumber" : skill === "LISTENING" ? "common.sectionNumber" : "common.taskNumber", { number: unitIndex })}</button>)}
+          <button type="button" className="practice-unit-filter" aria-current={active && selection.unitIndex === null ? "true" : undefined} onClick={() => onSelect({ skill, unitIndex: null })}>{t(skill === "SPEAKING" ? "speakingPractice.allParts" : skill === "READING" ? "practice.allPassages" : skill === "LISTENING" ? "practice.allSections" : "practice.allTasks")}</button>
+          {indexes.map((unitIndex) => <button key={unitIndex} type="button" className="practice-unit-filter" aria-current={active && selection.unitIndex === unitIndex ? "true" : undefined} onClick={() => onSelect({ skill, unitIndex })}>{t(skill === "SPEAKING" ? "speakingPractice.part" : skill === "READING" ? "common.passageNumber" : skill === "LISTENING" ? "common.sectionNumber" : "common.taskNumber", { number: unitIndex })}</button>)}
         </div>
       </div>;
     })}
@@ -103,7 +110,7 @@ function PracticeFilterPanel({ units, selection, onSelect }: {
 function PracticeResultsHeader({ skill, search, onSearch }: { skill: Skill; search: string; onSearch: (value: string) => void }) {
   const { t } = useTranslation();
   return <header className="practice-results-header">
-    <div><h2 id="practice-results-heading">{t(moduleTranslationKeys[skill])}</h2><p>{t(skill === "READING" ? "practice.readingSubtitle" : skill === "LISTENING" ? "practice.listeningSubtitle" : "practice.writingSubtitle")}</p></div>
+    <div><h2 id="practice-results-heading">{t(moduleTranslationKeys[skill])}</h2><p>{t(skill === "SPEAKING" ? "speakingPractice.subtitle" : skill === "READING" ? "practice.readingSubtitle" : skill === "LISTENING" ? "practice.listeningSubtitle" : "practice.writingSubtitle")}</p></div>
     <input className="practice-search" type="search" aria-label={t("practice.search")} placeholder={t("practice.search")} value={search} onChange={(event) => onSearch(event.target.value)} />
   </header>;
 }
@@ -111,8 +118,8 @@ function PracticeResultsHeader({ skill, search, onSearch }: { skill: Skill; sear
 function PracticeUnitCard({ unit, hidden }: { unit: PracticeUnit; hidden: boolean }) {
   const skill = unit.target.module;
   const { t } = useTranslation();
-  const unitLabel = t(skill === "READING" ? "common.passageNumber" : skill === "LISTENING" ? "common.sectionNumber" : "common.taskNumber", { number: unit.unitIndex });
-  return <article hidden={hidden} className={`practice-card practice-unit-card${skill === "LISTENING" ? " practice-card-listening" : skill === "WRITING" ? " practice-card-writing" : ""}`}>
+  const unitLabel = t(skill === "SPEAKING" ? "speakingPractice.part" : skill === "READING" ? "common.passageNumber" : skill === "LISTENING" ? "common.sectionNumber" : "common.taskNumber", { number: unit.unitIndex });
+  return <article hidden={hidden} className={`practice-card practice-unit-card${skill === "SPEAKING" ? " practice-card-speaking" : skill === "LISTENING" ? " practice-card-listening" : skill === "WRITING" ? " practice-card-writing" : ""}`}>
     <div className="practice-card-content">
       <ModuleBadge module={skill} label={t(moduleTranslationKeys[skill])} />
       <div className="practice-card-title">
@@ -122,7 +129,7 @@ function PracticeUnitCard({ unit, hidden }: { unit: PracticeUnit; hidden: boolea
       {unit.typeLabel ? <p className="practice-unit-type">{unit.taskType ? t(writingTaskTranslationKeys[unit.taskType]) : t("common.unclassified")}</p> : null}
       <p className="practice-unit-provenance">{unit.testTitle} · {t("common.versionNumber", { number: unit.versionNumber })}</p>
       {unit.description ? <p className="practice-unit-description">{unit.promptFallback ? t("practice.promptFallback") : unit.description}</p> : null}
-      {unit.summary ? <p className="practice-unit-summary">{unit.groups ? questionSummary(unit.groups, t) : t("practice.recommendedWords", { count: unit.words ?? 0 })}</p> : null}
+      {unit.summary ? <p className="practice-unit-summary">{unit.questionCount !== undefined ? t(unit.questionCount === 1 ? "common.questionCount" : "common.questionsCount", { count: unit.questionCount }) : unit.groups ? questionSummary(unit.groups, t) : t("practice.recommendedWords", { count: unit.words ?? 0 })}</p> : null}
       {unit.audioStatus ? <p className="practice-unit-audio">{unit.audio?.kind === "none" ? t("practice.noRecording") : unit.audio?.kind === "full" ? t("practice.fullRecording") : t("practice.audioRange", { start: formatAudioTime(unit.audio?.start ?? 0), end: formatAudioTime(unit.audio?.end ?? 0), duration: formatAudioTime((unit.audio?.end ?? 0) - (unit.audio?.start ?? 0)) })}</p> : null}
       <StartFocusedPractice versionId={unit.versionId} target={unit.target} />
     </div>
@@ -147,7 +154,7 @@ export function SkillPractice({ versions }: { versions: VersionDetail[] }) {
       <div className="practice-grid" hidden={!matches.length}>
         {units.map((unit) => <PracticeUnitCard key={`${unit.versionId}-${unit.target.unitId}`} unit={unit} hidden={!matches.includes(unit)} />)}
       </div>
-      {!matches.length ? <EmptyState title={skillUnits.length ? t("practice.noMatch") : t(selection.skill === "READING" ? "practice.noReading" : selection.skill === "LISTENING" ? "practice.noListening" : "practice.noWriting")} description={skillUnits.length ? t("practice.tryFilters") : t("practice.publishedContent", { skill: t(moduleTranslationKeys[selection.skill]) })} /> : null}
+      {!matches.length ? <EmptyState title={skillUnits.length ? t("practice.noMatch") : t(selection.skill === "SPEAKING" ? "speakingPractice.noSpeaking" : selection.skill === "READING" ? "practice.noReading" : selection.skill === "LISTENING" ? "practice.noListening" : "practice.noWriting")} description={skillUnits.length ? t("practice.tryFilters") : t("practice.publishedContent", { skill: t(moduleTranslationKeys[selection.skill]) })} /> : null}
     </section>
   </div>;
 }

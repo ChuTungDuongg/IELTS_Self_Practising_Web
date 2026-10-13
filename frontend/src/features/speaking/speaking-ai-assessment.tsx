@@ -6,10 +6,10 @@ import { activeSpeakingAI, cancelSpeakingAIRun, createSpeakingAIRun, getSpeaking
 import { SpeakingAIProgress } from "./speaking-ai-progress";
 
 const criteria: SpeakingAICriterion[] = ["fc", "lr", "gra", "pr"];
-export function SpeakingAIAssessment({ attemptId, canGrade = true, onTranscriptAvailable, onCopy, canCopy = false, initialRun }: { attemptId: string; canGrade?: boolean; onTranscriptAvailable?: () => void; canCopy?: boolean; onCopy?: (run: SpeakingAIRun) => void; initialRun?: SpeakingAIRun | null }) {
-  return <AssessmentSession key={`${attemptId}:${canGrade}`} attemptId={attemptId} canGrade={canGrade} onTranscriptAvailable={onTranscriptAvailable} canCopy={canCopy} onCopy={onCopy} initialRun={initialRun} />;
+export function SpeakingAIAssessment({ attemptId, canGrade = true, onTranscriptAvailable, onCopy, canCopy = false, initialRun, partNumber }: { attemptId: string; canGrade?: boolean; onTranscriptAvailable?: () => void; canCopy?: boolean; onCopy?: (run: SpeakingAIRun) => void; initialRun?: SpeakingAIRun | null; partNumber?: number }) {
+  return <AssessmentSession key={`${attemptId}:${canGrade}`} attemptId={attemptId} canGrade={canGrade} onTranscriptAvailable={onTranscriptAvailable} canCopy={canCopy} onCopy={onCopy} initialRun={initialRun} partNumber={partNumber} />;
 }
-function AssessmentSession({ attemptId, canGrade, onTranscriptAvailable, onCopy, canCopy, initialRun }: { attemptId: string; canGrade: boolean; onTranscriptAvailable?: () => void; canCopy: boolean; onCopy?: (run: SpeakingAIRun) => void; initialRun?: SpeakingAIRun | null }) {
+function AssessmentSession({ attemptId, canGrade, onTranscriptAvailable, onCopy, canCopy, initialRun, partNumber }: { attemptId: string; canGrade: boolean; onTranscriptAvailable?: () => void; canCopy: boolean; onCopy?: (run: SpeakingAIRun) => void; initialRun?: SpeakingAIRun | null; partNumber?: number }) {
   const { t } = useTranslation(); const [run, setRun] = useState<SpeakingAIRun | null>(initialRun ?? null);
   const [loading, setLoading] = useState(true); const [busy, setBusy] = useState(false); const [error, setError] = useState<"generic" | "notConfigured" | null>(null); const [reducedMotion, setReducedMotion] = useState(false);
   const alive = useRef(true); const pending = useRef(false); const current = useRef<SpeakingAIRun | null>(null);
@@ -61,7 +61,7 @@ function AssessmentSession({ attemptId, canGrade, onTranscriptAvailable, onCopy,
     catch { if (alive.current) setError("generic"); } finally { pending.current = false; if (alive.current) setBusy(false); }
   }
   return <section className="speaking-card speaking-ai-assessment" aria-label={t("speakingAI.title")} data-reduced-motion={reducedMotion}>
-    <div className="speaking-controls"><h2>{t("speakingAI.title")}</h2>{canGrade ? <div className="speaking-ai-actions">
+    <div className="speaking-controls"><h2>{t("speakingAI.title")}{partNumber ? ` · ${t("speakingPractice.partAssessment", { number: partNumber })}` : ""}</h2>{canGrade ? <div className="speaking-ai-actions">
       <button className="btn btn-primary" disabled={loading || busy || active} onClick={() => void grade()}>{t("speakingAI.grade")}</button>
       {active ? <button className="btn btn-secondary" disabled={busy} onClick={() => void stop()}>{t("speakingAI.stop")}</button> : null}
     </div> : null}</div>

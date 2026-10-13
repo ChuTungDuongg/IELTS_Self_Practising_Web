@@ -51,14 +51,25 @@ class FocusedSpeakingPrompt(BaseModel):
     id: UUID
 
 
+class FocusedSpeakingPart(BaseModel):
+    kind: Literal["SPEAKING_PART"]
+    id: UUID
+
+
 FocusedUnit = Annotated[
-    FocusedReadingPassage | FocusedListeningPart | FocusedWritingTask | FocusedSpeakingPrompt,
+    FocusedReadingPassage
+    | FocusedListeningPart
+    | FocusedWritingTask
+    | FocusedSpeakingPrompt
+    | FocusedSpeakingPart,
     Field(discriminator="kind"),
 ]
 
 
 class FocusedUnitResponse(BaseModel):
-    kind: Literal["READING_PASSAGE", "LISTENING_PART", "WRITING_TASK", "SPEAKING_PROMPT"]
+    kind: Literal[
+        "READING_PASSAGE", "LISTENING_PART", "WRITING_TASK", "SPEAKING_PROMPT", "SPEAKING_PART"
+    ]
     id: UUID
     order_index: int
     label: str
@@ -72,12 +83,22 @@ class AttemptCreate(BaseModel):
         ModuleType.READING, ModuleType.LISTENING, ModuleType.WRITING, ModuleType.SPEAKING
     ]
     speaking_mode: Literal["PRACTICE", "EXAM"] | None = None
+    speaking_practice_flow: Literal["GUIDED", "FREE"] | None = None
     scope: AttemptScope = AttemptScope.FULL_MODULE
     focused_unit: FocusedUnit | None = None
     timer: TimerRequest
 
     @model_validator(mode="after")
     def speaking_runtime_mode(self):
+        part = (
+            self.scope == AttemptScope.FOCUSED_UNIT
+            and self.focused_unit is not None
+            and self.focused_unit.kind == "SPEAKING_PART"
+        )
+        if self.speaking_practice_flow is not None and not part:
+            raise ValueError("Speaking practice flow requires a focused Speaking Part")
+        if part:
+            self.speaking_practice_flow = self.speaking_practice_flow or "GUIDED"
         if self.module != ModuleType.SPEAKING and self.speaking_mode is not None:
             raise ValueError("Speaking mode is only available for Speaking attempts")
         if self.module == ModuleType.SPEAKING:
@@ -166,6 +187,7 @@ class AttemptResponse(BaseModel):
     attempt_context: AttemptContext = AttemptContext.STANDALONE
     scope: AttemptScope = AttemptScope.FULL_MODULE
     focused_unit: FocusedUnitResponse | None = None
+    speaking_practice_flow: Literal["GUIDED", "FREE"] | None = None
     module: ModuleType
     status: AttemptStatus
     finished_reason: FinishedReason | None
@@ -231,6 +253,7 @@ class HistoryItem(BaseModel):
     test_session_id: UUID | None = None
     scope: AttemptScope = AttemptScope.FULL_MODULE
     focused_unit: FocusedUnitResponse | None = None
+    speaking_practice_flow: Literal["GUIDED", "FREE"] | None = None
     test_title: str
     version_number: int
     module: ModuleType

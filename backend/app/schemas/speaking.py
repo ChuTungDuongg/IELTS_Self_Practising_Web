@@ -7,6 +7,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.models.enums import SpeakingPromptType
+from app.schemas.attempts import FocusedUnitResponse
 from app.schemas.grading import GradingCapabilities, SpeakingFinalScore
 
 
@@ -142,6 +143,7 @@ class SpeakingState(BaseModel):
         "COMPLETED",
         "INTERRUPTED",
         "RECOVERY_GRACE",
+        "BROWSING",
     ]
     current_prompt: CurrentSpeakingPrompt | None
     response_id: UUID | None
@@ -162,6 +164,17 @@ class SpeakingState(BaseModel):
     recovery_grace_seconds: int = 7
     recovery_allowed: bool = False
     next_segment_index: int = 0
+    practice_flow: Literal["GUIDED", "FREE"] | None = None
+    focused_part_number: Literal[1, 2, 3] | None = None
+    navigation: list["SpeakingNavigationPrompt"] = Field(default_factory=list, max_length=100)
+    can_finish_practice: bool = False
+
+
+class SpeakingNavigationPrompt(BaseModel):
+    id: UUID
+    order_index: int
+    status: Literal["UNANSWERED", "COMMITTED"]
+    current: bool
 
 
 class SpeakingBegin(BaseModel):
@@ -229,6 +242,7 @@ class SpeakingReviewedResponse(SpeakingManifest):
 class SpeakingReviewPart(BaseModel):
     part_number: int
     responses: list[SpeakingReviewedResponse]
+    unanswered_prompts: list[CurrentSpeakingPrompt] = Field(default_factory=list)
 
 
 class SpeakingReviewData(BaseModel):
@@ -238,3 +252,5 @@ class SpeakingReviewData(BaseModel):
     test_title: str
     can_generate_transcript: bool = True
     parts: list[SpeakingReviewPart]
+    focused_unit: "FocusedUnitResponse | None" = None
+    practice_flow: Literal["GUIDED", "FREE"] | None = None

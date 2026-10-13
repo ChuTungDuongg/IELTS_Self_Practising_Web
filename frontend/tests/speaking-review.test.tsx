@@ -92,3 +92,14 @@ it.each(["FAILED", "CANCELLED", "RUNNING"] as const)("does not copy %s Speaking 
   render(<SpeakingReview data={{ ...data, grading: { context: "PERSONAL", can_edit_final: true, can_copy_ai_to_final: true, waiting_for_teacher: false } }} />);
   await act(async () => undefined); expect(screen.queryByRole("button", { name: "Copy AI scores to form" })).toBeNull(); expect(api.saveSpeakingFinalScore).not.toHaveBeenCalled();
 });
+
+it("shows Part and Free review context with unanswered prompts and no fabricated media", async () => {
+  const basePrompt = data.parts[0].responses[0].prompt;
+  render(<SpeakingReview data={{ ...data, focused_unit: { kind: "SPEAKING_PART", id: "part", order_index: 0, label: "Part 1", title: null }, practice_flow: "FREE", parts: [{ ...data.parts[0], responses: [{ ...data.parts[0].responses[0], prompt: { ...basePrompt, order_index: 1 } }], unanswered_prompts: [{ ...basePrompt, id: "unanswered-1", order_index: 0, prompt_text: "Fictional unanswered one" }, { ...basePrompt, id: "unanswered-3", order_index: 2, prompt_text: "Fictional unanswered three" }] }] }} />);
+  expect(screen.getByText("Speaking Part 1 · Free question practice")).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "Speaking AI assessment · Part 1 practice" })).toBeInTheDocument();
+  expect(screen.getAllByText("Not answered")).toHaveLength(2);
+  expect(screen.getAllByRole("button", { name: "Load recording" })).toHaveLength(1);
+  expect(screen.getByText("Fictional unanswered one").closest("article")?.querySelector("audio")).toBeNull();
+  await act(async () => undefined);
+});

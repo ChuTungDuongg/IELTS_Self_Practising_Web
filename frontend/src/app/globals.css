@@ -552,6 +552,11 @@ input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--mute
 .practice-filter-group + .practice-filter-group { border-top: 1px solid var(--line); }
 .practice-filter-group[data-skill="LISTENING"] { --practice-accent: var(--listening); }
 .practice-filter-group[data-skill="WRITING"] { --practice-accent: var(--writing); }
+.practice-filter-group[data-skill="SPEAKING"] { --practice-accent: var(--accent); }
+.speaking-prompt-picker { min-width: 0; }
+.speaking-picker-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.speaking-picker-buttons button[aria-current="step"] { outline: 2px solid var(--accent); outline-offset: 2px; }
+.speaking-practice-context { padding: 12px 20px; color: var(--muted); }
 .practice-filter-skill, .practice-unit-filter { display: flex; width: 100%; min-height: 36px; align-items: center; gap: 8px; border-radius: 7px; padding: 7px 9px; text-align: left; }
 .practice-filter-skill { border-inline-start: 3px solid transparent; color: var(--ink); font-size: 14px; font-weight: 750; }
 .practice-filter-skill[aria-pressed="true"] { border-inline-start-color: var(--practice-accent); color: var(--practice-accent); background: color-mix(in srgb, var(--practice-accent) 8%, var(--surface)); }

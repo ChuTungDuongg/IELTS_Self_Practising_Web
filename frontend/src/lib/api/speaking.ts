@@ -1,4 +1,5 @@
 import { gradingSchema } from "./grading";
+import { focusedUnitSchema } from "./attempts";
 import { z } from "zod";
 import { apiRequest, apiResponse, type ApiRequester } from "./client";
 
@@ -10,17 +11,22 @@ export const speakingPromptSchema = z.object({
 });
 export const speakingStateSchema = z.object({
   attempt_id: z.string().uuid(), mode: z.enum(["PRACTICE", "EXAM"]),
-  phase: z.enum(["QUESTION_ENTER", "PREPARING", "STARTING", "RECORDING", "FINALIZING", "COMPLETED", "INTERRUPTED", "RECOVERY_GRACE"]),
+  phase: z.enum(["QUESTION_ENTER", "PREPARING", "STARTING", "RECORDING", "FINALIZING", "COMPLETED", "INTERRUPTED", "RECOVERY_GRACE", "BROWSING"]),
   current_prompt: speakingPromptSchema.nullable(), response_id: z.string().uuid().nullable(), take_number: z.number().int().nullable(),
   phase_started_at: z.string().nullable(), phase_deadline_at: z.string().nullable(), remaining_ms: z.number().nonnegative(), server_time: z.string(),
   can_retry: z.boolean(), can_replay: z.boolean(), scratch_notes: z.string(), interruption_generation: z.number().int(), interruption_count: z.number().int(),
   recovery_state: z.string().nullable(), recovery_grace_used: z.boolean(), last_resumed_at: z.string().nullable(),
   recovery_grace_deadline_at: z.string().nullable().default(null), recovery_grace_seconds: z.literal(7).default(7), recovery_allowed: z.boolean().default(false), next_segment_index: z.number().int().default(0),
+  practice_flow: z.enum(["GUIDED", "FREE"]).nullable().optional(), focused_part_number: z.union([z.literal(1), z.literal(2), z.literal(3)]).nullable().optional(),
+  navigation: z.array(z.object({ id: z.string().uuid(), order_index: z.number().int().nonnegative(), status: z.enum(["UNANSWERED", "COMMITTED"]), current: z.boolean() })).max(100).optional(),
+  can_finish_practice: z.boolean().optional(),
 });
 export type SpeakingState = z.infer<typeof speakingStateSchema>;
 export async function getSpeakingState(id: string, request: ApiRequester = apiRequest) { return speakingStateSchema.parse(await request(`/speaking-attempts/${id}/state`)); }
 async function mutate(id: string, action: string, body: unknown, method = "POST") { return speakingStateSchema.parse(await apiRequest(`/speaking-attempts/${id}/${action}`, { method, body: JSON.stringify(body) })); }
 export const beginSpeaking = (id: string, prompt_id: string) => mutate(id, "begin", { prompt_id });
+export const selectSpeakingPrompt = (id: string, prompt_id: string) => mutate(id, "select-prompt", { prompt_id });
+export const finishSpeakingPractice = (id: string) => mutate(id, "finish-practice", {});
 export const heartbeatSpeaking = (id: string, prompt_id: string, take_number: number) => mutate(id, "heartbeat", { prompt_id, take_number });
 export const finishSpeaking = (id: string, prompt_id: string, take_number: number, completion_reason: "USER_DONE" | "TIMEOUT") => mutate(id, "finish", { prompt_id, take_number, completion_reason });
 export const retrySpeaking = (id: string, prompt_id: string, take_number: number) => mutate(id, "retry", { prompt_id, take_number });
@@ -44,7 +50,7 @@ export const speakingFinalScoreSchema = z.object({
   gra_feedback: z.string().nullable().optional(), pr_feedback: z.string().nullable().optional(),
 });
 export type SpeakingCriteriaInput = Omit<z.infer<typeof speakingFinalScoreSchema>, "overall_band">;
-export const speakingReviewSchema = z.object({ grading: gradingSchema.optional(), final_score: speakingFinalScoreSchema.nullable().optional(), attempt_id: z.string().uuid(), test_title: z.string(), can_generate_transcript: z.boolean().default(true), parts: z.array(z.object({ part_number: z.number().int(), responses: z.array(manifestSchema.extend({ prompt: speakingPromptSchema })) })) });
+export const speakingReviewSchema = z.object({ grading: gradingSchema.optional(), final_score: speakingFinalScoreSchema.nullable().optional(), focused_unit: focusedUnitSchema.nullable().optional(), practice_flow: z.enum(["GUIDED", "FREE"]).nullable().optional(), attempt_id: z.string().uuid(), test_title: z.string(), can_generate_transcript: z.boolean().default(true), parts: z.array(z.object({ part_number: z.number().int(), responses: z.array(manifestSchema.extend({ prompt: speakingPromptSchema })), unanswered_prompts: z.array(speakingPromptSchema).optional() })) });
 export type SpeakingReviewData = z.infer<typeof speakingReviewSchema>;
 export async function getSpeakingReview(id: string, request: ApiRequester = apiRequest) { return speakingReviewSchema.parse(await request(`/speaking-attempts/${id}/review`)); }
 

@@ -218,6 +218,23 @@ Any future transformation must be explicit, versioned, separately reviewed and
 validated on held-out data. P8 contains no hidden calibration or score manipulation.
 
 
+## Part-focused Skill Practice
+
+`/practice` offers whole published Speaking Parts. Part 1 and Part 3 support
+Guided or Free question practice; Part 2 stays Guided. Starts use `SPEAKING_PART`,
+`PRACTICE`, and a count-up attempt clock. Authored prompt deadlines still control
+preparation and recording. Legacy `SPEAKING_PROMPT` attempts keep their scope.
+
+Free selection is persisted through `POST /speaking-attempts/{id}/select-prompt`;
+it does not start capture. Switching during recording requires stop, upload
+closure, durable response acknowledgement, then selection. A committed take
+remains the fallback until a replacement is committed. Explicit
+`POST /speaking-attempts/{id}/finish-practice` requires at least one saved answer
+and permits unanswered questions. Review shows those questions without audio or
+transcripts. Part scores remain focused practice records, excluded from full
+Speaking bands, Full Mock overall, and full-module Analytics. Whole-Part
+classroom starts are rejected. Migration `20261013_0034` adds this scope and flow.
+
 ## Human final Speaking grading
 
 Personal owners may manually enter FC/LR/GRA/PR or copy a completed current AI result into the form, edit and explicitly Save. AI itself never writes a final score. Classroom students receive read-only teacher final results or “Waiting for teacher grading” (VI: “Đang chờ giáo viên chấm”). The owning classroom teacher may save/revise human criteria through exact assignment provenance; ADMIN retains grading authority. Teacher grading never grants transcript regeneration or raw media mutation.

@@ -122,6 +122,14 @@ class AttemptService:
         self, data: AttemptCreate, *, _classroom_assignment_id: uuid.UUID | None = None
     ) -> AttemptResponse:
         validate_start_scope(data)
+        if (
+            _classroom_assignment_id is not None
+            and data.focused_unit is not None
+            and data.focused_unit.kind == "SPEAKING_PART"
+        ):
+            raise AppError(
+                "FOCUSED_UNIT_INVALID", "Whole-Part practice is unavailable for assignments.", 422
+            )
         now = TimerService.now()
         async with self.session.begin():
             if _classroom_assignment_id is not None:
@@ -173,6 +181,7 @@ class AttemptService:
                 test_version_id=data.test_version_id,
                 module_type=data.module,
                 speaking_mode=data.speaking_mode,
+                speaking_practice_flow=data.speaking_practice_flow,
                 scope=data.scope,
                 **await resolve_focused_target(self.session, data, module.id),
                 timer_mode=data.timer.mode,
@@ -896,6 +905,7 @@ class AttemptService:
                     test_session_id=item.test_session_id,
                     scope=item.scope,
                     focused_unit=AttemptScopeGuard(item).presentation(),
+                    speaking_practice_flow=item.speaking_practice_flow,
                     test_title=item.test_version.test.title,
                     version_number=item.test_version.version_number,
                     module=item.module_type,
@@ -1789,6 +1799,7 @@ class AttemptService:
             test_session_id=attempt.test_session_id,
             scope=attempt.scope,
             focused_unit=AttemptScopeGuard(attempt).presentation(),
+            speaking_practice_flow=attempt.speaking_practice_flow,
             attempt_context=(
                 AttemptContext.FULL_MOCK
                 if attempt.test_session_id is not None
