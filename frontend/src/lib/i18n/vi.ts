@@ -1,6 +1,19 @@
 import type { TranslationDictionary } from "./types";
 
 export const vi = {
+  "benchmark.guidance": "Chỉ mang tính hướng dẫn. Phân bố chỉ tính mẫu hoàn chỉnh; mọi mức điểm hợp lệ đều được lưu và xuất.",
+  "benchmark.distributionTask": "Phân bố Task {number}",
+  "benchmark.counts": "{complete} hoàn chỉnh · {draft} bản nháp · {total}/100 vị trí",
+  "benchmark.splitGuidance": "{split}: {actual} / gợi ý {target}",
+  "benchmark.bandDistribution": "Phân bố điểm tổng",
+  "benchmark.band": "Điểm",
+  "benchmark.actual": "Mẫu hoàn chỉnh",
+  "benchmark.suggested": "Gợi ý",
+  "benchmark.export": "Xuất gói mẫu chuẩn",
+  "benchmark.download": "Tải gói xuống",
+  "benchmark.exportCounts": "Task {number}: {complete} hoàn chỉnh, {draft} bản nháp · DEV {dev} · HOLDOUT {holdout}.",
+  "benchmark.draftsExcluded": "Bản nháp không được xuất. Có thể xuất gói trống hoặc chưa đủ mẫu.",
+  "benchmark.exportFailed": "Không xuất được gói. Nội dung đang nhập vẫn được giữ lại; xử lý lỗi lưu trước khi thử lại.",
   "benchmark.title": "Ngân hàng mẫu chuẩn Writing",
   "benchmark.description": "Biên soạn một ngân hàng Writing do con người gán điểm để đánh giá ngoại tuyến.",
   "benchmark.samples": "Mẫu bài viết",
