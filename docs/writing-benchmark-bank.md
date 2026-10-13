@@ -147,3 +147,30 @@ invalidate it. Failed/corrupt/inconsistent records are not success hits. Earlier
 failed attempts/costs survive retry-to-success. Interrupted in-flight costs are
 unknown, never fabricated. Predictions/reports stay in CLI/Colab output and never
 automatically change production scoring. Accuracy must be established separately.
+
+## Implementation validation — 2026-10-13
+
+Implementation began on clean main `1ad0465a2b96d19fd41df3a117927f9d5cfa2989`.
+Its exact-SHA CI run `38396464810` and Golden Path E2E run `38396464698` were green;
+no baseline repair was needed. Fourteen sequential TDD tasks were committed.
+
+The final focused backend set passed **224 tests**, with **one skip** because this
+Windows host cannot create symlinks; Linux CI exercises that real-filesystem guard.
+The focused frontend set passed **58 tests**, including affected Builder/Admin
+regressions. Frontend typecheck, targeted Ruff lint/format, targeted ESLint and
+`git diff --check` passed. Only `.gitkeep` is tracked in private input/storage and
+generated-report directories; no private benchmark data was added.
+
+A fresh isolated PostgreSQL database, `bandpilot_benchmark_20261013_2138`, upgraded
+from empty through `alembic upgrade head`. The single head is `20261013_0035`.
+Actual migration round trips and capacity races used independent PostgreSQL
+connections and temporary schemas, not ORM-only schema construction.
+
+The integrated API → ZIP → both current loaders → both fake-provider CLI test
+completed without changing learner Attempt/final-grade/AI-run rows. It exposed
+and covered repeated export cancellation: snapshot locks now remain held until
+the staging thread finishes, and canceled ZIPs are removed afterward.
+
+No browser, local E2E, live provider, GPU inference, deployment or full local suite
+was used. Required remote workflows are checked on the final pushed SHA before
+completion is reported. Criterion histograms remain intentionally deferred P1.

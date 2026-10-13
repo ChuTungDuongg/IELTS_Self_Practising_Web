@@ -121,12 +121,22 @@ class WritingBenchmarkExportService:
                     for row in rows
                 ]
                 worker = asyncio.create_task(asyncio.to_thread(self._write_bundle, path, snapshots))
-                try:
-                    await asyncio.shield(worker)
-                except asyncio.CancelledError:
-                    # Keep row locks until the worker finishes reading live assets.
-                    await worker
-                    raise
+                interrupted = None
+                while not worker.done():
+                    try:
+                        await asyncio.shield(worker)
+                    except asyncio.CancelledError as cancellation:
+                        # Repeated disconnect/cancellation must also leave the
+                        # staging worker and its image snapshot locks intact.
+                        interrupted = cancellation
+                    except Exception:
+                        break
+                if interrupted is not None:
+                    # Retrieve an exception without leaking it after cancellation.
+                    if not worker.cancelled():
+                        worker.exception()
+                    raise interrupted
+                worker.result()
         except (AppError, BenchmarkInputError, ValidationError, OSError):
             path.unlink(missing_ok=True)
             raise AppError(

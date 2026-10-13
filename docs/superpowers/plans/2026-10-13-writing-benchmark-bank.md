@@ -1,6 +1,6 @@
 # Admin Writing Benchmark Bank Implementation Plan
 
-**Status:** Plan only, prepared for user review. The design is approved; do not reopen its product or architecture decisions. Do not execute this plan until the user authorizes implementation.
+**Status:** Implementation authorized and executed on 2026-10-13. Tasks 1–13 and the Task 14 local gate are complete; the final pushed-SHA remote gate is checked before reporting completion. See [implementation validation](../../writing-benchmark-bank.md#implementation-validation--2026-10-13).
 
 **Goal:** Add one private ADMIN-authored Writing ground-truth bank, capped at 100 samples per task, with safe draft editing, production-derived overall bands, distribution guidance, compatible ZIP export and an offline Task 2 benchmark CLI.
 
@@ -79,11 +79,11 @@
 
 **Interfaces:** Move `score_metrics(pairs, *, minimum_qwk_samples=10)` unchanged into the shared module. Expose `overall_score(scores, *, traits=("ta","cc","lr","gra"))` using production aggregation; Task 2 can supply `("tr","cc","lr","gra")`. Deliberately re-export both from Task 1 for import compatibility. Keep perception helpers and `perception_metrics` in Task 1. Do not change Speaking metrics or add correlations.
 
-- [ ] **RED tests:** Shared import/Task 1 alias parity; hand-calculated exact/±0.5/±1/bias/MAE/RMSE/QWK; all 19 bins; empty, too-small and zero-variance populations; preserve non-half-band arithmetic without quantizing QWK labels; Task 1/Task 2 overall mappings and production tie rounding. The existing dependency-hash test must also detect edits to the extracted shared metric file.
-- [ ] **RED command:** `uv run pytest tests/test_writing_benchmark_metrics.py tests/test_task1_benchmark_metrics.py -q`.
-- [ ] **Minimal implementation:** Move only score arithmetic, parameterize trait selection for overall, retain the existing metric keys/QWK statuses/minimum count. Extend Task 1 `implementation_hash()` patterns with `evaluation/writing/*.py`; it currently only includes `evaluation/task1/*.py` for evaluation code. No second QWK implementation.
-- [ ] **GREEN command:** `uv run pytest tests/test_writing_benchmark_metrics.py tests/test_task1_benchmark_metrics.py tests/test_task1_benchmark.py -q`.
-- [ ] **Commit:** `Share Writing benchmark score metrics`.
+- [x] **RED tests:** Shared import/Task 1 alias parity; hand-calculated exact/±0.5/±1/bias/MAE/RMSE/QWK; all 19 bins; empty, too-small and zero-variance populations; preserve non-half-band arithmetic without quantizing QWK labels; Task 1/Task 2 overall mappings and production tie rounding. The existing dependency-hash test must also detect edits to the extracted shared metric file.
+- [x] **RED command:** `uv run pytest tests/test_writing_benchmark_metrics.py tests/test_task1_benchmark_metrics.py -q`.
+- [x] **Minimal implementation:** Move only score arithmetic, parameterize trait selection for overall, retain the existing metric keys/QWK statuses/minimum count. Extend Task 1 `implementation_hash()` patterns with `evaluation/writing/*.py`; it currently only includes `evaluation/task1/*.py` for evaluation code. No second QWK implementation.
+- [x] **GREEN command:** `uv run pytest tests/test_writing_benchmark_metrics.py tests/test_task1_benchmark_metrics.py tests/test_task1_benchmark.py -q`.
+- [x] **Commit:** `Share Writing benchmark score metrics`.
 
 ### Task 2: Add the single sample model, migration and race-safe repository
 
@@ -98,12 +98,12 @@
 
 **Interfaces:** `WritingBenchmarkSample`, `WritingBenchmarkStatus`, `WritingBenchmarkSplit`; repository `lock_task_capacity(task_number)`, `allocate_slot(task_number)`, `get(sample_id, lock=False)`, `list_rows(task_number)`, `complete_rows(lock_shared=False)`, and `summary_labels()`. Use a fixed namespaced `pg_advisory_xact_lock(namespace, task_number)` in the create/delete transaction; always acquire capacity lock before the sample row lock when both are needed.
 
-- [ ] **RED tests:** Model registration in `Base.metadata`; named unique/task/slot/type/half-band/COMPLETE/revision constraints; nullable DRAFT labels; no human-overall column; Task 2 rejects Task 1 fields; direct SQL cannot allocate slot 101/duplicate slot/6.3 or 6.49 label/invalid COMPLETE; stable codes and gap reuse with new UUID. Real migration upgrade/downgrade/re-upgrade touches only the new table/types.
-- [ ] **RED command:** `uv run pytest tests/test_writing_benchmark_models.py tests/test_writing_benchmark_migration.py -q`.
-- [ ] **Minimal implementation:** One table with UUID/timestamps, slot, task, status/split, exact prompt/essay, nullable Task 1 type/key, four nullable Numeric labels, bounded source note, false-default redistribution flag and nonnegative technical revision. Mirror schema/service rules in named SQL constraints where possible. Freeze allowed Task 1 type values in the new migration; do not import changing runtime registries into historical migrations.
-- [ ] **Race fixture:** Add a helper creating a unique temporary PostgreSQL schema on the explicit test database and independently committed connections; apply the actual new migration there. Do not use the shared rollback connection for contention tests or `Base.metadata.create_all` over all application tables. Clean the temporary schema in `finally`; report skipped race coverage as a limitation, never a pass.
-- [ ] **GREEN command:** `uv run pytest tests/test_writing_benchmark_models.py tests/test_writing_benchmark_migration.py -q`; inspect one head with `uv run alembic heads`. Fresh full upgrade on a separate empty PostgreSQL test target is required again in Task 14.
-- [ ] **Commit:** `Add Writing benchmark sample persistence`.
+- [x] **RED tests:** Model registration in `Base.metadata`; named unique/task/slot/type/half-band/COMPLETE/revision constraints; nullable DRAFT labels; no human-overall column; Task 2 rejects Task 1 fields; direct SQL cannot allocate slot 101/duplicate slot/6.3 or 6.49 label/invalid COMPLETE; stable codes and gap reuse with new UUID. Real migration upgrade/downgrade/re-upgrade touches only the new table/types.
+- [x] **RED command:** `uv run pytest tests/test_writing_benchmark_models.py tests/test_writing_benchmark_migration.py -q`.
+- [x] **Minimal implementation:** One table with UUID/timestamps, slot, task, status/split, exact prompt/essay, nullable Task 1 type/key, four nullable Numeric labels, bounded source note, false-default redistribution flag and nonnegative technical revision. Mirror schema/service rules in named SQL constraints where possible. Freeze allowed Task 1 type values in the new migration; do not import changing runtime registries into historical migrations.
+- [x] **Race fixture:** Add a helper creating a unique temporary PostgreSQL schema on the explicit test database and independently committed connections; apply the actual new migration there. Do not use the shared rollback connection for contention tests or `Base.metadata.create_all` over all application tables. Clean the temporary schema in `finally`; report skipped race coverage as a limitation, never a pass.
+- [x] **GREEN command:** `uv run pytest tests/test_writing_benchmark_models.py tests/test_writing_benchmark_migration.py -q`; inspect one head with `uv run alembic heads`. Fresh full upgrade on a separate empty PostgreSQL test target is required again in Task 14.
+- [x] **Commit:** `Add Writing benchmark sample persistence`.
 
 ### Task 3: ADMIN-only CRUD, capacity and explicit completeness
 
@@ -117,12 +117,12 @@
 
 **Interfaces:** `BenchmarkSampleCreate`, `BenchmarkSamplePatch`, `BenchmarkSampleDetail`, `BenchmarkSampleListItem`, `BenchmarkMutation(expected_revision)`, `BenchmarkCompletionFailure`; `WritingBenchmarkService.create/patch/complete/delete/detail/list`. `completion_issues(sample)` returns safe field-path issues. Reuse production score/type validators and revision behavior; publish numeric nullable score/overall DTO fields, not Decimal strings. Add router paths listed above; image/export/summary routes follow in later tasks.
 
-- [ ] **RED tests:** ADMIN success; anonymous 401 and USER/TEACHER 403 for direct APIs; empty/partial DRAFT saves; exact CRLF/emoji/whitespace preservation; invalid/out-of-range/non-finite/6.3 labels rejected; unknown/forged server fields rejected; immutable task/slot; Task 1 Complete without image rejected; Task 2 all labels required; derived overall matches production at ties; invalidating a COMPLETE row demotes it; stale revision rejected without overwrite.
-- [ ] **Capacity RED:** Fill 100 slots including DRAFTs; 101st returns a safe 409. Race two creates at 99 using independent transactions: one succeeds, one gets capacity error, exactly 100 rows remain. Also race initial creation: distinct slots/UUIDs. Deleting slot 37 never renumbers 38; a new record can reuse 37 with new UUID. Task 2 capacity remains independent.
-- [ ] **RED command:** `uv run pytest tests/test_writing_benchmark_api.py tests/test_writing_benchmark_capacity.py -q`.
-- [ ] **Minimal implementation:** Routers use `AdminUser`; services own begin/lock/validate/flush/commit. Explicit Complete is separate from partial PATCH. For Task 1 success fixtures, seed a backend-owned valid private image; do not make the public PATCH accept paths. Completion errors carry only fixed messages/field paths, not submitted content or SQL/provider internals. Default source note remains nullable; no author/rater account schema.
-- [ ] **GREEN command:** `uv run pytest tests/test_writing_benchmark_api.py tests/test_writing_benchmark_capacity.py -q`.
-- [ ] **Commit:** `Add admin Writing benchmark authoring API`.
+- [x] **RED tests:** ADMIN success; anonymous 401 and USER/TEACHER 403 for direct APIs; empty/partial DRAFT saves; exact CRLF/emoji/whitespace preservation; invalid/out-of-range/non-finite/6.3 labels rejected; unknown/forged server fields rejected; immutable task/slot; Task 1 Complete without image rejected; Task 2 all labels required; derived overall matches production at ties; invalidating a COMPLETE row demotes it; stale revision rejected without overwrite.
+- [x] **Capacity RED:** Fill 100 slots including DRAFTs; 101st returns a safe 409. Race two creates at 99 using independent transactions: one succeeds, one gets capacity error, exactly 100 rows remain. Also race initial creation: distinct slots/UUIDs. Deleting slot 37 never renumbers 38; a new record can reuse 37 with new UUID. Task 2 capacity remains independent.
+- [x] **RED command:** `uv run pytest tests/test_writing_benchmark_api.py tests/test_writing_benchmark_capacity.py -q`.
+- [x] **Minimal implementation:** Routers use `AdminUser`; services own begin/lock/validate/flush/commit. Explicit Complete is separate from partial PATCH. For Task 1 success fixtures, seed a backend-owned valid private image; do not make the public PATCH accept paths. Completion errors carry only fixed messages/field paths, not submitted content or SQL/provider internals. Default source note remains nullable; no author/rater account schema.
+- [x] **GREEN command:** `uv run pytest tests/test_writing_benchmark_api.py tests/test_writing_benchmark_capacity.py -q`.
+- [x] **Commit:** `Add admin Writing benchmark authoring API`.
 
 ### Task 4: Private Task 1 image lifecycle through existing storage
 
@@ -135,11 +135,11 @@
 
 **Interfaces:** `LocalAssetStorage.store_benchmark_writing_image(sample_id, mime_type, original_name, content, max_bytes)`, narrowly reused destination/image-validation internals, and service `replace_image/remove_image/image_content`. Private `owns_image_key(sample_id,key)` guards every resolve/cleanup/export. Image mutations require `expected_revision`; upload uses multipart `file` and revision. GET image returns an authenticated `FileResponse`, safe code-derived filename and `Cache-Control: no-store`.
 
-- [ ] **RED tests:** Valid PNG/JPEG/WebP including JPEG extension compatibility; spoofed/unsupported MIME/extension/signature, empty/oversized upload and Task 2 image rejected; server-generated immutable namespace; no raw key DTO and no anonymous/generic Asset access; role denial on GET/POST/DELETE image. Missing file blocks Complete. Removing image atomically demotes COMPLETE. Replace preserves previous valid image if DB update fails, deletes only the new uncommitted file, and obsolete cleanup after commit cannot delete the current image. Race replace/remove/delete and stale revision/lost ACK cases. Malicious traversal/symlink/unrelated-asset keys cannot be served or deleted.
-- [ ] **RED command:** `uv run pytest tests/test_writing_benchmark_images.py -q`.
-- [ ] **Minimal implementation:** Keep existing images/audio behavior; do not pass a benchmark directory as generic `category`. Add one server-controlled namespace path inside `LocalAssetStorage`, reuse current guards and trusted-image signature validation. Limit upload reads to maximum+1 bytes. Lock/revision-check mutations and follow the approved cleanup ordering. File I/O goes through the existing storage abstraction, with bounded safe diagnostics for best-effort cleanup failure.
-- [ ] **GREEN command:** `uv run pytest tests/test_writing_benchmark_images.py tests/test_storage.py tests/test_asset_cloning.py -q`.
-- [ ] **Commit:** `Add private Writing benchmark image lifecycle`.
+- [x] **RED tests:** Valid PNG/JPEG/WebP including JPEG extension compatibility; spoofed/unsupported MIME/extension/signature, empty/oversized upload and Task 2 image rejected; server-generated immutable namespace; no raw key DTO and no anonymous/generic Asset access; role denial on GET/POST/DELETE image. Missing file blocks Complete. Removing image atomically demotes COMPLETE. Replace preserves previous valid image if DB update fails, deletes only the new uncommitted file, and obsolete cleanup after commit cannot delete the current image. Race replace/remove/delete and stale revision/lost ACK cases. Malicious traversal/symlink/unrelated-asset keys cannot be served or deleted.
+- [x] **RED command:** `uv run pytest tests/test_writing_benchmark_images.py -q`.
+- [x] **Minimal implementation:** Keep existing images/audio behavior; do not pass a benchmark directory as generic `category`. Add one server-controlled namespace path inside `LocalAssetStorage`, reuse current guards and trusted-image signature validation. Limit upload reads to maximum+1 bytes. Lock/revision-check mutations and follow the approved cleanup ordering. File I/O goes through the existing storage abstraction, with bounded safe diagnostics for best-effort cleanup failure.
+- [x] **GREEN command:** `uv run pytest tests/test_writing_benchmark_images.py tests/test_storage.py tests/test_asset_cloning.py -q`.
+- [x] **Commit:** `Add private Writing benchmark image lifecycle`.
 
 ### Task 5: Lightweight summary and distribution guidance
 
@@ -150,11 +150,11 @@
 
 **Interfaces:** `BenchmarkBankSummary`, `BenchmarkTaskSummary`; repository `summary_labels()` selects task/status/split/four scores only; service `summary()` computes counts and production-rounded histograms. `GET /summary` is ADMIN-only. Guidance constants live with benchmark domain/service logic, not a new scoring rule.
 
-- [ ] **RED tests:** Drafts consume total capacity but never count toward complete histogram/split targets; zero-data summary; per-task isolation; all lower/upper valid bands and production rounding; exact target counts sum 100; split targets 80/20; no quota affects save/Complete; summary/list contain no prompt/essay/image key; role denial.
-- [ ] **RED command:** `uv run pytest tests/test_writing_benchmark_summary.py -q`.
-- [ ] **Minimal implementation:** Return bounded 19-bin actual counts plus nullable suggested target by band; total/draft/complete and complete DEV/HOLDOUT counts. Do not load all essay bodies, cache duplicate overall or add mandatory criterion histograms.
-- [ ] **GREEN command:** `uv run pytest tests/test_writing_benchmark_summary.py tests/test_writing_benchmark_api.py -q`.
-- [ ] **Commit:** `Add Writing benchmark distribution summary`.
+- [x] **RED tests:** Drafts consume total capacity but never count toward complete histogram/split targets; zero-data summary; per-task isolation; all lower/upper valid bands and production rounding; exact target counts sum 100; split targets 80/20; no quota affects save/Complete; summary/list contain no prompt/essay/image key; role denial.
+- [x] **RED command:** `uv run pytest tests/test_writing_benchmark_summary.py -q`.
+- [x] **Minimal implementation:** Return bounded 19-bin actual counts plus nullable suggested target by band; total/draft/complete and complete DEV/HOLDOUT counts. Do not load all essay bodies, cache duplicate overall or add mandatory criterion histograms.
+- [x] **GREEN command:** `uv run pytest tests/test_writing_benchmark_summary.py tests/test_writing_benchmark_api.py -q`.
+- [x] **Commit:** `Add Writing benchmark distribution summary`.
 
 ### Task 6: Define strict Task 2 JSONL contracts before export
 
@@ -165,11 +165,11 @@
 
 **Interfaces:** Task 2 `HumanScores(tr,cc,lr,gra)`, `BenchmarkSample`, `BenchmarkConfig`, `EvaluationRecord`, `LoadedSample`, `load_manifest(path,split,limit)`, and safe fixed-code `BenchmarkInputError`. Use `schema_version: 1` as file format only, safe ASCII IDs, exact bounded prompt/essay, half bands, one-rater metadata, nonblank provenance and strict bool redistribution. Task 2 records contain no visual/image/specialist fields. Completed records require all four valid predictions; failed records may preserve completed criteria and must retain failures; derive both overalls via shared production arithmetic.
 
-- [ ] **RED tests:** Extra/visual/score-inconsistent fields, invalid half bands and missing labels rejected; Task 2 uses `tr`, not manifest `ta`; exact strings, split/limit/duplicate IDs, manifest size limits and safe invalid-file diagnostics; blank content rejected; no CSV reader. Numeric human labels and schema defaults round-trip. Configuration identity contains effective Task 2 prompt/model/runtime identity without endpoint secrets; file-format version does not become bank metadata.
-- [ ] **RED command:** `uv run pytest tests/test_task2_benchmark_contracts.py -q`.
-- [ ] **Minimal implementation:** Separate text-only contracts and local JSONL loader, bounded like Task 1. Preserve Task 1 `BenchmarkSample` and historical configs. Do not import app API/DB workers just to construct a sample or compute an identity.
-- [ ] **GREEN command:** `uv run pytest tests/test_task2_benchmark_contracts.py tests/test_task1_benchmark.py -q`.
-- [ ] **Commit:** `Define Task 2 Writing benchmark manifests`.
+- [x] **RED tests:** Extra/visual/score-inconsistent fields, invalid half bands and missing labels rejected; Task 2 uses `tr`, not manifest `ta`; exact strings, split/limit/duplicate IDs, manifest size limits and safe invalid-file diagnostics; blank content rejected; no CSV reader. Numeric human labels and schema defaults round-trip. Configuration identity contains effective Task 2 prompt/model/runtime identity without endpoint secrets; file-format version does not become bank metadata.
+- [x] **RED command:** `uv run pytest tests/test_task2_benchmark_contracts.py -q`.
+- [x] **Minimal implementation:** Separate text-only contracts and local JSONL loader, bounded like Task 1. Preserve Task 1 `BenchmarkSample` and historical configs. Do not import app API/DB workers just to construct a sample or compute an identity.
+- [x] **GREEN command:** `uv run pytest tests/test_task2_benchmark_contracts.py tests/test_task1_benchmark.py -q`.
+- [x] **Commit:** `Define Task 2 Writing benchmark manifests`.
 
 ### Task 7: Deterministic compatible ZIP, JSONL and convenience CSV export
 
@@ -181,12 +181,12 @@
 
 **Interfaces:** `WritingBenchmarkExportService.export(path)`; pure `task1_manifest_sample(row,image_path)`, `task2_manifest_sample(row)`, `write_csv(rows,task_number)`, and `manifest_schema()`. GET `/export` returns `writing-benchmark.zip`, using the existing temporary-file/background-cleanup delivery pattern. Task 1 mapper instantiates CURRENT `evaluation.task1.models.BenchmarkSample`, not a parallel export schema. Task 2 mapper uses Task 6 model.
 
-- [ ] **RED tests:** Export at 0/1/<100 samples; drafts excluded; exact six root files and `images/`; stable task/slot ordering/code/image names; Task 1 exported lines validate directly through current model and `load_manifest` using generated images; Task 2 lines validate through its loader. Always raters=1, false default redistribution, null visual truth and neutral nonblank source fallback with no invented license claim. Decimal half-band labels serialize as numeric JSON. CSV quoted commas/quotes/multiline CRLF/Unicode preserve exact content and derived overall.
-- [ ] **Safety RED:** Traversal/absolute/foreign-storage keys and hostile filenames cannot become ZIP entry names or leak unrelated files; missing invalid completed images fail safely; replace/delete during export cannot mix row/image states; temporary ZIP is removed after delivery/failure; identical snapshots yield identical ordered contents (byte-for-byte ZIP timestamp equality unnecessary). USER/TEACHER/anonymous export denied. No predictions/report files inside bank export.
-- [ ] **RED command:** `uv run pytest tests/test_writing_benchmark_export.py -q`.
-- [ ] **Minimal implementation:** Generate names from validated task/slot/MIME extension only, never archive user paths. Shared-lock the selected rows while staging ZIP contents in a tempfile; copy validated owned images before releasing locks. Use stdlib JSON/CSV/ZIP and Pydantic-generated combined schema with valid references. Include both manifests/CSVs even when one task is empty. Reuse the authenticated file-response cleanup pattern; handle cancellation without deleting live assets.
-- [ ] **GREEN command:** `uv run pytest tests/test_writing_benchmark_export.py tests/test_task2_benchmark_contracts.py tests/test_task1_benchmark.py -q`.
-- [ ] **Commit:** `Export the admin Writing benchmark bundle`.
+- [x] **RED tests:** Export at 0/1/<100 samples; drafts excluded; exact six root files and `images/`; stable task/slot ordering/code/image names; Task 1 exported lines validate directly through current model and `load_manifest` using generated images; Task 2 lines validate through its loader. Always raters=1, false default redistribution, null visual truth and neutral nonblank source fallback with no invented license claim. Decimal half-band labels serialize as numeric JSON. CSV quoted commas/quotes/multiline CRLF/Unicode preserve exact content and derived overall.
+- [x] **Safety RED:** Traversal/absolute/foreign-storage keys and hostile filenames cannot become ZIP entry names or leak unrelated files; missing invalid completed images fail safely; replace/delete during export cannot mix row/image states; temporary ZIP is removed after delivery/failure; identical snapshots yield identical ordered contents (byte-for-byte ZIP timestamp equality unnecessary). USER/TEACHER/anonymous export denied. No predictions/report files inside bank export.
+- [x] **RED command:** `uv run pytest tests/test_writing_benchmark_export.py -q`.
+- [x] **Minimal implementation:** Generate names from validated task/slot/MIME extension only, never archive user paths. Shared-lock the selected rows while staging ZIP contents in a tempfile; copy validated owned images before releasing locks. Use stdlib JSON/CSV/ZIP and Pydantic-generated combined schema with valid references. Include both manifests/CSVs even when one task is empty. Reuse the authenticated file-response cleanup pattern; handle cancellation without deleting live assets.
+- [x] **GREEN command:** `uv run pytest tests/test_writing_benchmark_export.py tests/test_task2_benchmark_contracts.py tests/test_task1_benchmark.py -q`.
+- [x] **Commit:** `Export the admin Writing benchmark bundle`.
 
 ### Task 8: Task 2 production-backed runner and score-only reports
 
@@ -199,12 +199,12 @@
 
 **Interfaces:** Shared `CountedProvider`, `atomic_write`, `save_attempt`, `cached_record(...,record_type=...)`, `attempt_history(...,record_type=...)`; Task 2 `configuration(settings,max_concurrent_llm_requests)`, `implementation_hash()`, `fingerprint(item,config)`, `evaluate(...)`, `run_benchmark(...)`; report `aggregate/build_report/markdown_report/write_report`. Keep specialist/perception/Task 1 ablation logic in Task 1.
 
-- [ ] **RED tests:** Fake production Task 2 assessment maps `ta` events/results to `tr`; target/source-note/redistribution fields never enter provider payloads. Changing human labels alone produces identical provider requests while invalidating the evaluation cache; do not use coincidental numeric substring matching as a leakage test. Scoring input contains only prompt/exact essay and deterministic internal IDs with textarea provenance. No DB engine/auth/API worker or chart provider needed. Bounded peak requests reflect config 1..4; samples do not multiply that limit. All valid predictions remain unadjusted.
-- [ ] **Report RED:** TR/CC/LR/GRA/overall metric values equal the shared implementation exactly; partial completed criteria contribute comparable pairs, missing predictions do not fabricate scores/overall; failed samples remain in denominator and safe record/failure list. Split/target-band strata, QWK unavailable reasons, signed bias, latency, request counts and available token usage; report/CSV never reproduce source text or raw provider errors. First-attempt/all-attempt failures and cumulative cost remain after retry-to-success; cache hits are excluded from new-call counts.
-- [ ] **RED command:** `uv run pytest tests/test_task2_benchmark.py tests/test_task2_benchmark_reports.py -q`.
-- [ ] **Minimal implementation:** Invoke `MTSWritingScoringService.assess` with current effective prompt identity and its existing concurrency/relevance behavior, not `WritingAIWorker`/Attempt persistence. Build target data only after inference for metrics. Reuse shared score arithmetic and the minimal typed checkpoint/provider-count primitives; never call Task 1 visual runner for Task 2. Include shared runtime/checkpoint files in both evaluators' implementation hashes. For Task 2, reconcile token totals from the service's safe usage records when provider failures supply usage; never double-count the same completion or invent unavailable usage. Preserve Task 1 outputs/old helpers and do not add an experiment tracker or benchmark DB result table.
-- [ ] **GREEN command:** `uv run pytest tests/test_task2_benchmark.py tests/test_task2_benchmark_reports.py tests/test_task1_benchmark.py tests/test_writing_score_first.py tests/test_writing_concurrency.py -q`.
-- [ ] **Commit:** `Add production-backed Task 2 benchmark evaluation`.
+- [x] **RED tests:** Fake production Task 2 assessment maps `ta` events/results to `tr`; target/source-note/redistribution fields never enter provider payloads. Changing human labels alone produces identical provider requests while invalidating the evaluation cache; do not use coincidental numeric substring matching as a leakage test. Scoring input contains only prompt/exact essay and deterministic internal IDs with textarea provenance. No DB engine/auth/API worker or chart provider needed. Bounded peak requests reflect config 1..4; samples do not multiply that limit. All valid predictions remain unadjusted.
+- [x] **Report RED:** TR/CC/LR/GRA/overall metric values equal the shared implementation exactly; partial completed criteria contribute comparable pairs, missing predictions do not fabricate scores/overall; failed samples remain in denominator and safe record/failure list. Split/target-band strata, QWK unavailable reasons, signed bias, latency, request counts and available token usage; report/CSV never reproduce source text or raw provider errors. First-attempt/all-attempt failures and cumulative cost remain after retry-to-success; cache hits are excluded from new-call counts.
+- [x] **RED command:** `uv run pytest tests/test_task2_benchmark.py tests/test_task2_benchmark_reports.py -q`.
+- [x] **Minimal implementation:** Invoke `MTSWritingScoringService.assess` with current effective prompt identity and its existing concurrency/relevance behavior, not `WritingAIWorker`/Attempt persistence. Build target data only after inference for metrics. Reuse shared score arithmetic and the minimal typed checkpoint/provider-count primitives; never call Task 1 visual runner for Task 2. Include shared runtime/checkpoint files in both evaluators' implementation hashes. For Task 2, reconcile token totals from the service's safe usage records when provider failures supply usage; never double-count the same completion or invent unavailable usage. Preserve Task 1 outputs/old helpers and do not add an experiment tracker or benchmark DB result table.
+- [x] **GREEN command:** `uv run pytest tests/test_task2_benchmark.py tests/test_task2_benchmark_reports.py tests/test_task1_benchmark.py tests/test_writing_score_first.py tests/test_writing_concurrency.py -q`.
+- [x] **Commit:** `Add production-backed Task 2 benchmark evaluation`.
 
 ### Task 9: Task 2 CLI, resumability and safe offline execution
 
@@ -216,12 +216,12 @@
 
 **Interfaces:** `main(argv=None)` flags `--manifest`, required `--split dev|holdout`, `--limit`, `--dry-run`, `--resume`, `--output`, `--max-concurrent-llm-requests 1..4`. Default output under ignored `benchmarks/writing_task2/reports/`. Exit codes follow Task 1: 0 successful/dry-run, 1 evaluated failures, 2 input/config failure, 130 explicit interruption. No automatic whole-sample retries or live calls in tests.
 
-- [ ] **RED tests:** CLI argument bounds, invalid/CSV/empty selection, safe stdout/stderr, dry-run creates no provider, root and backend invocation compatibility, no production DB/auth configuration required. Fake-provider runner tests prove changed essay/prompt/labels/split/model/provider/effective prompt/paragraph provenance/implementation/timeouts invalidate cache. Path/presentation-label changes alone need not invalidate semantic identity. Corrupt/inconsistent checkpoints and failed attempts never count as successful resume hits.
-- [ ] **Resume RED:** Interrupt after one success; previous success resumes, failure retries on a later invocation, all attempts remain; recovery from validated completed attempt after torn checkpoint; incomplete records/incorrect derived overalls are rejected; reports stay available with INTERRUPTED/failure status. No secret endpoint/API key in cache keys/records/logs and no human labels in inference requests after resume miss.
-- [ ] **RED command:** `uv run pytest tests/test_task2_benchmark_cli.py tests/test_task2_benchmark_resume.py -q`.
-- [ ] **Minimal implementation:** Adapt Task 1's safe CLI entry conventions, current provider configuration and typed atomic checkpoints, while keeping Task 2 independent of perception. `schema_version: 1` is a format field, not an exposed bank version. Preserve script `noqa: E402` exceptions after adding backend to `sys.path`.
-- [ ] **GREEN command:** `uv run pytest tests/test_task2_benchmark_cli.py tests/test_task2_benchmark_resume.py tests/test_task1_benchmark.py -q`.
-- [ ] **Commit:** `Add resumable Task 2 benchmark CLI`.
+- [x] **RED tests:** CLI argument bounds, invalid/CSV/empty selection, safe stdout/stderr, dry-run creates no provider, root and backend invocation compatibility, no production DB/auth configuration required. Fake-provider runner tests prove changed essay/prompt/labels/split/model/provider/effective prompt/paragraph provenance/implementation/timeouts invalidate cache. Path/presentation-label changes alone need not invalidate semantic identity. Corrupt/inconsistent checkpoints and failed attempts never count as successful resume hits.
+- [x] **Resume RED:** Interrupt after one success; previous success resumes, failure retries on a later invocation, all attempts remain; recovery from validated completed attempt after torn checkpoint; incomplete records/incorrect derived overalls are rejected; reports stay available with INTERRUPTED/failure status. No secret endpoint/API key in cache keys/records/logs and no human labels in inference requests after resume miss.
+- [x] **RED command:** `uv run pytest tests/test_task2_benchmark_cli.py tests/test_task2_benchmark_resume.py -q`.
+- [x] **Minimal implementation:** Adapt Task 1's safe CLI entry conventions, current provider configuration and typed atomic checkpoints, while keeping Task 2 independent of perception. `schema_version: 1` is a format field, not an exposed bank version. Preserve script `noqa: E402` exceptions after adding backend to `sys.path`.
+- [x] **GREEN command:** `uv run pytest tests/test_task2_benchmark_cli.py tests/test_task2_benchmark_resume.py tests/test_task1_benchmark.py -q`.
+- [x] **Commit:** `Add resumable Task 2 benchmark CLI`.
 
 ### Task 10: Frontend API/Zod contracts and binary/image clients
 
@@ -232,11 +232,11 @@
 
 **Interfaces:** `benchmarkSampleSchema`, lightweight list/summary schemas, partial PATCH and structured completion issue schemas; `getWritingBenchmarkSummary/listWritingBenchmarkSamples/getWritingBenchmarkSample/createWritingBenchmarkSample/updateWritingBenchmarkSample/completeWritingBenchmarkSample/deleteWritingBenchmarkSample/uploadWritingBenchmarkImage/removeWritingBenchmarkImage/exportWritingBenchmarkBundle`. Use injectable `ApiRequester` for JSON calls; use existing `apiResponse` for authenticated ZIP and appropriate image request/URL conventions. Retain numeric nullable labels and backend-derived overall.
 
-- [ ] **RED tests:** Correct exact paths/methods/query/body/revision, numeric half bands and null DRAFT fields, Task 1-only image/type handling, list lacks full content, completion errors retain field paths via `ApiError.details`, multipart file/revision without manual multipart Content-Type, private preview URL has no raw key, ZIP response/filename and failure behavior. Reject forged overall/task/slot/key writes. No `/assets/images` upload with fabricated TestVersion.
-- [ ] **RED command:** `npx vitest run tests/writing-benchmark-api.test.ts`.
-- [ ] **Minimal implementation:** One typed HTTP module aligned with backend DTOs, reuse shared session-aware client and existing binary download behavior. Do not add a CSV parser, data version selector or frontend database access.
-- [ ] **GREEN command:** `npx vitest run tests/writing-benchmark-api.test.ts tests/admin-api.test.ts`; then `npm run typecheck`.
-- [ ] **Commit:** `Add typed admin Writing benchmark clients`.
+- [x] **RED tests:** Correct exact paths/methods/query/body/revision, numeric half bands and null DRAFT fields, Task 1-only image/type handling, list lacks full content, completion errors retain field paths via `ApiError.details`, multipart file/revision without manual multipart Content-Type, private preview URL has no raw key, ZIP response/filename and failure behavior. Reject forged overall/task/slot/key writes. No `/assets/images` upload with fabricated TestVersion.
+- [x] **RED command:** `npx vitest run tests/writing-benchmark-api.test.ts`.
+- [x] **Minimal implementation:** One typed HTTP module aligned with backend DTOs, reuse shared session-aware client and existing binary download behavior. Do not add a CSV parser, data version selector or frontend database access.
+- [x] **GREEN command:** `npx vitest run tests/writing-benchmark-api.test.ts tests/admin-api.test.ts`; then `npm run typecheck`.
+- [x] **Commit:** `Add typed admin Writing benchmark clients`.
 
 ### Task 11: Admin master/detail editor, autosave and private image controls
 
@@ -250,13 +250,13 @@
 
 **Interfaces:** `WritingBenchmarkBankPage`, `BenchmarkSampleList`, `BenchmarkSampleEditor`, `BenchmarkImageField`, a small page-specific draft→PATCH helper and numeric presentation-only overall helper. Reuse `AdminLayout`, `AdminGuard`, `PageHeading`, `BuilderLifecycleProvider/useBuilderAutosave` with resource key `writing-benchmark:<uuid>` and 1000-ms delay, and `ConfirmDialog`. Reuse the provider's `runTransition/flushAutosaves` barriers; do not use `beginDelete` to permanently disable the entire bank. No shared Builder hook refactor is required unless a focused regression demonstrates it is necessary.
 
-- [ ] **RED tests:** ADMIN page/link; USER/TEACHER blocked including direct route; Task tabs, lightweight list and selected detail only; stable code/split/state/overall; creation disabled at total 100 even with many drafts; backend capacity race error recovers list state. Fake timers show one save after stable 1000-ms input; edits during an in-flight save remain; rejected autosave/conflict preserves local form; Retry/Save now; exact newline/Unicode input; stale response cannot replace another selected UUID.
-- [ ] **Transition RED:** Ctrl/Cmd+S immediate flush and prevent default; Ctrl/Cmd+Enter does not select next incomplete until latest PATCH ACK and Complete ACK; validation/save failures remain on current editor with field errors/local content. Tab/selection changes flush safely before unmount; no accidental auto-Complete. Confirmed Delete/image removal wait for durable mutation success, retain errors when rejected, and never leave an image-less COMPLETE UI row. Preview/replace/remove target current UUID/revision only.
-- [ ] **Presentation RED:** EN/VI labels including task types, first criterion TA/TR, status and actions; semantic labels/buttons/tabs, current row/state visible beyond color, focus restoration and dialog keyboard behavior. Narrow-screen layout stacks list/detail using `min-width:0`, wrapping and bounded grid columns; no hard fixed-width page overflow. Respect existing reduced-motion/theme tokens. Structural/unit tests plus CSS review; no local browser claim.
-- [ ] **RED command:** `npx vitest run tests/writing-benchmark-page.test.tsx tests/writing-benchmark-autosave.test.tsx`.
-- [ ] **Minimal implementation:** One selected editor, local drafts keyed by UUID, revision refs updated only from matching successful responses, reuse autosave drain and dialog infrastructure. Draft validity permits missing required content; Complete enforces backend issues. Show subtle localized save state. Present client overall only as provisional convenience and replace it with server-derived value after ACK; numeric half-band arithmetic must match production tie fixtures. Use unoptimized authenticated image delivery, as in the current Writing Builder, rather than a public Next image-optimizer proxy. Render safe image upload/preview controls and no bank/dataset/rater UI.
-- [ ] **GREEN command:** `npx vitest run tests/writing-benchmark-page.test.tsx tests/writing-benchmark-autosave.test.tsx tests/builder-autosave.test.tsx tests/writing-builder.test.tsx tests/admin-dashboard.test.tsx`; `npm run typecheck`.
-- [ ] **Commit:** `Add admin Writing benchmark master-detail editor`.
+- [x] **RED tests:** ADMIN page/link; USER/TEACHER blocked including direct route; Task tabs, lightweight list and selected detail only; stable code/split/state/overall; creation disabled at total 100 even with many drafts; backend capacity race error recovers list state. Fake timers show one save after stable 1000-ms input; edits during an in-flight save remain; rejected autosave/conflict preserves local form; Retry/Save now; exact newline/Unicode input; stale response cannot replace another selected UUID.
+- [x] **Transition RED:** Ctrl/Cmd+S immediate flush and prevent default; Ctrl/Cmd+Enter does not select next incomplete until latest PATCH ACK and Complete ACK; validation/save failures remain on current editor with field errors/local content. Tab/selection changes flush safely before unmount; no accidental auto-Complete. Confirmed Delete/image removal wait for durable mutation success, retain errors when rejected, and never leave an image-less COMPLETE UI row. Preview/replace/remove target current UUID/revision only.
+- [x] **Presentation RED:** EN/VI labels including task types, first criterion TA/TR, status and actions; semantic labels/buttons/tabs, current row/state visible beyond color, focus restoration and dialog keyboard behavior. Narrow-screen layout stacks list/detail using `min-width:0`, wrapping and bounded grid columns; no hard fixed-width page overflow. Respect existing reduced-motion/theme tokens. Structural/unit tests plus CSS review; no local browser claim.
+- [x] **RED command:** `npx vitest run tests/writing-benchmark-page.test.tsx tests/writing-benchmark-autosave.test.tsx`.
+- [x] **Minimal implementation:** One selected editor, local drafts keyed by UUID, revision refs updated only from matching successful responses, reuse autosave drain and dialog infrastructure. Draft validity permits missing required content; Complete enforces backend issues. Show subtle localized save state. Present client overall only as provisional convenience and replace it with server-derived value after ACK; numeric half-band arithmetic must match production tie fixtures. Use unoptimized authenticated image delivery, as in the current Writing Builder, rather than a public Next image-optimizer proxy. Render safe image upload/preview controls and no bank/dataset/rater UI.
+- [x] **GREEN command:** `npx vitest run tests/writing-benchmark-page.test.tsx tests/writing-benchmark-autosave.test.tsx tests/builder-autosave.test.tsx tests/writing-builder.test.tsx tests/admin-dashboard.test.tsx`; `npm run typecheck`.
+- [x] **Commit:** `Add admin Writing benchmark master-detail editor`.
 
 ### Task 12: Distribution and export UI integration
 
@@ -268,11 +268,11 @@
 
 **Interfaces:** `BenchmarkDistribution(summary)` renders actual/suggested overall counts and complete split guidance; `BenchmarkExportButton` flushes current edits, refreshes summary, presents complete/draft/split counts and invokes the single ZIP action. Use existing dialog semantics when presenting the export summary and existing download/object-URL cleanup pattern.
 
-- [ ] **RED tests:** Exact 11 suggested targets/100 total; COMPLETE-only histogram and split counts; lower bands/above-target counts remain legitimate; no distribution blocking Complete/export; Task 1/Task 2 progress independent. Export available before full capacity, drafts explicitly excluded, empty/partial bank summary, dirty form flushes before export; failed save/export preserves form and permits retry; one authenticated bundle download and object URL released. EN/VI copy and keyboard focus/reduced-motion/narrow layout semantics.
-- [ ] **RED command:** `npx vitest run tests/writing-benchmark-distribution.test.tsx tests/writing-benchmark-export.test.tsx`.
-- [ ] **Minimal implementation:** Use server summary, not a download of 200 essays or a separately stored overall. Show guidance as advice; no color-only status, dataset versions or prediction metrics in app. Keep criterion histograms out of the P0 implementation.
-- [ ] **GREEN command:** `npx vitest run tests/writing-benchmark-distribution.test.tsx tests/writing-benchmark-export.test.tsx tests/writing-benchmark-page.test.tsx`; `npm run typecheck`.
-- [ ] **Commit:** `Add benchmark distribution and bundle export controls`.
+- [x] **RED tests:** Exact 11 suggested targets/100 total; COMPLETE-only histogram and split counts; lower bands/above-target counts remain legitimate; no distribution blocking Complete/export; Task 1/Task 2 progress independent. Export available before full capacity, drafts explicitly excluded, empty/partial bank summary, dirty form flushes before export; failed save/export preserves form and permits retry; one authenticated bundle download and object URL released. EN/VI copy and keyboard focus/reduced-motion/narrow layout semantics.
+- [x] **RED command:** `npx vitest run tests/writing-benchmark-distribution.test.tsx tests/writing-benchmark-export.test.tsx`.
+- [x] **Minimal implementation:** Use server summary, not a download of 200 essays or a separately stored overall. Show guidance as advice; no color-only status, dataset versions or prediction metrics in app. Keep criterion histograms out of the P0 implementation.
+- [x] **GREEN command:** `npx vitest run tests/writing-benchmark-distribution.test.tsx tests/writing-benchmark-export.test.tsx tests/writing-benchmark-page.test.tsx`; `npm run typecheck`.
+- [x] **Commit:** `Add benchmark distribution and bundle export controls`.
 
 ### Task 13: Documentation, schema publishing and Colab instructions
 
@@ -286,11 +286,11 @@
 
 **Interfaces:** Generated Task 2 schema equals its model's JSON schema; exported README uses actual CLI flags, backend/root execution conventions and current Task 1 v12/Task 2 effective prompt labels. Keep `schema_version:1` explicitly a file-format compatibility field.
 
-- [ ] **RED tests:** Exported root files/schema references match shipped models; README commands contain actual supported flags and safe relative manifest/image paths; fake/dry-run one-sample workflow executes with no production DB/JWT/session and no live provider. Private fixture/report paths remain ignored; no essay/image/real labels become tracked data. Preserve Task 1 manifest/test imports and historical version accessibility.
-- [ ] **RED command:** `uv run pytest tests/test_writing_benchmark_export.py tests/test_task2_benchmark_cli.py -q`.
-- [ ] **Minimal documentation:** Explain ADMIN → ZIP → Colab upload → clone/install backend deps → unzip → provider secrets → separate Task 1/Task 2 CLI → reports. Include dry-run and manual one-sample inference commands but do not execute live inference. Show Task 1 v12 and Task 2 current prompt config, DEV/HOLDOUT hygiene, one-rater metadata, neutral source note, false-default redistribution, and provider content disclosure. No production PostgreSQL credentials, admin JWT, direct API ingestion, prediction DB, automatic calibration, new GPU deployment or required notebook app integration.
-- [ ] **GREEN command:** `uv run pytest tests/test_writing_benchmark_export.py tests/test_task2_benchmark_cli.py tests/test_task1_benchmark.py -q`; inspect tracked/ignored paths with `git status --short` and `git check-ignore` for fictional temporary paths only.
-- [ ] **Commit:** `Document Writing benchmark export and Colab evaluation`.
+- [x] **RED tests:** Exported root files/schema references match shipped models; README commands contain actual supported flags and safe relative manifest/image paths; fake/dry-run one-sample workflow executes with no production DB/JWT/session and no live provider. Private fixture/report paths remain ignored; no essay/image/real labels become tracked data. Preserve Task 1 manifest/test imports and historical version accessibility.
+- [x] **RED command:** `uv run pytest tests/test_writing_benchmark_export.py tests/test_task2_benchmark_cli.py -q`.
+- [x] **Minimal documentation:** Explain ADMIN → ZIP → Colab upload → clone/install backend deps → unzip → provider secrets → separate Task 1/Task 2 CLI → reports. Include dry-run and manual one-sample inference commands but do not execute live inference. Show Task 1 v12 and Task 2 current prompt config, DEV/HOLDOUT hygiene, one-rater metadata, neutral source note, false-default redistribution, and provider content disclosure. No production PostgreSQL credentials, admin JWT, direct API ingestion, prediction DB, automatic calibration, new GPU deployment or required notebook app integration.
+- [x] **GREEN command:** `uv run pytest tests/test_writing_benchmark_export.py tests/test_task2_benchmark_cli.py tests/test_task1_benchmark.py -q`; inspect tracked/ignored paths with `git status --short` and `git check-ignore` for fictional temporary paths only.
+- [x] **Commit:** `Document Writing benchmark export and Colab evaluation`.
 
 ### Task 14: Focused integrated regression, fresh migration and remote CI gate
 
@@ -342,4 +342,4 @@
 
 ## Review decisions still required
 
-None discovered. The approved choices determine product scope. The storage namespace, technical row revision, explicit Complete operation, metric extraction and Task 2 trait adapter are implementation details resolved above from current code. The only approval still needed is the user's review of this plan before any implementation begins.
+None discovered. The approved choices determine product scope. The storage namespace, technical row revision, explicit Complete operation, metric extraction and Task 2 trait adapter are implementation details resolved above from current code. The user subsequently authorized implementation; no further design decision or approval is required.

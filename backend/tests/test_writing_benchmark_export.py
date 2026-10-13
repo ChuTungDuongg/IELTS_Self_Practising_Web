@@ -228,3 +228,179 @@ async def test_snapshot_row_lock_keeps_image_consistent_during_replacement(tmp_p
             await mutation
         with zipfile.ZipFile(tmp_path / "bank.zip") as archive:
             assert archive.read("images/T1-001.png") == PNG
+
+
+async def repeated_cancel_snapshot(tmp_path, monkeypatch):
+    """A second cancellation must not release locks while the staging thread runs."""
+    storage = LocalAssetStorage(tmp_path / "cancel-assets")
+    async with isolated_bank() as (_, sessions):
+        async with sessions() as session:
+            row = await seed(session, storage)
+            sample_id, revision = row.id, row.revision
+        async with sessions() as session:
+            exporter = WritingBenchmarkExportService(session, storage)
+            original = exporter._write_bundle
+            ready, release, finished = threading.Event(), threading.Event(), threading.Event()
+
+            def stage(*args):
+                ready.set()
+                try:
+                    assert release.wait(5)
+                    return original(*args)
+                finally:
+                    finished.set()
+
+            monkeypatch.setattr(exporter, "_write_bundle", stage)
+            exporting = asyncio.create_task(exporter.export(tmp_path / "cancel.zip"))
+            assert await asyncio.to_thread(ready.wait, 5)
+
+            async def replace():
+                async with sessions() as other:
+                    return await WritingBenchmarkService(other, storage).replace_image(
+                        sample_id,
+                        BenchmarkMutation(expected_revision=revision),
+                        "image/png",
+                        "new.png",
+                        PNG + b"replacement",
+                    )
+
+            mutation = asyncio.create_task(replace())
+            try:
+                exporting.cancel()
+                await asyncio.sleep(0.02)
+                exporting.cancel()
+                await asyncio.sleep(0.1)
+                still_locked = not mutation.done()
+            finally:
+                release.set()
+                await asyncio.gather(exporting, mutation, return_exceptions=True)
+                assert await asyncio.to_thread(finished.wait, 5)
+            assert still_locked, "Repeated cancellation released a live image snapshot"
+            assert not (tmp_path / "cancel.zip").exists()
+
+
+async def test_bank_bundle_fake_cli_pipeline(db_session, tmp_path, monkeypatch):
+    import importlib.util
+
+    from sqlalchemy import func, select
+    from test_task1_visual import Task1FakeProvider
+    from test_task2_benchmark import Provider as Task2Provider
+    from test_writing_benchmark_api import create, patch
+
+    from app.core.config import Settings, get_settings
+    from app.evaluation.task1.runner import run_benchmark as task1_run
+    from app.evaluation.task2.runner import run_benchmark as task2_run
+    from app.evaluation.writing_latency import load_fixture
+    from app.models import Attempt, AttemptWritingScore, Base, WritingAIGradingRun
+
+    monkeypatch.setattr(get_settings(), "storage_root", tmp_path / "assets")
+
+    async def learner_counts():
+        async with db_session.begin():
+            return [
+                await db_session.scalar(select(func.count()).select_from(model))
+                for model in (Attempt, AttemptWritingScore, WritingAIGradingRun)
+            ]
+
+    before = await learner_counts()
+    async with api_client(db_session, db_session.info["current_user_identity"]) as client:
+        first = await create(client, 1)
+        first_url = f"{ROOT}/samples/{first['id']}"
+        assert (await client.post(first_url + "/complete", json=patch(first))).status_code == 422
+        first = (
+            await client.patch(
+                first_url,
+                json=patch(
+                    first,
+                    prompt="Describe fictional A/B data.",
+                    essay="A increased. B fell.",
+                    task1_task_type="LINE_GRAPH",
+                    human_scores={"ta": 6.5, "cc": 6.5, "lr": 6.5, "gra": 6.5},
+                ),
+            )
+        ).json()
+        assert first["status"] == "DRAFT"
+        assert (await client.post(first_url + "/complete", json=patch(first))).status_code == 422
+        first = (
+            await client.post(
+                first_url + "/image",
+                data={"expected_revision": first["revision"]},
+                files={"file": ("fictional.png", PNG, "image/png")},
+            )
+        ).json()
+        assert (await client.post(first_url + "/complete", json=patch(first))).status_code == 200
+        second = await create(client, 2)
+        second_url = f"{ROOT}/samples/{second['id']}"
+        fixture = load_fixture()["task2"]
+        second = (
+            await client.patch(second_url, json=patch(second, essay=fixture["response"]))
+        ).json()
+        assert (await client.post(second_url + "/complete", json=patch(second))).status_code == 422
+        second = (
+            await client.patch(
+                second_url,
+                json=patch(
+                    second,
+                    prompt=fixture["prompt"],
+                    human_scores={"tr": 6.5, "cc": 6.5, "lr": 6.5, "gra": 6.5},
+                ),
+            )
+        ).json()
+        assert (await client.post(second_url + "/complete", json=patch(second))).status_code == 200
+        await create(client, 2)  # Remains a draft and must not enter the bundle.
+        response = await client.get(ROOT + "/export")
+        assert response.status_code == 200
+    unpacked = tmp_path / "bundle"
+    with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
+        assert all(
+            not name.startswith("/") and ".." not in Path(name).parts for name in archive.namelist()
+        )
+        archive.extractall(unpacked)
+    assert len(load_task1(unpacked / "task1.jsonl", "dev")) == 1
+    assert len(load_task2(unpacked / "task2.jsonl", "dev")) == 1
+    root = Path(__file__).parents[2]
+    providers = []
+    for number, runner, provider_type in (
+        (1, task1_run, Task1FakeProvider),
+        (2, task2_run, Task2Provider),
+    ):
+        spec = importlib.util.spec_from_file_location(
+            f"pipeline_cli_{number}", root / f"scripts/benchmark_task{number}.py"
+        )
+        script = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(script)
+
+        def factory(_config, provider_type=provider_type):
+            provider = provider_type()
+            providers.append(provider)
+            return provider
+
+        async def fake_run(*args, runner=runner, factory=factory, **kwargs):
+            return await runner(*args, provider_factory=factory, **kwargs)
+
+        monkeypatch.setattr(script, "run_benchmark", fake_run)
+        monkeypatch.setattr(script, "Settings", lambda **_: Settings(_env_file=None))
+        output = tmp_path / f"task{number}-reports"
+        result = await asyncio.to_thread(
+            script.main,
+            [
+                "--manifest",
+                str(unpacked / f"task{number}.jsonl"),
+                "--split",
+                "dev",
+                "--output",
+                str(output),
+            ],
+        )
+        assert result == 0
+        report = json.loads((output / "report.json").read_text(encoding="utf-8"))
+        assert report["records"][0]["status"] == "COMPLETED"
+        assert {"report.json", "report.md", "disagreements.csv", "cache", "attempts"} <= {
+            path.name for path in output.iterdir()
+        }
+        assert "human_scores" not in json.dumps(providers[-1].calls, default=str)
+    assert await learner_counts() == before
+    assert [name for name in Base.metadata.tables if "benchmark" in name] == [
+        "writing_benchmark_samples"
+    ]
+    await repeated_cancel_snapshot(tmp_path, monkeypatch)
