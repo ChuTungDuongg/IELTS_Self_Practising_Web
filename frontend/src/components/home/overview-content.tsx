@@ -2,17 +2,16 @@
 
 import type { ReactElement } from "react";
 import Link from "next/link";
-import { BrandOrbit } from "./brand-orbit";
+import { GravityLanding } from "./gravity/gravity-landing";
 import { ArrowIcon, BuilderIcon, HeadphonesIcon, HistoryIcon, LibraryIcon, ReadingIcon, SparkleIcon } from "@/components/ui/icons";
 import { AdminOnly } from "@/features/auth/admin-only";
 import type { AdminStats } from "@/lib/api/admin";
 import type { Profile } from "@/lib/api/profile";
 import type { HistoryItem } from "@/lib/api/history";
-import { moduleTranslationKeys } from "@/lib/i18n/translations";
 import { formatProjectDate } from "@/lib/date-time";
 import { useTranslation } from "@/lib/i18n/locale-provider";
 
-export function OverviewContent({ publishedCount, resumableCount, testCount, isAdmin, adminStats, profile, recentAttempt }: { publishedCount: number; resumableCount: number; testCount: number; isAdmin: boolean; adminStats: AdminStats | null; profile: Profile | null; recentAttempt?: Pick<HistoryItem, "attempt_id" | "test_title" | "module" | "status"> }): ReactElement {
+export function OverviewContent({ publishedCount, resumableCount, testCount, isAdmin, adminStats, profile, recentAttempt, signedIn = true }: { publishedCount: number; resumableCount: number; testCount: number; isAdmin: boolean; adminStats: AdminStats | null; profile: Profile | null; recentAttempt?: Pick<HistoryItem, "attempt_id" | "test_title" | "module" | "status">; signedIn?: boolean }): ReactElement {
   const { t } = useTranslation();
   const pathways = [
     { title: t("pages.overview.tests"), description: t("pages.overview.testsDescription"), href: "/library", eyebrow: t("pages.overview.practiceLibrary"), icon: LibraryIcon, tone: "indigo" },
@@ -22,25 +21,11 @@ export function OverviewContent({ publishedCount, resumableCount, testCount, isA
   ] as const;
 
   return (
-    <div className="home-page">
-      <section className="home-hero" aria-labelledby="home-title">
-        <div className="home-hero-content">
-          <p className="page-eyebrow page-context-kicker"><SparkleIcon className="size-4" /> {t("pages.overview.observatory")}</p>
-          <h1 id="home-title">{t("pages.overview.build")}<br /><span>{t("pages.overview.focus")}</span></h1>
-          <p className="home-hero-description">{t("pages.overview.hero")}</p>
-          {recentAttempt ? <section className="home-next-session" aria-label={t("ui.continuePractice")}>
-            <div><p>{t("ui.continuePractice")} · {t(moduleTranslationKeys[recentAttempt.module])}</p><h2>{recentAttempt.test_title}</h2></div>
-            <Link href={recentAttempt.status === "PAUSED" ? "/history" : `/attempt/${recentAttempt.attempt_id}`} className="btn btn-primary">{t("ui.continueSaved")} <ArrowIcon className="size-4" /></Link>
-          </section> : null}
-          <div className="home-hero-actions">
-            <Link href="/library" className={`btn ${recentAttempt ? "btn-secondary" : "btn-primary"}`}>{t("pages.overview.start")} <ArrowIcon className="size-4" /></Link>
-            <AdminOnly><Link href="/admin/tests" className="btn btn-secondary"><BuilderIcon className="size-4" /> {t("pages.overview.builderAction")}</Link></AdminOnly>
-          </div>
-        </div>
-        <BrandOrbit />
-      </section>
-
-      <section className={`home-metrics${isAdmin ? " home-metrics-admin" : ""}`} aria-label={t("pages.overview.summary")}>
+    <div className="home-page gravity-home">
+      <GravityLanding recentAttempt={recentAttempt} />
+      <div id="study-workspace" className="home-workspace">
+      <div className="section-header"><div><h2 className="section-title">{t("gravity.workspace")}</h2><p className="section-description">{t("gravity.workspaceDescription")}</p></div><AdminOnly><Link href="/admin/tests" prefetch={false} className="btn btn-secondary"><BuilderIcon className="size-4" />{t("pages.overview.builderAction")}</Link></AdminOnly></div>
+      {signedIn ? <section className={`home-metrics${isAdmin ? " home-metrics-admin" : ""}`} aria-label={t("pages.overview.summary")}>
         {[
           [t("pages.overview.published"), String(publishedCount), t("pages.overview.ready"), "/library"],
           [t("pages.overview.resumable"), String(resumableCount), t("pages.overview.saved"), "/history"],
@@ -53,7 +38,7 @@ export function OverviewContent({ publishedCount, resumableCount, testCount, isA
         ))}
         {isAdmin ? <Link href="/admin/tests" className="home-metric"><span className="home-metric-value">{testCount}</span><span><strong>{t("pages.overview.builderTests")}</strong><small>{t("pages.overview.authoring")}</small></span><ArrowIcon className="size-4" /></Link> : null}
         {adminStats ? <Link href="/admin" className="home-metric"><span className="home-metric-value">{adminStats.total_users}</span><span><strong>{t("pages.overview.users")}</strong><small>{t("pages.overview.activeUsers", { count: adminStats.active_users })}</small></span><ArrowIcon className="size-4" /></Link> : null}
-      </section>
+      </section> : <section className="surface-card home-guest"><h3>{t("gravity.guestTitle")}</h3><p>{t("gravity.guestDescription")}</p><div className="gravity-actions"><Link href="/login" prefetch={false} className="btn btn-primary">{t("shell.login")}</Link><Link href="/register" prefetch={false} className="btn btn-secondary">{t("shell.register")}</Link></div></section>}
 
       {profile ? <IeltsGoals profile={profile} /> : null}
 
@@ -78,6 +63,7 @@ export function OverviewContent({ publishedCount, resumableCount, testCount, isA
         <div><p className="page-eyebrow">{t("pages.overview.continuity")}</p><h2 className="section-title">{t("pages.overview.reliable")}</h2><p>{t("pages.overview.foundation")}</p></div>
         <Link href="/history" className="btn btn-secondary">{t("pages.overview.progressAction")}</Link>
       </section>
+      </div>
     </div>
   );
 }

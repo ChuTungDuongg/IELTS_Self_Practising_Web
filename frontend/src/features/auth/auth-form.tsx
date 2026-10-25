@@ -60,17 +60,18 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
   if (loading || user) return <p className="notice" role="status">{t("auth.checking")}</p>;
   if (sessionError) return <p role="alert" className="notice">{sessionError}</p>;
 
-  return <section className="auth-card">
+  return <div className="auth-layout"><aside className="auth-intro" aria-labelledby="auth-intro-title"><p className="auth-identity">BandPilot / IELTS</p><h2 id="auth-intro-title">{t("gravity.authTitle")}</h2><p>{t("gravity.authDescription")}</p></aside><section className="auth-card">
     <div className="auth-page-heading"><p className="page-eyebrow page-context-kicker">{t("auth.account")}</p><h1>{mode === "login" ? t("auth.welcome") : t("auth.createTitle")}</h1><p className="page-description">{mode === "login" ? t("auth.signInDescription") : t("auth.registerDescription")}</p></div>
     <form onSubmit={submit} className="auth-form">
       {mode === "register" ? <label>{t("auth.name")}<input name="display_name" required minLength={1} maxLength={160} autoComplete="name" /></label> : null}
       <label>{t("auth.email")}<input name="email" type="email" required autoComplete="email" /></label>
-      <label>{t("auth.password")}<input name="password" type="password" required minLength={mode === "register" ? 8 : 1} autoComplete={mode === "login" ? "current-password" : "new-password"} /></label>
+      <label>{t("auth.password")}<input name="password" type="password" required minLength={mode === "register" ? 8 : 1} autoComplete={mode === "login" ? "current-password" : "new-password"} aria-describedby={mode === "register" ? "auth-password-help" : undefined} /></label>
+      {mode === "register" ? <p id="auth-password-help" className="auth-password-hint">{t("gravity.passwordHint")}</p> : null}
       {mode === "register" ? <label>{t("auth.confirmPassword")}<input name="confirm_password" type="password" required minLength={8} autoComplete="new-password" /></label> : null}
       {error ? <p role="alert" className="notice">{typeof error === "string" ? error : error ? t(error.message) : null}</p> : null}
       <button type="submit" className="btn btn-primary" disabled={pending}>{pending ? t("auth.wait") : mode === "login" ? t("auth.signIn") : t("auth.create")}</button>
     </form>
     <a className="btn btn-secondary" href={googleLoginUrl}>{t("auth.google")}</a>
     <p>{mode === "login" ? <>{t("auth.newHere")} <Link href="/register">{t("auth.createLink")}</Link></> : <>{t("auth.registered")} <Link href="/login">{t("shell.login")}</Link></>}</p>
-  </section>;
+  </section></div>;
 }

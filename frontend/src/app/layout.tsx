@@ -3,8 +3,11 @@ import { AppShell } from "@/components/ui/app-shell";
 import { AuthProvider } from "@/features/auth/auth-provider";
 import { PersonalizationProvider } from "@/features/personalization/personalization-provider";
 import { accentPresets } from "@/features/personalization/accent-palette";
+import "@fontsource-variable/raleway";
 import "./globals.css";
 import "./design-system.css";
+import "./gravity-home.css";
+import "./gravity-product.css";
 
 export const metadata: Metadata = {
   title: "BandPilot — IELTS Practice & AI Feedback",

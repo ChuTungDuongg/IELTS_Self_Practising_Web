@@ -16,7 +16,6 @@ vi.mock("@/lib/api/history", () => ({ getHistory: vi.fn() }));
 vi.mock("@/lib/api/tests", () => ({ getTests: vi.fn() }));
 vi.mock("@/lib/api/profile", () => ({ getProfile: vi.fn() }));
 vi.mock("@/features/auth/admin-only", () => ({ AdminOnly: ({ children }: { children: React.ReactNode }) => children }));
-vi.mock("@/components/home/brand-orbit", () => ({ BrandOrbit: () => null }));
 
 const user = {
   id: "11111111-1111-4111-8111-111111111111",
@@ -135,12 +134,24 @@ describe("homepage metrics and personal IELTS goals", () => {
     expect(goals).not.toHaveTextContent("Listening target");
   });
 
-  it("does not request or show private goals for an unauthenticated visitor", async () => {
-    vi.mocked(serverApiRequest).mockRejectedValue(new ApiError("AUTHENTICATION_REQUIRED", "Sign in", 401));
+  it("renders the public homepage without protected requests when no session exists", async () => {
+    const error = new ApiError("AUTHENTICATION_REQUIRED", "Sign in", 401);
+    vi.mocked(serverApiRequest).mockRejectedValue(error);
+    vi.mocked(getTests).mockRejectedValue(error);
+    vi.mocked(getHistory).mockRejectedValue(error);
     render(await DashboardPage());
+    expect(getTests).not.toHaveBeenCalled();
+    expect(getHistory).not.toHaveBeenCalled();
     expect(getAdminStats).not.toHaveBeenCalled();
     expect(getProfile).not.toHaveBeenCalled();
     expect(screen.queryByRole("region", { name: /IELTS goal/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Workspace summary" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Login" })).toHaveAttribute("href", "/login");
+  });
+
+  it("surfaces test loading errors for an authenticated visitor", async () => {
+    vi.mocked(getTests).mockRejectedValue(new ApiError("API_ERROR", "Tests failed", 500));
+    await expect(DashboardPage()).rejects.toThrow("Tests failed");
   });
 
   it("ignores an expired profile session but surfaces other profile errors", async () => {

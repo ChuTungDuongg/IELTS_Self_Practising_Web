@@ -33,10 +33,10 @@ export function AppShell({ children, currentYear }: { children: ReactNode; curre
   if (pathname.startsWith("/attempt/")) {
     return <main className="exam-shell">{children}</main>;
   }
-  return <div className="app-shell">
+  return <div className={`app-shell${pathname === "/" ? " app-shell-home" : ""}`}>
     <a className="sr-only focus:not-sr-only" href="#main-content">{t("shell.skipNavigation")}</a>
     <GlobalHeader pathname={pathname} />
-    <main id="main-content" className={`app-content app-content-${contentWidth(pathname)}`}>{children}</main>
-    {!isBuilderPreview(pathname) ? <AppFooter year={currentYear} /> : null}
+    <main id="main-content" className={`app-content app-content-${contentWidth(pathname)}${pathname === "/" ? " app-content-home" : ""}`}>{children}</main>
+    {!isBuilderPreview(pathname) ? <AppFooter year={currentYear} home={pathname === "/"} /> : null}
   </div>;
 }

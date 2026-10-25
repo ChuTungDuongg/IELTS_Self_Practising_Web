@@ -4,14 +4,29 @@ import { hydrateRoot } from "react-dom/client";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import postcss from "postcss";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppFooter } from "@/components/ui/app-footer";
 import { LocaleProvider } from "@/lib/i18n/locale-provider";
 import { renderWithLocale } from "./locale-test-utils";
 
 beforeEach(() => window.localStorage.clear());
+afterEach(() => vi.unstubAllGlobals());
 
 describe("shared footer", () => {
+  it("respects reduced motion by default and lets the user explicitly play and pause the loop", () => {
+    vi.stubGlobal("matchMedia", () => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() }));
+    renderWithLocale(<AppFooter year={2026} home />);
+    const footer = screen.getByRole("contentinfo");
+    expect(footer).toHaveAttribute("data-motion", "auto");
+    expect(footer).toHaveAttribute("data-motion-paused", "true");
+    fireEvent.click(screen.getByRole("button", { name: "Resume scrolling text" }));
+    expect(footer).toHaveAttribute("data-motion", "playing");
+    expect(footer).toHaveAttribute("data-motion-paused", "false");
+    fireEvent.click(screen.getByRole("button", { name: "Pause scrolling text" }));
+    expect(footer).toHaveAttribute("data-motion", "paused");
+    expect(footer).toHaveAttribute("data-motion-paused", "true");
+  });
+
   it("shows real product information and the current language without extra links or controls", () => {
     renderWithLocale(<AppFooter year={2026} />);
     const footer = screen.getByRole("contentinfo");

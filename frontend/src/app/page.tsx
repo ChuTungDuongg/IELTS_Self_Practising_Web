@@ -12,8 +12,9 @@ export const dynamic = "force-dynamic";
 export default async function DashboardPage() {
   const user = await getHomepageUser();
   const [tests, history] = await Promise.all([
-    getTests(user?.role === "ADMIN" ? undefined : { publicOnly: true }, serverApiRequest),
-    getHistory(serverApiRequest).catch((error) => { if (error instanceof ApiError && error.status === 401) return { items: [], groups: [], total: 0 }; throw error; }),
+    // publicOnly filters test visibility; the API still requires a signed-in user.
+    user ? getTests(user.role === "ADMIN" ? undefined : { publicOnly: true }, serverApiRequest) : [],
+    user ? getHistory(serverApiRequest).catch((error) => { if (error instanceof ApiError && error.status === 401) return { items: [], groups: [], total: 0 }; throw error; }) : { items: [], groups: [], total: 0 },
   ]);
   const [adminStats, profile] = await Promise.all([
     user?.role === "ADMIN" ? getAdminStats(serverApiRequest) : null,
@@ -21,7 +22,7 @@ export default async function DashboardPage() {
   ]);
   const published = tests.flatMap((test) => test.versions).filter((item) => item.status === "PUBLISHED");
   const inProgress = history.items.filter((item) => item.status === "IN_PROGRESS" || item.status === "PAUSED");
-  return <OverviewContent publishedCount={published.length} resumableCount={inProgress.length} testCount={tests.length} isAdmin={user?.role === "ADMIN"} adminStats={adminStats} profile={profile} recentAttempt={inProgress[0]} />;
+  return <OverviewContent publishedCount={published.length} resumableCount={inProgress.length} testCount={tests.length} isAdmin={user?.role === "ADMIN"} adminStats={adminStats} profile={profile} recentAttempt={inProgress[0]} signedIn={user !== null} />;
 }
 
 async function getHomepageProfile() {

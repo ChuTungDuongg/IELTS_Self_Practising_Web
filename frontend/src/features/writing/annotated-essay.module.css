@@ -1,5 +1,5 @@
 .root { position: relative; min-width: 0; }
-.essay { margin: 0; overflow-wrap: anywhere; }
+.essay { margin: 0; overflow-wrap: anywhere; font-size: 17px; line-height: 1.9; }
 .paragraph { margin: 0; white-space: pre-wrap; }
 .paragraph ~ .paragraph { margin-top: .9em; }
 .separator { display: none; }

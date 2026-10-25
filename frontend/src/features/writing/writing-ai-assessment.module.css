@@ -1,10 +1,10 @@
 .panel { display: grid; min-width: 0; gap: 24px; margin-top: 24px; padding: clamp(20px, 3vw, 32px); border: 1px solid var(--line); border-radius: var(--radius-card, 10px); background: var(--surface); color: var(--ink); font-size: 14px; line-height: 1.75; }
 .heading, .actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-.heading h2 { font-size: 20px; font-weight: 600; letter-spacing: -.02em; }
-.badge { border-radius: 4px; padding: 4px 8px; color: var(--ink-soft); background: var(--surface-soft); font-size: 12px; font-weight: 500; }
+.heading h2 { font-family: var(--font-display, var(--font-sans)); font-size: 23px; font-weight: 600; letter-spacing: -.035em; }
+.badge { border-radius: 99px; padding: 5px 10px; color: var(--ink-soft); background: var(--surface-soft); font-size: 12px; font-weight: 500; }
 .actions { justify-content: flex-start; }
 .trace, .history { border: 0; border-radius: var(--radius-control, 6px); padding: 20px; background: var(--surface-soft); }
-.panel summary { min-height: 36px; padding-block: 6px; cursor: pointer; font-weight: 500; }
+.panel summary { min-height: 44px; padding-block: 10px; cursor: pointer; font-weight: 500; }
 .panel summary:focus-visible { outline: 2px solid var(--focus-ring, var(--accent)); outline-offset: 3px; border-radius: 4px; }
 .traceHeading, .stepTitle, .cardHeading { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
 .traceHeading { flex-wrap: wrap; margin-bottom: 8px; }
@@ -32,14 +32,14 @@
 .panel blockquote { border-left: 2px solid var(--line-strong); margin: 16px 0 0; padding: 16px; border-radius: 0 6px 6px 0; background: var(--surface-soft); overflow-wrap: anywhere; }
 .panel blockquote p { max-width: 65ch; color: var(--ink-soft); margin: 10px 0 0; font-size: .9rem; line-height: 1.75; }
 .panel blockquote q { display: block; color: var(--ink); font-family: var(--font-reading, Georgia), serif; font-size: 16px; line-height: 1.8; white-space: pre-wrap; }
-.overall { min-width: 0; padding: 24px; border: 0; border-radius: var(--radius-control, 6px); background: var(--surface-soft); }
+.overall { min-width: 0; padding: 28px; border: 0; border-radius: 18px; background: var(--surface-soft); }
 .overallHeading { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
 .overallCopy { min-width: 0; }
 .overallEyebrow { margin: 0 0 6px; color: var(--muted); font-size: 12px; font-weight: 500; }
 .overall h3 { margin: 0; font-size: 18px; font-weight: 600; }
 .overallSupport { max-width: 60ch; margin: 8px 0 0; color: var(--muted); font-size: .9rem; line-height: 1.65; }
 .overallBand { display: inline-flex; max-width: 100%; flex: 0 0 auto; align-items: baseline; flex-wrap: wrap; gap: 8px; border: 0; border-radius: 0; padding: 0; color: var(--muted); background: transparent; font-size: 13px; font-weight: 400; font-variant-numeric: tabular-nums; }
-.overallBand span { color: var(--ink); font-size: 36px; font-weight: 400; line-height: 1.15; }
+.overallBand span { color: var(--ink); font-family: var(--font-display, var(--font-sans)); font-size: 48px; font-weight: 500; line-height: 1.15; }
 .overallCriteria { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 18px 0 0; border-top: 1px solid var(--line); padding-top: 14px; }
 .overallCriteria > div { display: flex; min-width: 0; align-items: flex-start; justify-content: space-between; gap: 10px; }
 .overallCriteria dt { min-width: 0; }
@@ -47,9 +47,9 @@
 .overallCriteria dt span { display: block; margin-top: 3px; color: var(--muted); font-size: .75rem; line-height: 1.5; overflow-wrap: anywhere; }
 .overallCriteria dd { flex: 0 0 auto; margin: 0; color: var(--ink); font-size: 20px; font-weight: 400; font-variant-numeric: tabular-nums; }
 .criteria { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
-.card { display: grid; min-width: 0; align-content: start; gap: 24px; padding: 24px; border: 1px solid var(--line); border-radius: var(--radius-control, 6px); background: var(--surface); overflow-wrap: anywhere; }
+.card { display: grid; min-width: 0; align-content: start; gap: 24px; padding: 24px; border: 1px solid var(--line); border-radius: 18px; background: var(--surface); overflow-wrap: anywhere; }
 .cardHeading { padding-bottom: 14px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
-.card h3 { font-size: 17px; font-weight: 600; line-height: 1.4; }
+.card h3 { font-family: var(--font-display, var(--font-sans)); font-size: 19px; font-weight: 600; line-height: 1.4; letter-spacing: -.02em; }
 .cardHeading small { color: var(--muted); display: block; margin-top: 4px; }
 .band { white-space: nowrap; color: var(--writing); padding: 0; border-radius: 0; background: transparent; font-size: 16px; font-weight: 500; font-variant-numeric: tabular-nums; }
 .card h4 { font-size: 13px; text-transform: none; letter-spacing: 0; color: var(--ink-soft); font-weight: 600; margin-bottom: 10px; }
