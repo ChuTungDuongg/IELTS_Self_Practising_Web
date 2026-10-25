@@ -1,10 +1,10 @@
-/* BandPilot — editorial workspace.
- * Imported after globals.css in the root layout. This root scopes presentation
- * without changing utilities, content schemas, or exam behavior.
+/* BandPilot shared presentation tokens and reusable workspace UI.
+ * Global theme values live here; globals.css owns resets and exam defaults.
  * Standard canvas: 12 × 77 + 11 × 16 = 1100px. Wide workspaces remain fluid.
  */
 :root[data-design="editorial"][data-theme] {
   --font-sans: "Segoe UI Variable", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Raleway Variable", "Segoe UI", sans-serif;
   --font-reading: Georgia, "Times New Roman", serif;
   --space-1: 4px;
   --space-2: 8px;
@@ -13,25 +13,25 @@
   --space-6: 24px;
   --space-8: 32px;
   --space-12: 48px;
-  --radius-control: 6px;
-  --radius-card: 10px;
-  --radius-dialog: 14px;
-  --app-bg: #f7f8fa;
-  --app-bg-elevated: #eef0f3;
+  --radius-control: 10px;
+  --radius-card: 20px;
+  --radius-dialog: 24px;
+  --app-bg: #f5f7fc;
+  --app-bg-elevated: #edf1f9;
   --surface: #ffffff;
   --surface-raised: #ffffff;
-  --surface-soft: #f3f4f6;
-  --surface-hover: #edeff2;
+  --surface-soft: #f0f3fa;
+  --surface-hover: #e8edf7;
   --surface-glass: var(--surface);
-  --ink: #20242c;
-  --ink-soft: #434a56;
-  --muted: #616976;
-  --line: #e2e5e9;
-  --line-strong: #b3bbc6;
+  --ink: #15213a;
+  --ink-soft: #3c4962;
+  --muted: #5e6c84;
+  --line: #dfe5f0;
+  --line-strong: #a7b5cb;
   --border: var(--line);
-  --control-border: #adb6c3;
-  --action-ink: #ffffff;
-  --action-bg: #252b35;
+  --control-border: #a7b5cb;
+  --action-ink: var(--personal-accent-contrast, #fff);
+  --action-bg: var(--personal-accent-strong, #0e2ac5);
   --success: #206746;
   --success-soft: #eaf4ee;
   --warning: #805315;
@@ -39,9 +39,9 @@
   --danger: #a52d42;
   --danger-soft: #fceef0;
   --danger-contrast: #ffffff;
-  --shadow-sm: 0 1px 3px rgb(20 28 40 / 0.04);
-  --shadow-md: 0 8px 24px rgb(20 28 40 / 0.1);
-  --shadow-lg: 0 16px 48px rgb(20 28 40 / 0.16);
+  --shadow-sm: 0 2px 8px rgb(29 48 92 / .04);
+  --shadow-md: 0 12px 32px rgb(29 48 92 / .1);
+  --shadow-lg: 0 24px 80px rgb(18 32 64 / .2);
   --glow-accent: none;
   --glow-violet: none;
   --paper: var(--app-bg);
@@ -53,21 +53,21 @@
   color-scheme: light;
 
   &[data-theme="dark"] {
-    --app-bg: #141414;
-    --app-bg-elevated: #1b1b1c;
-    --surface: #1e1e20;
-    --surface-raised: #252527;
-    --surface-soft: #28282b;
-    --surface-hover: #323235;
+    --app-bg: #0f1522;
+    --app-bg-elevated: #141e30;
+    --surface: #172034;
+    --surface-raised: #1c2940;
+    --surface-soft: #1b2940;
+    --surface-hover: #25344d;
     --surface-glass: var(--surface);
-    --ink: #f0f0f1;
-    --ink-soft: #d0d0d4;
-    --muted: #aaaab3;
-    --line: #39393e;
-    --line-strong: #6e6e79;
-    --control-border: #767680;
-    --action-ink: #19191b;
-    --action-bg: #eeeeef;
+    --ink: #edf2ff;
+    --ink-soft: #c7d2e8;
+    --muted: #a6b5cf;
+    --line: #2d3d58;
+    --line-strong: #6f83a3;
+    --control-border: #7185a6;
+    --action-ink: var(--personal-accent-contrast, #101a31);
+    --action-bg: var(--personal-accent, #a5baff);
     --success: #a0d5b4;
     --success-soft: #24382b;
     --warning: #e2c38a;
@@ -78,8 +78,8 @@
     --reading: #9bcbd0;
     --listening: #c1b3dc;
     --writing: #dfbc91;
-    --shadow-md: 0 8px 24px rgb(0 0 0 / 0.24);
-    --shadow-lg: 0 16px 48px rgb(0 0 0 / 0.34);
+    --shadow-md: 0 12px 32px rgb(0 0 0 / .24);
+    --shadow-lg: 0 24px 80px rgb(0 0 0 / .36);
     color-scheme: dark;
   }
 

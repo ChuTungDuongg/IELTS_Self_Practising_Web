@@ -45,24 +45,34 @@ function themeBlock(selector: string, endMarker: string): string {
 }
 
 describe("paper workspace visual system", () => {
-  it("defines the shared semantic tokens in both supported themes", () => {
-    const light = themeBlock(":root {", ':root[data-theme="dark"]');
-    const dark = themeBlock(':root[data-theme="dark"]', "* { box-sizing");
-    const tokens = [
+  it("defines shared tokens in the design system and accent preferences in globals", () => {
+    const designCss = readFileSync(resolve(process.cwd(), "src/app/design-system.css"), "utf8");
+    const designRoot = postcss.parse(designCss).nodes.find(node => node.type === "rule" && node.selector === ':root[data-design="editorial"][data-theme]');
+    expect(designRoot?.type).toBe("rule");
+    if (designRoot?.type !== "rule") return;
+    const darkRule = designRoot.nodes.find(node => node.type === "rule" && node.selector === '&[data-theme="dark"]');
+    expect(darkRule?.type).toBe("rule");
+    const defined = (nodes: typeof designRoot.nodes) => new Set(nodes.filter(node => node.type === "decl").map(node => node.prop));
+    const lightTokens = defined(designRoot.nodes);
+    const darkTokens = new Set([...lightTokens, ...(darkRule?.type === "rule" ? defined(darkRule.nodes) : [])]);
+    const shared = [
       "app-bg",
       "app-bg-elevated",
       "surface-hover",
       "surface-glass",
-      "accent-violet",
-      "accent-cyan",
       "danger-contrast",
       "glow-accent",
       "glow-violet",
     ];
-
-    for (const token of tokens) {
-      expect(light, `light theme is missing --${token}`).toContain(`--${token}:`);
-      expect(dark, `dark theme is missing --${token}`).toContain(`--${token}:`);
+    for (const token of shared) {
+      expect(lightTokens.has(`--${token}`), `light theme is missing --${token}`).toBe(true);
+      expect(darkTokens.has(`--${token}`), `dark theme is missing --${token}`).toBe(true);
+    }
+    const accentLight = themeBlock(":root {", ':root[data-theme="dark"]');
+    const accentDark = themeBlock(':root[data-theme="dark"]', "* { box-sizing");
+    for (const token of ["accent-violet", "accent-cyan"]) {
+      expect(accentLight).toContain(`--${token}:`);
+      expect(accentDark).toContain(`--${token}:`);
     }
   });
 

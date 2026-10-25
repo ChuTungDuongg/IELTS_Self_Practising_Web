@@ -4,8 +4,10 @@ import postcss, { type Rule } from "postcss";
 import { describe, expect, it } from "vitest";
 
 const css = readFileSync(resolve(process.cwd(), "src/app/globals.css"), "utf8");
+const designCss = readFileSync(resolve(process.cwd(), "src/app/design-system.css"), "utf8");
 const writingCss = readFileSync(resolve(process.cwd(), "src/features/writing/writing-ai-assessment.module.css"), "utf8");
 const stylesheet = postcss.parse(css);
+const designStylesheet = postcss.parse(designCss);
 const darkSelector = ':root[data-theme="dark"]';
 
 function declarations(source: postcss.Root, selector: string): Record<string, string> {
@@ -17,8 +19,15 @@ function declarations(source: postcss.Root, selector: string): Record<string, st
   return values;
 }
 
-const light = declarations(stylesheet, ":root");
-const dark = declarations(stylesheet, darkSelector);
+const designRoot = designStylesheet.nodes.find((node): node is Rule => node.type === "rule" && node.selector === ':root[data-design="editorial"][data-theme]')!;
+const designDark = designRoot.nodes.find((node): node is Rule => node.type === "rule" && node.selector === '&[data-theme="dark"]')!;
+const directTokens = (rule: Rule): Record<string, string> => {
+  const values: Record<string, string> = {};
+  for (const node of rule.nodes) if (node.type === "decl" && node.prop.startsWith("--")) values[node.prop] = node.value;
+  return values;
+};
+const light = { ...declarations(stylesheet, ":root"), ...directTokens(designRoot) };
+const dark = { ...light, ...declarations(stylesheet, darkSelector), ...directTokens(designDark) };
 
 function color(token: string): number[] {
   const value = dark[`--${token}`];
@@ -42,90 +51,90 @@ const workspaceSurfaces = ["app-bg", "app-bg-elevated", "surface", "surface-rais
 const examSurfaces = ["exam-bg", "exam-surface", "exam-surface-alt", "exam-control-bg"];
 
 describe("editorial dark theme", () => {
-  it("uses the complete approved paper and graphite palettes", () => {
+  it("uses the current Gravity product palette with account and exam defaults", () => {
     const expected = {
   "light": {
-    "app-bg": "#f5f2eb",
-    "paper": "#f5f2eb",
-    "app-bg-elevated": "#eee9df",
-    "surface": "#fcfaf5",
-    "surface-raised": "#fffdf8",
-    "surface-soft": "#eeeae1",
-    "surface-hover": "#e8e3d9",
-    "surface-glass": "#fcfaf5",
-    "ink": "#292620",
-    "ink-soft": "#4c473e",
-    "muted": "#686155",
-    "line": "#ddd6c9",
-    "line-strong": "#8f8575",
+    "app-bg": "#f5f7fc",
+    "paper": "var(--app-bg)",
+    "app-bg-elevated": "#edf1f9",
+    "surface": "#ffffff",
+    "surface-raised": "#ffffff",
+    "surface-soft": "#f0f3fa",
+    "surface-hover": "#e8edf7",
+    "surface-glass": "var(--surface)",
+    "ink": "#15213a",
+    "ink-soft": "#3c4962",
+    "muted": "#5e6c84",
+    "line": "#dfe5f0",
+    "line-strong": "#a7b5cb",
     "accent": "#5261a8",
     "accent-strong": "#434f90",
     "accent-soft": "#e7e9f3",
     "surface-tint": "#e7e9f3",
     "accent-contrast": "#ffffff",
-    "reading": "#286f82",
+    "reading": "#256d76",
     "accent-cyan": "#286f82",
-    "listening": "#725b91",
+    "listening": "#67518b",
     "accent-violet": "#725b91",
-    "writing": "#99562e",
-    "success": "#277052",
-    "success-soft": "#e7f0e9",
-    "warning": "#8a581d",
-    "warning-soft": "#f5ebd9",
-    "danger": "#a83c50",
-    "danger-soft": "#f7e8eb",
+    "writing": "#885422",
+    "success": "#206746",
+    "success-soft": "#eaf4ee",
+    "warning": "#805315",
+    "warning-soft": "#fbf2df",
+    "danger": "#a52d42",
+    "danger-soft": "#fceef0",
     "danger-contrast": "#ffffff",
-    "shadow-sm": "0 1px 3px rgb(41 38 32 / 0.07)",
-    "shadow-md": "0 4px 12px rgb(41 38 32 / 0.08)",
-    "shadow-lg": "0 12px 32px rgb(41 38 32 / 0.16)"
+    "shadow-sm": "0 2px 8px rgb(29 48 92 / .04)",
+    "shadow-md": "0 12px 32px rgb(29 48 92 / .1)",
+    "shadow-lg": "0 24px 80px rgb(18 32 64 / .2)"
   },
   "dark": {
-    "app-bg": "#201e1b",
-    "paper": "#201e1b",
-    "app-bg-elevated": "#25221e",
-    "surface": "#292622",
-    "surface-raised": "#312d28",
-    "surface-soft": "#35312c",
-    "surface-hover": "#3c3731",
-    "surface-glass": "#292622",
-    "ink": "#f1ece2",
-    "ink-soft": "#d2cbc0",
-    "muted": "#b4aa9a",
-    "line": "#494239",
-    "line-strong": "#8d8070",
+    "app-bg": "#0f1522",
+    "paper": "var(--app-bg)",
+    "app-bg-elevated": "#141e30",
+    "surface": "#172034",
+    "surface-raised": "#1c2940",
+    "surface-soft": "#1b2940",
+    "surface-hover": "#25344d",
+    "surface-glass": "var(--surface)",
+    "ink": "#edf2ff",
+    "ink-soft": "#c7d2e8",
+    "muted": "#a6b5cf",
+    "line": "#2d3d58",
+    "line-strong": "#6f83a3",
     "accent": "#a4afd9",
     "accent-strong": "#b5bfe2",
     "accent-soft": "#333748",
     "surface-tint": "#333748",
     "accent-contrast": "#201e1b",
-    "reading": "#94bac4",
+    "reading": "#9bcbd0",
     "accent-cyan": "#94bac4",
-    "listening": "#b4a4ce",
+    "listening": "#c1b3dc",
     "accent-violet": "#b4a4ce",
-    "writing": "#d2ab8b",
-    "success": "#a3c3ad",
-    "success-soft": "#26372d",
-    "warning": "#d5b887",
-    "warning-soft": "#3b3022",
-    "danger": "#dda4aa",
-    "danger-soft": "#3c292d",
-    "danger-contrast": "#201e1b",
-    "shadow-sm": "0 1px 3px rgb(0 0 0 / 0.16)",
-    "shadow-md": "0 4px 12px rgb(0 0 0 / 0.20)",
-    "shadow-lg": "0 12px 32px rgb(0 0 0 / 0.30)"
+    "writing": "#dfbc91",
+    "success": "#a0d5b4",
+    "success-soft": "#24382b",
+    "warning": "#e2c38a",
+    "warning-soft": "#3b3222",
+    "danger": "#efa9b5",
+    "danger-soft": "#3d272e",
+    "danger-contrast": "#211417",
+    "shadow-sm": "0 2px 8px rgb(29 48 92 / .04)",
+    "shadow-md": "0 12px 32px rgb(0 0 0 / .24)",
+    "shadow-lg": "0 24px 80px rgb(0 0 0 / .36)"
   }
 };
     for (const [theme, values] of [[light, expected.light], [dark, expected.dark]] as const) {
       for (const [token, value] of Object.entries(values)) expect(theme[`--${token}`], token).toBe(value);
-      expect(theme["--glow-accent"]).toBe("var(--shadow-sm)");
-      expect(theme["--glow-violet"]).toBe("var(--shadow-sm)");
+      expect(theme["--glow-accent"]).toBe("none");
+      expect(theme["--glow-violet"]).toBe("none");
     }
     expect(Object.keys(dark).sort()).toEqual(Object.keys(light).sort());
   });
 
-  it.each([...workspaceSurfaces, ...examSurfaces])("keeps %s dark and neutral instead of saturated navy", (token) => {
+  it.each([...workspaceSurfaces, ...examSurfaces])("keeps %s subdued in the dark theme", (token) => {
     const rgb = color(token);
-    expect(Math.max(...rgb) - Math.min(...rgb)).toBeLessThanOrEqual(26);
+    expect(Math.max(...rgb) - Math.min(...rgb)).toBeLessThanOrEqual(examSurfaces.includes(token) ? 26 : 70);
     expect(luminance(rgb)).toBeLessThan(.06);
   });
 
@@ -184,7 +193,7 @@ describe("editorial dark theme", () => {
     const hover = declarations(stylesheet, `${darkSelector} :is(.home-metric, .learning-path-card, .practice-card, .test-card):hover`);
     expect(hover.background).toBe("var(--surface-hover)");
     expect(hover["box-shadow"]).toBe("var(--shadow-sm)");
-    for (const token of ["glow-accent", "glow-violet"]) expect(dark[`--${token}`]).toBe("var(--shadow-sm)");
+    for (const token of ["glow-accent", "glow-violet"]) expect(dark[`--${token}`]).toBe("none");
     expect(css).toContain(".home-orbit-interactive.is-active .home-orbit-scene");
     expect(css).toContain("@media (prefers-reduced-motion: reduce)");
   });

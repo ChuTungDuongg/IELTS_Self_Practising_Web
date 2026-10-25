@@ -1,17 +1,17 @@
 /* The user-selected Gravity reference deliberately uses glass, gradients and mono labels.
    Only the homepage has the animated field. Content is visible before enhancement. */
 :root[data-design="editorial"][data-theme] {
-  --font-display: "Raleway Variable", "Segoe UI", sans-serif;
-  --font-label: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-  --gravity-blue: #0e2ac5;
-  --gravity-ink: #101a31;
-  --gravity-copy: #35405a;
-  --gravity-glass: rgb(255 255 255 / .72);
-  --gravity-glass-line: rgb(255 255 255 / .9);
-
   .app-shell-home .app-content-home { max-width: none; padding: 0; }
   .gravity-home { display: block; }
-  .gravity-story { position: relative; isolation: isolate; overflow: clip; color: var(--gravity-ink); }
+  .gravity-story {
+    --font-label: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+    --gravity-blue: #0e2ac5;
+    --gravity-ink: #101a31;
+    --gravity-copy: #35405a;
+    --gravity-glass: rgb(255 255 255 / .72);
+    --gravity-glass-line: rgb(255 255 255 / .9);
+    position: relative; isolation: isolate; overflow: clip; color: var(--gravity-ink);
+  }
   .gravity-stage { position: sticky; z-index: 0; top: 0; width: 100%; height: 100svh; margin-bottom: -100svh; pointer-events: none; overflow: hidden; }
   .gravity-tools { position: sticky; z-index: 3; top: var(--gravity-header-height, 0px); width: 100%; height: calc(100svh - var(--gravity-header-height, 0px)); margin-bottom: calc(var(--gravity-header-height, 0px) - 100svh); pointer-events: none; }
   .gravity-art, .gravity-gradient, .gravity-webgl, .gravity-static-field { position: absolute; inset: 0; }
@@ -121,8 +121,10 @@
   .gravity-footer:is([data-motion="playing"], [data-motion="paused"]) .gravity-footer-ticker > div { animation-duration: var(--ticker-duration, 26s) !important; animation-iteration-count: infinite !important; }
 
   &[data-theme="dark"] {
-    --gravity-blue: #a5baff; --gravity-ink: #eef2ff; --gravity-copy: #c4cee7;
-    --gravity-glass: rgb(20 30 55 / .88); --gravity-glass-line: rgb(147 170 231 / .24);
+    .gravity-story {
+      --gravity-blue: #a5baff; --gravity-ink: #eef2ff; --gravity-copy: #c4cee7;
+      --gravity-glass: rgb(20 30 55 / .88); --gravity-glass-line: rgb(147 170 231 / .24);
+    }
     .gravity-gradient-blue { background: radial-gradient(ellipse at 50% 40%, #1a294a, #101a33 55%, #0c1221); }
     .gravity-gradient-lime { background: radial-gradient(ellipse at 50% 42%, #29351e, #192418 55%, #0e1811); }
     .gravity-gradient-pink { background: radial-gradient(ellipse at 50% 42%, #3a2237, #271b30 55%, #141222); }

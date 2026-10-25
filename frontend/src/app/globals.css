@@ -164,41 +164,13 @@
 @media (max-width: 640px) { .notification-panel.surface-card { position: fixed; right: 1rem; top: 5rem; } }
 
 :root {
-  --app-bg: #f5f2eb;
-  --app-bg-elevated: #eee9df;
-  --surface: #fcfaf5;
-  --surface-raised: #fffdf8;
-  --surface-soft: #eeeae1;
-  --surface-hover: #e8e3d9;
-  --surface-glass: #fcfaf5;
-  --ink: #292620;
-  --ink-soft: #4c473e;
-  --muted: #686155;
-  --line: #ddd6c9;
-  --line-strong: #8f8575;
   --accent: #5261a8;
   --accent-strong: #434f90;
   --accent-soft: #e7e9f3;
   --accent-violet: #725b91;
   --accent-cyan: #286f82;
   --accent-contrast: #ffffff;
-  --success: #277052;
-  --success-soft: #e7f0e9;
-  --warning: #8a581d;
-  --warning-soft: #f5ebd9;
-  --danger: #a83c50;
-  --danger-soft: #f7e8eb;
-  --danger-contrast: #ffffff;
-  --shadow-sm: 0 1px 3px rgb(41 38 32 / 0.07);
-  --shadow-md: 0 4px 12px rgb(41 38 32 / 0.08);
-  --shadow-lg: 0 12px 32px rgb(41 38 32 / 0.16);
-  --glow-accent: var(--shadow-sm);
-  --glow-violet: var(--shadow-sm);
-  --paper: #f5f2eb;
   --surface-tint: #e7e9f3;
-  --reading: #286f82;
-  --listening: #725b91;
-  --writing: #99562e;
   --highlight-bg: #f4dc86;
   --highlight-text: #252137;
   --exam-bg: #eef2f8;
@@ -214,42 +186,13 @@
 }
 
 :root[data-theme="dark"] {
-  /* Graphite foundations; color is reserved for actions, modules and states. */
-  --app-bg: #201e1b;
-  --app-bg-elevated: #25221e;
-  --surface: #292622;
-  --surface-raised: #312d28;
-  --surface-soft: #35312c;
-  --surface-hover: #3c3731;
-  --surface-glass: #292622;
-  --ink: #f1ece2;
-  --ink-soft: #d2cbc0;
-  --muted: #b4aa9a;
-  --line: #494239;
-  --line-strong: #8d8070;
   --accent: #a4afd9;
   --accent-strong: #b5bfe2;
   --accent-soft: #333748;
   --accent-violet: #b4a4ce;
   --accent-cyan: #94bac4;
   --accent-contrast: #201e1b;
-  --success: #a3c3ad;
-  --success-soft: #26372d;
-  --warning: #d5b887;
-  --warning-soft: #3b3022;
-  --danger: #dda4aa;
-  --danger-soft: #3c292d;
-  --danger-contrast: #201e1b;
-  --shadow-sm: 0 1px 3px rgb(0 0 0 / 0.16);
-  --shadow-md: 0 4px 12px rgb(0 0 0 / 0.20);
-  --shadow-lg: 0 12px 32px rgb(0 0 0 / 0.30);
-  --glow-accent: var(--shadow-sm);
-  --glow-violet: var(--shadow-sm);
-  --paper: #201e1b;
   --surface-tint: #333748;
-  --reading: #94bac4;
-  --listening: #b4a4ce;
-  --writing: #d2ab8b;
   --highlight-bg: #cbb674;
   --highlight-text: #191820;
   /* Editorial panes are neutral; only controls carry the exam/module accent. */

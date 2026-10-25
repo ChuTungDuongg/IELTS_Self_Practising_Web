@@ -9,6 +9,21 @@ import { afterEach, describe, expect, it } from "vitest";
 const source = ["globals.css", "design-system.css", "gravity-home.css", "gravity-product.css"].map(file => readFileSync(resolve(process.cwd(), "src/app", file), "utf8")).join("\n");
 const css = postcss.parse(transform({ filename: "bandpilot.css", code: Buffer.from(source), targets: { chrome: 110 << 16 } }).code.toString());
 
+function globalThemeTokens(file: string): Set<string> {
+  const root = postcss.parse(readFileSync(resolve(process.cwd(), "src/app", file), "utf8"));
+  const tokens = new Set<string>();
+  root.walkRules(rule => {
+    if (rule.parent?.type !== "root" || !/^:root(?:\[[^\]]+\])*$/.test(rule.selector)) return;
+    for (const node of rule.nodes ?? []) {
+      if (node.type === "decl" && node.prop.startsWith("--")) tokens.add(node.prop);
+      if (node.type === "rule" && node.selector === '&[data-theme="dark"]') {
+        for (const nested of node.nodes ?? []) if (nested.type === "decl" && nested.prop.startsWith("--")) tokens.add(nested.prop);
+      }
+    }
+  });
+  return tokens;
+}
+
 function styles(element: Element, width: number, reducedMotion = false) {
   const result: Record<string, string> = {};
   css.walkRules(rule => {
@@ -43,6 +58,29 @@ function fixture(markup: string) {
 }
 
 describe("responsive layout contracts", () => {
+  it("assigns shared theme tokens to the design system instead of import-order overrides", () => {
+    const foundations = globalThemeTokens("globals.css");
+    const designSystem = globalThemeTokens("design-system.css");
+    const product = globalThemeTokens("gravity-product.css");
+    expect([...foundations].filter(token => designSystem.has(token))).toEqual([]);
+    expect([...product]).toEqual([]);
+    expect([...globalThemeTokens("gravity-home.css")]).toEqual([]);
+  });
+  it("preserves the Gravity palette in both themes", () => {
+    const root = postcss.parse(readFileSync(resolve(process.cwd(), "src/app/design-system.css"), "utf8"));
+    const tokens = (theme: "light" | "dark") => {
+      const values: Record<string, string> = {};
+      root.walkRules(rule => {
+        if (rule.parent?.type !== "root" || rule.selector !== ':root[data-design="editorial"][data-theme]') return;
+        const darkRule = rule.nodes?.find(node => node.type === "rule" && node.selector === '&[data-theme="dark"]');
+        const nodes = theme === "dark" ? (darkRule?.type === "rule" ? darkRule.nodes : []) : rule.nodes;
+        for (const node of nodes ?? []) if (node.type === "decl") values[node.prop] = node.value;
+      });
+      return values;
+    };
+    expect(tokens("light")).toMatchObject({ "--app-bg": "#f5f7fc", "--surface": "#ffffff", "--ink": "#15213a", "--radius-card": "20px" });
+    expect(tokens("dark")).toMatchObject({ "--app-bg": "#0f1522", "--surface": "#172034", "--ink": "#edf2ff" });
+  });
   it("autoplays the ticker without removing the global reduced-motion reset elsewhere", () => {
     fixture('<div class="gravity-revealed"></div><footer class="gravity-footer" data-motion="playing"><div class="gravity-footer-ticker"><div></div></div></footer>');
     const footer = document.querySelector("footer")!;
