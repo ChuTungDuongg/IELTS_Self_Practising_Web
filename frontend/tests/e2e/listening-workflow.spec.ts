@@ -16,7 +16,7 @@ test("takes and reviews a fictional Listening practice attempt", async ({ page, 
     await page.goto(`/library/${exam.versionId}`);
     await expect(page.getByRole("button", { name: "Logout" })).toBeVisible();
     await expect(page.getByRole("heading", { name: exam.title })).toBeVisible();
-    await page.getByLabel("Practice timer").selectOption("unlimited");
+    await page.getByRole("article").filter({ has: page.getByRole("button", { name: "Start Listening" }) }).getByLabel("Practice timer").selectOption("unlimited");
     await page.getByRole("button", { name: "Start Listening" }).click();
     await expect(page).toHaveURL(/\/attempt\/[0-9a-f-]+$/);
     const attemptId = page.url().split("/").at(-1)!;

@@ -48,8 +48,12 @@ test("completes fictional Full Mock in Listening, Reading, Writing, Speaking ord
     const locked = await page.request.get(`${apiBase}/attempts/${listeningId}/listening-review`);
     expect(locked.status()).toBe(409);
     expect((await locked.json() as { code: string }).code).toBe("FULL_MOCK_REVIEW_LOCKED");
-    const lockedPage = await page.request.get(`${new URL(page.url()).origin}/review/${listeningId}`);
-    expect(lockedPage.status()).toBe(404);
+    const lockedPage = await page.goto(`/review/${listeningId}`);
+    // App Router may stream its not-found boundary with HTTP 200 after the shell flushes.
+    expect([200, 404]).toContain(lockedPage?.status());
+    await expect(page.locator('meta[name="robots"]')).toHaveAttribute("content", "noindex");
+    await expect(page.getByText("This page could not be found.")).toBeVisible();
+    await expect(page.locator(".listening-review")).toHaveCount(0);
     await page.goto("/history");
     await page.getByRole("tab", { name: "By mock test" }).click();
     const mockHistory = page.getByRole("tabpanel", { name: "By mock test" });

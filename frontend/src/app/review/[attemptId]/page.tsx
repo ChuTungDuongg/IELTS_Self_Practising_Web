@@ -6,29 +6,37 @@ import { ListeningReviewView } from "@/features/listening/listening-review";
 import { WritingReviewView } from "@/features/writing/writing-review";
 import { getExam, getListeningReview, getReadingReview, getWritingReview } from "@/lib/api/exam";
 import { serverApiRequest } from "@/lib/api/server-client";
+import { ApiError } from "@/lib/api/client";
 import { AttemptDraftCleanup } from "@/features/exam/attempt-draft-cleanup";
 import { isTerminalAttempt } from "@/features/exam/exam-draft-recovery";
 
+async function availableReview<T>(load: () => Promise<T>): Promise<T> {
+  try {
+    return await load();
+  } catch (error) {
+    if (error instanceof ApiError && (
+      error.status === 401 || error.status === 403 || error.status === 404 ||
+      error.code === "FULL_MOCK_REVIEW_LOCKED" || error.code === "ATTEMPT_NOT_FINALIZED"
+    )) notFound();
+    throw error;
+  }
+}
+
 export default async function ReviewShellPage({ params }: { params: Promise<{ attemptId: string }> }) {
   const { attemptId } = await params;
-  const exam = await getExam(attemptId, serverApiRequest).catch(() => null);
-  if (!exam) notFound();
+  const exam = await availableReview(() => getExam(attemptId, serverApiRequest));
   if (exam.attempt.module === "SPEAKING") {
-    const data = await getSpeakingReview(attemptId, serverApiRequest).catch(() => null);
-    if (!data) notFound();
+    const data = await availableReview(() => getSpeakingReview(attemptId, serverApiRequest));
     return <SpeakingReview data={data} />;
   }
   if (exam.attempt.module === "WRITING") {
-    const writing = await getWritingReview(attemptId, serverApiRequest).catch(() => null);
-    if (!writing) notFound();
+    const writing = await availableReview(() => getWritingReview(attemptId, serverApiRequest));
     return <>{isTerminalAttempt(exam.attempt.status) ? <AttemptDraftCleanup attemptId={attemptId} /> : null}<WritingReviewView data={writing} /></>;
   }
   if (exam.attempt.module === "LISTENING") {
-    const listening = await getListeningReview(attemptId, serverApiRequest).catch(() => null);
-    if (!listening) notFound();
+    const listening = await availableReview(() => getListeningReview(attemptId, serverApiRequest));
     return <>{isTerminalAttempt(exam.attempt.status) ? <AttemptDraftCleanup attemptId={attemptId} /> : null}<ListeningReviewView data={listening} /></>;
   }
-  const review = await getReadingReview(attemptId, serverApiRequest).catch(() => null);
-  if (!review) notFound();
+  const review = await availableReview(() => getReadingReview(attemptId, serverApiRequest));
   return <>{isTerminalAttempt(exam.attempt.status) ? <AttemptDraftCleanup attemptId={attemptId} /> : null}<ReadingReviewView data={review} /></>;
 }
