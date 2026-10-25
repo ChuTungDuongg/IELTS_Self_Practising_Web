@@ -51,7 +51,7 @@ test("completes fictional Full Mock in Listening, Reading, Writing, Speaking ord
     const lockedPage = await page.goto(`/review/${listeningId}`);
     // App Router may stream its not-found boundary with HTTP 200 after the shell flushes.
     expect([200, 404]).toContain(lockedPage?.status());
-    await expect(page.locator('meta[name="robots"]')).toHaveAttribute("content", "noindex");
+    await expect(page.locator('head meta[name="robots"]')).toHaveAttribute("content", "noindex");
     await expect(page.getByText("This page could not be found.")).toBeVisible();
     await expect(page.locator(".listening-review")).toHaveCount(0);
     await page.goto("/history");
