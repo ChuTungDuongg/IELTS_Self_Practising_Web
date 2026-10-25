@@ -137,7 +137,7 @@ test("completes fictional Full Mock in Listening, Reading, Writing, Speaking ord
     }
     expect(state.phase).toBe("COMPLETED");
     await page.goto(`/test-session/${sessionId}`);
-    await expect(page.getByText("Full Mock complete")).toBeVisible();
+    await expect(page.locator("#main-content .session-transition").getByText("Full Mock complete")).toBeVisible();
     await expect.poll(async () => (await sessionState()).status).toBe("COMPLETED");
     expect((await sessionState()).attempts.map((attempt) => [attempt.module, attempt.status])).toEqual([
       ["LISTENING", "SUBMITTED"], ["READING", "SUBMITTED"], ["WRITING", "SUBMITTED"], ["SPEAKING", "SUBMITTED"],
