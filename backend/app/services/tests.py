@@ -38,7 +38,7 @@ from app.models.enums import AssetType, ModuleType, TestOrigin, UserRole, Versio
 from app.repositories.tests import TestRepository, version_detail_query
 from app.schemas.common import ValidationIssue, ValidationResult
 from app.schemas.content import TextBlock
-from app.schemas.tests import TestCreate, TestDeleteResult, TestUpdate, VersionCreate
+from app.schemas.tests import TestCreate, TestDeleteResult, TestSummary, TestUpdate, VersionCreate
 from app.services.access_policy import AccessPolicy
 from app.storage import LocalAssetStorage
 
@@ -50,19 +50,51 @@ class TestService:
         self.repository = TestRepository(session)
 
     async def list_tests(self, *, archived: bool = False) -> list[Test]:
+        records, _ = await self._list_visible_tests(archived=archived)
+        return records
+
+    async def list_summaries(
+        self, *, archived: bool = False, public_only: bool = False
+    ) -> list[TestSummary]:
+        records, public_ids = await self._list_visible_tests(
+            archived=archived, public_only=public_only
+        )
+        summaries = []
+        for record in records:
+            summary = TestSummary.model_validate(record)
+            summary.owner_display_name = record.owner.display_name if record.owner else None
+            owns_content = self.policy.actor.role == UserRole.ADMIN or (
+                self.policy.actor.role == UserRole.TEACHER
+                and record.owner_user_id == self.policy.actor.id
+            )
+            if public_only or not owns_content:
+                summary = summary.model_copy(
+                    update={
+                        "versions": [item for item in summary.versions if item.id in public_ids]
+                    }
+                )
+            if not public_only or summary.versions:
+                summaries.append(summary)
+        return summaries
+
+    async def _list_visible_tests(
+        self, *, archived: bool, public_only: bool = False
+    ) -> tuple[list[Test], set[uuid.UUID]]:
         records = await self.repository.list(archived=archived)
+        if self.policy.actor.role == UserRole.ADMIN and not public_only:
+            return records, set()
+        public_ids = await self.policy.public_version_ids(records)
         if self.policy.actor.role == UserRole.ADMIN:
-            return records
-        visible = []
-        for test in records:
+            return records, public_ids
+        return [
+            test
+            for test in records
             if (
                 self.policy.actor.role == UserRole.TEACHER
                 and test.owner_user_id == self.policy.actor.id
-            ):
-                visible.append(test)
-            elif any([await self.policy.version_access(version) for version in test.versions]):
-                visible.append(test)
-        return visible
+            )
+            or any(version.id in public_ids for version in test.versions)
+        ], public_ids
 
     async def get_test(self, test_id: uuid.UUID) -> Test:
         test = await self.repository.get(test_id)

@@ -13,9 +13,9 @@
 - Question correctness is evaluated server-side.
 - Highlights store semantic offsets, not HTML.
 - Assets are stored outside PostgreSQL.
-- Speaking work follows the approved design in `docs/superpowers/specs/2026-10-11-speaking-engine-ai-grading-design.md` and its phased plan/self-review amendments; implement only the explicitly authorized phase.
-- Do not implement authentication.
-- Do not implement AI scoring until explicitly requested.
+- Preserve the existing authentication, authorization, Writing and Speaking AI feedback flows.
+- Speaking changes follow `docs/superpowers/specs/2026-10-11-speaking-engine-ai-grading-design.md` and its phased plan/self-review amendments.
+- AI feedback is advisory; server-side question evaluation and authorized human scores remain authoritative.
 - Do not commit copyrighted test content.
 
 ## Repository boundaries
@@ -25,6 +25,7 @@
 - `storage/` contains generated local binary assets; only `.gitkeep` files are committed.
 - Add schema changes through Alembic migrations.
 - Keep question-type behavior in the centralized registries, not scattered conditionals.
+- Follow the current boundaries in `docs/architecture.md` for API clients, services, repositories, styling, workers and tests.
 
 ## Question architecture
 
@@ -36,8 +37,7 @@
   keys only after an attempt is finalized.
 - Displayed question numbers are presentation metadata. UUIDs remain the identity when questions move.
 - Complex group layouts belong in validated JSONB backed by matching Pydantic and Zod schemas.
-- Reading coverage expands in Phase 3 only after the Phase 2 Reading MVP is healthy.
-- Listening reuses shared registry/rendering primitives and begins only after full Reading coverage.
+- Reading and Listening share question registry and rendering primitives.
 - Structured families include MCQ single/multiple, T/F/NG, Y/N/NG, matching variants, sentence/summary/
   note/table/flow completion, image-marker labelling, and short answer.
 - Image markers use normalized coordinates in the inclusive range 0–1, never browser pixels.

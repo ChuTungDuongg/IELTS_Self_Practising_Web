@@ -162,6 +162,33 @@ class AccessPolicy:
             is not None
         )
 
+    async def public_version_ids(self, tests: list[Test]) -> set[UUID]:
+        """Resolve library visibility with one moderation query for the listed tests."""
+        public = {
+            version.id
+            for test in tests
+            if test.archived_at is None and test.origin == TestOrigin.ADMIN
+            for version in test.versions
+            if version.status == VersionStatus.PUBLISHED
+        }
+        teacher_version_ids = [
+            version.id
+            for test in tests
+            if test.archived_at is None and test.origin == TestOrigin.TEACHER
+            for version in test.versions
+            if version.status == VersionStatus.PUBLISHED
+        ]
+        if teacher_version_ids:
+            approved = await self.session.scalars(
+                select(TestVersionModeration.test_version_id).where(
+                    TestVersionModeration.test_version_id.in_(teacher_version_ids),
+                    TestVersionModeration.scope == ModerationScope.PUBLIC,
+                    TestVersionModeration.status == ModerationStatus.APPROVED,
+                )
+            )
+            public.update(approved)
+        return public
+
     async def require_version_read(self, version: TestVersion) -> None:
         test = await self.session.get(Test, version.test_id)
         assert test is not None

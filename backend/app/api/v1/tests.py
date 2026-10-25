@@ -30,29 +30,9 @@ async def list_tests(
     public_only: bool = False,
     session: AsyncSession = Depends(get_session),
 ) -> list[TestSummary]:
-    records = await TestService(session, actor=user).list_tests(archived=archived)
-    summaries = []
-    for record in records:
-        summary = TestSummary.model_validate(record)
-        if record.owner_user_id is not None:
-            owner = await session.get(User, record.owner_user_id)
-            summary.owner_display_name = owner.display_name if owner else None
-        if public_only or (
-            user.role != UserRole.ADMIN
-            and not (user.role == UserRole.TEACHER and record.owner_user_id == user.id)
-        ):
-            summary = summary.model_copy(
-                update={
-                    "versions": [
-                        item
-                        for item, version in zip(summary.versions, record.versions, strict=True)
-                        if await TestService(session, actor=user).policy.version_access(version)
-                    ]
-                }
-            )
-        if not public_only or summary.versions:
-            summaries.append(summary)
-    return summaries
+    return await TestService(session, actor=user).list_summaries(
+        archived=archived, public_only=public_only
+    )
 
 
 @router.post("/tests", response_model=TestSummary, status_code=status.HTTP_201_CREATED)

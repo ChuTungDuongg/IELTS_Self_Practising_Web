@@ -55,7 +55,7 @@ class TestRepository:
         result = await self.session.scalars(
             select(Test)
             .where(archive_filter)
-            .options(selectinload(Test.versions))
+            .options(selectinload(Test.versions), selectinload(Test.owner))
             .order_by(Test.created_at.desc())
         )
         return list(result.unique())
