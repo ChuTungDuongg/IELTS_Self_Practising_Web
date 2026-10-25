@@ -30,17 +30,20 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllGlobals(); delete (navigator as Navigator & { connection?: unknown }).connection; });
 
 describe("homepage progressive scene", () => {
-  it("keeps a complete static field and does not create WebGL with reduced motion", () => {
+  it("autoplays the requested homepage motion at lower quality with reduced motion", async () => {
     reduced = true;
     const { container } = render(<Field />);
     expect(container.querySelectorAll(".gravity-static-sphere")).toHaveLength(20);
-    expect(mock.create).not.toHaveBeenCalled();
-    expect(screen.queryByRole("button", { name: "Pause motion" })).not.toBeInTheDocument();
+    await waitFor(() => expect(mock.create).toHaveBeenCalledOnce());
+    expect(mock.create.mock.calls[0][1]).toBe(true);
+    expect(screen.getByRole("button", { name: "Pause motion" })).toBeInTheDocument();
   });
   it("does not load the renderer when data saving is requested", () => {
     saveData = true;
     render(<Field />);
     expect(mock.create).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Resume motion" }));
+    return waitFor(() => expect(mock.create).toHaveBeenCalledOnce());
   });
   it("provides keyboard buttons, pauses offscreen, and does not resume offscreen", async () => {
     render(<Field />);
@@ -70,12 +73,12 @@ describe("homepage progressive scene", () => {
     expect(screen.getByRole("link", { name: /^Start / })).toHaveAttribute("href", "/practice");
     expect(container.querySelectorAll("[data-gravity-section]")).toHaveLength(4);
   });
-  it("tears down when the OS switches to reduced motion", async () => {
+  it("keeps the explicitly requested animation running when OS preferences change", async () => {
     render(<Field />);
     await waitFor(() => expect(mock.create).toHaveBeenCalledOnce());
     act(() => { reduced = true; media.dispatchEvent(new Event("change")); });
-    expect(mock.dispose).toHaveBeenCalledOnce();
-    expect(screen.queryByRole("button", { name: "Pause motion" })).not.toBeInTheDocument();
+    expect(mock.dispose).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Pause motion" })).toBeInTheDocument();
   });
   it("preserves a manual pause across OS preference changes and allows resuming", async () => {
     render(<Field />);
@@ -86,6 +89,47 @@ describe("homepage progressive scene", () => {
     expect(screen.getByRole("button", { name: "Resume motion" })).toBeInTheDocument();
     expect(mock.create).toHaveBeenCalledOnce();
     fireEvent.click(screen.getByRole("button", { name: "Resume motion" }));
-    await waitFor(() => expect(mock.create).toHaveBeenCalledTimes(2));
+    expect(mock.active).toHaveBeenLastCalledWith(true);
+    expect(mock.create).toHaveBeenCalledOnce();
+  });
+
+  it("navigates to chapters three and four with one click and accounts for the fixed header", async () => {
+    const scroll = vi.fn(); vi.stubGlobal("scrollTo", scroll);
+    const { container } = render(<GravityLanding />);
+    await waitFor(() => expect(mock.create).toHaveBeenCalledOnce());
+    const header = document.createElement("header"); header.className = "app-header";
+    header.getBoundingClientRect = () => ({ height: 96 } as DOMRect); document.body.append(header);
+    const sections = container.querySelectorAll<HTMLElement>("[data-gravity-section]");
+    sections[2].getBoundingClientRect = () => ({ top: 1800 } as DOMRect);
+    sections[3].getBoundingClientRect = () => ({ top: 2700 } as DOMRect);
+    fireEvent.click(screen.getByRole("link", { name: "3. See progress take shape." }));
+    expect(scroll).toHaveBeenLastCalledWith({ top: 1688, behavior: "smooth" });
+    fireEvent.click(screen.getByRole("link", { name: "4. Find your focus." }));
+    expect(scroll).toHaveBeenLastCalledWith({ top: 2588, behavior: "smooth" });
+    expect(scroll).toHaveBeenCalledTimes(2);
+    header.remove();
+  });
+
+  it("automatically aligns the next chapter once scrolling crosses its approach line", async () => {
+    vi.stubGlobal("innerHeight", 768);
+    vi.stubGlobal("scrollY", 0);
+    const scroll = vi.fn(); vi.stubGlobal("scrollTo", scroll);
+    const { container } = render(<GravityLanding />);
+    await waitFor(() => expect(mock.create).toHaveBeenCalledOnce());
+    const story = container.querySelector<HTMLElement>(".gravity-story")!;
+    story.getBoundingClientRect = () => ({ top: -window.scrollY, bottom: 3600 - window.scrollY } as DOMRect);
+    const header = document.createElement("header"); header.className = "app-header";
+    header.getBoundingClientRect = () => ({ height: 96 } as DOMRect); document.body.append(header);
+    const sections = container.querySelectorAll<HTMLElement>("[data-gravity-section]");
+    [0, 700, 1600, 2650].forEach((top, index) => {
+      sections[index].getBoundingClientRect = () => ({ top: top - window.scrollY } as DOMRect);
+    });
+    vi.stubGlobal("scrollY", 250); fireEvent.scroll(window);
+    await new Promise(resolve => setTimeout(resolve, 25));
+    expect(scroll).not.toHaveBeenCalled();
+    vi.stubGlobal("scrollY", 300); fireEvent.scroll(window);
+    await waitFor(() => expect(scroll).toHaveBeenCalledWith({ top: 588, behavior: "smooth" }));
+    expect(screen.getByRole("link", { name: "2. Build every skill." })).toHaveAttribute("aria-current", "step");
+    header.remove();
   });
 });

@@ -13,18 +13,17 @@
   .gravity-home { display: block; }
   .gravity-story { position: relative; isolation: isolate; overflow: clip; color: var(--gravity-ink); }
   .gravity-stage { position: sticky; z-index: 0; top: 0; width: 100%; height: 100svh; margin-bottom: -100svh; pointer-events: none; overflow: hidden; }
-  .gravity-gradient, .gravity-webgl, .gravity-static-field { position: absolute; inset: 0; }
-  .gravity-gradient { transition: opacity 1.2s cubic-bezier(.65, 0, .35, 1); }
+  .gravity-tools { position: sticky; z-index: 3; top: var(--gravity-header-height, 0px); width: 100%; height: calc(100svh - var(--gravity-header-height, 0px)); margin-bottom: calc(var(--gravity-header-height, 0px) - 100svh); pointer-events: none; }
+  .gravity-art, .gravity-gradient, .gravity-webgl, .gravity-static-field { position: absolute; inset: 0; }
   .gravity-gradient-blue { background: radial-gradient(ellipse at 52% 40%, #fff 0%, #ecefff 48%, #c2d1ff 100%); }
-  .gravity-gradient-lime { opacity: 0; background: radial-gradient(ellipse at 50% 42%, #fff 0%, #fbffe5 38%, #e8ff9c 100%); }
-  .gravity-gradient-pink { opacity: 0; background: radial-gradient(ellipse at 50% 42%, #fff 0%, #fff0f1 38%, #ffd1d5 100%); }
-  .gravity-story[data-stage="1"] .gravity-gradient-lime, .gravity-story[data-stage="2"] .gravity-gradient-pink { opacity: 1; }
+  .gravity-gradient-lime { opacity: var(--gravity-lime, 0); background: radial-gradient(ellipse at 50% 42%, #fff 0%, #fbffe5 38%, #e8ff9c 100%); }
+  .gravity-gradient-pink { opacity: var(--gravity-pink, 0); background: radial-gradient(ellipse at 50% 42%, #fff 0%, #fff0f1 38%, #ffd1d5 100%); }
   .gravity-webgl canvas { display: block; width: 100%; height: 100%; }
   .gravity-webgl { opacity: 0; transition: opacity .7s; }
   .gravity-stage[data-scene="ready"] .gravity-webgl { opacity: 1; }
   .gravity-static-field { opacity: 1; transition: opacity .6s; }
   /* Reserve the lower hero for readable copy, including the no-WebGL fallback. */
-  .gravity-story[data-stage="0"] :is(.gravity-webgl, .gravity-static-field) { mask-image: linear-gradient(to bottom, #000 20%, rgb(0 0 0 / .7) 30%, transparent 48%); }
+  .gravity-story :is(.gravity-webgl, .gravity-static-field) { mask-image: linear-gradient(to bottom, #000 18%, #000 25%, rgb(0 0 0 / calc(1 - var(--gravity-hero, 1))) 48%); }
   .gravity-stage[data-scene="ready"] .gravity-static-field { opacity: 0; }
   .gravity-static-sphere { position: absolute; display: block; border-radius: 50%; background: radial-gradient(circle at 30% 24%, #cbdcff 0, #2f69ff 42%, #0a33bf 78%, #071d58 100%); box-shadow: inset -8px -10px 24px rgb(10 30 92 / .18), 0 22px 35px -20px rgb(14 42 197 / .25); }
   .gravity-static-sphere.sphere-0 { background: radial-gradient(circle at 30% 24%, #fff, #e5ebff 56%, #a8bce9); }
@@ -35,6 +34,7 @@
   .gravity-section { position: relative; z-index: 1; display: flex; min-height: 100svh; padding: clamp(64px, 9vh, 128px) clamp(24px, 3.4vw, 64px); pointer-events: none; }
   .gravity-section :is(a, button), .gravity-section-intro, .gravity-shape-copy, .gravity-hero-copy { pointer-events: auto; }
   .gravity-section h1, .gravity-section h2 { margin: 0; color: var(--gravity-ink); font-family: var(--font-display); font-weight: 500; line-height: 1.02; letter-spacing: -.055em; text-wrap: balance; }
+  .gravity-section :is(h1, h2) { scroll-margin-top: 160px; }
   .gravity-section h2 { max-width: 12ch; font-size: clamp(38px, 6.2vw, 82px); }
   .gravity-label { margin: 0 0 24px; color: var(--gravity-blue); font-family: var(--font-label); font-size: 11px; font-weight: 500; line-height: 1.7; letter-spacing: .06em; }
   .gravity-description { max-width: 47ch; margin: 28px 0 0; color: var(--gravity-copy); font-size: clamp(16px, 1.25vw, 19px); font-weight: 450; line-height: 1.65; text-wrap: pretty; }
@@ -64,7 +64,12 @@
   .gravity-resume p { color: var(--gravity-copy); font-size: 12px; }
   .gravity-resume h2 { margin-top: 8px; font-family: var(--font-sans); font-size: 17px; font-weight: 600; letter-spacing: -.02em; line-height: 1.5; }
   .gravity-resume .gravity-text-link { margin-top: 8px; }
-  .gravity-motion-controls { position: absolute; z-index: 3; top: 24px; right: clamp(24px, 3.4vw, 64px); display: flex; flex-wrap: wrap; justify-content: end; gap: 8px; }
+  .gravity-motion-controls { position: absolute; z-index: 3; top: 16px; right: clamp(24px, 3.4vw, 64px); display: flex; max-width: min(420px, calc(100% - 40px)); flex-wrap: wrap; justify-content: end; gap: 8px; pointer-events: auto; }
+  .gravity-interaction-hint { flex-basis: 100%; text-align: right; color: var(--gravity-copy); font-size: 11px; }
+  .gravity-phase-nav { position: absolute; z-index: 3; right: clamp(24px, 3.4vw, 64px); bottom: 24px; display: flex; gap: 4px; padding: 5px; border: 1px solid var(--gravity-glass-line); border-radius: 99px; background: var(--gravity-glass); backdrop-filter: blur(16px); pointer-events: auto; }
+  .gravity-phase-nav a { display: grid; place-items: center; min-width: 44px; min-height: 44px; border-radius: 50%; color: var(--gravity-copy); font-family: var(--font-label); font-size: 11px; }
+  .gravity-phase-nav a:hover { color: var(--gravity-ink); background: var(--surface); }
+  .gravity-phase-nav a[aria-current="step"] { color: var(--surface); background: var(--gravity-ink); }
   .gravity-control, .gravity-scene-note { min-height: 44px; padding: 10px 16px; border-radius: 99px; color: var(--gravity-copy); font-size: 12px; }
   .gravity-control { border: 1px solid var(--gravity-glass-line); background: var(--gravity-glass); cursor: pointer; }
   .gravity-control:hover { color: var(--gravity-ink); background: var(--surface); }
@@ -92,8 +97,9 @@
   .home-workspace > .section-header .section-title { font-family: var(--font-display); font-size: 36px; font-weight: 550; letter-spacing: -.04em; }
   .home-workspace .home-foundation { margin-top: 12px; }
   .gravity-footer { display: block; position: relative; z-index: 2; overflow: hidden; border: 0; border-radius: 32px 32px 0 0; background: #0a0f20; color: #f3f6ff; }
-  .gravity-footer-ticker { overflow: hidden; padding: 18px 0; border-bottom: 1px solid rgb(255 255 255 / .12); }
-  .gravity-footer-ticker > div { display: flex; width: max-content; animation: gravity-ticker 26s linear infinite; }
+  .gravity-footer-ticker { overflow: hidden; padding: 18px 0; border-bottom: 1px solid rgb(255 255 255 / .12); mask-image: linear-gradient(to right, transparent, #000 24px, #000 calc(100% - 24px), transparent); }
+  .gravity-footer-ticker > div { display: flex; width: max-content; animation: gravity-ticker var(--ticker-duration, 26s) linear infinite; }
+  .gravity-footer-ticker-group { display: flex; flex: none; min-width: 100vw; }
   .gravity-footer-ticker span { display: flex; flex: none; align-items: center; gap: 24px; max-width: none; padding-right: 24px; color: #e6edff; font-family: var(--font-display); font-size: clamp(18px, 1.8vw, 26px); font-weight: 500; line-height: 1.3; letter-spacing: -.02em; white-space: nowrap; }
   .gravity-footer-ticker i { flex: none; width: 6px; height: 6px; border-radius: 50%; background: #668aff; }
   .gravity-footer-top { display: flex; justify-content: space-between; gap: 32px; padding: 36px clamp(24px, 3.4vw, 64px) 24px; }
@@ -112,7 +118,7 @@
   .gravity-footer[data-motion-paused="true"] .gravity-footer-ticker > div { animation-play-state: paused; }
   /* The requested ticker autoplays; keep its full duration while playing or paused.
      This scoped exception leaves the global reduced-motion reset intact elsewhere. */
-  .gravity-footer:is([data-motion="playing"], [data-motion="paused"]) .gravity-footer-ticker > div { animation-duration: 26s !important; animation-iteration-count: infinite !important; }
+  .gravity-footer:is([data-motion="playing"], [data-motion="paused"]) .gravity-footer-ticker > div { animation-duration: var(--ticker-duration, 26s) !important; animation-iteration-count: infinite !important; }
 
   &[data-theme="dark"] {
     --gravity-blue: #a5baff; --gravity-ink: #eef2ff; --gravity-copy: #c4cee7;
@@ -122,7 +128,17 @@
     .gravity-gradient-pink { background: radial-gradient(ellipse at 50% 42%, #3a2237, #271b30 55%, #141222); }
     .gravity-cta:hover, .gravity-skill-list > a:hover { background: #253657; }
   }
-  @media (min-width: 1600px) { .gravity-hero { min-height: calc(100svh - 80px); } }
+  @media (min-width: 1600px) {
+    .gravity-hero { min-height: calc(100svh - 80px); }
+    .gravity-scroll-cue { display: none; }
+  }
+  @media (min-width: 601px) and (max-height: 800px) {
+    .gravity-hero { padding-top: 32svh; padding-bottom: 32px; }
+    .gravity-hero h1 { font-size: clamp(38px, 6vw, 70px); }
+    .gravity-hero .gravity-label { margin-bottom: 16px; }
+    .gravity-hero .gravity-description { margin-top: 20px; font-size: 16px; }
+    .gravity-hero .gravity-actions { margin-top: 20px; }
+  }
   @media (max-width: 900px) {
     .gravity-skills { grid-template-columns: minmax(0, 1fr) minmax(260px, 1fr); gap: 32px; }
     .gravity-hero-bottom { align-items: start; }
@@ -143,7 +159,8 @@
     .gravity-cta { min-height: 48px; padding-left: 20px; gap: 16px; font-size: 13px; }
     .gravity-cta > span { width: 34px; height: 34px; }
     .gravity-resume { width: 100%; max-width: none; padding: 16px 20px; border-radius: 18px; }
-    .gravity-motion-controls { top: 12px; right: 20px; max-width: calc(100% - 40px); }
+    .gravity-motion-controls { top: 16px; right: 20px; max-width: calc(100% - 40px); }
+    .gravity-phase-nav { right: 20px; bottom: 16px; }
     .gravity-control, .gravity-scene-note { padding: 10px 12px; font-size: 11px; }
     .gravity-skills { display: flex; flex-direction: column; align-items: stretch; justify-content: center; gap: 32px; }
     .gravity-skills .gravity-section-intro { padding-top: 0; }

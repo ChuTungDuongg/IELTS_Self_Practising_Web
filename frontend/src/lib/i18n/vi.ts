@@ -32,6 +32,8 @@ export const vi = {
   "gravity.pause": "Tạm dừng chuyển động",
   "gravity.play": "Tiếp tục chuyển động",
   "gravity.scatter": "Đẩy các khối cầu",
+  "gravity.motionControls": "Chuyển động trang chủ",
+  "gravity.interact": "Di chuột, kéo hoặc đẩy các khối cầu.",
   "gravity.still": "Một chút không gian để tập trung.",
   "gravity.ticker": "Ít xao nhãng hơn",
   "gravity.tickerTwo": "Luyện tập có mục tiêu hơn",

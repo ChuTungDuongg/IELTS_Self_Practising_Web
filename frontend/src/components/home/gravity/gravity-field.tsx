@@ -2,8 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "@/lib/i18n/locale-provider";
-import { backgroundStage } from "./physics";
+import { backgroundStage, modes } from "./physics";
 import { loadGravityScene } from "./load-scene";
+import { crossedStorySnap, storyPosition } from "./story-progress";
 import type { GravityScene } from "./scene";
 
 const fallbackSpheres = Array.from({ length: 20 }, (_, i) => ({
@@ -17,49 +18,116 @@ export function GravityField() {
   const root = useRef<HTMLDivElement>(null);
   const controller = useRef<GravityScene | null>(null);
   const pausedRef = useRef(false);
+  const allowDataRef = useRef(false);
   const syncActivityRef = useRef<() => void>(() => undefined);
   const initializeRef = useRef<() => void>(() => undefined);
+  const navigateRef = useRef<((index: number) => void) | null>(null);
   const [paused, setPaused] = useState(false);
+  const [activeSection, setActiveSection] = useState(0);
   const [state, setState] = useState<"static" | "ready" | "failed" | "paused">("static");
-  const [reduced, setReduced] = useState(false);
 
   useEffect(() => {
     const element = root.current, story = element?.closest<HTMLElement>(".gravity-story");
-    if (!element || !story || typeof window.matchMedia !== "function" || typeof ResizeObserver === "undefined") return;
-    const motion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    if (!element || !story || typeof ResizeObserver === "undefined") return;
+    const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ?? false;
     const dataConnection = (navigator as Navigator & { connection?: { saveData?: boolean } }).connection;
+    const documentRoot = document.documentElement;
+    const header = document.querySelector<HTMLElement>(".app-header");
     let aborted = false, inView = true, generation = 0;
     let timeout: ReturnType<typeof setTimeout> | undefined;
+    let snapTimer: ReturnType<typeof setTimeout> | undefined;
+    let navigationTimer: ReturnType<typeof setTimeout> | undefined;
     let scrollFrame = 0;
+    let previousScrollY = window.scrollY;
+    let pendingSnap: { index: number; top: number } | null = null;
+    let pendingDirection = 0;
+    let navigating = false;
+    let navigatingIndex: number | null = null;
+    const headerHeight = () => document.querySelector<HTMLElement>(".app-header")?.getBoundingClientRect().height ?? 0;
+    const sections = () => [...story.querySelectorAll<HTMLElement>("[data-gravity-section]")];
+    const anchors = () => sections().map(section => Math.max(0, window.scrollY + section.getBoundingClientRect().top - headerHeight() - 16));
     const visible = () => inView && !document.hidden && !pausedRef.current;
     const syncActivity = () => controller.current?.setActive(visible());
     syncActivityRef.current = syncActivity;
     const progress = () => {
       scrollFrame = 0;
-      const sections = [...story.querySelectorAll<HTMLElement>("[data-gravity-section]")];
+      const chapterSections = sections();
       const top = story.getBoundingClientRect().top;
+      documentRoot.style.setProperty("--gravity-header-height", `${headerHeight()}px`);
       const offset = Math.max(0, -top);
-      let value = 0;
-      for (let index = 0; index < sections.length; index++) {
-        const start = sections[index].offsetTop;
-        if (offset >= start) value = index + Math.min(1, (offset - start) / Math.max(1, sections[index].offsetHeight));
-      }
+      const { progress: value, active } = storyPosition(offset, element.clientHeight || window.innerHeight,
+        chapterSections.map(section => ({ start: section.offsetTop, height: section.offsetHeight })));
+      const displayedSection = navigatingIndex ?? active;
+      setActiveSection(previous => previous === displayedSection ? previous : displayedSection);
       story.dataset.stage = String(backgroundStage(value));
+      story.dataset.section = String(active);
+      const phase = modes(value);
+      story.style.setProperty("--gravity-lime", String(phase.lime));
+      story.style.setProperty("--gravity-pink", String(phase.pink));
+      story.style.setProperty("--gravity-hero", String(phase.hero));
       controller.current?.setProgress(value);
     };
-    const onScroll = () => { if (!scrollFrame) scrollFrame = requestAnimationFrame(progress); };
+    const finishNavigation = () => {
+      clearTimeout(navigationTimer);
+      navigationTimer = setTimeout(() => { navigating = false; navigatingIndex = null; progress(); }, 240);
+    };
+    const scrollToChapter = (index: number, top: number) => {
+      clearTimeout(snapTimer); pendingSnap = null;
+      navigating = true; navigatingIndex = index;
+      setActiveSection(index);
+      window.scrollTo({ top, behavior: reduced ? "auto" : "smooth" });
+      finishNavigation();
+    };
+    navigateRef.current = index => {
+      const top = anchors()[index];
+      if (top !== undefined) scrollToChapter(index, top);
+    };
+    const interruptNavigation = () => {
+      if (!navigating) return;
+      clearTimeout(navigationTimer); navigating = false; navigatingIndex = null;
+    };
+    const onScroll = () => {
+      const currentY = window.scrollY;
+      const direction = Math.sign(currentY - previousScrollY);
+      if (navigating) {
+        finishNavigation();
+      } else if (direction) {
+        const bounds = story.getBoundingClientRect();
+        if (bounds.bottom > headerHeight() && bounds.top < window.innerHeight) {
+          if (pendingDirection && direction !== pendingDirection) pendingSnap = null;
+          pendingDirection = direction;
+          const crossed = crossedStorySnap(previousScrollY, currentY, anchors(), window.innerHeight * .42);
+          if (crossed) pendingSnap = crossed;
+          clearTimeout(snapTimer);
+          if (pendingSnap && Math.abs(currentY - pendingSnap.top) <= window.innerHeight * .75) {
+            snapTimer = setTimeout(() => {
+              if (pendingSnap) scrollToChapter(pendingSnap.index, pendingSnap.top);
+            }, 180);
+          } else pendingSnap = null;
+        } else {
+          clearTimeout(snapTimer); pendingSnap = null;
+        }
+      }
+      previousScrollY = currentY;
+      if (!scrollFrame) scrollFrame = requestAnimationFrame(progress);
+    };
     const initialize = async () => {
       const current = ++generation;
       controller.current?.dispose(); controller.current = null;
-      setState("static"); setReduced(motion.matches);
-      // Save-data users keep the complete static composition without downloading Three.js.
-      if (motion.matches || dataConnection?.saveData) return;
+      setState("static");
+      // Autoplay is requested for this homepage. Save-Data still requires explicit opt-in.
+      if (dataConnection?.saveData && !allowDataRef.current) {
+        pausedRef.current = true; setPaused(true); setState("paused"); return;
+      }
       if (pausedRef.current) { setState("paused"); return; }
-      timeout = setTimeout(() => { if (current === generation) { generation++; controller.current?.dispose(); controller.current = null; setState("failed"); } }, 8000);
+      timeout = setTimeout(() => {
+        // A refresh below the story must not time out a deliberately suspended renderer.
+        if (current === generation && visible()) { generation++; controller.current?.dispose(); controller.current = null; setState("failed"); }
+      }, 8000);
       try {
         const { createGravityScene } = await loadGravityScene();
         if (aborted || current !== generation) return;
-        const lowPower = (navigator.hardwareConcurrency || 8) <= 4;
+        const lowPower = reduced || (navigator.hardwareConcurrency || 8) <= 4;
         controller.current = createGravityScene(element, lowPower,
           () => { if (!aborted && current === generation) { clearTimeout(timeout); setState("ready"); } },
           () => { if (!aborted && current === generation) { clearTimeout(timeout); setState("failed"); controller.current?.dispose(); controller.current = null; } });
@@ -69,10 +137,9 @@ export function GravityField() {
       }
     };
     initializeRef.current = () => { void initialize(); };
-    const preferencesChanged = () => { clearTimeout(timeout); void initialize(); };
     const intersection = typeof IntersectionObserver === "undefined" ? null : new IntersectionObserver(([entry]) => { inView = entry.isIntersecting; syncActivity(); });
     intersection?.observe(story);
-    const resizeObserver = new ResizeObserver(onScroll); resizeObserver.observe(story);
+    const resizeObserver = new ResizeObserver(onScroll); resizeObserver.observe(story); if (header) resizeObserver.observe(header);
     const updatePointer = (event: PointerEvent, down: boolean) => {
       const bounds = element.getBoundingClientRect();
       controller.current?.setPointer((event.clientX - bounds.left) / Math.max(1, bounds.width) * 2 - 1, -(event.clientY - bounds.top) / Math.max(1, bounds.height) * 2 + 1, down, true);
@@ -85,41 +152,61 @@ export function GravityField() {
     const release = (event: PointerEvent) => { if (event.pointerType === "touch") leave(); else updatePointer(event, false); };
     window.addEventListener("scroll", onScroll, { passive: true });
     window.addEventListener("resize", onScroll);
+    window.addEventListener("wheel", interruptNavigation, { passive: true });
+    window.addEventListener("touchstart", interruptNavigation, { passive: true });
     document.addEventListener("visibilitychange", syncActivity);
     window.addEventListener("blur", leave);
     story.addEventListener("pointermove", pointer, { passive: true });
     story.addEventListener("pointerdown", pointer, { passive: true });
     story.addEventListener("pointerup", release, { passive: true });
     story.addEventListener("pointercancel", leave); story.addEventListener("pointerleave", leave);
-    motion.addEventListener("change", preferencesChanged);
     progress(); void initialize();
     return () => {
-      aborted = true; generation++; clearTimeout(timeout); cancelAnimationFrame(scrollFrame);
-      intersection?.disconnect(); resizeObserver.disconnect(); motion.removeEventListener("change", preferencesChanged);
+      aborted = true; generation++; clearTimeout(timeout); clearTimeout(snapTimer); clearTimeout(navigationTimer); cancelAnimationFrame(scrollFrame);
+      intersection?.disconnect(); resizeObserver.disconnect();
       window.removeEventListener("scroll", onScroll); window.removeEventListener("resize", onScroll); window.removeEventListener("blur", leave);
+      window.removeEventListener("wheel", interruptNavigation); window.removeEventListener("touchstart", interruptNavigation);
       document.removeEventListener("visibilitychange", syncActivity);
       story.removeEventListener("pointermove", pointer); story.removeEventListener("pointerdown", pointer);
       story.removeEventListener("pointerup", release); story.removeEventListener("pointercancel", leave); story.removeEventListener("pointerleave", leave);
       controller.current?.dispose(); controller.current = null;
+      documentRoot.style.removeProperty("--gravity-header-height");
       syncActivityRef.current = () => undefined;
       initializeRef.current = () => undefined;
+      navigateRef.current = null;
     };
   }, []);
 
   function togglePause() {
     const next = !pausedRef.current; pausedRef.current = next; setPaused(next);
-    if (!controller.current && !next) initializeRef.current();
+    if (!controller.current && !next) { allowDataRef.current = true; initializeRef.current(); }
     else syncActivityRef.current();
   }
 
+  function navigateSection(index: number) {
+    if (navigateRef.current) { navigateRef.current(index); return; }
+    const section = root.current?.closest(".gravity-story")?.querySelectorAll<HTMLElement>("[data-gravity-section]")[index];
+    if (!section) return;
+    const header = document.querySelector(".app-header")?.getBoundingClientRect().height ?? 0;
+    setActiveSection(index);
+    window.scrollTo({ top: Math.max(0, window.scrollY + section.getBoundingClientRect().top - header - 16), behavior: "smooth" });
+  }
+
   return <>
-    <div className="gravity-stage" data-scene={state} aria-hidden="true">
+    <div className="gravity-stage" data-scene={state} data-motion-paused={paused}>
+      <div className="gravity-art" aria-hidden="true">
       <div className="gravity-gradient gravity-gradient-blue" /><div className="gravity-gradient gravity-gradient-lime" /><div className="gravity-gradient gravity-gradient-pink" />
       <div className="gravity-static-field">{fallbackSpheres.map((style, i) => <span key={i} className={`gravity-static-sphere sphere-${i % 5}`} style={style as React.CSSProperties} />)}</div>
       <div ref={root} className="gravity-webgl" />
+      </div>
     </div>
-    <div className="gravity-motion-controls">
-      {(state === "ready" || state === "paused") && !reduced ? <><button type="button" className="gravity-control" aria-pressed={paused} onClick={togglePause}>{t(paused ? "gravity.play" : "gravity.pause")}</button><button type="button" className="gravity-control" disabled={paused} onClick={() => controller.current?.scatter()}>{t("gravity.scatter")}</button></> : <span className="gravity-scene-note">{t("gravity.still")}</span>}
+    <div className="gravity-tools">
+      <div className="gravity-motion-controls" role="group" aria-label={t("gravity.motionControls")}>
+        {(state === "ready" || state === "paused") ? <><button type="button" className="gravity-control" aria-pressed={paused} onClick={togglePause}>{t(paused ? "gravity.play" : "gravity.pause")}</button><button type="button" className="gravity-control" disabled={paused} onClick={() => controller.current?.scatter()}>{t("gravity.scatter")}</button><span className="gravity-interaction-hint">{t("gravity.interact")}</span></> : state === "failed" ? <button type="button" className="gravity-control" onClick={() => initializeRef.current()}>{t("gravity.play")}</button> : <span className="gravity-scene-note">{t("gravity.still")}</span>}
+      </div>
+      <nav className="gravity-phase-nav" aria-label={t("gravity.scroll")}>
+        {(["gravity-title", "gravity-skills-title", "gravity-shape-title", "gravity-release-title"] as const).map((id, index) => <a href={`#${id}`} key={id} aria-current={activeSection === index ? "step" : undefined} onClick={event => { event.preventDefault(); navigateSection(index); }} aria-label={`${index + 1}. ${t((["gravity.heroOne", "gravity.skillsTitle", "gravity.reviewTitle", "gravity.mockOne"] as const)[index])}`}>{String(index + 1).padStart(2, "0")}</a>)}
+      </nav>
     </div>
   </>;
 }

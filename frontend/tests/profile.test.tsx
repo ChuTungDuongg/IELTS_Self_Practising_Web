@@ -19,6 +19,7 @@ vi.mock("@/lib/api/auth", async (importOriginal) => ({
 }));
 vi.mock("@/lib/api/profile", () => ({ getProfile: vi.fn(), updateProfile: vi.fn() }));
 vi.mock("@/lib/api/preferences", () => ({ getPreferences: vi.fn(), updatePreferences: vi.fn() }));
+vi.mock("@/features/notifications/notification-center", () => ({ NotificationCenter: () => null }));
 
 const base = {
   id: "11111111-1111-4111-8111-111111111111", email: "student@example.com",

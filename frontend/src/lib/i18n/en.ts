@@ -30,6 +30,8 @@ export const en = {
   "gravity.pause": "Pause motion",
   "gravity.play": "Resume motion",
   "gravity.scatter": "Scatter spheres",
+  "gravity.motionControls": "Homepage animation",
+  "gravity.interact": "Move, drag or scatter the spheres.",
   "gravity.still": "A little space to focus.",
   "gravity.ticker": "Less distraction",
   "gravity.tickerTwo": "More purposeful practice",

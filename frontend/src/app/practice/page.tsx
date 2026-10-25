@@ -5,10 +5,15 @@ import { SkillPractice } from "@/features/practice/skill-practice";
 import { getTests, getVersion } from "@/lib/api/tests";
 import { serverApiRequest } from "@/lib/api/server-client";
 import type { VersionDetail } from "@/lib/api/schema";
+import type { ReactElement } from "react";
 
 export const dynamic = "force-dynamic";
 
-export default async function PracticePage({ searchParams }: { searchParams?: Promise<{ skill?: string | string[] }> } = {}) {
+type PracticePageProps = { searchParams?: Promise<{ skill?: string | string[] }> };
+
+function PracticePage(): Promise<ReactElement>;
+function PracticePage(props: PracticePageProps): Promise<ReactElement>;
+async function PracticePage({ searchParams }: PracticePageProps = {}) {
   const requestedSkill = (await searchParams)?.skill;
   const initialSkill = typeof requestedSkill === "string" && ["READING", "LISTENING", "WRITING", "SPEAKING"].includes(requestedSkill.toUpperCase()) ? requestedSkill.toUpperCase() as "READING" | "LISTENING" | "WRITING" | "SPEAKING" : "READING";
   const tests = await getTests({ publicOnly: true }, serverApiRequest);
@@ -26,3 +31,5 @@ export default async function PracticePage({ searchParams }: { searchParams?: Pr
     {available.length || !loadFailed ? <SkillPractice key={initialSkill} versions={available} initialSkill={initialSkill} /> : null}
   </>;
 }
+
+export default PracticePage;

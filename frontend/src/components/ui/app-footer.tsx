@@ -3,6 +3,7 @@
 import { useState, type ReactElement } from "react";
 import Link from "next/link";
 import { useLocale, useTranslation } from "@/lib/i18n/locale-provider";
+import { LoopingTicker } from "./looping-ticker";
 
 export function AppFooter({ year, home = false }: { year: number; home?: boolean }): ReactElement {
   const { locale } = useLocale();
@@ -11,12 +12,7 @@ export function AppFooter({ year, home = false }: { year: number; home?: boolean
   const paused = motion === "paused";
   return <footer className={`app-footer${home ? " gravity-footer" : ""}`} data-motion={motion} data-motion-paused={paused}>
     {home ? <>
-      <div className="gravity-footer-ticker" aria-hidden="true">
-        <div>{[0, 1].map(repeat => <span key={repeat}>
-          {t("gravity.ticker")}<i />{t("gravity.tickerTwo")}<i />
-          {t("gravity.ticker")}<i />{t("gravity.tickerTwo")}<i />
-        </span>)}</div>
-      </div>
+      <LoopingTicker>{t("gravity.ticker")}<i />{t("gravity.tickerTwo")}<i /></LoopingTicker>
       <div className="gravity-footer-top">
         <h2>{t("gravity.footerTitle")}</h2>
         <div>

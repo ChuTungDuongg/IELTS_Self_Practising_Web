@@ -104,7 +104,7 @@ export function tick(field: Field, progress: number, pointer?: FieldPointer) {
       continue;
     }
     v.x += Math.sin(field.time * .4 + body.id * 1.5) * .0004 * body.radius * mode.hero - p.x * attraction * .38;
-    v.y += Math.cos(field.time * .5 + body.id * 1.2) * .0004 * body.radius * mode.hero - p.y * attraction * 1.85 - .011 * mode.drop;
+    v.y += Math.cos(field.time * .5 + body.id * 1.2) * .0004 * body.radius * mode.hero - (p.y - field.height * .23) * attraction * 1.85 - .011 * mode.drop;
     v.z += Math.sin(field.time * .35 + body.id) * .0001 * mode.hero - p.z * attraction * 1.8;
     if (mode.shape > .001) {
       v.x += (body.target.x - p.x) * .06 * mode.shape;

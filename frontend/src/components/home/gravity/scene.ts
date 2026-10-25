@@ -63,7 +63,7 @@ export function createGravityScene(container: HTMLElement, lowPower: boolean, on
     const color = palette[body.role].hero;
     const material = new THREE.MeshPhysicalMaterial(body.glass ? {
       color, roughness: .08, metalness: 0, clearcoat: 1, clearcoatRoughness: .03,
-      transmission: lowPower ? .65 : .95, ior: 1.485, thickness: 2.2,
+      transmission: lowPower ? 0 : .95, opacity: lowPower ? .66 : 1, ior: 1.485, thickness: 2.2,
       specularColor: new THREE.Color("#ffffff"), specularIntensity: 1,
       attenuationColor: palette.pastel.hero, attenuationDistance: 1,
       emissive: color, emissiveIntensity: .12, transparent: true,
@@ -84,7 +84,7 @@ export function createGravityScene(container: HTMLElement, lowPower: boolean, on
   floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; floor.visible = quality.shadows;
   scene.add(floor);
 
-  let disposed = false, active = false, progress = 0, frame = 0, previousTime = 0, accumulator = 0, ready = false;
+  let disposed = false, active = false, progress = 0, targetProgress = 0, frame = 0, previousTime = 0, accumulator = 0, ready = false;
   let pointerX = 99, pointerY = 99, pointerActive = false, pointerDown = false, burstUntil = 0;
   let lastX = 0, lastY = 0, hadPointer = false;
   const pointer: FieldPointer = { x: 0, y: 0, z: 0, active: false, down: false, speed: 0 };
@@ -110,8 +110,10 @@ export function createGravityScene(container: HTMLElement, lowPower: boolean, on
     frame = 0;
     if (!active || disposed) return;
     // Fixed 60 Hz dynamics, max 3 catch-up ticks; no refresh-rate-dependent physics.
-    accumulator += previousTime ? Math.min((now - previousTime) / 1000, .05) : 1 / 60;
+    const elapsed = previousTime ? Math.min((now - previousTime) / 1000, .05) : 1 / 60;
+    accumulator += elapsed;
     previousTime = now;
+    progress += (targetProgress - progress) * (1 - Math.exp(-elapsed * 9));
     const burst = now < burstUntil;
     pointer.x = burst ? 0 : pointerX * field.width / 2;
     pointer.y = burst ? 0 : pointerY * field.height / 2;
@@ -131,7 +133,7 @@ export function createGravityScene(container: HTMLElement, lowPower: boolean, on
       mesh.scale.setScalar(body.scale);
       material.color.copy(palette[body.role].current); material.emissive.copy(palette[body.role].current);
       if (body.glass) material.attenuationColor.copy(palette.pastel.current);
-      material.opacity = mode.fly > .001 ? 1 - smoothstep(8.4, 10.7, body.position.z) : 1;
+      material.opacity = (body.glass && lowPower ? .66 : 1) * (mode.fly > .001 ? 1 - smoothstep(8.4, 10.7, body.position.z) : 1);
       mesh.visible = material.opacity > .005 && body.position.z < 11;
     }
     try {
@@ -148,7 +150,7 @@ export function createGravityScene(container: HTMLElement, lowPower: boolean, on
       if (!value) { stop(); return; }
       active = true; frame = requestAnimationFrame(animate);
     },
-    setProgress(value) { progress = value; if (active && !frame) { previousTime = 0; frame = requestAnimationFrame(animate); } },
+    setProgress(value) { targetProgress = value; if (active && !frame) { previousTime = 0; frame = requestAnimationFrame(animate); } },
     setPointer(x, y, down, enabled) { pointerX = x; pointerY = y; pointerDown = down; pointerActive = enabled; },
     scatter() { burstUntil = performance.now() + 240; },
     dispose() {

@@ -23,6 +23,7 @@ vi.mock("@/lib/api/auth", async (importOriginal) => {
   return { ...actual, getCurrentUser: vi.fn(), login: vi.fn(), logout: vi.fn(), register: vi.fn() };
 });
 vi.mock("@/lib/api/preferences", () => ({ getPreferences: vi.fn(), updatePreferences: vi.fn() }));
+vi.mock("@/features/notifications/notification-center", () => ({ NotificationCenter: () => null }));
 
 const baseUser = {
   id: "11111111-1111-4111-8111-111111111111",

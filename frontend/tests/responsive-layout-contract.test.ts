@@ -48,11 +48,11 @@ describe("responsive layout contracts", () => {
     const footer = document.querySelector("footer")!;
     const track = document.querySelector(".gravity-footer-ticker > div")!;
     expect(styles(document.querySelector(".gravity-revealed")!, 390, true)["animation-iteration-count"]).toBe("1");
-    expect(styles(track, 390, true)["animation-duration"]).toBe("26s");
+    expect(styles(track, 390, true)["animation-duration"]).toContain("--ticker-duration");
     expect(styles(track, 390, true)["animation-iteration-count"]).toBe("infinite");
     footer.dataset.motion = "paused";
     footer.dataset.motionPaused = "true";
-    expect(styles(track, 390, true)["animation-duration"]).toBe("26s");
+    expect(styles(track, 390, true)["animation-duration"]).toContain("--ticker-duration");
     expect(styles(track, 390, true)["animation-play-state"]).toBe("paused");
   });
 

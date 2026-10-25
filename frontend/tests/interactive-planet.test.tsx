@@ -105,11 +105,12 @@ describe("BrandOrbit", () => {
     expect(orbit.style.getPropertyValue("--brand-shift-y")).toBe("0.000px");
   });
 
-  it("is rendered by the server homepage with the guest practice action", async () => {
+  it("renders the Gravity story on the server homepage with the guest practice action", async () => {
     render(await DashboardPage());
 
-    expect(document.querySelector(".home-orbit-interactive")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /start practicing/i })).toHaveAttribute("href", "/library");
+    expect(document.querySelector(".gravity-stage")).toBeInTheDocument();
+    expect(document.querySelectorAll("[data-gravity-section]")).toHaveLength(4);
+    expect(screen.getByRole("link", { name: /start practicing/i })).toHaveAttribute("href", "/practice");
     expect(screen.queryByRole("link", { name: /open builder/i })).not.toBeInTheDocument();
   });
 });

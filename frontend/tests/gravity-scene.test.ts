@@ -43,7 +43,8 @@ describe("Three.js scene ownership (mock GPU)", () => {
     expect(camera.fov).toBe(38); expect(camera.position.z).toBe(11);
     const spheres = world.children.filter(child => child instanceof THREE.Mesh && child.geometry instanceof THREE.SphereGeometry) as THREE.Mesh<THREE.SphereGeometry, THREE.MeshPhysicalMaterial>[];
     expect(spheres).toHaveLength(32);
-    expect(spheres.some(sphere => sphere.material.transmission > 0)).toBe(true);
+    expect(spheres.some(sphere => sphere.material.opacity < 1)).toBe(true);
+    expect(spheres.every(sphere => sphere.material.transmission === 0)).toBe(true);
     scene.dispose(); scene.dispose();
     expect(frames.size).toBe(0); expect(element.children).toHaveLength(0);
     expect(gpu.dispose).toHaveBeenCalledOnce(); expect(gpu.context).toHaveBeenCalledOnce(); expect(gpu.lists).toHaveBeenCalledOnce();
