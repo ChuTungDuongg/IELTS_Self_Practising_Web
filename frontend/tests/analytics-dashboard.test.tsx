@@ -17,6 +17,35 @@ const empty = {
 };
 
 describe("Analytics dashboard", () => {
+  it("keeps previous results and an accurate selected filter when refreshing fails, then retries", async () => {
+    vi.mocked(getAnalytics).mockRejectedValueOnce(new Error("private backend detail"));
+    render(<AnalyticsDashboardView initial={{ ...empty, total_finalized_attempts: 6 }} />);
+    fireEvent.click(screen.getByRole("button", { name: "Reading" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Your previous results are still shown");
+    expect(screen.getByText("Finalized attempts").parentElement).toHaveTextContent("6");
+    expect(screen.getByRole("button", { name: "All" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.queryByText("private backend detail")).not.toBeInTheDocument();
+    vi.mocked(getAnalytics).mockResolvedValueOnce(empty);
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Reading" })).toHaveAttribute("aria-pressed", "true"));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("places dated attempts on a real time scale and exposes their values as text", () => {
+    render(<AnalyticsDashboardView initial={{ ...empty, trends: [
+      { attempt_id: "first", skill: "READING", band_score: 5, attempted_at: "2026-10-01T00:00:00Z", test_title: "First fictional test", version_number: 1 },
+      { attempt_id: "second", skill: "READING", band_score: 6, attempted_at: "2026-10-02T00:00:00Z", test_title: "Second fictional test", version_number: 1 },
+      { attempt_id: "last", skill: "READING", band_score: 7, attempted_at: "2026-10-11T00:00:00Z", test_title: "Last fictional test", version_number: 1 },
+    ] }} />);
+    const chart = screen.getByRole("img", { name: "Band score trend from 0 to 9" });
+    const points = [...chart.querySelectorAll("circle")].map(point => Number(point.getAttribute("cx")));
+    expect((points[1] - points[0]) / (points[2] - points[0])).toBeCloseTo(.1);
+    fireEvent.click(screen.getByText("View score details"));
+    expect(screen.getByRole("table")).toHaveTextContent("01 Oct 2026");
+    expect(screen.getByRole("table")).toHaveTextContent("First fictional test");
+    expect(screen.getByRole("table")).toHaveTextContent("7.0");
+  });
+
   it("localizes comparison metric labels without changing authored titles or score values", async () => {
     window.localStorage.clear(); vi.clearAllMocks();
     const side: AttemptComparison["left"] = { attempt_id: "one", skill: "WRITING", test_title: "Section 2 · Đề <img>", version_number: 1, band_score: 6.5, raw_score: null, max_score: null, elapsed_seconds: 60, accuracy: null, question_types: [], writing: { task1_overall: 6, task2_overall: 6.5, ta: 6, cc: 6.5, lr: 7, gra: 6.5 } };

@@ -6,7 +6,7 @@ import { serverApiRequest } from "@/lib/api/server-client";
 export const dynamic = "force-dynamic";
 
 export default async function LibraryPage() {
-  const tests = await getTests({ publicOnly: true }, serverApiRequest).catch(() => []);
+  const tests = await getTests({ publicOnly: true }, serverApiRequest);
   const published = tests.flatMap((test) => {
     const version = [...test.versions].reverse().find((item) => item.status === "PUBLISHED");
     return version ? [{ test, version }] : [];
@@ -16,5 +16,5 @@ export default async function LibraryPage() {
     detail: await getVersion(item.version.id, serverApiRequest, { publicOnly: true }).catch(() => null),
   })))).filter((item): item is typeof item & { detail: VersionDetail } => item.detail !== null);
 
-  return <LibraryContent items={available} />;
+  return <LibraryContent items={available} loadFailed={available.length !== published.length} />;
 }

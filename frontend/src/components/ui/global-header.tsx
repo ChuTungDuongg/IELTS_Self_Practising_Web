@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState, type ReactElement, type RefObject } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type ReactElement, type ReactNode, type RefObject } from "react";
 import Link from "next/link";
 import { AppLogo } from "./app-logo";
 import { ConfirmDialog } from "./confirm-dialog";
@@ -32,12 +32,12 @@ function isCurrent(pathname: string, href: string) {
   return href === "/" || href === "/admin" ? pathname === href : pathname.startsWith(href);
 }
 
-function PrimaryNavigation({ pathname }: { pathname: string }) {
+function PrimaryNavigation({ pathname, id, onNavigate }: { pathname: string; id: string; onNavigate(): void }) {
   const { user } = useAuth();
   const { t } = useTranslation();
   const visibleNavigation = user ? [...navigation, ...(user.role === "ADMIN" ? adminNavigation : user.role === "TEACHER" ? teacherNavigation : [{ message: "shell.classrooms" as const, href: "/classrooms" }])] : [navigation[0]];
   return (
-    <nav aria-label={t("shell.primary")} className="primary-nav">
+    <nav id={id} aria-label={t("shell.primary")} className="primary-nav" onClick={(event) => { if ((event.target as HTMLElement).closest("a")) onNavigate(); }}>
       <ul className="primary-nav-list">
         {visibleNavigation.map((item) => {
           const active = isCurrent(pathname, item.href);
@@ -57,6 +57,35 @@ function HeaderActions({ loggingOut, onLogout, onPersonalization, settingsButton
     {sessionError ? <p role="alert" className="notice">{sessionError}</p> : null}
     {!loading && user ? <><Link href="/profile" prefetch={false} className="auth-user-label"><span className="auth-user-name">{user.display_name}</span><small>{t(roleTranslationKeys[user.role])}</small></Link><button type="button" className="btn btn-ghost" disabled={loggingOut} onClick={onLogout}>{t("shell.logout")}</button></> : !loading && !sessionError ? <><Link href="/login" prefetch={false} className="btn btn-ghost">{t("shell.login")}</Link><Link href="/register" prefetch={false} className="btn btn-primary">{t("shell.register")}</Link></> : null}
   </div>;
+}
+
+function HeaderBar({ pathname, children }: { pathname: string; children: ReactNode }) {
+  const { t } = useTranslation();
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const navigationId = useId();
+  const [navigationOpen, setNavigationOpen] = useState(false);
+  const closeNavigation = useCallback(() => setNavigationOpen(false), []);
+
+  useEffect(() => {
+    if (!navigationOpen) return;
+    document.getElementById(navigationId)?.querySelector<HTMLAnchorElement>("a")?.focus();
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      setNavigationOpen(false);
+      menuButtonRef.current?.focus();
+    }
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
+  }, [navigationOpen, navigationId]);
+
+  return <header className="app-header" data-navigation-open={navigationOpen}>
+    <div className="app-header-inner">
+      <Link href="/" className="brand" aria-label={t("shell.brandOverview")}><span className="brand-mark" aria-hidden="true"><AppLogo variant="primary" /></span><strong>BandPilot</strong></Link>
+      <PrimaryNavigation pathname={pathname} id={navigationId} onNavigate={closeNavigation} />
+      {children}
+      <button ref={menuButtonRef} type="button" className="navigation-toggle icon-button" aria-label={t("shell.menu")} aria-expanded={navigationOpen} aria-controls={navigationId} onClick={() => setNavigationOpen(open => !open)}><svg aria-hidden="true" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><path d={navigationOpen ? "m6 6 12 12M6 18 18 6" : "M4 6h16M4 12h16M4 18h16"} /></svg></button>
+    </div>
+  </header>;
 }
 
 export function GlobalHeader({ pathname }: { pathname: string }): ReactElement {
@@ -82,13 +111,9 @@ export function GlobalHeader({ pathname }: { pathname: string }): ReactElement {
   }
 
   return <>
-    <header className="app-header">
-      <div className="app-header-inner">
-        <Link href="/" className="brand" aria-label={t("shell.brandOverview")}><span className="brand-mark" aria-hidden="true"><AppLogo variant="primary" /></span><strong>BandPilot</strong></Link>
-        <PrimaryNavigation pathname={pathname} />
-        <HeaderActions loggingOut={loggingOut} onLogout={() => setConfirmingLogout(true)} onPersonalization={() => setPersonalizationOpen(true)} settingsButtonRef={settingsButtonRef} pathname={pathname} />
-      </div>
-    </header>
+    <HeaderBar key={pathname} pathname={pathname}>
+      <HeaderActions loggingOut={loggingOut} onLogout={() => setConfirmingLogout(true)} onPersonalization={() => setPersonalizationOpen(true)} settingsButtonRef={settingsButtonRef} pathname={pathname} />
+    </HeaderBar>
     <ConfirmDialog open={confirmingLogout && user !== null} title={t("shell.logoutTitle")} description={t("shell.logoutDescription")} confirmLabel={t("shell.logoutConfirm")} pending={loggingOut} onCancel={() => setConfirmingLogout(false)} onConfirm={() => void confirmLogout()} />
     <PersonalizationDialog open={personalizationOpen && user !== null} onClose={closePersonalization} returnFocusRef={settingsButtonRef} />
   </>;

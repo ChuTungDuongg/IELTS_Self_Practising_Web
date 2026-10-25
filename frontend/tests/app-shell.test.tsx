@@ -158,7 +158,7 @@ describe("horizontal application shell", () => {
     const focusable = Array.from(header.querySelectorAll<HTMLAnchorElement | HTMLButtonElement>('a[href], button'));
     expect(header.querySelectorAll("nav")).toHaveLength(1);
     expect(focusable.slice(1, 1 + routes.length).map((node) => node.getAttribute("href"))).toEqual(routes);
-    expect(focusable.slice(1 + routes.length).map((node) => node.getAttribute("aria-label") ?? node.textContent)).toEqual(["Personalization", expect.stringContaining("Learner"), "Logout"]);
+    expect(focusable.slice(1 + routes.length).map((node) => node.getAttribute("aria-label") ?? node.textContent)).toEqual(["Personalization", expect.stringContaining("Learner"), "Logout", "Menu"]);
     expect(focusable.every((node) => node.tabIndex === 0)).toBe(true);
     expect(container.querySelector('[tabindex]:not([tabindex="0"]):not([tabindex="-1"])')).toBeNull();
   });

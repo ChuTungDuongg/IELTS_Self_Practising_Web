@@ -7,15 +7,17 @@ import { ArrowIcon, BuilderIcon, HeadphonesIcon, HistoryIcon, LibraryIcon, Readi
 import { AdminOnly } from "@/features/auth/admin-only";
 import type { AdminStats } from "@/lib/api/admin";
 import type { Profile } from "@/lib/api/profile";
+import type { HistoryItem } from "@/lib/api/history";
+import { moduleTranslationKeys } from "@/lib/i18n/translations";
 import { formatProjectDate } from "@/lib/date-time";
 import { useTranslation } from "@/lib/i18n/locale-provider";
 
-export function OverviewContent({ publishedCount, resumableCount, testCount, isAdmin, adminStats, profile }: { publishedCount: number; resumableCount: number; testCount: number; isAdmin: boolean; adminStats: AdminStats | null; profile: Profile | null }): ReactElement {
+export function OverviewContent({ publishedCount, resumableCount, testCount, isAdmin, adminStats, profile, recentAttempt }: { publishedCount: number; resumableCount: number; testCount: number; isAdmin: boolean; adminStats: AdminStats | null; profile: Profile | null; recentAttempt?: Pick<HistoryItem, "attempt_id" | "test_title" | "module" | "status"> }): ReactElement {
   const { t } = useTranslation();
   const pathways = [
     { title: t("pages.overview.tests"), description: t("pages.overview.testsDescription"), href: "/library", eyebrow: t("pages.overview.practiceLibrary"), icon: LibraryIcon, tone: "indigo" },
-    { title: t("pages.overview.reading"), description: t("pages.overview.readingDescription"), href: "/library", eyebrow: t("pages.overview.editorialFocus"), icon: ReadingIcon, tone: "cyan" },
-    { title: t("pages.overview.listening"), description: t("pages.overview.listeningDescription"), href: "/library", eyebrow: t("pages.overview.guidedAudio"), icon: HeadphonesIcon, tone: "violet" },
+    { title: t("pages.overview.reading"), description: t("pages.overview.readingDescription"), href: "/practice?skill=READING", eyebrow: t("pages.overview.editorialFocus"), icon: ReadingIcon, tone: "cyan" },
+    { title: t("pages.overview.listening"), description: t("pages.overview.listeningDescription"), href: "/practice?skill=LISTENING", eyebrow: t("pages.overview.guidedAudio"), icon: HeadphonesIcon, tone: "violet" },
     { title: t("pages.overview.progress"), description: t("pages.overview.progressDescription"), href: "/history", eyebrow: t("pages.overview.practiceRecord"), icon: HistoryIcon, tone: "blue" },
   ] as const;
 
@@ -26,8 +28,12 @@ export function OverviewContent({ publishedCount, resumableCount, testCount, isA
           <p className="page-eyebrow page-context-kicker"><SparkleIcon className="size-4" /> {t("pages.overview.observatory")}</p>
           <h1 id="home-title">{t("pages.overview.build")}<br /><span>{t("pages.overview.focus")}</span></h1>
           <p className="home-hero-description">{t("pages.overview.hero")}</p>
+          {recentAttempt ? <section className="home-next-session" aria-label={t("ui.continuePractice")}>
+            <div><p>{t("ui.continuePractice")} · {t(moduleTranslationKeys[recentAttempt.module])}</p><h2>{recentAttempt.test_title}</h2></div>
+            <Link href={recentAttempt.status === "PAUSED" ? "/history" : `/attempt/${recentAttempt.attempt_id}`} className="btn btn-primary">{t("ui.continueSaved")} <ArrowIcon className="size-4" /></Link>
+          </section> : null}
           <div className="home-hero-actions">
-            <Link href="/library" className="btn btn-primary">{t("pages.overview.start")} <ArrowIcon className="size-4" /></Link>
+            <Link href="/library" className={`btn ${recentAttempt ? "btn-secondary" : "btn-primary"}`}>{t("pages.overview.start")} <ArrowIcon className="size-4" /></Link>
             <AdminOnly><Link href="/admin/tests" className="btn btn-secondary"><BuilderIcon className="size-4" /> {t("pages.overview.builderAction")}</Link></AdminOnly>
           </div>
         </div>

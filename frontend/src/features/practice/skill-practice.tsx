@@ -136,9 +136,9 @@ function PracticeUnitCard({ unit, hidden }: { unit: PracticeUnit; hidden: boolea
   </article>;
 }
 
-export function SkillPractice({ versions }: { versions: VersionDetail[] }) {
+export function SkillPractice({ versions, initialSkill = "READING" }: { versions: VersionDetail[]; initialSkill?: Skill }) {
   const { t } = useTranslation();
-  const [selection, setSelection] = useState<Selection>({ skill: "READING", unitIndex: null });
+  const [selection, setSelection] = useState<Selection>({ skill: initialSkill, unitIndex: null });
   const [search, setSearch] = useState("");
   const units = useMemo(() => practiceUnits(versions), [versions]);
   const skillUnits = units.filter((unit) => unit.target.module === selection.skill);

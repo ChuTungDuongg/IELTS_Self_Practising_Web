@@ -4,6 +4,7 @@ import { AuthProvider } from "@/features/auth/auth-provider";
 import { PersonalizationProvider } from "@/features/personalization/personalization-provider";
 import { accentPresets } from "@/features/personalization/accent-palette";
 import "./globals.css";
+import "./design-system.css";
 
 export const metadata: Metadata = {
   title: "BandPilot — IELTS Practice & AI Feedback",
@@ -14,7 +15,7 @@ export const themeInitializationScript = `(function(){var root=document.document
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" data-theme="light" data-accent="purple" suppressHydrationWarning>
+    <html lang="en" data-theme="light" data-accent="purple" data-design="editorial" suppressHydrationWarning>
       <body>
         <script
           id="theme-initialization"

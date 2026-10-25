@@ -2,6 +2,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { renderWithLocale } from "./locale-test-utils";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import DashboardPage from "@/app/page";
+import { OverviewContent } from "@/components/home/overview-content";
 import { getAdminStats } from "@/lib/api/admin";
 import { ApiError } from "@/lib/api/client";
 import { serverApiRequest } from "@/lib/api/server-client";
@@ -32,6 +33,12 @@ const profile = {
 };
 
 describe("homepage metrics and personal IELTS goals", () => {
+  it("shows the actual active attempt as a direct continuation action", () => {
+    render(<OverviewContent publishedCount={2} resumableCount={1} testCount={2} isAdmin={false} adminStats={null} profile={null} recentAttempt={{ attempt_id: "active-attempt", status: "IN_PROGRESS", module: "READING", test_title: "Fictional saved practice" }} />);
+    expect(screen.getByRole("link", { name: /Continue saved attempt/ })).toHaveAttribute("href", "/attempt/active-attempt");
+    expect(screen.getByRole("heading", { name: "Fictional saved practice" })).toBeInTheDocument();
+  });
+
   it("keeps the ADMIN Builder count based on all authored tests", async () => {
     render(await DashboardPage());
     expect(getTests).toHaveBeenCalledWith(undefined, serverApiRequest);

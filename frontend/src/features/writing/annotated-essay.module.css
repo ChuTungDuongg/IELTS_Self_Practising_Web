@@ -16,5 +16,6 @@
 .original { white-space: pre-wrap; color: var(--ink-soft); }
 .revision { white-space: pre-wrap; }
 .revision > span { font-size: .8rem; color: var(--muted); }
-.close { float: right; padding: 0 8px; color: var(--muted); font-size: 1.2rem; cursor: pointer; }
-.navigation { margin-top: 8px; color: var(--writing); text-decoration: underline; cursor: pointer; }
+.close { float: right; min-width: 44px; min-height: 44px; margin: -8px -8px 0 8px; border-radius: var(--radius-control, 6px); color: var(--muted); font-size: 1.2rem; cursor: pointer; }
+.close:hover { color: var(--ink); background: var(--surface-hover); }
+.navigation { display: inline-flex; align-items: center; min-height: 44px; margin-top: 8px; color: var(--writing); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }

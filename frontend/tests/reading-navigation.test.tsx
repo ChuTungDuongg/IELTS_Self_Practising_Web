@@ -92,6 +92,23 @@ function payload(): ExamPayload {
 }
 
 describe("Reading footer navigation", () => {
+  it("switches narrow-screen panels without unmounting answers and opens questions from navigation", () => {
+    const { container } = render(<ReadingRunner initial={payload()} />);
+    const runner = container.querySelector(".exam-runner")!;
+    const source = container.querySelector(".exam-passage");
+    const answers = container.querySelector(".exam-questions");
+    const panels = screen.getByRole("group", { name: "Reading panels" });
+    expect(runner).toHaveAttribute("data-reading-pane", "passage");
+    fireEvent.click(within(panels).getByRole("button", { name: "Questions" }));
+    expect(runner).toHaveAttribute("data-reading-pane", "questions");
+    fireEvent.click(within(panels).getByRole("button", { name: "Passage" }));
+    expect(container.querySelector(".exam-passage")).toBe(source);
+    expect(container.querySelector(".exam-questions")).toBe(answers);
+    fireEvent.click(screen.getByRole("button", { name: "Go to question 19" }));
+    expect(runner).toHaveAttribute("data-reading-pane", "questions");
+    expect(screen.getByRole("heading", { name: "Passage Two" })).toBeInTheDocument();
+  });
+
   const scrolls: Array<{ element: HTMLElement; options: ScrollToOptions }> = [];
   let intersectionCallback: IntersectionObserverCallback = () => undefined;
 

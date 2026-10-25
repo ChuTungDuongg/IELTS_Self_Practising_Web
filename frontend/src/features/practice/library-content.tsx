@@ -5,6 +5,7 @@ import Link from "next/link";
 import { PageHeading } from "@/components/ui/page-heading";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { EmptyState } from "@/components/ui/empty-state";
+import { DataLoadNotice } from "@/components/ui/data-load-notice";
 import { ModuleBadge } from "@/components/ui/module-badge";
 import { ArrowIcon } from "@/components/ui/icons";
 import { StartAttempt } from "@/features/exam/start-attempt";
@@ -27,10 +28,11 @@ export function TestAttribution({ test, compact = false }: { test: TestSummary; 
   return compact ? <span className="practice-detail-origin">{label}</span> : <p className="practice-module-kicker">{label}</p>;
 }
 
-export function LibraryContent({ items }: { items: Array<{ test: TestSummary; version: TestSummary["versions"][number]; detail: VersionDetail }> }): ReactElement {
+export function LibraryContent({ items, loadFailed = false }: { items: Array<{ test: TestSummary; version: TestSummary["versions"][number]; detail: VersionDetail }>; loadFailed?: boolean }): ReactElement {
   const { t } = useTranslation();
   return <>
     <PageHeading eyebrow={t("pages.library.practice")} title={t("pages.library.choose")} description={t("pages.library.chooseDescription")} />
+    {loadFailed ? <DataLoadNotice /> : null}
     {items.length ? <div className="practice-grid">
       {items.map(({ test, version, detail }) => {
         const modules = runtimeModules(detail.modules);
@@ -45,7 +47,7 @@ export function LibraryContent({ items }: { items: Array<{ test: TestSummary; ve
           </div>
         </article>;
       })}
-    </div> : <EmptyState title={t("pages.library.empty")} description={t("pages.library.emptyDescription")} />}
+    </div> : loadFailed ? null : <EmptyState title={t("pages.library.empty")} description={t("pages.library.emptyDescription")} />}
   </>;
 }
 

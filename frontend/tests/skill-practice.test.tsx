@@ -46,6 +46,15 @@ const test: TestSummary = {
   versions: [version],
 };
 
+it("opens a linked skill directly without changing available units", () => {
+  render(<SkillPractice versions={[version]} initialSkill="LISTENING" />);
+  expect(screen.getByRole("button", { name: "Listening" })).toHaveAttribute("aria-pressed", "true");
+  expect(screen.getByRole("heading", { name: "Fictional listening section" })).toBeInTheDocument();
+  expect(screen.queryByRole("heading", { name: "Fictional trees" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Reading" }));
+  expect(screen.getByRole("heading", { name: "Fictional trees" })).toBeInTheDocument();
+});
+
 const speakingVersion: VersionDetail = { ...version, modules: [{ id: id(70), module_type: "SPEAKING", title: null, recommended_duration_seconds: 1200, passage_count: 0, listening_part_count: 0, writing_task_count: 0, question_count: 0, speaking_parts: ([1, 2, 3] as const).map(part => ({ id: id(70 + part), part_number: part, order_index: part - 1, title: part === 1 ? "Fictional introduction" : null, prompts: [{ id: id(80 + part), order_index: 0, prompt_type: part === 2 ? "LONG_TURN" : "SHORT_ANSWER", prompt_text: `Fictional part ${part} question`, cue_points: [] }] })) }] };
 
 it("discovers one whole Speaking Part per card and filters Part 1/2/3", () => {
