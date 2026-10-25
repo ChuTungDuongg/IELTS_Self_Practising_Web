@@ -110,8 +110,8 @@
   .gravity-footer .gravity-footer-pause span { color: inherit; }
   .gravity-footer-pause:hover { background: rgb(255 255 255 / .08); }
   .gravity-footer[data-motion-paused="true"] .gravity-footer-ticker > div { animation-play-state: paused; }
-  /* Explicit Play/Pause opts this ticker into motion; retain its duration while paused.
-     The global reduced-motion reset still governs every other animation. */
+  /* The requested ticker autoplays; keep its full duration while playing or paused.
+     This scoped exception leaves the global reduced-motion reset intact elsewhere. */
   .gravity-footer:is([data-motion="playing"], [data-motion="paused"]) .gravity-footer-ticker > div { animation-duration: 26s !important; animation-iteration-count: infinite !important; }
 
   &[data-theme="dark"] {
@@ -165,7 +165,6 @@
   @media (prefers-reduced-motion: reduce) {
     .gravity-gradient, .gravity-webgl, .gravity-static-field { transition: none; }
     .gravity-revealed { animation: none; }
-    .gravity-footer[data-motion="auto"] .gravity-footer-ticker > div { animation-play-state: paused; }
     .app-shell-home .app-header, .gravity-hero .gravity-label, .gravity-hero h1, .gravity-hero-bottom { animation: none; }
     .gravity-cta, .gravity-cta > span, .gravity-skill-list > a { transition: none; transform: none; }
   }

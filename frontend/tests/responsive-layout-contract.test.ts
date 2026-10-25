@@ -43,12 +43,11 @@ function fixture(markup: string) {
 }
 
 describe("responsive layout contracts", () => {
-  it("allows explicit ticker playback without removing the global reduced-motion reset", () => {
-    fixture('<footer class="gravity-footer" data-motion="auto"><div class="gravity-footer-ticker"><div></div></div></footer>');
+  it("autoplays the ticker without removing the global reduced-motion reset elsewhere", () => {
+    fixture('<div class="gravity-revealed"></div><footer class="gravity-footer" data-motion="playing"><div class="gravity-footer-ticker"><div></div></div></footer>');
     const footer = document.querySelector("footer")!;
     const track = document.querySelector(".gravity-footer-ticker > div")!;
-    expect(styles(track, 390, true)["animation-iteration-count"]).toBe("1");
-    footer.dataset.motion = "playing";
+    expect(styles(document.querySelector(".gravity-revealed")!, 390, true)["animation-iteration-count"]).toBe("1");
     expect(styles(track, 390, true)["animation-duration"]).toBe("26s");
     expect(styles(track, 390, true)["animation-iteration-count"]).toBe("infinite");
     footer.dataset.motion = "paused";

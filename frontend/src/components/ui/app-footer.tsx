@@ -1,24 +1,14 @@
 "use client";
 
-import { useState, useSyncExternalStore, type ReactElement } from "react";
+import { useState, type ReactElement } from "react";
 import Link from "next/link";
 import { useLocale, useTranslation } from "@/lib/i18n/locale-provider";
-
-const motionQuery = "(prefers-reduced-motion: reduce)";
-function subscribeMotion(onChange: () => void) {
-  const media = window.matchMedia?.(motionQuery);
-  media?.addEventListener("change", onChange);
-  return () => media?.removeEventListener("change", onChange);
-}
-const reducedMotion = () => window.matchMedia?.(motionQuery)?.matches ?? false;
-const serverMotion = () => false;
 
 export function AppFooter({ year, home = false }: { year: number; home?: boolean }): ReactElement {
   const { locale } = useLocale();
   const { t } = useTranslation();
-  const prefersReduced = useSyncExternalStore(subscribeMotion, reducedMotion, serverMotion);
-  const [motion, setMotion] = useState<"auto" | "playing" | "paused">("auto");
-  const paused = motion === "paused" || motion === "auto" && prefersReduced;
+  const [motion, setMotion] = useState<"playing" | "paused">("playing");
+  const paused = motion === "paused";
   return <footer className={`app-footer${home ? " gravity-footer" : ""}`} data-motion={motion} data-motion-paused={paused}>
     {home ? <>
       <div className="gravity-footer-ticker" aria-hidden="true">

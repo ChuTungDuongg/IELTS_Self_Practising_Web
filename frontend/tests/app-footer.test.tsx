@@ -13,18 +13,25 @@ beforeEach(() => window.localStorage.clear());
 afterEach(() => vi.unstubAllGlobals());
 
 describe("shared footer", () => {
-  it("respects reduced motion by default and lets the user explicitly play and pause the loop", () => {
+  it("autoplays even with reduced motion and lets the user pause and resume the loop", () => {
     vi.stubGlobal("matchMedia", () => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() }));
     renderWithLocale(<AppFooter year={2026} home />);
     const footer = screen.getByRole("contentinfo");
-    expect(footer).toHaveAttribute("data-motion", "auto");
-    expect(footer).toHaveAttribute("data-motion-paused", "true");
-    fireEvent.click(screen.getByRole("button", { name: "Resume scrolling text" }));
     expect(footer).toHaveAttribute("data-motion", "playing");
     expect(footer).toHaveAttribute("data-motion-paused", "false");
     fireEvent.click(screen.getByRole("button", { name: "Pause scrolling text" }));
     expect(footer).toHaveAttribute("data-motion", "paused");
     expect(footer).toHaveAttribute("data-motion-paused", "true");
+    fireEvent.click(screen.getByRole("button", { name: "Resume scrolling text" }));
+    expect(footer).toHaveAttribute("data-motion", "playing");
+    expect(footer).toHaveAttribute("data-motion-paused", "false");
+  });
+
+  it("renders the homepage loop playing before hydration", () => {
+    const markup = renderToString(<LocaleProvider><AppFooter year={2026} home /></LocaleProvider>);
+    expect(markup).toContain('data-motion="playing"');
+    expect(markup).toContain('data-motion-paused="false"');
+    expect(markup).toContain("Pause scrolling text");
   });
 
   it("shows real product information and the current language without extra links or controls", () => {
