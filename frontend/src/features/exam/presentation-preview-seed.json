@@ -1,0 +1,42 @@
+{
+  "title": "A neighbourhood garden",
+  "paragraphs": [
+    { "label": "A", "text": "A small neighbourhood garden opened beside the town library last spring. Residents transformed an unused courtyard into a shared place for growing vegetables and meeting neighbours. The paths were made wide enough for wheelchairs, and several planting beds were raised above the ground so that everyone could take part." },
+    { "label": "B", "text": "Volunteers meet every Saturday morning. Some look after the plants while others run short workshops for new gardeners. The library lends tools and provides a room for planning meetings. Local schools visit during the week to learn about insects, soil and the changing seasons. Students record their observations in a notebook and compare them on their next visit." },
+    { "label": "C", "text": "The organisers collect rainwater from the library roof in a large tank. This reduces the amount of drinking water used in summer. Visitors are welcome throughout the year, although the garden closes at sunset. The project now plans to create a quiet seating area and invite more residents to join the volunteer team." }
+  ],
+  "groups": [
+    {
+      "id": "10000000-0000-4000-8000-000000000001",
+      "question_type": "true_false_not_given",
+      "instruction": "Do the following statements agree with the information in the reading passage?",
+      "config": {}, "order_index": 0,
+      "questions": [
+        { "id": "10000000-0000-4000-8000-000000000011", "number": 1, "prompt": "The garden was created in a courtyard that had not been in use.", "config": {}, "order_index": 0 },
+        { "id": "10000000-0000-4000-8000-000000000012", "number": 2, "prompt": "Volunteers meet in the garden every day.", "config": {}, "order_index": 1 }
+      ]
+    },
+    {
+      "id": "10000000-0000-4000-8000-000000000002",
+      "question_type": "note_completion",
+      "instruction": "Complete the notes below. Write ONE WORD AND/OR A NUMBER for each answer.",
+      "config": { "layout": {
+        "kind": "NOTE", "title": "Community garden: visitor information", "columns": [], "rows": [], "nodes": [],
+        "blocks": [
+          { "id": "heading", "style": "HEADING", "indent": 0, "segments": [{ "id": "heading-text", "type": "TEXT", "text": "Activities and facilities" }] },
+          { "id": "example", "style": "EXAMPLE", "indent": 0, "segments": [{ "id": "example-text", "type": "TEXT", "text": "Location: beside the town library" }] },
+          { "id": "meeting", "style": "BULLET", "indent": 0, "segments": [{ "id": "meeting-text", "type": "TEXT", "text": "Volunteers meet on " }, { "id": "meeting-gap", "type": "GAP", "question_id": "10000000-0000-4000-8000-000000000013" }, { "id": "meeting-end", "type": "TEXT", "text": " mornings." }] },
+          { "id": "equipment", "style": "BULLET", "indent": 0, "segments": [{ "id": "equipment-text", "type": "TEXT", "text": "The library lends " }, { "id": "equipment-gap", "type": "GAP", "question_id": "10000000-0000-4000-8000-000000000014" }, { "id": "equipment-end", "type": "TEXT", "text": " to volunteers." }] },
+          { "id": "water", "style": "BULLET", "indent": 0, "segments": [{ "id": "water-text", "type": "TEXT", "text": "Rainwater is collected in a large " }, { "id": "water-gap", "type": "GAP", "question_id": "10000000-0000-4000-8000-000000000015" }, { "id": "water-end", "type": "TEXT", "text": "." }] },
+          { "id": "time", "style": "BULLET", "indent": 0, "segments": [{ "id": "time-text", "type": "TEXT", "text": "The garden closes at " }, { "id": "time-gap", "type": "GAP", "question_id": "10000000-0000-4000-8000-000000000016" }, { "id": "time-end", "type": "TEXT", "text": "." }] }
+        ]
+      } }, "order_index": 1,
+      "questions": [
+        { "id": "10000000-0000-4000-8000-000000000013", "number": 3, "prompt": "Volunteer meeting day", "config": { "max_words": 1, "max_numbers": 1 }, "order_index": 0 },
+        { "id": "10000000-0000-4000-8000-000000000014", "number": 4, "prompt": "Equipment", "config": { "max_words": 1, "max_numbers": 1 }, "order_index": 1 },
+        { "id": "10000000-0000-4000-8000-000000000015", "number": 5, "prompt": "Water storage", "config": { "max_words": 1, "max_numbers": 1 }, "order_index": 2 },
+        { "id": "10000000-0000-4000-8000-000000000016", "number": 6, "prompt": "Closing time", "config": { "max_words": 1, "max_numbers": 1 }, "order_index": 3 }
+      ]
+    }
+  ]
+}

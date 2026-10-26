@@ -8,6 +8,7 @@ import { PausedAttemptGate } from "@/features/exam/paused-attempt-gate";
 import { serverApiRequest } from "@/lib/api/server-client";
 import { ApiError } from "@/lib/api/client";
 import { TerminalAttemptRedirect } from "@/features/exam/terminal-attempt-redirect";
+import { ObjectiveAttemptWorkspace } from "@/features/exam/objective-attempt-workspace";
 
 export default async function AttemptShellPage({ params }: { params: Promise<{ attemptId: string }> }) {
   const { attemptId } = await params;
@@ -25,7 +26,7 @@ export default async function AttemptShellPage({ params }: { params: Promise<{ a
   if (exam.attempt.status !== "IN_PROGRESS") return <TerminalAttemptRedirect attempt={exam.attempt} />;
   if (exam.attempt.module === "SPEAKING") return <SpeakingRunner key={exam.attempt.attempt_id} initial={exam} />;
   if (exam.attempt.module === "WRITING") return <WritingRunner key={exam.attempt.attempt_id} initial={exam} />;
-  return exam.attempt.module === "LISTENING"
+  return <ObjectiveAttemptWorkspace attemptId={exam.attempt.attempt_id}>{exam.attempt.module === "LISTENING"
     ? <ListeningRunner key={exam.attempt.attempt_id} initial={exam} />
-    : <ReadingRunner key={exam.attempt.attempt_id} initial={exam} />;
+    : <ReadingRunner key={exam.attempt.attempt_id} initial={exam} />}</ObjectiveAttemptWorkspace>;
 }

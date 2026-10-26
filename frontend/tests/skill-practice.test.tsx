@@ -96,6 +96,7 @@ describe("Skill practice", () => {
     const card = screen.getAllByRole("article")[0]; const timer = within(card).getByRole("combobox");
     fireEvent.change(timer, { target: { value: "1500" } });
     fireEvent.click(within(card).getByRole("button", { name: "Start focused practice" }));
+    fireEvent.click(screen.getByRole("button", { name: "Continue with this interface" }));
     const pending = within(card).getByRole("button", { name: "Starting…" });
     fireEvent.click(screen.getByText("Switch to Vietnamese"));
     expect(within(card).getByRole("button", { name: "Đang bắt đầu…" })).toBe(pending);
@@ -125,6 +126,7 @@ describe("Skill practice", () => {
     expect(timer).toHaveValue("900");
     expect(startAttempt).not.toHaveBeenCalled();
     fireEvent.click(within(card).getByRole("button", { name: "Bắt đầu luyện tập riêng" }));
+    fireEvent.click(screen.getByRole("button", { name: "Tiếp tục với giao diện này" }));
     expect(startAttempt).toHaveBeenCalledExactlyOnceWith({ test_version_id: id(2), module: "LISTENING", scope: "FOCUSED_UNIT", focused_unit: { kind: "LISTENING_PART", id: id(10) }, timer: { mode: "COUNTDOWN", duration_seconds: 900 } });
     expect(JSON.stringify(fixture)).toBe(before);
     await act(async () => {});
@@ -182,6 +184,7 @@ describe("Skill practice", () => {
     }
     fireEvent.change(within(cards[1]).getByRole("combobox"), { target: { value: "1500" } });
     fireEvent.click(within(cards[1]).getByRole("button"));
+    fireEvent.click(screen.getByRole("button", { name: "Continue with this interface" }));
     expect(startAttempt).toHaveBeenCalledWith({ test_version_id: id(2), module: "READING", scope: "FOCUSED_UNIT", focused_unit: { kind: "READING_PASSAGE", id: id(5) }, timer: { mode: "COUNTDOWN", duration_seconds: 1500 } });
     await act(async () => {});
     expect(push).toHaveBeenCalledWith(`/attempt/${id(99)}`);
@@ -218,9 +221,13 @@ describe("Skill practice", () => {
     fireEvent.change(select, { target: { value: "1800" } });
     const button = within(card).getByRole("button");
     fireEvent.click(button); fireEvent.click(button);
+    const confirm = screen.getByRole("button", { name: "Continue with this interface" });
+    fireEvent.click(confirm); fireEvent.click(confirm);
     expect(startAttempt).toHaveBeenCalledTimes(1);
     expect(button).toBeDisabled(); expect(button).toHaveTextContent("Starting…");
     await act(async () => reject(new ApiError("UNAVAILABLE", "This version is unavailable.", 409)));
+    expect(within(screen.getByRole("dialog")).getByRole("alert")).toHaveTextContent("This version is unavailable.");
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(within(card).getByRole("alert")).toHaveTextContent("This version is unavailable.");
     expect(select).toHaveValue("1800"); expect(button).not.toBeDisabled();
   });
@@ -232,6 +239,7 @@ describe("Skill practice", () => {
     const firstCard = screen.getByRole("heading", { name: "Fictional trees" }).closest("article")!;
     fireEvent.change(within(firstCard).getByRole("combobox"), { target: { value: "1800" } });
     fireEvent.click(within(firstCard).getByRole("button"));
+    fireEvent.click(screen.getByRole("button", { name: "Continue with this interface" }));
     const search = screen.getByRole("searchbox", { name: "Search practice" });
     fireEvent.change(search, { target: { value: "rivers" } });
     expect(screen.getAllByRole("article")).toHaveLength(1);
@@ -244,6 +252,7 @@ describe("Skill practice", () => {
     fireEvent.click(within(restored).getByRole("button"));
     expect(startAttempt).toHaveBeenCalledTimes(1);
     await act(async () => reject(new ApiError("UNAVAILABLE", "This version is unavailable.", 409)));
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     fireEvent.change(search, { target: { value: "no matches" } });
     fireEvent.change(search, { target: { value: "" } });
     const failed = screen.getByRole("heading", { name: "Fictional trees" }).closest("article")!;
@@ -271,6 +280,8 @@ describe("Skill practice", () => {
     fireEvent.change(select, { target: { value: duration } });
     const button = screen.getByRole("button", { name: "Start focused practice" });
     fireEvent.click(button); fireEvent.click(button);
+    const confirm = screen.getByRole("button", { name: "Continue with this interface" });
+    fireEvent.click(confirm); fireEvent.click(confirm);
     expect(startAttempt).toHaveBeenCalledTimes(1);
     expect(startAttempt).toHaveBeenCalledWith({ test_version_id: id(2), module: "LISTENING", scope: "FOCUSED_UNIT", focused_unit: { kind: "LISTENING_PART", id: id(10) }, timer: duration === "count-up" ? { mode: "COUNT_UP" } : { mode: "COUNTDOWN", duration_seconds: Number(duration) } });
     await act(async () => {});
@@ -289,6 +300,7 @@ describe("Skill practice", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(screen.getByText(missing === "audio" ? "No recording attached · external audio can be used" : missing === "range" ? "Full recording available" : "Audio 07:48–15:31 · 07:43")).toBeInTheDocument();
     fireEvent.click(button);
+    fireEvent.click(screen.getByRole("button", { name: "Continue with this interface" }));
     expect(startAttempt).toHaveBeenCalledWith({ test_version_id: id(2), module: "LISTENING", scope: "FOCUSED_UNIT", focused_unit: { kind: "LISTENING_PART", id: id(10) }, timer: { mode: "COUNTDOWN", duration_seconds: 600 } });
     await act(async () => {});
     expect(push).toHaveBeenCalledWith(`/attempt/${id(99)}`);
@@ -300,6 +312,7 @@ describe("Skill practice", () => {
     fireEvent.click(screen.getByRole("button", { name: "Listening" }));
     fireEvent.change(screen.getByRole("combobox"), { target: { value: "900" } });
     fireEvent.click(screen.getByRole("button", { name: "Start focused practice" }));
+    fireEvent.click(screen.getByRole("button", { name: "Continue with this interface" }));
     await act(async () => {});
     expect(screen.getByRole("alert")).toHaveTextContent("The selected section is unavailable.");
     expect(screen.getByRole("combobox")).toHaveValue("900");
@@ -351,6 +364,7 @@ describe("Skill practice", () => {
     expect(screen.getAllByRole("article")).toHaveLength(1);
     expect(screen.getByText("Another fictional test · Version 2")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Start focused practice" }));
+    fireEvent.click(screen.getByRole("button", { name: "Continue with this interface" }));
     expect(startAttempt).toHaveBeenCalledWith(expect.objectContaining({ test_version_id: id(12), module: "LISTENING", focused_unit: { kind: "LISTENING_PART", id: id(14) } }));
     await act(async () => {});
     fireEvent.change(search, { target: { value: "station" } });

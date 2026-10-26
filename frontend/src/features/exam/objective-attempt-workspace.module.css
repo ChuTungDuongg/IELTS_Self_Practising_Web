@@ -1,0 +1,4 @@
+.workspace:global(.app-shell) { display: flex; flex-direction: column; height: 100dvh; min-height: 0; overflow: hidden; }
+.workspace > :global(.app-header) { position: relative; flex: none; }
+.runnerSlot { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
+:global(:root) .workspace .runnerSlot > :global(.exam-runner)[data-presentation] { height: 100%; min-height: 0; flex: 1; }

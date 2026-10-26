@@ -107,6 +107,8 @@ describe("workspace localization boundaries", () => {
     const timer = screen.getByRole("combobox");
     fireEvent.change(timer, { target: { value: "3000" } });
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Start Reading" })); });
+    expect(startAttempt).not.toHaveBeenCalled();
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Continue with this interface" })); });
     expect(screen.getByRole("alert")).toHaveTextContent(raw ? "Diagnostic <raw>" : "Could not start attempt.");
     fireEvent.click(screen.getByText("Switch to Vietnamese"));
     expect(screen.getByRole("combobox")).toBe(timer); expect(timer).toHaveValue("3000");
@@ -118,11 +120,14 @@ describe("workspace localization boundaries", () => {
     vi.mocked(startTestSession).mockReturnValue(new Promise((resolve) => { finish = resolve; }));
     renderWithLocale(<StartFullMock versionId="version" />);
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Start Full Mock" })); });
-    const pending = screen.getByRole("button", { name: "Starting…" });
+    expect(startTestSession).not.toHaveBeenCalled();
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Continue with this interface" })); });
+    const pending = screen.getAllByRole("button", { name: "Starting…" }).at(-1)!;
     fireEvent.click(screen.getByText("Switch to Vietnamese"));
-    expect(screen.getByRole("button", { name: "Đang bắt đầu…" })).toBe(pending); expect(pending).toBeDisabled();
+    expect(screen.getAllByRole("button", { name: "Đang bắt đầu…" }).at(-1)).toBe(pending); expect(pending).toBeDisabled();
+    expect(screen.getByRole("dialog")).toHaveAttribute("aria-busy", "true");
     expect(startTestSession).toHaveBeenCalledExactlyOnceWith("version");
-    await act(async () => { finish({ current_attempt: { attempt_id: "attempt" } } as Awaited<ReturnType<typeof startTestSession>>); });
+    await act(async () => { finish({ session: { session_id: "session" }, current_attempt: { attempt_id: "attempt" } } as Awaited<ReturnType<typeof startTestSession>>); });
   });
   it("keeps server fetchers outside client presentation and exports a client summary view separately", () => {
     for (const path of ["src/components/home/overview-content.tsx", "src/features/practice/library-content.tsx", "src/features/test-builder/content-summary-view.tsx"]) {

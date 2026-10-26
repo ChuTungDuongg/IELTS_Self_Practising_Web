@@ -13,6 +13,7 @@ import { apiRequest } from "@/lib/api/client";
 import * as speakingApi from "@/lib/api/speaking";
 import * as transcriptApi from "@/lib/api/speaking-transcript";
 import * as aiApi from "@/lib/api/speaking-ai";
+import { sessionPresentationStorageKey } from "@/features/exam/attempt-presentation";
 
 const push = vi.fn(); const refresh = vi.fn();
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push, refresh }) }));
@@ -103,7 +104,12 @@ it("requires all four configured skills before offering assignment Full Mock", a
   const view = render(<AssignmentList assignments={[assignment]} />); expect(screen.queryByRole("option", { name: "Full Mock" })).toBeNull();
   view.rerender(<AssignmentList assignments={[{ ...assignment, version: { ...assignment.version!, modules: [...assignment.version!.modules, { ...assignment.version!.modules[0], module_type: "SPEAKING", recommended_duration_seconds: 900 }] } }]} />);
   expect(screen.getByRole("option", { name: "Full Mock" })).toBeInTheDocument(); fireEvent.change(screen.getByRole("combobox", { name: "Practice mode" }), { target: { value: "FULL_MOCK" } }); fireEvent.click(screen.getByRole("button", { name: "Start assignment" }));
+  expect(apiRequest).not.toHaveBeenCalled();
+  expect(screen.getByRole("radio", { name: "Practice" })).toBeChecked();
+  fireEvent.click(screen.getByRole("radio", { name: "Legacy" }));
+  fireEvent.click(screen.getByRole("button", { name: "Continue with this interface" }));
   await waitFor(() => expect(push).toHaveBeenCalledExactlyOnceWith(`/test-session/${id(7)}`)); expect(JSON.parse(vi.mocked(apiRequest).mock.calls[0][1]!.body as string)).toEqual({ mode: "FULL_MOCK" });
+  expect(localStorage.getItem(sessionPresentationStorageKey(id(7)))).toBe("EXAM");
 });
 
 it("shows authorized owning teacher Speaking grading while preserving transcript and audio action restrictions", async () => {

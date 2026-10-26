@@ -33,7 +33,7 @@ type PracticeUnit = {
   questionCount?: number;
   audio?: { kind: "none" | "full" | "clip"; start?: number; end?: number };
 };
-type GroupSummary = { start_number: number; end_number: number; question_count: number };
+type GroupSummary = { start_number: number; end_number: number; question_count: number; question_type?: string };
 
 function questionSummary(groups: GroupSummary[], t: TranslationFunction = (key, params) => translate("en", key, params)): string {
   const count = groups.reduce((sum, group) => sum + group.question_count, 0);
@@ -131,7 +131,7 @@ function PracticeUnitCard({ unit, hidden }: { unit: PracticeUnit; hidden: boolea
       {unit.description ? <p className="practice-unit-description">{unit.promptFallback ? t("practice.promptFallback") : unit.description}</p> : null}
       {unit.summary ? <p className="practice-unit-summary">{unit.questionCount !== undefined ? t(unit.questionCount === 1 ? "common.questionCount" : "common.questionsCount", { count: unit.questionCount }) : unit.groups ? questionSummary(unit.groups, t) : t("practice.recommendedWords", { count: unit.words ?? 0 })}</p> : null}
       {unit.audioStatus ? <p className="practice-unit-audio">{unit.audio?.kind === "none" ? t("practice.noRecording") : unit.audio?.kind === "full" ? t("practice.fullRecording") : t("practice.audioRange", { start: formatAudioTime(unit.audio?.start ?? 0), end: formatAudioTime(unit.audio?.end ?? 0), duration: formatAudioTime((unit.audio?.end ?? 0) - (unit.audio?.start ?? 0)) })}</p> : null}
-      <StartFocusedPractice versionId={unit.versionId} target={unit.target} />
+      <StartFocusedPractice versionId={unit.versionId} target={unit.target} preview={{ title: unit.testTitle, unitTitle: unit.title, questionTypes: unit.groups?.flatMap(group => group.question_type ? [group.question_type] : []), startNumber: unit.groups?.[0]?.start_number, questionCount: unit.groups?.reduce((count, group) => count + group.question_count, 0) }} />
     </div>
   </article>;
 }

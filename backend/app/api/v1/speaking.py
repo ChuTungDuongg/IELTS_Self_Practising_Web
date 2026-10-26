@@ -298,6 +298,18 @@ async def select_practice_prompt(
     return await SpeakingAttemptService(session, user.id).select_prompt(attempt_id, body.prompt_id)
 
 
+@runtime_router.post("/{attempt_id}/skip-preparation", response_model=SpeakingState)
+async def skip_preparation(
+    attempt_id: UUID,
+    body: SpeakingCurrentTake,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+):
+    return await SpeakingAttemptService(session, user.id).skip_preparation(
+        attempt_id, body.prompt_id, body.take_number
+    )
+
+
 @runtime_router.post("/{attempt_id}/finish-practice", response_model=SpeakingState)
 async def finish_free_practice(
     attempt_id: UUID, user: CurrentUser, session: AsyncSession = Depends(get_session)

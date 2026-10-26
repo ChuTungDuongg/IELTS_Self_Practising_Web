@@ -94,6 +94,8 @@ it("assignment starts use the assignment endpoint and navigate to the resulting 
     archived_at: null
   }]} />);
   fireEvent.click(screen.getByRole("button", { name: "Start assignment" }));
+  expect(state.startAssignment).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Continue with this interface" }));
   await waitFor(() => expect(state.startAssignment).toHaveBeenCalledWith("a", {
     mode: "MODULE",
     module: "READING",

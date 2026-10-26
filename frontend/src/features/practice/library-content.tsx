@@ -70,7 +70,7 @@ export function LibraryVersionContent({ test, version }: { test: TestSummary; ve
       </div>
       {test.description ? <p className="practice-detail-description">{test.description}</p> : null}
     </div>
-    <StartFullMock versionId={version.id} warnings={readinessWarnings} unavailableReason={missing ? t("pages.library.missingModule", { skill: t(moduleTranslationKeys[missing]) }) : missingDuration ? t("pages.library.missingDuration", { skill: t(moduleTranslationKeys[missingDuration.module_type]) }) : undefined} />
+    <StartFullMock versionId={version.id} preview={{ title: test.title }} warnings={readinessWarnings} unavailableReason={missing ? t("pages.library.missingModule", { skill: t(moduleTranslationKeys[missing]) }) : missingDuration ? t("pages.library.missingDuration", { skill: t(moduleTranslationKeys[missingDuration.module_type]) }) : undefined} />
     <h2 className="practice-detail-individual-heading">{t("pages.library.individual")}</h2><div className="practice-skill-grid">
       {modules.map((module) => <article key={module.id} className={`practice-card practice-card-${module.module_type.toLowerCase()}`}>
         <div className="practice-card-accent" aria-hidden="true" />
@@ -83,7 +83,7 @@ export function LibraryVersionContent({ test, version }: { test: TestSummary; ve
             <div><dt>{module.module_type === "LISTENING" ? t("common.sections") : module.module_type === "WRITING" ? t("common.suggestedTime") : module.module_type === "SPEAKING" ? t("common.parts") : t("common.passages")}</dt><dd>{module.module_type === "LISTENING" ? module.listening_part_count : module.module_type === "WRITING" ? t("common.minutesShort", { count: Math.round((module.recommended_duration_seconds ?? 3600) / 60) }) : module.module_type === "SPEAKING" ? module.speaking_parts?.length ?? 0 : module.passage_count}</dd></div>
           </dl>
           <ContentSummary units={publishedContentSummary(module)} />
-          <StartAttempt versionId={version.id} module={module.module_type} />
+          <StartAttempt versionId={version.id} module={module.module_type} preview={{ title: test.title, unitTitle: module.reading_passages?.[0]?.title ?? module.listening_sections?.[0]?.title, questionTypes: (module.reading_passages?.[0]?.question_groups ?? module.listening_sections?.[0]?.question_groups)?.map(group => group.question_type), questionCount: module.question_count }} />
         </div>
       </article>)}
     </div>

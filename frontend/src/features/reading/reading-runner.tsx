@@ -14,10 +14,14 @@ import { useAttemptPresentation } from "@/features/exam/attempt-presentation";
 import { focusedUnitLabel } from "@/features/exam/focused-attempt";
 import { revealQuestionChip, scrollQuestionIntoPane } from "@/features/exam/question-navigation";
 import { questionRegistry } from "@/features/questions/registry";
-import { completedQuestionSlots, questionSpan } from "@/features/questions/numbering";
+import { completedQuestionSlots, groupQuestionRange, questionSpan } from "@/features/questions/numbering";
 import type { ExamGroup } from "@/features/questions/types";
 import { QuestionGroupInstruction } from "@/features/questions/question-group-instruction";
 import { SelectableText, type HighlightController } from "@/features/highlighting/selectable-text";
+import { ReadingPaneLayout } from "@/features/practice/reading-pane-layout";
+import { PracticeTools } from "@/features/practice/practice-tools";
+import { PracticeBottomNavigation } from "@/features/practice/practice-bottom-navigation";
+import practiceStyles from "@/features/practice/practice-runner.module.css";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { recordActivity, recordNavigation, saveAnswer } from "@/lib/api/attempts";
 import { createHighlight, deleteAllHighlights, deleteHighlight, getExam, saveFlag, type ExamPassage, type ExamPayload, type HighlightCreate } from "@/lib/api/exam";
@@ -130,7 +134,7 @@ export function ReadingRunner({ initial }: { initial: ExamPayload }) {
     if (!pendingQuestion.current) return;
     observer.observe(pane, { childList: true, subtree: true });
     return () => observer.disconnect();
-  }, [activeQuestionId, holdNavigation, passageIndex, readingPane, scrollToQuestion]);
+  }, [activeQuestionId, holdNavigation, passageIndex, presentation, readingPane, scrollToQuestion]);
 
   useEffect(() => {
     if (!activeQuestionId || !questionStrip.current) return;
@@ -149,7 +153,7 @@ export function ReadingRunner({ initial }: { initial: ExamPayload }) {
     }, { root: pane, threshold: [0.35, 0.65] });
     pane.querySelectorAll(".exam-question-target[data-question-id]").forEach((target) => observer.observe(target));
     return () => observer.disconnect();
-  }, [passageIndex]);
+  }, [passageIndex, presentation]);
 
   const seconds = initial.attempt.timer_mode === "COUNTDOWN" && initial.attempt.deadline_at ? remainingSeconds(initial.attempt.deadline_at, offset, clock) : elapsedFromSnapshot(initial.attempt.elapsed_seconds, initial.attempt.server_time, offset, clock);
   useEffect(() => { const passage = passages[passageIndex]; if (passage && !stopped.current) void runMutation(() => recordNavigation(attemptId, "PASSAGE", passage.id)).catch(() => undefined); }, [attemptId, passageIndex, passages, runMutation, stopped]);
@@ -191,8 +195,8 @@ export function ReadingRunner({ initial }: { initial: ExamPayload }) {
   async function removeHighlight(id: string) { if (stopped.current) return; try { await runMutation(() => deleteHighlight(attemptId, id)); setHighlights((current) => current.filter((item) => item.id !== id)); } catch (error) { if (!(error instanceof AttemptStoppedError)) setHighlightError("runner.highlightDeleteError"); } }
   const highlighting: HighlightController = { highlights, onCreate: addHighlight, onDelete: removeHighlight };
 
-  return <div className="exam-runner reading-exam" data-reading-pane={readingPane} data-presentation={presentation}>
-    <header className="exam-header"><div><p>{initial.attempt.scope === "FOCUSED_UNIT" ? t("runner.readingFocused") : t("runner.reading")}</p><h1>{initial.test_title}</h1>{focusedUnitLabel(initial.attempt, t) ? <p>{focusedUnitLabel(initial.attempt, t)}</p> : null}</div><div className="exam-header-tools"><PauseAttemptControl attemptId={attemptId} beforePause={flush} /><div className="exam-highlight-toolbar" aria-label={t("runner.highlightManagement")}><span>{t(highlights.length === 1 ? "runner.highlightCount" : "runner.highlightsCount", { count: highlights.length })}</span>{highlights.length ? <button type="button" onClick={() => { setHighlightError(""); setConfirmDeleteAll(true); }}>{t("runner.deleteAll")}</button> : null}</div><div className="exam-header-status"><span aria-label={t(initial.attempt.timer_mode === "COUNTDOWN" ? "runner.timeRemaining" : "runner.timeElapsed")} className={`exam-timer ${initial.attempt.timer_mode === "COUNTDOWN" && seconds < 300 ? "exam-timer-warning" : ""}`}>{initial.attempt.timer_mode === "COUNT_UP" ? t("runner.timeUsed") : ""}{formatDuration(seconds)}</span><span className={`exam-save-state exam-save-${saveState}`}>{saveState === "saving" ? t("common.saving") : saveState === "conflict" ? t("runner.conflict") : saveState === "error" ? t("runner.saveFailed") : saveState === "dirty" ? t("runner.unsaved") : t("common.saved")}</span>{saveState === "error" ? <button type="button" onClick={() => void flush().catch(() => undefined)}>{t("runner.retry")}</button> : null}{saveState === "conflict" ? <button type="button" onClick={() => window.location.reload()}>{t("runner.reload")}</button> : null}</div></div></header>
+  return <div role="main" className={`exam-runner reading-exam${presentation === "PRACTICE" ? ` ${practiceStyles.root}` : ""}`} data-reading-pane={readingPane} data-presentation={presentation}>
+    <header className="exam-header"><div><p>{initial.attempt.scope === "FOCUSED_UNIT" ? t("runner.readingFocused") : t("runner.reading")}</p><h1>{initial.test_title}</h1>{focusedUnitLabel(initial.attempt, t) ? <p>{focusedUnitLabel(initial.attempt, t)}</p> : null}</div><div className="exam-header-tools">{presentation === "PRACTICE" ? <PracticeTools compact mobileOnly /> : null}<PauseAttemptControl attemptId={attemptId} beforePause={flush} /><div className="exam-highlight-toolbar" aria-label={t("runner.highlightManagement")}><span>{t(highlights.length === 1 ? "runner.highlightCount" : "runner.highlightsCount", { count: highlights.length })}</span>{highlights.length ? <button type="button" onClick={() => { setHighlightError(""); setConfirmDeleteAll(true); }}>{t("runner.deleteAll")}</button> : null}</div><div className="exam-header-status"><span aria-label={t(initial.attempt.timer_mode === "COUNTDOWN" ? "runner.timeRemaining" : "runner.timeElapsed")} className={`exam-timer ${initial.attempt.timer_mode === "COUNTDOWN" && seconds < 300 ? "exam-timer-warning" : ""}`}>{initial.attempt.timer_mode === "COUNT_UP" ? t("runner.timeUsed") : ""}{formatDuration(seconds)}</span><span className={`exam-save-state exam-save-${saveState}`}>{saveState === "saving" ? t("common.saving") : saveState === "conflict" ? t("runner.conflict") : saveState === "error" ? t("runner.saveFailed") : saveState === "dirty" ? t("runner.unsaved") : t("common.saved")}</span>{saveState === "error" ? <button type="button" onClick={() => void flush().catch(() => undefined)}>{t("runner.retry")}</button> : null}{saveState === "conflict" ? <button type="button" onClick={() => window.location.reload()}>{t("runner.reload")}</button> : null}</div></div></header>
     {submitError ? <p role="alert" className="notice notice-error">{submitError}</p> : null}
     <DraftRecoveryNotices offline={offline} conflicts={conflicts} labelFor={(id) => t("runner.questionLower", { number: questions.find((question) => question.id === id)?.number ?? id })} onResolve={resolveConflict} />
     {actionError ? <p role="alert" className="notice notice-error">{t(actionError)}</p> : null}
@@ -201,11 +205,12 @@ export function ReadingRunner({ initial }: { initial: ExamPayload }) {
       <button type="button" aria-pressed={readingPane === "passage"} aria-controls={passagePanelId} onClick={() => setReadingPane("passage")}>{t("ui.readPassage")}</button>
       <button type="button" aria-pressed={readingPane === "questions"} aria-controls={`${passagePanelId}-questions`} onClick={() => setReadingPane("questions")}>{t("ui.answerQuestions")}</button>
     </div>
-    <div id={passagePanelId} className="grid min-h-0 flex-1 lg:grid-cols-2">
+    <ReadingPaneLayout id={passagePanelId} presentation={presentation}>
       <PassagePane passage={passage} highlighting={highlighting} />
-      <div id={`${passagePanelId}-questions`} ref={questionPane} inert={finalizing} className="exam-questions" onWheelCapture={() => { programmaticNavigation.current = null; }} onTouchStartCapture={() => { programmaticNavigation.current = null; }} onPointerDownCapture={() => { programmaticNavigation.current = null; }} onKeyDownCapture={() => { programmaticNavigation.current = null; }} onFocusCapture={(event) => { const target = (event.target as HTMLElement).closest<HTMLElement>(".exam-question-target[data-question-id]"); if (target?.dataset.questionId) { programmaticNavigation.current = null; setActiveQuestionId(target.dataset.questionId); } }}><div className="exam-question-panel-heading"><p>{t("runner.readingPassage", { number: passage.order_index + 1 })}</p><h2>{t("common.questions")}</h2></div>{[...passage.question_groups].sort((left, right) => left.order_index - right.order_index).map((group) => { const definition = questionRegistry[group.question_type as keyof typeof questionRegistry]; if (!definition) return null; const Renderer = definition.ExamRenderer; return <section key={group.id} className="exam-question-group"><QuestionGroupInstruction group={group as ExamGroup} passageNumber={passage.order_index + 1} /><Renderer group={{ ...group, questions: [...group.questions].sort((left, right) => left.order_index - right.order_index) } as ExamGroup} values={values} passageBlocks={passage.blocks} onAnswer={answer} highlighting={highlighting} activeQuestionId={activeQuestionId} /></section>; })}</div>
-    </div>
+      <div id={`${passagePanelId}-questions`} ref={questionPane} inert={finalizing} className="exam-questions" onWheelCapture={() => { programmaticNavigation.current = null; }} onTouchStartCapture={() => { programmaticNavigation.current = null; }} onPointerDownCapture={() => { programmaticNavigation.current = null; }} onKeyDownCapture={() => { programmaticNavigation.current = null; }} onFocusCapture={(event) => { const target = (event.target as HTMLElement).closest<HTMLElement>(".exam-question-target[data-question-id]"); if (target?.dataset.questionId) { programmaticNavigation.current = null; setActiveQuestionId(target.dataset.questionId); } }}><div className="exam-question-panel-heading"><p>{t("runner.readingPassage", { number: passage.order_index + 1 })}</p><h2>{t("common.questions")}</h2></div>{[...passage.question_groups].sort((left, right) => left.order_index - right.order_index).map((group) => { const definition = questionRegistry[group.question_type as keyof typeof questionRegistry]; if (!definition) return null; const Renderer = definition.ExamRenderer; return <section key={group.id} className="exam-question-group">{presentation === "PRACTICE" ? <h3 className={practiceStyles.groupHeading}>{groupQuestionRange(group).replace(/^Q/, `${t("common.questions")} `)}</h3> : null}<QuestionGroupInstruction group={group as ExamGroup} passageNumber={passage.order_index + 1} /><Renderer group={{ ...group, questions: [...group.questions].sort((left, right) => left.order_index - right.order_index) } as ExamGroup} values={values} passageBlocks={passage.blocks} onAnswer={answer} highlighting={highlighting} activeQuestionId={activeQuestionId} /></section>; })}</div>
+    </ReadingPaneLayout>
     <footer className="exam-footer reading-exam-footer">
+      <PracticeBottomNavigation presentation={presentation}>
       <div className="exam-footer-navigation">
         <nav className="exam-passage-navigation" aria-label={t("runner.passageNavigation")}>{passages.map((item, index) => <button key={item.id} type="button" onClick={() => selectPassage(index)} className={index === passageIndex ? "active" : ""} aria-current={index === passageIndex ? "page" : undefined}>{t("common.passageNumber", { number: item.order_index + 1 })}</button>)}</nav>
         <nav ref={questionStrip} className="exam-question-strip" aria-label={t("runner.questionNavigation")}>{navigationSlots.map((question) => {
@@ -219,7 +224,7 @@ export function ReadingRunner({ initial }: { initial: ExamPayload }) {
         })}</nav>
       </div>
       <button type="button" onClick={() => void submit()} disabled={submitting} className="exam-submit">{submitting ? t("runner.submitting") : t("runner.submitAnswers")}</button>
-    </footer>
+      </PracticeBottomNavigation></footer>
     <ConfirmDialog open={confirmDeleteAll} title={t("runner.deleteHighlightsTitle")} description={t("runner.deleteHighlightsDescription")} confirmLabel={t("runner.deleteHighlights")} pending={deletingAll} errorMessage={highlightError ? t(highlightError) : ""} onCancel={() => { setConfirmDeleteAll(false); setHighlightError(""); }} onConfirm={() => { if (stopped.current) return; setDeletingAll(true); setHighlightError(""); void runMutation(() => deleteAllHighlights(attemptId)).then(() => { setHighlights([]); setConfirmDeleteAll(false); }).catch((error) => { if (!(error instanceof AttemptStoppedError)) setHighlightError("runner.highlightsDeleteError"); }).finally(() => setDeletingAll(false)); }} />
   </div>;
 }

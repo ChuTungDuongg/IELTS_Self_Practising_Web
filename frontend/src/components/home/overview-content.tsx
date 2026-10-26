@@ -10,6 +10,7 @@ import type { Profile } from "@/lib/api/profile";
 import type { HistoryItem } from "@/lib/api/history";
 import { formatProjectDate } from "@/lib/date-time";
 import { useTranslation } from "@/lib/i18n/locale-provider";
+import { GoalCountdown } from "./goal-countdown";
 
 export function OverviewContent({ publishedCount, resumableCount, testCount, isAdmin, adminStats, profile, recentAttempt, signedIn = true }: { publishedCount: number; resumableCount: number; testCount: number; isAdmin: boolean; adminStats: AdminStats | null; profile: Profile | null; recentAttempt?: Pick<HistoryItem, "attempt_id" | "test_title" | "module" | "status">; signedIn?: boolean }): ReactElement {
   const { t } = useTranslation();
@@ -87,6 +88,7 @@ function IeltsGoals({ profile }: { profile: Profile }) {
           {skills.map(([label, value]) => <div className="home-goals-skill" key={label}><span>{t(label)}</span><strong>{formatTarget(value)}</strong></div>)}
         </div>
       </div>
+      {profile.target_test_date ? <GoalCountdown date={profile.target_test_date} /> : null}
       <div className="home-goals-footer"><p>{t("pages.overview.targetTest")} <strong>{profile.target_test_date ? formatProjectDate(profile.target_test_date) : "—"}</strong></p><Link href="/profile" className="btn btn-ghost">{t("pages.overview.editGoals")} <ArrowIcon className="size-4" /></Link></div>
     </> : <>
       <div><p className="page-eyebrow">{t("pages.overview.personal")}</p><h2 id="home-goals-title" className="section-title">{t("pages.overview.emptyGoal")}</h2><p className="section-description">{t("pages.overview.goalDescription")}</p></div>

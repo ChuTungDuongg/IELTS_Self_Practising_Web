@@ -13,6 +13,11 @@ const routes = ["/", "/library", "/practice", "/history", "/analytics", "/admin"
 beforeEach(() => { state.pathname = "/"; state.role = null; state.loading = false; state.sessionError = null; state.name = "Learner"; window.localStorage.clear(); document.documentElement.dataset.theme = "light"; });
 
 describe("horizontal application shell", () => {
+  it.each(["/", "/library", "/practice", "/history", "/analytics", "/classrooms", "/admin"])("keeps the GMT+7 clock visible on %s", path => {
+    state.pathname = path; state.role = "ADMIN";
+    render(<AppShell currentYear={2026}>Content</AppShell>);
+    expect(within(screen.getByRole("banner")).getByLabelText(/Vietnam time: .*GMT\+7/)).toBeInTheDocument();
+  });
   it("links the compact BandPilot lockup to home", () => {
     render(<AppShell currentYear={2026}>Content</AppShell>);
     const brand = screen.getByRole("link", { name: "BandPilot overview" });
@@ -114,7 +119,7 @@ describe("horizontal application shell", () => {
   it.each(["/attempt/id", "/attempt/id/paused", "/attempt/id/terminal"])("attempt routes bypass global chrome (%s)", (path) => {
     state.pathname = path; state.role = "ADMIN";
     const { container } = render(<AppShell currentYear={2026}><p>Attempt questions</p></AppShell>);
-    expect(screen.getByRole("main")).toHaveClass("exam-shell");
+    expect(container.firstElementChild).toHaveClass("exam-shell");
     expect(screen.getByText("Attempt questions")).toBeInTheDocument();
     expect(container.querySelector("header, footer, aside, nav")).toBeNull();
     expect(container.querySelector('[class*="app-content"], .app-shell')).toBeNull();
@@ -147,7 +152,8 @@ describe("horizontal application shell", () => {
     expect(header.queryByRole("group", { name: "Language" })).not.toBeInTheDocument();
     expect(header.queryAllByText(/^(EN|VI)$/)).toHaveLength(0);
     expect(header.queryByRole("button", { name: "Use dark theme" })).not.toBeInTheDocument();
-    expect(Array.from(actions.children).map((child) => child.tagName.toLowerCase())).toEqual(role ? ["button", "a", "button"] : ["a", "a"]);
+    expect(Array.from(actions.children).map((child) => child.tagName.toLowerCase())).toEqual(role ? ["time", "button", "a", "button"] : ["time", "a", "a"]);
+    expect(header.getByLabelText(/Vietnam time: .*GMT\+7/)).toBeVisible();
     if (role) expect(screen.getByRole("link", { name: new RegExp(state.name) })).toHaveAttribute("href", "/profile");
   });
 

@@ -31,7 +31,7 @@ export function AppShell({ children, currentYear }: { children: ReactNode; curre
   const pathname = usePathname() ?? "/";
   const { t } = useTranslation();
   if (pathname.startsWith("/attempt/")) {
-    return <main className="exam-shell">{children}</main>;
+    return <div className="exam-shell">{children}</div>;
   }
   return <div className={`app-shell${pathname === "/" ? " app-shell-home" : ""}`}>
     <a className="sr-only focus:not-sr-only" href="#main-content">{t("shell.skipNavigation")}</a>

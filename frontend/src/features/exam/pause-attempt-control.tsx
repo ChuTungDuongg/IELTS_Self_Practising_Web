@@ -12,9 +12,11 @@ import { AttemptStoppedError, attemptDestination, reconcileAttemptError } from "
 export function PauseAttemptControl({
   attemptId,
   beforePause,
+  compact = false,
 }: {
   attemptId: string;
   beforePause?: () => Promise<void>;
+  compact?: boolean;
 }) {
   const { t } = useTranslation();
   const router = useRouter();
@@ -47,8 +49,8 @@ export function PauseAttemptControl({
 
   return (
     <>
-      <button type="button" className="exam-pause-button" onClick={() => setOpen(true)}>
-        {t("runner.pauseExit")}
+      <button type="button" className="exam-pause-button" aria-label={compact ? t("runner.pauseExit") : undefined} title={compact ? t("runner.pauseExit") : undefined} onClick={() => setOpen(true)}>
+        {compact ? <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"><path d="m6 6 12 12M6 18 18 6" /></svg> : t("runner.pauseExit")}
       </button>
       <ConfirmDialog
         open={open}

@@ -25,6 +25,7 @@ export type SpeakingState = z.infer<typeof speakingStateSchema>;
 export async function getSpeakingState(id: string, request: ApiRequester = apiRequest) { return speakingStateSchema.parse(await request(`/speaking-attempts/${id}/state`)); }
 async function mutate(id: string, action: string, body: unknown, method = "POST") { return speakingStateSchema.parse(await apiRequest(`/speaking-attempts/${id}/${action}`, { method, body: JSON.stringify(body) })); }
 export const beginSpeaking = (id: string, prompt_id: string) => mutate(id, "begin", { prompt_id });
+export const skipSpeakingPreparation = (id: string, prompt_id: string, take_number: number) => mutate(id, "skip-preparation", { prompt_id, take_number });
 export const selectSpeakingPrompt = (id: string, prompt_id: string) => mutate(id, "select-prompt", { prompt_id });
 export const finishSpeakingPractice = (id: string) => mutate(id, "finish-practice", {});
 export const heartbeatSpeaking = (id: string, prompt_id: string, take_number: number) => mutate(id, "heartbeat", { prompt_id, take_number });

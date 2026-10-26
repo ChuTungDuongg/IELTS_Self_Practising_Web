@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "@/lib/i18n/locale-provider";
 import type { ExamPayload } from "@/lib/api/exam";
 import { ApiError } from "@/lib/api/client";
-import { closeSpeakingSegment, getSpeakingManifest, openSpeakingSegment, uploadSpeakingChunk, interruptSpeaking, resumeSpeaking, selectSpeakingPrompt, finishSpeakingPractice, type SpeakingManifest, beginSpeaking, finishSpeaking, getSpeakingState, heartbeatSpeaking, retrySpeaking, saveSpeakingNotes, type SpeakingState } from "@/lib/api/speaking";
+import { closeSpeakingSegment, getSpeakingManifest, openSpeakingSegment, uploadSpeakingChunk, interruptSpeaking, resumeSpeaking, selectSpeakingPrompt, finishSpeakingPractice, type SpeakingManifest, beginSpeaking, finishSpeaking, getSpeakingState, heartbeatSpeaking, retrySpeaking, saveSpeakingNotes, skipSpeakingPreparation, type SpeakingState } from "@/lib/api/speaking";
 import { SpeakingPreflight } from "./speaking-preflight";
 import type { SpeakingRecorder } from "./speaking-recorder";
 import { SpeakingChunkTransport } from "./speaking-transport";
@@ -158,6 +158,21 @@ export function SpeakingRunner({ initial }: { initial: ExamPayload }) {
       if (mounted.current) setError(true);
     }
   }
+  async function skipPreparation() {
+    const snapshot = current.current;
+    if (busy.current || !ready || snapshot?.phase !== "PREPARING" || snapshot.current_prompt?.prompt_type !== "LONG_TURN" || !snapshot.take_number) return;
+    busy.current = true; setSaving(true); setError(false);
+    try {
+      if (notesDirty.current) {
+        const value = notesDraft.current;
+        await saveSpeakingNotes(id, snapshot.current_prompt.id, value);
+        if (notesDraft.current === value) notesDirty.current = false;
+      }
+      const next = await skipSpeakingPreparation(id, snapshot.current_prompt.id, snapshot.take_number);
+      busy.current = false; setSaving(false); accept(next);
+    } catch { if (mounted.current) setError(true); }
+    finally { busy.current = false; if (mounted.current) setSaving(false); }
+  }
   async function retry() {
     const snapshot = current.current; if (busy.current || !snapshot?.current_prompt || !snapshot.take_number) return;
     busy.current = true; setConfirmRetry(false); setSaving(true); setError(false);
@@ -233,6 +248,7 @@ export function SpeakingRunner({ initial }: { initial: ExamPayload }) {
           <meter aria-label={t("speakingRuntime.level")} min={0} max={1} value={level} />
           {prompt.prompt_type === "LONG_TURN" ? <label className="field-label">{t("speakingRuntime.notes")}<textarea aria-label={t("speakingRuntime.notes")} value={notes} maxLength={20000} disabled={saving} onChange={(event) => { notesDirty.current = true; notesDraft.current = event.target.value; setNotes(event.target.value); }} /><small>{t("speakingRuntime.notesHint")}</small></label> : null}
           <div className="speaking-controls">
+            {state.phase === "PREPARING" && prompt.prompt_type === "LONG_TURN" ? <button type="button" className="btn btn-secondary" disabled={saving} onClick={() => void skipPreparation()}>{t("speakingRuntime.skipPreparation")}</button> : null}
             {free && state.phase === "QUESTION_ENTER" ? <button className="btn btn-primary" disabled={saving} onClick={() => void recordSelected()}>{t("speakingPractice.record")}</button> : null}
             {state.can_replay ? <button className="btn btn-secondary" disabled={saving || (!physicalReady && state.phase !== "BROWSING")} onClick={() => void listen()}>{t("speakingRuntime.listen")}</button> : null}
             {state.can_retry ? <button className="btn btn-secondary" id="speaking-retry" disabled={saving || (!physicalReady && state.phase !== "BROWSING")} onClick={() => setConfirmRetry(true)}>{t("speakingRuntime.retry")}</button> : null}

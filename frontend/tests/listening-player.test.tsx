@@ -133,6 +133,24 @@ describe("Listening audio and templates", () => {
     fireEvent.click(rewind); expect(audio.currentTime).toBe(37);
     fireEvent.click(advance); expect(audio.currentTime).toBe(42);
   });
+  it("uses vector controls in Practice while keeping playback and volume behavior", async () => {
+    const view = render(<ListeningAudioPlayer src="/fictional.mp3" layout="exam-bar" appearance="practice" />);
+    const audio = view.container.querySelector("audio")!;
+    const play = screen.getByRole("button", { name: "Play audio" });
+    expect(play.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
+    expect(screen.getByRole("button", { name: "Mute" }).querySelector("svg")).toHaveAttribute("aria-hidden", "true");
+    await act(async () => fireEvent.click(play));
+    expect(audio.play).toHaveBeenCalledOnce();
+    fireEvent.play(audio);
+    expect(screen.getByRole("button", { name: "Pause audio" }).querySelectorAll("rect")).toHaveLength(2);
+    fireEvent.change(screen.getByRole("slider", { name: "Volume" }), { target: { value: "0.4" } });
+    expect(audio.volume).toBe(.4);
+    expect(view.container.querySelector('[data-appearance="practice"]')).toHaveStyle({ "--player-volume": "40%" });
+    fireEvent.click(screen.getByRole("button", { name: "Mute" }));
+    expect(audio.muted).toBe(true);
+    expect(screen.getByRole("button", { name: "Unmute" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Skip introduction/i })).not.toBeInTheDocument();
+  });
 
   it("seeks exactly five seconds in the exam bar and clamps to recording boundaries", () => {
     const view = render(<ListeningAudioPlayer src="/part-1.mp3" layout="exam-bar" />);

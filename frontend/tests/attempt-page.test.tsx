@@ -1,9 +1,10 @@
-import { render, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import AttemptShellPage from "@/app/attempt/[attemptId]/page";
 import { getExam } from "@/lib/api/exam";
 import { ApiError } from "@/lib/api/client";
 import { draftStorageKey } from "@/features/exam/exam-draft-recovery";
+import Link from "next/link";
 
 const replace = vi.fn();
 vi.mock("next/navigation", () => ({
@@ -18,6 +19,7 @@ vi.mock("@/features/listening/listening-runner", () => ({ ListeningRunner: () =>
 vi.mock("@/features/writing/writing-runner", () => ({ WritingRunner: () => null }));
 vi.mock("@/features/speaking/speaking-runner", () => ({ SpeakingRunner: () => <main aria-label="Speaking runner" /> }));
 vi.mock("@/features/exam/paused-attempt-gate", () => ({ PausedAttemptGate: () => null }));
+vi.mock("@/components/ui/global-header", () => ({ GlobalHeader: ({ pathname }: { pathname: string }) => <header><nav aria-label="Primary"><Link href="/library">BandPilot library</Link><span>{pathname}</span></nav></header> }));
 
 const attemptId = "11111111-1111-4111-8111-111111111111";
 const params = { params: Promise.resolve({ attemptId }) };
@@ -54,5 +56,14 @@ describe("attempt page initial state", () => {
     vi.mocked(getExam).mockResolvedValue({ attempt: { attempt_id: attemptId, status: "IN_PROGRESS", module: "SPEAKING" } } as never);
     const view = render(await AttemptShellPage(params));
     expect(view.getByRole("main", { name: "Speaking runner" })).toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "Primary" })).not.toBeInTheDocument();
+  });
+  it.each(["READING", "LISTENING"])("retains BandPilot navigation above an active %s attempt", async module => {
+    vi.mocked(getExam).mockResolvedValue({ attempt: { attempt_id: attemptId, status: "IN_PROGRESS", module } } as never);
+    const view = render(await AttemptShellPage(params));
+    expect(screen.getByRole("link", { name: "BandPilot library" })).toBeInTheDocument();
+    expect(screen.getByRole("navigation")).toHaveTextContent(`/attempt/${attemptId}`);
+    expect(view.container.querySelector(".app-shell")?.firstElementChild).toBe(screen.getByRole("banner"));
+    expect(view.container.querySelector("footer")).toBeNull();
   });
 });

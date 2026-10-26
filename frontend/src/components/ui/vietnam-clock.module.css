@@ -1,0 +1,2 @@
+.clock { display: grid; flex: none; gap: 1px; min-width: 70px; padding-inline: 8px; color: var(--ink); text-align: center; font-size: 13px; font-variant-numeric: tabular-nums; line-height: 1.4; }
+.clock small { color: var(--muted); font-size: 10px; letter-spacing: .02em; }

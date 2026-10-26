@@ -3,6 +3,9 @@
 import { useTranslation } from "@/lib/i18n/locale-provider";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { PracticeTools } from "@/features/practice/practice-tools";
+import { PracticeBottomNavigation } from "@/features/practice/practice-bottom-navigation";
+import practiceStyles from "@/features/practice/practice-runner.module.css";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ArrowIcon } from "@/components/ui/icons";
 import { PauseAttemptControl } from "@/features/exam/pause-attempt-control";
@@ -12,7 +15,7 @@ import { useExamDraftAutosave } from "@/features/exam/use-exam-draft-autosave";
 import { DraftRecoveryNotices } from "@/features/exam/draft-recovery-notices";
 import { useExamSubmit } from "@/features/exam/use-exam-submit";
 import { useAttemptPresentation } from "@/features/exam/attempt-presentation";
-import { scrollQuestionIntoPane } from "@/features/exam/question-navigation";
+import { revealQuestionChip, scrollQuestionIntoPane } from "@/features/exam/question-navigation";
 import { elapsedFromSnapshot, estimateServerOffset, formatDuration, remainingSeconds } from "@/features/exam/timer";
 import type { HighlightController } from "@/features/highlighting/selectable-text";
 import { QuestionGroupInstruction } from "@/features/questions/question-group-instruction";
@@ -144,13 +147,14 @@ export function ListeningRunner({ initial }: { initial: ExamPayload }) {
     if (!activeQuestionId || !rail) return;
     const chip = questionChips.current.get(`${activeQuestionId}:${activeSlotIndex}`);
     if (!chip) return;
+    if (presentation === "PRACTICE") { revealQuestionChip(rail, chip); return; }
     const railRect = rail.getBoundingClientRect();
     const chipRect = chip.getBoundingClientRect();
     const delta = chipRect.top < railRect.top
       ? chipRect.top - railRect.top
       : chipRect.bottom > railRect.bottom ? chipRect.bottom - railRect.bottom : 0;
     if (delta !== 0) rail.scrollTo({ top: rail.scrollTop + delta, behavior: "auto" });
-  }, [activeQuestionId, activeSlotIndex]);
+  }, [activeQuestionId, activeSlotIndex, presentation]);
 
   const seconds = initial.attempt.timer_mode === "COUNTDOWN" && initial.attempt.deadline_at
     ? remainingSeconds(initial.attempt.deadline_at, offset, clock)
@@ -179,7 +183,7 @@ export function ListeningRunner({ initial }: { initial: ExamPayload }) {
     if (!pendingQuestion.current) return;
     observer.observe(pane, { childList: true, subtree: true });
     return () => observer.disconnect();
-  }, [activeGroup?.id, holdNavigation, partIndex, scrollToQuestion]);
+  }, [activeGroup?.id, holdNavigation, partIndex, presentation, scrollToQuestion]);
 
   useEffect(() => {
     const pane = questionPane.current;
@@ -205,7 +209,7 @@ export function ListeningRunner({ initial }: { initial: ExamPayload }) {
     }, { root: pane, threshold: [0.35, 0.65] });
     pane.querySelectorAll(".exam-question-target[data-question-id]").forEach((target) => observer.observe(target));
     return () => observer.disconnect();
-  }, [activeGroup?.id, partIndex, setActiveQuestionId]);
+  }, [activeGroup?.id, partIndex, presentation, setActiveQuestionId]);
 
   useEffect(() => {
     if (part && !stopped.current) void runMutation(() => recordNavigation(attemptId, "LISTENING_PART", part.id)).catch(() => undefined);
@@ -276,9 +280,43 @@ export function ListeningRunner({ initial }: { initial: ExamPayload }) {
   }
 
   const highlighting: HighlightController = { highlights, onCreate: addHighlight, onDelete: removeHighlight };
+  const visibleGroups = presentation === "PRACTICE" ? partGroups : activeGroup ? [activeGroup] : [];
+  const timerDisplay = <span aria-label={t(initial.attempt.timer_mode === "COUNTDOWN" ? "runner.timeRemaining" : "runner.timeElapsed")} className={`exam-timer ${initial.attempt.timer_mode === "COUNTDOWN" && seconds < 300 ? "exam-timer-warning" : ""}`}>{formatDuration(seconds)}</span>;
+  const saveDisplay = <><span className={`exam-save-state exam-save-${saveState}`}>{saveState === "saving" ? t("common.saving") : saveState === "conflict" ? t("runner.conflict") : saveState === "error" ? t("runner.saveFailed") : saveState === "dirty" ? t("runner.unsaved") : t("common.saved")}</span>{saveState === "error" ? <button type="button" onClick={() => void flush().catch(() => undefined)}>{t("runner.retry")}</button> : null}{saveState === "conflict" ? <button type="button" onClick={() => window.location.reload()}>{t("runner.reload")}</button> : null}</>;
+  const navigation = (<aside className="listening-navigation-rail" aria-label={t("runner.questionNavigation")}>
+      <PracticeBottomNavigation presentation={presentation}>
+        <div ref={questionNavigationPane} className="listening-navigation-scroll">
+          {!focused && presentation === "EXAM" ? <nav className="listening-section-navigation" aria-label={t("runner.sectionNavigation")}>{parts.map((item, index) => <button key={item.id} type="button" onClick={() => selectPart(index)} className={index === partIndex ? "active" : ""} aria-current={index === partIndex ? "page" : undefined}>{t("common.sectionNumber", { number: item.order_index + 1 })}</button>)}</nav> : null}
+          <nav className="listening-question-navigation" aria-label={t("runner.questionNavigation")}>{parts.map((item, index) => <div key={item.id} role="group" aria-label={t("common.sectionNumber", { number: item.order_index + 1 })} className={`listening-navigation-section ${index === partIndex ? "is-active" : ""}`}>
+            {presentation === "EXAM" ? <p>{t("common.sectionNumber", { number: item.order_index + 1 })}</p> : <button type="button" className="practice-section-select" aria-current={index === partIndex ? "page" : undefined} onClick={() => selectPart(index)}>{t("common.sectionNumber", { number: item.order_index + 1 })}</button>}
+            <div className="listening-section-questions">{navigationSlots.filter((question) => question.partIndex === index).map((question) => {
+              const answered = completedQuestionSlots(question.questionType, question.config, values[question.id]) > question.slotIndex;
+              const flagged = Boolean(flags[question.id]);
+              const current = activeQuestionId === question.id;
+              return <div key={`${question.id}:${question.slotIndex}`} data-nav-question-id={question.id} className={`exam-question-chip ${answered ? "answered" : "unanswered"} ${flagged ? "flagged" : ""} ${current ? "current" : ""}`}>
+                <button ref={(element) => { const key = `${question.id}:${question.slotIndex}`; if (element) questionChips.current.set(key, element); else questionChips.current.delete(key); }} type="button" className="exam-question-number" onClick={() => navigateToQuestion(question.id, question.partIndex, question.slotIndex)} aria-label={t("runner.goQuestion", { number: question.number })} aria-current={current ? "true" : undefined}>{question.number}</button>
+                {presentation === "EXAM" ? <button type="button" className="exam-question-flag" onClick={() => void toggleFlag(question.id)} aria-label={t(flagged ? "runner.unflagQuestion" : "runner.flagQuestion", { number: question.number })} aria-pressed={flagged}><span aria-hidden="true">{flagged ? "⚑" : "⚐"}</span></button> : null}
+              </div>;
+            })}</div>
+          </div>)}</nav>
+        </div>
+        <div className="listening-navigation-actions">
+          {presentation === "PRACTICE" && activeQuestionId ? <button type="button" className="practice-active-flag" onClick={() => void toggleFlag(activeQuestionId)} aria-pressed={Boolean(flags[activeQuestionId])} aria-label={t(flags[activeQuestionId] ? "runner.unflagQuestion" : "runner.flagQuestion", { number: questions.find(question => question.id === activeQuestionId)?.number ?? 1 })}><span aria-hidden="true">{flags[activeQuestionId] ? "⚑" : "⚐"}</span></button> : null}<div className="listening-sequential-navigation">
+            <button type="button" disabled={!previousSlot} aria-label={t("runner.previousQuestion")} title={t("runner.previousQuestion")} onClick={() => { if (previousSlot) navigateToQuestion(previousSlot.id, previousSlot.partIndex, previousSlot.slotIndex); }}><ArrowIcon className="listening-previous-icon" width={18} height={18} focusable="false" /></button>
+            <button type="button" disabled={!nextSlot} aria-label={t("runner.nextQuestion")} title={t("runner.nextQuestion")} onClick={() => { if (nextSlot) navigateToQuestion(nextSlot.id, nextSlot.partIndex, nextSlot.slotIndex); }}><ArrowIcon width={18} height={18} focusable="false" /></button>
+          </div>
+          {initial.listening_audio_asset && initial.audio_policy?.allow_seeking === false ? <p className="exam-mode-label">{t("runner.seekingLocked")}</p> : null}
+          <button type="button" onClick={() => void submit()} disabled={submitting} className="exam-submit">{submitting ? t("runner.submitting") : t("runner.submitAnswers")}</button>
+        </div>
+      </PracticeBottomNavigation></aside>);
 
-  return <div className="exam-runner listening-exam listening-attempt" data-presentation={presentation}>
-    <header className="exam-header"><div><p>{focused ? t("runner.listeningFocused") : t("runner.listeningSectionUpper", { number: part.order_index + 1 })}</p><h1>{initial.test_title}</h1>{focusedUnitLabel(initial.attempt, t) ? <p>{focusedUnitLabel(initial.attempt, t)}</p> : null}</div><div className="exam-header-tools"><PauseAttemptControl attemptId={attemptId} beforePause={flush} /><div className="exam-highlight-toolbar" aria-label={t("runner.highlightManagement")}><span>{t(highlights.length === 1 ? "runner.highlightCount" : "runner.highlightsCount", { count: highlights.length })}</span>{highlights.length ? <button type="button" onClick={() => { setHighlightError(""); setConfirmDeleteAll(true); }}>{t("runner.deleteAll")}</button> : null}</div><div className="exam-header-status"><span aria-label={t(initial.attempt.timer_mode === "COUNTDOWN" ? "runner.timeRemaining" : "runner.timeElapsed")} className={`exam-timer ${initial.attempt.timer_mode === "COUNTDOWN" && seconds < 300 ? "exam-timer-warning" : ""}`}>{formatDuration(seconds)}</span><span className={`exam-save-state exam-save-${saveState}`}>{saveState === "saving" ? t("common.saving") : saveState === "conflict" ? t("runner.conflict") : saveState === "error" ? t("runner.saveFailed") : saveState === "dirty" ? t("runner.unsaved") : t("common.saved")}</span>{saveState === "error" ? <button type="button" onClick={() => void flush().catch(() => undefined)}>{t("runner.retry")}</button> : null}{saveState === "conflict" ? <button type="button" onClick={() => window.location.reload()}>{t("runner.reload")}</button> : null}</div></div></header>
+
+  return <div className={`exam-runner listening-exam listening-attempt${presentation === "PRACTICE" ? ` ${practiceStyles.root}` : ""}`} data-presentation={presentation}>
+    {presentation === "PRACTICE" ? <header className={practiceStyles.listeningHeader}>
+      <div className={practiceStyles.listeningIdentity}><PauseAttemptControl compact attemptId={attemptId} beforePause={flush} /><h1>{t("common.listening")} · {initial.test_title}</h1></div>
+      <div className={practiceStyles.listeningTimer}>{timerDisplay}</div>
+      <div className={practiceStyles.listeningHeaderActions}>{saveDisplay}<PracticeTools compact mode="settings" /></div>
+    </header> : <header className="exam-header"><div><p>{focused ? t("runner.listeningFocused") : t("runner.listeningSectionUpper", { number: part.order_index + 1 })}</p><h1>{initial.test_title}</h1>{focusedUnitLabel(initial.attempt, t) ? <p>{focusedUnitLabel(initial.attempt, t)}</p> : null}</div><div className="exam-header-tools"><PauseAttemptControl attemptId={attemptId} beforePause={flush} /><div className="exam-highlight-toolbar" aria-label={t("runner.highlightManagement")}><span>{t(highlights.length === 1 ? "runner.highlightCount" : "runner.highlightsCount", { count: highlights.length })}</span>{highlights.length ? <button type="button" onClick={() => { setHighlightError(""); setConfirmDeleteAll(true); }}>{t("runner.deleteAll")}</button> : null}</div><div className="exam-header-status">{timerDisplay}{saveDisplay}</div></div></header>}
     {submitError ? <p role="alert" className="notice notice-error">{submitError}</p> : null}
     <DraftRecoveryNotices offline={offline} conflicts={conflicts} labelFor={(id) => t("runner.questionLower", { number: questions.find((question) => question.id === id)?.number ?? id })} onResolve={resolveConflict} />
     {actionError ? <p role="alert" className="notice notice-error">{t(actionError)}</p> : null}
@@ -286,50 +324,30 @@ export function ListeningRunner({ initial }: { initial: ExamPayload }) {
     {!initial.listening_audio_asset ? <p className="notice m-4">{focused ? t("runner.externalRecordingNotice") : t("runner.noRecording")}</p> : null}
     {initial.listening_audio_asset && focused && !playbackClip ? <p className="notice m-4">{t("runner.fullRecordingNotice")}</p> : null}
     <div className="listening-attempt-body">
+      {presentation === "PRACTICE" ? <div className={practiceStyles.listeningTools}><PracticeTools mode="highlight" /><div className="exam-highlight-toolbar">{highlights.length ? <button type="button" onClick={() => { setHighlightError(""); setConfirmDeleteAll(true); }}>{t("runner.deleteAll")}</button> : null}</div></div> : null}
       <main ref={questionPane} inert={finalizing} className={`listening-question-pane ${visualGroup ? "listening-question-pane-visual" : ""}`} onWheelCapture={() => { programmaticNavigation.current = null; }} onTouchStartCapture={() => { programmaticNavigation.current = null; }} onPointerDownCapture={() => { programmaticNavigation.current = null; }} onKeyDownCapture={() => { programmaticNavigation.current = null; }} onFocusCapture={(event) => {
         const target = (event.target as HTMLElement).closest<HTMLElement>(".exam-question-target[data-question-id]");
         if (target?.dataset.questionId) { programmaticNavigation.current = null; setActiveQuestionId(target.dataset.questionId); }
       }}>
-        <div className="listening-question-heading"><div><p>{t("runner.listeningSection", { number: part.order_index + 1 })}</p><h2>{part.title}</h2></div><span>{activeGroup ? groupQuestionRange(activeGroup).replace(/^Q/, `${t("common.questions")} `) : t("runner.noQuestions")}</span></div>
-        {activeGroup ? (() => {
-          const definition = questionRegistry[activeGroup.question_type as keyof typeof questionRegistry];
+        {presentation === "PRACTICE" ? <h2 className={practiceStyles.listeningSectionTitle}>{part.title}</h2> : <div className="listening-question-heading"><div><p>{t("runner.listeningSection", { number: part.order_index + 1 })}</p><h2>{part.title}</h2></div><span>{activeGroup ? groupQuestionRange(activeGroup).replace(/^Q/, `${t("common.questions")} `) : t("runner.noQuestions")}</span></div>}
+        {visibleGroups.length ? visibleGroups.map(group => {
+          const definition = questionRegistry[group.question_type as keyof typeof questionRegistry];
           if (!definition) return null;
           const Renderer = definition.ExamRenderer;
-          return <section key={activeGroup.id} data-question-group-id={activeGroup.id} className={`exam-question-group ${visualGroup ? "listening-visual-question-group" : ""}`}>
-            <QuestionGroupInstruction group={activeGroup as ExamGroup} />
-            <Renderer group={{ ...activeGroup, questions: [...activeGroup.questions].sort((left, right) => left.order_index - right.order_index) } as ExamGroup} values={values} onAnswer={answer} highlighting={highlighting} activeQuestionId={activeQuestionId} presentation={visualGroup ? "listening-visual" : "default"} />
+          const visual = ["map_labelling", "plan_labelling", "diagram_labelling"].includes(group.question_type);
+          return <section key={group.id} data-question-group-id={group.id} className={`exam-question-group ${visual ? "listening-visual-question-group" : ""}`}>
+            {presentation === "PRACTICE" ? <h3 className={practiceStyles.groupHeading}>{groupQuestionRange(group).replace(/^Q/, `${t("common.questions")} `)}</h3> : null}
+            <QuestionGroupInstruction group={group as ExamGroup} />
+            <Renderer group={{ ...group, questions: [...group.questions].sort((left, right) => left.order_index - right.order_index) } as ExamGroup} values={values} onAnswer={answer} highlighting={highlighting} activeQuestionId={activeQuestionId} presentation={visual ? "listening-visual" : "default"} />
           </section>;
-        })() : <p className="notice">{t("runner.noGroups")}</p>}
+        }) : <p className="notice">{t("runner.noGroups")}</p>}
       </main>
-      <aside className="listening-navigation-rail" aria-label={t("runner.questionNavigation")}>
-        <div ref={questionNavigationPane} className="listening-navigation-scroll">
-          {!focused ? <nav className="listening-section-navigation" aria-label={t("runner.sectionNavigation")}>{parts.map((item, index) => <button key={item.id} type="button" onClick={() => selectPart(index)} className={index === partIndex ? "active" : ""} aria-current={index === partIndex ? "page" : undefined}>{t("common.sectionNumber", { number: item.order_index + 1 })}</button>)}</nav> : null}
-          <nav className="listening-question-navigation" aria-label={t("runner.questionNavigation")}>{parts.map((item, index) => <div key={item.id} role="group" aria-label={t("common.sectionNumber", { number: item.order_index + 1 })} className="listening-navigation-section">
-            <p>{t("common.sectionNumber", { number: item.order_index + 1 })}</p>
-            <div className="listening-section-questions">{navigationSlots.filter((question) => question.partIndex === index).map((question) => {
-              const answered = completedQuestionSlots(question.questionType, question.config, values[question.id]) > question.slotIndex;
-              const flagged = Boolean(flags[question.id]);
-              const current = activeQuestionId === question.id;
-              return <div key={`${question.id}:${question.slotIndex}`} data-nav-question-id={question.id} className={`exam-question-chip ${answered ? "answered" : "unanswered"} ${flagged ? "flagged" : ""} ${current ? "current" : ""}`}>
-                <button ref={(element) => { const key = `${question.id}:${question.slotIndex}`; if (element) questionChips.current.set(key, element); else questionChips.current.delete(key); }} type="button" className="exam-question-number" onClick={() => navigateToQuestion(question.id, question.partIndex, question.slotIndex)} aria-label={t("runner.goQuestion", { number: question.number })} aria-current={current ? "true" : undefined}>{question.number}</button>
-                <button type="button" className="exam-question-flag" onClick={() => void toggleFlag(question.id)} aria-label={t(flagged ? "runner.unflagQuestion" : "runner.flagQuestion", { number: question.number })} aria-pressed={flagged}><span aria-hidden="true">{flagged ? "⚑" : "⚐"}</span></button>
-              </div>;
-            })}</div>
-          </div>)}</nav>
-        </div>
-        <div className="listening-navigation-actions">
-          <div className="listening-sequential-navigation">
-            <button type="button" disabled={!previousSlot} aria-label={t("runner.previousQuestion")} title={t("runner.previousQuestion")} onClick={() => { if (previousSlot) navigateToQuestion(previousSlot.id, previousSlot.partIndex, previousSlot.slotIndex); }}><ArrowIcon className="listening-previous-icon" width={18} height={18} focusable="false" /></button>
-            <button type="button" disabled={!nextSlot} aria-label={t("runner.nextQuestion")} title={t("runner.nextQuestion")} onClick={() => { if (nextSlot) navigateToQuestion(nextSlot.id, nextSlot.partIndex, nextSlot.slotIndex); }}><ArrowIcon width={18} height={18} focusable="false" /></button>
-          </div>
-          {initial.listening_audio_asset && initial.audio_policy?.allow_seeking === false ? <p className="exam-mode-label">{t("runner.seekingLocked")}</p> : null}
-          <button type="button" onClick={() => void submit()} disabled={submitting} className="exam-submit">{submitting ? t("runner.submitting") : t("runner.submitAnswers")}</button>
-        </div>
-      </aside>
+      {presentation === "EXAM" ? navigation : null}
     </div>
     {initial.listening_audio_asset ? <div className="listening-audio-dock">
-      <ListeningAudioPlayer layout="exam-bar" src={assetContentUrl(initial.listening_audio_asset)} clip={playbackClip} policy={{ allowSeeking: initial.audio_policy?.allow_seeking ?? true, allowSpeed: initial.audio_policy?.allow_speed ?? true }} />
+      <ListeningAudioPlayer layout="exam-bar" appearance={presentation === "PRACTICE" ? "practice" : "default"} src={assetContentUrl(initial.listening_audio_asset)} clip={playbackClip} policy={{ allowSeeking: initial.audio_policy?.allow_seeking ?? true, allowSpeed: initial.audio_policy?.allow_speed ?? true }} />
     </div> : null}
+    {presentation === "PRACTICE" ? navigation : null}
     <ConfirmDialog open={confirmDeleteAll} title={t("runner.deleteHighlightsTitle")} description={t("runner.deleteHighlightsDescription")} confirmLabel={t("runner.deleteHighlights")} pending={deletingAll} errorMessage={highlightError ? t(highlightError) : ""} onCancel={() => { setConfirmDeleteAll(false); setHighlightError(""); }} onConfirm={() => { if (stopped.current) return; setDeletingAll(true); setHighlightError(""); void runMutation(() => deleteAllHighlights(attemptId)).then(() => { setHighlights([]); setConfirmDeleteAll(false); }).catch((error) => { if (!(error instanceof AttemptStoppedError)) setHighlightError("runner.highlightsDeleteError"); }).finally(() => setDeletingAll(false)); }} />
   </div>;
 }

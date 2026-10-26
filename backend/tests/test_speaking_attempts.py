@@ -39,6 +39,7 @@ def test_runtime_routes_are_exposed():
     for path, method in [
         ("state", "get"),
         ("begin", "post"),
+        ("skip-preparation", "post"),
         ("heartbeat", "post"),
         ("finish", "post"),
         ("retry", "post"),
@@ -178,6 +179,87 @@ async def test_heartbeat_cannot_rewind_and_prep_deadline_is_authoritative(db_ses
     now += timedelta(seconds=36)
     state = await service.get_state(attempt_id)
     assert state.phase == "RECORDING" and state.remaining_ms == 118000
+
+
+@pytest.mark.asyncio
+async def test_skip_preparation_keeps_take_and_speech_quota_and_is_retry_safe(
+    db_session, monkeypatch
+):
+    now = TimerService.now()
+    monkeypatch.setattr(TimerService, "now", staticmethod(lambda: now))
+    service, attempt_id, prompts = await started(db_session, focused=1)
+    initial = await service.begin_prompt(attempt_id, prompts[1])
+    now += timedelta(seconds=12)
+    skipped = await service.skip_preparation(attempt_id, prompts[1], 1)
+    assert skipped.phase == "STARTING" and skipped.remaining_ms == 3000
+    assert skipped.response_id == initial.response_id and skipped.take_number == 1
+    deadline = skipped.phase_deadline_at
+    now += timedelta(seconds=1)
+    repeated = await service.skip_preparation(attempt_id, prompts[1], 1)
+    assert repeated.phase_deadline_at == deadline and repeated.remaining_ms == 2000
+    now += timedelta(seconds=2)
+    recording = await service.get_state(attempt_id)
+    assert recording.phase == "RECORDING" and recording.remaining_ms == 120000
+    now += timedelta(seconds=5)
+    repeated = await service.skip_preparation(attempt_id, prompts[1], 1)
+    assert repeated.phase == "RECORDING" and repeated.remaining_ms == 115000
+    assert repeated.phase_deadline_at == recording.phase_deadline_at
+    assert repeated.response_id == initial.response_id and repeated.take_number == 1
+
+
+@pytest.mark.asyncio
+async def test_skip_preparation_rejects_wrong_prompt_take_owner_and_terminal_attempt(
+    db_session, monkeypatch
+):
+    from app.services.speaking_attempts import SpeakingAttemptService
+
+    now = TimerService.now()
+    monkeypatch.setattr(TimerService, "now", staticmethod(lambda: now))
+    service, attempt_id, prompts = await started(db_session, focused=1)
+    await service.begin_prompt(attempt_id, prompts[1])
+    for prompt_id, take in [(prompts[0], 1), (prompts[1], 2)]:
+        with pytest.raises(AppError):
+            await service.skip_preparation(attempt_id, prompt_id, take)
+    with pytest.raises(AppError) as denied:
+        await SpeakingAttemptService(db_session, user_id=uuid4()).skip_preparation(
+            attempt_id, prompts[1], 1
+        )
+    assert denied.value.status_code == 404
+    assert (await service.get_state(attempt_id)).phase == "PREPARING"
+    await service.skip_preparation(attempt_id, prompts[1], 1)
+    now += timedelta(seconds=123)
+    assert (await service.get_state(attempt_id)).phase == "FINALIZING"
+    with pytest.raises(AppError) as expired:
+        await service.skip_preparation(attempt_id, prompts[1], 1)
+    assert expired.value.code == "SPEAKING_PREPARATION_NOT_ACTIVE"
+    await service.finish_current_response(attempt_id, prompts[1], 1, "TIMEOUT")
+    with pytest.raises(AppError) as finalized:
+        await service.skip_preparation(attempt_id, prompts[1], 1)
+    assert finalized.value.code == "ATTEMPT_FINALIZED"
+
+
+@pytest.mark.asyncio
+async def test_skip_preparation_rejects_non_long_turn(db_session):
+    service, attempt_id, prompts = await started(db_session)
+    before = await service.begin_prompt(attempt_id, prompts[0])
+    with pytest.raises(AppError) as denied:
+        await service.skip_preparation(attempt_id, prompts[0], 1)
+    assert denied.value.code == "SPEAKING_PREPARATION_NOT_ACTIVE"
+    after = await service.get_state(attempt_id)
+    assert after.phase == "RECORDING" and after.phase_deadline_at == before.phase_deadline_at
+
+
+@pytest.mark.asyncio
+async def test_exam_part2_can_skip_without_unlocking_replay_or_retry(db_session):
+    service, attempt_id, prompts = await started(db_session, mode="EXAM")
+    await service.begin_prompt(attempt_id, prompts[0])
+    await service.finish_current_response(attempt_id, prompts[0], 1, "USER_DONE")
+    preparing = await service.begin_prompt(attempt_id, prompts[1])
+    assert preparing.phase == "PREPARING"
+    skipped = await service.skip_preparation(attempt_id, prompts[1], 1)
+    assert skipped.phase == "STARTING"
+    assert skipped.response_id == preparing.response_id and skipped.take_number == 1
+    assert not skipped.can_replay and not skipped.can_retry
 
 
 @pytest.mark.asyncio
@@ -475,3 +557,65 @@ async def test_part2_duplicate_begin_and_timeout_preserve_one_take(db_session, m
     with pytest.raises(AppError) as error:
         await service.retry_current_response(aid, prompts[1], 1)
     assert error.value.code == "ATTEMPT_FINALIZED"
+
+
+async def test_independent_preparation_skips_preserve_one_deadline(
+    concurrent_speaking, monkeypatch
+):
+    from sqlalchemy import func
+
+    from app.models import Attempt, SpeakingResponse, SpeakingResponseTake
+    from app.services.speaking_attempts import SpeakingAttemptService
+
+    factory, owner, attempt_id, prompts = concurrent_speaking
+    now = TimerService.now()
+    monkeypatch.setattr(TimerService, "now", staticmethod(lambda: now))
+    async with factory() as session:
+        service = SpeakingAttemptService(session, user_id=owner)
+        await service.finish_current_response(attempt_id, prompts[0], 1, "USER_DONE")
+        before = await service.begin_prompt(attempt_id, prompts[1])
+    entered = [asyncio.Event(), asyncio.Event()]
+    connections = set()
+
+    async def skip(index):
+        async with factory() as session:
+            service = SpeakingAttemptService(session, user_id=owner)
+            load = service._load
+
+            async def coordinated_load(aid):
+                connections.add(await session.scalar(select(func.pg_backend_pid())))
+                entered[index].set()
+                return await load(aid)
+
+            monkeypatch.setattr(service, "_load", coordinated_load)
+            return await service.skip_preparation(attempt_id, prompts[1], 1)
+
+    tasks = []
+    try:
+        async with factory() as holder, holder.begin():
+            await holder.scalar(select(Attempt).where(Attempt.id == attempt_id).with_for_update())
+            tasks = [asyncio.create_task(skip(index)) for index in range(2)]
+            await asyncio.wait_for(asyncio.gather(*(event.wait() for event in entered)), timeout=5)
+            assert len(connections) == 2 and all(not task.done() for task in tasks)
+        outcomes = await asyncio.wait_for(asyncio.gather(*tasks), timeout=5)
+        assert all(
+            outcome.phase == "STARTING" and outcome.remaining_ms == 3000 for outcome in outcomes
+        )
+        assert outcomes[0].phase_deadline_at == outcomes[1].phase_deadline_at
+        assert all(
+            outcome.response_id == before.response_id and outcome.take_number == 1
+            for outcome in outcomes
+        )
+        async with factory() as session:
+            takes = await session.scalar(
+                select(func.count())
+                .select_from(SpeakingResponseTake)
+                .where(SpeakingResponseTake.response_id == before.response_id)
+            )
+            response = await session.get(SpeakingResponse, before.response_id)
+            assert takes == 1 and response.active_take_number == 1 and not response.locked
+    finally:
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)

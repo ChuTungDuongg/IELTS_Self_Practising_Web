@@ -2,7 +2,7 @@
 
 import { useTranslation } from "@/lib/i18n/locale-provider";
 
-import { useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
+import { useEffect, useImperativeHandle, useRef, useState, type CSSProperties, type Ref } from "react";
 import { ForwardFiveIcon, RewindFiveIcon } from "@/components/ui/icons";
 import { formatAudioTime, validAudioClip, type AudioClip } from "./audio-time";
 
@@ -11,8 +11,9 @@ export type AudioPolicy = { allowSeeking: boolean; allowSpeed: boolean };
 
 export type ListeningAudioPlayerHandle = { currentPosition: () => number; preview: (clip: AudioClip) => void };
 
-export function ListeningAudioPlayer({ src, clip, policy = { allowSeeking: true, allowSpeed: true }, ref, onDuration, layout = "inline" }: {
+export function ListeningAudioPlayer({ src, clip, policy = { allowSeeking: true, allowSpeed: true }, ref, onDuration, layout = "inline", appearance = "default" }: {
   src: string; clip?: AudioClip; policy?: AudioPolicy; ref?: Ref<ListeningAudioPlayerHandle>; onDuration?: (seconds: number) => void; layout?: "inline" | "exam-bar";
+  appearance?: "default" | "practice";
 }) {
   const { t } = useTranslation();
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -86,17 +87,17 @@ export function ListeningAudioPlayer({ src, clip, policy = { allowSeeking: true,
   }
 
   const skipSeconds = layout === "exam-bar" ? 5 : 10;
-  const playPause = <button type="button" className="player-main" disabled={unavailable || (Boolean(activeClip) && !duration)} onClick={() => void toggle()} aria-label={playing ? t("runner.pauseAudio") : t("runner.playAudio")}>{playing ? "❚❚" : "▶"}</button>;
+  const playPause = <button type="button" className="player-main" disabled={unavailable || (Boolean(activeClip) && !duration)} onClick={() => void toggle()} aria-label={playing ? t("runner.pauseAudio") : t("runner.playAudio")}>{appearance === "practice" ? <svg aria-hidden="true" width="21" height="21" viewBox="0 0 24 24" fill="currentColor">{playing ? <><rect x="6" y="5" width="4" height="14" rx="1.5" /><rect x="14" y="5" width="4" height="14" rx="1.5" /></> : <path d="M8 4.5a2 2 0 0 1 3-1.7l10 7.5a2.1 2.1 0 0 1 0 3.4l-10 7.5A2 2 0 0 1 8 19.5Z" transform="translate(-2 0)" />}</svg> : playing ? "❚❚" : "▶"}</button>;
   const backward = <button type="button" className="player-skip" disabled={!policy.allowSeeking || unavailable} onClick={() => seek(current - skipSeconds)} aria-label={t(layout === "exam-bar" ? "runner.seekBackFive" : "runner.seekBack")}>{layout === "exam-bar" ? <RewindFiveIcon width={24} height={24} focusable="false" /> : <>−{skipSeconds}</>}</button>;
   const elapsed = <span className="player-time">{formatAudioTime(Math.max(0, current - start))}</span>;
   const progress = <input aria-label={t("runner.audioSeek")} type="range" min={0} max={length} step={0.1} value={Math.max(0, Math.min(current - start, length))} disabled={!policy.allowSeeking || unavailable} onChange={(event) => seek(start + Number(event.target.value))} />;
   const total = <span className="player-time">{unavailable ? t("runner.audioError") : state === "loading" && !duration ? t("runner.audioLoading") : formatAudioTime(length)}</span>;
   const forward = <button type="button" className="player-skip" disabled={!policy.allowSeeking || unavailable} onClick={() => seek(current + skipSeconds)} aria-label={t(layout === "exam-bar" ? "runner.seekForwardFive" : "runner.seekForward")}>{layout === "exam-bar" ? <ForwardFiveIcon width={24} height={24} focusable="false" /> : <>+{skipSeconds}</>}</button>;
   const speed = <select aria-label={t("runner.speed")} value={rate} disabled={!policy.allowSpeed} onChange={(event) => { const next = Number(event.target.value); setRate(next); if (audioRef.current) audioRef.current.playbackRate = next; }}>{speeds.map((speed) => <option key={speed} value={speed}>{speed}x</option>)}</select>;
-  const mute = <button type="button" className="player-mute" onClick={() => { const next = !muted; setMuted(next); if (audioRef.current) audioRef.current.muted = next; }} aria-label={muted ? t("runner.unmute") : t("runner.mute")}>{muted ? "🔇" : "🔊"}</button>;
+  const mute = <button type="button" className="player-mute" onClick={() => { const next = !muted; setMuted(next); if (audioRef.current) audioRef.current.muted = next; }} aria-label={muted ? t("runner.unmute") : t("runner.mute")}>{appearance === "practice" ? <svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path fill="currentColor" d="m11 5-6 4H2v6h3l6 4Z" />{muted ? <path d="m16 9 6 6m0-6-6 6" /> : <><path d="M15 8a6 6 0 0 1 0 8M18 5a10 10 0 0 1 0 14" /></>}</svg> : muted ? "🔇" : "🔊"}</button>;
   const volumeControl = <input aria-label={t("runner.volume")} type="range" min={0} max={1} step={0.05} value={volume} onChange={(event) => { const next = Number(event.target.value); setVolume(next); if (audioRef.current) audioRef.current.volume = next; }} />;
 
-  return <><div className={`listening-player${layout === "exam-bar" ? " listening-player-exam-bar" : ""}`} aria-label={t("runner.audioPlayer")}><audio ref={audioRef} src={src} preload="metadata" onLoadedMetadata={(event) => {
+  return <><div className={`listening-player${layout === "exam-bar" ? " listening-player-exam-bar" : ""}`} data-appearance={appearance} style={appearance === "practice" ? { "--player-progress": `${length ? Math.max(0, Math.min(100, (current - start) / length * 100)) : 0}%`, "--player-volume": `${volume * 100}%` } as CSSProperties : undefined} aria-label={t("runner.audioPlayer")}><audio ref={audioRef} src={src} preload="metadata" onLoadedMetadata={(event) => {
       const value = event.currentTarget.duration;
       if (!Number.isFinite(value) || value <= 0) { setState("error"); return; }
       setDuration(value); onDuration?.(value); setState("ready");

@@ -100,6 +100,7 @@ describe("homepage metrics and personal IELTS goals", () => {
       expect(within(goals).getByText(`${skill} target`).parentElement).toHaveTextContent(value);
     }
     expect(goals).toHaveTextContent("05 Dec 2026");
+    expect(within(goals).getByRole("timer", { name: "Time until target test date" })).toBeInTheDocument();
     expect(within(goals).getByRole("link", { name: /Edit goals/ })).toHaveAttribute("href", "/profile");
     expect(getProfile).toHaveBeenCalledWith(serverApiRequest);
   });
@@ -112,6 +113,7 @@ describe("homepage metrics and personal IELTS goals", () => {
     expect(within(goals).getByText("Reading target").parentElement).toHaveTextContent("7.5");
     expect(within(goals).getByText("Overall target band").parentElement).toHaveTextContent("—");
     expect(goals).toHaveTextContent("Target test —");
+    expect(within(goals).queryByRole("timer")).not.toBeInTheDocument();
   });
 
   it("renders the derived 7.0 Overall returned for four saved skill targets", async () => {

@@ -8,7 +8,7 @@ import { ApiError } from "@/lib/api/client";
 
 const fakeRecorder = vi.hoisted(() => ({ start: vi.fn(), stop: vi.fn().mockResolvedValue(undefined), close: vi.fn(), onChunk: undefined as ((blob: Blob) => void) | undefined, onLevel: undefined, mimeType: "audio/webm;codecs=opus", recording: false }));
 vi.mock("@/features/speaking/speaking-preflight", () => ({ SpeakingPreflight: ({ onReady }: { onReady(value: unknown): void }) => <button onClick={() => onReady(fakeRecorder)}>Ready microphone</button> }));
-vi.mock("@/lib/api/speaking", async original => ({ ...await original<typeof api>(), getSpeakingState: vi.fn(), beginSpeaking: vi.fn(), heartbeatSpeaking: vi.fn(), finishSpeaking: vi.fn(), retrySpeaking: vi.fn(), saveSpeakingNotes: vi.fn(), openSpeakingSegment: vi.fn(), closeSpeakingSegment: vi.fn(), uploadSpeakingChunk: vi.fn(), getSpeakingManifest: vi.fn(), interruptSpeaking: vi.fn(), resumeSpeaking: vi.fn(), fetchSpeakingAudio: vi.fn(), selectSpeakingPrompt: vi.fn(), finishSpeakingPractice: vi.fn() }));
+vi.mock("@/lib/api/speaking", async original => ({ ...await original<typeof api>(), getSpeakingState: vi.fn(), beginSpeaking: vi.fn(), heartbeatSpeaking: vi.fn(), skipSpeakingPreparation: vi.fn(), finishSpeaking: vi.fn(), retrySpeaking: vi.fn(), saveSpeakingNotes: vi.fn(), openSpeakingSegment: vi.fn(), closeSpeakingSegment: vi.fn(), uploadSpeakingChunk: vi.fn(), getSpeakingManifest: vi.fn(), interruptSpeaking: vi.fn(), resumeSpeaking: vi.fn(), fetchSpeakingAudio: vi.fn(), selectSpeakingPrompt: vi.fn(), finishSpeakingPractice: vi.fn() }));
 export const state: SpeakingState = {
   attempt_id: "11111111-1111-4111-8111-111111111111", mode: "PRACTICE", phase: "QUESTION_ENTER",
   current_prompt: { id: "22222222-2222-4222-8222-222222222222", part_number: 1, part_title: null, instructions: null, order_index: 0, prompt_type: "SHORT_ANSWER", prompt_text: "Fictional current question", preparation_seconds: 0, response_seconds: 60, config_json: {} },
@@ -18,6 +18,54 @@ export const state: SpeakingState = {
 const initial = { test_title: "Fictional Speaking", attempt: { attempt_id: state.attempt_id } } as ExamPayload;
 beforeEach(() => { vi.clearAllMocks(); fakeRecorder.recording = false; fakeRecorder.start.mockImplementation(() => { fakeRecorder.recording = true; }); fakeRecorder.stop.mockImplementation(async () => { fakeRecorder.recording = false; }); vi.mocked(api.getSpeakingState).mockResolvedValue(state); vi.mocked(api.beginSpeaking).mockResolvedValue({ ...state, phase: "RECORDING" }); vi.mocked(api.heartbeatSpeaking).mockResolvedValue({ ...state, phase: "RECORDING" }); vi.mocked(api.openSpeakingSegment).mockResolvedValue({ id: "segment", segment_index: 0, mime_type: "audio/webm;codecs=opus", closed_at: null, chunk_count: null, chunks: [], content_url: null }); vi.mocked(api.closeSpeakingSegment).mockResolvedValue({} as never); vi.mocked(api.uploadSpeakingChunk).mockResolvedValue({} as never); vi.mocked(api.getSpeakingManifest).mockResolvedValue({ response: {} as never, segments: [] }); });
 async function ready() { render(<SpeakingRunner initial={initial} />); fireEvent.click(await screen.findByText("Ready microphone")); await screen.findByText("Recording"); await waitFor(() => expect(screen.getByText("Done / Next")).toBeEnabled()); }
+
+async function readyPreparation() {
+  const preparing: SpeakingState = { ...state, phase: "PREPARING", current_prompt: { ...state.current_prompt!, part_number: 2, prompt_type: "LONG_TURN", preparation_seconds: 60, response_seconds: 120 } };
+  vi.mocked(api.getSpeakingState).mockResolvedValue({ ...preparing, phase: "QUESTION_ENTER" });
+  vi.mocked(api.beginSpeaking).mockResolvedValue(preparing);
+  vi.mocked(api.heartbeatSpeaking).mockResolvedValue(preparing);
+  render(<SpeakingRunner initial={initial} />);
+  fireEvent.click(await screen.findByText("Ready microphone"));
+  await screen.findByText("Preparation");
+  return preparing;
+}
+it("skips Part 2 preparation once, preserves notes, and records only after server recording state", async () => {
+  const preparing = await readyPreparation();
+  let acknowledge!: (next: SpeakingState) => void;
+  vi.mocked(api.skipSpeakingPreparation).mockImplementation(() => new Promise(resolve => { acknowledge = resolve; }));
+  vi.mocked(api.saveSpeakingNotes).mockResolvedValue(preparing);
+  fireEvent.change(screen.getByRole("textbox", { name: "Private scratch notes" }), { target: { value: "Fictional cue notes" } });
+  const skip = screen.getByRole("button", { name: "Skip preparation" });
+  fireEvent.click(skip); fireEvent.click(skip);
+  await waitFor(() => expect(api.skipSpeakingPreparation).toHaveBeenCalledExactlyOnceWith(state.attempt_id, preparing.current_prompt!.id, 1));
+  expect(api.saveSpeakingNotes).toHaveBeenCalledWith(state.attempt_id, preparing.current_prompt!.id, "Fictional cue notes");
+  expect(skip).toBeDisabled();
+  expect(fakeRecorder.start).not.toHaveBeenCalled();
+  expect(screen.getByRole("button", { name: "Done / Next" })).toBeDisabled();
+  const starting: SpeakingState = { ...preparing, phase: "STARTING", remaining_ms: 3000, scratch_notes: "Fictional cue notes" };
+  vi.mocked(api.heartbeatSpeaking).mockResolvedValue(starting);
+  await act(async () => acknowledge(starting));
+  await screen.findByText("Recording starts in…");
+  expect(screen.getByRole("timer")).toHaveTextContent("00:03");
+  expect(screen.queryByRole("button", { name: "Skip preparation" })).toBeNull();
+  expect(fakeRecorder.start).not.toHaveBeenCalled();
+  vi.mocked(api.heartbeatSpeaking).mockResolvedValue({ ...starting, phase: "RECORDING", remaining_ms: 120000 });
+  await waitFor(() => expect(fakeRecorder.start).toHaveBeenCalledTimes(1), { timeout: 2000 });
+  expect(screen.getByRole("textbox", { name: "Private scratch notes" })).toHaveValue("Fictional cue notes");
+});
+it("keeps preparation and microphone stopped after a failed skip, allowing retry", async () => {
+  const preparing = await readyPreparation();
+  vi.mocked(api.skipSpeakingPreparation).mockRejectedValueOnce(new Error("Ambiguous network failure"));
+  fireEvent.click(screen.getByRole("button", { name: "Skip preparation" }));
+  await screen.findByRole("alert");
+  expect(screen.getByText("Preparation")).toBeInTheDocument();
+  expect(fakeRecorder.start).not.toHaveBeenCalled();
+  expect(screen.getByRole("button", { name: "Skip preparation" })).toBeEnabled();
+  vi.mocked(api.skipSpeakingPreparation).mockResolvedValue({ ...preparing, phase: "STARTING", remaining_ms: 3000 });
+  fireEvent.click(screen.getByRole("button", { name: "Skip preparation" }));
+  await screen.findByText("Recording starts in…");
+  expect(api.skipSpeakingPreparation).toHaveBeenCalledTimes(2);
+});
 
 const freePrompts = [0, 1, 2].map(index => ({ ...state.current_prompt!, id: `22222222-2222-4222-8222-${String(index + 1).padStart(12, "0")}`, order_index: index, prompt_text: `Fictional free question ${index + 1}` }));
 function freeState(index: number | null = null, phase: SpeakingState["phase"] = "BROWSING", committed: number[] = []): SpeakingState {

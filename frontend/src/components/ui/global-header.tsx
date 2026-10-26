@@ -11,6 +11,7 @@ import { roleTranslationKeys } from "@/lib/i18n/translations";
 import { NotificationCenter } from "@/features/notifications/notification-center";
 import { PersonalizationDialog } from "@/features/personalization/personalization-dialog";
 import { SettingsIcon } from "./icons";
+import { VietnamClock } from "./vietnam-clock";
 
 const navigation = [
   { message: "shell.overview", href: "/" },
@@ -52,6 +53,7 @@ function HeaderActions({ loggingOut, onLogout, onPersonalization, settingsButton
   const { user, loading, sessionError } = useAuth();
   const { t } = useTranslation();
   return <div className="header-actions">
+    <VietnamClock />
     {user && !pathname.startsWith("/settings/personalization") ? <button ref={settingsButtonRef} type="button" className="icon-button" aria-label={t("personalization.title")} title={t("personalization.title")} onClick={onPersonalization}><SettingsIcon width="20" height="20" /></button> : null}
     {user ? <NotificationCenter key={user.id} userId={user.id} /> : null}
     {sessionError ? <p role="alert" className="notice">{sessionError}</p> : null}
@@ -86,6 +88,13 @@ function HeaderBar({ pathname, children }: { pathname: string; children: ReactNo
       <button ref={menuButtonRef} type="button" className="navigation-toggle icon-button" aria-label={t("shell.menu")} aria-expanded={navigationOpen} aria-controls={navigationId} onClick={() => setNavigationOpen(open => !open)}><svg aria-hidden="true" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><path d={navigationOpen ? "m6 6 12 12M6 18 18 6" : "M4 6h16M4 12h16M4 18h16"} /></svg></button>
     </div>
   </header>;
+}
+
+/** Presentation chooser only: shares the real header layout without notification requests or mutations. */
+export function GlobalHeaderPreview() {
+  const { user } = useAuth();
+  const { t } = useTranslation();
+  return <HeaderBar pathname="/attempt/preview"><div className="header-actions"><VietnamClock /><SettingsIcon width={20} height={20} /><span className="auth-user-label"><span className="auth-user-name">{user?.display_name ?? t(roleTranslationKeys.USER)}</span><small>{t(roleTranslationKeys[user?.role ?? "USER"])}</small></span><span className="btn btn-ghost">{t("shell.logout")}</span></div></HeaderBar>;
 }
 
 export function GlobalHeader({ pathname }: { pathname: string }): ReactElement {

@@ -95,13 +95,14 @@ jobs:
       - name: Install Chromium and system dependencies
         working-directory: frontend
         run: npx playwright install --with-deps chromium
-      - name: Run three golden-path browser specs
+      - name: Run golden-path and Reading Practice browser specs
         working-directory: frontend
         run: |
           npx playwright test \
             tests/e2e/listening-workflow.spec.ts \
             tests/e2e/writing-workflow.spec.ts \
-            tests/e2e/full-mock-workflow.spec.ts
+            tests/e2e/full-mock-workflow.spec.ts \
+            tests/e2e/reading-practice.spec.ts
       - name: Redact authentication data from failure artifacts
         if: failure()
         id: redact

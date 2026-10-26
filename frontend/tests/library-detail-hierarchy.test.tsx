@@ -4,6 +4,7 @@ import { LibraryVersionContent } from "@/features/practice/library-content";
 import { apiRequest } from "@/lib/api/client";
 import type { TestSummary, VersionDetail } from "@/lib/api/schema";
 import { renderWithLocale } from "./locale-test-utils";
+import { sessionPresentationStorageKey } from "@/features/exam/attempt-presentation";
 
 const push = vi.fn();
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
@@ -150,14 +151,19 @@ describe("Test Library detail hierarchy", () => {
     vi.mocked(apiRequest).mockReturnValue(new Promise((resolve) => { finish = resolve; }));
     renderWithLocale(<LibraryVersionContent test={test} version={version} />);
     fireEvent.click(screen.getByRole("button", { name: "Start Full Mock" }));
-    expect(screen.getByRole("button", { name: "Starting…" })).toBeDisabled();
+    expect(screen.getByRole("radio", { name: "Practice" })).toBeChecked();
+    expect(apiRequest).not.toHaveBeenCalled();
+    const confirm = screen.getByRole("button", { name: "Continue with this interface" });
+    fireEvent.click(confirm); fireEvent.click(confirm);
+    expect(screen.getByRole("dialog")).toHaveAttribute("aria-busy", "true");
     fireEvent.click(screen.getByText("Switch to Vietnamese"));
-    expect(screen.getByRole("button", { name: "Đang bắt đầu…" })).toBeDisabled();
+    expect(screen.getAllByRole("button", { name: "Đang bắt đầu…" }).every(button => (button as HTMLButtonElement).disabled)).toBe(true);
     expect(apiRequest).toHaveBeenCalledExactlyOnceWith("/test-sessions", {
       method: "POST", body: JSON.stringify({ test_version_id: version.id }),
     });
     await act(async () => finish(started));
     await waitFor(() => expect(push).toHaveBeenCalledExactlyOnceWith(`/attempt/${startedAttempt.attempt_id}`));
+    expect(localStorage.getItem(sessionPresentationStorageKey(started.session.session_id))).toBe("PRACTICE");
   });
 
   it.each([
@@ -173,14 +179,17 @@ describe("Test Library detail hierarchy", () => {
   });
 
   it.each([
-    { locale: "en", action: "Start Full Mock", error: "Could not start the Full Mock." },
-    { locale: "vi", action: "Bắt đầu bài thi thử", error: "Không thể bắt đầu bài thi thử." },
-  ])("preserves the $locale retry action after a Full Mock request error", async ({ locale, action, error }) => {
+    { locale: "en", action: "Start Full Mock", confirm: "Continue with this interface", error: "Could not start the Full Mock." },
+    { locale: "vi", action: "Bắt đầu bài thi thử", confirm: "Tiếp tục với giao diện này", error: "Không thể bắt đầu bài thi thử." },
+  ])("preserves the $locale retry action after a Full Mock request error", async ({ locale, action, confirm, error }) => {
     vi.mocked(apiRequest).mockRejectedValue(new Error("Unavailable fictional service"));
     renderWithLocale(<LibraryVersionContent test={test} version={version} />);
     if (locale === "vi") fireEvent.click(screen.getByText("Switch to Vietnamese"));
     fireEvent.click(screen.getByRole("button", { name: action }));
+    fireEvent.click(screen.getByRole("button", { name: confirm }));
     expect(await screen.findByRole("alert")).toHaveTextContent(error);
+    expect(within(screen.getByRole("dialog")).getByRole("alert")).toHaveTextContent(error);
+    expect(screen.getByRole("button", { name: confirm })).toBeEnabled();
     expect(screen.getByRole("button", { name: action })).toBeEnabled();
     expect(push).not.toHaveBeenCalled();
   });

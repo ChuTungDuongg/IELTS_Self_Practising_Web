@@ -31,6 +31,8 @@ test("authors, publishes, takes, and reviews a fictional Reading test", async ({
   await card.getByRole("link", { name: "Open test" }).click();
   await page.getByLabel("Practice timer").selectOption("2400");
   await page.getByRole("button", { name: "Start Reading" }).click();
+  await page.getByRole("radio", { name: "Legacy", exact: true }).check();
+  await page.getByRole("button", { name: "Continue with this interface" }).click();
 
   await page.getByLabel(/A\. Option A/).check();
   await page.getByRole("button", { name: "Submit" }).click();

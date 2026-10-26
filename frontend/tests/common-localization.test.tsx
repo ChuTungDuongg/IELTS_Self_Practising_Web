@@ -104,8 +104,8 @@ describe("common localization", () => {
   });
   it("does not add a global skip link to attempts", () => {
     navigation.pathname = "/attempt/id/paused";
-    renderWithLocale(<AppShell currentYear={2026}>Questions</AppShell>);
+    const view = renderWithLocale(<AppShell currentYear={2026}>Questions</AppShell>);
     expect(screen.queryByRole("link")).toBeNull();
-    expect(screen.getByRole("main")).toHaveClass("exam-shell");
+    expect(view.container.querySelector(".exam-shell")).toHaveTextContent("Questions");
   });
 });

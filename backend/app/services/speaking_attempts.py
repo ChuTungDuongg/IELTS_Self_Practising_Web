@@ -246,6 +246,30 @@ class SpeakingAttemptService:
             attempt.last_active_at = now
             return await self._state(attempt, progress, prompts, now)
 
+    async def skip_preparation(
+        self, attempt_id: UUID, prompt_id: UUID, take_number: int
+    ) -> SpeakingState:
+        async with self.session.begin():
+            attempt, progress, prompts = await self._load(attempt_id)
+            self._mutable(attempt)
+            await self._require_current(attempt, progress, prompt_id, take_number)
+            now = TimerService.now()
+            await self._synchronize(attempt, progress, prompts, now)
+            prompt = self._prompt(progress, prompts)
+            if prompt.prompt_type != "LONG_TURN" or progress.phase not in {
+                "PREPARING",
+                "STARTING",
+                "RECORDING",
+            }:
+                raise AppError(
+                    "SPEAKING_PREPARATION_NOT_ACTIVE", "Preparation cannot be skipped now.", 409
+                )
+            if progress.phase == "PREPARING":
+                self._set_phase(progress, "STARTING", now, 3)
+            # Repeated requests never reset STARTING or extend the speech deadline.
+            attempt.last_active_at = now
+            return await self._state(attempt, progress, prompts, now)
+
     async def _require_current(self, attempt, progress, prompt_id, take_number=None):
         await self._require_scoped_prompt(attempt, prompt_id)
         if progress.prompt_id != prompt_id:
