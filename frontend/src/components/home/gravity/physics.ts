@@ -34,7 +34,7 @@ export function modes(progress: number) {
 }
 export function backgroundStage(progress: number) { return progress > 1.55 ? 2 : progress > .7 ? 1 : 0; }
 export function qualityFor(width: number, lowPower: boolean) {
-  return { count: lowPower ? 32 : width < 768 ? 54 : 96, segments: lowPower ? 20 : width < 768 ? 28 : 48, dpr: lowPower ? 1 : width < 768 ? 1.25 : 1.75, shadows: !lowPower && width >= 768 };
+  return { count: lowPower ? 32 : width < 768 ? 54 : 96, segments: lowPower ? 40 : width < 768 ? 48 : 64, dpr: lowPower ? 1 : width < 768 ? 1.5 : 2, shadows: !lowPower && width >= 768 };
 }
 function seededRandom(seed: number) {
   return () => {

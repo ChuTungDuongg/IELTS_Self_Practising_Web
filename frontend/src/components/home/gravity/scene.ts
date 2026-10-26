@@ -23,7 +23,8 @@ export function createGravityScene(container: HTMLElement, lowPower: boolean, on
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(38, 1, .1, 100);
   camera.position.set(0, 0, 11);
-  const renderer = new THREE.WebGLRenderer({ antialias: !lowPower, alpha: true, powerPreference: lowPower ? "low-power" : "default" });
+  // Keep silhouettes smooth in every tier; low-power savings come from fewer balls and no shadows/refraction.
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: lowPower ? "low-power" : "default" });
   disposers.push(() => { renderer.renderLists.dispose(); renderer.dispose(); renderer.forceContextLoss(); renderer.domElement.remove(); });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, quality.dpr));
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
