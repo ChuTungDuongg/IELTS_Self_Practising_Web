@@ -30,7 +30,7 @@ test("completes fictional Full Mock in Listening, Reading, Writing, Speaking ord
     await page.getByRole("button", { name: "Continue with this interface" }).click();
     await expect(page).toHaveURL(/\/attempt\/[0-9a-f-]+$/);
     const listeningId = page.url().split("/").at(-1)!;
-    await expect(page.locator(".exam-runner")).toHaveAttribute("data-presentation", "PRACTICE");
+    await expect(page.locator(".exam-runner:visible")).toHaveAttribute("data-presentation", "PRACTICE");
     await expect(page.getByRole("heading", { name: "Fictional section 1", exact: true })).toBeVisible();
     await expect(page.getByLabel("Listening audio player").getByLabel("Audio seek")).toBeDisabled();
     await expect(page.getByLabel("Listening audio player").getByLabel("Playback speed")).toBeDisabled();
@@ -69,10 +69,10 @@ test("completes fictional Full Mock in Listening, Reading, Writing, Speaking ord
     await page.goto(`/test-session/${sessionId}`);
     await page.getByRole("button", { name: "Continue to Reading" }).click();
     await expect(page).toHaveURL(/\/attempt\/[0-9a-f-]+$/);
-    await expect(page.locator(".exam-runner")).toHaveAttribute("data-presentation", "PRACTICE");
+    await expect(page.locator(".exam-runner:visible")).toHaveAttribute("data-presentation", "PRACTICE");
     await page.reload();
-    await expect(page.locator(".exam-runner")).toHaveAttribute("data-presentation", "PRACTICE");
-    await expect(page.getByText("Reading passage 1")).toBeVisible();
+    await expect(page.locator(".exam-runner:visible")).toHaveAttribute("data-presentation", "PRACTICE");
+    await expect(page.locator(".reading-exam:visible").getByText("Reading passage 1")).toBeVisible();
     expect((await sessionState()).attempts.map((attempt) => attempt.module)).toEqual(["LISTENING", "READING"]);
     const readingId = page.url().split("/").at(-1)!;
     await page.getByRole("radio", { name: "TRUE" }).check();
