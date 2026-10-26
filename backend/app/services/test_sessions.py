@@ -228,7 +228,7 @@ class TestSessionService:
             )
         )
         if for_update:
-            statement = statement.with_for_update()
+            statement = statement.with_for_update().execution_options(populate_existing=True)
         result = await self.session.scalar(statement)
         if result is None:
             raise AppError("TEST_SESSION_NOT_FOUND", "The Full Mock session does not exist.", 404)
@@ -276,9 +276,15 @@ class TestSessionService:
     async def _synchronize_timeout(self, attempt: Attempt) -> None:
         from app.services.attempts import AttemptService
 
-        await AttemptService(self.session, self.user_id)._synchronize_state(
-            attempt, TimerService.now()
+        service = AttemptService(self.session, self.user_id)
+        # The parent is already locked. Refresh and lock the child before
+        # scoring/finalizing, preserving the parent's loaded attempt collection.
+        await self.session.refresh(
+            attempt,
+            attribute_names=[column.key for column in Attempt.__mapper__.column_attrs],
+            with_for_update=True,
         )
+        await service._synchronize_state(attempt, TimerService.now())
 
     @staticmethod
     def _attempt_response(attempt: Attempt, now=None) -> AttemptResponse:

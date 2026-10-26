@@ -1,5 +1,3 @@
-from datetime import UTC, datetime
-from pathlib import Path
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile, status
@@ -15,7 +13,7 @@ from app.models import Asset, User
 from app.models.enums import AssetType, UserRole
 from app.schemas.assets import AssetResponse
 from app.services.asset_access import can_user_read_asset
-from app.services.tests import TestService
+from app.services.asset_uploads import upload_asset
 from app.storage import LocalAssetStorage
 
 router = APIRouter(prefix="/assets", tags=["assets"])
@@ -30,36 +28,15 @@ async def _upload(
     session: AsyncSession,
     actor: User,
 ) -> AssetResponse:
-    settings = get_settings()
-    original_name = Path((upload.filename or "upload").replace("\\", "/")).name[:255]
-    content = await upload.read()
-    maximum = (
-        (settings.max_image_upload_mb if category == "images" else settings.max_audio_upload_mb)
-        * 1024
-        * 1024
+    return await upload_asset(
+        version_id=version_id,
+        upload=upload,
+        category=category,
+        asset_type=asset_type,
+        session=session,
+        actor=actor,
+        settings=get_settings(),
     )
-    async with session.begin():
-        await TestService(session, actor=actor).ensure_draft(version_id)
-        stored = LocalAssetStorage(settings.resolved_storage_root).store(
-            category=category,
-            mime_type=upload.content_type or "application/octet-stream",
-            original_name=original_name,
-            content=content,
-            max_bytes=maximum,
-        )
-        asset = Asset(
-            test_version_id=version_id,
-            asset_type=asset_type,
-            relative_path=stored.relative_path,
-            mime_type=upload.content_type or "application/octet-stream",
-            original_name=original_name,
-            file_size=stored.size,
-            created_at=datetime.now(UTC),
-        )
-        session.add(asset)
-        await session.flush()
-        response = AssetResponse.model_validate(asset, from_attributes=True)
-    return response
 
 
 @router.post(

@@ -59,6 +59,7 @@ from app.schemas.transfer import (
     TransferManifest,
 )
 from app.services.access_policy import AccessPolicy
+from app.services.asset_cleanup import compensate_files
 from app.services.tests import TestService
 from app.services.transfer_ids import build_id_maps
 from app.storage import LocalAssetStorage
@@ -314,9 +315,8 @@ class TransferService:
                         self._build_version(portable_version, version, assets, maps)
                         self._validate_built_version(version)
                 await self.session.flush()
-        except Exception:
-            for relative_path in created_paths:
-                self.storage.delete(relative_path)
+        except BaseException:
+            await compensate_files(self.session, self.storage, created_paths)
             raise
         return TransferImportResult(
             imported_tests=imported,

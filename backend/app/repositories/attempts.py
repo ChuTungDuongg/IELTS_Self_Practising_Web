@@ -29,6 +29,26 @@ class AttemptRepository:
         user_id: uuid.UUID | None = None,
         for_update: bool = False,
     ) -> Attempt | None:
+        if for_update:
+            # Session transitions and Speaking use parent -> attempt. Acquiring
+            # the child first deadlocks when finalization updates its parent.
+            parent = (
+                select(TestSession.id)
+                .join(Attempt, Attempt.test_session_id == TestSession.id)
+                .where(Attempt.id == attempt_id)
+                .with_for_update(of=TestSession)
+            )
+            if user_id is not None:
+                parent = parent.where(Attempt.user_id == user_id)
+            await self.session.scalar(parent)
+            # Refresh only the locked attempt first. Propagating populate_existing
+            # through the entire graph expires unrelated immutable content that
+            # callers may already have loaded on this session.
+            locked = select(Attempt).where(Attempt.id == attempt_id).with_for_update()
+            if user_id is not None:
+                locked = locked.where(Attempt.user_id == user_id)
+            if await self.session.scalar(locked.execution_options(populate_existing=True)) is None:
+                return None
         statement = (
             select(Attempt)
             .where(Attempt.id == attempt_id)
@@ -49,7 +69,7 @@ class AttemptRepository:
                 selectinload(Attempt.highlights),
                 selectinload(Attempt.flags),
                 selectinload(Attempt.test_version).selectinload(TestVersion.test),
-                selectinload(Attempt.test_session).selectinload(TestSession.attempts),
+                selectinload(Attempt.test_session),
                 selectinload(Attempt.test_version)
                 .selectinload(TestVersion.modules)
                 .selectinload(TestModule.writing_tasks)
@@ -58,8 +78,6 @@ class AttemptRepository:
         )
         if user_id is not None:
             statement = statement.where(Attempt.user_id == user_id)
-        if for_update:
-            statement = statement.with_for_update()
         return await self.session.scalar(statement)
 
     async def list_history(self, user_id: uuid.UUID) -> list[Attempt]:

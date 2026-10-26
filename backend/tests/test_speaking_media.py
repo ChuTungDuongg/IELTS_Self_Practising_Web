@@ -1,14 +1,84 @@
+import asyncio
 from uuid import uuid4
 
 import pytest
 from sqlalchemy import select
-from test_speaking_attempts import concurrent_speaking, started  # noqa: F401
+from test_speaking_attempts import concurrent_speaking as concurrent_speaking
+from test_speaking_attempts import started
 
 from app.core.exceptions import AppError
 from app.models import User
 from app.services.attempts import AttemptService
 from app.services.speaking_media import SpeakingMediaService
 from app.storage.local import LocalAssetStorage
+
+
+@pytest.mark.parametrize("failure", [RuntimeError, asyncio.CancelledError])
+async def test_private_chunk_rollback_compensates_cancellation(
+    concurrent_speaking, tmp_path, monkeypatch, failure
+):
+    from app.models.speaking import SpeakingAudioChunk
+
+    factory, owner, aid, prompts = concurrent_speaking
+    actor = User(id=owner, role="ADMIN", is_active=True)
+    storage = LocalAssetStorage(tmp_path)
+    async with factory() as setup:
+        segment = await SpeakingMediaService(setup, actor, storage=storage).create_segment(
+            aid, prompts[0], 1, 0, "audio/webm"
+        )
+    async with factory() as session:
+        original_flush = session.flush
+
+        async def fail_chunk_flush(*args, **kwargs):
+            if any(isinstance(row, SpeakingAudioChunk) for row in session.new):
+                raise failure("injected chunk flush failure")
+            return await original_flush(*args, **kwargs)
+
+        monkeypatch.setattr(session, "flush", fail_chunk_flush)
+        with pytest.raises(failure):
+            await SpeakingMediaService(session, actor, storage=storage).upload_chunk(
+                aid, segment.id, 0, b"fictional-chunk"
+            )
+    assert not [path for path in tmp_path.rglob("*") if path.is_file()]
+
+
+async def test_private_chunk_lost_commit_acknowledgement_keeps_committed_media(
+    concurrent_speaking, tmp_path, monkeypatch
+):
+    from sqlalchemy import select
+
+    from app.models.speaking import SpeakingAudioChunk
+
+    factory, owner, aid, prompts = concurrent_speaking
+    actor = User(id=owner, role="ADMIN", is_active=True)
+    storage = LocalAssetStorage(tmp_path)
+    async with factory() as setup:
+        segment = await SpeakingMediaService(setup, actor, storage=storage).create_segment(
+            aid, prompts[0], 1, 0, "audio/webm"
+        )
+    async with factory() as session:
+        begin = session.begin
+
+        class LostAcknowledgement:
+            async def __aenter__(self):
+                self.transaction = begin()
+                return await self.transaction.__aenter__()
+
+            async def __aexit__(self, *args):
+                await self.transaction.__aexit__(*args)
+                raise RuntimeError("injected lost commit acknowledgement")
+
+        monkeypatch.setattr(session, "begin", LostAcknowledgement)
+        with pytest.raises(RuntimeError):
+            await SpeakingMediaService(session, actor, storage=storage).upload_chunk(
+                aid, segment.id, 0, b"fictional-chunk"
+            )
+    async with factory() as verify:
+        chunk = await verify.scalar(
+            select(SpeakingAudioChunk).where(SpeakingAudioChunk.segment_id == segment.id)
+        )
+        assert chunk is not None
+        assert storage.resolve(chunk.storage_key).read_bytes() == b"fictional-chunk"
 
 
 @pytest.fixture(autouse=True)

@@ -19,6 +19,36 @@ from app.services.tests import TestService as VersionService
 from app.storage import LocalAssetStorage
 
 
+async def test_clone_lost_commit_acknowledgement_preserves_committed_asset_files(
+    db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr("app.services.tests.get_settings", lambda: _settings(tmp_path))
+    test, source, _ = _source_with_all_asset_references(tmp_path)
+    async with db_session.begin():
+        db_session.add(test)
+        await db_session.flush()
+        test_id, source_id = test.id, source.id
+    begin = db_session.begin
+
+    class LostAcknowledgement:
+        async def __aenter__(self):
+            self.transaction = begin()
+            return await self.transaction.__aenter__()
+
+        async def __aexit__(self, *args):
+            await self.transaction.__aexit__(*args)
+            raise RuntimeError("injected lost clone commit acknowledgement")
+
+    monkeypatch.setattr(db_session, "begin", LostAcknowledgement)
+    with pytest.raises(RuntimeError):
+        await VersionService(db_session).create_version(
+            test_id, VersionCreate(source_version_id=source_id)
+        )
+    assets = list(await db_session.scalars(select(Asset)))
+    assert len(assets) == 6
+    assert all((tmp_path / asset.relative_path).is_file() for asset in assets)
+
+
 @pytest.mark.integration
 async def test_speaking_version_clone_remaps_authored_ids(db_session):
     from app.models import SpeakingPart, SpeakingPrompt

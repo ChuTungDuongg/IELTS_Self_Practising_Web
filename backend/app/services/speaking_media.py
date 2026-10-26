@@ -26,6 +26,7 @@ from app.schemas.speaking import (
     SpeakingSegmentData,
 )
 from app.services.access_policy import AccessPolicy
+from app.services.asset_cleanup import compensate_files
 from app.services.attempt_scope import AttemptScopeGuard
 from app.services.grading_policy import GradingPolicy, assignment_origin, require_review_unlocked
 from app.services.speaking_attempts import SpeakingAttemptService
@@ -283,9 +284,9 @@ class SpeakingMediaService:
                 result = SpeakingChunkData.model_validate(chunk)
                 attempt.last_active_at = TimerService.now()
             return result
-        except Exception:
+        except BaseException:
             if stored is not None:
-                self.storage.delete(stored.relative_path)
+                await compensate_files(self.session, self.storage, [stored.relative_path])
             raise
 
     async def close_segment(self, aid, segment_id, chunk_count):

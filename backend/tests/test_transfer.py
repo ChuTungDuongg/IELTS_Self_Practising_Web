@@ -1,3 +1,4 @@
+import asyncio
 import json
 import tempfile
 import zipfile
@@ -23,6 +24,62 @@ from app.schemas.transfer import PortableWritingTask, TransferExportRequest
 from app.services.reading import ReadingService
 from app.services.tests import TestService as LifecycleService
 from app.services.transfer import TransferService
+
+
+@pytest.mark.parametrize("failure", [RuntimeError, asyncio.CancelledError])
+async def test_import_file_compensation_on_flush_failure(
+    db_session, tmp_path, monkeypatch, failure
+):
+    settings = _settings(tmp_path / "storage")
+    test, _, _ = await _portable_fixture(db_session, settings.resolved_storage_root)
+    service = TransferService(db_session, settings)
+    archive = tmp_path / "bundle.zip"
+    await service.export([test.id], archive)
+    await db_session.rollback()
+    (tmp_path / "staging").mkdir()
+    package = service.validate_archive(archive, tmp_path / "staging")
+    existing = {p for p in settings.resolved_storage_root.rglob("*") if p.is_file()}
+    original = db_session.flush
+
+    async def fail_assets(*args, **kwargs):
+        if any(isinstance(row, Asset) for row in db_session.new):
+            raise failure("injected import flush failure")
+        return await original(*args, **kwargs)
+
+    monkeypatch.setattr(db_session, "flush", fail_assets)
+    with pytest.raises(failure):
+        await service.import_package(package)
+    assert {p for p in settings.resolved_storage_root.rglob("*") if p.is_file()} == existing
+
+
+async def test_import_lost_commit_acknowledgement_keeps_committed_assets(
+    db_session, tmp_path, monkeypatch
+):
+    settings = _settings(tmp_path / "storage")
+    test, _, _ = await _portable_fixture(db_session, settings.resolved_storage_root)
+    service = TransferService(db_session, settings)
+    archive = tmp_path / "bundle.zip"
+    await service.export([test.id], archive)
+    await db_session.rollback()
+    (tmp_path / "staging").mkdir()
+    package = service.validate_archive(archive, tmp_path / "staging")
+    begin = db_session.begin
+
+    class LostAcknowledgement:
+        async def __aenter__(self):
+            self.transaction = begin()
+            return await self.transaction.__aenter__()
+
+        async def __aexit__(self, *args):
+            await self.transaction.__aexit__(*args)
+            raise RuntimeError("injected lost import commit acknowledgement")
+
+    monkeypatch.setattr(db_session, "begin", LostAcknowledgement)
+    with pytest.raises(RuntimeError):
+        await service.import_package(package)
+    assets = list(await db_session.scalars(select(Asset)))
+    assert len(assets) == 6
+    assert all((settings.resolved_storage_root / asset.relative_path).is_file() for asset in assets)
 
 
 @pytest.mark.integration

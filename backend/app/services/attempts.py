@@ -387,10 +387,12 @@ class AttemptService:
                 else None
             )
             answer = await self.session.scalar(
-                select(AttemptAnswer).where(
+                select(AttemptAnswer)
+                .where(
                     AttemptAnswer.attempt_id == attempt.id,
                     AttemptAnswer.question_id == question.id,
                 )
+                .execution_options(populate_existing=True)
             )
             if answer is not None and answer.value == validated_value:
                 return AnswerResponse(
@@ -475,10 +477,12 @@ class AttemptService:
             AttemptScopeGuard(attempt).require_unit("WRITING_TASK", task.id)
             word_count = count_words(content)
             response_row = await self.session.scalar(
-                select(AttemptWritingResponse).where(
+                select(AttemptWritingResponse)
+                .where(
                     AttemptWritingResponse.attempt_id == attempt.id,
                     AttemptWritingResponse.writing_task_id == task.id,
                 )
+                .execution_options(populate_existing=True)
             )
             if response_row is not None and response_row.content == content:
                 return WritingResponse(
@@ -1746,7 +1750,9 @@ class AttemptService:
         answers = {
             answer.question_id: answer
             for answer in await self.session.scalars(
-                select(AttemptAnswer).where(AttemptAnswer.attempt_id == attempt.id)
+                select(AttemptAnswer)
+                .where(AttemptAnswer.attempt_id == attempt.id)
+                .execution_options(populate_existing=True)
             )
         }
         attempt.max_score = sum(

@@ -1,6 +1,7 @@
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
+from typing import BinaryIO
 from uuid import UUID, uuid4
 
 from app.core.exceptions import AppError
@@ -64,10 +65,52 @@ class LocalAssetStorage:
             size=size,
             max_bytes=max_bytes,
         )
+        created = False
         try:
             with source.open("rb") as input_file, destination.open("xb") as output_file:
+                created = True
                 shutil.copyfileobj(input_file, output_file, length=1024 * 1024)
-        except Exception:
+        except BaseException:
+            if created:
+                destination.unlink(missing_ok=True)
+            raise
+        return StoredAsset(relative_path=relative_path, size=size)
+
+    def store_stream(
+        self,
+        *,
+        category: str,
+        mime_type: str,
+        original_name: str,
+        source: BinaryIO,
+        max_bytes: int,
+    ) -> StoredAsset:
+        destination, relative_path = self._destination(
+            category=category,
+            mime_type=mime_type,
+            original_name=original_name,
+            size=1,
+            max_bytes=max_bytes,
+        )
+        # Open outside cleanup: a name collision must never unlink another file.
+        output = destination.open("xb")
+        size = 0
+        try:
+            with output:
+                while chunk := source.read(min(1024 * 1024, max_bytes - size + 1)):
+                    size += len(chunk)
+                    if size > max_bytes:
+                        raise AppError(
+                            "ASSET_UPLOAD_INVALID",
+                            "The uploaded file type or size is invalid.",
+                            422,
+                        )
+                    output.write(chunk)
+                if not size:
+                    raise AppError(
+                        "ASSET_UPLOAD_INVALID", "The uploaded file type or size is invalid.", 422
+                    )
+        except BaseException:
             destination.unlink(missing_ok=True)
             raise
         return StoredAsset(relative_path=relative_path, size=size)

@@ -40,6 +40,7 @@ from app.schemas.common import ValidationIssue, ValidationResult
 from app.schemas.content import TextBlock
 from app.schemas.tests import TestCreate, TestDeleteResult, TestSummary, TestUpdate, VersionCreate
 from app.services.access_policy import AccessPolicy
+from app.services.asset_cleanup import compensate_files
 from app.storage import LocalAssetStorage
 
 
@@ -649,7 +650,11 @@ class TestService:
                     await self.session.flush()
                     version_id = version.id
         except BaseException:
-            self._delete_files(created_paths)
+            await compensate_files(
+                self.session,
+                LocalAssetStorage(get_settings().resolved_storage_root),
+                created_paths,
+            )
             raise
         return await self.get_version(version_id)
 
