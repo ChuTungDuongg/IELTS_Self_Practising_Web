@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import {
-  apiBase, captureBrowserErrors, cleanUpFixture, createPublishedExam,
+  apiBase, assertPresentationPreviews, captureBrowserErrors, cleanUpFixture, createPublishedExam,
   registerFixtureLearner, signInFixtureAdmin,
 } from "./exam-fixtures";
 
@@ -19,6 +19,7 @@ test("takes and reviews a fictional Listening practice attempt", async ({ page, 
     await page.getByRole("article").filter({ has: page.getByRole("button", { name: "Start Listening" }) }).getByLabel("Practice timer").selectOption("unlimited");
     await page.getByRole("button", { name: "Start Listening" }).click();
     await expect(page.getByRole("radio", { name: "Practice", exact: true })).toBeChecked();
+    await assertPresentationPreviews(page, "LISTENING");
     await page.getByRole("button", { name: "Continue with this interface" }).click();
     await expect(page).toHaveURL(/\/attempt\/[0-9a-f-]+$/);
     const attemptId = page.url().split("/").at(-1)!;

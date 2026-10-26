@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { captureBrowserErrors, cleanUpFixture, createPublishedExam, registerFixtureLearner, signInFixtureAdmin } from "./exam-fixtures";
+import { assertPresentationPreviews, captureBrowserErrors, cleanUpFixture, createPublishedExam, registerFixtureLearner, signInFixtureAdmin } from "./exam-fixtures";
 
 test("Reading Practice keeps answers through resizing, highlighting, refresh and mobile panels", async ({ page, request }) => {
   test.skip(!process.env.E2E_ADMIN_EMAIL || !process.env.E2E_ADMIN_PASSWORD,
@@ -15,6 +15,7 @@ test("Reading Practice keeps answers through resizing, highlighting, refresh and
     await page.getByRole("button", { name: "Start Reading", exact: true }).click();
     await expect(page.getByRole("dialog", { name: "Choose your interface" })).toBeVisible();
     await expect(page.getByRole("radio", { name: "Practice", exact: true })).toBeChecked();
+    await assertPresentationPreviews(page, "READING");
     await page.getByRole("button", { name: "Continue with this interface" }).click();
     await expect(page).toHaveURL(/\/attempt\/[0-9a-f-]+$/);
     const attemptUrl = page.url();

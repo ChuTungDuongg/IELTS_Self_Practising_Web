@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import type { SpeakingReviewData, SpeakingState } from "../../src/lib/api/speaking";
 import {
-  apiBase, captureBrowserErrors, cleanUpFixture, createPublishedExam,
+  apiBase, assertPresentationPreviews, captureBrowserErrors, cleanUpFixture, createPublishedExam,
   registerFixtureLearner, signInFixtureAdmin,
 } from "./exam-fixtures";
 
@@ -25,6 +25,7 @@ test("completes fictional Full Mock in Listening, Reading, Writing, Speaking ord
     await page.getByRole("button", { name: "Start Full Mock" }).click();
     await expect(page.getByRole("dialog", { name: "Choose your interface" })).toBeVisible();
     await expect(page.getByRole("radio", { name: "Practice" })).toBeChecked();
+    await assertPresentationPreviews(page, "LISTENING");
     await expect(page).toHaveURL(`/library/${exam.versionId}`);
     await page.getByRole("button", { name: "Continue with this interface" }).click();
     await expect(page).toHaveURL(/\/attempt\/[0-9a-f-]+$/);

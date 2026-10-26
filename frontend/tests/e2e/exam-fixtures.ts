@@ -193,6 +193,20 @@ export async function cleanUpFixture(request: APIRequestContext, exam: Published
   }
 }
 
+export async function assertPresentationPreviews(page: Page, module: "READING" | "LISTENING") {
+  const dialog = page.getByRole("dialog", { name: "Choose your interface" });
+  await expect(dialog.locator("iframe")).toHaveCount(2);
+  for (const [index, mode] of ["PRACTICE", "EXAM"].entries()) {
+    const preview = dialog.frameLocator("iframe").nth(index);
+    await expect(preview.locator(".exam-runner")).toHaveAttribute("data-presentation", mode);
+    await expect(preview.locator(".exam-runner")).toHaveAttribute("data-preview-module", module);
+    await expect(preview.locator("body")).toHaveAttribute("inert", "");
+    await expect(preview.locator(".exam-question-target")).toHaveCount(module === "READING" ? 6 : 4);
+    await expect(preview.locator("audio, script")).toHaveCount(0);
+    await expect.poll(() => preview.locator("html").evaluate(element => element.clientWidth)).toBe(1440);
+  }
+}
+
 export function captureBrowserErrors(page: Page): () => void {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(`pageerror: ${error.message}`));

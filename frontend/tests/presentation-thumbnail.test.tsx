@@ -9,12 +9,15 @@ it.each(["READING", "LISTENING"] as const)("renders detailed %s previews using r
   frames.forEach((frame, index) => {
     fireEvent.load(frame);
     const body = frame.contentDocument!.body;
-    expect(frame).toHaveAttribute("sandbox", "allow-same-origin");
+    // Parent-owned React portals need event callbacks; inert handles preview interaction.
+    expect(frame).not.toHaveAttribute("sandbox");
+    expect(frame).toHaveAttribute("tabindex", "-1");
+    expect(frame.parentElement).toHaveAttribute("inert");
     expect(body).toHaveAttribute("inert");
     expect(within(body).getByText("BandPilot")).toBeInTheDocument();
     expect(body.querySelector(".exam-runner")).toHaveAttribute("data-presentation", index === 0 ? "PRACTICE" : "EXAM");
     expect(body).toHaveTextContent("Fictional chosen test");
-    expect(body.querySelectorAll(".exam-question-target").length).toBeGreaterThanOrEqual(4);
+    expect(body.querySelectorAll(".exam-question-target")).toHaveLength(module === "READING" ? 6 : 4);
     if (module === "READING") {
       expect(body.querySelectorAll('input[type="radio"]').length).toBe(6);
       expect(body.querySelectorAll(".reading-passage-paragraph").length).toBeGreaterThanOrEqual(3);

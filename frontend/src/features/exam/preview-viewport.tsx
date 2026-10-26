@@ -8,7 +8,9 @@ const desktopWidth = 1440;
 const desktopHeight = 900;
 const emptyDocument = '<!doctype html><html><head></head><body inert></body></html>';
 
-/** A real desktop viewport prevents the page's media queries and selectors distorting a thumbnail. */
+/** Desktop viewport for trusted React children only, never external HTML or a navigation target.
+ * A script-blocking sandbox also blocks React's delegated event callbacks; inert keeps it passive.
+ */
 export function PreviewViewport({ children, title }: { children: ReactNode; title: string }) {
   const container = useRef<HTMLDivElement>(null);
   const [target, setTarget] = useState<Document | null>(null);
@@ -43,7 +45,7 @@ export function PreviewViewport({ children, title }: { children: ReactNode; titl
     return () => { theme.disconnect(); stylesObserver.disconnect(); };
   }, [target]);
   return <div ref={container} className={styles.thumbnail} aria-hidden="true" inert>
-    <iframe title={title} srcDoc={emptyDocument} sandbox="allow-same-origin" tabIndex={-1} className={styles.previewFrame}
+    <iframe title={title} srcDoc={emptyDocument} tabIndex={-1} className={styles.previewFrame}
       style={{ width: desktopWidth, height: desktopHeight, transform: `scale(${scale})` }}
       onLoad={event => { const doc = event.currentTarget.contentDocument; if (doc?.body) { doc.body.setAttribute("inert", ""); setTarget(doc); } }} />
     {target ? createPortal(children, target.body) : null}
