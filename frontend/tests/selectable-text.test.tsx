@@ -22,6 +22,31 @@ function storedHighlight(targetId: string): Highlight {
 }
 
 describe("selectable text", () => {
+  it.each(["QUESTION_PROMPT", "PASSAGE_BLOCK"] as const)("opens on the first late browser selection update for %s", async target_kind => {
+    window.getSelection()?.removeAllRanges();
+    const onCreate = vi.fn().mockResolvedValue(undefined);
+    const target = { target_kind, target_id: crypto.randomUUID(), ...(target_kind === "PASSAGE_BLOCK" ? { segment_id: crypto.randomUUID() } : {}) };
+    render(<SelectableText text="Tourism supports jobs" target={target} controller={{ highlights: [], onCreate }} />);
+    const text = screen.getByText("Tourism supports jobs");
+    // Some browsers finalize the range after mouseup/touchend has already fired.
+    fireEvent.mouseUp(text);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    selectText(text.firstChild!, 0, 7);
+    fireEvent(document, new Event("selectionchange"));
+    const button = await screen.findByRole("button", { name: "Highlight" });
+    expect(onCreate).not.toHaveBeenCalled();
+    fireEvent.click(button);
+    expect(onCreate).toHaveBeenCalledExactlyOnceWith({ ...target, start_offset: 0, end_offset: 7, selected_text: "Tourism" });
+  });
+
+  it("handles releasing the pointer outside the text without a second selection", async () => {
+    render(<SelectableText text="Tourism supports jobs" target={{ target_kind: "QUESTION_PROMPT", target_id: "question" }} controller={{ highlights: [], onCreate: vi.fn() }} />);
+    const text = screen.getByText("Tourism supports jobs");
+    selectText(text.firstChild!, 0, 7);
+    fireEvent.pointerUp(document.body);
+    expect(await screen.findByRole("dialog", { name: "Create highlight" })).toHaveTextContent("Tourism");
+  });
+
   it("does not persist on selection and creates exactly once after confirmation", async () => {
     const onCreate = vi.fn().mockResolvedValue(undefined);
     render(<SelectableText text="Tourism supports jobs" target={{ target_kind: "QUESTION_PROMPT", target_id: crypto.randomUUID() }} controller={{ highlights: [], onCreate }} />);

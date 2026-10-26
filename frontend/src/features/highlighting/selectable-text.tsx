@@ -2,7 +2,7 @@
 
 import { useTranslation } from "@/lib/i18n/locale-provider";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { snapToWordBoundaries } from "./word-boundaries";
 import type { Highlight, HighlightCreate, HighlightTarget } from "@/lib/api/exam";
@@ -35,6 +35,8 @@ export function SelectableText({ text, target, controller, className }: {
   const createPopover = useRef<HTMLDivElement>(null);
   const removePopover = useRef<HTMLDivElement>(null);
   const instanceId = useRef(crypto.randomUUID());
+  const selectionFrame = useRef<number | null>(null);
+  const dismissedRange = useRef<Range | null>(null);
   const [pending, setPending] = useState<PendingSelection | null>(null);
   const [activeHighlight, setActiveHighlight] = useState<(Highlight & { x: number; y: number }) | null>(null);
   const [working, setWorking] = useState(false);
@@ -45,48 +47,11 @@ export function SelectableText({ text, target, controller, className }: {
       && (item.segment_id ?? null) === (target.segment_id ?? null))
     .sort((a, b) => a.start_offset - b.start_offset);
 
-  useEffect(() => {
-    if (!pending && !activeHighlight) return;
-    const dismiss = (event: PointerEvent) => {
-      const node = event.target as Node;
-      if (!createPopover.current?.contains(node) && !removePopover.current?.contains(node)) {
-        setPending(null);
-        setActiveHighlight(null);
-        setError("");
-      }
-    };
-    const escape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setPending(null);
-        setActiveHighlight(null);
-        setError("");
-      }
-    };
-    const closePeer = (event: Event) => {
-      if ((event as CustomEvent<string>).detail !== instanceId.current) {
-        setPending(null);
-        setActiveHighlight(null);
-        setError("");
-      }
-    };
-    const closeOnScroll = (event: Event) => {
-      if (event.target instanceof Node && (createPopover.current?.contains(event.target) || removePopover.current?.contains(event.target))) return;
-      setPending(null);
-      setActiveHighlight(null);
-    };
-    document.addEventListener("scroll", closeOnScroll, true);
-    window.addEventListener("resize", closeOnScroll);
-    document.addEventListener("pointerdown", dismiss);
-    document.addEventListener("keydown", escape);
-    document.addEventListener(POPOVER_EVENT, closePeer);
-    return () => {
-      document.removeEventListener("scroll", closeOnScroll, true);
-      window.removeEventListener("resize", closeOnScroll);
-      document.removeEventListener("pointerdown", dismiss);
-      document.removeEventListener("keydown", escape);
-      document.removeEventListener(POPOVER_EVENT, closePeer);
-    };
-  }, [activeHighlight, pending]);
+  function dismissSelection() {
+    const selection = window.getSelection();
+    dismissedRange.current = selection?.rangeCount ? selection.getRangeAt(0).cloneRange() : null;
+    if (selectionFrame.current !== null) cancelAnimationFrame(selectionFrame.current);
+  }
 
   function announcePopover() {
     document.dispatchEvent(new CustomEvent(POPOVER_EVENT, { detail: instanceId.current }));
@@ -100,6 +65,7 @@ export function SelectableText({ text, target, controller, className }: {
       return;
     }
     const range = selection.getRangeAt(0);
+    dismissedRange.current = null;
     if (!root.current.contains(range.startContainer) || !root.current.contains(range.endContainer)) {
       setPending(null);
       return;
@@ -131,6 +97,85 @@ export function SelectableText({ text, target, controller, className }: {
       y: rect.top - 8,
     });
   }
+
+  const inspectSelection = useEffectEvent(() => {
+    const selection = window.getSelection();
+    if (!selection?.rangeCount || selection.isCollapsed) return;
+    const range = selection.getRangeAt(0);
+    const dismissed = dismissedRange.current;
+    if (!root.current?.contains(range.startContainer) || !root.current.contains(range.endContainer)) return;
+    if (dismissed && range.startContainer === dismissed.startContainer && range.startOffset === dismissed.startOffset
+      && range.endContainer === dismissed.endContainer && range.endOffset === dismissed.endOffset) return;
+    select();
+  });
+  const editable = Boolean(controller?.onCreate && !controller.readOnly);
+  useEffect(() => {
+    if (!editable) return;
+    const schedule = (event: Event) => {
+      if (event.target instanceof Node && (createPopover.current?.contains(event.target) || removePopover.current?.contains(event.target))) return;
+      const selection = window.getSelection();
+      if (!selection?.rangeCount || selection.isCollapsed) return;
+      const range = selection.getRangeAt(0);
+      if (!root.current?.contains(range.startContainer) || !root.current.contains(range.endContainer)) return;
+      if (selectionFrame.current !== null) cancelAnimationFrame(selectionFrame.current);
+      // Native selection can settle after mouseup/touchend, or end outside this span.
+      selectionFrame.current = requestAnimationFrame(() => inspectSelection());
+    };
+    document.addEventListener("selectionchange", schedule);
+    document.addEventListener("pointerup", schedule);
+    return () => {
+      document.removeEventListener("selectionchange", schedule);
+      document.removeEventListener("pointerup", schedule);
+      if (selectionFrame.current !== null) cancelAnimationFrame(selectionFrame.current);
+    };
+  }, [editable]);
+
+  useEffect(() => {
+    if (!pending && !activeHighlight) return;
+    const dismiss = (event: PointerEvent) => {
+      const node = event.target as Node;
+      if (!createPopover.current?.contains(node) && !removePopover.current?.contains(node)) {
+        dismissSelection();
+        setPending(null);
+        setActiveHighlight(null);
+        setError("");
+      }
+    };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        dismissSelection();
+        setPending(null);
+        setActiveHighlight(null);
+        setError("");
+      }
+    };
+    const closePeer = (event: Event) => {
+      if ((event as CustomEvent<string>).detail !== instanceId.current) {
+        dismissSelection();
+        setPending(null);
+        setActiveHighlight(null);
+        setError("");
+      }
+    };
+    const closeOnScroll = (event: Event) => {
+      if (event.target instanceof Node && (createPopover.current?.contains(event.target) || removePopover.current?.contains(event.target))) return;
+      dismissSelection();
+      setPending(null);
+      setActiveHighlight(null);
+    };
+    document.addEventListener("scroll", closeOnScroll, true);
+    window.addEventListener("resize", closeOnScroll);
+    document.addEventListener("pointerdown", dismiss);
+    document.addEventListener("keydown", escape);
+    document.addEventListener(POPOVER_EVENT, closePeer);
+    return () => {
+      document.removeEventListener("scroll", closeOnScroll, true);
+      window.removeEventListener("resize", closeOnScroll);
+      document.removeEventListener("pointerdown", dismiss);
+      document.removeEventListener("keydown", escape);
+      document.removeEventListener(POPOVER_EVENT, closePeer);
+    };
+  }, [activeHighlight, pending]);
 
   function openHighlight(item: Highlight, element: HTMLElement) {
     if (controller?.readOnly || !controller?.onDelete) return;
