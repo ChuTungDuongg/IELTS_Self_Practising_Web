@@ -6,6 +6,8 @@ import { useTranslation } from "@/lib/i18n/locale-provider";
 import { useRouter } from "next/navigation";
 import { startAttempt } from "@/lib/api/attempts";
 import { ApiError } from "@/lib/api/client";
+import { rememberAttemptPresentation, type AttemptPresentationMode } from "@/features/exam/attempt-presentation";
+import { PresentationChoice } from "@/features/exam/presentation-choice";
 
 type FocusedTarget = { module: "READING"; unitId: string; taskNumber?: never }
   | { module: "LISTENING"; unitId: string; taskNumber?: never }
@@ -17,6 +19,7 @@ export function StartFocusedPractice({ versionId, target, unavailableReason }: {
   const { t } = useTranslation();
   const [duration, setDuration] = useState(target.module === "LISTENING" ? "600" : target.module === "WRITING" && target.taskNumber === 2 ? "2400" : "1200");
   const [pending, setPending] = useState(false);
+  const [presentation, setPresentation] = useState<AttemptPresentationMode>("PRACTICE");
   const [flow, setFlow] = useState<"GUIDED" | "FREE">("GUIDED");
   const [error, setError] = useState<string | { message: TranslationKey } | null>(null);
   const starting = useRef(false);
@@ -37,6 +40,7 @@ export function StartFocusedPractice({ versionId, target, unavailableReason }: {
         focused_unit: { kind: target.module === "READING" ? "READING_PASSAGE" : target.module === "LISTENING" ? "LISTENING_PART" : "WRITING_TASK", id: target.unitId },
         timer: duration === "count-up" ? { mode: "COUNT_UP" } : { mode: "COUNTDOWN", duration_seconds: Number(duration) },
       });
+      if (target.module === "READING" || target.module === "LISTENING") rememberAttemptPresentation(result, presentation);
       router.push(`/attempt/${result.attempt_id}`);
     } catch (caught) {
       setError(caught instanceof ApiError ? caught.message : { message: "practice.startFailed" });
@@ -46,6 +50,7 @@ export function StartFocusedPractice({ versionId, target, unavailableReason }: {
   }
 
   return <div className="practice-start mt-5 border-t border-[var(--line)] pt-4">
+    {target.module === "READING" || target.module === "LISTENING" ? <PresentationChoice value={presentation} onChange={setPresentation} disabled={pending || Boolean(unavailableReason)} /> : null}
     {target.module === "SPEAKING" ? target.partNumber === 2 ? <p>{t("speakingPractice.guided")}</p> : <label className="field-label">{t("speakingPractice.flow")}<select className="select-field mt-2" value={flow} disabled={pending || Boolean(unavailableReason)} onChange={event => setFlow(event.target.value as "GUIDED" | "FREE")}><option value="GUIDED">{t("speakingPractice.guided")}</option><option value="FREE">{t("speakingPractice.free")}</option></select></label> : <label className="field-label">{t("practice.timer")}
       <select className="select-field mt-2" value={duration} disabled={pending || Boolean(unavailableReason)} onChange={(event) => setDuration(event.target.value)}>
         {minutes.map((minute) => <option key={minute} value={minute * 60}>{t("common.minutes", { count: minute })}</option>)}

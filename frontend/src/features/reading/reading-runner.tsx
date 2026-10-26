@@ -10,6 +10,7 @@ import { RevisionAutosaveQueue } from "@/features/exam/revision-autosave";
 import { useExamDraftAutosave } from "@/features/exam/use-exam-draft-autosave";
 import { DraftRecoveryNotices } from "@/features/exam/draft-recovery-notices";
 import { useExamSubmit } from "@/features/exam/use-exam-submit";
+import { useAttemptPresentation } from "@/features/exam/attempt-presentation";
 import { focusedUnitLabel } from "@/features/exam/focused-attempt";
 import { revealQuestionChip, scrollQuestionIntoPane } from "@/features/exam/question-navigation";
 import { questionRegistry } from "@/features/questions/registry";
@@ -24,6 +25,7 @@ import { createHighlight, deleteAllHighlights, deleteHighlight, getExam, saveFla
 export function ReadingRunner({ initial }: { initial: ExamPayload }) {
   const { t } = useTranslation();
   const attemptId = initial.attempt.attempt_id;
+  const presentation = useAttemptPresentation(initial.attempt);
   const passages = useMemo(() => [...initial.passages].sort((left, right) => left.order_index - right.order_index), [initial.passages]);
   const questions = useMemo(() => passages.flatMap((passage, passageIndex) => [...passage.question_groups]
     .sort((left, right) => left.order_index - right.order_index)
@@ -189,7 +191,7 @@ export function ReadingRunner({ initial }: { initial: ExamPayload }) {
   async function removeHighlight(id: string) { if (stopped.current) return; try { await runMutation(() => deleteHighlight(attemptId, id)); setHighlights((current) => current.filter((item) => item.id !== id)); } catch (error) { if (!(error instanceof AttemptStoppedError)) setHighlightError("runner.highlightDeleteError"); } }
   const highlighting: HighlightController = { highlights, onCreate: addHighlight, onDelete: removeHighlight };
 
-  return <div className="exam-runner reading-exam" data-reading-pane={readingPane}>
+  return <div className="exam-runner reading-exam" data-reading-pane={readingPane} data-presentation={presentation}>
     <header className="exam-header"><div><p>{initial.attempt.scope === "FOCUSED_UNIT" ? t("runner.readingFocused") : t("runner.reading")}</p><h1>{initial.test_title}</h1>{focusedUnitLabel(initial.attempt, t) ? <p>{focusedUnitLabel(initial.attempt, t)}</p> : null}</div><div className="exam-header-tools"><PauseAttemptControl attemptId={attemptId} beforePause={flush} /><div className="exam-highlight-toolbar" aria-label={t("runner.highlightManagement")}><span>{t(highlights.length === 1 ? "runner.highlightCount" : "runner.highlightsCount", { count: highlights.length })}</span>{highlights.length ? <button type="button" onClick={() => { setHighlightError(""); setConfirmDeleteAll(true); }}>{t("runner.deleteAll")}</button> : null}</div><div className="exam-header-status"><span aria-label={t(initial.attempt.timer_mode === "COUNTDOWN" ? "runner.timeRemaining" : "runner.timeElapsed")} className={`exam-timer ${initial.attempt.timer_mode === "COUNTDOWN" && seconds < 300 ? "exam-timer-warning" : ""}`}>{initial.attempt.timer_mode === "COUNT_UP" ? t("runner.timeUsed") : ""}{formatDuration(seconds)}</span><span className={`exam-save-state exam-save-${saveState}`}>{saveState === "saving" ? t("common.saving") : saveState === "conflict" ? t("runner.conflict") : saveState === "error" ? t("runner.saveFailed") : saveState === "dirty" ? t("runner.unsaved") : t("common.saved")}</span>{saveState === "error" ? <button type="button" onClick={() => void flush().catch(() => undefined)}>{t("runner.retry")}</button> : null}{saveState === "conflict" ? <button type="button" onClick={() => window.location.reload()}>{t("runner.reload")}</button> : null}</div></div></header>
     {submitError ? <p role="alert" className="notice notice-error">{submitError}</p> : null}
     <DraftRecoveryNotices offline={offline} conflicts={conflicts} labelFor={(id) => t("runner.questionLower", { number: questions.find((question) => question.id === id)?.number ?? id })} onResolve={resolveConflict} />

@@ -1,4 +1,9 @@
 export const en = {
+  "presentation.label": "Interface",
+  "presentation.practice": "Practice",
+  "presentation.exam": "Exam",
+  "presentation.practiceDescription": "A comfortable layout for focused learning.",
+  "presentation.examDescription": "Use the existing exam interface.",
   "gravity.guestTitle": "Make this space yours.",
   "gravity.guestDescription": "Sign in to see your available tests, saved attempts and personal goals.",
   "gravity.authTitle": "Make room for progress.",

@@ -1,6 +1,11 @@
 import type { TranslationDictionary } from "./types";
 
 export const vi = {
+  "presentation.label": "Giao diện",
+  "presentation.practice": "Luyện tập",
+  "presentation.exam": "Thi thật",
+  "presentation.practiceDescription": "Bố cục thoải mái để tập trung luyện tập.",
+  "presentation.examDescription": "Sử dụng giao diện thi hiện tại.",
   "gravity.guestTitle": "Góc học tập dành riêng cho bạn.",
   "gravity.guestDescription": "Đăng nhập để xem đề thi hiện có, lượt làm đã lưu và mục tiêu cá nhân.",
   "gravity.authTitle": "Dành chỗ cho tiến bộ.",

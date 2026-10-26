@@ -11,6 +11,7 @@ import { RevisionAutosaveQueue } from "@/features/exam/revision-autosave";
 import { useExamDraftAutosave } from "@/features/exam/use-exam-draft-autosave";
 import { DraftRecoveryNotices } from "@/features/exam/draft-recovery-notices";
 import { useExamSubmit } from "@/features/exam/use-exam-submit";
+import { useAttemptPresentation } from "@/features/exam/attempt-presentation";
 import { scrollQuestionIntoPane } from "@/features/exam/question-navigation";
 import { elapsedFromSnapshot, estimateServerOffset, formatDuration, remainingSeconds } from "@/features/exam/timer";
 import type { HighlightController } from "@/features/highlighting/selectable-text";
@@ -28,6 +29,7 @@ import { ListeningAudioPlayer } from "./audio-player";
 export function ListeningRunner({ initial }: { initial: ExamPayload }) {
   const { t } = useTranslation();
   const attemptId = initial.attempt.attempt_id;
+  const presentation = useAttemptPresentation(initial.attempt);
   const focused = initial.attempt.scope === "FOCUSED_UNIT";
   const parts = useMemo(
     () => [...initial.listening_parts].sort((left, right) => left.order_index - right.order_index),
@@ -275,7 +277,7 @@ export function ListeningRunner({ initial }: { initial: ExamPayload }) {
 
   const highlighting: HighlightController = { highlights, onCreate: addHighlight, onDelete: removeHighlight };
 
-  return <div className="exam-runner listening-exam listening-attempt">
+  return <div className="exam-runner listening-exam listening-attempt" data-presentation={presentation}>
     <header className="exam-header"><div><p>{focused ? t("runner.listeningFocused") : t("runner.listeningSectionUpper", { number: part.order_index + 1 })}</p><h1>{initial.test_title}</h1>{focusedUnitLabel(initial.attempt, t) ? <p>{focusedUnitLabel(initial.attempt, t)}</p> : null}</div><div className="exam-header-tools"><PauseAttemptControl attemptId={attemptId} beforePause={flush} /><div className="exam-highlight-toolbar" aria-label={t("runner.highlightManagement")}><span>{t(highlights.length === 1 ? "runner.highlightCount" : "runner.highlightsCount", { count: highlights.length })}</span>{highlights.length ? <button type="button" onClick={() => { setHighlightError(""); setConfirmDeleteAll(true); }}>{t("runner.deleteAll")}</button> : null}</div><div className="exam-header-status"><span aria-label={t(initial.attempt.timer_mode === "COUNTDOWN" ? "runner.timeRemaining" : "runner.timeElapsed")} className={`exam-timer ${initial.attempt.timer_mode === "COUNTDOWN" && seconds < 300 ? "exam-timer-warning" : ""}`}>{formatDuration(seconds)}</span><span className={`exam-save-state exam-save-${saveState}`}>{saveState === "saving" ? t("common.saving") : saveState === "conflict" ? t("runner.conflict") : saveState === "error" ? t("runner.saveFailed") : saveState === "dirty" ? t("runner.unsaved") : t("common.saved")}</span>{saveState === "error" ? <button type="button" onClick={() => void flush().catch(() => undefined)}>{t("runner.retry")}</button> : null}{saveState === "conflict" ? <button type="button" onClick={() => window.location.reload()}>{t("runner.reload")}</button> : null}</div></div></header>
     {submitError ? <p role="alert" className="notice notice-error">{submitError}</p> : null}
     <DraftRecoveryNotices offline={offline} conflicts={conflicts} labelFor={(id) => t("runner.questionLower", { number: questions.find((question) => question.id === id)?.number ?? id })} onResolve={resolveConflict} />
