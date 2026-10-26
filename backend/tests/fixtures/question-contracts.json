@@ -1,0 +1,1111 @@
+[
+  {
+    "group": {
+      "id": "f9358dff-7f27-55b2-8e33-978c351e3c68",
+      "question_type": "multiple_choice",
+      "instruction": "Use the fictional source.",
+      "config": {},
+      "order_index": 0,
+      "questions": [
+        {
+          "id": "bd27db2f-ef99-5654-8624-e8e89dd95607",
+          "number": 11,
+          "prompt": "Fictional prompt {{gap}}",
+          "config": {
+            "options": [
+              {
+                "id": "14f29758-f6ce-587d-a624-0c820c9215e3",
+                "label": "A",
+                "text": "Fictional option 1"
+              },
+              {
+                "id": "fae0f36c-bc5d-5db8-9d02-66fbc1e3357d",
+                "label": "B",
+                "text": "Fictional option 2"
+              },
+              {
+                "id": "16fdcdbf-1469-53c0-b2df-80eacee60694",
+                "label": "C",
+                "text": "Fictional option 3"
+              }
+            ]
+          },
+          "answer_key": {
+            "kind": "SINGLE_OPTION",
+            "value": "14f29758-f6ce-587d-a624-0c820c9215e3"
+          },
+          "order_index": 0
+        }
+      ]
+    },
+    "passageBlocks": [
+      {
+        "id": "a2ae523f-5501-5d16-9eea-5cf4509b527c",
+        "type": "paragraph",
+        "label": "A",
+        "text": "A fictional paragraph."
+      }
+    ],
+    "response": "14f29758-f6ce-587d-a624-0c820c9215e3",
+    "wrong": "16fdcdbf-1469-53c0-b2df-80eacee60694",
+    "score": 1
+  },
+  {
+    "group": {
+      "id": "ed05b016-6efe-5bfb-9302-3b7953d424cd",
+      "question_type": "true_false_not_given",
+      "instruction": "Use the fictional source.",
+      "config": {},
+      "order_index": 1,
+      "questions": [
+        {
+          "id": "1027dc46-9e45-5124-a41c-ee1e19168523",
+          "number": 11,
+          "prompt": "Fictional prompt {{gap}}",
+          "config": {},
+          "answer_key": {
+            "kind": "SINGLE_OPTION",
+            "value": "TRUE"
+          },
+          "order_index": 0
+        }
+      ]
+    },
+    "passageBlocks": [
+      {
+        "id": "85fcf460-3a86-5a0b-85c9-c6b5a8c69f79",
+        "type": "paragraph",
+        "label": "A",
+        "text": "A fictional paragraph."
+      }
+    ],
+    "response": "TRUE",
+    "wrong": "FALSE",
+    "score": 1
+  },
+  {
+    "group": {
+      "id": "6bd69964-cae4-581f-85e3-a637ec19032e",
+      "question_type": "yes_no_not_given",
+      "instruction": "Use the fictional source.",
+      "config": {},
+      "order_index": 2,
+      "questions": [
+        {
+          "id": "692575ac-db82-5ff4-974d-98cce51264f1",
+          "number": 11,
+          "prompt": "Fictional prompt {{gap}}",
+          "config": {},
+          "answer_key": {
+            "kind": "SINGLE_OPTION",
+            "value": "YES"
+          },
+          "order_index": 0
+        }
+      ]
+    },
+    "passageBlocks": [
+      {
+        "id": "3ca1f2e6-1b4b-5225-bcd8-8db81052f6b8",
+        "type": "paragraph",
+        "label": "A",
+        "text": "A fictional paragraph."
+      }
+    ],
+    "response": "YES",
+    "wrong": "NO",
+    "score": 1
+  },
+  {
+    "group": {
+      "id": "da3b2500-f5c9-5f13-8a46-786328a370b5",
+      "question_type": "text_completion",
+      "instruction": "Use the fictional source.",
+      "config": {
+        "mode": "PASSAGE",
+        "title": "Fictional summary",
+        "blocks": [
+          {
+            "id": "7d71ad95-71bd-5566-8f99-061284d3b269",
+            "segments": [
+              {
+                "id": "da9306ab-18a1-506f-a8d5-cc17a4ce5542",
+                "type": "GAP",
+                "question_id": "24fbc326-e47d-5906-a9dc-bc9540590701"
+              }
+            ]
+          }
+        ]
+      },
+      "order_index": 3,
+      "questions": [
+        {
+          "id": "24fbc326-e47d-5906-a9dc-bc9540590701",
+          "number": 11,
+          "prompt": "Fictional prompt {{gap}}",
+          "config": {
+            "max_words": 2,
+            "max_numbers": 0
+          },
+          "answer_key": {
+            "kind": "TEXT",
+            "accepted": [
+              "fictional answer"
+            ],
+            "case_sensitive": false
+          },
+          "order_index": 0
+        }
+      ]
+    },
+    "passageBlocks": [
+      {
+        "id": "3c9ff9a2-057f-5fbd-8dee-0343584df715",
+        "type": "paragraph",
+        "label": "A",
+        "text": "A fictional paragraph."
+      }
+    ],
+    "response": "fictional answer",
+    "wrong": "different answer",
+    "score": 1
+  },
+  {
+    "group": {
+      "id": "e4f47730-c5ab-5d48-8c1a-a45551005409",
+      "question_type": "matching_headings",
+      "instruction": "Use the fictional source.",
+      "config": {
+        "options": [
+          {
+            "id": "e9811095-0bbf-5249-92a9-c508784e7c09",
+            "label": "A",
+            "text": "Fictional option 1"
+          },
+          {
+            "id": "75fb69b4-a965-5ae4-be7c-80c5d4f3ae45",
+            "label": "B",
+            "text": "Fictional option 2"
+          },
+          {
+            "id": "1c84a0e5-43f5-56d5-a9c1-9391d223684a",
+            "label": "C",
+            "text": "Fictional option 3"
+          }
+        ],
+        "allow_option_reuse": false
+      },
+      "order_index": 4,
+      "questions": [
+        {
+          "id": "c7de48be-a23f-54b3-b44c-b70645c9c2db",
+          "number": 11,
+          "prompt": "Fictional prompt {{gap}}",
+          "config": {
+            "target_block_id": "d424b6b4-381e-532c-9b65-1301dc3bac88"
+          },
+          "answer_key": {
+            "kind": "SINGLE_OPTION",
+            "value": "e9811095-0bbf-5249-92a9-c508784e7c09"
+          },
+          "order_index": 0
+        }
+      ]
+    },
+    "passageBlocks": [
+      {
+        "id": "d424b6b4-381e-532c-9b65-1301dc3bac88",
+        "type": "paragraph",
+        "label": "A",
+        "text": "A fictional paragraph."
+      }
+    ],
+    "response": "e9811095-0bbf-5249-92a9-c508784e7c09",
+    "wrong": "1c84a0e5-43f5-56d5-a9c1-9391d223684a",
+    "score": 1
+  },
+  {
+    "group": {
+      "id": "10c686ba-efeb-5ea3-b333-4d6d2ef0a6bc",
+      "question_type": "multiple_choice_multiple",
+      "instruction": "Use the fictional source.",
+      "config": {},
+      "order_index": 5,
+      "questions": [
+        {
+          "id": "97a2d77d-0aa7-5deb-9ad7-134c7966d7c7",
+          "number": 11,
+          "prompt": "Fictional prompt {{gap}}",
+          "config": {
+            "options": [
+              {
+                "id": "409b3e6b-7297-58f1-878a-b495537a61fb",
+                "label": "A",
+                "text": "Fictional option 1"
+              },
+              {
+                "id": "4f470f66-e45c-58e3-9eb8-2d6067622268",
+                "label": "B",
+                "text": "Fictional option 2"
+              },
+              {
+                "id": "80691f51-398c-5b3d-a7f6-a4b8402b682b",
+                "label": "C",
+                "text": "Fictional option 3"
+              }
+            ],
+            "min_selections": 2,
+            "max_selections": 2
+          },
+          "answer_key": {
+            "kind": "MULTIPLE_OPTIONS",
+            "values": [
+              "409b3e6b-7297-58f1-878a-b495537a61fb",
+              "4f470f66-e45c-58e3-9eb8-2d6067622268"
+            ],
+            "order_matters": false
+          },
+          "order_index": 0
+        }
+      ]
+    },
+    "passageBlocks": [
+      {
+        "id": "c0dffa7e-3cdc-56d8-a8e2-402c60bcc0da",
+        "type": "paragraph",
+        "label": "A",
+        "text": "A fictional paragraph."
+      }
+    ],
+    "response": [
+      "409b3e6b-7297-58f1-878a-b495537a61fb",
+      "4f470f66-e45c-58e3-9eb8-2d6067622268"
+    ],
+    "wrong": [
+      "80691f51-398c-5b3d-a7f6-a4b8402b682b"
+    ],
+    "score": 2
+  },
+  {
+    "group": {
+      "id": "537f7d1b-5096-52bc-8c31-a1e20c2438dd",
+      "question_type": "matching",
+      "instruction": "Use the fictional source.",
+      "config": {
+        "options": [
+          {
+            "id": "4bf09d44-292e-562f-8fd7-d450c36352e4",
+            "label": "A",
+            "text": "Fictional option 1"
+          },
+          {
+            "id": "91be3912-5ff4-5ea2-b0a2-9c742b7df754",
+            "label": "B",
+            "text": "Fictional option 2"
+          },
+          {
+            "id": "c5d1e719-347d-55ea-a1f8-cc533c55f0a3",
+            "label": "C",
+            "text": "Fictional option 3"
+          }
+        ],
+        "allow_option_reuse": false
+      },
+      "order_index": 6,
+      "questions": [
+        {
+          "id": "54e9ea50-10d2-55f9-afa6-d8fd59c77946",
+          "number": 11,
+          "prompt": "Fictional prompt {{gap}}",
+          "config": {},
+          "answer_key": {
+            "kind": "SINGLE_OPTION",
+            "value": "4bf09d44-292e-562f-8fd7-d450c36352e4"
+          },
+          "order_index": 0
+        }
+      ]
+    },
+    "passageBlocks": [
+      {
+        "id": "4867bf6e-f824-5256-a4a8-5df8ab0c01c4",
+        "type": "paragraph",
+        "label": "A",
+        "text": "A fictional paragraph."
+      }
+    ],
+    "response": "4bf09d44-292e-562f-8fd7-d450c36352e4",
+    "wrong": "c5d1e719-347d-55ea-a1f8-cc533c55f0a3",
+    "score": 1
+  },
+  {
+    "group": {
+      "id": "c2089c1e-e0c6-54fb-9066-bd5caf762486",
+      "question_type": "matching_information",
+      "instruction": "Use the fictional source.",
+      "config": {
+        "allow_option_reuse": true
+      },
+      "order_index": 7,
+      "questions": [
+        {
+          "id": "9728d5f9-78bd-5dfc-8036-a943a1a2a5ab",
+          "number": 11,
+          "prompt": "Fictional prompt {{gap}}",
+          "config": {},
+          "answer_key": {
+            "kind": "SINGLE_OPTION",
+            "value": "84ed09b9-7c3f-5d04-adb8-00406eaa58dd"
+          },
+          "order_index": 0
+        }
+      ]
+    },
+    "passageBlocks": [
+      {
+        "id": "84ed09b9-7c3f-5d04-adb8-00406eaa58dd",
+        "type": "paragraph",
+        "label": "A",
+        "text": "A fictional paragraph."
+      }
+    ],
+    "response": "84ed09b9-7c3f-5d04-adb8-00406eaa58dd",
+    "wrong": "1c3a1899-1da6-5e2c-8a26-50bec55b4fb9",
+    "score": 1
+  },
+  {
+    "group": {
+      "id": "c3b5f0ed-e9ad-52d0-bb7f-e5df5e72dafd",
+      "question_type": "matching_features",
+      "instruction": "Use the fictional source.",
+      "config": {
+        "options": [
+          {
+            "id": "5062e57f-3b8c-5057-8621-b55840363cd7",
+            "label": "A",
+            "text": "Fictional option 1"
+          },
+          {
+            "id": "b8f6c181-eae3-5410-b21b-ce6afd2fa808",
+            "label": "B",
+            "text": "Fictional option 2"
+          },
+          {
+            "id": "4dbada8a-2d8a-5a42-a7c9-1ed18bfa6ee6",
+            "label": "C",
+            "text": "Fictional option 3"
+          }
+        ],
+        "allow_option_reuse": false
+      },
+      "order_index": 8,
+      "questions": [
+        {
+          "id": "80417faa-bf0d-576e-82b5-0dd7947f7b1c",
+          "number": 11,
+          "prompt": "Fictional prompt {{gap}}",
+          "config": {},
+          "answer_key": {
+            "kind": "SINGLE_OPTION",
+            "value": "5062e57f-3b8c-5057-8621-b55840363cd7"
+          },
+          "order_index": 0
+        }
+      ]
+    },
+    "passageBlocks": [
+      {
+        "id": "e84e89db-7e1b-50c9-ac02-f66e57cdc86d",
+        "type": "paragraph",
+        "label": "A",
+        "text": "A fictional paragraph."
+      }
+    ],
+    "response": "5062e57f-3b8c-5057-8621-b55840363cd7",
+    "wrong": "4dbada8a-2d8a-5a42-a7c9-1ed18bfa6ee6",
+    "score": 1
+  },
+  {
+    "group": {
+      "id": "b32b8acb-2bad-5d42-91d1-61419b37478e",
+      "question_type": "matching_sentence_endings",
+      "instruction": "Use the fictional source.",
+      "config": {
+        "options": [
+          {
+            "id": "a2b314de-2411-5774-9adb-872bd873bda1",
+            "label": "A",
+            "text": "Fictional option 1"
+          },
+          {
+            "id": "7f347a86-94dc-5098-a87e-a71c3f6cbc45",
+            "label": "B",
+            "text": "Fictional option 2"
+          },
+          {
+            "id": "9c1aed99-91c0-5d8c-8a84-7a31c4f76683",
+            "label": "C",
+            "text": "Fictional option 3"
+          }
+        ],
+        "allow_option_reuse": false
+      },
+      "order_index": 9,
+      "questions": [
+        {
+          "id": "ed3c19e0-20c9-5efb-8975-52c8db1dbefb",
+          "number": 11,
+          "prompt": "Fictional prompt {{gap}}",
+          "config": {},
+          "answer_key": {
+            "kind": "SINGLE_OPTION",
+            "value": "a2b314de-2411-5774-9adb-872bd873bda1"
+          },
+          "order_index": 0
+        }
+      ]
+    },
+    "passageBlocks": [
+      {
+        "id": "c9a38e29-41fe-5f20-993b-d181d3d1ffb0",
+        "type": "paragraph",
+        "label": "A",
+        "text": "A fictional paragraph."
+      }
+    ],
+    "response": "a2b314de-2411-5774-9adb-872bd873bda1",
+    "wrong": "9c1aed99-91c0-5d8c-8a84-7a31c4f76683",
+    "score": 1
+  },
+  {
+    "group": {
+      "id": "10a85718-9615-5fea-8511-899c8b4ece6a",
+      "question_type": "summary_completion_word_list",
+      "instruction": "Use the fictional source.",
+      "config": {
+        "mode": "PASSAGE",
+        "title": "Fictional summary",
+        "blocks": [
+          {
+            "id": "ccf42601-cec1-5f11-9dfd-3ca686bd3903",
+            "segments": [
+              {
+                "id": "0ab62433-1987-5bc3-81df-667af50a25dd",
+                "type": "GAP",
+                "question_id": "2fe5d020-9653-5871-94d7-2415b6997597"
+              }
+            ]
+          }
+        ],
+        "options": [
+          {
+            "id": "ef9b6a78-29b9-59c8-a943-08534eafa350",
+            "label": "A",
+            "text": "Fictional option 1"
+          },
+          {
+            "id": "30bc7413-d9b6-538c-9a74-2ad9c050585f",
+            "label": "B",
+            "text": "Fictional option 2"
+          },
+          {
+            "id": "5bbd9fa2-0974-5a10-81d8-b0956e99191b",
+            "label": "C",
+            "text": "Fictional option 3"
+          }
+        ]
+      },
+      "order_index": 10,
+      "questions": [
+        {
+          "id": "2fe5d020-9653-5871-94d7-2415b6997597",
+          "number": 11,
+          "prompt": "Fictional prompt {{gap}}",
+          "config": {},
+          "answer_key": {
+            "kind": "SINGLE_OPTION",
+            "value": "ef9b6a78-29b9-59c8-a943-08534eafa350"
+          },
+          "order_index": 0
+        }
+      ]
+    },
+    "passageBlocks": [
+      {
+        "id": "9dcac421-5b73-5b0e-acc4-c797c29044a0",
+        "type": "paragraph",
+        "label": "A",
+        "text": "A fictional paragraph."
+      }
+    ],
+    "response": "ef9b6a78-29b9-59c8-a943-08534eafa350",
+    "wrong": "5bbd9fa2-0974-5a10-81d8-b0956e99191b",
+    "score": 1
+  },
+  {
+    "group": {
+      "id": "0819f8e4-729c-551a-baf6-7cb9adfb759d",
+      "question_type": "plan_labelling",
+      "instruction": "Use the fictional source.",
+      "config": {
+        "options": [
+          {
+            "id": "7be0c7c8-bf3c-58fd-832e-0d4e03835d45",
+            "label": "A",
+            "text": "Fictional option 1"
+          },
+          {
+            "id": "88d457fe-a3cc-52e7-bd32-32ebc6ac3894",
+            "label": "B",
+            "text": "Fictional option 2"
+          },
+          {
+            "id": "fb3c0921-9293-51c8-b6f8-4bea410cb11c",
+            "label": "C",
+            "text": "Fictional option 3"
+          }
+        ],
+        "markers": [
+          {
+            "id": "85e9df78-ebad-51b8-a5fb-1e78b34c5272",
+            "question_id": "0a065882-4d93-58ba-9e20-55d5c2fb82a0",
+            "x": 0.4,
+            "y": 0.5
+          }
+        ]
+      },
+      "order_index": 11,
+      "questions": [
+        {
+          "id": "0a065882-4d93-58ba-9e20-55d5c2fb82a0",
+          "number": 11,
+          "prompt": "Fictional prompt {{gap}}",
+          "config": {},
+          "answer_key": {
+            "kind": "SINGLE_OPTION",
+            "value": "7be0c7c8-bf3c-58fd-832e-0d4e03835d45"
+          },
+          "order_index": 0
+        }
+      ],
+      "image_asset": {
+        "id": "8f382093-5fda-5a99-9c26-d8b4c2fc3ca5",
+        "original_name": "fictional.png",
+        "mime_type": "image/png",
+        "file_size": 1,
+        "content_url": "/assets/fictional.png"
+      }
+    },
+    "passageBlocks": [
+      {
+        "id": "6def452c-f59b-5724-9700-aed87ec5f416",
+        "type": "paragraph",
+        "label": "A",
+        "text": "A fictional paragraph."
+      }
+    ],
+    "response": "7be0c7c8-bf3c-58fd-832e-0d4e03835d45",
+    "wrong": "fb3c0921-9293-51c8-b6f8-4bea410cb11c",
+    "score": 1
+  },
+  {
+    "group": {
+      "id": "d1e83775-9014-5e13-ba06-d8c23b2d70df",
+      "question_type": "map_labelling",
+      "instruction": "Use the fictional source.",
+      "config": {
+        "options": [
+          {
+            "id": "d6f3d28e-2f76-5fa1-a535-733a2fa7bf7b",
+            "label": "A",
+            "text": "Fictional option 1"
+          },
+          {
+            "id": "9d19325e-d6af-596a-92e0-78b14dec1915",
+            "label": "B",
+            "text": "Fictional option 2"
+          },
+          {
+            "id": "4095ae4f-f5af-5c2a-bf8d-786d931339a7",
+            "label": "C",
+            "text": "Fictional option 3"
+          }
+        ],
+        "markers": [
+          {
+            "id": "f02415c4-4450-5276-b2db-2755ec270e41",
+            "question_id": "6d8cefb8-7c22-5293-9b03-7a510488b0a0",
+            "x": 0.4,
+            "y": 0.5
+          }
+        ]
+      },
+      "order_index": 12,
+      "questions": [
+        {
+          "id": "6d8cefb8-7c22-5293-9b03-7a510488b0a0",
+          "number": 11,
+          "prompt": "Fictional prompt {{gap}}",
+          "config": {},
+          "answer_key": {
+            "kind": "SINGLE_OPTION",
+            "value": "d6f3d28e-2f76-5fa1-a535-733a2fa7bf7b"
+          },
+          "order_index": 0
+        }
+      ],
+      "image_asset": {
+        "id": "d1812f1a-d825-5ba5-a9da-cf9766d4e28d",
+        "original_name": "fictional.png",
+        "mime_type": "image/png",
+        "file_size": 1,
+        "content_url": "/assets/fictional.png"
+      }
+    },
+    "passageBlocks": [
+      {
+        "id": "06288d72-2221-5bb0-84d4-0db0e3128693",
+        "type": "paragraph",
+        "label": "A",
+        "text": "A fictional paragraph."
+      }
+    ],
+    "response": "d6f3d28e-2f76-5fa1-a535-733a2fa7bf7b",
+    "wrong": "4095ae4f-f5af-5c2a-bf8d-786d931339a7",
+    "score": 1
+  },
+  {
+    "group": {
+      "id": "b100421e-b2d5-55f3-8c9d-83328e031e32",
+      "question_type": "diagram_labelling",
+      "instruction": "Use the fictional source.",
+      "config": {
+        "items": [
+          {
+            "id": "097f5f15-bcac-5d9d-9337-e55ddbbad324",
+            "question_id": "745ebf50-8c95-58fc-bcbf-3a6ba07e6a6f",
+            "box": {
+              "x": 0.1,
+              "y": 0.1,
+              "width": 0.3
+            },
+            "arrow": {
+              "start_x": 0.2,
+              "start_y": 0.2,
+              "end_x": 0.5,
+              "end_y": 0.5
+            }
+          }
+        ]
+      },
+      "order_index": 13,
+      "questions": [
+        {
+          "id": "745ebf50-8c95-58fc-bcbf-3a6ba07e6a6f",
+          "number": 11,
+          "prompt": "Fictional prompt {{gap}}",
+          "config": {
+            "max_words": 2,
+            "max_numbers": 0
+          },
+          "answer_key": {
+            "kind": "TEXT",
+            "accepted": [
+              "fictional answer"
+            ],
+            "case_sensitive": false
+          },
+          "order_index": 0
+        }
+      ],
+      "image_asset": {
+        "id": "166c762c-37c0-5e51-890f-fe42fe00a0c0",
+        "original_name": "fictional.png",
+        "mime_type": "image/png",
+        "file_size": 1,
+        "content_url": "/assets/fictional.png"
+      }
+    },
+    "passageBlocks": [
+      {
+        "id": "b54d5925-b725-531c-93c0-162b00d44a2f",
+        "type": "paragraph",
+        "label": "A",
+        "text": "A fictional paragraph."
+      }
+    ],
+    "response": "fictional answer",
+    "wrong": "different answer",
+    "score": 1
+  },
+  {
+    "group": {
+      "id": "210901ee-6eea-569b-9107-bf1f5278ea82",
+      "question_type": "form_completion",
+      "instruction": "Use the fictional source.",
+      "config": {
+        "layout": {
+          "kind": "FORM",
+          "nodes": [
+            {
+              "id": "254098fa-1bdd-5d27-b306-93ea0eb19b96",
+              "type": "GAP",
+              "question_id": "278016a0-be9e-5867-b59b-3b35cafaa975",
+              "level": 0
+            }
+          ]
+        }
+      },
+      "order_index": 14,
+      "questions": [
+        {
+          "id": "278016a0-be9e-5867-b59b-3b35cafaa975",
+          "number": 11,
+          "prompt": "Fictional prompt {{gap}}",
+          "config": {
+            "max_words": 2,
+            "max_numbers": 0
+          },
+          "answer_key": {
+            "kind": "TEXT",
+            "accepted": [
+              "fictional answer"
+            ],
+            "case_sensitive": false
+          },
+          "order_index": 0
+        }
+      ]
+    },
+    "passageBlocks": [
+      {
+        "id": "7255a898-fd45-5560-b904-cdfb95caed7d",
+        "type": "paragraph",
+        "label": "A",
+        "text": "A fictional paragraph."
+      }
+    ],
+    "response": "fictional answer",
+    "wrong": "different answer",
+    "score": 1
+  },
+  {
+    "group": {
+      "id": "aeae7fc1-2f7f-5a8d-b527-20fc8ff6a5dd",
+      "question_type": "note_completion",
+      "instruction": "Use the fictional source.",
+      "config": {
+        "layout": {
+          "kind": "NOTE",
+          "blocks": [
+            {
+              "id": "25af01a2-25e3-5c42-abb8-251bae9ed7db",
+              "segments": [
+                {
+                  "id": "0450811a-470f-5bc5-96b8-88f84533ed84",
+                  "type": "GAP",
+                  "question_id": "2856ec87-b1b6-5aa4-b41c-2b1e9514744d"
+                }
+              ],
+              "style": "BULLET",
+              "indent": 0
+            }
+          ],
+          "columns": [],
+          "rows": [],
+          "nodes": []
+        }
+      },
+      "order_index": 15,
+      "questions": [
+        {
+          "id": "2856ec87-b1b6-5aa4-b41c-2b1e9514744d",
+          "number": 11,
+          "prompt": "Fictional prompt {{gap}}",
+          "config": {
+            "max_words": 2,
+            "max_numbers": 0
+          },
+          "answer_key": {
+            "kind": "TEXT",
+            "accepted": [
+              "fictional answer"
+            ],
+            "case_sensitive": false
+          },
+          "order_index": 0
+        }
+      ]
+    },
+    "passageBlocks": [
+      {
+        "id": "6765c506-25c3-5a5c-be3a-cc5a570d4913",
+        "type": "paragraph",
+        "label": "A",
+        "text": "A fictional paragraph."
+      }
+    ],
+    "response": "fictional answer",
+    "wrong": "different answer",
+    "score": 1
+  },
+  {
+    "group": {
+      "id": "5fc555b3-9be8-59ca-a01d-c17a1eaa3686",
+      "question_type": "table_completion",
+      "instruction": "Use the fictional source.",
+      "config": {
+        "layout": {
+          "kind": "TABLE",
+          "columns": [
+            {
+              "id": "f8a718cb-b883-5772-9941-e72bbc67b039",
+              "label": "Fictional details"
+            }
+          ],
+          "rows": [
+            {
+              "id": "388383a2-cf00-5952-bb0c-4246dbb70987",
+              "cells": [
+                {
+                  "id": "880c8308-5436-52ee-9e77-77b2d6ac4ac3",
+                  "segments": [
+                    {
+                      "id": "7e055a04-151d-5306-9c7a-fa1508a53d17",
+                      "type": "GAP",
+                      "question_id": "2f5451e4-b00b-5e56-b0bc-206b66793080"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "nodes": []
+        }
+      },
+      "order_index": 16,
+      "questions": [
+        {
+          "id": "2f5451e4-b00b-5e56-b0bc-206b66793080",
+          "number": 11,
+          "prompt": "Fictional prompt {{gap}}",
+          "config": {
+            "max_words": 2,
+            "max_numbers": 0
+          },
+          "answer_key": {
+            "kind": "TEXT",
+            "accepted": [
+              "fictional answer"
+            ],
+            "case_sensitive": false
+          },
+          "order_index": 0
+        }
+      ]
+    },
+    "passageBlocks": [
+      {
+        "id": "dde0d1ae-c840-546c-97b8-212a39e9f58f",
+        "type": "paragraph",
+        "label": "A",
+        "text": "A fictional paragraph."
+      }
+    ],
+    "response": "fictional answer",
+    "wrong": "different answer",
+    "score": 1
+  },
+  {
+    "group": {
+      "id": "223fb429-1834-5d7b-b7ed-8cfefb23f66b",
+      "question_type": "flow_chart_completion",
+      "instruction": "Use the fictional source.",
+      "config": {
+        "layout": {
+          "kind": "FLOW_CHART",
+          "nodes": [
+            {
+              "id": "cbd2bc97-62fe-55e4-998b-3cd01e9c93de",
+              "type": "GAP",
+              "question_id": "5accab8b-2bb4-519a-8bb2-9b6ffb0af42f",
+              "level": 0
+            }
+          ]
+        }
+      },
+      "order_index": 17,
+      "questions": [
+        {
+          "id": "5accab8b-2bb4-519a-8bb2-9b6ffb0af42f",
+          "number": 11,
+          "prompt": "Fictional prompt {{gap}}",
+          "config": {
+            "max_words": 2,
+            "max_numbers": 0
+          },
+          "answer_key": {
+            "kind": "TEXT",
+            "accepted": [
+              "fictional answer"
+            ],
+            "case_sensitive": false
+          },
+          "order_index": 0
+        }
+      ]
+    },
+    "passageBlocks": [
+      {
+        "id": "7c3f3966-f7c1-50f2-a452-13a6c6406be5",
+        "type": "paragraph",
+        "label": "A",
+        "text": "A fictional paragraph."
+      }
+    ],
+    "response": "fictional answer",
+    "wrong": "different answer",
+    "score": 1
+  },
+  {
+    "group": {
+      "id": "70d9f3af-6d82-5be7-b684-ae59b90a83af",
+      "question_type": "summary_completion",
+      "instruction": "Use the fictional source.",
+      "config": {
+        "layout": {
+          "kind": "SUMMARY",
+          "nodes": [
+            {
+              "id": "b0822aa6-d224-5957-b431-761b4a3bdfee",
+              "type": "GAP",
+              "question_id": "dca6fba5-917f-5c53-bf58-fa7f0fd18f85",
+              "level": 0
+            }
+          ]
+        }
+      },
+      "order_index": 18,
+      "questions": [
+        {
+          "id": "dca6fba5-917f-5c53-bf58-fa7f0fd18f85",
+          "number": 11,
+          "prompt": "Fictional prompt {{gap}}",
+          "config": {
+            "max_words": 2,
+            "max_numbers": 0
+          },
+          "answer_key": {
+            "kind": "TEXT",
+            "accepted": [
+              "fictional answer"
+            ],
+            "case_sensitive": false
+          },
+          "order_index": 0
+        }
+      ]
+    },
+    "passageBlocks": [
+      {
+        "id": "f951a4d0-fb30-53a6-bd13-3d402fd4fc3b",
+        "type": "paragraph",
+        "label": "A",
+        "text": "A fictional paragraph."
+      }
+    ],
+    "response": "fictional answer",
+    "wrong": "different answer",
+    "score": 1
+  },
+  {
+    "group": {
+      "id": "a595a0ad-ec2c-5db9-b44f-e6500ef3b7aa",
+      "question_type": "sentence_completion",
+      "instruction": "Use the fictional source.",
+      "config": {
+        "layout": {
+          "kind": "SENTENCE",
+          "nodes": [
+            {
+              "id": "eb1cd567-1b01-5f47-8402-249c98b7a4c0",
+              "type": "GAP",
+              "question_id": "c2d7bba3-dc73-50eb-bb18-aa864eb601db",
+              "level": 0
+            }
+          ]
+        }
+      },
+      "order_index": 19,
+      "questions": [
+        {
+          "id": "c2d7bba3-dc73-50eb-bb18-aa864eb601db",
+          "number": 11,
+          "prompt": "Fictional prompt {{gap}}",
+          "config": {
+            "max_words": 2,
+            "max_numbers": 0
+          },
+          "answer_key": {
+            "kind": "TEXT",
+            "accepted": [
+              "fictional answer"
+            ],
+            "case_sensitive": false
+          },
+          "order_index": 0
+        }
+      ]
+    },
+    "passageBlocks": [
+      {
+        "id": "9bc02a47-f624-54ee-a6ad-4dfcde674a66",
+        "type": "paragraph",
+        "label": "A",
+        "text": "A fictional paragraph."
+      }
+    ],
+    "response": "fictional answer",
+    "wrong": "different answer",
+    "score": 1
+  },
+  {
+    "group": {
+      "id": "eff458e6-ae16-5860-81c5-c3afde013f87",
+      "question_type": "short_answer",
+      "instruction": "Use the fictional source.",
+      "config": {},
+      "order_index": 20,
+      "questions": [
+        {
+          "id": "78a6fa25-1181-51c4-8d8f-493661c5aa81",
+          "number": 11,
+          "prompt": "Fictional prompt {{gap}}",
+          "config": {
+            "max_words": 2,
+            "max_numbers": 0
+          },
+          "answer_key": {
+            "kind": "TEXT",
+            "accepted": [
+              "fictional answer"
+            ],
+            "case_sensitive": false
+          },
+          "order_index": 0
+        }
+      ]
+    },
+    "passageBlocks": [
+      {
+        "id": "cc10f4c5-e6d8-5b20-9cb5-4a39a0747774",
+        "type": "paragraph",
+        "label": "A",
+        "text": "A fictional paragraph."
+      }
+    ],
+    "response": "fictional answer",
+    "wrong": "different answer",
+    "score": 1
+  }
+]

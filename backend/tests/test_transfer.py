@@ -2,6 +2,7 @@ import asyncio
 import json
 import tempfile
 import zipfile
+from copy import deepcopy
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -13,7 +14,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
 from app.core.exceptions import AppError
-from app.domains.questions.numbering import group_slots
+from app.domains.questions.normalization import (
+    normalize_question_group_payload,
+    remap_question_references,
+)
+from app.domains.questions.numbering import group_slots, question_span
+from app.domains.questions.registry import question_registry
 from app.models import Asset, ListeningPart, Question, QuestionGroup, ReadingPassage, WritingTask
 from app.models import Test as DomainTest
 from app.models import TestModule as DomainModule
@@ -24,6 +30,94 @@ from app.schemas.transfer import PortableWritingTask, TransferExportRequest
 from app.services.reading import ReadingService
 from app.services.tests import TestService as LifecycleService
 from app.services.transfer import TransferService
+
+
+async def test_all_canonical_saved_contracts_survive_v1_zip_roundtrip(db_session, tmp_path):
+    cases = json.loads((Path(__file__).parent / "fixtures/question-contracts.json").read_text())
+    settings = _settings(tmp_path / "storage")
+    version = DomainVersion(
+        version_number=1, status=VersionStatus.PUBLISHED, published_at=datetime.now(UTC)
+    )
+    test = DomainTest(title="Fictional all-type contract", versions=[version])
+    module = DomainModule(
+        module_type=ModuleType.READING, order_index=0, recommended_duration_seconds=3600
+    )
+    version.modules.append(module)
+    blocks = [
+        {**case["passageBlocks"][0], "label": chr(65 + index)} for index, case in enumerate(cases)
+    ]
+    passage = ReadingPassage(
+        title="Fictional source", order_index=0, content_json=blocks, plain_text="Fictional source."
+    )
+    module.passages.append(passage)
+    image = _asset(
+        settings.resolved_storage_root,
+        version,
+        AssetType.QUESTION_IMAGE,
+        "fictional.png",
+        b"\x89PNG\r\n\x1a\nfictional-image",
+    )
+    number = 1
+    for case in cases:
+        saved = case["group"]
+        row = deepcopy(saved["questions"][0])
+        row["id"], row["number"] = UUID(row["id"]), number
+        group = QuestionGroup(
+            id=UUID(saved["id"]),
+            question_type=saved["question_type"],
+            instruction=saved["instruction"],
+            config=deepcopy(saved["config"]),
+            order_index=saved["order_index"],
+            passage=passage,
+        )
+        group.questions.append(Question(**row))
+        if "image_asset" in saved:
+            group.image_asset = image
+        module.question_groups.append(group)
+        number += question_span(saved["question_type"], row["config"])
+    async with db_session.begin():
+        db_session.add(test)
+        await db_session.flush()
+        source_id = test.id
+    archive = tmp_path / "all-types.zip"
+    await TransferService(db_session, settings).export([source_id], archive)
+    await db_session.rollback()
+    with tempfile.TemporaryDirectory(dir=tmp_path) as staging:
+        service = TransferService(db_session, settings)
+        package = service.validate_archive(archive, Path(staging))
+        assert package.manifest.schema_version == 1
+        imported = await service.import_package(package)
+    loaded = await db_session.scalar(
+        version_detail_query().where(DomainVersion.test_id == imported.imported_tests[0].test_id)
+    )
+    assert loaded.status == VersionStatus.PUBLISHED
+    groups = {group.question_type: group for group in loaded.modules[0].question_groups}
+    assert set(groups) == {case["group"]["question_type"] for case in cases}
+    for case in cases:
+        saved = case["group"]
+        actual = groups[saved["question_type"]]
+        question = actual.questions[0]
+        source_question = saved["questions"][0]
+        expected_config, expected_questions = normalize_question_group_payload(
+            question_type=actual.question_type,
+            group_config=saved["config"],
+            questions=saved["questions"],
+            group_id=saved["id"],
+            passage_blocks=blocks,
+        )
+        mapping = {source_question["id"]: str(question.id)}
+        assert str(actual.id) != saved["id"] and str(question.id) != source_question["id"]
+        assert actual.config == remap_question_references(expected_config, mapping)
+        assert question.config == expected_questions[0]["config"]
+        assert question.prompt == source_question["prompt"]
+        assert question.answer_key == source_question["answer_key"]
+        assert actual.instruction == saved["instruction"]
+        assert (
+            question_registry.score(
+                actual.question_type, question.answer_key, case["response"], question.config
+            )
+            == case["score"]
+        )
 
 
 @pytest.mark.parametrize("failure", [RuntimeError, asyncio.CancelledError])
