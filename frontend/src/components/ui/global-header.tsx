@@ -7,7 +7,7 @@ import { ConfirmDialog } from "./confirm-dialog";
 import { TRANSFER_ROUTE } from "@/lib/routes";
 import { useAuth } from "@/features/auth/auth-provider";
 import { useTranslation } from "@/lib/i18n/locale-provider";
-import { roleTranslationKeys } from "@/lib/i18n/translations";
+import { roleTranslationKeys, translate } from "@/lib/i18n/translations";
 import { NotificationCenter } from "@/features/notifications/notification-center";
 import { PersonalizationDialog } from "@/features/personalization/personalization-dialog";
 import { usePersonalization } from "@/features/personalization/personalization-provider";
@@ -77,6 +77,14 @@ function GuestHomepagePreferences() {
   </div>;
 }
 
+function AuthLink({ href, message, primary = false, reserveSpace }: { href: string; message: "shell.login" | "shell.register"; primary?: boolean; reserveSpace: boolean }) {
+  const { t } = useTranslation();
+  return <Link href={href} prefetch={false} className={`btn ${primary ? "btn-primary" : "btn-ghost"}${reserveSpace ? " guest-auth-action" : ""}`}>
+    <span>{t(message)}</span>
+    {reserveSpace ? (["en", "vi"] as const).map(locale => <span key={locale} className="guest-auth-sizer" aria-hidden="true">{translate(locale, message)}</span>) : null}
+  </Link>;
+}
+
 function HeaderActions({ loggingOut, onLogout, onPersonalization, settingsButtonRef, pathname }: { loggingOut: boolean; onLogout(): void; onPersonalization(): void; settingsButtonRef: RefObject<HTMLButtonElement | null>; pathname: string }) {
   const { user, loading, sessionError } = useAuth();
   const { t } = useTranslation();
@@ -86,7 +94,7 @@ function HeaderActions({ loggingOut, onLogout, onPersonalization, settingsButton
     {user && !pathname.startsWith("/settings/personalization") ? <button ref={settingsButtonRef} type="button" className="icon-button" aria-label={t("personalization.title")} title={t("personalization.title")} onClick={onPersonalization}><SettingsIcon width="20" height="20" /></button> : null}
     {user ? <NotificationCenter key={user.id} userId={user.id} /> : null}
     {sessionError ? <p role="alert" className="notice">{sessionError}</p> : null}
-    {!loading && user ? <><Link href="/profile" prefetch={false} className="auth-user-label"><span className="auth-user-name">{user.display_name}</span><small>{t(roleTranslationKeys[user.role])}</small></Link><button type="button" className="btn btn-ghost" disabled={loggingOut} onClick={onLogout}>{t("shell.logout")}</button></> : !loading && !sessionError ? <><Link href="/login" prefetch={false} className="btn btn-ghost">{t("shell.login")}</Link><Link href="/register" prefetch={false} className="btn btn-primary">{t("shell.register")}</Link></> : null}
+    {!loading && user ? <><Link href="/profile" prefetch={false} className="auth-user-label"><span className="auth-user-name">{user.display_name}</span><small>{t(roleTranslationKeys[user.role])}</small></Link><button type="button" className="btn btn-ghost" disabled={loggingOut} onClick={onLogout}>{t("shell.logout")}</button></> : !loading && !sessionError ? <><AuthLink href="/login" message="shell.login" reserveSpace={pathname === "/"} /><AuthLink href="/register" message="shell.register" primary reserveSpace={pathname === "/"} /></> : null}
   </div>;
 }
 

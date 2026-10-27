@@ -94,6 +94,23 @@ it("guest header switches translated copy and appearance locally, preserving acc
   expect(router.push).not.toHaveBeenCalled();
 });
 
+it("reserves both auth translations so switching guest language keeps the same header footprint", async () => {
+  signOutFixture(); render(<Application pathname="/" />);
+  await screen.findByRole("button", { name: "VI" });
+  const login = screen.getByRole("link", { name: "Login" });
+  const register = screen.getByRole("link", { name: "Register" });
+  expect(login).toHaveClass("guest-auth-action");
+  expect(register).toHaveClass("guest-auth-action");
+  expect([...login.querySelectorAll('[aria-hidden="true"]')].map(node => node.textContent)).toEqual(["Login", "Đăng nhập"]);
+  expect([...register.querySelectorAll('[aria-hidden="true"]')].map(node => node.textContent)).toEqual(["Register", "Đăng ký"]);
+  fireEvent.click(screen.getByRole("button", { name: "VI" }));
+  expect(screen.getByRole("link", { name: "Đăng nhập" })).toBe(login);
+  expect(screen.getByRole("link", { name: "Đăng ký" })).toBe(register);
+  expect(login.querySelectorAll('[aria-hidden="true"]')).toHaveLength(2);
+  fireEvent.click(screen.getByRole("button", { name: "EN" }));
+  expect(screen.getByRole("link", { name: "Login" })).toBe(login);
+});
+
 it.each(["getter", "getItem", "setItem"] as const)("guest header remains usable with blocked storage (%s)", async failure => {
   signOutFixture();
   if (failure === "getter") Object.defineProperty(window, "localStorage", { configurable: true, get() { throw new Error("blocked"); } });

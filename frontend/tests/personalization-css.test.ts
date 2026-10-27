@@ -76,3 +76,12 @@ it("Gravity text remains legible against each dark gradient and guest actions ha
   expect(product).toContain('min-width: 44px; min-height: 44px;');
   expect(contrast("#101a31", "#a5baff")).toBeGreaterThanOrEqual(4.5);
 });
+
+it("keeps homepage auth translations in one intrinsic grid cell without fixed pixel widths", () => {
+  const product = postcss.parse(readFileSync(resolve("src/app/gravity-product.css"), "utf8"));
+  const values: Record<string, Record<string, string>> = {};
+  product.walkRules(rule => { const declarations: Record<string, string> = {}; rule.walkDecls(decl => { declarations[decl.prop] = decl.value; }); values[rule.selector] = declarations; });
+  expect(values[".header-actions .guest-auth-action"]).toMatchObject({ display: "inline-grid", flex: "none" });
+  expect(values[".guest-auth-action > span"]).toMatchObject({ "grid-area": "1 / 1", "white-space": "nowrap" });
+  expect(values[".guest-auth-sizer"].visibility).toBe("hidden");
+});

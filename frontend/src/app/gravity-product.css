@@ -45,6 +45,10 @@
   .app-shell-home .app-header { background: color-mix(in srgb, var(--surface) 90%, transparent); backdrop-filter: blur(16px); }
   .app-shell-home .header-actions .btn-primary { background: #0e2ac5; color: #fff; }
   .guest-home-preferences { display: flex; flex: none; align-items: center; gap: 4px; }
+  /* Both translations size the same grid cell, keeping the preference controls anchored. */
+  .header-actions .guest-auth-action { display: inline-grid; flex: none; place-items: center; }
+  .guest-auth-action > span { grid-area: 1 / 1; white-space: nowrap; }
+  .guest-auth-sizer { visibility: hidden; pointer-events: none; user-select: none; }
   .guest-language-control { display: inline-flex; flex: none; padding: 2px; border: 1px solid var(--control-border); border-radius: 99px; background: var(--surface-soft); }
   .guest-language-control button { min-width: 40px; min-height: 40px; border: 0; border-radius: 99px; background: transparent; color: var(--muted); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
   .guest-language-control button:hover { color: var(--ink); background: var(--surface-hover); }
