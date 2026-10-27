@@ -11,6 +11,10 @@ const base = { run_id: "11111111-1111-4111-8111-111111111111", attempt_id: "2222
 const close = vi.fn();
 beforeEach(() => { vi.clearAllMocks(); vi.mocked(api.latestSpeakingAIRun).mockResolvedValue(null); vi.mocked(api.getSpeakingAIRun).mockResolvedValue(base); vi.mocked(api.createSpeakingAIRun).mockResolvedValue({ run_id: base.run_id, cache_hit: false, existing_active: false }); vi.mocked(api.watchSpeakingAIRun).mockReturnValue(close); });
 afterEach(() => { vi.unstubAllGlobals(); localStorage.clear(); });
+async function gradingObserver() {
+  await waitFor(() => expect(api.watchSpeakingAIRun).toHaveBeenCalledOnce());
+  return vi.mocked(api.watchSpeakingAIRun).mock.calls[0][2];
+}
 it("grades without a pre-generated transcript, suppresses double click, and only explicitly Stop cancels", async () => {
   let finish!: (value: Awaited<ReturnType<typeof api.createSpeakingAIRun>>) => void;
   vi.mocked(api.createSpeakingAIRun).mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
@@ -32,7 +36,7 @@ it("resumes existing grading on mount and unmount only closes the observer", asy
 it("announces transcript availability once per grading run after transcription succeeds", async () => {
   const onTranscriptAvailable = vi.fn(); vi.mocked(api.latestSpeakingAIRun).mockResolvedValue({ ...base, stage: "TRANSCRIBING" });
   render(<SpeakingAIAssessment attemptId={base.attempt_id} onTranscriptAvailable={onTranscriptAvailable} />); await screen.findByText("Transcribing"); expect(onTranscriptAvailable).not.toHaveBeenCalled();
-  const callbacks = vi.mocked(api.watchSpeakingAIRun).mock.calls[0][2];
+  const callbacks = await gradingObserver();
   await act(async () => callbacks.snapshot({ ...base, stage: "ANALYSING_AUDIO", last_sequence: 2 }));
   await act(async () => callbacks.snapshot({ ...base, stage: "BUILDING_EVIDENCE", last_sequence: 3 }));
   await act(async () => callbacks.snapshot({ ...base, status: "COMPLETED", stage: "COMPLETED", last_sequence: 4 })); expect(onTranscriptAvailable).toHaveBeenCalledOnce();
@@ -57,7 +61,7 @@ it.each(["FAILED", "CANCELLED"] as const)("resumes an explicitly requeued %s run
 });
 it("does not regress durable scores or reopen terminal results with stale snapshots", async () => {
   vi.mocked(api.latestSpeakingAIRun).mockResolvedValue(base); render(<SpeakingAIAssessment attemptId={base.attempt_id} />); await screen.findByText("Checking audio");
-  const callbacks = vi.mocked(api.watchSpeakingAIRun).mock.calls[0][2];
+  const callbacks = await gradingObserver();
   const scored: api.SpeakingAIRun = { ...base, last_sequence: 3, stage: "SCORING", criteria: { ...base.criteria, fc: { ...criterion, status: "SCORED", score: 6.5, evidence_summary: { response_count: 3, opaque_reasoning: "PRIVATE_MODEL_REASONING" } } } };
   await act(async () => { callbacks.snapshot(scored); callbacks.snapshot({ ...base, last_sequence: 2 }); });
   expect(within(screen.getByRole("region", { name: "Fluency and Coherence" })).getByText("6.5")).toBeInTheDocument(); expect(screen.getByRole("status")).toHaveTextContent("Scoring");
@@ -68,7 +72,7 @@ it("does not regress durable scores or reopen terminal results with stale snapsh
 });
 it("keeps progressive scores through feedback fallback and shows unavailable pronunciation without a fake band", async () => {
   vi.mocked(api.latestSpeakingAIRun).mockResolvedValue(base); render(<SpeakingAIAssessment attemptId={base.attempt_id} />); await screen.findByText("Checking audio");
-  const callbacks = vi.mocked(api.watchSpeakingAIRun).mock.calls[0][2];
+  const callbacks = await gradingObserver();
   await act(async () => callbacks.snapshot({ ...base, stage: "GENERATING_FEEDBACK", last_sequence: 2, criteria: { ...base.criteria, fc: { ...criterion, status: "SCORED", score: 6.5, feedback_status: "FALLBACK" }, pr: { ...criterion, status: "UNAVAILABLE", error_code: "SPEAKING_AUDIO_UNASSESSABLE" } } }));
   const fc = screen.getByRole("region", { name: "Fluency and Coherence" }); expect(within(fc).getByText("6.5")).toBeInTheDocument(); expect(within(fc).getByText(/Score saved; detailed feedback is unavailable/)).toBeInTheDocument();
   const pr = screen.getByRole("region", { name: "Pronunciation" }); expect(within(pr).getByText(/Unable to assess/)).toBeInTheDocument(); expect(within(pr).queryByText("1.0")).toBeNull();

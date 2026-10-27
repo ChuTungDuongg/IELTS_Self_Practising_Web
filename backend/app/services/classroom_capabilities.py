@@ -32,9 +32,7 @@ OPTIONAL = {
     "analytics_view": Capability.ANALYTICS,
     "learning_plans_manage": Capability.PLANS,
 }
-ADMIN_OBSERVER = frozenset(
-    {Capability.ROSTER_VIEW, Capability.GRADES_VIEW, Capability.ANALYTICS}
-)
+ADMIN_OBSERVER = frozenset({Capability.ROSTER_VIEW, Capability.GRADES_VIEW, Capability.ANALYTICS})
 
 
 def require_classroom_participant(actor):

@@ -94,7 +94,8 @@ async def test_enrollment_includes_teacher_students_but_excludes_legacy_admin_me
     # Only platform ADMIN memberships must be omitted from enrollment/selection.
     for statement in (count, page):
         role_filters = {
-            name: value for name, value in statement.compile().params.items()
+            name: value
+            for name, value in statement.compile().params.items()
             if name.startswith("role_")
         }
         assert all(value == UserRole.ADMIN for value in role_filters.values())
@@ -158,14 +159,16 @@ async def test_admin_directory_serializes_real_query_rows_without_private_fields
 
     async def classrooms(_self, **filters):
         assert filters["teacher_id"] == teacher_id
-        return 1, [{
-            "id": classroom_id,
-            "name": "Fictional Reading Class",
-            "status": "ARCHIVED",
-            "teacher_id": teacher_id,
-            "teacher_name": person["display_name"],
-            "enrolled_student_count": 2,
-        }]
+        return 1, [
+            {
+                "id": classroom_id,
+                "name": "Fictional Reading Class",
+                "status": "ARCHIVED",
+                "teacher_id": teacher_id,
+                "teacher_name": person["display_name"],
+                "enrolled_student_count": 2,
+            }
+        ]
 
     async def selected_person(_self, person_id, *, role):
         assert person_id == teacher_id and role == "TEACHER"
@@ -191,14 +194,14 @@ async def test_admin_directory_serializes_real_query_rows_without_private_fields
         response = await client.get(f"/api/v1/admin/directory/people/{teacher_id}")
         assert response.status_code == 200
         assert "email" not in response.json()
-        response = await client.get(
-            f"/api/v1/admin/directory/classrooms?teacher_id={teacher_id}"
-        )
+        response = await client.get(f"/api/v1/admin/directory/classrooms?teacher_id={teacher_id}")
         assert response.status_code == 200
-        assert response.json()["items"] == [{
-            "id": str(classroom_id),
-            "name": "Fictional Reading Class",
-            "status": "ARCHIVED",
-            "teacher": {"id": str(teacher_id), "display_name": person["display_name"]},
-            "enrolled_student_count": 2,
-        }]
+        assert response.json()["items"] == [
+            {
+                "id": str(classroom_id),
+                "name": "Fictional Reading Class",
+                "status": "ARCHIVED",
+                "teacher": {"id": str(teacher_id), "display_name": person["display_name"]},
+                "enrolled_student_count": 2,
+            }
+        ]

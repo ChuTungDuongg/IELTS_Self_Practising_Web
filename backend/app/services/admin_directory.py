@@ -59,7 +59,9 @@ class AdminDirectoryService:
                     id=row["id"],
                     name=row["name"],
                     status=row["status"],
-                    teacher=DirectoryTeacher(id=row["teacher_id"], display_name=row["teacher_name"]),
+                    teacher=DirectoryTeacher(
+                        id=row["teacher_id"], display_name=row["teacher_name"]
+                    ),
                     enrolled_student_count=row["enrolled_student_count"],
                 )
                 for row in rows

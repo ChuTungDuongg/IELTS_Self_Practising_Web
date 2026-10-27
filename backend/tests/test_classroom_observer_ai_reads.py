@@ -33,16 +33,24 @@ async def test_stale_ai_reads_preserve_observer_state_and_recover_authorized_wor
     current = actor(role)
     assignment_id = uuid4()
     attempt = Attempt(
-        id=uuid4(), user_id=current.id,
+        id=uuid4(),
+        user_id=current.id,
         classroom_assignment_id=assignment_id if origin == "direct" else None,
         test_session_id=uuid4() if origin == "parent" else None,
     )
     old = datetime.now(UTC) - timedelta(hours=2)
     run = WritingAIGradingRun(
-        id=uuid4(), attempt_id=attempt.id, writing_task_id=uuid4(),
-        requested_by_user_id=current.id, status="RUNNING", provider="fictional",
-        model="fictional", prompt_version="fictional", input_fingerprint="f" * 64,
-        created_at=old, updated_at=old,
+        id=uuid4(),
+        attempt_id=attempt.id,
+        writing_task_id=uuid4(),
+        requested_by_user_id=current.id,
+        status="RUNNING",
+        provider="fictional",
+        model="fictional",
+        prompt_version="fictional",
+        input_fingerprint="f" * 64,
+        created_at=old,
+        updated_at=old,
     )
     session = session_double(assignment_id if origin == "parent" else None)
     session.get = AsyncMock(return_value=current)
@@ -55,10 +63,14 @@ async def test_stale_ai_reads_preserve_observer_state_and_recover_authorized_wor
     events = []
 
     async def append_event(_run, event_type, payload):
-        events.append(SimpleNamespace(
-            sequence=len(events) + 1, event_type=event_type,
-            payload=payload.model_dump(mode="json"), created_at=datetime.now(UTC),
-        ))
+        events.append(
+            SimpleNamespace(
+                sequence=len(events) + 1,
+                event_type=event_type,
+                payload=payload.model_dump(mode="json"),
+                created_at=datetime.now(UTC),
+            )
+        )
 
     service.repository.append_event = append_event
     service.repository.events = AsyncMock(return_value=events)
@@ -85,29 +97,40 @@ async def test_speaking_stale_source_reads_only_change_returned_dto(engine):
     admin = actor("ADMIN")
     aid, rid, response_id = uuid4(), uuid4(), uuid4()
     run = SimpleNamespace(
-        id=rid, attempt_id=aid, status="RUNNING", stage="SCORING", cache_key="fictional",
+        id=rid,
+        attempt_id=aid,
+        status="RUNNING",
+        stage="SCORING",
+        cache_key="fictional",
         manifest_json=[{"response_id": str(response_id), "audio_fingerprint": "old"}],
-        responses_json={str(response_id): {"status": "WAITING"}}, criteria_json={},
-        summary_json={}, raw_mean=None, overall_band=None, error_code=None,
+        responses_json={str(response_id): {"status": "WAITING"}},
+        criteria_json={},
+        summary_json={},
+        raw_mean=None,
+        overall_band=None,
+        error_code=None,
         created_at=datetime.now(UTC),
     )
     session = session_double(0)
     settings = Settings(_env_file=None)
     if engine == "speaking_ai":
         service = SpeakingAIService(
-            session, admin, settings, llm_identity={"provider": "fictional"},
+            session,
+            admin,
+            settings,
+            llm_identity={"provider": "fictional"},
             transcript_identity={"provider": "fictional"},
         )
-        service.manifest = AsyncMock(return_value=[
-            {"response_id": str(response_id), "audio_fingerprint": "new"}
-        ])
+        service.manifest = AsyncMock(
+            return_value=[{"response_id": str(response_id), "audio_fingerprint": "new"}]
+        )
     else:
         service = SpeakingTranscriptService(
             session, admin, settings, identity={"provider": "fictional"}
         )
-        service.authorized = AsyncMock(return_value=[
-            SimpleNamespace(id=response_id, committed_audio_fingerprint="new")
-        ])
+        service.authorized = AsyncMock(
+            return_value=[SimpleNamespace(id=response_id, committed_audio_fingerprint="new")]
+        )
     service.repository.run = AsyncMock(return_value=run)
     before = deepcopy(vars(run))
     result, events = await service.snapshot(aid, rid)

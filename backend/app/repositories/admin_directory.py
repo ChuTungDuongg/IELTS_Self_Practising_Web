@@ -44,9 +44,7 @@ class AdminDirectoryRepository:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
-    async def people(
-        self, *, role: DirectoryRole, search: str | None, offset: int, limit: int
-    ):
+    async def people(self, *, role: DirectoryRole, search: str | None, offset: int, limit: int):
         filters = [User.role == role]
         pattern = _search_pattern(search)
         if pattern:

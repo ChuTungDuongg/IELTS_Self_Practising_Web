@@ -57,7 +57,10 @@ async def test_admin_cannot_create_assignment_through_role_bypass(monkeypatch):
     service.policy.lock_version = AsyncMock(return_value=version)
     service.policy.version_access = AsyncMock(return_value=True)
     service._present = AsyncMock(return_value="assignment-created")
-    monkeypatch.setattr("app.services.assignment_scheduling.policy_event", AsyncMock(return_value=SimpleNamespace(id=uuid4())))
+    monkeypatch.setattr(
+        "app.services.assignment_scheduling.policy_event",
+        AsyncMock(return_value=SimpleNamespace(id=uuid4())),
+    )
     monkeypatch.setattr("app.services.assignment_scheduling.notify_assignment", AsyncMock())
     with pytest.raises(AppError) as error:
         await service.create(room.id, AssignmentCreate(test_version_id=version.id))
@@ -88,14 +91,20 @@ async def test_admin_cannot_enter_participant_mutation_boundary():
 
 @pytest.mark.parametrize("module", ["WRITING", "SPEAKING"])
 @pytest.mark.parametrize("parent_origin", [False, True])
-async def test_admin_personal_final_grading_cannot_bypass_classroom_provenance(module, parent_origin):
+async def test_admin_personal_final_grading_cannot_bypass_classroom_provenance(
+    module, parent_origin
+):
     admin = actor("ADMIN")
     origin = uuid4()
     attempt = SimpleNamespace(
-        id=uuid4(), user_id=uuid4(), module_type=module, status="SUBMITTED",
+        id=uuid4(),
+        user_id=uuid4(),
+        module_type=module,
+        status="SUBMITTED",
         classroom_assignment_id=None if parent_origin else origin,
         test_session=SimpleNamespace(classroom_assignment_id=origin, status="COMPLETED")
-        if parent_origin else None,
+        if parent_origin
+        else None,
     )
     policy = GradingPolicy(session_double(), admin)
     flags = policy.capabilities(attempt, assignment_authorized=True)
@@ -109,8 +118,11 @@ async def test_admin_personal_final_grading_cannot_bypass_classroom_provenance(m
 async def test_admin_personal_grading_keeps_separate_platform_authority():
     admin = actor("ADMIN")
     attempt = SimpleNamespace(
-        user_id=uuid4(), module_type="SPEAKING", status="SUBMITTED",
-        classroom_assignment_id=None, test_session=None,
+        user_id=uuid4(),
+        module_type="SPEAKING",
+        status="SUBMITTED",
+        classroom_assignment_id=None,
+        test_session=None,
     )
     policy = GradingPolicy(session_double(), admin)
     assert policy.capabilities(attempt).can_edit_final
@@ -123,7 +135,9 @@ async def test_admin_cannot_start_assignment_with_legacy_membership(monkeypatch)
     version_id = uuid4()
     assignment = SimpleNamespace(test_version_id=version_id, status="ACTIVE", target=None)
     session = session_double(admin, room.id, room, assignment, uuid4())
-    monkeypatch.setattr(AccessPolicy, "lock_version", AsyncMock(return_value=SimpleNamespace(id=version_id)))
+    monkeypatch.setattr(
+        AccessPolicy, "lock_version", AsyncMock(return_value=SimpleNamespace(id=version_id))
+    )
     monkeypatch.setattr(AccessPolicy, "version_access", AsyncMock(return_value=True))
     monkeypatch.setattr("app.services.assignment_scheduling.enforce_schedule_start", AsyncMock())
     with pytest.raises(AppError) as error:
@@ -168,8 +182,11 @@ async def test_teacher_owner_can_restore_archived_classroom():
 async def test_legacy_admin_enrolment_cannot_mutate_existing_assignment_attempt(engine):
     admin = actor("ADMIN")
     attempt = Attempt(
-        id=uuid4(), user_id=admin.id, classroom_assignment_id=uuid4(),
-        module_type="SPEAKING", status="IN_PROGRESS",
+        id=uuid4(),
+        user_id=admin.id,
+        classroom_assignment_id=uuid4(),
+        module_type="SPEAKING",
+        status="IN_PROGRESS",
     )
     session = session_double(attempt)
     session.get = AsyncMock(return_value=admin)
@@ -194,7 +211,9 @@ async def test_legacy_admin_enrolment_cannot_mutate_existing_assignment_attempt(
 async def test_admin_cannot_trigger_or_save_ai_for_legacy_classroom_attempt(engine):
     admin = actor("ADMIN")
     attempt = Attempt(
-        id=uuid4(), user_id=admin.id, classroom_assignment_id=uuid4(),
+        id=uuid4(),
+        user_id=admin.id,
+        classroom_assignment_id=uuid4(),
         module_type="SPEAKING" if engine == "speaking_ai" else "WRITING",
         status="IN_PROGRESS",
     )
@@ -232,20 +251,46 @@ async def test_admin_cannot_cancel_legacy_owned_classroom_writing_ai_run(monkeyp
 @pytest.mark.parametrize(
     "role,staff,permitted,denied",
     [
-        ("TEACHER", "CO_TEACHER", ["roster.view", "members.manage", "assignments.manage", "grades.edit"], ["classroom.manage", "staff.manage"]),
-        ("USER", "TEACHING_ASSISTANT", ["grades.view", "grades.edit", "content.manage"], ["members.manage", "assignments.manage", "staff.manage"]),
+        (
+            "TEACHER",
+            "CO_TEACHER",
+            ["roster.view", "members.manage", "assignments.manage", "grades.edit"],
+            ["classroom.manage", "staff.manage"],
+        ),
+        (
+            "USER",
+            "TEACHING_ASSISTANT",
+            ["grades.view", "grades.edit", "content.manage"],
+            ["members.manage", "assignments.manage", "staff.manage"],
+        ),
         ("USER", None, [], ["members.manage", "grades.edit", "assignments.manage", "roster.view"]),
-        ("TEACHER", None, [], ["members.manage", "grades.edit", "assignments.manage", "roster.view"]),
+        (
+            "TEACHER",
+            None,
+            [],
+            ["members.manage", "grades.edit", "assignments.manage", "roster.view"],
+        ),
     ],
 )
-async def test_staff_capabilities_remain_scoped_and_students_cannot_escalate(role, staff, permitted, denied):
+async def test_staff_capabilities_remain_scoped_and_students_cannot_escalate(
+    role, staff, permitted, denied
+):
     current = actor(role)
     room = classroom(actor())
-    member = ClassroomStaff(
-        classroom_id=room.id, user_id=current.id, staff_role=staff, status="ACCEPTED",
-        content_manage=True, discussion_moderate=False, analytics_view=False,
-        learning_plans_manage=False,
-    ) if staff else None
+    member = (
+        ClassroomStaff(
+            classroom_id=room.id,
+            user_id=current.id,
+            staff_role=staff,
+            status="ACCEPTED",
+            content_manage=True,
+            discussion_moderate=False,
+            analytics_view=False,
+            learning_plans_manage=False,
+        )
+        if staff
+        else None
+    )
     session = session_double(member)
     _, capabilities = await resolve_capabilities(session, current, room)
     assert set(permitted) <= capabilities
