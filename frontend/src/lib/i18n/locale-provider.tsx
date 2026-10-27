@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, type ReactElement, type ReactNode } from "react";
-import { PersonalizationProvider, usePersonalization } from "@/features/personalization/personalization-provider";
+import { PersonalizationProvider, usePersonalizationLocale } from "@/features/personalization/personalization-provider";
 import { translate } from "./translations";
 import type { Locale, TranslationFunction, TranslationKey, TranslationParams } from "./types";
 
@@ -11,8 +11,7 @@ export function LocaleProvider({ children }: { children: ReactNode }): ReactElem
 }
 
 export function useLocale(): { locale: Locale; setLocale(locale: Locale): void } {
-  const { locale, setLocale } = usePersonalization();
-  return { locale, setLocale };
+  return usePersonalizationLocale();
 }
 
 export function useTranslation(): { t: TranslationFunction } {

@@ -8,6 +8,15 @@ import type { ExamPayload } from "@/lib/api/exam";
 import { saveFlag, submitAttempt } from "@/lib/api/exam";
 
 const push = vi.fn();
+const passageRenders = vi.hoisted(() => vi.fn());
+
+vi.mock("@/features/highlighting/selectable-text", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/features/highlighting/selectable-text")>();
+  return { ...actual, SelectableText: (props: React.ComponentProps<typeof actual.SelectableText>) => {
+    if (props.target.target_kind === "PASSAGE_BLOCK") passageRenders();
+    return <actual.SelectableText {...props} />;
+  } };
+});
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn(), push }) }));
 vi.mock("@/lib/api/attempts", async (importOriginal) => {
@@ -148,6 +157,18 @@ describe("Reading footer navigation", () => {
   });
 
   afterEach(() => vi.useRealTimers());
+
+  it("does not rerender passage text on timer ticks or unrelated answer saves", async () => {
+    vi.useFakeTimers();
+    render(<ReadingRunner initial={payload()} />);
+    const before = passageRenders.mock.calls.length;
+    await act(async () => { vi.advanceTimersByTime(3000); });
+    expect(passageRenders).toHaveBeenCalledTimes(before);
+    fireEvent.click(screen.getAllByRole("radio", { name: "FALSE" })[0]);
+    await act(async () => { await vi.advanceTimersByTimeAsync(400); });
+    expect(saveAnswer).toHaveBeenCalled();
+    expect(passageRenders).toHaveBeenCalledTimes(before);
+  });
 
   it("keeps focused Passage 2 navigation, answers and submission scoped", async () => {
     const data = payload();

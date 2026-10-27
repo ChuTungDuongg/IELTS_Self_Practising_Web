@@ -1,15 +1,16 @@
 "use client";
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { getAssignmentProgress, type AssignmentProgress } from "@/lib/api/assignment-scheduling";
 import { useScheduleText } from "./messages";
 import type { ClassroomAssignment } from "@/lib/api/classrooms";
 
 type ProgressState = { items: Record<string, AssignmentProgress>; loading: boolean; error: boolean; refresh: () => Promise<void>; staff: boolean; assignments: ClassroomAssignment[] };
 const ProgressContext = createContext<ProgressState | null>(null);
+const noAssignments: ClassroomAssignment[] = [];
 export function useAssignmentProgress() { return useContext(ProgressContext); }
-export function AssignmentProgressProvider({ classroomId, ids, children, staff = false, assignments = [] }: { classroomId: string; ids: string[]; children: ReactNode; staff?: boolean; assignments?: ClassroomAssignment[] }) {
+export function AssignmentProgressProvider({ classroomId, ids, children, staff = false, assignments = noAssignments }: { classroomId: string; ids: string[]; children: ReactNode; staff?: boolean; assignments?: ClassroomAssignment[] }) {
   const [items, setItems] = useState<Record<string, AssignmentProgress>>({}), [loading, setLoading] = useState(true), [error, setError] = useState(false);
-  const signature = ids.join(","), sequence = useRef(0);
+  const signature = [...new Set(ids)].sort().join(","), sequence = useRef(0);
   const load = useCallback(async (signal?: AbortSignal) => {
     const current = ++sequence.current; setLoading(true); setError(false);
     try {
@@ -23,7 +24,8 @@ export function AssignmentProgressProvider({ classroomId, ids, children, staff =
     finally { if (!signal?.aborted && sequence.current === current) setLoading(false); }
   }, [classroomId, signature, staff]);
   useEffect(() => { const controller = new AbortController(); void Promise.resolve().then(() => { if (!controller.signal.aborted) void load(controller.signal); }); return () => controller.abort(); }, [load]);
-  return <ProgressContext.Provider value={{ items, loading, error, refresh: load, staff, assignments }}>{children}</ProgressContext.Provider>;
+  const value = useMemo(() => ({ items, loading, error, refresh: load, staff, assignments }), [items, loading, error, load, staff, assignments]);
+  return <ProgressContext.Provider value={value}>{children}</ProgressContext.Provider>;
 }
 export function ProgressLoadState() {
   const state = useAssignmentProgress(), { st } = useScheduleText();

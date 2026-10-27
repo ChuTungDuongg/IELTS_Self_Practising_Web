@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import dynamic from "next/dynamic";
 import { getClasswork, type Classwork } from "@/lib/api/classroom-content";
 import type { Classroom, ClassroomAssignment } from "@/lib/api/classrooms";
 import { AssignmentList } from "../assignment-list";
@@ -9,7 +10,6 @@ import { contentError } from "./content-action";
 import { ClassroomStream } from "./classroom-stream";
 import { ClassworkPanel } from "./classwork-panel";
 import { ClassroomHeader } from "../lms/classroom-header";
-import { GradebookPanel } from "../lms/gradebook";
 import { useLmsText } from "../lms/messages";
 import "./classroom-workspace.css";
 import "../scheduling/scheduling.css";
@@ -17,9 +17,11 @@ import "../lms/lms.css";
 import { AssignmentProgressProvider } from "../scheduling/progress-provider";
 import { AssignmentCalendarPanel } from "../scheduling/assignment-calendar";
 import { useScheduleText } from "../scheduling/messages";
-import { LearningAnalyticsPanel } from "../lms/learning-analytics";
-import { LearningPlansPanel } from "../lms/learning-plans";
-import { AcademicProfilePanel } from "../lms/student-profile";
+function PanelLoading() { const { lt } = useLmsText(); return <p role="status">{lt("loading")}</p>; }
+const GradebookPanel = dynamic(() => import("../lms/gradebook").then(module => module.GradebookPanel), { loading: PanelLoading });
+const LearningAnalyticsPanel = dynamic(() => import("../lms/learning-analytics").then(module => module.LearningAnalyticsPanel), { loading: PanelLoading });
+const LearningPlansPanel = dynamic(() => import("../lms/learning-plans").then(module => module.LearningPlansPanel), { loading: PanelLoading });
+const AcademicProfilePanel = dynamic(() => import("../lms/student-profile").then(module => module.AcademicProfilePanel), { loading: PanelLoading });
 
 type Tab = "stream" | "classwork" | "assignments" | "calendar" | "people" | "gradebook" | "analytics" | "myProgress";
 type WorkspaceProps = {
@@ -33,7 +35,8 @@ export function ClassroomWorkspace(props: WorkspaceProps) {
 function ClassroomWorkspaceContent({ classroom, user, assignments, people, assignmentForm, management, canManage, selectedPostId = null, selectedAssignmentId = null }: WorkspaceProps) {
   const { ct } = useContentTranslation(), { st } = useScheduleText(), { lt } = useLmsText();
   const [tab, setTab] = useState<Tab>(selectedAssignmentId ? "assignments" : "stream");
-  const [data, setData] = useState<Classwork | null>(null), [loading, setLoading] = useState(true), [error, setError] = useState<string | null>(null);
+  const [data, setData] = useState<Classwork | null>(null), [loading, setLoading] = useState(true), [loadError, setError] = useState<unknown>(null);
+  const error = loadError ? contentError(loadError, ct("error")) : null;
   const [assignmentFocus, setAssignmentFocus] = useState<string | null>(selectedAssignmentId), [creating, setCreating] = useState(false);
   const [createAction, setCreateAction] = useState<"section" | "resource" | "post" | null>(null), [actionSequence, setActionSequence] = useState(0), [student, setStudent] = useState<string | null>(null);
   const canOwn = user.role === "TEACHER" && user.id === classroom.teacher_id, archived = classroom.status === "ARCHIVED";
@@ -46,9 +49,9 @@ function ClassroomWorkspaceContent({ classroom, user, assignments, people, assig
   const refresh = useCallback(async (signal?: AbortSignal) => {
     const sequence = ++requestId.current; setLoading(true); setError(null);
     try { const next = await getClasswork(classroom.id, undefined, signal); if (sequence === requestId.current && !signal?.aborted) setData(next); }
-    catch (caught) { if (sequence === requestId.current && !signal?.aborted) setError(contentError(caught, ct("error"))); throw caught; }
+    catch (caught) { if (sequence === requestId.current && !signal?.aborted) setError(caught); throw caught; }
     finally { if (sequence === requestId.current && !signal?.aborted) setLoading(false); }
-  }, [classroom.id, ct]);
+  }, [classroom.id]);
   useEffect(() => { const controller = new AbortController(); void Promise.resolve().then(() => { if (!controller.signal.aborted) void refresh(controller.signal).catch(() => {}); }); return () => controller.abort(); }, [refresh]);
   useEffect(() => {
     function navigateContent() { if (!selectedAssignmentId && /^#(?:section-|assignment-|resource-|classwork-|item-)/.test(window.location.hash)) setTab("classwork"); }

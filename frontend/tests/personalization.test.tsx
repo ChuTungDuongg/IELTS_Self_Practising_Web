@@ -69,6 +69,7 @@ it("header opens Personalization without navigation and appearance persists to t
   expect(within(dialog).getAllByRole("group")).toHaveLength(3);
   expect(router.push).not.toHaveBeenCalled();
   expect(router.replace).not.toHaveBeenCalled();
+  await settingsReady();
   fireEvent.click(within(dialog).getByRole("button", { name: "Dark" }));
   await waitFor(() => expect(saved.appearance).toBe("DARK"));
   expect(document.documentElement.dataset.theme).toBe("dark");
@@ -150,6 +151,7 @@ it("keeps the dialog open when accent and language change, and closes from its v
   const trigger = screen.getByRole("button", { name: "Personalization" });
   fireEvent.click(trigger);
   const dialog = screen.getByRole("dialog", { name: "Personalization" });
+  await settingsReady();
   fireEvent.click(within(dialog).getByRole("button", { name: "Blue" }));
   await waitFor(() => expect(saved.accent_color).toBe("BLUE"));
   fireEvent.click(within(dialog).getByRole("button", { name: "Tiếng Việt" }));

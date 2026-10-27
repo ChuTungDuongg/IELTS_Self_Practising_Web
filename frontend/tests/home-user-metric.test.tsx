@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { renderWithLocale } from "./locale-test-utils";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import DashboardPage from "@/app/page";
@@ -32,6 +32,16 @@ const profile = {
 };
 
 describe("homepage metrics and personal IELTS goals", () => {
+  it("starts profile and admin loaders without waiting for catalog/history responses", async () => {
+    let release!: (value: Awaited<ReturnType<typeof getTests>>) => void;
+    vi.mocked(getTests).mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+    const page = DashboardPage();
+    try {
+      await waitFor(() => expect(getHistory).toHaveBeenCalledOnce());
+      expect(getProfile).toHaveBeenCalledOnce();
+      expect(getAdminStats).toHaveBeenCalledOnce();
+    } finally { release([]); await page; }
+  });
   it("shows the actual active attempt as a direct continuation action", () => {
     render(<OverviewContent publishedCount={2} resumableCount={1} testCount={2} isAdmin={false} adminStats={null} profile={null} recentAttempt={{ attempt_id: "active-attempt", status: "IN_PROGRESS", module: "READING", test_title: "Fictional saved practice" }} />);
     expect(screen.getByRole("link", { name: /Continue saved attempt/ })).toHaveAttribute("href", "/attempt/active-attempt");

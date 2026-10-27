@@ -46,6 +46,18 @@ it("loads Stream, switches tabs, and preserves the existing people and assignmen
   fireEvent.click(screen.getAllByRole("button", { name: "Create assignment" }).at(-1)!); expect(screen.getByText("Existing assignment form")).toBeInTheDocument();
   fireEvent.click(screen.getByRole("tab", { name: "Classwork" })); expect(await screen.findByRole("heading", { name: "Lesson notes" })).toBeInTheDocument();
 });
+it("keeps classwork and feed requests stable while changing locale", async () => {
+  renderWithLocale(workspace("TEACHER"));
+  await screen.findByText("Reading notes");
+  await waitFor(() => expect(api.getClasswork).toHaveBeenCalledTimes(1));
+  fireEvent.click(screen.getByRole("button", { name: "Switch to Vietnamese" }));
+  await screen.findByRole("tab", { name: "Bảng tin" });
+  await waitFor(() => expect(api.listFeed).toHaveBeenCalledTimes(1));
+  expect(api.getClasswork).toHaveBeenCalledTimes(1);
+  fireEvent.click(screen.getByRole("tab", { name: "Nội dung học" }));
+  expect(await screen.findByRole("heading", { name: "Lesson notes" })).toBeInTheDocument();
+  expect(api.getClasswork).toHaveBeenCalledTimes(1);
+});
 it("reserves content authoring for the owner teacher and makes archived rooms read-only", async () => {
   const view = renderWithLocale(workspace("ADMIN")); await screen.findByText("Reading notes");
   expect(screen.queryByRole("button", { name: "New post" })).not.toBeInTheDocument();

@@ -33,6 +33,16 @@ function isCurrent(pathname: string, href: string) {
   return href === "/" || href === "/admin" ? pathname === href : pathname.startsWith(href);
 }
 
+function CatalogNavigationLink({ href, children, ...props }: { href: string; children: ReactNode; className: string; "aria-current"?: "page" }) {
+  const [intent, setIntent] = useState(false);
+  function prepare() {
+    const connection = (navigator as Navigator & { connection?: { saveData?: boolean; effectiveType?: string } }).connection;
+    if (connection?.saveData || /^(slow-)?2g$/.test(connection?.effectiveType ?? "")) return;
+    setIntent(true);
+  }
+  return <Link {...props} href={href} prefetch={intent ? null : false} onMouseEnter={prepare} onFocus={prepare}>{children}</Link>;
+}
+
 function PrimaryNavigation({ pathname, id, onNavigate }: { pathname: string; id: string; onNavigate(): void }) {
   const { user } = useAuth();
   const { t } = useTranslation();
@@ -42,7 +52,8 @@ function PrimaryNavigation({ pathname, id, onNavigate }: { pathname: string; id:
       <ul className="primary-nav-list">
         {visibleNavigation.map((item) => {
           const active = isCurrent(pathname, item.href);
-          return <li key={item.href}><Link href={item.href} prefetch={item.href === "/" ? undefined : false} aria-current={active ? "page" : undefined} className={`primary-nav-link ${active ? "primary-nav-link-active" : ""}`}>{t(item.message)}</Link></li>;
+          const props = { href: item.href, "aria-current": active ? "page" as const : undefined, className: `primary-nav-link ${active ? "primary-nav-link-active" : ""}` };
+          return <li key={item.href}>{item.href === "/library" || item.href === "/practice" ? <CatalogNavigationLink {...props}>{t(item.message)}</CatalogNavigationLink> : <Link {...props} prefetch={item.href === "/" ? undefined : false}>{t(item.message)}</Link>}</li>;
         })}
       </ul>
     </nav>
@@ -65,27 +76,29 @@ function HeaderBar({ pathname, children }: { pathname: string; children: ReactNo
   const { t } = useTranslation();
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const navigationId = useId();
-  const [navigationOpen, setNavigationOpen] = useState(false);
-  const closeNavigation = useCallback(() => setNavigationOpen(false), []);
+  const [navigationState, setNavigationState] = useState({ pathname, open: false });
+  if (navigationState.pathname !== pathname) setNavigationState({ pathname, open: false });
+  const navigationOpen = navigationState.pathname === pathname && navigationState.open;
+  const closeNavigation = useCallback(() => setNavigationState(current => current.open ? { ...current, open: false } : current), []);
 
   useEffect(() => {
     if (!navigationOpen) return;
     document.getElementById(navigationId)?.querySelector<HTMLAnchorElement>("a")?.focus();
     function handleEscape(event: KeyboardEvent) {
       if (event.key !== "Escape") return;
-      setNavigationOpen(false);
+      closeNavigation();
       menuButtonRef.current?.focus();
     }
     document.addEventListener("keydown", handleEscape);
     return () => document.removeEventListener("keydown", handleEscape);
-  }, [navigationOpen, navigationId]);
+  }, [navigationOpen, navigationId, closeNavigation]);
 
   return <header className="app-header" data-navigation-open={navigationOpen}>
     <div className="app-header-inner">
       <Link href="/" className="brand" aria-label={t("shell.brandOverview")}><span className="brand-mark" aria-hidden="true"><AppLogo variant="primary" /></span><strong>BandPilot</strong></Link>
       <PrimaryNavigation pathname={pathname} id={navigationId} onNavigate={closeNavigation} />
       {children}
-      <button ref={menuButtonRef} type="button" className="navigation-toggle icon-button" aria-label={t("shell.menu")} aria-expanded={navigationOpen} aria-controls={navigationId} onClick={() => setNavigationOpen(open => !open)}><svg aria-hidden="true" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><path d={navigationOpen ? "m6 6 12 12M6 18 18 6" : "M4 6h16M4 12h16M4 18h16"} /></svg></button>
+      <button ref={menuButtonRef} type="button" className="navigation-toggle icon-button" aria-label={t("shell.menu")} aria-expanded={navigationOpen} aria-controls={navigationId} onClick={() => setNavigationState({ pathname, open: !navigationOpen })}><svg aria-hidden="true" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><path d={navigationOpen ? "m6 6 12 12M6 18 18 6" : "M4 6h16M4 12h16M4 18h16"} /></svg></button>
     </div>
   </header>;
 }
@@ -120,7 +133,7 @@ export function GlobalHeader({ pathname }: { pathname: string }): ReactElement {
   }
 
   return <>
-    <HeaderBar key={pathname} pathname={pathname}>
+    <HeaderBar pathname={pathname}>
       <HeaderActions loggingOut={loggingOut} onLogout={() => setConfirmingLogout(true)} onPersonalization={() => setPersonalizationOpen(true)} settingsButtonRef={settingsButtonRef} pathname={pathname} />
     </HeaderBar>
     <ConfirmDialog open={confirmingLogout && user !== null} title={t("shell.logoutTitle")} description={t("shell.logoutDescription")} confirmLabel={t("shell.logoutConfirm")} pending={loggingOut} onCancel={() => setConfirmingLogout(false)} onConfirm={() => void confirmLogout()} />

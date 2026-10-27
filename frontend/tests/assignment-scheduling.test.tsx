@@ -7,7 +7,7 @@ import { ExtensionEditor } from "@/features/classrooms/scheduling/extension-edit
 import { AssignmentMonitoringPanel } from "@/features/classrooms/scheduling/assignment-monitoring";
 import { AssignmentCalendarPanel } from "@/features/classrooms/scheduling/assignment-calendar";
 import { ScheduleEditor } from "@/features/classrooms/scheduling/schedule-editor";
-import { AssignmentProgressProvider } from "@/features/classrooms/scheduling/progress-provider";
+import { AssignmentProgressProvider, useAssignmentProgress } from "@/features/classrooms/scheduling/progress-provider";
 import { AssignmentList } from "@/features/classrooms/assignment-list";
 
 const api = vi.hoisted(() => ({ getMonitoring: vi.fn(), getAssignmentCalendar: vi.fn(), updateAssignmentSchedule: vi.fn(), saveExtension: vi.fn(), revokeExtension: vi.fn(), getAssignmentProgress: vi.fn(), startAssignment: vi.fn(), push: vi.fn(), refresh: vi.fn() }));
@@ -22,6 +22,21 @@ it("serializes local inputs to aware UTC instants and rejects invalid order/limi
   const form = new FormData(); form.set("available_from", "2026-11-02T10:00"); form.set("due_at", "2026-11-07T23:59"); form.set("cutoff_at", "2026-11-09T23:59"); form.set("max_attempts", "2"); form.set("allow_late_submission", "on");
   const policy = serializeSchedule(form); expect(policy.due_at).toBe(new Date("2026-11-07T23:59").toISOString()); expect(policy.due_at).toMatch(/Z$/); expect(localDateTime(policy.due_at)).toBe("2026-11-07T23:59");
   form.set("max_attempts", "0"); expect(() => serializeSchedule(form)).toThrow(); form.set("max_attempts", "2"); form.set("cutoff_at", "2026-11-01T00:00"); expect(() => serializeSchedule(form)).toThrow();
+});
+it("reuses progress for the same assignment set across reordered tab inputs", async () => {
+  const renders = vi.fn();
+  function Probe() {
+    const state = useAssignmentProgress(); renders();
+    return <p>{state?.loading ? "Loading progress" : "Progress ready"}</p>;
+  }
+  const child = <Probe />;
+  const view = renderWithLocale(<AssignmentProgressProvider classroomId="room" ids={["a", "b"]}>{child}</AssignmentProgressProvider>);
+  await screen.findByText("Progress ready");
+  const before = renders.mock.calls.length;
+  view.rerender(<AssignmentProgressProvider classroomId="room" ids={["b", "a", "a"]}>{child}</AssignmentProgressProvider>);
+  await screen.findByText("Progress ready");
+  expect(api.getAssignmentProgress).toHaveBeenCalledTimes(1);
+  expect(renders).toHaveBeenCalledTimes(before);
 });
 it("shows authoritative progress and resumes without creating another start", () => {
   renderWithLocale(<ProgressSummary assignmentId={assignment.id} value={progress} actions />);

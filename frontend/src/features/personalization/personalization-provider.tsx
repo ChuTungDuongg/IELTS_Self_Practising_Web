@@ -26,6 +26,8 @@ const PersonalizationContext = createContext<PersonalizationState>({
   setAccentColor: () => undefined, setAppearance: () => undefined, setLocale: () => undefined,
   synchronizeAccount: () => undefined, retry: () => undefined,
 });
+type LocaleState = Pick<PersonalizationState, "locale" | "setLocale">;
+const PersonalizationLocaleContext = createContext<LocaleState>({ locale: "en", setLocale: () => undefined });
 
 function readCache(): Preferences {
   const result = { ...defaults };
@@ -160,9 +162,15 @@ export function PersonalizationProvider({ children }: { children: React.ReactNod
     locale: values.locale === "VI" ? "vi" : "en", loading, saving, canUpdate, error,
     setAccentColor, setAppearance, setLocale, synchronizeAccount, retry,
   }), [values, loading, saving, canUpdate, error, setAccentColor, setAppearance, setLocale, synchronizeAccount, retry]);
-  return <PersonalizationContext.Provider value={value}>{children}</PersonalizationContext.Provider>;
+  // Translation consumers do not subscribe to preference request/appearance state.
+  const localeValue = useMemo<LocaleState>(() => ({ locale: value.locale, setLocale }), [value.locale, setLocale]);
+  return <PersonalizationContext.Provider value={value}><PersonalizationLocaleContext.Provider value={localeValue}>{children}</PersonalizationLocaleContext.Provider></PersonalizationContext.Provider>;
 }
 
 export function usePersonalization() {
   return useContext(PersonalizationContext);
+}
+
+export function usePersonalizationLocale() {
+  return useContext(PersonalizationLocaleContext);
 }

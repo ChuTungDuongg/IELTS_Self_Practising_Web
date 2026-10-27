@@ -11,12 +11,10 @@ export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
   const user = await getHomepageUser();
-  const [tests, history] = await Promise.all([
+  const [tests, history, adminStats, profile] = await Promise.all([
     // publicOnly filters test visibility; the API still requires a signed-in user.
     user ? getTests(user.role === "ADMIN" ? undefined : { publicOnly: true }, serverApiRequest) : [],
     user ? getHistory(serverApiRequest).catch((error) => { if (error instanceof ApiError && error.status === 401) return { items: [], groups: [], total: 0 }; throw error; }) : { items: [], groups: [], total: 0 },
-  ]);
-  const [adminStats, profile] = await Promise.all([
     user?.role === "ADMIN" ? getAdminStats(serverApiRequest) : null,
     user ? getHomepageProfile() : null,
   ]);

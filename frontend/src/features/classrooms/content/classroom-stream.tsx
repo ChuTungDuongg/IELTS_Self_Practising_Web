@@ -15,19 +15,20 @@ export function ClassroomStream({ classroomId, resources, userId, canAuthor, can
   const { lt } = useLmsText();
   const [kind, setKind] = useState<ClassroomPost["kind"] | "">("");
   const [items, setItems] = useState<ClassroomPost[]>([]), [cursor, setCursor] = useState<string | null>(null), [status, setStatus] = useState<ContentStatus | "">("");
-  const [loading, setLoading] = useState(true), [error, setError] = useState<string | null>(null), [composing, setComposing] = useState(initialCompose), [selected, setSelected] = useState<ClassroomPost | null>(null);
+  const [loading, setLoading] = useState(true), [loadError, setError] = useState<unknown>(null), [composing, setComposing] = useState(initialCompose), [selected, setSelected] = useState<ClassroomPost | null>(null);
+  const error = loadError ? loadError instanceof ApiError && loadError.code === "CLASSROOM_POST_NOT_FOUND" ? ct("unavailablePost") : contentError(loadError, ct("error")) : null;
   const requestId = useRef(0);
   const load = useCallback(async (next?: string, signal?: AbortSignal) => {
     const sequence = ++requestId.current; setLoading(true); setError(null);
     try { const result = await listFeed(classroomId, { ...(next ? { cursor: next } : {}), ...(status ? { status } : {}), ...(kind ? { contentKind: kind } : {}), ...(signal ? { signal } : {}) }); if (sequence !== requestId.current || signal?.aborted) return; setItems(previous => next ? [...previous, ...result.items.filter(item => !previous.some(old => old.id === item.id && old.kind === item.kind))] : result.items); setCursor(result.next_cursor); }
-    catch (caught) { if (sequence === requestId.current && !signal?.aborted) setError(contentError(caught, ct("error"))); } finally { if (sequence === requestId.current && !signal?.aborted) setLoading(false); }
-  }, [classroomId, status, kind, ct]);
+    catch (caught) { if (sequence === requestId.current && !signal?.aborted) setError(caught); } finally { if (sequence === requestId.current && !signal?.aborted) setLoading(false); }
+  }, [classroomId, status, kind]);
   useEffect(() => { const controller = new AbortController(); void Promise.resolve().then(() => { if (!controller.signal.aborted) void load(undefined, controller.signal); }); return () => controller.abort(); }, [load]);
   useEffect(() => {
     const id = selectedPostId; if (!id) return;
-    const controller = new AbortController(); void getPost(classroomId, id, controller.signal).then(post => { if (!controller.signal.aborted) setSelected(post); }).catch(caught => { if (!controller.signal.aborted) setError(caught instanceof ApiError && caught.code === "CLASSROOM_POST_NOT_FOUND" ? ct("unavailablePost") : contentError(caught, ct("error"))); });
+    const controller = new AbortController(); void getPost(classroomId, id, controller.signal).then(post => { if (!controller.signal.aborted) setSelected(post); }).catch(caught => { if (!controller.signal.aborted) setError(caught); });
     return () => controller.abort();
-  }, [classroomId, selectedPostId, ct]);
+  }, [classroomId, selectedPostId]);
   async function refresh() { await load(); if (selected) { try { setSelected(await getPost(classroomId, selected.id)); } catch { setSelected(null); } } }
   const activeSelection = selected?.id === selectedPostId ? selected : null;
   const shown = activeSelection ? [activeSelection, ...items.filter(item => item.id !== activeSelection.id || item.kind !== activeSelection.kind)] : items;

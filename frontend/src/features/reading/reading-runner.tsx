@@ -2,7 +2,7 @@
 
 import { useTranslation } from "@/lib/i18n/locale-provider";
 
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { elapsedFromSnapshot, formatDuration, estimateServerOffset, remainingSeconds } from "@/features/exam/timer";
 import { PauseAttemptControl } from "@/features/exam/pause-attempt-control";
 import { AttemptStoppedError, useAttemptLifecycle } from "@/features/exam/attempt-lifecycle";
@@ -164,6 +164,9 @@ export function ReadingRunner({ initial }: { initial: ExamPayload }) {
     }
   });
 
+  const addHighlight = useCallback(async (body: HighlightCreate) => { if (stopped.current) return; try { const created = await runMutation(() => createHighlight(attemptId, body)); setHighlights((current) => [...current, created]); } catch (error) { if (!(error instanceof AttemptStoppedError)) setHighlightError("runner.highlightSaveError"); } }, [attemptId, runMutation, stopped]);
+  const removeHighlight = useCallback(async (id: string) => { if (stopped.current) return; try { await runMutation(() => deleteHighlight(attemptId, id)); setHighlights((current) => current.filter((item) => item.id !== id)); } catch (error) { if (!(error instanceof AttemptStoppedError)) setHighlightError("runner.highlightDeleteError"); } }, [attemptId, runMutation, stopped]);
+  const highlighting = useMemo<HighlightController>(() => ({ highlights, onCreate: addHighlight, onDelete: removeHighlight }), [highlights, addHighlight, removeHighlight]);
   const passage = passages[passageIndex];
   if (ended) return <p role="status">{t("runner.finished")}</p>;
   if (!passage) return <p>{t("runner.noReading")}</p>;
@@ -191,9 +194,6 @@ export function ReadingRunner({ initial }: { initial: ExamPayload }) {
     if (readingPane === "passage") { pendingQuestion.current = questionId; return; }
     if (!scrollToQuestion(questionId)) pendingQuestion.current = questionId;
   }
-  async function addHighlight(body: HighlightCreate) { if (stopped.current) return; try { const created = await runMutation(() => createHighlight(attemptId, body)); setHighlights((current) => [...current, created]); } catch (error) { if (!(error instanceof AttemptStoppedError)) setHighlightError("runner.highlightSaveError"); } }
-  async function removeHighlight(id: string) { if (stopped.current) return; try { await runMutation(() => deleteHighlight(attemptId, id)); setHighlights((current) => current.filter((item) => item.id !== id)); } catch (error) { if (!(error instanceof AttemptStoppedError)) setHighlightError("runner.highlightDeleteError"); } }
-  const highlighting: HighlightController = { highlights, onCreate: addHighlight, onDelete: removeHighlight };
 
   return <div role="main" className={`exam-runner reading-exam${presentation === "PRACTICE" ? ` ${practiceStyles.root}` : ""}`} data-reading-pane={readingPane} data-presentation={presentation}>
     <header className="exam-header"><div><p>{initial.attempt.scope === "FOCUSED_UNIT" ? t("runner.readingFocused") : t("runner.reading")}</p><h1>{initial.test_title}</h1>{focusedUnitLabel(initial.attempt, t) ? <p>{focusedUnitLabel(initial.attempt, t)}</p> : null}</div><div className="exam-header-tools">{presentation === "PRACTICE" ? <PracticeTools compact mobileOnly /> : null}<PauseAttemptControl attemptId={attemptId} beforePause={flush} /><div className="exam-highlight-toolbar" aria-label={t("runner.highlightManagement")}><span>{t(highlights.length === 1 ? "runner.highlightCount" : "runner.highlightsCount", { count: highlights.length })}</span>{highlights.length ? <button type="button" onClick={() => { setHighlightError(""); setConfirmDeleteAll(true); }}>{t("runner.deleteAll")}</button> : null}</div><div className="exam-header-status"><span aria-label={t(initial.attempt.timer_mode === "COUNTDOWN" ? "runner.timeRemaining" : "runner.timeElapsed")} className={`exam-timer ${initial.attempt.timer_mode === "COUNTDOWN" && seconds < 300 ? "exam-timer-warning" : ""}`}>{initial.attempt.timer_mode === "COUNT_UP" ? t("runner.timeUsed") : ""}{formatDuration(seconds)}</span><span className={`exam-save-state exam-save-${saveState}`}>{saveState === "saving" ? t("common.saving") : saveState === "conflict" ? t("runner.conflict") : saveState === "error" ? t("runner.saveFailed") : saveState === "dirty" ? t("runner.unsaved") : t("common.saved")}</span>{saveState === "error" ? <button type="button" onClick={() => void flush().catch(() => undefined)}>{t("runner.retry")}</button> : null}{saveState === "conflict" ? <button type="button" onClick={() => window.location.reload()}>{t("runner.reload")}</button> : null}</div></div></header>
@@ -229,7 +229,7 @@ export function ReadingRunner({ initial }: { initial: ExamPayload }) {
   </div>;
 }
 
-function PassagePane({ passage, highlighting }: { passage: ExamPassage; highlighting: HighlightController }) {
+const PassagePane = memo(function PassagePane({ passage, highlighting }: { passage: ExamPassage; highlighting: HighlightController }) {
   const { t } = useTranslation();
   return <article className="exam-passage"><div className="exam-passage-content"><p className="exam-passage-kicker">{t("runner.readingPassageKicker", { number: passage.order_index + 1 })}</p><h2>{passage.title}</h2><div className="exam-passage-body">{passage.blocks.map((block) => { const text = <SelectableText text={block.text} target={{ target_kind: "PASSAGE_BLOCK", target_id: passage.id, segment_id: block.id }} controller={highlighting} className={block.type === "paragraph" ? "reading-passage-text" : undefined} />; return block.type === "heading" ? <h3 key={block.id}>{text}</h3> : <p key={block.id} className="exam-passage-paragraph reading-passage-paragraph"><b>{block.label}</b>{text}</p>; })}</div></div></article>;
-}
+});
