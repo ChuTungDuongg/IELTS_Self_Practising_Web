@@ -120,3 +120,51 @@ async def test_listing_batches_public_approvals_and_owners(db_session):
         assert any(item["id"] == ids["private"] and item["versions"] for item in all_tests.json())
         archived_public = await client.get("/api/v1/tests?archived=true&public_only=true")
         assert archived_public.json() == []
+
+    for actor in (learner, owner, admin):
+        async with api_client(db_session, actor) as client:
+            catalog = await client.get("/api/v1/tests?public_only=true&include_details=true")
+        assert catalog.status_code == 200
+        rows = catalog.json()
+        assert {row["id"] for row in rows} == {ids["admin"], ids["public"], ids["other"]}
+        assert all(row["published_detail"]["status"] == "PUBLISHED" for row in rows)
+        row = next(row for row in rows if row["id"] == ids["public"])
+        assert row["published_detail"]["id"] == public_version_id
+        assert "answer_key" not in catalog.text
+
+
+async def test_public_catalog_batches_detail_queries_without_changing_the_dto(db_session):
+    admin = db_session.info["current_user_identity"]
+    for _ in range(6):
+        await make_version(db_session, admin, status=VersionStatus.PUBLISHED, origin=Origin.ADMIN)
+    selects = []
+
+    def count_selects(_conn, _cursor, statement, _params, _context, _executemany):
+        if statement.lstrip().upper().startswith("SELECT"):
+            selects.append(statement)
+
+    connection = db_session.bind.sync_connection
+    async with api_client(db_session, admin) as client:
+        event.listen(connection, "before_cursor_execute", count_selects)
+        try:
+            listing = await client.get("/api/v1/tests?public_only=true")
+            assert listing.status_code == 200
+            before = {}
+            for row in listing.json():
+                version = max(row["versions"], key=lambda version: version["version_number"])
+                response = await client.get(
+                    f"/api/v1/test-versions/{version['id']}?public_only=true"
+                )
+                assert response.status_code == 200
+                before[row["id"]] = response.json()
+            before_selects = len(selects)
+            selects.clear()
+            catalog = await client.get("/api/v1/tests?public_only=true&include_details=true")
+            after_selects = len(selects)
+        finally:
+            event.remove(connection, "before_cursor_execute", count_selects)
+    assert catalog.status_code == 200
+    assert {row["id"]: row["published_detail"] for row in catalog.json()} == before
+    assert after_selects < before_selects, (before_selects, after_selects)
+    # Relationship queries are batched rather than repeated for every version.
+    assert after_selects <= 20, after_selects

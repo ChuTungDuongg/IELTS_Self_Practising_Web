@@ -78,6 +78,17 @@ class TestService:
                 summaries.append(summary)
         return summaries
 
+    async def list_public_catalog(self) -> tuple[list[TestSummary], list[TestVersion]]:
+        # Reuse public eligibility even for owners/admins; classroom approval
+        # and draft ownership do not widen the personal catalog.
+        summaries = await self.list_summaries(public_only=True)
+        selected_ids = [
+            max(summary.versions, key=lambda version: version.version_number).id
+            for summary in summaries
+            if summary.versions
+        ]
+        return summaries, await self.repository.get_versions(selected_ids)
+
     async def _list_visible_tests(
         self, *, archived: bool, public_only: bool = False
     ) -> tuple[list[Test], set[uuid.UUID]]:

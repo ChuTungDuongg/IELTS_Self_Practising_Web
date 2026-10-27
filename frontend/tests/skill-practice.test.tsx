@@ -83,9 +83,16 @@ it.each([1, 2, 3] as const)("starts Speaking Part %s with COUNT_UP and appropria
 });
 
 describe("Skill practice", () => {
+  it("uses the embedded public summary without a second version request", async () => {
+    vi.mocked(getTests).mockResolvedValue([{ ...test, published_detail: version }]);
+    render(await PracticePage());
+    expect(screen.getByText("Fictional trees")).toBeInTheDocument();
+    expect(getTests).toHaveBeenCalledOnce();
+    expect(getVersion).not.toHaveBeenCalled();
+  });
   it("requests public eligibility for personal skill practice", async () => {
     render(await PracticePage());
-    expect(getTests).toHaveBeenCalledWith({ publicOnly: true }, expect.any(Function));
+    expect(getTests).toHaveBeenCalledWith({ publicOnly: true, includeDetails: true }, expect.any(Function));
     expect(getVersion).toHaveBeenCalledWith(version.id, expect.any(Function), { publicOnly: true });
   });
   it("keeps focused start pending and its single request guard through locale changes", async () => {

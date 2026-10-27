@@ -11,10 +11,11 @@ const updateTestInput = z.object({
   description: z.string().trim().max(4000).nullable().optional().transform((value) => value === "" ? null : value),
 });
 
-export async function getTests(options?: { archived?: boolean; publicOnly?: boolean }, request: ApiRequester = apiRequest): Promise<TestSummary[]> {
+export async function getTests(options?: { archived?: boolean; publicOnly?: boolean; includeDetails?: boolean }, request: ApiRequester = apiRequest): Promise<TestSummary[]> {
   const parameters = new URLSearchParams();
   if (options?.archived) parameters.set("archived", "true");
   if (options?.publicOnly) parameters.set("public_only", "true");
+  if (options?.includeDetails) parameters.set("include_details", "true");
   const query = parameters.size ? `?${parameters.toString()}` : "";
   return z.array(testSchema).parse(await request<unknown>(`/tests${query}`));
 }

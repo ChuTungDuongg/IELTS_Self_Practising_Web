@@ -128,9 +128,7 @@ class AnalyticsService:
         )
 
     async def compare(self, left_id: uuid.UUID, right_id: uuid.UUID) -> AttemptComparison:
-        attempts = {
-            item.id: item for item in await self._attempts() if item.status not in ACTIVE_STATUSES
-        }
+        attempts = {item.id: item for item in await self._attempts(attempt_ids=(left_id, right_id))}
         left = attempts.get(left_id)
         right = attempts.get(right_id)
         if left is None or right is None:
@@ -146,8 +144,10 @@ class AnalyticsService:
             right=self._comparison_side(right),
         )
 
-    async def _attempts(self) -> list[Attempt]:
-        rows = await self.session.scalars(
+    async def _attempts(
+        self, *, attempt_ids: tuple[uuid.UUID, uuid.UUID] | None = None
+    ) -> list[Attempt]:
+        statement = (
             select(Attempt)
             .where(Attempt.user_id == self.user_id, Attempt.scope == AttemptScope.FULL_MODULE)
             .options(
@@ -155,11 +155,18 @@ class AnalyticsService:
                 selectinload(Attempt.answers)
                 .selectinload(AttemptAnswer.question)
                 .selectinload(Question.question_group),
-                selectinload(Attempt.events),
                 selectinload(Attempt.writing_scores).selectinload(AttemptWritingScore.writing_task),
             )
             .order_by(Attempt.started_at)
         )
+        if attempt_ids is not None:
+            statement = statement.where(
+                Attempt.id.in_(attempt_ids), Attempt.status.not_in(ACTIVE_STATUSES)
+            )
+        else:
+            # Navigation events are used by dashboard timing, not comparisons.
+            statement = statement.options(selectinload(Attempt.events))
+        rows = await self.session.scalars(statement)
         return list(rows)
 
     async def _sessions(self) -> list[TestSession]:

@@ -10,6 +10,7 @@ export const versionSchema = z.object({
 });
 
 export const testSchema = z.object({
+  published_detail: z.lazy(() => versionDetailSchema).nullish(),
   id: z.string().uuid(),
   title: z.string(),
   origin: z.enum(["ADMIN", "TEACHER"]).optional(),

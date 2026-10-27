@@ -72,6 +72,7 @@ class TestSummary(BaseModel):
     created_at: datetime
     updated_at: datetime
     versions: list[VersionSummary] = Field(default_factory=list)
+    published_detail: "VersionDetail | None" = None
 
 
 class TestDeleteResult(BaseModel):
@@ -145,3 +146,6 @@ class VersionDetail(VersionSummary):
     test_id: UUID
     test_title: str
     modules: list[ModuleSummary]
+
+
+TestSummary.model_rebuild()

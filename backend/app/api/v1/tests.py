@@ -28,11 +28,19 @@ async def list_tests(
     user: CurrentUser,
     archived: bool = False,
     public_only: bool = False,
+    include_details: bool = False,
     session: AsyncSession = Depends(get_session),
 ) -> list[TestSummary]:
-    return await TestService(session, actor=user).list_summaries(
-        archived=archived, public_only=public_only
-    )
+    service = TestService(session, actor=user)
+    if include_details and public_only and not archived:
+        summaries, versions = await service.list_public_catalog()
+        # The same key-free DTO as GET /test-versions/{id}?public_only=true.
+        details = {version.test_id: present_version(version) for version in versions}
+        return [
+            summary.model_copy(update={"published_detail": details.get(summary.id)})
+            for summary in summaries
+        ]
+    return await service.list_summaries(archived=archived, public_only=public_only)
 
 
 @router.post("/tests", response_model=TestSummary, status_code=status.HTTP_201_CREATED)

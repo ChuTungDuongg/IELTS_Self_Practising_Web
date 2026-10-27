@@ -17,12 +17,12 @@ function PracticePage(props: PracticePageProps): Promise<ReactElement>;
 async function PracticePage({ searchParams }: PracticePageProps = {}) {
   const requestedSkill = (await searchParams)?.skill;
   const initialSkill = typeof requestedSkill === "string" && ["READING", "LISTENING", "WRITING", "SPEAKING"].includes(requestedSkill.toUpperCase()) ? requestedSkill.toUpperCase() as "READING" | "LISTENING" | "WRITING" | "SPEAKING" : "READING";
-  const tests = await getTests({ publicOnly: true }, serverApiRequest);
+  const tests = await getTests({ publicOnly: true, includeDetails: true }, serverApiRequest);
   const published = tests.filter((test) => !test.archived_at).flatMap((test) => {
     const version = selectedPublishedVersion(test.versions);
-    return version ? [version] : [];
+    return version ? [{ test, version }] : [];
   });
-  const details = await Promise.all(published.map((version) => getVersion(version.id, serverApiRequest, { publicOnly: true }).catch(() => null)));
+  const details = await Promise.all(published.map(({ test, version }) => test.published_detail?.id === version.id ? test.published_detail : getVersion(version.id, serverApiRequest, { publicOnly: true }).catch(() => null)));
   const available = details.filter((detail): detail is VersionDetail => detail !== null && detail.status === "PUBLISHED");
   const loadFailed = details.some(detail => detail === null);
 

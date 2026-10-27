@@ -49,6 +49,19 @@ const speakingModule: VersionDetail["modules"][number] = {
 };
 
 describe("Practice library", () => {
+  it.each([false, true])("loads six catalog cards with batched summaries=%s", async (embedded) => {
+    const records = Array.from({ length: 6 }, () => {
+      const testId = crypto.randomUUID(), versionId = crypto.randomUUID();
+      const version = { ...detail, id: versionId, test_id: testId };
+      return { ...publishedTest, id: testId, versions: [version], ...(embedded ? { published_detail: version } : {}) };
+    });
+    vi.mocked(getTests).mockResolvedValue(records);
+    vi.mocked(getVersion).mockImplementation(async id => ({ ...detail, id }));
+    render(await LibraryPage());
+    expect(screen.getAllByRole("article")).toHaveLength(6);
+    expect(getTests).toHaveBeenCalledOnce();
+    expect(getVersion).toHaveBeenCalledTimes(embedded ? 0 : 6);
+  });
   it("summarizes Speaking by Part and discloses authored prompts only on request", async () => {
     const published = versionDetailSchema.parse({ ...detail, version_number: 13, modules: [...detail.modules, speakingModule] });
     vi.mocked(getVersion).mockResolvedValue(published);
@@ -155,7 +168,7 @@ describe("Practice library", () => {
 
   it("requests public eligibility for the Library even when the viewer owns teacher content", async () => {
     render(await LibraryPage());
-    expect(getTests).toHaveBeenCalledWith({ publicOnly: true }, expect.any(Function));
+    expect(getTests).toHaveBeenCalledWith({ publicOnly: true, includeDetails: true }, expect.any(Function));
     expect(getVersion).toHaveBeenCalledWith(versionId, expect.any(Function), { publicOnly: true });
   });
 

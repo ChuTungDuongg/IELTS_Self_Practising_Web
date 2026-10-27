@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import uuid
 
 from sqlalchemy import Select, func, select
@@ -68,6 +70,16 @@ class TestRepository:
 
     async def get_version(self, version_id: uuid.UUID) -> TestVersion | None:
         return await self.session.scalar(version_detail_query().where(TestVersion.id == version_id))
+
+    async def get_versions(self, version_ids: list[uuid.UUID]) -> list[TestVersion]:
+        versions = []
+        # Bound IN parameters and relationship loader work for large catalogs.
+        for start in range(0, len(version_ids), 100):
+            rows = await self.session.scalars(
+                version_detail_query().where(TestVersion.id.in_(version_ids[start : start + 100]))
+            )
+            versions.extend(rows)
+        return versions
 
     async def next_version_number(self, test_id: uuid.UUID) -> int:
         highest = await self.session.scalar(
