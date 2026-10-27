@@ -6,16 +6,22 @@ import { useRouter } from "next/navigation";
 import { startAssignment, archiveAssignment, type ClassroomAssignment, } from "@/lib/api/classrooms";
 import { useTranslation } from "@/lib/i18n/locale-provider";
 import { moduleTranslationKeys } from "@/lib/i18n/translations";
-import { ApiError } from "@/lib/api/client";
 import { ResourceAction } from "./resource-action";
 import { PresentationDialog } from "@/features/exam/presentation-dialog";
 import { rememberAttemptPresentation, rememberSessionPresentation, type AttemptPresentationMode } from "@/features/exam/attempt-presentation";
+import { useAssignmentProgress } from "./scheduling/progress-provider";
+import { ProgressSummary, ScheduleSummary } from "./scheduling/progress-summary";
+import { AssignmentManagement } from "./scheduling/assignment-management";
+import { scheduleError, useScheduleText } from "./scheduling/messages";
 type ModuleType = "READING" | "LISTENING" | "WRITING" | "SPEAKING";
 function StartAssignment({ assignment }: {
   assignment: ClassroomAssignment;
 }) {
   const { t } = useTranslation();
   const router = useRouter();
+  const { st } = useScheduleText();
+  const progressState = useAssignmentProgress();
+  const allowed = !progressState || (!progressState.loading && !progressState.error && progressState.items[assignment.id]?.can_start === true);
   const available = assignment.version?.modules.map(item => item.module_type)
     ?? ["READING", "LISTENING", "WRITING"] as ModuleType[];
   const fullMockReady = ["LISTENING", "READING", "WRITING", "SPEAKING"].every(kind => assignment.version?.modules.some(item => item.module_type === kind && (item.recommended_duration_seconds ?? 0) > 0));
@@ -34,7 +40,7 @@ function StartAssignment({ assignment }: {
   const previewUnits = mode === "READING" ? previewModule?.reading_passages : previewModule?.listening_sections;
   const previewUnit = previewUnits?.find(unit => unit.id === focusedId) ?? previewUnits?.[0];
   async function start() {
-    if (starting.current)
+    if (starting.current || !allowed)
       return;
     starting.current = true;
     setPending(true);
@@ -56,6 +62,7 @@ function StartAssignment({ assignment }: {
           } : {}),
           timer: { mode: "COUNT_UP" },
         });
+      await progressState?.refresh();
       if (result.test_session_id) {
         if (mode === "FULL_MOCK") rememberSessionPresentation(result.test_session_id, presentation);
         router.push(`/test-session/${result.test_session_id}`);
@@ -67,7 +74,8 @@ function StartAssignment({ assignment }: {
       setChoosing(false);
     }
     catch (caught) {
-      setError(caught instanceof ApiError ? caught.message : t("governance.error"));
+      await progressState?.refresh();
+      setError(scheduleError(caught, st));
       setPending(false);
       starting.current = false;
     }
@@ -92,16 +100,17 @@ function StartAssignment({ assignment }: {
         </option>)}
       </select>
     </label> : null}
-    <button ref={trigger} className="btn btn-primary mt-2" disabled={pending || !available.length} onClick={() => { if (mode === "READING" || mode === "LISTENING" || mode === "FULL_MOCK") setChoosing(true); else void start(); }}>
+    <button ref={trigger} className="btn btn-primary mt-2" disabled={pending || !available.length || !allowed} onClick={() => { if (mode === "READING" || mode === "LISTENING" || mode === "FULL_MOCK") setChoosing(true); else void start(); }}>
       {t("assignment.start")}
     </button>
     {error && !choosing ? <p role="alert" className="notice notice-error">{error}</p> : null}
     {mode === "READING" || mode === "LISTENING" || mode === "FULL_MOCK" ? <PresentationDialog open={choosing} module={mode === "FULL_MOCK" ? "LISTENING" : mode} value={presentation} onChange={setPresentation} onClose={() => setChoosing(false)} onConfirm={() => void start()} pending={pending} error={error} returnFocusRef={trigger} preview={{ title: assignment.title ?? assignment.version?.test_title, unitTitle: previewUnit?.title, questionTypes: previewUnit?.question_groups.map(group => group.question_type) }} /> : null}
   </div>;
 }
-export function AssignmentList({ assignments, canManage = false, archived = false, resultNamespace = "teacher", }: {
+export function AssignmentList({ assignments, canManage = false, canSchedule = canManage, archived = false, resultNamespace = "teacher", }: {
   assignments: ClassroomAssignment[];
   canManage?: boolean;
+  canSchedule?: boolean;
   archived?: boolean;
   resultNamespace?: "teacher" | "shared";
 }) {
@@ -112,6 +121,7 @@ export function AssignmentList({ assignments, canManage = false, archived = fals
       {assignments.map(assignment => <article key={assignment.id} id={`assignment-${assignment.id}`} tabIndex={-1} className="surface-card p-5">
         <h3>{assignment.title ?? assignment.version?.test_title ?? t("assignment.title")}</h3>
         <p>{assignment.note}</p>
+        {canManage ? <ScheduleSummary assignment={assignment} /> : <ProgressSummary assignmentId={assignment.id} actions />}
         {canManage ? <div className="flex gap-2 mt-3">
           <Link href={`${resultNamespace === "shared" ? "" : "/teacher"}/classrooms/${assignment.classroom_id}/assignments/${assignment.id}/results`} className="btn btn-secondary">
             {t("assignment.results")}
@@ -121,6 +131,7 @@ export function AssignmentList({ assignments, canManage = false, archived = fals
           </ResourceAction> : null}
         </div> : !archived && assignment.status === "ACTIVE" ? <StartAssignment assignment={assignment} />
           : <p>{t("classroom.archived")}</p>}
+        {canManage ? <AssignmentManagement key={`${assignment.id}-${assignment.policy_revision}`} assignment={assignment} canEdit={canSchedule && !archived && assignment.status === "ACTIVE"} shared={resultNamespace === "shared"} /> : null}
       </article>)}
     </div> : <p>{t("assignment.empty")}</p>}
   </section>;

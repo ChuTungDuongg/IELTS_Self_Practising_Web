@@ -1,4 +1,9 @@
 export const en = {
+  "notifications.assignmentCreated": "New assignment: {name}",
+  "notifications.assignmentChanged": "Assignment schedule changed: {name}",
+  "notifications.assignmentExtension": "Your assignment extension changed: {name}",
+  "notifications.assignmentDue": "Assignment due within 24 hours: {name}",
+  "notifications.assignmentOverdue": "Assignment is overdue: {name}",
   "shell.localTime": "Vietnam time",
   "goals.timeRemaining": "Time until target test date",
   "goals.day": "day",

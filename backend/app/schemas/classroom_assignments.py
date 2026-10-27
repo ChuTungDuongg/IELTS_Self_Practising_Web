@@ -5,18 +5,19 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.models.enums import AssignmentStatus, AttemptScope, ModuleType, TimerMode
+from app.schemas.assignment_scheduling import SchedulePolicy
 from app.schemas.attempts import FocusedUnit, TimerRequest
 from app.schemas.tests import VersionDetail
 
 
-class AssignmentCreate(BaseModel):
+class AssignmentCreate(SchedulePolicy):
     model_config = ConfigDict(extra="forbid")
     test_version_id: UUID
     title: str | None = Field(default=None, max_length=240)
     note: str | None = Field(default=None, max_length=4000)
 
 
-class AssignmentResponse(BaseModel):
+class AssignmentResponse(SchedulePolicy):
     model_config = ConfigDict(from_attributes=True)
     id: UUID
     classroom_id: UUID
@@ -28,6 +29,7 @@ class AssignmentResponse(BaseModel):
     created_at: datetime
     archived_at: datetime | None
     version: VersionDetail | None = None
+    policy_revision: int = 0
 
 
 class AssignmentStart(BaseModel):

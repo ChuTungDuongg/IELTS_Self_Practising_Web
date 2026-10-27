@@ -8,6 +8,7 @@ import { SafeMarkdown } from "./safe-markdown";
 import { PostComposer } from "./post-composer";
 import { PostComments } from "./post-comments";
 import { ResourceViewer } from "./resource-viewer";
+import { ProgressSummary } from "../scheduling/progress-summary";
 export function PostCard({ classroomId, post, resources, userId, canAuthor, archived, admin, onRefresh, onOpenAssignment, initialComments = false }: {
   classroomId: string; post: ClassroomPost; resources: ClassroomResource[]; userId: string; canAuthor: boolean; archived: boolean; admin: boolean;
   onRefresh: () => Promise<unknown>; onOpenAssignment: (id: string) => void; initialComments?: boolean;
@@ -23,7 +24,7 @@ export function PostCard({ classroomId, post, resources, userId, canAuthor, arch
     </header>
     {post.title ? <h3>{post.title}</h3> : null}<SafeMarkdown text={post.body} />
     {post.resource_ids.length ? <ul className="classroom-post-resources">{post.resource_ids.map(id => { const resource = resources.find(item => item.id === id); return resource ? <li key={id}><strong>{resource.title}</strong><ResourceViewer resource={resource} /></li> : null; })}</ul> : null}
-    {isActivity && post.assignment_id ? <button className="btn btn-secondary" type="button" onClick={() => onOpenAssignment(post.assignment_id!)}>{ct("openAssignment")}</button> : null}
+    {isActivity && post.assignment_id ? <><ProgressSummary assignmentId={post.assignment_id} /><button className="btn btn-secondary" type="button" onClick={() => onOpenAssignment(post.assignment_id!)}>{ct("openAssignment")}</button></> : null}
     {canEdit && !isActivity ? <div className="classroom-toolbar">
       <button type="button" className="classroom-text-button" onClick={() => setEditing(true)}>{ct("edit")}</button>
       {post.status === "DRAFT" ? <ContentAction action={() => postAction(classroomId, post.id, "publish")} onDone={onRefresh}>{ct("publish")}</ContentAction> : <ContentAction action={() => updatePost(classroomId, post.id, { status: "DRAFT" })} onDone={onRefresh}>{ct("unpublish")}</ContentAction>}

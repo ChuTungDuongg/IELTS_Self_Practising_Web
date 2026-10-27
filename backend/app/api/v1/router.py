@@ -4,6 +4,7 @@ from app.api.v1 import (
     admin,
     analytics,
     assets,
+    assignment_scheduling,
     attempts,
     auth,
     classroom_assignments,
@@ -28,6 +29,7 @@ from app.api.v1 import (
 )
 
 api_router = APIRouter()
+api_router.include_router(assignment_scheduling.router)
 api_router.include_router(health.router)
 api_router.include_router(auth.router)
 api_router.include_router(preferences.router)

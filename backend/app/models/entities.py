@@ -218,6 +218,16 @@ class TestModule(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
 class TestSession(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "test_sessions"
+    __table_args__ = (
+        Index(
+            "ix_test_sessions_assignment_progress",
+            "classroom_assignment_id",
+            "user_id",
+            "started_at",
+            "id",
+            postgresql_where=text("classroom_assignment_id IS NOT NULL"),
+        ),
+    )
 
     classroom_assignment_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("classroom_assignments.id", ondelete="RESTRICT"), index=True
@@ -374,6 +384,14 @@ class Attempt(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         CheckConstraint(
             "classroom_assignment_id IS NULL OR test_session_id IS NULL",
             name="classroom_provenance_standalone",
+        ),
+        Index(
+            "ix_attempts_assignment_progress",
+            "classroom_assignment_id",
+            "user_id",
+            "started_at",
+            "id",
+            postgresql_where=text("classroom_assignment_id IS NOT NULL"),
         ),
         CheckConstraint(
             "(scope = 'FULL_MODULE' AND focused_reading_passage_id IS NULL "

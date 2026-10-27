@@ -37,7 +37,9 @@ export async function ClassroomDetailPage({ params, searchParams }: {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { classroomId } = await params;
-  const postQuery = (await searchParams)?.post;
+  const query = await searchParams;
+  const postQuery = query?.post;
+  const selectedAssignmentId = typeof query?.assignment === "string" ? query.assignment : null;
   const selectedPostId = typeof postQuery === "string" ? postQuery : null;
   const [classroom, user, assignments] = await Promise.all([getClassroom(classroomId, serverApiRequest), serverApiRequest<unknown>("/auth/me").then(data => userSchema.parse(data)), listAssignments(classroomId, serverApiRequest)]);
   const canManage = user.role === "ADMIN" || (user.role === "TEACHER" && classroom.teacher_id === user.id);
@@ -46,7 +48,7 @@ export async function ClassroomDetailPage({ params, searchParams }: {
     <PageHeading title={classroom.name} description={classroom.description} />
     <ClassroomMetadata classroom={classroom} />
     <ClassroomMembershipActions classroom={classroom} canManage={canManage} isAdmin={user.role === "ADMIN"} />
-    <ClassroomWorkspace key={`${classroomId}-${user.id}-${user.role}-${selectedPostId ?? "feed"}`} classroom={classroom} user={{ id: user.id, role: user.role }} assignments={assignments} canManage={canManage} selectedPostId={selectedPostId}
+    <ClassroomWorkspace key={`${classroomId}-${user.id}-${user.role}-${selectedPostId ?? "feed"}-${selectedAssignmentId ?? ""}`} classroom={classroom} user={{ id: user.id, role: user.role }} assignments={assignments} canManage={canManage} selectedPostId={selectedPostId} selectedAssignmentId={selectedAssignmentId}
       people={canManage ? <ClassroomManagement classroom={classroom} members={members} invitations={invitations} /> : undefined}
       assignmentForm={canManage && classroom.status === "ACTIVE" ? <AssignmentForm classroomId={classroomId} tests={tests.filter(test => test.origin !== "TEACHER" || test.owner_user_id === classroom.teacher_id)} /> : undefined} />
   </>;

@@ -1,5 +1,9 @@
 # Teacher, classrooms and content governance
 
+## Assignment scheduling and submission management (P2)
+
+Assignments now support availability, inclusive due/cut-off boundaries, late acceptance, shared root-start limits, individual exceptions, private student progress, paginated teacher monitoring, a classroom agenda and in-app assignment notifications. The existing exam engines, grading and immutable-version provenance remain authoritative. See [the P2 policy, API, migration and reminder deployment guide](classroom-assignment-scheduling.md) for full semantics. Immediate policy enforcement and notifications work when the backend runs; periodic reminders require the documented host scheduler configuration.
+
 ## Classroom 2.0 workspace (P1)
 
 The shared detail page for `/classrooms/{id}` and `/teacher/classrooms/{id}` now separates **Stream**, **Classwork**, **Assignments**, and **People**. Existing assignment creation, launch, provenance, results, and human/advisory AI grading remain in their existing components and services. The classroom header includes the teacher display name and authorized active membership count. Archived classrooms retain readable published content and are read-only.

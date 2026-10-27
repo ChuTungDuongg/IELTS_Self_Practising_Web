@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { apiRequest, type ApiRequester } from "./client";
 import { versionDetailSchema } from "./schema";
+import type { SchedulePolicy } from "./assignment-scheduling";
 const classroomSchema = z.object({
   id: z.string().uuid(),
   teacher_id: z.string().uuid(),
@@ -31,6 +32,12 @@ const memberSchema = z.object({
   removed_by_user_id: z.string().uuid().nullable()
 });
 export const assignmentSchema = z.object({
+  available_from: z.string().nullable().default(null),
+  due_at: z.string().nullable().default(null),
+  cutoff_at: z.string().nullable().default(null),
+  max_attempts: z.number().int().nullable().default(null),
+  allow_late_submission: z.boolean().default(true),
+  policy_revision: z.number().int().default(0),
   id: z.string().uuid(),
   classroom_id: z.string().uuid(),
   test_version_id: z.string().uuid(),
@@ -45,7 +52,9 @@ export const assignmentSchema = z.object({
 export type Classroom = z.infer<typeof classroomSchema>;
 export type ClassroomInvitation = z.infer<typeof invitationSchema>;
 export type ClassroomMember = z.infer<typeof memberSchema>;
-export type ClassroomAssignment = z.infer<typeof assignmentSchema>;
+type AssignmentData = z.infer<typeof assignmentSchema>;
+// Older hydrated/cached assignment metadata remains a supported input.
+export type ClassroomAssignment = Omit<AssignmentData, keyof SchedulePolicy | "policy_revision"> & Partial<SchedulePolicy & { policy_revision: number }>;
 const resource = (id: string) => `/classrooms/${encodeURIComponent(id)}`;
 const post = <T>(path: string, body?: unknown) => apiRequest<T>(path, { method: "POST", ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
 export async function listClassrooms(request: ApiRequester = apiRequest) {
@@ -102,7 +111,7 @@ export async function cancelInvitation(id: string) {
 export async function listAssignments(id: string, request: ApiRequester = apiRequest) {
   return z.array(assignmentSchema).parse(await request<unknown>(`${resource(id)}/assignments`));
 }
-export async function createAssignment(id: string, input: {
+export async function createAssignment(id: string, input: Partial<SchedulePolicy> & {
   test_version_id: string;
   title?: string | null;
   note?: string | null;

@@ -19,12 +19,20 @@ function notificationText(item: Notification, t: TranslationFunction) {
     return t("notifications.archived", { name });
   if (item.type === "CLASSROOM_ANNOUNCEMENT_PUBLISHED")
     return t("notifications.announcement", { name });
+  if (item.type.startsWith("ASSIGNMENT_")) {
+    const key = item.type === "ASSIGNMENT_CREATED" ? "notifications.assignmentCreated" : item.type === "ASSIGNMENT_SCHEDULE_CHANGED" ? "notifications.assignmentChanged" : item.type === "ASSIGNMENT_EXTENSION_GRANTED" ? "notifications.assignmentExtension" : item.type === "ASSIGNMENT_OVERDUE" ? "notifications.assignmentOverdue" : "notifications.assignmentDue";
+    return t(key, { name: String(item.payload_json.assignment_title ?? "") });
+  }
   if (/^TEST_(CLASSROOM|PUBLIC)_(APPROVED|REJECTED)$/.test(item.type)) {
     return t(item.type.endsWith("APPROVED") ? "notifications.approved" : "notifications.rejected", { name, scope: t(item.type.includes("PUBLIC") ? "moderation.public" : "moderation.classroom") });
   }
   return t("notifications.update");
 }
 function notificationHref(item: Notification) {
+  if (item.entity_type === "CLASSROOM_ASSIGNMENT") {
+    const room = item.payload_json.classroom_id, assignment = item.payload_json.assignment_id;
+    return typeof room === "string" && typeof assignment === "string" ? `/classrooms/${encodeURIComponent(room)}?assignment=${encodeURIComponent(assignment)}` : "/classrooms";
+  }
   if (item.entity_type === "CLASSROOM_POST") {
     const classroomId = item.payload_json.classroom_id;
     return typeof classroomId === "string" && classroomId

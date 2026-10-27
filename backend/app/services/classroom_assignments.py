@@ -77,6 +77,9 @@ async def require_assignment_start(
             "The version is no longer eligible for classroom use.",
             409,
         )
+    from app.services.assignment_scheduling import enforce_schedule_start
+
+    await enforce_schedule_start(session, assignment, user_id)
     return assignment
 
 
@@ -114,9 +117,22 @@ class ClassroomAssignmentService:
                 created_by_user_id=self.actor_id,
                 title=data.title,
                 note=data.note,
+                **data.model_dump(
+                    include={
+                        "available_from",
+                        "due_at",
+                        "cutoff_at",
+                        "max_attempts",
+                        "allow_late_submission",
+                    }
+                ),
             )
             self.session.add(assignment)
             await self.session.flush()
+            from app.services.assignment_scheduling import notify_assignment, policy_event
+
+            event = await policy_event(self.session, assignment, self.actor_id, kind="CREATED")
+            await notify_assignment(self.session, assignment, "ASSIGNMENT_CREATED", str(event.id))
             response = await self._present(assignment)
         return response
 

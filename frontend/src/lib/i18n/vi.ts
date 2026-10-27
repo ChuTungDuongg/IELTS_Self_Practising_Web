@@ -1,6 +1,11 @@
 import type { TranslationDictionary } from "./types";
 
 export const vi = {
+  "notifications.assignmentCreated": "Bài tập mới: {name}",
+  "notifications.assignmentChanged": "Lịch bài tập đã đổi: {name}",
+  "notifications.assignmentExtension": "Gia hạn bài tập của bạn đã đổi: {name}",
+  "notifications.assignmentDue": "Bài tập đến hạn trong 24 giờ: {name}",
+  "notifications.assignmentOverdue": "Bài tập đã quá hạn: {name}",
   "shell.localTime": "Giờ Việt Nam",
   "goals.timeRemaining": "Thời gian đến ngày thi mục tiêu",
   "goals.day": "ngày",

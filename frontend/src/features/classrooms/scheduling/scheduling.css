@@ -1,0 +1,19 @@
+.assignment-schedule-fields { display:grid; gap:12px; border:0; padding:16px 0; min-width:0; }
+.assignment-schedule-fields legend { font-weight:600; padding-top:20px; }
+.assignment-schedule-fields input[type="datetime-local"] { color-scheme:light dark; }
+.assignment-policy-summary { display:grid; gap:6px; margin:12px 0; font-size:13px; }
+.assignment-policy-summary > div { display:flex; flex-wrap:wrap; justify-content:space-between; gap:8px; }
+.assignment-policy-summary dt { color:var(--muted); }
+.assignment-progress-summary { margin:12px 0; padding:12px 0; border-top:1px solid var(--line); }
+.assignment-management { margin-top:16px; }
+.assignment-management > button { margin:0 8px 12px 0; }
+.assignment-monitor { min-width:0; margin:16px 0; }
+.assignment-monitor-counts { display:flex; flex-wrap:wrap; gap:16px; margin:16px 0; }
+.assignment-monitor-counts dt { font-size:12px; color:var(--muted); }
+.assignment-monitor-counts dd { font-variant-numeric:tabular-nums; }
+.assignment-table-scroll { max-width:100%; overflow-x:auto; margin:16px 0; }
+.assignment-table-scroll table { width:100%; border-collapse:collapse; font-size:13px; }
+.assignment-table-scroll :is(td,th) { text-align:left; padding:10px; border-bottom:1px solid var(--line); min-width:110px; }
+.assignment-table-scroll th { font-weight:500; color:var(--muted); }
+.assignment-table-scroll td:nth-child(3) { text-align:right; font-variant-numeric:tabular-nums; }
+.assignment-agenda { list-style:none; margin:20px 0; padding:0; }
