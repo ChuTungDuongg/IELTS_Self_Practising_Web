@@ -196,13 +196,14 @@ async def test_deletion_queues_owned_media_and_preserves_sibling(db_session, tmp
     assert (await sibling_media.playback(sibling, sibling_seg.id))[0][0].read_bytes() == b"retained"
 
 
-async def test_assignment_teacher_provenance_and_retention(db_session, tmp_path, test_user):
+async def test_assignment_teacher_provenance_and_retention(db_session, tmp_path):
     from teacher_helpers import make_user
 
     from app.models import Attempt, Classroom, ClassroomAssignment
 
     teacher = await make_user(db_session, "TEACHER")
     other = await make_user(db_session, "TEACHER")
+    student = await make_user(db_session)
     runtime, media, aid, prompts, state, seg = await recording(db_session, tmp_path, focused=0)
     await media.upload_chunk(aid, seg.id, 0, b"assignment")
     await media.close_segment(aid, seg.id, 1)
@@ -224,8 +225,8 @@ async def test_assignment_teacher_provenance_and_retention(db_session, tmp_path,
         db_session.add(assignment)
         await db_session.flush()
         attempt.classroom_assignment_id = assignment.id
-        attempt.user_id = test_user.id
-    media = SpeakingMediaService(db_session, test_user, storage=media.storage)
+        attempt.user_id = student.id
+    media = SpeakingMediaService(db_session, student, storage=media.storage)
     teacher_media = SpeakingMediaService(db_session, teacher, storage=media.storage)
     assert (await teacher_media.playback(aid, seg.id))[0][0].read_bytes() == b"assignment"
     with pytest.raises(AppError) as mutation_error:
@@ -234,10 +235,10 @@ async def test_assignment_teacher_provenance_and_retention(db_session, tmp_path,
     with pytest.raises(AppError):
         await SpeakingMediaService(db_session, other, storage=media.storage).playback(aid, seg.id)
     with pytest.raises(AppError) as error:
-        await AttemptService(db_session, test_user.id).delete_attempt(aid)
+        await AttemptService(db_session, student.id).delete_attempt(aid)
     assert error.value.code == "ASSIGNMENT_HISTORY_RETAINED"
     assert len(list(tmp_path.rglob("*.webm"))) == 1
-    await AttemptService(db_session, test_user.id).delete_standalone_history(version_id)
+    await AttemptService(db_session, student.id).delete_standalone_history(version_id)
     assert (await media.manifest(aid, state.response_id)).response.locked
     async with db_session.begin():
         attempt = await db_session.get(Attempt, aid)
