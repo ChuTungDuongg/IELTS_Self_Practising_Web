@@ -1,0 +1,295 @@
+"""Classwork lifecycle and ordering; every write locks its classroom."""
+
+import asyncio
+import logging
+from uuid import UUID
+
+from pydantic import ValidationError
+from sqlalchemy import select
+
+from app.core.config import get_settings
+from app.core.exceptions import AppError
+from app.models import ClassroomAssignment
+from app.models.classroom_classwork import ClassroomContentItem, ClassroomResource, ClassroomSection
+from app.repositories.classroom_classwork import ClassworkRepository
+from app.schemas.classroom_classwork import (
+    AssignmentPlacement,
+    ClassworkResponse,
+    ItemReorderRequest,
+    ItemResponse,
+    ReorderRequest,
+    ResourceCreate,
+    ResourceResponse,
+    ResourceUpdate,
+    SectionCreate,
+    SectionResponse,
+    SectionUpdate,
+)
+from app.services.classroom_content_access import ContentAccess
+from app.storage.classroom import ClassroomResourceStorage
+from app.storage.local import StoredAsset
+
+logger = logging.getLogger(__name__)
+
+
+class ClassworkService:
+    def __init__(self, session, actor):
+        self.session = session
+        self.access = ContentAccess(session, actor)
+        self.repository = ClassworkRepository(session)
+
+    async def _snapshot(self, room):
+        sections, resources, items = await self.repository.snapshot(
+            room.id, staff=self.access.staff(room)
+        )
+        return ClassworkResponse(
+            revision=room.content_revision,
+            sections=[SectionResponse.model_validate(row) for row in sections],
+            resources=[ResourceResponse.model_validate(row) for row in resources],
+            items=[ItemResponse.model_validate(row) for row in items],
+        )
+
+    async def get(self, classroom_id: UUID):
+        async with self.session.begin():
+            room = await self.access.room(classroom_id)
+            return await self._snapshot(room)
+
+    @staticmethod
+    def _revision(room, expected):
+        if room.content_revision != expected:
+            raise AppError("CLASSWORK_CHANGED", "Classwork changed. Reload before reordering.", 409)
+
+    async def _section(self, room, section_id):
+        if section_id is None:
+            return None
+        section = await self.session.scalar(
+            select(ClassroomSection).where(
+                ClassroomSection.id == section_id, ClassroomSection.classroom_id == room.id
+            )
+        )
+        if section is None:
+            raise AppError("SECTION_NOT_FOUND", "The section does not exist.", 404)
+        return section
+
+    async def create_section(self, classroom_id, data: SectionCreate):
+        async with self.session.begin():
+            room = await self.access.room(classroom_id, mutation=True, owner=True)
+            sections = await self.repository.sections(room.id)
+            row = ClassroomSection(
+                classroom_id=room.id, position=len(sections), **data.model_dump()
+            )
+            self.session.add(row)
+            room.content_revision += 1
+            await self.session.flush()
+            return SectionResponse.model_validate(row)
+
+    async def update_section(self, classroom_id, section_id, data: SectionUpdate):
+        async with self.session.begin():
+            room = await self.access.room(classroom_id, mutation=True, owner=True)
+            row = await self._section(room, section_id)
+            for key, value in data.model_dump(exclude_unset=True).items():
+                setattr(row, key, value)
+            room.content_revision += 1
+            await self.session.flush()
+            await self.session.refresh(row)
+            return SectionResponse.model_validate(row)
+
+    async def reorder_sections(self, classroom_id, data: ReorderRequest):
+        async with self.session.begin():
+            room = await self.access.room(classroom_id, mutation=True, owner=True)
+            self._revision(room, data.expected_revision)
+            rows = await self.repository.sections(room.id)
+            if set(data.ids) != {row.id for row in rows}:
+                raise AppError(
+                    "CLASSWORK_ORDER_INVALID", "Include every section exactly once.", 422
+                )
+            positions = {id: index for index, id in enumerate(data.ids)}
+            for row in rows:
+                row.position = positions[row.id]
+            room.content_revision += 1
+            await self.session.flush()
+            return await self._snapshot(room)
+
+    async def _attach_resource(self, room, resource, section_id):
+        await self._section(room, section_id)
+        items = await self.repository.items(room.id)
+        self.session.add(resource)
+        await self.session.flush()
+        self.session.add(
+            ClassroomContentItem(
+                classroom_id=room.id,
+                section_id=section_id,
+                resource_id=resource.id,
+                position=sum(item.section_id == section_id for item in items),
+            )
+        )
+        room.content_revision += 1
+        await self.session.flush()
+        return ResourceResponse.model_validate(resource)
+
+    async def create_resource(self, classroom_id, data: ResourceCreate):
+        async with self.session.begin():
+            room = await self.access.room(classroom_id, mutation=True, owner=True)
+            row = ClassroomResource(classroom_id=room.id, **data.model_dump(exclude={"section_id"}))
+            return await self._attach_resource(room, row, data.section_id)
+
+    async def get_resource(self, classroom_id, resource_id):
+        async with self.session.begin():
+            room = await self.access.room(classroom_id)
+            row = await self._resource(room, resource_id)
+            return ResourceResponse.model_validate(row)
+
+    async def _resource(self, room, resource_id):
+        row = await self.repository.resource(room.id, resource_id, staff=self.access.staff(room))
+        if row is None:
+            raise AppError("RESOURCE_NOT_FOUND", "The resource does not exist.", 404)
+        return row
+
+    async def update_resource(self, classroom_id, resource_id, data: ResourceUpdate):
+        async with self.session.begin():
+            room = await self.access.room(classroom_id, mutation=True, owner=True)
+            row = await self._resource(room, resource_id)
+            values = data.model_dump(exclude_unset=True)
+            if row.kind == "FILE":
+                if set(values) & {"body", "url"}:
+                    raise AppError(
+                        "RESOURCE_TARGET_INVALID", "Files have immutable storage references.", 422
+                    )
+            else:
+                # Reuse complete input validation after merging partial updates.
+                try:
+                    ResourceCreate.model_validate(
+                        {
+                            key: values.get(key, getattr(row, key))
+                            for key in ("title", "description", "kind", "status", "body", "url")
+                        }
+                    )
+                except ValidationError as error:
+                    raise AppError(
+                        "RESOURCE_TARGET_INVALID", "Resource content does not match its type.", 422
+                    ) from error
+            for key, value in values.items():
+                setattr(row, key, value)
+            room.content_revision += 1
+            await self.session.flush()
+            await self.session.refresh(row)
+            return ResourceResponse.model_validate(row)
+
+    async def place_assignment(self, classroom_id, data: AssignmentPlacement):
+        async with self.session.begin():
+            room = await self.access.room(classroom_id, mutation=True, owner=True)
+            await self._section(room, data.section_id)
+            assignment = await self.session.scalar(
+                select(ClassroomAssignment).where(
+                    ClassroomAssignment.id == data.assignment_id,
+                    ClassroomAssignment.classroom_id == room.id,
+                )
+            )
+            if assignment is None:
+                raise AppError("ASSIGNMENT_NOT_FOUND", "The assignment does not exist.", 404)
+            items = await self.repository.items(room.id)
+            row = next((item for item in items if item.assignment_id == assignment.id), None)
+            if row is None:
+                row = ClassroomContentItem(
+                    classroom_id=room.id, assignment_id=assignment.id, position=0
+                )
+                self.session.add(row)
+            old_section_id = row.section_id
+            row.section_id = data.section_id
+            target = [
+                item for item in items if item.section_id == data.section_id and item is not row
+            ] + [row]
+            for position, item in enumerate(target):
+                item.position = position
+            if old_section_id != data.section_id:
+                for position, item in enumerate(
+                    item for item in items if item.section_id == old_section_id
+                ):
+                    item.position = position
+            room.content_revision += 1
+            await self.session.flush()
+            return await self._snapshot(room)
+
+    async def reorder_items(self, classroom_id, data: ItemReorderRequest):
+        async with self.session.begin():
+            room = await self.access.room(classroom_id, mutation=True, owner=True)
+            self._revision(room, data.expected_revision)
+            await self._section(room, data.section_id)
+            rows = await self.repository.items(room.id)
+            by_id = {row.id: row for row in rows}
+            target_ids = {row.id for row in rows if row.section_id == data.section_id}
+            if not set(data.ids) <= by_id.keys() or not target_ids <= set(data.ids):
+                raise AppError(
+                    "CLASSWORK_ORDER_INVALID",
+                    "Include all target content and only content from this classroom.",
+                    422,
+                )
+            for position, id in enumerate(data.ids):
+                by_id[id].section_id = data.section_id
+                by_id[id].position = position
+            source_sections = {row.section_id for row in rows} - {data.section_id}
+            for source in source_sections:
+                for position, row in enumerate(row for row in rows if row.section_id == source):
+                    row.position = position
+            room.content_revision += 1
+            await self.session.flush()
+            return await self._snapshot(room)
+
+    async def upload(self, classroom_id, upload, data: SectionCreate, section_id=None):
+        async with self.session.begin():
+            room = await self.access.room(classroom_id, mutation=True, owner=True)
+            await self._section(room, section_id)
+        storage = ClassroomResourceStorage(get_settings().resolved_storage_root)
+        filename = upload.filename or ""
+        media_type = upload.content_type or "application/octet-stream"
+        staging = asyncio.create_task(
+            asyncio.to_thread(storage.store_resource, upload.file, filename, media_type)
+        )
+        stored = None
+        try:
+            stored = await asyncio.shield(staging)
+            async with self.session.begin():
+                room = await self.access.room(classroom_id, mutation=True, owner=True)
+                row = ClassroomResource(
+                    classroom_id=room.id,
+                    kind="FILE",
+                    storage_key=stored.relative_path,
+                    original_filename=filename,
+                    media_type=media_type,
+                    size_bytes=stored.size,
+                    **data.model_dump(),
+                )
+                response = await self._attach_resource(room, row, section_id)
+            return response
+        except BaseException:
+            if stored is None:
+                result = (await asyncio.gather(staging, return_exceptions=True))[0]
+                if isinstance(result, StoredAsset):
+                    stored = result
+            if stored is not None:
+                await self._compensate(storage, stored.relative_path)
+            raise
+
+    async def _compensate(self, storage, key):
+        # Recheck durable references after a possibly lost commit acknowledgement.
+        try:
+            referenced = await self.session.scalar(
+                select(ClassroomResource.id).where(ClassroomResource.storage_key == key)
+            )
+            await self.session.rollback()
+        except BaseException:
+            logger.exception("Resource storage compensation could not verify reference")
+            return
+        if referenced is None:
+            await asyncio.to_thread(storage.delete, key)
+
+    async def file(self, classroom_id, resource_id):
+        async with self.session.begin():
+            room = await self.access.room(classroom_id)
+            row = await self._resource(room, resource_id)
+            if row.kind != "FILE" or not row.storage_key:
+                raise AppError("RESOURCE_NOT_FOUND", "The file does not exist.", 404)
+            path = ClassroomResourceStorage(get_settings().resolved_storage_root).resolve(
+                row.storage_key
+            )
+            return path, row.media_type, row.original_filename

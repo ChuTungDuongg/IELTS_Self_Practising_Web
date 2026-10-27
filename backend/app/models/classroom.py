@@ -1,7 +1,18 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Index, String, Text, func, text
+from sqlalchemy import (
+    DateTime,
+    Enum,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
@@ -19,6 +30,7 @@ class Classroom(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         Enum(ClassroomStatus, name="classroom_status"), default=ClassroomStatus.ACTIVE
     )
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    content_revision: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
 
 class ClassroomInvitation(UUIDPrimaryKeyMixin, Base):
@@ -77,6 +89,10 @@ class ClassroomMembership(UUIDPrimaryKeyMixin, Base):
 
 class ClassroomAssignment(UUIDPrimaryKeyMixin, Base):
     __tablename__ = "classroom_assignments"
+    __table_args__ = (
+        UniqueConstraint("classroom_id", "id"),
+        Index("ix_classroom_assignments_feed", "classroom_id", "status", "created_at", "id"),
+    )
     classroom_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("classrooms.id", ondelete="RESTRICT"), index=True
     )

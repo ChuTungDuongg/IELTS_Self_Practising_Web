@@ -109,7 +109,7 @@ export function AssignmentList({ assignments, canManage = false, archived = fals
   return <section aria-label={t("assignment.title")}>
     <h2 className="section-title mb-3">{t("assignment.title")}</h2>
     {assignments.length ? <div className="test-card-grid">
-      {assignments.map(assignment => <article key={assignment.id} className="surface-card p-5">
+      {assignments.map(assignment => <article key={assignment.id} id={`assignment-${assignment.id}`} tabIndex={-1} className="surface-card p-5">
         <h3>{assignment.title ?? assignment.version?.test_title ?? t("assignment.title")}</h3>
         <p>{assignment.note}</p>
         {canManage ? <div className="flex gap-2 mt-3">

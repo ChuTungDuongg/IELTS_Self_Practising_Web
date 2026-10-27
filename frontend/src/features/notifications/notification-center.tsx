@@ -17,10 +17,23 @@ function notificationText(item: Notification, t: TranslationFunction) {
     return t("notifications.declined", { name });
   if (item.type === "CLASSROOM_ARCHIVED")
     return t("notifications.archived", { name });
+  if (item.type === "CLASSROOM_ANNOUNCEMENT_PUBLISHED")
+    return t("notifications.announcement", { name });
   if (/^TEST_(CLASSROOM|PUBLIC)_(APPROVED|REJECTED)$/.test(item.type)) {
     return t(item.type.endsWith("APPROVED") ? "notifications.approved" : "notifications.rejected", { name, scope: t(item.type.includes("PUBLIC") ? "moderation.public" : "moderation.classroom") });
   }
   return t("notifications.update");
+}
+function notificationHref(item: Notification) {
+  if (item.entity_type === "CLASSROOM_POST") {
+    const classroomId = item.payload_json.classroom_id;
+    return typeof classroomId === "string" && classroomId
+      ? `/classrooms/${encodeURIComponent(classroomId)}?post=${encodeURIComponent(item.entity_id)}`
+      : "/classrooms";
+  }
+  if (item.entity_type === "INVITATION") return "/classrooms";
+  if (item.entity_type === "CLASSROOM") return `/classrooms/${encodeURIComponent(item.entity_id)}`;
+  return "/teacher/tests";
 }
 export function NotificationCenter({ userId }: {
   userId?: string;
@@ -129,7 +142,7 @@ export function NotificationCenter({ userId }: {
       {items.length ? <ul>{items.map(item => <li key={item.id} className="border-t border-[var(--line)] py-3">
         <p>{notificationText(item, t)}</p>
         <div className="flex gap-2">
-          <Link href={item.entity_type === "INVITATION" ? "/classrooms" : item.entity_type === "CLASSROOM" ? `/classrooms/${item.entity_id}` : "/teacher/tests"}>{t("common.open")}</Link>{!item.read_at ? <button type="button" className="btn btn-ghost" disabled={pending} onClick={() => void read(item.id)}>{t("notifications.read")}</button> : null}</div>
+          <Link href={notificationHref(item)}>{t("common.open")}</Link>{!item.read_at ? <button type="button" className="btn btn-ghost" disabled={pending} onClick={() => void read(item.id)}>{t("notifications.read")}</button> : null}</div>
       </li>)}</ul> : <p>{t("notifications.empty")}</p>}
       {hasMore ? <button type="button" className="btn btn-ghost" disabled={pending} onClick={() => void loadMore()}>{t("pagination.loadMore")}</button> : null}
     </section> : null}

@@ -1,6 +1,12 @@
 from enum import StrEnum
 
 
+class ClassroomContentStatus(StrEnum):
+    DRAFT = "DRAFT"
+    PUBLISHED = "PUBLISHED"
+    ARCHIVED = "ARCHIVED"
+
+
 class UserRole(StrEnum):
     USER = "USER"
     TEACHER = "TEACHER"
@@ -43,6 +49,7 @@ class AssignmentStatus(StrEnum):
 
 
 class NotificationType(StrEnum):
+    CLASSROOM_ANNOUNCEMENT_PUBLISHED = "CLASSROOM_ANNOUNCEMENT_PUBLISHED"
     CLASSROOM_INVITED = "CLASSROOM_INVITED"
     CLASSROOM_INVITATION_ACCEPTED = "CLASSROOM_INVITATION_ACCEPTED"
     CLASSROOM_INVITATION_DECLINED = "CLASSROOM_INVITATION_DECLINED"
@@ -54,6 +61,7 @@ class NotificationType(StrEnum):
 
 
 class NotificationEntityType(StrEnum):
+    CLASSROOM_POST = "CLASSROOM_POST"
     INVITATION = "INVITATION"
     MODERATION = "MODERATION"
     CLASSROOM = "CLASSROOM"

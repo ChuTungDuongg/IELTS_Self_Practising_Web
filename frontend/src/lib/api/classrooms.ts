@@ -6,6 +6,8 @@ const classroomSchema = z.object({
   teacher_id: z.string().uuid(),
   name: z.string(),
   description: z.string().nullable(),
+  teacher_name: z.string().nullable().optional(),
+  active_member_count: z.number().int().nonnegative().nullable().optional(),
   status: z.enum(["ACTIVE", "ARCHIVED"]),
   archived_at: z.string().nullable(),
   created_at: z.string(),

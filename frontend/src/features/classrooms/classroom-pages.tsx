@@ -8,8 +8,9 @@ import { UiText } from "@/lib/i18n/locale-provider";
 import { InvitationInbox } from "./invitation-inbox";
 import { ClassroomForm } from "./classroom-form";
 import { ClassroomManagement, ClassroomMembershipActions } from "./classroom-management";
-import { AssignmentList } from "./assignment-list";
 import { AssignmentForm } from "./assignment-form";
+import { ClassroomWorkspace } from "./content/classroom-workspace";
+import { ClassroomMetadata } from "./content/classroom-metadata";
 export async function ClassroomsPage({ teacher = false }: {
   teacher?: boolean;
 } = {}) {
@@ -29,21 +30,24 @@ export async function ClassroomsPage({ teacher = false }: {
       <UiText message="classroom.empty" />
     </p>}</>;
 }
-export async function ClassroomDetailPage({ params }: {
+export async function ClassroomDetailPage({ params, searchParams }: {
   params: Promise<{
     classroomId: string;
   }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { classroomId } = await params;
+  const postQuery = (await searchParams)?.post;
+  const selectedPostId = typeof postQuery === "string" ? postQuery : null;
   const [classroom, user, assignments] = await Promise.all([getClassroom(classroomId, serverApiRequest), serverApiRequest<unknown>("/auth/me").then(data => userSchema.parse(data)), listAssignments(classroomId, serverApiRequest)]);
   const canManage = user.role === "ADMIN" || (user.role === "TEACHER" && classroom.teacher_id === user.id);
   const [members, invitations, tests] = canManage ? await Promise.all([listMembers(classroomId, serverApiRequest), listInvitations(classroomId, serverApiRequest), getTests(undefined, serverApiRequest)]) : [[], [], []];
   return <>
-    <PageHeading title={classroom.name} description={classroom.description} />{classroom.status === "ARCHIVED" ? <p className="notice mb-5">
-      <UiText message="classroom.archived" />
-    </p> : null}<ClassroomMembershipActions classroom={classroom} canManage={canManage} isAdmin={user.role === "ADMIN"} />
-    {canManage ? <>
-      <ClassroomManagement classroom={classroom} members={members} invitations={invitations} />{classroom.status === "ACTIVE" ? <AssignmentForm classroomId={classroomId} tests={tests.filter(test => test.origin !== "TEACHER" || test.owner_user_id === classroom.teacher_id)} /> : null}</> : null}
-    <AssignmentList assignments={assignments} canManage={canManage} archived={classroom.status === "ARCHIVED"} resultNamespace={user.role === "ADMIN" ? "shared" : "teacher"} />
+    <PageHeading title={classroom.name} description={classroom.description} />
+    <ClassroomMetadata classroom={classroom} />
+    <ClassroomMembershipActions classroom={classroom} canManage={canManage} isAdmin={user.role === "ADMIN"} />
+    <ClassroomWorkspace key={`${classroomId}-${user.id}-${user.role}-${selectedPostId ?? "feed"}`} classroom={classroom} user={{ id: user.id, role: user.role }} assignments={assignments} canManage={canManage} selectedPostId={selectedPostId}
+      people={canManage ? <ClassroomManagement classroom={classroom} members={members} invitations={invitations} /> : undefined}
+      assignmentForm={canManage && classroom.status === "ACTIVE" ? <AssignmentForm classroomId={classroomId} tests={tests.filter(test => test.origin !== "TEACHER" || test.owner_user_id === classroom.teacher_id)} /> : undefined} />
   </>;
 }

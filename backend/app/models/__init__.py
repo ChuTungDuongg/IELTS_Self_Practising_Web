@@ -5,6 +5,8 @@ from app.models.classroom import (
     ClassroomInvitation,
     ClassroomMembership,
 )
+from app.models.classroom_classwork import ClassroomContentItem, ClassroomResource, ClassroomSection
+from app.models.classroom_posts import ClassroomComment, ClassroomPost, ClassroomPostResource
 from app.models.content_governance import TestVersionModeration
 from app.models.entities import (
     Asset,
@@ -56,6 +58,12 @@ from app.models.writing_ai import (
 from app.models.writing_benchmark import WritingBenchmarkSample
 
 __all__ = [
+    "ClassroomComment",
+    "ClassroomPost",
+    "ClassroomPostResource",
+    "ClassroomContentItem",
+    "ClassroomResource",
+    "ClassroomSection",
     "WritingBenchmarkSample",
     "SpeakingAIGradingEvent",
     "SpeakingAIGradingRun",

@@ -414,6 +414,7 @@ export const vi = {
   "notifications.approved": "{name} đã được duyệt cho {scope}.",
   "notifications.rejected": "{name} bị từ chối cho {scope}.",
   "notifications.archived": "{name} đã được lưu trữ.",
+  "notifications.announcement": "Lớp {name} có thông báo mới.",
   "notifications.update": "Một tài nguyên bạn theo dõi đã được cập nhật.",
   "governance.error": "Không thể hoàn tất thao tác. Vui lòng thử lại.",
   "builder.saveTask": "Lưu bài viết {number}",

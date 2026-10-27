@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import AppError
@@ -50,8 +50,8 @@ class ClassroomService:
             raise AppError("ACCOUNT_INACTIVE", "This account is inactive.", 403)
         self.actor = self.policy.actor = actor
 
-    async def _classroom(self, classroom_id: UUID, *, lock=False):
-        room = await self.repository.classroom(classroom_id, lock=lock)
+    async def _classroom(self, classroom_id: UUID, *, lock=False, read_lock=False):
+        room = await self.repository.classroom(classroom_id, lock=lock, read_lock=read_lock)
         if room is None:
             raise AppError("CLASSROOM_NOT_FOUND", "The classroom does not exist.", 404)
         return room
@@ -94,7 +94,17 @@ class ClassroomService:
             await self._load_actor()
             room = await self._classroom(classroom_id)
             await self._readable(room)
-            return ClassroomResponse.model_validate(room)
+            teacher = await self.session.get(User, room.teacher_id)
+            member_count = await self.session.scalar(
+                select(func.count()).select_from(ClassroomMembership).where(
+                    ClassroomMembership.classroom_id == room.id,
+                    ClassroomMembership.left_at.is_(None),
+                )
+            )
+            response = ClassroomResponse.model_validate(room)
+            response.teacher_name = teacher.display_name if teacher else None
+            response.active_member_count = member_count or 0
+            return response
 
     async def update(self, classroom_id: UUID, data: ClassroomUpdate) -> ClassroomResponse:
         async with self.session.begin():

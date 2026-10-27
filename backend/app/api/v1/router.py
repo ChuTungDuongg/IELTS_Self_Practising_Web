@@ -7,6 +7,8 @@ from app.api.v1 import (
     attempts,
     auth,
     classroom_assignments,
+    classroom_classwork,
+    classroom_posts,
     classrooms,
     content_governance,
     health,
@@ -49,3 +51,5 @@ api_router.include_router(content_governance.router)
 api_router.include_router(classrooms.router)
 api_router.include_router(notifications.router)
 api_router.include_router(classroom_assignments.router)
+api_router.include_router(classroom_classwork.router)
+api_router.include_router(classroom_posts.router)

@@ -11,10 +11,10 @@ class ClassroomRepository:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def classroom(self, classroom_id: UUID, *, lock: bool = False):
+    async def classroom(self, classroom_id: UUID, *, lock: bool = False, read_lock: bool = False):
         query = select(Classroom).where(Classroom.id == classroom_id)
-        if lock:
-            query = query.execution_options(populate_existing=True).with_for_update()
+        if lock or read_lock:
+            query = query.execution_options(populate_existing=True).with_for_update(read=read_lock)
         return await self.session.scalar(query)
 
     async def list(self, actor: User):

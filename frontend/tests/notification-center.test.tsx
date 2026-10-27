@@ -51,6 +51,19 @@ it("localizes stored event data in Vietnamese", async () => {
   expect(await screen.findByText("Bạn được mời vào lớp Evening class.")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Đánh dấu đã đọc tất cả" })).toBeInTheDocument();
 });
+it("opens a published announcement in its classroom and localizes its event", async () => {
+  api.listNotifications.mockResolvedValue([{ ...item,
+    type: "CLASSROOM_ANNOUNCEMENT_PUBLISHED",
+    entity_type: "CLASSROOM_POST", entity_id: "post-id",
+    payload_json: { classroom_name: "Evening class", classroom_id: "classroom-id" },
+  }]);
+  renderWithLocale(<NotificationCenter userId="user" />);
+  fireEvent.click(await screen.findByRole("button", { name: "Notifications (1 unread)" }));
+  expect(await screen.findByText("A new announcement was published in Evening class.")).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "Open" })).toHaveAttribute("href", "/classrooms/classroom-id?post=post-id");
+  fireEvent.click(screen.getByRole("button", { name: "Switch to Vietnamese" }));
+  expect(await screen.findByText("Lớp Evening class có thông báo mới.")).toBeInTheDocument();
+});
 it("a changed recipient starts a fresh notification panel without flashing previous content", async () => {
   const view = renderWithLocale(<NotificationCenter key="first" userId="first" />);
   fireEvent.click(await screen.findByRole("button", { name: "Notifications (1 unread)" }));

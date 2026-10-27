@@ -412,6 +412,7 @@ export const en = {
   "notifications.approved": "{name} was approved for {scope}.",
   "notifications.rejected": "{name} was rejected for {scope}.",
   "notifications.archived": "{name} was archived.",
+  "notifications.announcement": "A new announcement was published in {name}.",
   "notifications.update": "A resource you follow was updated.",
   "governance.error": "The action could not be completed. Please try again.",
   "builder.saveTask": "Save Task {number}",

@@ -33,6 +33,8 @@ class ClassroomResponse(BaseModel):
     archived_at: datetime | None
     created_at: datetime
     updated_at: datetime
+    teacher_name: str | None = None
+    active_member_count: int | None = None
     model_config = {"from_attributes": True}
 
 

@@ -1,0 +1,100 @@
+/* BandPilot classroom: an open plane using the shared editorial tokens.
+ * At 1100px: 160px course navigation + 712px main + 180px info + 2 × 24px gaps.
+ * The lesson sequence and canonical IELTS assignments provide the screen's identity.
+ */
+.classroom-workspace { min-width: 0; color: var(--ink); }
+.classroom-workspace .classroom-tabs { display: flex; gap: 24px; overflow-x: auto; border-bottom: 1px solid var(--line); margin: 8px 0 24px; }
+.classroom-workspace .classroom-tabs button { flex: none; padding: 12px 0; border-bottom: 2px solid transparent; color: var(--muted); font-weight: 600; background: transparent; cursor: pointer; }
+.classroom-workspace .classroom-tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--ink); }
+.classroom-workspace .classroom-columns { display: grid; grid-template-columns: 160px minmax(0, 1fr) 180px; gap: 24px; align-items: start; }
+.classroom-workspace :is(.classroom-main, .classroom-stream, .classroom-classwork, .classroom-assignments) { min-width: 0; }
+.classroom-workspace .classroom-main { scroll-margin-top: 100px; }
+.classroom-workspace .classroom-course-nav { position: sticky; top: 100px; }
+.classroom-workspace .classroom-course-nav h2 { font-weight: 600; font-size: 14px; margin-bottom: 12px; }
+.classroom-workspace .classroom-course-picker { display: none; }
+.classroom-workspace .classroom-course-nav nav { display: grid; gap: 4px; }
+.classroom-workspace .classroom-course-nav nav button { text-align: left; padding: 8px; border-radius: 6px; color: var(--ink-soft); line-height: 1.4; overflow-wrap: anywhere; cursor: pointer; }
+.classroom-workspace .classroom-course-nav nav button:hover { background: var(--surface-hover); }
+.classroom-workspace .classroom-course-nav nav button span { display: block; margin-top: 4px; }
+.classroom-workspace .classroom-info { font-size: 14px; padding-top: 4px; }
+.classroom-workspace .classroom-info h2 { font-size: 15px; font-weight: 600; margin: 0 0 12px; }
+.classroom-workspace .classroom-info > p { color: var(--ink-soft); white-space: pre-wrap; }
+.classroom-workspace .classroom-info dl { margin: 20px 0; }
+.classroom-workspace .classroom-info dl > div { display: flex; gap: 12px; justify-content: space-between; padding: 6px 0; }
+.classroom-workspace .classroom-info dd { font-variant-numeric: tabular-nums; }
+.classroom-workspace .classroom-panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 20px; margin-bottom: 24px; box-shadow: none; }
+.classroom-workspace :is(h2, h3, h4) { line-height: 1.35; }
+.classroom-workspace h2 { font-size: 19px; font-weight: 600; }
+.classroom-workspace h3 { font-size: 17px; font-weight: 600; }
+.classroom-workspace h4 { font-size: 15px; font-weight: 600; }
+.classroom-workspace .classroom-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+.classroom-workspace .classroom-section-heading h2, .classroom-workspace .classroom-section-heading h3 { margin: 0; }
+.classroom-workspace .classroom-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.classroom-workspace .classroom-toolbar > * { min-width: 0; }
+.classroom-workspace .btn { font-size: 13px; min-height: 34px; padding: 6px 12px; border-radius: 6px; }
+.classroom-workspace .classroom-text-button { padding: 5px 0; font-size: 13px; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; text-align: left; cursor: pointer; }
+.classroom-workspace .classroom-meta { color: var(--muted); font-size: 13px; line-height: 1.5; margin: 4px 0; }
+.classroom-workspace .classroom-meta strong { color: var(--ink); font-weight: 600; }
+.classroom-workspace .classroom-post-header, .classroom-workspace .classroom-row-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
+.classroom-workspace .classroom-post h3 { margin: 0 0 12px; }
+.classroom-workspace .classroom-post-status { display: flex; flex-wrap: wrap; gap: 8px; font-size: 12px; color: var(--muted); }
+.classroom-workspace .classroom-post-status span { border-radius: 4px; padding: 2px 6px; background: var(--surface-soft); }
+.classroom-workspace .classroom-post > .classroom-toolbar { margin-top: 16px; }
+.classroom-workspace .classroom-comments-toggle { margin-top: 16px; }
+.classroom-workspace .classroom-comments { border-top: 1px solid var(--line); margin-top: 12px; padding-top: 16px; }
+.classroom-workspace :is(.classroom-comments ol, .classroom-post-resources, .classroom-classwork-list) { list-style: none; margin: 0; padding: 0; }
+.classroom-workspace .classroom-comment { padding-bottom: 16px; }
+.classroom-workspace .classroom-comment-form { margin-top: 16px; }
+.classroom-workspace .classroom-editor fieldset { display: grid; gap: 16px; min-width: 0; }
+.classroom-workspace .classroom-editor h3 { margin: 0 0 16px; }
+.classroom-workspace .field-label { display: grid; gap: 6px; font-size: 14px; }
+.classroom-workspace :is(.field, .select-field) { width: 100%; max-width: 100%; min-width: 0; border-radius: 6px; }
+.classroom-workspace textarea { resize: vertical; }
+.classroom-workspace .classroom-filter .select-field { width: auto; max-width: 170px; min-height: 34px; padding-block: 5px; font-size: 13px; }
+.classroom-workspace .classroom-attachment-options { display: grid; gap: 8px; margin-top: 12px; font-size: 14px; }
+.classroom-workspace .classroom-resource-body { padding: 16px 0 4px; }
+.classroom-workspace .classroom-resource-body > p { margin-bottom: 12px; }
+.classroom-workspace .classroom-image { max-width: 100%; height: auto; display: block; border-radius: 4px; }
+.classroom-workspace .classroom-markdown { overflow-wrap: anywhere; line-height: 1.7; }
+.classroom-workspace .classroom-markdown :is(p, ul, ol, blockquote) { margin: 0 0 12px; }
+.classroom-workspace .classroom-markdown ul { list-style: disc; padding-left: 24px; }
+.classroom-workspace .classroom-markdown ol { list-style: decimal; padding-left: 24px; }
+.classroom-workspace .classroom-markdown blockquote { border-left: 3px solid var(--line-strong); padding-left: 16px; color: var(--ink-soft); }
+.classroom-workspace .classroom-markdown a { text-decoration: underline; text-underline-offset: 3px; }
+.classroom-workspace .classroom-post-resources { background: var(--surface-soft); border-radius: 6px; padding: 12px 16px; margin: 16px 0; }
+.classroom-workspace .classroom-post-resources li + li { margin-top: 12px; }
+.classroom-workspace .classroom-course-section { scroll-margin-top: 110px; }
+.classroom-workspace .classroom-section-actions { margin-bottom: 16px; }
+.classroom-workspace .classroom-classwork-row { padding: 16px 0; border-top: 1px solid var(--line); }
+.classroom-workspace .classroom-classwork-row:last-child { padding-bottom: 0; }
+.classroom-workspace .classroom-classwork-row h4 { margin: 0; }
+.classroom-workspace .classroom-item-controls { display: grid; gap: 12px; margin-top: 12px; }
+.classroom-workspace :is(.classroom-order-button, .classroom-drag-handle) { border: 1px solid var(--line); border-radius: 6px; min-width: 32px; height: 32px; background: var(--surface-soft); cursor: pointer; }
+.classroom-workspace .classroom-drag-handle { cursor: grab; flex: none; }
+.classroom-workspace .classroom-move-label { max-width: 220px; flex: 1; }
+.classroom-workspace .classroom-move-label select { font-size: 13px; min-height: 32px; padding-block: 4px; }
+.classroom-workspace .classroom-association { display: grid; gap: 12px; }
+.classroom-workspace .classroom-association .btn { justify-self: start; }
+.classroom-workspace .classroom-empty { padding: 16px; border-radius: 6px; border: 1px dashed var(--line-strong); color: var(--muted); font-size: 14px; margin-bottom: 16px; }
+.classroom-workspace .classroom-skeleton > div { height: 16px; background: var(--surface-soft); margin: 16px 0; border-radius: 4px; }
+.classroom-workspace .classroom-skeleton > div:last-child { width: 70%; }
+.classroom-workspace .classroom-action { display: inline-flex; flex-direction: column; align-items: flex-start; }
+.classroom-workspace .classroom-assignments .test-card-grid { display: grid; grid-template-columns: minmax(0, 1fr); }
+@media (max-width: 1100px) {
+  .classroom-workspace .classroom-columns { grid-template-columns: 140px minmax(0, 1fr); }
+  .classroom-workspace .classroom-info { grid-column: 2; border-top: 1px solid var(--line); padding-top: 20px; }
+}
+@media (max-width: 760px) {
+  .classroom-workspace .classroom-columns { display: block; }
+  .classroom-workspace .classroom-course-nav { position: static; margin-bottom: 20px; }
+  .classroom-workspace .classroom-course-links { display: none; }
+  .classroom-workspace .classroom-course-picker { display: grid; }
+  .classroom-workspace .classroom-panel { padding: 16px; margin-bottom: 16px; }
+  .classroom-workspace .classroom-tabs { gap: 24px; margin-bottom: 16px; }
+  .classroom-workspace .classroom-section-heading { flex-wrap: wrap; }
+  .classroom-workspace .classroom-info { margin-top: 24px; }
+  .classroom-workspace :is(.btn, .classroom-text-button, .classroom-order-button, .classroom-drag-handle, .classroom-tabs button) { min-height: 44px; }
+  .classroom-workspace .classroom-filter .select-field { min-height: 44px; }
+  .classroom-workspace .classroom-item-controls .classroom-toolbar { gap: 12px; }
+}
+@media (prefers-reduced-motion: reduce) { .classroom-workspace *, .classroom-workspace *::before, .classroom-workspace *::after { scroll-behavior: auto; transition: none; } }

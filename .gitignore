@@ -3,6 +3,7 @@
 .venv/
 __pycache__/
 .pytest_cache/
+backend/.test-tmp/
 .ruff_cache/
 .mypy_cache/
 backups/
@@ -38,6 +39,8 @@ storage/speaking-derived/*
 /benchmarks/writing_latency/reports/
 storage/benchmark/*
 !storage/benchmark/.gitkeep
+storage/classroom-resources/*
+!storage/classroom-resources/.gitkeep
 /benchmarks/writing_task2/private/*
 !/benchmarks/writing_task2/private/.gitkeep
 /benchmarks/writing_task2/**/*.jsonl

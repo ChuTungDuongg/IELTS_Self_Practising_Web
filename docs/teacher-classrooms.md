@@ -1,5 +1,69 @@
 # Teacher, classrooms and content governance
 
+## Classroom 2.0 workspace (P1)
+
+The shared detail page for `/classrooms/{id}` and `/teacher/classrooms/{id}` now separates **Stream**, **Classwork**, **Assignments**, and **People**. Existing assignment creation, launch, provenance, results, and human/advisory AI grading remain in their existing components and services. The classroom header includes the teacher display name and authorized active membership count. Archived classrooms retain readable published content and are read-only.
+
+### Content and authorization
+
+- The teacher owner authors announcements/discussions, sections and TEXT/LINK/FILE resources. Content uses `DRAFT`, `PUBLISHED`, and `ARCHIVED`; staff can inspect drafts and archives. Student reads expose only published content. A published resource in an unpublished section remains hidden, including direct UUID and file access.
+- ADMIN retains existing classroom archive/restore, management and read oversight, including drafts. P1 deliberately does **not** grant ADMIN authorship or moderation of another teacher's new learning content. Another teacher has no ownership rights. Existing historical memberships permit retained published reads; an active membership (or the teacher owner) is required for comments.
+- Flat comment threads are cursor-paginated oldest-first. Authors can edit/retract their comments; the owner can moderate others. Retraction/moderation preserves the stored body and audit timestamps but returns an empty body to clients. Posts are archived rather than deleted. Locked discussions reject new comments.
+- The Stream combines posts and canonical `ClassroomAssignment` rows with a bounded SQL UNION, so existing assignments need no backfill or independent lifecycle. Pinned entries precede the regular newest-first feed. Cursor keys include pin state, creation timestamp, content kind and UUID; timestamp ties are deterministic. Cursors are bound to the classroom/filter. As with normal keyset feeds, moving an entry across the cursor by pinning it during pagination can change its position; refreshing restarts the view.
+- Markdown is stored as bounded text. The client renders a small subset (bold, italic, lists and HTTP/HTTPS links) as React nodes; raw HTML is never injected. Resource URLs require absolute HTTP/HTTPS addresses without embedded credentials.
+- First publication of an announcement creates recipient-scoped notifications for active enrolled accounts, in the same transaction. Existing notification deduplication and a retained first-publication timestamp prevent repeat notifications after edits or republishing. Notifications grant no content access.
+
+### Structured Classwork and ordering
+
+Sections have stable UUIDs, explicit positions and independent publication states. Each item references exactly one resource or existing assignment. Composite foreign keys prevent cross-classroom section/resource/assignment placement. Resource and assignment placement is unique; assignment TestVersion references remain unchanged. Existing assignments without placement remain available in Assignments and the Uncategorized Classwork grouping.
+
+Classroom row locks serialize every new write with archival and membership changes. Each classwork edit increments `classrooms.content_revision`. Reorder requests supply the revision and complete desired target order; stale revisions return `409 CLASSWORK_CHANGED`. The server validates every identifier, normalizes positions and moves references atomically. Keyboard move controls complement drag and drop. The client refreshes after successful writes and exposes failures without pretending they succeeded.
+
+### Private files
+
+Files use the existing local storage abstraction under `storage/classroom-resources/`, with generated UUID filenames. PostgreSQL stores metadata and a private storage key, never binary content. Storage keys and filesystem paths are omitted from public DTOs. The file endpoint rechecks classroom membership/history, publication and containing-section visibility on every request.
+
+Uploads are bounded to **20 MiB** and allow PDF, PNG, JPEG, WebP, UTF-8 plain text and DOCX. Filename traversal/control characters, unsupported MIME/extension pairs and mismatched signatures are rejected. DOCX containers have entry/uncompressed-size limits and reject macro payloads and unsafe member paths. No new external storage service is used. Upload staging follows the existing shielded worker pattern; failed attachment transactions check durable references and remove unreferenced files. If a database outage makes the outcome unknowable, the file is retained and the compensation failure is logged, avoiding deletion of a possibly committed resource. Archived resource files are retained with their history.
+
+Downloads send private/no-store and nosniff headers. PDF/images may be viewed inline through the authenticated endpoint; other supported documents download as attachments. External links open with safe external-link attributes.
+
+The resource viewer fetches private files through the existing refresh-aware HTTP client before creating temporary browser Blob URLs. This keeps downloads working when the short-lived access cookie has expired but the login session is still valid. Pending requests are cancelled and Blob URLs are revoked when the viewer closes.
+
+### Database and endpoints
+
+Revision **`20261027_0036`**, following `20261013_0035`, adds `classroom_sections`, `classroom_resources`, `classroom_content_items`, `classroom_posts`, `classroom_post_resources`, and `classroom_comments`, plus `classrooms.content_revision`, notification enum values and supporting keys/indexes. The migration is additive and does not rewrite existing assignments, attempts or TestVersion data. Downgrade refuses retained workspace/notification history; additive PostgreSQL enum labels remain after an empty-domain downgrade.
+
+New endpoint groups beneath `/api/v1/classrooms/{id}`:
+
+| Paths | Operations |
+| --- | --- |
+| `/feed` | GET cursor page, bounded `limit`, staff-only optional status filter |
+| `/posts`, `/posts/{postId}` | POST create; GET detail; PATCH edit/lifecycle/lock |
+| `/posts/{postId}/{publish,archive,pin}` | POST publication, archival and pin changes |
+| `/posts/{postId}/comments` | GET cursor page; POST comment |
+| `/comments/{commentId}` | PATCH own comment; DELETE retract/moderate |
+| `/classwork` | GET authorized sections/resources/items and revision |
+| `/sections`, `/sections/{sectionId}`, `/sections/reorder` | GET/POST, PATCH, POST full section order |
+| `/resources`, `/resources/{resourceId}` | GET/POST, GET/PATCH content metadata |
+| `/resources/upload`, `/resources/{resourceId}/file` | POST multipart upload; GET authenticated file (`inline=true` for PDF/images) |
+| `/items`, `/items/reorder` | POST canonical assignment placement; POST move/reorder target items |
+
+P1 does not introduce deadlines, availability windows, cutoff policies, attempt limits, late submission rules, extensions, gradebook, attendance, analytics, recommendations, co-teachers, teaching assistants, email or realtime transport. The Markdown editor is intentionally lightweight and comments are flat. File replacement and permanent content deletion are not offered. Existing exam timers and grading policies remain authoritative.
+
+### P1 focused verification
+
+With `DATABASE_URL` and `TEST_DATABASE_URL` set to an isolated PostgreSQL test database migrated through head, run from `backend/`:
+
+```powershell
+.venv/Scripts/python.exe -m pytest tests/test_classroom_resource_storage.py tests/test_classroom_classwork_unit.py tests/test_classroom_classwork.py tests/test_classroom_posts.py tests/test_classroom_assignments.py tests/test_classrooms_and_notifications.py -p no:cacheprovider -q
+```
+
+Verified **101 passing backend cases**, including permission failures, hidden-section/file UUID access, archived read-only mutations, revision conflicts, assignment identity preservation, announcement deduplication, equal-timestamp feed pagination, upload compensation and frozen migration contracts. The additive migration also upgraded a fresh isolated database through `20261027_0036` successfully.
+
+From `frontend/`, the focused Vitest scope is `tests/classroom-content.test.tsx`, `tests/classroom-content-api.test.ts`, `tests/teacher-classroom-ui.test.tsx`, `tests/teacher-api-contract.test.ts`, `tests/teacher-pagination.test.tsx`, and `tests/notification-center.test.tsx`: **57 passing cases**. Scoped Ruff/ESLint, TypeScript and task-scoped `git diff --check` also passed. Independent source review findings were resolved with regression coverage.
+
+No browser, screenshots, E2E, production build or full repository test suite was run under this task's execution limits. Visual layout is reviewed statically and remains unverified in a real browser.
+
 This v1 implementation follows the approved [design](superpowers/specs/2026-10-11-teacher-classroom-content-governance-design.md) and [implementation plan](superpowers/plans/2026-10-11-teacher-classroom-content-governance.md). PostgreSQL remains authoritative; every domain mutation goes through FastAPI.
 
 ## Setup and roles
