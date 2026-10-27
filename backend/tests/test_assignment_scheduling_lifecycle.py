@@ -3,10 +3,7 @@ from datetime import timedelta
 
 import pytest
 from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-from sqlalchemy.pool import NullPool
 
-from app.core.config import get_settings
 from app.core.exceptions import AppError
 from app.domains.timers import TimerService
 from app.models import Attempt
@@ -166,12 +163,9 @@ async def test_personal_work_excluded_and_late_join_not_missed(db_session):
 
 async def test_concurrent_start_near_limit_is_serialized():
     # Separate committed test-only rows are necessary for genuine two-connection races.
-    from sqlalchemy.engine import make_url
+    from tests.classroom_concurrency_helpers import isolated_staff_database
 
-    assert "test" in make_url(get_settings().database_url).database
-    engine = create_async_engine(get_settings().database_url, poolclass=NullPool)
-    factory = async_sessionmaker(engine, expire_on_commit=False)
-    try:
+    async with isolated_staff_database() as factory:
         async with factory() as session:
             teacher, student, room, version = await classroom_fixture(session, official=True)
             assignment = await ClassroomAssignmentService(session, teacher).create(
@@ -198,8 +192,6 @@ async def test_concurrent_start_near_limit_is_serialized():
                 )
                 == 1
             )
-    finally:
-        await engine.dispose()
 
 
 @pytest.mark.parametrize(
