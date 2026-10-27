@@ -85,10 +85,10 @@ describe("Test Library detail hierarchy", () => {
     expect(screen.getAllByRole("banner")).toHaveLength(1);
   });
   it.each([
-    { locale: "en", origin: "ADMIN", owner: null, attribution: "Official", metadata: "Published · Version 13", back: "Back to practice library" },
-    { locale: "en", origin: "TEACHER", owner: "Fictional Teacher", attribution: "Community · contributed by Fictional Teacher", metadata: "Published · Version 13", back: "Back to practice library" },
-    { locale: "vi", origin: "ADMIN", owner: null, attribution: "Chính thức", metadata: "Đã xuất bản · Phiên bản 13", back: "Quay lại thư viện luyện tập" },
-    { locale: "vi", origin: "TEACHER", owner: "Fictional Teacher", attribution: "Cộng đồng · đóng góp bởi Fictional Teacher", metadata: "Đã xuất bản · Phiên bản 13", back: "Quay lại thư viện luyện tập" },
+    { locale: "en", origin: "ADMIN", owner: null, attribution: "Official", metadata: "Published", back: "Back to practice library" },
+    { locale: "en", origin: "TEACHER", owner: "Fictional Teacher", attribution: "Community · contributed by Fictional Teacher", metadata: "Published", back: "Back to practice library" },
+    { locale: "vi", origin: "ADMIN", owner: null, attribution: "Chính thức", metadata: "Đã xuất bản", back: "Quay lại thư viện luyện tập" },
+    { locale: "vi", origin: "TEACHER", owner: "Fictional Teacher", attribution: "Cộng đồng · đóng góp bởi Fictional Teacher", metadata: "Đã xuất bản", back: "Quay lại thư viện luyện tập" },
   ] as const)("groups $locale $origin attribution and version under one primary identity", ({ locale, origin, owner, attribution, metadata, back }) => {
     const view = renderWithLocale(<LibraryVersionContent test={{ ...test, origin, owner_display_name: owner }} version={version} />);
     if (locale === "vi") fireEvent.click(screen.getByText("Switch to Vietnamese"));
@@ -130,7 +130,7 @@ describe("Test Library detail hierarchy", () => {
     expect(cards.map((card) => within(card).getByRole("heading", { level: 2 }).textContent)).toEqual(["Reading", "Listening", "Writing", "Speaking"]);
     for (const card of cards) {
       expect(within(card).getByText("Continue with this skill in the published, frozen test version.")).toBeInTheDocument();
-      expect(within(card).getByText("Version").closest("dl")).toHaveTextContent("Version13");
+      expect(within(card).queryByText("Version")).not.toBeInTheDocument();
     }
     expect(within(cards[0]).getByText("Fictional river history")).toBeInTheDocument();
     expect(within(cards[0]).getByText("Matching")).toBeInTheDocument();

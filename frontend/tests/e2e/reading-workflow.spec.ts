@@ -7,7 +7,7 @@ test("authors, publishes, takes, and reviews a fictional Reading test", async ({
   await page.getByLabel("Description").fill("Fictional end-to-end Reading workflow.");
   await page.getByRole("button", { name: "Create draft" }).click();
 
-  await page.getByRole("link", { name: /Version 1/ }).click();
+  await page.getByRole("link", { name: /^Draft\b/ }).click();
   await page.getByRole("link", { name: /^Reading/ }).click();
   await page.getByRole("button", { name: "Create Reading module" }).click();
   await expect(page.getByRole("heading", { name: "Reading Builder" })).toBeVisible();

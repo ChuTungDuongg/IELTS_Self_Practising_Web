@@ -10,6 +10,7 @@ import type { TranslationFunction } from "@/lib/i18n/types";
 import { writingTaskTypeLabel } from "@/features/writing/task-types";
 import type { VersionDetail } from "@/lib/api/schema";
 import { StartFocusedPractice } from "./start-focused-practice";
+import { selectedPublishedVersion } from "@/lib/published-version";
 
 type Skill = keyof typeof moduleTranslationKeys;
 const skillOrder: Skill[] = ["READING", "LISTENING", "WRITING", "SPEAKING"];
@@ -49,7 +50,8 @@ function questionSummary(groups: GroupSummary[], t: TranslationFunction = (key, 
 }
 
 function practiceUnits(versions: VersionDetail[]): PracticeUnit[] {
-  return versions.flatMap((version) => version.modules.flatMap((module): PracticeUnit[] => {
+  const selected = [...new Set(versions.map(version => version.test_id))].flatMap(id => { const version = selectedPublishedVersion(versions.filter(version => version.test_id === id)); return version ? [version] : []; });
+  return selected.flatMap((version) => version.modules.flatMap((module): PracticeUnit[] => {
     const provenance = { versionId: version.id, testTitle: version.test_title, versionNumber: version.version_number };
     if (module.module_type === "READING") {
       return [...(module.reading_passages ?? [])].sort((a, b) => a.order_index - b.order_index).map((passage) => ({
@@ -127,7 +129,7 @@ function PracticeUnitCard({ unit, hidden }: { unit: PracticeUnit; hidden: boolea
         <h3>{unit.generatedTitle ? unitLabel : unit.title}</h3>
       </div>
       {unit.typeLabel ? <p className="practice-unit-type">{unit.taskType ? t(writingTaskTranslationKeys[unit.taskType]) : t("common.unclassified")}</p> : null}
-      <p className="practice-unit-provenance">{unit.testTitle} · {t("common.versionNumber", { number: unit.versionNumber })}</p>
+      <p className="practice-unit-provenance">{unit.testTitle}</p>
       {unit.description ? <p className="practice-unit-description">{unit.promptFallback ? t("practice.promptFallback") : unit.description}</p> : null}
       {unit.summary ? <p className="practice-unit-summary">{unit.questionCount !== undefined ? t(unit.questionCount === 1 ? "common.questionCount" : "common.questionsCount", { count: unit.questionCount }) : unit.groups ? questionSummary(unit.groups, t) : t("practice.recommendedWords", { count: unit.words ?? 0 })}</p> : null}
       {unit.audioStatus ? <p className="practice-unit-audio">{unit.audio?.kind === "none" ? t("practice.noRecording") : unit.audio?.kind === "full" ? t("practice.fullRecording") : t("practice.audioRange", { start: formatAudioTime(unit.audio?.start ?? 0), end: formatAudioTime(unit.audio?.end ?? 0), duration: formatAudioTime((unit.audio?.end ?? 0) - (unit.audio?.start ?? 0)) })}</p> : null}
@@ -144,7 +146,7 @@ export function SkillPractice({ versions, initialSkill = "READING" }: { versions
   const skillUnits = units.filter((unit) => unit.target.module === selection.skill);
   const query = search.trim().toLowerCase();
   const matches = skillUnits.filter((unit) => (selection.unitIndex === null || unit.unitIndex === selection.unitIndex)
-    && [unit.testTitle, unit.title, unit.description, unit.typeLabel, `Version ${unit.versionNumber}`].some((value) => value?.toLowerCase().includes(query)));
+    && [unit.testTitle, unit.title, unit.description, unit.typeLabel].some((value) => value?.toLowerCase().includes(query)));
 
   return <div className="practice-browser">
     <PracticeFilterPanel units={units} selection={selection} onSelect={setSelection} />

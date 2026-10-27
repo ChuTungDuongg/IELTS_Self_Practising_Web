@@ -239,7 +239,6 @@ function HistoryRow({
         <div className="history-record-topline">
           <ModuleBadge module={item.module} label={t(moduleTranslationKeys[item.module])} />
           {item.scope === "FOCUSED_UNIT" ? <span className="history-context-badge">{focusedUnitLabel({ scope: item.scope, focused_unit: item.focused_unit ? { ...item.focused_unit, title: null } : null }, t) ?? t("history.focused")}</span> : null}
-          <span>{t("common.versionNumber", { number: item.version_number })}</span>
           {item.test_session_id ? <span className="history-context-badge">{t("history.fullMock")}</span> : null}
         </div>
         <p className="history-record-title">{item.test_title}</p>
@@ -352,11 +351,10 @@ function HistoryGroupCard({ group, pending, onDelete }: {
   const groupItems = [group.reading, group.listening, group.writing, group.speaking].filter((item): item is HistoryItem => Boolean(item));
   const retainedOnly = groupItems.length > 0 && groupItems.every((item) => item.deletion_allowed === false);
   return (
-    <li className="history-group-card">
+    <li id={`history-assessment-${group.test_version_id}`} className="history-group-card">
       <div className="history-group-heading">
         <div>
           <p className="history-record-title">{group.test_title}</p>
-          <p className="history-record-date">{t("common.versionNumber", { number: group.version_number })}</p>
         </div>
         <strong>
           {group.overall_band_score === null
@@ -412,7 +410,6 @@ function MockSessionCard({ session, pending, onDelete }: {
         <div>
           <p className="history-session-kicker">{t("history.fullMock")}</p>
           <p className="history-record-title">{session.test_title}</p>
-          <p className="history-record-date">{t("common.versionNumber", { number: session.version_number })}</p>
         </div>
         <strong>
           {session.status === "COMPLETED"

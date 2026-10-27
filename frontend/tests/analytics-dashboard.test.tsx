@@ -58,7 +58,7 @@ describe("Analytics dashboard", () => {
     await screen.findAllByText("Task 1 overall");
     fireEvent.click(screen.getByText("Switch to Vietnamese"));
     expect(screen.getAllByText("Tổng điểm bài viết 1")[0].parentElement).toHaveTextContent("6.0");
-    expect(screen.getAllByRole("heading", { name: "Section 2 · Đề <img> · V1" })).toHaveLength(2);
+    expect(screen.getAllByRole("heading", { name: "Section 2 · Đề <img>" })).toHaveLength(2);
     expect(JSON.stringify(comparison)).toBe(before); expect(compareAttempts).toHaveBeenCalledExactlyOnceWith("one", "two");
   });
   it("preserves comparison IDs and raw API labels across locale changes", () => {

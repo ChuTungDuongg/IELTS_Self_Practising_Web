@@ -25,16 +25,17 @@ export default async function TestDetailPage({ params, searchParams }: { params:
           <div><h2 className="section-title"><UiText message="builder.versions" /></h2><p className="section-description"><UiText message="builder.versionsDescription" /></p></div>
         </div>
         <div className="divide-y divide-[var(--line)]">
-          {test.versions.map((version) => (
+          {test.versions.filter(version => version.status !== "ARCHIVED").map((version) => (
             <Link key={version.id} href={builderEditPath(test.id, version.id)} className="version-row group">
               <div>
-                <p className="font-semibold"><UiText message="common.versionNumber" params={{ number: version.version_number }} /> · <UiText message={version.status === "PUBLISHED" ? "builder.currentPublished" : version.status === "DRAFT" ? "common.draft" : "builder.historical"} /></p>
+                <p className="font-semibold"><UiText message={version.status === "PUBLISHED" ? "builder.currentPublished" : version.status === "DRAFT" ? "common.draft" : "builder.historical"} /></p>
                 <p className="mt-1 text-sm text-[var(--muted)]"><UiText message="builder.createdAt" params={{ date: formatProjectDateTime(version.created_at) }} /></p>
               </div>
               <div className="flex items-center gap-4"><StatusBadge status={version.status} label={<UiText message={version.status === "DRAFT" ? "common.draft" : version.status === "PUBLISHED" ? "common.published" : "common.archived"} />} /><ArrowIcon className="size-4 text-[var(--muted)] transition-transform group-hover:translate-x-1" /></div>
             </Link>
           ))}
         </div>
+        <details className="p-5"><summary><UiText message="builder.revisionDetails" /></summary>{test.versions.map(version => <Link key={version.id} href={builderEditPath(test.id, version.id)} className="version-row"><UiText message="common.versionNumber" params={{ number: version.version_number }} /><UiText message="builder.createdAt" params={{ date: formatProjectDateTime(version.created_at) }} /><StatusBadge status={version.status} label={<UiText message={version.status === "DRAFT" ? "common.draft" : version.status === "PUBLISHED" ? "common.published" : "common.archived"} />} /></Link>)}</details>
       </section>
     </>
   );

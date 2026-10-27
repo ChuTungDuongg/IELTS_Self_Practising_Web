@@ -72,7 +72,7 @@ export function TransferPortal({ tests }: { tests: TransferTestOption[] }) {
       <div className="transfer-test-list">
         {tests.map((test) => <label key={test.id} className="transfer-test-row">
           <input type="checkbox" checked={selected.includes(test.id)} onChange={() => toggle(test.id)} aria-label={t("transfer.select", { title: test.title })} />
-          <span className="min-w-0 flex-1"><b className="block">{test.title}</b><small className="text-[var(--muted)]">{test.latestVersion ? t("transfer.latest", { number: test.latestVersion }) : t("builder.noVersions")} · {test.states.map((state) => statusTranslationKeys[state] ? t(statusTranslationKeys[state]) : state).join(" / ") || t("transfer.noState")} · {test.skills.map((skill) => skill === "SPEAKING" ? t("common.speaking") : moduleTranslationKeys[skill as keyof typeof moduleTranslationKeys] ? t(moduleTranslationKeys[skill as keyof typeof moduleTranslationKeys]) : skill).join(", ") || t("transfer.noModules")}{test.archived ? t("transfer.archived") : ""}</small></span>
+          <span className="min-w-0 flex-1"><b className="block">{test.title}</b><small className="text-[var(--muted)]">{test.states.map((state) => statusTranslationKeys[state] ? t(statusTranslationKeys[state]) : state).join(" / ") || t("transfer.noState")} · {test.skills.map((skill) => skill === "SPEAKING" ? t("common.speaking") : moduleTranslationKeys[skill as keyof typeof moduleTranslationKeys] ? t(moduleTranslationKeys[skill as keyof typeof moduleTranslationKeys]) : skill).join(", ") || t("transfer.noModules")}{test.archived ? t("transfer.archived") : ""}</small></span>
         </label>)}
         {!tests.length ? <p className="notice">{t("transfer.empty")}</p> : null}
       </div>

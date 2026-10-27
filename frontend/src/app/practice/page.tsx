@@ -6,6 +6,7 @@ import { getTests, getVersion } from "@/lib/api/tests";
 import { serverApiRequest } from "@/lib/api/server-client";
 import type { VersionDetail } from "@/lib/api/schema";
 import type { ReactElement } from "react";
+import { selectedPublishedVersion } from "@/lib/published-version";
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +19,7 @@ async function PracticePage({ searchParams }: PracticePageProps = {}) {
   const initialSkill = typeof requestedSkill === "string" && ["READING", "LISTENING", "WRITING", "SPEAKING"].includes(requestedSkill.toUpperCase()) ? requestedSkill.toUpperCase() as "READING" | "LISTENING" | "WRITING" | "SPEAKING" : "READING";
   const tests = await getTests({ publicOnly: true }, serverApiRequest);
   const published = tests.filter((test) => !test.archived_at).flatMap((test) => {
-    const version = [...test.versions].reverse().find((item) => item.status === "PUBLISHED");
+    const version = selectedPublishedVersion(test.versions);
     return version ? [version] : [];
   });
   const details = await Promise.all(published.map((version) => getVersion(version.id, serverApiRequest, { publicOnly: true }).catch(() => null)));

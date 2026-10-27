@@ -51,7 +51,7 @@ export function AdminUserDetailContent({ detail }: { detail: AdminUserDetail }):
       <ProfileDetail label={t("profile.targetDate")} value={detail.user.target_test_date} />
       <ProfileDetail label={t("profile.bio")} value={detail.user.bio} />
     </div></section>
-    <section className="admin-users surface-card"><h2 className="section-title">{t("shell.history")}</h2>{detail.history.items.length ? <div className="admin-user-list">{detail.history.items.map((attempt) => <div key={attempt.attempt_id} className="admin-user-row"><span><strong>{attempt.test_title}</strong><small>{t("common.versionNumber", { number: attempt.version_number })}</small></span><span>{t(moduleTranslationKeys[attempt.module])}</span><span>{statusTranslationKeys[attempt.status] ? t(statusTranslationKeys[attempt.status]) : attempt.status}</span><span>{attempt.band_score ?? "—"}</span></div>)}</div> : <p className="notice">{t("admin.noAttempts")}</p>}</section>
+    <section className="admin-users surface-card"><h2 className="section-title">{t("shell.history")}</h2>{detail.history.items.length ? <div className="admin-user-list">{detail.history.items.map((attempt) => <div key={attempt.attempt_id} className="admin-user-row"><span><strong>{attempt.test_title}</strong></span><span>{t(moduleTranslationKeys[attempt.module])}</span><span>{statusTranslationKeys[attempt.status] ? t(statusTranslationKeys[attempt.status]) : attempt.status}</span><span>{attempt.band_score ?? "—"}</span></div>)}</div> : <p className="notice">{t("admin.noAttempts")}</p>}</section>
   </>;
 }
 

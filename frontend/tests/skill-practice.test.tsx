@@ -157,8 +157,8 @@ describe("Skill practice", () => {
       return versionId === id(12) ? { ...version, id: id(12), test_id: id(11), test_title: other.title } : version;
     });
     render(await PracticePage());
-    expect(screen.getAllByRole("article").map((card) => within(card).getByText(/ · Version /).textContent)).toEqual([
-      `${test.title} · Version 1`, `${test.title} · Version 1`, `${other.title} · Version 1`, `${other.title} · Version 1`,
+    expect(screen.getAllByRole("article").map((card) => card.querySelector(".practice-unit-provenance")?.textContent)).toEqual([
+      test.title, test.title, other.title, other.title,
     ]);
     expect(vi.mocked(getVersion).mock.calls.map(([value]) => value)).toEqual([id(2), id(12), id(41)]);
     expect(screen.getAllByRole("button", { name: "Start focused practice" })).toHaveLength(4);
@@ -362,7 +362,7 @@ describe("Skill practice", () => {
     const search = screen.getByRole("searchbox", { name: "Search practice" });
     fireEvent.change(search, { target: { value: "ANOTHER" } });
     expect(screen.getAllByRole("article")).toHaveLength(1);
-    expect(screen.getByText("Another fictional test · Version 2")).toBeInTheDocument();
+    expect(screen.getByText("Another fictional test")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Start focused practice" }));
     fireEvent.click(screen.getByRole("button", { name: "Continue with this interface" }));
     expect(startAttempt).toHaveBeenCalledWith(expect.objectContaining({ test_version_id: id(12), module: "LISTENING", focused_unit: { kind: "LISTENING_PART", id: id(14) } }));

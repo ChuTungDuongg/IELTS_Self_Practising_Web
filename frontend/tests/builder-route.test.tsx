@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { TestLibraryList } from "@/features/test-builder/test-library-list";
 import { AppShell } from "@/components/ui/app-shell";
@@ -51,8 +51,15 @@ describe("canonical Builder edit route", () => {
   it("uses the same route from the test detail version list", async () => {
     vi.mocked(getTest).mockResolvedValue(draft);
     render(await TestDetailPage({ params: Promise.resolve({ testId }) }));
+    const primary = screen.getByRole("link", { name: /^Draft\b/ });
+    expect(primary).toHaveAttribute("href", builderEditPath(testId, versionId));
+    expect(within(primary).getByText("Created 19/09/2026, 07:00:00")).toBeInTheDocument();
+    expect(within(primary).queryByText(/Version 1/)).not.toBeInTheDocument();
+    const revisionHistory = screen.getByText("Advanced revision history").closest("details")!;
+    expect(revisionHistory).not.toHaveAttribute("open");
+    fireEvent.click(screen.getByText("Advanced revision history"));
+    expect(revisionHistory).toHaveAttribute("open");
     expect(screen.getByRole("link", { name: /Version 1/ })).toHaveAttribute("href", builderEditPath(testId, versionId));
-    expect(screen.getByText("Created 19/09/2026, 07:00:00")).toBeInTheDocument();
   });
 
   it("accepts a Reading-only Builder payload without Listening arrays", () => {

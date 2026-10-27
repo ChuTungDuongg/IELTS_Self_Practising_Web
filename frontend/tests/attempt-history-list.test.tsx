@@ -223,7 +223,7 @@ describe("AttemptHistoryList", () => {
 
     expect(within(card as HTMLElement).getByText("Full Mock")).toBeInTheDocument();
     expect(within(card as HTMLElement).getByText("Cambridge 11 Test 2")).toBeInTheDocument();
-    expect(within(card as HTMLElement).getByText("Version 4")).toBeInTheDocument();
+    expect(within(card as HTMLElement).queryByText("Version 4")).not.toBeInTheDocument();
     expect(within(card as HTMLElement).getByText("In progress")).toBeInTheDocument();
     const skills = card.querySelector(".history-group-skills")!;
     expect(within(skills as HTMLElement).getByText("Listening")).toBeInTheDocument();
@@ -324,11 +324,11 @@ describe("AttemptHistoryList", () => {
 
     fireEvent.click(screen.getByRole("tab", { name: "By test" }));
     expect(screen.getAllByRole("button", { name: "Delete test history" })).toHaveLength(2);
-    const card = screen.getByText("Version 1").closest(".history-group-card")!;
+    const card = document.getElementById("history-assessment-" + submitted.test_version_id)!;
     fireEvent.click(within(card as HTMLElement).getByRole("button", { name: "Delete test history" }));
     const dialog = screen.getByRole("dialog");
     expect(dialog).toHaveTextContent("Delete this test history?");
-    expect(dialog).toHaveTextContent("Fictional submitted attempt, Version 1");
+    expect(dialog).toHaveTextContent("selected assessment of Fictional submitted attempt");
     expect(dialog).toHaveTextContent("Full Mock sessions and the published test will not be deleted");
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
     expect(deleteStandaloneTestHistory).not.toHaveBeenCalled();
@@ -336,8 +336,9 @@ describe("AttemptHistoryList", () => {
     fireEvent.click(within(card as HTMLElement).getByRole("button", { name: "Delete test history" }));
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Delete history" }));
     await waitFor(() => expect(deleteStandaloneTestHistory).toHaveBeenCalledWith(submitted.test_version_id));
-    expect(screen.queryByText("Version 1")).not.toBeInTheDocument();
-    expect(screen.getByText("Version 2")).toBeInTheDocument();
+    expect(document.getElementById("history-assessment-" + submitted.test_version_id)).not.toBeInTheDocument();
+    expect(document.getElementById("history-assessment-" + otherVersionId)).toBeInTheDocument();
+    expect(screen.queryByText("Version 2")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("tab", { name: "By skill" }));
     expect(screen.getAllByText("Fictional submitted attempt")).toHaveLength(2);
@@ -356,7 +357,7 @@ describe("AttemptHistoryList", () => {
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Delete history" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Could not delete history.");
-    expect(screen.getByText("Version 1")).toBeInTheDocument();
+    expect(document.getElementById("history-assessment-" + submitted.test_version_id)).toBeInTheDocument();
     expect(refresh).not.toHaveBeenCalled();
   });
 
@@ -371,7 +372,7 @@ describe("AttemptHistoryList", () => {
     rerender(<AttemptHistoryList initialHistory={history([])} />);
     const fresh = { ...submitted, attempt_id: "55555555-5555-4555-8555-555555555555" };
     rerender(<AttemptHistoryList initialHistory={history([fresh], [{ ...completeGroup, reading: fresh }])} />);
-    expect(screen.getByText("Version 1")).toBeInTheDocument();
+    expect(document.getElementById("history-assessment-" + submitted.test_version_id)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Review Reading" })).toHaveAttribute("href", `/review/${fresh.attempt_id}`);
   });
 
@@ -561,8 +562,9 @@ describe("AttemptHistoryList", () => {
     fireEvent.click(screen.getByRole("tab", { name: "By test" }));
     expect(screen.getByText("Overall band 8.0")).toBeInTheDocument();
     expect(screen.getByText("Overall band —")).toBeInTheDocument();
-    expect(screen.getByText("Version 1")).toBeInTheDocument();
-    expect(screen.getByText("Version 2")).toBeInTheDocument();
+    expect(document.getElementById("history-assessment-" + submitted.test_version_id)).toBeInTheDocument();
+    expect(document.getElementById("history-assessment-" + incomplete.test_version_id)).toBeInTheDocument();
+    expect(screen.queryByText("Version 2")).not.toBeInTheDocument();
     expect(screen.getAllByRole("link", { name: "Review Reading" })[0]).toHaveAttribute(
       "href",
       `/review/${submitted.attempt_id}`,
@@ -598,8 +600,8 @@ describe("AttemptHistoryList", () => {
 
     fireEvent.click(screen.getByRole("tab", { name: "By test" }));
     expect(screen.getAllByText("IELTS Cambridge 11 Test 2")).toHaveLength(2);
-    expect(screen.getByText("Version 5")).toBeInTheDocument();
-    expect(screen.getByText("Version 6")).toBeInTheDocument();
+    expect(document.getElementById("history-assessment-" + version5Id)).toBeInTheDocument();
+    expect(document.querySelectorAll(".history-group-card")).toHaveLength(2); expect(screen.queryByText("Version 6")).not.toBeInTheDocument();
     expect(screen.queryByText("Full Mock")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("tab", { name: "By mock test" }));
     expect(screen.getAllByText("IELTS Cambridge 11 Test 2")).toHaveLength(1);

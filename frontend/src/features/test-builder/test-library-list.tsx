@@ -15,6 +15,7 @@ import { ApiError } from "@/lib/api/client";
 import type { TestSummary } from "@/lib/api/schema";
 import { cloneVersion, deleteTest, permanentlyDeleteTest, restoreTest } from "@/lib/api/tests";
 import { builderEditPath } from "@/lib/routes";
+import { selectedPublishedVersion } from "@/lib/published-version";
 
 export function TestLibraryList({
   activeTests: initialActiveTests,
@@ -77,7 +78,7 @@ export function TestLibraryList({
 
   async function editPublished(target: TestSummary) {
     if (pendingId) return;
-    const published = [...target.versions].reverse().find((version) => version.status === "PUBLISHED");
+    const published = selectedPublishedVersion(target.versions);
     if (!published) return;
     setPendingId(target.id);
     try {
@@ -143,7 +144,7 @@ export function TestLibraryList({
           {filteredTests.map((test) => {
             const latest = test.versions.at(-1);
             const draft = [...test.versions].reverse().find((version) => version.status === "DRAFT");
-            const published = [...test.versions].reverse().find((version) => version.status === "PUBLISHED");
+            const published = selectedPublishedVersion(test.versions);
             const destructiveLabel = hasHistory(test) ? t("common.archive") : t("common.delete");
             return (
               <article key={test.id} className="test-card admin-test-card">
@@ -163,7 +164,7 @@ export function TestLibraryList({
                 </p>
                 <div className="test-card-meta">
                   <span>{t("builder.updated", { date: formatUpdated(test.updated_at, t("builder.recently")) })}</span>
-                  {latest ? <span>{t("builder.latest", { number: latest.version_number })}</span> : <span>{t("builder.noVersions")}</span>}
+                  {latest ? <span>{t(statusTranslationKeys[latest.status])}</span> : <span>{t("builder.noVersions")}</span>}
                 </div>
                 <div className="test-card-actions">
                   <Link href={`/admin/tests/${test.id}`} className="btn btn-secondary">{t("common.open")}</Link>

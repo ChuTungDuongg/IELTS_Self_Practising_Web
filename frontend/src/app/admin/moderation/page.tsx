@@ -26,8 +26,9 @@ export default async function ModerationQueuePage({ searchParams }: {
     <ModerationFilters status={status} />{items.length ? <div className="test-card-grid">{items.map(item => <article key={item.id} className="surface-card p-5">
       <h2>{item.test_title}</h2>
       <p>
-        <UiText message="common.versionNumber" params={{ number: item.version_number ?? "—" }} /> · <UiText message={item.scope === "PUBLIC" ? "moderation.public" : "moderation.classroom"} /> · <UiText message={moderationTranslationKeys[item.status]} />
+        <UiText message={item.scope === "PUBLIC" ? "moderation.public" : "moderation.classroom"} /> · <UiText message={moderationTranslationKeys[item.status]} />
       </p>
+      <details><summary><UiText message="builder.revisionDetails" /></summary><UiText message="common.versionNumber" params={{ number: item.version_number ?? "—" }} /></details>
       <Link className="btn btn-secondary mt-3" href={`/admin/moderation/${item.id}`}>
         <UiText message="common.open" />
       </Link>

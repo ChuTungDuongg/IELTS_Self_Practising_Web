@@ -2,13 +2,14 @@ import { LibraryContent } from "@/features/practice/library-content";
 import type { VersionDetail } from "@/lib/api/schema";
 import { getTests, getVersion } from "@/lib/api/tests";
 import { serverApiRequest } from "@/lib/api/server-client";
+import { selectedPublishedVersion } from "@/lib/published-version";
 
 export const dynamic = "force-dynamic";
 
 export default async function LibraryPage() {
   const tests = await getTests({ publicOnly: true }, serverApiRequest);
   const published = tests.flatMap((test) => {
-    const version = [...test.versions].reverse().find((item) => item.status === "PUBLISHED");
+    const version = selectedPublishedVersion(test.versions);
     return version ? [{ test, version }] : [];
   });
   const available = (await Promise.all(published.map(async (item) => ({

@@ -57,8 +57,8 @@ describe("Practice library", () => {
     expect(cards).toHaveLength(4);
     expect(cards.map((card) => within(card as HTMLElement).getByRole("heading", { level: 2 }).textContent)).toEqual(["Reading", "Listening", "Writing", "Speaking"]);
     const speaking = cards[3] as HTMLElement;
-    const metadata = within(speaking).getByText("Version").closest("dl")!;
-    expect(metadata.textContent).toContain("Version13");
+    const metadata = speaking.querySelector("dl")!;
+    expect(metadata.textContent).not.toContain("Version13");
     expect(metadata.textContent).toContain("Questions5");
     expect(metadata.textContent).toContain("Parts3");
     expect(within(speaking).queryByText("No content added yet.")).not.toBeInTheDocument();
@@ -143,7 +143,7 @@ describe("Practice library", () => {
     render(await LibraryPage());
     const card = screen.getByRole("heading", { name: publishedTest.title }).closest("article")!;
     expect(within(card).queryByText("Complete test", { exact: true })).not.toBeInTheDocument();
-    expect(within(card).getByText("Official").closest(".practice-test-meta")).toContainElement(within(card).getByText("Version 2"));
+    expect(within(card).getByText("Official")).toBeInTheDocument(); expect(within(card).queryByText("Version 2")).not.toBeInTheDocument();
     expect(within(card).getByText("Published")).toBeInTheDocument();
     expect(within(card).getByText("3 skills available")).toBeInTheDocument();
     expect(within(card).getByText("Reading")).toBeInTheDocument();

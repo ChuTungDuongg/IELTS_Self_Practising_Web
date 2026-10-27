@@ -14,6 +14,7 @@ import { ContentSummary, publishedContentSummary } from "@/features/test-builder
 import type { TestSummary, VersionDetail } from "@/lib/api/schema";
 import { useTranslation } from "@/lib/i18n/locale-provider";
 import { moduleTranslationKeys, statusTranslationKeys } from "@/lib/i18n/translations";
+import { selectedPublishedVersion } from "@/lib/published-version";
 
 const moduleOrder = { READING: 0, LISTENING: 1, WRITING: 2, SPEAKING: 3 } as const;
 type RuntimeModule = VersionDetail["modules"][number] & { module_type: keyof typeof moduleOrder };
@@ -30,16 +31,22 @@ export function TestAttribution({ test, compact = false }: { test: TestSummary; 
 
 export function LibraryContent({ items, loadFailed = false }: { items: Array<{ test: TestSummary; version: TestSummary["versions"][number]; detail: VersionDetail }>; loadFailed?: boolean }): ReactElement {
   const { t } = useTranslation();
+  const selected = [...new Set(items.map(item => item.test.id))].flatMap(id => {
+    const candidates = items.filter(item => item.test.id === id && !item.test.archived_at && item.detail.status === "PUBLISHED");
+    const version = selectedPublishedVersion(candidates.map(item => item.version));
+    const match = candidates.find(item => item.version.id === version?.id);
+    return match ? [match] : [];
+  });
   return <>
     <PageHeading eyebrow={t("pages.library.practice")} title={t("pages.library.choose")} description={t("pages.library.chooseDescription")} />
     {loadFailed ? <DataLoadNotice /> : null}
-    {items.length ? <div className="practice-grid">
-      {items.map(({ test, version, detail }) => {
+    {selected.length ? <div className="practice-grid">
+      {selected.map(({ test, version, detail }) => {
         const modules = runtimeModules(detail.modules);
         return <article key={version.id} className="practice-card practice-test-card">
           <div className="practice-card-accent" aria-hidden="true" />
           <div className="practice-card-content">
-            <div className="practice-card-topline"><div className="practice-test-meta"><TestAttribution test={test} compact /><span className="practice-version">{t("common.versionNumber", { number: version.version_number })}</span></div><StatusBadge status={version.status} label={t(statusTranslationKeys[version.status])} /></div>
+            <div className="practice-card-topline"><div className="practice-test-meta"><TestAttribution test={test} compact /></div><StatusBadge status={version.status} label={t(statusTranslationKeys[version.status])} /></div>
             <div className="practice-card-title"><h2>{test.title}</h2><span>{test.description ?? t("pages.library.fallback")}</span></div>
             <div className="practice-module-chips" aria-label={t("pages.library.skillsLabel", { title: test.title })}>{modules.map((module) => <ModuleBadge key={module.id} module={module.module_type} label={t(moduleTranslationKeys[module.module_type])} />)}</div>
             <p className="practice-skill-count">{t("pages.library.skillsCount", { count: modules.length })}</p>
@@ -65,7 +72,7 @@ export function LibraryVersionContent({ test, version }: { test: TestSummary; ve
         <h1>{test.title}</h1>
         <div className="practice-detail-meta">
           <TestAttribution test={test} compact />
-          <StatusBadge status={version.status} label={t("pages.library.publishedVersion", { number: version.version_number })} />
+          <StatusBadge status={version.status} label={t("common.published")} />
         </div>
       </div>
       {test.description ? <p className="practice-detail-description">{test.description}</p> : null}
@@ -78,7 +85,6 @@ export function LibraryVersionContent({ test, version }: { test: TestSummary; ve
           <div className="practice-card-topline"><ModuleBadge module={module.module_type} label={t(moduleTranslationKeys[module.module_type])} /></div>
           <div className="practice-card-title"><p className="practice-module-kicker">{t("pages.library.skillPractice", { skill: t(moduleTranslationKeys[module.module_type]) })}</p><h2>{module.title ?? t(moduleTranslationKeys[module.module_type])}</h2><span>{t("pages.library.continue")}</span></div>
           <dl className="practice-card-meta">
-            <div><dt>{t("pages.library.version")}</dt><dd>{version.version_number}</dd></div>
             <div><dt>{module.module_type === "WRITING" ? t("common.tasks") : t("common.questions")}</dt><dd>{module.module_type === "WRITING" ? module.writing_task_count : module.question_count}</dd></div>
             <div><dt>{module.module_type === "LISTENING" ? t("common.sections") : module.module_type === "WRITING" ? t("common.suggestedTime") : module.module_type === "SPEAKING" ? t("common.parts") : t("common.passages")}</dt><dd>{module.module_type === "LISTENING" ? module.listening_part_count : module.module_type === "WRITING" ? t("common.minutesShort", { count: Math.round((module.recommended_duration_seconds ?? 3600) / 60) }) : module.module_type === "SPEAKING" ? module.speaking_parts?.length ?? 0 : module.passage_count}</dd></div>
           </dl>
