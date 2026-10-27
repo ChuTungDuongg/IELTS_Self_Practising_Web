@@ -1,0 +1,172 @@
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { beforeEach, expect, it, vi } from "vitest";
+import type { ComponentProps } from "react";
+import { ClassworkPanel } from "@/features/classrooms/content/classwork-panel";
+import type { Classwork, ClassroomSection } from "@/lib/api/classroom-content";
+import type { ClassroomAssignment } from "@/lib/api/classrooms";
+import { progressSchema, type AssignmentProgress } from "@/lib/api/assignment-scheduling";
+import { ApiError } from "@/lib/api/client";
+import { renderWithLocale } from "./locale-test-utils";
+
+const api = vi.hoisted(() => ({ reorderSections: vi.fn(), reorderItems: vi.fn(), placeAssignment: vi.fn(), updateSection: vi.fn() }));
+const progress = vi.hoisted(() => ({ items: {} as Record<string, AssignmentProgress>, staff: false, loading: false, error: false, refresh: vi.fn(), assignments: [] as ClassroomAssignment[] }));
+vi.mock("@/lib/api/classroom-content", async original => ({ ...await original<object>(), ...api }));
+vi.mock("@/features/classrooms/scheduling/progress-provider", async original => ({ ...await original<object>(), useAssignmentProgress: () => progress }));
+
+const section = (id: string, position: number): ClassroomSection => ({ id, title: `Topic ${id}`, position, classroom_id: "room", description: null, status: "PUBLISHED", created_at: "now", updated_at: "now" });
+const assignment = (id: string, status: "ACTIVE" | "ARCHIVED" = "ACTIVE"): ClassroomAssignment => ({ id, title: `Fictional practice ${id}`, status, classroom_id: "room", test_version_id: "version", created_by_user_id: "owner", note: null, created_at: "now", archived_at: status === "ARCHIVED" ? "now" : null, due_at: null });
+const assignments = [assignment("a"), assignment("b"), assignment("u"), assignment("old", "ARCHIVED"), assignment("older", "ARCHIVED")];
+const data: Classwork = {
+  revision: 7, sections: [section("empty", 0), section("reading", 1), section("writing", 2)],
+  resources: [{ id: "notes", title: "Fictional strategy notes", classroom_id: "room", kind: "TEXT", status: "PUBLISHED", body: "Read the fictional notes.", description: null, url: null, original_filename: null, media_type: null, size_bytes: null, created_at: "now", updated_at: "now" }],
+  items: [
+    { id: "r1", section_id: "reading", resource_id: "notes", assignment_id: null, position: 0 },
+    { id: "i1", section_id: "reading", resource_id: null, assignment_id: "a", position: 1 },
+    { id: "i2", section_id: "writing", resource_id: null, assignment_id: "b", position: 0 },
+    { id: "i3", section_id: "reading", resource_id: null, assignment_id: "old", position: 2 },
+  ],
+};
+function props(extra: Partial<ComponentProps<typeof ClassworkPanel>> = {}) {
+  return { classroomId: "room", data, assignments, canAuthor: false, onRefresh: vi.fn().mockResolvedValue(undefined), onChange: vi.fn(), onOpenAssignment: vi.fn(), ...extra };
+}
+function panel(extra: Partial<ComponentProps<typeof ClassworkPanel>> = {}) { return renderWithLocale(<ClassworkPanel {...props(extra)} />); }
+function group(name: string) { return screen.getByRole("region", { name }); }
+function toggle(name: string) { return within(group(name)).getByRole("button", { name: new RegExp(`^${name}`) }); }
+function state(values: Partial<AssignmentProgress> = {}): AssignmentProgress {
+  return progressSchema.parse({ assignment_id: "11111111-1111-4111-8111-111111111111", availability_status: "OPEN", submission_status: "NOT_STARTED", available_from: null, effective_due_at: null, effective_cutoff_at: null, max_attempts: null, attempts_used: 0, attempts_remaining: null, can_start: true, start_blocked_reason: null, can_resume: false, latest_attempt_id: null, latest_session_id: null, resume_attempt_id: null, resume_session_id: null, result_attempt_id: null, completed_at: null, late: false, accepted: false, historical: false, ...values });
+}
+beforeEach(() => {
+  vi.clearAllMocks(); localStorage.clear(); window.history.replaceState(null, "", "/");
+  Object.assign(progress, { items: {}, staff: false, loading: false, error: false, assignments });
+  api.reorderItems.mockResolvedValue(data); api.reorderSections.mockResolvedValue(data); api.placeAssignment.mockResolvedValue(data);
+});
+
+it("opens only the first populated topic and has one topic toggle with an accurate combined count", () => {
+  panel();
+  expect(toggle("Topic empty")).toHaveAttribute("aria-expanded", "false");
+  expect(toggle("Topic reading")).toHaveAttribute("aria-expanded", "true");
+  expect(toggle("Topic reading")).toHaveTextContent("2 items");
+  expect(toggle("Topic writing")).toHaveAttribute("aria-expanded", "false");
+  expect(within(group("Topic reading")).getAllByRole("listitem")).toHaveLength(2);
+  expect(screen.queryByText(/^Learning materials \(/)).not.toBeInTheDocument();
+});
+it("keeps empty topics compact, revealing an honest empty state only on demand", () => {
+  panel(); expect(toggle("Topic empty")).toHaveTextContent("No content yet");
+  expect(screen.queryByText("This topic has no learning content yet.")).not.toBeInTheDocument();
+  fireEvent.click(toggle("Topic empty")); expect(screen.getByText("This topic has no learning content yet.")).toBeInTheDocument();
+  expect(within(group("Topic empty")).queryByText("Add resource")).not.toBeInTheDocument();
+});
+it("keeps canonical unplaced work accessible in a secondary closed group", () => {
+  panel(); expect(toggle("Not assigned to a topic")).toHaveAttribute("aria-expanded", "false");
+  expect(toggle("Not assigned to a topic")).toHaveTextContent("1 item");
+  fireEvent.click(toggle("Not assigned to a topic")); expect(within(group("Not assigned to a topic")).getByText("Fictional practice u")).toBeInTheDocument();
+});
+it("separates placed and unplaced archived assignments into one closed historical group", () => {
+  panel(); expect(toggle("Archived assignments")).toHaveAttribute("aria-expanded", "false"); expect(toggle("Archived assignments")).toHaveTextContent("2 assignments");
+  expect(within(group("Topic reading")).queryByText("Fictional practice old")).not.toBeInTheDocument();
+  fireEvent.click(toggle("Archived assignments")); expect(within(group("Archived assignments")).getAllByRole("listitem")).toHaveLength(2);
+  expect(within(group("Archived assignments")).queryByText("Open assignment")).not.toBeInTheDocument();
+});
+it("renders archived-only work without a fake uncategorized topic or active-content empty panel", () => {
+  panel({ data: { revision: 0, sections: [], resources: [], items: [] }, assignments: [assignment("old", "ARCHIVED")] });
+  expect(toggle("Archived assignments")).toHaveAttribute("aria-expanded", "false"); expect(screen.queryByRole("region", { name: "Not assigned to a topic" })).not.toBeInTheDocument();
+  expect(screen.queryByText("No course topics yet.")).not.toBeInTheDocument();
+});
+it("deduplicates assignments and excludes unresolved references from the visible topic count", () => {
+  panel({ data: { ...data, items: [...data.items, { ...data.items[1], id: "duplicate" }, { ...data.items[0], id: "missing", resource_id: "inaccessible" }] } });
+  expect(toggle("Topic reading")).toHaveTextContent("2 items"); expect(screen.getAllByText("Fictional practice a")).toHaveLength(1);
+});
+it("does not count draft or archived resources as student learning content", () => {
+  panel({ data: { ...data, resources: [{ ...data.resources[0], status: "DRAFT" }] } });
+  expect(toggle("Topic reading")).toHaveTextContent("1 item"); expect(screen.queryByText("Fictional strategy notes")).not.toBeInTheDocument();
+});
+it("retains user expansion choices through unrelated renders and content refreshes", () => {
+  const input = props(), view = renderWithLocale(<ClassworkPanel {...input} />);
+  fireEvent.click(toggle("Topic reading")); fireEvent.click(toggle("Topic writing"));
+  view.rerender(<ClassworkPanel {...input} data={{ ...data, revision: 8 }} />);
+  expect(toggle("Topic reading")).toHaveAttribute("aria-expanded", "false"); expect(toggle("Topic writing")).toHaveAttribute("aria-expanded", "true");
+});
+it("expands a topic hash and focuses its toggle without overriding a later user choice", async () => {
+  window.history.replaceState(null, "", "/#section-writing"); panel();
+  await waitFor(() => expect(toggle("Topic writing")).toHaveFocus()); expect(toggle("Topic writing")).toHaveAttribute("aria-expanded", "true");
+  fireEvent.click(toggle("Topic writing")); expect(toggle("Topic writing")).toHaveAttribute("aria-expanded", "false");
+});
+it("expands and focuses assignment hash targets, including archived work", async () => {
+  panel(); window.history.replaceState(null, "", "/#assignment-old"); fireEvent(window, new HashChangeEvent("hashchange"));
+  await waitFor(() => expect(toggle("Archived assignments")).toHaveAttribute("aria-expanded", "true"));
+  expect(document.getElementById("classwork-assignment-old")).toHaveFocus();
+});
+it.each([
+  ["NOT_STARTED", "Not started"], ["IN_PROGRESS", "In progress"], ["SUBMITTED_ON_TIME", "Submitted"], ["SUBMITTED_LATE", "Submitted late"], ["SUBMITTED_NOT_ACCEPTED", "Submission not accepted"], ["MISSED", "Missing submission"],
+] as const)("shows compact %s progress without the full repeated policy panel", (submission_status, label) => {
+  progress.items.a = state({ submission_status }); panel();
+  const row = screen.getByText("Fictional practice a").closest("li")!;
+  expect(within(row).getByText(new RegExp(label))).toBeInTheDocument();
+  expect(row.querySelectorAll("dl")).toHaveLength(0); expect(within(row).queryByText(/Hard cut-off|Remaining starts|Starts used/)).not.toBeInTheDocument();
+});
+it("uses the student's effective deadline and shows at most three metadata parts", () => {
+  progress.items.a = state({ submission_status: "IN_PROGRESS", effective_due_at: "2026-10-30T08:00:00Z", effective_cutoff_at: "2026-11-02T08:00:00Z", max_attempts: 2, attempts_used: 1 }); panel();
+  const meta = screen.getByText("Fictional practice a").closest("li")!.querySelector(".classroom-assignment-meta")!;
+  expect(meta.textContent).toContain("Due"); expect(meta.textContent).not.toContain("Nov"); expect(meta.textContent!.split(" · ")).toHaveLength(3);
+});
+it("omits empty dates and unlimited zero usage instead of showing dashes and policy noise", () => {
+  progress.items.a = state(); panel(); const row = screen.getByText("Fictional practice a").closest("li")!;
+  expect(row.textContent).not.toMatch(/Unlimited|0\s*\/|—|Due|cut-off/);
+});
+it("shows finite used attempts only when useful and never invents a score", () => {
+  progress.items.a = state({ submission_status: "IN_PROGRESS", max_attempts: 2, attempts_used: 1 }); panel();
+  expect(screen.getByText(/1\/2 starts/)).toBeInTheDocument(); expect(screen.queryByText(/Band\s+\d/)).not.toBeInTheDocument();
+});
+it("uses historical result links and details without any start action or redundant archive status", () => {
+  progress.items.old = state({ availability_status: "ARCHIVED", historical: true, accepted: true, submission_status: "SUBMITTED_ON_TIME", result_attempt_id: "22222222-2222-4222-8222-222222222222" });
+  const open = vi.fn(); panel({ onOpenAssignment: open }); fireEvent.click(toggle("Archived assignments"));
+  const row = screen.getByText("Fictional practice old").closest("li")!;
+  expect(within(row).getByRole("link", { name: "View results" })).toHaveAttribute("href", "/review/22222222-2222-4222-8222-222222222222");
+  fireEvent.click(within(row).getByRole("button", { name: "View details" })); expect(open).toHaveBeenCalledWith("old");
+  expect(row.textContent).not.toMatch(/Archived|Start attempt|Open assignment/);
+});
+it("keeps students read-only and resource bodies closed until explicitly opened", () => {
+  panel(); expect(screen.queryByText("Topic actions")).not.toBeInTheDocument(); expect(screen.queryByLabelText(/Move .* to topic/)).not.toBeInTheDocument();
+  expect(screen.queryByText("Read the fictional notes.")).not.toBeInTheDocument(); fireEvent.click(screen.getByRole("button", { name: "Read resource" })); expect(screen.getByText("Read the fictional notes.")).toBeInTheDocument();
+});
+it("retains teacher contextual actions and a working add-resource action for an empty topic", () => {
+  panel({ canAuthor: true }); fireEvent.click(toggle("Topic empty"));
+  fireEvent.click(within(group("Topic empty")).getByRole("button", { name: "Add resource" }));
+  expect(screen.getByLabelText("Resource title")).toHaveFocus();
+});
+it("moves canonical unplaced assignments into a topic through the existing placement API", async () => {
+  panel({ canAuthor: true }); fireEvent.click(toggle("Not assigned to a topic"));
+  fireEvent.change(screen.getByLabelText("Move Fictional practice u to topic"), { target: { value: "writing" } });
+  await waitFor(() => expect(api.placeAssignment).toHaveBeenCalledWith("room", "writing", "u"));
+});
+it("preserves revision-aware keyboard reorder and move into a collapsed topic", async () => {
+  panel({ canAuthor: true }); fireEvent.click(screen.getByRole("button", { name: "Move Topic writing up" }));
+  await waitFor(() => expect(api.reorderSections).toHaveBeenCalledWith("room", ["empty", "writing", "reading"], 7));
+  fireEvent.change(screen.getByLabelText("Move Fictional strategy notes to topic"), { target: { value: "writing" } });
+  await waitFor(() => expect(api.reorderItems).toHaveBeenCalledWith("room", "writing", ["i2", "r1"], 7));
+});
+it("supports drops on collapsed topic headers", async () => {
+  panel({ canAuthor: true });
+  fireEvent.dragStart(screen.getByRole("button", { name: "Drag to move learning material: Fictional strategy notes" }), { dataTransfer: { setData: vi.fn() } });
+  fireEvent.drop(group("Topic writing")); await waitFor(() => expect(api.reorderItems).toHaveBeenCalledWith("room", "writing", ["i2", "r1"], 7));
+});
+it("keeps expansion stable on progress refresh and displays one loading/error recovery message", async () => {
+  Object.assign(progress, { loading: true }); const input = props(), view = renderWithLocale(<ClassworkPanel {...input} />);
+  expect(screen.getAllByText("Loading progress…")).toHaveLength(1); fireEvent.click(toggle("Topic writing"));
+  Object.assign(progress, { loading: false, error: true }); view.rerender(<ClassworkPanel {...input} />);
+  expect(screen.getAllByRole("alert")).toHaveLength(1); fireEvent.click(screen.getByRole("button", { name: "Retry" })); expect(progress.refresh).toHaveBeenCalledOnce();
+  expect(toggle("Topic writing")).toHaveAttribute("aria-expanded", "true");
+});
+it("retains revision conflict recovery and does not lose the opened topic", async () => {
+  const refresh = vi.fn().mockResolvedValue(undefined); api.reorderSections.mockRejectedValueOnce(new ApiError("CLASSWORK_CHANGED", "Conflict", 409)); panel({ canAuthor: true, onRefresh: refresh });
+  fireEvent.click(toggle("Topic writing")); fireEvent.click(screen.getByRole("button", { name: "Move Topic writing up" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("Classwork changed elsewhere"); expect(refresh).toHaveBeenCalledOnce(); expect(toggle("Topic writing")).toHaveAttribute("aria-expanded", "true");
+});
+it("localizes counts, history and compact progress consistently in Vietnamese and English", () => {
+  progress.items.a = state({ submission_status: "IN_PROGRESS" }); panel(); fireEvent.click(screen.getByText("Switch to Vietnamese"));
+  expect(toggle("Topic reading")).toHaveTextContent("2 mục"); expect(screen.getByRole("heading", { name: "Nội dung học" })).toBeInTheDocument(); expect(screen.getByText(/Đang làm/)).toBeInTheDocument();
+  expect(toggle("Bài tập đã lưu trữ")).toHaveTextContent("2 bài"); expect(screen.queryByText(/Học liệu \(/)).not.toBeInTheDocument();
+});
+it("shows one honest empty state for a classroom with no topics or activities", () => {
+  panel({ data: { revision: 0, sections: [], resources: [], items: [] }, assignments: [] }); expect(screen.getByText("No course topics yet.")).toBeInTheDocument(); expect(screen.queryByRole("list")).not.toBeInTheDocument();
+});

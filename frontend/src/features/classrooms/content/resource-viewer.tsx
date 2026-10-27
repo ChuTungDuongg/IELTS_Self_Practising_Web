@@ -5,10 +5,10 @@ import { type ClassroomResource } from "@/lib/api/classroom-content";
 import { useContentTranslation } from "./content-messages";
 import { SafeMarkdown, safeHttpUrl } from "./safe-markdown";
 import { FileResourcePreview } from "./file-resource-preview";
-export function ResourceViewer({ resource }: { resource: ClassroomResource }) {
+export function ResourceViewer({ resource, compact = false }: { resource: ClassroomResource; compact?: boolean }) {
   const { ct } = useContentTranslation(); const [open, setOpen] = useState(false);
   const website = resource.url ? safeHttpUrl(resource.url) : null;
-  return <div className="classroom-resource-reader">
+  return <div className={`classroom-resource-reader${compact ? " classroom-resource-reader-compact" : ""}`}>
     <button type="button" className="classroom-text-button" aria-expanded={open} onClick={() => setOpen(value => !value)}>{ct(open ? "close" : "view")}</button>
     {open ? <div className="classroom-resource-body">
       {resource.description ? <p>{resource.description}</p> : null}

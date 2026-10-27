@@ -1,5 +1,5 @@
 import { render, type RenderResult } from "@testing-library/react";
-import type { ReactElement } from "react";
+import type { ReactElement, ReactNode } from "react";
 import { LocaleProvider, useLocale } from "@/lib/i18n/locale-provider";
 
 export function LocaleControls(): ReactElement {
@@ -8,5 +8,5 @@ export function LocaleControls(): ReactElement {
 }
 
 export function renderWithLocale(ui: ReactElement): RenderResult {
-  return render(<LocaleProvider>{ui}<LocaleControls /></LocaleProvider>);
+  return render(ui, { wrapper: ({ children }: { children: ReactNode }) => <LocaleProvider>{children}<LocaleControls /></LocaleProvider> });
 }

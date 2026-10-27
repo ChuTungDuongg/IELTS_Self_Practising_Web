@@ -14,14 +14,6 @@
 .classroom-workspace { max-width:1280px; margin-inline:auto; }
 .classroom-workspace :is(section,article,details,fieldset,form) { min-width:0; }
 .classroom-workspace :is(h1,h2,h3,h4,p,a,summary) { overflow-wrap:anywhere; }
-.classroom-topic-title { display:flex; gap:12px; align-items:center; list-style:revert; }
-.classroom-topic-title::before { content:"›"; font-size:20px; transform:rotate(90deg); }
-.classroom-course-section:not([open]) > .classroom-topic-title::before { transform:none; }
-.classroom-workspace .classroom-course-section > .classroom-section-heading { margin-bottom:0; }
-.classroom-workspace .classroom-topic-title h3 { flex:1; }
-.classroom-workspace .classroom-classwork-row { padding-block:12px; }
-.classroom-workspace .classroom-item-controls { margin-top:0; }
-.classroom-workspace .classroom-item-controls[open] { padding-bottom:12px; }
 .classroom-workspace .classroom-empty { border:0; background:var(--surface-soft); color:var(--ink-soft); }
 .classroom-workspace .classroom-post { padding:16px 20px; }
 .classroom-workspace .classroom-post h3 { font-size:18px; }

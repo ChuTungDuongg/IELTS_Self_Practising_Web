@@ -162,8 +162,8 @@ it("associates canonical assignments without creating a duplicate assignment", a
   const assignment = { id: "a", classroom_id: "c", test_version_id: "v", created_by_user_id: "teacher", title: "Existing reading", note: null, status: "ACTIVE" as const, created_at: "now", archived_at: null };
   renderWithLocale(<ClassworkPanel classroomId="c" data={classwork} assignments={[assignment]} canAuthor onRefresh={vi.fn()} onChange={vi.fn()} onOpenAssignment={vi.fn()} />);
   expect(screen.queryByLabelText("Choose an assignment")).not.toBeInTheDocument();
-  fireEvent.click(screen.getByText("Add content")); fireEvent.click(screen.getByRole("button", { name: "Add assignment to a topic" }));
-  fireEvent.change(screen.getByLabelText("Choose an assignment"), { target: { value: "a" } }); fireEvent.change(screen.getByLabelText("Topic"), { target: { value: "s1" } }); fireEvent.click(screen.getAllByRole("button", { name: "Add assignment to a topic" }).at(-1)!);
+  fireEvent.click(screen.getByText("Add content")); fireEvent.click(within(screen.getByText("Add content").closest("details")!).getByRole("button", { name: "Add assignment to a topic" }));
+  fireEvent.change(screen.getByLabelText("Choose an assignment"), { target: { value: "a" } }); fireEvent.change(screen.getByLabelText("Topic"), { target: { value: "s1" } }); fireEvent.click(within(screen.getByLabelText("Choose an assignment").closest("form")!).getByRole("button", { name: "Add assignment to a topic" }));
   await waitFor(() => expect(api.placeAssignment).toHaveBeenCalledWith("c", "s1", "a"));
 });
 it("persists native drag-and-drop moves using the same revision contract", async () => {
