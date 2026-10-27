@@ -24,6 +24,7 @@ from app.models.enums import AttemptStatus, FinishedReason, ModuleType
 from app.repositories.speaking import SpeakingRepository
 from app.schemas.speaking import CurrentSpeakingPrompt, SpeakingNavigationPrompt, SpeakingState
 from app.services.attempts import AttemptService
+from app.services.classroom_capabilities import require_classroom_attempt_mutation
 
 
 class SpeakingAttemptService:
@@ -38,6 +39,7 @@ class SpeakingAttemptService:
         attempt = await self.repository.lock_attempt(attempt_id, self.user_id)
         if attempt is None or attempt.module_type != ModuleType.SPEAKING:
             raise AppError("ATTEMPT_NOT_FOUND", "The requested attempt does not exist.", 404)
+        await require_classroom_attempt_mutation(self.session, self.user_id, attempt)
         prompts = await self.repository.prompts(attempt)
         if not prompts:
             raise AppError("SPEAKING_MODULE_INCOMPLETE", "No Speaking prompts are available.", 409)

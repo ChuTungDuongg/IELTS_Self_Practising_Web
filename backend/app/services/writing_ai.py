@@ -36,6 +36,7 @@ from app.schemas.writing_ai import (
     Trait,
     WritingRelevanceResult,
 )
+from app.services.classroom_capabilities import require_classroom_attempt_mutation
 from app.services.task1_input import TASK1_PROMPT_VERSION, Task1ScoringRequest, load_task1_image
 
 CANCELLATION_CODE = "AI_GRADING_CANCELLED"
@@ -222,6 +223,8 @@ class WritingAIService:
         attempt = await self.repository.attempt(attempt_id, self.user_id, lock=lock)
         if attempt is None:
             raise AppError("ATTEMPT_NOT_FOUND", "Không tìm thấy lượt làm bài này.", 404)
+        if lock:
+            await require_classroom_attempt_mutation(self.session, self.user_id, attempt)
         if attempt.module_type != ModuleType.WRITING:
             raise AppError(
                 "WRITING_ATTEMPT_REQUIRED", "Chấm AI yêu cầu một lượt làm bài Writing.", 422
@@ -304,6 +307,16 @@ class WritingAIService:
         if run.status in ACTIVE and run.updated_at < datetime.now(UTC) - timedelta(
             seconds=self.settings.ai_writing_stale_after_seconds
         ):
+            attempt = await self.repository.attempt(run.attempt_id, self.user_id)
+            if attempt is None:
+                raise AppError("ATTEMPT_NOT_FOUND", "Không tìm thấy lượt làm bài này.", 404)
+            try:
+                await require_classroom_attempt_mutation(self.session, self.user_id, attempt)
+            except AppError as error:
+                if error.code != "CLASSROOM_OBSERVER_READ_ONLY":
+                    raise
+                # Observation may read stale progress without rewriting the run or event stream.
+                return
             await fail_run(
                 self.repository,
                 run,
@@ -375,6 +388,10 @@ class WritingAIService:
             run = await self.repository.run(run_id, user_id=self.user_id, lock=True)
             if run is None:
                 raise AppError("AI_RUN_NOT_FOUND", "Không tìm thấy bài đánh giá AI này.", 404)
+            attempt = await self.repository.attempt(run.attempt_id, self.user_id)
+            if attempt is None:
+                raise AppError("ATTEMPT_NOT_FOUND", "Không tìm thấy lượt làm bài này.", 404)
+            await require_classroom_attempt_mutation(self.session, self.user_id, attempt)
             await fail_run(self.repository, run, CANCELLATION_CODE, "Bạn đã dừng bài chấm AI.")
             return present_run(run)
 

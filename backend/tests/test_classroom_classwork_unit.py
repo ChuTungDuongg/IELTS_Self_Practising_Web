@@ -165,7 +165,8 @@ async def test_content_authorship_excludes_admin_and_student_even_with_read_acce
     session = access_session(current, room, ClassroomMembership(user_id=current.id))
     with pytest.raises(AppError) as error:
         await ContentAccess(session, current).room(room.id, mutation=True, owner=True)
-    assert (error.value.code, error.value.status_code) == ("CLASSROOM_OWNERSHIP_REQUIRED", 403)
+    expected = "CLASSROOM_OBSERVER_READ_ONLY" if role == UserRole.ADMIN else "CLASSROOM_OWNERSHIP_REQUIRED"
+    assert (error.value.code, error.value.status_code) == (expected, 403)
 
 
 async def test_content_mutation_reloads_role_before_authorizing_teacher_owner():

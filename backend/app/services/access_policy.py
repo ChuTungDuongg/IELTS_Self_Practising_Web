@@ -206,8 +206,6 @@ class AccessPolicy:
             raise AppError("ADMIN_REQUIRED", "Administrator access is required.", 403)
 
     async def require_classroom_manage(self, classroom: Classroom) -> None:
-        if self.actor.role == UserRole.ADMIN:
-            return
         if self.actor.role != UserRole.TEACHER:
             raise AppError("TEACHER_REQUIRED", "Teacher access is required.", 403)
         if classroom.teacher_id != self.actor.id:

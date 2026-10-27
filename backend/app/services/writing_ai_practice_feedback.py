@@ -11,6 +11,7 @@ from app.models.enums import AttemptScope, ModuleType, WritingAIRunStatus
 from app.repositories.writing_ai import WritingAIRepository
 from app.schemas.writing_ai import TRAITS, AIWritingResult, Task1WritingResult
 from app.schemas.writing_ai_practice_feedback import PracticeFeedbackResponse
+from app.services.classroom_capabilities import require_classroom_attempt_mutation
 
 
 class WritingAIPracticeFeedbackService:
@@ -36,6 +37,8 @@ class WritingAIPracticeFeedbackService:
         attempt = await self.repository.attempt(attempt_id, self.user_id, lock=lock)
         if attempt is None:
             raise AppError("ATTEMPT_NOT_FOUND", "Không tìm thấy bài làm.", 404)
+        if lock:
+            await require_classroom_attempt_mutation(self.session, self.user_id, attempt)
         self.require_focused(attempt, task_id)
         if await self.repository.task(task_id, attempt.test_version_id) is None:
             raise AppError("WRITING_TASK_NOT_FOUND", "Không tìm thấy task Writing.", 404)

@@ -85,6 +85,10 @@ class GradingPolicy:
     async def require_final(
         self, attempt: Attempt, *, assignment_scope: tuple[UUID, UUID] | None = None
     ) -> None:
+        if assignment_origin(attempt) is not None and self.actor.role == UserRole.ADMIN:
+            from app.services.classroom_capabilities import require_classroom_participant
+
+            require_classroom_participant(self.actor)
         if assignment_scope is not None:
             await self.require_assignment_attempt(*assignment_scope, attempt.id)
             from app.models import Classroom
@@ -115,9 +119,11 @@ class GradingPolicy:
             unlocked
             and subjective
             and (
-                self.actor.role == UserRole.ADMIN
-                or (assignment_authorized and classroom)
-                or (not classroom and attempt.user_id == self.actor.id)
+                (classroom and assignment_authorized and self.actor.role != UserRole.ADMIN)
+                or (
+                    not classroom
+                    and (self.actor.role == UserRole.ADMIN or attempt.user_id == self.actor.id)
+                )
             )
         )
         return GradingCapabilities(

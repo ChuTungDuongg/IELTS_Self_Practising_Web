@@ -7,7 +7,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import AppError
 from app.models import Classroom, User
 from app.models.enums import UserRole
-from app.services.classroom_capabilities import Capability, resolve_capabilities
+from app.services.classroom_capabilities import (
+    Capability,
+    require_classroom_participant,
+    resolve_capabilities,
+)
 from app.services.classrooms import ClassroomService
 
 
@@ -45,6 +49,7 @@ class ContentAccess:
         return room
 
     async def can_comment(self, room: Classroom) -> None:
+        require_classroom_participant(self.actor)
         if self.staff(room) and self.actor.role != UserRole.ADMIN:
             return
         if await self.classrooms.repository.membership(room.id, self.actor.id) is None:

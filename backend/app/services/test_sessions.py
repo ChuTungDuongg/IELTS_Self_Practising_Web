@@ -24,6 +24,7 @@ from app.schemas.test_sessions import (
     TestSessionResponse,
     TestSessionStartResponse,
 )
+from app.services.classroom_capabilities import require_classroom_attempt_mutation
 
 LEGACY_MODULE_ORDER = (ModuleType.LISTENING, ModuleType.READING, ModuleType.WRITING)
 MODULE_ORDER = (*LEGACY_MODULE_ORDER, ModuleType.SPEAKING)
@@ -237,6 +238,8 @@ class TestSessionService:
         result = await self.session.scalar(statement)
         if result is None:
             raise AppError("TEST_SESSION_NOT_FOUND", "The Full Mock session does not exist.", 404)
+        if for_update:
+            await require_classroom_attempt_mutation(self.session, self.user_id, result)
         return result
 
     @staticmethod

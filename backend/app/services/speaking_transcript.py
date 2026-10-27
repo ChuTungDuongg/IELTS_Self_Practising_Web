@@ -22,6 +22,7 @@ from app.schemas.speaking_ai import (
     TranscriptRunData,
     WordTiming,
 )
+from app.services.classroom_capabilities import require_classroom_attempt_mutation
 from app.services.speaking_audio import fingerprint, normalization_identity
 from app.services.speaking_features import feature_identity
 from app.services.speaking_media import SpeakingMediaService
@@ -57,6 +58,8 @@ class SpeakingTranscriptService:
         attempt = await self.session.scalar(query.with_for_update() if mutate else query)
         if not attempt or attempt.module_type != "SPEAKING":
             raise AppError("SPEAKING_MEDIA_NOT_FOUND", "Speaking resource not found.", 404)
+        if mutate:
+            await require_classroom_attempt_mutation(self.session, self.actor.id, attempt)
         if mutate and attempt.user_id != self.actor.id:
             raise AppError("SPEAKING_MEDIA_FORBIDDEN", "Transcription access is unavailable.", 403)
         if attempt.status in {"IN_PROGRESS", "PAUSED"}:

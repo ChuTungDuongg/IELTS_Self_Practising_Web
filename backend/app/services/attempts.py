@@ -95,6 +95,7 @@ from app.services.attempt_scope import (
     resolve_focused_target,
     validate_start_scope,
 )
+from app.services.classroom_capabilities import require_classroom_attempt_mutation
 from app.services.grading_policy import GradingPolicy
 from app.services.reading import ReadingService
 
@@ -1417,6 +1418,8 @@ class AttemptService:
                     "Standalone history for this test version does not exist.",
                     404,
                 )
+            for row in rows:
+                await require_classroom_attempt_mutation(self.session, self.user_id, row)
             removable = [
                 a.id
                 for a in rows
@@ -1435,6 +1438,8 @@ class AttemptService:
         )
         if attempt is None:
             raise AppError("ATTEMPT_NOT_FOUND", "The requested attempt does not exist.", 404)
+        if for_update and self.grading_scope is None:
+            await require_classroom_attempt_mutation(self.session, self.user_id, attempt)
         return attempt
 
     async def _require_attempt_question(self, attempt: Attempt, question_id: uuid.UUID) -> Question:

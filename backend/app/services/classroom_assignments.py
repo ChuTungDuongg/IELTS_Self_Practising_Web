@@ -19,7 +19,12 @@ from app.schemas.classroom_assignments import (
 )
 from app.services.access_policy import AccessPolicy
 from app.services.attempts import AttemptService
-from app.services.classroom_capabilities import Capability, require_capability, resolve_capabilities
+from app.services.classroom_capabilities import (
+    Capability,
+    require_capability,
+    require_classroom_participant,
+    resolve_capabilities,
+)
 from app.services.test_sessions import TestSessionService
 
 
@@ -40,6 +45,7 @@ async def require_assignment_start(
     )
     if actor is None or not actor.is_active:
         raise AppError("ACCOUNT_INACTIVE", "This account is inactive.", 403)
+    require_classroom_participant(actor)
     policy = AccessPolicy(session, actor)
     version = await policy.lock_version(version_id)
     classroom_id = await session.scalar(
@@ -150,10 +156,9 @@ class ClassroomAssignmentService:
             await self.policy.lock_actor()
             version = await self.policy.lock_version(data.test_version_id)
             classroom = await self._classroom(classroom_id, locked=True)
-            if self.policy.actor.role != UserRole.ADMIN:
-                await require_capability(
-                    self.session, self.policy.actor, classroom, Capability.ASSIGNMENTS
-                )
+            await require_capability(
+                self.session, self.policy.actor, classroom, Capability.ASSIGNMENTS
+            )
             self._active(classroom)
             if (
                 version.test.origin == TestOrigin.TEACHER

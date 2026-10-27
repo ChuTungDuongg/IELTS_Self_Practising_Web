@@ -71,12 +71,14 @@ async def test_classroom_ownership_archive_restore_and_historical_read(db_sessio
             await operation()
         assert error.value.code == "CLASSROOM_ARCHIVED"
     with pytest.raises(AppError) as error:
-        await ClassroomService(db_session, teacher).restore(room.id)
-    assert error.value.code == "ADMIN_REQUIRED"
-    assert (
         await ClassroomService(db_session, admin).restore(room.id)
+    assert (error.value.code, error.value.status_code) == ("CLASSROOM_OBSERVER_READ_ONLY", 403)
+    assert (
+        await ClassroomService(db_session, teacher).restore(room.id)
     ).status == ClassroomStatus.ACTIVE
-    await ClassroomService(db_session, admin).archive(room.id)
+    with pytest.raises(AppError) as error:
+        await ClassroomService(db_session, admin).archive(room.id)
+    assert error.value.status_code == 403
 
 
 @pytest.mark.asyncio
@@ -307,10 +309,8 @@ async def test_classroom_restore_rejects_demoted_owner_without_erasing_history(d
         stored_teacher = await db_session.get(User, teacher.id)
         stored_teacher.role = UserRole.USER
     with pytest.raises(AppError) as error:
-        await ClassroomService(db_session, db_session.info["current_user_identity"]).restore(
-            room.id
-        )
-    assert error.value.code == "TEACHER_REQUIRED"
+        await ClassroomService(db_session, teacher).restore(room.id)
+    assert (error.value.code, error.value.status_code) == ("CLASSROOM_CAPABILITY_REQUIRED", 403)
     assert await count(db_session, Classroom, Classroom.id == room.id) == 1
 
 

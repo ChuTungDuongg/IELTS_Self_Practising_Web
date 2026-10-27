@@ -139,7 +139,7 @@ async def test_classroom_writing_teacher_scope_student_denied_and_membership_ind
         ).status_code == 404
     admin = db_session.info["current_user_identity"]
     async with api_client(db_session, admin) as client:
-        assert (await client.put(personal_url(aid, task), json=WRITING)).status_code == 200
+        assert (await client.put(personal_url(aid, task), json=WRITING)).status_code == 403
 
 
 async def attach_mock(session, actor, aid, assignment=None, status="IN_PROGRESS"):

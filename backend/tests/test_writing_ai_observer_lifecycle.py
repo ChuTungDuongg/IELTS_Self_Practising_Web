@@ -53,6 +53,14 @@ class MemoryRepository:
         row = self.store.row
         return [row] if (attempt_id, task_id) == (row.attempt_id, row.writing_task_id) else []
 
+    async def attempt(self, attempt_id, user_id, **_kwargs):
+        row = self.store.row
+        if (attempt_id, user_id) != (row.attempt_id, row.requested_by_user_id):
+            return None
+        return SimpleNamespace(
+            id=attempt_id, user_id=user_id, classroom_assignment_id=None, test_session_id=None
+        )
+
     async def events(self, _run_id, after):
         return [event for event in self.store.events if event.sequence > after][:100]
 

@@ -12,6 +12,7 @@ class Capability(StrEnum):
     CLASSROOM = "classroom.manage"
     STAFF = "staff.manage"
     MEMBERS = "members.manage"
+    ROSTER_VIEW = "roster.view"
     CONTENT = "content.manage"
     DISCUSSION = "discussion.moderate"
     ASSIGNMENTS = "assignments.manage"
@@ -31,6 +32,38 @@ OPTIONAL = {
     "analytics_view": Capability.ANALYTICS,
     "learning_plans_manage": Capability.PLANS,
 }
+ADMIN_OBSERVER = frozenset(
+    {Capability.ROSTER_VIEW, Capability.GRADES_VIEW, Capability.ANALYTICS}
+)
+
+
+def require_classroom_participant(actor):
+    """Global administration never confers classroom participation, even for legacy members."""
+    if actor.role == "ADMIN":
+        raise AppError(
+            "CLASSROOM_OBSERVER_READ_ONLY",
+            "Administrators may observe classrooms but cannot change classroom data.",
+            403,
+        )
+
+
+async def require_classroom_attempt_mutation(session, user_id, source):
+    """Old enrolments do not let observers resume, submit, or grade classroom work."""
+    from app.models import TestSession, User
+
+    origin = source.classroom_assignment_id
+    if origin is None and getattr(source, "test_session_id", None) is not None:
+        origin = await session.scalar(
+            select(TestSession.classroom_assignment_id).where(
+                TestSession.id == source.test_session_id
+            )
+        )
+    if origin is None:
+        return
+    actor = await session.get(User, user_id, populate_existing=True)
+    if actor is None or not actor.is_active:
+        raise AppError("ACCOUNT_INACTIVE", "This account is inactive.", 403)
+    require_classroom_participant(actor)
 
 
 def active_staff_clause(classroom_id, user_id):
@@ -47,15 +80,7 @@ async def resolve_capabilities(session, actor, room):
     if not actor.is_active:
         raise AppError("ACCOUNT_INACTIVE", "This account is inactive.", 403)
     if actor.role == "ADMIN":
-        # Preserve oversight/administration, without authorship of another teacher's content.
-        return "ADMIN", ALL - {
-            Capability.STAFF,
-            Capability.CONTENT,
-            Capability.DISCUSSION,
-            Capability.ASSIGNMENTS,
-            Capability.EXTEND,
-            Capability.PLANS,
-        }
+        return "ADMIN", ADMIN_OBSERVER
     if actor.role == "TEACHER" and actor.id == room.teacher_id:
         return "OWNER", ALL
     staff = await session.scalar(

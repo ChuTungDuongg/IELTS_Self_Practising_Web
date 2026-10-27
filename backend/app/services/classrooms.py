@@ -27,7 +27,12 @@ from app.schemas.classrooms import (
 )
 from app.services.access_policy import AccessPolicy
 from app.services.auth import normalize_email
-from app.services.classroom_capabilities import Capability, require_capability, resolve_capabilities
+from app.services.classroom_capabilities import (
+    Capability,
+    require_capability,
+    require_classroom_participant,
+    resolve_capabilities,
+)
 from app.services.notifications import NotificationService
 
 
@@ -40,8 +45,10 @@ class ClassroomService:
         self.repository = ClassroomRepository(session)
         self.notifications = NotificationService(session)
 
-    async def _lock_actor(self):
+    async def _lock_actor(self, *, classroom_mutation=True):
         self.actor = await self.policy.lock_actor()
+        if classroom_mutation:
+            require_classroom_participant(self.actor)
 
     async def _load_actor(self):
         actor = await self.session.scalar(
@@ -75,7 +82,7 @@ class ClassroomService:
 
     async def create(self, data: ClassroomCreate) -> ClassroomResponse:
         async with self.session.begin():
-            await self._lock_actor()
+            await self._lock_actor(classroom_mutation=False)
             if self.actor.role != UserRole.TEACHER:
                 raise AppError("TEACHER_REQUIRED", "Only a teacher may own a classroom.", 403)
             room = Classroom(teacher_id=self.actor.id, name=data.name, description=data.description)
@@ -102,9 +109,11 @@ class ClassroomService:
             member_count = await self.session.scalar(
                 select(func.count())
                 .select_from(ClassroomMembership)
+                .join(User, User.id == ClassroomMembership.user_id)
                 .where(
                     ClassroomMembership.classroom_id == room.id,
                     ClassroomMembership.left_at.is_(None),
+                    User.role != UserRole.ADMIN,
                 )
             )
             response = ClassroomResponse.model_validate(room)
@@ -154,7 +163,6 @@ class ClassroomService:
     async def restore(self, classroom_id: UUID) -> ClassroomResponse:
         async with self.session.begin():
             await self._lock_actor()
-            await self.policy.require_admin_moderation()
             teacher_id = await self.session.scalar(
                 select(Classroom.teacher_id).where(Classroom.id == classroom_id)
             )
@@ -167,6 +175,7 @@ class ClassroomService:
                 .with_for_update(key_share=True)
             )
             room = await self._classroom(classroom_id, lock=True)
+            await require_capability(self.session, self.actor, room, Capability.CLASSROOM)
             if teacher is None or teacher.role != UserRole.TEACHER or not teacher.is_active:
                 raise AppError("TEACHER_REQUIRED", "Restore requires an active teacher owner.", 409)
             room.status = ClassroomStatus.ACTIVE
@@ -179,7 +188,7 @@ class ClassroomService:
         async with self.session.begin():
             await self._load_actor()
             room = await self._classroom(classroom_id)
-            await require_capability(self.session, self.actor, room, Capability.MEMBERS)
+            await require_capability(self.session, self.actor, room, Capability.ROSTER_VIEW)
             return MembershipList(
                 items=[
                     self._membership_response(member, user)
@@ -406,7 +415,7 @@ class ClassroomService:
         """Bind known-email invitations without joining, inside authentication's transaction."""
         if not self.session.in_transaction():
             raise RuntimeError("Invitation binding requires the caller's transaction")
-        await self._lock_actor()
+        await self._lock_actor(classroom_mutation=False)
         ids = (
             await self.session.execute(
                 select(ClassroomInvitation.id, ClassroomInvitation.classroom_id)
