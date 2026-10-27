@@ -10,6 +10,7 @@ from app.api.v1 import (
     classroom_assignments,
     classroom_classwork,
     classroom_posts,
+    classroom_lms,
     classrooms,
     content_governance,
     health,
@@ -29,6 +30,7 @@ from app.api.v1 import (
 )
 
 api_router = APIRouter()
+api_router.include_router(classroom_lms.router)
 api_router.include_router(assignment_scheduling.router)
 api_router.include_router(health.router)
 api_router.include_router(auth.router)

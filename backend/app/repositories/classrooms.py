@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Classroom, ClassroomInvitation, ClassroomMembership, User
 from app.models.enums import UserRole
+from app.models.classroom_staff import ClassroomStaff
 
 
 class ClassroomRepository:
@@ -23,7 +24,9 @@ class ClassroomRepository:
             member_ids = select(ClassroomMembership.classroom_id).where(
                 ClassroomMembership.user_id == actor.id
             )
-            query = query.where(or_(Classroom.teacher_id == actor.id, Classroom.id.in_(member_ids)))
+            staff_ids = select(ClassroomStaff.classroom_id).where(
+                ClassroomStaff.user_id == actor.id, ClassroomStaff.status == "ACCEPTED")
+            query = query.where(or_(Classroom.teacher_id == actor.id, Classroom.id.in_(member_ids), Classroom.id.in_(staff_ids)))
         return list(
             await self.session.scalars(query.order_by(Classroom.created_at.desc(), Classroom.id))
         )

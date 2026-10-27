@@ -7,18 +7,20 @@ import { ApiError } from "@/lib/api/client";
 import { useTranslation } from "@/lib/i18n/locale-provider";
 import { ResourceAction } from "./resource-action";
 import { ClassroomForm } from "./classroom-form";
-export function ClassroomMembershipActions({ classroom, isAdmin, canManage }: {
+export function ClassroomMembershipActions({ classroom, isAdmin, canManage, isStaff = false }: {
   classroom: Classroom;
   isAdmin: boolean;
   canManage: boolean;
+  isStaff?: boolean;
 }) {
   const { t } = useTranslation();
-  return <div className="flex gap-2 mb-5">{canManage && classroom.status === "ACTIVE" ? <ResourceAction action={() => archiveClassroom(classroom.id)}>{t("common.archive")}</ResourceAction> : isAdmin && classroom.status === "ARCHIVED" ? <ResourceAction action={() => restoreClassroom(classroom.id)}>{t("common.restore")}</ResourceAction> : null}{!canManage && classroom.status === "ACTIVE" ? <ResourceAction action={() => leaveClassroom(classroom.id)}>{t("classroom.leave")}</ResourceAction> : null}</div>;
+  return <div className="classroom-toolbar">{canManage && classroom.status === "ACTIVE" ? <ResourceAction action={() => archiveClassroom(classroom.id)}>{t("common.archive")}</ResourceAction> : isAdmin && classroom.status === "ARCHIVED" ? <ResourceAction action={() => restoreClassroom(classroom.id)}>{t("common.restore")}</ResourceAction> : null}{!canManage && !isStaff && classroom.status === "ACTIVE" ? <ResourceAction action={() => leaveClassroom(classroom.id)}>{t("classroom.leave")}</ResourceAction> : null}</div>;
 }
 export function ClassroomManagement({ classroom, invitations, members }: {
   classroom: Classroom;
   invitations: ClassroomInvitation[];
   members: ClassroomMember[];
+  canEditClassroom?: boolean;
 }) {
   const { t } = useTranslation();
   const router = useRouter();
@@ -47,7 +49,7 @@ export function ClassroomManagement({ classroom, invitations, members }: {
   }
   return <>
     {active ? <>
-      <ClassroomForm classroom={classroom} />
+      {classroom.capabilities?.includes("classroom.manage") !== false ? <ClassroomForm classroom={classroom} /> : null}
       <form onSubmit={invite} className="surface-card p-5 mb-6">
         <h2>{t("classroom.invite")}</h2>
         <p>{t("classroom.pendingEmail")}</p>

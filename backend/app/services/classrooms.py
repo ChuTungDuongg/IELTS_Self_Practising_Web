@@ -27,6 +27,7 @@ from app.schemas.classrooms import (
 )
 from app.services.access_policy import AccessPolicy
 from app.services.auth import normalize_email
+from app.services.classroom_capabilities import Capability, require_capability, resolve_capabilities
 from app.services.notifications import NotificationService
 
 
@@ -62,6 +63,9 @@ class ClassroomService:
             raise AppError("CLASSROOM_ARCHIVED", "This classroom is archived and read-only.", 409)
 
     async def _readable(self, room: Classroom):
+        _, capabilities = await resolve_capabilities(self.session, self.actor, room)
+        if capabilities:
+            return
         if self.actor.role == UserRole.ADMIN or (
             self.actor.role == UserRole.TEACHER and room.teacher_id == self.actor.id
         ):
@@ -104,6 +108,9 @@ class ClassroomService:
             response = ClassroomResponse.model_validate(room)
             response.teacher_name = teacher.display_name if teacher else None
             response.active_member_count = member_count or 0
+            role, capabilities = await resolve_capabilities(self.session, self.actor, room)
+            response.classroom_role = role
+            response.capabilities = sorted(capabilities)
             return response
 
     async def update(self, classroom_id: UUID, data: ClassroomUpdate) -> ClassroomResponse:
@@ -170,7 +177,7 @@ class ClassroomService:
         async with self.session.begin():
             await self._load_actor()
             room = await self._classroom(classroom_id)
-            await self.policy.require_classroom_manage(room)
+            await require_capability(self.session, self.actor, room, Capability.MEMBERS)
             return MembershipList(
                 items=[
                     self._membership_response(member, user)
@@ -217,10 +224,13 @@ class ClassroomService:
         async with self.session.begin():
             await self._lock_actor()
             room = await self._classroom(classroom_id, lock=True)
-            await self.policy.require_classroom_manage(room)
+            await require_capability(self.session, self.actor, room, Capability.MEMBERS)
             self._active(room)
             email = normalize_email(str(data.email))
             recipient = await self.session.scalar(select(User).where(User.email == email))
+            if recipient:
+                from app.services.classroom_staff import require_not_staff
+                await require_not_staff(self.session, room.id, recipient.id)
             if recipient is not None and recipient.id == room.teacher_id:
                 raise AppError(
                     "CLASSROOM_OWNER_INVITATION", "The owner cannot join their own classroom.", 409
@@ -258,7 +268,7 @@ class ClassroomService:
         async with self.session.begin():
             await self._load_actor()
             room = await self._classroom(classroom_id)
-            await self.policy.require_classroom_manage(room)
+            await require_capability(self.session, self.actor, room, Capability.MEMBERS)
             return InvitationList(
                 items=[
                     await self._invitation_response(invitation, room)
@@ -307,7 +317,7 @@ class ClassroomService:
         async with self.session.begin():
             await self._lock_actor()
             room, invitation = await self._lock_invitation(invitation_id)
-            await self.policy.require_classroom_manage(room)
+            await require_capability(self.session, self.actor, room, Capability.MEMBERS)
             self._active(room)
             self._pending(invitation)
             invitation.status = InvitationStatus.CANCELLED
@@ -324,6 +334,8 @@ class ClassroomService:
             self._pending(invitation)
             member = None
             if accept:
+                from app.services.classroom_staff import require_not_staff
+                await require_not_staff(self.session, room.id, self.actor.id)
                 if room.teacher_id == self.actor.id:
                     raise AppError(
                         "CLASSROOM_OWNER_INVITATION",
@@ -366,7 +378,7 @@ class ClassroomService:
             await self._lock_actor()
             room = await self._classroom(classroom_id, lock=True)
             if remove:
-                await self.policy.require_classroom_manage(room)
+                await require_capability(self.session, self.actor, room, Capability.MEMBERS)
             self._active(room)
             member = await self.repository.membership(room.id, user_id)
             if member is None:

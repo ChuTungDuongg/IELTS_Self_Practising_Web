@@ -57,6 +57,6 @@ export function AssignmentForm({ classroomId, tests }: {
     </label>
     <label className="field-label mt-3">{t("assignment.note")}<textarea className="field" name="note" maxLength={2000} />
     </label>
-    <ScheduleFields />
+    <details><summary>{st("schedule")}</summary><ScheduleFields /></details>
     <button className="btn btn-primary mt-3" disabled={pending || !versions.length}>{t("assignment.create")}</button>{error ? <p role="alert">{error}</p> : null}</form>;
 }

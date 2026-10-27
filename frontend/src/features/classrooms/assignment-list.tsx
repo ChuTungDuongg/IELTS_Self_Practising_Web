@@ -13,6 +13,7 @@ import { useAssignmentProgress } from "./scheduling/progress-provider";
 import { ProgressSummary, ScheduleSummary } from "./scheduling/progress-summary";
 import { AssignmentManagement } from "./scheduling/assignment-management";
 import { scheduleError, useScheduleText } from "./scheduling/messages";
+import { useLmsText } from "./lms/messages";
 type ModuleType = "READING" | "LISTENING" | "WRITING" | "SPEAKING";
 function StartAssignment({ assignment }: {
   assignment: ClassroomAssignment;
@@ -107,18 +108,21 @@ function StartAssignment({ assignment }: {
     {mode === "READING" || mode === "LISTENING" || mode === "FULL_MOCK" ? <PresentationDialog open={choosing} module={mode === "FULL_MOCK" ? "LISTENING" : mode} value={presentation} onChange={setPresentation} onClose={() => setChoosing(false)} onConfirm={() => void start()} pending={pending} error={error} returnFocusRef={trigger} preview={{ title: assignment.title ?? assignment.version?.test_title, unitTitle: previewUnit?.title, questionTypes: previewUnit?.question_groups.map(group => group.question_type) }} /> : null}
   </div>;
 }
-export function AssignmentList({ assignments, canManage = false, canSchedule = canManage, archived = false, resultNamespace = "teacher", }: {
+export function AssignmentList({ assignments, canManage = false, canSchedule = canManage, canArchive = canManage, archived = false, resultNamespace = "teacher", }: {
   assignments: ClassroomAssignment[];
   canManage?: boolean;
   canSchedule?: boolean;
+  canArchive?: boolean;
   archived?: boolean;
   resultNamespace?: "teacher" | "shared";
 }) {
   const { t } = useTranslation();
+  const { lt } = useLmsText(), [status, setStatus] = useState("ALL");
+  const shown = assignments.filter(item => status === "ALL" || item.status === status);
   return <section aria-label={t("assignment.title")}>
-    <h2 className="section-title mb-3">{t("assignment.title")}</h2>
-    {assignments.length ? <div className="test-card-grid">
-      {assignments.map(assignment => <article key={assignment.id} id={`assignment-${assignment.id}`} tabIndex={-1} className="surface-card p-5">
+    <div className="classroom-section-heading"><h2 className="section-title mb-3">{t("assignment.title")}</h2><label className="classroom-filter"><span className="sr-only">{lt("status")}</span><select className="select-field" value={status} onChange={event => setStatus(event.target.value)}><option value="ALL">{lt("all")}</option><option value="ACTIVE">{lt("active")}</option><option value="ARCHIVED">{lt("archive")}</option></select></label></div>
+    {shown.length ? <div className="test-card-grid">
+      {shown.map(assignment => <article key={assignment.id} id={`assignment-${assignment.id}`} tabIndex={-1} className="surface-card p-5">
         <h3>{assignment.title ?? assignment.version?.test_title ?? t("assignment.title")}</h3>
         <p>{assignment.note}</p>
         {canManage ? <ScheduleSummary assignment={assignment} /> : <ProgressSummary assignmentId={assignment.id} actions />}
@@ -126,7 +130,7 @@ export function AssignmentList({ assignments, canManage = false, canSchedule = c
           <Link href={`${resultNamespace === "shared" ? "" : "/teacher"}/classrooms/${assignment.classroom_id}/assignments/${assignment.id}/results`} className="btn btn-secondary">
             {t("assignment.results")}
           </Link>
-          {!archived && assignment.status === "ACTIVE" ? <ResourceAction action={() => archiveAssignment(assignment.classroom_id, assignment.id)}>
+          {canArchive && !archived && assignment.status === "ACTIVE" ? <ResourceAction action={() => archiveAssignment(assignment.classroom_id, assignment.id)}>
             {t("common.archive")}
           </ResourceAction> : null}
         </div> : !archived && assignment.status === "ACTIVE" ? <StartAssignment assignment={assignment} />

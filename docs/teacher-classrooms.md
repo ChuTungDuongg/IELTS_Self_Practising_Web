@@ -1,5 +1,9 @@
 # Teacher, classrooms and content governance
 
+## Staff and Gradebook (P3)
+
+Classrooms now resolve contextual owner, Co-teacher and TA capabilities separately from global roles. Staff invitations require acceptance; Gradebook uses canonical accepted results and human-final subjective grades, with classroom-only academic profiles and safe bounded CSV export. See [staff, Gradebook and Classroom UX/UI contracts](classroom-gradebook.md). P1/P2's owner-only descriptions below document those original phases; the capability matrix in the P3 guide governs current shared operations.
+
 ## Assignment scheduling and submission management (P2)
 
 Assignments now support availability, inclusive due/cut-off boundaries, late acceptance, shared root-start limits, individual exceptions, private student progress, paginated teacher monitoring, a classroom agenda and in-app assignment notifications. The existing exam engines, grading and immutable-version provenance remain authoritative. See [the P2 policy, API, migration and reminder deployment guide](classroom-assignment-scheduling.md) for full semantics. Immediate policy enforcement and notifications work when the backend runs; periodic reminders require the documented host scheduler configuration.

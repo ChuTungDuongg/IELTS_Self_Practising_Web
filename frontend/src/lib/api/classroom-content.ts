@@ -38,10 +38,11 @@ export type PostInput = { kind: "ANNOUNCEMENT" | "DISCUSSION"; title?: string | 
 export type ResourceInput = { title: string; description?: string | null; kind: "TEXT" | "LINK"; body?: string | null; url?: string | null; status?: ContentStatus; section_id?: string | null };
 const base = (id: string) => `/classrooms/${encodeURIComponent(id)}`;
 const json = (method: string, input?: unknown): RequestInit => ({ method, ...(input === undefined ? {} : { body: JSON.stringify(input) }) });
-export async function listFeed(id: string, options: { cursor?: string; status?: ContentStatus; signal?: AbortSignal } = {}, request: ApiRequester = apiRequest) {
+export async function listFeed(id: string, options: { cursor?: string; status?: ContentStatus; contentKind?: ClassroomPost["kind"]; signal?: AbortSignal } = {}, request: ApiRequester = apiRequest) {
   const query = new URLSearchParams({ limit: "20" });
   if (options.cursor) query.set("cursor", options.cursor);
   if (options.status) query.set("status", options.status);
+  if (options.contentKind) query.set("content_kind", options.contentKind);
   const path = `${base(id)}/feed?${query}`;
   return page(classroomPostSchema).parse(options.signal ? await request<unknown>(path, { signal: options.signal }) : await request<unknown>(path));
 }

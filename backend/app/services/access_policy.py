@@ -219,4 +219,6 @@ class AccessPolicy:
         classroom = await self.session.get(Classroom, assignment.classroom_id)
         if classroom is None:
             raise AppError("CLASSROOM_NOT_FOUND", "The classroom does not exist.", 404)
-        await self.require_classroom_manage(classroom)
+        from app.services.classroom_capabilities import Capability, require_capability
+
+        await require_capability(self.session, self.actor, classroom, Capability.GRADES_VIEW)

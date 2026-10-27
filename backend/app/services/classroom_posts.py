@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import AppError
 from app.models import Classroom, User
 from app.models.classroom_posts import ClassroomComment, ClassroomPost
-from app.models.enums import NotificationEntityType, NotificationType, UserRole
+from app.models.enums import NotificationEntityType, NotificationType
 from app.repositories.classroom_posts import ClassroomPostRepository
 from app.schemas.classroom_posts import (
     CommentCreate,
@@ -31,6 +31,7 @@ class _FeedCursor(BaseModel):
     version: Literal[1] = 1
     classroom_id: UUID
     status: ContentStatus | None
+    content_kind: Literal["ANNOUNCEMENT", "DISCUSSION", "ASSIGNMENT_ACTIVITY"] | None = None
     pinned: bool = Field(strict=True)
     created_at: AwareDatetime
     kind: Literal["ANNOUNCEMENT", "DISCUSSION", "ASSIGNMENT_ACTIVITY"]
@@ -155,6 +156,7 @@ class ClassroomPostService:
         cursor: str | None = None,
         limit: int = 20,
         status: ContentStatus | None = None,
+        content_kind: Literal["ANNOUNCEMENT", "DISCUSSION", "ASSIGNMENT_ACTIVITY"] | None = None,
     ) -> FeedPage:
         if not 1 <= limit <= 100:
             raise AppError("INVALID_PAGE_SIZE", "Page size must be between 1 and 100.", 422)
@@ -168,11 +170,11 @@ class ClassroomPostService:
             position = None
             if cursor is not None:
                 decoded = _decode_cursor(cursor, _FeedCursor)
-                if decoded.classroom_id != classroom_id or decoded.status != status:
+                if decoded.classroom_id != classroom_id or decoded.status != status or decoded.content_kind != content_kind:
                     raise AppError("INVALID_CURSOR", "This cursor belongs to another feed.", 422)
                 position = (decoded.pinned, decoded.created_at, decoded.kind, decoded.id)
             keys = await self.repository.feed_keys(
-                classroom_id, staff=staff, status=status, cursor=position, limit=limit
+                classroom_id, staff=staff, status=status, cursor=position, limit=limit, content_kind=content_kind
             )
             selected = keys[:limit]
             post_ids = [key.id for key in selected if key.kind != "ASSIGNMENT_ACTIVITY"]
@@ -221,6 +223,7 @@ class ClassroomPostService:
                     _FeedCursor(
                         classroom_id=room.id,
                         status=status,
+                        content_kind=content_kind,
                         pinned=last.pinned,
                         created_at=last.created_at,
                         kind=last.kind,
@@ -266,7 +269,9 @@ class ClassroomPostService:
 
     async def update(self, classroom_id: UUID, post_id: UUID, data: PostUpdate) -> FeedEntry:
         async with self.session.begin():
-            room = await self.access.room(classroom_id, mutation=True, owner=True)
+            from app.services.classroom_capabilities import Capability
+            room = await self.access.room(classroom_id, mutation=True, owner=True,
+                capability=Capability.DISCUSSION if data.model_fields_set <= {"locked"} else Capability.CONTENT)
             post = await self._post(room, post_id)
             changes = data.model_dump(exclude_unset=True)
             current_resources = (await self.repository.resource_ids([post.id], staff=True))[post.id]
@@ -389,10 +394,8 @@ class ClassroomPostService:
             await self.access.can_comment(room)
             comment = await self._comment(room, comment_id)
             own_comment = comment.author_id == self.access.actor.id
-            owner = (
-                self.access.actor.role == UserRole.TEACHER
-                and room.teacher_id == self.access.actor.id
-            )
+            from app.services.classroom_capabilities import Capability
+            owner = Capability.DISCUSSION in self.access.capabilities
             if not own_comment and not owner:
                 raise AppError(
                     "COMMENT_OWNERSHIP_REQUIRED",

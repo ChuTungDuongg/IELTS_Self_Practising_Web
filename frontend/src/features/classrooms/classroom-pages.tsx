@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { PageHeading } from "@/components/ui/page-heading";
 import { listClassrooms, listMyInvitations, getClassroom, listAssignments, listMembers, listInvitations } from "@/lib/api/classrooms";
-import { getTests } from "@/lib/api/tests";
+import { assignableTests } from "@/lib/api/classroom-lms";
+import { StaffManagement, StaffInvitationInbox } from "./lms/staff-management";
 import { userSchema } from "@/lib/api/auth";
 import { serverApiRequest } from "@/lib/api/server-client";
 import { UiText } from "@/lib/i18n/locale-provider";
@@ -10,13 +11,13 @@ import { ClassroomForm } from "./classroom-form";
 import { ClassroomManagement, ClassroomMembershipActions } from "./classroom-management";
 import { AssignmentForm } from "./assignment-form";
 import { ClassroomWorkspace } from "./content/classroom-workspace";
-import { ClassroomMetadata } from "./content/classroom-metadata";
 export async function ClassroomsPage({ teacher = false }: {
   teacher?: boolean;
 } = {}) {
   const [items, invitations, user] = await Promise.all([listClassrooms(serverApiRequest), listMyInvitations(serverApiRequest), serverApiRequest<unknown>("/auth/me").then(data => userSchema.parse(data))]);
   return <>
     <PageHeading title={<UiText message="classroom.title" />} />
+    <StaffInvitationInbox />
     <InvitationInbox invitations={invitations} />{teacher ? <ClassroomForm /> : null}{items.length ? <div className="test-card-grid">{items.map(item => <article key={item.id} className="surface-card p-5">
       <h2>{item.name}</h2>
       <p>{item.description}</p>
@@ -42,14 +43,15 @@ export async function ClassroomDetailPage({ params, searchParams }: {
   const selectedAssignmentId = typeof query?.assignment === "string" ? query.assignment : null;
   const selectedPostId = typeof postQuery === "string" ? postQuery : null;
   const [classroom, user, assignments] = await Promise.all([getClassroom(classroomId, serverApiRequest), serverApiRequest<unknown>("/auth/me").then(data => userSchema.parse(data)), listAssignments(classroomId, serverApiRequest)]);
-  const canManage = user.role === "ADMIN" || (user.role === "TEACHER" && classroom.teacher_id === user.id);
-  const [members, invitations, tests] = canManage ? await Promise.all([listMembers(classroomId, serverApiRequest), listInvitations(classroomId, serverApiRequest), getTests(undefined, serverApiRequest)]) : [[], [], []];
+  const owner = user.role === "TEACHER" && classroom.teacher_id === user.id;
+  const canManage = classroom.capabilities?.includes("grades.view") ?? (user.role === "ADMIN" || owner);
+  const canMembers = classroom.capabilities?.includes("members.manage") ?? canManage;
+  const canAssign = classroom.capabilities?.includes("assignments.manage") ?? canManage;
+  const [members, invitations, tests] = await Promise.all([canMembers ? listMembers(classroomId, serverApiRequest) : [], canMembers ? listInvitations(classroomId, serverApiRequest) : [], canAssign || user.role === "ADMIN" ? assignableTests(classroomId, serverApiRequest) : []]);
   return <>
-    <PageHeading title={classroom.name} description={classroom.description} />
-    <ClassroomMetadata classroom={classroom} />
-    <ClassroomMembershipActions classroom={classroom} canManage={canManage} isAdmin={user.role === "ADMIN"} />
     <ClassroomWorkspace key={`${classroomId}-${user.id}-${user.role}-${selectedPostId ?? "feed"}-${selectedAssignmentId ?? ""}`} classroom={classroom} user={{ id: user.id, role: user.role }} assignments={assignments} canManage={canManage} selectedPostId={selectedPostId} selectedAssignmentId={selectedAssignmentId}
-      people={canManage ? <ClassroomManagement key="classroom-management" classroom={classroom} members={members} invitations={invitations} /> : undefined}
-      assignmentForm={canManage && classroom.status === "ACTIVE" ? <AssignmentForm key="assignment-form" classroomId={classroomId} tests={tests.filter(test => test.origin !== "TEACHER" || test.owner_user_id === classroom.teacher_id)} /> : undefined} />
+      management={<ClassroomMembershipActions key="membership-actions" classroom={classroom} canManage={classroom.capabilities?.includes("classroom.manage") ?? canManage} isStaff={canManage} isAdmin={user.role === "ADMIN"} />}
+      people={canManage ? <div key="classroom-people">{canMembers ? <ClassroomManagement classroom={classroom} members={members} invitations={invitations} /> : null}<StaffManagement classroomId={classroomId} canManage={owner} archived={classroom.status === "ARCHIVED"} /></div> : undefined}
+      assignmentForm={(canAssign || user.role === "ADMIN") && classroom.status === "ACTIVE" ? <AssignmentForm key="assignment-form" classroomId={classroomId} tests={tests} /> : undefined} />
   </>;
 }

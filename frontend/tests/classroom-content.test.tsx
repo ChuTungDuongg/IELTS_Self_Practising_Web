@@ -42,7 +42,8 @@ it("loads Stream, switches tabs, and preserves the existing people and assignmen
   renderWithLocale(workspace("TEACHER"));
   expect(await screen.findByText("Reading notes")).toBeInTheDocument();
   fireEvent.click(screen.getByRole("tab", { name: "People" })); expect(screen.getByText("Membership management retained")).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("tab", { name: "Assignments" })); expect(screen.getByText("Existing assignment form")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("tab", { name: "Assignments" })); expect(screen.queryByText("Existing assignment form")).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Create assignment" })); expect(screen.getByText("Existing assignment form")).toBeInTheDocument();
   fireEvent.click(screen.getByRole("tab", { name: "Classwork" })); expect(await screen.findByRole("heading", { name: "Lesson notes" })).toBeInTheDocument();
 });
 it("reserves content authoring for the owner teacher and makes archived rooms read-only", async () => {
@@ -185,7 +186,7 @@ it("closes an existing post editor when the classroom becomes archived", () => {
 });
 it("shows creation time and an edited indicator independently of publication time", () => {
   renderWithLocale(<PostCard classroomId="c" post={{ ...post, created_at: "2026-10-20T08:00:00Z", updated_at: "2026-10-27T08:00:00Z", published_at: "2026-10-26T08:00:00Z" }} resources={[]} userId="student" canAuthor={false} archived={false} admin={false} onRefresh={vi.fn()} onOpenAssignment={vi.fn()} />);
-  expect(screen.getByText(/Oct 20, 2026.*Edited/)).toBeInTheDocument(); expect(screen.queryByText(/Oct 26, 2026/)).not.toBeInTheDocument();
+  expect(screen.getByText(/Oct 20, 2026/).closest("p")).toHaveTextContent("Edited"); expect(screen.queryByText(/Oct 26, 2026/)).not.toBeInTheDocument();
 });
 it("offers a retry when private file loading fails without exposing raw API URLs", async () => {
   api.fetchResourceFile.mockRejectedValueOnce(new ApiError("NETWORK_ERROR", "Offline", 0));

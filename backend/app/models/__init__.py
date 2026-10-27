@@ -1,5 +1,6 @@
 from app.models.assignment_scheduling import AssignmentPolicyEvent, ClassroomAssignmentExtension
 from app.models.base import Base
+from app.models.classroom_staff import ClassroomStaff, ClassroomStaffEvent
 from app.models.classroom import (
     Classroom,
     ClassroomAssignment,
@@ -59,6 +60,8 @@ from app.models.writing_ai import (
 from app.models.writing_benchmark import WritingBenchmarkSample
 
 __all__ = [
+    "ClassroomStaff",
+    "ClassroomStaffEvent",
     "AssignmentPolicyEvent",
     "ClassroomAssignmentExtension",
     "ClassroomComment",

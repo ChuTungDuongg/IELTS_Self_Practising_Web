@@ -68,6 +68,8 @@ class SpeakingFinalService:
             )
             attempt.raw_score = None
             attempt.max_score = None
+            from app.services.grading_policy import record_human_grade
+            record_human_grade(self.session, attempt, self.actor, body)
             await self.session.flush()
             from app.services.speaking_media import SpeakingMediaService
 

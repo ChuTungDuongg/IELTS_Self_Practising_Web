@@ -103,8 +103,10 @@ class AssignmentSchedulingService:
         self.session, self.actor = session, actor
         self.access = ContentAccess(session, actor)
 
-    async def assignment(self, classroom_id, assignment_id, *, mutation=False):
-        room = await self.access.room(classroom_id, mutation=mutation, owner=mutation)
+    async def assignment(self, classroom_id, assignment_id, *, mutation=False, extension=False):
+        from app.services.classroom_capabilities import Capability
+        room = await self.access.room(classroom_id, mutation=mutation, owner=mutation,
+                                      capability=Capability.EXTEND if extension else Capability.ASSIGNMENTS)
         query = (
             select(ClassroomAssignment)
             .where(
@@ -214,7 +216,7 @@ class AssignmentSchedulingService:
         self, classroom_id, assignment_id, student_id, data: ExtensionWrite | None
     ):
         async with self.session.begin():
-            _, assignment = await self.assignment(classroom_id, assignment_id, mutation=True)
+            _, assignment = await self.assignment(classroom_id, assignment_id, mutation=True, extension=True)
             extension = await AssignmentProgressRepository(self.session).extension(
                 assignment.id, student_id
             )

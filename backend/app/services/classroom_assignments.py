@@ -18,6 +18,7 @@ from app.schemas.classroom_assignments import (
 )
 from app.services.access_policy import AccessPolicy
 from app.services.attempts import AttemptService
+from app.services.classroom_capabilities import Capability, require_capability, resolve_capabilities
 from app.services.test_sessions import TestSessionService
 
 
@@ -94,7 +95,8 @@ class ClassroomAssignmentService:
             await self.policy.lock_actor()
             version = await self.policy.lock_version(data.test_version_id)
             classroom = await self._classroom(classroom_id, locked=True)
-            await self.policy.require_classroom_manage(classroom)
+            if self.policy.actor.role != UserRole.ADMIN:
+                await require_capability(self.session, self.policy.actor, classroom, Capability.ASSIGNMENTS)
             self._active(classroom)
             if (
                 version.test.origin == TestOrigin.TEACHER
@@ -158,7 +160,9 @@ class ClassroomAssignmentService:
         async with self.session.begin():
             await self.policy.lock_actor()
             classroom = await self._classroom(classroom_id, locked=True)
-            await self.policy.require_classroom_manage(classroom)
+            # ADMIN retains the existing assignment archival control.
+            if self.policy.actor.role != UserRole.ADMIN:
+                await require_capability(self.session, self.policy.actor, classroom, Capability.ASSIGNMENTS)
             self._active(classroom)
             assignment = await self._assignment(classroom_id, assignment_id, locked=True)
             assignment.status = AssignmentStatus.ARCHIVED
@@ -212,6 +216,9 @@ class ClassroomAssignmentService:
         return row
 
     async def _read(self, classroom):
+        _, capabilities = await resolve_capabilities(self.session, self.actor, classroom)
+        if capabilities:
+            return
         if self.actor.role == UserRole.ADMIN or (
             self.actor.role == UserRole.TEACHER and classroom.teacher_id == self.actor_id
         ):

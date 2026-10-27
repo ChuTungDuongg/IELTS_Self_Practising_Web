@@ -90,6 +90,7 @@ class ClassroomPostRepository:
         status: str | None,
         cursor: tuple[bool, datetime, str, UUID] | None,
         limit: int,
+        content_kind: str | None = None,
     ):
         """A single bounded UNION keeps assignment identity/lifecycle canonical."""
         posts = select(
@@ -119,6 +120,8 @@ class ClassroomPostRepository:
             )
         feed = union_all(posts, assignments).subquery("classroom_feed")
         query = select(feed)
+        if content_kind is not None:
+            query = query.where(feed.c.kind == content_kind)
         if cursor is not None:
             query = query.where(
                 tuple_(feed.c.pinned, feed.c.created_at, feed.c.kind, feed.c.id) < tuple_(*cursor)

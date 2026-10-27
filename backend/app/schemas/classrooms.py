@@ -35,6 +35,8 @@ class ClassroomResponse(BaseModel):
     updated_at: datetime
     teacher_name: str | None = None
     active_member_count: int | None = None
+    classroom_role: str = "STUDENT"
+    capabilities: list[str] = Field(default_factory=list)
     model_config = {"from_attributes": True}
 
 

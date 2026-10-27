@@ -8,24 +8,33 @@ import { useContentTranslation } from "./content-messages";
 import { contentError } from "./content-action";
 import { ClassroomStream } from "./classroom-stream";
 import { ClassworkPanel } from "./classwork-panel";
-import { ordered } from "./classwork-order";
+import { ClassroomHeader } from "../lms/classroom-header";
+import { GradebookPanel } from "../lms/gradebook";
+import { useLmsText } from "../lms/messages";
 import "./classroom-workspace.css";
 import "../scheduling/scheduling.css";
+import "../lms/lms.css";
 import { AssignmentProgressProvider } from "../scheduling/progress-provider";
 import { AssignmentCalendarPanel } from "../scheduling/assignment-calendar";
 import { useScheduleText } from "../scheduling/messages";
 
-type Tab = "stream" | "classwork" | "assignments" | "calendar" | "people";
-export function ClassroomWorkspace(props: Parameters<typeof ClassroomWorkspaceContent>[0]) {
+type Tab = "stream" | "classwork" | "assignments" | "calendar" | "people" | "gradebook";
+type WorkspaceProps = {
+  classroom: Classroom; user: { id: string; role: string }; assignments: ClassroomAssignment[];
+  people?: ReactNode; assignmentForm?: ReactNode; management?: ReactNode; canManage: boolean;
+  selectedPostId?: string | null; selectedAssignmentId?: string | null;
+};
+export function ClassroomWorkspace(props: WorkspaceProps) {
   return <AssignmentProgressProvider classroomId={props.classroom.id} ids={props.assignments.map(item => item.id)} assignments={props.assignments} staff={props.canManage}><ClassroomWorkspaceContent {...props} /></AssignmentProgressProvider>;
 }
-function ClassroomWorkspaceContent({ classroom, user, assignments, people, assignmentForm, canManage, selectedPostId = null, selectedAssignmentId = null }: {
-  classroom: Classroom; user: { id: string; role: string }; assignments: ClassroomAssignment[]; people?: ReactNode; assignmentForm?: ReactNode; canManage: boolean; selectedPostId?: string | null; selectedAssignmentId?: string | null;
-}) {
-  const { ct } = useContentTranslation();
-  const { st } = useScheduleText();
-  const [tab, setTab] = useState<Tab>(selectedAssignmentId ? "assignments" : "stream"), [data, setData] = useState<Classwork | null>(null), [loading, setLoading] = useState(true), [error, setError] = useState<string | null>(null), [assignmentFocus, setAssignmentFocus] = useState<string | null>(selectedAssignmentId);
-  const canOwn = user.role === "TEACHER" && user.id === classroom.teacher_id, archived = classroom.status === "ARCHIVED", canAuthor = canOwn && !archived;
+function ClassroomWorkspaceContent({ classroom, user, assignments, people, assignmentForm, management, canManage, selectedPostId = null, selectedAssignmentId = null }: WorkspaceProps) {
+  const { ct } = useContentTranslation(), { st } = useScheduleText(), { lt } = useLmsText();
+  const [tab, setTab] = useState<Tab>(selectedAssignmentId ? "assignments" : "stream");
+  const [data, setData] = useState<Classwork | null>(null), [loading, setLoading] = useState(true), [error, setError] = useState<string | null>(null);
+  const [assignmentFocus, setAssignmentFocus] = useState<string | null>(selectedAssignmentId), [creating, setCreating] = useState(false);
+  const canOwn = user.role === "TEACHER" && user.id === classroom.teacher_id, archived = classroom.status === "ARCHIVED";
+  const canAuthor = (classroom.capabilities?.includes("content.manage") ?? canOwn) && !archived;
+  const canSchedule = (classroom.capabilities?.includes("assignments.manage") ?? canOwn) && user.role !== "ADMIN";
   const requestId = useRef(0);
   const refresh = useCallback(async (signal?: AbortSignal) => {
     const sequence = ++requestId.current; setLoading(true); setError(null);
@@ -39,26 +48,24 @@ function ClassroomWorkspaceContent({ classroom, user, assignments, people, assig
     const element = document.getElementById(`assignment-${assignmentFocus}`); element?.scrollIntoView?.({ block: "nearest" }); element?.focus();
   }, [tab, assignmentFocus]);
   function openAssignment(id: string) { setAssignmentFocus(id); setTab("assignments"); }
-  function sectionNavigate(id: string) { setTab("classwork"); requestAnimationFrame(() => document.getElementById(`section-${id}`)?.scrollIntoView?.({ block: "start" })); }
-  const tabs: Tab[] = ["stream", "classwork", "assignments", "calendar", "people"];
+  const tabs: Tab[] = ["stream", "classwork", "assignments", "calendar", ...(canManage ? ["people" as const, "gradebook" as const] : [])];
   return <div className="classroom-workspace" data-ui>
+    <ClassroomHeader classroom={classroom} management={management} onManage={canManage ? () => setTab("people") : undefined} canCreate={!!assignmentForm && !archived} onCreate={() => { setTab("assignments"); setCreating(true); }} />
     {archived ? <p className="notice" role="status">{ct("archivedRoom")}</p> : user.role === "ADMIN" ? <p className="classroom-meta">{ct("readOnly")}</p> : null}
     <div className="classroom-tabs" role="tablist" aria-label={classroom.name} onKeyDown={event => {
       const index = tabs.indexOf(tab); const next = event.key === "ArrowRight" ? (index + 1) % tabs.length : event.key === "ArrowLeft" ? (index + tabs.length - 1) % tabs.length : event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : -1;
       if (next >= 0) { event.preventDefault(); setTab(tabs[next]); document.getElementById(`classroom-tab-${tabs[next]}`)?.focus(); }
-    }}>{tabs.map(key => <button key={key} id={`classroom-tab-${key}`} type="button" role="tab" aria-selected={tab === key} aria-controls={`classroom-panel-${key}`} tabIndex={tab === key ? 0 : -1} onClick={() => setTab(key)}>{key === "calendar" ? st("calendar") : ct(key)}</button>)}</div>
+    }}>{tabs.map(key => <button key={key} id={`classroom-tab-${key}`} type="button" role="tab" aria-selected={tab === key} aria-controls={`classroom-panel-${key}`} tabIndex={tab === key ? 0 : -1} onClick={() => setTab(key)}>{key === "gradebook" ? lt("gradebook") : key === "calendar" ? st("calendar") : ct(key)}</button>)}</div>
     <div className="classroom-columns">
-      <aside className="classroom-course-nav"><div className="classroom-course-links"><h2>{ct("course")}</h2><nav aria-label={ct("course")}>
-        {data?.sections.length ? ordered(data.sections).map(section => <button type="button" key={section.id} onClick={() => sectionNavigate(section.id)}>{section.title}{section.status !== "PUBLISHED" ? <span className="classroom-meta">{ct(section.status === "DRAFT" ? "draft" : "archived")}</span> : null}</button>) : <p className="classroom-meta">{loading ? ct("loading") : ct("emptyWork")}</p>}
-      </nav></div><label className="classroom-course-picker field-label">{ct("course")}<select className="select-field" value="" disabled={!data?.sections.length} onChange={event => { if (event.target.value) sectionNavigate(event.target.value); }}><option value="">{ct("course")}</option>{data ? ordered(data.sections).map(section => <option key={section.id} value={section.id}>{section.title}</option>) : null}</select></label></aside>
       <div className="classroom-main" id={`classroom-panel-${tab}`} role="tabpanel" aria-labelledby={`classroom-tab-${tab}`} tabIndex={0}>
-        {tab === "stream" ? <ClassroomStream classroomId={classroom.id} resources={data?.resources ?? []} userId={user.id} canAuthor={canAuthor} canInspect={canOwn || user.role === "ADMIN"} archived={archived} admin={user.role === "ADMIN"} onOpenAssignment={openAssignment} selectedPostId={selectedPostId} /> : null}
+        {tab === "stream" && canManage ? <section className="classroom-overview" aria-label={lt("overview")}><div><strong>{assignments.filter(item => item.status === "ACTIVE").length}</strong><span>{lt("activeAssignments")}</span></div><div><strong>{classroom.active_member_count ?? "—"}</strong><span>{lt("students")}</span></div><div className="classroom-toolbar">{canAuthor ? <button type="button" className="btn btn-secondary" onClick={() => setTab("classwork")}>{lt("materials")}</button> : null}{people ? <button type="button" className="btn btn-secondary" onClick={() => setTab("people")}>{ct("people")}</button> : null}<button type="button" className="btn btn-secondary" onClick={() => setTab("gradebook")}>{lt("gradebook")}</button></div></section> : null}
+        {tab === "stream" ? <ClassroomStream classroomId={classroom.id} resources={data?.resources ?? []} userId={user.id} canAuthor={canAuthor} canInspect={canManage} archived={archived} admin={user.role === "ADMIN"} onOpenAssignment={openAssignment} selectedPostId={selectedPostId} /> : null}
         {tab === "classwork" ? <>{loading && !data ? <div className="classroom-panel classroom-skeleton" role="status"><h2>{ct("classwork")}</h2><p>{ct("loading")}</p><div /><div /></div> : null}{error ? <div className="classroom-panel"><p role="alert" className="notice notice-error">{error}</p><button type="button" className="btn btn-secondary" disabled={loading} onClick={() => void refresh().catch(() => {})}>{ct("retry")}</button></div> : null}{data ? <ClassworkPanel classroomId={classroom.id} data={data} assignments={assignments} canAuthor={canAuthor} onRefresh={refresh} onChange={setData} onOpenAssignment={openAssignment} /> : null}</> : null}
-        {tab === "assignments" ? <div className="classroom-assignments">{assignmentForm}<AssignmentList assignments={assignments} canManage={canManage} canSchedule={canAuthor} archived={archived} resultNamespace={user.role === "ADMIN" ? "shared" : "teacher"} /></div> : null}
+        {tab === "assignments" ? <div className="classroom-assignments">{assignmentForm && !archived ? <section className="classroom-create-assignment"><button type="button" className="btn btn-primary" aria-expanded={creating} onClick={() => setCreating(value => !value)}>{creating ? lt("close") : lt("newAssignment")}</button>{creating ? <div className="classroom-focused-form">{assignmentForm}</div> : null}</section> : null}<AssignmentList assignments={assignments} canManage={canManage} canSchedule={canSchedule} canArchive={canSchedule || user.role === "ADMIN"} archived={archived} resultNamespace={user.role === "TEACHER" ? "teacher" : "shared"} /></div> : null}
         {tab === "calendar" ? <AssignmentCalendarPanel classroomId={classroom.id} onOpenAssignment={openAssignment} /> : null}
-        {tab === "people" ? <section aria-label={ct("people")}><h2 className="section-title mb-3">{ct("people")}</h2>{people ?? <p className="classroom-empty">{ct("emptyPeople")}</p>}</section> : null}
+        {tab === "people" && canManage ? <section aria-label={ct("people")}><h2 className="section-title mb-3">{ct("people")}</h2>{people ?? <p className="classroom-empty">{ct("emptyPeople")}</p>}</section> : null}
+        {tab === "gradebook" && canManage ? <GradebookPanel classroomId={classroom.id} assignments={assignments} canEdit={!archived && canSchedule} /> : null}
       </div>
-      <aside className="classroom-info"><h2>{ct("information")}</h2><p>{classroom.description || ct("noDescription")}</p><dl><div><dt>{ct("resources")}</dt><dd>{data ? data.resources.filter(resource => resource.status === "PUBLISHED").length : "—"}</dd></div><div><dt>{ct("assignments")}</dt><dd>{assignments.filter(assignment => assignment.status === "ACTIVE").length}</dd></div></dl>{error && tab !== "classwork" ? <div><p role="alert" className="classroom-meta">{error}</p><button className="classroom-text-button" type="button" disabled={loading} onClick={() => void refresh().catch(() => {})}>{ct("retry")}</button></div> : null}</aside>
     </div>
   </div>;
 }

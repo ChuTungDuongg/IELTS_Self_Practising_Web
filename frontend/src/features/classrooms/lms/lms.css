@@ -1,0 +1,47 @@
+/* BandPilot Classroom: achromatic-ledger, seed 2734. Brand tokens and typography.
+ * One fluid canvas; no empty side rails. Gradebook: 180px identity + N x 220px
+ * columns, scrolling inside its frame. IELTS skill lanes carry the main data hue. */
+.classroom-workspace .classroom-header { display:flex; align-items:flex-start; justify-content:space-between; gap:24px; padding:8px 0 18px; }
+.classroom-header h1 { font-size:26px; font-weight:600; line-height:1.25; overflow-wrap:anywhere; margin:0 0 8px; }
+.classroom-header .classroom-description { max-width:70ch; font-size:14px; color:var(--ink-soft); margin:8px 0 0; white-space:pre-wrap; }
+.classroom-header-actions { display:flex; align-items:center; gap:12px; flex:none; }
+.classroom-menu { position:relative; font-size:14px; }
+.classroom-menu summary { cursor:pointer; padding:8px; }
+.classroom-menu > div { position:absolute; z-index:20; right:0; min-width:240px; background:var(--surface); border:1px solid var(--line); border-radius:6px; padding:16px; display:grid; gap:12px; box-shadow:0 8px 24px #0002; }
+.classroom-workspace .classroom-columns { display:block; }
+.classroom-workspace .classroom-tabs { margin:0 0 20px; gap:24px; flex-wrap:nowrap; max-width:100%; }
+.classroom-workspace .classroom-panel { margin-bottom:16px; padding:16px 20px; border-radius:8px; }
+.classroom-workspace .classroom-overview, .lms-metrics { display:flex; flex-wrap:wrap; gap:24px; padding:16px 0; margin:0 0 16px; }
+.classroom-overview > div:not(.classroom-toolbar) { display:grid; gap:4px; }
+.classroom-overview strong, .lms-metrics dd { font-size:24px; font-weight:500; font-variant-numeric:tabular-nums; }
+.classroom-overview span, .lms-metrics dt { font-size:13px; color:var(--muted); }
+.classroom-overview .classroom-toolbar { margin-left:auto; }
+.classroom-workspace .assignment-policy-summary { display:flex; flex-wrap:wrap; gap:8px 20px; }
+.classroom-workspace .assignment-policy-summary > div { display:flex; justify-content:flex-start; gap:8px; }
+.classroom-workspace .assignment-progress-summary { margin:8px 0; padding:8px 0; }
+.classroom-create-assignment { margin-bottom:16px; }
+.classroom-focused-form { margin-top:16px; max-width:780px; }
+.lms-filters { display:flex; flex-wrap:wrap; align-items:end; gap:12px; margin:16px 0; }
+.lms-filters label { display:grid; gap:6px; font-size:13px; flex:1 1 130px; min-width:0; }
+.lms-filters :is(input,select) { width:100%; min-width:0; }
+.lms-matrix-scroll { max-width:100%; overflow:auto; border:1px solid var(--line); border-radius:6px; }
+.lms-matrix { width:100%; border-collapse:separate; border-spacing:0; font-size:14px; }
+.lms-matrix :is(th,td) { min-width:220px; padding:12px 16px; vertical-align:top; border-bottom:1px solid var(--line); text-align:right; font-variant-numeric:tabular-nums; }
+.lms-matrix th { font-weight:500; }
+.lms-matrix thead th { position:sticky; top:0; z-index:1; background:var(--surface); text-align:left; }
+.lms-matrix tr > :first-child { position:sticky; left:0; min-width:180px; max-width:240px; text-align:left; z-index:2; background:var(--surface); overflow-wrap:anywhere; }
+.lms-matrix th > span, .lms-matrix th > strong { display:block; margin-bottom:8px; }
+.lms-band { font-size:22px; font-weight:500; }
+.lms-grade-details { text-align:left; max-width:420px; overflow-wrap:anywhere; font-size:13px; padding:12px 0; }
+.lms-grade-details li { display:grid; gap:6px; margin:8px 0; }
+.lms-grade-details a { text-decoration:underline; }
+.lms-pagination { display:flex; flex-wrap:wrap; gap:12px; align-items:center; margin:16px 0; }
+.lms-record-list { list-style:none; margin:12px 0; padding:0; }
+.lms-record-list > li { padding:12px 0; border-bottom:1px solid var(--line); }
+.lms-form { display:grid; gap:12px; margin:16px 0; max-width:640px; }
+.lms-form > label { display:grid; gap:6px; }
+.lms-form fieldset { display:grid; gap:10px; }
+.classroom-workspace details > summary { cursor:pointer; font-size:14px; padding-block:8px; }
+.classroom-workspace :is(button,a,input,select,summary):focus-visible { outline:2px solid var(--ink); outline-offset:3px; }
+@media (max-width:768px) { .classroom-workspace .classroom-header { gap:12px; } .classroom-header h1 { font-size:22px; } .classroom-header-actions { flex-direction:column; align-items:flex-end; } .classroom-overview .classroom-toolbar { margin-left:0; } .classroom-workspace .classroom-tabs { gap:20px; } .lms-filters { gap:8px; } }
+@media (max-width:480px) { .classroom-workspace .classroom-header { flex-direction:column; } .classroom-header-actions { flex-direction:row; align-items:center; } .classroom-workspace .classroom-panel { padding:14px; } .classroom-workspace .btn, .classroom-workspace summary { min-height:44px; } .lms-matrix tr > :first-child { min-width:132px; max-width:160px; } .lms-matrix :is(th,td) { min-width:210px; padding:10px; } .lms-filters label { flex-basis:calc(50% - 8px); } }

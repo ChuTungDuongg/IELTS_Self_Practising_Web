@@ -1,5 +1,7 @@
 # Classroom assignment scheduling (P2)
 
+P3 extends schedule/extension management to authorized Co-teachers through the centralized classroom capability policy. Owner settings/staff management remain separate; TAs do not gain assignment or extension mutation rights. The same historical decision query now supplies Gradebook and classroom analytics. See [the P3 contract](classroom-gradebook.md).
+
 P2 extends the existing assignment, immutable TestVersion and native IELTS engines. The new code does not set a second exam timer or change marking. The Classroom workspace adds an agenda Calendar, shared student progress, schedule editing, monitoring and individual exceptions.
 
 ## Policy and historical decisions

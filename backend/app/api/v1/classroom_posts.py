@@ -1,4 +1,5 @@
 from uuid import UUID
+from typing import Literal
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,10 +30,11 @@ async def feed(
     cursor: str | None = Query(default=None, max_length=2048),
     limit: int = Query(default=20, ge=1, le=100),
     status: ContentStatus | None = None,
+    content_kind: Literal["ANNOUNCEMENT", "DISCUSSION", "ASSIGNMENT_ACTIVITY"] | None = None,
     session: AsyncSession = Depends(get_session),
 ):
     return await ClassroomPostService(session, actor).feed(
-        classroom_id, cursor=cursor, limit=limit, status=status
+        classroom_id, cursor=cursor, limit=limit, status=status, content_kind=content_kind
     )
 
 
