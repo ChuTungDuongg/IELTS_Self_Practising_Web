@@ -53,6 +53,7 @@ export function ReadingRunner({ initial }: { initial: ExamPayload }) {
   const [actionError, setActionError] = useState<import("@/lib/i18n/types").TranslationKey | "">("");
   const [clock, setClock] = useState(() => Date.now());
   const autosaveRef = useRef<RevisionAutosaveQueue<unknown> | null>(null);
+  const activityRequests = useRef(new Set<Promise<unknown>>());
   const lastActivity = useRef(0);
   const lastHeartbeat = useRef(0);
   const finalized = useRef(false);
@@ -73,8 +74,21 @@ export function ReadingRunner({ initial }: { initial: ExamPayload }) {
     attempt: initial.attempt, initialResponses, save: sendAnswer, debounceMs: 400,
   });
   useEffect(() => { autosaveRef.current = autosave; }, [autosave]);
-  const { submit, submitting, finalizing, submitError, isFinalizing } = useExamSubmit({
-    attemptId, initialAttempt: initial.attempt, flush, runMutation, accept, isStopped,
+  const trackActivity = useCallback(<T,>(request: Promise<T>): Promise<T> => {
+    activityRequests.current.add(request);
+    void request.then(
+      () => { activityRequests.current.delete(request); },
+      () => { activityRequests.current.delete(request); },
+    );
+    return request;
+  }, []);
+  const flushBeforeSubmit = useCallback(async () => {
+    await Promise.allSettled([...activityRequests.current]);
+    // Include edits made while the activity request was settling.
+    await flush();
+  }, [flush]);
+  const { submit, submitting, finalizing, submitError, isFinalizing, isSubmitting } = useExamSubmit({
+    attemptId, initialAttempt: initial.attempt, flush: flushBeforeSubmit, runMutation, accept, isStopped,
   });
 
   function answer(questionId: string, value: string | string[]) {
@@ -93,15 +107,15 @@ export function ReadingRunner({ initial }: { initial: ExamPayload }) {
   useEffect(() => {
     lastActivity.current = Date.now();
     const meaningful = () => {
-      if (stopped.current) return;
+      if (stopped.current || isSubmitting()) return;
       const now = Date.now(); lastActivity.current = now;
-      if (now - lastHeartbeat.current >= 20_000) { lastHeartbeat.current = now; void runMutation(() => recordActivity(attemptId)).catch(() => undefined); }
+      if (now - lastHeartbeat.current >= 20_000) { lastHeartbeat.current = now; void trackActivity(runMutation(() => recordActivity(attemptId))).catch(() => undefined); }
     };
     const events: Array<keyof WindowEventMap> = ["keydown", "click", "touchstart", "scroll"];
     events.forEach((event) => window.addEventListener(event, meaningful, { passive: true }));
     const afk = window.setInterval(() => { if (!stopped.current && Date.now() - lastActivity.current >= 300_000) { void getExam(attemptId).then((exam) => accept(exam.attempt)).catch(() => undefined); } }, 5000);
     return () => { events.forEach((event) => window.removeEventListener(event, meaningful)); window.clearInterval(afk); };
-  }, [accept, attemptId, runMutation, stopped]);
+  }, [accept, attemptId, isSubmitting, runMutation, stopped, trackActivity]);
 
   const holdNavigation = useCallback((questionId: string | null) => {
     // Observer entries queued by a jump can arrive after the pane has settled.

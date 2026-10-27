@@ -158,6 +158,30 @@ describe("Reading footer navigation", () => {
 
   afterEach(() => vi.useRealTimers());
 
+  it("settles an in-flight heartbeat before submitting and stops new heartbeats", async () => {
+    let release!: () => void;
+    vi.mocked(recordActivity).mockReturnValueOnce(new Promise<void>(resolve => { release = resolve; }));
+    render(<ReadingRunner initial={payload()} />);
+    fireEvent.click(window);
+    expect(recordActivity).toHaveBeenCalledTimes(1);
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Submit answers" })); });
+    expect(submitAttempt).not.toHaveBeenCalled();
+    fireEvent.click(window);
+    expect(recordActivity).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getAllByRole("radio", { name: "FALSE" })[0]);
+    await act(async () => { release(); });
+    expect(saveAnswer).toHaveBeenCalledWith(expect.any(String), q1, "FALSE", 1);
+    expect(vi.mocked(saveAnswer).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(submitAttempt).mock.invocationCallOrder[0]);
+    expect(submitAttempt).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not start a heartbeat from the submit button's bubbling click", async () => {
+    render(<ReadingRunner initial={payload()} />);
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Submit answers" })); });
+    expect(submitAttempt).toHaveBeenCalledTimes(1);
+    expect(recordActivity).not.toHaveBeenCalled();
+  });
+
   it("does not rerender passage text on timer ticks or unrelated answer saves", async () => {
     vi.useFakeTimers();
     render(<ReadingRunner initial={payload()} />);
