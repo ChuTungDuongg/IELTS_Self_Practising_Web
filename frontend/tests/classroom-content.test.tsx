@@ -87,9 +87,11 @@ it("loads Stream, switches tabs, and preserves the existing people and assignmen
   renderWithLocale(workspace("TEACHER"));
   expect(await screen.findByText("Reading notes")).toBeInTheDocument();
   fireEvent.click(screen.getByRole("tab", { name: "People" })); expect(screen.getByText("Membership management retained")).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("tab", { name: "Assignments" })); expect(screen.queryByText("Existing assignment form")).not.toBeInTheDocument();
-  fireEvent.click(screen.getAllByRole("button", { name: "Create assignment" }).at(-1)!); expect(screen.getByText("Existing assignment form")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("tab", { name: "Assignments" })); expect(screen.getByText("Existing assignment form")).toBeVisible();
+  const existingForm = screen.getByText("Existing assignment form");
   fireEvent.click(screen.getByRole("tab", { name: "Classwork" })); expect(await screen.findByRole("heading", { name: "Lesson notes" })).toBeInTheDocument();
+  expect(existingForm).not.toBeVisible();
+  fireEvent.click(screen.getByRole("tab", { name: "Assignments" })); expect(screen.getByText("Existing assignment form")).toBe(existingForm);
 });
 it("keeps classwork and feed requests stable while changing locale", async () => {
   renderWithLocale(workspace("TEACHER"));

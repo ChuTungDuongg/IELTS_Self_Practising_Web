@@ -12,9 +12,14 @@ import { serializeSchedule } from "@/lib/api/assignment-scheduling";
 import { scheduleError, useScheduleText } from "./scheduling/messages";
 import { useContentTranslation } from "./content/content-messages";
 import { assignmentUnits } from "./assignment-target";
+import { PlusIcon } from "@/components/ui/icons";
+import { useAssignmentsText } from "./assignments/messages";
+import { useAssignmentSync } from "./assignments/assignment-sync";
 
-export function AssignmentForm({ classroomId, tests }: { classroomId: string; tests: TestSummary[] }) {
+export function AssignmentForm({ classroomId, tests, onCreated }: { classroomId: string; tests: TestSummary[]; onCreated?: () => Promise<unknown> }) {
   const { t } = useTranslation(), { ct } = useContentTranslation(), { st } = useScheduleText(), router = useRouter();
+  const { at } = useAssignmentsText(), sync = useAssignmentSync();
+  const [saved, setSaved] = useState(false), [needsRefresh, setNeedsRefresh] = useState(false);
   const [pending, setPending] = useState(false), [error, setError] = useState<string | null>(null);
   const [versionId, setVersionId] = useState(""), [detail, setDetail] = useState<VersionDetail | null>(null), [loadError, setLoadError] = useState(false);
   const [skill, setSkill] = useState(""), [scope, setScope] = useState("FULL_MODULE"), [unitId, setUnitId] = useState("");
@@ -35,21 +40,29 @@ export function AssignmentForm({ classroomId, tests }: { classroomId: string; te
   } : null;
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (running.current || !target || !detail || detail.id !== versionId) return;
+    if (running.current || needsRefresh || !target || !detail || detail.id !== versionId) return;
     const element = event.currentTarget, form = new FormData(element);
     let schedule;
     try { schedule = serializeSchedule(form); } catch { setError(st("invalid")); return; }
-    running.current = true; setPending(true); setError(null);
+    running.current = true; setPending(true); setError(null); setSaved(false);
     try {
       await createAssignment(classroomId, { ...schedule, test_version_id: versionId, target, title: String(form.get("title") ?? "").trim() || null, note: String(form.get("note") ?? "").trim() || null });
-      element.reset(); setVersionId(""); setDetail(null); setSkill(""); setUnitId(""); setScope("FULL_MODULE"); router.refresh();
-    } catch (caught) { setError(scheduleError(caught, st)); }
+      element.reset(); setVersionId(""); setDetail(null); setSkill(""); setUnitId(""); setScope("FULL_MODULE"); setSaved(true);
+      try { const refresh = onCreated ?? sync; if (refresh) await refresh(); else router.refresh(); }
+      catch { setNeedsRefresh(true); setError(at("syncError")); }
+    } catch (caught) { setError(scheduleError(caught, key => { const value = st(key); return value === st("error") ? at("submitError") : value; })); }
     finally { running.current = false; setPending(false); }
   }
-  return <form onSubmit={submit} className="classroom-focused-form classroom-association">
-    <h2>{t("assignment.create")}</h2>
+  async function retryRefresh() {
+    if (running.current) return; running.current = true; setPending(true);
+    try { const refresh = onCreated ?? sync; if (refresh) await refresh(); else router.refresh(); setNeedsRefresh(false); setError(null); }
+    catch { setError(at("syncError")); } finally { running.current = false; setPending(false); }
+  }
+  return <form onSubmit={submit} className="classroom-focused-form classroom-association assignment-create-form" aria-label={at("new")}>
+    <header><h3>{at("new")}</h3><p className="assignment-create-intro">{at("createDescription")}</p></header>
+    <fieldset disabled={pending || needsRefresh}><legend>{at("new")}</legend>
     <label className="field-label">{ct("selectTest")}<select required name="version" className="select-field" disabled={pending} value={versionId} onChange={event => { setVersionId(event.target.value); setDetail(null); setLoadError(false); setSkill(""); setScope("FULL_MODULE"); setUnitId(""); setError(null); }}>
-      <option value="">—</option>{versions.map(version => <option key={version.id} value={version.id}>{version.label}</option>)}
+      <option value="">— {at("choose")} —</option>{versions.map(version => <option key={version.id} value={version.id}>{version.label}</option>)}
     </select></label>
     {versionId && !detail ? <div><p role={loadError ? "alert" : "status"}>{ct(loadError ? "targetError" : "targetLoading")}</p>{loadError ? <button className="classroom-text-button" type="button" onClick={() => { setLoadError(false); setRetry(value => value + 1); }}>{ct("retry")}</button> : null}</div> : null}
     {detail ? <>
@@ -60,9 +73,13 @@ export function AssignmentForm({ classroomId, tests }: { classroomId: string; te
       {selectedModule ? <label className="field-label">{ct("selectScope")}<select className="select-field" value={scope} disabled={pending} onChange={event => { setScope(event.target.value); setUnitId(""); }}><option value="FULL_MODULE">{ct("fullModuleTarget")}</option>{units.length ? <option value="FOCUSED_UNIT">{ct("focusedTarget")}</option> : null}</select></label> : null}
       {selectedModule && scope === "FOCUSED_UNIT" ? <label className="field-label">{ct("selectUnit")}<select className="select-field" required disabled={pending} value={unitId} onChange={event => setUnitId(event.target.value)}><option value="">—</option>{units.map(unit => <option key={unit.id} value={unit.id}>{"partNumber" in unit ? ct("speakingPartTarget", { name: String(unit.partNumber) }) + " / " : ""}{ct(unit.kind, { name: String(unit.number) })}</option>)}</select></label> : null}
     </> : null}
-    <label className="field-label">{t("assignment.name")}<input className="field" name="title" maxLength={240} disabled={pending} /></label>
-    <label className="field-label">{t("assignment.note")}<textarea className="field" name="note" maxLength={2000} disabled={pending} /></label>
+    <label className="field-label">{t("assignment.name")}<input className="field" name="title" maxLength={240} disabled={pending} placeholder={at("namePlaceholder")} /></label>
+    <label className="field-label">{t("assignment.note")}<textarea className="field" name="note" maxLength={2000} disabled={pending} placeholder={at("notePlaceholder")} /></label>
     <details><summary>{st("schedule")}</summary><ScheduleFields /></details>
-    <button className="btn btn-primary" disabled={pending || !target}>{pending ? ct("working") : t("assignment.create")}</button>{error ? <p role="alert">{error}</p> : null}
+    <button className="btn btn-primary assignment-create-submit" disabled={pending || !target}><PlusIcon />{pending ? ct("working") : at("create")}</button>
+    </fieldset>
+    {saved ? <p role="status" className="classroom-meta">{at("saved")}</p> : null}
+    {error ? <p role="alert" className="notice notice-error">{error}</p> : null}
+    {needsRefresh ? <button className="btn btn-secondary" type="button" disabled={pending} onClick={() => void retryRefresh()}>{at("retry")}</button> : null}
   </form>;
 }

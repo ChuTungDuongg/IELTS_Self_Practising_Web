@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
 import { renderWithLocale } from "./locale-test-utils";
 import { AssignmentForm } from "@/features/classrooms/assignment-form";
@@ -36,4 +36,92 @@ it("starts a targeted assignment without allowing unrelated skill or unit select
   fireEvent.click(screen.getByRole("button", { name: "Start assignment" }));
   await waitFor(() => expect(api.startAssignment).toHaveBeenCalledWith("a", expect.objectContaining({ module: "WRITING", scope: "FOCUSED_UNIT", focused_unit: { kind: "WRITING_TASK", id: "task2" } })));
   expect(api.push).toHaveBeenCalledWith("/attempt/attempt");
+});
+
+async function chooseWriting() {
+  fireEvent.change(screen.getByLabelText("Test"), { target: { value: "eligible" } });
+  await screen.findByLabelText("Assigned skill");
+  fireEvent.change(screen.getByLabelText("Assigned skill"), { target: { value: "WRITING" } });
+}
+
+it("keeps all schedule policies in a disclosure and submits aware timestamps with the selected target", async () => {
+  const changed = vi.fn().mockResolvedValue(undefined);
+  const { container } = renderWithLocale(<AssignmentForm classroomId="room" tests={tests} onCreated={changed} />);
+  await chooseWriting();
+  const disclosure = container.querySelector("details")!;
+  expect(disclosure).not.toHaveAttribute("open");
+  fireEvent.click(disclosure.querySelector("summary")!);
+  fireEvent.change(screen.getByLabelText("Available from"), { target: { value: "2026-11-01T09:00" } });
+  fireEvent.change(screen.getByLabelText("Due date"), { target: { value: "2026-11-03T09:00" } });
+  fireEvent.change(screen.getByLabelText("Hard cut-off"), { target: { value: "2026-11-04T09:00" } });
+  fireEvent.change(screen.getByLabelText("Maximum starts"), { target: { value: "3" } });
+  fireEvent.click(screen.getByLabelText("Allow late submissions"));
+  fireEvent.click(screen.getByRole("button", { name: "Create assignment" }));
+  await screen.findByText("Assignment created.");
+  expect(api.createAssignment).toHaveBeenCalledWith("room", expect.objectContaining({
+    available_from: new Date("2026-11-01T09:00").toISOString(), due_at: new Date("2026-11-03T09:00").toISOString(), cutoff_at: new Date("2026-11-04T09:00").toISOString(), max_attempts: 3, allow_late_submission: false,
+    target: { mode: "MODULE", module: "WRITING", scope: "FULL_MODULE" },
+  }));
+  expect(changed).toHaveBeenCalledOnce(); expect(api.refresh).not.toHaveBeenCalled();
+});
+
+it("prevents duplicate writes while pending and retries only refresh after creation succeeds", async () => {
+  let finish!: (value: object) => void;
+  api.createAssignment.mockReturnValue(new Promise(resolve => { finish = resolve; }));
+  const changed = vi.fn().mockRejectedValueOnce(new Error("offline")).mockResolvedValue(undefined);
+  const { container } = renderWithLocale(<AssignmentForm classroomId="room" tests={tests} onCreated={changed} />);
+  await chooseWriting();
+  fireEvent.submit(container.querySelector("form")!); fireEvent.submit(container.querySelector("form")!);
+  expect(api.createAssignment).toHaveBeenCalledOnce();
+  expect(screen.getByRole("button", { name: "Saving…" })).toBeDisabled();
+  await act(async () => finish({}));
+  expect(await screen.findByRole("alert")).toHaveTextContent("was created");
+  fireEvent.submit(container.querySelector("form")!); expect(api.createAssignment).toHaveBeenCalledOnce();
+  fireEvent.click(screen.getByRole("button", { name: "Retry loading" }));
+  await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+  expect(changed).toHaveBeenCalledTimes(2); expect(api.createAssignment).toHaveBeenCalledOnce();
+});
+
+it("preserves selected target after an API error and rejects invalid schedules before writing", async () => {
+  api.createAssignment.mockRejectedValueOnce(new Error("offline"));
+  const { container } = renderWithLocale(<AssignmentForm classroomId="room" tests={tests} />);
+  await chooseWriting();
+  fireEvent.click(screen.getByRole("button", { name: "Create assignment" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("Could not create");
+  expect(screen.getByLabelText("Assigned skill")).toHaveValue("WRITING");
+  fireEvent.change(screen.getByLabelText("Due date"), { target: { value: "2026-11-03T09:00" } });
+  fireEvent.change(screen.getByLabelText("Hard cut-off"), { target: { value: "2026-11-02T09:00" } });
+  fireEvent.submit(container.querySelector("form")!);
+  expect(screen.getByRole("alert")).toHaveTextContent("Check date ordering");
+  expect(api.createAssignment).toHaveBeenCalledOnce();
+});
+
+const moduleBase = { ...detail.modules[0], writing_tasks: undefined };
+const otherModules: VersionDetail["modules"] = [
+  { ...moduleBase, id: "r", module_type: "READING", reading_passages: [{ id: "passage2", title: "Fictional passage", order_index: 1, question_groups: [] }] },
+  { ...moduleBase, id: "l", module_type: "LISTENING", listening_sections: [{ id: "part3", title: null, order_index: 2, question_groups: [] }] },
+  { ...moduleBase, id: "s", module_type: "SPEAKING", speaking_parts: [{ id: "part", part_number: 2, order_index: 1, title: null, prompts: [{ id: "prompt1", order_index: 0, prompt_type: "LONG_TURN", prompt_text: "Fictional prompt", cue_points: [] }] }] },
+];
+
+it.each([ ["READING", "passage2", "READING_PASSAGE"], ["LISTENING", "part3", "LISTENING_PART"], ["SPEAKING", "prompt1", "SPEAKING_PROMPT"] ])("uses actual %s focused-unit IDs and requires a unit selection", async (skill, id, kind) => {
+  api.assignmentVersion.mockResolvedValue({ ...detail, modules: otherModules });
+  renderWithLocale(<AssignmentForm classroomId="room" tests={tests} />);
+  fireEvent.change(screen.getByLabelText("Test"), { target: { value: "eligible" } }); await screen.findByLabelText("Assigned skill");
+  fireEvent.change(screen.getByLabelText("Assigned skill"), { target: { value: skill } });
+  fireEvent.change(screen.getByLabelText("Assignment scope"), { target: { value: "FOCUSED_UNIT" } });
+  expect(screen.getByRole("button", { name: "Create assignment" })).toBeDisabled();
+  fireEvent.change(screen.getByLabelText("Assigned unit"), { target: { value: id } });
+  fireEvent.click(screen.getByRole("button", { name: "Create assignment" }));
+  await waitFor(() => expect(api.createAssignment).toHaveBeenCalledWith("room", expect.objectContaining({ target: { mode: "MODULE", module: skill, scope: "FOCUSED_UNIT", focused_unit: { id, kind } } })));
+});
+
+it("offers Full Mock only when every actual module has a valid duration", async () => {
+  api.assignmentVersion.mockResolvedValue({ ...detail, modules: [...detail.modules, ...otherModules] });
+  renderWithLocale(<AssignmentForm classroomId="room" tests={tests} />);
+  fireEvent.change(screen.getByLabelText("Test"), { target: { value: "eligible" } }); await screen.findByLabelText("Assigned skill");
+  expect(screen.getByRole("option", { name: "Full Mock" })).toBeEnabled();
+  fireEvent.change(screen.getByLabelText("Assigned skill"), { target: { value: "FULL_MOCK" } });
+  expect(screen.queryByLabelText("Assigned unit")).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Create assignment" }));
+  await waitFor(() => expect(api.createAssignment).toHaveBeenCalledWith("room", expect.objectContaining({ target: { mode: "FULL_MOCK" } })));
 });
