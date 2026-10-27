@@ -49,7 +49,7 @@ export async function ClassroomDetailPage({ params, searchParams }: {
     <ClassroomMetadata classroom={classroom} />
     <ClassroomMembershipActions classroom={classroom} canManage={canManage} isAdmin={user.role === "ADMIN"} />
     <ClassroomWorkspace key={`${classroomId}-${user.id}-${user.role}-${selectedPostId ?? "feed"}-${selectedAssignmentId ?? ""}`} classroom={classroom} user={{ id: user.id, role: user.role }} assignments={assignments} canManage={canManage} selectedPostId={selectedPostId} selectedAssignmentId={selectedAssignmentId}
-      people={canManage ? <ClassroomManagement classroom={classroom} members={members} invitations={invitations} /> : undefined}
-      assignmentForm={canManage && classroom.status === "ACTIVE" ? <AssignmentForm classroomId={classroomId} tests={tests.filter(test => test.origin !== "TEACHER" || test.owner_user_id === classroom.teacher_id)} /> : undefined} />
+      people={canManage ? <ClassroomManagement key="classroom-management" classroom={classroom} members={members} invitations={invitations} /> : undefined}
+      assignmentForm={canManage && classroom.status === "ACTIVE" ? <AssignmentForm key="assignment-form" classroomId={classroomId} tests={tests.filter(test => test.origin !== "TEACHER" || test.owner_user_id === classroom.teacher_id)} /> : undefined} />
   </>;
 }
