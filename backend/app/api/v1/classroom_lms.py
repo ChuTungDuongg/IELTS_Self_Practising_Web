@@ -91,11 +91,19 @@ async def assignable_tests(classroom_id: UUID, user: CurrentUser, session: Sessi
             test = version.test
             if test.id not in grouped:
                 grouped[test.id] = TestSummary(
-                    **{
-                        key: getattr(test, key)
-                        for key in TestSummary.model_fields
-                        if key not in {"versions", "owner_display_name"}
-                    },
+                    # Response-only fields (such as catalog enrichment) are not
+                    # ORM attributes. Copy persisted metadata explicitly and keep
+                    # versions limited to the authorized query above.
+                    id=test.id,
+                    owner_user_id=test.owner_user_id,
+                    origin=test.origin,
+                    title=test.title,
+                    description=test.description,
+                    source_label=test.source_label,
+                    test_number=test.test_number,
+                    archived_at=test.archived_at,
+                    created_at=test.created_at,
+                    updated_at=test.updated_at,
                     versions=[],
                 )
             grouped[test.id].versions.append(VersionSummary.model_validate(version))
