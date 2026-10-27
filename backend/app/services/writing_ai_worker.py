@@ -65,10 +65,7 @@ class WritingAIWorker:
         task.add_done_callback(discard)
 
     def cancel(self, run_id: UUID) -> None:
-        task = _tasks.get(run_id)
-        if task and not task.done():
-            logger.info("AI grading worker cancellation: source=explicit_user")
-            task.cancel()
+        cancel_writing_ai_worker(run_id)
 
     async def execute(self, run_id: UUID) -> None:
         heartbeat = None
@@ -329,6 +326,13 @@ class WritingAIWorker:
                     )
         except Exception:
             pass
+
+
+def cancel_writing_ai_worker(run_id: UUID, *, source="explicit_user") -> None:
+    task = _tasks.get(run_id)
+    if task and not task.done():
+        logger.info("AI grading worker cancellation: source=%s", source)
+        task.cancel()
 
 
 async def stop_writing_ai_workers() -> None:

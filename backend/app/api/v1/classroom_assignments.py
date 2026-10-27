@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import CurrentUser
@@ -29,9 +29,13 @@ async def delete_assignment(
     classroom_id: UUID,
     assignment_id: UUID,
     user: CurrentUser,
+    background: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
 ):
     await ClassroomAssignmentService(session, user).delete(classroom_id, assignment_id)
+    from app.services.speaking_media import cleanup_private_media
+
+    background.add_task(cleanup_private_media)
 
 
 @router.get("/classrooms/{classroom_id}/assignments", response_model=list[AssignmentResponse])

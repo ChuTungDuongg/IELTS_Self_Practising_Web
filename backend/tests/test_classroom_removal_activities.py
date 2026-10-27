@@ -58,7 +58,7 @@ async def test_removal_requires_scoped_content_capability(db_session, course, ac
         }
 
 
-async def test_resource_delete_is_scoped_and_rejects_post_references(db_session, course):
+async def test_resource_delete_is_scoped_and_detaches_post_references(db_session, course):
     base = endpoint(course["room"])
     async with api_client(db_session, course["teacher"]) as client:
         resource = await create_resource(client, base)
@@ -74,8 +74,11 @@ async def test_resource_delete_is_scoped_and_rejects_post_references(db_session,
             },
         )
         assert post.status_code == 201
-        blocked = await client.delete(base + "/resources/" + resource["id"])
-        assert (blocked.status_code, blocked.json()["code"]) == (409, "RESOURCE_REFERENCED")
+        removed = await client.delete(base + "/resources/" + resource["id"])
+        assert removed.status_code == 200, removed.text
+        retained = await client.get(base + "/posts/" + post.json()["id"])
+        assert retained.status_code == 200
+        assert retained.json()["resource_ids"] == []
 
 
 async def test_unreferenced_resource_is_deleted_without_broken_placement(db_session, course):
@@ -215,7 +218,9 @@ async def test_archived_resource_disappears_from_default_feed(db_session, course
         assert len(archived) == 1 and archived[0]["id"] == resource["id"]
 
 
-async def test_resource_used_by_learning_plan_cannot_be_deleted(db_session, course):
+async def test_resource_delete_removes_plan_reference_and_invalidates_plan_revision(
+    db_session, course
+):
     from app.models.classroom_learning import ClassroomLearningPlan, ClassroomLearningPlanItem
 
     base = endpoint(course["room"])
@@ -243,7 +248,18 @@ async def test_resource_used_by_learning_plan_cannot_be_deleted(db_session, cour
         )
     async with api_client(db_session, course["teacher"]) as client:
         response = await client.delete(base + "/resources/" + resource["id"])
-        assert (response.status_code, response.json()["code"]) == (409, "RESOURCE_REFERENCED")
+        assert response.status_code == 200, response.text
+    async with db_session.begin():
+        await db_session.refresh(plan)
+        assert plan.revision == 2
+        assert await db_session.get(ClassroomResource, UUID(resource["id"])) is None
+        assert not (
+            await db_session.scalars(
+                select(ClassroomLearningPlanItem).where(
+                    ClassroomLearningPlanItem.plan_id == plan.id
+                )
+            )
+        ).all()
 
 
 async def test_file_deletion_cleans_storage_only_after_safe_removal(
@@ -284,7 +300,7 @@ async def test_delete_detects_stale_revision_and_archived_classroom(db_session, 
         assert (response.status_code, response.json()["code"]) == (409, "CLASSROOM_ARCHIVED")
 
 
-async def test_remove_reference_preserves_attempts_and_protects_canonical_assignment(db_session):
+async def test_remove_reference_preserves_attempts_but_permanent_delete_erases_them(db_session):
     from app.models import Attempt, ClassroomAssignment
     from app.schemas.classroom_assignments import AssignmentCreate, AssignmentStart
     from app.services.classroom_assignments import ClassroomAssignmentService
@@ -306,11 +322,6 @@ async def test_remove_reference_preserves_attempts_and_protects_canonical_assign
         removed = await client.delete(base + "/items/" + item["id"])
         assert removed.status_code == 200, removed.text
         assert str(assigned.id) in removed.json()["removed_assignment_ids"]
-        blocked = await client.delete(base + "/assignments/" + str(assigned.id))
-        assert (blocked.status_code, blocked.json()["code"]) == (
-            409,
-            "ASSIGNMENT_HISTORY_PROTECTED",
-        )
         restored = await client.post(
             base + "/items", json={"assignment_id": str(assigned.id), "section_id": None}
         )
@@ -318,11 +329,22 @@ async def test_remove_reference_preserves_attempts_and_protects_canonical_assign
     async with db_session.begin():
         assert await db_session.get(Attempt, started.attempt_id)
         assert await db_session.get(ClassroomAssignment, assigned.id)
+    async with api_client(db_session, owner) as client:
+        deleted = await client.delete(base + "/assignments/" + str(assigned.id))
+        assert deleted.status_code == 204, deleted.text
+    async with db_session.begin():
+        assert (
+            await db_session.scalar(select(Attempt).where(Attempt.id == started.attempt_id)) is None
+        )
+        assert (
+            await db_session.scalar(
+                select(ClassroomAssignment).where(ClassroomAssignment.id == assigned.id)
+            )
+            is None
+        )
 
 
-async def test_canonical_delete_is_real_only_for_a_legacy_assignment_without_protected_history(
-    db_session, course
-):
+async def test_canonical_delete_removes_assignment_and_placement(db_session, course):
     from app.models import ClassroomAssignment
     from tests.test_classroom_classwork import make_assignment
 

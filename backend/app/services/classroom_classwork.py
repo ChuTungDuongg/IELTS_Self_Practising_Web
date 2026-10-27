@@ -12,7 +12,6 @@ from app.core.config import get_settings
 from app.core.exceptions import AppError
 from app.models import ClassroomAssignment
 from app.models.classroom_classwork import ClassroomContentItem, ClassroomResource, ClassroomSection
-from app.models.classroom_learning import ClassroomLearningPlanItem
 from app.models.classroom_posts import ClassroomPostResource
 from app.repositories.classroom_classwork import ClassworkRepository
 from app.schemas.classroom_classwork import (
@@ -306,15 +305,16 @@ class ClassworkService:
             if expected_revision is not None:
                 self._revision(room, expected_revision)
             resource = await self._resource(room, resource_id)
-            for model in (ClassroomPostResource, ClassroomLearningPlanItem):
-                if await self.session.scalar(
-                    select(model.resource_id).where(model.resource_id == resource.id).limit(1)
-                ):
-                    raise AppError(
-                        "RESOURCE_REFERENCED",
-                        "This resource is referenced by a post or learning plan. Remove those references first, or archive it.",
-                        409,
-                    )
+            from app.services.classroom_deletion import remove_plan_references
+
+            await remove_plan_references(
+                self.session, room.id, self.access.actor.id, resource_id=resource.id
+            )
+            await self.session.execute(
+                delete(ClassroomPostResource).where(
+                    ClassroomPostResource.resource_id == resource.id
+                )
+            )
             key = resource.storage_key
             await self.session.execute(
                 delete(ClassroomContentItem).where(

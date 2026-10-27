@@ -174,16 +174,14 @@ async def test_missing_or_cross_classroom_assignment_cannot_be_restored():
         Notification,
     ],
 )
-async def test_every_protected_history_kind_still_blocks_permanent_deletion(protected):
+async def test_history_references_no_longer_block_authorized_permanent_deletion(protected):
     owner = actor()
     room = classroom(owner)
     row = assignment(room)
     service, session = services(owner, room, row, protected=protected)
-    with pytest.raises(AppError) as error:
-        await service.delete(room.id, row.id)
-    assert error.value.code == "ASSIGNMENT_HISTORY_PROTECTED"
-    session.delete.assert_not_awaited()
-    session.execute.assert_not_awaited()
+    await service.delete(room.id, row.id)
+    session.delete.assert_awaited_once_with(row)
+    assert room.content_revision == 8
 
 
 async def test_safe_removal_without_a_placement_retains_canonical_assignment():

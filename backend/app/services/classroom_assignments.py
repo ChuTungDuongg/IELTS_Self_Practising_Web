@@ -284,15 +284,10 @@ class ClassroomAssignmentService:
         return response
 
     async def delete(self, classroom_id, assignment_id):
-        from sqlalchemy import delete
-
-        from app.models import Attempt, Notification, TestSession
-        from app.models.assignment_scheduling import (
-            AssignmentPolicyEvent,
-            ClassroomAssignmentExtension,
+        from app.services.classroom_deletion import (
+            cancel_deleted_assignment_workers,
+            delete_assignment_data,
         )
-        from app.models.classroom_classwork import ClassroomContentItem
-        from app.models.classroom_learning import ClassroomLearningPlanItem
 
         async with self.session.begin():
             await self.policy.lock_actor()
@@ -300,31 +295,13 @@ class ClassroomAssignmentService:
             await require_capability(self.session, self.policy.actor, room, Capability.ASSIGNMENTS)
             self._active(room)
             assignment = await self._assignment(classroom_id, assignment_id, locked=True)
-            for column in (
-                Attempt.classroom_assignment_id,
-                TestSession.classroom_assignment_id,
-                AssignmentPolicyEvent.assignment_id,
-                ClassroomAssignmentExtension.assignment_id,
-                ClassroomLearningPlanItem.assignment_id,
-                Notification.entity_id,
-            ):
-                if await self.session.scalar(
-                    select(column).where(column == assignment.id).limit(1)
-                ):
-                    raise AppError(
-                        "ASSIGNMENT_HISTORY_PROTECTED",
-                        "This assignment has protected student, policy, notification or learning-plan history. Archive it or remove its Classwork reference instead.",
-                        409,
-                    )
-            await self.session.execute(
-                delete(ClassroomContentItem).where(
-                    ClassroomContentItem.classroom_id == room.id,
-                    ClassroomContentItem.assignment_id == assignment.id,
-                )
+            workers = await delete_assignment_data(
+                self.session, room, assignment, self.policy.actor.id
             )
             await self.session.delete(assignment)
             room.content_revision += 1
             await self.session.flush()
+        cancel_deleted_assignment_workers(workers)
 
     async def _classroom(self, classroom_id, *, locked=False):
         statement = (

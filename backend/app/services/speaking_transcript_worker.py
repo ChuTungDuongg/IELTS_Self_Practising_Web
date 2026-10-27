@@ -292,6 +292,12 @@ class SpeakingTranscriptWorker:
             self.launch(run_id)
 
 
+def cancel_speaking_transcript_worker(run_id):
+    task = _tasks.get(run_id)
+    if task and not task.done():
+        task.cancel()
+
+
 async def stop_speaking_transcript_workers():
     tasks = list(_tasks.values())
     for task in tasks:

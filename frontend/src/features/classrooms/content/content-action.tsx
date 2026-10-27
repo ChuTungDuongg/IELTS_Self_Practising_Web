@@ -8,7 +8,6 @@ import { useContentTranslation, type ContentMessage } from "./content-messages";
 export function contentError(error: unknown, fallback: string) { return error instanceof ApiError ? error.message : fallback; }
 export function contentActionError(error: unknown, ct: (key: ContentMessage) => string) {
   const messages: Partial<Record<string, ContentMessage>> = {
-    ASSIGNMENT_HISTORY_PROTECTED: "assignmentProtected", RESOURCE_REFERENCED: "resourceReferenced",
     CLASSROOM_ARCHIVED: "archivedRoom", CLASSROOM_CAPABILITY_REQUIRED: "permissionRequired", CLASSROOM_OWNERSHIP_REQUIRED: "permissionRequired",
     CLASSROOM_OBSERVER_READ_ONLY: "readOnly",
     ASSIGNMENT_NOT_ACCESSIBLE: "assignmentUnavailable", ASSIGNMENT_NOT_FOUND: "assignmentUnavailable",

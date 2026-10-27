@@ -59,20 +59,18 @@ it("confirms expired restoration without silently editing the schedule or losing
   expect(old.due_at).toBe("2000-01-01T00:00:00Z");
 });
 
-it("explains protected deletion and offers persistent safe removal even without a placement", async () => {
-  assignmentsApi.deleteAssignment.mockRejectedValue(new ApiError("ASSIGNMENT_HISTORY_PROTECTED", "Backend detail", 409));
+it("confirms permanent deletion includes student attempts and scores without a protected-history detour", async () => {
   const onChanged = vi.fn().mockResolvedValue(undefined);
   renderWithLocale(<ArchivedAssignmentActions assignment={assignment("old", "ARCHIVED")} onChanged={onChanged} />);
   fireEvent.click(screen.getByRole("button", { name: "Delete permanently" }));
-  fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Delete permanently" }));
-  expect(await screen.findByRole("alert")).toHaveTextContent("protected attempts, policy, notification or learning-plan history");
-  expect(onChanged).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole("button", { name: "Remove from Classwork" }));
-  expect(screen.getByRole("dialog")).toHaveTextContent("all submissions, deadlines and grades preserved");
-  fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Remove from Classwork" }));
+  const dialog = screen.getByRole("dialog");
+  expect(dialog).toHaveTextContent("all student attempts, scores");
+  expect(dialog).toHaveTextContent("cannot be undone");
+  expect(assignmentsApi.deleteAssignment).not.toHaveBeenCalled();
+  fireEvent.click(within(dialog).getByRole("button", { name: "Delete permanently" }));
   await waitFor(() => expect(onChanged).toHaveBeenCalledOnce());
-  expect(api.removeAssignmentReference).toHaveBeenCalledExactlyOnceWith("room", "old");
-  expect(assignmentsApi.deleteAssignment).toHaveBeenCalledOnce();
+  expect(api.removeAssignmentReference).not.toHaveBeenCalled();
+  expect(assignmentsApi.deleteAssignment).toHaveBeenCalledExactlyOnceWith("room", "old");
 });
 
 it("guards duplicate restore requests and retries synchronization without repeating a saved mutation", async () => {
