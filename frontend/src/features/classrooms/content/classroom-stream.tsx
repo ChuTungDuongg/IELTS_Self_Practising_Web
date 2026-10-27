@@ -7,14 +7,14 @@ import { contentError } from "./content-action";
 import { PostComposer } from "./post-composer";
 import { PostCard } from "./post-card";
 import { useLmsText } from "../lms/messages";
-export function ClassroomStream({ classroomId, resources, userId, canAuthor, canInspect, archived, admin, onOpenAssignment, selectedPostId = null }: {
-  classroomId: string; resources: ClassroomResource[]; userId: string; canAuthor: boolean; canInspect: boolean; archived: boolean; admin: boolean; onOpenAssignment: (id: string) => void; selectedPostId?: string | null;
+export function ClassroomStream({ classroomId, resources, userId, canAuthor, canModerate = canAuthor, canInspect, archived, admin, onOpenAssignment, initialCompose = false, selectedPostId = null }: {
+  classroomId: string; resources: ClassroomResource[]; userId: string; canAuthor: boolean; canModerate?: boolean; initialCompose?: boolean; canInspect: boolean; archived: boolean; admin: boolean; onOpenAssignment: (id: string) => void; selectedPostId?: string | null;
 }) {
   const { ct } = useContentTranslation();
   const { lt } = useLmsText();
   const [kind, setKind] = useState<ClassroomPost["kind"] | "">("");
   const [items, setItems] = useState<ClassroomPost[]>([]), [cursor, setCursor] = useState<string | null>(null), [status, setStatus] = useState<ContentStatus | "">("");
-  const [loading, setLoading] = useState(true), [error, setError] = useState<string | null>(null), [composing, setComposing] = useState(false), [selected, setSelected] = useState<ClassroomPost | null>(null);
+  const [loading, setLoading] = useState(true), [error, setError] = useState<string | null>(null), [composing, setComposing] = useState(initialCompose), [selected, setSelected] = useState<ClassroomPost | null>(null);
   const requestId = useRef(0);
   const load = useCallback(async (next?: string, signal?: AbortSignal) => {
     const sequence = ++requestId.current; setLoading(true); setError(null);
@@ -36,7 +36,7 @@ export function ClassroomStream({ classroomId, resources, userId, canAuthor, can
     {loading && !shown.length ? <div className="classroom-panel classroom-skeleton" role="status"><p>{ct("loading")}</p><div /><div /></div> : null}
     {error ? <div className="classroom-panel"><p className="notice notice-error" role="alert">{error}</p><button className="btn btn-secondary" type="button" disabled={loading} onClick={() => void load()}>{ct("retry")}</button></div> : null}
     {!loading && !error && !shown.length ? <p className="classroom-empty">{ct("emptyFeed")}</p> : null}
-    {shown.map(post => <PostCard key={post.id} classroomId={classroomId} post={post} resources={resources} userId={userId} canAuthor={canAuthor} archived={archived} admin={admin} onRefresh={refresh} onOpenAssignment={onOpenAssignment} initialComments={post.id === activeSelection?.id} />)}
+    {shown.map(post => <PostCard key={post.id} classroomId={classroomId} post={post} resources={resources} userId={userId} canAuthor={canAuthor} canModerate={canModerate} archived={archived} admin={admin} onRefresh={refresh} onOpenAssignment={onOpenAssignment} initialComments={post.id === activeSelection?.id} />)}
     {cursor ? <button type="button" className="btn btn-secondary" disabled={loading} onClick={() => void load(cursor)}>{ct("loadMore")}</button> : null}
   </section>;
 }

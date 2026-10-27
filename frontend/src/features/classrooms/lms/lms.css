@@ -8,6 +8,49 @@
 .classroom-menu { position:relative; font-size:14px; }
 .classroom-menu summary { cursor:pointer; padding:8px; }
 .classroom-menu > div { position:absolute; z-index:20; right:0; min-width:240px; background:var(--surface); border:1px solid var(--line); border-radius:6px; padding:16px; display:grid; gap:12px; box-shadow:0 8px 24px #0002; }
+.classroom-menu > div > button { text-align:left; padding:8px; cursor:pointer; border-radius:4px; }
+.classroom-menu > div > button:hover { background:var(--surface-hover); }
+.classroom-menu-primary > summary { background:var(--ink); color:var(--surface); border-radius:6px; padding:10px 16px; }
+.classroom-workspace { max-width:1280px; margin-inline:auto; }
+.classroom-workspace :is(section,article,details,fieldset,form) { min-width:0; }
+.classroom-workspace :is(h1,h2,h3,h4,p,a,summary) { overflow-wrap:anywhere; }
+.classroom-topic-title { display:flex; gap:12px; align-items:center; list-style:revert; }
+.classroom-topic-title::before { content:"›"; font-size:20px; transform:rotate(90deg); }
+.classroom-course-section:not([open]) > .classroom-topic-title::before { transform:none; }
+.classroom-workspace .classroom-course-section > .classroom-section-heading { margin-bottom:0; }
+.classroom-workspace .classroom-topic-title h3 { flex:1; }
+.classroom-workspace .classroom-classwork-row { padding-block:12px; }
+.classroom-workspace .classroom-item-controls { margin-top:0; }
+.classroom-workspace .classroom-item-controls[open] { padding-bottom:12px; }
+.classroom-workspace .classroom-empty { border:0; background:var(--surface-soft); color:var(--ink-soft); }
+.classroom-workspace .classroom-post { padding:16px 20px; }
+.classroom-workspace .classroom-post h3 { font-size:18px; }
+.classroom-feed-kind { font-size:13px; font-weight:500; }
+.classroom-post-status { display:flex; gap:8px; flex-wrap:wrap; }
+.classroom-assignment-list { display:grid; gap:0; }
+.classroom-workspace .classroom-assignment-row { padding:16px 20px; }
+.lms-analytics > section, .lms-plans { margin-block:24px; }
+.lms-insight-grid { display:grid; grid-template-columns:minmax(0,2fr) minmax(250px,1fr); gap:24px; align-items:start; }
+.lms-skill-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
+.lms-skill { padding-block:12px; border-bottom:1px solid var(--line); }
+.lms-skill strong { font-size:22px; font-weight:500; font-variant-numeric:tabular-nums; }
+.lms-trend { width:100%; max-height:150px; margin-top:8px; overflow:visible; }
+.lms-trend text { fill:var(--ink-soft); font-size:12px; }
+.lms-trend line { stroke:var(--line); stroke-width:1; }
+.lms-trend polyline { fill:none; stroke:var(--accent); stroke-width:2; }
+.lms-table-scroll { overflow:auto; max-width:100%; }
+.lms-data-table { border-collapse:collapse; width:100%; font-size:14px; }
+.lms-data-table :is(th,td) { padding:12px; border-bottom:1px solid var(--line); text-align:right; font-variant-numeric:tabular-nums; vertical-align:top; }
+.lms-data-table th { font-weight:500; }
+.lms-data-table :is(th,td):first-child, .lms-data-table :is(th,td):nth-child(2) { text-align:left; }
+.lms-filters fieldset { display:flex; flex-wrap:wrap; gap:12px; }
+.lms-filters legend { font-size:14px; margin-bottom:8px; }
+.lms-view-switch { margin-bottom:12px; }
+.lms-form fieldset { max-height:320px; overflow:auto; padding:12px; border:1px solid var(--line); }
+.classroom-workspace .classroom-assignment-row > div > label { max-width:400px; }
+@media (max-width:1024px) { .lms-insight-grid { grid-template-columns:minmax(0,1fr); } }
+@media (max-width:768px) { .lms-data-table :is(th,td) { padding:10px 8px; } .classroom-menu > div { min-width:220px; max-width:calc(100vw - 48px); } }
+@media (max-width:480px) { .lms-skill-grid { grid-template-columns:minmax(0,1fr); } .classroom-section-heading > .classroom-menu { margin-left:auto; } .classroom-header-actions > .classroom-menu:first-child > div { left:0; right:auto; } .classroom-menu > div > button { min-height:44px; } .lms-filters fieldset { width:100%; } .lms-data-table { min-width:560px; } .classroom-workspace :is(input,select,textarea) { font-size:16px; } }
 .classroom-workspace .classroom-columns { display:block; }
 .classroom-workspace .classroom-tabs { margin:0 0 20px; gap:24px; flex-wrap:nowrap; max-width:100%; }
 .classroom-workspace .classroom-panel { margin-bottom:16px; padding:16px 20px; border-radius:8px; }

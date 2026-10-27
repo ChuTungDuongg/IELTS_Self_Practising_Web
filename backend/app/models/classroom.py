@@ -93,7 +93,10 @@ class ClassroomAssignment(UUIDPrimaryKeyMixin, Base):
     __tablename__ = "classroom_assignments"
     __table_args__ = (
         UniqueConstraint("classroom_id", "id"),
-        CheckConstraint("grade_selection IN ('LATEST_ACCEPTED','FIRST_ACCEPTED','BEST_ACCEPTED')", name="grade_selection"),
+        CheckConstraint(
+            "grade_selection IN ('LATEST_ACCEPTED','FIRST_ACCEPTED','BEST_ACCEPTED')",
+            name="ck_classroom_assignments_grade_selection",
+        ),
         Index("ix_classroom_assignments_feed", "classroom_id", "status", "created_at", "id"),
         CheckConstraint("max_attempts IS NULL OR max_attempts >= 1", name="max_attempts"),
         CheckConstraint(
@@ -127,7 +130,9 @@ class ClassroomAssignment(UUIDPrimaryKeyMixin, Base):
         Boolean, default=True, server_default="true"
     )
     policy_revision: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
-    grade_selection: Mapped[str] = mapped_column(String(24), default="LATEST_ACCEPTED", server_default="LATEST_ACCEPTED")
+    grade_selection: Mapped[str] = mapped_column(
+        String(24), default="LATEST_ACCEPTED", server_default="LATEST_ACCEPTED"
+    )
     status: Mapped[AssignmentStatus] = mapped_column(
         Enum(AssignmentStatus, name="assignment_status"), default=AssignmentStatus.ACTIVE
     )

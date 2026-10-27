@@ -814,8 +814,14 @@ class AttemptService:
             )
             response = self._present_writing_attempt_review(await self.review(attempt_id))
             from app.services.grading_policy import record_human_grade
-            record_human_grade(self.session, attempt, resolve_actor(self.session, self.grading_actor), body,
-                               writing_task_id=writing_task_id)
+
+            record_human_grade(
+                self.session,
+                attempt,
+                resolve_actor(self.session, self.grading_actor),
+                body,
+                writing_task_id=writing_task_id,
+            )
             await self._set_grading(response, attempt_id)
         return response
 

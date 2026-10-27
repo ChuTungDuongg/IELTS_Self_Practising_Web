@@ -1,6 +1,5 @@
 from app.models.assignment_scheduling import AssignmentPolicyEvent, ClassroomAssignmentExtension
 from app.models.base import Base
-from app.models.classroom_staff import ClassroomStaff, ClassroomStaffEvent
 from app.models.classroom import (
     Classroom,
     ClassroomAssignment,
@@ -8,7 +7,9 @@ from app.models.classroom import (
     ClassroomMembership,
 )
 from app.models.classroom_classwork import ClassroomContentItem, ClassroomResource, ClassroomSection
+from app.models.classroom_learning import ClassroomLearningPlan, ClassroomLearningPlanItem
 from app.models.classroom_posts import ClassroomComment, ClassroomPost, ClassroomPostResource
+from app.models.classroom_staff import ClassroomStaff, ClassroomStaffEvent
 from app.models.content_governance import TestVersionModeration
 from app.models.entities import (
     Asset,
@@ -60,6 +61,8 @@ from app.models.writing_ai import (
 from app.models.writing_benchmark import WritingBenchmarkSample
 
 __all__ = [
+    "ClassroomLearningPlan",
+    "ClassroomLearningPlanItem",
     "ClassroomStaff",
     "ClassroomStaffEvent",
     "AssignmentPolicyEvent",

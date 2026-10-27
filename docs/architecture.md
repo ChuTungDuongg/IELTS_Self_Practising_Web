@@ -12,6 +12,7 @@ BandPilot is a modular monolith. Next.js renders the frontend and calls FastAPI 
 - Transfer import validates the archive, manifest, graph, checksums and content before persistence. Source-to-import ID mapping is isolated in `transfer_ids.py`; `TransferService` still owns the database transaction and compensating asset cleanup. Keep the transfer format compatible.
 - AI provider integrations live under `backend/app/providers/`. Writing and Speaking workers run provider work outside HTTP requests and persist durable checkpoints through their services and repositories. AI feedback is advisory; it does not replace server-side objective grading or authorized human final scores.
 - Classroom staff capabilities resolve separately from global roles in `classroom_capabilities.py`. Keep Builder ownership/moderation in AccessPolicy. Gradebook and learning analytics share P2 root acceptance/status SQL and native final-score provenance; neither is a second exam/scoring lifecycle. Roster pages, matrix columns, charts and exports must remain bounded and authorized per request.
+- P4 aggregate SQL lives in `repositories/classroom_learning.py`; `ClassroomLearningService` resolves scoped dashboards and deterministic evidence/recommendations. `LearningPlanService` manages normalized references to existing activities, not attempts. Reuse profile skill targets and the optional explicit overall target. See [analytics definitions and API](classroom-learning-analytics.md) and [Classroom workspace design](classroom-workspace.md).
 
 ## Frontend styling
 

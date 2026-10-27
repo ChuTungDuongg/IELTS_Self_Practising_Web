@@ -21,7 +21,9 @@ class ContentAccess:
     def staff(self, room: Classroom) -> bool:
         return Capability.GRADES_VIEW in self.capabilities
 
-    async def room(self, classroom_id: UUID, *, mutation=False, owner=False, capability=Capability.CONTENT) -> Classroom:
+    async def room(
+        self, classroom_id: UUID, *, mutation=False, owner=False, capability=Capability.CONTENT
+    ) -> Classroom:
         if mutation:
             await self.classrooms._lock_actor()
         else:

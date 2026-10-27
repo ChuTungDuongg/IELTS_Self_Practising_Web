@@ -40,11 +40,20 @@ def record_human_grade(session, attempt, actor, body, *, writing_task_id=None):
         return
     from app.models import AttemptEvent
     from app.models.enums import EventType
+
     criteria = ("ta", "cc", "lr", "gra") if writing_task_id else ("fc", "lr", "gra", "pr")
-    session.add(AttemptEvent(attempt_id=attempt.id, event_type=EventType.HUMAN_FINAL_GRADED,
-        event_metadata={"actor_id": str(actor.id), "assignment_id": str(origin),
-                        "writing_task_id": str(writing_task_id) if writing_task_id else None,
-                        "criteria": {field: str(getattr(body, field)) for field in criteria}}))
+    session.add(
+        AttemptEvent(
+            attempt_id=attempt.id,
+            event_type=EventType.HUMAN_FINAL_GRADED,
+            event_metadata={
+                "actor_id": str(actor.id),
+                "assignment_id": str(origin),
+                "writing_task_id": str(writing_task_id) if writing_task_id else None,
+                "criteria": {field: str(getattr(body, field)) for field in criteria},
+            },
+        )
+    )
 
 
 class GradingPolicy:

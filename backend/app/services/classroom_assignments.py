@@ -96,7 +96,9 @@ class ClassroomAssignmentService:
             version = await self.policy.lock_version(data.test_version_id)
             classroom = await self._classroom(classroom_id, locked=True)
             if self.policy.actor.role != UserRole.ADMIN:
-                await require_capability(self.session, self.policy.actor, classroom, Capability.ASSIGNMENTS)
+                await require_capability(
+                    self.session, self.policy.actor, classroom, Capability.ASSIGNMENTS
+                )
             self._active(classroom)
             if (
                 version.test.origin == TestOrigin.TEACHER
@@ -162,7 +164,9 @@ class ClassroomAssignmentService:
             classroom = await self._classroom(classroom_id, locked=True)
             # ADMIN retains the existing assignment archival control.
             if self.policy.actor.role != UserRole.ADMIN:
-                await require_capability(self.session, self.policy.actor, classroom, Capability.ASSIGNMENTS)
+                await require_capability(
+                    self.session, self.policy.actor, classroom, Capability.ASSIGNMENTS
+                )
             self._active(classroom)
             assignment = await self._assignment(classroom_id, assignment_id, locked=True)
             assignment.status = AssignmentStatus.ARCHIVED

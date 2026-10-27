@@ -218,12 +218,22 @@ class AdminService:
 
     async def _require_teacher_resources_resolved(self, user_id: uuid.UUID) -> None:
         from app.models.classroom_staff import ClassroomStaff
-        co_teacher = await self.session.scalar(select(ClassroomStaff.id).where(
-            ClassroomStaff.user_id == user_id, ClassroomStaff.staff_role == "CO_TEACHER",
-            ClassroomStaff.status.in_(["PENDING", "ACCEPTED"]),
-        ).limit(1))
+
+        co_teacher = await self.session.scalar(
+            select(ClassroomStaff.id)
+            .where(
+                ClassroomStaff.user_id == user_id,
+                ClassroomStaff.staff_role == "CO_TEACHER",
+                ClassroomStaff.status.in_(["PENDING", "ACCEPTED"]),
+            )
+            .limit(1)
+        )
         if co_teacher:
-            raise AppError("TEACHER_HAS_ACTIVE_RESOURCES", "Resolve Co-teacher memberships before demotion.", 409)
+            raise AppError(
+                "TEACHER_HAS_ACTIVE_RESOURCES",
+                "Resolve Co-teacher memberships before demotion.",
+                409,
+            )
         active_classroom = await self.session.scalar(
             select(Classroom.id)
             .where(Classroom.teacher_id == user_id, Classroom.status == ClassroomStatus.ACTIVE)

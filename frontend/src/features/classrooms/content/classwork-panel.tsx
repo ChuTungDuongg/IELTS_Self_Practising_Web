@@ -11,14 +11,16 @@ import { ClassworkSection, type ClassworkSectionActions } from "./classwork-sect
 import { SectionEditor } from "./section-editor";
 import { ResourceEditor } from "./resource-editor";
 import { useLmsText } from "../lms/messages";
+import { ActionMenu } from "../lms/action-menu";
 
-type Editor = { kind: "section"; section?: ClassroomSection } | { kind: "resource"; resource?: ClassroomResource; sectionId?: string | null };
-export function ClassworkPanel({ classroomId, data, assignments, canAuthor, onRefresh, onChange, onOpenAssignment }: {
+type Editor = { kind: "section"; section?: ClassroomSection } | { kind: "resource"; resource?: ClassroomResource; sectionId?: string | null } | { kind: "placement" };
+export function ClassworkPanel({ classroomId, data, assignments, canAuthor, onRefresh, onChange, onOpenAssignment, initialAction, onCreateAssignment }: {
   classroomId: string; data: Classwork; assignments: ClassroomAssignment[]; canAuthor: boolean; onRefresh: () => Promise<unknown>; onChange: (data: Classwork) => void; onOpenAssignment: (id: string) => void;
+  initialAction?: "section" | "resource"; onCreateAssignment?: () => void;
 }) {
   const { ct } = useContentTranslation();
   const { lt } = useLmsText();
-  const [editor, setEditor] = useState<Editor | null>(null), [pending, setPending] = useState(false), [error, setError] = useState<string | null>(null), [notice, setNotice] = useState<string | null>(null);
+  const [editor, setEditor] = useState<Editor | null>(initialAction ? { kind: initialAction } : null), [pending, setPending] = useState(false), [error, setError] = useState<string | null>(null), [notice, setNotice] = useState<string | null>(null);
   const [assignmentId, setAssignmentId] = useState(""), [targetSection, setTargetSection] = useState("");
   const running = useRef(false), dragging = useRef<{ kind: "section" | "item"; id: string } | null>(null);
   const sections = ordered(data.sections), unplaced = assignments.filter(assignment => !data.items.some(item => item.assignment_id === assignment.id));
@@ -53,12 +55,13 @@ export function ClassworkPanel({ classroomId, data, assignments, canAuthor, onRe
   };
   const sectionProps = { sections, data, assignments, unplaced, classroomId, canAuthor, pending, actions };
   return <section className="classroom-classwork" aria-label={ct("classwork")}>
-    <div className="classroom-section-heading"><h2>{ct("classwork")}</h2>{canAuthor ? <div className="classroom-toolbar"><button className="btn btn-secondary" type="button" disabled={pending} onClick={() => setEditor({ kind: "section" })}>{ct("addSection")}</button><button className="btn btn-primary" type="button" disabled={pending} onClick={() => setEditor({ kind: "resource" })}>{ct("addResource")}</button></div> : null}</div>
+    <div className="classroom-section-heading"><div><h2>{ct("classwork")}</h2><p className="classroom-meta">{lt("organizeTopics")}</p></div>{canAuthor ? <ActionMenu label={lt("addContent")} primary><button type="button" disabled={pending} onClick={() => setEditor({ kind: "section" })}>{ct("addSection")}</button><button type="button" disabled={pending} onClick={() => setEditor({ kind: "resource" })}>{ct("addResource")}</button><button type="button" disabled={pending} onClick={() => setEditor({ kind: "placement" })}>{ct("attachAssignment")}</button></ActionMenu> : null}</div>
     {error ? <p className="notice notice-error" role="alert">{error}</p> : null}{notice ? <p className="classroom-meta" role="status">{notice}</p> : null}
-    {editor && canAuthor ? editor.kind === "section" ? <SectionEditor key={editor.section?.id ?? "new-section"} classroomId={classroomId} section={editor.section} onDone={editorDone} onCancel={() => setEditor(null)} /> : <ResourceEditor key={editor.resource?.id ?? `new-resource-${editor.sectionId ?? ""}`} classroomId={classroomId} resource={editor.resource} sectionId={editor.sectionId} sections={sections} onDone={editorDone} onCancel={() => setEditor(null)} /> : null}
-    {canAuthor && unplaced.some(assignment => assignment.status === "ACTIVE") ? <form className="classroom-panel classroom-association" onSubmit={event => { event.preventDefault(); if (assignmentId) void mutate(async () => { const next = await placeAssignment(classroomId, targetSection || null, assignmentId); setAssignmentId(""); return next; }); }}>
+    {editor && canAuthor ? editor.kind === "section" ? <SectionEditor key={editor.section?.id ?? "new-section"} classroomId={classroomId} section={editor.section} onDone={editorDone} onCancel={() => setEditor(null)} /> : editor.kind === "resource" ? <ResourceEditor key={editor.resource?.id ?? `new-resource-${editor.sectionId ?? ""}`} classroomId={classroomId} resource={editor.resource} sectionId={editor.sectionId} sections={sections} onDone={editorDone} onCancel={() => setEditor(null)} /> : null : null}
+    {canAuthor && editor?.kind === "placement" ? <div className="classroom-focused-form">{unplaced.some(assignment => assignment.status === "ACTIVE") ? <form className="classroom-panel classroom-association" onSubmit={event => { event.preventDefault(); if (assignmentId) void mutate(async () => { const next = await placeAssignment(classroomId, targetSection || null, assignmentId); setAssignmentId(""); setEditor(null); return next; }); }}>
       <h3>{ct("attachAssignment")}</h3><label className="field-label">{ct("chooseAssignment")}<select className="select-field" value={assignmentId} required disabled={pending} onChange={event => setAssignmentId(event.target.value)}><option value="">—</option>{unplaced.filter(assignment => assignment.status === "ACTIVE").map(assignment => <option key={assignment.id} value={assignment.id}>{assignment.title ?? assignment.version?.test_title ?? ct("assignmentActivity")}</option>)}</select></label><label className="field-label">{ct("section")}<select className="select-field" value={targetSection} disabled={pending} onChange={event => setTargetSection(event.target.value)}><option value="">{ct("uncategorized")}</option>{sections.filter(section => section.status !== "ARCHIVED").map(section => <option key={section.id} value={section.id}>{section.title}</option>)}</select></label><button className="btn btn-secondary" disabled={pending || !assignmentId}>{ct("attachAssignment")}</button>
-    </form> : null}
+      <button type="button" className="btn btn-secondary" disabled={pending} onClick={() => setEditor(null)}>{ct("cancel")}</button>
+    </form> : <div className="classroom-empty"><p>{lt("noEligibleAssignments")}</p>{onCreateAssignment ? <button type="button" className="btn btn-primary" onClick={onCreateAssignment}>{lt("newAssignment")}</button> : null}<button type="button" className="btn btn-secondary" onClick={() => setEditor(null)}>{ct("cancel")}</button></div>}{!sections.length ? <button type="button" className="classroom-text-button" onClick={() => setEditor({ kind: "section" })}>{ct("addSection")}</button> : null}</div> : null}
     {!sections.length ? <div className="classroom-empty"><p>{lt("emptySections")}</p>{canAuthor && !editor ? <button type="button" className="btn btn-primary" onClick={() => setEditor({ kind: "section" })}>{lt("newSection")}</button> : null}</div> : null}{sections.map((section, index) => <ClassworkSection key={section.id} section={section} index={index} {...sectionProps} />)}
     {data.items.some(item => item.section_id === null) || unplaced.length ? <ClassworkSection section={null} index={sections.length} {...sectionProps} /> : null}
   </section>;

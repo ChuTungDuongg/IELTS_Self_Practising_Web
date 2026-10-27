@@ -170,12 +170,25 @@ def aggregate_roots(assignment_ids, student_ids=None):
 
 def progress_expressions(assignment, summary, cohort, ext, now):
     """One P2 status/cohort policy for monitoring, Gradebook and learning analytics."""
-    due = case((and_(ext.c.override_due, ~ext.c.revoked), ext.c.due_at_override), else_=assignment.due_at)
-    cutoff = case((and_(ext.c.override_cutoff, ~ext.c.revoked), ext.c.cutoff_at_override), else_=assignment.cutoff_at)
-    closure = case((~type_coerce(assignment.allow_late_submission, Boolean()), func.least(due, cutoff)), else_=cutoff)
+    due = case(
+        (and_(ext.c.override_due, ~ext.c.revoked), ext.c.due_at_override), else_=assignment.due_at
+    )
+    cutoff = case(
+        (and_(ext.c.override_cutoff, ~ext.c.revoked), ext.c.cutoff_at_override),
+        else_=assignment.cutoff_at,
+    )
+    closure = case(
+        (~type_coerce(assignment.allow_late_submission, Boolean()), func.least(due, cutoff)),
+        else_=cutoff,
+    )
     missed = and_(closure.is_not(None), now > closure, cohort.c.joined_at <= closure)
-    status = case((summary.c.accepted, summary.c.decision), (summary.c.active_id.is_not(None), "IN_PROGRESS"),
-                  (summary.c.decision.is_not(None), summary.c.decision), (missed, "MISSED"), else_="NOT_STARTED")
+    status = case(
+        (summary.c.accepted, summary.c.decision),
+        (summary.c.active_id.is_not(None), "IN_PROGRESS"),
+        (summary.c.decision.is_not(None), summary.c.decision),
+        (missed, "MISSED"),
+        else_="NOT_STARTED",
+    )
     eligible = and_(cohort.c.active_member, or_(closure.is_(None), cohort.c.joined_at <= closure))
     return status, eligible
 
@@ -213,6 +226,7 @@ class AssignmentProgressRepository:
 
     def monitoring_query(self, assignment, now):
         from app.services.classroom_capabilities import active_staff_clause
+
         roots = roots_query().subquery()
         members = select(
             ClassroomMembership.user_id,
@@ -261,26 +275,68 @@ class AssignmentProgressRepository:
 
     def classroom_progress(self, classroom_id, now):
         from app.services.classroom_capabilities import active_staff_clause
+
         a = ClassroomAssignment.__table__.alias("class_assignments")
         ids = select(a.c.id).where(a.c.classroom_id == classroom_id)
         roots = roots_query().subquery("class_roots")
         member = ClassroomMembership
-        current = select(a.c.id.label("assignment_id"), member.user_id, member.joined_at,
-                         literal(True).label("active_member")).select_from(member).join(a, a.c.classroom_id == member.classroom_id)\
-            .join(User, User.id == member.user_id).where(a.c.classroom_id == classroom_id,
-                member.left_at.is_(None), User.is_active, ~active_staff_clause(classroom_id, member.user_id))
-        history = select(roots.c.assignment_id, roots.c.user_id, roots.c.started_at, literal(False))\
-            .where(roots.c.assignment_id.in_(ids))
+        current = (
+            select(
+                a.c.id.label("assignment_id"),
+                member.user_id,
+                member.joined_at,
+                literal(True).label("active_member"),
+            )
+            .select_from(member)
+            .join(a, a.c.classroom_id == member.classroom_id)
+            .join(User, User.id == member.user_id)
+            .where(
+                a.c.classroom_id == classroom_id,
+                member.left_at.is_(None),
+                User.is_active,
+                ~active_staff_clause(classroom_id, member.user_id),
+            )
+        )
+        history = select(
+            roots.c.assignment_id, roots.c.user_id, roots.c.started_at, literal(False)
+        ).where(roots.c.assignment_id.in_(ids))
         raw = union_all(current, history).subquery("class_cohort")
-        cohort = select(raw.c.assignment_id, raw.c.user_id, func.min(raw.c.joined_at).label("joined_at"),
-                        func.bool_or(raw.c.active_member).label("active_member"))\
-            .group_by(raw.c.assignment_id, raw.c.user_id).subquery("class_cohort_summary")
+        cohort = (
+            select(
+                raw.c.assignment_id,
+                raw.c.user_id,
+                func.min(raw.c.joined_at).label("joined_at"),
+                func.bool_or(raw.c.active_member).label("active_member"),
+            )
+            .group_by(raw.c.assignment_id, raw.c.user_id)
+            .subquery("class_cohort_summary")
+        )
         summary = aggregate_roots(ids)
         ext = ClassroomAssignmentExtension.__table__.alias("class_extensions")
         status, eligible = progress_expressions(a.c, summary, cohort, ext, now)
-        return select(cohort.c.assignment_id, cohort.c.user_id.label("student_id"), cohort.c.active_member,
-                      eligible.label("eligible"), status.label("status"), func.coalesce(summary.c.used, 0).label("used"))\
-            .select_from(cohort)\
-            .join(a, a.c.id == cohort.c.assignment_id)\
-            .outerjoin(summary, and_(summary.c.assignment_id == cohort.c.assignment_id, summary.c.user_id == cohort.c.user_id))\
-            .outerjoin(ext, and_(ext.c.assignment_id == cohort.c.assignment_id, ext.c.student_id == cohort.c.user_id))
+        return (
+            select(
+                cohort.c.assignment_id,
+                cohort.c.user_id.label("student_id"),
+                cohort.c.active_member,
+                eligible.label("eligible"),
+                status.label("status"),
+                func.coalesce(summary.c.used, 0).label("used"),
+            )
+            .select_from(cohort)
+            .join(a, a.c.id == cohort.c.assignment_id)
+            .outerjoin(
+                summary,
+                and_(
+                    summary.c.assignment_id == cohort.c.assignment_id,
+                    summary.c.user_id == cohort.c.user_id,
+                ),
+            )
+            .outerjoin(
+                ext,
+                and_(
+                    ext.c.assignment_id == cohort.c.assignment_id,
+                    ext.c.student_id == cohort.c.user_id,
+                ),
+            )
+        )

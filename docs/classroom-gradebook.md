@@ -46,6 +46,8 @@ Paths are under `/api/v1`:
 
 ## Classroom UX/UI overhaul
 
+The completed [dual-skill workspace refactor](classroom-workspace.md) adds topic-first content workflows, contextual creation/actions, responsive matrix/list views and integrated [P4 learning analytics/plans](classroom-learning-analytics.md). Both 0038 and 0039 are applied to the actual local database; the current head is 0039. The original P3 verification below records its phase-specific snapshot.
+
 The shared course shell uses a compact real-data header, one scrolling tab row, one fluid content plane and no empty permanent sidebars or duplicate section selectors. Archive/restore/leave live in a contextual management disclosure. Creation opens a focused assignment form; scheduling uses progressive disclosure. Staff see a real assignment/member overview and direct Gradebook/People/material navigation. Students see learning workflows without staff administration tabs.
 
 Feed entries have prominent title fallbacks, a semantic localized timestamp, explicit content type and grouped deadlines. Classwork retains native resource access and keyboard/drag ordering and explains the empty course with a first-section action. Gradebook uses an internal scroll frame, sticky student column, semantic table headers and expandable result details. Small screens keep tab/table overflow inside their frames and use 44px actions. Both locales and shared light/dark tokens remain in use.

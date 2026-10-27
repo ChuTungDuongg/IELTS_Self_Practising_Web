@@ -24,7 +24,7 @@ it("provides a compact course header and keeps archive inside its management dis
   renderWithLocale(<ClassroomHeader classroom={room} canCreate onCreate={create} onManage={manage} management={<button>Archive</button>} />);
   expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(room.name);
   expect(screen.getByRole("button", { name: "Archive" }).closest("details")).not.toHaveAttribute("open");
-  fireEvent.click(screen.getByRole("button", { name: "Create" })); expect(create).toHaveBeenCalledOnce();
+  fireEvent.click(screen.getByText("Create")); fireEvent.click(screen.getByRole("button", { name: "Create assignment" })); expect(create).toHaveBeenCalledOnce();
   fireEvent.click(screen.getByText("Manage class"));
   expect(screen.getByRole("button", { name: "Archive" }).closest("details")).toHaveAttribute("open");
 });
@@ -34,7 +34,7 @@ it("offers staff Gradebook navigation while keeping the assignment creation form
   await screen.findByText("No classroom updates yet.");
   expect(screen.getByRole("tab", { name: "Gradebook" })).toBeInTheDocument();
   expect(screen.queryByText("Assignment creation fields")).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "Create" }));
+  fireEvent.click(screen.getByText("Create")); fireEvent.click(screen.getByRole("button", { name: "Create assignment" }));
   expect(screen.getByRole("tab", { name: "Assignments" })).toHaveAttribute("aria-selected", "true");
   expect(screen.getByText("Assignment creation fields")).toBeInTheDocument();
   expect(document.querySelector(".classroom-course-nav")).toBeNull();
@@ -46,8 +46,8 @@ it("hides staff navigation and creation controls from students and explains empt
   expect(screen.queryByRole("tab", { name: "People" })).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Create" })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("tab", { name: "Classwork" }));
-  expect(await screen.findByText("No course sections yet.")).toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "Create first section" })).not.toBeInTheDocument();
+  expect(await screen.findByText("No course topics yet.")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Create first topic" })).not.toBeInTheDocument();
 });
 
 it("filters feed content through the paginated backend query", async () => {

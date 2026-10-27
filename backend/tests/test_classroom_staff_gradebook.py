@@ -22,7 +22,9 @@ from tests.test_classroom_assignments import add_objective_modules, classroom_fi
 async def staff_setup(session, role="CO_TEACHER"):
     owner, student, room, version = await classroom_fixture(session, official=True)
     staff = await make_user(session, UserRole.TEACHER if role == "CO_TEACHER" else UserRole.USER)
-    invitation = await ClassroomStaffService(session, owner).invite(room, StaffInvite(email=staff.email, staff_role=role))
+    invitation = await ClassroomStaffService(session, owner).invite(
+        room, StaffInvite(email=staff.email, staff_role=role)
+    )
     await ClassroomStaffService(session, staff).change(room, invitation.id, response=True)
     return owner, student, room, version, staff, invitation
 
@@ -37,8 +39,14 @@ async def test_staff_lifecycle_capabilities_and_immediate_revocation(db_session)
         base = f"/api/v1/classrooms/{room}"
         assert (await client.get(base + "/gradebook")).status_code == 200
         assert (await client.patch(base, json={"name": "Unauthorized"})).status_code == 403
-        assert (await client.post(base + "/staff", json={"email": student.email, "staff_role": "TEACHING_ASSISTANT"})).status_code == 403
-        assert (await client.post(base + "/sections", json={"title": "Co-teacher section"})).status_code == 201
+        assert (
+            await client.post(
+                base + "/staff", json={"email": student.email, "staff_role": "TEACHING_ASSISTANT"}
+            )
+        ).status_code == 403
+        assert (
+            await client.post(base + "/sections", json={"title": "Co-teacher section"})
+        ).status_code == 201
     await ClassroomStaffService(db_session, owner).change(room, invitation.id, revoke=True)
     async with api_client(db_session, co) as client:
         assert (await client.get(f"/api/v1/classrooms/{room}/gradebook")).status_code in {403, 404}
@@ -46,23 +54,33 @@ async def test_staff_lifecycle_capabilities_and_immediate_revocation(db_session)
 
 async def test_ta_transition_and_no_global_teacher_privileges(db_session):
     owner, student, room, version = await classroom_fixture(db_session)
-    row = await ClassroomStaffService(db_session, owner).invite(room, StaffInvite(email=student.email, staff_role="TEACHING_ASSISTANT"))
+    row = await ClassroomStaffService(db_session, owner).invite(
+        room, StaffInvite(email=student.email, staff_role="TEACHING_ASSISTANT")
+    )
     await ClassroomStaffService(db_session, student).change(room, row.id, response=True)
     details = await ClassroomService(db_session, student).get(room)
     assert set(details.capabilities) == {"grades.view", "grades.edit"}
     assert student.role == UserRole.USER
     async with db_session.begin():
-        member = await db_session.scalar(select(ClassroomMembership).where(ClassroomMembership.classroom_id == room))
+        member = await db_session.scalar(
+            select(ClassroomMembership).where(ClassroomMembership.classroom_id == room)
+        )
         assert member.left_at is not None
     async with api_client(db_session, student) as client:
         base = f"/api/v1/classrooms/{room}"
         assert (await client.get(base + "/gradebook")).status_code == 200
         assert (await client.post(base + "/sections", json={"title": "Denied"})).status_code == 403
-        assert (await client.post(base + "/assignments", json={"test_version_id": str(version)})).status_code == 403
+        assert (
+            await client.post(base + "/assignments", json={"test_version_id": str(version)})
+        ).status_code == 403
         assert (await client.post("/api/v1/tests", json={"title": "Denied"})).status_code == 403
-    await ClassroomStaffService(db_session, owner).change(room, row.id, data=StaffUpdate(staff_role="TEACHING_ASSISTANT", content_manage=True))
+    await ClassroomStaffService(db_session, owner).change(
+        room, row.id, data=StaffUpdate(staff_role="TEACHING_ASSISTANT", content_manage=True)
+    )
     async with api_client(db_session, student) as client:
-        assert (await client.post(f"/api/v1/classrooms/{room}/sections", json={"title": "Allowed"})).status_code == 201
+        assert (
+            await client.post(f"/api/v1/classrooms/{room}/sections", json={"title": "Allowed"})
+        ).status_code == 201
 
 
 async def test_staff_invitation_is_private_duplicate_safe_and_owner_immutable(db_session):
@@ -72,26 +90,36 @@ async def test_staff_invitation_is_private_duplicate_safe_and_owner_immutable(db
         await service.invite(room, StaffInvite(email=owner.email, staff_role="CO_TEACHER"))
     with pytest.raises(AppError):
         await service.invite(room, StaffInvite(email=student.email, staff_role="CO_TEACHER"))
-    row = await service.invite(room, StaffInvite(email=student.email, staff_role="TEACHING_ASSISTANT"))
+    row = await service.invite(
+        room, StaffInvite(email=student.email, staff_role="TEACHING_ASSISTANT")
+    )
     with pytest.raises(AppError) as error:
-        await service.invite(room, StaffInvite(email=student.email, staff_role="TEACHING_ASSISTANT"))
+        await service.invite(
+            room, StaffInvite(email=student.email, staff_role="TEACHING_ASSISTANT")
+        )
     assert error.value.code == "STAFF_ALREADY_EXISTS"
     outsider = await make_user(db_session)
     with pytest.raises(AppError):
         await ClassroomStaffService(db_session, outsider).change(room, row.id, response=True)
     declined = await ClassroomStaffService(db_session, student).change(room, row.id, response=False)
     assert declined.status == "DECLINED"
-    again = await service.invite(room, StaffInvite(email=student.email, staff_role="TEACHING_ASSISTANT"))
+    again = await service.invite(
+        room, StaffInvite(email=student.email, staff_role="TEACHING_ASSISTANT")
+    )
     assert (await service.change(room, again.id, revoke=True)).status == "CANCELLED"
 
 
 async def graded_assignment(session):
     owner, student, room, version = await classroom_fixture(session, official=True)
     await add_objective_modules(session, version)
-    assignment = await ClassroomAssignmentService(session, owner).create(room, AssignmentCreate(test_version_id=version))
+    assignment = await ClassroomAssignmentService(session, owner).create(
+        room, AssignmentCreate(test_version_id=version)
+    )
     root_ids = []
     for index, band in enumerate([Decimal("7"), Decimal("6")]):
-        started = await ClassroomAssignmentService(session, student).start(assignment.id, AssignmentStart(mode="MODULE", module="READING"))
+        started = await ClassroomAssignmentService(session, student).start(
+            assignment.id, AssignmentStart(mode="MODULE", module="READING")
+        )
         async with session.begin():
             attempt = await session.get(Attempt, started.attempt_id)
             attempt.status = "SUBMITTED"
@@ -107,15 +135,25 @@ async def test_gradebook_native_scores_selection_history_and_csv(db_session):
     page = await service.page(room)
     score = page.students[0].cells[0].score
     assert score.band == 6 and score.root_id == roots[1] and score.provenance == "OBJECTIVE"
-    policy = await service.policy(room, assignment.id, GradePolicyUpdate(grade_selection="FIRST_ACCEPTED", expected_revision=1))
+    policy = await service.policy(
+        room,
+        assignment.id,
+        GradePolicyUpdate(grade_selection="FIRST_ACCEPTED", expected_revision=1),
+    )
     assert (await service.page(room)).students[0].cells[0].score.root_id == roots[0]
-    await service.policy(room, assignment.id, GradePolicyUpdate(grade_selection="BEST_ACCEPTED", expected_revision=policy.policy_revision))
+    await service.policy(
+        room,
+        assignment.id,
+        GradePolicyUpdate(
+            grade_selection="BEST_ACCEPTED", expected_revision=policy.policy_revision
+        ),
+    )
     assert (await service.page(room)).students[0].cells[0].score.band == 7
     profile = await service.profile(room, student.id)
     assert profile.total_history == 2 and len(profile.history) == 2
     async with db_session.begin():
         user = await db_session.get(User, student.id)
-        user.display_name = "=HYPERLINK(\"bad\")"
+        user.display_name = '=HYPERLINK("bad")'
     csv_text = await service.export(room)
     assert "'=" in csv_text and "BEST_ACCEPTED" in csv_text and csv_text.startswith("\ufeff")
     async with api_client(db_session, student) as client:
@@ -124,14 +162,18 @@ async def test_gradebook_native_scores_selection_history_and_csv(db_session):
 
 async def test_mixed_mode_best_falls_back_and_pending_human_is_never_ai(db_session):
     owner, student, room, assignment, roots = await graded_assignment(db_session)
-    result = await ClassroomAssignmentService(db_session, student).start(assignment.id, AssignmentStart(mode="MODULE", module="WRITING"))
+    result = await ClassroomAssignmentService(db_session, student).start(
+        assignment.id, AssignmentStart(mode="MODULE", module="WRITING")
+    )
     async with db_session.begin():
         attempt = await db_session.get(Attempt, result.attempt_id)
         attempt.status, attempt.finished_at = "SUBMITTED", TimerService.now() + timedelta(seconds=3)
         # Even a preexisting/advisory-looking aggregate cannot override missing human records.
         attempt.band_score = Decimal("9")
     service = ClassroomGradeService(db_session, owner)
-    await service.policy(room, assignment.id, GradePolicyUpdate(grade_selection="BEST_ACCEPTED", expected_revision=1))
+    await service.policy(
+        room, assignment.id, GradePolicyUpdate(grade_selection="BEST_ACCEPTED", expected_revision=1)
+    )
     page = await service.page(room)
     score = page.students[0].cells[0].score
     assert score.root_id == result.attempt_id and score.mixed_context_fallback
@@ -149,7 +191,9 @@ async def test_gradebook_excludes_personal_and_retains_former_student(db_session
         sample = await db_session.get(Attempt, roots[0])
         sample.classroom_assignment_id = None
         sample.band_score = Decimal("9")
-        member = await db_session.scalar(select(ClassroomMembership).where(ClassroomMembership.classroom_id == room))
+        member = await db_session.scalar(
+            select(ClassroomMembership).where(ClassroomMembership.classroom_id == room)
+        )
         member.left_at = TimerService.now()
     page = await ClassroomGradeService(db_session, owner).page(room)
     assert len(page.students) == 1 and not page.students[0].active_member
@@ -162,6 +206,7 @@ async def test_gradebook_excludes_personal_and_retains_former_student(db_session
 async def test_co_teacher_demotion_is_blocked_and_archival_preserves_reads(db_session):
     from app.schemas.admin import AdminUserUpdate
     from app.services.admin import AdminService
+
     owner, student, room, version, co, invitation = await staff_setup(db_session)
     async with db_session.begin():
         admin = await make_user_inline(db_session, UserRole.ADMIN)
@@ -176,8 +221,14 @@ async def test_co_teacher_demotion_is_blocked_and_archival_preserves_reads(db_se
 
 async def make_user_inline(session, role):
     from uuid import uuid4
-    user = User(email=f"fictional-inline-{uuid4()}@example.com", display_name="Fictional admin", role=role,
-                is_active=True, email_verified=True)
+
+    user = User(
+        email=f"fictional-inline-{uuid4()}@example.com",
+        display_name="Fictional admin",
+        role=role,
+        is_active=True,
+        email_verified=True,
+    )
     session.add(user)
     await session.flush()
     return user
@@ -185,27 +236,40 @@ async def make_user_inline(session, role):
 
 async def test_concurrent_staff_invitations_are_serialized():
     import asyncio
+    import os
 
     from sqlalchemy.engine import make_url
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
     from sqlalchemy.pool import NullPool
 
     from app.core.config import get_settings
+
     url = get_settings().database_url
-    assert make_url(url).database.startswith("ielts_classroom_p34_test_")
+    database = make_url(url).database or ""
+    # This real two-connection test commits fixtures. Require an explicitly named
+    # test database, including the existing GitHub Actions ielts_test database.
+    assert os.environ.get("TEST_DATABASE_URL") == url
+    assert database.startswith("test_") or database.endswith("_test") or "_test_" in database
     engine = create_async_engine(url, poolclass=NullPool)
     sessions = async_sessionmaker(engine, expire_on_commit=False)
     try:
         async with sessions() as session:
             owner, student, room, _ = await classroom_fixture(session)
+
         async def invite():
             async with sessions() as session:
                 try:
-                    await ClassroomStaffService(session, owner).invite(room, StaffInvite(email=student.email, staff_role="TEACHING_ASSISTANT"))
+                    await ClassroomStaffService(session, owner).invite(
+                        room, StaffInvite(email=student.email, staff_role="TEACHING_ASSISTANT")
+                    )
                     return "INVITED"
                 except AppError as error:
                     return error.code
-        assert sorted(await asyncio.gather(invite(), invite())) == ["INVITED", "STAFF_ALREADY_EXISTS"]
+
+        assert sorted(await asyncio.gather(invite(), invite())) == [
+            "INVITED",
+            "STAFF_ALREADY_EXISTS",
+        ]
     finally:
         await engine.dispose()
 

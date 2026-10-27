@@ -1,12 +1,12 @@
 /* BandPilot classroom: an open plane using the shared editorial tokens.
- * At 1100px: 160px course navigation + 712px main + 180px info + 2 × 24px gaps.
+ * One fluid content plane with compact tabs; contextual actions open on demand.
  * The lesson sequence and canonical IELTS assignments provide the screen's identity.
  */
 .classroom-workspace { min-width: 0; color: var(--ink); }
 .classroom-workspace .classroom-tabs { display: flex; gap: 24px; overflow-x: auto; border-bottom: 1px solid var(--line); margin: 8px 0 24px; }
 .classroom-workspace .classroom-tabs button { flex: none; padding: 12px 0; border-bottom: 2px solid transparent; color: var(--muted); font-weight: 600; background: transparent; cursor: pointer; }
 .classroom-workspace .classroom-tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--ink); }
-.classroom-workspace .classroom-columns { display: grid; grid-template-columns: 160px minmax(0, 1fr) 180px; gap: 24px; align-items: start; }
+.classroom-workspace .classroom-columns { display: block; }
 .classroom-workspace :is(.classroom-main, .classroom-stream, .classroom-classwork, .classroom-assignments) { min-width: 0; }
 .classroom-workspace .classroom-main { scroll-margin-top: 100px; }
 .classroom-workspace .classroom-course-nav { position: sticky; top: 100px; }

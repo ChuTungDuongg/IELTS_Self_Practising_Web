@@ -43,7 +43,7 @@ it("loads Stream, switches tabs, and preserves the existing people and assignmen
   expect(await screen.findByText("Reading notes")).toBeInTheDocument();
   fireEvent.click(screen.getByRole("tab", { name: "People" })); expect(screen.getByText("Membership management retained")).toBeInTheDocument();
   fireEvent.click(screen.getByRole("tab", { name: "Assignments" })); expect(screen.queryByText("Existing assignment form")).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "Create assignment" })); expect(screen.getByText("Existing assignment form")).toBeInTheDocument();
+  fireEvent.click(screen.getAllByRole("button", { name: "Create assignment" }).at(-1)!); expect(screen.getByText("Existing assignment form")).toBeInTheDocument();
   fireEvent.click(screen.getByRole("tab", { name: "Classwork" })); expect(await screen.findByRole("heading", { name: "Lesson notes" })).toBeInTheDocument();
 });
 it("reserves content authoring for the owner teacher and makes archived rooms read-only", async () => {
@@ -85,7 +85,7 @@ it("persists keyboard section reordering with revision and refreshes conflicts",
 });
 it("moves a resource with the full target order and revision", async () => {
   renderWithLocale(workspace("TEACHER")); await screen.findByText("Reading notes"); fireEvent.click(screen.getByRole("tab", { name: "Classwork" }));
-  fireEvent.change(screen.getByLabelText("Move Lesson notes to section"), { target: { value: "s2" } });
+  fireEvent.change(screen.getByLabelText("Move Lesson notes to topic"), { target: { value: "s2" } });
   await waitFor(() => expect(api.reorderItems).toHaveBeenCalledWith("c", "s2", ["i"], 3));
 });
 it("shows retry for failed feed loads and an empty state after recovery", async () => {
@@ -116,7 +116,7 @@ it("edits existing post content and attached resource references", async () => {
 it("creates and edits section metadata through the section API", async () => {
   const done = vi.fn().mockResolvedValue(undefined), cancel = vi.fn();
   const view = renderWithLocale(<SectionEditor classroomId="c" onDone={done} onCancel={cancel} />);
-  fireEvent.change(screen.getByLabelText("Section title"), { target: { value: "  Week 3  " } }); fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
+  fireEvent.change(screen.getByLabelText("Topic name"), { target: { value: "  Week 3  " } }); fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
   await waitFor(() => expect(api.createSection).toHaveBeenCalledWith("c", { title: "Week 3", description: null, status: "DRAFT" }));
   view.unmount(); renderWithLocale(<SectionEditor classroomId="c" section={classwork.sections[0]} onDone={done} onCancel={cancel} />);
   fireEvent.change(screen.getByLabelText("Description"), { target: { value: "Practice reading" } }); fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
@@ -161,7 +161,9 @@ it("allows owner moderation on locked posts while blocking new comments", async 
 it("associates canonical assignments without creating a duplicate assignment", async () => {
   const assignment = { id: "a", classroom_id: "c", test_version_id: "v", created_by_user_id: "teacher", title: "Existing reading", note: null, status: "ACTIVE" as const, created_at: "now", archived_at: null };
   renderWithLocale(<ClassworkPanel classroomId="c" data={classwork} assignments={[assignment]} canAuthor onRefresh={vi.fn()} onChange={vi.fn()} onOpenAssignment={vi.fn()} />);
-  fireEvent.change(screen.getByLabelText("Choose an assignment"), { target: { value: "a" } }); fireEvent.change(screen.getByLabelText("Section"), { target: { value: "s1" } }); fireEvent.click(screen.getByRole("button", { name: "Add existing assignment" }));
+  expect(screen.queryByLabelText("Choose an assignment")).not.toBeInTheDocument();
+  fireEvent.click(screen.getByText("Add content")); fireEvent.click(screen.getByRole("button", { name: "Add assignment to a topic" }));
+  fireEvent.change(screen.getByLabelText("Choose an assignment"), { target: { value: "a" } }); fireEvent.change(screen.getByLabelText("Topic"), { target: { value: "s1" } }); fireEvent.click(screen.getAllByRole("button", { name: "Add assignment to a topic" }).at(-1)!);
   await waitFor(() => expect(api.placeAssignment).toHaveBeenCalledWith("c", "s1", "a"));
 });
 it("persists native drag-and-drop moves using the same revision contract", async () => {

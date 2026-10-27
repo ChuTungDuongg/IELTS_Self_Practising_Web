@@ -1,5 +1,6 @@
 "use client";
 
+import { useLmsText } from "../lms/messages";
 import { useState } from "react";
 import { postAction, updatePost, type ClassroomPost, type ClassroomResource } from "@/lib/api/classroom-content";
 import { useContentTranslation } from "./content-messages";
@@ -10,11 +11,11 @@ import { PostComments } from "./post-comments";
 import { ResourceViewer } from "./resource-viewer";
 import { ProgressSummary } from "../scheduling/progress-summary";
 import { useAssignmentProgress } from "../scheduling/progress-provider";
-export function PostCard({ classroomId, post, resources, userId, canAuthor, archived, admin, onRefresh, onOpenAssignment, initialComments = false }: {
-  classroomId: string; post: ClassroomPost; resources: ClassroomResource[]; userId: string; canAuthor: boolean; archived: boolean; admin: boolean;
+export function PostCard({ classroomId, post, resources, userId, canAuthor, canModerate = canAuthor, archived, admin, onRefresh, onOpenAssignment, initialComments = false }: {
+  classroomId: string; post: ClassroomPost; resources: ClassroomResource[]; userId: string; canAuthor: boolean; canModerate?: boolean; archived: boolean; admin: boolean;
   onRefresh: () => Promise<unknown>; onOpenAssignment: (id: string) => void; initialComments?: boolean;
 }) {
-  const { ct, locale } = useContentTranslation(); const [editing, setEditing] = useState(false), [comments, setComments] = useState(initialComments);
+  const { ct, locale } = useContentTranslation(), { lt } = useLmsText(); const [editing, setEditing] = useState(false), [comments, setComments] = useState(initialComments);
   const isActivity = post.kind === "ASSIGNMENT_ACTIVITY", canEdit = canAuthor && !archived && post.status !== "ARCHIVED";
   const progress = useAssignmentProgress(), assignment = progress?.assignments.find(item => item.id === post.assignment_id);
   const title = post.title?.trim() || assignment?.title?.trim() || assignment?.version?.test_title || ct(isActivity ? "assignmentActivity" : post.kind === "ANNOUNCEMENT" ? "announcement" : "discussion");
@@ -28,17 +29,17 @@ export function PostCard({ classroomId, post, resources, userId, canAuthor, arch
     <SafeMarkdown text={post.body} />
     {post.resource_ids.length ? <ul className="classroom-post-resources">{post.resource_ids.map(id => { const resource = resources.find(item => item.id === id); return resource ? <li key={id}><strong>{resource.title}</strong><ResourceViewer resource={resource} /></li> : null; })}</ul> : null}
     {isActivity && post.assignment_id ? <><ProgressSummary assignmentId={post.assignment_id} /><button className="btn btn-secondary" type="button" onClick={() => onOpenAssignment(post.assignment_id!)}>{ct("openAssignment")}</button></> : null}
-    {canEdit && !isActivity ? <div className="classroom-toolbar">
+    {(canEdit || canModerate && !archived) && !isActivity ? <details className="classroom-post-actions"><summary>{lt("more")}</summary><div className="classroom-toolbar">{canEdit ? <>
       <button type="button" className="classroom-text-button" onClick={() => setEditing(true)}>{ct("edit")}</button>
       {post.status === "DRAFT" ? <ContentAction action={() => postAction(classroomId, post.id, "publish")} onDone={onRefresh}>{ct("publish")}</ContentAction> : <ContentAction action={() => updatePost(classroomId, post.id, { status: "DRAFT" })} onDone={onRefresh}>{ct("unpublish")}</ContentAction>}
       {post.kind === "ANNOUNCEMENT" && post.status === "PUBLISHED" ? <ContentAction action={() => postAction(classroomId, post.id, "pin", !post.pinned)} onDone={onRefresh}>{ct(post.pinned ? "unpin" : "pin")}</ContentAction> : null}
-      <ContentAction action={() => updatePost(classroomId, post.id, { locked: !post.locked })} onDone={onRefresh}>{ct(post.locked ? "unlock" : "lock")}</ContentAction>
-      <ContentAction action={() => postAction(classroomId, post.id, "archive")} onDone={onRefresh} confirm={{ title: ct("archiveTitle"), description: ct("archiveDescription") }}>{ct("archive")}</ContentAction>
-    </div> : null}
+      </> : null}{canModerate && !archived ? <ContentAction action={() => updatePost(classroomId, post.id, { locked: !post.locked })} onDone={onRefresh}>{ct(post.locked ? "unlock" : "lock")}</ContentAction> : null}
+      {canEdit ? <ContentAction action={() => postAction(classroomId, post.id, "archive")} onDone={onRefresh} confirm={{ title: ct("archiveTitle"), description: ct("archiveDescription") }}>{ct("archive")}</ContentAction> : null}
+    </div></details> : null}
     {!isActivity ? <>
       <button type="button" className="classroom-text-button classroom-comments-toggle" aria-expanded={comments} onClick={() => setComments(value => !value)}>{ct("comments")} ({post.comment_count})</button>
       {post.locked ? <p className="classroom-meta">{ct("locked")}</p> : null}
-      {comments ? <PostComments classroomId={classroomId} postId={post.id} userId={userId} canModerate={canAuthor} readOnly={archived || admin || post.status !== "PUBLISHED"} locked={post.locked} onCountChange={() => void onRefresh()} /> : null}
+      {comments ? <PostComments classroomId={classroomId} postId={post.id} userId={userId} canModerate={canModerate} readOnly={archived || admin || post.status !== "PUBLISHED"} locked={post.locked} onCountChange={() => void onRefresh()} /> : null}
     </> : null}
   </article>;
 }

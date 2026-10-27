@@ -6,6 +6,7 @@ import { inviteStudent, cancelInvitation, removeMember, archiveClassroom, restor
 import { ApiError } from "@/lib/api/client";
 import { useTranslation } from "@/lib/i18n/locale-provider";
 import { ResourceAction } from "./resource-action";
+import { useContentTranslation } from "./content/content-messages";
 import { ClassroomForm } from "./classroom-form";
 export function ClassroomMembershipActions({ classroom, isAdmin, canManage, isStaff = false }: {
   classroom: Classroom;
@@ -13,8 +14,8 @@ export function ClassroomMembershipActions({ classroom, isAdmin, canManage, isSt
   canManage: boolean;
   isStaff?: boolean;
 }) {
-  const { t } = useTranslation();
-  return <div className="classroom-toolbar">{canManage && classroom.status === "ACTIVE" ? <ResourceAction action={() => archiveClassroom(classroom.id)}>{t("common.archive")}</ResourceAction> : isAdmin && classroom.status === "ARCHIVED" ? <ResourceAction action={() => restoreClassroom(classroom.id)}>{t("common.restore")}</ResourceAction> : null}{!canManage && !isStaff && classroom.status === "ACTIVE" ? <ResourceAction action={() => leaveClassroom(classroom.id)}>{t("classroom.leave")}</ResourceAction> : null}</div>;
+  const { t } = useTranslation(), { ct } = useContentTranslation();
+  return <div className="classroom-toolbar">{canManage && classroom.status === "ACTIVE" ? <ResourceAction confirm={{ title: `${t("common.archive")} · ${classroom.name}`, description: ct("archiveDescription") }} action={() => archiveClassroom(classroom.id)}>{t("common.archive")}</ResourceAction> : isAdmin && classroom.status === "ARCHIVED" ? <ResourceAction action={() => restoreClassroom(classroom.id)}>{t("common.restore")}</ResourceAction> : null}{!canManage && !isStaff && classroom.status === "ACTIVE" ? <ResourceAction action={() => leaveClassroom(classroom.id)}>{t("classroom.leave")}</ResourceAction> : null}</div>;
 }
 export function ClassroomManagement({ classroom, invitations, members }: {
   classroom: Classroom;
@@ -49,13 +50,13 @@ export function ClassroomManagement({ classroom, invitations, members }: {
   }
   return <>
     {active ? <>
-      {classroom.capabilities?.includes("classroom.manage") !== false ? <ClassroomForm classroom={classroom} /> : null}
-      <form onSubmit={invite} className="surface-card p-5 mb-6">
+      {classroom.capabilities?.includes("classroom.manage") !== false ? <details><summary>{t("common.edit")}</summary><ClassroomForm classroom={classroom} /></details> : null}
+      <details><summary>{t("classroom.invite")}</summary><form onSubmit={invite} className="surface-card p-5 mb-6">
         <h2>{t("classroom.invite")}</h2>
         <p>{t("classroom.pendingEmail")}</p>
         <label className="field-label mt-3">{t("classroom.email")}<input className="field" name="email" type="email" required />
         </label>
-        <button className="btn btn-primary mt-3" disabled={pending}>{t("classroom.invite")}</button>{error ? <p role="alert">{error}</p> : null}</form>
+        <button className="btn btn-primary mt-3" disabled={pending}>{t("classroom.invite")}</button>{error ? <p role="alert">{error}</p> : null}</form></details>
     </> : null}
     <section className="surface-card p-5 mb-6" aria-label={t("classroom.invitations")}>
       <h2>{t("classroom.invitations")}</h2>

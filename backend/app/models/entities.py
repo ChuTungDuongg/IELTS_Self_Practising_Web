@@ -48,6 +48,12 @@ if TYPE_CHECKING:
 
 class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "users"
+    __table_args__ = (
+        CheckConstraint(
+            "target_overall_band IS NULL OR (target_overall_band BETWEEN 0 AND 9 AND mod(target_overall_band * 2, 1) = 0)",
+            name="ck_users_target_overall_half_band",
+        ),
+    )
 
     email: Mapped[str] = mapped_column(String(320), unique=True, index=True, nullable=False)
     display_name: Mapped[str] = mapped_column(String(160), nullable=False)
@@ -65,6 +71,7 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     occupation: Mapped[str | None] = mapped_column(String(160))
     institution: Mapped[str | None] = mapped_column(String(200))
     target_band: Mapped[Decimal | None] = mapped_column(Numeric(3, 1))
+    target_overall_band: Mapped[Decimal | None] = mapped_column(Numeric(3, 1))
     target_listening_band: Mapped[Decimal | None] = mapped_column(Numeric(3, 1))
     target_reading_band: Mapped[Decimal | None] = mapped_column(Numeric(3, 1))
     target_writing_band: Mapped[Decimal | None] = mapped_column(Numeric(3, 1))

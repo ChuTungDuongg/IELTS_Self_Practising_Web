@@ -170,11 +170,20 @@ class ClassroomPostService:
             position = None
             if cursor is not None:
                 decoded = _decode_cursor(cursor, _FeedCursor)
-                if decoded.classroom_id != classroom_id or decoded.status != status or decoded.content_kind != content_kind:
+                if (
+                    decoded.classroom_id != classroom_id
+                    or decoded.status != status
+                    or decoded.content_kind != content_kind
+                ):
                     raise AppError("INVALID_CURSOR", "This cursor belongs to another feed.", 422)
                 position = (decoded.pinned, decoded.created_at, decoded.kind, decoded.id)
             keys = await self.repository.feed_keys(
-                classroom_id, staff=staff, status=status, cursor=position, limit=limit, content_kind=content_kind
+                classroom_id,
+                staff=staff,
+                status=status,
+                cursor=position,
+                limit=limit,
+                content_kind=content_kind,
             )
             selected = keys[:limit]
             post_ids = [key.id for key in selected if key.kind != "ASSIGNMENT_ACTIVITY"]
@@ -270,8 +279,15 @@ class ClassroomPostService:
     async def update(self, classroom_id: UUID, post_id: UUID, data: PostUpdate) -> FeedEntry:
         async with self.session.begin():
             from app.services.classroom_capabilities import Capability
-            room = await self.access.room(classroom_id, mutation=True, owner=True,
-                capability=Capability.DISCUSSION if data.model_fields_set <= {"locked"} else Capability.CONTENT)
+
+            room = await self.access.room(
+                classroom_id,
+                mutation=True,
+                owner=True,
+                capability=Capability.DISCUSSION
+                if data.model_fields_set <= {"locked"}
+                else Capability.CONTENT,
+            )
             post = await self._post(room, post_id)
             changes = data.model_dump(exclude_unset=True)
             current_resources = (await self.repository.resource_ids([post.id], staff=True))[post.id]
@@ -395,6 +411,7 @@ class ClassroomPostService:
             comment = await self._comment(room, comment_id)
             own_comment = comment.author_id == self.access.actor.id
             from app.services.classroom_capabilities import Capability
+
             owner = Capability.DISCUSSION in self.access.capabilities
             if not own_comment and not owner:
                 raise AppError(

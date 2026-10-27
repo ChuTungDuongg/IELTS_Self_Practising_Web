@@ -100,7 +100,9 @@ class ClassroomService:
             await self._readable(room)
             teacher = await self.session.get(User, room.teacher_id)
             member_count = await self.session.scalar(
-                select(func.count()).select_from(ClassroomMembership).where(
+                select(func.count())
+                .select_from(ClassroomMembership)
+                .where(
                     ClassroomMembership.classroom_id == room.id,
                     ClassroomMembership.left_at.is_(None),
                 )
@@ -230,6 +232,7 @@ class ClassroomService:
             recipient = await self.session.scalar(select(User).where(User.email == email))
             if recipient:
                 from app.services.classroom_staff import require_not_staff
+
                 await require_not_staff(self.session, room.id, recipient.id)
             if recipient is not None and recipient.id == room.teacher_id:
                 raise AppError(
@@ -335,6 +338,7 @@ class ClassroomService:
             member = None
             if accept:
                 from app.services.classroom_staff import require_not_staff
+
                 await require_not_staff(self.session, room.id, self.actor.id)
                 if room.teacher_id == self.actor.id:
                     raise AppError(
