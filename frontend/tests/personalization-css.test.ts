@@ -59,3 +59,20 @@ it("generic primary and section controls consume accent tokens, with visible sel
   expect(declarations(':focus-visible:not(:where(.exam-shell *, .exam-runner *))')["outline-color"]).toBe("var(--accent)");
   expect(declarations(':root[data-theme][data-accent] :is(.exam-shell, .exam-runner, .highlight-popover)')["--accent"]).toBe("var(--personal-accent)");
 });
+
+it("Gravity text remains legible against each dark gradient and guest actions have theme-aware colors", () => {
+  const gravity = postcss.parse(readFileSync(resolve("src/app/gravity-home.css"), "utf8"));
+  const dark = gravity.nodes[0].type === "comment" ? gravity.nodes[1] : gravity.nodes[0];
+  expect(dark.type).toBe("rule");
+  const backgrounds: string[] = [];
+  gravity.walkRules(rule => {
+    if (rule.parent?.type !== "rule" || rule.parent.selector !== '&[data-theme="dark"]') return;
+    if (rule.selector.startsWith(".gravity-gradient-")) rule.walkDecls("background", decl => { backgrounds.push(...decl.value.match(/#[\da-f]{6}/gi)!); });
+  });
+  expect(backgrounds).toHaveLength(9);
+  for (const background of backgrounds) for (const foreground of ["#a5baff", "#eef2ff", "#c4cee7"]) expect(contrast(foreground, background)).toBeGreaterThanOrEqual(4.5);
+  const product = readFileSync(resolve("src/app/gravity-product.css"), "utf8");
+  expect(product).toContain('.guest-language-control button[aria-pressed="true"] { color: var(--action-ink); background: var(--action-bg); }');
+  expect(product).toContain('min-width: 44px; min-height: 44px;');
+  expect(contrast("#101a31", "#a5baff")).toBeGreaterThanOrEqual(4.5);
+});

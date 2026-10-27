@@ -3,11 +3,14 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GravityField } from "@/components/home/gravity/gravity-field";
 import { GravityLanding } from "@/components/home/gravity/gravity-landing";
+import { GlobalHeader } from "@/components/ui/global-header";
+import { PersonalizationProvider } from "@/features/personalization/personalization-provider";
 
 const mock = vi.hoisted(() => ({
   create: vi.fn(), active: vi.fn(), progress: vi.fn(), pointer: vi.fn(), scatter: vi.fn(), dispose: vi.fn(),
 }));
 vi.mock("@/components/home/gravity/load-scene", () => ({ loadGravityScene: async () => ({ createGravityScene: (...args: unknown[]) => mock.create(...args) }) }));
+vi.mock("@/features/auth/auth-provider", () => ({ useAuth: () => ({ user: null, loading: false, sessionError: null, logout: vi.fn() }) }));
 let media: MediaQueryList;
 let reduced = false;
 let saveData = false;
@@ -17,6 +20,7 @@ function Field() { return <div className="gravity-story"><GravityField /><sectio
 
 beforeEach(() => {
   vi.clearAllMocks(); reduced = false; saveData = false;
+  localStorage.clear(); document.documentElement.dataset.theme = "light";
   Object.defineProperty(navigator, "connection", { configurable: true, get: () => ({ saveData }) });
   const events = new EventTarget();
   media = { get matches() { return reduced; }, addEventListener: events.addEventListener.bind(events), removeEventListener: events.removeEventListener.bind(events), dispatchEvent: events.dispatchEvent.bind(events) } as MediaQueryList;
@@ -30,6 +34,24 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllGlobals(); delete (navigator as Navigator & { connection?: unknown }).connection; });
 
 describe("homepage progressive scene", () => {
+  it("preserves the scene, manual pause and scroll when guest language or appearance changes", async () => {
+    const scroll = vi.fn(); vi.stubGlobal("scrollTo", scroll);
+    const { container } = render(<PersonalizationProvider><GlobalHeader pathname="/" /><GravityLanding /></PersonalizationProvider>);
+    await waitFor(() => expect(mock.create).toHaveBeenCalledOnce());
+    const stage = container.querySelector(".gravity-stage");
+    fireEvent.click(screen.getByRole("button", { name: "Scatter spheres" }));
+    fireEvent.click(screen.getByRole("button", { name: "Pause motion" }));
+    fireEvent.click(screen.getByRole("button", { name: "VI" }));
+    fireEvent.click(screen.getByRole("button", { name: "Dùng giao diện tối" }));
+    fireEvent.click(screen.getByRole("button", { name: "EN" }));
+    expect(screen.getByRole("button", { name: "Resume motion" })).toBeInTheDocument();
+    expect(container.querySelector(".gravity-stage")).toBe(stage);
+    expect(mock.create).toHaveBeenCalledOnce();
+    expect(mock.dispose).not.toHaveBeenCalled();
+    expect(mock.scatter).toHaveBeenCalledOnce();
+    expect(mock.active).toHaveBeenLastCalledWith(false);
+    expect(scroll).not.toHaveBeenCalled();
+  });
   it("autoplays the requested homepage motion at lower quality with reduced motion", async () => {
     reduced = true;
     const { container } = render(<Field />);

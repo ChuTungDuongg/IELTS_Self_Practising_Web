@@ -1332,6 +1332,8 @@ export const vi = {
   "personalization.description": "Chọn màu nhấn, giao diện và ngôn ngữ. Tùy chọn được lưu theo tài khoản của bạn.",
   "personalization.accentColor": "Màu nhấn",
   "personalization.appearance": "Giao diện",
+  "shell.useLightTheme": "Dùng giao diện sáng",
+  "shell.useDarkTheme": "Dùng giao diện tối",
   "personalization.language": "Ngôn ngữ",
   "personalization.light": "Sáng",
   "personalization.dark": "Tối",

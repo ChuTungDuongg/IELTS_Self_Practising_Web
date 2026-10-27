@@ -10,6 +10,7 @@
     --gravity-copy: #35405a;
     --gravity-glass: rgb(255 255 255 / .72);
     --gravity-glass-line: rgb(255 255 255 / .9);
+    --gravity-glass-shine: rgb(255 255 255 / .65);
     position: relative; isolation: isolate; overflow: clip; color: var(--gravity-ink);
   }
   .gravity-stage { position: sticky; z-index: 0; top: 0; width: 100%; height: 100svh; margin-bottom: -100svh; pointer-events: none; overflow: hidden; }
@@ -49,7 +50,7 @@
   .gravity-hero-bottom > div:first-child { max-width: 580px; }
   .gravity-hero .gravity-description { max-width: 51ch; margin-top: 24px; }
   .gravity-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 16px 28px; margin-top: 24px; }
-  .gravity-cta { display: inline-flex; width: fit-content; max-width: 100%; align-items: center; justify-content: space-between; gap: 24px; min-height: 52px; padding: 7px 7px 7px 24px; border: 1px solid var(--gravity-glass-line); border-radius: 99px; color: var(--gravity-ink); background: var(--gravity-glass); box-shadow: inset 0 1.5px 2px rgb(255 255 255 / .65), 0 8px 30px rgb(10 30 70 / .04); font-size: 14px; font-weight: 600; backdrop-filter: blur(16px); transition: background .2s, transform .2s; }
+  .gravity-cta { display: inline-flex; width: fit-content; max-width: 100%; align-items: center; justify-content: space-between; gap: 24px; min-height: 52px; padding: 7px 7px 7px 24px; border: 1px solid var(--gravity-glass-line); border-radius: 99px; color: var(--gravity-ink); background: var(--gravity-glass); box-shadow: inset 0 1.5px 2px var(--gravity-glass-shine), 0 8px 30px rgb(10 30 70 / .04); font-size: 14px; font-weight: 600; backdrop-filter: blur(16px); transition: background .2s, transform .2s; }
   .gravity-cta > span { display: grid; flex: none; place-items: center; width: 38px; height: 38px; border-radius: 50%; color: #fff; background: radial-gradient(circle at 40% 25%, #5175ff, #0e2ac5 60%, #020b40); transition: transform .2s; }
   .gravity-cta svg { width: 18px; height: 18px; }
   .gravity-cta:hover { background: var(--surface); transform: translateY(-2px); }
@@ -124,6 +125,7 @@
     .gravity-story {
       --gravity-blue: #a5baff; --gravity-ink: #eef2ff; --gravity-copy: #c4cee7;
       --gravity-glass: rgb(20 30 55 / .88); --gravity-glass-line: rgb(147 170 231 / .24);
+      --gravity-glass-shine: rgb(165 186 255 / .12);
     }
     .gravity-gradient-blue { background: radial-gradient(ellipse at 50% 40%, #1a294a, #101a33 55%, #0c1221); }
     .gravity-gradient-lime { background: radial-gradient(ellipse at 50% 42%, #29351e, #192418 55%, #0e1811); }

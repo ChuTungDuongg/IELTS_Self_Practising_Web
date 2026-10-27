@@ -142,7 +142,7 @@ describe("horizontal application shell", () => {
     if (mode === "error") expect(screen.getByRole("alert")).toHaveTextContent("Session unavailable");
   });
 
-  it.each([null, "USER", "ADMIN"] as const)("omits quick theme and language controls and keeps account action order (%s)", (role) => {
+  it.each(["USER", "ADMIN"] as const)("keeps authenticated personalization and account action order (%s)", (role) => {
     state.role = role;
     state.name = "A very long fictional learner display name that must remain fully accessible";
     const { container } = render(<AppShell currentYear={2026}>Content</AppShell>);
@@ -155,6 +155,15 @@ describe("horizontal application shell", () => {
     expect(Array.from(actions.children).map((child) => child.tagName.toLowerCase())).toEqual(role ? ["time", "button", "a", "button"] : ["time", "a", "a"]);
     expect(header.getByLabelText(/Vietnam time: .*GMT\+7/)).toBeVisible();
     if (role) expect(screen.getByRole("link", { name: new RegExp(state.name) })).toHaveAttribute("href", "/profile");
+  });
+
+  it.each(["/login", "/register", "/library"])("only exposes guest quick preferences on the homepage, excluding %s", pathname => {
+    state.pathname = pathname;
+    render(<AppShell currentYear={2026}>Content</AppShell>);
+    expect(screen.queryByRole("group", { name: "Language" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Use dark theme" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Login" })).toHaveAttribute("href", "/login");
+    expect(screen.getByRole("link", { name: "Register" })).toHaveAttribute("href", "/register");
   });
 
   it("retains one global nav and ordinary DOM Tab order without responsive duplicate controls", () => {

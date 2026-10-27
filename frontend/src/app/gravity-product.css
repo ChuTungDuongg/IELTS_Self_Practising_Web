@@ -44,6 +44,18 @@
   /* Public navigation borrows restrained glass; workspace chrome remains opaque. */
   .app-shell-home .app-header { background: color-mix(in srgb, var(--surface) 90%, transparent); backdrop-filter: blur(16px); }
   .app-shell-home .header-actions .btn-primary { background: #0e2ac5; color: #fff; }
+  .guest-home-preferences { display: flex; flex: none; align-items: center; gap: 4px; }
+  .guest-language-control { display: inline-flex; flex: none; padding: 2px; border: 1px solid var(--control-border); border-radius: 99px; background: var(--surface-soft); }
+  .guest-language-control button { min-width: 40px; min-height: 40px; border: 0; border-radius: 99px; background: transparent; color: var(--muted); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+  .guest-language-control button:hover { color: var(--ink); background: var(--surface-hover); }
+  .guest-language-control button[aria-pressed="true"] { color: var(--action-ink); background: var(--action-bg); }
+  .guest-theme-control { flex: none; color: var(--ink); }
+  &[data-theme="dark"] .app-shell-home .header-actions .btn-primary { color: #101a31; background: #a5baff; }
+  @media (max-width: 760px) {
+    .app-header-inner:has(.guest-home-preferences) { grid-template-areas: "brand menu" "actions actions" "nav nav"; grid-template-columns: minmax(0, 1fr) auto; }
+    .header-actions:has(.guest-home-preferences) { justify-self: stretch; justify-content: flex-end; flex-wrap: wrap; }
+    .guest-language-control button { min-width: 44px; min-height: 44px; }
+  }
 
   /* Authentication and account management: actual existing form behavior. */
   .auth-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 460px); align-items: center; gap: clamp(32px, 6vw, 88px); min-height: 65svh; }

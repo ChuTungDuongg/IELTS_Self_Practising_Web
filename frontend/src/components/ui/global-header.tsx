@@ -10,7 +10,8 @@ import { useTranslation } from "@/lib/i18n/locale-provider";
 import { roleTranslationKeys } from "@/lib/i18n/translations";
 import { NotificationCenter } from "@/features/notifications/notification-center";
 import { PersonalizationDialog } from "@/features/personalization/personalization-dialog";
-import { SettingsIcon } from "./icons";
+import { usePersonalization } from "@/features/personalization/personalization-provider";
+import { MoonIcon, SettingsIcon, SunIcon } from "./icons";
 import { VietnamClock } from "./vietnam-clock";
 
 const navigation = [
@@ -60,10 +61,27 @@ function PrimaryNavigation({ pathname, id, onNavigate }: { pathname: string; id:
   );
 }
 
+function GuestHomepagePreferences() {
+  const { locale, setLocale, appearance, setAppearance } = usePersonalization();
+  const { t } = useTranslation();
+  const dark = appearance === "DARK";
+  const themeLabel = t(dark ? "shell.useLightTheme" : "shell.useDarkTheme");
+  return <div className="guest-home-preferences">
+    <div className="guest-language-control" role="group" aria-label={t("personalization.language")}>
+      <button type="button" lang="vi" aria-pressed={locale === "vi"} onClick={() => setLocale("vi")}>VI</button>
+      <button type="button" lang="en" aria-pressed={locale === "en"} onClick={() => setLocale("en")}>EN</button>
+    </div>
+    <button type="button" className="icon-button guest-theme-control" aria-label={themeLabel} title={themeLabel} onClick={() => setAppearance(dark ? "LIGHT" : "DARK")}>
+      {dark ? <SunIcon width={18} height={18} /> : <MoonIcon width={18} height={18} />}
+    </button>
+  </div>;
+}
+
 function HeaderActions({ loggingOut, onLogout, onPersonalization, settingsButtonRef, pathname }: { loggingOut: boolean; onLogout(): void; onPersonalization(): void; settingsButtonRef: RefObject<HTMLButtonElement | null>; pathname: string }) {
   const { user, loading, sessionError } = useAuth();
   const { t } = useTranslation();
   return <div className="header-actions">
+    {!loading && !user && !sessionError && pathname === "/" ? <GuestHomepagePreferences /> : null}
     <VietnamClock />
     {user && !pathname.startsWith("/settings/personalization") ? <button ref={settingsButtonRef} type="button" className="icon-button" aria-label={t("personalization.title")} title={t("personalization.title")} onClick={onPersonalization}><SettingsIcon width="20" height="20" /></button> : null}
     {user ? <NotificationCenter key={user.id} userId={user.id} /> : null}

@@ -1330,6 +1330,8 @@ export const en = {
   "personalization.description": "Choose your accent color, appearance and language. Your preferences follow your account.",
   "personalization.accentColor": "Accent color",
   "personalization.appearance": "Appearance",
+  "shell.useLightTheme": "Use light theme",
+  "shell.useDarkTheme": "Use dark theme",
   "personalization.language": "Language",
   "personalization.light": "Light",
   "personalization.dark": "Dark",

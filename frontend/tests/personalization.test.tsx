@@ -2,9 +2,9 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { useEffect, useState, type ReactNode } from "react";
 import { AuthProvider, useAuth } from "@/features/auth/auth-provider";
-import { LocaleProvider } from "@/lib/i18n/locale-provider";
+import { LocaleProvider, UiText } from "@/lib/i18n/locale-provider";
 import { GlobalHeader } from "@/components/ui/global-header";
-import { apiRequest } from "@/lib/api/client";
+import { ApiError, apiRequest } from "@/lib/api/client";
 import PersonalizationPage from "@/app/settings/personalization/page";
 import { usePersonalization } from "@/features/personalization/personalization-provider";
 import { renderToString } from "react-dom/server";
@@ -54,6 +54,76 @@ function deferred<T>() {
   return { promise, resolve };
 }
 function patches() { return vi.mocked(apiRequest).mock.calls.filter(([, init]) => init?.method === "PATCH"); }
+function signOutFixture() {
+  vi.mocked(apiRequest).mockRejectedValue(new ApiError("UNAUTHORIZED", "Guest", 401));
+}
+
+it("guest header switches translated copy and appearance locally, preserving accent and auth links", async () => {
+  signOutFixture();
+  localStorage.setItem("ielts-accent", "PINK");
+  const { unmount } = render(<Application pathname="/"><h1><UiText message="gravity.heroOne" /></h1></Application>);
+  const vietnamese = await screen.findByRole("button", { name: "VI" });
+  const english = screen.getByRole("button", { name: "EN" });
+  expect(english).toHaveAttribute("aria-pressed", "true");
+  expect(vietnamese).toHaveAttribute("lang", "vi");
+  vietnamese.focus();
+  expect(vietnamese).toHaveFocus();
+  expect(vietnamese.tabIndex).toBe(0);
+  fireEvent.click(vietnamese, { detail: 0 });
+  expect(screen.getByRole("heading")).toHaveTextContent("Luyện tập có mục tiêu.");
+  expect(vietnamese).toHaveAttribute("aria-pressed", "true");
+  expect(screen.getByRole("group", { name: "Ngôn ngữ" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Dùng giao diện tối" }));
+  expect(document.documentElement.dataset.theme).toBe("dark");
+  expect(localStorage.getItem("ielts-theme")).toBe("dark");
+  expect(localStorage.getItem("ielts-locale")).toBe("vi");
+  expect(localStorage.getItem("ielts-accent")).toBe("PINK");
+  unmount();
+  render(<Application pathname="/"><h1><UiText message="gravity.heroOne" /></h1></Application>);
+  await screen.findByRole("button", { name: "Dùng giao diện sáng" });
+  expect(screen.getByRole("button", { name: "VI" })).toHaveAttribute("aria-pressed", "true");
+  fireEvent.click(screen.getByRole("button", { name: "EN" }));
+  expect(screen.getByRole("heading")).toHaveTextContent("Practice with purpose.");
+  fireEvent.click(screen.getByRole("button", { name: "Use light theme" }));
+  expect(document.documentElement.dataset.theme).toBe("light");
+  expect(localStorage.getItem("ielts-locale")).toBe("en");
+  expect(screen.getByRole("link", { name: "Login" })).toHaveAttribute("href", "/login");
+  expect(screen.getByRole("link", { name: "Register" })).toHaveAttribute("href", "/register");
+  expect(vi.mocked(apiRequest).mock.calls.map(([path]) => path)).toEqual(["/auth/me", "/auth/me"]);
+  expect(router.refresh).not.toHaveBeenCalled();
+  expect(router.push).not.toHaveBeenCalled();
+});
+
+it.each(["getter", "getItem", "setItem"] as const)("guest header remains usable with blocked storage (%s)", async failure => {
+  signOutFixture();
+  if (failure === "getter") Object.defineProperty(window, "localStorage", { configurable: true, get() { throw new Error("blocked"); } });
+  else vi.spyOn(Storage.prototype, failure).mockImplementation(() => { throw new Error("blocked"); });
+  render(<Application pathname="/" />);
+  fireEvent.click(await screen.findByRole("button", { name: "VI" }));
+  fireEvent.click(screen.getByRole("button", { name: "Dùng giao diện tối" }));
+  expect(document.documentElement.lang).toBe("vi");
+  expect(document.documentElement.dataset.theme).toBe("dark");
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  expect(vi.mocked(apiRequest).mock.calls.map(([path]) => path)).toEqual(["/auth/me"]);
+});
+
+it("guest homepage hydrates deterministic defaults before restoring local preferences", async () => {
+  signOutFixture();
+  localStorage.setItem("ielts-theme", "dark"); localStorage.setItem("ielts-locale", "vi");
+  const read = vi.spyOn(Storage.prototype, "getItem");
+  const tree = <Application pathname="/"><h1><UiText message="gravity.heroOne" /></h1></Application>;
+  const container = document.createElement("div");
+  container.innerHTML = renderToString(tree); document.body.append(container);
+  expect(container).toHaveTextContent("Practice with purpose.");
+  expect(read).not.toHaveBeenCalled(); expect(apiRequest).not.toHaveBeenCalled();
+  const recoverable = vi.fn(); let root!: ReturnType<typeof hydrateRoot>;
+  await act(async () => { root = hydrateRoot(container, tree, { onRecoverableError: recoverable }); });
+  await within(container).findByRole("button", { name: "Dùng giao diện sáng" });
+  expect(container).toHaveTextContent("Luyện tập có mục tiêu.");
+  expect(recoverable).not.toHaveBeenCalled();
+  await act(async () => root.unmount()); container.remove();
+});
+
 async function settingsReady() {
   await screen.findByRole("group", { name: "Accent color" });
   await waitFor(() => expect(screen.getByRole("button", { name: "Blue" })).toBeEnabled());
