@@ -270,7 +270,7 @@ it("teacher demotion conflicts explain required cleanup in EN and VI", async () 
   expect(screen.queryByText("English backend detail")).not.toBeInTheDocument();
 });
 it("ADMIN result links use the shared authorized classroom route", () => {
-  renderWithLocale(<AssignmentList resultNamespace="shared" canManage assignments={[{
+  renderWithLocale(<AssignmentList resultNamespace="shared" canViewResults canStart={false} assignments={[{
     id: "a",
     classroom_id: "c",
     test_version_id: "v",

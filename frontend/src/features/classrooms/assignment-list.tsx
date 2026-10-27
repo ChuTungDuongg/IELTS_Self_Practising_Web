@@ -115,9 +115,10 @@ function StartAssignment({ assignment }: {
     {mode === "READING" || mode === "LISTENING" || mode === "FULL_MOCK" ? <PresentationDialog open={choosing} module={mode === "FULL_MOCK" ? "LISTENING" : mode} value={presentation} onChange={setPresentation} onClose={() => setChoosing(false)} onConfirm={() => void start()} pending={pending} error={error} returnFocusRef={trigger} preview={{ title: assignment.title ?? assignment.version?.test_title, unitTitle: previewUnit?.title, questionTypes: previewUnit?.question_groups.map(group => group.question_type) }} /> : null}
   </div>;
 }
-export function AssignmentList({ assignments, canManage = false, canSchedule = canManage, canArchive = canManage, archived = false, resultNamespace = "teacher", onChanged }: {
+export function AssignmentList({ assignments, canViewResults = false, canStart = true, canSchedule = false, canArchive = false, archived = false, resultNamespace = "teacher", onChanged }: {
   assignments: ClassroomAssignment[];
-  canManage?: boolean;
+  canViewResults?: boolean;
+  canStart?: boolean;
   canSchedule?: boolean;
   canArchive?: boolean;
   archived?: boolean;
@@ -136,8 +137,8 @@ export function AssignmentList({ assignments, canManage = false, canSchedule = c
         <AssignmentTargetSummary assignment={assignment} />
         {canSchedule && !assignment.target ? <p className="classroom-meta">{ct("legacyTarget")}</p> : null}
         <p>{assignment.note}</p>
-        {canManage ? <ScheduleSummary assignment={assignment} /> : <ProgressSummary assignmentId={assignment.id} actions />}
-        {canManage ? <div className="flex gap-2 mt-3">
+        {canViewResults || !canStart ? <ScheduleSummary assignment={assignment} /> : <ProgressSummary assignmentId={assignment.id} actions />}
+        {canViewResults ? <div className="flex gap-2 mt-3">
           {canSchedule && !archived && assignment.status === "ARCHIVED" && onChanged ? <details><summary>{lt("more")}</summary><ArchivedAssignmentActions assignment={assignment} onChanged={onChanged} /></details> : null}
           <Link href={`${resultNamespace === "shared" ? "" : "/teacher"}/classrooms/${assignment.classroom_id}/assignments/${assignment.id}/results`} className="btn btn-secondary">
             {t("assignment.results")}
@@ -145,9 +146,9 @@ export function AssignmentList({ assignments, canManage = false, canSchedule = c
           {canArchive && !archived && assignment.status === "ACTIVE" ? <details><summary>{lt("more")}</summary>{onChanged ? <ContentAction confirm={{ title: ct("archiveTitle"), description: ct("archiveDescription") }} action={() => archiveAssignment(assignment.classroom_id, assignment.id)} onDone={onChanged}>{t("common.archive")}</ContentAction> : <ResourceAction confirm={{ title: ct("archiveTitle"), description: ct("archiveDescription") }} action={() => archiveAssignment(assignment.classroom_id, assignment.id)}>
             {t("common.archive")}
           </ResourceAction>}</details> : null}
-        </div> : !archived && assignment.status === "ACTIVE" ? <StartAssignment assignment={assignment} />
+        </div> : canStart && !archived && assignment.status === "ACTIVE" ? <StartAssignment assignment={assignment} />
           : <p>{t("classroom.archived")}</p>}
-        {canManage ? <AssignmentManagement key={`${assignment.id}-${assignment.policy_revision}`} assignment={assignment} canEdit={canSchedule && !archived && assignment.status === "ACTIVE"} shared={resultNamespace === "shared"} /> : null}
+        {canViewResults ? <AssignmentManagement key={`${assignment.id}-${assignment.policy_revision}`} assignment={assignment} canEdit={canSchedule && !archived && assignment.status === "ACTIVE"} shared={resultNamespace === "shared"} /> : null}
       </article>)}
     </div> : <p>{t("assignment.empty")}</p>}
   </section>;

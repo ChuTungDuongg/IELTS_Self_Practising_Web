@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { LibraryIcon, SearchIcon } from "@/components/ui/icons";
 import { ApiError } from "@/lib/api/client";
 import { placeAssignment, reorderItems, reorderSections, type Classwork, type ClassroomResource, type ClassroomSection } from "@/lib/api/classroom-content";
 import type { ClassroomAssignment } from "@/lib/api/classrooms";
@@ -16,16 +17,19 @@ import { classworkGroups } from "./classwork-groups";
 import { useClassworkDisclosure } from "./classwork-disclosure";
 import { ClassworkProgressNotice } from "./classwork-assignment-meta";
 import { deleteSection, deleteResource, removeAssignmentItem } from "@/lib/api/classroom-content";
+import { normalizeClassworkSearch, searchClasswork } from "./classwork-search";
 
 type Editor = { kind: "section"; section?: ClassroomSection } | { kind: "resource"; resource?: ClassroomResource; sectionId?: string | null } | { kind: "placement" };
-export function ClassworkPanel({ classroomId, data, assignments, canAuthor, canAssign = canAuthor, canInspect = canAuthor, onRefresh, onChange, onOpenAssignment, initialAction, onCreateAssignment, onAssignmentsChanged = onRefresh }: {
+export function ClassworkPanel({ classroomId, data, assignments, canAuthor, canAssign = canAuthor, canInspect = canAuthor, onRefresh, onChange, onOpenAssignment, initialAction, onCreateAssignment, onAssignmentsChanged = onRefresh, showCreateMenu = true }: {
   classroomId: string; data: Classwork; assignments: ClassroomAssignment[]; canAuthor: boolean; onRefresh: () => Promise<unknown>; onChange: (data: Classwork) => void; onOpenAssignment: (id: string) => void;
-  initialAction?: "section" | "resource"; onCreateAssignment?: () => void; canInspect?: boolean; canAssign?: boolean; onAssignmentsChanged?: () => Promise<unknown>;
+  initialAction?: "section" | "resource"; onCreateAssignment?: () => void; canInspect?: boolean; canAssign?: boolean; onAssignmentsChanged?: () => Promise<unknown>; showCreateMenu?: boolean;
 }) {
   const { ct } = useContentTranslation();
   const { lt } = useLmsText();
   const [editor, setEditor] = useState<Editor | null>(initialAction ? { kind: initialAction } : null), [pending, setPending] = useState(false), [error, setError] = useState<string | null>(null), [notice, setNotice] = useState<string | null>(null);
   const [assignmentId, setAssignmentId] = useState(""), [targetSection, setTargetSection] = useState("");
+  const [query, setQuery] = useState("");
+  const [searchCollapsed, setSearchCollapsed] = useState<Record<string, boolean>>({});
   const running = useRef(false), dragging = useRef<{ kind: "section" | "item"; id: string } | null>(null);
   const root = useRef<HTMLElement>(null);
   const [focusGroup, setFocusGroup] = useState<{ id: string | undefined } | null>(null);
@@ -36,6 +40,7 @@ export function ClassworkPanel({ classroomId, data, assignments, canAuthor, canA
   }, [focusGroup]);
   const sections = ordered(data.sections), unplaced = assignments.filter(assignment => !data.items.some(item => item.assignment_id === assignment.id));
   const groups = classworkGroups(data, assignments, canInspect), disclosure = useClassworkDisclosure(groups);
+  const visibleGroups = searchClasswork(groups, query), searching = !!normalizeClassworkSearch(query);
   async function mutate(action: () => Promise<Classwork>, rethrow = false, success = ct("reorderSaved")) {
     if (running.current || !canAuthor && !canAssign) return; running.current = true; setPending(true); setError(null); setNotice(null);
     try { onChange(await action()); setNotice(success); }
@@ -80,9 +85,9 @@ export function ClassworkPanel({ classroomId, data, assignments, canAuthor, canA
     onDragEnd: () => { dragging.current = null; }, onItemMove: moveItem, onItemStep: stepItem,
     onItemDrag: id => { dragging.current = { kind: "item", id }; }, onItemDrop: dropItem, onOpenAssignment,
   };
-  const sectionProps = { sections, classroomId, canAuthor, canAssign, pending, actions };
+  const sectionProps = { sections, classroomId, canAuthor, canAssign, canInspect, pending, actions };
   return <section ref={root} className="classroom-classwork" aria-label={ct("classwork")}>
-    <div className="classroom-section-heading"><div><h2>{ct("classwork")}</h2><p className="classroom-meta">{lt("organizeTopics")}</p></div>{canAuthor || canAssign ? <ActionMenu label={lt("addContent")} primary>{canAuthor ? <><button type="button" disabled={pending} onClick={() => setEditor({ kind: "section" })}>{ct("addSection")}</button><button type="button" disabled={pending} onClick={() => setEditor({ kind: "resource" })}>{ct("addResource")}</button></> : null}{canAssign ? <button type="button" disabled={pending} onClick={() => setEditor({ kind: "placement" })}>{ct("attachAssignment")}</button> : null}</ActionMenu> : null}</div>
+    <div className="classroom-section-heading classroom-classwork-heading"><div className="classroom-classwork-title"><span className="classroom-book-mark"><LibraryIcon /></span><div><h2>{ct("classwork")}</h2><p className="classroom-meta">{ct("classworkDescription")}</p></div></div><div className="classroom-classwork-tools"><label className="classroom-content-search"><SearchIcon /><span className="sr-only">{ct("searchContent")}</span><input type="search" value={query} placeholder={ct("searchContentPlaceholder")} onChange={event => { setQuery(event.target.value); setSearchCollapsed({}); }} /></label>{showCreateMenu && (canAuthor || canAssign) ? <ActionMenu label={lt("addContent")} primary>{canAuthor ? <><button type="button" disabled={pending} onClick={() => setEditor({ kind: "section" })}>{ct("addSection")}</button><button type="button" disabled={pending} onClick={() => setEditor({ kind: "resource" })}>{ct("addResource")}</button></> : null}{canAssign ? <button type="button" disabled={pending} onClick={() => setEditor({ kind: "placement" })}>{ct("attachAssignment")}</button> : null}</ActionMenu> : null}</div></div>
     {error ? <p className="notice notice-error" role="alert">{error}</p> : null}{notice ? <p className="classroom-meta" role="status">{notice}</p> : null}
     {assignments.length ? <ClassworkProgressNotice /> : null}
     {editor && canAuthor ? editor.kind === "section" ? <SectionEditor key={editor.section?.id ?? "new-section"} classroomId={classroomId} section={editor.section} onDone={editorDone} onCancel={() => setEditor(null)} /> : editor.kind === "resource" ? <ResourceEditor key={editor.resource?.id ?? `new-resource-${editor.sectionId ?? ""}`} classroomId={classroomId} resource={editor.resource} sectionId={editor.sectionId} sections={sections} onDone={editorDone} onCancel={() => setEditor(null)} /> : null : null}
@@ -91,6 +96,7 @@ export function ClassworkPanel({ classroomId, data, assignments, canAuthor, canA
       <button type="button" className="btn btn-secondary" disabled={pending} onClick={() => setEditor(null)}>{ct("cancel")}</button>
     </form> : <div className="classroom-empty"><p>{lt("noEligibleAssignments")}</p>{onCreateAssignment ? <button type="button" className="btn btn-primary" onClick={onCreateAssignment}>{lt("newAssignment")}</button> : null}<button type="button" className="btn btn-secondary" onClick={() => setEditor(null)}>{ct("cancel")}</button></div>}{canAuthor && !sections.length ? <button type="button" className="classroom-text-button" onClick={() => setEditor({ kind: "section" })}>{ct("addSection")}</button> : null}</div> : null}
     {!groups.length ? <div className="classroom-empty"><p>{lt("emptySections")}</p>{canAuthor && !editor ? <button type="button" className="btn btn-primary" onClick={() => setEditor({ kind: "section" })}>{lt("newSection")}</button> : null}</div> : null}
-    {groups.map(group => <ClassworkSection key={group.key} group={group} index={sections.findIndex(section => section.id === group.section?.id)} expanded={!!disclosure.expanded[group.key]} onToggle={() => disclosure.toggle(group.key)} {...sectionProps} />)}
+    {searching && !visibleGroups.length ? <p className="classroom-search-empty" role="status">{ct("noSearchResults")}</p> : null}
+    {visibleGroups.map(group => <ClassworkSection key={group.key} group={group} index={sections.findIndex(section => section.id === group.section?.id)} expanded={searching ? !searchCollapsed[group.key] : !!disclosure.expanded[group.key]} onToggle={() => searching ? setSearchCollapsed(previous => ({ ...previous, [group.key]: !previous[group.key] })) : disclosure.toggle(group.key)} {...sectionProps} />)}
   </section>;
 }

@@ -10,6 +10,7 @@ export function contentActionError(error: unknown, ct: (key: ContentMessage) => 
   const messages: Partial<Record<string, ContentMessage>> = {
     ASSIGNMENT_HISTORY_PROTECTED: "assignmentProtected", RESOURCE_REFERENCED: "resourceReferenced",
     CLASSROOM_ARCHIVED: "archivedRoom", CLASSROOM_CAPABILITY_REQUIRED: "permissionRequired", CLASSROOM_OWNERSHIP_REQUIRED: "permissionRequired",
+    CLASSROOM_OBSERVER_READ_ONLY: "readOnly",
     ASSIGNMENT_NOT_ACCESSIBLE: "assignmentUnavailable", ASSIGNMENT_NOT_FOUND: "assignmentUnavailable",
   };
   const message = error instanceof ApiError ? messages[error.code] : undefined;

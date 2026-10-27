@@ -11,31 +11,37 @@ import { ActionMenu } from "../lms/action-menu";
 import { useAssignmentProgress } from "../scheduling/progress-provider";
 import { ClassworkAssignmentMeta } from "./classwork-assignment-meta";
 import { ArchivedAssignmentActions } from "./archived-assignment-actions";
+import { ArchiveActionLayout } from "./archive-action-layout";
 
-export function ClassworkItemRow({ item, resource, assignment, classroomId, sections, canAuthor, canAssign, pending, first, last, onEdit, onRefresh, onMove, onPlace, onStep, onDrag, onDrop, onOpenAssignment, onDelete, onRemove, onAssignmentsChanged }: {
-  item?: ClassworkItem; resource?: ClassroomResource; assignment?: ClassroomAssignment; classroomId: string; sections: ClassroomSection[]; canAuthor: boolean; canAssign: boolean; pending: boolean; first: boolean; last: boolean;
+export function ClassworkItemRow({ item, resource, assignment, classroomId, sections, canAuthor, canAssign, canInspect, pending, first, last, onEdit, onRefresh, onMove, onPlace, onStep, onDrag, onDrop, onOpenAssignment, onDelete, onRemove, onAssignmentsChanged }: {
+  item?: ClassworkItem; resource?: ClassroomResource; assignment?: ClassroomAssignment; classroomId: string; sections: ClassroomSection[]; canAuthor: boolean; canAssign: boolean; canInspect: boolean; pending: boolean; first: boolean; last: boolean;
   onEdit: (resource: ClassroomResource) => void; onRefresh: () => Promise<unknown>; onMove: (id: string, sectionId: string | null) => void; onPlace: (id: string, sectionId: string | null) => void; onStep: (id: string, delta: number) => void;
   onDrag: (id: string) => void; onDrop: (id: string) => void; onOpenAssignment: (id: string) => void;
   onDelete: (id: string) => Promise<unknown>; onRemove: (id: string) => Promise<unknown>;
   onAssignmentsChanged: () => Promise<unknown>;
 }) {
-  const { ct } = useContentTranslation(), progress = useAssignmentProgress();
+  const { ct, locale } = useContentTranslation(), progress = useAssignmentProgress();
   const title = resource?.title ?? assignment?.title ?? assignment?.version?.test_title ?? ct("assignmentActivity");
   const archived = resource?.status === "ARCHIVED" || assignment?.status === "ARCHIVED";
-  const result = assignment && !progress?.staff ? progress?.items[assignment.id]?.result_attempt_id : null;
+  const result = assignment && !canInspect && !progress?.staff ? progress?.items[assignment.id]?.result_attempt_id : null;
   const Icon = resource ? ReadingIcon : BuilderIcon;
   const canManage = assignment ? canAssign : canAuthor;
   if (!resource && !assignment) return null;
-  return <li id={"classwork-" + (assignment ? "assignment-" + assignment.id : "resource-" + resource!.id)} tabIndex={-1} className="classroom-classwork-row"
+  const archivedAt = assignment?.archived_at;
+  return <li id={"classwork-" + (assignment ? "assignment-" + assignment.id : "resource-" + resource!.id)} tabIndex={-1} className={"classroom-classwork-row" + (archived ? " classroom-archived-row" : "")}
     onDragOver={event => { if (canAuthor && item && !archived) { event.preventDefault(); event.stopPropagation(); } }}
     onDrop={event => { if (canAuthor && item && !archived) { event.preventDefault(); event.stopPropagation(); onDrop(item.id); } }}>
     <div className="classroom-item-identity"><Icon className="classroom-item-icon" /><div><h4>{title}</h4>
-      {assignment ? <ClassworkAssignmentMeta assignment={assignment} /> : resource ? <p className="classroom-meta">{ct(resource.kind === "TEXT" ? "text" : resource.kind === "LINK" ? "link" : "file")}{resource.status === "DRAFT" ? " · " + ct("draft") : ""}</p> : null}
+      {assignment && archived && canInspect ? <p className="classroom-meta">{ct("assignmentActivity")} · {ct("archived")}</p> : assignment ? <ClassworkAssignmentMeta assignment={assignment} /> : resource ? <p className="classroom-meta">{ct(resource.kind === "TEXT" ? "text" : resource.kind === "LINK" ? "link" : "file")}{resource.status !== "PUBLISHED" ? " · " + ct(resource.status === "DRAFT" ? "draft" : "archived") : ""}</p> : null}
     </div></div>
-    {resource ? <ResourceViewer resource={resource} compact /> : assignment ? <div className="classroom-item-navigation">{result ? <Link className="classroom-text-button" href={"/review/" + result}>{ct("viewResults")}</Link> : null}<button className="classroom-text-button" type="button" onClick={() => onOpenAssignment(assignment.id)}>{ct("viewDetails")}</button></div> : null}
-    {canManage ? <ActionMenu label={ct("itemActions")} iconOnly>
-      {archived && assignment ? <ArchivedAssignmentActions assignment={assignment} onChanged={onAssignmentsChanged} disabled={pending} /> : null}
-      {archived && resource ? <ContentAction disabled={pending} action={() => updateResource(classroomId, resource.id, { status: "DRAFT" })} onDone={onRefresh} confirm={{ title: ct("restoreDraftTitle"), description: ct("restoreDraftDescription") }}>{ct("restore")}</ContentAction> : null}
+    {archived && archivedAt && Number.isFinite(Date.parse(archivedAt)) ? <time className="classroom-archive-date" dateTime={archivedAt}>{ct("archivedOn", { name: new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", year: "numeric" }).format(new Date(archivedAt)) })}</time> : null}
+    {resource ? <ResourceViewer resource={resource} compact /> : assignment && !(archived && canManage) ? <div className="classroom-item-navigation">{result ? <Link className="classroom-text-button" href={"/review/" + result}>{ct("viewResults")}</Link> : null}<button className={archived ? "btn btn-secondary" : "classroom-text-button"} type="button" onClick={() => onOpenAssignment(assignment.id)}>{ct("viewDetails")}</button></div> : null}
+    {archived && assignment && canManage ? <ArchivedAssignmentActions assignment={assignment} onChanged={onAssignmentsChanged} onDetails={() => onOpenAssignment(assignment.id)} disabled={pending} /> : null}
+    {archived && resource && canManage ? <ArchiveActionLayout>
+      <ContentAction disabled={pending} action={() => updateResource(classroomId, resource.id, { status: "DRAFT" })} onDone={onRefresh} confirm={{ title: ct("restoreDraftTitle"), description: ct("restoreDraftDescription") }}>{ct("restore")}</ContentAction>
+      <ContentAction disabled={pending} action={() => onDelete(resource.id)} confirm={{ title: ct("deleteResourceTitle"), description: ct("deleteResourceDescription") }}>{ct("delete")}</ContentAction>
+    </ArchiveActionLayout> : null}
+    {canManage && !archived ? <ActionMenu label={ct("itemActions")} iconOnly>
       {item && !archived ? <button className="classroom-drag-handle" type="button" draggable={!pending} disabled={pending} aria-label={ct("dragItem") + ": " + title} onDragStart={event => { event.stopPropagation(); event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/plain", item.id); onDrag(item.id); }}>⠿</button> : null}
       {resource && !archived ? <>
         <button type="button" disabled={pending} onClick={() => onEdit(resource)}>{ct("edit")}</button>

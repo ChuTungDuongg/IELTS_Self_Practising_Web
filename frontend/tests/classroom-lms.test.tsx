@@ -30,7 +30,7 @@ it("provides a compact course header and keeps archive inside its management dis
 });
 
 it("offers staff Gradebook navigation while keeping the assignment creation form closed", async () => {
-  renderWithLocale(<ClassroomWorkspace classroom={room} user={{ id: "owner", role: "TEACHER" }} assignments={[]} canManage assignmentForm={<p>Assignment creation fields</p>} people={<p>People controls</p>} />);
+  renderWithLocale(<ClassroomWorkspace classroom={room} user={{ id: "owner", role: "TEACHER" }} assignments={[]} assignmentForm={<p>Assignment creation fields</p>} people={<p>People controls</p>} />);
   await screen.findByText("No classroom updates yet.");
   expect(screen.getByRole("tab", { name: "Gradebook" })).toBeInTheDocument();
   expect(screen.queryByText("Assignment creation fields")).not.toBeInTheDocument();
@@ -41,7 +41,7 @@ it("offers staff Gradebook navigation while keeping the assignment creation form
 });
 
 it("hides staff navigation and creation controls from students and explains empty Classwork", async () => {
-  renderWithLocale(<ClassroomWorkspace classroom={room} user={{ id: "learner", role: "USER" }} assignments={[]} canManage={false} />);
+  renderWithLocale(<ClassroomWorkspace classroom={room} user={{ id: "learner", role: "USER" }} assignments={[]} />);
   expect(screen.queryByRole("tab", { name: "Gradebook" })).not.toBeInTheDocument();
   expect(screen.queryByRole("tab", { name: "People" })).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Create" })).not.toBeInTheDocument();
@@ -50,8 +50,22 @@ it("hides staff navigation and creation controls from students and explains empt
   expect(screen.queryByRole("button", { name: "Create first topic" })).not.toBeInTheDocument();
 });
 
+it("keeps Admin in the shared observer workspace without teacher or student actions", async () => {
+  renderWithLocale(<ClassroomWorkspace classroom={{ ...room, capabilities: ["roster.view", "grades.view", "analytics.view", "content.manage", "assignments.manage", "grades.edit"] }} user={{ id: "admin", role: "ADMIN" }} assignments={[assignment]} management={<button>Forbidden management</button>} assignmentForm={<p>Forbidden assignment fields</p>} people={<p>Read-only roster</p>} />);
+  expect(screen.getByText("Observer mode · Read only")).toBeInTheDocument();
+  expect(screen.queryByText("Manage class")).not.toBeInTheDocument();
+  expect(screen.queryByText("Create")).not.toBeInTheDocument();
+  expect(screen.queryByRole("tab", { name: "My Progress" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("tab", { name: "People" }));
+  expect(screen.getByText("Read-only roster")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("tab", { name: "Assignments" }));
+  expect(screen.queryByText("Forbidden assignment fields")).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Start assignment" })).not.toBeInTheDocument();
+  expect(screen.queryByText("No deadline")).not.toBeInTheDocument();
+});
+
 it("filters feed content through the paginated backend query", async () => {
-  renderWithLocale(<ClassroomWorkspace classroom={room} user={{ id: "owner", role: "TEACHER" }} assignments={[]} canManage />);
+  renderWithLocale(<ClassroomWorkspace classroom={room} user={{ id: "owner", role: "TEACHER" }} assignments={[]} />);
   await screen.findByText("No classroom updates yet.");
   fireEvent.change(screen.getByLabelText("Feed type"), { target: { value: "ASSIGNMENT_ACTIVITY" } });
   await waitFor(() => expect(api.listFeed).toHaveBeenLastCalledWith("room", expect.objectContaining({ contentKind: "ASSIGNMENT_ACTIVITY" })));
@@ -88,7 +102,7 @@ it("requires explicit staff invitation input and hides staff mutations from a TA
 });
 
 it("keeps archived classrooms readable without creation actions", async () => {
-  renderWithLocale(<ClassroomWorkspace classroom={{ ...room, status: "ARCHIVED" }} user={{ id: "owner", role: "TEACHER" }} assignments={[]} canManage assignmentForm={<p>Hidden form</p>} />);
+  renderWithLocale(<ClassroomWorkspace classroom={{ ...room, status: "ARCHIVED" }} user={{ id: "owner", role: "TEACHER" }} assignments={[]} assignmentForm={<p>Hidden form</p>} />);
   expect(screen.getByText("This classroom is archived. Retained content is available to read.")).toHaveAttribute("role", "status");
   expect(screen.queryByRole("button", { name: "Create" })).not.toBeInTheDocument();
   expect(screen.getByRole("tab", { name: "Gradebook" })).toBeInTheDocument();

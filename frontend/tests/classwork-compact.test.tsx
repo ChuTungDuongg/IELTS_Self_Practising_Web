@@ -114,7 +114,7 @@ it("offers archived resource and topic restoration as drafts with confirmation",
   await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   fireEvent.click(toggle("Archived resources"));
   const resourceGroup = group("Archived resources");
-  fireEvent.click(within(resourceGroup).getByText("Item actions"));
+  expect(within(resourceGroup).getByRole("button", { name: "Restore" }).closest("details")).toBeNull();
   fireEvent.click(within(resourceGroup).getByRole("button", { name: "Restore" }));
   fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Restore" }));
   await waitFor(() => expect(api.updateResource).toHaveBeenCalledExactlyOnceWith("room", "notes", { status: "DRAFT" }));
@@ -211,7 +211,7 @@ it("keeps students read-only and resource bodies closed until explicitly opened"
 });
 it("retains teacher contextual actions and a working add-resource action for an empty topic", () => {
   panel({ canAuthor: true }); fireEvent.click(toggle("Topic empty"));
-  fireEvent.click(within(group("Topic empty")).getByRole("button", { name: "Add resource" }));
+  fireEvent.click(within(group("Topic empty")).getByRole("button", { name: "Create" }));
   expect(screen.getByLabelText("Resource title")).toHaveFocus();
 });
 it("moves canonical unplaced assignments into a topic through the existing placement API", async () => {
@@ -249,4 +249,92 @@ it("localizes counts, history and compact progress consistently in Vietnamese an
 });
 it("shows one honest empty state for a classroom with no topics or activities", () => {
   panel({ data: { revision: 0, sections: [], resources: [], items: [] }, assignments: [] }); expect(screen.getByText("No course topics yet.")).toBeInTheDocument(); expect(screen.queryByRole("list")).not.toBeInTheDocument();
+});
+
+it("searches Vietnamese topics without case or diacritics and preserves their children", () => {
+  panel({ data: { ...data, sections: data.sections.map(row => row.id === "reading" ? { ...row, title: "Đọc hiểu nâng cao" } : row) } });
+  fireEvent.change(screen.getByRole("searchbox", { name: "Search classroom content" }), { target: { value: "DOC HIEU" } });
+  expect(within(group("Đọc hiểu nâng cao")).getAllByRole("listitem")).toHaveLength(2);
+  expect(screen.queryByRole("region", { name: "Topic writing" })).not.toBeInTheDocument();
+});
+
+it("finds resources and archived assignments, then restores prior disclosure when search clears", () => {
+  panel();
+  const search = screen.getByRole("searchbox", { name: "Search classroom content" });
+  fireEvent.change(search, { target: { value: "strategy" } });
+  expect(within(group("Topic reading")).getAllByRole("listitem")).toHaveLength(1);
+  fireEvent.change(search, { target: { value: "practice older" } });
+  expect(toggle("Archived assignments")).toHaveAttribute("aria-expanded", "true");
+  expect(screen.getByText("Fictional practice older")).toBeInTheDocument();
+  fireEvent.change(search, { target: { value: "" } });
+  expect(toggle("Archived assignments")).toHaveAttribute("aria-expanded", "false");
+  expect(toggle("Topic reading")).toHaveAttribute("aria-expanded", "true");
+});
+
+it("keeps observer archive details without mounting teacher controls or decorative disabled actions", () => {
+  const open = vi.fn(); panel({ canAuthor: false, canAssign: false, canInspect: true, onOpenAssignment: open });
+  fireEvent.click(toggle("Topic empty"));
+  expect(within(group("Topic empty")).getByText("This topic has no learning content yet.")).toBeInTheDocument();
+  expect(within(group("Topic empty")).queryByRole("button", { name: /Create|Add/ })).not.toBeInTheDocument();
+  fireEvent.click(toggle("Archived assignments"));
+  const archive = group("Archived assignments");
+  fireEvent.click(within(archive).getAllByRole("button", { name: "View details" })[0]);
+  expect(open).toHaveBeenCalledWith("old");
+  expect(within(archive).queryByRole("button", { name: /Restore|Delete|Remove/ })).not.toBeInTheDocument();
+  expect(within(archive).queryByText("Item actions")).not.toBeInTheDocument();
+  expect(archive).toHaveTextContent("Assignment · Archived");
+});
+
+it("shows teacher restore, delete and details directly once on desktop", async () => {
+  const onAssignmentsChanged = vi.fn().mockResolvedValue(undefined);
+  panel({ canAuthor: true, canAssign: true, onAssignmentsChanged }); fireEvent.click(toggle("Archived assignments"));
+  const row = screen.getByText("Fictional practice old").closest("li")!;
+  const restore = within(row).getByRole("button", { name: "Restore" });
+  expect(restore.closest("details")).toBeNull();
+  expect(within(row).getByRole("button", { name: "Delete permanently" }).closest("details")).toBeNull();
+  expect(within(row).getAllByRole("button", { name: "View details" })).toHaveLength(1);
+  fireEvent.click(restore); fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Restore" }));
+  await waitFor(() => expect(onAssignmentsChanged).toHaveBeenCalledOnce());
+});
+
+it("renders a single contextual set of archive actions on compact viewports", () => {
+  vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() }));
+  try {
+    panel({ canAuthor: true, canAssign: true }); fireEvent.click(toggle("Archived assignments"));
+    const row = screen.getByText("Fictional practice old").closest("li")!;
+    const menu = row.querySelector("details")!;
+    expect(menu).not.toBeNull(); fireEvent.click(within(row).getByText("Item actions"));
+    expect(menu.querySelectorAll("button")).toHaveLength(4);
+    expect(within(row).getAllByRole("button", { name: "Restore" })).toHaveLength(1);
+    expect(within(row).getAllByRole("button", { name: "View details" })).toHaveLength(1);
+    expect(within(row).getByRole("button", { name: "View details" }).closest("details")).toBe(menu);
+  } finally { vi.unstubAllGlobals(); }
+});
+
+it("searches within archives while preserving the total count and other classroom topics", () => {
+  panel({ assignments: [...assignments, { ...assignment("vietnamese", "ARCHIVED"), title: "Đề ôn tập nâng cao" }] });
+  const search = within(group("Archived assignments")).getByRole("searchbox", { name: "Search archived assignments" });
+  expect(toggle("Archived assignments")).toHaveAttribute("aria-expanded", "false");
+  fireEvent.change(search, { target: { value: "DE ON TAP" } });
+  expect(toggle("Archived assignments")).toHaveAttribute("aria-expanded", "true");
+  expect(toggle("Archived assignments")).toHaveTextContent("3 assignments");
+  expect(within(group("Archived assignments")).getAllByRole("listitem")).toHaveLength(1);
+  expect(screen.getByText("Đề ôn tập nâng cao")).toBeInTheDocument();
+  expect(screen.getByText("Fictional strategy notes")).toBeInTheDocument();
+  fireEvent.change(search, { target: { value: "no such work" } });
+  expect(within(group("Archived assignments")).getByRole("status")).toHaveTextContent("No matching topics, resources or assignments.");
+  fireEvent.change(search, { target: { value: "" } });
+  expect(within(group("Archived assignments")).getAllByRole("listitem")).toHaveLength(3);
+});
+
+it("keeps archive disclosure usable during a global search without changing the previous choice", () => {
+  panel();
+  const search = screen.getByRole("searchbox", { name: "Search classroom content" });
+  fireEvent.change(search, { target: { value: "practice older" } });
+  fireEvent.click(toggle("Archived assignments"));
+  expect(toggle("Archived assignments")).toHaveAttribute("aria-expanded", "false");
+  fireEvent.click(toggle("Archived assignments"));
+  expect(screen.getByText("Fictional practice older")).toBeInTheDocument();
+  fireEvent.change(search, { target: { value: "" } });
+  expect(toggle("Archived assignments")).toHaveAttribute("aria-expanded", "false");
 });

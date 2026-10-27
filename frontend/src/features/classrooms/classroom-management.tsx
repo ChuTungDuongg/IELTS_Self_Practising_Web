@@ -15,13 +15,17 @@ export function ClassroomMembershipActions({ classroom, isAdmin, canManage, isSt
   isStaff?: boolean;
 }) {
   const { t } = useTranslation(), { ct } = useContentTranslation();
-  return <div className="classroom-toolbar">{canManage && classroom.status === "ACTIVE" ? <ResourceAction confirm={{ title: `${t("common.archive")} · ${classroom.name}`, description: ct("archiveDescription") }} action={() => archiveClassroom(classroom.id)}>{t("common.archive")}</ResourceAction> : isAdmin && classroom.status === "ARCHIVED" ? <ResourceAction action={() => restoreClassroom(classroom.id)}>{t("common.restore")}</ResourceAction> : null}{!canManage && !isStaff && classroom.status === "ACTIVE" ? <ResourceAction action={() => leaveClassroom(classroom.id)}>{t("classroom.leave")}</ResourceAction> : null}</div>;
+  if (isAdmin) return null;
+  return <div className="classroom-toolbar">{canManage && classroom.status === "ACTIVE" ? <ResourceAction confirm={{ title: `${t("common.archive")} · ${classroom.name}`, description: ct("archiveDescription") }} action={() => archiveClassroom(classroom.id)}>{t("common.archive")}</ResourceAction> : canManage && classroom.status === "ARCHIVED" ? <ResourceAction action={() => restoreClassroom(classroom.id)}>{t("common.restore")}</ResourceAction> : null}{!canManage && !isStaff && classroom.status === "ACTIVE" ? <ResourceAction action={() => leaveClassroom(classroom.id)}>{t("classroom.leave")}</ResourceAction> : null}</div>;
 }
-export function ClassroomManagement({ classroom, invitations, members }: {
+export function ClassroomManagement({ classroom, invitations, members, canEditClassroom = false, canManageMembers = false, canViewInvitations = canManageMembers, observer = false }: {
   classroom: Classroom;
   invitations: ClassroomInvitation[];
   members: ClassroomMember[];
   canEditClassroom?: boolean;
+  canManageMembers?: boolean;
+  canViewInvitations?: boolean;
+  observer?: boolean;
 }) {
   const { t } = useTranslation();
   const router = useRouter();
@@ -49,22 +53,22 @@ export function ClassroomManagement({ classroom, invitations, members }: {
     }
   }
   return <>
-    {active ? <>
-      {classroom.capabilities?.includes("classroom.manage") !== false ? <details><summary>{t("common.edit")}</summary><ClassroomForm classroom={classroom} /></details> : null}
-      <details><summary>{t("classroom.invite")}</summary><form onSubmit={invite} className="surface-card p-5 mb-6">
+    {active && !observer ? <>
+      {canEditClassroom ? <details><summary>{t("common.edit")}</summary><ClassroomForm classroom={classroom} /></details> : null}
+      {canManageMembers ? <details><summary>{t("classroom.invite")}</summary><form onSubmit={invite} className="surface-card p-5 mb-6">
         <h2>{t("classroom.invite")}</h2>
         <p>{t("classroom.pendingEmail")}</p>
         <label className="field-label mt-3">{t("classroom.email")}<input className="field" name="email" type="email" required />
         </label>
-        <button className="btn btn-primary mt-3" disabled={pending}>{t("classroom.invite")}</button>{error ? <p role="alert">{error}</p> : null}</form></details>
+        <button className="btn btn-primary mt-3" disabled={pending}>{t("classroom.invite")}</button>{error ? <p role="alert">{error}</p> : null}</form></details> : null}
     </> : null}
-    <section className="surface-card p-5 mb-6" aria-label={t("classroom.invitations")}>
+    {canViewInvitations && !observer ? <section className="surface-card p-5 mb-6" aria-label={t("classroom.invitations")}>
       <h2>{t("classroom.invitations")}</h2>
       <ul>{invitations.map(item => <li key={item.id} className="py-2">
-        <p>{item.invited_email} · {t(item.status === "PENDING" ? "moderation.pending" : item.status === "ACCEPTED" ? "classroom.accept" : item.status === "DECLINED" ? "classroom.decline" : "moderation.cancelled")}</p>{active && item.status === "PENDING" ? <ResourceAction action={() => cancelInvitation(item.id)}>{t("classroom.cancel")}</ResourceAction> : null}</li>)}</ul>
-    </section>
+        <p>{item.invited_email} · {t(item.status === "PENDING" ? "moderation.pending" : item.status === "ACCEPTED" ? "classroom.accept" : item.status === "DECLINED" ? "classroom.decline" : "moderation.cancelled")}</p>{canManageMembers && active && item.status === "PENDING" ? <ResourceAction action={() => cancelInvitation(item.id)}>{t("classroom.cancel")}</ResourceAction> : null}</li>)}</ul>
+    </section> : null}
     <section className="surface-card p-5 mb-6" aria-label={t("classroom.members")}>
       <h2>{t("classroom.members")}</h2>{members.length ? <ul>{members.map(member => <li key={member.id} className="py-2">
-        <p>{member.display_name} · {member.email}{member.left_at ? ` · ${t("classroom.left")}` : ""}</p>{active && !member.left_at ? <ResourceAction action={() => removeMember(classroom.id, member.user_id)}>{t("classroom.remove")}</ResourceAction> : null}</li>)}</ul> : <p>{t("classroom.noMembers")}</p>}</section>
+        <p>{member.display_name}{!observer ? ` · ${member.email}` : ""}{member.left_at ? ` · ${t("classroom.left")}` : ""}</p>{canManageMembers && !observer && active && !member.left_at ? <ResourceAction action={() => removeMember(classroom.id, member.user_id)}>{t("classroom.remove")}</ResourceAction> : null}</li>)}</ul> : <p>{t("classroom.noMembers")}</p>}</section>
   </>;
 }

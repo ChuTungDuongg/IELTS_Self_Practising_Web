@@ -30,14 +30,14 @@ it("keeps Classwork forms closed until a content action is chosen and handles no
 });
 
 it("opens a topic editor from the role-aware header menu with Vietnamese terminology", async () => {
-  renderWithLocale(<ClassroomWorkspace classroom={room} user={{ id: "teacher", role: "TEACHER" }} assignments={[]} canManage />);
+  renderWithLocale(<ClassroomWorkspace classroom={room} user={{ id: "teacher", role: "TEACHER" }} assignments={[]} />);
   await screen.findByText("No classroom updates yet."); fireEvent.click(screen.getByText("Create")); fireEvent.click(screen.getByRole("button", { name: "Create topic" }));
   expect(await screen.findByLabelText("Topic name")).toHaveFocus(); expect(screen.getByRole("tab", { name: "Classwork" })).toHaveAttribute("aria-selected", "true");
   fireEvent.click(screen.getByText("Switch to Vietnamese")); expect(screen.getByLabelText("Tên chủ đề")).toBeInTheDocument(); expect(screen.queryByText("Phần học")).not.toBeInTheDocument();
 });
 
 it("enforces Analytics capability in navigation while every user retains My Progress", async () => {
-  renderWithLocale(<ClassroomWorkspace classroom={{ ...room, capabilities: ["grades.view", "grades.edit"] }} user={{ id: "ta", role: "USER" }} assignments={[]} canManage />);
+  renderWithLocale(<ClassroomWorkspace classroom={{ ...room, capabilities: ["grades.view", "grades.edit"] }} user={{ id: "ta", role: "USER" }} assignments={[]} />);
   expect(screen.getByRole("tab", { name: "Gradebook" })).toBeInTheDocument(); expect(screen.queryByRole("tab", { name: "Analytics" })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("tab", { name: "My Progress" })); await waitFor(() => expect(api.getLearningDashboard).toHaveBeenCalledWith("room", true, { completion_offset: 0 }, undefined, expect.any(AbortSignal)));
   expect(api.getLearningPlans).toHaveBeenCalledWith("room", "ta", 0, expect.any(AbortSignal));

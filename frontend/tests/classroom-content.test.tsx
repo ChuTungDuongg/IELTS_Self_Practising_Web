@@ -23,7 +23,7 @@ const section = (id: string, title: string, position: number) => ({ id, classroo
 const resource = { id: "r", classroom_id: "c", title: "Lesson notes", description: null, kind: "TEXT" as const, body: "A useful lesson", url: null, status: "PUBLISHED" as const, original_filename: null, media_type: null, size_bytes: null, created_at: "now", updated_at: "now" };
 const classwork = { revision: 3, sections: [section("s1", "Week 1", 0), section("s2", "Week 2", 1)], resources: [resource], items: [{ id: "i", section_id: "s1", resource_id: "r", assignment_id: null, position: 0 }] };
 function workspace(role = "USER", status: "ACTIVE" | "ARCHIVED" = "ACTIVE", userId = role === "TEACHER" ? "teacher" : "student") {
-  return <ClassroomWorkspace classroom={{ ...room, status }} user={{ id: userId, role }} assignments={[]} people={<p>Membership management retained</p>} assignmentForm={<p>Existing assignment form</p>} canManage={role !== "USER"} />;
+  return <ClassroomWorkspace classroom={{ ...room, status }} user={{ id: userId, role }} assignments={[]} people={<p>Membership management retained</p>} assignmentForm={<p>Existing assignment form</p>} />;
 }
 beforeEach(() => {
   localStorage.clear(); vi.resetAllMocks();
@@ -39,7 +39,7 @@ beforeEach(() => {
 it("restores canonical work, refreshes affected data once, and retains calendar selection across tabs", async () => {
   const assignment = { id: "old", classroom_id: "c", test_version_id: "version", created_by_user_id: "teacher", title: "Fictional archived homework", note: null, status: "ARCHIVED" as const, due_at: null, archived_at: "now", created_at: "now", classwork_hidden: false };
   assignmentApi.listAssignments.mockResolvedValue([{ ...assignment, status: "ACTIVE", archived_at: null }]);
-  const { container } = renderWithLocale(<ClassroomWorkspace classroom={room} user={{ id: "teacher", role: "TEACHER" }} assignments={[assignment]} canManage />);
+  const { container } = renderWithLocale(<ClassroomWorkspace classroom={room} user={{ id: "teacher", role: "TEACHER" }} assignments={[assignment]} />);
   await screen.findByText("Reading notes");
   expect(assignmentApi.getAssignmentCalendar).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("tab", { name: "Calendar" }));
@@ -68,7 +68,7 @@ it("restores canonical work, refreshes affected data once, and retains calendar 
 
 it("keeps global administrator archive/content oversight read-only even with inconsistent capability props", async () => {
   const assignment = { id: "old", classroom_id: "c", test_version_id: "version", created_by_user_id: "teacher", title: "Archived homework", note: null, status: "ARCHIVED" as const, due_at: null, archived_at: "now", created_at: "now" };
-  renderWithLocale(<ClassroomWorkspace classroom={{ ...room, capabilities: ["content.manage", "assignments.manage"] }} user={{ id: "admin", role: "ADMIN" }} assignments={[assignment]} canManage />);
+  renderWithLocale(<ClassroomWorkspace classroom={{ ...room, capabilities: ["content.manage", "assignments.manage"] }} user={{ id: "admin", role: "ADMIN" }} assignments={[assignment]} />);
   await screen.findByText("Reading notes");
   fireEvent.click(screen.getByRole("tab", { name: "Classwork" }));
   fireEvent.click(screen.getByRole("button", { name: /^Archived assignments/ }));
