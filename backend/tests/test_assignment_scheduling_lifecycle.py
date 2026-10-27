@@ -42,13 +42,27 @@ async def test_reminders_deduplicate_and_follow_private_extensions(db_session):
 
 async def test_reminders_skip_satisfied_submissions(db_session):
     from app.models import Notification
+
     now = TimerService.now()
-    teacher, student, room, assignment = await setup_assignment(db_session, due_at=now+timedelta(hours=12))
-    result = await ClassroomAssignmentService(db_session, student).start(assignment.id, AssignmentStart(mode="MODULE", module="WRITING"))
+    teacher, student, room, assignment = await setup_assignment(
+        db_session, due_at=now + timedelta(hours=12)
+    )
+    result = await ClassroomAssignmentService(db_session, student).start(
+        assignment.id, AssignmentStart(mode="MODULE", module="WRITING")
+    )
     await AttemptService(db_session, student.id).submit(result.attempt_id)
     await generate_reminders(db_session, now=now)
     async with db_session.begin():
-        assert await db_session.scalar(select(func.count()).select_from(Notification).where(Notification.user_id == student.id, Notification.type == "ASSIGNMENT_DUE_SOON")) == 0
+        assert (
+            await db_session.scalar(
+                select(func.count())
+                .select_from(Notification)
+                .where(
+                    Notification.user_id == student.id, Notification.type == "ASSIGNMENT_DUE_SOON"
+                )
+            )
+            == 0
+        )
 
 
 async def test_due_cutoff_crossing_preserves_exam_and_classifies_rejection(db_session, monkeypatch):

@@ -141,7 +141,9 @@ class AssignmentProgressService:
             await self.session.execute(
                 select(
                     func.coalesce(
-                        func.min(ClassroomMembership.joined_at).filter(ClassroomMembership.left_at.is_(None)),
+                        func.min(ClassroomMembership.joined_at).filter(
+                            ClassroomMembership.left_at.is_(None)
+                        ),
                         func.min(ClassroomMembership.joined_at),
                     ),
                     func.bool_or(ClassroomMembership.left_at.is_(None)),
