@@ -16,6 +16,8 @@ import { AssignmentManagement } from "./scheduling/assignment-management";
 import { scheduleError, useScheduleText } from "./scheduling/messages";
 import { useLmsText } from "./lms/messages";
 import { AssignmentTargetSummary } from "./assignment-target";
+import { ArchivedAssignmentActions } from "./content/archived-assignment-actions";
+import { ContentAction } from "./content/content-action";
 type ModuleType = "READING" | "LISTENING" | "WRITING" | "SPEAKING";
 function StartAssignment({ assignment }: {
   assignment: ClassroomAssignment;
@@ -113,13 +115,14 @@ function StartAssignment({ assignment }: {
     {mode === "READING" || mode === "LISTENING" || mode === "FULL_MOCK" ? <PresentationDialog open={choosing} module={mode === "FULL_MOCK" ? "LISTENING" : mode} value={presentation} onChange={setPresentation} onClose={() => setChoosing(false)} onConfirm={() => void start()} pending={pending} error={error} returnFocusRef={trigger} preview={{ title: assignment.title ?? assignment.version?.test_title, unitTitle: previewUnit?.title, questionTypes: previewUnit?.question_groups.map(group => group.question_type) }} /> : null}
   </div>;
 }
-export function AssignmentList({ assignments, canManage = false, canSchedule = canManage, canArchive = canManage, archived = false, resultNamespace = "teacher", }: {
+export function AssignmentList({ assignments, canManage = false, canSchedule = canManage, canArchive = canManage, archived = false, resultNamespace = "teacher", onChanged }: {
   assignments: ClassroomAssignment[];
   canManage?: boolean;
   canSchedule?: boolean;
   canArchive?: boolean;
   archived?: boolean;
   resultNamespace?: "teacher" | "shared";
+  onChanged?: () => Promise<unknown>;
 }) {
   const { t } = useTranslation();
   const { ct } = useContentTranslation();
@@ -135,12 +138,13 @@ export function AssignmentList({ assignments, canManage = false, canSchedule = c
         <p>{assignment.note}</p>
         {canManage ? <ScheduleSummary assignment={assignment} /> : <ProgressSummary assignmentId={assignment.id} actions />}
         {canManage ? <div className="flex gap-2 mt-3">
+          {canSchedule && !archived && assignment.status === "ARCHIVED" && onChanged ? <details><summary>{lt("more")}</summary><ArchivedAssignmentActions assignment={assignment} onChanged={onChanged} /></details> : null}
           <Link href={`${resultNamespace === "shared" ? "" : "/teacher"}/classrooms/${assignment.classroom_id}/assignments/${assignment.id}/results`} className="btn btn-secondary">
             {t("assignment.results")}
           </Link>
-          {canArchive && !archived && assignment.status === "ACTIVE" ? <details><summary>{lt("more")}</summary><ResourceAction confirm={{ title: ct("archiveTitle"), description: ct("archiveDescription") }} action={() => archiveAssignment(assignment.classroom_id, assignment.id)}>
+          {canArchive && !archived && assignment.status === "ACTIVE" ? <details><summary>{lt("more")}</summary>{onChanged ? <ContentAction confirm={{ title: ct("archiveTitle"), description: ct("archiveDescription") }} action={() => archiveAssignment(assignment.classroom_id, assignment.id)} onDone={onChanged}>{t("common.archive")}</ContentAction> : <ResourceAction confirm={{ title: ct("archiveTitle"), description: ct("archiveDescription") }} action={() => archiveAssignment(assignment.classroom_id, assignment.id)}>
             {t("common.archive")}
-          </ResourceAction></details> : null}
+          </ResourceAction>}</details> : null}
         </div> : !archived && assignment.status === "ACTIVE" ? <StartAssignment assignment={assignment} />
           : <p>{t("classroom.archived")}</p>}
         {canManage ? <AssignmentManagement key={`${assignment.id}-${assignment.policy_revision}`} assignment={assignment} canEdit={canSchedule && !archived && assignment.status === "ACTIVE"} shared={resultNamespace === "shared"} /> : null}

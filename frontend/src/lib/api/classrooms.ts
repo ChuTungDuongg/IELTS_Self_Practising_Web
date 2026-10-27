@@ -129,6 +129,12 @@ export async function assignmentVersion(classroomId: string, versionId: string, 
 export async function archiveAssignment(classroomId: string, id: string) {
   await post(`${resource(classroomId)}/assignments/${encodeURIComponent(id)}/archive`);
 }
+export async function restoreAssignment(classroomId: string, id: string) {
+  return assignmentSchema.parse(await post(`${resource(classroomId)}/assignments/${encodeURIComponent(id)}/restore`));
+}
+export async function deleteAssignment(classroomId: string, id: string) {
+  await apiRequest(`${resource(classroomId)}/assignments/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
 export type AssignmentStart = {
   mode: "MODULE";
   module: "READING" | "LISTENING" | "WRITING" | "SPEAKING";

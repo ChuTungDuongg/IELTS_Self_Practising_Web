@@ -72,6 +72,19 @@ async def classwork(
     return await ClassworkService(session, actor).get(classroom_id)
 
 
+@router.delete("/assignments/{assignment_id}/classwork", response_model=ClassworkResponse)
+async def remove_assignment_reference(
+    classroom_id: UUID,
+    assignment_id: UUID,
+    actor: CurrentUser,
+    expected_revision: int | None = None,
+    session: AsyncSession = Depends(get_session),
+):
+    return await ClassworkService(session, actor).remove_assignment_reference(
+        classroom_id, assignment_id, expected_revision
+    )
+
+
 @router.get("/sections", response_model=dict[str, list[SectionResponse]])
 async def sections(
     classroom_id: UUID, actor: CurrentUser, session: AsyncSession = Depends(get_session)

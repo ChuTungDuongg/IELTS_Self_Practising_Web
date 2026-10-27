@@ -80,6 +80,19 @@ async def archive(
 
 
 @router.post(
+    "/classrooms/{classroom_id}/assignments/{assignment_id}/restore",
+    response_model=AssignmentResponse,
+)
+async def restore(
+    classroom_id: UUID,
+    assignment_id: UUID,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+):
+    return await ClassroomAssignmentService(session, user).restore(classroom_id, assignment_id)
+
+
+@router.post(
     "/classroom-assignments/{assignment_id}/start",
     response_model=AssignmentStartResponse,
     status_code=201,

@@ -7,10 +7,13 @@ import type { ClassroomAssignment } from "@/lib/api/classrooms";
 import { progressSchema, type AssignmentProgress } from "@/lib/api/assignment-scheduling";
 import { ApiError } from "@/lib/api/client";
 import { renderWithLocale } from "./locale-test-utils";
+import { ArchivedAssignmentActions } from "@/features/classrooms/content/archived-assignment-actions";
 
-const api = vi.hoisted(() => ({ reorderSections: vi.fn(), reorderItems: vi.fn(), placeAssignment: vi.fn(), updateSection: vi.fn() }));
+const api = vi.hoisted(() => ({ reorderSections: vi.fn(), reorderItems: vi.fn(), placeAssignment: vi.fn(), updateSection: vi.fn(), updateResource: vi.fn(), removeAssignmentReference: vi.fn() }));
+const assignmentsApi = vi.hoisted(() => ({ restoreAssignment: vi.fn(), deleteAssignment: vi.fn() }));
 const progress = vi.hoisted(() => ({ items: {} as Record<string, AssignmentProgress>, staff: false, loading: false, error: false, refresh: vi.fn(), assignments: [] as ClassroomAssignment[] }));
 vi.mock("@/lib/api/classroom-content", async original => ({ ...await original<object>(), ...api }));
+vi.mock("@/lib/api/classrooms", async original => ({ ...await original<object>(), ...assignmentsApi }));
 vi.mock("@/features/classrooms/scheduling/progress-provider", async original => ({ ...await original<object>(), useAssignmentProgress: () => progress }));
 
 const section = (id: string, position: number): ClassroomSection => ({ id, title: `Topic ${id}`, position, classroom_id: "room", description: null, status: "PUBLISHED", created_at: "now", updated_at: "now" });
@@ -39,6 +42,83 @@ beforeEach(() => {
   vi.clearAllMocks(); localStorage.clear(); window.history.replaceState(null, "", "/");
   Object.assign(progress, { items: {}, staff: false, loading: false, error: false, assignments });
   api.reorderItems.mockResolvedValue(data); api.reorderSections.mockResolvedValue(data); api.placeAssignment.mockResolvedValue(data);
+  api.removeAssignmentReference.mockResolvedValue(data); api.updateResource.mockResolvedValue(data.resources[0]);
+  assignmentsApi.restoreAssignment.mockResolvedValue(assignment("old")); assignmentsApi.deleteAssignment.mockResolvedValue(undefined);
+});
+
+it("confirms expired restoration without silently editing the schedule or losing target data", async () => {
+  const onChanged = vi.fn().mockResolvedValue(undefined), old = { ...assignment("old", "ARCHIVED"), due_at: "2000-01-01T00:00:00Z", cutoff_at: "2000-01-02T00:00:00Z" };
+  renderWithLocale(<ArchivedAssignmentActions assignment={old} onChanged={onChanged} />);
+  fireEvent.click(screen.getByRole("button", { name: "Restore" }));
+  const dialog = screen.getByRole("dialog", { name: "Restore this assignment?" });
+  expect(dialog).toHaveTextContent("cut-off has already passed");
+  expect(assignmentsApi.restoreAssignment).not.toHaveBeenCalled();
+  fireEvent.click(within(dialog).getByRole("button", { name: "Restore" }));
+  await waitFor(() => expect(onChanged).toHaveBeenCalledOnce());
+  expect(assignmentsApi.restoreAssignment).toHaveBeenCalledExactlyOnceWith("room", "old");
+  expect(old.due_at).toBe("2000-01-01T00:00:00Z");
+});
+
+it("explains protected deletion and offers persistent safe removal even without a placement", async () => {
+  assignmentsApi.deleteAssignment.mockRejectedValue(new ApiError("ASSIGNMENT_HISTORY_PROTECTED", "Backend detail", 409));
+  const onChanged = vi.fn().mockResolvedValue(undefined);
+  renderWithLocale(<ArchivedAssignmentActions assignment={assignment("old", "ARCHIVED")} onChanged={onChanged} />);
+  fireEvent.click(screen.getByRole("button", { name: "Delete permanently" }));
+  fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Delete permanently" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("protected attempts, policy, notification or learning-plan history");
+  expect(onChanged).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Remove from Classwork" }));
+  expect(screen.getByRole("dialog")).toHaveTextContent("all submissions, deadlines and grades preserved");
+  fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Remove from Classwork" }));
+  await waitFor(() => expect(onChanged).toHaveBeenCalledOnce());
+  expect(api.removeAssignmentReference).toHaveBeenCalledExactlyOnceWith("room", "old");
+  expect(assignmentsApi.deleteAssignment).toHaveBeenCalledOnce();
+});
+
+it("guards duplicate restore requests and retries synchronization without repeating a saved mutation", async () => {
+  let resolve!: () => void;
+  assignmentsApi.restoreAssignment.mockReturnValue(new Promise<void>(done => { resolve = done; }));
+  const onChanged = vi.fn().mockRejectedValueOnce(new Error("offline")).mockResolvedValue(undefined);
+  renderWithLocale(<ArchivedAssignmentActions assignment={assignment("old", "ARCHIVED")} onChanged={onChanged} />);
+  fireEvent.click(screen.getByRole("button", { name: "Restore" }));
+  const confirm = within(screen.getByRole("dialog")).getByRole("button", { name: "Restore" });
+  fireEvent.click(confirm); fireEvent.click(confirm);
+  expect(assignmentsApi.restoreAssignment).toHaveBeenCalledOnce();
+  resolve();
+  await screen.findByText(/change was saved, but the updated content could not be loaded/);
+  fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Cancel" }));
+  fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+  await waitFor(() => expect(onChanged).toHaveBeenCalledTimes(2));
+  expect(assignmentsApi.restoreAssignment).toHaveBeenCalledOnce();
+});
+
+it("localizes a revoked assignment permission without claiming restoration succeeded", async () => {
+  assignmentsApi.restoreAssignment.mockRejectedValue(new ApiError("CLASSROOM_CAPABILITY_REQUIRED", "Not permitted", 403));
+  const onChanged = vi.fn();
+  renderWithLocale(<ArchivedAssignmentActions assignment={assignment("old", "ARCHIVED")} onChanged={onChanged} />);
+  fireEvent.click(screen.getByRole("button", { name: "Switch to Vietnamese" }));
+  fireEvent.click(screen.getByRole("button", { name: "Khôi phục" }));
+  fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Khôi phục" }));
+  expect(await within(screen.getByRole("dialog")).findByRole("alert")).toHaveTextContent("Quyền trong lớp không còn cho phép");
+  expect(onChanged).not.toHaveBeenCalled();
+});
+
+it("offers archived resource and topic restoration as drafts with confirmation", async () => {
+  const onRefresh = vi.fn().mockResolvedValue(undefined);
+  panel({ canAuthor: true, canInspect: true, onRefresh, data: { ...data, sections: [{ ...section("reading", 0), status: "ARCHIVED" }], resources: [{ ...data.resources[0], status: "ARCHIVED" }] } });
+  const topic = group("Topic reading");
+  fireEvent.click(within(topic).getByText("Topic actions"));
+  fireEvent.click(within(topic).getByRole("button", { name: "Restore" }));
+  fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Restore" }));
+  await waitFor(() => expect(api.updateSection).toHaveBeenCalledExactlyOnceWith("room", "reading", { status: "DRAFT" }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  fireEvent.click(toggle("Archived resources"));
+  const resourceGroup = group("Archived resources");
+  fireEvent.click(within(resourceGroup).getByText("Item actions"));
+  fireEvent.click(within(resourceGroup).getByRole("button", { name: "Restore" }));
+  fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Restore" }));
+  await waitFor(() => expect(api.updateResource).toHaveBeenCalledExactlyOnceWith("room", "notes", { status: "DRAFT" }));
+  expect(onRefresh).toHaveBeenCalledTimes(2);
 });
 
 it("opens only the first populated topic and has one topic toggle with an accurate combined count", () => {

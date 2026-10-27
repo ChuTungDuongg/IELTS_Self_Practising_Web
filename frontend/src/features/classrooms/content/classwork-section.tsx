@@ -10,6 +10,7 @@ import { useLmsText } from "../lms/messages";
 import type { ClassworkGroup } from "./classwork-groups";
 
 export type ClassworkSectionActions = {
+  onAssignmentsChanged: () => Promise<unknown>;
   onEditSection: (section: ClassroomSection) => void;
   onEditResource: (resource: ClassroomResource) => void;
   onAddResource: (sectionId: string | null) => void;
@@ -36,11 +37,11 @@ export function ClassworkSection({ group, index, sections, classroomId, canAutho
 }) {
   const { ct } = useContentTranslation(), { lt } = useLmsText();
   const { section, rows, kind, key } = group, id = section?.id ?? null;
-  const history = kind === "archivedAssignments" || kind === "archivedResources";
+  const history = kind === "archivedAssignments" || kind === "archivedResources" || section?.status === "ARCHIVED";
   const title = section?.title ?? ct(kind === "unplaced" ? "uncategorized" : kind === "archivedAssignments" ? "archivedAssignments" : "archivedResources");
   const editable = canAuthor && !history;
   const count = !rows.length ? ct("noContent") : kind === "archivedAssignments" ? ct(rows.length === 1 ? "archivedCountOne" : "archivedCount", { name: String(rows.length) }) : ct(rows.length === 1 ? "itemCountOne" : "itemCount", { name: String(rows.length) });
-  return <section id={key} className={"classroom-course-section" + (kind !== "topic" ? " classroom-secondary-group" : "")} aria-label={title} aria-busy={pending}
+  return <section id={key} data-archived={!!history} className={"classroom-course-section" + (kind !== "topic" ? " classroom-secondary-group" : "")} aria-label={title} aria-busy={pending}
     onDragOver={event => { if (editable) { event.preventDefault(); event.dataTransfer.dropEffect = "move"; } }}
     onDrop={event => { if (editable) { event.preventDefault(); actions.onSectionDrop(id); } }} onDragEnd={actions.onDragEnd}>
     <header className="classroom-topic-header">
@@ -48,6 +49,7 @@ export function ClassworkSection({ group, index, sections, classroomId, canAutho
         <ArrowIcon className="classroom-topic-chevron" /><span className="classroom-topic-name">{title}</span><span className="classroom-topic-count">{count}</span>
       </button></h3>
       {canAuthor && section ? <ActionMenu label={lt("topicActions")} iconOnly>
+        {section.status === "ARCHIVED" ? <ContentAction disabled={pending} action={() => updateSection(classroomId, section.id, { status: "DRAFT" })} onDone={actions.onRefresh} confirm={{ title: ct("restoreDraftTitle"), description: ct("restoreDraftDescription") }}>{ct("restore")}</ContentAction> : null}
         <button className="classroom-order-button" type="button" disabled={pending || index === 0} aria-label={ct("moveUp", { name: section.title })} onClick={() => actions.onSectionStep(section.id, -1)}>↑</button>
         <button className="classroom-order-button" type="button" disabled={pending || index === sections.length - 1} aria-label={ct("moveDown", { name: section.title })} onClick={() => actions.onSectionStep(section.id, 1)}>↓</button>
         <button className="classroom-drag-handle" type="button" disabled={pending} draggable={!pending} aria-label={ct("dragSection") + ": " + section.title} onDragStart={event => { actions.onSectionDrag(section.id); event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/plain", section.id); }}>⠿</button>
@@ -68,7 +70,7 @@ export function ClassworkSection({ group, index, sections, classroomId, canAutho
         {rows.length ? <ul className="classroom-classwork-list">{rows.map((row, itemIndex) => <ClassworkItemRow key={row.key} item={row.item} resource={row.resource} assignment={row.assignment}
           classroomId={classroomId} sections={sections} canAuthor={canAuthor} canAssign={canAssign} pending={pending} first={itemIndex === 0} last={itemIndex === rows.length - 1}
           onEdit={actions.onEditResource} onRefresh={actions.onRefresh} onMove={actions.onItemMove} onPlace={actions.onPlaceAssignment} onStep={actions.onItemStep} onDrag={actions.onItemDrag}
-          onDelete={actions.onDeleteResource} onRemove={actions.onRemoveAssignment}
+          onDelete={actions.onDeleteResource} onRemove={actions.onRemoveAssignment} onAssignmentsChanged={actions.onAssignmentsChanged}
           onDrop={beforeId => actions.onItemDrop(id, beforeId)} onOpenAssignment={actions.onOpenAssignment} />)}</ul> : <div className="classroom-topic-empty"><p>{ct("emptyTopic")}</p>{editable && section?.status !== "ARCHIVED" ? <button type="button" className="classroom-text-button" disabled={pending} onClick={() => actions.onAddResource(id)}>{ct("addResource")}</button> : null}</div>}
       </> : null}
     </div>

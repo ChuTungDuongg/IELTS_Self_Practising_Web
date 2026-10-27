@@ -13,7 +13,10 @@ import { ClassroomStream } from "@/features/classrooms/content/classroom-stream"
 import { PostCard } from "@/features/classrooms/content/post-card";
 
 const api = vi.hoisted(() => ({ getClasswork: vi.fn(), listFeed: vi.fn(), createPost: vi.fn(), updatePost: vi.fn(), postAction: vi.fn(), listComments: vi.fn(), createComment: vi.fn(), updateComment: vi.fn(), retractComment: vi.fn(), reorderSections: vi.fn(), reorderItems: vi.fn(), createSection: vi.fn(), updateSection: vi.fn(), createResource: vi.fn(), updateResource: vi.fn(), uploadResource: vi.fn(), placeAssignment: vi.fn(), getPost: vi.fn(), fetchResourceFile: vi.fn() }));
+const assignmentApi = vi.hoisted(() => ({ listAssignments: vi.fn(), restoreAssignment: vi.fn(), getAssignmentCalendar: vi.fn() }));
 vi.mock("@/lib/api/classroom-content", async original => ({ ...await original<object>(), ...api }));
+vi.mock("@/lib/api/classrooms", async original => ({ ...await original<object>(), listAssignments: assignmentApi.listAssignments, restoreAssignment: assignmentApi.restoreAssignment }));
+vi.mock("@/lib/api/assignment-scheduling", async original => ({ ...await original<object>(), getAssignmentCalendar: assignmentApi.getAssignmentCalendar }));
 const room = { id: "c", teacher_id: "teacher", name: "Evening classroom", description: "Reading together", status: "ACTIVE" as const, archived_at: null, created_at: "now", updated_at: "now" };
 const post = { id: "p", kind: "ANNOUNCEMENT" as const, title: "Reading notes", body: "Read **carefully**.", status: "PUBLISHED" as const, pinned: true, locked: false, author_id: "teacher", author_name: "Tutor", author_role: "TEACHER", created_at: "2026-10-27T08:00:00Z", updated_at: "2026-10-27T08:00:00Z", published_at: "2026-10-27T08:00:00Z", comment_count: 0, resource_ids: [], assignment_id: null };
 const section = (id: string, title: string, position: number) => ({ id, classroom_id: "c", title, description: null, status: "PUBLISHED" as const, position, created_at: "now", updated_at: "now" });
@@ -30,6 +33,48 @@ beforeEach(() => {
   api.createPost.mockResolvedValue(post); api.updatePost.mockResolvedValue(post); api.postAction.mockResolvedValue(post);
   api.createSection.mockResolvedValue(classwork.sections[0]); api.updateSection.mockResolvedValue(classwork.sections[0]); api.createResource.mockResolvedValue(resource); api.updateResource.mockResolvedValue(resource); api.uploadResource.mockResolvedValue({ ...resource, kind: "FILE" }); api.placeAssignment.mockResolvedValue(classwork);
   api.reorderSections.mockResolvedValue({ ...classwork, revision: 4 }); api.reorderItems.mockResolvedValue({ ...classwork, revision: 4 });
+  assignmentApi.listAssignments.mockResolvedValue([]); assignmentApi.getAssignmentCalendar.mockResolvedValue({ items: [], total: 0 }); assignmentApi.restoreAssignment.mockResolvedValue(undefined);
+});
+
+it("restores canonical work, refreshes affected data once, and retains calendar selection across tabs", async () => {
+  const assignment = { id: "old", classroom_id: "c", test_version_id: "version", created_by_user_id: "teacher", title: "Fictional archived homework", note: null, status: "ARCHIVED" as const, due_at: null, archived_at: "now", created_at: "now", classwork_hidden: false };
+  assignmentApi.listAssignments.mockResolvedValue([{ ...assignment, status: "ACTIVE", archived_at: null }]);
+  const { container } = renderWithLocale(<ClassroomWorkspace classroom={room} user={{ id: "teacher", role: "TEACHER" }} assignments={[assignment]} canManage />);
+  await screen.findByText("Reading notes");
+  expect(assignmentApi.getAssignmentCalendar).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("tab", { name: "Calendar" }));
+  await waitFor(() => expect(assignmentApi.getAssignmentCalendar).toHaveBeenCalledOnce());
+  fireEvent.click(screen.getByRole("button", { name: "Next month" }));
+  await waitFor(() => expect(assignmentApi.getAssignmentCalendar).toHaveBeenCalledTimes(2));
+  const selectedMonth = container.querySelector(".calendar-period h3")?.textContent;
+  fireEvent.click(screen.getByRole("tab", { name: "Classwork" }));
+  const archives = screen.getByRole("region", { name: "Archived assignments" });
+  fireEvent.click(within(archives).getByRole("button", { name: /^Archived assignments/ }));
+  fireEvent.click(within(archives).getByText("Item actions"));
+  fireEvent.click(within(archives).getByRole("button", { name: "Restore" }));
+  fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Restore" }));
+  await waitFor(() => expect(screen.queryByRole("region", { name: "Archived assignments" })).not.toBeInTheDocument());
+  expect(assignmentApi.restoreAssignment).toHaveBeenCalledExactlyOnceWith("c", "old");
+  expect(assignmentApi.listAssignments).toHaveBeenCalledOnce();
+  expect(api.getClasswork).toHaveBeenCalledTimes(2);
+  expect(screen.getByRole("button", { name: /^Week 1/ })).toHaveAttribute("aria-expanded", "true");
+  await waitFor(() => expect(assignmentApi.getAssignmentCalendar).toHaveBeenCalledTimes(3));
+  fireEvent.click(screen.getByRole("tab", { name: "Calendar" }));
+  expect(container.querySelector(".calendar-period h3")).toHaveTextContent(selectedMonth!);
+  expect(assignmentApi.getAssignmentCalendar).toHaveBeenCalledTimes(3);
+  fireEvent.click(screen.getByRole("tab", { name: "Assignments" }));
+  expect(screen.getByRole("heading", { name: "Fictional archived homework" })).toBeInTheDocument();
+});
+
+it("keeps global administrator archive/content oversight read-only even with inconsistent capability props", async () => {
+  const assignment = { id: "old", classroom_id: "c", test_version_id: "version", created_by_user_id: "teacher", title: "Archived homework", note: null, status: "ARCHIVED" as const, due_at: null, archived_at: "now", created_at: "now" };
+  renderWithLocale(<ClassroomWorkspace classroom={{ ...room, capabilities: ["content.manage", "assignments.manage"] }} user={{ id: "admin", role: "ADMIN" }} assignments={[assignment]} canManage />);
+  await screen.findByText("Reading notes");
+  fireEvent.click(screen.getByRole("tab", { name: "Classwork" }));
+  fireEvent.click(screen.getByRole("button", { name: /^Archived assignments/ }));
+  expect(screen.queryByRole("button", { name: "Restore" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Delete permanently" })).not.toBeInTheDocument();
+  expect(screen.queryByText("Topic actions")).not.toBeInTheDocument();
 });
 it("renders only safe Markdown React nodes and http(s) links", () => {
   const view = renderWithLocale(<SafeMarkdown text={'# Lesson\n\n**Bold** and *emphasis* [safe](https://example.com) [bad](javascript:alert)\n\n<img src=x onerror=alert(1)>\n\n- First\n- Second'} />);

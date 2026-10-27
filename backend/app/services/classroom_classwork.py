@@ -362,6 +362,35 @@ class ClassworkService:
             await self.session.flush()
             return await self._snapshot(room)
 
+    async def remove_assignment_reference(
+        self, classroom_id, assignment_id, expected_revision=None
+    ):
+        """The same safe removal for canonical assignments without a placement row."""
+        async with self.session.begin():
+            room = await self.access.room(
+                classroom_id, mutation=True, owner=True, capability=Capability.ASSIGNMENTS
+            )
+            if expected_revision is not None:
+                self._revision(room, expected_revision)
+            assignment = await self.session.scalar(
+                select(ClassroomAssignment).where(
+                    ClassroomAssignment.classroom_id == room.id,
+                    ClassroomAssignment.id == assignment_id,
+                )
+            )
+            if assignment is None:
+                raise AppError("ASSIGNMENT_NOT_FOUND", "The assignment does not exist.", 404)
+            assignment.classwork_hidden = True
+            await self.session.execute(
+                delete(ClassroomContentItem).where(
+                    ClassroomContentItem.classroom_id == room.id,
+                    ClassroomContentItem.assignment_id == assignment.id,
+                )
+            )
+            room.content_revision += 1
+            await self.session.flush()
+            return await self._snapshot(room)
+
     async def upload(self, classroom_id, upload, data: SectionCreate, section_id=None):
         async with self.session.begin():
             room = await self.access.room(classroom_id, mutation=True, owner=True)

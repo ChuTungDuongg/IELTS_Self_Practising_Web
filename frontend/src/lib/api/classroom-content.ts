@@ -68,6 +68,10 @@ export async function deletePost(id: string, postId: string) { await apiRequest(
 export async function deleteSection(id: string, sectionId: string, revision: number) { return classworkSchema.parse(await apiRequest(`${base(id)}/sections/${encodeURIComponent(sectionId)}?expected_revision=${revision}`, json("DELETE"))); }
 export async function deleteResource(id: string, resourceId: string, revision: number) { return classworkSchema.parse(await apiRequest(`${base(id)}/resources/${encodeURIComponent(resourceId)}?expected_revision=${revision}`, json("DELETE"))); }
 export async function removeAssignmentItem(id: string, itemId: string, revision: number) { return classworkSchema.parse(await apiRequest(`${base(id)}/items/${encodeURIComponent(itemId)}?expected_revision=${revision}`, json("DELETE"))); }
+export async function removeAssignmentReference(id: string, assignmentId: string, revision?: number) {
+  const query = revision === undefined ? "" : `?expected_revision=${revision}`;
+  return classworkSchema.parse(await apiRequest(`${base(id)}/assignments/${encodeURIComponent(assignmentId)}/classwork${query}`, json("DELETE")));
+}
 export async function createResource(id: string, input: ResourceInput) { return classroomResourceSchema.parse(await apiRequest(`${base(id)}/resources`, json("POST", input))); }
 export async function updateResource(id: string, resourceId: string, input: { title?: string; description?: string | null; body?: string | null; url?: string | null; status?: ContentStatus }) { return classroomResourceSchema.parse(await apiRequest(`${base(id)}/resources/${encodeURIComponent(resourceId)}`, json("PATCH", input))); }
 export async function uploadResource(id: string, input: { title: string; description?: string | null; file: File; status: ContentStatus; section_id?: string | null }) {

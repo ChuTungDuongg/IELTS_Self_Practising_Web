@@ -219,11 +219,9 @@ class ClassroomAssignmentService:
         async with self.session.begin():
             await self.policy.lock_actor()
             classroom = await self._classroom(classroom_id, locked=True)
-            # ADMIN retains the existing assignment archival control.
-            if self.policy.actor.role != UserRole.ADMIN:
-                await require_capability(
-                    self.session, self.policy.actor, classroom, Capability.ASSIGNMENTS
-                )
+            await require_capability(
+                self.session, self.policy.actor, classroom, Capability.ASSIGNMENTS
+            )
             self._active(classroom)
             assignment = await self._assignment(classroom_id, assignment_id, locked=True)
             assignment.status = AssignmentStatus.ARCHIVED
@@ -262,6 +260,23 @@ class ClassroomAssignmentService:
             _classroom_assignment_id=assignment_id,
         )
         return AssignmentStartResponse(attempt_id=result.attempt_id)
+
+    async def restore(self, classroom_id, assignment_id):
+        async with self.session.begin():
+            await self.policy.lock_actor()
+            room = await self._classroom(classroom_id, locked=True)
+            await require_capability(self.session, self.policy.actor, room, Capability.ASSIGNMENTS)
+            self._active(room)
+            assignment = await self._assignment(classroom_id, assignment_id, locked=True)
+            # Repeated requests are idempotent. All schedule, target, placement and
+            # historical references remain authoritative and are left untouched.
+            if assignment.status == AssignmentStatus.ARCHIVED:
+                assignment.status = AssignmentStatus.ACTIVE
+                assignment.archived_at = None
+                room.content_revision += 1
+                await self.session.flush()
+            response = await self._present(assignment)
+        return response
 
     async def delete(self, classroom_id, assignment_id):
         from sqlalchemy import delete
