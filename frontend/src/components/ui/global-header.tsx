@@ -26,7 +26,7 @@ const adminNavigation = [
   { message: "shell.builder", href: "/admin/tests" },
   { message: "shell.transfer", href: TRANSFER_ROUTE },
   { message: "shell.moderation", href: "/admin/moderation" },
-  { message: "shell.classrooms", href: "/classrooms" },
+  { message: "shell.classrooms", href: "/admin/classrooms" },
 ] as const;
 const teacherNavigation = [{ message: "shell.builder", href: "/teacher/tests" }, { message: "shell.classrooms", href: "/teacher/classrooms" }] as const;
 

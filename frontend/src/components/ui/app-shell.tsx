@@ -20,7 +20,7 @@ function contentWidth(pathname: string): "standard" | "wide" {
   ) return "standard";
 
   if (
-    ["/library", "/practice", "/history", "/analytics", "/admin", "/admin/users", "/admin/tests", "/transfer"].includes(path) ||
+    ["/library", "/practice", "/history", "/analytics", "/admin", "/admin/users", "/admin/tests", "/admin/classrooms", "/transfer"].includes(path) ||
     path.startsWith("/admin/tests/") || path.startsWith("/teacher") || path.startsWith("/classrooms") || path.startsWith("/admin/moderation")
   ) return "wide";
 

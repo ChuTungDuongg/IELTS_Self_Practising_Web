@@ -9,7 +9,7 @@ vi.mock("next/navigation", () => ({ usePathname: () => state.pathname }));
 vi.mock("@/features/auth/auth-provider", () => ({ useAuth: () => ({ user: state.role ? { role: state.role, display_name: state.name } : null, loading: state.loading, sessionError: state.sessionError, logout: state.logout }) }));
 vi.mock("next/link", () => ({ default: ({ prefetch, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { prefetch?: boolean | null }) => <a {...props} data-prefetch={prefetch === false ? "disabled" : "automatic"} /> }));
 
-const routes = ["/", "/library", "/practice", "/history", "/analytics", "/admin", "/admin/tests", "/transfer", "/admin/moderation", "/classrooms"];
+const routes = ["/", "/library", "/practice", "/history", "/analytics", "/admin", "/admin/tests", "/transfer", "/admin/moderation", "/admin/classrooms"];
 beforeEach(() => { state.pathname = "/"; state.role = null; state.loading = false; state.sessionError = null; state.name = "Learner"; window.localStorage.clear(); document.documentElement.dataset.theme = "light"; });
 
 describe("horizontal application shell", () => {
@@ -33,7 +33,7 @@ describe("horizontal application shell", () => {
     ["/test-session/session", "standard"], ["/session/restore", "standard"], ["/ordinary/form", "standard"],
     ["/admin/users/user/edit", "standard"], ["/admin/ordinary-form", "standard"],
     ["/library", "wide"], ["/practice", "wide"], ["/history", "wide"], ["/analytics", "wide"],
-    ["/admin", "wide"], ["/admin/users", "wide"], ["/admin/tests", "wide"], ["/transfer", "wide"],
+    ["/admin", "wide"], ["/admin/users", "wide"], ["/admin/tests", "wide"], ["/admin/classrooms", "wide"], ["/transfer", "wide"],
     ["/admin/tests/test/versions/version/edit", "wide"], ["/admin/tests/test/versions/version/preview", "wide"],
     ["/admin/tests/new/", "standard"], ["/admin/tests/test/", "standard"], ["/library/", "wide"],
     ["/library/version/", "standard"], ["/admin/tests/test/versions/version/preview/", "wide"],
@@ -92,7 +92,7 @@ describe("horizontal application shell", () => {
     expect(screen.queryByRole("button", { name: /Use (dark|light) theme/ })).not.toBeInTheDocument();
   });
 
-  it.each([["/admin", "/admin"], ["/admin/tests", "/admin/tests"], ["/admin/tests/test/versions/version/edit", "/admin/tests"], ["/transfer", "/transfer"], ["/profile", null], ["/review/id", null], ["/test-session/id", null]])("admin active matching is exact (%s)", (path, active) => {
+  it.each([["/admin", "/admin"], ["/admin/classrooms", "/admin/classrooms"], ["/admin/tests", "/admin/tests"], ["/admin/tests/test/versions/version/edit", "/admin/tests"], ["/transfer", "/transfer"], ["/profile", null], ["/review/id", null], ["/test-session/id", null]])("admin active matching is exact (%s)", (path, active) => {
     state.role = "ADMIN"; state.pathname = path!;
     render(<AppShell currentYear={2026}>Content</AppShell>);
     const links = within(screen.getByRole("navigation", { name: "Primary" })).getAllByRole("link");

@@ -6,10 +6,56 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.dependencies import AdminUser
 from app.core.database import get_session
 from app.schemas.admin import AdminStats, AdminUserDetail, AdminUserList, AdminUserUpdate
+from app.schemas.admin_directory import (
+    DirectoryClassroomsPage,
+    DirectoryPeoplePage,
+    DirectoryPerson,
+    DirectoryRole,
+)
 from app.schemas.auth import UserResponse
 from app.services.admin import AdminService
+from app.services.admin_directory import AdminDirectoryService
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+
+
+@router.get("/directory/people", response_model=DirectoryPeoplePage)
+async def directory_people(
+    _: AdminUser,
+    role: DirectoryRole = Query(default="TEACHER"),
+    search: str | None = Query(default=None, max_length=160),
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=25, ge=1, le=100),
+    session: AsyncSession = Depends(get_session),
+) -> DirectoryPeoplePage:
+    return await AdminDirectoryService(session).people(
+        role=role, search=search, offset=offset, limit=limit
+    )
+
+
+@router.get("/directory/people/{person_id}", response_model=DirectoryPerson)
+async def directory_person(
+    person_id: UUID,
+    _: AdminUser,
+    role: DirectoryRole = Query(default="TEACHER"),
+    session: AsyncSession = Depends(get_session),
+) -> DirectoryPerson:
+    return await AdminDirectoryService(session).person(person_id, role=role)
+
+
+@router.get("/directory/classrooms", response_model=DirectoryClassroomsPage)
+async def directory_classrooms(
+    _: AdminUser,
+    teacher_id: UUID | None = Query(default=None),
+    student_id: UUID | None = Query(default=None),
+    search: str | None = Query(default=None, max_length=160),
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=25, ge=1, le=100),
+    session: AsyncSession = Depends(get_session),
+) -> DirectoryClassroomsPage:
+    return await AdminDirectoryService(session).classrooms(
+        teacher_id=teacher_id, student_id=student_id, search=search, offset=offset, limit=limit
+    )
 
 
 @router.get("/stats", response_model=AdminStats)

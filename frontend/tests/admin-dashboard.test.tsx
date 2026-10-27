@@ -22,6 +22,11 @@ const stats = {
 };
 
 describe("AdminDashboardPage", () => {
+  it("links the read-only classroom directory separately from account management", async () => {
+    render(await AdminDashboardPage({ searchParams: Promise.resolve({}) }));
+    expect(screen.getByRole("link", { name: "Classroom directory" })).toHaveAttribute("href", "/admin/classrooms");
+    expect(screen.getByRole("heading", { name: "Users" })).toBeInTheDocument();
+  });
   it("links the standalone admin Writing benchmark bank", async () => {
     render(await AdminDashboardPage({ searchParams: Promise.resolve({}) }));
     expect(screen.getByRole("link", { name: "Writing benchmark bank" })).toHaveAttribute("href", "/admin/writing-benchmark");
