@@ -25,6 +25,7 @@ from app.models.classroom_classwork import (
     ClassroomResource,
     ClassroomSection,
 )
+from app.models.classroom_staff import ClassroomStaff
 from app.models.enums import ClassroomStatus, UserRole
 from app.repositories.classroom_classwork import ClassworkRepository
 from app.schemas.classroom_classwork import (
@@ -52,6 +53,17 @@ def session_double(*results):
     session.flush = AsyncMock()
     session.refresh = AsyncMock()
     session.rollback = AsyncMock()
+    return session
+
+
+def access_session(current, room, membership=None):
+    session = session_double()
+    rows = {User: current, Classroom: room, ClassroomMembership: membership, ClassroomStaff: None}
+
+    async def scalar(statement):
+        return rows[statement.column_descriptions[0]["entity"]]
+
+    session.scalar.side_effect = scalar
     return session
 
 
@@ -133,7 +145,7 @@ async def test_content_reads_require_owner_admin_or_membership_history(
         if has_history
         else None
     )
-    session = session_double(current, room, history)
+    session = access_session(current, room, history)
     access = ContentAccess(session, current)
     if allowed:
         result = await access.room(room.id)
@@ -150,7 +162,7 @@ async def test_content_authorship_excludes_admin_and_student_even_with_read_acce
     owner = actor()
     current = actor(role)
     room = classroom(owner)
-    session = session_double(current, room, ClassroomMembership(user_id=current.id))
+    session = access_session(current, room, ClassroomMembership(user_id=current.id))
     with pytest.raises(AppError) as error:
         await ContentAccess(session, current).room(room.id, mutation=True, owner=True)
     assert (error.value.code, error.value.status_code) == ("CLASSROOM_OWNERSHIP_REQUIRED", 403)
@@ -160,7 +172,7 @@ async def test_content_mutation_reloads_role_before_authorizing_teacher_owner():
     stale_teacher = actor()
     demoted = User(id=stale_teacher.id, role=UserRole.USER, is_active=True)
     room = classroom(stale_teacher)
-    session = session_double(demoted, room, ClassroomMembership(user_id=demoted.id))
+    session = access_session(demoted, room, ClassroomMembership(user_id=demoted.id))
     with pytest.raises(AppError) as error:
         await ContentAccess(session, stale_teacher).room(room.id, mutation=True, owner=True)
     assert error.value.code == "CLASSROOM_OWNERSHIP_REQUIRED"

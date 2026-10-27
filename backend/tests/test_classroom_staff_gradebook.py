@@ -236,23 +236,12 @@ async def make_user_inline(session, role):
 
 async def test_concurrent_staff_invitations_are_serialized():
     import asyncio
-    import os
 
-    from sqlalchemy.engine import make_url
-    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-    from sqlalchemy.pool import NullPool
+    from tests.classroom_concurrency_helpers import isolated_staff_database
 
-    from app.core.config import get_settings
-
-    url = get_settings().database_url
-    database = make_url(url).database or ""
-    # This real two-connection test commits fixtures. Require an explicitly named
-    # test database, including the existing GitHub Actions ielts_test database.
-    assert os.environ.get("TEST_DATABASE_URL") == url
-    assert database.startswith("test_") or database.endswith("_test") or "_test_" in database
-    engine = create_async_engine(url, poolclass=NullPool)
-    sessions = async_sessionmaker(engine, expire_on_commit=False)
-    try:
+    # Staff audit is append-only. Keep committed race fixtures out of the shared
+    # suite database instead of deleting or disabling their immutable history.
+    async with isolated_staff_database() as sessions:
         async with sessions() as session:
             owner, student, room, _ = await classroom_fixture(session)
 
@@ -270,8 +259,6 @@ async def test_concurrent_staff_invitations_are_serialized():
             "INVITED",
             "STAFF_ALREADY_EXISTS",
         ]
-    finally:
-        await engine.dispose()
 
 
 @pytest.mark.parametrize("value", ["=x", "  +x", "-x", "@x", "\tx", "\rx", "\nx"])

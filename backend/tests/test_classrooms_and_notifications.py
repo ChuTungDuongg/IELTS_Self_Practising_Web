@@ -258,17 +258,23 @@ async def test_other_teacher_cannot_manage_members_invites_or_known_classroom_id
     room = await classroom(db_session, teacher)
     inv = await invitation(db_session, teacher, room.id, student.email)
     other_service = ClassroomService(db_session, other)
-    for operation in (
-        lambda: other_service.members(room.id),
-        lambda: other_service.invitations(room.id),
-        lambda: other_service.invite(room.id, InvitationCreate(email=other.email)),
-        lambda: other_service.cancel(inv.id),
-        lambda: other_service.archive(room.id),
-        lambda: other_service.remove_member(room.id, student.id),
+    for operation, expected_code in (
+        (lambda: other_service.members(room.id), "CLASSROOM_CAPABILITY_REQUIRED"),
+        (lambda: other_service.invitations(room.id), "CLASSROOM_CAPABILITY_REQUIRED"),
+        (
+            lambda: other_service.invite(room.id, InvitationCreate(email=other.email)),
+            "CLASSROOM_CAPABILITY_REQUIRED",
+        ),
+        (lambda: other_service.cancel(inv.id), "CLASSROOM_CAPABILITY_REQUIRED"),
+        (lambda: other_service.archive(room.id), "CLASSROOM_OWNERSHIP_REQUIRED"),
+        (
+            lambda: other_service.remove_member(room.id, student.id),
+            "CLASSROOM_CAPABILITY_REQUIRED",
+        ),
     ):
         with pytest.raises(AppError) as error:
             await operation()
-        assert error.value.code == "CLASSROOM_OWNERSHIP_REQUIRED"
+        assert (error.value.code, error.value.status_code) == (expected_code, 403)
     assert (await other_service.list()).items == []
     with pytest.raises(AppError) as error:
         await other_service.get(room.id)
