@@ -1,10 +1,12 @@
 "use client";
 
-import type { ReactElement } from "react";
+import { useTransition, type ReactElement } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { GravityLanding } from "./gravity/gravity-landing";
 import { ArrowIcon, BuilderIcon, HeadphonesIcon, HistoryIcon, LibraryIcon, ReadingIcon, SparkleIcon } from "@/components/ui/icons";
 import { AdminOnly } from "@/features/auth/admin-only";
+import { useAuth } from "@/features/auth/auth-provider";
 import type { AdminStats } from "@/lib/api/admin";
 import type { Profile } from "@/lib/api/profile";
 import type { HistoryItem } from "@/lib/api/history";
@@ -12,7 +14,7 @@ import { formatProjectDate } from "@/lib/date-time";
 import { useTranslation } from "@/lib/i18n/locale-provider";
 import { GoalCountdown } from "./goal-countdown";
 
-export function OverviewContent({ publishedCount, resumableCount, testCount, isAdmin, adminStats, profile, recentAttempt, signedIn = true }: { publishedCount: number; resumableCount: number; testCount: number; isAdmin: boolean; adminStats: AdminStats | null; profile: Profile | null; recentAttempt?: Pick<HistoryItem, "attempt_id" | "test_title" | "module" | "status">; signedIn?: boolean }): ReactElement {
+export function OverviewContent({ publishedCount, resumableCount, testCount, isAdmin, adminStats, profile, recentAttempt, signedIn = true, apiUnavailable = false }: { publishedCount: number; resumableCount: number; testCount: number; isAdmin: boolean; adminStats: AdminStats | null; profile: Profile | null; recentAttempt?: Pick<HistoryItem, "attempt_id" | "test_title" | "module" | "status">; signedIn?: boolean; apiUnavailable?: boolean }): ReactElement {
   const { t } = useTranslation();
   const pathways = [
     { title: t("pages.overview.tests"), description: t("pages.overview.testsDescription"), href: "/library", eyebrow: t("pages.overview.practiceLibrary"), icon: LibraryIcon, tone: "indigo" },
@@ -23,9 +25,10 @@ export function OverviewContent({ publishedCount, resumableCount, testCount, isA
 
   return (
     <div className="home-page gravity-home">
+      {apiUnavailable ? <HomepageConnectionNotice /> : null}
       <GravityLanding recentAttempt={recentAttempt} />
       <div id="study-workspace" className="home-workspace">
-      <div className="section-header"><div><h2 className="section-title">{t("gravity.workspace")}</h2><p className="section-description">{t("gravity.workspaceDescription")}</p></div><AdminOnly><Link href="/admin/tests" prefetch={false} className="btn btn-secondary"><BuilderIcon className="size-4" />{t("pages.overview.builderAction")}</Link></AdminOnly></div>
+      <div className="section-header"><div><h2 className="section-title">{t("gravity.workspace")}</h2><p className="section-description">{t("gravity.workspaceDescription")}</p></div>{!apiUnavailable ? <AdminOnly><Link href="/admin/tests" prefetch={false} className="btn btn-secondary"><BuilderIcon className="size-4" />{t("pages.overview.builderAction")}</Link></AdminOnly> : null}</div>
       {signedIn ? <section className={`home-metrics${isAdmin ? " home-metrics-admin" : ""}`} aria-label={t("pages.overview.summary")}>
         {[
           [t("pages.overview.published"), String(publishedCount), t("pages.overview.ready"), "/library"],
@@ -39,7 +42,7 @@ export function OverviewContent({ publishedCount, resumableCount, testCount, isA
         ))}
         {isAdmin ? <Link href="/admin/tests" className="home-metric"><span className="home-metric-value">{testCount}</span><span><strong>{t("pages.overview.builderTests")}</strong><small>{t("pages.overview.authoring")}</small></span><ArrowIcon className="size-4" /></Link> : null}
         {adminStats ? <Link href="/admin" className="home-metric"><span className="home-metric-value">{adminStats.total_users}</span><span><strong>{t("pages.overview.users")}</strong><small>{t("pages.overview.activeUsers", { count: adminStats.active_users })}</small></span><ArrowIcon className="size-4" /></Link> : null}
-      </section> : <section className="surface-card home-guest"><h3>{t("gravity.guestTitle")}</h3><p>{t("gravity.guestDescription")}</p><div className="gravity-actions"><Link href="/login" prefetch={false} className="btn btn-primary">{t("shell.login")}</Link><Link href="/register" prefetch={false} className="btn btn-secondary">{t("shell.register")}</Link></div></section>}
+      </section> : !apiUnavailable ? <section className="surface-card home-guest"><h3>{t("gravity.guestTitle")}</h3><p>{t("gravity.guestDescription")}</p><div className="gravity-actions"><Link href="/login" prefetch={false} className="btn btn-primary">{t("shell.login")}</Link><Link href="/register" prefetch={false} className="btn btn-secondary">{t("shell.register")}</Link></div></section> : null}
 
       {profile ? <IeltsGoals profile={profile} /> : null}
 
@@ -67,6 +70,20 @@ export function OverviewContent({ publishedCount, resumableCount, testCount, isA
       </div>
     </div>
   );
+}
+
+function HomepageConnectionNotice() {
+  const { t } = useTranslation(), router = useRouter();
+  const { confirmSession } = useAuth();
+  const [pending, startTransition] = useTransition();
+  return <section className="notice" role="alert">
+    <p><strong>{t("pages.overview.connectionTitle")}</strong></p>
+    <p>{t("pages.overview.connectionDescription")}</p>
+    <button className="btn btn-secondary" type="button" disabled={pending} onClick={() => startTransition(async () => {
+      try { await confirmSession(); } catch { /* The header retains the current session error. */ }
+      router.refresh();
+    })}>{t("pages.overview.retryConnection")}</button>
+  </section>;
 }
 
 function IeltsGoals({ profile }: { profile: Profile }) {

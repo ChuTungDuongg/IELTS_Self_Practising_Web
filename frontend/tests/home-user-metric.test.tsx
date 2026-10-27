@@ -16,6 +16,8 @@ vi.mock("@/lib/api/history", () => ({ getHistory: vi.fn() }));
 vi.mock("@/lib/api/tests", () => ({ getTests: vi.fn() }));
 vi.mock("@/lib/api/profile", () => ({ getProfile: vi.fn() }));
 vi.mock("@/features/auth/admin-only", () => ({ AdminOnly: ({ children }: { children: React.ReactNode }) => children }));
+const router = vi.hoisted(() => ({ refresh: vi.fn() }));
+vi.mock("next/navigation", () => ({ useRouter: () => router }));
 
 const user = {
   id: "11111111-1111-4111-8111-111111111111",
@@ -71,6 +73,7 @@ describe("homepage metrics and personal IELTS goals", () => {
   });
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
     vi.mocked(getTests).mockResolvedValue([]);
     vi.mocked(getHistory).mockResolvedValue({ items: [], groups: [], sessions: [], total: 0 });
     vi.mocked(serverApiRequest).mockResolvedValue(user);
@@ -178,5 +181,25 @@ describe("homepage metrics and personal IELTS goals", () => {
     vi.mocked(serverApiRequest).mockRejectedValue(new ApiError("API_ERROR", "Backend failed", 500));
     await expect(DashboardPage()).rejects.toThrow("Backend failed");
     expect(getProfile).not.toHaveBeenCalled();
+  });
+
+  it("keeps the public homepage usable when the session API cannot be reached and offers retry", async () => {
+    vi.mocked(serverApiRequest).mockRejectedValue(new ApiError("NETWORK_ERROR", "The API is not reachable.", 0));
+    renderWithLocale(await DashboardPage());
+    expect(screen.getByRole("alert")).toHaveTextContent("Connection temporarily unavailable");
+    expect(screen.queryByRole("region", { name: "Workspace summary" })).not.toBeInTheDocument();
+    expect(getTests).not.toHaveBeenCalled(); expect(getHistory).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Retry connection" }));
+    await waitFor(() => expect(router.refresh).toHaveBeenCalledOnce());
+    fireEvent.click(screen.getByRole("button", { name: "Switch to Vietnamese" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("Tạm thời mất kết nối");
+  });
+
+  it("does not show invented metrics when a signed-in homepage data request loses connection", async () => {
+    vi.mocked(getTests).mockRejectedValue(new ApiError("NETWORK_ERROR", "The API is not reachable.", 0));
+    renderWithLocale(await DashboardPage());
+    expect(screen.getByRole("alert")).toHaveTextContent("Connection temporarily unavailable");
+    expect(screen.queryByRole("region", { name: "Workspace summary" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: /IELTS goal/ })).not.toBeInTheDocument();
   });
 });

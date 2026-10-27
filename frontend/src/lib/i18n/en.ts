@@ -1,4 +1,7 @@
 export const en = {
+  "pages.overview.connectionTitle": "Connection temporarily unavailable",
+  "pages.overview.connectionDescription": "Account and study data cannot be loaded right now. You can still browse the homepage and retry the connection.",
+  "pages.overview.retryConnection": "Retry connection",
   "directory.title": "Classroom directory",
   "directory.description": "Browse teachers, students and classroom ownership, then open a classroom for observation.",
   "directory.accountAdministration": "Account administration",

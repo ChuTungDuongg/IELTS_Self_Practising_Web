@@ -10,6 +10,17 @@ import { getProfile } from "@/lib/api/profile";
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
+  try {
+    return await loadHomepage();
+  } catch (error) {
+    if (error instanceof ApiError && error.code === "NETWORK_ERROR") {
+      return <OverviewContent publishedCount={0} resumableCount={0} testCount={0} isAdmin={false} adminStats={null} profile={null} signedIn={false} apiUnavailable />;
+    }
+    throw error;
+  }
+}
+
+async function loadHomepage() {
   const user = await getHomepageUser();
   const [tests, history, adminStats, profile] = await Promise.all([
     // publicOnly filters test visibility; the API still requires a signed-in user.

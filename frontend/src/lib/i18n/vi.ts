@@ -1,6 +1,9 @@
 import type { TranslationDictionary } from "./types";
 
 export const vi = {
+  "pages.overview.connectionTitle": "Tạm thời mất kết nối",
+  "pages.overview.connectionDescription": "Hiện chưa tải được thông tin tài khoản và dữ liệu học tập. Bạn vẫn có thể xem trang chủ và thử kết nối lại.",
+  "pages.overview.retryConnection": "Thử kết nối lại",
   "directory.title": "Danh bạ lớp học",
   "directory.description": "Tra cứu giáo viên, học viên và lớp phụ trách, sau đó mở lớp để dự thính.",
   "directory.accountAdministration": "Quản trị tài khoản",
