@@ -4,12 +4,14 @@ import type { ClassroomAssignment } from "@/lib/api/classrooms";
 import { useAssignmentProgress } from "../scheduling/progress-provider";
 import { useScheduleText } from "../scheduling/messages";
 import { useContentTranslation } from "./content-messages";
+import { useAssignmentTargetLabel } from "../assignment-target";
 
 export function ClassworkAssignmentMeta({ assignment }: { assignment: ClassroomAssignment }) {
   const state = useAssignmentProgress(), { st } = useScheduleText(), { ct, locale } = useContentTranslation();
+  const targetLabel = useAssignmentTargetLabel();
   const progress = state?.staff ? undefined : state?.items[assignment.id];
   const skills = [...new Set(assignment.version?.modules.map(module => module.module_type) ?? [])];
-  const parts: string[] = [skills.length === 1 ? ct(skills[0]) : ct("assignmentActivity")];
+  const parts: string[] = [assignment.target ? targetLabel(assignment.target, assignment.version).replace(" · ", " / ") : skills.length === 1 ? ct(skills[0]) : ct("assignmentActivity")];
   const historical = assignment.status === "ARCHIVED";
   if (progress) {
     const submission = progress.submission_status;

@@ -6,7 +6,15 @@ from sqlalchemy import and_, func, select
 
 from app.core.exceptions import AppError
 from app.domains.timers import TimerService
-from app.models import Attempt, ClassroomAssignment, QuestionGroup, TestModule, TestSession, User
+from app.models import (
+    Attempt,
+    ClassroomAssignment,
+    QuestionGroup,
+    TestModule,
+    TestSession,
+    User,
+    WritingTask,
+)
 from app.repositories.assignment_progress import AssignmentProgressRepository
 from app.repositories.classroom_grades import classroom_cohort
 from app.repositories.classroom_learning import (
@@ -272,7 +280,11 @@ class ClassroomLearningService:
             )
             titles = (
                 await self.session.execute(
-                    select(ClassroomAssignment.id, ClassroomAssignment.title)
+                    select(
+                        ClassroomAssignment.id,
+                        ClassroomAssignment.title,
+                        ClassroomAssignment.target,
+                    )
                     .where(ClassroomAssignment.classroom_id == room.id)
                     .order_by(ClassroomAssignment.created_at, ClassroomAssignment.id)
                     .limit(20)
@@ -303,10 +315,11 @@ class ClassroomLearningService:
             by_assignment = [
                 CompletionActivity(
                     assignment_id=id,
+                    target=target,
                     title=title or "IELTS assignment",
                     counts=completion.get(id, {}),
                 )
-                for id, title in titles
+                for id, title, target in titles
             ]
             missing = (
                 select(
@@ -411,15 +424,31 @@ class ClassroomLearningService:
         modules = (
             await self.session.execute(
                 select(
-                    TestModule.test_version_id, TestModule.module_type, QuestionGroup.question_type
+                    TestModule.test_version_id,
+                    TestModule.module_type,
+                    QuestionGroup.question_type,
+                    QuestionGroup.passage_id,
+                    QuestionGroup.listening_part_id,
                 )
                 .outerjoin(QuestionGroup, QuestionGroup.module_id == TestModule.id)
                 .where(TestModule.test_version_id.in_(versions))
             )
         ).all()
-        grouped = {}
-        for version, skill, category in modules:
+        grouped, focused_categories = {}, {}
+        for version, skill, category, passage_id, part_id in modules:
             grouped.setdefault((version, skill), set()).add(category)
+            if unit_id := passage_id or part_id:
+                focused_categories.setdefault(str(unit_id), set()).add(category)
+        writing_contexts = {
+            str(unit_id): f"TASK_{number}"
+            for unit_id, number in (
+                await self.session.execute(
+                    select(WritingTask.id, WritingTask.task_number)
+                    .join(TestModule, WritingTask.module_id == TestModule.id)
+                    .where(TestModule.test_version_id.in_(versions))
+                )
+            ).all()
+        }
         roots = learning_roots(room.id, student.id)
         completed_versions = set(
             await self.session.scalars(
@@ -437,9 +466,26 @@ class ClassroomLearningService:
                 if (
                     assignment.id not in permitted
                     or (assignment.test_version_id, weakness.skill) not in grouped
+                    or assignment.target
+                    and assignment.target.get("mode") != "FULL_MOCK"
+                    and assignment.target.get("module") != weakness.skill
                 ):
                     continue
                 categories = grouped[(assignment.test_version_id, weakness.skill)]
+                target = assignment.target or {}
+                if target.get("scope") == "FOCUSED_UNIT":
+                    unit = target["focused_unit"]
+                    if weakness.weakness_type == "QUESTION_TYPE":
+                        categories = focused_categories.get(unit["id"], set())
+                    elif weakness.weakness_type == "CRITERION":
+                        context = weakness.category.rsplit(":", 1)[0]
+                        expected = (
+                            writing_contexts.get(unit["id"])
+                            if unit["kind"] == "WRITING_TASK"
+                            else f"SPEAKING:FOCUSED_UNIT:{unit['id']}"
+                        )
+                        if context != expected:
+                            continue
                 if (
                     weakness.weakness_type == "QUESTION_TYPE"
                     and weakness.category not in categories
@@ -465,6 +511,7 @@ class ClassroomLearningService:
             selected.append(
                 Recommendation(
                     assignment_id=assignment.id,
+                    target=assignment.target,
                     title=assignment.title or "IELTS assignment",
                     skill=weakness.skill,
                     category=weakness.category,

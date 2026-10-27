@@ -294,6 +294,7 @@ class ClassroomGradeService:
             assignments=[
                 GradeColumn(
                     id=a.id,
+                    target=a.target,
                     title=a.title or title,
                     grade_selection=a.grade_selection,
                     policy_revision=a.policy_revision,
@@ -413,6 +414,7 @@ class ClassroomGradeService:
                 )
             return GradeColumn(
                 id=assignment.id,
+                target=assignment.target,
                 title=assignment.title or "Assignment",
                 grade_selection=assignment.grade_selection,
                 policy_revision=assignment.policy_revision,

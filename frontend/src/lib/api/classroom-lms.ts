@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { assignmentTargetSchema } from "./classrooms";
 import { apiRequest, apiResponse, type ApiRequester } from "./client";
 import { testSchema } from "./schema";
 
@@ -6,7 +7,7 @@ const id = z.string().uuid(), count = z.number().int().nonnegative();
 export const selectionSchema = z.enum(["LATEST_ACCEPTED", "FIRST_ACCEPTED", "BEST_ACCEPTED"]);
 export const componentSchema = z.object({ attempt_id: id, skill: z.string(), band: z.number().nullable(), raw_score: z.number().nullable(), max_score: z.number().nullable(), provenance: z.string(), task_score: z.number().nullable() });
 export const gradeSchema = z.object({ assignment_id: id, root_id: id, kind: z.enum(["ATTEMPT", "SESSION"]), result_attempt_id: id.nullable(), skill: z.string(), scope: z.string(), context: z.string(), band: z.number().nullable(), raw_score: z.number().nullable(), max_score: z.number().nullable(), provenance: z.enum(["OBJECTIVE", "HUMAN_FINAL", "PENDING_HUMAN", "UNAVAILABLE"]), finished_at: z.string(), accepted: z.boolean(), late: z.boolean(), submission_status: z.string(), mixed_context_fallback: z.boolean(), breakdown: z.array(componentSchema) });
-const columnSchema = z.object({ id, title: z.string(), grade_selection: selectionSchema, policy_revision: count });
+const columnSchema = z.object({ id, title: z.string(), grade_selection: selectionSchema, policy_revision: count, target: assignmentTargetSchema.nullable().optional() });
 export const cellSchema = z.object({ assignment_id: id, submission_status: z.string(), attempts_used: count, eligible: z.boolean(), score: gradeSchema.nullable() });
 export const gradebookSchema = z.object({ assignments: z.array(columnSchema), students: z.array(z.object({ student_id: id, display_name: z.string(), active_member: z.boolean(), cells: z.array(cellSchema) })), total_students: count, total_assignments: count });
 export const profileSchema = z.object({ student_id: id, display_name: z.string(), active_member: z.boolean(), counts: z.record(z.string(), count), assignments: z.array(cellSchema), history: z.array(gradeSchema), total_assignments: count, total_history: count, assignment_offset: count, history_offset: count });

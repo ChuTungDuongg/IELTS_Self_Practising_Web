@@ -72,6 +72,7 @@
 .lms-grade-details a { text-decoration:underline; }
 .lms-pagination { display:flex; flex-wrap:wrap; gap:12px; align-items:center; margin:16px 0; }
 .lms-record-list { list-style:none; margin:12px 0; padding:0; }
+.classroom-assignment-target { display:block; overflow-wrap:anywhere; }
 .lms-record-list > li { padding:12px 0; border-bottom:1px solid var(--line); }
 .lms-form { display:grid; gap:12px; margin:16px 0; max-width:640px; }
 .lms-form > label { display:grid; gap:6px; }

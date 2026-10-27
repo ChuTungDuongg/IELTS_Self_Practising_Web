@@ -23,6 +23,16 @@ from app.services.classroom_posts import ClassroomPostService
 router = APIRouter(prefix="/classrooms/{classroom_id}", tags=["classroom-feed"])
 
 
+@router.delete("/posts/{post_id}", status_code=204)
+async def delete_post(
+    classroom_id: UUID,
+    post_id: UUID,
+    actor: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+):
+    await ClassroomPostService(session, actor).delete(classroom_id, post_id)
+
+
 @router.get("/feed", response_model=FeedPage)
 async def feed(
     classroom_id: UUID,
@@ -30,7 +40,8 @@ async def feed(
     cursor: str | None = Query(default=None, max_length=2048),
     limit: int = Query(default=20, ge=1, le=100),
     status: ContentStatus | None = None,
-    content_kind: Literal["ANNOUNCEMENT", "DISCUSSION", "ASSIGNMENT_ACTIVITY"] | None = None,
+    content_kind: Literal["ANNOUNCEMENT", "DISCUSSION", "ASSIGNMENT_ACTIVITY", "RESOURCE_ACTIVITY"]
+    | None = None,
     session: AsyncSession = Depends(get_session),
 ):
     return await ClassroomPostService(session, actor).feed(

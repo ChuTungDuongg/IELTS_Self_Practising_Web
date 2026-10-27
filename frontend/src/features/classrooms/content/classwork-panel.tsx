@@ -15,11 +15,12 @@ import { ActionMenu } from "../lms/action-menu";
 import { classworkGroups } from "./classwork-groups";
 import { useClassworkDisclosure } from "./classwork-disclosure";
 import { ClassworkProgressNotice } from "./classwork-assignment-meta";
+import { deleteSection, deleteResource, removeAssignmentItem } from "@/lib/api/classroom-content";
 
 type Editor = { kind: "section"; section?: ClassroomSection } | { kind: "resource"; resource?: ClassroomResource; sectionId?: string | null } | { kind: "placement" };
-export function ClassworkPanel({ classroomId, data, assignments, canAuthor, canInspect = canAuthor, onRefresh, onChange, onOpenAssignment, initialAction, onCreateAssignment }: {
+export function ClassworkPanel({ classroomId, data, assignments, canAuthor, canAssign = canAuthor, canInspect = canAuthor, onRefresh, onChange, onOpenAssignment, initialAction, onCreateAssignment }: {
   classroomId: string; data: Classwork; assignments: ClassroomAssignment[]; canAuthor: boolean; onRefresh: () => Promise<unknown>; onChange: (data: Classwork) => void; onOpenAssignment: (id: string) => void;
-  initialAction?: "section" | "resource"; onCreateAssignment?: () => void; canInspect?: boolean;
+  initialAction?: "section" | "resource"; onCreateAssignment?: () => void; canInspect?: boolean; canAssign?: boolean;
 }) {
   const { ct } = useContentTranslation();
   const { lt } = useLmsText();
@@ -28,12 +29,13 @@ export function ClassworkPanel({ classroomId, data, assignments, canAuthor, canI
   const running = useRef(false), dragging = useRef<{ kind: "section" | "item"; id: string } | null>(null);
   const sections = ordered(data.sections), unplaced = assignments.filter(assignment => !data.items.some(item => item.assignment_id === assignment.id));
   const groups = classworkGroups(data, assignments, canInspect), disclosure = useClassworkDisclosure(groups);
-  async function mutate(action: () => Promise<Classwork>) {
-    if (running.current || !canAuthor) return; running.current = true; setPending(true); setError(null); setNotice(null);
-    try { onChange(await action()); setNotice(ct("reorderSaved")); }
+  async function mutate(action: () => Promise<Classwork>, rethrow = false, success = ct("reorderSaved")) {
+    if (running.current || !canAuthor && !canAssign) return; running.current = true; setPending(true); setError(null); setNotice(null);
+    try { onChange(await action()); setNotice(success); }
     catch (caught) {
       if (caught instanceof ApiError && caught.code === "CLASSWORK_CHANGED") { try { await onRefresh(); setError(ct("conflict")); } catch (refreshError) { setError(contentError(refreshError, ct("error"))); } }
       else setError(contentError(caught, ct("error")));
+      if (rethrow) throw caught;
     } finally { running.current = false; setPending(false); dragging.current = null; }
   }
   function sectionStep(id: string, delta: number) { void mutate(() => reorderSections(classroomId, moveBy(sections.map(section => section.id), id, delta), data.revision)); }
@@ -58,21 +60,24 @@ export function ClassworkPanel({ classroomId, data, assignments, canAuthor, canI
     onAddResource: sectionId => setEditor({ kind: "resource", sectionId }), onRefresh, onSectionStep: sectionStep,
     onAttachAssignment: sectionId => { setTargetSection(sectionId ?? ""); setEditor({ kind: "placement" }); },
     onPlaceAssignment: (id, sectionId) => { void mutate(() => placeAssignment(classroomId, sectionId, id)); },
+    onDeleteSection: id => mutate(() => deleteSection(classroomId, id, data.revision), true, ct("deleted")),
+    onDeleteResource: id => mutate(() => deleteResource(classroomId, id, data.revision), true, ct("deleted")),
+    onRemoveAssignment: id => mutate(() => removeAssignmentItem(classroomId, id, data.revision), true, ct("deleted")),
     onSectionDrag: id => { dragging.current = { kind: "section", id }; },
     onSectionDrop: id => { if (dragging.current?.kind === "section" && id) dropSection(id); else dropItem(id); },
     onDragEnd: () => { dragging.current = null; }, onItemMove: moveItem, onItemStep: stepItem,
     onItemDrag: id => { dragging.current = { kind: "item", id }; }, onItemDrop: dropItem, onOpenAssignment,
   };
-  const sectionProps = { sections, classroomId, canAuthor, pending, actions };
+  const sectionProps = { sections, classroomId, canAuthor, canAssign, pending, actions };
   return <section className="classroom-classwork" aria-label={ct("classwork")}>
-    <div className="classroom-section-heading"><div><h2>{ct("classwork")}</h2><p className="classroom-meta">{lt("organizeTopics")}</p></div>{canAuthor ? <ActionMenu label={lt("addContent")} primary><button type="button" disabled={pending} onClick={() => setEditor({ kind: "section" })}>{ct("addSection")}</button><button type="button" disabled={pending} onClick={() => setEditor({ kind: "resource" })}>{ct("addResource")}</button><button type="button" disabled={pending} onClick={() => setEditor({ kind: "placement" })}>{ct("attachAssignment")}</button></ActionMenu> : null}</div>
+    <div className="classroom-section-heading"><div><h2>{ct("classwork")}</h2><p className="classroom-meta">{lt("organizeTopics")}</p></div>{canAuthor || canAssign ? <ActionMenu label={lt("addContent")} primary>{canAuthor ? <><button type="button" disabled={pending} onClick={() => setEditor({ kind: "section" })}>{ct("addSection")}</button><button type="button" disabled={pending} onClick={() => setEditor({ kind: "resource" })}>{ct("addResource")}</button></> : null}{canAssign ? <button type="button" disabled={pending} onClick={() => setEditor({ kind: "placement" })}>{ct("attachAssignment")}</button> : null}</ActionMenu> : null}</div>
     {error ? <p className="notice notice-error" role="alert">{error}</p> : null}{notice ? <p className="classroom-meta" role="status">{notice}</p> : null}
     {assignments.length ? <ClassworkProgressNotice /> : null}
     {editor && canAuthor ? editor.kind === "section" ? <SectionEditor key={editor.section?.id ?? "new-section"} classroomId={classroomId} section={editor.section} onDone={editorDone} onCancel={() => setEditor(null)} /> : editor.kind === "resource" ? <ResourceEditor key={editor.resource?.id ?? `new-resource-${editor.sectionId ?? ""}`} classroomId={classroomId} resource={editor.resource} sectionId={editor.sectionId} sections={sections} onDone={editorDone} onCancel={() => setEditor(null)} /> : null : null}
-    {canAuthor && editor?.kind === "placement" ? <div className="classroom-focused-form">{unplaced.some(assignment => assignment.status === "ACTIVE") ? <form className="classroom-panel classroom-association" onSubmit={event => { event.preventDefault(); if (assignmentId) void mutate(async () => { const next = await placeAssignment(classroomId, targetSection || null, assignmentId); setAssignmentId(""); setEditor(null); return next; }); }}>
+    {canAssign && editor?.kind === "placement" ? <div className="classroom-focused-form">{unplaced.some(assignment => assignment.status === "ACTIVE") ? <form className="classroom-panel classroom-association" onSubmit={event => { event.preventDefault(); if (assignmentId) void mutate(async () => { const next = await placeAssignment(classroomId, targetSection || null, assignmentId); setAssignmentId(""); setEditor(null); return next; }); }}>
       <h3>{ct("attachAssignment")}</h3><label className="field-label">{ct("chooseAssignment")}<select className="select-field" value={assignmentId} required disabled={pending} onChange={event => setAssignmentId(event.target.value)}><option value="">—</option>{unplaced.filter(assignment => assignment.status === "ACTIVE").map(assignment => <option key={assignment.id} value={assignment.id}>{assignment.title ?? assignment.version?.test_title ?? ct("assignmentActivity")}</option>)}</select></label><label className="field-label">{ct("section")}<select className="select-field" value={targetSection} disabled={pending} onChange={event => setTargetSection(event.target.value)}><option value="">{ct("uncategorized")}</option>{sections.filter(section => section.status !== "ARCHIVED").map(section => <option key={section.id} value={section.id}>{section.title}</option>)}</select></label><button className="btn btn-secondary" disabled={pending || !assignmentId}>{ct("attachAssignment")}</button>
       <button type="button" className="btn btn-secondary" disabled={pending} onClick={() => setEditor(null)}>{ct("cancel")}</button>
-    </form> : <div className="classroom-empty"><p>{lt("noEligibleAssignments")}</p>{onCreateAssignment ? <button type="button" className="btn btn-primary" onClick={onCreateAssignment}>{lt("newAssignment")}</button> : null}<button type="button" className="btn btn-secondary" onClick={() => setEditor(null)}>{ct("cancel")}</button></div>}{!sections.length ? <button type="button" className="classroom-text-button" onClick={() => setEditor({ kind: "section" })}>{ct("addSection")}</button> : null}</div> : null}
+    </form> : <div className="classroom-empty"><p>{lt("noEligibleAssignments")}</p>{onCreateAssignment ? <button type="button" className="btn btn-primary" onClick={onCreateAssignment}>{lt("newAssignment")}</button> : null}<button type="button" className="btn btn-secondary" onClick={() => setEditor(null)}>{ct("cancel")}</button></div>}{canAuthor && !sections.length ? <button type="button" className="classroom-text-button" onClick={() => setEditor({ kind: "section" })}>{ct("addSection")}</button> : null}</div> : null}
     {!groups.length ? <div className="classroom-empty"><p>{lt("emptySections")}</p>{canAuthor && !editor ? <button type="button" className="btn btn-primary" onClick={() => setEditor({ kind: "section" })}>{lt("newSection")}</button> : null}</div> : null}
     {groups.map(group => <ClassworkSection key={group.key} group={group} index={sections.findIndex(section => section.id === group.section?.id)} expanded={!!disclosure.expanded[group.key]} onToggle={() => disclosure.toggle(group.key)} {...sectionProps} />)}
   </section>;

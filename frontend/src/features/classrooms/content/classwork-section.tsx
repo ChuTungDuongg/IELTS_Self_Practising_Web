@@ -25,10 +25,13 @@ export type ClassworkSectionActions = {
   onItemDrag: (id: string) => void;
   onItemDrop: (sectionId: string | null, beforeId?: string) => void;
   onOpenAssignment: (id: string) => void;
+  onDeleteSection: (id: string) => Promise<unknown>;
+  onDeleteResource: (id: string) => Promise<unknown>;
+  onRemoveAssignment: (id: string) => Promise<unknown>;
 };
 
-export function ClassworkSection({ group, index, sections, classroomId, canAuthor, pending, actions, expanded, onToggle }: {
-  group: ClassworkGroup; index: number; sections: ClassroomSection[]; classroomId: string; canAuthor: boolean; pending: boolean;
+export function ClassworkSection({ group, index, sections, classroomId, canAuthor, canAssign, pending, actions, expanded, onToggle }: {
+  group: ClassworkGroup; index: number; sections: ClassroomSection[]; classroomId: string; canAuthor: boolean; canAssign: boolean; pending: boolean;
   actions: ClassworkSectionActions; expanded: boolean; onToggle: () => void;
 }) {
   const { ct } = useContentTranslation(), { lt } = useLmsText();
@@ -53,8 +56,9 @@ export function ClassworkSection({ group, index, sections, classroomId, canAutho
           <ContentAction disabled={pending} action={() => updateSection(classroomId, section.id, { status: section.status === "DRAFT" ? "PUBLISHED" : "DRAFT" })} onDone={actions.onRefresh}>{ct(section.status === "DRAFT" ? "publish" : "unpublish")}</ContentAction>
           <ContentAction disabled={pending} action={() => updateSection(classroomId, section.id, { status: "ARCHIVED" })} onDone={actions.onRefresh} confirm={{ title: ct("archiveTitle"), description: ct("archiveDescription") }}>{ct("archive")}</ContentAction>
           {rows.length || !expanded ? <button type="button" disabled={pending} onClick={() => actions.onAddResource(id)}>{ct("addResource")}</button> : null}
-          <button type="button" disabled={pending} onClick={() => actions.onAttachAssignment(id)}>{ct("attachAssignment")}</button>
+          {canAssign ? <button type="button" disabled={pending} onClick={() => actions.onAttachAssignment(id)}>{ct("attachAssignment")}</button> : null}
         </> : null}
+        <ContentAction disabled={pending} action={() => actions.onDeleteSection(section.id)} confirm={{ title: ct("deleteTopicTitle"), description: ct("deleteTopicDescription") }}>{ct("delete")}</ContentAction>
       </ActionMenu> : null}
     </header>
     <div id={key + "-content"} hidden={!expanded} aria-labelledby={key + "-toggle"} className="classroom-topic-body">
@@ -62,8 +66,9 @@ export function ClassworkSection({ group, index, sections, classroomId, canAutho
         {section && canAuthor && section.status !== "PUBLISHED" ? <p className="classroom-meta">{ct(section.status === "DRAFT" ? "draft" : "archived")}</p> : null}
         {section?.description ? <p className="classroom-topic-description">{section.description}</p> : null}
         {rows.length ? <ul className="classroom-classwork-list">{rows.map((row, itemIndex) => <ClassworkItemRow key={row.key} item={row.item} resource={row.resource} assignment={row.assignment}
-          classroomId={classroomId} sections={sections} canAuthor={canAuthor} pending={pending} first={itemIndex === 0} last={itemIndex === rows.length - 1}
+          classroomId={classroomId} sections={sections} canAuthor={canAuthor} canAssign={canAssign} pending={pending} first={itemIndex === 0} last={itemIndex === rows.length - 1}
           onEdit={actions.onEditResource} onRefresh={actions.onRefresh} onMove={actions.onItemMove} onPlace={actions.onPlaceAssignment} onStep={actions.onItemStep} onDrag={actions.onItemDrag}
+          onDelete={actions.onDeleteResource} onRemove={actions.onRemoveAssignment}
           onDrop={beforeId => actions.onItemDrop(id, beforeId)} onOpenAssignment={actions.onOpenAssignment} />)}</ul> : <div className="classroom-topic-empty"><p>{ct("emptyTopic")}</p>{editable && section?.status !== "ARCHIVED" ? <button type="button" className="classroom-text-button" disabled={pending} onClick={() => actions.onAddResource(id)}>{ct("addResource")}</button> : null}</div>}
       </> : null}
     </div>

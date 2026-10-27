@@ -13,12 +13,46 @@ from app.schemas.classroom_grades import (
     GradePolicyUpdate,
 )
 from app.schemas.classroom_staff import StaffInvite, StaffResponse, StaffUpdate
-from app.schemas.tests import TestSummary, VersionSummary
+from app.schemas.tests import TestSummary, VersionDetail, VersionSummary
 from app.services.classroom_grades import ClassroomGradeService
 from app.services.classroom_staff import ClassroomStaffService
 
 router = APIRouter(tags=["classroom-lms"])
 Session = Annotated[AsyncSession, Depends(get_session)]
+
+
+@router.get(
+    "/classrooms/{classroom_id}/assignment-versions/{version_id}", response_model=VersionDetail
+)
+async def assignment_version(
+    classroom_id: UUID, version_id: UUID, user: CurrentUser, session: Session
+):
+    from app.api.v1.presenters import present_version
+    from app.core.exceptions import AppError
+    from app.models import TestVersion
+    from app.repositories.tests import version_detail_query
+    from app.services.access_policy import AccessPolicy
+    from app.services.classroom_capabilities import Capability
+
+    async with session.begin():
+        policy = AccessPolicy(session, user)
+        await policy.lock_actor()
+        version = await policy.lock_version(version_id)
+        room = await ClassroomGradeService(session, user).authorize(
+            classroom_id, Capability.CLASSROOM if user.role == "ADMIN" else Capability.ASSIGNMENTS
+        )
+        if (
+            version.test.origin != "ADMIN"
+            and version.test.owner_user_id != room.teacher_id
+            or not await policy.version_access(version, classroom=True)
+        ):
+            raise AppError(
+                "VERSION_NOT_CLASSROOM_APPROVED",
+                "This test is not eligible for this classroom.",
+                409,
+            )
+        detail = await session.scalar(version_detail_query().where(TestVersion.id == version.id))
+        return present_version(detail)
 
 
 @router.get("/classrooms/{classroom_id}/assignable-tests", response_model=list[TestSummary])

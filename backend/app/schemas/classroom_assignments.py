@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.models.enums import AssignmentStatus, AttemptScope, ModuleType, TimerMode
 from app.schemas.assignment_scheduling import SchedulePolicy
+from app.schemas.assignment_targets import AssignmentTarget
 from app.schemas.attempts import FocusedUnit, TimerRequest
 from app.schemas.tests import VersionDetail
 
@@ -15,6 +16,13 @@ class AssignmentCreate(SchedulePolicy):
     test_version_id: UUID
     title: str | None = Field(default=None, max_length=240)
     note: str | None = Field(default=None, max_length=4000)
+    target: AssignmentTarget | None = None
+
+
+class TargetedAssignmentCreate(AssignmentCreate):
+    """HTTP creation requires a target; legacy fixtures/imports may remain flexible."""
+
+    target: AssignmentTarget
 
 
 class AssignmentResponse(SchedulePolicy):
@@ -30,6 +38,8 @@ class AssignmentResponse(SchedulePolicy):
     archived_at: datetime | None
     version: VersionDetail | None = None
     policy_revision: int = 0
+    classwork_hidden: bool = False
+    target: AssignmentTarget | None = None
 
 
 class AssignmentStart(BaseModel):

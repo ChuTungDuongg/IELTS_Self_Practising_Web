@@ -18,6 +18,14 @@ it("validates paginated feed and uses explicit status filters", async () => {
   request.mockResolvedValue({ items: [], next_cursor: null }); await listFeed(uuid, { status: "DRAFT", cursor: "next" });
   expect(request).toHaveBeenCalledWith(`/classrooms/${uuid}/feed?limit=20&cursor=next&status=DRAFT`);
 });
+it("parses canonical resource activity and keeps the kind in server pagination filters", async () => {
+  const resource = { id: uuid, classroom_id: uuid, title: "Fictional notes", description: null, kind: "TEXT", body: "Fictional lesson", url: null, status: "PUBLISHED", original_filename: null, media_type: null, size_bytes: null, created_at: "now", updated_at: "now" };
+  request.mockResolvedValue({ items: [{ id: uuid, kind: "RESOURCE_ACTIVITY", title: resource.title, body: "", status: "PUBLISHED", pinned: false, locked: true, author_id: uuid, author_name: "Fictional tutor", author_role: "TEACHER", created_at: "now", updated_at: "now", published_at: "now", comment_count: 0, resource_ids: [uuid], assignment_id: null, resource, resource_topic: "Fictional topic" }], next_cursor: "next" });
+  const result = await listFeed(uuid, { contentKind: "RESOURCE_ACTIVITY" });
+  expect(result.items[0].resource).toEqual(resource);
+  expect(result.next_cursor).toBe("next");
+  expect(request).toHaveBeenCalledWith(`/classrooms/${uuid}/feed?limit=20&content_kind=RESOURCE_ACTIVITY`);
+});
 it("parses resource mutation responses and uploads through the existing credentialed client", async () => {
   const response = { id: uuid, classroom_id: uuid, title: "Notes", description: null, kind: "TEXT", body: "Lesson", url: null, status: "DRAFT", original_filename: null, media_type: null, size_bytes: null, created_at: "now", updated_at: "now" }; request.mockResolvedValue(response);
   expect(await createResource(uuid, { title: "Notes", kind: "TEXT", body: "Lesson", status: "DRAFT" })).toEqual(response);

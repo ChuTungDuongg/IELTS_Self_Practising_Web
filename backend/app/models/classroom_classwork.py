@@ -1,9 +1,11 @@
 """Structured course content; assignment rows remain canonical and immutable references."""
 
+from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import (
     CheckConstraint,
+    DateTime,
     ForeignKey,
     ForeignKeyConstraint,
     Index,
@@ -58,6 +60,10 @@ class ClassroomResource(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     original_filename: Mapped[str | None] = mapped_column(String(255))
     media_type: Mapped[str | None] = mapped_column(String(120))
     size_bytes: Mapped[int | None] = mapped_column(Integer)
+    created_by_user_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT")
+    )
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class ClassroomContentItem(UUIDPrimaryKeyMixin, Base):

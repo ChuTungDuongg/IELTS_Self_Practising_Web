@@ -60,7 +60,7 @@ it("filters feed content through the paginated backend query", async () => {
 it("uses a real assignment title and grouped localized deadlines in assignment feed cards", async () => {
   renderWithLocale(<AssignmentProgressProvider classroomId="room" ids={[assignment.id]} assignments={[assignment]} staff><PostCard classroomId="room" post={{ id: "post", assignment_id: assignment.id, kind: "ASSIGNMENT_ACTIVITY", title: null, body: "", status: "PUBLISHED", pinned: false, locked: true, author_id: "owner", author_name: "Tutor", author_role: "TEACHER", created_at: "2026-10-27T08:00:00Z", updated_at: "2026-10-27T08:00:00Z", published_at: "2026-10-27T08:00:00Z", comment_count: 0, resource_ids: [] }} resources={[]} userId="owner" canAuthor archived={false} admin={false} onRefresh={vi.fn()} onOpenAssignment={vi.fn()} /></AssignmentProgressProvider>);
   expect(screen.getByRole("heading", { name: assignment.title })).toBeInTheDocument();
-  expect(screen.getByText("Due date")).toBeInTheDocument();
+  expect(screen.getByText(/^Assignment · Due /)).toBeInTheDocument();
   expect(screen.queryByText(assignment.due_at)).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Open assignment" })).toBeInTheDocument();
 });

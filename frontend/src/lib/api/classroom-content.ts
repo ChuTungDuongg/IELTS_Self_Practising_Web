@@ -4,10 +4,11 @@ import { API_BASE_URL, apiRequest, apiResponse, type ApiRequester } from "./clie
 export const contentStatusSchema = z.enum(["DRAFT", "PUBLISHED", "ARCHIVED"]);
 export type ContentStatus = z.infer<typeof contentStatusSchema>;
 export const classroomPostSchema = z.object({
-  id: z.string().uuid(), kind: z.enum(["ANNOUNCEMENT", "DISCUSSION", "ASSIGNMENT_ACTIVITY"]),
+  id: z.string().uuid(), kind: z.enum(["ANNOUNCEMENT", "DISCUSSION", "ASSIGNMENT_ACTIVITY", "RESOURCE_ACTIVITY"]),
   title: z.string().nullable(), body: z.string(), status: contentStatusSchema, pinned: z.boolean(), locked: z.boolean().default(false),
   author_id: z.string().uuid(), author_name: z.string(), author_role: z.string(), created_at: z.string(), updated_at: z.string(),
   published_at: z.string().nullable(), comment_count: z.number().int().nonnegative(), resource_ids: z.array(z.string().uuid()), assignment_id: z.string().uuid().nullable(),
+  resource: z.lazy(() => classroomResourceSchema).nullable().optional(), resource_topic: z.string().nullable().optional(),
 });
 export const classroomCommentSchema = z.object({
   id: z.string().uuid(), post_id: z.string().uuid(), author_id: z.string().uuid(), author_name: z.string(), body: z.string(),
@@ -26,7 +27,7 @@ export const classroomResourceSchema = z.object({
 export const classworkItemSchema = z.object({
   id: z.string().uuid(), section_id: z.string().uuid().nullable(), resource_id: z.string().uuid().nullable(), assignment_id: z.string().uuid().nullable(), position: z.number().int().nonnegative(),
 }).refine(item => Number(item.resource_id !== null) + Number(item.assignment_id !== null) === 1, { message: "A classwork item references one resource or assignment." });
-export const classworkSchema = z.object({ revision: z.number().int().nonnegative(), sections: z.array(classroomSectionSchema), resources: z.array(classroomResourceSchema), items: z.array(classworkItemSchema) });
+export const classworkSchema = z.object({ revision: z.number().int().nonnegative(), sections: z.array(classroomSectionSchema), resources: z.array(classroomResourceSchema), items: z.array(classworkItemSchema), removed_assignment_ids: z.array(z.string().uuid()).optional() });
 const page = <T extends z.ZodType>(schema: T) => z.object({ items: z.array(schema), next_cursor: z.string().nullable() });
 export type ClassroomPost = z.infer<typeof classroomPostSchema>;
 export type ClassroomComment = z.infer<typeof classroomCommentSchema>;
@@ -63,6 +64,10 @@ export async function updateSection(id: string, sectionId: string, input: { titl
 export async function reorderSections(id: string, ids: string[], expected_revision: number) { return classworkSchema.parse(await apiRequest(`${base(id)}/sections/reorder`, json("POST", { ids, expected_revision }))); }
 export async function reorderItems(id: string, section_id: string | null, ids: string[], expected_revision: number) { return classworkSchema.parse(await apiRequest(`${base(id)}/items/reorder`, json("POST", { section_id, ids, expected_revision }))); }
 export async function placeAssignment(id: string, section_id: string | null, assignment_id: string) { return classworkSchema.parse(await apiRequest(`${base(id)}/items`, json("POST", { section_id, assignment_id }))); }
+export async function deletePost(id: string, postId: string) { await apiRequest(`${base(id)}/posts/${encodeURIComponent(postId)}`, json("DELETE")); }
+export async function deleteSection(id: string, sectionId: string, revision: number) { return classworkSchema.parse(await apiRequest(`${base(id)}/sections/${encodeURIComponent(sectionId)}?expected_revision=${revision}`, json("DELETE"))); }
+export async function deleteResource(id: string, resourceId: string, revision: number) { return classworkSchema.parse(await apiRequest(`${base(id)}/resources/${encodeURIComponent(resourceId)}?expected_revision=${revision}`, json("DELETE"))); }
+export async function removeAssignmentItem(id: string, itemId: string, revision: number) { return classworkSchema.parse(await apiRequest(`${base(id)}/items/${encodeURIComponent(itemId)}?expected_revision=${revision}`, json("DELETE"))); }
 export async function createResource(id: string, input: ResourceInput) { return classroomResourceSchema.parse(await apiRequest(`${base(id)}/resources`, json("POST", input))); }
 export async function updateResource(id: string, resourceId: string, input: { title?: string; description?: string | null; body?: string | null; url?: string | null; status?: ContentStatus }) { return classroomResourceSchema.parse(await apiRequest(`${base(id)}/resources/${encodeURIComponent(resourceId)}`, json("PATCH", input))); }
 export async function uploadResource(id: string, input: { title: string; description?: string | null; file: File; status: ContentStatus; section_id?: string | null }) {

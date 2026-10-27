@@ -133,10 +133,20 @@ class AttemptService:
         now = TimerService.now()
         async with self.session.begin():
             if _classroom_assignment_id is not None:
+                from app.schemas.assignment_targets import AssignmentTarget
                 from app.services.classroom_assignments import require_assignment_start
 
                 await require_assignment_start(
-                    self.session, self.user_id, _classroom_assignment_id, data.test_version_id
+                    self.session,
+                    self.user_id,
+                    _classroom_assignment_id,
+                    data.test_version_id,
+                    target=AssignmentTarget(
+                        mode="MODULE",
+                        module=data.module,
+                        scope=data.scope,
+                        focused_unit=data.focused_unit,
+                    ),
                 )
             else:
                 from app.services.access_policy import AccessPolicy

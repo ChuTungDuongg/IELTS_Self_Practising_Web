@@ -16,7 +16,7 @@ export function ContentAction({ children, action, onDone, confirm, disabled = fa
   async function run() {
     if (running.current) return; running.current = true; setPending(true); setError(null);
     try { await action(); await onDone?.(); setOpen(false); }
-    catch (caught) { setError(contentError(caught, ct("error"))); }
+    catch (caught) { setError(caught instanceof ApiError && caught.code === "RESOURCE_REFERENCED" ? ct("resourceReferenced") : contentError(caught, ct("error"))); }
     finally { running.current = false; setPending(false); }
   }
   return <span className="classroom-action">

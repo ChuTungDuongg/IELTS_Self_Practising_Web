@@ -15,6 +15,7 @@ import { ProgressSummary, ScheduleSummary } from "./scheduling/progress-summary"
 import { AssignmentManagement } from "./scheduling/assignment-management";
 import { scheduleError, useScheduleText } from "./scheduling/messages";
 import { useLmsText } from "./lms/messages";
+import { AssignmentTargetSummary } from "./assignment-target";
 type ModuleType = "READING" | "LISTENING" | "WRITING" | "SPEAKING";
 function StartAssignment({ assignment }: {
   assignment: ClassroomAssignment;
@@ -27,8 +28,10 @@ function StartAssignment({ assignment }: {
   const available = assignment.version?.modules.map(item => item.module_type)
     ?? ["READING", "LISTENING", "WRITING"] as ModuleType[];
   const fullMockReady = ["LISTENING", "READING", "WRITING", "SPEAKING"].every(kind => assignment.version?.modules.some(item => item.module_type === kind && (item.recommended_duration_seconds ?? 0) > 0));
-  const [mode, setMode] = useState<string>(available[0] ?? "READING");
-  const [focusedId, setFocusedId] = useState("");
+  const [selectedMode, setMode] = useState<string>(available[0] ?? "READING");
+  const [selectedFocus, setFocusedId] = useState("");
+  const mode = assignment.target ? assignment.target.mode === "FULL_MOCK" ? "FULL_MOCK" : assignment.target.module! : selectedMode;
+  const focusedId = assignment.target ? assignment.target.focused_unit?.id ?? "" : selectedFocus;
   const [pending, setPending] = useState(false);
   const [presentation, setPresentation] = useState<AttemptPresentationMode>("PRACTICE");
   const [choosing, setChoosing] = useState(false);
@@ -48,7 +51,8 @@ function StartAssignment({ assignment }: {
     setPending(true);
     setError(null);
     try {
-      const result = await startAssignment(assignment.id, mode === "FULL_MOCK"
+      const target = assignment.target;
+      const result = await startAssignment(assignment.id, target ? target.mode === "FULL_MOCK" ? { mode: "FULL_MOCK" } : { mode: "MODULE", module: target.module!, scope: target.scope ?? "FULL_MODULE", ...(target.focused_unit ? { focused_unit: target.focused_unit } : {}), ...(target.module === "SPEAKING" ? { speaking_mode: target.scope === "FOCUSED_UNIT" ? "PRACTICE" as const : "EXAM" as const } : {}), timer: { mode: "COUNT_UP" } } : mode === "FULL_MOCK"
         ? { mode: "FULL_MOCK" }
         : {
           mode: "MODULE",
@@ -83,7 +87,7 @@ function StartAssignment({ assignment }: {
     }
   }
   return <div className="mt-3">
-    <label className="field-label">
+    {!assignment.target ? <><label className="field-label">
       {t("assignment.mode")}
       <select className="select-field" value={mode} disabled={pending} onChange={event => {
         setMode(event.target.value);
@@ -101,7 +105,7 @@ function StartAssignment({ assignment }: {
           {t(mode === "WRITING" ? "common.taskNumber" : mode === "READING" ? "common.passageNumber" : "common.sectionNumber", { number: "task_number" in unit ? unit.task_number : unit.order_index + 1 })}
         </option>)}
       </select>
-    </label> : null}
+    </label> : null}</> : null}
     <button ref={trigger} className="btn btn-primary mt-2" disabled={pending || !available.length || !allowed} onClick={() => { if (mode === "READING" || mode === "LISTENING" || mode === "FULL_MOCK") setChoosing(true); else void start(); }}>
       {t("assignment.start")}
     </button>
@@ -126,6 +130,8 @@ export function AssignmentList({ assignments, canManage = false, canSchedule = c
     {shown.length ? <div className="classroom-assignment-list">
       {shown.map(assignment => <article key={assignment.id} id={`assignment-${assignment.id}`} tabIndex={-1} className="classroom-panel classroom-assignment-row">
         <h3>{assignment.title ?? assignment.version?.test_title ?? t("assignment.title")}</h3>
+        <AssignmentTargetSummary assignment={assignment} />
+        {canSchedule && !assignment.target ? <p className="classroom-meta">{ct("legacyTarget")}</p> : null}
         <p>{assignment.note}</p>
         {canManage ? <ScheduleSummary assignment={assignment} /> : <ProgressSummary assignmentId={assignment.id} actions />}
         {canManage ? <div className="flex gap-2 mt-3">

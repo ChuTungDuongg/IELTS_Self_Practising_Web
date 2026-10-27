@@ -5,6 +5,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from app.schemas.assignment_targets import AssignmentTarget
 from app.schemas.auth import ProfileUpdate
 
 Skill = Literal["READING", "LISTENING", "WRITING", "SPEAKING"]
@@ -146,6 +147,7 @@ class Weakness(BaseModel):
 
 
 class Recommendation(BaseModel):
+    target: AssignmentTarget | None = None
     assignment_id: UUID
     title: str
     skill: Skill
@@ -155,6 +157,7 @@ class Recommendation(BaseModel):
 
 
 class CompletionActivity(BaseModel):
+    target: AssignmentTarget | None = None
     assignment_id: UUID
     title: str
     counts: dict[str, int]

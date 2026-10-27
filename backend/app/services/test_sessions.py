@@ -48,10 +48,15 @@ class TestSessionService:
         now = TimerService.now()
         async with self.session.begin():
             if _classroom_assignment_id is not None:
+                from app.schemas.assignment_targets import AssignmentTarget
                 from app.services.classroom_assignments import require_assignment_start
 
                 await require_assignment_start(
-                    self.session, self.user_id, _classroom_assignment_id, test_version_id
+                    self.session,
+                    self.user_id,
+                    _classroom_assignment_id,
+                    test_version_id,
+                    target=AssignmentTarget(mode="FULL_MOCK"),
                 )
             else:
                 from app.models import User

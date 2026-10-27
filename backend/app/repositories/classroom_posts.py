@@ -4,7 +4,7 @@ from uuid import UUID
 from sqlalchemy import delete, func, literal, or_, select, tuple_, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import ClassroomAssignment, ClassroomMembership, User
+from app.models import Classroom, ClassroomAssignment, ClassroomMembership, User
 from app.models.classroom_classwork import (
     ClassroomContentItem,
     ClassroomResource,
@@ -21,7 +21,11 @@ class ClassroomPostRepository:
     async def post(self, classroom_id: UUID, post_id: UUID):
         return await self.session.scalar(
             select(ClassroomPost)
-            .where(ClassroomPost.classroom_id == classroom_id, ClassroomPost.id == post_id)
+            .where(
+                ClassroomPost.classroom_id == classroom_id,
+                ClassroomPost.id == post_id,
+                ClassroomPost.deleted_at.is_(None),
+            )
             .execution_options(populate_existing=True)
         )
 
@@ -29,7 +33,11 @@ class ClassroomPostRepository:
         return await self.session.scalar(
             select(ClassroomComment)
             .join(ClassroomPost, ClassroomPost.id == ClassroomComment.post_id)
-            .where(ClassroomPost.classroom_id == classroom_id, ClassroomComment.id == comment_id)
+            .where(
+                ClassroomPost.classroom_id == classroom_id,
+                ClassroomComment.id == comment_id,
+                ClassroomPost.deleted_at.is_(None),
+            )
             .execution_options(populate_existing=True)
         )
 
@@ -98,7 +106,7 @@ class ClassroomPostRepository:
             ClassroomPost.kind.label("kind"),
             ClassroomPost.created_at.label("created_at"),
             ClassroomPost.pinned.label("pinned"),
-        ).where(ClassroomPost.classroom_id == classroom_id)
+        ).where(ClassroomPost.classroom_id == classroom_id, ClassroomPost.deleted_at.is_(None))
         if status is not None:
             posts = posts.where(ClassroomPost.status == status)
         elif staff:
@@ -118,7 +126,37 @@ class ClassroomPostRepository:
                 ClassroomAssignment.status
                 == (AssignmentStatus.ARCHIVED if status == "ARCHIVED" else AssignmentStatus.ACTIVE)
             )
-        feed = union_all(posts, assignments).subquery("classroom_feed")
+        resources = (
+            select(
+                ClassroomResource.id.label("id"),
+                literal("RESOURCE_ACTIVITY").label("kind"),
+                func.coalesce(ClassroomResource.published_at, ClassroomResource.created_at).label(
+                    "created_at"
+                ),
+                literal(False).label("pinned"),
+            )
+            .join(ClassroomContentItem, ClassroomContentItem.resource_id == ClassroomResource.id)
+            .outerjoin(ClassroomSection, ClassroomSection.id == ClassroomContentItem.section_id)
+            .where(ClassroomResource.classroom_id == classroom_id)
+        )
+        resources = resources.where(ClassroomResource.status == (status or "PUBLISHED"))
+        if not staff:
+            resources = resources.where(
+                or_(ClassroomSection.id.is_(None), ClassroomSection.status == "PUBLISHED")
+            )
+        if content_kind is None and status != "ARCHIVED":
+            attached_to_visible_post = (
+                select(ClassroomPostResource.resource_id)
+                .join(ClassroomPost, ClassroomPost.id == ClassroomPostResource.post_id)
+                .where(
+                    ClassroomPostResource.resource_id == ClassroomResource.id,
+                    ClassroomPost.status == "PUBLISHED",
+                    ClassroomPost.deleted_at.is_(None),
+                )
+                .exists()
+            )
+            resources = resources.where(~attached_to_visible_post)
+        feed = union_all(posts, assignments, resources).subquery("classroom_feed")
         query = select(feed)
         if content_kind is not None:
             query = query.where(feed.c.kind == content_kind)
@@ -145,23 +183,63 @@ class ClassroomPostRepository:
         query = (
             select(ClassroomPost, User)
             .join(User, User.id == ClassroomPost.author_id)
-            .where(ClassroomPost.classroom_id == classroom_id, ClassroomPost.id.in_(ids))
+            .where(
+                ClassroomPost.classroom_id == classroom_id,
+                ClassroomPost.id.in_(ids),
+                ClassroomPost.deleted_at.is_(None),
+            )
             .execution_options(populate_existing=True)
         )
         if statuses is not None:
             query = query.where(ClassroomPost.status.in_(statuses))
         return (await self.session.execute(query)).all()
 
-    async def assignments_with_authors(self, ids: list[UUID]):
+    async def assignments_with_authors(
+        self, ids: list[UUID], *, classroom_id: UUID, status: str | None
+    ):
         if not ids:
             return []
         return (
             await self.session.execute(
                 select(ClassroomAssignment, User)
                 .join(User, User.id == ClassroomAssignment.created_by_user_id)
-                .where(ClassroomAssignment.id.in_(ids))
+                .where(
+                    ClassroomAssignment.id.in_(ids),
+                    ClassroomAssignment.classroom_id == classroom_id,
+                    ClassroomAssignment.status
+                    == ("ARCHIVED" if status == "ARCHIVED" else "ACTIVE"),
+                )
+                .execution_options(populate_existing=True)
             )
         ).all()
+
+    async def resources_with_authors(
+        self, ids: list[UUID], classroom_id: UUID, *, staff: bool, status: str | None
+    ):
+        if not ids:
+            return []
+        query = (
+            select(ClassroomResource, User, ClassroomSection.title)
+            .join(Classroom, Classroom.id == ClassroomResource.classroom_id)
+            .join(
+                User,
+                User.id
+                == func.coalesce(ClassroomResource.created_by_user_id, Classroom.teacher_id),
+            )
+            .join(ClassroomContentItem, ClassroomContentItem.resource_id == ClassroomResource.id)
+            .outerjoin(ClassroomSection, ClassroomSection.id == ClassroomContentItem.section_id)
+            .where(
+                ClassroomResource.id.in_(ids),
+                ClassroomResource.classroom_id == classroom_id,
+                ClassroomResource.status == (status or "PUBLISHED"),
+            )
+            .execution_options(populate_existing=True)
+        )
+        if not staff:
+            query = query.where(
+                or_(ClassroomSection.id.is_(None), ClassroomSection.status == "PUBLISHED")
+            )
+        return (await self.session.execute(query)).all()
 
     async def comment_counts(self, post_ids: list[UUID]):
         if not post_ids:

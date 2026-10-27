@@ -7,10 +7,10 @@ from app.api.dependencies import CurrentUser
 from app.core.database import get_session
 from app.schemas.attempts import WritingTaskScoreUpdate
 from app.schemas.classroom_assignments import (
-    AssignmentCreate,
     AssignmentResponse,
     AssignmentStart,
     AssignmentStartResponse,
+    TargetedAssignmentCreate,
 )
 from app.schemas.classroom_results import AssignmentResultDetail, AssignmentResultSummary
 from app.schemas.content import WritingAttemptReview
@@ -22,6 +22,16 @@ from app.services.classroom_results import ClassroomResultService
 from app.services.speaking_final import SpeakingFinalService
 
 router = APIRouter(tags=["classroom-assignments"])
+
+
+@router.delete("/classrooms/{classroom_id}/assignments/{assignment_id}", status_code=204)
+async def delete_assignment(
+    classroom_id: UUID,
+    assignment_id: UUID,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+):
+    await ClassroomAssignmentService(session, user).delete(classroom_id, assignment_id)
 
 
 @router.get("/classrooms/{classroom_id}/assignments", response_model=list[AssignmentResponse])
@@ -37,7 +47,7 @@ async def assignments(
 )
 async def create(
     classroom_id: UUID,
-    body: AssignmentCreate,
+    body: TargetedAssignmentCreate,
     user: CurrentUser,
     session: AsyncSession = Depends(get_session),
 ):

@@ -12,6 +12,7 @@ from app.models import Classroom, User
 from app.models.classroom_posts import ClassroomComment, ClassroomPost
 from app.models.enums import NotificationEntityType, NotificationType
 from app.repositories.classroom_posts import ClassroomPostRepository
+from app.schemas.classroom_classwork import ResourceResponse
 from app.schemas.classroom_posts import (
     CommentCreate,
     CommentPage,
@@ -31,10 +32,12 @@ class _FeedCursor(BaseModel):
     version: Literal[1] = 1
     classroom_id: UUID
     status: ContentStatus | None
-    content_kind: Literal["ANNOUNCEMENT", "DISCUSSION", "ASSIGNMENT_ACTIVITY"] | None = None
+    content_kind: (
+        Literal["ANNOUNCEMENT", "DISCUSSION", "ASSIGNMENT_ACTIVITY", "RESOURCE_ACTIVITY"] | None
+    ) = None
     pinned: bool = Field(strict=True)
     created_at: AwareDatetime
-    kind: Literal["ANNOUNCEMENT", "DISCUSSION", "ASSIGNMENT_ACTIVITY"]
+    kind: Literal["ANNOUNCEMENT", "DISCUSSION", "ASSIGNMENT_ACTIVITY", "RESOURCE_ACTIVITY"]
     id: UUID
     model_config = {"extra": "forbid"}
 
@@ -156,7 +159,10 @@ class ClassroomPostService:
         cursor: str | None = None,
         limit: int = 20,
         status: ContentStatus | None = None,
-        content_kind: Literal["ANNOUNCEMENT", "DISCUSSION", "ASSIGNMENT_ACTIVITY"] | None = None,
+        content_kind: Literal[
+            "ANNOUNCEMENT", "DISCUSSION", "ASSIGNMENT_ACTIVITY", "RESOURCE_ACTIVITY"
+        ]
+        | None = None,
     ) -> FeedPage:
         if not 1 <= limit <= 100:
             raise AppError("INVALID_PAGE_SIZE", "Page size must be between 1 and 100.", 422)
@@ -186,8 +192,9 @@ class ClassroomPostService:
                 content_kind=content_kind,
             )
             selected = keys[:limit]
-            post_ids = [key.id for key in selected if key.kind != "ASSIGNMENT_ACTIVITY"]
+            post_ids = [key.id for key in selected if key.kind in {"ANNOUNCEMENT", "DISCUSSION"}]
             assignment_ids = [key.id for key in selected if key.kind == "ASSIGNMENT_ACTIVITY"]
+            resource_ids = [key.id for key in selected if key.kind == "RESOURCE_ACTIVITY"]
             visible_statuses = ["DRAFT", "PUBLISHED"] if staff else ["PUBLISHED"]
             if status is not None:
                 visible_statuses = [status]
@@ -205,7 +212,7 @@ class ClassroomPostService:
                 for post, author in post_rows
             }
             for assignment, author in await self.repository.assignments_with_authors(
-                assignment_ids
+                assignment_ids, classroom_id=room.id, status=status
             ):
                 entries[("ASSIGNMENT_ACTIVITY", assignment.id)] = FeedEntry(
                     id=assignment.id,
@@ -226,6 +233,28 @@ class ClassroomPostService:
                     assignment_id=assignment.id,
                 )
             next_cursor = None
+            for resource, author, topic in await self.repository.resources_with_authors(
+                resource_ids, room.id, staff=staff, status=status
+            ):
+                entries[("RESOURCE_ACTIVITY", resource.id)] = FeedEntry(
+                    id=resource.id,
+                    kind="RESOURCE_ACTIVITY",
+                    title=resource.title,
+                    body=resource.description or "",
+                    status=resource.status,
+                    pinned=False,
+                    locked=True,
+                    author_id=author.id,
+                    author_name=author.display_name,
+                    author_role=author.role,
+                    created_at=resource.published_at or resource.created_at,
+                    updated_at=resource.updated_at,
+                    published_at=resource.published_at,
+                    comment_count=0,
+                    resource_ids=[resource.id],
+                    resource=ResourceResponse.model_validate(resource),
+                    resource_topic=topic,
+                )
             if len(keys) > limit:
                 last = selected[-1]
                 next_cursor = _encode_cursor(
@@ -241,7 +270,9 @@ class ClassroomPostService:
                 )
             ordered_entries = []
             for key in selected:
-                namespace = "ASSIGNMENT_ACTIVITY" if key.kind == "ASSIGNMENT_ACTIVITY" else "POST"
+                namespace = (
+                    key.kind if key.kind in {"ASSIGNMENT_ACTIVITY", "RESOURCE_ACTIVITY"} else "POST"
+                )
                 entry = entries.get((namespace, key.id))
                 if entry is not None:
                     ordered_entries.append(entry)
@@ -252,6 +283,15 @@ class ClassroomPostService:
             room = await self.access.room(classroom_id)
             post = await self._post(room, post_id)
             return await self._present_post(room, post)
+
+    async def delete(self, classroom_id: UUID, post_id: UUID):
+        async with self.session.begin():
+            room = await self.access.room(classroom_id, mutation=True, owner=True)
+            post = await self._post(room, post_id)
+            post.deleted_at = datetime.now(UTC)
+            post.locked, post.pinned = True, False
+            room.content_revision += 1
+            await self.session.flush()
 
     async def create(self, classroom_id: UUID, data: PostCreate) -> FeedEntry:
         async with self.session.begin():

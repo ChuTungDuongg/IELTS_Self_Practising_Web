@@ -4,6 +4,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from app.schemas.classroom_classwork import ResourceResponse
+
 PostKind = Literal["ANNOUNCEMENT", "DISCUSSION"]
 ContentStatus = Literal["DRAFT", "PUBLISHED", "ARCHIVED"]
 
@@ -52,7 +54,7 @@ class PostPin(BaseModel):
 
 class FeedEntry(BaseModel):
     id: UUID
-    kind: Literal["ANNOUNCEMENT", "DISCUSSION", "ASSIGNMENT_ACTIVITY"]
+    kind: Literal["ANNOUNCEMENT", "DISCUSSION", "ASSIGNMENT_ACTIVITY", "RESOURCE_ACTIVITY"]
     title: str | None
     body: str
     status: ContentStatus
@@ -67,6 +69,8 @@ class FeedEntry(BaseModel):
     comment_count: int
     resource_ids: list[UUID]
     assignment_id: UUID | None = None
+    resource: ResourceResponse | None = None
+    resource_topic: str | None = None
 
 
 class FeedPage(BaseModel):

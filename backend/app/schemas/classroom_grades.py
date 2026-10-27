@@ -4,6 +4,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from app.schemas.assignment_targets import AssignmentTarget
+
 Selection = Literal["LATEST_ACCEPTED", "FIRST_ACCEPTED", "BEST_ACCEPTED"]
 
 
@@ -44,6 +46,7 @@ class GradeComponent(BaseModel):
 
 
 class GradeColumn(BaseModel):
+    target: AssignmentTarget | None = None
     id: UUID
     title: str
     grade_selection: Selection

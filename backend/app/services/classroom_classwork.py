@@ -2,15 +2,18 @@
 
 import asyncio
 import logging
+from datetime import UTC, datetime
 from uuid import UUID
 
 from pydantic import ValidationError
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from app.core.config import get_settings
 from app.core.exceptions import AppError
 from app.models import ClassroomAssignment
 from app.models.classroom_classwork import ClassroomContentItem, ClassroomResource, ClassroomSection
+from app.models.classroom_learning import ClassroomLearningPlanItem
+from app.models.classroom_posts import ClassroomPostResource
 from app.repositories.classroom_classwork import ClassworkRepository
 from app.schemas.classroom_classwork import (
     AssignmentPlacement,
@@ -25,6 +28,7 @@ from app.schemas.classroom_classwork import (
     SectionResponse,
     SectionUpdate,
 )
+from app.services.classroom_capabilities import Capability
 from app.services.classroom_content_access import ContentAccess
 from app.storage.classroom import ClassroomResourceStorage
 from app.storage.local import StoredAsset
@@ -47,6 +51,14 @@ class ClassworkService:
             sections=[SectionResponse.model_validate(row) for row in sections],
             resources=[ResourceResponse.model_validate(row) for row in resources],
             items=[ItemResponse.model_validate(row) for row in items],
+            removed_assignment_ids=list(
+                await self.session.scalars(
+                    select(ClassroomAssignment.id).where(
+                        ClassroomAssignment.classroom_id == room.id,
+                        ClassroomAssignment.classwork_hidden.is_(True),
+                    )
+                )
+            ),
         )
 
     async def get(self, classroom_id: UUID):
@@ -113,6 +125,9 @@ class ClassworkService:
     async def _attach_resource(self, room, resource, section_id):
         await self._section(room, section_id)
         items = await self.repository.items(room.id)
+        resource.created_by_user_id = self.access.actor.id
+        if resource.status == "PUBLISHED":
+            resource.published_at = datetime.now(UTC)
         self.session.add(resource)
         await self.session.flush()
         self.session.add(
@@ -170,6 +185,8 @@ class ClassworkService:
                     ) from error
             for key, value in values.items():
                 setattr(row, key, value)
+            if row.status == "PUBLISHED" and row.published_at is None:
+                row.published_at = datetime.now(UTC)
             room.content_revision += 1
             await self.session.flush()
             await self.session.refresh(row)
@@ -177,7 +194,9 @@ class ClassworkService:
 
     async def place_assignment(self, classroom_id, data: AssignmentPlacement):
         async with self.session.begin():
-            room = await self.access.room(classroom_id, mutation=True, owner=True)
+            room = await self.access.room(
+                classroom_id, mutation=True, owner=True, capability=Capability.ASSIGNMENTS
+            )
             await self._section(room, data.section_id)
             assignment = await self.session.scalar(
                 select(ClassroomAssignment).where(
@@ -187,6 +206,7 @@ class ClassworkService:
             )
             if assignment is None:
                 raise AppError("ASSIGNMENT_NOT_FOUND", "The assignment does not exist.", 404)
+            assignment.classwork_hidden = False
             items = await self.repository.items(room.id)
             row = next((item for item in items if item.assignment_id == assignment.id), None)
             if row is None:
@@ -216,6 +236,17 @@ class ClassworkService:
             self._revision(room, data.expected_revision)
             await self._section(room, data.section_id)
             rows = await self.repository.items(room.id)
+            # Moving an assignment across topics requires assignment management.
+            # Resource moves still include the unchanged target assignments in ids.
+            if any(
+                row.assignment_id and row.id in data.ids and row.section_id != data.section_id
+                for row in rows
+            ):
+                from app.services.classroom_capabilities import require_capability
+
+                await require_capability(
+                    self.session, self.access.actor, room, Capability.ASSIGNMENTS
+                )
             by_id = {row.id: row for row in rows}
             target_ids = {row.id for row in rows if row.section_id == data.section_id}
             if not set(data.ids) <= by_id.keys() or not target_ids <= set(data.ids):
@@ -231,6 +262,102 @@ class ClassworkService:
             for source in source_sections:
                 for position, row in enumerate(row for row in rows if row.section_id == source):
                     row.position = position
+            room.content_revision += 1
+            await self.session.flush()
+            return await self._snapshot(room)
+
+    async def delete_section(self, classroom_id, section_id, expected_revision=None):
+        async with self.session.begin():
+            room = await self.access.room(classroom_id, mutation=True, owner=True)
+            if expected_revision is not None:
+                self._revision(room, expected_revision)
+            section = await self._section(room, section_id)
+            items = await self.repository.items(room.id)
+            if section.status != "PUBLISHED":
+                hidden_ids = [
+                    item.resource_id
+                    for item in items
+                    if item.section_id == section.id and item.resource_id
+                ]
+                hidden_resources = await self.session.scalars(
+                    select(ClassroomResource).where(
+                        ClassroomResource.id.in_(hidden_ids),
+                        ClassroomResource.status == "PUBLISHED",
+                    )
+                )
+                for resource in hidden_resources:
+                    # Removing a hidden parent must not publish its children.
+                    resource.status = "DRAFT" if section.status == "DRAFT" else "ARCHIVED"
+            moved = [item for item in items if item.section_id is None] + [
+                item for item in items if item.section_id == section.id
+            ]
+            for position, item in enumerate(moved):
+                item.section_id, item.position = None, position
+            await self.session.flush()
+            await self.session.delete(section)
+            room.content_revision += 1
+            await self.session.flush()
+            return await self._snapshot(room)
+
+    async def delete_resource(self, classroom_id, resource_id, expected_revision=None):
+        key = None
+        async with self.session.begin():
+            room = await self.access.room(classroom_id, mutation=True, owner=True)
+            if expected_revision is not None:
+                self._revision(room, expected_revision)
+            resource = await self._resource(room, resource_id)
+            for model in (ClassroomPostResource, ClassroomLearningPlanItem):
+                if await self.session.scalar(
+                    select(model.resource_id).where(model.resource_id == resource.id).limit(1)
+                ):
+                    raise AppError(
+                        "RESOURCE_REFERENCED",
+                        "This resource is referenced by a post or learning plan. Remove those references first, or archive it.",
+                        409,
+                    )
+            key = resource.storage_key
+            await self.session.execute(
+                delete(ClassroomContentItem).where(
+                    ClassroomContentItem.classroom_id == room.id,
+                    ClassroomContentItem.resource_id == resource.id,
+                )
+            )
+            await self.session.delete(resource)
+            room.content_revision += 1
+            await self.session.flush()
+            response = await self._snapshot(room)
+        if key:
+            try:
+                await self._compensate(
+                    ClassroomResourceStorage(get_settings().resolved_storage_root), key
+                )
+            except OSError:
+                logger.exception(
+                    "Removed resource file cleanup failed; no active reference remains"
+                )
+        return response
+
+    async def remove_assignment(self, classroom_id, item_id, expected_revision=None):
+        async with self.session.begin():
+            room = await self.access.room(
+                classroom_id, mutation=True, owner=True, capability=Capability.ASSIGNMENTS
+            )
+            if expected_revision is not None:
+                self._revision(room, expected_revision)
+            item = await self.session.scalar(
+                select(ClassroomContentItem).where(
+                    ClassroomContentItem.classroom_id == room.id,
+                    ClassroomContentItem.id == item_id,
+                    ClassroomContentItem.assignment_id.is_not(None),
+                )
+            )
+            if item is None:
+                raise AppError(
+                    "CLASSWORK_ITEM_NOT_FOUND", "The assignment reference does not exist.", 404
+                )
+            assignment = await self.session.get(ClassroomAssignment, item.assignment_id)
+            assignment.classwork_hidden = True
+            await self.session.delete(item)
             room.content_revision += 1
             await self.session.flush()
             return await self._snapshot(room)

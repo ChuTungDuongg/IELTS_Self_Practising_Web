@@ -26,6 +26,45 @@ from app.services.classroom_classwork import ClassworkService
 router = APIRouter(prefix="/classrooms/{classroom_id}", tags=["classroom-classwork"])
 
 
+@router.delete("/sections/{section_id}", response_model=ClassworkResponse)
+async def delete_section(
+    classroom_id: UUID,
+    section_id: UUID,
+    actor: CurrentUser,
+    expected_revision: int | None = None,
+    session: AsyncSession = Depends(get_session),
+):
+    return await ClassworkService(session, actor).delete_section(
+        classroom_id, section_id, expected_revision
+    )
+
+
+@router.delete("/resources/{resource_id}", response_model=ClassworkResponse)
+async def delete_resource(
+    classroom_id: UUID,
+    resource_id: UUID,
+    actor: CurrentUser,
+    expected_revision: int | None = None,
+    session: AsyncSession = Depends(get_session),
+):
+    return await ClassworkService(session, actor).delete_resource(
+        classroom_id, resource_id, expected_revision
+    )
+
+
+@router.delete("/items/{item_id}", response_model=ClassworkResponse)
+async def remove_assignment(
+    classroom_id: UUID,
+    item_id: UUID,
+    actor: CurrentUser,
+    expected_revision: int | None = None,
+    session: AsyncSession = Depends(get_session),
+):
+    return await ClassworkService(session, actor).remove_assignment(
+        classroom_id, item_id, expected_revision
+    )
+
+
 @router.get("/classwork", response_model=ClassworkResponse)
 async def classwork(
     classroom_id: UUID, actor: CurrentUser, session: AsyncSession = Depends(get_session)

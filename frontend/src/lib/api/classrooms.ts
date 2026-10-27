@@ -2,6 +2,8 @@ import { z } from "zod";
 import { apiRequest, type ApiRequester } from "./client";
 import { versionDetailSchema } from "./schema";
 import type { SchedulePolicy } from "./assignment-scheduling";
+export const assignmentTargetSchema = z.object({ mode: z.enum(["MODULE", "FULL_MOCK"]), module: z.enum(["READING", "LISTENING", "WRITING", "SPEAKING"]).nullable().optional(), scope: z.enum(["FULL_MODULE", "FOCUSED_UNIT"]).optional(), focused_unit: z.object({ kind: z.enum(["READING_PASSAGE", "LISTENING_PART", "WRITING_TASK", "SPEAKING_PROMPT"]), id: z.string().uuid() }).nullable().optional() });
+export type AssignmentTarget = z.infer<typeof assignmentTargetSchema>;
 const classroomSchema = z.object({
   id: z.string().uuid(),
   teacher_id: z.string().uuid(),
@@ -40,6 +42,8 @@ export const assignmentSchema = z.object({
   max_attempts: z.number().int().nullable().default(null),
   allow_late_submission: z.boolean().default(true),
   policy_revision: z.number().int().default(0),
+  classwork_hidden: z.boolean().optional(),
+  target: assignmentTargetSchema.nullable().optional(),
   id: z.string().uuid(),
   classroom_id: z.string().uuid(),
   test_version_id: z.string().uuid(),
@@ -117,9 +121,11 @@ export async function createAssignment(id: string, input: Partial<SchedulePolicy
   test_version_id: string;
   title?: string | null;
   note?: string | null;
+  target: AssignmentTarget;
 }) {
   return assignmentSchema.parse(await post(`${resource(id)}/assignments`, input));
 }
+export async function assignmentVersion(classroomId: string, versionId: string, signal?: AbortSignal) { return versionDetailSchema.parse(await apiRequest(`${resource(classroomId)}/assignment-versions/${encodeURIComponent(versionId)}`, { signal })); }
 export async function archiveAssignment(classroomId: string, id: string) {
   await post(`${resource(classroomId)}/assignments/${encodeURIComponent(id)}/archive`);
 }

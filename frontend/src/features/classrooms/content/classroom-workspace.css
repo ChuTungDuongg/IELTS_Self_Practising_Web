@@ -123,7 +123,7 @@
 .classroom-resource-reader-compact > button { grid-column: 2; grid-row: 1; }
 .classroom-resource-reader-compact > .classroom-resource-body { grid-column: 1 / -1; padding-top: 12px; }
 .classroom-classwork-row > .classroom-menu { grid-column: 3; grid-row: 1; }
-.classroom-classwork .classroom-menu-icon { list-style: none; display: flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; padding: 8px; }
+.classroom-workspace .classroom-menu-icon { list-style: none; display: flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; padding: 8px; }
 .classroom-menu-icon::-webkit-details-marker { display: none; }
 .classroom-classwork :is(.classroom-text-button, .classroom-order-button, .classroom-drag-handle) { min-height: 44px; }
 .classroom-classwork :is(.classroom-order-button, .classroom-drag-handle) { min-width: 44px; }

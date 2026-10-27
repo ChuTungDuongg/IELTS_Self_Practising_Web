@@ -12,7 +12,8 @@ export function classworkGroups(data: Classwork, assignments: ClassroomAssignmen
   const archived: ClassworkGroup = { key: "archived-assignments", kind: "archivedAssignments", section: null, rows: [] };
   const resources: ClassworkGroup = { key: "archived-resources", kind: "archivedResources", section: null, rows: [] };
   const topicById = new Map(topics.map(group => [group.section!.id, group]));
-  const assignmentById = new Map(assignments.map(assignment => [assignment.id, assignment]));
+  const visibleAssignments = assignments.filter(assignment => !(data.removed_assignment_ids ? data.removed_assignment_ids.includes(assignment.id) : assignment.classwork_hidden));
+  const assignmentById = new Map(visibleAssignments.map(assignment => [assignment.id, assignment]));
   const resourceById = new Map(data.resources.map(resource => [resource.id, resource]));
   const seen = new Set<string>();
   function add(row: ClassworkRow, target: ClassworkGroup) {
@@ -31,6 +32,6 @@ export function classworkGroups(data: Classwork, assignments: ClassroomAssignmen
     }
   }
   // Canonical assignments may have no placement, including retained student history.
-  for (const assignment of assignments) add({ key: `assignment-${assignment.id}`, assignment }, assignment.status === "ARCHIVED" ? archived : unplaced);
+  for (const assignment of visibleAssignments) add({ key: `assignment-${assignment.id}`, assignment }, assignment.status === "ARCHIVED" ? archived : unplaced);
   return [...topics, ...[unplaced, archived, resources].filter(group => group.rows.length)];
 }

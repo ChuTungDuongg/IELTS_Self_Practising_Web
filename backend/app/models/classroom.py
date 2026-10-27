@@ -15,6 +15,7 @@ from sqlalchemy import (
     func,
     text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
@@ -133,6 +134,8 @@ class ClassroomAssignment(UUIDPrimaryKeyMixin, Base):
     grade_selection: Mapped[str] = mapped_column(
         String(24), default="LATEST_ACCEPTED", server_default="LATEST_ACCEPTED"
     )
+    classwork_hidden: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    target: Mapped[dict | None] = mapped_column(JSONB(none_as_null=True))
     status: Mapped[AssignmentStatus] = mapped_column(
         Enum(AssignmentStatus, name="assignment_status"), default=AssignmentStatus.ACTIVE
     )

@@ -71,7 +71,13 @@ async def test_ta_transition_and_no_global_teacher_privileges(db_session):
         assert (await client.get(base + "/gradebook")).status_code == 200
         assert (await client.post(base + "/sections", json={"title": "Denied"})).status_code == 403
         assert (
-            await client.post(base + "/assignments", json={"test_version_id": str(version)})
+            await client.post(
+                base + "/assignments",
+                json={
+                    "test_version_id": str(version),
+                    "target": {"mode": "MODULE", "module": "WRITING"},
+                },
+            )
         ).status_code == 403
         assert (await client.post("/api/v1/tests", json={"title": "Denied"})).status_code == 403
     await ClassroomStaffService(db_session, owner).change(

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { assignmentTargetSchema } from "./classrooms";
 import { apiRequest } from "./client";
 import { gradeSchema, lmsPath, queryString } from "./classroom-lms";
 
@@ -15,7 +16,7 @@ export const dashboardSchema = z.object({ start: z.string(), end: z.string(), ac
   question_types: z.array(z.object({ skill, category: z.string(), questions_attempted: count, questions_correct: count, unanswered: count, sample_size: count, repeated_exposures: count, accuracy: metric, recent_accuracy: metric, historical_accuracy: metric, recent_sample_size: count, trend: metric, confidence_level: z.enum(["INSUFFICIENT", "MEDIUM", "HIGH"]) })),
   criteria: z.array(z.object({ skill, context: z.string(), criterion: z.string(), sample_size: count, recent_sample_size: count, average: z.number(), recent_average: metric, historical_average: metric, trend: metric })),
   weaknesses: z.array(z.object({ weakness_type: z.enum(["QUESTION_TYPE", "CRITERION", "SKILL_BAND"]), skill, category: z.string(), evidence: z.string(), sample_size: count, severity: z.enum(["MODERATE", "HIGH"]), confidence_level: z.enum(["MEDIUM", "HIGH"]), recommendation_reason: z.string(), observed: z.number(), baseline: z.number() })),
-  recent_assessments: z.array(gradeSchema), completion_by_assignment: z.array(z.object({ assignment_id: id, title: z.string(), counts: z.record(z.string(), count) })), total_completion_activities: count, attention_students: z.array(z.object({ student_id: id, display_name: z.string(), missing: count, pending_human: count })), recommendations: z.array(z.object({ assignment_id: id, title: z.string(), skill, category: z.string(), reason: z.string(), href: z.string() })), criteria_truncated: z.boolean(),
+  recent_assessments: z.array(gradeSchema), completion_by_assignment: z.array(z.object({ assignment_id: id, target: assignmentTargetSchema.nullable().optional(), title: z.string(), counts: z.record(z.string(), count) })), total_completion_activities: count, attention_students: z.array(z.object({ student_id: id, display_name: z.string(), missing: count, pending_human: count })), recommendations: z.array(z.object({ assignment_id: id, target: assignmentTargetSchema.nullable().optional(), title: z.string(), skill, category: z.string(), reason: z.string(), href: z.string() })), criteria_truncated: z.boolean(),
 });
 export type LearningDashboard = z.infer<typeof dashboardSchema>;
 export type LearningGoals = z.infer<typeof goalsSchema>;

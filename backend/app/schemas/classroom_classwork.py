@@ -104,6 +104,7 @@ class ClassworkResponse(BaseModel):
     sections: list[SectionResponse]
     resources: list[ResourceResponse]
     items: list[ItemResponse]
+    removed_assignment_ids: list[UUID] = Field(default_factory=list)
 
 
 class ReorderRequest(BaseModel):

@@ -9,6 +9,7 @@ from app.core.exceptions import AppError
 from app.models import Classroom, ClassroomAssignment, ClassroomMembership, TestVersion, User
 from app.models.enums import AssignmentStatus, ClassroomStatus, TestOrigin, UserRole
 from app.repositories.tests import version_detail_query
+from app.schemas.assignment_targets import AssignmentTarget
 from app.schemas.attempts import AttemptCreate
 from app.schemas.classroom_assignments import (
     AssignmentCreate,
@@ -23,7 +24,12 @@ from app.services.test_sessions import TestSessionService
 
 
 async def require_assignment_start(
-    session: AsyncSession, user_id: UUID, assignment_id: UUID, version_id: UUID
+    session: AsyncSession,
+    user_id: UUID,
+    assignment_id: UUID,
+    version_id: UUID,
+    *,
+    target: AssignmentTarget | None = None,
 ):
     """Called only by the lifecycle services inside their creation transaction."""
     actor = await session.scalar(
@@ -80,6 +86,14 @@ async def require_assignment_start(
         )
     from app.services.assignment_scheduling import enforce_schedule_start
 
+    if assignment.target is not None and (
+        target is None or AssignmentTarget.model_validate(assignment.target) != target
+    ):
+        raise AppError(
+            "ASSIGNMENT_TARGET_MISMATCH",
+            "Start exactly the skill and unit assigned by your teacher.",
+            409,
+        )
     await enforce_schedule_start(session, assignment, user_id)
     return assignment
 
@@ -89,6 +103,47 @@ class ClassroomAssignmentService:
         self.session, self.actor = session, actor
         self.actor_id = actor.id
         self.policy = AccessPolicy(session, actor)
+
+    async def _validate_target(self, version_id, target):
+        if target is None:
+            return
+        from app.models import TestModule
+        from app.services.attempt_scope import resolve_focused_target, validate_start_scope
+
+        modules = list(
+            await self.session.scalars(
+                select(TestModule).where(TestModule.test_version_id == version_id)
+            )
+        )
+        if target.mode == "FULL_MOCK":
+            required = {"READING", "LISTENING", "WRITING", "SPEAKING"}
+            if {module.module_type for module in modules} != required or any(
+                not module.recommended_duration_seconds or module.recommended_duration_seconds <= 0
+                for module in modules
+            ):
+                raise AppError(
+                    "FULL_MOCK_MODULES_MISSING",
+                    "Full Mock requires all four skills with valid durations.",
+                    422,
+                )
+            return
+        module = next((module for module in modules if module.module_type == target.module), None)
+        if module is None:
+            raise AppError(
+                "ASSIGNMENT_TARGET_INVALID",
+                "The selected skill is not in this published test.",
+                422,
+            )
+        data = AttemptCreate(
+            test_version_id=version_id,
+            module=target.module,
+            scope=target.scope,
+            focused_unit=target.focused_unit,
+            speaking_mode="PRACTICE" if target.module == "SPEAKING" else None,
+            timer={"mode": "COUNT_UP"},
+        )
+        validate_start_scope(data)
+        await resolve_focused_target(self.session, data, module.id)
 
     async def create(self, classroom_id: UUID, data: AssignmentCreate):
         async with self.session.begin():
@@ -115,12 +170,14 @@ class ClassroomAssignmentService:
                     "This version requires active classroom or public approval.",
                     409,
                 )
+            await self._validate_target(version.id, data.target)
             assignment = ClassroomAssignment(
                 classroom_id=classroom_id,
                 test_version_id=version.id,
                 created_by_user_id=self.actor_id,
                 title=data.title,
                 note=data.note,
+                target=data.target.model_dump(mode="json") if data.target else None,
                 **data.model_dump(
                     include={
                         "available_from",
@@ -205,6 +262,49 @@ class ClassroomAssignmentService:
             _classroom_assignment_id=assignment_id,
         )
         return AssignmentStartResponse(attempt_id=result.attempt_id)
+
+    async def delete(self, classroom_id, assignment_id):
+        from sqlalchemy import delete
+
+        from app.models import Attempt, Notification, TestSession
+        from app.models.assignment_scheduling import (
+            AssignmentPolicyEvent,
+            ClassroomAssignmentExtension,
+        )
+        from app.models.classroom_classwork import ClassroomContentItem
+        from app.models.classroom_learning import ClassroomLearningPlanItem
+
+        async with self.session.begin():
+            await self.policy.lock_actor()
+            room = await self._classroom(classroom_id, locked=True)
+            await require_capability(self.session, self.policy.actor, room, Capability.ASSIGNMENTS)
+            self._active(room)
+            assignment = await self._assignment(classroom_id, assignment_id, locked=True)
+            for column in (
+                Attempt.classroom_assignment_id,
+                TestSession.classroom_assignment_id,
+                AssignmentPolicyEvent.assignment_id,
+                ClassroomAssignmentExtension.assignment_id,
+                ClassroomLearningPlanItem.assignment_id,
+                Notification.entity_id,
+            ):
+                if await self.session.scalar(
+                    select(column).where(column == assignment.id).limit(1)
+                ):
+                    raise AppError(
+                        "ASSIGNMENT_HISTORY_PROTECTED",
+                        "This assignment has protected student, policy, notification or learning-plan history. Archive it or remove its Classwork reference instead.",
+                        409,
+                    )
+            await self.session.execute(
+                delete(ClassroomContentItem).where(
+                    ClassroomContentItem.classroom_id == room.id,
+                    ClassroomContentItem.assignment_id == assignment.id,
+                )
+            )
+            await self.session.delete(assignment)
+            room.content_revision += 1
+            await self.session.flush()
 
     async def _classroom(self, classroom_id, *, locked=False):
         statement = (

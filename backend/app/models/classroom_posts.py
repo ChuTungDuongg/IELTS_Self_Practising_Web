@@ -26,6 +26,7 @@ class ClassroomPost(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     pinned: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     locked: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class ClassroomPostResource(Base):
