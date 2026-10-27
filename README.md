@@ -262,7 +262,7 @@ npm run dev:frontend
 npm run dev:backend
 ```
 
-Root npm scripts dùng lệnh `npm run dev` của frontend và `uv --directory backend run fastapi dev app/main.py` của backend; cả hai server đều hỗ trợ hot reload. `backend/.env` được đọc như trước. PostgreSQL phải chạy sẵn (ví dụ `docker compose up -d postgres` ở bước 2). Nhấn `Ctrl+C` một lần để dừng cả hai dịch vụ.
+Root npm scripts dùng lệnh `npm run dev` của frontend và launcher `scripts/dev_backend.py` của backend; cả hai server đều hỗ trợ hot reload. Launcher gọi FastAPI dev và chỉ theo dõi `backend/app`, nên sửa test không làm API reload. Trên Windows, backend chạy trong console riêng được ẩn, log vẫn chuyển về terminal hiện tại: tín hiệu `Ctrl+C` mà Uvicorn dùng khi reload không làm tắt Next.js trong console của `concurrently`. `backend/.env` được đọc như trước. PostgreSQL phải chạy sẵn (ví dụ `docker compose up -d postgres` ở bước 2). Nhấn `Ctrl+C` một lần để dừng cả hai dịch vụ. Chỉ mở một phiên `npm run dev`; sau khi cập nhật launcher, dừng các phiên cũ rồi chạy lại để áp dụng.
 
 - Frontend: [http://localhost:3000](http://localhost:3000)
 - API: [http://localhost:8000](http://localhost:8000)
