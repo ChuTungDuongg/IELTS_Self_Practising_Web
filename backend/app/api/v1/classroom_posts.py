@@ -42,10 +42,18 @@ async def feed(
     status: ContentStatus | None = None,
     content_kind: Literal["ANNOUNCEMENT", "DISCUSSION", "ASSIGNMENT_ACTIVITY", "RESOURCE_ACTIVITY"]
     | None = None,
+    search: str | None = Query(default=None, max_length=200),
+    pinned_only: bool = False,
     session: AsyncSession = Depends(get_session),
 ):
     return await ClassroomPostService(session, actor).feed(
-        classroom_id, cursor=cursor, limit=limit, status=status, content_kind=content_kind
+        classroom_id,
+        cursor=cursor,
+        limit=limit,
+        status=status,
+        content_kind=content_kind,
+        search=search,
+        pinned_only=pinned_only,
     )
 
 

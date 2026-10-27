@@ -4,7 +4,7 @@ from uuid import UUID
 from sqlalchemy import delete, func, literal, or_, select, tuple_, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Classroom, ClassroomAssignment, ClassroomMembership, User
+from app.models import Classroom, ClassroomAssignment, ClassroomMembership, Test, TestVersion, User
 from app.models.classroom_classwork import (
     ClassroomContentItem,
     ClassroomResource,
@@ -12,6 +12,7 @@ from app.models.classroom_classwork import (
 )
 from app.models.classroom_posts import ClassroomComment, ClassroomPost, ClassroomPostResource
 from app.models.enums import AssignmentStatus
+from app.repositories.classroom_feed_search import search_feed
 
 
 class ClassroomPostRepository:
@@ -99,6 +100,8 @@ class ClassroomPostRepository:
         cursor: tuple[bool, datetime, str, UUID] | None,
         limit: int,
         content_kind: str | None = None,
+        search: str = "",
+        pinned_only: bool = False,
     ):
         """A single bounded UNION keeps assignment identity/lifecycle canonical."""
         posts = select(
@@ -113,6 +116,11 @@ class ClassroomPostRepository:
             posts = posts.where(ClassroomPost.status != "ARCHIVED")
         else:
             posts = posts.where(ClassroomPost.status == "PUBLISHED")
+        posts = search_feed(posts, search, ClassroomPost.title, ClassroomPost.body)
+        if pinned_only:
+            posts = posts.where(
+                ClassroomPost.pinned.is_(True), ClassroomPost.kind == "ANNOUNCEMENT"
+            )
         assignments = select(
             ClassroomAssignment.id.label("id"),
             literal("ASSIGNMENT_ACTIVITY").label("kind"),
@@ -140,6 +148,25 @@ class ClassroomPostRepository:
             .where(ClassroomResource.classroom_id == classroom_id)
         )
         resources = resources.where(ClassroomResource.status == (status or "PUBLISHED"))
+        if search:
+            assignments = assignments.outerjoin(
+                TestVersion, TestVersion.id == ClassroomAssignment.test_version_id
+            ).outerjoin(Test, Test.id == TestVersion.test_id)
+            assignments = search_feed(
+                assignments, search, ClassroomAssignment.title, ClassroomAssignment.note, Test.title
+            )
+        resources = search_feed(
+            resources,
+            search,
+            ClassroomResource.title,
+            ClassroomResource.description,
+            ClassroomResource.body,
+            ClassroomResource.original_filename,
+            ClassroomResource.url,
+        )
+        if pinned_only:
+            assignments = assignments.where(literal(False))
+            resources = resources.where(literal(False))
         if not staff:
             resources = resources.where(
                 or_(ClassroomSection.id.is_(None), ClassroomSection.status == "PUBLISHED")

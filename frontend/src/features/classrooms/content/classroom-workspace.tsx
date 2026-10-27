@@ -19,6 +19,7 @@ import { AssignmentProgressProvider, useAssignmentProgress } from "../scheduling
 import { AssignmentCalendarPanel } from "../scheduling/assignment-calendar";
 import { useScheduleText } from "../scheduling/messages";
 import { classroomPermissions } from "../classroom-permissions";
+import type { StreamRosterMember } from "./stream/sidebar";
 function PanelLoading() { const { lt } = useLmsText(); return <p role="status">{lt("loading")}</p>; }
 const GradebookPanel = dynamic(() => import("../lms/gradebook").then(module => module.GradebookPanel), { loading: PanelLoading });
 const LearningAnalyticsPanel = dynamic(() => import("../lms/learning-analytics").then(module => module.LearningAnalyticsPanel), { loading: PanelLoading });
@@ -27,7 +28,7 @@ const AcademicProfilePanel = dynamic(() => import("../lms/student-profile").then
 
 type Tab = "stream" | "classwork" | "assignments" | "calendar" | "people" | "gradebook" | "analytics" | "myProgress";
 type WorkspaceProps = {
-  classroom: Classroom; user: { id: string; role: string }; assignments: ClassroomAssignment[];
+  classroom: Classroom; user: { id: string; role: string; display_name?: string }; assignments: ClassroomAssignment[]; membersPreview?: StreamRosterMember[];
   people?: ReactNode; assignmentForm?: ReactNode; management?: ReactNode;
   initialTab?: "people";
   selectedPostId?: string | null; selectedAssignmentId?: string | null;
@@ -45,14 +46,15 @@ export function ClassroomWorkspace(props: WorkspaceProps) {
   const permissions = classroomPermissions(props.classroom, props.user);
   return <AssignmentProgressProvider classroomId={props.classroom.id} ids={snapshot.items.map(item => item.id)} assignments={snapshot.items} staff={!permissions.isStudent}><ClassroomWorkspaceContent {...props} assignments={snapshot.items} onReloadAssignments={reloadAssignments} /></AssignmentProgressProvider>;
 }
-function ClassroomWorkspaceContent({ classroom, user, assignments, people, assignmentForm: suppliedAssignmentForm, management: suppliedManagement, initialTab, selectedPostId = null, selectedAssignmentId = null, onReloadAssignments }: WorkspaceProps) {
+function ClassroomWorkspaceContent({ classroom, user, assignments, people, membersPreview, assignmentForm: suppliedAssignmentForm, management: suppliedManagement, initialTab, selectedPostId = null, selectedAssignmentId = null, onReloadAssignments }: WorkspaceProps) {
   const { ct } = useContentTranslation(), { st } = useScheduleText(), { lt } = useLmsText();
   const permissions = classroomPermissions(classroom, user);
   const [tab, setTab] = useState<Tab>(selectedAssignmentId ? "assignments" : initialTab === "people" && permissions.canViewRoster ? "people" : "stream");
   const [calendarVisited, setCalendarVisited] = useState(false);
   const [assignmentsVisited, setAssignmentsVisited] = useState(!!selectedAssignmentId);
+  const [streamVisited, setStreamVisited] = useState(tab === "stream");
   const progress = useAssignmentProgress();
-  function changeTab(next: Tab) { setTab(next); if (next === "calendar") setCalendarVisited(true); if (next === "assignments") setAssignmentsVisited(true); }
+  function changeTab(next: Tab) { setTab(next); if (next === "calendar") setCalendarVisited(true); if (next === "assignments") setAssignmentsVisited(true); if (next === "stream") setStreamVisited(true); }
   const [data, setData] = useState<Classwork | null>(null), [loading, setLoading] = useState(true), [loadError, setError] = useState<unknown>(null);
   const error = loadError ? contentError(loadError, ct("error")) : null;
   const [assignmentFocus, setAssignmentFocus] = useState<string | null>(selectedAssignmentId), [creationRequest, setCreationRequest] = useState(0);
@@ -84,7 +86,7 @@ function ClassroomWorkspaceContent({ classroom, user, assignments, people, assig
     const element = document.getElementById(`assignment-${assignmentFocus}`); element?.scrollIntoView?.({ block: "nearest" }); element?.focus();
   }, [tab, assignmentFocus]);
   function openAssignment(id: string) { setAssignmentFocus(id); setAssignmentOpenRequest(value => value + 1); setCreateAction(null); changeTab("assignments"); }
-  function createContent(kind: "section" | "resource" | "post") { setCreateAction(kind); setActionSequence(value => value + 1); setTab(kind === "post" ? "stream" : "classwork"); }
+  function createContent(kind: "section" | "resource" | "post") { setCreateAction(kind); setActionSequence(value => value + 1); changeTab(kind === "post" ? "stream" : "classwork"); }
   function createAssignment() { changeTab("assignments"); setCreationRequest(value => value + 1); }
   const contentActions = canAuthor ? [{ label: lt("announce"), action: () => createContent("post") }, { label: ct("addSection"), action: () => createContent("section") }, { label: ct("addResource"), action: () => createContent("resource") }] : [];
   const tabs: Tab[] = ["stream", "classwork", "assignments", "calendar", ...(canViewRoster ? ["people" as const] : []), ...(canViewGrades ? ["gradebook" as const] : []), ...(canAnalytics ? ["analytics" as const] : []), ...(!isObserver ? ["myProgress" as const] : [])];
@@ -98,10 +100,9 @@ function ClassroomWorkspaceContent({ classroom, user, assignments, people, assig
     <div className="classroom-columns">
       {tabs.map(panelTab => <div key={panelTab} hidden={tab !== panelTab} className="classroom-main" id={`classroom-panel-${panelTab}`} role="tabpanel" aria-labelledby={`classroom-tab-${panelTab}`} tabIndex={0}>
         {panelTab === "calendar" && calendarVisited ? <AssignmentCalendarPanel classroomId={classroom.id} onOpenAssignment={openAssignment} revision={assignments.map(item => `${item.id}:${item.status}:${item.policy_revision}:${item.available_from}:${item.due_at}:${item.cutoff_at}`).sort().join(",")} /> : null}
+        {panelTab === "stream" && streamVisited ? <ClassroomStream active={tab === "stream"} classroomId={classroom.id} classroom={classroom} assignments={assignments} classwork={data} classworkError={!!loadError} members={membersPreview} canViewRoster={canViewRoster} student={isStudent} userName={user.display_name} resources={data?.resources ?? []} userId={user.id} canAuthor={canAuthor} canModerate={canModerate} canInspect={canInspect} archived={archived} admin={isObserver} composeRequest={createAction === "post" ? actionSequence : 0} onOpenAssignment={openAssignment} selectedPostId={selectedPostId} onResourcesChanged={refresh} onNavigate={next => { if (next !== "people" || canViewRoster) changeTab(next); }} /> : null}
         {panelTab === "assignments" && assignmentsVisited ? <AssignmentList assignments={assignments} creationForm={assignmentForm} creationRequest={creationRequest} selectedAssignmentId={assignmentFocus} selectedAssignmentRequest={assignmentOpenRequest} canViewResults={canViewGrades} canStart={isStudent} canSchedule={canSchedule} canArchive={canSchedule} onChanged={assignmentsChanged} archived={archived} resultNamespace={user.role === "TEACHER" ? "teacher" : "shared"} /> : null}
         {tab === panelTab ? <>
-        {tab === "stream" && canInspect ? <section className="classroom-overview" aria-label={lt("overview")}><div><strong>{assignments.filter(item => item.status === "ACTIVE").length}</strong><span>{lt("activeAssignments")}</span></div><div><strong>{classroom.active_member_count ?? "—"}</strong><span>{lt("students")}</span></div><div className="classroom-toolbar">{canAuthor ? <button type="button" className="btn btn-secondary" onClick={() => setTab("classwork")}>{lt("materials")}</button> : null}{people ? <button type="button" className="btn btn-secondary" onClick={() => setTab("people")}>{ct("people")}</button> : null}{canViewGrades ? <button type="button" className="btn btn-secondary" onClick={() => setTab("gradebook")}>{lt("gradebook")}</button> : null}</div></section> : null}
-        {tab === "stream" ? <ClassroomStream key={`stream-${createAction === "post" ? actionSequence : 0}`} initialCompose={createAction === "post"} classroomId={classroom.id} resources={data?.resources ?? []} userId={user.id} canAuthor={canAuthor} canModerate={canModerate} canInspect={canInspect} archived={archived} admin={user.role === "ADMIN"} onOpenAssignment={openAssignment} selectedPostId={selectedPostId} /> : null}
         {tab === "classwork" ? <>{loading && !data ? <div className="classroom-panel classroom-skeleton" role="status"><h2>{ct("classwork")}</h2><p>{ct("loading")}</p><div /><div /></div> : null}{error ? <div className="classroom-panel"><p role="alert" className="notice notice-error">{error}</p><button type="button" className="btn btn-secondary" disabled={loading} onClick={() => void refresh().catch(() => {})}>{ct("retry")}</button></div> : null}{data ? <ClassworkPanel key={`work-${actionSequence}`} initialAction={createAction === "section" || createAction === "resource" ? createAction : undefined} onCreateAssignment={assignmentForm ? createAssignment : undefined} showCreateMenu={false} classroomId={classroom.id} data={data} assignments={assignments} canAuthor={canAuthor} canAssign={canSchedule && !archived} canInspect={canInspect} onRefresh={refresh} onAssignmentsChanged={assignmentsChanged} onChange={setData} onOpenAssignment={openAssignment} /> : null}</> : null}
 
         {tab === "people" && canViewRoster ? <section aria-label={ct("people")}><h2 className="section-title mb-3">{ct("people")}</h2>{people ?? <p className="classroom-empty">{ct("emptyPeople")}</p>}</section> : null}

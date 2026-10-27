@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -67,14 +67,17 @@ it("keeps Admin in the shared observer workspace without teacher or student acti
 it("filters feed content through the paginated backend query", async () => {
   renderWithLocale(<ClassroomWorkspace classroom={room} user={{ id: "owner", role: "TEACHER" }} assignments={[]} />);
   await screen.findByText("No classroom updates yet.");
-  fireEvent.change(screen.getByLabelText("Feed type"), { target: { value: "ASSIGNMENT_ACTIVITY" } });
+  fireEvent.click(within(screen.getByRole("group", { name: "Feed type" })).getByRole("button", { name: "Assignments" }));
   await waitFor(() => expect(api.listFeed).toHaveBeenLastCalledWith("room", expect.objectContaining({ contentKind: "ASSIGNMENT_ACTIVITY" })));
 });
 
 it("uses a real assignment title and grouped localized deadlines in assignment feed cards", async () => {
   renderWithLocale(<AssignmentProgressProvider classroomId="room" ids={[assignment.id]} assignments={[assignment]} staff><PostCard classroomId="room" post={{ id: "post", assignment_id: assignment.id, kind: "ASSIGNMENT_ACTIVITY", title: null, body: "", status: "PUBLISHED", pinned: false, locked: true, author_id: "owner", author_name: "Tutor", author_role: "TEACHER", created_at: "2026-10-27T08:00:00Z", updated_at: "2026-10-27T08:00:00Z", published_at: "2026-10-27T08:00:00Z", comment_count: 0, resource_ids: [] }} resources={[]} userId="owner" canAuthor archived={false} admin={false} onRefresh={vi.fn()} onOpenAssignment={vi.fn()} /></AssignmentProgressProvider>);
   expect(screen.getByRole("heading", { name: assignment.title })).toBeInTheDocument();
-  expect(screen.getByText(/^Assignment · Due /)).toBeInTheDocument();
+  expect(screen.getByText("Due")).toBeInTheDocument();
+  expect(screen.getByText("Cut-off")).toBeInTheDocument();
+  expect(document.querySelector(`time[datetime="${assignment.due_at}"]`)).toBeInTheDocument();
+  expect(document.querySelector(`time[datetime="${assignment.cutoff_at}"]`)).toBeInTheDocument();
   expect(screen.queryByText(assignment.due_at)).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Open assignment" })).toBeInTheDocument();
 });

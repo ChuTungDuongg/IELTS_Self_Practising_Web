@@ -18,6 +18,14 @@ it("validates paginated feed and uses explicit status filters", async () => {
   request.mockResolvedValue({ items: [], next_cursor: null }); await listFeed(uuid, { status: "DRAFT", cursor: "next" });
   expect(request).toHaveBeenCalledWith(`/classrooms/${uuid}/feed?limit=20&cursor=next&status=DRAFT`);
 });
+it("encodes whole-feed search and pinned-only scope on cursor requests", async () => {
+  request.mockResolvedValue({ items: [], next_cursor: null });
+  const signal = new AbortController().signal;
+  await listFeed(uuid, { search: "Đề ôn & notes", pinnedOnly: true, cursor: "next", signal });
+  const path = request.mock.calls.at(-1)?.[0] as string, params = new URL(path, "http://test").searchParams;
+  expect(params.get("search")).toBe("Đề ôn & notes"); expect(params.get("pinned_only")).toBe("true"); expect(params.get("cursor")).toBe("next");
+  expect(request.mock.calls.at(-1)?.[1]).toEqual({ signal });
+});
 it("parses canonical resource activity and keeps the kind in server pagination filters", async () => {
   const resource = { id: uuid, classroom_id: uuid, title: "Fictional notes", description: null, kind: "TEXT", body: "Fictional lesson", url: null, status: "PUBLISHED", original_filename: null, media_type: null, size_bytes: null, created_at: "now", updated_at: "now" };
   request.mockResolvedValue({ items: [{ id: uuid, kind: "RESOURCE_ACTIVITY", title: resource.title, body: "", status: "PUBLISHED", pinned: false, locked: true, author_id: uuid, author_name: "Fictional tutor", author_role: "TEACHER", created_at: "now", updated_at: "now", published_at: "now", comment_count: 0, resource_ids: [uuid], assignment_id: null, resource, resource_topic: "Fictional topic" }], next_cursor: "next" });

@@ -31,6 +31,7 @@ beforeEach(() => {
   api.getClasswork.mockResolvedValue(classwork); api.listFeed.mockResolvedValue({ items: [post], next_cursor: null });
   api.listComments.mockResolvedValue({ items: [], next_cursor: null }); api.createComment.mockResolvedValue({ id: "comment" });
   api.createPost.mockResolvedValue(post); api.updatePost.mockResolvedValue(post); api.postAction.mockResolvedValue(post);
+  api.getPost.mockResolvedValue(post);
   api.createSection.mockResolvedValue(classwork.sections[0]); api.updateSection.mockResolvedValue(classwork.sections[0]); api.createResource.mockResolvedValue(resource); api.updateResource.mockResolvedValue(resource); api.uploadResource.mockResolvedValue({ ...resource, kind: "FILE" }); api.placeAssignment.mockResolvedValue(classwork);
   api.reorderSections.mockResolvedValue({ ...classwork, revision: 4 }); api.reorderItems.mockResolvedValue({ ...classwork, revision: 4 });
   assignmentApi.listAssignments.mockResolvedValue([]); assignmentApi.getAssignmentCalendar.mockResolvedValue({ items: [], total: 0 }); assignmentApi.restoreAssignment.mockResolvedValue(undefined);
@@ -247,7 +248,8 @@ it("closes an existing post editor when the classroom becomes archived", () => {
 });
 it("shows creation time and an edited indicator independently of publication time", () => {
   renderWithLocale(<PostCard classroomId="c" post={{ ...post, created_at: "2026-10-20T08:00:00Z", updated_at: "2026-10-27T08:00:00Z", published_at: "2026-10-26T08:00:00Z" }} resources={[]} userId="student" canAuthor={false} archived={false} admin={false} onRefresh={vi.fn()} onOpenAssignment={vi.fn()} />);
-  expect(screen.getByText(/Oct 20, 2026/).closest("p")).toHaveTextContent("Edited"); expect(screen.queryByText(/Oct 26, 2026/)).not.toBeInTheDocument();
+  expect(screen.getByText(/20\/10\/2026/).closest("p")).toHaveTextContent("Edited"); expect(screen.queryByText(/26\/10\/2026/)).not.toBeInTheDocument();
+  expect(document.querySelector("time")).toHaveAttribute("datetime", "2026-10-20T08:00:00Z");
 });
 it("offers a retry when private file loading fails without exposing raw API URLs", async () => {
   api.fetchResourceFile.mockRejectedValueOnce(new ApiError("NETWORK_ERROR", "Offline", 0));

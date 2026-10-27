@@ -11,6 +11,7 @@ from app.core.exceptions import AppError
 from app.models import Classroom, User
 from app.models.classroom_posts import ClassroomComment, ClassroomPost
 from app.models.enums import NotificationEntityType, NotificationType
+from app.repositories.classroom_feed_search import normalize_feed_search
 from app.repositories.classroom_posts import ClassroomPostRepository
 from app.schemas.classroom_classwork import ResourceResponse
 from app.schemas.classroom_posts import (
@@ -39,6 +40,8 @@ class _FeedCursor(BaseModel):
     created_at: AwareDatetime
     kind: Literal["ANNOUNCEMENT", "DISCUSSION", "ASSIGNMENT_ACTIVITY", "RESOURCE_ACTIVITY"]
     id: UUID
+    search: str = ""
+    pinned_only: bool = False
     model_config = {"extra": "forbid"}
 
 
@@ -163,9 +166,12 @@ class ClassroomPostService:
             "ANNOUNCEMENT", "DISCUSSION", "ASSIGNMENT_ACTIVITY", "RESOURCE_ACTIVITY"
         ]
         | None = None,
+        search: str | None = None,
+        pinned_only: bool = False,
     ) -> FeedPage:
         if not 1 <= limit <= 100:
             raise AppError("INVALID_PAGE_SIZE", "Page size must be between 1 and 100.", 422)
+        search = normalize_feed_search(search)
         async with self.session.begin():
             room = await self.access.room(classroom_id)
             staff = self.access.staff(room)
@@ -180,6 +186,8 @@ class ClassroomPostService:
                     decoded.classroom_id != classroom_id
                     or decoded.status != status
                     or decoded.content_kind != content_kind
+                    or decoded.search != search
+                    or decoded.pinned_only != pinned_only
                 ):
                     raise AppError("INVALID_CURSOR", "This cursor belongs to another feed.", 422)
                 position = (decoded.pinned, decoded.created_at, decoded.kind, decoded.id)
@@ -190,6 +198,8 @@ class ClassroomPostService:
                 cursor=position,
                 limit=limit,
                 content_kind=content_kind,
+                search=search,
+                pinned_only=pinned_only,
             )
             selected = keys[:limit]
             post_ids = [key.id for key in selected if key.kind in {"ANNOUNCEMENT", "DISCUSSION"}]
@@ -262,6 +272,8 @@ class ClassroomPostService:
                         classroom_id=room.id,
                         status=status,
                         content_kind=content_kind,
+                        search=search,
+                        pinned_only=pinned_only,
                         pinned=last.pinned,
                         created_at=last.created_at,
                         kind=last.kind,
