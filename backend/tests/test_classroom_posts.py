@@ -244,9 +244,10 @@ async def test_announcement_notifies_only_active_enrolled_accounts_at_first_publ
 
 
 @pytest.mark.asyncio
-async def test_admin_comments_require_active_membership_and_never_grant_owner_moderation(
+async def test_admin_comments_stay_read_only_with_membership_and_legacy_comment_ownership(
     db_session,
 ):
+    from app.models.classroom_posts import ClassroomComment
     from app.schemas.classroom_posts import CommentCreate, CommentUpdate
 
     teacher, student, _, room_id = await fixture(db_session)
@@ -259,22 +260,45 @@ async def test_admin_comments_require_active_membership_and_never_grant_owner_mo
         lambda: service(db_session, admin).create_comment(
             room_id, published.id, CommentCreate(body="Unenrolled admin")
         ),
-        "ACTIVE_MEMBERSHIP_REQUIRED",
+        "CLASSROOM_OBSERVER_READ_ONLY",
     )
     async with db_session.begin():
         db_session.add(ClassroomMembership(classroom_id=room_id, user_id=admin.id))
-    own = await service(db_session, admin).create_comment(
-        room_id, published.id, CommentCreate(body="Enrolled admin")
-    )
-    assert (
-        await service(db_session, admin).update_comment(
-            room_id, own.id, CommentUpdate(body="Edited own comment")
+        own = ClassroomComment(
+            post_id=published.id, author_id=admin.id, body="Legacy administrator comment"
         )
-    ).body == "Edited own comment"
+        db_session.add(own)
+        await db_session.flush()
+        own_id = own.id
+    assert {
+        comment.id
+        for comment in (await service(db_session, admin).comments(room_id, published.id)).items
+    } == {student_comment.id, own_id}
+    await assert_error(
+        lambda: service(db_session, admin).create_comment(
+            room_id, published.id, CommentCreate(body="Enrolled admin")
+        ),
+        "CLASSROOM_OBSERVER_READ_ONLY",
+    )
+    await assert_error(
+        lambda: service(db_session, admin).update_comment(
+            room_id, own_id, CommentUpdate(body="Edited own comment")
+        ),
+        "CLASSROOM_OBSERVER_READ_ONLY",
+    )
+    await assert_error(
+        lambda: service(db_session, admin).delete_comment(room_id, own_id),
+        "CLASSROOM_OBSERVER_READ_ONLY",
+    )
     await assert_error(
         lambda: service(db_session, admin).delete_comment(room_id, student_comment.id),
-        "COMMENT_OWNERSHIP_REQUIRED",
+        "CLASSROOM_OBSERVER_READ_ONLY",
     )
+    comments = (await service(db_session, admin).comments(room_id, published.id)).items
+    assert {comment.id: comment.body for comment in comments} == {
+        student_comment.id: "Student question",
+        own_id: "Legacy administrator comment",
+    }
 
 
 @pytest.mark.asyncio
@@ -287,7 +311,9 @@ async def test_owner_only_post_mutations_admin_oversight_and_room_isolation(db_s
     for actor in (student, admin):
         await assert_error(
             lambda actor=actor: service(db_session, actor).publish(room_id, draft.id),
-            "CLASSROOM_OWNERSHIP_REQUIRED",
+            "CLASSROOM_OBSERVER_READ_ONLY"
+            if actor.role == UserRole.ADMIN
+            else "CLASSROOM_OWNERSHIP_REQUIRED",
         )
     await assert_error(
         lambda: service(db_session, another_teacher).publish(room_id, draft.id),

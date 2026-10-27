@@ -123,7 +123,7 @@ async def test_student_visibility_requires_published_resource_and_containing_sec
         snapshot = await client.get(f"{base}/classwork")
         assert snapshot.status_code == 200 and len(snapshot.json()["resources"]) == 6
         denied = await client.post(f"{base}/sections", json={"title": "Admin authored"})
-        assert denied.status_code == 403 and denied.json()["code"] == "CLASSROOM_OWNERSHIP_REQUIRED"
+        assert denied.status_code == 403 and denied.json()["code"] == "CLASSROOM_OBSERVER_READ_ONLY"
     async with api_client(db_session, course["outsider"]) as client:
         assert (await client.get(f"{base}/classwork")).status_code == 404
     async with api_client(db_session, course["student"]) as client:

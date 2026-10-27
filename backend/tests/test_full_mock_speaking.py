@@ -357,19 +357,23 @@ async def test_personal_full_mock_delete_queues_only_owned_raw_and_derived_media
 
 
 @pytest.mark.parametrize("status", [SessionStatus.COMPLETED, SessionStatus.IN_PROGRESS])
-async def test_assignment_full_mock_delete_retains_history_and_media(db_session, status):
+async def test_student_assignment_full_mock_delete_retains_history_and_media(
+    db_session, test_user, status
+):
     from app.models import Classroom, ClassroomAssignment
     from app.models.speaking import SpeakingAudioChunk, SpeakingMediaCleanup
+    from tests.teacher_helpers import make_user
 
-    sid, aid, version_id, keys = await session_with_media(db_session)
+    teacher = await make_user(db_session, "TEACHER")
+    sid, aid, version_id, keys = await session_with_media(db_session, owner_id=test_user.id)
     async with db_session.begin():
-        classroom = Classroom(teacher_id=db_session.info["current_user_id"], name="Fictional class")
+        classroom = Classroom(teacher_id=teacher.id, name="Fictional class")
         db_session.add(classroom)
         await db_session.flush()
         assignment = ClassroomAssignment(
             classroom_id=classroom.id,
             test_version_id=version_id,
-            created_by_user_id=db_session.info["current_user_id"],
+            created_by_user_id=teacher.id,
         )
         db_session.add(assignment)
         await db_session.flush()
@@ -378,7 +382,7 @@ async def test_assignment_full_mock_delete_retains_history_and_media(db_session,
         row.classroom_assignment_id = assignment.id
         row.status = status
     with pytest.raises(AppError) as caught:
-        await SessionService(db_session).delete(sid)
+        await SessionService(db_session, test_user.id).delete(sid)
     assert caught.value.code == "ASSIGNMENT_HISTORY_RETAINED"
     async with db_session.begin():
         assert await db_session.get(SessionRecord, sid) is not None
