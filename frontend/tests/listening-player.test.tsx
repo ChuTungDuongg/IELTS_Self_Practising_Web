@@ -1,6 +1,5 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { LocaleControls, renderWithLocale } from "./locale-test-utils";
-import { LocaleProvider } from "@/lib/i18n/locale-provider";
+import { renderWithLocale } from "./locale-test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ListeningAudioPlayer } from "@/features/listening/audio-player";
 import { listeningQuestionTypeOptions, questionRegistry } from "@/features/questions/registry";
@@ -190,16 +189,21 @@ describe("Listening audio and templates", () => {
     audio.currentTime = 42; fireEvent.timeUpdate(audio);
     fireEvent.change(screen.getByLabelText("Playback speed"), { target: { value: "1.5" } });
     fireEvent.change(screen.getByLabelText("Volume"), { target: { value: "0.35" } }); fireEvent.click(screen.getByRole("button", { name: "Mute" }));
+    fireEvent.play(audio);
     const calls = [audio.play, audio.pause, audio.load].map((method) => vi.mocked(method).mock.calls.length);
     fireEvent.click(screen.getByRole("button", { name: "Switch to Vietnamese" }));
+    expect(view.container.querySelector("audio")).toBe(audio);
     expect(screen.getByRole("button", { name: "Tua lùi 5 giây" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Tua tới 5 giây" })).toBeInTheDocument();
     expect(screen.getByText("Tốc độ:")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Bỏ qua giới thiệu/i })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Switch to English" }));
-    view.rerender(<LocaleProvider><ListeningAudioPlayer src="/part-1.mp3" layout="inline" /><LocaleControls /></LocaleProvider>);
+    // RTL retains renderWithLocale's wrapper during rerender. Adding a provider
+    // here would change the tree's shape and deliberately remount the player.
+    view.rerender(<ListeningAudioPlayer src="/part-1.mp3" layout="inline" appearance="practice" />);
     expect(view.container.querySelector("audio")).toBe(audio); expect(view.container.querySelector(".listening-player")).toBe(player);
     expect([audio.currentTime, audio.playbackRate, audio.volume, audio.muted]).toEqual([42, 1.5, 0.35, true]);
+    expect(screen.getByRole("button", { name: "Pause audio" })).toBeInTheDocument();
     expect([audio.play, audio.pause, audio.load].map((method) => vi.mocked(method).mock.calls.length)).toEqual(calls);
     expect(screen.getByRole("button", { name: "Seek backward 10 seconds" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Seek backward 10 seconds" })).toHaveTextContent("−10");
