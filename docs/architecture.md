@@ -33,9 +33,12 @@ keys before an operator-controlled cutover.
 
 The P3 gates are verified offline with boto3 Stubber, fake S3 clients and isolated
 PostgreSQL. Live cloud/staging validation, Modal durability and deployment remain
-separate operations. The existing local-only backup/restore CLI refuses cloud
-mode before database or filesystem changes. P5 must provide a consistent database
-backup plus a referenced object inventory, copies, checksums and verified restore.
+separate operations. Legacy local backup/restore remains compatible and refuses
+cloud mode. Its explicit `--portable` workflow produces v2 database/object
+backups, verifies checksums and recovers into an isolated destination. Operator
+tools require a maintenance window; they never switch providers or delete sources.
+See [storage architecture](storage-architecture.md), [migration](storage-migration.md)
+and [backup/recovery](storage-backup-restore.md).
 See [storage configuration and progress](storage-portability-work-in-progress.md).
 
 ## Frontend styling
@@ -78,8 +81,9 @@ with a short timeout. Offline tests validate configuration; images, live TLS,
 cloud IAM/networking and durability still require staging validation.
 
 See [Modal deployment](modal-web.md), [four profiles and EC2/Docker](aws-deployment.md)
-and [storage progress](storage-portability-work-in-progress.md). P5 remains
-responsible for migration inventories, verified copies and cloud backup/restore.
+and [storage progress](storage-portability-work-in-progress.md). P5 operator tools
+provide migration inventories, verified copies and isolated cloud backup/restore;
+production cutover and disaster-recovery drills remain separate live operations.
 
 ## Deliberate limits
 

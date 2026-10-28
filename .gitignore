@@ -4,6 +4,7 @@
 __pycache__/
 .pytest_cache/
 backend/.test-tmp/
+/.test-tmp/
 .ruff_cache/
 .mypy_cache/
 backups/

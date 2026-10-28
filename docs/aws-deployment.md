@@ -121,7 +121,7 @@ through `BANDPILOT_BACKEND_ENV`; restore the application-role file for Web.
 The tools profile never starts automatically and Web never invokes Alembic.
 No reset/restore is performed by startup. Keep the previous image and a tested
 rollback plan; an old image is safe only with a compatible schema. Cloud database
-restore and asset rollback need P5 procedures, never an automatic downgrade.
+restore and asset rollback follow [P5 recovery](storage-backup-restore.md), never an automatic downgrade.
 
 `/api/v1/health` remains liveness; `/api/v1/ready` does a bounded read-only database
 probe and returns a generic 503 on failure. Compose gates frontend/proxy startup
@@ -135,7 +135,11 @@ uploads, playback seeking and AI transports in a real staging environment.
 
 Images and Nginx have only static configuration checks here; no Docker build or
 live TLS, AWS IAM/RDS, R2, Modal durability or cloud networking test was performed.
-P5 must finish reference inventories, copy/resume/checksum tooling, write-freeze
-consistency, cloud backup/restore and rollback drills. The local backup CLI refuses
-cloud mode to prevent a misleading database-only backup. Keep production cutover
-separate from configuration readiness.
+P5 supplies [inventory/copy/resume/reconciliation](storage-migration.md) and
+[portable backup/isolated restore](storage-backup-restore.md). Run these from a
+secured operator environment with backend dependencies and matching PostgreSQL
+client tools; the minimal Web image does not install pg_dump/pg_restore. Supply
+independent SOURCE_/DESTINATION_ settings and role/token access, not frontend
+credentials. Legacy backup still refuses cloud mode; use the explicit portable
+workflow. Rehearse write-freeze consistency, independent backup retrieval and
+rollback in staging. Keep real cutover separate from offline implementation.

@@ -1,8 +1,73 @@
-# Storage portability: work in progress
+# Storage portability: offline implementation complete
 
 Local asset storage remains the default. S3 and R2 can be selected after the P3
 offline gates described below. No live cloud deployment, bucket access or real
 asset migration was performed. Changing the backend never moves existing files.
+
+## P5 COMPLETE — Migration and recovery verified offline
+
+Starting commit: `eeecfc6e39d604de2db234653be5c54da3c19623` (P4).
+Prior gates: P2 `71272ea721a9324446c48e0d31d98ae571d71afa`,
+P3 `a7ec5d0cf3f7a9599a40e9427ae793201e3be752`. The existing untracked
+inventory/copy prototype was extended, not replaced by a second storage engine.
+
+Migration supports Local/S3/R2 in both directions, including S3↔R2 and controlled
+Local relocation. Independent explicit configuration, environment labels,
+canonical namespace identities, overlap refusal, target confirmation and a
+maintenance-window acknowledgement guard writes. Dry-run is default. Copy uses
+bounded streams and 1–8 workers, checks source metadata and destination size/SHA-256,
+never overwrites conflicts, and resumes by re-verifying existing bytes. Atomic
+private JSON checkpoints are evidence, not a reason to skip verification.
+
+The inventory covers all six persistent reference sources and all historical
+versions/takes; cleanup-outbox keys remain separate diagnostics. Reconciliation
+detects invalid/missing/corrupt objects, compares prior digests when supplied,
+and optionally performs bounded paginated orphan listing without deletion.
+Temporary FFmpeg/ZIP files, model caches and database directories are excluded
+from ordinary asset copying. Remaining direct local access is limited to local
+adapter/listing/output safety, legacy local backup, temporary staging and
+deployment PostgreSQL/Volume responsibilities; no domain storage regression was found.
+
+Portable `--portable` backup writes a versioned v2 bundle containing a real
+custom PostgreSQL dump, referenced object bytes and a verified SHA-256/size/MIME
+manifest. Inventory and pg_dump share an exported read-only database snapshot;
+all independent writers must still be stopped because PostgreSQL and object
+storage do not share a transaction. Failure leaves an explicitly incomplete
+private bundle. Old local v1 backup/restore compatibility is retained.
+
+Recovery defaults to verification/preflight. Object restoration is non-destructive,
+conflicts block writes and matching objects support resumption. Database recovery
+is a separate explicit command into an empty, inactive, distinct recovery database,
+with reviewed target/database IDs and a pinned manifest hash. No --clean or reset
+is used. Actual restored references and destination bytes must reconcile before
+application recovery reports complete. Archive validation is streaming, rejects
+unsafe members and bounds PAX/GNU metadata as well as ordinary object reads.
+
+Final focused verification: **75 P5/legacy-backup tests**, including two real
+PostgreSQL snapshot/dump/restore cases on a disposable tmpfs-backed PostgreSQL 17
+container; **31 selected storage/domain regressions**; and **4 Classroom/cloning
+integration regressions** passed. Total: **110 passed, zero failed, zero skipped**.
+Two existing dependency deprecation warnings occurred in protected-media tests.
+Scoped Ruff, offline lockfile, Compose config validation and diff checks passed.
+Only the dedicated loopback test service was migrated/restored; no ordinary
+development or production database was changed. The disposable service was removed
+after verification. No cloud service was contacted, deployed or provisioned.
+
+Runbooks: [architecture](storage-architecture.md), [migration and cutover](storage-migration.md),
+[backup/restore](storage-backup-restore.md), [Modal](modal-web.md),
+[AWS](aws-deployment.md). P4 topology, Secrets and replica defaults are unchanged.
+Operator environments need compatible PostgreSQL client tools; the minimal AWS
+Web image does not include them. Modal demo backup must preserve its one-owner
+database guard, writer freeze and Volume durability limitations. Reports/manifests
+contain no credentials; backups themselves contain private academic data and
+must be secured and copied independently.
+
+All implementation gates are offline. Real IAM/R2/TLS/Modal behavior, throughput,
+durability, independent backup retrieval, disaster recovery and production cutover
+remain separate staging/operator responsibilities. Maintenance flags attest to a
+real operator-enforced freeze; they are not a distributed lock. Configuration-only
+rollback after new writes is unsafe without reconciliation of the matching database
+and newly referenced objects. No real asset migration or production restore occurred.
 
 ## P3 COMPLETE — Configurable Local/S3/R2 verified offline
 
@@ -48,9 +113,9 @@ than buffering whole recordings. No ACLs, KMS or ETag-as-checksum assumptions ar
 required. SDK optional checksum headers are restricted to required operations
 for S3 compatibility. ZIP continues to verify application-level SHA-256.
 
-The existing backup and restore CLIs support Local only. With cloud selected they
+At the P3 gate, the legacy backup and restore CLIs supported Local only. With cloud selected they
 fail before any database dump, restore or file replacement. Do not work around
-this by pretending the active backend is local. P5 needs a maintenance-window
+this by pretending the active backend is local. P5 now supplies a maintenance-window
 PostgreSQL backup plus a referenced-object inventory, copied bytes, SHA-256 and
 size checks, missing-object detection, provider-aware restore and rollback.
 
@@ -162,7 +227,7 @@ media and AI transports are retained. No real deployment, database migration,
 asset move or cloud call was performed. Builds and live TLS/cloud networking
 remain unverified. P5 migration/inventory and backup/restore work stays separate.
 
-## Inventory and copy prototype
+## Earlier inventory/copy prototype (superseded by P5)
 
 An uncommitted `scripts/migrate_asset_storage.py` prototype inventories references in `assets`,
 `test_covers`, `classroom_resources`, `speaking_audio_chunks`,

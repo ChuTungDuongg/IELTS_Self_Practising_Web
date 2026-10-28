@@ -1,5 +1,17 @@
 # Run BandPilot on Modal
 
+P5 adds [portable migration](storage-migration.md) and
+[database/object backup and isolated recovery](storage-backup-restore.md).
+The installed backend supports `python -m app.storage.recovery_cli backup|restore`
+with the documented arguments. Run from an operator-controlled maintenance
+environment, with all Web/background writers drained, the correct database and
+explicit SOURCE_/DESTINATION_ settings. Demo operations must retain the existing
+single-owner database guard and access committed bytes on the same asset Volume;
+do not start a second embedded PostgreSQL process. A database-only snapshot is
+not a complete application backup. Store verified bundles independently and
+commit any Volume output explicitly at the operational boundary. No automatic
+backup endpoint, deployment, data transfer or change of replica count is introduced.
+
 After the one-time setup below, from the repository root:
 
 ```powershell

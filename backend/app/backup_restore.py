@@ -7,6 +7,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tarfile
 import tempfile
 from dataclasses import dataclass
@@ -65,7 +66,8 @@ def load_configuration() -> tuple[str, Path]:
             raise BackupError(
                 "This backup/restore CLI supports STORAGE_BACKEND=local only. "
                 "Cloud assets require a verified PostgreSQL plus object-inventory backup "
-                "and provider-aware restore (P5); no backup or restore was started."
+                "and provider-aware restore; use --portable for the P5 workflow. "
+                "No backup or restore was started."
             )
         configured_storage = settings.storage_root
         if not configured_storage.is_absolute():
@@ -513,6 +515,10 @@ def restore_backup(backup_dir: Path, database_url: str, storage_root: Path, conf
 
 
 def backup_main() -> int:
+    if "--portable" in sys.argv[1:]:
+        from app.storage.recovery_cli import backup_main as portable_backup
+
+        return portable_backup([arg for arg in sys.argv[1:] if arg != "--portable"])
     parser = argparse.ArgumentParser(description="Back up PostgreSQL and local binary storage.")
     parser.add_argument("--backup-root", type=Path, default=REPO_ROOT / "backups")
     args = parser.parse_args()
@@ -532,6 +538,10 @@ def backup_main() -> int:
 
 
 def restore_main() -> int:
+    if "--portable" in sys.argv[1:]:
+        from app.storage.recovery_cli import restore_main as portable_restore
+
+        return portable_restore([arg for arg in sys.argv[1:] if arg != "--portable"])
     parser = argparse.ArgumentParser(description="Restore PostgreSQL and local binary storage.")
     parser.add_argument("backup_dir", type=Path)
     parser.add_argument("--confirm-destructive", action="store_true")

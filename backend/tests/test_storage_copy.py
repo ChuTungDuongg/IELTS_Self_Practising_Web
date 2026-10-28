@@ -14,10 +14,10 @@ def test_copy_dry_run_resume_and_conflict_without_deleting_source(tmp_path):
         "images/missing.png": "missing_source",
     }
     assert not dest.exists("images/a.png")
-    assert copy_keys(source, dest, ["images/a.png"])[0].status == "copied"
-    assert copy_keys(source, dest, ["images/a.png"])[0].status == "identical"
+    assert copy_keys(source, dest, ["images/a.png"], dry_run=False)[0].status == "copied"
+    assert copy_keys(source, dest, ["images/a.png"], dry_run=False)[0].status == "identical"
     (tmp_path / "dest" / "images" / "a.png").write_bytes(b"different")
-    assert copy_keys(source, dest, ["images/a.png"])[0].status == "conflict"
+    assert copy_keys(source, dest, ["images/a.png"], dry_run=False)[0].status == "conflict"
     assert (tmp_path / "source" / "images" / "a.png").read_bytes() == b"abc"
     assert (tmp_path / "dest" / "images" / "a.png").read_bytes() == b"different"
 
@@ -31,7 +31,9 @@ def test_copy_detects_corrupt_destination(tmp_path):
             super().put_stream(key, BytesIO(b"bad"), content_type=content_type, max_bytes=max_bytes)
 
     dest = CorruptStorage(tmp_path / "dest")
-    assert copy_keys(source, dest, ["images/a.png"])[0].status == "verification_failed"
+    assert (
+        copy_keys(source, dest, ["images/a.png"], dry_run=False)[0].status == "verification_failed"
+    )
     assert source.exists("images/a.png")
 
 
