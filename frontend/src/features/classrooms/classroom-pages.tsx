@@ -3,13 +3,14 @@ import { redirect } from "next/navigation";
 import { PageHeading } from "@/components/ui/page-heading";
 import { listClassrooms, listMyInvitations, getClassroom, listAssignments, listMembers, listInvitations } from "@/lib/api/classrooms";
 import { assignableTests } from "@/lib/api/classroom-lms";
-import { StaffManagement, StaffInvitationInbox } from "./lms/staff-management";
+import { StaffInvitationInbox } from "./lms/staff-management";
+import { MembersDashboard } from "./lms/members-dashboard";
 import { userSchema } from "@/lib/api/auth";
 import { serverApiRequest } from "@/lib/api/server-client";
 import { UiText } from "@/lib/i18n/locale-provider";
 import { InvitationInbox } from "./invitation-inbox";
 import { ClassroomForm } from "./classroom-form";
-import { ClassroomManagement, ClassroomMembershipActions } from "./classroom-management";
+import { ClassroomMembershipActions } from "./classroom-management";
 import { AssignmentForm } from "./assignment-form";
 import { ClassroomWorkspace } from "./content/classroom-workspace";
 import { classroomPermissions } from "./classroom-permissions";
@@ -53,7 +54,7 @@ export async function ClassroomDetailPage({ params, searchParams }: {
   return <>
     <ClassroomWorkspace key={`${classroomId}-${user.id}-${user.role}-${selectedPostId ?? "feed"}-${selectedAssignmentId ?? ""}`} classroom={classroom} user={{ id: user.id, role: user.role, display_name: user.display_name }} membersPreview={permissions.canViewRoster ? members.filter(member => !member.left_at).slice(0, 3).map(member => ({ user_id: member.user_id, display_name: member.display_name })) : undefined} assignments={assignments} selectedPostId={selectedPostId} selectedAssignmentId={selectedAssignmentId} initialTab={query?.tab === "people" && permissions.canViewRoster ? "people" : undefined}
       management={hasManagement ? <ClassroomMembershipActions key="membership-actions" classroom={classroom} canManage={permissions.canManageClassroom} isStaff={permissions.isStaff} isAdmin={permissions.isObserver} /> : undefined}
-      people={permissions.canViewRoster ? <div key="classroom-people"><ClassroomManagement classroom={classroom} members={members} invitations={invitations} canEditClassroom={permissions.canManageClassroom} canManageMembers={permissions.canManageMembers} canViewInvitations={permissions.canViewInvitations} observer={permissions.isObserver} /><StaffManagement classroomId={classroomId} canManage={permissions.canManageStaff} archived={classroom.status === "ARCHIVED"} /></div> : undefined}
+      people={permissions.canViewRoster ? <MembersDashboard key="classroom-people" classroom={classroom} members={members} invitations={invitations} assignmentCount={assignments.filter(item => item.status === "ACTIVE").length} canEditClassroom={permissions.canManageClassroom} canManageMembers={permissions.canManageMembers} canManageStaff={permissions.canManageStaff} canViewInvitations={permissions.canViewInvitations} observer={permissions.isObserver} /> : undefined}
       assignmentForm={permissions.canManageAssignments ? <AssignmentForm key="assignment-form" classroomId={classroomId} tests={tests} /> : undefined} />
   </>;
 }

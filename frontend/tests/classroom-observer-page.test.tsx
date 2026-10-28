@@ -24,7 +24,7 @@ it("fetches only roster reads for Admin and preserves roster and assignment deep
   expect(api.listMembers).toHaveBeenCalledWith(room.id, api.user);
   expect(api.listInvitations).not.toHaveBeenCalled(); expect(api.assignableTests).not.toHaveBeenCalled();
   expect(api.workspace).toHaveBeenCalledWith(expect.objectContaining({ initialTab: "people", selectedAssignmentId: "homework", management: undefined, assignmentForm: undefined }));
-  expect(screen.getByRole("heading", { name: "Members" })).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "Class members" })).toBeInTheDocument();
   expect(screen.queryByText("Invite student")).not.toBeInTheDocument();
 });
 

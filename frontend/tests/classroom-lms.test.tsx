@@ -85,8 +85,9 @@ it("uses a real assignment title and grouped localized deadlines in assignment f
 it("renders pending human grades without inventing a zero and submits Gradebook filters", async () => {
   renderWithLocale(<GradebookPanel classroomId="room" assignments={[assignment]} canEdit />);
   expect(await screen.findByRole("button", { name: "Mina" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Matrix" }));
   expect(screen.getByText("Awaiting human grading")).toBeInTheDocument();
-  expect(screen.getByText("—")).toBeInTheDocument();
+  expect(within(screen.getByRole("table", { name: "Gradebook" })).getByText("—")).toBeInTheDocument();
   fireEvent.change(screen.getByLabelText("Search students"), { target: { value: "Mina" } });
   fireEvent.click(screen.getByRole("button", { name: "Show" }));
   await waitFor(() => expect(api.getGradebook).toHaveBeenLastCalledWith("room", expect.objectContaining({ search: "Mina", offset: 0 }), expect.any(AbortSignal)));

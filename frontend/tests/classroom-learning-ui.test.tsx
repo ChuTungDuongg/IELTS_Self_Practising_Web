@@ -51,6 +51,17 @@ it("shows insufficient data without a fabricated chart and persists personal tar
   expect(goalsSchema.parse(goals).overall).toBe(7);
 });
 
+it("keeps a class chart empty and rejects an invalid assessment range", async () => {
+  renderWithLocale(<LearningAnalyticsPanel classroomId="room" onOpenAssignment={vi.fn()} />);
+  expect(await screen.findByRole("img", { name: /No valid band data/ })).toBeInTheDocument();
+  expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText("From"), { target: { value: "2026-10-28" } });
+  fireEvent.change(screen.getByLabelText("To"), { target: { value: "2026-10-01" } });
+  fireEvent.click(screen.getByRole("button", { name: "Show" }));
+  expect(screen.getByRole("alert")).toHaveTextContent("valid date range");
+  expect(api.getLearningDashboard).toHaveBeenCalledTimes(1);
+});
+
 it("shows errors and supports retrying analytics without displaying stale results", async () => {
   api.getLearningDashboard.mockRejectedValueOnce(new Error("offline")); renderWithLocale(<LearningAnalyticsPanel classroomId="room" own onOpenAssignment={vi.fn()} />);
   expect(await screen.findByRole("alert")).toBeInTheDocument(); fireEvent.click(screen.getByRole("button", { name: "Retry" })); expect(await screen.findByText("Target bands · 7.0")).toBeInTheDocument();
@@ -69,7 +80,7 @@ it("allows only resource markers and keeps exam completion tied to accepted subm
 
 it("offers an accessible student-list alternative to the gradebook matrix", async () => {
   api.getGradebook.mockResolvedValue({ assignments: [], students: [{ student_id: "s", display_name: "Mina", active_member: true, cells: [] }], total_students: 1, total_assignments: 0 });
-  renderWithLocale(<GradebookPanel classroomId="room" assignments={[]} canEdit={false} />); fireEvent.click(await screen.findByRole("button", { name: "Student list" })); expect(screen.queryByRole("table")).not.toBeInTheDocument(); expect(screen.getByRole("button", { name: "Mina" })).toBeInTheDocument();
+  renderWithLocale(<GradebookPanel classroomId="room" assignments={[]} canEdit={false} />); fireEvent.click(await screen.findByRole("button", { name: "Matrix" })); fireEvent.click(screen.getAllByRole("button", { name: "Student list" }).at(-1)!); expect(screen.queryByRole("table")).not.toBeInTheDocument(); expect(screen.getByRole("button", { name: "Mina" })).toBeInTheDocument();
 });
 
 it("keeps destructive confirmation visible inside an action menu and restores keyboard focus", () => {
