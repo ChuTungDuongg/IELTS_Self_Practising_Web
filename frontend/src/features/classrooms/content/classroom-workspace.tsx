@@ -26,11 +26,12 @@ const LearningAnalyticsPanel = dynamic(() => import("../lms/learning-analytics")
 const LearningPlansPanel = dynamic(() => import("../lms/learning-plans").then(module => module.LearningPlansPanel), { loading: PanelLoading });
 const AcademicProfilePanel = dynamic(() => import("../lms/student-profile").then(module => module.AcademicProfilePanel), { loading: PanelLoading });
 
-type Tab = "stream" | "classwork" | "assignments" | "calendar" | "people" | "gradebook" | "analytics" | "myProgress";
+export type ClassroomWorkspaceTab = "stream" | "classwork" | "assignments" | "calendar" | "people" | "gradebook" | "analytics" | "myProgress";
+type Tab = ClassroomWorkspaceTab;
 type WorkspaceProps = {
   classroom: Classroom; user: { id: string; role: string; display_name?: string }; assignments: ClassroomAssignment[]; membersPreview?: StreamRosterMember[];
   people?: ReactNode; assignmentForm?: ReactNode; management?: ReactNode;
-  initialTab?: "people";
+  initialTab?: ClassroomWorkspaceTab;
   selectedPostId?: string | null; selectedAssignmentId?: string | null;
   onReloadAssignments?: () => Promise<unknown>;
 };
@@ -49,9 +50,10 @@ export function ClassroomWorkspace(props: WorkspaceProps) {
 function ClassroomWorkspaceContent({ classroom, user, assignments, people, membersPreview, assignmentForm: suppliedAssignmentForm, management: suppliedManagement, initialTab, selectedPostId = null, selectedAssignmentId = null, onReloadAssignments }: WorkspaceProps) {
   const { ct } = useContentTranslation(), { st } = useScheduleText(), { lt } = useLmsText();
   const permissions = classroomPermissions(classroom, user);
-  const [tab, setTab] = useState<Tab>(selectedAssignmentId ? "assignments" : initialTab === "people" && permissions.canViewRoster ? "people" : "stream");
-  const [calendarVisited, setCalendarVisited] = useState(false);
-  const [assignmentsVisited, setAssignmentsVisited] = useState(!!selectedAssignmentId);
+  const allowedInitialTabs: Tab[] = ["stream", "classwork", "assignments", "calendar", ...(permissions.canViewRoster ? ["people" as const] : []), ...(permissions.canViewGrades ? ["gradebook" as const] : []), ...(permissions.canViewAnalytics ? ["analytics" as const] : []), ...(!permissions.isObserver ? ["myProgress" as const] : [])];
+  const [tab, setTab] = useState<Tab>(selectedAssignmentId ? "assignments" : selectedPostId ? "stream" : initialTab && allowedInitialTabs.includes(initialTab) ? initialTab : "stream");
+  const [calendarVisited, setCalendarVisited] = useState(tab === "calendar");
+  const [assignmentsVisited, setAssignmentsVisited] = useState(tab === "assignments");
   const [streamVisited, setStreamVisited] = useState(tab === "stream");
   const progress = useAssignmentProgress();
   function changeTab(next: Tab) { setTab(next); if (next === "calendar") setCalendarVisited(true); if (next === "assignments") setAssignmentsVisited(true); if (next === "stream") setStreamVisited(true); }

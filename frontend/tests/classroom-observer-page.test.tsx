@@ -34,3 +34,8 @@ it("routes Admin classroom browsing to the paginated directory before listing ev
   expect(api.redirect).toHaveBeenCalledWith("/admin/classrooms");
   expect(api.listClassrooms).not.toHaveBeenCalled(); expect(api.listMyInvitations).not.toHaveBeenCalled();
 });
+
+it("forwards a supported overview tab deep link to the workspace", async () => {
+  renderWithLocale(await ClassroomDetailPage({ params: Promise.resolve({ classroomId: room.id }), searchParams: Promise.resolve({ tab: "calendar" }) }));
+  expect(api.workspace).toHaveBeenCalledWith(expect.objectContaining({ initialTab: "calendar" }));
+});

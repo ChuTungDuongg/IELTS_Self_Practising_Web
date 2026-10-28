@@ -50,6 +50,12 @@ it("hides staff navigation and creation controls from students and explains empt
   expect(screen.queryByRole("button", { name: "Create first topic" })).not.toBeInTheDocument();
 });
 
+it("does not open an unauthorized workspace tab from a deep link", () => {
+  renderWithLocale(<ClassroomWorkspace classroom={room} user={{ id: "learner", role: "USER" }} assignments={[]} initialTab="analytics" />);
+  expect(screen.queryByRole("tab", { name: "Analytics" })).not.toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: "Stream" })).toHaveAttribute("aria-selected", "true");
+});
+
 it("keeps Admin in the shared observer workspace without teacher or student actions", async () => {
   renderWithLocale(<ClassroomWorkspace classroom={{ ...room, capabilities: ["roster.view", "grades.view", "analytics.view", "content.manage", "assignments.manage", "grades.edit"] }} user={{ id: "admin", role: "ADMIN" }} assignments={[assignment]} management={<button>Forbidden management</button>} assignmentForm={<p>Forbidden assignment fields</p>} people={<p>Read-only roster</p>} />);
   expect(screen.getByText("Observer mode · Read only")).toBeInTheDocument();

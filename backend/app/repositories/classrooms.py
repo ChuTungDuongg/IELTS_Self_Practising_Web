@@ -49,15 +49,18 @@ class ClassroomRepository:
             query.order_by(ClassroomMembership.joined_at.desc()).limit(1)
         )
 
-    async def members(self, classroom_id: UUID):
-        return (
-            await self.session.execute(
-                select(ClassroomMembership, User)
-                .join(User, User.id == ClassroomMembership.user_id)
-                .where(ClassroomMembership.classroom_id == classroom_id)
-                .order_by(ClassroomMembership.joined_at, ClassroomMembership.id)
-            )
-        ).all()
+    async def members(self, classroom_id: UUID, *, limit: int | None = None, active_only=False):
+        query = (
+            select(ClassroomMembership, User)
+            .join(User, User.id == ClassroomMembership.user_id)
+            .where(ClassroomMembership.classroom_id == classroom_id)
+            .order_by(ClassroomMembership.joined_at, ClassroomMembership.id)
+        )
+        if active_only:
+            query = query.where(ClassroomMembership.left_at.is_(None), User.role != UserRole.ADMIN)
+        if limit is not None:
+            query = query.limit(limit)
+        return (await self.session.execute(query)).all()
 
     async def invitation(self, invitation_id: UUID, *, lock: bool = False):
         query = select(ClassroomInvitation).where(ClassroomInvitation.id == invitation_id)

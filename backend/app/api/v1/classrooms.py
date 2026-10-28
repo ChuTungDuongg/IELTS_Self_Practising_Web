@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import CurrentUser
@@ -66,9 +66,15 @@ async def restore_classroom(
 
 @router.get("/classrooms/{classroom_id}/members", response_model=MembershipList)
 async def members(
-    classroom_id: UUID, actor: CurrentUser, session: AsyncSession = Depends(get_session)
+    classroom_id: UUID,
+    actor: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+    limit: int | None = Query(default=None, ge=1, le=10),
+    active_only: bool = False,
 ):
-    return await ClassroomService(session, actor).members(classroom_id)
+    return await ClassroomService(session, actor).members(
+        classroom_id, limit=limit, active_only=active_only
+    )
 
 
 @router.post(

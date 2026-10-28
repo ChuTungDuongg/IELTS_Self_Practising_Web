@@ -13,6 +13,7 @@ const classroomSchema = z.object({
   active_member_count: z.number().int().nonnegative().nullable().optional(),
   classroom_role: z.enum(["OWNER", "CO_TEACHER", "TEACHING_ASSISTANT", "STUDENT", "ADMIN"]).optional(),
   capabilities: z.array(z.string()).optional(),
+  membership_active: z.boolean().nullable().optional(),
   status: z.enum(["ACTIVE", "ARCHIVED"]),
   archived_at: z.string().nullable(),
   created_at: z.string(),
@@ -89,6 +90,9 @@ export async function restoreClassroom(id: string) {
 }
 export async function listMembers(id: string, request: ApiRequester = apiRequest) {
   return z.object({ items: z.array(memberSchema) }).parse(await request<unknown>(`${resource(id)}/members`)).items;
+}
+export async function listMemberPreview(id: string, request: ApiRequester = apiRequest) {
+  return z.object({ items: z.array(memberSchema) }).parse(await request<unknown>(`${resource(id)}/members?limit=3&active_only=true`)).items;
 }
 export async function removeMember(classroomId: string, userId: string) {
   await post(`${resource(classroomId)}/members/${encodeURIComponent(userId)}/remove`);

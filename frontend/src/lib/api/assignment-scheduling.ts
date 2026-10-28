@@ -32,8 +32,8 @@ export async function saveExtension(room: string, id: string, student: string, i
 export async function revokeExtension(room: string, id: string, student: string) {
   return extensionSchema.parse(await apiRequest(`${path(room, id)}/extensions/${encodeURIComponent(student)}`, { method: "DELETE" }));
 }
-export async function getAssignmentCalendar(room: string, start: string, end: string, offset = 0, signal?: AbortSignal) {
-  return calendarSchema.parse(await apiRequest(`${base(room)}/assignment-calendar?${new URLSearchParams({ start, end, limit: "50", offset: String(offset) })}`, { signal }));
+export async function getAssignmentCalendar(room: string, start: string, end: string, offset = 0, signal?: AbortSignal, request: ApiRequester = apiRequest) {
+  return calendarSchema.parse(await request(`${base(room)}/assignment-calendar?${new URLSearchParams({ start, end, limit: "50", offset: String(offset) })}`, signal ? { signal } : undefined));
 }
 
 export function serializeSchedule(form: FormData): SchedulePolicy {

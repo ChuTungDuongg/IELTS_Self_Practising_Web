@@ -5,8 +5,10 @@ import { useRouter } from "next/navigation";
 import { createClassroom, updateClassroom, type Classroom } from "@/lib/api/classrooms";
 import { ApiError } from "@/lib/api/client";
 import { useTranslation } from "@/lib/i18n/locale-provider";
-export function ClassroomForm({ classroom }: {
+export function ClassroomForm({ classroom, onCreated, returnTo }: {
   classroom?: Classroom;
+  onCreated?: (classroom: Classroom) => void;
+  returnTo?: string;
 }) {
   const { t } = useTranslation();
   const router = useRouter();
@@ -22,7 +24,8 @@ export function ClassroomForm({ classroom }: {
     setError(null);
     try {
       const saved = classroom ? await updateClassroom(classroom.id, input) : await createClassroom(input);
-      router.push(`/teacher/classrooms/${saved.id}`);
+      if (!classroom && onCreated) onCreated(saved);
+      else router.push(returnTo ?? `/teacher/classrooms/${saved.id}`);
       router.refresh();
     }
     catch (caught) {

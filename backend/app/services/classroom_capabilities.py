@@ -90,6 +90,11 @@ async def resolve_capabilities(session, actor, room):
         )
         .execution_options(populate_existing=True)
     )
+    return capabilities_for_staff(actor, staff)
+
+
+def capabilities_for_staff(actor, staff):
+    """Resolve an already-loaded accepted staff record using the same role rules."""
     if staff and staff.staff_role == "CO_TEACHER" and actor.role == "TEACHER":
         return staff.staff_role, CO_TEACHER
     if staff and staff.staff_role == "TEACHING_ASSISTANT" and actor.role in {"USER", "TEACHER"}:

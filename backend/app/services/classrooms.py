@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import AppError
 from app.models import Classroom, ClassroomInvitation, ClassroomMembership, User
+from app.models.classroom_staff import ClassroomStaff
 from app.models.enums import (
     ClassroomStatus,
     InvitationStatus,
@@ -28,7 +29,10 @@ from app.schemas.classrooms import (
 from app.services.access_policy import AccessPolicy
 from app.services.auth import normalize_email
 from app.services.classroom_capabilities import (
+    ADMIN_OBSERVER,
+    ALL,
     Capability,
+    capabilities_for_staff,
     require_capability,
     require_classroom_participant,
     resolve_capabilities,
@@ -93,12 +97,70 @@ class ClassroomService:
     async def list(self) -> ClassroomList:
         async with self.session.begin():
             await self._load_actor()
-            return ClassroomList(
-                items=[
-                    ClassroomResponse.model_validate(room)
-                    for room in await self.repository.list(self.actor)
-                ]
+            rooms = await self.repository.list(self.actor)
+            if not rooms:
+                return ClassroomList(items=[])
+            ids = [room.id for room in rooms]
+            teachers = dict(
+                (
+                    await self.session.execute(
+                        select(User.id, User.display_name).where(
+                            User.id.in_({room.teacher_id for room in rooms})
+                        )
+                    )
+                ).all()
             )
+            counts = dict(
+                (
+                    await self.session.execute(
+                        select(ClassroomMembership.classroom_id, func.count())
+                        .join(User, User.id == ClassroomMembership.user_id)
+                        .where(
+                            ClassroomMembership.classroom_id.in_(ids),
+                            ClassroomMembership.left_at.is_(None),
+                            User.role != UserRole.ADMIN,
+                        )
+                        .group_by(ClassroomMembership.classroom_id)
+                    )
+                ).all()
+            )
+            staff = {
+                row.classroom_id: row
+                for row in await self.session.scalars(
+                    select(ClassroomStaff).where(
+                        ClassroomStaff.classroom_id.in_(ids),
+                        ClassroomStaff.user_id == self.actor.id,
+                        ClassroomStaff.status == "ACCEPTED",
+                    )
+                )
+            }
+            active_memberships = set(
+                await self.session.scalars(
+                    select(ClassroomMembership.classroom_id).where(
+                        ClassroomMembership.classroom_id.in_(ids),
+                        ClassroomMembership.user_id == self.actor.id,
+                        ClassroomMembership.left_at.is_(None),
+                    )
+                )
+            )
+            items = []
+            for room in rooms:
+                response = ClassroomResponse.model_validate(room)
+                response.teacher_name = teachers.get(room.teacher_id)
+                response.active_member_count = counts.get(room.id, 0)
+                if self.actor.role == UserRole.ADMIN:
+                    role, capabilities = "ADMIN", ADMIN_OBSERVER
+                elif self.actor.role == UserRole.TEACHER and self.actor.id == room.teacher_id:
+                    role, capabilities = "OWNER", ALL
+                else:
+                    role, capabilities = capabilities_for_staff(self.actor, staff.get(room.id))
+                response.classroom_role = role
+                response.capabilities = sorted(capabilities)
+                response.membership_active = (
+                    room.id in active_memberships if role == "STUDENT" else None
+                )
+                items.append(response)
+            return ClassroomList(items=items)
 
     async def get(self, classroom_id: UUID) -> ClassroomResponse:
         async with self.session.begin():
@@ -184,7 +246,9 @@ class ClassroomService:
             await self.session.refresh(room)
             return ClassroomResponse.model_validate(room)
 
-    async def members(self, classroom_id: UUID) -> MembershipList:
+    async def members(
+        self, classroom_id: UUID, *, limit: int | None = None, active_only: bool = False
+    ) -> MembershipList:
         async with self.session.begin():
             await self._load_actor()
             room = await self._classroom(classroom_id)
@@ -192,7 +256,9 @@ class ClassroomService:
             return MembershipList(
                 items=[
                     self._membership_response(member, user)
-                    for member, user in await self.repository.members(room.id)
+                    for member, user in await self.repository.members(
+                        room.id, limit=limit, active_only=active_only
+                    )
                 ]
             )
 
