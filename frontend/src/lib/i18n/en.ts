@@ -1,4 +1,10 @@
 export const en = {
+  "catalog.quickSkills": "Filter by skill",
+  "catalog.statsHint": "Number of tests containing each skill.",
+  "catalog.statistics": "Library overview",
+  "catalog.availableTests": "Published tests",
+  "catalog.fullMockCount": "Full Mock available",
+  "catalog.partialCounts": "Counts include only successfully loaded tests.",
   "catalog.loadFailed": "The test library could not be loaded.",
   "catalog.emptyDescription": "There are no tests available for practice right now. Please check back later.",
   "catalog.title": "Test Library",

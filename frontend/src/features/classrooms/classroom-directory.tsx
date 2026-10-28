@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { PageHeading } from "@/components/ui/page-heading";
 import { ArrowIcon, LibraryIcon, PlusIcon, SearchIcon } from "@/components/ui/icons";
 import { useLocale } from "@/lib/i18n/locale-provider";
 import type { Classroom, ClassroomInvitation } from "@/lib/api/classrooms";
@@ -35,7 +36,7 @@ export function ClassroomDirectory({ items, invitations, user }: { items: Classr
   const date = new Intl.DateTimeFormat(locale, { dateStyle: "medium" });
   const workspace = (item: Classroom) => `${item.teacher_id === user.id ? "/teacher/classrooms" : "/classrooms"}/${item.id}`;
   return <div className="directory-page">
-    <header className="directory-header"><div className="directory-heading"><span className="directory-heading-icon"><LibraryIcon width={27} height={27} /></span><div><h1>{text.title}</h1><p>{text.subtitle}</p></div></div>{user.role === "TEACHER" ? <button className="btn btn-primary" onClick={() => setCreating(true)}><PlusIcon width={17} height={17} /> {text.create}</button> : null}</header>
+    <PageHeading title={text.title} description={text.subtitle} action={user.role === "TEACHER" ? <button className="btn btn-primary" onClick={() => setCreating(true)}><PlusIcon width={17} height={17} /> {text.create}</button> : null} />
     <div className="directory-invitations"><StaffInvitationInbox />{pending ? <details><summary>{text.invitations} ({pending})</summary><InvitationInbox invitations={invitations} /></details> : null}</div>
     <div className="directory-layout"><div className="directory-main">
       <section className="directory-metrics" aria-label={text.title}><div><span className="directory-metric-icon"><LibraryIcon width={21} height={21} /></span><p><strong>{items.length}</strong><small>{text.total}</small></p></div>{user.role === "TEACHER" ? <div><span className="directory-metric-icon green"><LibraryIcon width={21} height={21} /></span><p><strong>{teaching}</strong><small>{text.teaching}</small></p></div> : null}<div><span className="directory-metric-icon blue"><LibraryIcon width={21} height={21} /></span><p><strong>{attending}</strong><small>{text.attending}</small></p></div></section>

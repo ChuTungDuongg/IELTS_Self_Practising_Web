@@ -1,6 +1,12 @@
 import type { TranslationDictionary } from "./types";
 
 export const vi = {
+  "catalog.quickSkills": "Lọc nhanh theo kỹ năng",
+  "catalog.statsHint": "Số đề có kỹ năng tương ứng.",
+  "catalog.statistics": "Thống kê thư viện đề",
+  "catalog.availableTests": "Đề đã xuất bản",
+  "catalog.fullMockCount": "Có thể thi thử đầy đủ",
+  "catalog.partialCounts": "Chỉ tính các đề đã tải thành công.",
   "catalog.loadFailed": "Không thể tải thư viện đề.",
   "catalog.emptyDescription": "Hiện chưa có đề để luyện tập. Vui lòng quay lại sau.",
   "catalog.title": "Thư viện đề",

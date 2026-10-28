@@ -345,4 +345,35 @@ describe("Practice library", () => {
     expect(css).toContain("grid-template-columns: minmax(0, 1fr)");
   });
 
+  it("shows library statistics based on eligible tests, including overlapping skills", async () => {
+    const writingOnly = { ...detail, id: crypto.randomUUID(), test_id: crypto.randomUUID(), modules: [detail.modules[0]] };
+    vi.mocked(getTests).mockResolvedValue([
+      { ...publishedTest, published_detail: detail },
+      { ...publishedTest, id: writingOnly.test_id, title: "Writing only", versions: [writingOnly], published_detail: writingOnly },
+    ]);
+    render(await LibraryPage());
+    const stats = screen.getByRole("region", { name: "Library overview" });
+    expect(within(stats).getByText("Published tests").closest("div")).toHaveTextContent("2");
+    expect(within(stats).getByText("Writing").closest("div")).toHaveTextContent("2");
+    expect(within(stats).getByText("Reading").closest("div")).toHaveTextContent("1");
+    expect(within(stats).getByText("Speaking").closest("div")).toHaveTextContent("0");
+    expect(within(stats).getByText("Full Mock available").closest("div")).toHaveTextContent("0");
+    fireEvent.click(within(screen.getByRole("group", { name: "Filter tests by skill" })).getByRole("button", { name: "Reading" }));
+    expect(screen.getAllByRole("article")).toHaveLength(1);
+    expect(within(stats).getByText("Published tests").closest("div")).toHaveTextContent("2");
+    expect(getTests).toHaveBeenCalledOnce();
+    expect(getVersion).not.toHaveBeenCalled();
+  });
+
+  it("makes clear when library statistics exclude details that failed to load", async () => {
+    const missing = { ...publishedTest, id: crypto.randomUUID(), versions: [{ ...publishedTest.versions[0], id: crypto.randomUUID() }] };
+    vi.mocked(getTests).mockResolvedValue([{ ...publishedTest, published_detail: detail }, missing]);
+    vi.mocked(getVersion).mockRejectedValue(new Error("network"));
+    render(await LibraryPage());
+    const stats = screen.getByRole("region", { name: "Library overview" });
+    expect(within(stats).getByText("Counts include only successfully loaded tests.")).toBeInTheDocument();
+    expect(within(stats).getByText("Published tests").closest("div")).toHaveTextContent("1");
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+  });
+
 });

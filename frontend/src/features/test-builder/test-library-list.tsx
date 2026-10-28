@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { PageHeading } from "@/components/ui/page-heading";
 import { BuilderIcon, PlusIcon, SearchIcon } from "@/components/ui/icons";
 import { ApiError } from "@/lib/api/client";
 import type { TestSummary } from "@/lib/api/schema";
@@ -108,10 +109,12 @@ export function AuthoringLibrary({ namespace, activeTests: initialActive, archiv
     return Number.isNaN(parsed.getTime()) ? t("builder.recently") : new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).format(parsed);
   }
   return <section className="authoring-library">
-    <header className="authoring-header">
-      <div className="authoring-heading"><div className="authoring-heading-icon"><BuilderIcon /></div><div><h1>{t("authoring.title")}</h1><p>{t("authoring.subtitle")}</p>{namespace === "teacher" && <p>{t("moderation.requireReview")}</p>}</div></div>
-      <div className="authoring-header-actions">{namespace === "admin" && <Link href="/transfer" className="btn btn-secondary">{t("authoring.transfer")}</Link>}<Link href={`/${namespace}/tests/new`} className="btn btn-primary"><PlusIcon className="size-4" /> {t("builder.newTest")}</Link></div>
-    </header>
+    <PageHeading
+      eyebrow={t("builder.workspace")}
+      title={t("authoring.title")}
+      description={<>{t("authoring.subtitle")}{namespace === "teacher" && <><br />{t("moderation.requireReview")}</>}</>}
+      action={<div className="authoring-header-actions">{namespace === "admin" && <Link href="/transfer" className="btn btn-secondary">{t("authoring.transfer")}</Link>}<Link href={`/${namespace}/tests/new`} className="btn btn-primary"><PlusIcon className="size-4" /> {t("builder.newTest")}</Link></div>}
+    />
     {loadError ? <div className="authoring-empty" role="alert"><p>{t("authoring.loadError")}</p><a href={`/${namespace}/tests`} className="btn btn-secondary">{t("authoring.retry")}</a></div> : <>
       <div className="authoring-metrics" aria-label={t("authoring.title")}>
         {([["authoring.total", activeTests.length], ["authoring.drafts", counts.drafts], ["authoring.published", counts.published], ["authoring.archived", archivedTests.length]] as const).map(([label, count], index) => <div className={`authoring-metric authoring-metric-${index}`} key={label}><span className="authoring-metric-icon" aria-hidden="true"><BuilderIcon /></span><div><strong>{count}</strong><span>{t(label)}</span></div></div>)}

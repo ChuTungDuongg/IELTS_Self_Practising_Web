@@ -1,12 +1,6 @@
 .authoring-library { min-width: 0; padding-bottom: 2rem; }
-.authoring-header, .authoring-heading, .authoring-header-actions, .authoring-row-actions { display: flex; align-items: center; gap: 14px; }
-.authoring-header { justify-content: space-between; gap: 24px; margin-bottom: 28px; }
-.authoring-heading { align-items: flex-start; min-width: 0; }
-.authoring-heading-icon, .authoring-row-icon, .authoring-metric-icon { display: grid; flex: none; place-items: center; color: var(--accent); background: var(--accent-soft); border-radius: 12px; }
-.authoring-heading-icon { width: 64px; height: 64px; }
-.authoring-heading-icon svg { width: 30px; height: 30px; }
-.authoring-heading h1 { margin: 0; font-size: clamp(1.6rem, 2.3vw, 2rem); font-weight: 750; line-height: 1.25; }
-.authoring-heading p { margin: 6px 0 0; color: var(--muted); font-size: 14px; }
+.authoring-header-actions, .authoring-row-actions { display: flex; align-items: center; gap: 14px; }
+.authoring-row-icon, .authoring-metric-icon { display: grid; flex: none; place-items: center; color: var(--accent); background: var(--accent-soft); border-radius: 12px; }
 .authoring-header-actions { flex-wrap: wrap; justify-content: flex-end; }
 .authoring-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
 .authoring-metric { display: flex; align-items: center; min-width: 0; gap: 14px; padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
@@ -53,5 +47,5 @@
 .authoring-empty h2 { font-size: 17px; font-weight: 700; }
 .authoring-empty p { color: var(--muted); }
 @media (max-width: 1024px) { .authoring-row { grid-template-columns: 48px minmax(0, 1fr); } .authoring-row-actions { grid-column: 2; justify-content: flex-start; } }
-@media (max-width: 768px) { .authoring-header { align-items: flex-start; flex-direction: column; } .authoring-header-actions { justify-content: flex-start; } .authoring-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } .authoring-toolbar > * { flex: 1 1 200px; } }
-@media (max-width: 480px) { .authoring-heading-icon { width: 48px; height: 48px; } .authoring-heading-icon svg { width: 24px; height: 24px; } .authoring-metric { padding: 12px; gap: 8px; } .authoring-metric-icon { width: 36px; height: 36px; } .authoring-row { grid-template-columns: 1fr; gap: 10px; } .authoring-row-icon { width: 40px; height: 40px; } .authoring-row-actions { grid-column: 1; justify-content: flex-start; } .authoring-row-actions .btn { padding-inline: 10px; } .authoring-tabs { flex-basis: 100%; } .authoring-tabs button { flex: 1; } }
+@media (max-width: 768px) { .authoring-header-actions { justify-content: flex-start; } .authoring-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } .authoring-toolbar > * { flex: 1 1 200px; } }
+@media (max-width: 480px) { .authoring-metric { padding: 12px; gap: 8px; } .authoring-metric-icon { width: 36px; height: 36px; } .authoring-row { grid-template-columns: 1fr; gap: 10px; } .authoring-row-icon { width: 40px; height: 40px; } .authoring-row-actions { grid-column: 1; justify-content: flex-start; } .authoring-row-actions .btn { padding-inline: 10px; } .authoring-tabs { flex-basis: 100%; } .authoring-tabs button { flex: 1; } }
