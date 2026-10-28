@@ -1,0 +1,57 @@
+.authoring-library { min-width: 0; padding-bottom: 2rem; }
+.authoring-header, .authoring-heading, .authoring-header-actions, .authoring-row-actions { display: flex; align-items: center; gap: 14px; }
+.authoring-header { justify-content: space-between; gap: 24px; margin-bottom: 28px; }
+.authoring-heading { align-items: flex-start; min-width: 0; }
+.authoring-heading-icon, .authoring-row-icon, .authoring-metric-icon { display: grid; flex: none; place-items: center; color: var(--accent); background: var(--accent-soft); border-radius: 12px; }
+.authoring-heading-icon { width: 64px; height: 64px; }
+.authoring-heading-icon svg { width: 30px; height: 30px; }
+.authoring-heading h1 { margin: 0; font-size: clamp(1.6rem, 2.3vw, 2rem); font-weight: 750; line-height: 1.25; }
+.authoring-heading p { margin: 6px 0 0; color: var(--muted); font-size: 14px; }
+.authoring-header-actions { flex-wrap: wrap; justify-content: flex-end; }
+.authoring-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.authoring-metric { display: flex; align-items: center; min-width: 0; gap: 14px; padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.authoring-metric-icon { width: 48px; height: 48px; }
+.authoring-metric-icon svg { width: 23px; height: 23px; }
+.authoring-metric strong, .authoring-metric span:not(.authoring-metric-icon) { display: block; }
+.authoring-metric strong { font-size: 24px; line-height: 1.1; }
+.authoring-metric span:not(.authoring-metric-icon) { color: var(--muted); font-size: 13px; margin-top: 4px; }
+.authoring-metric-note, .authoring-result-count { color: var(--muted); font-size: 12px; margin: 8px 0 0; }
+.authoring-library .authoring-toolbar { padding: 0; background: transparent; justify-content: flex-start; display: flex; align-items: center; gap: 10px; margin-top: 22px; flex-wrap: wrap; }
+.authoring-tabs { display: flex; gap: 6px; }
+.authoring-tabs button, .authoring-select select, .authoring-search { min-height: 44px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); color: var(--ink); }
+.authoring-tabs button { padding: 8px 14px; cursor: pointer; }
+.authoring-tabs button[aria-selected="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 700; }
+.authoring-select select { width: 100%; padding: 8px 32px 8px 12px; }
+.authoring-search { display: flex; align-items: center; flex: 1 1 240px; gap: 10px; padding: 0 12px; min-width: 0; }
+.authoring-search svg { width: 18px; height: 18px; flex: none; color: var(--muted); }
+.authoring-search input { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; }
+.authoring-search:focus-within { outline: 3px solid var(--focus-ring); outline-offset: 2px; }
+.authoring-search button { padding: 8px; color: var(--muted); }
+.authoring-result-count { margin: 16px 0 8px; }
+.authoring-rows { display: grid; gap: 8px; }
+.authoring-row { display: grid; grid-template-columns: 48px minmax(0, 1fr) auto; align-items: center; gap: 16px; padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.authoring-row-icon { width: 48px; height: 48px; }
+.authoring-row-icon svg { width: 24px; height: 24px; }
+.authoring-row-content { min-width: 0; }
+.authoring-row h2 { margin: 0; font-size: 16px; font-weight: 700; overflow-wrap: anywhere; }
+.authoring-description { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; color: var(--muted); font-size: 13px; margin: 4px 0; overflow-wrap: anywhere; }
+.authoring-statuses, .authoring-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-top: 7px; }
+.authoring-status { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; padding: 3px 9px; font-size: 12px; font-weight: 650; color: var(--muted); background: var(--surface-raised); }
+.authoring-status.published { color: var(--success, #168052); border-color: currentColor; }
+.authoring-status.draft { color: var(--accent); border-color: currentColor; }
+.authoring-meta { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.authoring-row-actions { flex-wrap: wrap; justify-content: flex-end; }
+.authoring-row-actions .btn { min-height: 40px; }
+.authoring-menu { position: relative; }
+.authoring-menu summary { cursor: pointer; list-style: none; min-width: 44px; }
+.authoring-menu summary::-webkit-details-marker { display: none; }
+.authoring-menu-popover { position: absolute; right: 0; z-index: 5; top: calc(100% + 6px); min-width: 190px; padding: 5px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-raised); box-shadow: var(--shadow-lg); }
+.authoring-menu-popover button { width: 100%; padding: 10px; text-align: left; border-radius: 6px; }
+.authoring-menu-popover button:hover { background: var(--surface-hover); }
+.authoring-empty { display: grid; justify-items: center; gap: 10px; padding: 40px 20px; border: 1px solid var(--line); border-radius: 12px; text-align: center; background: var(--surface); }
+.authoring-empty > svg { width: 28px; height: 28px; color: var(--accent); }
+.authoring-empty h2 { font-size: 17px; font-weight: 700; }
+.authoring-empty p { color: var(--muted); }
+@media (max-width: 1024px) { .authoring-row { grid-template-columns: 48px minmax(0, 1fr); } .authoring-row-actions { grid-column: 2; justify-content: flex-start; } }
+@media (max-width: 768px) { .authoring-header { align-items: flex-start; flex-direction: column; } .authoring-header-actions { justify-content: flex-start; } .authoring-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } .authoring-toolbar > * { flex: 1 1 200px; } }
+@media (max-width: 480px) { .authoring-heading-icon { width: 48px; height: 48px; } .authoring-heading-icon svg { width: 24px; height: 24px; } .authoring-metric { padding: 12px; gap: 8px; } .authoring-metric-icon { width: 36px; height: 36px; } .authoring-row { grid-template-columns: 1fr; gap: 10px; } .authoring-row-icon { width: 40px; height: 40px; } .authoring-row-actions { grid-column: 1; justify-content: flex-start; } .authoring-row-actions .btn { padding-inline: 10px; } .authoring-tabs { flex-basis: 100%; } .authoring-tabs button { flex: 1; } }

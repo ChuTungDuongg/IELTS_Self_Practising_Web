@@ -129,7 +129,7 @@ it("owner-scoped tests only link to the teacher Builder", () => {
     title: "Other private",
     owner_user_id: "someone-else"
   }]} ownerId="teacher" />);
-  expect(screen.getByRole("link", { name: "Open" })).toHaveAttribute("href", "/teacher/tests/own/versions/v/edit");
+  expect(screen.getByRole("link", { name: "Open draft and review" })).toHaveAttribute("href", "/teacher/tests/own/versions/v/edit");
   expect(screen.queryByText("Other private")).not.toBeInTheDocument();
 });
 it("moderation decisions are ADMIN controls only", async () => {
