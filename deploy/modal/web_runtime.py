@@ -5,10 +5,13 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.request
 from pathlib import Path
+
+from deploy.runtime_config import validate_runtime
 
 
 def configure_ai_environment(enabled: bool, model: str, endpoint: str | None) -> None:
@@ -88,6 +91,7 @@ class WebRuntime:
         self.snapshot_root = Path("/snapshots")
         self.pgdata = self.database_root / "pgdata"
         self.local_postgres = not bool(os.environ.get("DATABASE_URL"))
+        self.database_ca_path: Path | None = None
 
     def command(self, args: list[str], *, cwd: str | None = None, postgres: bool = False) -> str:
         operation = args[0]
@@ -103,12 +107,31 @@ class WebRuntime:
         return result.stdout
 
     def start(self) -> None:
+        external, auto_migrate = validate_runtime(
+            os.environ,
+            expected_backend=os.environ.get("IELTS_MODAL_STORAGE_BACKEND"),
+            mode=os.environ.get("IELTS_MODAL_MODE"),
+        )
+        if external == self.local_postgres:
+            raise RuntimeError("Database selection changed after runtime initialization")
+        if os.environ.get("IELTS_MODAL_DATABASE_MODE") == "external" and not external:
+            raise RuntimeError(
+                "External database topology requires DATABASE_URL in the backend Secret"
+            )
+        if external:
+            self.prepare_database_ca()
+        self.command(
+            ["python", "-c", "from app.core.config import Settings; Settings()"],
+            cwd="/workspace/backend",
+        )
         if self.local_postgres:
             self.start_postgres()
-        os.environ["STORAGE_ROOT"] = "/storage"
+        if os.environ.get("STORAGE_BACKEND", "local").lower() == "local":
+            os.environ.setdefault("STORAGE_ROOT", "/storage")
         os.environ["AUTH_COOKIE_SECURE"] = "true"
         os.environ["API_INTERNAL_BASE_URL"] = "http://127.0.0.1:9001/api/v1"
-        self.command(["python", "-m", "alembic", "upgrade", "head"], cwd="/workspace/backend")
+        if auto_migrate:
+            self.command(["python", "-m", "alembic", "upgrade", "head"], cwd="/workspace/backend")
         self.processes.append(
             subprocess.Popen(
                 [
@@ -140,15 +163,47 @@ class WebRuntime:
                     "3000",
                 ],
                 cwd="/workspace/frontend",
+                env={
+                    **{
+                        key: os.environ[key]
+                        for key in ("PATH", "HOME", "LANG", "LC_ALL", "TZ", "TMPDIR", "TMP", "TEMP")
+                        if key in os.environ
+                    },
+                    "NODE_ENV": "production",
+                    "NEXT_PUBLIC_API_BASE_URL": "/api/v1",
+                    "API_INTERNAL_BASE_URL": "http://127.0.0.1:9001/api/v1",
+                    "NEXT_TELEMETRY_DISABLED": "1",
+                },
             )
         )
-        self.wait_http("http://127.0.0.1:9001/api/v1/health")
+        self.wait_http("http://127.0.0.1:9001/api/v1/ready")
         self.wait_http("http://127.0.0.1:3000/")
         self.processes.append(
             subprocess.Popen(
-                ["nginx", "-c", "/workspace/deploy/modal/nginx.conf", "-g", "daemon off;"]
+                ["nginx", "-c", "/workspace/deploy/modal/nginx.conf", "-g", "daemon off;"],
+                env={key: os.environ[key] for key in ("PATH", "LANG") if key in os.environ},
             )
         )
+
+    def prepare_database_ca(self) -> None:
+        certificate = os.environ.get("IELTS_DATABASE_CA_PEM", "")
+        if not certificate:
+            return
+        if (
+            len(certificate.encode()) > 32 * 1024
+            or "-----BEGIN CERTIFICATE-----" not in certificate
+            or "PRIVATE KEY" in certificate
+            or os.environ.get("PGSSLROOTCERT")
+        ):
+            raise RuntimeError(
+                "Provide a public database CA PEM or PGSSLROOTCERT, without private keys"
+            )
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".pem", prefix="ielts-db-ca-", delete=False
+        ) as file:
+            file.write(certificate)
+            self.database_ca_path = Path(file.name)
+        os.environ["PGSSLROOTCERT"] = str(self.database_ca_path)
 
     def start_postgres(self) -> None:
         self.pgdata.mkdir(parents=True, exist_ok=True)
@@ -185,6 +240,10 @@ class WebRuntime:
         if not restored.exists():
             snapshot = os.environ.get("IELTS_SEED_SNAPSHOT", "")
             if snapshot:
+                if initialized:
+                    raise RuntimeError(
+                        "Refusing to seed an existing PostgreSQL directory; use an explicit reviewed restore"
+                    )
                 snapshot_root = self.snapshot_root.resolve()
                 source = (snapshot_root / snapshot.lstrip("/")).resolve()
                 if not source.is_relative_to(snapshot_root) or source.name != "database.dump":
@@ -231,7 +290,13 @@ class WebRuntime:
                 process.wait(timeout=20)
             except subprocess.TimeoutExpired:
                 process.kill()
+                process.wait(timeout=5)
         if self.local_postgres and self.pgdata.joinpath("postmaster.pid").exists():
             self.command(
                 ["pg_ctl", "-D", str(self.pgdata), "-m", "fast", "-w", "stop"], postgres=True
             )
+        if self.database_ca_path is not None:
+            self.database_ca_path.unlink(missing_ok=True)
+            if os.environ.get("PGSSLROOTCERT") == str(self.database_ca_path):
+                os.environ.pop("PGSSLROOTCERT", None)
+            self.database_ca_path = None

@@ -127,19 +127,40 @@ is now restricted to local mode. The local backup/restore tool explicitly refuse
 cloud mode until P5 provides cloud-aware operations. The domain services inspected
 do not resolve persistent assets to local paths. Modal Volume durability remains unresolved.
 
-P4/P5 remain deferred: Modal durability and cloud deployment configuration,
-migration-CLI enhancements, and cloud backup/restore. Live staging validation
-remains pending.
+## P4 COMPLETE — Portable deployment configuration verified offline
 
-P4 prerequisite audit: application S3/R2 selection is implemented. Modal cloud
-configuration and durability have not been completed or verified.
-The uncommitted P4 runtime work offers the backward-compatible `IELTS_AUTO_MIGRATE=false` switch
-for an externally coordinated database migration and preserves a configured
-local `STORAGE_ROOT`; non-default asset Volumes must already exist. The default
-demo still mounts its existing asset Volume and runs startup migrations. These
-changes do not establish asset durability or AWS deployment readiness. Modal cloud
-storage wiring, production container configuration, IAM and deployment verification
-remain outstanding.
+Starting local commit: `a7ec5d0cf3f7a9599a40e9427ae793201e3be752`.
+Final focused run: 122 passed, one existing symlink test skipped on this Windows
+host, and two dependency deprecation warnings. Docker Compose configuration
+validation, scoped Ruff, offline lockfile verification and diff checks passed.
+The checks mocked Modal/processes/network probes and reused offline P3 storage
+contracts. No images were built and no live database migration or cloud request
+was made. P5 files remain uncommitted and outside this phase.
+
+Modal demo keeps its original default Volume names, embedded PostgreSQL and one
+Web container. Managed topology uses an external TLS database and selected S3/R2
+adapter with no local persistent Volume dependency. Topology markers are frozen;
+backend Secrets are validated at runtime. Dev-specific Volumes/Secrets and an
+optional strict isolation setting are available without renaming or copying data.
+Cloud Secrets require a matching dev/production label. Legacy demo Volume sharing
+is warned explicitly.
+
+Local asset durability remains a demo limitation: background Volume commits and
+HTTP/database success are not an upload-specific durable acknowledgement. Reload
+is startup-only, explicit commit follows stopped processes, and commit failures
+are reported. No per-chunk commit or distributed synchronization subsystem was
+added. The runtime can stage a public database CA certificate temporarily from a
+Secret and removes it on shutdown. External Web startup never starts, initializes
+or seeds embedded PostgreSQL; migration is an explicit operator function.
+
+The EC2/Docker template adds HTTPS Nginx, separate backend/frontend containers,
+readiness/health checks, non-root application processes, secret-file injection,
+RDS CA mounting, S3 role/R2 token configuration and a separate migration profile.
+Only ports 80/443 are published. Four profiles and commands are documented in
+[the deployment guide](aws-deployment.md). Existing auth, API proxy, SSE, protected
+media and AI transports are retained. No real deployment, database migration,
+asset move or cloud call was performed. Builds and live TLS/cloud networking
+remain unverified. P5 migration/inventory and backup/restore work stays separate.
 
 ## Inventory and copy prototype
 

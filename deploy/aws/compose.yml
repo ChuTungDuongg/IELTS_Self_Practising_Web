@@ -1,0 +1,108 @@
+name: bandpilot
+
+x-backend: &backend
+  image: bandpilot-backend:${BANDPILOT_IMAGE_TAG:-local}
+  env_file:
+    - ${BANDPILOT_BACKEND_ENV:-./backend.env}
+  environment:
+    FRONTEND_ORIGIN: https://${SITE_DOMAIN:?Set SITE_DOMAIN}
+    AUTH_COOKIE_SECURE: "true"
+    IELTS_AUTO_MIGRATE: "false"
+    PGSSLROOTCERT: /run/secrets/database-ca.pem
+  volumes:
+    - type: bind
+      source: ${DB_CA_FILE:?Set DB_CA_FILE to the managed database CA PEM}
+      target: /run/secrets/database-ca.pem
+      read_only: true
+      bind:
+        create_host_path: false
+  read_only: true
+  tmpfs:
+    - /tmp:size=1073741824,mode=1777
+  init: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  mem_limit: 2g
+  cpus: 2
+  logging:
+    driver: json-file
+    options:
+      max-size: 10m
+      max-file: "3"
+
+services:
+  backend:
+    <<: *backend
+    build:
+      context: ../..
+      dockerfile: deploy/aws/backend.Dockerfile
+    restart: unless-stopped
+    stop_grace_period: 60s
+  frontend:
+    image: bandpilot-frontend:${BANDPILOT_IMAGE_TAG:-local}
+    build:
+      context: ../..
+      dockerfile: deploy/aws/frontend.Dockerfile
+    environment:
+      API_INTERNAL_BASE_URL: http://backend:8000/api/v1
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    init: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 1g
+    cpus: 1
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+  proxy:
+    image: nginxinc/nginx-unprivileged:1.28-alpine
+    entrypoint: [nginx, -g, "daemon off;"]
+    ports:
+      - "80:8080"
+      - "443:8443"
+    volumes:
+      - type: bind
+        source: ./nginx.conf
+        target: /etc/nginx/nginx.conf
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${TLS_DIRECTORY:?Set TLS_DIRECTORY containing fullchain.pem and privkey.pem}
+        target: /etc/nginx/tls
+        read_only: true
+        bind:
+          create_host_path: false
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1:8080/proxy-health]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=335544320,mode=1777
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 256m
+    cpus: 0.5
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+  migrate:
+    <<: *backend
+    profiles: [tools]
+    restart: "no"
+    command: [python, /app/runtime_config.py, python, -m, alembic, upgrade, head]

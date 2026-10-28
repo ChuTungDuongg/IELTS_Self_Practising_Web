@@ -77,13 +77,14 @@ def runtime_at(tmp_path, monkeypatch, snapshot="seed/database.dump"):
     runtime.snapshot_root = tmp_path / "snapshots"
     runtime.snapshot_root.mkdir()
     runtime.pgdata.mkdir(parents=True)
-    (runtime.pgdata / "PG_VERSION").write_text("17")
     monkeypatch.setenv("IELTS_SEED_SNAPSHOT", snapshot)
     monkeypatch.delenv("DATABASE_URL", raising=False)
     calls = []
 
     def command(args, **kwargs):
         calls.append((args, kwargs))
+        if args[0] == "initdb":
+            (runtime.pgdata / "PG_VERSION").write_text("17")
         return "1" if args[0] == "psql" else ""
 
     monkeypatch.setattr(runtime, "command", command)
@@ -143,6 +144,15 @@ def test_restore_rejects_path_outside_snapshot_volume(tmp_path, monkeypatch):
     with pytest.raises(RuntimeError, match="Invalid snapshot path"):
         runtime.start_postgres()
     assert not any(args[0] == "pg_restore" for args, _ in calls)
+
+
+def test_snapshot_seed_never_overwrites_an_existing_database(tmp_path, monkeypatch):
+    runtime, calls = runtime_at(tmp_path, monkeypatch)
+    (runtime.pgdata / "PG_VERSION").write_text("17")
+    write_snapshot(runtime.snapshot_root)
+    with pytest.raises(RuntimeError, match="Refusing to seed an existing"):
+        runtime.start_postgres()
+    assert not any(args[0] in {"pg_restore", "initdb"} for args, _ in calls)
 
 
 def test_bundled_model_url_overrides_old_secret_without_copying_secrets(monkeypatch):
@@ -229,3 +239,133 @@ def test_safe_config_probe_failure_never_blocks_web_startup(monkeypatch):
 
     monkeypatch.setattr(module.subprocess, "run", unavailable)
     assert module.safe_ai_configuration() == {"inspection": "unavailable"}
+
+
+def test_external_database_can_disable_automatic_migration(monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://fictional/example")
+    monkeypatch.setenv("IELTS_AUTO_MIGRATE", "false")
+    monkeypatch.setenv("STORAGE_ROOT", "/operator-storage")
+    runtime = module.WebRuntime()
+    commands = []
+    monkeypatch.setattr(
+        runtime, "start_postgres", lambda: pytest.fail("must use external database")
+    )
+    monkeypatch.setattr(runtime, "command", lambda args, **kwargs: commands.append(args))
+    monkeypatch.setattr(runtime, "wait_http", lambda _url: None)
+    monkeypatch.setattr(module.subprocess, "Popen", lambda *_args, **_kwargs: object())
+    runtime.start()
+    assert not any("alembic" in command for command in commands)
+    assert os.environ["STORAGE_ROOT"] == "/operator-storage"
+    assert os.environ["DATABASE_URL"] == "postgresql+asyncpg://fictional/example"
+
+
+def test_invalid_migration_mode_fails_before_starting_processes(monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://fictional/example")
+    monkeypatch.setenv("IELTS_AUTO_MIGRATE", "unexpected")
+    runtime = module.WebRuntime()
+    monkeypatch.setattr(
+        module.subprocess, "Popen", lambda *_args, **_kwargs: pytest.fail("started")
+    )
+    with pytest.raises(RuntimeError, match="IELTS_AUTO_MIGRATE"):
+        runtime.start()
+
+
+def test_demo_keeps_automatic_migration_and_default_storage(monkeypatch):
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.delenv("IELTS_AUTO_MIGRATE", raising=False)
+    monkeypatch.delenv("STORAGE_ROOT", raising=False)
+    monkeypatch.delenv("STORAGE_BACKEND", raising=False)
+    runtime = module.WebRuntime()
+    commands = []
+    monkeypatch.setattr(runtime, "start_postgres", lambda: None)
+    monkeypatch.setattr(runtime, "command", lambda args, **kwargs: commands.append(args))
+    monkeypatch.setattr(runtime, "wait_http", lambda _url: None)
+    monkeypatch.setattr(module.subprocess, "Popen", lambda *_args, **_kwargs: object())
+    runtime.start()
+    assert ["python", "-m", "alembic", "upgrade", "head"] in commands
+    assert os.environ["STORAGE_ROOT"] == "/storage"
+
+
+def test_external_database_defaults_to_operator_controlled_migrations(monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://fictional/example")
+    monkeypatch.delenv("IELTS_AUTO_MIGRATE", raising=False)
+    runtime = module.WebRuntime()
+    commands = []
+    monkeypatch.setattr(runtime, "command", lambda args, **kwargs: commands.append(args))
+    monkeypatch.setattr(runtime, "start_postgres", lambda: pytest.fail("started embedded database"))
+    monkeypatch.setattr(runtime, "wait_http", lambda _url: None)
+    monkeypatch.setattr(module.subprocess, "Popen", lambda *args, **kwargs: object())
+    runtime.start()
+    assert not any("alembic" in command for command in commands)
+
+
+@pytest.mark.parametrize("backend", ["s3", "r2"])
+def test_cloud_runtime_preserves_storage_and_requires_no_local_database(backend, monkeypatch):
+    from test_deployment_profiles import cloud_environment
+
+    for name, value in cloud_environment(backend).items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setenv("IELTS_MODAL_STORAGE_BACKEND", backend)
+    monkeypatch.setenv("IELTS_MODAL_DATABASE_MODE", "external")
+    monkeypatch.setenv("STORAGE_ROOT", "/operator-unused-root")
+    runtime = module.WebRuntime()
+    commands, waited = [], []
+    monkeypatch.setattr(runtime, "start_postgres", lambda: pytest.fail("started embedded database"))
+    monkeypatch.setattr(runtime, "command", lambda args, **kwargs: commands.append(args))
+    monkeypatch.setattr(runtime, "wait_http", waited.append)
+    monkeypatch.setattr(module.subprocess, "Popen", lambda *args, **kwargs: object())
+    runtime.start()
+    assert os.environ["STORAGE_BACKEND"] == backend
+    assert os.environ["STORAGE_ROOT"] == "/operator-unused-root"
+    assert not any("alembic" in command for command in commands)
+    assert "http://127.0.0.1:9001/api/v1/ready" in waited
+
+
+def test_cloud_runtime_rejects_topology_mismatch_before_any_command(monkeypatch):
+    monkeypatch.setenv("STORAGE_BACKEND", "local")
+    monkeypatch.setenv("IELTS_MODAL_STORAGE_BACKEND", "r2")
+    runtime = module.WebRuntime()
+    monkeypatch.setattr(runtime, "command", lambda *args, **kwargs: pytest.fail("ran a command"))
+    with pytest.raises(RuntimeError, match="topology"):
+        runtime.start()
+
+
+def test_external_database_ca_is_temporary_and_never_contains_a_private_key(monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://fixture/database")
+    monkeypatch.delenv("PGSSLROOTCERT", raising=False)
+    monkeypatch.setenv(
+        "IELTS_DATABASE_CA_PEM", "-----BEGIN CERTIFICATE-----\nfictional\n-----END CERTIFICATE-----"
+    )
+    runtime = module.WebRuntime()
+    runtime.prepare_database_ca()
+    path = runtime.database_ca_path
+    assert path.read_text().startswith("-----BEGIN CERTIFICATE-----")
+    assert os.environ["PGSSLROOTCERT"] == str(path)
+    runtime.stop()
+    assert not path.exists() and "PGSSLROOTCERT" not in os.environ
+    monkeypatch.setenv("IELTS_DATABASE_CA_PEM", "-----BEGIN PRIVATE KEY-----")
+    with pytest.raises(RuntimeError, match="public database CA"):
+        runtime.prepare_database_ca()
+
+
+def test_next_and_nginx_processes_do_not_inherit_backend_secrets(monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://fixture/database")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "private-cloud-secret")
+    monkeypatch.setenv("JWT_SECRET", "private-jwt-secret")
+    monkeypatch.setenv("AI_WRITING_MODAL_SECRET", "private-proxy-secret")
+    runtime = module.WebRuntime()
+    calls = []
+    monkeypatch.setattr(runtime, "command", lambda *args, **kwargs: None)
+    monkeypatch.setattr(runtime, "wait_http", lambda *args: None)
+    monkeypatch.setattr(
+        module.subprocess, "Popen", lambda args, **kwargs: calls.append((args, kwargs))
+    )
+    runtime.start()
+    node = next(options for args, options in calls if args[0] == "node")
+    nginx = next(options for args, options in calls if args[0] == "nginx")
+    assert node["env"]["API_INTERNAL_BASE_URL"] == "http://127.0.0.1:9001/api/v1"
+    assert node["env"]["NEXT_PUBLIC_API_BASE_URL"] == "/api/v1"
+    assert "private-" not in str(node["env"]) + str(nginx["env"])
+    assert not any(
+        key in node["env"] for key in ("DATABASE_URL", "JWT_SECRET", "AWS_SECRET_ACCESS_KEY")
+    )

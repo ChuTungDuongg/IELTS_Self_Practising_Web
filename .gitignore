@@ -7,6 +7,9 @@ backend/.test-tmp/
 .ruff_cache/
 .mypy_cache/
 backups/
+deploy/aws/*.env
+deploy/aws/tls/
+deploy/aws/private/
 *.py[cod]
 
 frontend/node_modules/

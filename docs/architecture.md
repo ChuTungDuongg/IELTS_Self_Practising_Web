@@ -51,6 +51,36 @@ See [storage configuration and progress](storage-portability-work-in-progress.md
 - Authorization tests must cover owner, admin, public, classroom-only, archived and unauthorized views. A locked Full Mock must never expose review answers, regardless of the HTTP status produced by a streamed Next.js page.
 - Keep fixture exam content fictional. Never run migrations or destructive integration setup against a development or production database.
 
+## Deployment configuration
+
+P4 keeps the existing Modal demo (one Web container, guarded embedded PostgreSQL
+17, original named Volumes) and adds a managed-database/S3/R2 topology. Non-secret
+frozen markers select mounts; backend Secrets select the actual P3 provider and
+must agree. Cloud topology has no persistent local Volume dependency. Explicit
+mode-specific asset Volumes/Secrets, an opt-in strict dev isolation check, and a
+matching runtime environment label guard against accidental environment reuse.
+Legacy shared demo assets remain an explicitly warned compatibility default.
+
+Modal Local uploads have asynchronous Volume durability; HTTP/database success
+is not an immediate durable snapshot acknowledgement. Reload happens before
+process startup only, and explicit commit follows shutdown of all application
+processes. Failures are surfaced. Use managed PostgreSQL and object storage for
+production. External database startup cannot seed or initialize PostgreSQL and
+requires separate operator migrations; embedded startup retains its defaults.
+
+The EC2/Docker template uses non-root backend/frontend containers and HTTPS
+Nginx, an external TLS PostgreSQL URL, and S3/R2. Only proxy ports are published.
+Runtime credentials never enter frontend configuration or image build inputs;
+Modal restricts the Next/Nginx child-process environments as well.
+Database migrations are an explicit tools-profile command, separate from Web
+startup. `/api/v1/health` remains liveness; `/api/v1/ready` checks database access
+with a short timeout. Offline tests validate configuration; images, live TLS,
+cloud IAM/networking and durability still require staging validation.
+
+See [Modal deployment](modal-web.md), [four profiles and EC2/Docker](aws-deployment.md)
+and [storage progress](storage-portability-work-in-progress.md). P5 remains
+responsible for migration inventories, verified copies and cloud backup/restore.
+
 ## Deliberate limits
 
 `AttemptService` still coordinates lifecycle, autosave, review, history and grading in one module. Its methods share transaction, timer and ownership invariants; splitting those paths without a dedicated contract suite risks changing behavior. `TestService` still contains version cloning and validation, and the question registry still contains the canonical schema table. Further extraction should be driven by a concrete repeated dependency or testable boundary, not file length alone.
