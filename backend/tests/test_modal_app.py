@@ -257,6 +257,13 @@ def test_isolated_database_and_snapshot_volumes_require_explicit_creation(monkey
     assert runtime.stop.call_count == 1
 
 
+def test_legacy_database_guard_follows_volume_even_with_cross_mode_override(monkeypatch):
+    monkeypatch.setenv("IELTS_MODAL_DATABASE_VOLUME", "ielts-web-postgres")
+    module, _, _ = load_app(monkeypatch)
+    assert module.MODE == "dev"
+    assert module.OWNER_KEY == "production"
+
+
 def stub_runtime(monkeypatch, *, external):
     runtime = ModuleType("web_runtime")
     instance = MagicMock()

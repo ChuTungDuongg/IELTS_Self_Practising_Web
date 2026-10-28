@@ -502,6 +502,23 @@ async def test_bundle_member_integrity_not_only_outer_archive_hash(
         verify_portable_backup(path)
 
 
+async def test_invalid_tar_header_is_a_backup_validation_error(
+    tmp_path, monkeypatch, mocked_inventory
+):
+    import gzip
+
+    from app.backup_restore import sha256_file
+
+    path, _ = await bundle(tmp_path, monkeypatch, mocked_inventory)
+    # A valid gzip/checksum can still contain an invalid tar header.
+    (path / "storage.tar.gz").write_bytes(gzip.compress(b"invalid tar header" + b"\0" * 1024))
+    manifest = json.loads((path / "manifest.json").read_text())
+    manifest["storage_sha256"] = sha256_file(path / "storage.tar.gz")
+    (path / "manifest.json").write_text(json.dumps(manifest))
+    with pytest.raises(ValueError, match="Invalid backup storage archive"):
+        verify_portable_backup(path)
+
+
 async def test_restore_failed_upload_preserves_source_and_can_resume(
     tmp_path, monkeypatch, mocked_inventory
 ):

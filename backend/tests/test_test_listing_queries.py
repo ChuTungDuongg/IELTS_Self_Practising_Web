@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from sqlalchemy import event
 from teacher_helpers import api_client, make_user, make_version
 
+from app.models import TestCover as Cover
 from app.models import TestVersion as Version
 from app.models import TestVersionModeration as Moderation
 from app.models.enums import (
@@ -40,6 +41,15 @@ async def test_listing_batches_public_approvals_and_owners(db_session):
     )
     async with db_session.begin():
         archived_test.archived_at = datetime.now(UTC)
+        db_session.add(
+            Cover(
+                test_id=public_test.id,
+                relative_path=f"test-covers/{public_test.id}.png",
+                mime_type="image/png",
+                original_name="fictional-cover.png",
+                file_size=12,
+            )
+        )
         db_session.add(Version(test_id=public_test.id, version_number=2))
         db_session.add_all(
             [
@@ -95,6 +105,7 @@ async def test_listing_batches_public_approvals_and_owners(db_session):
     public_summary = next(item for item in learner_response.json() if item["id"] == ids["public"])
     assert [item["id"] for item in public_summary["versions"]] == [public_version_id]
     assert public_summary["owner_display_name"] == owner_name
+    assert public_summary["cover_image"]["mime_type"] == "image/png"
 
     async with api_client(db_session, owner) as client:
         owned = await client.get("/api/v1/tests")

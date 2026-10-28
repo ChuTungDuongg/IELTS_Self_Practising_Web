@@ -1,8 +1,38 @@
 # Storage portability: offline implementation complete
 
 Local asset storage remains the default. S3 and R2 can be selected after the P3
-offline gates described below. No live cloud deployment, bucket access or real
-asset migration was performed. Changing the backend never moves existing files.
+offline gates described below. Changing the backend never moves existing files.
+
+## Modal staging follow-up — 2026-10-28
+
+A real, AI-disabled development deployment was verified with embedded PostgreSQL
+17 and LocalAssetStorage on fresh, explicitly selected database/assets/snapshot
+Volumes. Existing production resources were preserved. Only a synthetic snapshot
+was uploaded; the ordinary local database was inspected read-only and not exported.
+Alembic revision `20261028_0043` was confirmed in the running staging container.
+
+Live HTTPS checks covered health/readiness, authenticated public catalogs,
+image/audio/cover delivery, range requests, ownership failures, immutable published
+versions, cloning, Transfer ZIP v1/v2, classroom resources and private segmented
+Speaking. Real FFmpeg produced a one-second normalized WAV and its temporary stage
+was cleaned. P5 inventory/dry-run/reconciliation verified 19 referenced objects;
+a maintenance-window database/media backup was verified on Modal and again after
+download. Database records, private raw/normalized audio and the backup survived
+replacement of the Web container. This does not establish immediate durability
+for an uncommitted upload: Modal demo Volume persistence remains asynchronous.
+
+The test app was stopped and confirmed at zero tasks with no remaining containers.
+Persistent staging Volumes and the dedicated Secret were retained for recovery.
+Live S3/R2 connectivity, AI inference and production cutover remain unverified.
+The detailed operational report and synthetic evidence are kept outside Git under
+`.test-tmp/modal-live/`; no account credentials, dumps or recordings are committed.
+
+CI follow-up preserves isolated PostgreSQL services and provisions a separate
+disposable P5 recovery database. Actual CI failures exposed stale Builder mocks,
+format drift, Python tar error mapping and an extra catalog cover query. Focused
+regressions now cover those fixes. PostgreSQL health checks use TCP, and legacy
+Volume guards are canonical across deployment modes. Final GitHub Actions status
+is recorded in the local operational report after the fix push.
 
 ## P5 COMPLETE — Migration and recovery verified offline
 

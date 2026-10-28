@@ -68,12 +68,17 @@ DATABASE_VOLUME_NAME = os.environ.get(
     "IELTS_MODAL_DATABASE_VOLUME",
     os.environ.get(f"IELTS_MODAL_{MODE.upper()}_DATABASE_VOLUME", DEFAULT_DATABASE_VOLUME),
 ).strip()
-SNAPSHOTS_VOLUME_NAME = os.environ.get("IELTS_MODAL_SNAPSHOTS_VOLUME", "ielts-postgres-backups").strip()
+SNAPSHOTS_VOLUME_NAME = os.environ.get(
+    "IELTS_MODAL_SNAPSHOTS_VOLUME", "ielts-postgres-backups"
+).strip()
 if DATABASE_MODE == "embedded" and (not DATABASE_VOLUME_NAME or not SNAPSHOTS_VOLUME_NAME):
     raise ValueError("Embedded database and snapshots Volume names must not be empty")
 # Legacy guards remain compatible. Fresh staging databases get a distinct key,
 # without clearing or taking over an existing dev/production owner.
-OWNER_KEY = MODE if DATABASE_VOLUME_NAME == DEFAULT_DATABASE_VOLUME else DATABASE_VOLUME_NAME
+OWNER_KEY = {
+    "ielts-web-postgres": "production",
+    "ielts-web-postgres-dev": "dev",
+}.get(DATABASE_VOLUME_NAME, DATABASE_VOLUME_NAME)
 database = (
     modal.Volume.from_name(
         DATABASE_VOLUME_NAME,
@@ -104,7 +109,9 @@ assets = (
     else None
 )
 snapshots = (
-    modal.Volume.from_name(SNAPSHOTS_VOLUME_NAME, create_if_missing=False) if DATABASE_MODE == "embedded" else None
+    modal.Volume.from_name(SNAPSHOTS_VOLUME_NAME, create_if_missing=False)
+    if DATABASE_MODE == "embedded"
+    else None
 )
 owners = (
     modal.Dict.from_name("ielts-web-database-owner", create_if_missing=True)

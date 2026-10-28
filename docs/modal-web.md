@@ -278,7 +278,9 @@ select it with `IELTS_MODAL_DATABASE_VOLUME` (or mode-specific
 `IELTS_MODAL_DEV_DATABASE_VOLUME` / `IELTS_MODAL_PRODUCTION_DATABASE_VOLUME`).
 Defaults remain `ielts-web-postgres[-dev]`. A non-default Volume must already
 exist; it is never silently created on startup. Its guard key is the explicit
-Volume name, preserving the old `dev`/`production` keys for the default Volumes.
+Volume name. The legacy `ielts-web-postgres-dev` / `ielts-web-postgres` Volumes
+always use `dev` / `production` guards respectively, even when explicitly selected
+from another mode, so the same database cannot acquire two different guards.
 Do not clear another database owner's key. `IELTS_MODAL_SNAPSHOTS_VOLUME` can
 likewise select a pre-created private snapshot Volume; its default is unchanged.
 Use `modal deploy ... --strategy recreate` for the single-owner demo, and verify

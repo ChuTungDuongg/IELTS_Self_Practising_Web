@@ -168,23 +168,28 @@ def walk_archive(backup_dir, manifest, visitor=None):
     expected = {item["key"]: item for item in manifest["objects"]}
     seen = set()
     # No extraction, links or paths from an archive ever reach the filesystem.
-    with tarfile.open(Path(backup_dir) / STORAGE_FILE, "r|gz", tarinfo=BoundedTarInfo) as archive:
-        for member in archive:
-            key = validate_key(member.name)
-            if not member.isfile() or member.issparse() or key not in expected or key in seen:
-                raise ValueError("Unexpected, unsafe or duplicate backup member")
-            entry = expected[key]
-            if member.size != entry["size"]:
-                raise ValueError("Backup member size mismatch")
-            with archive.extractfile(member) as source:
-                reader = DigestReader(source)
-                if visitor:
-                    visitor(entry, reader)
-                while reader.read(1024 * 1024):
-                    pass
-                if reader.size != entry["size"] or reader.digest.hexdigest() != entry["sha256"]:
-                    raise ValueError("Backup object checksum mismatch")
-            seen.add(key)
+    try:
+        with tarfile.open(
+            Path(backup_dir) / STORAGE_FILE, "r|gz", tarinfo=BoundedTarInfo
+        ) as archive:
+            for member in archive:
+                key = validate_key(member.name)
+                if not member.isfile() or member.issparse() or key not in expected or key in seen:
+                    raise ValueError("Unexpected, unsafe or duplicate backup member")
+                entry = expected[key]
+                if member.size != entry["size"]:
+                    raise ValueError("Backup member size mismatch")
+                with archive.extractfile(member) as source:
+                    reader = DigestReader(source)
+                    if visitor:
+                        visitor(entry, reader)
+                    while reader.read(1024 * 1024):
+                        pass
+                    if reader.size != entry["size"] or reader.digest.hexdigest() != entry["sha256"]:
+                        raise ValueError("Backup object checksum mismatch")
+                seen.add(key)
+    except tarfile.TarError as error:
+        raise ValueError("Invalid backup storage archive") from error
     if seen != set(expected):
         raise ValueError("Required backup object is missing")
 

@@ -4,7 +4,7 @@ import uuid
 
 from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import joinedload, selectinload
 
 from app.models import (
     ListeningPart,
@@ -57,7 +57,9 @@ class TestRepository:
         result = await self.session.scalars(
             select(Test)
             .where(archive_filter)
-            .options(selectinload(Test.versions), selectinload(Test.owner))
+            .options(
+                selectinload(Test.versions), selectinload(Test.owner), joinedload(Test.cover_image)
+            )
             .order_by(Test.created_at.desc())
         )
         return list(result.unique())
