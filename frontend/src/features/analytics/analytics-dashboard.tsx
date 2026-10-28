@@ -1,55 +1,86 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { moduleTranslationKeys, questionTypeTranslationKeys } from "@/lib/i18n/translations";
-import { useTranslation } from "@/lib/i18n/locale-provider";
-import { compareAttempts, getAnalytics, type AnalyticsDashboard, type AttemptComparison } from "@/lib/api/analytics";
-import { formatDuration } from "@/features/exam/timer";
+import { useRef, useState } from "react";
+import Link from "next/link";
+import { PageHeading } from "@/components/ui/page-heading";
+import { AnalyticsIcon } from "@/components/ui/icons";
+import { getAnalytics, type AnalyticsDashboard } from "@/lib/api/analytics";
+import { useLocale, useTranslation } from "@/lib/i18n/locale-provider";
+import { moduleTranslationKeys } from "@/lib/i18n/translations";
 import type { TranslationKey } from "@/lib/i18n/types";
+import { analyticsPeriod, analyticsTimeZone, type AnalyticsRange } from "./analytics-scope";
+import { AnalyticsCard, AnalyticsKpis, PracticeTimePanel, QuestionTypeAccuracy, RecentActivity, SkillIcon, SkillPerformance, WeakAreasPanel, skills } from "./analytics-panels";
+import { AttemptComparisonPanel } from "./attempt-comparison";
 import { BandTrend } from "./band-trend";
+import "./analytics.css";
 
-type Filter = "ALL" | "READING" | "LISTENING" | "WRITING" | "SPEAKING";
-const labels: Record<string, string> = { matching_headings: "Matching Headings", matching_information: "Matching Information", matching_features: "Matching Features", matching_sentence_endings: "Matching Sentence Endings", summary_completion_word_list: "Summary Completion — Word List", flow_chart_completion: "Flow-chart Completion", true_false_not_given: "True / False / Not Given", yes_no_not_given: "Yes / No / Not Given" };
-const show = (value: number | null | undefined, digits = 1) => value === null || value === undefined ? "—" : value.toFixed(digits);
-const writingMetricKeys: Readonly<Record<string, TranslationKey>> = {
-  task1_overall: "analytics.task1Overall", task2_overall: "analytics.task2Overall",
-  ta: "analytics.ta", cc: "analytics.cc", lr: "analytics.lr", gra: "analytics.gra",
-};
+type Skill = typeof skills[number];
+type Scope = { skill: Skill | "ALL"; range: AnalyticsRange };
+const ranges: ReadonlyArray<{ value: AnalyticsRange; label: TranslationKey }> = [
+  { value: "7", label: "analytics.last7" }, { value: "30", label: "analytics.last30" },
+  { value: "90", label: "analytics.last90" }, { value: "ALL", label: "analytics.allHistory" },
+];
 
-export function AnalyticsDashboardView({ initial }: { initial: AnalyticsDashboard }) {
+export function AnalyticsDashboardView({ initial, asOf }: { initial: AnalyticsDashboard; asOf?: string }) {
   const { t } = useTranslation();
-  const [data, setData] = useState(initial); const [filter, setFilter] = useState<Filter>("ALL"); const [loading, setLoading] = useState(false);
-  const [failedFilter, setFailedFilter] = useState<Filter | null>(null);
-  const [comparing, setComparing] = useState(false);
-  const [comparisonError, setComparisonError] = useState(false);
-  const [left, setLeft] = useState(""); const [right, setRight] = useState(""); const [comparison, setComparison] = useState<AttemptComparison>();
-  async function changeFilter(next: Filter) {
-    if (loading) return;
-    setLoading(true); setFailedFilter(null);
+  const { locale } = useLocale();
+  // Server and first client render share all-history scope. Freeze the server
+  // calendar anchor so browser timezone cannot reinterpret the selected period.
+  const [calendarAnchor] = useState(() => asOf ?? new Date().toISOString());
+  const [data, setData] = useState(initial);
+  const [scope, setScope] = useState<Scope>({ skill: "ALL", range: "ALL" });
+  const [loading, setLoading] = useState(false);
+  const [failedScope, setFailedScope] = useState<Scope | null>(null);
+  const pending = useRef(false);
+
+  async function changeScope(next: Scope) {
+    if (pending.current) return;
+    pending.current = true;
+    setLoading(true);
+    setFailedScope(null);
     try {
-      setData(await getAnalytics(next === "ALL" ? undefined : next));
-      setFilter(next);
-    } catch { setFailedFilter(next); }
-    finally { setLoading(false); }
+      const skill = next.skill === "ALL" ? undefined : next.skill;
+      const result = next.range === "ALL" ? await getAnalytics(skill)
+        : await getAnalytics(skill, undefined, analyticsPeriod(next.range, calendarAnchor));
+      setData(result);
+      setScope(next);
+    } catch { setFailedScope(next); }
+    finally { pending.current = false; setLoading(false); }
   }
-  async function compare() {
-    if (!left || !right || left === right || comparing) return;
-    setComparing(true); setComparisonError(false);
-    try { setComparison(await compareAttempts(left, right)); }
-    catch { setComparisonError(true); }
-    finally { setComparing(false); }
-  }
-  const trends = useMemo(() => data.trends, [data.trends]);
-  return <div className={loading ? "analytics-dashboard is-loading" : "analytics-dashboard"} aria-busy={loading}>
-    <div className="analytics-filters" role="group" aria-label={t("analytics.skillFilter")}>{(["ALL", "READING", "LISTENING", "WRITING", "SPEAKING"] as Filter[]).map((item) => <button key={item} type="button" aria-pressed={filter === item} disabled={loading} className={filter === item ? "btn btn-primary" : "btn btn-secondary"} onClick={() => void changeFilter(item)}>{item === "ALL" ? t("analytics.all") : t(moduleTranslationKeys[item])}</button>)}</div>
-    {failedFilter ? <div className="notice notice-error" role="alert">{t("ui.filterFailed")} <button type="button" className="btn btn-ghost" onClick={() => void changeFilter(failedFilter)}>{t("ui.retry")}</button></div> : null}
-    <section className="analytics-summary"><Metric label={t("analytics.finalized")} value={String(data.total_finalized_attempts)} /><Metric label={t("analytics.practiceTime")} value={formatDuration(data.total_active_seconds)} /><Metric label={t("analytics.completedMocks")} value={String(data.completed_full_mocks)} /><Metric label={t("analytics.latestOverall")} value={show(data.latest_project_overall)} />{(["READING", "LISTENING", "WRITING", "SPEAKING"] as const).map((skill) => <Metric key={skill} label={t("analytics.skillBands", { skill: t(moduleTranslationKeys[skill]) })} value={`${show(data.bands[skill]?.latest)} / ${show(data.bands[skill]?.best)} / ${show(data.bands[skill]?.average, 2)}`} />)}</section>
-    <section className="analytics-panel"><h2>{t("analytics.trend")}</h2>{trends.length ? <BandTrend points={trends} /> : <p className="analytics-empty">{t("analytics.noBands")}</p>}</section>
-    <div className="analytics-two-column"><section className="analytics-panel"><h2>{t("analytics.typeAccuracy")}</h2>{data.question_types.length ? <ul className="analytics-list">{data.question_types.map((item) => <li key={item.question_type}><span>{questionTypeTranslationKeys[item.question_type] ? t(questionTypeTranslationKeys[item.question_type]) : labels[item.question_type] ?? item.question_type.replaceAll("_", " ")}</span><strong>{show(item.accuracy)}%</strong><small>{t("analytics.answers", { correct: item.correct, incorrect: item.incorrect, attempted: item.attempted })}</small></li>)}</ul> : <p className="analytics-empty">{t("analytics.noAnswers")}</p>}</section><section className="analytics-panel"><h2>{t("analytics.attention")}</h2>{data.weak_areas.length ? <ul className="analytics-list">{data.weak_areas.map((item) => <li key={item.question_type}><span>{questionTypeTranslationKeys[item.question_type] ? t(questionTypeTranslationKeys[item.question_type]) : labels[item.question_type] ?? item.question_type.replaceAll("_", " ")}</span><strong>{show(item.accuracy)}%</strong><small>{t("analytics.across", { count: item.attempted })}</small></li>)}</ul> : <p className="analytics-empty">{t("analytics.minimum")}</p>}</section></div>
-    <section className="analytics-panel"><h2>{t("analytics.time")}</h2><p>{t("analytics.totalTime")} <strong>{formatDuration(data.total_active_seconds)}</strong> · {t("analytics.averageTime")} <strong>{data.average_attempt_seconds === null ? "—" : formatDuration(Math.round(data.average_attempt_seconds))}</strong></p>{data.content_timing.length ? <p>{t("analytics.timingSegments", { count: data.content_timing.length })}</p> : <p className="analytics-empty">{t("analytics.noTiming")}</p>}</section>
-    <section className="analytics-panel"><h2>{t("analytics.compareTitle")}</h2><div className="analytics-compare-controls"><select aria-label={t("analytics.attemptA")} value={left} onChange={(event) => setLeft(event.target.value)}><option value="">{t("analytics.attemptA")}</option>{data.attempts.map((item) => <option key={item.attempt_id} value={item.attempt_id}>{item.label}</option>)}</select><select aria-label={t("analytics.attemptB")} value={right} onChange={(event) => setRight(event.target.value)}><option value="">{t("analytics.attemptB")}</option>{data.attempts.filter((item) => !left || item.skill === data.attempts.find((candidate) => candidate.attempt_id === left)?.skill).map((item) => <option key={item.attempt_id} value={item.attempt_id}>{item.label}</option>)}</select><button className="btn btn-primary" disabled={!left || !right || left === right || comparing} onClick={() => void compare()}>{comparing ? t("common.working") : t("analytics.compare")}</button></div>{comparisonError ? <p role="alert" className="notice notice-error">{t("ui.comparisonFailed")}</p> : null}{comparison ? <Comparison data={comparison} /> : null}</section>
+
+  const period = analyticsPeriod(scope.range, calendarAnchor);
+  const date = new Intl.DateTimeFormat(locale === "vi" ? "vi-VN" : "en-GB", { timeZone: analyticsTimeZone, day: "2-digit", month: "2-digit", year: "numeric" });
+  const periodLabel = period.start && period.end
+    ? date.format(new Date(period.start)) + " – " + date.format(new Date(Date.parse(period.end) - 1)) : t("analytics.allHistory");
+
+  return <div className="analytics-workspace" aria-busy={loading}>
+    <PageHeading title={<span className="analytics-title"><span className="analytics-title-icon"><AnalyticsIcon /></span>{t("analytics.title")}</span>}
+      description={t("analytics.subtitle")} action={<div className="analytics-date-controls">
+        <div className="analytics-range" role="group" aria-label={t("analytics.dateFilter")}>
+          {ranges.map(item => <button key={item.value} type="button" aria-pressed={scope.range === item.value} disabled={loading}
+            onClick={() => void changeScope({ ...scope, range: item.value })}>{t(item.label)}</button>)}
+        </div><span className="analytics-period-label">{periodLabel} · {t("analytics.calendarZone")}</span>
+      </div>} />
+    <div className="analytics-toolbar">
+      <div className="analytics-skill-filter" role="group" aria-label={t("analytics.skillFilter")}>
+        {(["ALL", ...skills] as const).map(skill => <button key={skill} type="button" disabled={loading}
+          aria-pressed={scope.skill === skill} onClick={() => void changeScope({ ...scope, skill })}>
+          {skill === "ALL" ? <AnalyticsIcon /> : <SkillIcon skill={skill} />}{skill === "ALL" ? t("analytics.all") : t(moduleTranslationKeys[skill])}
+        </button>)}
+      </div><span className="analytics-refresh-state" role="status">{loading ? t("ui.loading") : t("analytics.scopeSummary", { count: data.total_finalized_attempts })}</span>
+    </div>
+    {failedScope && <div className="notice notice-error" role="alert">{t("ui.filterFailed")} <button type="button" className="btn btn-ghost" disabled={loading} onClick={() => void changeScope(failedScope)}>{t("ui.retry")}</button></div>}
+    <AnalyticsKpis data={data} />
+    <div className="analytics-main-grid">
+      <AnalyticsCard title="analytics.trend" description="analytics.trendDescription" icon={<AnalyticsIcon />} className="analytics-trend-panel">
+        {data.trends.length ? <BandTrend key={scope.skill + ":" + scope.range} points={data.trends} /> : <div className="analytics-chart-empty">
+          <div className="analytics-empty-grid" aria-hidden="true"><span>9</span><span>6</span><span>3</span><span>0</span></div>
+          <div><p>{t("analytics.noBands")}</p><small>{t("analytics.emptyTrend")}</small><Link className="btn btn-secondary" href="/library">{t("analytics.startPracticing")}</Link></div>
+        </div>}
+      </AnalyticsCard><SkillPerformance bands={data.bands} />
+    </div>
+    <div className="analytics-secondary-grid"><QuestionTypeAccuracy items={data.question_types} skill={scope.skill} /><PracticeTimePanel data={data} /><RecentActivity attempts={data.attempts} /></div>
+    <WeakAreasPanel items={data.weak_areas} />
+    <AttemptComparisonPanel key={scope.skill + ":" + scope.range} attempts={data.attempts} disabled={loading} />
   </div>;
 }
-
-function Metric({ label, value }: { label: string; value: string }) { return <article className="analytics-metric"><span>{label}</span><strong>{value}</strong></article>; }
-function Comparison({ data }: { data: AttemptComparison }) { const { t } = useTranslation(); return <div className="comparison-grid">{([data.left, data.right] as const).map((side) => <article key={side.attempt_id}><h3>{side.test_title}</h3><dl><div><dt>{t("analytics.band")}</dt><dd>{show(side.band_score)}</dd></div><div><dt>{t("analytics.raw")}</dt><dd>{side.raw_score === null || side.max_score === null ? "—" : `${side.raw_score} / ${side.max_score}`}</dd></div><div><dt>{t("analytics.active")}</dt><dd>{side.elapsed_seconds === null ? "—" : formatDuration(side.elapsed_seconds)}</dd></div><div><dt>{t("analytics.accuracy")}</dt><dd>{side.accuracy === null ? "—" : `${side.accuracy.toFixed(1)}%`}</dd></div>{side.writing ? Object.entries(side.writing).map(([key, value]) => <div key={key}><dt>{writingMetricKeys[key] ? t(writingMetricKeys[key]) : key.replaceAll("_", " ").toUpperCase()}</dt><dd>{show(value)}</dd></div>) : null}</dl></article>)}</div>; }

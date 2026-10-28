@@ -33,6 +33,7 @@ class AnalyticsAttemptOption(BaseModel):
     attempt_id: UUID
     skill: ModuleType
     label: str
+    test_title: str | None = None
     band_score: float | None
     finished_at: datetime
 
@@ -60,15 +61,31 @@ class LatestMockSummary(BaseModel):
 
 class AnalyticsDashboard(BaseModel):
     total_finalized_attempts: int = Field(ge=0)
-    total_active_seconds: int = Field(ge=0)
-    average_attempt_seconds: float | None
-    bands: dict[str, SkillBandSummary]
-    completed_full_mocks: int = Field(ge=0)
-    latest_project_overall: float | None
-    latest_full_mock: LatestMockSummary | None
+    total_active_seconds: int = Field(
+        ge=0,
+        description="Recorded active time for selected attempts, including active and paused sessions.",
+    )
+    average_attempt_seconds: float | None = Field(
+        description="Mean recorded active time across the same attempts, including active and paused sessions."
+    )
+    bands: dict[str, SkillBandSummary] = Field(
+        description="All four skills within the date scope, independent of the selected skill."
+    )
+    completed_full_mocks: int = Field(
+        ge=0,
+        description="Completed mocks within the date scope, independent of the selected skill.",
+    )
+    latest_project_overall: float | None = Field(
+        description="Derived from all skills within the date scope, independent of the selected skill."
+    )
+    latest_full_mock: LatestMockSummary | None = Field(
+        description="Latest completed mock within the date scope, independent of the selected skill."
+    )
     trends: list[BandTrendPoint]
     question_types: list[QuestionTypeAccuracy]
-    weak_areas: list[QuestionTypeAccuracy]
+    weak_areas: list[QuestionTypeAccuracy] = Field(
+        description="Question types with at least five graded answers in the selected scope."
+    )
     attempts: list[AnalyticsAttemptOption]
     content_timing: list[ContentTiming]
 

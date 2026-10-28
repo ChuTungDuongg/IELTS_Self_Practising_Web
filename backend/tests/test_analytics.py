@@ -14,8 +14,9 @@ from app.services.analytics import AnalyticsService
 
 @pytest.mark.integration
 async def test_analytics_excludes_active_and_null_bands_and_applies_weak_threshold(
-    db_session: AsyncSession,
+    isolated_db_session: AsyncSession,
 ) -> None:
+    db_session = isolated_db_session
     now = datetime.now(UTC)
     baseline = await AnalyticsService(db_session).dashboard()
     await db_session.rollback()
@@ -57,6 +58,7 @@ async def test_analytics_excludes_active_and_null_bands_and_applies_weak_thresho
         started_at=now,
         last_active_at=now,
         status=AttemptStatus.IN_PROGRESS,
+        elapsed_seconds=25,
         band_score=Decimal("9.0"),
     )
     finalized.answers.extend(
@@ -69,7 +71,7 @@ async def test_analytics_excludes_active_and_null_bands_and_applies_weak_thresho
 
     dashboard = await AnalyticsService(db_session).dashboard()
     assert dashboard.total_finalized_attempts == baseline.total_finalized_attempts + 1
-    assert dashboard.total_active_seconds == baseline.total_active_seconds + 100
+    assert dashboard.total_active_seconds == baseline.total_active_seconds + 125
     matching = next(
         item for item in dashboard.question_types if item.question_type == "matching_headings"
     )

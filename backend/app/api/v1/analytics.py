@@ -1,6 +1,7 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
+from pydantic import AwareDatetime
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import CurrentUser
@@ -16,9 +17,11 @@ router = APIRouter(prefix="/analytics", tags=["analytics"])
 async def analytics_dashboard(
     user: CurrentUser,
     skill: ModuleType | None = Query(default=None),
+    start: AwareDatetime | None = Query(default=None, description="Inclusive aware timestamp."),
+    end: AwareDatetime | None = Query(default=None, description="Exclusive aware timestamp."),
     session: AsyncSession = Depends(get_session),
 ) -> AnalyticsDashboard:
-    return await AnalyticsService(session, user.id).dashboard(skill)
+    return await AnalyticsService(session, user.id).dashboard(skill, start=start, end=end)
 
 
 @router.get("/compare", response_model=AttemptComparison)

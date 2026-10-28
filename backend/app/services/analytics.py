@@ -1,8 +1,9 @@
 import uuid
 from collections import defaultdict
+from datetime import datetime, timedelta
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -55,8 +56,26 @@ class AnalyticsService:
         if not isinstance(self.user_id, uuid.UUID):
             raise ValueError("AnalyticsService requires an authenticated user id")
 
-    async def dashboard(self, skill: ModuleType | None = None) -> AnalyticsDashboard:
-        attempts = await self._attempts()
+    async def dashboard(
+        self,
+        skill: ModuleType | None = None,
+        *,
+        start: datetime | None = None,
+        end: datetime | None = None,
+    ) -> AnalyticsDashboard:
+        for bound in (start, end):
+            if bound is not None and bound.utcoffset() is None:
+                raise AppError(
+                    "ANALYTICS_DATE_RANGE_INVALID", "Analytics dates must include a timezone.", 422
+                )
+        if start is not None and end is not None:
+            if end <= start or end - start > timedelta(days=3660):
+                raise AppError(
+                    "ANALYTICS_DATE_RANGE_INVALID",
+                    "Analytics end must follow start and the range must not exceed 3660 days.",
+                    422,
+                )
+        attempts = await self._attempts(start=start, end=end)
         finalized = [item for item in attempts if item.status not in ACTIVE_STATUSES]
         filtered = [item for item in finalized if skill is None or item.module_type == skill]
         time_attempts = [item for item in attempts if skill is None or item.module_type == skill]
@@ -75,8 +94,8 @@ class AnalyticsService:
                 best=max(values) if values else None,
                 average=round(sum(values) / len(values), 2) if values else None,
             )
-        question_types = self._question_type_accuracy(filtered)
-        sessions = await self._sessions()
+        question_types = self._question_type_accuracy(filtered, graded_only=True)
+        sessions = await self._sessions(start=start, end=end)
         completed_sessions = [
             item for item in sessions if item.status == TestSessionStatus.COMPLETED
         ]
@@ -116,7 +135,8 @@ class AnalyticsService:
                 AnalyticsAttemptOption(
                     attempt_id=item.id,
                     skill=item.module_type,
-                    label=f"{item.test_version.test.title} · V{item.test_version.version_number} · {item.module_type.value.title()}",
+                    label=f"{item.test_version.test.title} · {item.module_type.value.title()}",
+                    test_title=item.test_version.test.title,
                     band_score=float(item.band_score) if item.band_score is not None else None,
                     finished_at=item.finished_at or item.started_at,
                 )
@@ -145,7 +165,11 @@ class AnalyticsService:
         )
 
     async def _attempts(
-        self, *, attempt_ids: tuple[uuid.UUID, uuid.UUID] | None = None
+        self,
+        *,
+        attempt_ids: tuple[uuid.UUID, uuid.UUID] | None = None,
+        start: datetime | None = None,
+        end: datetime | None = None,
     ) -> list[Attempt]:
         statement = (
             select(Attempt)
@@ -166,11 +190,24 @@ class AnalyticsService:
         else:
             # Navigation events are used by dashboard timing, not comparisons.
             statement = statement.options(selectinload(Attempt.events))
+            if start is not None or end is not None:
+                # Finalized attempts belong to their completion date. Ongoing time
+                # remains included historically and belongs to the attempt's start.
+                occurred_at = case(
+                    (Attempt.status.in_(ACTIVE_STATUSES), Attempt.started_at),
+                    else_=func.coalesce(Attempt.finished_at, Attempt.started_at),
+                )
+                if start is not None:
+                    statement = statement.where(occurred_at >= start)
+                if end is not None:
+                    statement = statement.where(occurred_at < end)
         rows = await self.session.scalars(statement)
         return list(rows)
 
-    async def _sessions(self) -> list[TestSession]:
-        rows = await self.session.scalars(
+    async def _sessions(
+        self, *, start: datetime | None = None, end: datetime | None = None
+    ) -> list[TestSession]:
+        statement = (
             select(TestSession)
             .where(TestSession.user_id == self.user_id)
             .options(
@@ -179,15 +216,25 @@ class AnalyticsService:
             )
             .order_by(TestSession.started_at)
         )
+        occurred_at = func.coalesce(TestSession.finished_at, TestSession.started_at)
+        if start is not None:
+            statement = statement.where(occurred_at >= start)
+        if end is not None:
+            statement = statement.where(occurred_at < end)
+        rows = await self.session.scalars(statement)
         return list(rows)
 
     @staticmethod
-    def _question_type_accuracy(attempts: list[Attempt]) -> list[QuestionTypeAccuracy]:
+    def _question_type_accuracy(
+        attempts: list[Attempt], *, graded_only: bool = False
+    ) -> list[QuestionTypeAccuracy]:
         totals: dict[str, list[int]] = defaultdict(lambda: [0, 0])
         for attempt in attempts:
             if attempt.module_type not in {ModuleType.READING, ModuleType.LISTENING}:
                 continue
             for answer in attempt.answers:
+                if graded_only and answer.is_correct is None:
+                    continue
                 question_type = answer.question.question_group.question_type
                 totals[question_type][0] += 1
                 totals[question_type][1] += int(answer.is_correct is True)
