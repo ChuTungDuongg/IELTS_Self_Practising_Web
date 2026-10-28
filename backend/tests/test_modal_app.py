@@ -22,6 +22,9 @@ def clean_topology_environment(monkeypatch):
         "IELTS_MODAL_REQUIRE_ASSET_ISOLATION",
         "IELTS_MODAL_DEV_ASSETS_VOLUME",
         "IELTS_MODAL_PRODUCTION_ASSETS_VOLUME",
+        "IELTS_MODAL_DATABASE_VOLUME",
+        "IELTS_MODAL_DEV_DATABASE_VOLUME",
+        "IELTS_MODAL_SNAPSHOTS_VOLUME",
     ):
         monkeypatch.delenv(key, raising=False)
 
@@ -230,6 +233,28 @@ def test_mode_specific_volume_and_strict_dev_isolation(monkeypatch):
     monkeypatch.delenv("IELTS_MODAL_DEV_ASSETS_VOLUME")
     with pytest.raises(ValueError, match="Dev isolation"):
         load_app(monkeypatch)
+
+
+def test_isolated_database_and_snapshot_volumes_require_explicit_creation(monkeypatch):
+    monkeypatch.setenv("IELTS_MODAL_DATABASE_VOLUME", "precreated-staging-postgres")
+    monkeypatch.setenv("IELTS_MODAL_SNAPSHOTS_VOLUME", "precreated-staging-snapshots")
+    module, modal, _ = load_app(monkeypatch)
+    assert module.DATABASE_VOLUME_NAME == "precreated-staging-postgres"
+    assert module.OWNER_KEY == "precreated-staging-postgres"
+    for name in ("precreated-staging-postgres", "precreated-staging-snapshots"):
+        call = next(call for call in modal.Volume.from_name.call_args_list if call.args[0] == name)
+        assert call.kwargs["create_if_missing"] is False
+    runtime = stub_runtime(monkeypatch, external=False)
+    monkeypatch.setattr(module.threading, "Thread", MagicMock())
+    web = module.Web()
+    web.start()
+    module.owners.put.assert_called_once_with(
+        "precreated-staging-postgres", web.owner, skip_if_exists=True
+    )
+    module.owners.get.return_value = web.owner
+    web.stop()
+    module.owners.pop.assert_called_with("precreated-staging-postgres", None)
+    assert runtime.stop.call_count == 1
 
 
 def stub_runtime(monkeypatch, *, external):

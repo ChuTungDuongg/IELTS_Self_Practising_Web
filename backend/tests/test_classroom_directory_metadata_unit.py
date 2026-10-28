@@ -73,7 +73,9 @@ async def test_owner_receives_owner_capabilities():
     room = classroom(current)
     room.created_at = room.updated_at = datetime.now(UTC)
     session = session_double(current)
-    session.execute = AsyncMock(side_effect=[SimpleNamespace(all=lambda: []), SimpleNamespace(all=lambda: [])])
+    session.execute = AsyncMock(
+        side_effect=[SimpleNamespace(all=lambda: []), SimpleNamespace(all=lambda: [])]
+    )
     session.scalars = AsyncMock(side_effect=[[], []])
     service = ClassroomService(session, current)
     service.repository.list = AsyncMock(return_value=[room])

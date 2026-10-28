@@ -7,6 +7,7 @@ Requires the authenticated Modal CLI and existing PostgreSQL backup prerequisite
 import argparse
 import asyncio
 import json
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -47,6 +48,14 @@ def modal_command(*args: str) -> str:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--volume", default="ielts-postgres-backups")
+    parser.add_argument(
+        "--dump-file",
+        type=Path,
+        help="Operator-created custom dump from the explicitly configured source",
+    )
+    parser.add_argument(
+        "--expected-sha256", help="Required independently verified digest when --dump-file is used"
+    )
     args = parser.parse_args()
     try:
         database_url, _ = load_configuration()
@@ -54,7 +63,18 @@ def main() -> int:
         directory = REPO_ROOT / "backups" / "modal" / stamp
         directory.mkdir(parents=True)
         dump = directory / "database.dump"
-        run_pg_dump(database_url, dump)
+        if args.dump_file:
+            if (
+                not args.expected_sha256
+                or args.dump_file.is_symlink()
+                or sha256_file(args.dump_file) != args.expected_sha256.lower()
+            ):
+                raise BackupError("Existing snapshot checksum mismatch or missing expected digest")
+            shutil.copyfile(args.dump_file, dump)
+        elif args.expected_sha256:
+            raise BackupError("--expected-sha256 requires --dump-file")
+        else:
+            run_pg_dump(database_url, dump)
         manifest = {
             "format": "PostgreSQL custom dump",
             "created_at": datetime.now(UTC).isoformat(),

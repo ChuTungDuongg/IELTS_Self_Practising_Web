@@ -273,6 +273,28 @@ modal deploy deploy/modal/app.py
 
 ### Asset-volume isolation and durability
 
+For a fresh staging database, explicitly create a new v2 PostgreSQL Volume and
+select it with `IELTS_MODAL_DATABASE_VOLUME` (or mode-specific
+`IELTS_MODAL_DEV_DATABASE_VOLUME` / `IELTS_MODAL_PRODUCTION_DATABASE_VOLUME`).
+Defaults remain `ielts-web-postgres[-dev]`. A non-default Volume must already
+exist; it is never silently created on startup. Its guard key is the explicit
+Volume name, preserving the old `dev`/`production` keys for the default Volumes.
+Do not clear another database owner's key. `IELTS_MODAL_SNAPSHOTS_VOLUME` can
+likewise select a pre-created private snapshot Volume; its default is unchanged.
+Use `modal deploy ... --strategy recreate` for the single-owner demo, and verify
+old PostgreSQL processes have stopped before replacing a running deployment.
+
+`scripts/modal_web_setup.py --secret-name STAGING_NAME --disable-ai --snapshot PATH`
+creates a dedicated dev Secret with a fresh JWT and no inherited AI credentials.
+It refuses the production Secret name in this mode and never overwrites a custom
+Secret automatically. Existing default setup remains backward-compatible.
+For an operator-created synthetic dump, `modal_database_snapshot.py --dump-file
+PATH --expected-sha256 DIGEST --volume STAGING_SNAPSHOTS` reuses upload/read-back
+verification without dumping the ordinary development database. The operator must
+ensure the explicit source DATABASE_URL matches that dump. Keep private dumps,
+credentials and runtime logs outside Git. No live resource is changed merely by
+setting these environment variables.
+
 By default both dev and production use the existing `ielts-web-assets` Volume.
 Their database guards are separate, so they do not prevent concurrent access to
 that shared asset Volume. Do not treat the two environments as isolated.

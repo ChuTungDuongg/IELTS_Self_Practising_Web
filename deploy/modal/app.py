@@ -63,10 +63,21 @@ CHART_SPECIALIST_ENABLED = AI_ENABLED and os.environ.get(
 ).lower() in {"true", "1", "yes"}
 if CHART_SPECIALIST_ENABLED:
     app.include(chart_app)
+DEFAULT_DATABASE_VOLUME = "ielts-web-postgres-dev" if MODE == "dev" else "ielts-web-postgres"
+DATABASE_VOLUME_NAME = os.environ.get(
+    "IELTS_MODAL_DATABASE_VOLUME",
+    os.environ.get(f"IELTS_MODAL_{MODE.upper()}_DATABASE_VOLUME", DEFAULT_DATABASE_VOLUME),
+).strip()
+SNAPSHOTS_VOLUME_NAME = os.environ.get("IELTS_MODAL_SNAPSHOTS_VOLUME", "ielts-postgres-backups").strip()
+if DATABASE_MODE == "embedded" and (not DATABASE_VOLUME_NAME or not SNAPSHOTS_VOLUME_NAME):
+    raise ValueError("Embedded database and snapshots Volume names must not be empty")
+# Legacy guards remain compatible. Fresh staging databases get a distinct key,
+# without clearing or taking over an existing dev/production owner.
+OWNER_KEY = MODE if DATABASE_VOLUME_NAME == DEFAULT_DATABASE_VOLUME else DATABASE_VOLUME_NAME
 database = (
     modal.Volume.from_name(
-        "ielts-web-postgres-dev" if MODE == "dev" else "ielts-web-postgres",
-        create_if_missing=True,
+        DATABASE_VOLUME_NAME,
+        create_if_missing=DATABASE_VOLUME_NAME == DEFAULT_DATABASE_VOLUME,
         version=2,
     )
     if DATABASE_MODE == "embedded"
@@ -93,7 +104,7 @@ assets = (
     else None
 )
 snapshots = (
-    modal.Volume.from_name("ielts-postgres-backups") if DATABASE_MODE == "embedded" else None
+    modal.Volume.from_name(SNAPSHOTS_VOLUME_NAME, create_if_missing=False) if DATABASE_MODE == "embedded" else None
 )
 owners = (
     modal.Dict.from_name("ielts-web-database-owner", create_if_missing=True)
@@ -141,6 +152,8 @@ image = (
             "IELTS_MODAL_CONFIG_SECRET": CONFIG_SECRET_NAME,
             "IELTS_MODAL_REQUIRE_ASSET_ISOLATION": str(REQUIRE_ISOLATION).lower(),
             "IELTS_MODAL_ASSETS_VOLUME": ASSETS_VOLUME_NAME,
+            "IELTS_MODAL_DATABASE_VOLUME": DATABASE_VOLUME_NAME,
+            "IELTS_MODAL_SNAPSHOTS_VOLUME": SNAPSHOTS_VOLUME_NAME,
             "IELTS_WEB_AI_ENABLED": str(AI_ENABLED).lower(),
             "IELTS_WEB_CHART_SPECIALIST_ENABLED": str(CHART_SPECIALIST_ENABLED).lower(),
         }
@@ -258,7 +271,7 @@ class Web:
                     "External database topology requires DATABASE_URL in the backend Secret"
                 )
             self.owner = uuid4().hex
-            if not owners.put(MODE, self.owner, skip_if_exists=True):
+            if not owners.put(OWNER_KEY, self.owner, skip_if_exists=True):
                 raise RuntimeError(
                     "Another container owns PostgreSQL. Stop it first. For a crashed deployment, use the documented stale-owner recovery."
                 )
@@ -280,15 +293,15 @@ class Web:
                 database.commit()
         except Exception:
             self.runtime.stop()
-            if self.owner and owners.get(MODE) == self.owner:
-                owners.pop(MODE, None)
+            if self.owner and owners.get(OWNER_KEY) == self.owner:
+                owners.pop(OWNER_KEY, None)
             raise
 
         if self.owner:
 
             def heartbeat():
                 while not self.stop_heartbeat.wait(60):
-                    owners.get(MODE)
+                    owners.get(OWNER_KEY)
 
             threading.Thread(target=heartbeat, daemon=True).start()
 
@@ -317,5 +330,5 @@ class Web:
             if failures:
                 raise RuntimeError("Modal Volume commit failed: " + ", ".join(failures))
         finally:
-            if self.owner and owners.get(MODE) == self.owner:
-                owners.pop(MODE, None)
+            if self.owner and owners.get(OWNER_KEY) == self.owner:
+                owners.pop(OWNER_KEY, None)

@@ -164,7 +164,9 @@ class TestCover(UUIDPrimaryKeyMixin, Base):
     mime_type: Mapped[str] = mapped_column(String(100), nullable=False)
     original_name: Mapped[str] = mapped_column(String(255), nullable=False)
     file_size: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
     test: Mapped[Test] = relationship(back_populates="cover_image")
 
     @property

@@ -49,7 +49,15 @@ describe("Builder workspace page", () => {
     expect(updateTest).not.toHaveBeenCalled();
     expect(navigation.refresh).not.toHaveBeenCalled();
   });
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // Overview now loads cover metadata through the real async getTest contract.
+    vi.mocked(getTest).mockResolvedValue({
+      id: testId, title: "Practice", description: null, source_label: null,
+      test_number: null, archived_at: null, created_at: "2026-09-20T00:00:00Z",
+      updated_at: "2026-09-20T00:00:00Z", versions: [], cover_image: null,
+    });
+  });
 
   it("opens the real Listening workspace without a module or audio", async () => {
     vi.mocked(getBuilderVersion).mockResolvedValue({ id: versionId, test_id: testId, test_title: "Practice", version_number: 1, status: "DRAFT", modules: [] });
