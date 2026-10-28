@@ -34,10 +34,12 @@ from app.repositories.tests import TestRepository
 from app.schemas.content import QuestionGroupWrite, QuestionWrite, TextBlock
 from app.schemas.draft_import import DraftImportManifest, ImportGroup, ImportOption, ImportQuestion
 from app.services.access_policy import AccessPolicy
+from app.services.asset_cleanup import compensate_files
 from app.services.reading import ReadingService
 from app.services.tests import TestService
 from app.storage import LocalAssetStorage
 from app.storage.factory import get_asset_storage
+from app.storage.tasks import storage_io
 
 GAP = "{{gap}}"
 TEXT_TYPES = {
@@ -543,8 +545,13 @@ class DraftImportService:
                     group_order = 0
                     unit_count = 0
                     if source.type == "LISTENING" and source.audio:
-                        module.audio_asset = self._asset(
-                            root, source.audio, version, AssetType.LISTENING_AUDIO, created
+                        module.audio_asset = await storage_io(
+                            self._asset,
+                            root,
+                            source.audio,
+                            version,
+                            AssetType.LISTENING_AUDIO,
+                            created,
                         )
                     if source.type == "READING":
                         units = source.passages or []
@@ -583,7 +590,8 @@ class DraftImportService:
                         for local_index, group_source in enumerate(unit.question_groups):
                             path = f"modules[{module_index}].{source.type.lower()}[{unit_index}].question_groups[{local_index}]"
                             image = (
-                                self._asset(
+                                await storage_io(
+                                    self._asset,
                                     root,
                                     group_source.image,
                                     version,
@@ -633,8 +641,13 @@ class DraftImportService:
                         for task_number, word_count, seconds in ((1, 150, 1200), (2, 250, 2400)):
                             item = supplied.get(task_number)
                             image = (
-                                self._asset(
-                                    root, item.image, version, AssetType.WRITING_TASK_IMAGE, created
+                                await storage_io(
+                                    self._asset,
+                                    root,
+                                    item.image,
+                                    version,
+                                    AssetType.WRITING_TASK_IMAGE,
+                                    created,
                                 )
                                 if item and item.image
                                 else None
@@ -738,7 +751,6 @@ class DraftImportService:
                         "Incomplete draft: " + "; ".join(details) + " before publishing."
                     )
         except BaseException:
-            for relative_path in created:
-                self.storage.delete(relative_path)
+            await compensate_files(self.session, self.storage, created)
             raise
         return DraftImportResult(test.id, version.id, test.title, counts, warnings)

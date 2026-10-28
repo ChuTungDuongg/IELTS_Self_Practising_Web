@@ -28,6 +28,7 @@ from app.schemas.writing_benchmark import (
 )
 from app.services.draft_revisions import advance_revision
 from app.storage.factory import get_asset_storage
+from app.storage.tasks import storage_io
 
 SCORE_MAP = {"cc": "human_cc", "lr": "human_lr", "gra": "human_gra"}
 logger = logging.getLogger(__name__)
@@ -212,7 +213,9 @@ class WritingBenchmarkService:
                 setattr(row, "human_ta_tr" if trait == first else SCORE_MAP[trait], value)
             for field, value in edits.items():
                 setattr(row, field, value)
-            if row.status == WritingBenchmarkStatus.COMPLETE and self._completion_issues(row):
+            if row.status == WritingBenchmarkStatus.COMPLETE and await storage_io(
+                self._completion_issues, row
+            ):
                 row.status = WritingBenchmarkStatus.DRAFT
             await self.session.flush()
             await self.session.refresh(row)
@@ -222,7 +225,7 @@ class WritingBenchmarkService:
         async with self.session.begin():
             row = await self._get(sample_id, lock=True)
             advance_revision(row, body.expected_revision)
-            issues = self._completion_issues(row)
+            issues = await storage_io(self._completion_issues, row)
             if issues:
                 raise BenchmarkCompletionFailure(issues)
             row.status = WritingBenchmarkStatus.COMPLETE
@@ -246,7 +249,7 @@ class WritingBenchmarkService:
             advance_revision(row, body.expected_revision)
             old_key = row.task1_image_key
             await self.session.delete(row)
-        self._cleanup_image(sample_id, old_key)
+        await storage_io(self._cleanup_image, sample_id, old_key)
 
     def _cleanup_image(self, sample_id, key):
         if not key:
@@ -271,10 +274,15 @@ class WritingBenchmarkService:
                 advance_revision(row, body.expected_revision)
                 old_key = row.task1_image_key
                 maximum = min(get_settings().max_image_upload_mb, 10) * 1024 * 1024
-                stored = self.storage.store_benchmark_writing_image(
-                    sample_id, mime_type, original_name, content, maximum
-                )
-                new_key = stored.relative_path
+
+                def write_image():
+                    nonlocal new_key
+                    stored = self.storage.store_benchmark_writing_image(
+                        sample_id, mime_type, original_name, content, maximum
+                    )
+                    new_key = stored.relative_path
+
+                await storage_io(write_image)
                 row.task1_image_key = new_key
                 await self.session.flush()
                 await self.session.refresh(row)
@@ -284,9 +292,9 @@ class WritingBenchmarkService:
                 committing = True
         except BaseException:
             if new_key and not committing:
-                self._cleanup_image(sample_id, new_key)
+                await storage_io(self._cleanup_image, sample_id, new_key)
             raise
-        self._cleanup_image(sample_id, old_key)
+        await storage_io(self._cleanup_image, sample_id, old_key)
         return response
 
     async def remove_image(self, sample_id, body):
@@ -301,14 +309,16 @@ class WritingBenchmarkService:
             await self.session.flush()
             await self.session.refresh(row)
             response = present(row)
-        self._cleanup_image(sample_id, old_key)
+        await storage_io(self._cleanup_image, sample_id, old_key)
         return response
 
     async def image_content(self, sample_id):
         async with self.session.begin():
             row = await self._get(sample_id, lock=True)
             try:
-                image = load_owned_image(self.storage, sample_id, row.task1_image_key)
+                image = await storage_io(
+                    load_owned_image, self.storage, sample_id, row.task1_image_key
+                )
             except BenchmarkInputError:
                 raise AppError(
                     "BENCHMARK_IMAGE_NOT_FOUND", "The private image is unavailable.", 404

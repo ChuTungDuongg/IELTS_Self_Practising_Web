@@ -61,6 +61,12 @@ def load_configuration() -> tuple[str, Path]:
         raise BackupError("DATABASE_URL missing; set it in the environment or backend/.env.")
     try:
         settings = Settings(_env_file=env_file)
+        if settings.storage_backend != "local":
+            raise BackupError(
+                "This backup/restore CLI supports STORAGE_BACKEND=local only. "
+                "Cloud assets require a verified PostgreSQL plus object-inventory backup "
+                "and provider-aware restore (P5); no backup or restore was started."
+            )
         configured_storage = settings.storage_root
         if not configured_storage.is_absolute():
             configured_storage = REPO_ROOT / "backend" / configured_storage

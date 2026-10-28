@@ -14,6 +14,30 @@ BandPilot is a modular monolith. Next.js renders the frontend and calls FastAPI 
 - Classroom staff capabilities resolve separately from global roles in `classroom_capabilities.py`. Keep Builder ownership/moderation in AccessPolicy. Gradebook and learning analytics share P2 root acceptance/status SQL and native final-score provenance; neither is a second exam/scoring lifecycle. Roster pages, matrix columns, charts and exports must remain bounded and authorized per request.
 - P4 aggregate SQL lives in `repositories/classroom_learning.py`; `ClassroomLearningService` resolves scoped dashboards and deterministic evidence/recommendations. `LearningPlanService` manages normalized references to existing activities, not attempts. Reuse profile skill targets and the optional explicit overall target. See [analytics definitions and API](classroom-learning-analytics.md) and [Classroom workspace design](classroom-workspace.md).
 
+## Asset storage
+
+`app/storage/factory.py` is the sole application provider selector. `local` is the
+default; `s3` and `r2` use the shared boto3 adapter. PostgreSQL keeps opaque object
+keys and authorized relationships, never bucket URLs. Private media is served
+through FastAPI after the existing access policies. Bounded byte-range reads
+preserve Listening/Speaking seeking. SDK work runs off the event loop; writes
+finish before cancellation compensation inspects database references.
+
+Cloud Settings require a bucket and region; R2 additionally requires its HTTPS
+account endpoint, region `auto`, and scoped access/secret keys. AWS can use IAM
+roles through the standard credential chain. Incomplete configuration fails
+closed. Startup initializes only the selected backend; cloud mode does not create
+`STORAGE_ROOT`. Temporary FFmpeg/ZIP files and local evaluation fixtures remain
+local. Switching a provider does not migrate bytes; verify and copy referenced
+keys before an operator-controlled cutover.
+
+The P3 gates are verified offline with boto3 Stubber, fake S3 clients and isolated
+PostgreSQL. Live cloud/staging validation, Modal durability and deployment remain
+separate operations. The existing local-only backup/restore CLI refuses cloud
+mode before database or filesystem changes. P5 must provide a consistent database
+backup plus a referenced object inventory, copies, checksums and verified restore.
+See [storage configuration and progress](storage-portability-work-in-progress.md).
+
 ## Frontend styling
 
 - `globals.css` owns resets, account accent preferences and exam-specific defaults.

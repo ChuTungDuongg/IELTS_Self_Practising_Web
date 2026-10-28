@@ -69,6 +69,7 @@ from app.services.tests import TestService
 from app.services.transfer_ids import build_id_maps
 from app.storage import LocalAssetStorage
 from app.storage.factory import get_asset_storage
+from app.storage.tasks import storage_io
 
 
 @dataclass(slots=True)
@@ -132,7 +133,8 @@ class TransferService:
                         raise AppError(
                             "TRANSFER_ASSET_INVALID", "Cover image type is unsupported.", 422
                         )
-                    package_path, size, digest = self._archive_asset(
+                    package_path, size, digest = await storage_io(
+                        self._archive_asset,
                         archive,
                         cover.relative_path,
                         cover.id,
@@ -166,7 +168,8 @@ class TransferService:
                                 "A referenced asset has an unsupported MIME type.",
                                 422,
                             )
-                        package_path, size, digest = self._archive_asset(
+                        package_path, size, digest = await storage_io(
+                            self._archive_asset,
                             archive,
                             asset.relative_path,
                             asset.id,
@@ -327,6 +330,12 @@ class TransferService:
         created_paths: list[str] = []
         imported: list[ImportedTest] = []
         version_count = 0
+
+        def stage_file(**kwargs):
+            stored = self.storage.store_file(**kwargs)
+            created_paths.append(stored.relative_path)
+            return stored
+
         try:
             async with self.session.begin():
                 actor = await self.policy.lock_actor()
@@ -348,14 +357,14 @@ class TransferService:
                             for item in package.manifest.covers
                             if item.source_id == portable_test.cover_id
                         )
-                        stored_cover = self.storage.store_file(
+                        stored_cover = await storage_io(
+                            stage_file,
                             category="images",
                             mime_type=cover_meta.mime_type,
                             original_name=cover_meta.original_filename,
                             source=package.staged_assets[cover_meta.source_id],
                             max_bytes=min(self.settings.max_image_upload_mb, 10) * 1024 * 1024,
                         )
-                        created_paths.append(stored_cover.relative_path)
                         test.cover_image = TestCover(
                             id=maps["covers"][cover_meta.source_id],
                             relative_path=stored_cover.relative_path,
@@ -395,14 +404,14 @@ class TransferService:
                             * 1024
                             * 1024
                         )
-                        stored = self.storage.store_file(
+                        stored = await storage_io(
+                            stage_file,
                             category=category,
                             mime_type=metadata.mime_type,
                             original_name=metadata.original_filename,
                             source=package.staged_assets[metadata.source_id],
                             max_bytes=maximum,
                         )
-                        created_paths.append(stored.relative_path)
                         asset = Asset(
                             id=maps["assets"][metadata.source_id],
                             asset_type=metadata.asset_type,

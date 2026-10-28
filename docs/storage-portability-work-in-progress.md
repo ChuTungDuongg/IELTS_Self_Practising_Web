@@ -1,10 +1,69 @@
 # Storage portability: work in progress
 
-Cloud storage is **not enabled** in the application. `STORAGE_BACKEND` must remain
-`local` until protected delivery, Speaking, Classroom, test editing, transfer
-imports, cleanup and backup/restore have all been integrated and verified. The
-S3 client and migration utilities are experimental and have only offline tests.
-Do not use them for a production cutover yet.
+Local asset storage remains the default. S3 and R2 can be selected after the P3
+offline gates described below. No live cloud deployment, bucket access or real
+asset migration was performed. Changing the backend never moves existing files.
+
+## P3 COMPLETE — Configurable Local/S3/R2 verified offline
+
+Starting local commit: `71272ea721a9324446c48e0d31d98ae571d71afa`.
+Final focused verification: 98 offline configuration/SDK/contract/backup tests
+passed, plus 99 selected domain/integration tests passed on disposable PostgreSQL.
+One existing symlink test was skipped because this Windows host cannot create
+symlinks; Linux CI covers that guard. Scoped Ruff, `uv lock --check --offline`
+and `git diff --check` passed. S3/R2 are now selectable; local remains the default.
+No application environment was switched, real cloud request made, or asset moved.
+
+### Storage selection
+
+Set backend-only environment variables in `backend/.env` or runtime secrets:
+
+| Setting | Local | AWS S3 | Cloudflare R2 |
+| --- | --- | --- | --- |
+| `STORAGE_BACKEND` | `local` (default) | `s3` | `r2` |
+| `STORAGE_ROOT` | durable local directory | unused for persistent media | unused for persistent media |
+| `S3_BUCKET` | unused | required private bucket name | required private bucket name |
+| `S3_REGION` | unused | actual AWS region | `auto` |
+| `S3_ENDPOINT_URL` | unused | normally omitted | `https://<account-id>.r2.cloudflarestorage.com` |
+| `S3_KEY_PREFIX` | unused | optional safe relative namespace | optional safe relative namespace |
+| credentials | none | IAM role or standard AWS SDK chain; optional explicit AWS variables | required scoped token access/secret pair in `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` |
+
+`AWS_SESSION_TOKEN` is supported for temporary credentials. Credentials are
+server-only, redacted in Settings and errors, and never embedded in frontend
+configuration or asset rows. Use separate buckets or prefixes for environments;
+changing a prefix also changes the physical object namespace. No fallback to
+local storage occurs on configuration, permission or provider failures.
+
+Startup validates settings and initializes the configured client in a worker
+thread. It does not probe or create buckets; invalid credentials/permissions are
+reported when the SDK resolves credentials or the first authorized object
+operation runs. Local startup creates `audio` and `images`; cloud startup does
+not touch `STORAGE_ROOT`. SDK clients are reused per configuration. Synchronous
+object I/O runs in worker threads; cancelled writes are joined before rollback
+compensation, and cancelled stream-open operations close their eventual body.
+The adapter uses private Put/Get/Head/Delete operations, conditional create,
+Content-Type and Content-Length, SigV4, 5s connect/60s read timeouts and at most
+four total SDK attempts. Uploads spool bounded chunks to ephemeral disk rather
+than buffering whole recordings. No ACLs, KMS or ETag-as-checksum assumptions are
+required. SDK optional checksum headers are restricted to required operations
+for S3 compatibility. ZIP continues to verify application-level SHA-256.
+
+The existing backup and restore CLIs support Local only. With cloud selected they
+fail before any database dump, restore or file replacement. Do not work around
+this by pretending the active backend is local. P5 needs a maintenance-window
+PostgreSQL backup plus a referenced-object inventory, copied bytes, SHA-256 and
+size checks, missing-object detection, provider-aware restore and rollback.
+
+Offline gates cover local/S3 contracts, boto3 Stubber calls, R2 configuration,
+factory and startup selection, protected ranges, Speaking normalization/ASR,
+Classroom authorization/downloads, clone/cleanup, ZIP v1/v2 cross-provider
+round-trips and failure compensation on disposable PostgreSQL. Live staging
+still must verify real IAM/R2 permissions, endpoints/TLS, provider retry behavior,
+large uploads/seeking, latency, and independently restorable backups before
+production cutover. No offline test proves that a particular live bucket is ready.
+
+References: [R2 S3 compatibility](https://developers.cloudflare.com/r2/api/s3/api/),
+[boto3 configuration](https://docs.aws.amazon.com/boto3/latest/guide/configuration.html).
 
 ## P2 COMPLETE — Offline storage domain integration verified
 
@@ -29,8 +88,7 @@ cache insertion and a lost commit acknowledgement. No live S3/R2 was contacted.
 
 The focused P2 integration gates passed offline, including remote missing and
 corrupt object rejection, end-to-end Classroom and transcription worker use with
-the fake S3 client, and S3-backed clone cleanup. The application storage factory
-remains fail-closed for cloud providers. These tests do not establish production
+the fake S3 client, and S3-backed clone cleanup. The application storage factory validates cloud configuration before selection. These tests do not establish production
 cloud readiness or verify a live AWS/R2 service.
 
 ### Safely running the PostgreSQL tests
@@ -64,22 +122,23 @@ afterwards. Test database credentials above are fictional.
 
 Local-only paths retained intentionally: FFmpeg input/output and normalized-WAV
 staging, ZIP validation/import and export staging, model caches, and the local
-adapter. The local backup/restore tool and startup directory initialization still
-assume a filesystem; they are deployment/operations work for P3/P5 and must be
-addressed before cloud activation. The domain services inspected do not resolve
-persistent assets to local paths. Modal Volume durability remains unresolved.
+adapter and explicit local benchmark input fixtures. Startup directory creation
+is now restricted to local mode. The local backup/restore tool explicitly refuses
+cloud mode until P5 provides cloud-aware operations. The domain services inspected
+do not resolve persistent assets to local paths. Modal Volume durability remains unresolved.
 
-P3/P4 remain deferred: enabling S3/R2, live-cloud checks, Modal durability and
-cloud configuration, migration-CLI enhancements, and cloud backup/restore.
+P4/P5 remain deferred: Modal durability and cloud deployment configuration,
+migration-CLI enhancements, and cloud backup/restore. Live staging validation
+remains pending.
 
-P4 prerequisite audit: P3 remains incomplete, and Settings and the storage
-factory reject cloud mode. Modal therefore cannot yet use external asset storage.
+P4 prerequisite audit: application S3/R2 selection is implemented. Modal cloud
+configuration and durability have not been completed or verified.
 The uncommitted P4 runtime work offers the backward-compatible `IELTS_AUTO_MIGRATE=false` switch
 for an externally coordinated database migration and preserves a configured
 local `STORAGE_ROOT`; non-default asset Volumes must already exist. The default
 demo still mounts its existing asset Volume and runs startup migrations. These
-changes do not establish asset durability or AWS deployment readiness. Cloud
-storage, production container configuration, IAM and deployment verification
+changes do not establish asset durability or AWS deployment readiness. Modal cloud
+storage wiring, production container configuration, IAM and deployment verification
 remain outstanding.
 
 ## Inventory and copy prototype

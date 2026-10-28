@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -14,14 +15,14 @@ from app.services.speaking_transcript_worker import (
     stop_speaking_transcript_workers,
 )
 from app.services.writing_ai_worker import stop_writing_ai_workers
+from app.storage.factory import initialize_asset_storage
 
 settings = get_settings()
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-    (settings.resolved_storage_root / "audio").mkdir(parents=True, exist_ok=True)
-    (settings.resolved_storage_root / "images").mkdir(parents=True, exist_ok=True)
+    await asyncio.to_thread(initialize_asset_storage, settings)
     from app.services.speaking_media import cleanup_private_media
 
     try:

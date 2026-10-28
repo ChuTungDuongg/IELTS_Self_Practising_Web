@@ -44,6 +44,7 @@ from app.services.access_policy import AccessPolicy
 from app.services.asset_cleanup import compensate_files
 from app.storage import LocalAssetStorage
 from app.storage.factory import get_asset_storage
+from app.storage.tasks import storage_io
 
 
 class TestService:
@@ -252,7 +253,7 @@ class TestService:
             await self.session.flush()
         if cover_path:
             await compensate_files(self.session, get_asset_storage(get_settings()), [cover_path])
-        self._delete_files(deleted_paths)
+        await storage_io(self._delete_files, deleted_paths)
         return TestDeleteResult(test_id=test_id, action="DELETED")
 
     async def permanently_delete_test(self, test_id: uuid.UUID) -> None:
@@ -316,7 +317,7 @@ class TestService:
             await self.session.flush()
         if cover_path:
             await compensate_files(self.session, get_asset_storage(get_settings()), [cover_path])
-        self._delete_files(deleted_paths)
+        await storage_io(self._delete_files, deleted_paths)
 
     async def delete_module(self, module_id: uuid.UUID) -> None:
         deleted_paths: list[str] = []
@@ -354,7 +355,7 @@ class TestService:
                 path = await self.cleanup_asset_if_unreferenced(asset_id)
                 if path:
                     deleted_paths.append(path)
-        self._delete_files(deleted_paths)
+        await storage_io(self._delete_files, deleted_paths)
 
     async def cleanup_asset_if_unreferenced(self, asset_id: uuid.UUID) -> str | None:
         referenced = any(
@@ -454,19 +455,25 @@ class TestService:
         settings = get_settings()
         storage = get_asset_storage(settings)
         is_audio = asset_type == AssetType.LISTENING_AUDIO
-        with storage.open_reader(inherited.relative_path) as source:
-            stored = storage.store_stream(
-                category="audio" if is_audio else "images",
-                mime_type=inherited.mime_type,
-                original_name=inherited.original_name,
-                source=source,
-                max_bytes=(
-                    settings.max_audio_upload_mb if is_audio else settings.max_image_upload_mb
+        stored = None
+
+        def copy_media():
+            nonlocal stored
+            with storage.open_reader(inherited.relative_path) as source:
+                stored = storage.store_stream(
+                    category="audio" if is_audio else "images",
+                    mime_type=inherited.mime_type,
+                    original_name=inherited.original_name,
+                    source=source,
+                    max_bytes=(
+                        settings.max_audio_upload_mb if is_audio else settings.max_image_upload_mb
+                    )
+                    * 1024
+                    * 1024,
                 )
-                * 1024
-                * 1024,
-            )
+
         try:
+            await storage_io(copy_media)
             copy = Asset(
                 id=uuid.uuid4(),
                 test_version_id=target_version.id,
@@ -480,7 +487,8 @@ class TestService:
             self.session.add(copy)
             await self.session.flush()
         except BaseException:
-            storage.delete(stored.relative_path)
+            if stored is not None:
+                await storage_io(storage.delete, stored.relative_path)
             raise
         return copy, stored.relative_path
 
@@ -576,7 +584,7 @@ class TestService:
             if remaining_version_id is None:
                 await self.session.execute(delete(Test).where(Test.id == test_id))
                 await self.session.flush()
-        self._delete_files(deleted_paths)
+        await storage_io(self._delete_files, deleted_paths)
 
     async def _preserve_shared_assets(
         self,
@@ -672,7 +680,9 @@ class TestService:
                                 "The source version does not belong to this test.",
                                 404,
                             )
-                        asset_map = self._clone_referenced_assets(source, version, created_paths)
+                        asset_map = await storage_io(
+                            self._clone_referenced_assets, source, version, created_paths
+                        )
                         self._clone_content(source, version, asset_map)
                     await self.session.flush()
                     version_id = version.id

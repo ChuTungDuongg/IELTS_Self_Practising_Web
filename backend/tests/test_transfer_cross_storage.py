@@ -155,8 +155,11 @@ async def test_transfer_storage_failure_rolls_back_and_compensates(isolated_db_s
         from pathlib import Path
 
         package = service.validate_archive(path, Path(folder))
-        with pytest.raises(RuntimeError, match="simulated storage outage"):
+        from app.core.exceptions import AppError
+
+        with pytest.raises(AppError) as failure:
             await service.import_package(package)
+        assert failure.value.code == "ASSET_STORAGE_UNAVAILABLE"
     assert client.objects == {}
     assert await session.scalar(select(func.count()).select_from(DomainTest)) == 1
 

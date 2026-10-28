@@ -130,8 +130,14 @@ async def storage_response(
     if selected is not None:
         output_headers["Content-Range"] = f"bytes {start}-{end}/{info.size}"
     manager = storage.open_reader(key, start=start, end=end)
+    opening = asyncio.create_task(asyncio.to_thread(manager.__enter__))
     try:
-        reader = await asyncio.to_thread(manager.__enter__)
+        reader = await asyncio.shield(opening)
+    except asyncio.CancelledError:
+        outcome = (await asyncio.gather(opening, return_exceptions=True))[0]
+        if not isinstance(outcome, BaseException):
+            await asyncio.to_thread(manager.__exit__, None, None, None)
+        raise
     except AppError as error:
         if error.code == "ASSET_NOT_FOUND":
             raise

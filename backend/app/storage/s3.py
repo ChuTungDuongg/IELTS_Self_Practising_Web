@@ -7,6 +7,8 @@ from pathlib import Path
 from typing import BinaryIO
 from uuid import uuid4
 
+from botocore.exceptions import BotoCoreError, NoCredentialsError, PartialCredentialsError
+
 from app.core.exceptions import AppError
 from app.providers.writing_llm.base import ImagePart
 from app.storage.base import StoredObjectInfo
@@ -15,8 +17,32 @@ from app.storage.local import LocalAssetStorage, StoredAsset
 
 
 def _error_code(error: Exception) -> str:
-    response = getattr(error, "response", {})
+    response = getattr(error, "response", None) or {}
     return str(response.get("Error", {}).get("Code", ""))
+
+
+def _provider_error(error: Exception) -> AppError:
+    code = _error_code(error)
+    if code in {"404", "NoSuchKey", "NotFound"}:
+        return AppError("ASSET_NOT_FOUND", "The asset file does not exist.", 404)
+    if code in {"InvalidRange", "416"}:
+        return AppError("ASSET_RANGE_INVALID", "The requested asset range is unavailable.", 416)
+    if isinstance(error, (NoCredentialsError, PartialCredentialsError)) or code in {
+        "AccessDenied",
+        "InvalidAccessKeyId",
+        "SignatureDoesNotMatch",
+        "ExpiredToken",
+        "InvalidToken",
+        "NoSuchBucket",
+        "AuthorizationHeaderMalformed",
+        "PermanentRedirect",
+    }:
+        return AppError(
+            "ASSET_STORAGE_CONFIGURATION_INVALID",
+            "Asset storage credentials or configuration are invalid.",
+            503,
+        )
+    return AppError("ASSET_STORAGE_UNAVAILABLE", "Asset storage is unavailable.", 503)
 
 
 class S3CompatibleStorage:
@@ -52,7 +78,12 @@ class S3CompatibleStorage:
             "region_name": region,
             "endpoint_url": endpoint_url,
             "config": Config(
-                connect_timeout=5, read_timeout=60, retries={"mode": "standard", "max_attempts": 3}
+                connect_timeout=5,
+                read_timeout=60,
+                retries={"mode": "standard", "total_max_attempts": 4},
+                signature_version="s3v4",
+                request_checksum_calculation="when_required",
+                response_checksum_validation="when_required",
             ),
         }
         if access_key_id:
@@ -61,13 +92,21 @@ class S3CompatibleStorage:
                 aws_secret_access_key=secret_access_key,
                 aws_session_token=session_token,
             )
-        return cls(client=boto3.client("s3", **kwargs), bucket=bucket, prefix=prefix)
+        try:
+            client = boto3.client("s3", **kwargs)
+        except Exception:
+            raise ValueError(
+                "Unable to initialize cloud asset storage; check AWS credentials and configuration"
+            ) from None
+        return cls(client=client, bucket=bucket, prefix=prefix)
 
     def _key(self, key: str) -> str:
         return self.prefix + validate_key(key)
 
     def put_stream(self, key: str, source: BinaryIO, *, content_type: str, max_bytes: int) -> int:
         object_key = self._key(key)
+        if max_bytes <= 0 or max_bytes > 5 * 1024**3:
+            raise ValueError("Upload limit must be positive and at most 5 GiB")
         size = 0
         # A seekable, disk-backed body permits bounded uploads without buffering audio in RAM.
         with tempfile.TemporaryFile(mode="w+b") as staged:
@@ -86,6 +125,7 @@ class S3CompatibleStorage:
                     Bucket=self.bucket,
                     Key=object_key,
                     Body=staged,
+                    ContentLength=size,
                     ContentType=content_type,
                     IfNoneMatch="*",
                 )
@@ -96,8 +136,8 @@ class S3CompatibleStorage:
                     "ConditionalRequestConflict",
                     "409",
                 }:
-                    raise FileExistsError(key) from error
-                raise
+                    raise FileExistsError(key) from None
+                raise _provider_error(error) from None
         return size
 
     def store_stream(self, *, category, mime_type, original_name, source, max_bytes):
@@ -154,12 +194,11 @@ class S3CompatibleStorage:
         return StoredAsset(relative_path=key, size=size)
 
     def stat(self, key: str) -> StoredObjectInfo:
+        object_key = self._key(key)
         try:
-            result = self.client.head_object(Bucket=self.bucket, Key=self._key(key))
+            result = self.client.head_object(Bucket=self.bucket, Key=object_key)
         except Exception as error:
-            if _error_code(error) in {"404", "NoSuchKey", "NotFound"}:
-                raise AppError("ASSET_NOT_FOUND", "The asset file does not exist.", 404) from error
-            raise
+            raise _provider_error(error) from None
         return StoredObjectInfo(
             size=result["ContentLength"], content_type=result.get("ContentType")
         )
@@ -183,18 +222,22 @@ class S3CompatibleStorage:
         try:
             result = self.client.get_object(**kwargs)
         except Exception as error:
-            if _error_code(error) in {"404", "NoSuchKey", "NotFound"}:
-                raise AppError("ASSET_NOT_FOUND", "The asset file does not exist.", 404) from error
-            raise
+            raise _provider_error(error) from None
         try:
             yield result["Body"]
+        except (BotoCoreError, OSError) as error:
+            raise _provider_error(error) from None
         finally:
             result["Body"].close()
 
     def delete(self, key: str) -> bool:
         if not self.exists(key):
             return False
-        self.client.delete_object(Bucket=self.bucket, Key=self._key(key))
+        try:
+            self.client.delete_object(Bucket=self.bucket, Key=self._key(key))
+        except Exception as error:
+            if _error_code(error) not in {"404", "NoSuchKey", "NotFound"}:
+                raise _provider_error(error) from None
         return True
 
     @contextmanager

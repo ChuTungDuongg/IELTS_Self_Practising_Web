@@ -306,26 +306,31 @@ async def test_archived_classroom_blocks_all_new_classwork_mutations_but_preserv
         assert (await client.get(f"{base}/resources/{resource['id']}")).status_code == 200
 
 
-@pytest.mark.parametrize("storage_backend", ["local", "fake_s3"])
+@pytest.mark.parametrize("storage_backend", ["local", "s3", "r2"])
 async def test_file_download_is_private_room_scoped_and_hidden_with_its_section(
     db_session, course, tmp_path, monkeypatch, storage_backend
 ):
     import app.api.v1.classroom_classwork as api_module
     import app.services.classroom_classwork as module
 
-    if storage_backend == "fake_s3":
+    if storage_backend != "local":
+        import boto3
+        from test_storage_configuration import cloud_settings
         from test_storage_contract import FakeS3
 
-        from app.storage.s3 import S3CompatibleStorage
+        from app.storage import factory
 
         fake_client = FakeS3()
-        storage = S3CompatibleStorage(client=fake_client, bucket="private")
-        monkeypatch.setattr(module, "get_asset_storage", lambda settings: storage)
-        monkeypatch.setattr(api_module, "get_asset_storage", lambda settings: storage)
-
-    monkeypatch.setattr(
-        module, "get_settings", lambda: type("Settings", (), {"resolved_storage_root": tmp_path})()
-    )
+        factory._cloud_storage.cache_clear()
+        monkeypatch.setattr(boto3, "client", lambda *args, **kwargs: fake_client)
+        settings = cloud_settings(storage_backend)
+        monkeypatch.setattr(module, "get_settings", lambda: settings)
+    else:
+        monkeypatch.setattr(
+            module,
+            "get_settings",
+            lambda: type("Settings", (), {"resolved_storage_root": tmp_path})(),
+        )
     monkeypatch.setattr(api_module, "get_settings", module.get_settings)
     base = endpoint(course["room"])
     content = b"%PDF-1.7\nFictional learning file"

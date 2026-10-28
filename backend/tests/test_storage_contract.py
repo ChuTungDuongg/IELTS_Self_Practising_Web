@@ -60,11 +60,13 @@ class FakeS3:
     def __init__(self):
         self.objects = {}
 
-    def put_object(self, *, Bucket, Key, Body, ContentType, IfNoneMatch):
+    def put_object(self, *, Bucket, Key, Body, ContentType, ContentLength, IfNoneMatch):
         assert IfNoneMatch == "*"
         if (Bucket, Key) in self.objects:
             raise S3Failure("PreconditionFailed")
-        self.objects[Bucket, Key] = (Body.read(), ContentType)
+        data = Body.read()
+        assert len(data) == ContentLength
+        self.objects[Bucket, Key] = (data, ContentType)
 
     def head_object(self, *, Bucket, Key):
         if (Bucket, Key) not in self.objects:
@@ -125,7 +127,7 @@ def test_materialized_s3_file_is_removed_after_use():
             pass
 
 
-def test_unintegrated_cloud_backend_does_not_silently_use_local():
+def test_incomplete_cloud_backend_does_not_silently_use_local():
     from pydantic import ValidationError
 
     from app.core.config import Settings
@@ -147,8 +149,9 @@ def test_s3_missing_and_provider_failure_are_distinct():
         storage.stat("images/missing.png")
     assert missing.value.code == "ASSET_NOT_FOUND"
     unavailable = S3CompatibleStorage(client=UnavailableS3(), bucket="test")
-    with pytest.raises(S3Failure):
+    with pytest.raises(AppError) as failure:
         unavailable.delete("images/missing.png")
+    assert failure.value.code == "ASSET_STORAGE_UNAVAILABLE"
 
 
 def test_s3_adapter_uses_sdk_and_propagates_private_object_metadata():
@@ -173,6 +176,7 @@ def test_s3_adapter_uses_sdk_and_propagates_private_object_metadata():
                 "Key": "development/audio/example.mp3",
                 "Body": ANY,
                 "ContentType": "audio/mpeg",
+                "ContentLength": 6,
                 "IfNoneMatch": "*",
             },
         )

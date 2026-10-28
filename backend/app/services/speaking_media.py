@@ -32,6 +32,7 @@ from app.services.grading_policy import GradingPolicy, assignment_origin, requir
 from app.services.speaking_attempts import SpeakingAttemptService
 from app.services.speaking_final import present_final_score
 from app.storage.factory import get_asset_storage
+from app.storage.tasks import storage_io
 
 MIMES = {"audio/webm", "audio/webm;codecs=opus", "audio/mp4", "audio/ogg;codecs=opus"}
 
@@ -130,7 +131,7 @@ async def drain_media_cleanup(session, *, storage=None):
                 .limit(1)
             )
             if referenced is None and derived is None:
-                storage.delete(job.storage_key)
+                await storage_io(storage.delete, job.storage_key)
             await session.delete(job)
 
 
@@ -269,9 +270,14 @@ class SpeakingMediaService:
                 )
                 if size + len(content) > self.max_response_bytes:
                     raise AppError("SPEAKING_UPLOAD_INVALID", "Recording size limit exceeded.", 422)
-                stored = self.storage.store_private_speaking(
-                    content, segment.mime_type, self.max_chunk_bytes
-                )
+
+                def write_chunk():
+                    nonlocal stored
+                    stored = self.storage.store_private_speaking(
+                        content, segment.mime_type, self.max_chunk_bytes
+                    )
+
+                await storage_io(write_chunk)
                 chunk = SpeakingAudioChunk(
                     segment_id=segment_id,
                     sequence=sequence,

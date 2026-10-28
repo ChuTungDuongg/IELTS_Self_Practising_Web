@@ -1,8 +1,9 @@
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlsplit
 
-from pydantic import Field, field_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.schemas.speaking_ai import AudioQualityConfig, PronunciationConfig
@@ -13,9 +14,15 @@ class Settings(BaseSettings):
     api_v1_prefix: str = "/api/v1"
     database_url: str = "postgresql+asyncpg://ielts:ielts@localhost:5433/ielts"
     frontend_origin: str = "http://localhost:3000"
-    # Fail closed until every persistent-asset consumer supports the selected backend.
-    storage_backend: Literal["local"] = "local"
+    storage_backend: Literal["local", "s3", "r2"] = "local"
     storage_root: Path = Path("../storage")
+    s3_bucket: str = ""
+    s3_region: str = ""
+    s3_endpoint_url: str = ""
+    s3_key_prefix: str = ""
+    aws_access_key_id: SecretStr | None = Field(default=None, repr=False)
+    aws_secret_access_key: SecretStr | None = Field(default=None, repr=False)
+    aws_session_token: SecretStr | None = Field(default=None, repr=False)
     max_image_upload_mb: int = Field(default=10, gt=0)
     max_audio_upload_mb: int = Field(default=100, gt=0)
     speaking_max_chunk_bytes: int = Field(default=2 * 1024 * 1024, ge=1024, le=10 * 1024 * 1024)
@@ -98,7 +105,68 @@ class Settings(BaseSettings):
     ai_writing_chart_specialist_timeout_seconds: float = Field(default=90, gt=0, le=120)
     ai_writing_stale_after_seconds: int = Field(default=90, ge=45)
 
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore", hide_input_in_errors=True)
+
+    @model_validator(mode="after")
+    def validate_storage(self):
+        if self.storage_backend == "local":
+            return self
+        import re
+
+        from app.storage.keys import validate_key
+
+        if not re.fullmatch(r"[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]", self.s3_bucket):
+            raise ValueError("S3_BUCKET must name a bucket, without paths or URLs")
+        if not self.s3_region or self.s3_region.strip() != self.s3_region:
+            raise ValueError("S3_REGION is required for cloud asset storage")
+        if self.s3_key_prefix:
+            try:
+                validate_key(self.s3_key_prefix)
+            except Exception:
+                raise ValueError("S3_KEY_PREFIX must be a safe relative object prefix") from None
+        credentials = [
+            bool(value and value.get_secret_value())
+            for value in (
+                self.aws_access_key_id,
+                self.aws_secret_access_key,
+                self.aws_session_token,
+            )
+        ]
+        if credentials[0] != credentials[1] or (credentials[2] and not credentials[0]):
+            raise ValueError("Explicit AWS credentials require both access and secret keys")
+        if self.s3_endpoint_url:
+            try:
+                endpoint = urlsplit(self.s3_endpoint_url)
+                valid = (
+                    endpoint.scheme == "https"
+                    and bool(endpoint.hostname)
+                    and not endpoint.username
+                    and not endpoint.password
+                    and not endpoint.query
+                    and not endpoint.fragment
+                    and endpoint.path in {"", "/"}
+                    and endpoint.port in {None, 443}
+                )
+            except ValueError:
+                valid = False
+            if not valid:
+                raise ValueError(
+                    "S3_ENDPOINT_URL must be an HTTPS endpoint without credentials or paths"
+                )
+        if self.storage_backend == "r2":
+            endpoint = urlsplit(self.s3_endpoint_url)
+            if (
+                not endpoint.hostname
+                or not endpoint.hostname.endswith(".r2.cloudflarestorage.com")
+                or self.s3_region != "auto"
+                or not all(credentials[:2])
+            ):
+                raise ValueError(
+                    "R2 requires its account S3 endpoint, S3_REGION=auto and AWS access/secret keys"
+                )
+        elif self.s3_region == "auto":
+            raise ValueError("AWS S3 requires its actual region; use STORAGE_BACKEND=r2 for R2")
+        return self
 
     @field_validator("database_url")
     @classmethod
