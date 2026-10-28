@@ -83,7 +83,7 @@ Pipeline dùng audio đã chuẩn hóa để tạo transcript verbatim/clean, b�
 
 ### Transfer và tên nội bộ ổn định
 
-BandPilot là tên sản phẩm công khai. Tên repository `IELTS_Self_Practising_Web`, các package `devweblocalforielts*`, database/Volume, biến môi trường, khóa local storage và API vẫn giữ nguyên. Transfer ZIP tiếp tục dùng protocol `devweblocalforielts-test-bundle`, schema version `1`; backup manifest giữ nhãn `DevWebLocalforIELTS`. Đây là identifier kỹ thuật cũ được giữ để tương thích ngược, không phải tên hiển thị trong giao diện. Xem [định dạng Transfer ZIP](docs/TEST_TRANSFER_FORMAT.md).
+BandPilot là tên sản phẩm công khai. Tên repository `IELTS_Self_Practising_Web`, các package `devweblocalforielts*`, database/Volume, biến môi trường, khóa local storage và API vẫn giữ nguyên. Transfer ZIP dùng protocol `devweblocalforielts-test-bundle`; gói không có ảnh bìa dùng schema `1`, gói có ảnh bìa dùng schema `2`, và cả hai đều được hỗ trợ khi nhập; backup manifest giữ nhãn `DevWebLocalforIELTS`. Đây là identifier kỹ thuật cũ được giữ để tương thích ngược, không phải tên hiển thị trong giao diện. Xem [định dạng Transfer ZIP](docs/TEST_TRANSFER_FORMAT.md).
 
 ### Profile và IELTS goals
 
@@ -219,7 +219,7 @@ docker compose up -d postgres
 docker compose ps
 ```
 
-Docker Compose mở PostgreSQL ở `localhost:5433` (cổng `5432` bên trong container). Dữ liệu được giữ trong Docker named volume. GitHub Actions dùng PostgreSQL riêng trên cổng `5432`.
+Docker Compose mở PostgreSQL ở `localhost:5433` (cổng `5432` bên trong container). Dữ liệu được giữ trong Docker named volume. GitHub Actions dùng PostgreSQL riêng trên cổng `5432`. Các ảnh bìa dùng cùng `STORAGE_ROOT` với hình ảnh đề; nếu triển khai backend trong container, cần mount `STORAGE_ROOT` vào volume hoặc thư mục host bền vững và chuyển cả storage cùng database khi di chuyển máy.
 
 ### 3. Cài dependencies và chuẩn bị database
 

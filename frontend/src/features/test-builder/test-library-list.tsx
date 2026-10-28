@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { PageHeading } from "@/components/ui/page-heading";
+import { CoverThumbnail } from "@/features/test-builder/test-cover";
 import { BuilderIcon, PlusIcon, SearchIcon } from "@/components/ui/icons";
 import { ApiError } from "@/lib/api/client";
 import type { TestSummary } from "@/lib/api/schema";
@@ -145,7 +146,7 @@ export function AuthoringLibrary({ namespace, activeTests: initialActive, archiv
         const details = namespace === "admin" ? `/admin/tests/${encodeURIComponent(test.id)}` : view === "active" && !draft && teacherVersion ? builderEditPath(test.id, teacherVersion.id, "teacher") : null;
         const destructive = hasHistory(test) ? t("common.archive") : t("common.delete");
         return <article className="authoring-row" key={test.id}>
-          <div className="authoring-row-icon"><BuilderIcon /></div>
+          <CoverThumbnail cover={test.cover_image} title={test.title} className="authoring-row-icon" />
           <div className="authoring-row-content"><h2>{test.title}</h2>{test.description && <p className="authoring-description">{test.description}</p>}
             <div className="authoring-statuses">{view === "archived" ? <span className="authoring-status archived">{t("common.archived")}</span> : <>{published && <span className="authoring-status published">{t("common.published")}</span>}{draft && <span className="authoring-status draft">{t(published ? "authoring.draftChanges" : "common.draft")}</span>}{!draft && !published && <span className="authoring-status">{t("authoring.noVersions")}</span>}</>}</div>
             <div className="authoring-meta"><span>{t("builder.updated", { date: date(test.updated_at) })}</span>{test.source_label && <span>{t("authoring.source", { source: test.source_label })}</span>}{namespace === "admin" && test.origin && <span>{test.origin === "TEACHER" ? test.owner_display_name ? t("authoring.owner", { name: test.owner_display_name }) : t("authoring.teacherOrigin") : t("authoring.adminOrigin")}</span>}</div>

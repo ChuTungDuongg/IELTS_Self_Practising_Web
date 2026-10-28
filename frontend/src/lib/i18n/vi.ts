@@ -1,6 +1,19 @@
 import type { TranslationDictionary } from "./types";
 
 export const vi = {
+  "cover.loadFailed": "Không thể tải ảnh bìa của đề.",
+  "cover.title": "Ảnh bìa đề",
+  "cover.help": "PNG, JPEG hoặc WebP, tối đa 10 MB.",
+  "cover.select": "Chọn ảnh bìa",
+  "cover.upload": "Tải ảnh bìa",
+  "cover.remove": "Xóa ảnh bìa",
+  "cover.saving": "Đang tải ảnh…",
+  "cover.removing": "Đang xóa…",
+  "cover.success": "Đã lưu ảnh bìa.",
+  "cover.removed": "Đã xóa ảnh bìa.",
+  "cover.failed": "Không thể cập nhật ảnh bìa.",
+  "cover.preview": "Ảnh đã chọn để xem trước",
+  "cover.alt": "Ảnh bìa của {title}",
   "catalog.quickSkills": "Lọc nhanh theo kỹ năng",
   "catalog.statsHint": "Số đề có kỹ năng tương ứng.",
   "catalog.statistics": "Thống kê thư viện đề",

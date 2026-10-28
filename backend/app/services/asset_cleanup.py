@@ -6,7 +6,7 @@ import logging
 from sqlalchemy import select, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Asset
+from app.models import Asset, TestCover
 from app.models.speaking import SpeakingAudioChunk
 from app.models.speaking_transcript import SpeakingNormalizedAudio
 
@@ -31,6 +31,7 @@ async def compensate_files(session, storage, paths):
                     await verification.scalars(
                         union_all(
                             select(Asset.relative_path).where(Asset.relative_path.in_(paths)),
+                            select(TestCover.relative_path).where(TestCover.relative_path.in_(paths)),
                             select(SpeakingAudioChunk.storage_key).where(
                                 SpeakingAudioChunk.storage_key.in_(paths)
                             ),

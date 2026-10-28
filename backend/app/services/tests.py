@@ -28,6 +28,7 @@ from app.models import (
     SpeakingPart,
     SpeakingPrompt,
     Test,
+    TestCover,
     TestModule,
     TestVersion,
     TestVersionModeration,
@@ -135,6 +136,7 @@ class TestService:
                 description=data.description,
                 source_label=data.source_label,
                 test_number=data.test_number,
+                cover_image=None,
             )
             self.session.add(test)
             if data.create_initial_draft:
@@ -242,8 +244,15 @@ class TestService:
                     )
                 )
             )
+            cover_path = await self.session.scalar(
+                select(TestCover.relative_path).where(TestCover.test_id == test_id)
+            )
             await self.session.delete(test)
             await self.session.flush()
+        if cover_path:
+            await compensate_files(
+                self.session, LocalAssetStorage(get_settings().resolved_storage_root), [cover_path]
+            )
         self._delete_files(deleted_paths)
         return TestDeleteResult(test_id=test_id, action="DELETED")
 
@@ -301,8 +310,15 @@ class TestService:
                         select(Asset.relative_path).where(Asset.test_version_id.in_(version_ids))
                     )
                 )
+            cover_path = await self.session.scalar(
+                select(TestCover.relative_path).where(TestCover.test_id == test_id)
+            )
             await self.session.delete(test)
             await self.session.flush()
+        if cover_path:
+            await compensate_files(
+                self.session, LocalAssetStorage(get_settings().resolved_storage_root), [cover_path]
+            )
         self._delete_files(deleted_paths)
 
     async def delete_module(self, module_id: uuid.UUID) -> None:

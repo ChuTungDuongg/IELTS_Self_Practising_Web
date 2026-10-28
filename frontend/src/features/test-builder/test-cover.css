@@ -1,0 +1,11 @@
+.test-cover-thumbnail { display: grid; flex: none; place-items: center; overflow: hidden; border: 1px solid var(--line); border-radius: 9px; color: var(--accent); background: var(--accent-soft); }
+.test-cover-thumbnail img, .test-cover-preview { width: 100%; height: 100%; object-fit: cover; }
+.test-cover-thumbnail svg { width: 24px; height: 24px; }
+.test-cover-manager { margin: 16px 0 24px; padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.test-cover-manager h2 { font-size: 17px; font-weight: 700; }
+.test-cover-manager > p { margin: 6px 0 12px; color: var(--muted); font-size: 13px; }
+.test-cover-manager-body { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.test-cover-preview { flex: none; width: 120px; height: 90px; border: 1px solid var(--line); border-radius: 9px; }
+.test-cover-controls { display: grid; gap: 10px; min-width: 0; }
+.test-cover-controls input { display: block; max-width: 100%; margin-top: 6px; }
+.test-cover-actions { display: flex; flex-wrap: wrap; gap: 8px; }

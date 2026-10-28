@@ -2,6 +2,7 @@ import { UiText } from "@/lib/i18n/locale-provider";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { PageHeading } from "@/components/ui/page-heading";
+import { CoverManager } from "@/features/test-builder/test-cover";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { ArrowIcon } from "@/components/ui/icons";
 import { getTest } from "@/lib/api/tests";
@@ -19,6 +20,7 @@ export default async function TestDetailPage({ params, searchParams }: { params:
   return (
     <>
       <PageHeading eyebrow={<UiText message="builder.examBuilder" />} title={test.title} description={test.description ?? <UiText message="builder.noDescription" />} />
+      {!test.archived_at ? <CoverManager testId={test.id} initialCover={test.cover_image} title={test.title} /> : null}
       {builderState === "version-unavailable" ? <p role="status" className="notice mb-5"><UiText message="builder.versionUnavailable" /></p> : null}
       <section className="version-library surface-card overflow-hidden">
         <div className="section-header border-b border-[var(--line)] px-6 py-5">

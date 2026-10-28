@@ -376,4 +376,12 @@ describe("Practice library", () => {
     expect(screen.getByRole("alert")).toBeInTheDocument();
   });
 
+  it("shows an authorized published test cover without extra metadata requests", async () => {
+    const cover = { id: "11111111-1111-4111-8111-111111111111", content_url: `/tests/${testId}/cover/11111111-1111-4111-8111-111111111111/content`, mime_type: "image/png" as const };
+    vi.mocked(getTests).mockResolvedValue([{ ...publishedTest, cover_image: cover, published_detail: detail }]);
+    render(await LibraryPage());
+    expect(screen.getByRole("img", { name: `Cover for ${publishedTest.title}` })).toHaveAttribute("src", expect.stringContaining(cover.content_url));
+    expect(getVersion).not.toHaveBeenCalled();
+  });
+
 });

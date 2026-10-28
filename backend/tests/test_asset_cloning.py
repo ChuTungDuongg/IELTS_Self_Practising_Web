@@ -44,7 +44,13 @@ async def test_clone_lost_commit_acknowledgement_preserves_committed_asset_files
         await VersionService(db_session).create_version(
             test_id, VersionCreate(source_version_id=source_id)
         )
-    assets = list(await db_session.scalars(select(Asset)))
+    assets = list(
+        await db_session.scalars(
+            select(Asset)
+            .join(DomainVersion, Asset.test_version_id == DomainVersion.id)
+            .where(DomainVersion.test_id == test_id)
+        )
+    )
     assert len(assets) == 6
     assert all((tmp_path / asset.relative_path).is_file() for asset in assets)
 

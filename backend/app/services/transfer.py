@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import stat
 import uuid
@@ -33,6 +34,7 @@ from app.models import (
     SpeakingPart,
     SpeakingPrompt,
     Test,
+    TestCover,
     TestModule,
     TestVersion,
     User,
@@ -42,9 +44,9 @@ from app.models.enums import AssetType, ModuleType, TestOrigin, VersionStatus
 from app.repositories.tests import version_detail_query
 from app.schemas.transfer import (
     TRANSFER_FORMAT,
-    TRANSFER_SCHEMA_VERSION,
     ImportedTest,
     ManifestAsset,
+    ManifestCover,
     ManifestTest,
     PortableListeningPart,
     PortableModule,
@@ -60,6 +62,7 @@ from app.schemas.transfer import (
 )
 from app.services.access_policy import AccessPolicy
 from app.services.asset_cleanup import compensate_files
+from app.services.cover_validation import validate_cover_image
 from app.services.tests import TestService
 from app.services.transfer_ids import build_id_maps
 from app.storage import LocalAssetStorage
@@ -94,6 +97,7 @@ class TransferService:
 
         manifest_tests: list[ManifestTest] = []
         manifest_assets: list[ManifestAsset] = []
+        manifest_covers: list[ManifestCover] = []
         packaged_asset_ids: set[uuid.UUID] = set()
         with zipfile.ZipFile(
             destination, "w", compression=zipfile.ZIP_DEFLATED, allowZip64=True
@@ -107,10 +111,39 @@ class TransferService:
                 ]
                 portable = self._portable_test(test, [version for version in versions if version])
                 test_path = f"tests/{test.id}.json"
-                archive.writestr(test_path, portable.model_dump_json(indent=2).encode("utf-8"))
+                portable_data = portable.model_dump(mode="json")
+                if portable.cover_id is None:
+                    portable_data.pop("cover_id")
+                archive.writestr(
+                    test_path,
+                    json.dumps(portable_data, ensure_ascii=False, indent=2).encode("utf-8"),
+                )
                 manifest_tests.append(
                     ManifestTest(source_id=test.id, path=test_path, title=test.title)
                 )
+
+                if test.cover_image is not None:
+                    cover = test.cover_image
+                    source = self.storage.resolve(cover.relative_path)
+                    extension = LocalAssetStorage.IMAGE_TYPES.get(cover.mime_type)
+                    if extension is None:
+                        raise AppError(
+                            "TRANSFER_ASSET_INVALID", "Cover image type is unsupported.", 422
+                        )
+                    digest = self._sha256(source)
+                    package_path = f"assets/{digest}-{cover.id.hex}{extension}"
+                    archive.write(source, package_path)
+                    manifest_covers.append(
+                        ManifestCover(
+                            source_id=cover.id,
+                            source_test_id=test.id,
+                            path=package_path,
+                            mime_type=cover.mime_type,
+                            original_filename=cover.original_name,
+                            size=source.stat().st_size,
+                            sha256=digest,
+                        )
+                    )
 
                 for version in versions:
                     if version is None:
@@ -146,9 +179,19 @@ class TransferService:
                         packaged_asset_ids.add(asset.id)
 
             manifest = TransferManifest(
-                exported_at=datetime.now(UTC), tests=manifest_tests, assets=manifest_assets
+                schema_version=2 if manifest_covers else 1,
+                exported_at=datetime.now(UTC),
+                tests=manifest_tests,
+                assets=manifest_assets,
+                covers=manifest_covers,
             )
-            archive.writestr("manifest.json", manifest.model_dump_json(indent=2).encode("utf-8"))
+            manifest_data = manifest.model_dump(mode="json")
+            if not manifest_covers:
+                manifest_data.pop("covers")
+            archive.writestr(
+                "manifest.json",
+                json.dumps(manifest_data, ensure_ascii=False, indent=2).encode("utf-8"),
+            )
 
     def validate_archive(self, archive_path: Path, staging_root: Path) -> ValidatedPackage:
         try:
@@ -179,16 +222,14 @@ class TransferService:
                 manifest = TransferManifest.model_validate_json(archive.read("manifest.json"))
             except (KeyError, ValidationError, ValueError) as exc:
                 raise self._invalid("The transfer manifest is malformed or unsupported.") from exc
-            if (
-                manifest.format != TRANSFER_FORMAT
-                or manifest.schema_version != TRANSFER_SCHEMA_VERSION
-            ):
+            if manifest.format != TRANSFER_FORMAT or manifest.schema_version not in (1, 2):
                 raise self._invalid("The transfer package format or schema version is unsupported.")
 
             expected = (
                 {"manifest.json"}
                 | {item.path for item in manifest.tests}
                 | {item.path for item in manifest.assets}
+                | {item.path for item in manifest.covers}
             )
             if names != expected:
                 raise self._invalid("The package contains missing or unexpected files.")
@@ -196,6 +237,14 @@ class TransferService:
                 raise self._invalid("The manifest contains duplicate test paths.")
             if len({item.source_id for item in manifest.assets}) != len(manifest.assets):
                 raise self._invalid("The manifest contains duplicate asset identifiers.")
+
+            all_media = [*manifest.assets, *manifest.covers]
+            if len({item.source_id for item in all_media}) != len(all_media):
+                raise self._invalid("The manifest contains duplicate media identifiers.")
+            if len({item.path.casefold() for item in all_media}) != len(all_media):
+                raise self._invalid("The manifest contains duplicate media paths.")
+            if manifest.schema_version == 1 and manifest.covers:
+                raise self._invalid("Version 1 cannot contain test covers.")
 
             portable_tests: list[PortableTest] = []
             for entry in manifest.tests:
@@ -214,9 +263,28 @@ class TransferService:
             if any(asset.source_version_id not in version_ids for asset in manifest.assets):
                 raise self._invalid("An asset references an unknown test version.")
             self._validate_graph(portable_tests, asset_metadata)
+            covers = {cover.source_id: cover for cover in manifest.covers}
+            if manifest.schema_version == 1 and any(test.cover_id for test in portable_tests):
+                raise self._invalid("Version 1 cannot reference test covers.")
+            referenced = set()
+            for test in portable_tests:
+                if test.cover_id is not None:
+                    cover = covers.get(test.cover_id)
+                    if cover is None or cover.source_test_id != test.id:
+                        raise self._invalid("A test references a missing or foreign cover.")
+                    referenced.add(test.cover_id)
+            if referenced != set(covers):
+                raise self._invalid("The manifest contains an unreferenced cover.")
 
             staged_assets: dict[uuid.UUID, Path] = {}
-            for index, metadata in enumerate(manifest.assets):
+            for index, metadata in enumerate(all_media):
+                if isinstance(metadata, ManifestCover):
+                    maximum = min(self.settings.max_image_upload_mb, 10) * 1024 * 1024
+                    if (
+                        metadata.size > maximum
+                        or archive.getinfo(metadata.path).file_size > maximum
+                    ):
+                        raise self._invalid("A cover exceeds the image size limit.")
                 staged = staging_root / f"asset-{index}"
                 digest = hashlib.sha256()
                 size = 0
@@ -232,7 +300,12 @@ class TransferService:
                     raise self._invalid(
                         f"Asset {metadata.path} failed its size or checksum validation."
                     )
-                self._validate_asset(metadata, staged)
+                if isinstance(metadata, ManifestCover):
+                    if metadata.size > min(self.settings.max_image_upload_mb, 10) * 1024 * 1024:
+                        raise self._invalid("A cover exceeds the image size limit.")
+                    self._validate_cover(metadata, staged)
+                else:
+                    self._validate_asset(metadata, staged)
                 staged_assets[metadata.source_id] = staged
             package = ValidatedPackage(
                 manifest=manifest, tests=portable_tests, staged_assets=staged_assets
@@ -241,7 +314,7 @@ class TransferService:
             return package
 
     async def import_package(self, package: ValidatedPackage) -> TransferImportResult:
-        maps = build_id_maps(package.tests, package.manifest.assets)
+        maps = build_id_maps(package.tests, package.manifest.assets, package.manifest.covers)
         created_paths: list[str] = []
         imported: list[ImportedTest] = []
         version_count = 0
@@ -260,6 +333,27 @@ class TransferService:
                         test_number=portable_test.test_number,
                         archived_at=portable_test.archived_at,
                     )
+                    if portable_test.cover_id is not None:
+                        cover_meta = next(
+                            item
+                            for item in package.manifest.covers
+                            if item.source_id == portable_test.cover_id
+                        )
+                        stored_cover = self.storage.store_file(
+                            category="images",
+                            mime_type=cover_meta.mime_type,
+                            original_name=cover_meta.original_filename,
+                            source=package.staged_assets[cover_meta.source_id],
+                            max_bytes=min(self.settings.max_image_upload_mb, 10) * 1024 * 1024,
+                        )
+                        created_paths.append(stored_cover.relative_path)
+                        test.cover_image = TestCover(
+                            id=maps["covers"][cover_meta.source_id],
+                            relative_path=stored_cover.relative_path,
+                            mime_type=cover_meta.mime_type,
+                            original_name=cover_meta.original_filename,
+                            file_size=stored_cover.size,
+                        )
                     self.session.add(test)
                     imported.append(ImportedTest(test_id=test.id, title=test.title))
                     versions: dict[uuid.UUID, TestVersion] = {}
@@ -321,7 +415,7 @@ class TransferService:
         return TransferImportResult(
             imported_tests=imported,
             version_count=version_count,
-            asset_count=len(package.manifest.assets),
+            asset_count=len(package.manifest.assets) + len(package.manifest.covers),
         )
 
     @staticmethod
@@ -333,6 +427,7 @@ class TransferService:
             source_label=test.source_label,
             test_number=test.test_number,
             archived_at=test.archived_at,
+            cover_id=test.cover_image.id if test.cover_image else None,
             versions=[TransferService._portable_version(version) for version in versions],
         )
 
@@ -575,8 +670,13 @@ class TransferService:
             raise TransferService._invalid(f"The package repeats a source {label} identifier.")
         values.add(value)
 
-    def _validate_asset(self, metadata: ManifestAsset, source: Path) -> None:
-        category = "audio" if metadata.asset_type == AssetType.LISTENING_AUDIO else "images"
+    def _validate_asset(self, metadata: ManifestAsset | ManifestCover, source: Path) -> None:
+        category = (
+            "audio"
+            if isinstance(metadata, ManifestAsset)
+            and metadata.asset_type == AssetType.LISTENING_AUDIO
+            else "images"
+        )
         allowed = (
             LocalAssetStorage.AUDIO_TYPES if category == "audio" else LocalAssetStorage.IMAGE_TYPES
         )
@@ -610,9 +710,17 @@ class TransferService:
                 f"Asset {metadata.path} content does not match its declared MIME type."
             )
 
+    def _validate_cover(self, metadata: ManifestCover, source: Path) -> None:
+        # Covers use the same media validation without inventing a version owner.
+        self._validate_asset(metadata, source)
+        try:
+            validate_cover_image(metadata.mime_type, source.read_bytes())
+        except ValueError as exc:
+            raise self._invalid("A cover image is invalid or too large.") from exc
+
     @staticmethod
     def _validate_portable_structure(package: ValidatedPackage) -> None:
-        maps = build_id_maps(package.tests, package.manifest.assets)
+        maps = build_id_maps(package.tests, package.manifest.assets, package.manifest.covers)
         assets = {
             metadata.source_id: Asset(
                 id=maps["assets"][metadata.source_id],

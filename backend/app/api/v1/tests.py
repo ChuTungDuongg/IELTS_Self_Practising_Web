@@ -1,16 +1,19 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, File, UploadFile, status
+from fastapi.responses import FileResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import AdminUser, CurrentUser
 from app.api.v1.presenters import present_version
+from app.core.config import get_settings
 from app.core.database import get_session
 from app.core.exceptions import AppError
 from app.models import User
 from app.models.enums import UserRole
 from app.schemas.common import ValidationResult
 from app.schemas.tests import (
+    TestCoverSummary,
     TestCreate,
     TestDeleteResult,
     TestSummary,
@@ -18,7 +21,9 @@ from app.schemas.tests import (
     VersionCreate,
     VersionDetail,
 )
+from app.services.test_covers import TestCoverService
 from app.services.tests import TestService
+from app.storage import LocalAssetStorage
 
 router = APIRouter(tags=["tests"])
 
@@ -70,6 +75,41 @@ async def get_test(
         if await service.policy.version_access(version)
     ]
     return summary.model_copy(update={"versions": versions})
+
+
+@router.post("/tests/{test_id}/cover", response_model=TestCoverSummary)
+async def upload_cover(
+    test_id: UUID,
+    user: CurrentUser,
+    file: UploadFile = File(),
+    session: AsyncSession = Depends(get_session),
+) -> TestCoverSummary:
+    return await TestCoverService(session, user, get_settings()).upload(test_id, file)
+
+
+@router.delete("/tests/{test_id}/cover", status_code=status.HTTP_204_NO_CONTENT)
+async def remove_cover(
+    test_id: UUID, user: CurrentUser, session: AsyncSession = Depends(get_session)
+) -> Response:
+    await TestCoverService(session, user, get_settings()).remove(test_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/tests/{test_id}/cover/{cover_id}/content", response_class=FileResponse)
+async def get_cover(
+    test_id: UUID, cover_id: UUID, user: CurrentUser, session: AsyncSession = Depends(get_session)
+) -> FileResponse:
+    cover = await TestCoverService(session, user, get_settings()).read(test_id, cover_id)
+    path = LocalAssetStorage(get_settings().resolved_storage_root).resolve(cover.relative_path)
+    return FileResponse(
+        path,
+        media_type=cover.mime_type,
+        headers={
+            "Cache-Control": "private, no-store",
+            "X-Content-Type-Options": "nosniff",
+            "Content-Security-Policy": "default-src 'none'",
+        },
+    )
 
 
 @router.patch("/tests/{test_id}", response_model=TestSummary)

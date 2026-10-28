@@ -263,4 +263,14 @@ describe("TestLibraryList", () => {
     expect(screen.getByRole("heading", { name: archivedTest.title })).toBeInTheDocument();
   });
 
+  it("shows a test cover in both authorized authoring libraries", () => {
+    const cover = { id: "11111111-1111-4111-8111-111111111111", content_url: `/tests/${draftTest.id}/cover/11111111-1111-4111-8111-111111111111/content`, mime_type: "image/png" as const };
+    const own = { ...draftTest, cover_image: cover, origin: "TEACHER" as const, owner_user_id: "teacher" };
+    const view = render(<TestLibraryList activeTests={[own]} archivedTests={[]} />);
+    expect(screen.getByRole("img", { name: `Cover for ${own.title}` })).toHaveAttribute("loading", "lazy");
+    view.unmount();
+    render(<TeacherTestList tests={[own]} ownerId="teacher" />);
+    expect(screen.getByRole("img", { name: `Cover for ${own.title}` })).toHaveAttribute("src", expect.stringContaining(cover.content_url));
+  });
+
 });

@@ -31,6 +31,8 @@ async def db_session() -> AsyncIterator[AsyncSession]:
             from sqlalchemy import inspect
 
             revisions = []
+            if not inspect(conn).has_table("test_covers"):
+                revisions.append("20261028_0043_test_covers.py")
             if not inspect(conn).has_table("writing_benchmark_samples"):
                 revisions.append("20261013_0035_writing_benchmark_bank.py")
             if not inspect(conn).has_table("attempt_speaking_scores"):

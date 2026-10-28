@@ -145,9 +145,31 @@ class Test(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     test_number: Mapped[int | None] = mapped_column(Integer)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
 
+    cover_image: Mapped[TestCover | None] = relationship(
+        back_populates="test", cascade="all, delete-orphan", uselist=False, lazy="selectin"
+    )
+
     versions: Mapped[list[TestVersion]] = relationship(
         back_populates="test", cascade="all, delete-orphan", order_by="TestVersion.version_number"
     )
+
+
+class TestCover(UUIDPrimaryKeyMixin, Base):
+    __tablename__ = "test_covers"
+
+    test_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("tests.id", ondelete="CASCADE"), unique=True, nullable=False
+    )
+    relative_path: Mapped[str] = mapped_column(String(500), unique=True, nullable=False)
+    mime_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    original_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    file_size: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    test: Mapped[Test] = relationship(back_populates="cover_image")
+
+    @property
+    def content_url(self) -> str:
+        return f"/tests/{self.test_id}/cover/{self.id}/content"
 
 
 class TestVersion(UUIDPrimaryKeyMixin, TimestampMixin, Base):

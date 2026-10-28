@@ -23,8 +23,8 @@
 .authoring-search button { padding: 8px; color: var(--muted); }
 .authoring-result-count { margin: 16px 0 8px; }
 .authoring-rows { display: grid; gap: 8px; }
-.authoring-row { display: grid; grid-template-columns: 48px minmax(0, 1fr) auto; align-items: center; gap: 16px; padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
-.authoring-row-icon { width: 48px; height: 48px; }
+.authoring-row { display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; align-items: center; gap: 16px; padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.authoring-row-icon { width: 64px; height: 48px; }
 .authoring-row-icon svg { width: 24px; height: 24px; }
 .authoring-row-content { min-width: 0; }
 .authoring-row h2 { margin: 0; font-size: 16px; font-weight: 700; overflow-wrap: anywhere; }
@@ -46,6 +46,6 @@
 .authoring-empty > svg { width: 28px; height: 28px; color: var(--accent); }
 .authoring-empty h2 { font-size: 17px; font-weight: 700; }
 .authoring-empty p { color: var(--muted); }
-@media (max-width: 1024px) { .authoring-row { grid-template-columns: 48px minmax(0, 1fr); } .authoring-row-actions { grid-column: 2; justify-content: flex-start; } }
+@media (max-width: 1024px) { .authoring-row { grid-template-columns: 64px minmax(0, 1fr); } .authoring-row-actions { grid-column: 2; justify-content: flex-start; } }
 @media (max-width: 768px) { .authoring-header-actions { justify-content: flex-start; } .authoring-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } .authoring-toolbar > * { flex: 1 1 200px; } }
-@media (max-width: 480px) { .authoring-metric { padding: 12px; gap: 8px; } .authoring-metric-icon { width: 36px; height: 36px; } .authoring-row { grid-template-columns: 1fr; gap: 10px; } .authoring-row-icon { width: 40px; height: 40px; } .authoring-row-actions { grid-column: 1; justify-content: flex-start; } .authoring-row-actions .btn { padding-inline: 10px; } .authoring-tabs { flex-basis: 100%; } .authoring-tabs button { flex: 1; } }
+@media (max-width: 480px) { .authoring-metric { padding: 12px; gap: 8px; } .authoring-metric-icon { width: 36px; height: 36px; } .authoring-row { grid-template-columns: 1fr; gap: 10px; } .authoring-row-icon { width: 56px; height: 42px; } .authoring-row-actions { grid-column: 1; justify-content: flex-start; } .authoring-row-actions .btn { padding-inline: 10px; } .authoring-tabs { flex-basis: 100%; } .authoring-tabs button { flex: 1; } }

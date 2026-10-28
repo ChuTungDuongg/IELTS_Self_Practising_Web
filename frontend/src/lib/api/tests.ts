@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { apiRequest, type ApiRequester } from "./client";
-import { testSchema, versionDetailSchema, type TestSummary, type VersionDetail } from "./schema";
+import { testCoverSchema, testSchema, versionDetailSchema, type TestSummary, type VersionDetail } from "./schema";
 
 const createTestInput = z.object({
   title: z.string().trim().min(1).max(240),
@@ -87,4 +87,14 @@ export async function permanentlyDeleteTest(testId: string): Promise<void> {
 
 export async function deleteDraft(testId: string, versionId: string): Promise<void> {
   await apiRequest(`/tests/${testId}/versions/${versionId}`, { method: "DELETE" });
+}
+
+export async function uploadTestCover(testId: string, file: File) {
+  const body = new FormData();
+  body.set("file", file);
+  return testCoverSchema.parse(await apiRequest<unknown>(`/tests/${encodeURIComponent(testId)}/cover`, { method: "POST", body }));
+}
+
+export async function removeTestCover(testId: string): Promise<void> {
+  await apiRequest(`/tests/${encodeURIComponent(testId)}/cover`, { method: "DELETE" });
 }

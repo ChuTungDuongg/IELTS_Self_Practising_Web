@@ -7,10 +7,11 @@ import { PageHeading } from "@/components/ui/page-heading";
 import { EmptyState } from "@/components/ui/empty-state";
 import { DataLoadNotice } from "@/components/ui/data-load-notice";
 import { ModuleBadge } from "@/components/ui/module-badge";
-import { AnalyticsIcon, ArrowIcon, BuilderIcon, SearchIcon } from "@/components/ui/icons";
+import { AnalyticsIcon, ArrowIcon, SearchIcon } from "@/components/ui/icons";
 import { StartAttempt } from "@/features/exam/start-attempt";
 import { StartFullMock } from "@/features/exam/start-full-mock";
 import { ContentSummary, publishedContentSummary } from "@/features/test-builder/content-summary";
+import { CoverThumbnail } from "@/features/test-builder/test-cover";
 import type { TestSummary, VersionDetail } from "@/lib/api/schema";
 import { useLocale, useTranslation } from "@/lib/i18n/locale-provider";
 import { moduleTranslationKeys } from "@/lib/i18n/translations";
@@ -115,7 +116,7 @@ export function LibraryContent({ items, loadFailed = false }: { items: LibraryIt
             const uniqueSkills = [...new Set(modules.map(module => module.module_type))];
             return <article key={test.id} className="practice-library-card">
               <div className="practice-library-card-body">
-                <div className="practice-library-icon" aria-hidden="true"><BuilderIcon /></div>
+                <CoverThumbnail cover={test.cover_image} title={test.title} className="practice-library-icon" />
                 <div className="practice-library-card-info">
                   <div className="practice-library-card-top"><TestAttribution test={test} compact /><StatusBadge status="PUBLISHED" label={t("common.published")} /></div>
                   <h2>{test.title}</h2><p className="practice-library-card-description">{test.description ?? t("pages.library.fallback")}</p>

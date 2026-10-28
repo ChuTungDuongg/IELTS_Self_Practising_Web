@@ -57,6 +57,14 @@ class VersionSummary(BaseModel):
     published_at: datetime | None
 
 
+class TestCoverSummary(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    content_url: str
+    mime_type: str
+
+
 class TestSummary(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -72,6 +80,7 @@ class TestSummary(BaseModel):
     created_at: datetime
     updated_at: datetime
     versions: list[VersionSummary] = Field(default_factory=list)
+    cover_image: TestCoverSummary | None = None
     published_detail: "VersionDetail | None" = None
 
 

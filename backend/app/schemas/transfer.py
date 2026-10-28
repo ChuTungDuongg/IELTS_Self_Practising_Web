@@ -158,6 +158,7 @@ class PortableTest(BaseModel):
     source_label: str | None = Field(default=None, max_length=160)
     test_number: int | None = Field(default=None, ge=1)
     archived_at: datetime | None = None
+    cover_id: UUID | None = None
     versions: list[PortableVersion]
 
     @model_validator(mode="after")
@@ -198,12 +199,30 @@ class ManifestAsset(BaseModel):
         return value
 
 
+class ManifestCover(BaseModel):
+    source_id: UUID
+    source_test_id: UUID
+    path: str
+    mime_type: str
+    original_filename: str = Field(min_length=1, max_length=255)
+    size: int = Field(gt=0)
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+    @field_validator("original_filename")
+    @classmethod
+    def safe_original_filename(cls, value: str) -> str:
+        if "/" in value or "\\" in value or re.match(r"^[A-Za-z]:", value):
+            raise ValueError("Cover filenames must not contain paths")
+        return value
+
+
 class TransferManifest(BaseModel):
     format: Literal[TRANSFER_FORMAT] = TRANSFER_FORMAT
-    schema_version: Literal[TRANSFER_SCHEMA_VERSION] = TRANSFER_SCHEMA_VERSION
+    schema_version: Literal[1, 2] = TRANSFER_SCHEMA_VERSION
     exported_at: datetime
     tests: list[ManifestTest] = Field(min_length=1)
     assets: list[ManifestAsset] = Field(default_factory=list)
+    covers: list[ManifestCover] = Field(default_factory=list)
 
 
 class TransferExportRequest(BaseModel):

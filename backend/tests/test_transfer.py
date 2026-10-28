@@ -157,6 +157,8 @@ async def test_import_lost_commit_acknowledgement_keeps_committed_assets(
     await db_session.rollback()
     (tmp_path / "staging").mkdir()
     package = service.validate_archive(archive, tmp_path / "staging")
+    existing_ids = set(await db_session.scalars(select(Asset.id)))
+    await db_session.rollback()
     begin = db_session.begin
 
     class LostAcknowledgement:
@@ -171,9 +173,10 @@ async def test_import_lost_commit_acknowledgement_keeps_committed_assets(
     monkeypatch.setattr(db_session, "begin", LostAcknowledgement)
     with pytest.raises(RuntimeError):
         await service.import_package(package)
-    assets = list(await db_session.scalars(select(Asset)))
-    assert len(assets) == 6
+    assets = list(await db_session.scalars(select(Asset).where(Asset.id.not_in(existing_ids))))
+    assert len(assets) == 3
     assert all((settings.resolved_storage_root / asset.relative_path).is_file() for asset in assets)
+    assert len([path for path in settings.resolved_storage_root.rglob("*") if path.is_file()]) == 6
 
 
 @pytest.mark.integration
@@ -896,7 +899,7 @@ async def test_transfer_rejects_malicious_and_invalid_archives_without_creating_
 
     def wrong_version(entries):
         manifest = json.loads(entries["manifest.json"])
-        manifest["schema_version"] = 2
+        manifest["schema_version"] = 3
         entries["manifest.json"] = json.dumps(manifest).encode()
 
     cases.append(("wrong-version", wrong_version))
@@ -999,3 +1002,62 @@ async def test_transfer_rejects_malicious_and_invalid_archives_without_creating_
         archive.writestr("assets/large.bin", b"x" * (1024 * 1024 + 1))
     with tempfile.TemporaryDirectory(dir=tmp_path) as staging, pytest.raises(AppError):
         TransferService(db_session, too_large).validate_archive(oversized, Path(staging))
+
+
+async def test_cover_and_existing_content_media_survive_v2_roundtrip(db_session, tmp_path):
+    from app.models import TestCover
+
+    settings = _settings(tmp_path / "mixed-source")
+    source_test, source_version, _ = await _portable_fixture(
+        db_session, settings.resolved_storage_root
+    )
+    source_id = source_test.id
+    await db_session.rollback()
+    cover_id = uuid4()
+    cover_path = settings.resolved_storage_root / "images" / "fictional-cover.png"
+    cover_path.parent.mkdir(parents=True, exist_ok=True)
+    import base64
+
+    cover_bytes = base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFklEQVR4nGP8//8/AwMDEwMDAwMDAwAkBgMB/DXemwAAAABJRU5ErkJggg=="
+    )
+    cover_path.write_bytes(cover_bytes)
+    async with db_session.begin():
+        db_session.add(
+            TestCover(
+                id=cover_id,
+                test_id=source_id,
+                relative_path="images/fictional-cover.png",
+                mime_type="image/png",
+                original_name="cover.png",
+                file_size=len(cover_bytes),
+            )
+        )
+    archive = tmp_path / "mixed.zip"
+    await TransferService(db_session, settings).export([source_id], archive)
+    await db_session.rollback()
+    target = _settings(tmp_path / "mixed-target")
+    importer = TransferService(db_session, target)
+    stage = tmp_path / "mixed-stage"
+    stage.mkdir()
+    package = importer.validate_archive(archive, stage)
+    assert package.manifest.schema_version == 2
+    assert len(package.manifest.assets) == 3 and len(package.manifest.covers) == 1
+    imported = await importer.import_package(package)
+    imported_id = imported.imported_tests[0].test_id
+    result_cover = await db_session.scalar(
+        select(TestCover).where(TestCover.test_id == imported_id)
+    )
+    assert result_cover.id != cover_id
+    assert (target.resolved_storage_root / result_cover.relative_path).read_bytes() == cover_bytes
+    version = await db_session.scalar(
+        version_detail_query().where(DomainVersion.test_id == imported_id)
+    )
+    assert {asset.asset_type for asset in version.assets} == {
+        AssetType.LISTENING_AUDIO,
+        AssetType.QUESTION_IMAGE,
+        AssetType.WRITING_TASK_IMAGE,
+    }
+    await db_session.rollback()
+    again = await importer.import_package(package)
+    assert again.imported_tests[0].test_id != imported_id

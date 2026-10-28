@@ -2,11 +2,13 @@
 
 import uuid
 
-from app.schemas.transfer import ManifestAsset, PortableTest
+from app.schemas.transfer import ManifestAsset, ManifestCover, PortableTest
 
 
 def build_id_maps(
-    tests: list[PortableTest], assets: list[ManifestAsset]
+    tests: list[PortableTest],
+    assets: list[ManifestAsset],
+    covers: tuple[ManifestCover, ...] | list[ManifestCover] = (),
 ) -> dict[str, dict[uuid.UUID, uuid.UUID]]:
     values: dict[str, list[uuid.UUID]] = {
         "tests": [item.id for item in tests],
@@ -66,5 +68,6 @@ def build_id_maps(
             for question in group.questions
         ],
         "assets": [asset.source_id for asset in assets],
+        "covers": [cover.source_id for cover in covers],
     }
     return {kind: {source: uuid.uuid4() for source in ids} for kind, ids in values.items()}

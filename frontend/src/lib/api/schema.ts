@@ -9,7 +9,15 @@ export const versionSchema = z.object({
   published_at: z.string().nullable(),
 });
 
+export const testCoverSchema = z.object({
+  id: z.string().uuid(),
+  content_url: z.string().startsWith("/tests/"),
+  mime_type: z.enum(["image/png", "image/jpeg", "image/webp"]),
+});
+export type TestCover = z.infer<typeof testCoverSchema>;
+
 export const testSchema = z.object({
+  cover_image: testCoverSchema.nullish(),
   published_detail: z.lazy(() => versionDetailSchema).nullish(),
   id: z.string().uuid(),
   title: z.string(),

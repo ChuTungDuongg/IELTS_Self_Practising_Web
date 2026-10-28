@@ -29,7 +29,7 @@
 .practice-library-card-info { min-width: 0; }
 .practice-library-card-top { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
 .practice-library-card-top .practice-detail-origin { padding: 0; border: 0; background: transparent; }
-.practice-library-icon { display: grid; place-items: center; width: 70px; min-height: 100px; border: 1px solid var(--line); border-radius: 9px; color: var(--accent); background: var(--accent-soft); }
+.practice-library-icon { display: grid; place-items: center; width: 70px; height: 52.5px; border: 1px solid var(--line); border-radius: 9px; color: var(--accent); background: var(--accent-soft); }
 .practice-library-icon svg { width: 30px; height: 30px; }
 .practice-library-card h2 { margin: 9px 0 0; font-size: 16px; font-weight: 700; line-height: 1.35; overflow-wrap: anywhere; }
 .practice-library-card-description { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; margin: 6px 0 0; color: var(--muted); font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }

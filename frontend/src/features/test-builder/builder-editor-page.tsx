@@ -2,6 +2,7 @@ import { UiText } from "@/lib/i18n/locale-provider";
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { PageHeading } from "@/components/ui/page-heading";
+import { DataLoadNotice } from "@/components/ui/data-load-notice";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { VersionActions } from "@/features/test-builder/version-actions";
 import { BuilderLifecycleProvider } from "@/features/test-builder/builder-lifecycle";
@@ -11,6 +12,7 @@ import { WritingBuilder } from "@/features/test-builder/writing-builder";
 import { SpeakingBuilder } from "@/features/test-builder/speaking-builder";
 import { BuilderWorkspaceNavigation, type BuilderWorkspace } from "@/features/test-builder/builder-workspace-navigation";
 import { TestDetailsHeading } from "@/features/test-builder/test-details-heading";
+import { CoverManager } from "@/features/test-builder/test-cover";
 import { ContentSummary, builderContentSummary } from "@/features/test-builder/content-summary";
 import { getBuilderVersion } from "@/lib/api/builder";
 import { ModuleBadge } from "@/components/ui/module-badge";
@@ -55,8 +57,11 @@ export async function BuilderEditorPage({ params, searchParams, namespace = "adm
     notFound();
   const requests = namespace === "teacher" || workspace === "speaking" ? await getVersionModeration(versionId, serverApiRequest) : [];
   const editable = version.status === "DRAFT" && !requests.some(item => item.status === "PENDING");
+  const loadCover = editable && workspace === "overview";
+  const coverTest = loadCover ? await getTest(testId, serverApiRequest).catch(() => null) : null;
   return (<>
     {editable ? <TestDetailsHeading testId={testId} initialTitle={version.test_title} initialDescription={version.test_description ?? null} versionNumber={version.version_number} /> : <PageHeading eyebrow={<UiText message="builder.brand" />} title={version.test_title} description={<UiText message="builder.versionWorkspace" params={{ number: version.version_number }} />} action={<StatusBadge status={version.status} label={<UiText message={version.status === "PUBLISHED" ? "common.published" : version.status === "DRAFT" ? "common.draft" : "common.archived"} />} />} />}
+    {coverTest && !coverTest.archived_at ? <CoverManager testId={testId} initialCover={coverTest.cover_image} title={coverTest.title} /> : loadCover && !coverTest ? <DataLoadNotice message="cover.loadFailed" /> : null}
     <BuilderLifecycleProvider>
       {namespace === "teacher" ? <TeacherVersionActions version={version} requests={requests} /> : <VersionActions testId={testId} version={version} />}
       <div className="builder-workspace">
