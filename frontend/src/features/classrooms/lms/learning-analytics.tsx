@@ -11,7 +11,7 @@ import { useLmsText } from "./messages";
 import { useScheduleText } from "../scheduling/messages";
 
 const decimal = (value: number | null) => value === null ? "—" : value.toFixed(1);
-function useMetricLabels() {
+export function useMetricLabels() {
   const { t } = useTranslation(), { lt } = useLmsText();
   const criteria = { ta: t("runner.criterion.ta"), cc: t("runner.criterion.cc"), lr: t("runner.criterion.lr"), gra: t("runner.criterion.gra"), fc: t("speakingAI.criterion.fc"), pr: t("speakingAI.criterion.pr") };
   return (category: string) => {
@@ -44,7 +44,7 @@ export function LearningAnalyticsPanel({ classroomId, own = false, studentId, on
     </> : null}
   </section>;
 }
-function SkillHistory({ data, classSummary, onOpenAssignment }: { data: LearningDashboard["skills"][number]; classroomId: string; classSummary: boolean; onOpenAssignment: (id: string) => void }) {
+export function SkillHistory({ data, classSummary, onOpenAssignment }: { data: LearningDashboard["skills"][number]; classroomId: string; classSummary: boolean; onOpenAssignment: (id: string) => void }) {
   const { lt, locale } = useLmsText(); const points = data.trends;
   const start = points.length ? new Date(points[0].at).valueOf() : 0, end = points.length ? new Date(points[points.length - 1].at).valueOf() : 0;
   const x = (at: string) => 32 + (new Date(at).valueOf() - start) / Math.max(1, end - start) * 280;
@@ -53,7 +53,7 @@ function SkillHistory({ data, classSummary, onOpenAssignment }: { data: Learning
     {points.length ? <details><summary>{lt("history")} ({points.length})</summary><ul className="lms-record-list">{points.map(point => <li key={point.attempt_id}><time dateTime={point.at}>{new Date(point.at).toLocaleDateString(locale)}</time> · {point.band.toFixed(1)} <button type="button" className="classroom-text-button" onClick={() => onOpenAssignment(point.assignment_id)}>{lt("open")}</button></li>)}</ul></details> : null}
   </section>;
 }
-function GoalEditor({ goals, onSaved }: { goals: LearningGoals; onSaved: () => void }) {
+export function GoalEditor({ goals, onSaved }: { goals: LearningGoals; onSaved: () => void }) {
   const { lt } = useLmsText(); const [pending, setPending] = useState(false), [error, setError] = useState<string | null>(null), [saved, setSaved] = useState(false); const running = useRef(false);
   async function save(event: FormEvent<HTMLFormElement>) { event.preventDefault(); if (running.current) return; const form = new FormData(event.currentTarget); running.current = true; setPending(true); setError(null); setSaved(false); try { await saveLearningGoals(Object.fromEntries(Object.keys(goals).map(key => [key, form.get(key) === "" ? null : Number(form.get(key))])) as LearningGoals); setSaved(true); onSaved(); } catch (caught) { setError(caught instanceof ApiError ? caught.message : lt("error")); } finally { running.current = false; setPending(false); } }
   return <details className="lms-goals"><summary>{lt("target")}{goals.overall !== null ? ` · ${goals.overall.toFixed(1)}` : ""}</summary><form className="lms-filters" onSubmit={event => void save(event)}>{(Object.keys(goals) as (keyof LearningGoals)[]).map(key => <label key={key}>{lt(key)}<input type="number" min={0} max={9} step={0.5} className="field" name={key} defaultValue={goals[key] ?? ""} /></label>)}<button className="btn btn-primary" disabled={pending}>{lt("saveGoals")}</button>{error ? <p role="alert">{error}</p> : null}{saved ? <p role="status">{lt("saved")}</p> : null}</form></details>;

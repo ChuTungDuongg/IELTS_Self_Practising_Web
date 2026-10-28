@@ -23,6 +23,7 @@ import type { StreamRosterMember } from "./stream/sidebar";
 function PanelLoading() { const { lt } = useLmsText(); return <p role="status">{lt("loading")}</p>; }
 const GradebookPanel = dynamic(() => import("../lms/gradebook").then(module => module.GradebookPanel), { loading: PanelLoading });
 const LearningAnalyticsPanel = dynamic(() => import("../lms/learning-analytics").then(module => module.LearningAnalyticsPanel), { loading: PanelLoading });
+const MyClassroomProgressDashboard = dynamic(() => import("../lms/my-classroom-progress").then(module => module.MyClassroomProgressDashboard), { loading: PanelLoading });
 const LearningPlansPanel = dynamic(() => import("../lms/learning-plans").then(module => module.LearningPlansPanel), { loading: PanelLoading });
 const AcademicProfilePanel = dynamic(() => import("../lms/student-profile").then(module => module.AcademicProfilePanel), { loading: PanelLoading });
 
@@ -110,7 +111,7 @@ function ClassroomWorkspaceContent({ classroom, user, assignments, people, membe
         {tab === "people" && canViewRoster ? <section aria-label={ct("people")}>{people ?? <p className="classroom-empty">{ct("emptyPeople")}</p>}</section> : null}
         {tab === "gradebook" && canViewGrades ? <GradebookPanel classroomId={classroom.id} assignments={assignments} canEdit={permissions.canEditGrades} canManagePolicy={canSchedule && !archived} canAnalytics={canAnalytics} canPlans={canPlans} classwork={data} archived={archived} onOpenAssignment={openAssignment} /> : null}
         {tab === "analytics" && canAnalytics ? student ? <AcademicProfilePanel classroomId={classroom.id} studentId={student} canAnalytics canPlans={canPlans} classwork={data} assignments={assignments} archived={archived} onOpenAssignment={openAssignment} onClose={() => setStudent(null)} /> : <LearningAnalyticsPanel classroomId={classroom.id} onOpenAssignment={openAssignment} onStudent={setStudent} /> : null}
-        {tab === "myProgress" ? <><LearningAnalyticsPanel classroomId={classroom.id} own onOpenAssignment={openAssignment} /><LearningPlansPanel classroomId={classroom.id} studentId={user.id} own classwork={data} assignments={assignments} archived={archived} onOpenAssignment={openAssignment} /></> : null}
+        {tab === "myProgress" ? <><MyClassroomProgressDashboard classroomId={classroom.id} assignments={assignments} isStudent={isStudent} canAnalytics={canAnalytics} onOpenAssignment={openAssignment} onNavigate={changeTab} /><LearningPlansPanel classroomId={classroom.id} studentId={user.id} own classwork={data} assignments={assignments} archived={archived} onOpenAssignment={openAssignment} /></> : null}
         </> : null}
       </div>)}
     </div>

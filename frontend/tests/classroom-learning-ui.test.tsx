@@ -39,6 +39,7 @@ it("opens a topic editor from the role-aware header menu with Vietnamese termino
 it("enforces Analytics capability in navigation while every user retains My Progress", async () => {
   renderWithLocale(<ClassroomWorkspace classroom={{ ...room, capabilities: ["grades.view", "grades.edit"] }} user={{ id: "ta", role: "USER" }} assignments={[]} />);
   expect(screen.getByRole("tab", { name: "Gradebook" })).toBeInTheDocument(); expect(screen.queryByRole("tab", { name: "Analytics" })).not.toBeInTheDocument();
+  expect(api.getLearningDashboard).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("tab", { name: "My Progress" })); await waitFor(() => expect(api.getLearningDashboard).toHaveBeenCalledWith("room", true, { completion_offset: 0 }, undefined, expect.any(AbortSignal)));
   expect(api.getLearningPlans).toHaveBeenCalledWith("room", "ta", 0, expect.any(AbortSignal));
 });
