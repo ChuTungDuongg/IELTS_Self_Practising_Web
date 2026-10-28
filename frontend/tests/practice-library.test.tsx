@@ -1,9 +1,12 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
+import { readFileSync } from "node:fs";
 import { renderWithLocale } from "./locale-test-utils";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import LibraryPage from "@/app/library/page";
+import { LibraryContent } from "@/features/practice/library-content";
 import TestVersionLibraryPage from "@/app/library/[versionId]/page";
 import { getTest, getTests, getVersion } from "@/lib/api/tests";
+import { notFound } from "next/navigation";
 import { versionDetailSchema, type TestSummary, type VersionDetail } from "@/lib/api/schema";
 
 vi.mock("next/navigation", () => ({ notFound: vi.fn(), useRouter: () => ({ push: vi.fn() }) }));
@@ -56,7 +59,7 @@ describe("Practice library", () => {
       return { ...publishedTest, id: testId, versions: [version], ...(embedded ? { published_detail: version } : {}) };
     });
     vi.mocked(getTests).mockResolvedValue(records);
-    vi.mocked(getVersion).mockImplementation(async id => ({ ...detail, id }));
+    vi.mocked(getVersion).mockImplementation(async id => { const test = records.find(record => record.versions[0].id === id)!; return { ...detail, id, test_id: test.id }; });
     render(await LibraryPage());
     expect(screen.getAllByRole("article")).toHaveLength(6);
     expect(getTests).toHaveBeenCalledOnce();
@@ -146,6 +149,7 @@ describe("Practice library", () => {
     expect(JSON.stringify({ publishedTest, detail })).toBe(before); expect(getTest).toHaveBeenCalledOnce();
   });
   beforeEach(() => {
+    window.localStorage.clear();
     vi.clearAllMocks();
     vi.mocked(getTests).mockResolvedValue([publishedTest]);
     vi.mocked(getTest).mockResolvedValue(publishedTest);
@@ -203,4 +207,142 @@ describe("Practice library", () => {
     expect(screen.getByText("Full Mock unavailable: Reading recommended duration is missing.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Start Full Mock" })).not.toBeInTheDocument();
   });
+  it("combines case-insensitive source search and multi-skill filtering without refetching", async () => {
+    const writingOnly = { ...detail, id: crypto.randomUUID(), test_id: crypto.randomUUID(), modules: [detail.modules[0]] };
+    const tests = [
+      { ...publishedTest, source_label: "Nguồn Mẫu", published_detail: detail },
+      { ...publishedTest, id: writingOnly.test_id, title: "Another test", source_label: null, versions: [writingOnly], published_detail: writingOnly },
+    ];
+    vi.mocked(getTests).mockResolvedValue(tests);
+    renderWithLocale(await LibraryPage());
+    const group = screen.getByRole("group", { name: "Filter tests by skill" });
+    fireEvent.click(within(group).getByRole("button", { name: "Writing" }));
+    expect(screen.getAllByRole("article")).toHaveLength(2);
+    fireEvent.change(screen.getByRole("textbox", { name: "Search the test library" }), { target: { value: "NGUỒN MẪU" } });
+    expect(screen.getAllByRole("article")).toHaveLength(1);
+    fireEvent.click(within(group).getByRole("button", { name: "Reading" }));
+    expect(screen.getByRole("heading", { name: publishedTest.title })).toBeInTheDocument();
+    fireEvent.click(within(group).getByRole("button", { name: "Speaking" }));
+    expect(screen.getByRole("heading", { name: "No matching tests" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Reset filters" }));
+    expect(screen.getAllByRole("article")).toHaveLength(2);
+    expect(screen.getByRole("textbox", { name: "Search the test library" })).toHaveValue("");
+    expect(getTests).toHaveBeenCalledOnce(); expect(getVersion).not.toHaveBeenCalled();
+  });
+
+  it("sorts by real update dates and title and keeps the selected filter", async () => {
+    const otherDetail = { ...detail, id: crypto.randomUUID(), test_id: crypto.randomUUID() };
+    vi.mocked(getTests).mockResolvedValue([
+      { ...publishedTest, title: "Zulu", updated_at: "2026-01-01T00:00:00Z", published_detail: detail },
+      { ...publishedTest, id: otherDetail.test_id, title: "Alpha", updated_at: "2026-10-01T00:00:00Z", versions: [otherDetail], published_detail: otherDetail },
+    ]);
+    render(await LibraryPage());
+    const group = screen.getByRole("group", { name: "Filter tests by skill" });
+    fireEvent.click(within(group).getByRole("button", { name: "Reading" }));
+    expect(screen.getAllByRole("article")[0]).toHaveTextContent("Alpha");
+    fireEvent.change(screen.getByRole("combobox", { name: "Sort tests" }), { target: { value: "oldest" } });
+    expect(screen.getAllByRole("article")[0]).toHaveTextContent("Zulu");
+    fireEvent.change(screen.getByRole("combobox", { name: "Sort tests" }), { target: { value: "az" } });
+    expect(screen.getAllByRole("article")[0]).toHaveTextContent("Alpha");
+    expect(within(group).getByRole("button", { name: "Reading" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("uses the real Full Mock prerequisites without treating missing durations as ready", async () => {
+    const complete = { ...detail, modules: [...detail.modules, speakingModule] };
+    const noDuration = { ...complete, id: crypto.randomUUID(), test_id: crypto.randomUUID(), modules: complete.modules.map(m => m.module_type === "READING" ? { ...m, recommended_duration_seconds: null } : m) };
+    const shortReading = { ...complete, id: crypto.randomUUID(), test_id: crypto.randomUUID(), modules: complete.modules.map(m => m.module_type === "READING" ? { ...m, question_count: 12 } : m) };
+    vi.mocked(getTests).mockResolvedValue([
+      { ...publishedTest, published_detail: complete },
+      { ...publishedTest, id: noDuration.test_id, title: "Missing duration", versions: [noDuration], published_detail: noDuration },
+      { ...publishedTest, id: shortReading.test_id, title: "Short reading", versions: [shortReading], published_detail: shortReading },
+    ]);
+    render(await LibraryPage());
+    fireEvent.click(within(screen.getByRole("group", { name: "Filter tests by skill" })).getByRole("button", { name: "Full Mock" }));
+    expect(screen.getByRole("heading", { name: "Short reading" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Missing duration" })).not.toBeInTheDocument();
+    expect(screen.getByText(/do not produce an official band/i)).toBeInTheDocument();
+    expect(screen.queryByText(/difficulty|popular|recommended for you/i)).not.toBeInTheDocument();
+    expect(document.querySelector(".practice-library img")).toBeNull();
+  });
+
+  it("excludes archived, mismatched and draft details and keeps the newest eligible version", () => {
+    const newer = { ...detail, id: crypto.randomUUID(), version_number: 3 };
+    const draft = { ...detail, id: crypto.randomUUID(), version_number: 4, status: "DRAFT" as const };
+    const archived = { ...publishedTest, id: crypto.randomUUID(), title: "Archived", archived_at: "2026-01-01" };
+    render(<LibraryContent items={[
+      { test: publishedTest, version: detail, detail },
+      { test: publishedTest, version: newer, detail: newer },
+      { test: publishedTest, version: draft, detail: draft },
+      { test: archived, version: detail, detail },
+      { test: { ...publishedTest, id: "mismatch", title: "Mismatch" }, version: detail, detail },
+    ]} />);
+    expect(screen.getAllByRole("article")).toHaveLength(1);
+    expect(screen.getByRole("link", { name: "Open test" })).toHaveAttribute("href", `/library/${newer.id}`);
+    expect(screen.queryByText("Archived")).not.toBeInTheDocument();
+    expect(screen.queryByText("Mismatch")).not.toBeInTheDocument();
+  });
+
+  it("shows partial detail failures alongside valid cards and does not hide full catalog failures as empty", async () => {
+    const missing = { ...publishedTest, id: crypto.randomUUID(), title: "Missing detail", versions: [{ ...publishedTest.versions[0], id: crypto.randomUUID() }] };
+    vi.mocked(getTests).mockResolvedValue([{ ...publishedTest, published_detail: detail }, missing]);
+    vi.mocked(getVersion).mockRejectedValue(new Error("network"));
+    const view = render(await LibraryPage());
+    expect(screen.getByRole("alert")).toHaveTextContent("Some practice content could not be loaded");
+    expect(screen.getByRole("heading", { name: publishedTest.title })).toBeInTheDocument();
+    view.unmount();
+    vi.mocked(getTests).mockRejectedValue(new Error("network"));
+    render(await LibraryPage());
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+    expect(screen.queryByText("No published tests yet")).not.toBeInTheDocument();
+  });
+
+  it("preserves community attribution and filter state when switching language", async () => {
+    window.localStorage.clear();
+    vi.mocked(getTests).mockResolvedValue([{ ...publishedTest, origin: "TEACHER", owner_display_name: "Linh", published_detail: detail }]);
+    renderWithLocale(await LibraryPage());
+    expect(screen.getByText("Community · contributed by Linh")).toBeInTheDocument();
+    const search = screen.getByRole("textbox", { name: "Search the test library" });
+    fireEvent.change(search, { target: { value: "Fictional" } });
+    fireEvent.click(screen.getByText("Switch to Vietnamese"));
+    expect(screen.getByRole("heading", { name: "Thư viện đề" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Tìm kiếm trong thư viện đề" })).toBe(search);
+    expect(search).toHaveValue("Fictional");
+    expect(getVersion).not.toHaveBeenCalled();
+  });
+
+  it("uses only the newest published version returned by the public catalog", async () => {
+    const newer = { ...detail, id: crypto.randomUUID(), version_number: 5 };
+    const privateDraft = { ...detail, id: crypto.randomUUID(), version_number: 6, status: "DRAFT" as const };
+    vi.mocked(getTests).mockResolvedValue([{ ...publishedTest, versions: [detail, newer, privateDraft], published_detail: newer }]);
+    render(await LibraryPage());
+    expect(screen.getByRole("link", { name: "Open test" })).toHaveAttribute("href", `/library/${newer.id}`);
+    expect(getVersion).not.toHaveBeenCalled();
+  });
+
+  it("does not expose a direct version rejected by public eligibility", async () => {
+    vi.mocked(getVersion).mockRejectedValue(new Error("not available"));
+    vi.mocked(notFound).mockImplementationOnce(() => { throw new Error("NOT_FOUND"); });
+    await expect(TestVersionLibraryPage({ params: Promise.resolve({ versionId }) })).rejects.toThrow("NOT_FOUND");
+    expect(getVersion).toHaveBeenCalledWith(versionId, expect.any(Function), { publicOnly: true });
+    expect(getTest).not.toHaveBeenCalled();
+  });
+
+  it("does not invent Writing duration on the detail screen", async () => {
+    vi.mocked(getVersion).mockResolvedValue({ ...detail, modules: detail.modules.map(module => module.module_type === "WRITING" ? { ...module, recommended_duration_seconds: null } : module) });
+    render(await TestVersionLibraryPage({ params: Promise.resolve({ versionId }) }));
+    const writing = screen.getByText("Writing practice").closest("article")!;
+    expect(within(writing).getByText("Not set")).toBeInTheDocument();
+    expect(within(writing).queryByText("60 min")).not.toBeInTheDocument();
+  });
+
+  it("uses scoped theme tokens and responsive grid breakpoints", () => {
+    const css = readFileSync("src/features/practice/practice-library.css", "utf8");
+    expect(css).toContain("var(--surface)");
+    expect(css).toContain("var(--ink)");
+    expect(css).toContain("var(--accent)");
+    expect(css).toContain("max-width: 1024px");
+    expect(css).toContain("max-width: 560px");
+    expect(css).toContain("grid-template-columns: minmax(0, 1fr)");
+  });
+
 });

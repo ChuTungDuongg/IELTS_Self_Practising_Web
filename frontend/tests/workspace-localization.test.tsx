@@ -73,9 +73,9 @@ describe("workspace localization boundaries", () => {
   it("translates Library empty state without refetching server data", async () => {
     vi.mocked(getTests).mockResolvedValue([]);
     renderWithLocale(await LibraryPage());
-    expect(screen.getByRole("heading", { name: "Choose your next test" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Test Library" })).toBeInTheDocument();
     fireEvent.click(screen.getByText("Switch to Vietnamese"));
-    expect(screen.getByRole("heading", { name: "Chọn đề tiếp theo" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Thư viện đề" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Chưa có đề đã xuất bản" })).toBeInTheDocument();
     expect(getTests).toHaveBeenCalledOnce();
   });
