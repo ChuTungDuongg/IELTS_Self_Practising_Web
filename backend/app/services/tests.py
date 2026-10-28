@@ -43,6 +43,7 @@ from app.schemas.tests import TestCreate, TestDeleteResult, TestSummary, TestUpd
 from app.services.access_policy import AccessPolicy
 from app.services.asset_cleanup import compensate_files
 from app.storage import LocalAssetStorage
+from app.storage.factory import get_asset_storage
 
 
 class TestService:
@@ -250,9 +251,7 @@ class TestService:
             await self.session.delete(test)
             await self.session.flush()
         if cover_path:
-            await compensate_files(
-                self.session, LocalAssetStorage(get_settings().resolved_storage_root), [cover_path]
-            )
+            await compensate_files(self.session, get_asset_storage(get_settings()), [cover_path])
         self._delete_files(deleted_paths)
         return TestDeleteResult(test_id=test_id, action="DELETED")
 
@@ -316,9 +315,7 @@ class TestService:
             await self.session.delete(test)
             await self.session.flush()
         if cover_path:
-            await compensate_files(
-                self.session, LocalAssetStorage(get_settings().resolved_storage_root), [cover_path]
-            )
+            await compensate_files(self.session, get_asset_storage(get_settings()), [cover_path])
         self._delete_files(deleted_paths)
 
     async def delete_module(self, module_id: uuid.UUID) -> None:
@@ -455,17 +452,20 @@ class TestService:
             return None, None
 
         settings = get_settings()
-        storage = LocalAssetStorage(settings.resolved_storage_root)
+        storage = get_asset_storage(settings)
         is_audio = asset_type == AssetType.LISTENING_AUDIO
-        stored = storage.store_file(
-            category="audio" if is_audio else "images",
-            mime_type=inherited.mime_type,
-            original_name=inherited.original_name,
-            source=storage.resolve(inherited.relative_path),
-            max_bytes=(settings.max_audio_upload_mb if is_audio else settings.max_image_upload_mb)
-            * 1024
-            * 1024,
-        )
+        with storage.open_reader(inherited.relative_path) as source:
+            stored = storage.store_stream(
+                category="audio" if is_audio else "images",
+                mime_type=inherited.mime_type,
+                original_name=inherited.original_name,
+                source=source,
+                max_bytes=(
+                    settings.max_audio_upload_mb if is_audio else settings.max_image_upload_mb
+                )
+                * 1024
+                * 1024,
+            )
         try:
             copy = Asset(
                 id=uuid.uuid4(),
@@ -486,7 +486,7 @@ class TestService:
 
     @staticmethod
     def _delete_files(paths: list[str]) -> None:
-        storage = LocalAssetStorage(get_settings().resolved_storage_root)
+        storage = get_asset_storage(get_settings())
         for path in paths:
             storage.delete(path)
 
@@ -679,7 +679,7 @@ class TestService:
         except BaseException:
             await compensate_files(
                 self.session,
-                LocalAssetStorage(get_settings().resolved_storage_root),
+                get_asset_storage(get_settings()),
                 created_paths,
             )
             raise
@@ -703,21 +703,22 @@ class TestService:
                     referenced[group.image_asset.id] = group.image_asset
 
         settings = get_settings()
-        storage = LocalAssetStorage(settings.resolved_storage_root)
+        storage = get_asset_storage(settings)
         cloned: dict[uuid.UUID, Asset] = {}
         for asset_id, asset in referenced.items():
             is_audio = asset.asset_type == AssetType.LISTENING_AUDIO
-            stored = storage.store_file(
-                category="audio" if is_audio else "images",
-                mime_type=asset.mime_type,
-                original_name=asset.original_name,
-                source=storage.resolve(asset.relative_path),
-                max_bytes=(
-                    settings.max_audio_upload_mb if is_audio else settings.max_image_upload_mb
+            with storage.open_reader(asset.relative_path) as input_file:
+                stored = storage.store_stream(
+                    category="audio" if is_audio else "images",
+                    mime_type=asset.mime_type,
+                    original_name=asset.original_name,
+                    source=input_file,
+                    max_bytes=(
+                        settings.max_audio_upload_mb if is_audio else settings.max_image_upload_mb
+                    )
+                    * 1024
+                    * 1024,
                 )
-                * 1024
-                * 1024,
-            )
             created_paths.append(stored.relative_path)
             copy = Asset(
                 id=uuid.uuid4(),

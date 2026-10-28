@@ -5,7 +5,7 @@ import re
 from statistics import mean, median
 
 from app.schemas.speaking_ai import ASRResult, FluencyEvidence, SpeakingFeatureBundle, WordTiming
-from app.services.speaking_audio import NormalizedAudio, fingerprint
+from app.services.speaking_audio import NormalizedAudio, await_audio_thread, fingerprint
 from app.services.speaking_quality import assess_audio_quality
 
 FEATURE_VERSION = "fluency-v1"
@@ -126,8 +126,8 @@ async def build_feature_bundle(audio, transcript: ASRResult, settings, *, part_n
     from app.providers.speaking_pronunciation import create_provider
 
     transcript = ASRResult.model_validate(transcript)
-    quality = await asyncio.to_thread(
-        assess_audio_quality, audio, settings.speaking_quality, asr_usable=True
+    quality = await await_audio_thread(
+        asyncio.to_thread(assess_audio_quality, audio, settings.speaking_quality, asr_usable=True)
     )
     fluency = extract_fluency_features(
         audio, transcript.text, transcript.words, part_number=part_number

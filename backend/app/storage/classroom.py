@@ -17,7 +17,14 @@ RESOURCE_TYPES = {
 }
 
 
-class ClassroomResourceStorage(LocalAssetStorage):
+class ClassroomResourceStorage:
+    def __init__(self, storage):
+        # Path is accepted for existing local callers/tests; production composes a port.
+        self.storage = LocalAssetStorage(storage) if isinstance(storage, Path) else storage
+
+    def delete(self, key):
+        return self.storage.delete(key)
+
     def store_resource(
         self, source, filename: str, media_type: str, *, max_bytes=MAX_RESOURCE_BYTES
     ) -> StoredAsset:
@@ -30,23 +37,12 @@ class ClassroomResourceStorage(LocalAssetStorage):
         ):
             raise AppError("RESOURCE_UPLOAD_INVALID", "Invalid filename.", 422)
         content = source.read(max_bytes + 1)
-        extension = self._validate_upload(
+        extension = LocalAssetStorage._validate_upload(
             RESOURCE_TYPES, media_type, filename, len(content), max_bytes
         )
         self._signature(content, media_type)
         key = f"classroom-resources/{uuid4().hex}{extension}"
-        path = (self.root / key).resolve()
-        if self.root not in path.parents:
-            raise AppError("RESOURCE_UPLOAD_INVALID", "Invalid storage destination.", 422)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        # A collision never removes someone else's file.
-        output = path.open("xb")
-        try:
-            with output:
-                output.write(content)
-        except BaseException:
-            path.unlink(missing_ok=True)
-            raise
+        self.storage.put_stream(key, BytesIO(content), content_type=media_type, max_bytes=max_bytes)
         return StoredAsset(relative_path=key, size=len(content))
 
     @staticmethod

@@ -7,7 +7,7 @@ from statistics import mean, pstdev
 
 from app.core.exceptions import AppError
 from app.schemas.speaking_ai import PronunciationEvidence
-from app.services.speaking_audio import NormalizedAudio
+from app.services.speaking_audio import NormalizedAudio, await_audio_thread
 from app.services.speaking_features import tokens, validate_alignment
 from app.services.speaking_quality import classify_quality, measure_audio, read_pcm
 
@@ -52,7 +52,9 @@ class AlignmentProsodyProvider:
     async def analyse(self, audio, transcript, alignment):
         if not isinstance(audio, NormalizedAudio):
             raise ValueError("Normalized audio is required")
-        return await asyncio.to_thread(self._analyse, audio, transcript, alignment)
+        return await await_audio_thread(
+            asyncio.to_thread(self._analyse, audio, transcript, alignment)
+        )
 
     def _analyse(self, audio, transcript, alignment):
         base = dict(

@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     api_v1_prefix: str = "/api/v1"
     database_url: str = "postgresql+asyncpg://ielts:ielts@localhost:5433/ielts"
     frontend_origin: str = "http://localhost:3000"
+    # Fail closed until every persistent-asset consumer supports the selected backend.
+    storage_backend: Literal["local"] = "local"
     storage_root: Path = Path("../storage")
     max_image_upload_mb: int = Field(default=10, gt=0)
     max_audio_upload_mb: int = Field(default=100, gt=0)

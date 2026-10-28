@@ -1,7 +1,7 @@
 """Detached workers with durable checkpoints and fenced DB leases. No scoring."""
 
 import asyncio
-from contextlib import suppress
+from contextlib import AsyncExitStack, suppress
 from datetime import timedelta
 from uuid import UUID, uuid4
 
@@ -16,9 +16,11 @@ from app.providers.speaking_asr import create_provider
 from app.repositories.speaking_transcript import SpeakingTranscriptRepository
 from app.schemas.speaking_ai import ASRResult
 from app.services.speaking_audio import (
+    await_audio_thread,
     execute_ffmpeg,
     normalization_identity,
     normalize_committed_take,
+    stage_normalized_audio,
 )
 from app.services.speaking_features import build_feature_bundle, feature_identity
 from app.services.speaking_quality import (
@@ -27,6 +29,7 @@ from app.services.speaking_quality import (
     quality_identity,
 )
 from app.services.speaking_transcript import format_transcript, response_cache
+from app.storage.factory import get_asset_storage
 
 _tasks: dict[UUID, asyncio.Task] = {}
 
@@ -149,6 +152,7 @@ class SpeakingTranscriptWorker:
                 if not await self._checkpoint(run_id, token, rid):
                     return
                 audio, quality, asr_succeeded = None, None, False
+                staging = AsyncExitStack()
                 try:
                     provider = provider or create_provider(self.settings)
                     if (
@@ -163,11 +167,12 @@ class SpeakingTranscriptWorker:
                             409,
                         )
                     async with self.sessions() as session:
-                        audio = await normalize_committed_take(
+                        storage = self.storage or get_asset_storage(self.settings)
+                        audio_ref = await normalize_committed_take(
                             session,
                             UUID(rid),
                             self.settings,
-                            storage=self.storage,
+                            storage=storage,
                             executor=self.executor,
                         )
                         async with session.begin():
@@ -188,10 +193,17 @@ class SpeakingTranscriptWorker:
                             part_number = (
                                 prompt_context[0] if prompt_context[1] == "LONG_TURN" else None
                             )
+                    audio = await staging.enter_async_context(
+                        stage_normalized_audio(
+                            storage, audio_ref, self.settings.speaking_max_decoded_seconds
+                        )
+                    )
                     if audio.source_audio_fingerprint != item["audio_fingerprint"]:
                         raise AppError("TRANSCRIPT_SOURCE_CHANGED", "Recording changed.", 409)
-                    quality = await asyncio.to_thread(
-                        assess_audio_quality, audio, self.settings.speaking_quality
+                    quality = await await_audio_thread(
+                        asyncio.to_thread(
+                            assess_audio_quality, audio, self.settings.speaking_quality
+                        )
                     )
                     async with self.sessions() as session:
                         await persist_quality_result(session, audio, quality)
@@ -200,14 +212,19 @@ class SpeakingTranscriptWorker:
                     result = ASRResult.model_validate(
                         await asyncio.wait_for(
                             provider.transcribe(audio),
-                            self.settings.speaking_processing_timeout_seconds,
+                            timeout=self.settings.speaking_processing_timeout_seconds,
                         )
                     )
                     if any(w.end > audio.duration_ms / 1000 for w in result.words):
                         raise ValueError("Word timing exceeds audio")
                     asr_succeeded = True
-                    quality = await asyncio.to_thread(
-                        assess_audio_quality, audio, self.settings.speaking_quality, asr_usable=True
+                    quality = await await_audio_thread(
+                        asyncio.to_thread(
+                            assess_audio_quality,
+                            audio,
+                            self.settings.speaking_quality,
+                            asr_usable=True,
+                        )
                     )
                     async with self.sessions() as session:
                         await persist_quality_result(session, audio, quality)
@@ -221,11 +238,13 @@ class SpeakingTranscriptWorker:
                     raise
                 except Exception as error:
                     if audio and quality and quality.assessable and not asr_succeeded:
-                        unusable = await asyncio.to_thread(
-                            assess_audio_quality,
-                            audio,
-                            self.settings.speaking_quality,
-                            asr_usable=False,
+                        unusable = await await_audio_thread(
+                            asyncio.to_thread(
+                                assess_audio_quality,
+                                audio,
+                                self.settings.speaking_quality,
+                                asr_usable=False,
+                            )
                         )
                         async with self.sessions() as session:
                             await persist_quality_result(session, audio, unusable)
@@ -250,6 +269,8 @@ class SpeakingTranscriptWorker:
                         else "TRANSCRIPT_GENERATION_FAILED"
                     )
                     await self._checkpoint(run_id, token, rid, error=code)
+                finally:
+                    await staging.aclose()
             await self._checkpoint(run_id, token, complete=True)
         except asyncio.CancelledError:
             # Preserve READY responses; leave unfinished work pending for startup recovery.

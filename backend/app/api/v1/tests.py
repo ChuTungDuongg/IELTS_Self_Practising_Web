@@ -1,7 +1,7 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, UploadFile, status
-from fastapi.responses import FileResponse, Response
+from fastapi import APIRouter, Depends, File, Request, UploadFile, status
+from fastapi.responses import Response, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import AdminUser, CurrentUser
@@ -23,7 +23,8 @@ from app.schemas.tests import (
 )
 from app.services.test_covers import TestCoverService
 from app.services.tests import TestService
-from app.storage import LocalAssetStorage
+from app.storage.delivery import storage_response
+from app.storage.factory import get_asset_storage
 
 router = APIRouter(tags=["tests"])
 
@@ -95,14 +96,19 @@ async def remove_cover(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.get("/tests/{test_id}/cover/{cover_id}/content", response_class=FileResponse)
+@router.get("/tests/{test_id}/cover/{cover_id}/content", response_class=StreamingResponse)
 async def get_cover(
-    test_id: UUID, cover_id: UUID, user: CurrentUser, session: AsyncSession = Depends(get_session)
-) -> FileResponse:
+    test_id: UUID,
+    cover_id: UUID,
+    request: Request,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+):
     cover = await TestCoverService(session, user, get_settings()).read(test_id, cover_id)
-    path = LocalAssetStorage(get_settings().resolved_storage_root).resolve(cover.relative_path)
-    return FileResponse(
-        path,
+    return await storage_response(
+        request,
+        get_asset_storage(get_settings()),
+        cover.relative_path,
         media_type=cover.mime_type,
         headers={
             "Cache-Control": "private, no-store",

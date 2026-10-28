@@ -30,6 +30,7 @@ from app.schemas.classroom_classwork import (
 from app.services.classroom_capabilities import Capability
 from app.services.classroom_content_access import ContentAccess
 from app.storage.classroom import ClassroomResourceStorage
+from app.storage.factory import get_asset_storage
 from app.storage.local import StoredAsset
 
 logger = logging.getLogger(__name__)
@@ -329,7 +330,7 @@ class ClassworkService:
         if key:
             try:
                 await self._compensate(
-                    ClassroomResourceStorage(get_settings().resolved_storage_root), key
+                    ClassroomResourceStorage(get_asset_storage(get_settings())), key
                 )
             except OSError:
                 logger.exception(
@@ -395,7 +396,7 @@ class ClassworkService:
         async with self.session.begin():
             room = await self.access.room(classroom_id, mutation=True, owner=True)
             await self._section(room, section_id)
-        storage = ClassroomResourceStorage(get_settings().resolved_storage_root)
+        storage = ClassroomResourceStorage(get_asset_storage(get_settings()))
         filename = upload.filename or ""
         media_type = upload.content_type or "application/octet-stream"
         staging = asyncio.create_task(
@@ -445,7 +446,4 @@ class ClassworkService:
             row = await self._resource(room, resource_id)
             if row.kind != "FILE" or not row.storage_key:
                 raise AppError("RESOURCE_NOT_FOUND", "The file does not exist.", 404)
-            path = ClassroomResourceStorage(get_settings().resolved_storage_root).resolve(
-                row.storage_key
-            )
-            return path, row.media_type, row.original_filename
+            return row.storage_key, row.media_type, row.original_filename

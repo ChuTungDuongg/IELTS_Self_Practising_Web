@@ -1,7 +1,9 @@
+import os
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from uuid import uuid4
 
+import pytest
 import pytest_asyncio
 from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -12,6 +14,67 @@ from app.core.config import get_settings
 from app.main import app
 from app.models import Attempt, TestSession, User
 from app.models.enums import UserRole
+from testsupport.test_database import validate_test_database_url
+
+
+@pytest_asyncio.fixture
+async def isolated_db_session() -> AsyncIterator[AsyncSession]:
+    """Rollback-only session, exclusively against an explicitly separate test database."""
+    url = os.environ.get("P2_TEST_DATABASE_URL") or os.environ.get("TEST_DATABASE_URL")
+    if not url:
+        pytest.skip(
+            "Set TEST_DATABASE_URL to a separately provisioned local PostgreSQL test database"
+        )
+    validate_test_database_url(url, get_settings().database_url)
+    engine = create_async_engine(url, poolclass=NullPool)
+    try:
+        async with engine.connect() as connection:
+            transaction = await connection.begin()
+            factory = async_sessionmaker(
+                bind=connection,
+                class_=AsyncSession,
+                expire_on_commit=False,
+                join_transaction_mode="create_savepoint",
+            )
+            try:
+                async with factory() as session:
+                    user = User(
+                        email=f"isolated-{uuid4()}@example.com",
+                        display_name="Test Administrator",
+                        role=UserRole.ADMIN,
+                        is_active=True,
+                        email_verified=True,
+                    )
+                    async with session.begin():
+                        session.add(user)
+                        await session.flush()
+                    owner_id = user.id
+                    session.info["current_user_id"] = user.id
+                    session.info["current_user_identity"] = User(
+                        id=user.id,
+                        email=user.email,
+                        display_name=user.display_name,
+                        role=user.role,
+                        is_active=True,
+                        email_verified=True,
+                        created_at=datetime.now(UTC),
+                        updated_at=datetime.now(UTC),
+                    )
+
+                    @event.listens_for(session.sync_session, "before_flush")
+                    def assign_isolated_owner(sync_session, _flush_context, _instances):
+                        for instance in sync_session.new:
+                            if (
+                                isinstance(instance, (Attempt, TestSession))
+                                and instance.user_id is None
+                            ):
+                                instance.user_id = owner_id
+
+                    yield session
+            finally:
+                await transaction.rollback()
+    finally:
+        await engine.dispose()
 
 
 @pytest_asyncio.fixture

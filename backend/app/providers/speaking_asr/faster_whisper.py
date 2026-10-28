@@ -7,7 +7,7 @@ from pathlib import Path
 from app.core.exceptions import AppError
 from app.providers.speaking_asr import provider_identity
 from app.providers.speaking_asr.base import ASRResult, WordTiming
-from app.services.speaking_audio import NormalizedAudio
+from app.services.speaking_audio import NormalizedAudio, await_audio_thread
 
 
 class FasterWhisperProvider:
@@ -23,7 +23,7 @@ class FasterWhisperProvider:
             or audio.sample_rate != 16000
         ):
             raise AppError("SPEAKING_AUDIO_UNASSESSABLE", "Normalized audio is required.", 409)
-        return await asyncio.to_thread(self._transcribe, audio)
+        return await await_audio_thread(asyncio.to_thread(self._transcribe, audio))
 
     def _transcribe(self, audio):
         try:

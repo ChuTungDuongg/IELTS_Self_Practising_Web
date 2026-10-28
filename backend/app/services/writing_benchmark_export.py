@@ -11,13 +11,13 @@ from pydantic import TypeAdapter, ValidationError
 
 from app.core.config import get_settings
 from app.core.exceptions import AppError
-from app.evaluation.task1.manifest import BenchmarkInputError, load_image
+from app.evaluation.task1.manifest import BenchmarkInputError
 from app.evaluation.task1.models import BenchmarkSample as Task1Sample
 from app.evaluation.task2.models import BenchmarkSample as Task2Sample
 from app.evaluation.writing.metrics import overall_score
 from app.repositories.writing_benchmark import WritingBenchmarkRepository
-from app.services.writing_benchmark import owned_image_path, scores
-from app.storage import LocalAssetStorage
+from app.services.writing_benchmark import load_owned_image, scores
+from app.storage.factory import get_asset_storage
 
 README = """Writing benchmark source bundle
 JSONL is canonical; CSV is an inspection convenience. Only COMPLETE samples are included.
@@ -107,7 +107,7 @@ class WritingBenchmarkExportService:
     def __init__(self, session, storage=None):
         self.session = session
         self.repo = WritingBenchmarkRepository(session)
-        self.storage = storage or LocalAssetStorage(get_settings().resolved_storage_root)
+        self.storage = storage or get_asset_storage(get_settings())
 
     async def export(self, path):
         try:
@@ -154,9 +154,9 @@ class WritingBenchmarkExportService:
             archive.writestr("images/", b"")
             for row in rows:
                 if row.task_number == 1:
-                    source = owned_image_path(self.storage, row.id, row.task1_image_key)
-                    image = load_image(source)
-                    image_path = f"images/T1-{row.sequence_number:03d}{source.suffix}"
+                    image = load_owned_image(self.storage, row.id, row.task1_image_key)
+                    extension = row.task1_image_key.rsplit(".", 1)[-1]
+                    image_path = f"images/T1-{row.sequence_number:03d}.{extension}"
                     manifests[1].append(task1_manifest_sample(row, image_path))
                     archive.writestr(image_path, image.data)
                 else:

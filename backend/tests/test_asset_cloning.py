@@ -353,7 +353,7 @@ async def test_version_clone_rolls_back_database_and_files_when_an_asset_copy_fa
     test_id = test.id
     source_id = source.id
     before = _stored_paths(tmp_path)
-    original_store_file = LocalAssetStorage.store_file
+    original_store_stream = LocalAssetStorage.store_stream
     calls = 0
 
     def fail_second_copy(self: LocalAssetStorage, **kwargs: object):
@@ -361,9 +361,9 @@ async def test_version_clone_rolls_back_database_and_files_when_an_asset_copy_fa
         calls += 1
         if calls == 2:
             raise OSError("fictional copy failure")
-        return original_store_file(self, **kwargs)  # type: ignore[arg-type]
+        return original_store_stream(self, **kwargs)  # type: ignore[arg-type]
 
-    monkeypatch.setattr(LocalAssetStorage, "store_file", fail_second_copy)
+    monkeypatch.setattr(LocalAssetStorage, "store_stream", fail_second_copy)
 
     with pytest.raises(OSError, match="fictional copy failure"):
         await VersionService(db_session).create_version(
@@ -570,3 +570,48 @@ async def test_legacy_repair_rejects_an_unrelated_cross_version_image(
     assert body.image_asset_id == unrelated_id
     assert await db_session.get(Asset, inherited_id) is not None
     assert await db_session.get(Asset, unrelated_id) is not None
+
+
+@pytest.mark.integration
+async def test_version_clone_uses_fake_s3_and_deletes_only_cloned_objects(
+    db_session: AsyncSession, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from io import BytesIO
+
+    from test_storage_contract import FakeS3
+
+    from app.storage.s3 import S3CompatibleStorage
+
+    test, source, assets = _source_with_all_asset_references(tmp_path)
+    storage = S3CompatibleStorage(client=FakeS3(), bucket="private")
+    for asset in assets.values():
+        data = (tmp_path / asset.relative_path).read_bytes()
+        storage.put_stream(
+            asset.relative_path, BytesIO(data), content_type=asset.mime_type, max_bytes=len(data)
+        )
+    monkeypatch.setattr("app.services.tests.get_settings", lambda: _settings(tmp_path))
+    monkeypatch.setattr("app.services.tests.get_asset_storage", lambda _settings: storage)
+    async with db_session.begin():
+        db_session.add(test)
+        await db_session.flush()
+    source_paths = {asset.relative_path for asset in assets.values()}
+    clone = await VersionService(db_session).create_version(
+        test.id, VersionCreate(source_version_id=source.id)
+    )
+    cloned = list(await db_session.scalars(select(Asset).where(Asset.test_version_id == clone.id)))
+    cloned_paths = {asset.relative_path for asset in cloned}
+    assert len(cloned_paths) == 3 and cloned_paths.isdisjoint(source_paths)
+    for asset in cloned:
+        source_asset = next(
+            original for original in assets.values() if original.asset_type == asset.asset_type
+        )
+        with (
+            storage.open_reader(asset.relative_path) as copied,
+            storage.open_reader(source_asset.relative_path) as original,
+        ):
+            assert copied.read() == original.read()
+    test_id, clone_id = test.id, clone.id
+    await db_session.rollback()
+    await VersionService(db_session).delete_draft(test_id, clone_id)
+    assert all(storage.exists(key) for key in source_paths)
+    assert all(not storage.exists(key) for key in cloned_paths)

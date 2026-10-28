@@ -42,6 +42,7 @@ from app.services.speaking_final import SpeakingFinalService
 from app.services.speaking_media import SpeakingMediaService
 from app.services.speaking_transcript import TERMINAL, SpeakingTranscriptService
 from app.services.speaking_transcript_worker import SpeakingTranscriptWorker
+from app.storage.delivery import ConcatenatedStorage, storage_response
 
 
 class SpeakingRuntimeRoute(APIRoute):
@@ -251,21 +252,14 @@ async def get_manifest(
 async def get_recording(
     attempt_id: UUID,
     segment_id: UUID,
+    request: Request,
     user: CurrentUser,
     session: AsyncSession = Depends(get_session),
 ):
-    paths, mime = await SpeakingMediaService(session, user).playback(attempt_id, segment_id)
-
-    def content():
-        for path in paths:
-            with path.open("rb") as audio:
-                while block := audio.read(64 * 1024):
-                    yield block
-
-    return StreamingResponse(
-        content(),
-        media_type=mime,
-        headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"},
+    service = SpeakingMediaService(session, user)
+    chunks, mime = await service.playback(attempt_id, segment_id)
+    return await storage_response(
+        request, ConcatenatedStorage(service.storage, chunks), "segment", media_type=mime
     )
 
 

@@ -306,14 +306,27 @@ async def test_archived_classroom_blocks_all_new_classwork_mutations_but_preserv
         assert (await client.get(f"{base}/resources/{resource['id']}")).status_code == 200
 
 
+@pytest.mark.parametrize("storage_backend", ["local", "fake_s3"])
 async def test_file_download_is_private_room_scoped_and_hidden_with_its_section(
-    db_session, course, tmp_path, monkeypatch
+    db_session, course, tmp_path, monkeypatch, storage_backend
 ):
+    import app.api.v1.classroom_classwork as api_module
     import app.services.classroom_classwork as module
+
+    if storage_backend == "fake_s3":
+        from test_storage_contract import FakeS3
+
+        from app.storage.s3 import S3CompatibleStorage
+
+        fake_client = FakeS3()
+        storage = S3CompatibleStorage(client=fake_client, bucket="private")
+        monkeypatch.setattr(module, "get_asset_storage", lambda settings: storage)
+        monkeypatch.setattr(api_module, "get_asset_storage", lambda settings: storage)
 
     monkeypatch.setattr(
         module, "get_settings", lambda: type("Settings", (), {"resolved_storage_root": tmp_path})()
     )
+    monkeypatch.setattr(api_module, "get_settings", module.get_settings)
     base = endpoint(course["room"])
     content = b"%PDF-1.7\nFictional learning file"
     async with api_client(db_session, course["teacher"]) as client:
@@ -357,7 +370,10 @@ async def test_file_download_is_private_room_scoped_and_hidden_with_its_section(
             files={"file": ("fake.pdf", b"<html>not a PDF</html>", "application/pdf")},
         )
         assert rejected.status_code == 422
-    assert len(list(tmp_path.rglob("*.pdf"))) == 1
+    if storage_backend == "local":
+        assert len(list(tmp_path.rglob("*.pdf"))) == 1
+    else:
+        assert len(fake_client.objects) == 1
     async with api_client(db_session, course["student"]) as client:
         assert (await client.get(f"{base}/resources/{resource['id']}/file")).status_code == 404
         assert (await client.get(f"{base}/resources/{resource['id']}")).status_code == 404

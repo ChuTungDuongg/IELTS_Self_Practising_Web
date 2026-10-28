@@ -1,7 +1,7 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, UploadFile, status
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, Depends, File, Form, Request, UploadFile, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,7 +14,8 @@ from app.models.enums import AssetType, UserRole
 from app.schemas.assets import AssetResponse
 from app.services.asset_access import can_user_read_asset
 from app.services.asset_uploads import upload_asset
-from app.storage import LocalAssetStorage
+from app.storage.delivery import storage_response
+from app.storage.factory import get_asset_storage
 
 router = APIRouter(prefix="/assets", tags=["assets"])
 
@@ -105,10 +106,13 @@ async def upload_audio(
     )
 
 
-@router.get("/{asset_id}/content", response_class=FileResponse)
+@router.get("/{asset_id}/content", response_class=StreamingResponse)
 async def get_asset_content(
-    asset_id: UUID, user: CurrentUser, session: AsyncSession = Depends(get_session)
-) -> FileResponse:
+    asset_id: UUID,
+    request: Request,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+):
     asset = await session.scalar(select(Asset).where(Asset.id == asset_id))
     if asset is None:
         raise AppError("ASSET_NOT_FOUND", "The asset does not exist.", 404)
@@ -116,10 +120,10 @@ async def get_asset_content(
         session, user.id, asset, actor=user
     ):
         raise AppError("ASSET_NOT_FOUND", "The asset does not exist.", 404)
-    path = LocalAssetStorage(get_settings().resolved_storage_root).resolve(asset.relative_path)
-    return FileResponse(
-        path,
+    return await storage_response(
+        request,
+        get_asset_storage(get_settings()),
+        asset.relative_path,
         media_type=asset.mime_type,
         filename=asset.original_name,
-        content_disposition_type="inline",
     )

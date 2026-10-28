@@ -27,7 +27,7 @@ from app.schemas.writing_benchmark import (
     BenchmarkTaskSummary,
 )
 from app.services.draft_revisions import advance_revision
-from app.storage import LocalAssetStorage
+from app.storage.factory import get_asset_storage
 
 SCORE_MAP = {"cc": "human_cc", "lr": "human_lr", "gra": "human_gra"}
 logger = logging.getLogger(__name__)
@@ -45,13 +45,11 @@ def owns_image_key(sample_id: UUID, key: str | None) -> bool:
     )
 
 
-def owned_image_path(storage, sample_id, key):
+def load_owned_image(storage, sample_id, key):
     if not owns_image_key(sample_id, key):
         raise AppError("BENCHMARK_IMAGE_NOT_FOUND", "The private image is unavailable.", 404)
-    candidate = storage.root / key
-    if candidate.resolve() != candidate:
-        raise AppError("BENCHMARK_IMAGE_NOT_FOUND", "The private image is unavailable.", 404)
-    return storage.resolve(key)
+    with storage.materialize(key, max_bytes=10 * 1024 * 1024) as path:
+        return load_image(path)
 
 
 def scores(row):
@@ -123,10 +121,10 @@ def present(row, *, detail=True):
 
 
 class WritingBenchmarkService:
-    def __init__(self, session: AsyncSession, storage: LocalAssetStorage | None = None):
+    def __init__(self, session: AsyncSession, storage=None):
         self.session = session
         self.repo = WritingBenchmarkRepository(session)
-        self.storage = storage or LocalAssetStorage(get_settings().resolved_storage_root)
+        self.storage = storage or get_asset_storage(get_settings())
 
     async def _get(self, sample_id, *, lock=False):
         row = await self.repo.get(sample_id, lock=lock)
@@ -140,7 +138,7 @@ class WritingBenchmarkService:
         issues = completion_issues(row)
         if row.task_number == 1 and row.task1_image_key:
             try:
-                load_image(self.owned_image_path(row.id, row.task1_image_key))
+                load_owned_image(self.storage, row.id, row.task1_image_key)
             except (AppError, BenchmarkInputError):
                 issues.append(
                     BenchmarkFieldIssue(path="image", message="Upload a valid private image.")
@@ -250,16 +248,16 @@ class WritingBenchmarkService:
             await self.session.delete(row)
         self._cleanup_image(sample_id, old_key)
 
-    def owned_image_path(self, sample_id, key):
-        return owned_image_path(self.storage, sample_id, key)
-
     def _cleanup_image(self, sample_id, key):
         if not key:
             return
         try:
-            self.owned_image_path(sample_id, key)
+            if not owns_image_key(sample_id, key):
+                raise AppError(
+                    "BENCHMARK_IMAGE_NOT_FOUND", "The private image is unavailable.", 404
+                )
             self.storage.delete(key)
-        except (AppError, OSError):
+        except Exception:
             logger.warning("BENCHMARK_IMAGE_CLEANUP_UNAVAILABLE")
 
     async def replace_image(self, sample_id, body, mime_type, original_name, content):
@@ -309,13 +307,16 @@ class WritingBenchmarkService:
     async def image_content(self, sample_id):
         async with self.session.begin():
             row = await self._get(sample_id, lock=True)
-            path = self.owned_image_path(sample_id, row.task1_image_key)
             try:
-                image = load_image(path)
+                image = load_owned_image(self.storage, sample_id, row.task1_image_key)
             except BenchmarkInputError:
                 raise AppError(
                     "BENCHMARK_IMAGE_NOT_FOUND", "The private image is unavailable.", 404
                 ) from None
             # Copy bounded bytes while the row lock prevents replacement/deletion;
             # the HTTP response never races a later unlink of the source file.
-            return image.data, image.mime_type, row.code + path.suffix
+            return (
+                image.data,
+                image.mime_type,
+                row.code + "." + row.task1_image_key.rsplit(".", 1)[-1],
+            )

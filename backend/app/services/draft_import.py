@@ -37,6 +37,7 @@ from app.services.access_policy import AccessPolicy
 from app.services.reading import ReadingService
 from app.services.tests import TestService
 from app.storage import LocalAssetStorage
+from app.storage.factory import get_asset_storage
 
 GAP = "{{gap}}"
 TEXT_TYPES = {
@@ -426,7 +427,7 @@ class DraftImportService:
         self.session = session
         self.policy = AccessPolicy(session, actor)
         self.settings = get_settings()
-        self.storage = LocalAssetStorage(self.settings.resolved_storage_root)
+        self.storage = get_asset_storage(self.settings)
 
     def _asset(
         self,

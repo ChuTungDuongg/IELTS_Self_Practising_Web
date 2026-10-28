@@ -372,8 +372,8 @@ async def test_personal_delete_cascades_analysis_and_only_queues_owned_files(
         assert set(own_derived) <= queued and len(queued) >= 2
         assert await db_session.get(Attempt, other_aid)
     await drain_media_cleanup(db_session, storage=media.storage)
-    assert all(not p.exists() for p in own_paths)
-    assert all(p.exists() for p in other_paths)
+    assert all(not media.storage.exists(key) for key, _ in own_paths)
+    assert all(other_media.storage.exists(key) for key, _ in other_paths)
     assert all(not (media.storage.root / k).exists() for k in own_derived)
 
 

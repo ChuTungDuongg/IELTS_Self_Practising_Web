@@ -8,7 +8,7 @@ from app.models import Asset
 from app.schemas.assets import AssetResponse
 from app.services.asset_cleanup import compensate_files
 from app.services.tests import TestService
-from app.storage import LocalAssetStorage
+from app.storage.factory import get_asset_storage
 from app.storage.local import StoredAsset
 
 
@@ -17,7 +17,7 @@ async def upload_asset(*, version_id, upload, category, asset_type, session, act
     # during file I/O. Recheck under locks when attaching the staged file.
     async with session.begin():
         await TestService(session, actor=actor).ensure_draft(version_id)
-    storage = LocalAssetStorage(settings.resolved_storage_root)
+    storage = get_asset_storage(settings)
     original_name = Path((upload.filename or "upload").replace("\\", "/")).name[:255]
     mime_type = upload.content_type or "application/octet-stream"
     maximum = (

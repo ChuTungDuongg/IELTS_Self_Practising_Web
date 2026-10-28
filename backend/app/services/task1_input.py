@@ -15,6 +15,7 @@ from app.models.enums import AssetType
 from app.providers.writing_llm.base import ImagePart
 from app.schemas.chart_cross_check import ChartSpecialistIdentity
 from app.storage import LocalAssetStorage
+from app.storage.factory import get_asset_storage
 
 # Composite scoring/fingerprint label; the visual contract is versioned separately.
 TASK1_PROMPT_VERSION = "mts-task1-visual-v12"
@@ -49,8 +50,7 @@ async def load_task1_image(
 
     def read() -> ImagePart:
         try:
-            path = LocalAssetStorage(settings.resolved_storage_root).resolve(asset.relative_path)
-            with path.open("rb") as source:
+            with get_asset_storage(settings).open_reader(asset.relative_path) as source:
                 content = source.read(maximum + 1)
             if len(content) != asset.file_size:
                 raise ValueError("Image size mismatch")

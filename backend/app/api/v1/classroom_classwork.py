@@ -1,12 +1,13 @@
 from typing import Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, UploadFile
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
+from fastapi.responses import StreamingResponse
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import CurrentUser
+from app.core.config import get_settings
 from app.core.database import get_session
 from app.core.exceptions import AppError
 from app.schemas.classroom_classwork import (
@@ -22,6 +23,8 @@ from app.schemas.classroom_classwork import (
     SectionUpdate,
 )
 from app.services.classroom_classwork import ClassworkService
+from app.storage.delivery import storage_response
+from app.storage.factory import get_asset_storage
 
 router = APIRouter(prefix="/classrooms/{classroom_id}", tags=["classroom-classwork"])
 
@@ -183,15 +186,16 @@ async def update_resource(
     return await ClassworkService(session, actor).update_resource(classroom_id, resource_id, body)
 
 
-@router.get("/resources/{resource_id}/file", response_class=FileResponse)
+@router.get("/resources/{resource_id}/file", response_class=StreamingResponse)
 async def resource_file(
     classroom_id: UUID,
     resource_id: UUID,
+    request: Request,
     actor: CurrentUser,
     inline: bool = False,
     session: AsyncSession = Depends(get_session),
 ):
-    path, media_type, filename = await ClassworkService(session, actor).file(
+    key, media_type, filename = await ClassworkService(session, actor).file(
         classroom_id, resource_id
     )
     disposition = (
@@ -199,11 +203,13 @@ async def resource_file(
         if inline and media_type in {"application/pdf", "image/png", "image/jpeg", "image/webp"}
         else "attachment"
     )
-    return FileResponse(
-        path,
+    return await storage_response(
+        request,
+        get_asset_storage(get_settings()),
+        key,
         media_type=media_type,
         filename=filename,
-        content_disposition_type=disposition,
+        disposition=disposition,
         headers={
             "Cache-Control": "private, no-store",
             "X-Content-Type-Options": "nosniff",

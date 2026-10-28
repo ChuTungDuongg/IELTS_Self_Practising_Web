@@ -7,8 +7,10 @@ from sqlalchemy import select, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Asset, TestCover
+from app.models.classroom_classwork import ClassroomResource
 from app.models.speaking import SpeakingAudioChunk
 from app.models.speaking_transcript import SpeakingNormalizedAudio
+from app.models.writing_benchmark import WritingBenchmarkSample
 
 logger = logging.getLogger(__name__)
 
@@ -31,12 +33,20 @@ async def compensate_files(session, storage, paths):
                     await verification.scalars(
                         union_all(
                             select(Asset.relative_path).where(Asset.relative_path.in_(paths)),
-                            select(TestCover.relative_path).where(TestCover.relative_path.in_(paths)),
+                            select(TestCover.relative_path).where(
+                                TestCover.relative_path.in_(paths)
+                            ),
                             select(SpeakingAudioChunk.storage_key).where(
                                 SpeakingAudioChunk.storage_key.in_(paths)
                             ),
                             select(SpeakingNormalizedAudio.storage_key).where(
                                 SpeakingNormalizedAudio.storage_key.in_(paths)
+                            ),
+                            select(ClassroomResource.storage_key).where(
+                                ClassroomResource.storage_key.in_(paths)
+                            ),
+                            select(WritingBenchmarkSample.task1_image_key).where(
+                                WritingBenchmarkSample.task1_image_key.in_(paths)
                             ),
                         )
                     )

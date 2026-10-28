@@ -8,6 +8,26 @@ from app.schemas.classroom_classwork import ResourceCreate
 from app.storage.classroom import ClassroomResourceStorage
 
 
+def test_classroom_resource_can_use_provider_neutral_writer():
+    from io import BytesIO
+
+    class Port:
+        def __init__(self):
+            self.objects = {}
+
+        def put_stream(self, key, source, *, content_type, max_bytes):
+            content = source.read()
+            assert len(content) <= max_bytes
+            self.objects[key] = (content, content_type)
+            return len(content)
+
+    port = Port()
+    stored = ClassroomResourceStorage(port).store_resource(
+        BytesIO(b"%PDF-fixture"), "lesson.pdf", "application/pdf"
+    )
+    assert port.objects[stored.relative_path] == (b"%PDF-fixture", "application/pdf")
+
+
 def test_resource_upload_uses_generated_key_and_signature(tmp_path):
     storage = ClassroomResourceStorage(tmp_path)
     stored = storage.store_resource(
@@ -15,7 +35,8 @@ def test_resource_upload_uses_generated_key_and_signature(tmp_path):
     )
     assert stored.relative_path.startswith("classroom-resources/")
     assert "lesson" not in stored.relative_path
-    assert storage.resolve(stored.relative_path).read_bytes().startswith(b"%PDF-")
+    with storage.storage.open_reader(stored.relative_path) as reader:
+        assert reader.read().startswith(b"%PDF-")
 
 
 @pytest.mark.parametrize(

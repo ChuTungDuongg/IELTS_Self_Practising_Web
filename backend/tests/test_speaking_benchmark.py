@@ -349,3 +349,39 @@ def test_cli_offline_default_and_validation_never_construct_providers(
     assert (tmp_path / "report/summary.json").exists()
     assert cli.main(["--manifest", str(manifest), "--output", str(tmp_path / "unused")]) == 2
     assert "LIVE_SCORING_REQUIRES_EXPLICIT_FLAG" in capsys.readouterr().err
+
+
+async def test_benchmark_encoded_audio_uses_storage_aware_renderer(tmp_path, monkeypatch):
+    import hashlib
+    from types import SimpleNamespace
+
+    from app.core.exceptions import AppError
+    from app.evaluation.speaking import runner
+
+    raw = sample()
+    raw["responses"][0].pop("fixture_id")
+    raw["responses"][0]["audio_path"] = "sample.webm"
+    (tmp_path / "sample.webm").write_bytes(b"fictional-audio")
+    calls = []
+
+    def fake_render(groups, destination, settings, executor, storage):
+        mime, chunks = groups[0]
+        key, checksum, size = chunks[0]
+        with storage.open_reader(key) as source:
+            data = source.read()
+        assert (mime, data, checksum, size) == (
+            "audio/webm",
+            b"fictional-audio",
+            hashlib.sha256(data).hexdigest(),
+            len(data),
+        )
+        calls.append(True)
+        return 1000
+
+    monkeypatch.setattr(runner, "_render", fake_render)
+    monkeypatch.setattr(
+        runner, "assess_audio_quality", lambda *_: SimpleNamespace(assessable=False)
+    )
+    with pytest.raises(AppError):
+        await runner.load_evidence(BenchmarkSample.model_validate(raw), tmp_path, Settings())
+    assert calls == [True]

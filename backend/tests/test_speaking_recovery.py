@@ -101,10 +101,10 @@ async def test_recovery_seals_old_container_and_uses_new_segment(db_session, mon
     state = await service.heartbeat(aid, prompts[0], 1, client_remaining_ms=60000)
     assert state.remaining_ms == 30000
     paths, _ = await media.playback(aid, segment.id)
-    assert paths[0].read_bytes() == b"previous container"
-    paths[0].unlink()
-    for path in (await media.playback(aid, new.id))[0]:
-        path.unlink()
+    assert media.storage.resolve(paths[0][0]).read_bytes() == b"previous container"
+    media.storage.delete(paths[0][0])
+    for key, _ in (await media.playback(aid, new.id))[0]:
+        media.storage.delete(key)
 
 
 async def test_exam_recovery_manifest_exposes_accepted_metadata_without_playback(

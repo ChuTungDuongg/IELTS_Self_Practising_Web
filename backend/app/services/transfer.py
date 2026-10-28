@@ -3,7 +3,9 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import shutil
 import stat
+import tempfile
 import uuid
 import zipfile
 from dataclasses import dataclass
@@ -66,6 +68,7 @@ from app.services.cover_validation import validate_cover_image
 from app.services.tests import TestService
 from app.services.transfer_ids import build_id_maps
 from app.storage import LocalAssetStorage
+from app.storage.factory import get_asset_storage
 
 
 @dataclass(slots=True)
@@ -77,12 +80,12 @@ class ValidatedPackage:
 
 class TransferService:
     def __init__(
-        self, session: AsyncSession, settings: Settings, actor: User | None = None
+        self, session: AsyncSession, settings: Settings, actor: User | None = None, *, storage=None
     ) -> None:
         self.session = session
         self.policy = AccessPolicy(session, actor)
         self.settings = settings
-        self.storage = LocalAssetStorage(settings.resolved_storage_root)
+        self.storage = storage if storage is not None else get_asset_storage(settings)
 
     async def export(self, test_ids: list[uuid.UUID], destination: Path) -> None:
         await self.policy.require_admin_moderation()
@@ -124,15 +127,18 @@ class TransferService:
 
                 if test.cover_image is not None:
                     cover = test.cover_image
-                    source = self.storage.resolve(cover.relative_path)
                     extension = LocalAssetStorage.IMAGE_TYPES.get(cover.mime_type)
                     if extension is None:
                         raise AppError(
                             "TRANSFER_ASSET_INVALID", "Cover image type is unsupported.", 422
                         )
-                    digest = self._sha256(source)
-                    package_path = f"assets/{digest}-{cover.id.hex}{extension}"
-                    archive.write(source, package_path)
+                    package_path, size, digest = self._archive_asset(
+                        archive,
+                        cover.relative_path,
+                        cover.id,
+                        extension,
+                        self.settings.max_transfer_uncompressed_mb * 1024 * 1024,
+                    )
                     manifest_covers.append(
                         ManifestCover(
                             source_id=cover.id,
@@ -140,7 +146,7 @@ class TransferService:
                             path=package_path,
                             mime_type=cover.mime_type,
                             original_filename=cover.original_name,
-                            size=source.stat().st_size,
+                            size=size,
                             sha256=digest,
                         )
                     )
@@ -151,8 +157,6 @@ class TransferService:
                     for asset in self._referenced_assets(version):
                         if asset.id in packaged_asset_ids:
                             continue
-                        source = self.storage.resolve(asset.relative_path)
-                        digest = self._sha256(source)
                         extension = LocalAssetStorage.IMAGE_TYPES.get(
                             asset.mime_type
                         ) or LocalAssetStorage.AUDIO_TYPES.get(asset.mime_type)
@@ -162,8 +166,13 @@ class TransferService:
                                 "A referenced asset has an unsupported MIME type.",
                                 422,
                             )
-                        package_path = f"assets/{digest}-{asset.id.hex}{extension}"
-                        archive.write(source, package_path)
+                        package_path, size, digest = self._archive_asset(
+                            archive,
+                            asset.relative_path,
+                            asset.id,
+                            extension,
+                            self.settings.max_transfer_uncompressed_mb * 1024 * 1024,
+                        )
                         manifest_assets.append(
                             ManifestAsset(
                                 source_id=asset.id,
@@ -172,7 +181,7 @@ class TransferService:
                                 asset_type=asset.asset_type,
                                 mime_type=asset.mime_type,
                                 original_filename=asset.original_name,
-                                size=source.stat().st_size,
+                                size=size,
                                 sha256=digest,
                             )
                         )
@@ -926,6 +935,25 @@ class TransferService:
             while chunk := source.read(1024 * 1024):
                 digest.update(chunk)
         return digest.hexdigest()
+
+    def _archive_asset(self, archive, key, asset_id, extension, maximum):
+        """Stream through bounded temporary staging so the digest names the ZIP member."""
+        digest = hashlib.sha256()
+        size = 0
+        with tempfile.SpooledTemporaryFile(max_size=1024 * 1024, mode="w+b") as staged:
+            with self.storage.open_reader(key) as source:
+                while chunk := source.read(min(1024 * 1024, maximum - size + 1)):
+                    size += len(chunk)
+                    if size > maximum:
+                        raise self._invalid("A referenced asset exceeds the transfer size limit.")
+                    digest.update(chunk)
+                    staged.write(chunk)
+            checksum = digest.hexdigest()
+            name = f"assets/{checksum}-{asset_id.hex}{extension}"
+            staged.seek(0)
+            with archive.open(name, "w", force_zip64=True) as output:
+                shutil.copyfileobj(staged, output, length=1024 * 1024)
+        return name, size, checksum
 
     @staticmethod
     def _invalid(message: str) -> AppError:

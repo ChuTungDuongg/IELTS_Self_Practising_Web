@@ -15,6 +15,7 @@ from app.schemas.speaking_ai import ASRResult
 from app.services.speaking_audio import (
     NormalizedAudio,
     _render,
+    await_audio_thread,
     execute_ffmpeg,
     fingerprint,
     wav_duration,
@@ -22,6 +23,7 @@ from app.services.speaking_audio import (
 from app.services.speaking_features import build_feature_bundle
 from app.services.speaking_quality import assess_audio_quality
 from app.services.speaking_scorer import SpeakingScorer, build_attempt_evidence
+from app.storage.local import LocalAssetStorage
 
 
 def audio_digest(path):
@@ -71,8 +73,17 @@ async def load_evidence(sample, root, settings):
                 if mime is None:
                     raise BenchmarkInputError("BENCHMARK_AUDIO_UNAVAILABLE")
                 path = Path(directory) / f"response-{index}.wav"
-                duration = await asyncio.to_thread(
-                    _render, [(mime, [source])], path, settings, execute_ffmpeg
+                key = source.relative_to(root.resolve()).as_posix()
+                size = source.stat().st_size
+                duration = await await_audio_thread(
+                    asyncio.to_thread(
+                        _render,
+                        [(mime, [(key, digest, size)])],
+                        path,
+                        settings,
+                        execute_ffmpeg,
+                        LocalAssetStorage(root.resolve()),
+                    )
                 )
             audio = NormalizedAudio(
                 path,
@@ -81,8 +92,8 @@ async def load_evidence(sample, root, settings):
                 fingerprint([digest, settings.speaking_normalizer_version]),
                 duration,
             )
-            quality = await asyncio.to_thread(
-                assess_audio_quality, audio, settings.speaking_quality
+            quality = await await_audio_thread(
+                asyncio.to_thread(assess_audio_quality, audio, settings.speaking_quality)
             )
             if not quality.assessable or quality.state != "AUDIO_OK":
                 raise AppError("SPEAKING_AUDIO_UNASSESSABLE", "Audio unavailable for assessment.")

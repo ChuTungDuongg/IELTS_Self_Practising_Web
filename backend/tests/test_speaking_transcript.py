@@ -15,7 +15,11 @@ from app.core.config import Settings
 from app.core.exceptions import AppError
 from app.models.speaking_transcript import SpeakingTranscript
 from app.providers.speaking_asr.base import ASRResult, WordTiming
-from app.services.speaking_audio import NormalizedAudio, normalize_committed_take
+from app.services.speaking_audio import (
+    NormalizedAudio,
+    normalize_committed_take,
+    stage_normalized_audio,
+)
 from app.services.speaking_transcript import SpeakingTranscriptService
 from app.services.speaking_transcript_worker import SpeakingTranscriptWorker
 
@@ -112,8 +116,11 @@ async def test_normalization_orders_containers_and_caches_without_mutating_raw(
     again = await normalize_committed_take(
         db_session, state.response_id, settings, storage=media.storage, executor=decode
     )
-    assert calls == [[b"012", b"new-container"]] and again.path == audio.path
-    assert audio.channels == 1 and audio.duration_ms == 1000
+    assert calls == [[b"012", b"new-container"]] and again.storage_key == audio.storage_key
+    async with stage_normalized_audio(
+        media.storage, audio, settings.speaking_max_decoded_seconds
+    ) as staged:
+        assert staged.channels == 1 and staged.duration_ms == 1000
     assert all(
         hashlib.sha256(p.read_bytes()).hexdigest() == digest for p, digest in original.items()
     )
@@ -131,7 +138,7 @@ async def test_normalizer_version_and_audio_identity_invalidate_cache(db_session
     second = await normalize_committed_take(
         db_session, rid, settings, storage=media.storage, executor=fake_decode
     )
-    assert first.cache_key != second.cache_key and first.path != second.path
+    assert first.cache_key != second.cache_key and first.storage_key != second.storage_key
     async with db_session.begin():
         response = await db_session.get(SpeakingResponse, rid)
         response.committed_audio_fingerprint = "a" * 64  # Simulate a later committed revision.
@@ -361,10 +368,10 @@ async def test_normalized_derivatives_are_queued_on_personal_deletion(db_session
         storage=media.storage,
         executor=fake_decode,
     )
-    assert normalized.path.is_file()
+    assert media.storage.exists(normalized.storage_key)
     await AttemptService(db_session).delete_attempt(aid)
     await drain_media_cleanup(db_session, storage=media.storage)
-    assert not normalized.path.exists() and list(tmp_path.rglob("*.webm")) == []
+    assert not media.storage.exists(normalized.storage_key) and list(tmp_path.rglob("*.webm")) == []
 
 
 async def test_derived_cleanup_cannot_remove_another_attempt_reference(db_session, tmp_path):
@@ -395,10 +402,10 @@ async def test_derived_cleanup_cannot_remove_another_attempt_reference(db_sessio
         other_row.storage_key = owner_row.storage_key
     await AttemptService(db_session).delete_attempt(first_id)
     await drain_media_cleanup(db_session, storage=media.storage)
-    assert first.path.is_file()
+    assert media.storage.exists(first.storage_key)
     await AttemptService(db_session).delete_attempt(second_id)
     await drain_media_cleanup(db_session, storage=media.storage)
-    assert not first.path.exists()
+    assert not media.storage.exists(first.storage_key)
 
 
 async def test_stale_worker_token_cannot_persist_or_finish_recovered_run(db_session, tmp_path):
@@ -543,13 +550,16 @@ async def test_normalization_missing_corrupt_and_private_paths_fail_closed(
         audio = await normalize_committed_take(
             db_session, rid, settings, storage=media.storage, executor=fake_decode
         )
-        audio.path.write_bytes(b"broken cached derivative")
+        media.storage.resolve(audio.storage_key).write_bytes(b"broken cached derivative")
         # A broken derivative must be rebuilt, never handed to ASR as valid PCM.
         repaired = await normalize_committed_take(
             db_session, rid, settings, storage=media.storage, executor=fake_decode
         )
-        with wave.open(str(repaired.path)) as decoded:
-            assert decoded.getnframes() == 16000
+        async with stage_normalized_audio(
+            media.storage, repaired, settings.speaking_max_decoded_seconds
+        ) as staged:
+            with wave.open(str(staged.path)) as decoded:
+                assert decoded.getnframes() == 16000
         async with db_session.begin():
             assert (
                 len(

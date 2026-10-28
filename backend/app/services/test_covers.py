@@ -15,8 +15,16 @@ from app.schemas.tests import TestCoverSummary
 from app.services.access_policy import AccessPolicy
 from app.services.asset_cleanup import compensate_files
 from app.services.cover_validation import validate_cover_image
-from app.storage import LocalAssetStorage
+from app.storage.factory import get_asset_storage
 from app.storage.local import StoredAsset
+
+
+def validate_stored_cover(storage, key, mime, max_bytes):
+    with storage.open_reader(key) as source:
+        content = source.read(max_bytes + 1)
+    if len(content) > max_bytes:
+        raise ValueError("Cover image exceeds the allowed size")
+    validate_cover_image(mime, content)
 
 
 class TestCoverService:
@@ -24,7 +32,7 @@ class TestCoverService:
         self.session = session
         self.policy = AccessPolicy(session, actor)
         self.settings = settings
-        self.storage = LocalAssetStorage(settings.resolved_storage_root)
+        self.storage = get_asset_storage(settings)
 
     async def _require_edit(self, test_id, *, lock=False):
         statement = select(Test).where(Test.id == test_id)
@@ -71,7 +79,12 @@ class TestCoverService:
             stored = await asyncio.shield(task)
 
             def validate_stored():
-                validate_cover_image(mime, self.storage.resolve(stored.relative_path).read_bytes())
+                validate_stored_cover(
+                    self.storage,
+                    stored.relative_path,
+                    mime,
+                    min(self.settings.max_image_upload_mb, 10) * 1024 * 1024,
+                )
 
             validation = asyncio.create_task(asyncio.to_thread(validate_stored))
             try:

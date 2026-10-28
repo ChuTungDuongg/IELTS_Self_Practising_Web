@@ -12,7 +12,7 @@ from pydantic import ValidationError
 from app.core.exceptions import AppError
 from app.providers.speaking_asr import provider_identity
 from app.schemas.speaking_ai import ASRResult
-from app.services.speaking_audio import NormalizedAudio
+from app.services.speaking_audio import NormalizedAudio, await_audio_thread
 
 MAX_WAV_BYTES = 20 * 1024 * 1024
 MAX_RESULT_BYTES = 2 * 1024 * 1024
@@ -75,8 +75,8 @@ class ModalASRProvider:
         self.timeout = max(5.0, float(settings.speaking_processing_timeout_seconds) - 5.0)
 
     async def transcribe(self, audio: NormalizedAudio) -> ASRResult:
-        content = await asyncio.to_thread(
-            _normalized_bytes, audio, self.settings.speaking_max_decoded_seconds
+        content = await await_audio_thread(
+            asyncio.to_thread(_normalized_bytes, audio, self.settings.speaking_max_decoded_seconds)
         )
         try:
             payload = await asyncio.wait_for(self._request(content), timeout=self.timeout)

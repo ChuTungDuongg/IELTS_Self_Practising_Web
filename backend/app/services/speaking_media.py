@@ -31,7 +31,7 @@ from app.services.attempt_scope import AttemptScopeGuard
 from app.services.grading_policy import GradingPolicy, assignment_origin, require_review_unlocked
 from app.services.speaking_attempts import SpeakingAttemptService
 from app.services.speaking_final import present_final_score
-from app.storage.local import LocalAssetStorage
+from app.storage.factory import get_asset_storage
 
 MIMES = {"audio/webm", "audio/webm;codecs=opus", "audio/mp4", "audio/ogg;codecs=opus"}
 
@@ -111,7 +111,7 @@ async def queue_media_cleanup(session, attempt_ids):
 async def drain_media_cleanup(session, *, storage=None):
     from app.models.speaking_transcript import SpeakingNormalizedAudio
 
-    storage = storage or LocalAssetStorage(get_settings().resolved_storage_root)
+    storage = storage or get_asset_storage(get_settings())
     async with session.begin():
         jobs = list(
             await session.scalars(
@@ -157,7 +157,7 @@ class SpeakingMediaService:
     def __init__(self, session, actor, *, storage=None):
         self.session, self.actor = session, actor
         settings = get_settings()
-        self.storage = storage or LocalAssetStorage(settings.resolved_storage_root)
+        self.storage = storage or get_asset_storage(settings)
         self.max_chunk_bytes = settings.speaking_max_chunk_bytes
         self.max_response_bytes = settings.speaking_max_response_bytes
         self.runtime = SpeakingAttemptService(session, actor.id)
@@ -417,10 +417,8 @@ class SpeakingMediaService:
                 take.take_number != response.active_take_number and not pending
             ) or take.status == "SUPERSEDED":
                 raise AppError("SPEAKING_MEDIA_FORBIDDEN", "Recording access is unavailable.", 403)
-            return [
-                self.storage.resolve(c.storage_key)
-                for c in await ordered_chunks(self.session, segment.id)
-            ], segment.mime_type
+            chunks = await ordered_chunks(self.session, segment.id)
+            return [(chunk.storage_key, chunk.byte_size) for chunk in chunks], segment.mime_type
 
     async def review(self, aid):
         from app.models import Test, TestVersion

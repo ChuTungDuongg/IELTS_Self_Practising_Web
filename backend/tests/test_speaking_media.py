@@ -117,7 +117,7 @@ async def test_chunks_idempotent_conflict_order_and_fingerprint(db_session, tmp_
     assert manifest == await media.manifest(attempt_id, state.response_id)
     assert "storage_key" not in manifest.model_dump_json()
     paths, mime = await media.playback(attempt_id, segment.id)
-    assert b"".join(path.read_bytes() for path in paths) == b"firstsecond"
+    assert b"".join(media.storage.resolve(key).read_bytes() for key, _ in paths) == b"firstsecond"
     assert mime == "audio/webm;codecs=opus"
     assert duplicate == await media.upload_chunk(attempt_id, segment.id, 0, b"first")
 
@@ -193,7 +193,8 @@ async def test_deletion_queues_owned_media_and_preserves_sibling(db_session, tmp
         )
     await drain_media_cleanup(db_session, storage=media.storage)
     assert len(list(tmp_path.rglob("*.webm"))) == 1
-    assert (await sibling_media.playback(sibling, sibling_seg.id))[0][0].read_bytes() == b"retained"
+    key, _ = (await sibling_media.playback(sibling, sibling_seg.id))[0][0]
+    assert sibling_media.storage.resolve(key).read_bytes() == b"retained"
 
 
 async def test_assignment_teacher_provenance_and_retention(db_session, tmp_path):
@@ -228,7 +229,8 @@ async def test_assignment_teacher_provenance_and_retention(db_session, tmp_path)
         attempt.user_id = student.id
     media = SpeakingMediaService(db_session, student, storage=media.storage)
     teacher_media = SpeakingMediaService(db_session, teacher, storage=media.storage)
-    assert (await teacher_media.playback(aid, seg.id))[0][0].read_bytes() == b"assignment"
+    key, _ = (await teacher_media.playback(aid, seg.id))[0][0]
+    assert teacher_media.storage.resolve(key).read_bytes() == b"assignment"
     with pytest.raises(AppError) as mutation_error:
         await teacher_media.upload_chunk(aid, seg.id, 0, b"assignment")
     assert mutation_error.value.code == "ATTEMPT_NOT_FOUND"

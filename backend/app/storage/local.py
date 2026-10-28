@@ -1,4 +1,6 @@
+import io
 import shutil
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import BinaryIO
@@ -6,6 +8,8 @@ from uuid import UUID, uuid4
 
 from app.core.exceptions import AppError
 from app.providers.writing_llm.base import ImagePart
+from app.storage.base import StoredObjectInfo
+from app.storage.keys import validate_key
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,6 +32,63 @@ class LocalAssetStorage:
 
     def __init__(self, root: Path) -> None:
         self.root = root.resolve()
+
+    def _key_path(self, key: str) -> Path:
+        candidate = (self.root / validate_key(key)).resolve()
+        if self.root not in candidate.parents:
+            raise AppError("ASSET_PATH_INVALID", "Invalid storage key.", 422)
+        return candidate
+
+    def put_stream(self, key: str, source: BinaryIO, *, content_type: str, max_bytes: int) -> int:
+        destination = self._key_path(key)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        output = destination.open("xb")
+        size = 0
+        try:
+            with output:
+                while chunk := source.read(min(1024 * 1024, max_bytes - size + 1)):
+                    size += len(chunk)
+                    if size > max_bytes:
+                        raise AppError(
+                            "ASSET_UPLOAD_INVALID", "The uploaded file size is invalid.", 422
+                        )
+                    output.write(chunk)
+                if not size:
+                    raise AppError(
+                        "ASSET_UPLOAD_INVALID", "The uploaded file size is invalid.", 422
+                    )
+        except BaseException:
+            destination.unlink(missing_ok=True)
+            raise
+        return size
+
+    @contextmanager
+    def open_reader(self, key: str, *, start: int = 0, end: int | None = None):
+        if start < 0 or (end is not None and end < start):
+            raise ValueError("Invalid byte range")
+        with self.resolve(validate_key(key)).open("rb") as source:
+            source.seek(start)
+            if end is None:
+                yield source
+            else:
+                with io.BufferedReader(_BoundedReader(source, end - start + 1)) as reader:
+                    yield reader
+
+    def stat(self, key: str) -> StoredObjectInfo:
+        return StoredObjectInfo(size=self.resolve(validate_key(key)).stat().st_size)
+
+    def exists(self, key: str) -> bool:
+        return self._key_path(key).is_file()
+
+    @contextmanager
+    def materialize(self, key: str, *, max_bytes: int):
+        raw = self.root / validate_key(key)
+        if raw.resolve() != raw:
+            raise AppError("ASSET_NOT_FOUND", "The asset file does not exist.", 404)
+        path = self.resolve(key)
+        if path.stat().st_size > max_bytes:
+            raise AppError("ASSET_SIZE_INVALID", "The asset exceeds the allowed size.", 422)
+        yield path
 
     def store(
         self,
@@ -206,7 +267,10 @@ class LocalAssetStorage:
         return StoredAsset(relative_path=key, size=len(content))
 
     def delete(self, relative_path: str) -> bool:
-        candidate = (self.root / relative_path).resolve()
+        raw = self.root / validate_key(relative_path)
+        candidate = raw.resolve()
+        if candidate != raw:
+            raise AppError("ASSET_DELETE_INVALID", "Invalid storage path.", 422)
         if candidate == self.root or self.root not in candidate.parents:
             raise AppError("ASSET_DELETE_INVALID", "Invalid storage path.", 422)
         if not candidate.exists():
@@ -215,3 +279,18 @@ class LocalAssetStorage:
             raise AppError("ASSET_DELETE_INVALID", "The storage path is not a file.", 422)
         candidate.unlink()
         return True
+
+
+class _BoundedReader(io.RawIOBase):
+    def __init__(self, source: BinaryIO, remaining: int) -> None:
+        self.source = source
+        self.remaining = remaining
+
+    def readable(self) -> bool:
+        return True
+
+    def readinto(self, target) -> int:
+        data = self.source.read(min(len(target), self.remaining))
+        target[: len(data)] = data
+        self.remaining -= len(data)
+        return len(data)
