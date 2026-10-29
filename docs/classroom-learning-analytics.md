@@ -1,5 +1,9 @@
 # Classroom learning analytics and improvement plans
 
+> **Documentation audit: CURRENT.** Canonical concern này; source-check các boundary/API, không live validation.
+> Mục đích: Classroom learning analytics and improvement plans. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../backend/app/services/classroom_learning.py).
+> Đọc cùng [current module/guide](modules/analytics.md); [audit và giới hạn](DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+
 P4 extends the [Gradebook](classroom-gradebook.md), using the existing IELTS result records, P2 submission decisions and classroom capabilities. It adds no scoring engine, exam lifecycle, AI provider, embedding infrastructure or forecast.
 
 ## Scope and authorization

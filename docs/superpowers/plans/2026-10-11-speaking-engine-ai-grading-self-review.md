@@ -1,5 +1,10 @@
 # Speaking Implementation Plan — Self-Review Amendments
 
+> **Documentation audit: CURRENT.** Canonical concern này; source-check các boundary/API, không live validation.
+> Mục đích: Speaking Implementation Plan — Self-Review Amendments. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../../../backend/app/services/speaking_attempts.py).
+> Đọc cùng [current module/guide](../../modules/speaking.md); [audit và giới hạn](../../DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+> Speaking instructions vẫn binding theo AGENTS; không archive hoặc vô hiệu hóa self-review amendments.
+
 > **Binding companion to:** `docs/superpowers/plans/2026-10-11-speaking-engine-ai-grading.md`
 >
 > Implementation agents must read this file together with the approved design spec and the main implementation plan. These amendments resolve issues found during the required plan self-review; where wording conflicts, this file wins.

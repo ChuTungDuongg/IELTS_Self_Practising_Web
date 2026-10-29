@@ -1,5 +1,9 @@
 # BandPilot performance investigation — 27 October 2026
 
+> **Documentation audit: HISTORICAL.** Historical reference; không phải contract hiện hành.
+> Mục đích: BandPilot performance investigation — 27 October 2026. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../backend/app/repositories/tests.py).
+> Đọc cùng [current module/guide](handbook/testing-and-delivery.md); [audit và giới hạn](DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+
 Baseline: `origin/main` at `4b24dbbbf999fb5f8482036ce64cfe1aff55cf71`.
 The current remote logs were downloaded through the GitHub Actions API before
 editing. [CI 40507333869](https://github.com/ChuTungDuongg/IELTS_Self_Practising_Web/actions/runs/40507333869)

@@ -1,3 +1,7 @@
+> **Documentation audit: CURRENT.** Canonical concern này; source-check các boundary/API, không live validation.
+> Mục đích: Speaking grading is an optional advisory assessment of the whole attempt. FC, LR, GRA. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../backend/app/services/speaking_scorer.py).
+> Đọc cùng [current module/guide](modules/speaking.md); [audit và giới hạn](DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+
 Speaking grading is an optional advisory assessment of the whole attempt. FC, LR, GRA and PR receive independent descriptor-based scores. A valid half-band score is committed before feedback starts; feedback cannot change it. One bounded score repair is allowed. Invalid output or technically unassessable audio produces an explicit unavailable/failed state, never a substitute band. The raw four-criterion mean and project half-band result remain separate from official/manual attempt bands.
 
 PR requires current P5 acoustic evidence and cannot score from transcript alone. The lightweight pitch, energy and alignment measurements are limited proxies; they do not establish phoneme accuracy, linguistic stress or examiner agreement. Every criterion rejects unusable audio. Runtime scratch notes, raw files, storage paths and superseded recordings stay outside grading inputs.

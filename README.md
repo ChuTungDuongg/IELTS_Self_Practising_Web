@@ -8,6 +8,12 @@ BandPilot là nền tảng luyện tập IELTS độc lập cho **Reading, Liste
 
 > 📚 Nội dung mẫu trong repository là nội dung hư cấu do dự án tự tạo, không chứa đề Cambridge/IELTS có bản quyền.
 
+## 📚 Engineering knowledge base
+
+[Documentation index](docs/README.md) có hai lộ trình: học kiến trúc để phỏng vấn và tìm module để phát triển tính năng. Bắt đầu với [system overview](docs/handbook/system-overview.md), [module catalog](docs/handbook/module-catalog.md), [Codex playbook](docs/handbook/feature-development-playbook.md) và [44 câu hỏi system design](docs/interview/bandpilot-system-design.md). [Audit](docs/DOCS_AUDIT.md) phân biệt tài liệu hiện hành với lịch sử.
+
+Source documentation reviewed at `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`; runtime/cloud status chưa được xác minh bởi audit này.
+
 ## 🌟 Tính năng hiện có
 
 ### Nền tảng
@@ -26,7 +32,7 @@ BandPilot là nền tảng luyện tập IELTS độc lập cho **Reading, Liste
 
 - ✅ Đăng ký/đăng nhập tài khoản local với phiên đăng nhập; hỗ trợ cấu hình Google OAuth
 - ✅ `/profile`: thông tin cá nhân tùy chọn, ngày thi mục tiêu và band mục tiêu Listening, Reading, Writing, Speaking
-- ✅ Overall **mục tiêu** tự tính từ đủ bốn band kỹ năng; không nhập Overall riêng
+- ✅ Profile tính Overall **mục tiêu** từ đủ bốn band kỹ năng; Learning Goals còn hỗ trợ mục tiêu Overall explicit tùy chọn, tách với giá trị tự tính
 - ✅ Đổi mật khẩu cho tài khoản dùng mật khẩu local
 - ✅ USER / TEACHER / ADMIN: quyền luyện tập, biên soạn và quản trị theo vai trò
 - ✅ TEACHER: Builder đề riêng, yêu cầu duyệt CLASSROOM/PUBLIC, lớp học, lời mời và bài giao gắn với phiên bản đề đã đóng băng
@@ -366,7 +372,7 @@ Binary không nằm trong PostgreSQL. Backend kiểm tra MIME, đuôi file, kíc
 
 ### Quản trị tài khoản
 
-ADMIN xem thống kê nền tảng, danh sách USER/TEACHER/ADMIN đang hoạt động hoặc đã vô hiệu hóa, nâng/hạ quyền và kích hoạt lại tài khoản. TEACHER giữ các quyền luyện tập của USER và có thêm Builder đề của mình, lớp học, bài giao và kết quả học sinh chỉ đọc theo nguồn bài giao. Hạ quyền/vô hiệu hóa Teacher yêu cầu xử lý lớp đang hoạt động, yêu cầu duyệt và bản nháp trước. Xóa vĩnh viễn tài khoản đã vô hiệu hóa bị chặn nếu có tham chiếu nội dung/lớp học/thông báo cần giữ lại.
+ADMIN xem thống kê nền tảng, danh sách USER/TEACHER/ADMIN đang hoạt động hoặc đã vô hiệu hóa, nâng/hạ quyền và kích hoạt lại tài khoản. TEACHER giữ các quyền luyện tập của USER và có thêm Builder đề của mình, lớp học, bài giao và kết quả học sinh theo nguồn bài giao; người có capability phù hợp lưu điểm human final Writing/Speaking, còn objective results giữ read-only. ADMIN quan sát lớp theo quyền đọc hiện hành. Hạ quyền/vô hiệu hóa Teacher yêu cầu xử lý lớp đang hoạt động, yêu cầu duyệt và bản nháp trước. Xóa vĩnh viễn tài khoản đã vô hiệu hóa bị chặn nếu có tham chiếu nội dung/lớp học/thông báo cần giữ lại.
 
 Quy trình duyệt CLASSROOM/PUBLIC, lời mời qua email chưa có tài khoản, thông báo EN/VI và ranh giới riêng tư của kết quả: [docs/teacher-classrooms.md](docs/teacher-classrooms.md).
 

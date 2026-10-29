@@ -1,5 +1,9 @@
 # Builder navigation, shared Listening audio, and Reading instructions
 
+> **Documentation audit: HISTORICAL.** Historical reference; không phải contract hiện hành.
+> Mục đích: Builder navigation, shared Listening audio, and Reading instructions. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../../../backend/app/domains/questions/registry.py).
+> Đọc cùng [current module/guide](../../modules/authoring.md); [audit và giới hạn](../../DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+
 ## Scope
 
 This change keeps the current Next.js/FastAPI/PostgreSQL architecture and stable section/question identities. It fixes Builder workspace navigation, moves Listening audio ownership from each `ListeningPart` to the Listening `TestModule`, adds `yes_no_not_given`, and centralizes question-group instruction rendering.

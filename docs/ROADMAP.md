@@ -1,5 +1,9 @@
 # 🗺️ Lộ trình phát triển BandPilot
 
+> **Documentation audit: HISTORICAL.** Historical reference; không phải contract hiện hành.
+> Mục đích: 🗺️ Lộ trình phát triển BandPilot. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../backend/app/api/v1/router.py).
+> Đọc cùng [current module/guide](handbook/module-catalog.md); [audit và giới hạn](DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+
 ## ✅ Phase 1 — Nền tảng
 
 Next.js, FastAPI, PostgreSQL, SQLAlchemy/Alembic, version bất biến, attempt, timer phía server,

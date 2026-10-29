@@ -1,5 +1,9 @@
 # Classroom P2 implementation and verification ledger
 
+> **Documentation audit: HISTORICAL.** Historical reference; không phải contract hiện hành.
+> Mục đích: Classroom P2 implementation and verification ledger. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../../../backend/app/services/classroom_capabilities.py).
+> Đọc cùng [current module/guide](../../modules/classrooms.md); [audit và giới hạn](../../DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+
 Scope: user attachment `2ac4d7c5-1241-4028-a6d5-fc6ecc47e77d/Pasted text.txt`. Extend P1 in place on main; preserve existing dirty files. No browser/E2E/full suites/build/dev stack. Apply local migration as already requested in this conversation.
 
 ## Policy decisions

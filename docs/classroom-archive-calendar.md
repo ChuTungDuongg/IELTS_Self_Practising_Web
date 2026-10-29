@@ -1,5 +1,9 @@
 # Classroom archives and interactive calendar
 
+> **Documentation audit: CURRENT.** Canonical concern này; source-check các boundary/API, không live validation.
+> Mục đích: Classroom archives and interactive calendar. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../backend/app/services/classroom_deletion.py).
+> Đọc cùng [current module/guide](modules/classrooms.md); [audit và giới hạn](DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+
 ## Archive lifecycle and API
 
 `POST /classrooms/{classroom_id}/assignments/{assignment_id}/restore` authenticates and locks the actor, classroom and scoped assignment. It requires `assignments.manage` and an active classroom. It changes only `ARCHIVED` to `ACTIVE`, clears `archived_at` and advances the content revision. Repeated restoration is idempotent.

@@ -1,5 +1,9 @@
 # Independent final review — 2026-10-27
 
+> **Documentation audit: HISTORICAL.** Historical reference; không phải contract hiện hành.
+> Mục đích: Independent final review — 2026-10-27. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../../../backend/app/services/classroom_capabilities.py).
+> Đọc cùng [current module/guide](../../modules/classrooms.md); [audit và giới hạn](../../DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+
 ## Scope
 
 Reviewed the task-specific working-tree changes against base `54ff874b41f36bb8409509d77fd17adf411e50d8`, repository AGENTS instructions, `docs/architecture.md`, the supplied task specification, implementation plan and worker reports. Inspected the approved reference image directly. Excluded unrelated untracked skill/configuration/design-reference files.

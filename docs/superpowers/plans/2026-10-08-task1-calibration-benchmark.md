@@ -1,5 +1,9 @@
 # Task 1 calibration and evaluation implementation plan
 
+> **Documentation audit: HISTORICAL.** Historical reference; không phải contract hiện hành.
+> Mục đích: Task 1 calibration and evaluation implementation plan. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../../../backend/app/services/mts_writing.py).
+> Đọc cùng [current module/guide](../../modules/writing.md); [audit và giới hạn](../../DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+
 Implement the supplied two-part specification against 78a742d. Preserve the
 current Task 1 perception contract, optional fail-open DePlot, source grounding,
 and Task 2 v6. Do not add another judge or production score correction.

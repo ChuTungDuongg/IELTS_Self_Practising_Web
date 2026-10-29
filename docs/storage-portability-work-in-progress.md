@@ -1,5 +1,9 @@
 # Storage portability: offline implementation complete
 
+> **Documentation audit: HISTORICAL.** Historical reference; không phải contract hiện hành.
+> Mục đích: Storage portability: offline implementation complete. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../backend/app/storage/operations.py).
+> Đọc cùng [current module/guide](storage-architecture.md); [audit và giới hạn](DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+
 Local asset storage remains the default. S3 and R2 can be selected after the P3
 offline gates described below. Changing the backend never moves existing files.
 

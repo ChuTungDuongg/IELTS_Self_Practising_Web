@@ -1,5 +1,9 @@
 # IELTS Writing latency: dependency graphs, bounded concurrency and serving
 
+> **Documentation audit: HISTORICAL.** Historical reference; không phải contract hiện hành.
+> Mục đích: IELTS Writing latency: dependency graphs, bounded concurrency and serving. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../backend/app/services/writing_execution.py).
+> Đọc cùng [current module/guide](ai-writing.md); [audit và giới hạn](DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+
 Implementation session: 2026-10-08. Starting commit:
 `814197afcf83b9ed8bcc71fc01d914808c668f7b` on local `main`, also the remote-main
 reference supplied for this task. The worktree already contained uncommitted

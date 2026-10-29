@@ -1,5 +1,9 @@
 # Compact Classwork implementation
 
+> **Documentation audit: HISTORICAL.** Historical reference; không phải contract hiện hành.
+> Mục đích: Compact Classwork implementation. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../../../backend/app/services/classroom_capabilities.py).
+> Đọc cùng [current module/guide](../../modules/classrooms.md); [audit và giới hạn](../../DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+
 Scope: implement the supplied Classwork redesign on main. Preserve BandPilot tokens, FastAPI APIs, capabilities, P2 progress, resource readers, revision conflicts and assignment detail/history navigation. No backend/schema changes.
 
 The screen answers: which topic and learning activity should I open next? Real topic titles and compact resource/IELTS rows carry the hierarchy. Retain the existing achromatic-ledger composition; this component change needs no new draw or global theme.

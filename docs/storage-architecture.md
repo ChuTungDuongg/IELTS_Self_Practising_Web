@@ -1,5 +1,9 @@
 # Portable private asset storage
 
+> **Documentation audit: CURRENT.** Canonical concern này; source-check các boundary/API, không live validation.
+> Mục đích: Portable private asset storage. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../backend/app/storage/factory.py).
+> Đọc cùng [current module/guide](modules/assets-transfer.md); [audit và giới hạn](DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+
 PostgreSQL owns identity, ownership, lifecycle and relationships. Asset rows store
 portable relative keys, never provider URLs. The application selects Local (the
 default), S3 or R2 through `app/storage/factory.py` and existing `Settings`.

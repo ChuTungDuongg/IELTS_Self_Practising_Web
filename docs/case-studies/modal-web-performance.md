@@ -1,5 +1,9 @@
 # Case Study: BandPilot — Diagnosing and Optimizing Modal Web Latency
 
+> **Documentation audit: CURRENT.** Canonical concern này; source-check các boundary/API, không live validation.
+> Mục đích: Case Study: BandPilot — Diagnosing and Optimizing Modal Web Latency. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../performance/modal-p2/baseline.json).
+> Đọc cùng [current module/guide](modal-web-performance.md); [audit và giới hạn](../DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+
 Tài liệu này dùng để học cách điều tra một sự cố hiệu năng có thật trong repository. Số liệu là phép đo **staging**, không phải cam kết tốc độ với người dùng production. Nguồn chi tiết: [báo cáo thực nghiệm](../modal-web-performance.md), [kiến trúc](../architecture.md), [cấu hình Modal](../../deploy/modal/app.py), [runtime](../../deploy/modal/web_runtime.py) và các JSON trong [thư mục benchmark](../performance/modal-p2/).
 
 ## 1. Bối cảnh dự án

@@ -1,5 +1,9 @@
 # Speaking Part-Focused Skill Practice Design
 
+> **Documentation audit: HISTORICAL.** Historical reference; không phải contract hiện hành.
+> Mục đích: Speaking Part-Focused Skill Practice Design. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../../../backend/app/services/speaking_attempts.py).
+> Đọc cùng [current module/guide](../../modules/speaking.md); [audit và giới hạn](../../DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+
 ## Status
 
 Conversational design approved on 2026-10-13; written specification awaiting final user review before implementation planning.

@@ -1,5 +1,9 @@
 # Task 2 v3 verification — 2026-10-08
 
+> **Documentation audit: HISTORICAL.** Historical reference; không phải contract hiện hành.
+> Mục đích: Task 2 v3 verification — 2026-10-08. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../backend/app/services/mts_writing.py).
+> Đọc cùng [current module/guide](ai-writing.md); [audit và giới hạn](DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+
 1. **Previous LR root cause:** the model generated a quote, then exact/conservative Unicode-whitespace matching rejected punctuation or copying differences as `QUOTE_NOT_EXACT`. A second invalid evidence response escaped the sequential loop and prevented GRA from running. Provider connectivity was already working.
 2. **Evidence identity:** the v3 model selects only `source_id` plus concise Vietnamese `assessment`; optional `focus` does not determine validity and is not persisted. Unknown IDs cause one targeted repair, then a local criterion failure. The four independent evidence/scoring pairs remain.
 3. **Segmentation:** deterministic pure `essay_sources.segment_essay` numbers non-empty blank-line paragraphs and conservatively splits sentences. It retains original Python character offsets and exact slices, supports CRLF/LF, repeated sentences, abbreviations/decimals, quotes, apostrophes, dashes, multiple spaces and Unicode terminal punctuation. Every segment is tested against `essay[start:end]`.

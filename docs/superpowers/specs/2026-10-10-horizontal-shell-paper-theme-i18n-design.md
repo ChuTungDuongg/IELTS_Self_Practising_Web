@@ -1,5 +1,9 @@
 # Horizontal shell, paper themes, and system UI localization
 
+> **Documentation audit: SUPERSEDED.** Historical reference; không phải contract hiện hành.
+> Mục đích: Horizontal shell, paper themes, and system UI localization. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../../../frontend/src/components/ui/app-shell.tsx).
+> Đọc cùng [current module/guide](../../modules/shared-platform.md); [audit và giới hạn](../../DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+
 Date: 2026-10-10
 
 Status: Approved direction, specification only

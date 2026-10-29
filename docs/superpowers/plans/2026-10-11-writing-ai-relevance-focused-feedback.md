@@ -1,5 +1,9 @@
 # Writing AI relevance and focused feedback implementation
 
+> **Documentation audit: HISTORICAL.** Historical reference; không phải contract hiện hành.
+> Mục đích: Writing AI relevance and focused feedback implementation. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../../../backend/app/services/mts_writing.py).
+> Đọc cùng [current module/guide](../../modules/writing.md); [audit và giới hạn](../../DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+
 Approved specification: [Writing AI relevance gate and focused-practice feedback snapshot](../specs/2026-10-11-writing-ai-relevance-focused-feedback-design.md).
 
 Starting baseline: `f5b1ea83a7faf4cf8643c084475eb5f964b3d1d0`.

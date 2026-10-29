@@ -2,6 +2,9 @@
 
 BandPilot is a modular monolith. Next.js renders the frontend and calls FastAPI through the typed clients in `frontend/src/lib/api/`. FastAPI owns domain mutations, authorization, validation, lifecycle transitions, scoring and PostgreSQL access. Browser and server-side API clients both preserve structured `ApiError` codes; page-level guards handle only known denial codes and propagate other failures.
 
+> Boundary/source review at `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`; static inspection only. Purpose: current ownership contracts; deployment/test results retain their own verification scope.
+> Start with the [knowledge base](README.md), [module map](handbook/module-catalog.md), [runtime diagrams](handbook/runtime-architecture.md) and [feature playbook](handbook/feature-development-playbook.md). See [audit limitations](DOCS_AUDIT.md).
+
 ## Backend
 
 - Routers authenticate requests, parse inputs and return response schemas. Services enforce business rules and own transaction scope. Repositories contain reusable SQLAlchemy loading and query logic. A service may issue a small, local query directly when a repository wrapper would add no clarity.
@@ -50,7 +53,7 @@ See [storage configuration and progress](storage-portability-work-in-progress.md
 
 ## Verification
 
-- Use Vitest for component and CSS contracts, pytest with an isolated PostgreSQL database for backend behavior and query counts, and the three Golden Path Playwright specs for Listening, Writing and Full Mock.
+- Use Vitest for component and CSS contracts, pytest with an isolated PostgreSQL database for backend behavior and query counts, and the four browser specs selected by `.github/workflows/e2e.yml`: Listening, Writing, Full Mock and Reading Practice.
 - Authorization tests must cover owner, admin, public, classroom-only, archived and unauthorized views. A locked Full Mock must never expose review answers, regardless of the HTTP status produced by a streamed Next.js page.
 - Keep fixture exam content fictional. Never run migrations or destructive integration setup against a development or production database.
 

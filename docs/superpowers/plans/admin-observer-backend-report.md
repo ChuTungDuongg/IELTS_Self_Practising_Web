@@ -1,5 +1,9 @@
 # Backend Admin Observer Report — 2026-10-27
 
+> **Documentation audit: HISTORICAL.** Historical reference; không phải contract hiện hành.
+> Mục đích: Backend Admin Observer Report — 2026-10-27. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../../../backend/app/services/classroom_capabilities.py).
+> Đọc cùng [current module/guide](../../modules/classrooms.md); [audit và giới hạn](../../DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+
 ## Root causes
 
 - `resolve_capabilities()` subtracted a handful of mutable capabilities from `ALL`, leaving administrators with classroom management, member management and final-grade editing.

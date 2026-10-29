@@ -1,5 +1,9 @@
 # Portable deployment profiles
 
+> **Documentation audit: CURRENT.** Canonical concern này; source-check các boundary/API, không live validation.
+> Mục đích: Portable deployment profiles. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../deploy/aws/compose.yml).
+> Đọc cùng [current module/guide](handbook/infrastructure.md); [audit và giới hạn](DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+
 P4 supplies configuration and offline checks. No AWS/Modal infrastructure was
 created, no image was built, and no live deployment or migration was performed.
 P2/P3 remain the application/storage foundation.

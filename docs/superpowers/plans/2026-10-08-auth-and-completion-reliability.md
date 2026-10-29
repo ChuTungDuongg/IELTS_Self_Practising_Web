@@ -1,5 +1,9 @@
 # Auth and Writing completion reliability
 
+> **Documentation audit: HISTORICAL.** Historical reference; không phải contract hiện hành.
+> Mục đích: Auth and Writing completion reliability. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../../../backend/app/services/auth.py).
+> Đọc cùng [current module/guide](../../modules/identity.md); [audit và giới hạn](../../DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+
 Starting point: 7a23d5b88fe17efd64c2443892dbc42c5fff3d47; clean local main.
 Implement the supplied two-bug specification without changing refresh security,
 IELTS guidance, Task 1 perception, or T1-B/T1-C evaluation semantics.

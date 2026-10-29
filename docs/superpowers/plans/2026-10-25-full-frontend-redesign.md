@@ -1,5 +1,9 @@
 # Full frontend redesign implementation plan
 
+> **Documentation audit: SUPERSEDED.** Historical reference; không phải contract hiện hành.
+> Mục đích: Full frontend redesign implementation plan. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../../../frontend/src/components/ui/app-shell.tsx).
+> Đọc cùng [current module/guide](../../modules/shared-platform.md); [audit và giới hạn](../../DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+
 > **For agentic workers:** Use superpowers:executing-plans to implement these tasks in place. The user's detailed execution brief authorizes proceeding through implementation without an approval stop. Do not commit or push.
 
 **Goal:** Give every existing BandPilot screen a cohesive, readable, responsive presentation while preserving domain behavior.

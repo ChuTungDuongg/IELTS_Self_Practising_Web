@@ -1,5 +1,9 @@
 # BandPilot Speaking architecture and evaluation
 
+> **Documentation audit: CURRENT.** Canonical concern này; source-check các boundary/API, không live validation.
+> Mục đích: BandPilot Speaking architecture and evaluation. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../backend/app/services/speaking_ai_worker.py).
+> Đọc cùng [current module/guide](modules/speaking.md); [audit và giới hạn](DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+
 Speaking P1–P8 is implemented. All AI bands and feedback are advisory: this
 project has no benchmark evidence establishing examiner-equivalent accuracy.
 P8 adds an evaluation harness; it does not change production scores or schema.

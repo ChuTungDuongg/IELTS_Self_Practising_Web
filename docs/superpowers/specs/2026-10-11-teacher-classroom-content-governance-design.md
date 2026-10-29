@@ -1,5 +1,9 @@
 # Teacher, Classroom, Content Governance & Notification Design
 
+> **Documentation audit: HISTORICAL.** Historical reference; không phải contract hiện hành.
+> Mục đích: Teacher, Classroom, Content Governance & Notification Design. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../../../backend/app/services/classroom_capabilities.py).
+> Đọc cùng [current module/guide](../../modules/classrooms.md); [audit và giới hạn](../../DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+
 ## Status
 
 Approved conversational design captured for implementation planning. Detailed frontend layout is intentionally deferred; this spec fixes product semantics, authorization boundaries, persistence rules, workflows, and the minimum coherent UI behavior required for v1.

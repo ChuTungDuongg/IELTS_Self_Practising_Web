@@ -1,5 +1,9 @@
 # Storage migration and reconciliation
 
+> **Documentation audit: CURRENT.** Canonical concern này; source-check các boundary/API, không live validation.
+> Mục đích: Storage migration and reconciliation. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../backend/app/storage/migration.py).
+> Đọc cùng [current module/guide](modules/assets-transfer.md); [audit và giới hạn](DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+
 These are operator commands, not startup tasks. Run from a reviewed checkout
 with Python 3.12+ and backend dependencies (`cd backend`, then `uv run python
 ../scripts/migrate_asset_storage.py ...`). No command provisions a bucket,

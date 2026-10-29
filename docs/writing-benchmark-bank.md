@@ -1,5 +1,9 @@
 # Admin Writing benchmark bank
 
+> **Documentation audit: CURRENT.** Canonical concern này; source-check các boundary/API, không live validation.
+> Mục đích: Admin Writing benchmark bank. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../backend/app/services/writing_benchmark.py).
+> Đọc cùng [current module/guide](modules/writing.md); [audit và giới hạn](DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+
 `/admin/writing-benchmark` is ADMIN-only, outside Workspace/Builder. The existing
 frontend guard and every backend action enforce that boundary. One bank stores
 ground truth only: at most 100 Task 1 and 100 Task 2 samples, including drafts.

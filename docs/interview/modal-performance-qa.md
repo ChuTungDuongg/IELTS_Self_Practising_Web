@@ -1,5 +1,9 @@
 # BandPilot Performance Engineering — Interview Preparation
 
+> **Documentation audit: CURRENT.** Canonical concern này; source-check các boundary/API, không live validation.
+> Mục đích: BandPilot Performance Engineering — Interview Preparation. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../performance/modal-p2/after-8.json).
+> Đọc cùng [current module/guide](bandpilot-system-design.md); [audit và giới hạn](../DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+
 Tài liệu ôn tập này dựa trên [case study đầy đủ](../case-studies/modal-web-performance.md), [báo cáo thực nghiệm](../modal-web-performance.md) và JSON benchmark. Cách diễn đạt mẫu dùng ngôi thứ nhất để người đọc luyện tập, nhưng phải điều chỉnh theo phần việc thực tế của mình. Dự án dùng **AI-assisted development**: chủ dự án đặt mục tiêu, ràng buộc và hướng điều tra; Codex thực hiện các bước được ghi nhận trong lịch sử. Khi phỏng vấn, hãy nói rõ phần mình thực sự trực tiếp làm hoặc kiểm tra, không nhận mọi thao tác của Codex là do mình tự gõ hay tự triển khai.
 
 ## A. Lời giải thích trong 30 giây

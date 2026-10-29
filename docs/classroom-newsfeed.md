@@ -1,5 +1,9 @@
 # Classroom Newsfeed
 
+> **Documentation audit: CURRENT.** Canonical concern này; source-check các boundary/API, không live validation.
+> Mục đích: Classroom Newsfeed. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../backend/app/repositories/classroom_feed_search.py).
+> Đọc cùng [current module/guide](modules/classrooms.md); [audit và giới hạn](DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+
 The approved Stream image is implemented within the existing Classroom workspace. Desktop widths from 1100px use a fluid 69/31 feed/sidebar split with an 18px gap, compact rounded navy surfaces in Dark Mode, type badges, one author avatar, restrained metadata, and assignment/resource previews. Tablet stacks the dashboard below the feed in two columns; mobile uses one column, wrapped filters and 44px controls. Shared BandPilot tokens preserve Light Mode, personal accents, focus indicators and reduced motion. The global navigation, Classwork, Assignments, Calendar and exam runners retain their existing designs.
 
 ## Interactions and real data

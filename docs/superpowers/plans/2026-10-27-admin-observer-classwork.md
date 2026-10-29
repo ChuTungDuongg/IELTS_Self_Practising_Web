@@ -1,5 +1,9 @@
 # Admin Observer and Approved Classwork Implementation Plan
 
+> **Documentation audit: HISTORICAL.** Historical reference; không phải contract hiện hành.
+> Mục đích: Admin Observer and Approved Classwork Implementation Plan. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../../../backend/app/services/classroom_capabilities.py).
+> Đọc cùng [current module/guide](../../modules/classrooms.md); [audit và giới hạn](../../DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+
 > **For agentic workers:** Use focused independent implementation work with task review and integration verification. The user explicitly requests implementation, commit and safe push to origin/main.
 
 **Goal:** Enforce read-only classroom oversight for platform administrators and share the approved Classwork presentation across roles.

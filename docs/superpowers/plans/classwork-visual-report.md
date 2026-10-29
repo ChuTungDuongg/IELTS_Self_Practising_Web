@@ -1,5 +1,9 @@
 # Classwork visual implementation report
 
+> **Documentation audit: HISTORICAL.** Historical reference; không phải contract hiện hành.
+> Mục đích: Classwork visual implementation report. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../../../backend/app/services/classroom_capabilities.py).
+> Đọc cùng [current module/guide](../../modules/classrooms.md); [audit và giới hạn](../../DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+
 ## Reference and design decisions
 
 - Read the supplied task, `design-taste-frontend` app-screen guidance, `ui-ux-pro-max`, frontend AGENTS guidance and bundled Next.js client-component documentation.

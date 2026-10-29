@@ -1,5 +1,9 @@
 # Structured Draft Import (`ielts-draft-import-v1`)
 
+> **Documentation audit: CURRENT (corrected from NEEDS UPDATE).** Canonical concern này; source-check các boundary/API, không live validation.
+> Mục đích: Structured Draft Import (`ielts-draft-import-v1`). Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../backend/app/services/draft_import.py).
+> Đọc cùng [current module/guide](modules/assets-transfer.md); [audit và giới hạn](DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+
 Draft Import accepts text and answer data that has already been transcribed from screenshots or scans. It does not run OCR or AI inference. The command creates one new `Test`, version 1, in `DRAFT` status. Open the reported Builder URL to review and publish through the normal workflow.
 
 A ready-to-run fictional manifest is in [docs/examples/draft-import-manifest.json](examples/draft-import-manifest.json).
@@ -10,7 +14,7 @@ From `backend/`:
 uv run python -m app.import_draft path/to/manifest.json --owner-user-id ADMIN_UUID
 ```
 
-Asset paths are relative to the directory containing `manifest.json`. Keep them in an `assets/` subdirectory. The importer rejects absolute paths, `..` traversal, missing files, unsupported extensions, malformed file signatures, and files above the existing upload size limits. It copies accepted files through `LocalAssetStorage` and links them to the new version. On a failed import, the database transaction rolls back and copied files are removed.
+Asset paths are relative to the directory containing `manifest.json`. Keep them in an `assets/` subdirectory. The importer rejects absolute paths, `..` traversal, missing files, unsupported extensions, malformed file signatures, and files above the existing upload size limits. It copies accepted files through the configured `get_asset_storage` provider and links them to the new version; local input files remain local sources even when the destination provider is S3/R2. On a failed import, the service exits the transaction and compensates operation-owned files after checking durable database references. A lost commit acknowledgement or unavailable database must not cause deletion of potentially committed assets; reconciliation may be required.
 
 ## Manifest
 

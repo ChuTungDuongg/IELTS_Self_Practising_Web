@@ -1,5 +1,9 @@
 # Classroom workspace UX
 
+> **Documentation audit: CURRENT.** Canonical concern này; source-check các boundary/API, không live validation.
+> Mục đích: Classroom workspace UX. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../frontend/src/features/classrooms).
+> Đọc cùng [current module/guide](modules/classrooms.md); [audit và giới hạn](DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+
 The redesign keeps BandPilot global navigation, fonts, accents and semantic light/dark tokens. Stream, Classwork, Assignments and Calendar separate learning workflows; People/Gradebook/Analytics follow classroom capabilities, and My Progress shows personal classroom progress. Existing notification post links and assignment deep links are preserved.
 
 ## Dual-skill design audit

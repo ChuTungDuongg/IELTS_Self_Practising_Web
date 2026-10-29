@@ -1,5 +1,9 @@
 # Classroom 2.0 implementation plan
 
+> **Documentation audit: HISTORICAL.** Historical reference; không phải contract hiện hành.
+> Mục đích: Classroom 2.0 implementation plan. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../../../backend/app/services/classroom_capabilities.py).
+> Đọc cùng [current module/guide](../../modules/classrooms.md); [audit và giới hạn](../../DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+
 > **For agentic workers:** Use focused parallel tasks for the independent feed, classwork, and frontend surfaces. The user explicitly requested implementation on main without a planning approval pause.
 
 **Goal:** Extend existing classrooms with Stream, discussions, structured Classwork, and private learning resources while preserving IELTS assignments.

@@ -1,5 +1,9 @@
 # Classroom Assignments management
 
+> **Documentation audit: CURRENT.** Canonical concern này; source-check các boundary/API, không live validation.
+> Mục đích: Classroom Assignments management. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../frontend/src/features/classrooms).
+> Đọc cùng [current module/guide](modules/classrooms.md); [audit và giới hạn](DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+
 The approved Assignments mockup is implemented inside the existing Classroom workspace. At desktop widths from 1100px, a fluid 29% creation panel sits beside the 71% management column, separated by an 18px gap. Active rows use compact skill identities, target labels, status badges, populated schedule dates and result/context actions. Archived rows have a restrained burgundy surface with restore, permanent-delete and details controls. Shared semantic tokens support both themes; the stylesheet is scoped to this tab.
 
 The existing assignment engine remains authoritative. Test selection resolves the eligible published revision without exposing technical revision numbers. The teacher must select an actual skill or eligible Full Mock; focused units come from authorized VersionDetail metadata. Scheduling retains available time, due time, hard cut-off, attempt limits and late-submission policy in a disclosure. Writes have duplicate-submit guards, pending/error/success feedback and canonical Classwork/Assignments/progress refresh. A failed refresh after a successful creation retries loading without repeating creation.

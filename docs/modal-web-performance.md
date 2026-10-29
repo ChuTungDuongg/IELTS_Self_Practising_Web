@@ -1,5 +1,9 @@
 # Modal Web latency investigation
 
+> **Documentation audit: CURRENT.** Canonical concern này; source-check các boundary/API, không live validation.
+> Mục đích: Modal Web latency investigation. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../scripts/benchmark_modal_web.py).
+> Đọc cùng [current module/guide](case-studies/modal-web-performance.md); [audit và giới hạn](DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+
 For a Vietnamese explanation of the architecture, investigation and results, see the
 [educational case study](case-studies/modal-web-performance.md). For interview practice,
 see [performance engineering questions and answers](interview/modal-performance-qa.md).
@@ -102,3 +106,7 @@ Nginx aggregates contain 531 entries per configuration (including discovery and 
 The baseline localhost benchmark inside the container bypassed Modal ingress and the external network: readiness at 16 clients had p95 49.69 ms and 224 requests/s. By contrast the public endpoint had p95 around 10 s and 1.5 requests/s. The nearly linear public waterfall, short internal timings and improvement from the bounded input setting provide strong evidence that one-at-a-time Modal input handling on the `us-east` routing → `ap-south` container path was a major bottleneck in this staging scenario. The instrumentation cannot precisely partition Modal queue time, ingress execution and network time, or establish the production deployment's actual region and queue behavior. It also does not measure the real browser waterfall.
 
 Staging safety checks confirmed `/library` returns a private no-store 307 to session restoration, unauthenticated auth/analytics/private assets and an SSE endpoint return 401, and a real static CSS range returns 206 with the expected Content-Range. Focused local tests cover authentication redirects, authorized storage byte ranges, speaking playback and streaming message forwarding. A live authenticated private-media or SSE stream was not exercised. No Nginx buffering/cache, PostgreSQL pool, replica count, production region, GPU workload or production deployment was changed. Evaluate routing and geographically closer isolated deployments separately; do not move an existing PostgreSQL Volume merely for a latency test.
+
+## Knowledge-base navigation
+
+See the [engineering index](README.md), [system-design interview guide](interview/bandpilot-system-design.md) and [runtime architecture](handbook/runtime-architecture.md). Benchmark artifacts and original measurements above are preserved.

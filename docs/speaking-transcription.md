@@ -1,3 +1,7 @@
+> **Documentation audit: CURRENT.** Canonical concern này; source-check các boundary/API, không live validation.
+> Mục đích: Speaking transcript processing extends the private P3 recording domain. It does not a. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../backend/app/services/speaking_transcript_worker.py).
+> Đọc cùng [current module/guide](modules/speaking.md); [audit và giới hạn](DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+
 Speaking transcript processing extends the private P3 recording domain. It does not assign IELTS scores.
 
 The normalizer decodes each MediaRecorder container independently, concatenating chunks only inside that container. FFmpeg resamples each input before concatenating 16 kHz mono signed 16-bit PCM. Raw files are never rewritten. Input demuxers and protocols are restricted; commands use argument arrays, a timeout and output/duration limits. Subprocess output is discarded rather than logged. Derived files stay in `storage/speaking-derived` and are covered by the transactional deletion cleanup outbox.

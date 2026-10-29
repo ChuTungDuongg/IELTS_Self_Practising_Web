@@ -1,5 +1,9 @@
 # Note Completion Authoring Design
 
+> **Documentation audit: HISTORICAL.** Historical reference; không phải contract hiện hành.
+> Mục đích: Note Completion Authoring Design. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../../../backend/app/services/auth.py).
+> Đọc cùng [current module/guide](../../modules/identity.md); [audit và giới hạn](../../DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+
 ## Outcome
 
 Replace Note Completion's legacy standalone `layout.nodes` authoring flow with a dedicated note document model. Authors edit semantic note blocks inline, type `{{gap}}` or use **Insert gap** to create linked questions at the caret, and see the same title, headings, bullets, indentation, and inline gaps in Builder Preview, Candidate, and Review.

@@ -1,5 +1,10 @@
 # Speaking Engine, Recording, Transcript & AI Grading Implementation Plan
 
+> **Documentation audit: CURRENT.** Canonical concern này; source-check các boundary/API, không live validation.
+> Mục đích: Speaking Engine, Recording, Transcript & AI Grading Implementation Plan. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../../../backend/app/services/speaking_attempts.py).
+> Đọc cùng [current module/guide](../../modules/speaking.md); [audit và giới hạn](../../DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+> Speaking instructions vẫn binding theo AGENTS; không archive hoặc vô hiệu hóa self-review amendments.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add Speaking as the fourth first-class IELTS skill, including Part 1/2/3 Builder support, crash-resilient per-prompt recording, read-only per-question transcription, hybrid audio+text AI grading, dynamic review UX, Full Mock/history/classroom integration, and benchmark tooling.

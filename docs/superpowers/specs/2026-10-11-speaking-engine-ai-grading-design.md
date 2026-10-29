@@ -1,5 +1,10 @@
 # Speaking Engine, Recording, Transcript & AI Grading Design
 
+> **Documentation audit: CURRENT.** Canonical concern này; source-check các boundary/API, không live validation.
+> Mục đích: Speaking Engine, Recording, Transcript & AI Grading Design. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../../../backend/app/services/speaking_attempts.py).
+> Đọc cùng [current module/guide](../../modules/speaking.md); [audit và giới hạn](../../DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+> Speaking instructions vẫn binding theo AGENTS; không archive hoặc vô hiệu hóa self-review amendments.
+
 ## Status
 
 Approved conversational design captured for implementation planning. This specification introduces Speaking as the fourth first-class IELTS skill and defines its Builder, runner, recording/recovery contract, transcript workflow, hybrid AI grading architecture, review UX, and integration boundaries.

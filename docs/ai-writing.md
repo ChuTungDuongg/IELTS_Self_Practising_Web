@@ -1,5 +1,9 @@
 # BandPilot advisory AI Academic Writing
 
+> **Documentation audit: CURRENT.** Canonical concern này; source-check các boundary/API, không live validation.
+> Mục đích: BandPilot advisory AI Academic Writing. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../backend/app/services/mts_writing.py).
+> Đọc cùng [current module/guide](modules/writing.md); [audit và giới hạn](DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+
 The standalone ADMIN [Writing benchmark bank](writing-benchmark-bank.md) stores
 human ground truth only and exports JSONL/images/CSV for offline Task 1/Task 2
 evaluation. Task 2 reuses production MTS scoring and shared score metrics. Reports

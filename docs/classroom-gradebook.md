@@ -1,12 +1,16 @@
 # Classroom staff and Gradebook (P3)
 
+> **Documentation audit: CURRENT (corrected from NEEDS UPDATE).** Canonical concern này; source-check các boundary/API, không live validation.
+> Mục đích: Classroom staff and Gradebook (P3). Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../backend/app/services/classroom_capabilities.py).
+> Đọc cùng [current module/guide](modules/classrooms.md); [audit và giới hạn](DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+
 P3 extends P1/P2. Global USER/TEACHER/ADMIN roles and Builder ownership stay independent of classroom staff. The owner remains `classrooms.teacher_id`; there is no owner staff row.
 
 ## Permissions and staff lifecycle
 
 `ClassroomStaff` stores explicit invitation state and four typed optional TA flags, not a free-form permission dictionary. The centralized `Capability` enum resolves the actor's current classroom role on every request. Owners have all classroom capabilities. Co-teachers may manage students, content, discussions, assignments/extensions, grades, analytics and improvement plans; they cannot change classroom settings/ownership or staff. TAs always have `grades.view`/`grades.edit`; `content.manage`, `discussion.moderate`, `analytics.view` and `learning_plans.manage` are opt-in owner-controlled flags. Students only see their authorized classroom and own work.
 
-ADMIN retains management/read/grading oversight and existing assignment creation/archival; ADMIN does not gain authorship of another teacher's new learning content or staff management. P2 scheduling/extension edits remain an owner/co-teacher operation. Owner-only settings/archive calls are not replaced by broad staff checks.
+Current ADMIN access is read-only classroom oversight: roster, grades and analytics, resolved by ADMIN_OBSERVER in classroom_capabilities.py. ADMIN cannot create/archive assignments, edit grades or participate through legacy membership. Owner/co-teacher/TA mutations require the specific current capability; classroom management remains owner-only.
 
 Only existing active accounts can be invited. Co-teachers require global TEACHER; TAs require USER or TEACHER. Invitations require the recipient's explicit accept/decline. The owner can cancel, change role/flags and revoke access. A partial unique index permits one pending or accepted staff record per room/account. Actor/room locks serialize competing invitations and role changes. Every transition appends actor, role, status and flags to database-protected staff history. Accepted staff access is checked afresh; revocation does not grant access through a cached role.
 
@@ -46,7 +50,7 @@ Paths are under `/api/v1`:
 
 ## Classroom UX/UI overhaul
 
-The completed [dual-skill workspace refactor](classroom-workspace.md) adds topic-first content workflows, contextual creation/actions, responsive matrix/list views and integrated [P4 learning analytics/plans](classroom-learning-analytics.md). Both 0038 and 0039 are applied to the actual local database; the current head is 0039. The original P3 verification below records its phase-specific snapshot.
+The completed [dual-skill workspace refactor](classroom-workspace.md) adds topic-first content workflows, contextual creation/actions, responsive matrix/list views and integrated [P4 learning analytics/plans](classroom-learning-analytics.md). At that historical verification point, 0038 and 0039 were reported applied locally. The inspected repository now has Alembic head 20261028_0043; this audit did not inspect any live database revision. The original P3 verification below records its phase-specific snapshot.
 
 The shared course shell uses a compact real-data header, one scrolling tab row, one fluid content plane and no empty permanent sidebars or duplicate section selectors. Archive/restore/leave live in a contextual management disclosure. Creation opens a focused assignment form; scheduling uses progressive disclosure. Staff see a real assignment/member overview and direct Gradebook/People/material navigation. Students see learning workflows without staff administration tabs.
 

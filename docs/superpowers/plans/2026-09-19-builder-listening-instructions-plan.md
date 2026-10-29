@@ -1,5 +1,9 @@
 # Implementation plan
 
+> **Documentation audit: HISTORICAL.** Historical reference; không phải contract hiện hành.
+> Mục đích: Implementation plan. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../../../backend/app/domains/questions/registry.py).
+> Đọc cùng [current module/guide](../../modules/authoring.md); [audit và giới hạn](../../DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+
 1. Add failing frontend tests for URL-backed Builder navigation, optional/shared audio UI, one Runner player, YNNG rendering, and registry-driven instructions.
 2. Add failing backend tests for module audio mutation, optional publish behavior, YNNG validation/grading/normalization, DTO shape, and migration data cases.
 3. Add an Alembic migration that validates/backfills `test_modules.audio_asset_id` before removing `listening_parts.audio_asset_id`.

@@ -1,5 +1,9 @@
 # Test transfer package format
 
+> **Documentation audit: CURRENT.** Canonical concern này; source-check các boundary/API, không live validation.
+> Mục đích: Test transfer package format. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../backend/app/schemas/transfer.py).
+> Đọc cùng [current module/guide](modules/assets-transfer.md); [audit và giới hạn](DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+
 BandPilot test packages use the format identifier `devweblocalforielts-test-bundle`. Exports without covers remain schema version 1. Exports with test covers use schema version 2. Imports accept both versions; existing version 1 packages do not require a cover.
 
 ```text

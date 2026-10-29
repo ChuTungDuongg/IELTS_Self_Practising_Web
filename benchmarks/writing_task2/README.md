@@ -1,5 +1,9 @@
 # Offline Writing Task 2 benchmark
 
+> **Documentation audit: CURRENT.** Canonical concern này; source-check các boundary/API, không live validation.
+> Mục đích: Offline Writing Task 2 benchmark. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../../scripts/benchmark_task2.py).
+> Đọc cùng [current module/guide](../../docs/modules/writing.md); [audit và giới hạn](../../docs/DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+
 The admin bank's `task2.jsonl` works directly with the CLI. JSONL is canonical;
 CSV is inspection only. `schema_version: 1` identifies the file format, not a
 bank/dataset version. The schema is generated from

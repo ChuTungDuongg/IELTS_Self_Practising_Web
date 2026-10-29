@@ -41,3 +41,9 @@
 - Structured families include MCQ single/multiple, T/F/NG, Y/N/NG, matching variants, sentence/summary/
   note/table/flow completion, image-marker labelling, and short answer.
 - Image markers use normalized coordinates in the inclusive range 0–1, never browser pixels.
+
+## Canonical engineering documentation
+
+- Start at [docs/README.md](docs/README.md); [architecture boundaries](docs/architecture.md) remain authoritative.
+- Locate ownership in the [module catalog](docs/handbook/module-catalog.md) and follow the [feature development playbook](docs/handbook/feature-development-playbook.md).
+- Check [documentation audit](docs/DOCS_AUDIT.md) and [coverage limits](docs/DOCUMENTATION_COVERAGE.md). Historical plans are reference, not current feature inventories; preserve the binding Speaking design/plan/self-review requirement above.

@@ -1,5 +1,9 @@
 # Portable backups and isolated recovery
 
+> **Documentation audit: CURRENT.** Canonical concern này; source-check các boundary/API, không live validation.
+> Mục đích: Portable backups and isolated recovery. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../backend/app/storage/recovery.py).
+> Đọc cùng [current module/guide](handbook/infrastructure.md); [audit và giới hạn](DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+
 The original `scripts/backup.py` / `scripts/restore.py` local v1 format is retained.
 Legacy cloud invocations still fail before changes. Add `--portable` for the new
 executable provider-neutral v2 workflow. These are distinct from Test Transfer ZIP

@@ -1,5 +1,9 @@
 # Text Completion and highlight regression report
 
+> **Documentation audit: HISTORICAL.** Historical reference; không phải contract hiện hành.
+> Mục đích: Text Completion and highlight regression report. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../frontend/src/features/questions/text-completion-canvas.tsx).
+> Đọc cùng [current module/guide](modules/reading-listening.md); [audit và giới hạn](DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+
 Implemented against the existing working tree at HEAD `2d4d7c0`. Previous sentence-block, preview, and Reading navigation changes were preserved. No reset, migration, or commit was performed.
 
 ## Findings and fixes

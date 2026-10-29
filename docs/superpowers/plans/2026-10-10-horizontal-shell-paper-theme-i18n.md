@@ -1,5 +1,9 @@
 # Horizontal Shell, Paper Theme & EN/VI Implementation Plan
 
+> **Documentation audit: SUPERSEDED.** Historical reference; không phải contract hiện hành.
+> Mục đích: Horizontal Shell, Paper Theme & EN/VI Implementation Plan. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../../../frontend/src/components/ui/app-shell.tsx).
+> Đọc cùng [current module/guide](../../modules/shared-platform.md); [audit và giới hạn](../../DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Replace the permanent workspace sidebar with horizontal navigation, add a shared footer, introduce a warm paper/graphite visual system, and add typed English/Vietnamese system UI localization without changing authored IELTS content or exam behavior.

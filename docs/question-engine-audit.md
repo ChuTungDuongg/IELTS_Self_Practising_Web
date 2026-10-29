@@ -1,5 +1,9 @@
 # Question engine and attempt presentation audit
 
+> **Documentation audit: HISTORICAL.** Historical reference; không phải contract hiện hành.
+> Mục đích: Question engine and attempt presentation audit. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../backend/app/domains/questions/registry.py).
+> Đọc cùng [current module/guide](modules/reading-listening.md); [audit và giới hạn](DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+
 Baseline: `4724167200f66e9fcd5a9c5605cd14dfd4e1cfc5` (`main`, 2026-10-26), including the preceding concurrency fixes. The supplied older reference was `43fdc9d`. Next.js → FastAPI → PostgreSQL boundaries remain authoritative.
 
 ## Read-only usage evidence

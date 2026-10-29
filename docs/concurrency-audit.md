@@ -1,5 +1,9 @@
 # BandPilot concurrency audit
 
+> **Documentation audit: HISTORICAL.** Historical reference; không phải contract hiện hành.
+> Mục đích: BandPilot concurrency audit. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../backend/app/services/asset_cleanup.py).
+> Đọc cùng [current module/guide](handbook/data-architecture.md); [audit và giới hạn](DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+
 Date: 2026-10-26. Baseline: `43fdc9d4cb0e8ba4f5e5e3f48beb06733de7b688` on `main`; fetched remote matched. Scope: targeted correctness changes within Next.js → FastAPI → PostgreSQL. Existing storage, provider infrastructure, UI, question registries, authentication contracts and advisory/human scoring boundaries remain.
 
 Local unrelated changes (`storage` placeholders, `.agents`, `.taste-skill`, design references and skill lock) are excluded from delivery. Tests use freshly migrated, dedicated PostgreSQL 17 databases named `bandpilot_concurrency_test` and `bandpilot_concurrency_fault_test` on loopback port 5544. No development/production schema or data is modified. Provider tests use fakes; no browser sessions or paid inference.

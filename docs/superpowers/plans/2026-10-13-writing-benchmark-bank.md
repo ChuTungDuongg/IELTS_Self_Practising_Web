@@ -1,5 +1,9 @@
 # Admin Writing Benchmark Bank Implementation Plan
 
+> **Documentation audit: HISTORICAL.** Historical reference; không phải contract hiện hành.
+> Mục đích: Admin Writing Benchmark Bank Implementation Plan. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../../../backend/app/services/writing_benchmark.py).
+> Đọc cùng [current module/guide](../../modules/writing.md); [audit và giới hạn](../../DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+
 **Status:** Implementation authorized and executed on 2026-10-13. Tasks 1–13 and the Task 14 local gate are complete; the final pushed-SHA remote gate is checked before reporting completion. See [implementation validation](../../writing-benchmark-bank.md#implementation-validation--2026-10-13).
 
 **Goal:** Add one private ADMIN-authored Writing ground-truth bank, capped at 100 samples per task, with safe draft editing, production-derived overall bands, distribution guidance, compatible ZIP export and an offline Task 2 benchmark CLI.

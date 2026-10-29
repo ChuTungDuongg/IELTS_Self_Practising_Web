@@ -1,5 +1,9 @@
 # Teacher, classrooms and content governance
 
+> **Documentation audit: HISTORICAL.** Historical reference; không phải contract hiện hành.
+> Mục đích: Teacher, classrooms and content governance. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../backend/app/services/classroom_capabilities.py).
+> Đọc cùng [current module/guide](modules/classrooms.md); [audit và giới hạn](DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+
 ## Staff and Gradebook (P3)
 
 Classrooms now resolve contextual owner, Co-teacher and TA capabilities separately from global roles. Staff invitations require acceptance; Gradebook uses canonical accepted results and human-final subjective grades, with classroom-only academic profiles and safe bounded CSV export. See [staff, Gradebook and Classroom UX/UI contracts](classroom-gradebook.md). P1/P2's owner-only descriptions below document those original phases; the capability matrix in the P3 guide governs current shared operations.

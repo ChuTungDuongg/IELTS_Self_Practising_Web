@@ -1,5 +1,9 @@
 # Classroom assignment scheduling (P2)
 
+> **Documentation audit: CURRENT.** Canonical concern này; source-check các boundary/API, không live validation.
+> Mục đích: Classroom assignment scheduling (P2). Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../backend/app/services/assignment_scheduling.py).
+> Đọc cùng [current module/guide](modules/classrooms.md); [audit và giới hạn](DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+
 P3 extends schedule/extension management to authorized Co-teachers through the centralized classroom capability policy. Owner settings/staff management remain separate; TAs do not gain assignment or extension mutation rights. The same historical decision query now supplies Gradebook and classroom analytics. See [the P3 contract](classroom-gradebook.md).
 
 P2 extends the existing assignment, immutable TestVersion and native IELTS engines. The new code does not set a second exam timer or change marking. The Classroom workspace adds an agenda Calendar, shared student progress, schedule editing, monitoring and individual exceptions.

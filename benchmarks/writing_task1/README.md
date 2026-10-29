@@ -1,5 +1,9 @@
 # Task 1 evaluation (T1-C)
 
+> **Documentation audit: CURRENT.** Canonical concern này; source-check các boundary/API, không live validation.
+> Mục đích: Task 1 evaluation (T1-C). Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../../scripts/benchmark_task1.py).
+> Đọc cùng [current module/guide](../../docs/modules/writing.md); [audit và giới hạn](../../docs/DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+
 The CLI reuses production visual grounding, optional fail-open DePlot,
 deterministic facts, claim verification, source evidence and four-criterion MTS.
 It needs no database. Production uses composite fingerprint `mts-task1-visual-v12`

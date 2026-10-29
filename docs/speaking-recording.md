@@ -1,5 +1,9 @@
 # Speaking recording protocol (P2/P3)
 
+> **Documentation audit: CURRENT.** Canonical concern này; source-check các boundary/API, không live validation.
+> Mục đích: Speaking recording protocol (P2/P3). Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../backend/app/services/speaking_media.py).
+> Đọc cùng [current module/guide](modules/speaking.md); [audit và giới hạn](DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+
 FastAPI owns prompt phases and deadlines. Speaking uses an attempt count-up clock and authored per-prompt allowances. A three-second server phase separates Part 2 preparation from recording. Expiry closes speech in `FINALIZING`; the client stops/flushes, acknowledges all chunks and the segment manifest, then requests idempotent finalization. It cannot advance before that acknowledgement.
 
 Heartbeats and accepted chunks confirm server-derived remaining time; client countdown values never grant quota. State reads display the live deadline without replacing the last acknowledged snapshot. Recovery must be requested before an already-expired prompt is finalized and within `SPEAKING_RECOVERY_WINDOW_SECONDS` (default 45 seconds) of the last acknowledgement. After interruption, microphone readiness must resume within the same bounded window.
