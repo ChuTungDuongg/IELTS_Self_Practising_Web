@@ -1,5 +1,9 @@
 # Modal Web latency investigation
 
+For a Vietnamese explanation of the architecture, investigation and results, see the
+[educational case study](case-studies/modal-web-performance.md). For interview practice,
+see [performance engineering questions and answers](interview/modal-performance-qa.md).
+
 ## Findings and limits (initial investigation)
 
 - Starting revision: `4a6b5b0850bb39161a308de3207f6d93b1c3a7e7`.

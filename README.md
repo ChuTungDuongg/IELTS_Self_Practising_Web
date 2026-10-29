@@ -140,6 +140,8 @@ FastAPI ──┬── Speaking ASR → faster-whisper GPU service
 
 Frontend không kết nối trực tiếp PostgreSQL. Mọi thao tác thay đổi dữ liệu, publish, deadline và chấm điểm đều đi qua FastAPI.
 
+Tài liệu tìm hiểu thêm: [Tổng quan kiến trúc](docs/architecture.md) · [Triển khai Modal](docs/modal-web.md) · [Case study hiệu năng Modal](docs/case-studies/modal-web-performance.md) · [Ôn tập phỏng vấn hiệu năng](docs/interview/modal-performance-qa.md).
+
 ### Modal
 
 ```text

@@ -56,6 +56,16 @@ See [storage configuration and progress](storage-portability-work-in-progress.md
 
 ## Deployment configuration
 
+### Modal Web concurrency
+
+The Modal Web class uses `@modal.concurrent(max_inputs=8)` to admit up to eight
+inputs per container, while retaining `min_containers=1` and `max_containers=1`.
+The embedded PostgreSQL topology requires a single owner for its database Volume;
+additional Web replicas would require a separate, reviewed database and storage
+architecture. Web runs on CPU; configured AI inference functions run separately
+on GPUs. See the [Modal performance case study](case-studies/modal-web-performance.md)
+for staging evidence, trade-offs and measurement limits.
+
 P4 keeps the existing Modal demo (one Web container, guarded embedded PostgreSQL
 17, original named Volumes) and adds a managed-database/S3/R2 topology. Non-secret
 frozen markers select mounts; backend Secrets select the actual P3 provider and
