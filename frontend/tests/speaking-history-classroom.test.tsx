@@ -83,7 +83,13 @@ it("does not invent a Speaking review for locked or unavailable assignment work"
 });
 it("offers Speaking analytics using only official band summaries", async () => {
   vi.mocked(getAnalytics).mockResolvedValue(analyticsSchema.parse(analytics)); render(<AnalyticsDashboardView initial={analyticsSchema.parse(analytics)} />);
-  expect(screen.getByText("Speaking latest / best / average").parentElement).toHaveTextContent("7.0 / 7.0 / 7.00"); fireEvent.click(screen.getByRole("button", { name: "Speaking" })); await waitFor(() => expect(getAnalytics).toHaveBeenCalledExactlyOnceWith("SPEAKING")); expect(screen.getByText("Latest overall").parentElement).toHaveTextContent("—");
+  const performance = screen.getByRole("region", { name: "Average band by skill" });
+  expect(within(performance).getByRole("progressbar", { name: "Speaking" })).toHaveAttribute("aria-valuenow", "7");
+  fireEvent.click(within(performance).getByText("Latest / best / average bands"));
+  expect(within(performance).getByText("Speaking", { selector: "dt" }).parentElement).toHaveTextContent("7.0 / 7.0 / 7.00");
+  fireEvent.click(screen.getByRole("button", { name: "Speaking" }));
+  await waitFor(() => expect(getAnalytics).toHaveBeenCalledExactlyOnceWith("SPEAKING"));
+  expect(screen.getByText("Latest overall").parentElement).toHaveTextContent("—");
 });
 it("starts assigned Speaking through assignment provenance instead of personal practice", async () => {
   vi.mocked(apiRequest).mockResolvedValue({ attempt_id: id(1), test_session_id: null });
