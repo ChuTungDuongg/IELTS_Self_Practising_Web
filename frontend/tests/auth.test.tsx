@@ -3,9 +3,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AppShell } from "@/components/ui/app-shell";
 import { AdminGuard } from "@/features/auth/admin-guard";
 import { AuthForm } from "@/features/auth/auth-form";
+import { AuthLayout } from "@/features/auth/auth-layout";
 import { AuthProvider } from "@/features/auth/auth-provider";
 import { apiRequest, resetAuthRequestStateForTests } from "@/lib/api/client";
-import { getCurrentUser, login, logout, register } from "@/lib/api/auth";
+import { getCurrentUser, googleLoginUrl, login, logout, register } from "@/lib/api/auth";
 import { getPreferences, updatePreferences } from "@/lib/api/preferences";
 import { ApiError } from "@/lib/api/client";
 import { useEffect } from "react";
@@ -45,16 +46,122 @@ describe("authentication UI", () => {
   it.each(["login", "register"] as const)("localizes %s form chrome while preserving entered fields and auth identity", async (mode) => {
     window.localStorage.clear();
     vi.mocked(getCurrentUser).mockRejectedValue(new ApiError("AUTHENTICATION_REQUIRED", "Sign in", 401));
-    renderWithLocale(<AuthProvider><AuthForm mode={mode} /></AuthProvider>);
+    renderWithLocale(<AuthProvider><AuthLayout><AuthForm mode={mode} /></AuthLayout></AuthProvider>);
     const email = await screen.findByLabelText("Email"); const password = screen.getByLabelText("Password");
     expect(screen.getByText("BandPilot account")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Make room for progress." })).toBeInTheDocument();
     fireEvent.change(email, { target: { value: "learner@example.com" } }); fireEvent.change(password, { target: { value: "draft-password" } });
     fireEvent.click(screen.getByText("Switch to Vietnamese"));
     expect(screen.getByText("Tài khoản BandPilot")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Dành chỗ cho tiến bộ." })).toBeInTheDocument();
+    expect(screen.getByText("Theo dõi tiến độ")).toBeInTheDocument();
     expect(screen.getByLabelText("Email")).toBe(email); expect(screen.getByLabelText("Mật khẩu")).toBe(password);
     expect(email).toHaveValue("learner@example.com"); expect(password).toHaveValue("draft-password");
     expect(screen.getByRole("heading", { name: mode === "login" ? "Chào mừng trở lại" : "Tạo tài khoản của bạn" })).toBeInTheDocument();
     expect(getCurrentUser).toHaveBeenCalledOnce(); expect(login).not.toHaveBeenCalled(); expect(register).not.toHaveBeenCalled();
+    expect(navigation.documentReplace).not.toHaveBeenCalled();
+  });
+
+  it.each(["login", "register"] as const)("keeps %s fields semantic and empty, with real OAuth and no unsupported actions", async mode => {
+    vi.mocked(getCurrentUser).mockRejectedValue(new ApiError("AUTHENTICATION_REQUIRED", "Sign in", 401));
+    const { container } = render(<AuthProvider><AuthLayout><AuthForm mode={mode} /></AuthLayout></AuthProvider>);
+    const email = await screen.findByLabelText("Email");
+    expect(email).toHaveAttribute("type", "email");
+    expect(email).toHaveAttribute("autocomplete", "email");
+    expect(email).toBeRequired();
+    expect(screen.getByLabelText("Password")).toHaveAttribute("autocomplete", mode === "login" ? "current-password" : "new-password");
+    expect(screen.getByRole("link", { name: "Continue with Google" })).toHaveAttribute("href", googleLoginUrl);
+    expect(screen.getByRole("link", { name: mode === "login" ? "Create an account" : "Login" })).toHaveAttribute("href", mode === "login" ? "/register" : "/login");
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+    expect(screen.queryByText(/remember me|forgot password/i)).not.toBeInTheDocument();
+    expect(container.querySelectorAll("form")).toHaveLength(1);
+    const inputs = [...container.querySelectorAll("input")];
+    expect(inputs).toHaveLength(mode === "login" ? 2 : 4);
+    expect(new Set(inputs.map(input => input.name)).size).toBe(inputs.length);
+    for (const input of inputs) expect(input).toHaveValue("");
+    const card = screen.getByRole("region", { name: mode === "login" ? "Welcome back" : "Create your account" });
+    expect(card.querySelector(".app-logo-primary")).toBeInTheDocument();
+    const illustration = container.querySelector('[aria-hidden="true"]:has([data-skill="reading"])');
+    expect(illustration).toBeInTheDocument();
+    expect(illustration?.querySelectorAll("input, button, a, [tabindex]")).toHaveLength(0);
+    expect(screen.queryByRole("img")).not.toBeInTheDocument();
+  });
+
+  it.each(["login", "register"] as const)("toggles %s passwords independently without submitting or losing their values", async mode => {
+    vi.mocked(getCurrentUser).mockRejectedValue(new ApiError("AUTHENTICATION_REQUIRED", "Sign in", 401));
+    render(<AuthProvider><AuthForm mode={mode} /></AuthProvider>);
+    await screen.findByLabelText("Password");
+    const fields = mode === "register" ? ["Password", "Confirm password"] : ["Password"];
+    for (const label of fields) {
+      const input = screen.getByLabelText(label);
+      fireEvent.change(input, { target: { value: "fictional-test-password" } });
+      const toggle = screen.getByRole("button", { name: `Show ${label}` });
+      expect(toggle).toHaveAttribute("type", "button");
+      expect(toggle).toHaveAttribute("aria-controls", input.id);
+      toggle.focus();
+      expect(toggle).toHaveFocus();
+      fireEvent.click(toggle);
+      expect(input).toHaveAttribute("type", "text");
+      expect(screen.getByRole("button", { name: `Hide ${label}` })).toHaveFocus();
+      expect(input).toHaveValue("fictional-test-password");
+      if (label === "Password" && mode === "register") expect(screen.getByLabelText("Confirm password")).toHaveAttribute("type", "password");
+      fireEvent.click(screen.getByRole("button", { name: `Hide ${label}` }));
+      expect(input).toHaveAttribute("type", "password");
+      expect(input).toHaveValue("fictional-test-password");
+    }
+    expect(login).not.toHaveBeenCalled();
+    expect(register).not.toHaveBeenCalled();
+  });
+
+  it("keeps native registration requirements and associates mismatch errors with both password fields", async () => {
+    vi.mocked(getCurrentUser).mockRejectedValue(new ApiError("AUTHENTICATION_REQUIRED", "Sign in", 401));
+    render(<AuthProvider><AuthForm mode="register" /></AuthProvider>);
+    const name = await screen.findByLabelText("Name");
+    expect(name).toHaveAttribute("minlength", "1");
+    expect(name).toHaveAttribute("maxlength", "160");
+    expect(name).toHaveAttribute("autocomplete", "name");
+    const password = screen.getByLabelText("Password");
+    const confirm = screen.getByLabelText("Confirm password");
+    for (const input of [password, confirm]) {
+      expect(input).toBeRequired();
+      expect(input).toHaveAttribute("minlength", "8");
+      expect(input).toHaveAttribute("autocomplete", "new-password");
+    }
+    expect(password).toHaveAccessibleDescription("Use at least 8 characters.");
+    fireEvent.change(password, { target: { value: "fictional-password" } });
+    fireEvent.change(confirm, { target: { value: "different-password" } });
+    fireEvent.submit(screen.getByRole("form", { name: "BandPilot account" }));
+    const error = await screen.findByRole("alert");
+    expect(error).toHaveFocus();
+    for (const input of [password, confirm]) {
+      expect(input).toHaveAttribute("aria-invalid", "true");
+      expect(input.getAttribute("aria-describedby")).toContain(error.id);
+    }
+    expect(register).not.toHaveBeenCalled();
+  });
+
+  it.each(["login", "register"] as const)("guards repeated %s submissions and preserves a retryable error/loading state", async mode => {
+    vi.mocked(getCurrentUser).mockRejectedValue(new ApiError("AUTHENTICATION_REQUIRED", "Sign in", 401));
+    let reject!: (error: unknown) => void;
+    const request = mode === "login" ? login : register;
+    vi.mocked(request).mockReturnValueOnce(new Promise((_resolve, fail) => { reject = fail; }));
+    render(<AuthProvider><AuthForm mode={mode} /></AuthProvider>);
+    await screen.findByLabelText("Password");
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "fictional-password" } });
+    if (mode === "register") fireEvent.change(screen.getByLabelText("Confirm password"), { target: { value: "fictional-password" } });
+    const form = screen.getByRole("form", { name: "BandPilot account" });
+    fireEvent.submit(form);
+    fireEvent.submit(form);
+    expect(request).toHaveBeenCalledOnce();
+    expect(form).toHaveAttribute("aria-busy", "true");
+    expect(screen.getByRole("button", { name: "Please wait…" })).toBeDisabled();
+    await act(async () => reject(new ApiError("AUTHENTICATION_FAILED", "Please check your details.", 401)));
+    const error = screen.getByRole("alert");
+    expect(error).toHaveTextContent("Please check your details.");
+    expect(error).toHaveFocus();
+    expect(form).toHaveAttribute("aria-busy", "false");
+    expect(screen.getByRole("button", { name: mode === "login" ? "Sign in" : "Create account" })).toBeEnabled();
+    expect(screen.getByLabelText("Password")).toHaveValue("fictional-password");
     expect(navigation.documentReplace).not.toHaveBeenCalled();
   });
   beforeEach(() => {
@@ -371,6 +478,26 @@ describe("authentication UI", () => {
       display_name: "Student",
       password: "safe-password",
     }));
+  });
+
+  it("confirms registration before navigating to the safe destination", async () => {
+    navigation.search = "next=%2Fpractice%3Fmodule%3DREADING";
+    vi.mocked(getCurrentUser)
+      .mockRejectedValueOnce(new ApiError("AUTHENTICATION_REQUIRED", "Sign in", 401))
+      .mockResolvedValueOnce(baseUser);
+    vi.mocked(register).mockResolvedValue({ user: baseUser, access_expires_at: new Date().toISOString() });
+    render(<AuthProvider><AuthForm mode="register" /></AuthProvider>);
+    await screen.findByLabelText("Name");
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Student" } });
+    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "student@example.com" } });
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "fictional-password" } });
+    fireEvent.change(screen.getByLabelText("Confirm password"), { target: { value: "fictional-password" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+    await waitFor(() => expect(navigation.documentReplace).toHaveBeenCalledWith("/practice?module=READING"));
+    expect(register).toHaveBeenCalledOnce();
+    expect(getCurrentUser).toHaveBeenCalledTimes(2);
+    expect(navigation.documentReplace).toHaveBeenCalledOnce();
+    expect(navigation.push).not.toHaveBeenCalled();
   });
 });
 

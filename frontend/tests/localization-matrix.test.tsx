@@ -7,6 +7,7 @@ import { LocaleProvider, useLocale } from "@/lib/i18n/locale-provider";
 import { usePersonalization } from "@/features/personalization/personalization-provider";
 import { AuthProvider } from "@/features/auth/auth-provider";
 import { AuthForm } from "@/features/auth/auth-form";
+import { AuthLayout } from "@/features/auth/auth-layout";
 import { SkillPractice } from "@/features/practice/skill-practice";
 import { AttemptHistoryList } from "@/features/history/attempt-history-list";
 import { ReadingReviewView } from "@/features/reading/reading-review";
@@ -80,6 +81,9 @@ afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
 const rows = [
   { role: "guest", locale: "en", theme: "light", feature: "auth", path: "/login" },
+  { role: "guest", locale: "vi", theme: "dark", feature: "auth", path: "/login" },
+  { role: "guest", locale: "en", theme: "dark", feature: "auth", path: "/register" },
+  { role: "guest", locale: "vi", theme: "light", feature: "auth", path: "/register" },
   { role: "USER", locale: "vi", theme: "dark", feature: "practice", path: "/practice" },
   { role: "USER", locale: "en", theme: "dark", feature: "history", path: "/history" },
   { role: "USER", locale: "en", theme: "light", feature: "review", path: "/review/attempt" },
@@ -94,7 +98,7 @@ it.each(rows)("role locale theme route matrix preserves chrome and feature ident
   else vi.mocked(authApi.getCurrentUser).mockResolvedValue({ ...user, role: row.role });
   const reading = exam("READING", true);
   const review: Awaited<ReturnType<typeof examApi.getReadingReview>> = { review: { attempt: { ...reading.attempt, status: "SUBMITTED", raw_score: 1, max_score: 1 }, test_title: reading.test_title, answers: [] }, passages: draft.modules[0].passages, highlights: [] };
-  const feature = row.feature === "auth" ? <AuthForm mode="login" /> : row.feature === "practice" ? <SkillPractice versions={[practiceVersion]} /> : row.feature === "history" ? <AttemptHistoryList initialHistory={{ items: [], groups: [], sessions: [], total: 0 }} /> : row.feature === "review" ? <ReadingReviewView data={review} /> : row.feature === "builder" ? await VersionEditorPage({ params: Promise.resolve({ testId: id(4), versionId: id(3) }), searchParams: Promise.resolve({ workspace: "reading" }) }) : row.feature === "transfer" ? <TransferPortal tests={[{ id: id(4), title: "Raw transfer test", latestVersion: 1, states: ["DRAFT"], skills: ["READING"], archived: false }]} /> : <DraftPreview version={draft} moduleType="READING" />;
+  const feature = row.feature === "auth" ? <AuthLayout><AuthForm mode={row.path === "/register" ? "register" : "login"} /></AuthLayout> : row.feature === "practice" ? <SkillPractice versions={[practiceVersion]} /> : row.feature === "history" ? <AttemptHistoryList initialHistory={{ items: [], groups: [], sessions: [], total: 0 }} /> : row.feature === "review" ? <ReadingReviewView data={review} /> : row.feature === "builder" ? await VersionEditorPage({ params: Promise.resolve({ testId: id(4), versionId: id(3) }), searchParams: Promise.resolve({ workspace: "reading" }) }) : row.feature === "transfer" ? <TransferPortal tests={[{ id: id(4), title: "Raw transfer test", latestVersion: 1, states: ["DRAFT"], skills: ["READING"], archived: false }]} /> : <DraftPreview version={draft} moduleType="READING" />;
   const view = await composition(feature);
   const nav = view.container.querySelector(".primary-nav")!;
   expect(within(nav as HTMLElement).getAllByRole("link").map((link) => link.getAttribute("href"))).toEqual(row.role === "guest" ? ["/"] : row.role === "USER" ? ["/", "/library", "/practice", "/history", "/analytics", "/classrooms"] : ["/", "/library", "/practice", "/history", "/analytics", "/admin", "/admin/tests", "/transfer", "/admin/moderation", "/admin/classrooms"]);
@@ -103,7 +107,10 @@ it.each(rows)("role locale theme route matrix preserves chrome and feature ident
   if (row.feature === "preview") { expect(view.container.querySelector(".app-footer")).toBeNull(); expect(view.container.querySelector(".exam-footer")).toBeInTheDocument(); }
   else expect(view.container.querySelector(".app-footer")).toHaveTextContent("© 2026 BandPilot");
   let node: Element | null = null;
-  if (row.feature === "auth") { node = screen.getByLabelText("Email"); fireEvent.change(node, { target: { value: "raw@email.test" } }); }
+  if (row.feature === "auth") {
+    expect(screen.getByRole("heading", { name: row.locale === "vi" ? "Dành chỗ cho tiến bộ." : "Make room for progress." })).toBeInTheDocument();
+    node = screen.getByLabelText("Email"); fireEvent.change(node, { target: { value: "raw@email.test" } });
+  }
   if (row.feature === "practice") { fireEvent.click(screen.getByRole("button", { name: "Nghe" })); node = screen.getByRole("searchbox"); fireEvent.change(node, { target: { value: "Section 2" } }); }
   if (row.feature === "history") { fireEvent.click(screen.getByRole("tab", { name: "Focused practice" })); node = screen.getByRole("tab", { selected: true }); }
   if (row.feature === "builder") node = view.container.querySelector('.builder-local-nav [aria-current="page"]');
@@ -112,7 +119,11 @@ it.each(rows)("role locale theme route matrix preserves chrome and feature ident
   const before = requests(); const featureHtml = view.container.querySelector("main.app-content");
   await act(async () => changeLocale(row.locale === "en" ? "vi" : "en"));
   expect(requests()).toEqual(before); expect(authApi.getCurrentUser).toHaveBeenCalledTimes(1); expect(view.container.querySelector("main.app-content")).toBe(featureHtml); expect(document.documentElement.dataset.theme).toBe(row.theme); expect(view.container.contains(node)).toBe(node !== null);
-  if (row.feature === "auth") expect(node).toHaveValue("raw@email.test");
+  if (row.feature === "auth") {
+    expect(node).toHaveValue("raw@email.test");
+    expect(screen.getByRole("heading", { name: row.locale === "en" ? "Dành chỗ cho tiến bộ." : "Make room for progress." })).toBeInTheDocument();
+    expect(view.container.querySelectorAll("form")).toHaveLength(1);
+  }
   if (row.feature === "practice") { expect(node).toHaveValue("Section 2"); expect(screen.getByRole("button", { name: "Listening" })).toHaveAttribute("aria-pressed", "true"); }
   if (row.feature === "history") expect(node).toHaveAttribute("aria-selected", "true");
   if (row.feature === "builder") expect(node).toHaveAttribute("aria-current", "page");
