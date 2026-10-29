@@ -15,7 +15,7 @@ import { MoonIcon, SettingsIcon, SunIcon } from "./icons";
 import { VietnamClock } from "./vietnam-clock";
 
 const navigation = [
-  { message: "shell.overview", href: "/" },
+  { message: "shell.home", href: "/" },
   { message: "shell.library", href: "/library" },
   { message: "shell.practice", href: "/practice" },
   { message: "shell.history", href: "/history" },
@@ -45,9 +45,10 @@ function CatalogNavigationLink({ href, children, ...props }: { href: string; chi
 }
 
 function PrimaryNavigation({ pathname, id, onNavigate }: { pathname: string; id: string; onNavigate(): void }) {
-  const { user } = useAuth();
+  const { user, loading, sessionError } = useAuth();
   const { t } = useTranslation();
-  const visibleNavigation = user ? [...navigation, ...(user.role === "ADMIN" ? adminNavigation : user.role === "TEACHER" ? teacherNavigation : [{ message: "shell.classrooms" as const, href: "/classrooms" }])] : [navigation[0]];
+  if (!user || loading || sessionError) return null;
+  const visibleNavigation = [...navigation, ...(user.role === "ADMIN" ? adminNavigation : user.role === "TEACHER" ? teacherNavigation : [{ message: "shell.classrooms" as const, href: "/classrooms" }])];
   return (
     <nav id={id} aria-label={t("shell.primary")} className="primary-nav" onClick={(event) => { if ((event.target as HTMLElement).closest("a")) onNavigate(); }}>
       <ul className="primary-nav-list">
@@ -100,11 +101,13 @@ function HeaderActions({ loggingOut, onLogout, onPersonalization, settingsButton
 
 function HeaderBar({ pathname, children }: { pathname: string; children: ReactNode }) {
   const { t } = useTranslation();
+  const { user, loading, sessionError } = useAuth();
+  const hasNavigation = Boolean(user && !loading && !sessionError);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const navigationId = useId();
   const [navigationState, setNavigationState] = useState({ pathname, open: false });
   if (navigationState.pathname !== pathname) setNavigationState({ pathname, open: false });
-  const navigationOpen = navigationState.pathname === pathname && navigationState.open;
+  const navigationOpen = hasNavigation && navigationState.pathname === pathname && navigationState.open;
   const closeNavigation = useCallback(() => setNavigationState(current => current.open ? { ...current, open: false } : current), []);
 
   useEffect(() => {
@@ -119,12 +122,12 @@ function HeaderBar({ pathname, children }: { pathname: string; children: ReactNo
     return () => document.removeEventListener("keydown", handleEscape);
   }, [navigationOpen, navigationId, closeNavigation]);
 
-  return <header className="app-header" data-navigation-open={navigationOpen}>
+  return <header className="app-header" data-navigation-open={navigationOpen} data-has-navigation={hasNavigation}>
     <div className="app-header-inner">
       <Link href="/" className="brand" aria-label={t("shell.brandOverview")}><span className="brand-mark" aria-hidden="true"><AppLogo variant="primary" /></span><strong>BandPilot</strong></Link>
       <PrimaryNavigation pathname={pathname} id={navigationId} onNavigate={closeNavigation} />
       {children}
-      <button ref={menuButtonRef} type="button" className="navigation-toggle icon-button" aria-label={t("shell.menu")} aria-expanded={navigationOpen} aria-controls={navigationId} onClick={() => setNavigationState({ pathname, open: !navigationOpen })}><svg aria-hidden="true" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><path d={navigationOpen ? "m6 6 12 12M6 18 18 6" : "M4 6h16M4 12h16M4 18h16"} /></svg></button>
+      {hasNavigation ? <button ref={menuButtonRef} type="button" className="navigation-toggle icon-button" aria-label={t("shell.menu")} aria-expanded={navigationOpen} aria-controls={navigationId} onClick={() => setNavigationState({ pathname, open: !navigationOpen })}><svg aria-hidden="true" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><path d={navigationOpen ? "m6 6 12 12M6 18 18 6" : "M4 6h16M4 12h16M4 18h16"} /></svg></button> : null}
     </div>
   </header>;
 }

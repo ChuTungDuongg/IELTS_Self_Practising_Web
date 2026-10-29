@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as THREE from "three";
 import { createGravityScene } from "@/components/home/gravity/scene";
+import * as physics from "@/components/home/gravity/physics";
 
 const gpu = vi.hoisted(() => ({ render: vi.fn(), dispose: vi.fn(), context: vi.fn(), lists: vi.fn(), resize: vi.fn() }));
 vi.mock("three", async importOriginal => {
@@ -31,6 +32,20 @@ function frame(now: number) {
 }
 
 describe("Three.js scene ownership (mock GPU)", () => {
+  it("queues a footer scatter until the next visible frame without waking a suspended renderer", () => {
+    const tick = vi.spyOn(physics, "tick");
+    const element = host(), ready = vi.fn();
+    const scene = createGravityScene(element, true, ready, vi.fn());
+    scene.setActive(true); frame(16);
+    scene.setActive(false);
+    scene.scatter();
+    expect(frames.size).toBe(0);
+    expect(gpu.render).toHaveBeenCalledOnce();
+    scene.setActive(true); frame(5000);
+    expect(tick).toHaveBeenLastCalledWith(expect.anything(), expect.any(Number), expect.objectContaining({ active: true, down: true }));
+    expect(ready).toHaveBeenCalledOnce();
+    scene.dispose();
+  });
   it("reports real readiness after rendering and releases every owned resource once", () => {
     const geometryDisposal = vi.spyOn(THREE.BufferGeometry.prototype, "dispose");
     const materialDisposal = vi.spyOn(THREE.Material.prototype, "dispose");

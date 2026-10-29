@@ -54,11 +54,13 @@
   .guest-language-control button:hover { color: var(--ink); background: var(--surface-hover); }
   .guest-language-control button[aria-pressed="true"] { color: var(--action-ink); background: var(--action-bg); }
   .guest-theme-control { flex: none; color: var(--ink); }
+  .app-header[data-has-navigation="false"] .app-header-inner { grid-template-areas: "brand actions"; grid-template-columns: minmax(0, 1fr) auto; padding-block: 14px; }
   &[data-theme="dark"] .app-shell-home .header-actions .btn-primary { color: #101a31; background: #a5baff; }
   @media (max-width: 760px) {
     .app-header-inner:has(.guest-home-preferences) { grid-template-areas: "brand menu" "actions actions" "nav nav"; grid-template-columns: minmax(0, 1fr) auto; }
     .header-actions:has(.guest-home-preferences) { justify-self: stretch; justify-content: flex-end; flex-wrap: wrap; }
     .guest-language-control button { min-width: 44px; min-height: 44px; }
+    .app-header[data-has-navigation="false"] .app-header-inner { grid-template-areas: "brand" "actions"; grid-template-columns: minmax(0, 1fr); }
   }
 
   /* Authentication and account management: actual existing form behavior. */

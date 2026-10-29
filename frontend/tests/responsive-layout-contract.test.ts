@@ -112,6 +112,21 @@ describe("responsive layout contracts", () => {
     expect(styles(button, 390).display).toBe("inline-flex");
   });
 
+  it.each([390, 820, 1440])("does not reserve a guest navigation row and keeps footer controls in flow at %spx", width => {
+    fixture('<header class="app-header" data-has-navigation="false"><div class="app-header-inner"></div></header><footer class="app-footer gravity-footer"><div class="gravity-footer-controls"><div class="gravity-motion-controls"><div class="gravity-motion-buttons"><button class="gravity-control">Pause</button></div></div></div><div class="app-footer-inner"><div class="footer-contacts"><ul class="footer-social-links"><li><a href="https://zalo.me/0367365703"><svg></svg></a></li></ul></div></div></footer>');
+    expect(styles(document.querySelector(".app-header-inner")!, width)["grid-template-areas"]).not.toContain("nav");
+    const controls = document.querySelector(".gravity-motion-controls")!;
+    expect(styles(controls, width).position).not.toBe("absolute");
+    expect(styles(controls, width).display).toBe("grid");
+    expect(styles(document.querySelector(".gravity-motion-buttons")!, width)["flex-wrap"]).toBe("wrap");
+    expect(styles(document.querySelector(".gravity-control")!, width)["min-height"]).toBe("44px");
+    expect(styles(document.querySelector(".footer-social-links a")!, width)).toMatchObject({ width: "44px", height: "44px" });
+    expect(styles(document.querySelector(".gravity-footer-controls")!, width)["max-width"]).toBe("100%");
+    expect(styles(document.querySelector(".footer-contacts")!, width)["--contact-ink"]).toBe("#e6edff");
+    document.documentElement.dataset.theme = "dark";
+    expect(styles(document.querySelector(".footer-contacts")!, width)["--contact-ink"]).toBe("#e6edff");
+  });
+
   it("keeps tablet filters in one column inside their narrow sidebar", () => {
     fixture('<div class="practice-browser"><nav class="practice-filter-panel"></nav></div>');
     expect(styles(document.querySelector("nav")!, 800)["grid-template-columns"]).toBe("minmax(0, 1fr)");

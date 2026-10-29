@@ -229,14 +229,14 @@ describe("authentication UI", () => {
     expect(screen.getByRole("link", { name: "Transfer" })).toBeInTheDocument();
   });
 
-  it("disables speculative prefetch for every protected shell link while preserving Overview", async () => {
+  it("disables speculative prefetch for every protected shell link while preserving Home", async () => {
     vi.mocked(getCurrentUser).mockResolvedValue({ ...baseUser, role: "ADMIN" });
     render(<AuthProvider><AppShell currentYear={2026}><p>Content</p></AppShell></AuthProvider>);
     await screen.findByText("Student");
     for (const href of ["/library", "/history", "/analytics", "/admin", "/admin/tests", "/transfer", "/profile"]) {
       expect(document.querySelector(`a[href="${href}"]`)).toHaveAttribute("data-prefetch", "disabled");
     }
-    expect(screen.getByRole("link", { name: "Overview" })).toHaveAttribute("data-prefetch", "automatic");
+    expect(screen.getByRole("link", { name: "Home" })).toHaveAttribute("data-prefetch", "automatic");
   });
 
   it("does not flash the login form while the initial session check is pending", () => {

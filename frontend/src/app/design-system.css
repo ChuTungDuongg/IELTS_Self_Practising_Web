@@ -118,6 +118,15 @@
   .app-footer-inner { max-width: 1504px; margin-inline: auto; padding: 24px 32px; gap: 24px; align-items: flex-start; }
   .app-footer strong { color: var(--ink); font-size: 16px; font-weight: 600; }
   .app-footer p, .app-footer span { max-width: 65ch; color: var(--muted); font-size: 12px; line-height: 1.6; }
+  .footer-contacts { --contact-ink: var(--ink-soft); --contact-line: var(--line); --contact-hover: var(--surface-hover); --contact-focus: var(--action-bg); display: grid; justify-items: start; gap: 8px; min-width: 0; }
+  .app-footer .footer-contact-title { color: var(--contact-ink); font-size: 13px; font-weight: 500; }
+  .footer-social-links { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; list-style: none; }
+  .footer-social-links a { display: grid; place-items: center; width: 44px; height: 44px; border: 1px solid var(--contact-line); border-radius: 10px; color: var(--contact-ink); background: transparent; transition: background-color var(--motion-fast), border-color var(--motion-fast); }
+  .footer-social-links a:hover { border-color: var(--contact-ink); background: var(--contact-hover); }
+  .footer-social-links svg { display: block; width: 24px; height: 24px; }
+  .footer-social-links svg[data-brand="Zalo"] { width: 30px; }
+  .footer-phone a { display: inline-flex; align-items: center; min-height: 44px; color: var(--contact-ink); font-variant-numeric: tabular-nums; text-decoration: underline; text-underline-offset: 4px; user-select: text; }
+  .footer-contacts a:focus-visible { outline: 3px solid var(--contact-focus); outline-offset: 3px; }
 
   /* Shared type, actions and surfaces: semantic roles beat per-page decoration. */
   .page-heading { gap: 16px; align-items: flex-end; margin-bottom: 28px; }

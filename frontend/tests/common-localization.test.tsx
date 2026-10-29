@@ -60,7 +60,7 @@ describe("common localization", () => {
     expect(within(dialog).getByRole("button", { name: "Hủy" })).toBe(cancel);
     expect(cancel).toHaveFocus();
     expect(screen.getByText("Người dùng")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Tổng quan BandPilot" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Trang chủ BandPilot" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Bỏ qua điều hướng" })).toHaveAttribute("href", "#main-content");
     expect(screen.getByRole("main")).toHaveAttribute("id", "main-content");
     expect(screen.getByText("Luyện tập và biên soạn đề")).toBeInTheDocument();

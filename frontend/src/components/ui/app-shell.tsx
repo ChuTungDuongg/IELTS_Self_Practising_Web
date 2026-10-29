@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { GlobalHeader } from "./global-header";
 import { AppFooter } from "./app-footer";
 import { useTranslation } from "@/lib/i18n/locale-provider";
+import { GravityMotionProvider } from "@/components/home/gravity/gravity-motion-provider";
 
 function isBuilderPreview(pathname: string): boolean {
   return /^\/(admin|teacher)\/tests\/[^/]+\/versions\/[^/]+\/preview\/?$/.test(pathname);
@@ -33,10 +34,11 @@ export function AppShell({ children, currentYear }: { children: ReactNode; curre
   if (pathname.startsWith("/attempt/")) {
     return <div className="exam-shell">{children}</div>;
   }
-  return <div className={`app-shell${pathname === "/" ? " app-shell-home" : ""}`}>
+  const shell = <div className={`app-shell${pathname === "/" ? " app-shell-home" : ""}`}>
     <a className="sr-only focus:not-sr-only" href="#main-content">{t("shell.skipNavigation")}</a>
     <GlobalHeader pathname={pathname} />
     <main id="main-content" className={`app-content app-content-${contentWidth(pathname)}${pathname === "/" ? " app-content-home" : ""}`}>{children}</main>
     {!isBuilderPreview(pathname) ? <AppFooter year={currentYear} home={pathname === "/"} /> : null}
   </div>;
+  return pathname === "/" ? <GravityMotionProvider>{shell}</GravityMotionProvider> : shell;
 }

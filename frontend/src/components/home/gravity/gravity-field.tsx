@@ -6,6 +6,7 @@ import { backgroundStage, modes } from "./physics";
 import { loadGravityScene } from "./load-scene";
 import { crossedStorySnap, storyPosition } from "./story-progress";
 import type { GravityScene } from "./scene";
+import { useGravityMotion } from "./gravity-motion-provider";
 
 const fallbackSpheres = Array.from({ length: 20 }, (_, i) => ({
   left: `${12 + (i * 37 % 76)}%`, top: `${10 + (i * 23 % 55)}%`,
@@ -15,6 +16,10 @@ const fallbackSpheres = Array.from({ length: 20 }, (_, i) => ({
 /** Progressive enhancement only: SSR content and the static field need no WebGL. */
 export function GravityField() {
   const { t } = useTranslation();
+  const motion = useGravityMotion();
+  const state = motion?.state ?? "static";
+  const paused = motion?.paused ?? false;
+  const connect = motion?.connect, setState = motion?.setState, setPaused = motion?.setPaused;
   const root = useRef<HTMLDivElement>(null);
   const controller = useRef<GravityScene | null>(null);
   const pausedRef = useRef(false);
@@ -22,13 +27,12 @@ export function GravityField() {
   const syncActivityRef = useRef<() => void>(() => undefined);
   const initializeRef = useRef<() => void>(() => undefined);
   const navigateRef = useRef<((index: number) => void) | null>(null);
-  const [paused, setPaused] = useState(false);
   const [activeSection, setActiveSection] = useState(0);
-  const [state, setState] = useState<"static" | "ready" | "failed" | "paused">("static");
 
   useEffect(() => {
     const element = root.current, story = element?.closest<HTMLElement>(".gravity-story");
-    if (!element || !story || typeof ResizeObserver === "undefined") return;
+    if (!element || !story || !connect || !setState || !setPaused) return;
+    if (typeof ResizeObserver === "undefined") { setState("unavailable"); return; }
     const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ?? false;
     const dataConnection = (navigator as Navigator & { connection?: { saveData?: boolean } }).connection;
     const documentRoot = document.documentElement;
@@ -137,6 +141,15 @@ export function GravityField() {
       }
     };
     initializeRef.current = () => { void initialize(); };
+    const disconnectControls = connect({
+      togglePause() {
+        const next = !pausedRef.current; pausedRef.current = next; setPaused(next);
+        if (!controller.current && !next) { allowDataRef.current = true; initializeRef.current(); }
+        else syncActivityRef.current();
+      },
+      scatter() { if (!pausedRef.current) controller.current?.scatter(); },
+      retry() { pausedRef.current = false; setPaused(false); initializeRef.current(); },
+    });
     const intersection = typeof IntersectionObserver === "undefined" ? null : new IntersectionObserver(([entry]) => { inView = entry.isIntersecting; syncActivity(); });
     intersection?.observe(story);
     const resizeObserver = new ResizeObserver(onScroll); resizeObserver.observe(story); if (header) resizeObserver.observe(header);
@@ -162,6 +175,7 @@ export function GravityField() {
     story.addEventListener("pointercancel", leave); story.addEventListener("pointerleave", leave);
     progress(); void initialize();
     return () => {
+      disconnectControls();
       aborted = true; generation++; clearTimeout(timeout); clearTimeout(snapTimer); clearTimeout(navigationTimer); cancelAnimationFrame(scrollFrame);
       intersection?.disconnect(); resizeObserver.disconnect();
       window.removeEventListener("scroll", onScroll); window.removeEventListener("resize", onScroll); window.removeEventListener("blur", leave);
@@ -175,13 +189,7 @@ export function GravityField() {
       initializeRef.current = () => undefined;
       navigateRef.current = null;
     };
-  }, []);
-
-  function togglePause() {
-    const next = !pausedRef.current; pausedRef.current = next; setPaused(next);
-    if (!controller.current && !next) { allowDataRef.current = true; initializeRef.current(); }
-    else syncActivityRef.current();
-  }
+  }, [connect, setPaused, setState]);
 
   function navigateSection(index: number) {
     if (navigateRef.current) { navigateRef.current(index); return; }
@@ -201,9 +209,6 @@ export function GravityField() {
       </div>
     </div>
     <div className="gravity-tools">
-      <div className="gravity-motion-controls" role="group" aria-label={t("gravity.motionControls")}>
-        {(state === "ready" || state === "paused") ? <><button type="button" className="gravity-control" aria-pressed={paused} onClick={togglePause}>{t(paused ? "gravity.play" : "gravity.pause")}</button><button type="button" className="gravity-control" disabled={paused} onClick={() => controller.current?.scatter()}>{t("gravity.scatter")}</button><span className="gravity-interaction-hint">{t("gravity.interact")}</span></> : state === "failed" ? <button type="button" className="gravity-control" onClick={() => initializeRef.current()}>{t("gravity.play")}</button> : <span className="gravity-scene-note">{t("gravity.still")}</span>}
-      </div>
       <nav className="gravity-phase-nav" aria-label={t("gravity.scroll")}>
         {(["gravity-title", "gravity-skills-title", "gravity-shape-title", "gravity-release-title"] as const).map((id, index) => <a href={`#${id}`} key={id} aria-current={activeSection === index ? "step" : undefined} onClick={event => { event.preventDefault(); navigateSection(index); }} aria-label={`${index + 1}. ${t((["gravity.heroOne", "gravity.skillsTitle", "gravity.reviewTitle", "gravity.mockOne"] as const)[index])}`}>{String(index + 1).padStart(2, "0")}</a>)}
       </nav>

@@ -86,7 +86,7 @@ export function createGravityScene(container: HTMLElement, lowPower: boolean, on
   scene.add(floor);
 
   let disposed = false, active = false, progress = 0, targetProgress = 0, frame = 0, previousTime = 0, accumulator = 0, ready = false;
-  let pointerX = 99, pointerY = 99, pointerActive = false, pointerDown = false, burstUntil = 0;
+  let pointerX = 99, pointerY = 99, pointerActive = false, pointerDown = false, burstUntil = 0, scatterPending = false;
   let lastX = 0, lastY = 0, hadPointer = false;
   const pointer: FieldPointer = { x: 0, y: 0, z: 0, active: false, down: false, speed: 0 };
   const axis = new THREE.Vector3();
@@ -115,6 +115,9 @@ export function createGravityScene(container: HTMLElement, lowPower: boolean, on
     accumulator += elapsed;
     previousTime = now;
     progress += (targetProgress - progress) * (1 - Math.exp(-elapsed * 9));
+    // Footer actions may arrive while offscreen. Start the burst on the next
+    // active frame, without waking the renderer or spending it while suspended.
+    if (scatterPending) { burstUntil = now + 240; scatterPending = false; }
     const burst = now < burstUntil;
     pointer.x = burst ? 0 : pointerX * field.width / 2;
     pointer.y = burst ? 0 : pointerY * field.height / 2;
@@ -153,7 +156,7 @@ export function createGravityScene(container: HTMLElement, lowPower: boolean, on
     },
     setProgress(value) { targetProgress = value; if (active && !frame) { previousTime = 0; frame = requestAnimationFrame(animate); } },
     setPointer(x, y, down, enabled) { pointerX = x; pointerY = y; pointerDown = down; pointerActive = enabled; },
-    scatter() { burstUntil = performance.now() + 240; },
+    scatter() { scatterPending = true; },
     dispose() {
       if (disposed) return;
       disposed = true; stop(); scene.environment = null; scene.clear(); releaseResources();

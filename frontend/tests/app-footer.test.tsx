@@ -34,7 +34,7 @@ describe("shared footer", () => {
     expect(markup).toContain("Pause scrolling text");
   });
 
-  it("shows real product information and the current language without extra links or controls", () => {
+  it("shows product information, current language and contact links without sphere controls on ordinary pages", () => {
     renderWithLocale(<AppFooter year={2026} />);
     const footer = screen.getByRole("contentinfo");
     expect(footer).toHaveTextContent("BandPilot");
@@ -48,12 +48,35 @@ describe("shared footer", () => {
     expect(footer).toHaveTextContent("Luyện tập và biên soạn đề");
     expect(footer).toHaveTextContent("Practice smarter. Reach your band.");
     expect(within(footer).getByText("Tiếng Việt")).toHaveAttribute("lang", "vi");
-    expect(footer.querySelector("a, button, select")).toBeNull();
+    expect(footer.querySelectorAll("a")).toHaveLength(4);
+    expect(footer.querySelector("button, select")).toBeNull();
+    expect(footer).toHaveTextContent("Kết nối với tôi");
   });
 
-  it("uses the server year consistently through English hydration and Vietnamese restoration", async () => {
+  it.each([false, true])("uses the supplied social destinations and recognizable local icons (home=%s)", home => {
+    renderWithLocale(<AppFooter year={2026} home={home} />);
+    const footer = within(screen.getByRole("contentinfo"));
+    const contacts = [
+      ["LinkedIn", "https://www.linkedin.com/in/duongchunguyen/"],
+      ["Facebook", "https://www.facebook.com/rendezvouss0344/"],
+      ["Zalo", "https://zalo.me/0367365703"],
+    ];
+    for (const [name, url] of contacts) {
+      const link = footer.getByRole("link", { name });
+      expect(link).toHaveAttribute("href", url);
+      expect(link).toHaveAttribute("target", "_blank");
+      expect(link).toHaveAttribute("rel", "noopener noreferrer");
+      expect(link.tabIndex).toBe(0);
+      expect(link.querySelector("svg")).toHaveAttribute("data-brand", name);
+      expect(link.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
+    }
+    expect(footer.getByRole("link", { name: "Zalo" }).querySelector("text")).toHaveTextContent("Zalo");
+    expect(footer.getByRole("link", { name: "0367365703" })).toHaveAttribute("href", "tel:+84367365703");
+  });
+
+  it.each([false, true])("uses the server year consistently through English hydration and Vietnamese restoration (home=%s)", async home => {
     window.localStorage.setItem("ielts-locale", "vi");
-    const tree = <LocaleProvider><AppFooter year={2026} /></LocaleProvider>;
+    const tree = <LocaleProvider><AppFooter year={2026} home={home} /></LocaleProvider>;
     const markup = renderToString(tree);
     expect(markup).toContain("© 2026 BandPilot");
     expect(markup).toContain("Practice &amp; authoring");

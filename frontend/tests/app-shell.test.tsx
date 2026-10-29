@@ -20,7 +20,7 @@ describe("horizontal application shell", () => {
   });
   it("links the compact BandPilot lockup to home", () => {
     render(<AppShell currentYear={2026}>Content</AppShell>);
-    const brand = screen.getByRole("link", { name: "BandPilot overview" });
+    const brand = screen.getByRole("link", { name: "BandPilot home" });
     expect(brand).toHaveAttribute("href", "/");
     expect(brand).toHaveTextContent("BandPilot");
     expect(brand.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
@@ -51,6 +51,10 @@ describe("horizontal application shell", () => {
     const footer = screen.getByRole("contentinfo");
     expect(footer).toHaveClass("app-footer");
     expect(footer).toHaveTextContent("© 2026 BandPilot");
+    expect(within(footer).getByRole("link", { name: "LinkedIn" })).toHaveAttribute("href", "https://www.linkedin.com/in/duongchunguyen/");
+    expect(within(footer).getByRole("link", { name: "Facebook" })).toHaveAttribute("href", "https://www.facebook.com/rendezvouss0344/");
+    expect(within(footer).getByRole("link", { name: "Zalo" })).toHaveAttribute("href", "https://zalo.me/0367365703");
+    if (path !== "/") expect(within(footer).queryByRole("group", { name: "Sphere animation" })).not.toBeInTheDocument();
     expect(container.querySelector(".app-content")?.nextElementSibling).toBe(footer);
     expect(screen.getByRole("banner")).toBeInTheDocument();
   });
@@ -62,14 +66,15 @@ describe("horizontal application shell", () => {
     expect(container.querySelector(".app-footer")).toBeNull();
   });
 
-  it.each([null, "USER", "ADMIN"] as const)("guest user and admin navigation preserve routes (%s)", (role) => {
+  it.each(["USER", "TEACHER", "ADMIN"] as const)("authenticated navigation preserves routes (%s)", (role) => {
     state.role = role;
     const { container } = render(<AppShell currentYear={2026}><p>Feature content</p></AppShell>);
     const nav = screen.getByRole("navigation", { name: "Primary" });
     expect(screen.getAllByRole("navigation")).toHaveLength(1);
     const links = within(nav).getAllByRole("link");
-    expect(links.map((link) => link.getAttribute("href"))).toEqual(role === "ADMIN" ? routes : role === "USER" ? [...routes.slice(0, 5), "/classrooms"] : ["/"]);
-    if (role === "ADMIN") expect(links.map((link) => link.textContent)).toEqual(["Overview", "Test library", "Skill practice", "Attempt history", "Analytics", "Admin", "Builder", "Transfer", "Moderation", "Classrooms"]);
+    expect(links.map((link) => link.getAttribute("href"))).toEqual(role === "ADMIN" ? routes : role === "USER" ? [...routes.slice(0, 5), "/classrooms"] : [...routes.slice(0, 5), "/teacher/tests", "/teacher/classrooms"]);
+    expect(links[0]).toHaveAccessibleName("Home");
+    if (role === "ADMIN") expect(links.map((link) => link.textContent)).toEqual(["Home", "Test library", "Skill practice", "Attempt history", "Analytics", "Admin", "Builder", "Transfer", "Moderation", "Classrooms"]);
     for (const link of links) expect(link).toHaveAttribute("data-prefetch", link.getAttribute("href") === "/" ? "automatic" : "disabled");
     expect(links[0]).toHaveAttribute("aria-current", "page");
     expect(nav.closest("header")).toBe(screen.getByRole("banner"));
@@ -77,10 +82,33 @@ describe("horizontal application shell", () => {
     expect(screen.queryByText("Workspace")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Current section")).not.toBeInTheDocument();
     expect(screen.queryByText("Built for focus")).not.toBeInTheDocument();
-    if (!role) {
-      expect(screen.getByRole("link", { name: "Login" })).toHaveAttribute("href", "/login");
-      expect(screen.getByRole("link", { name: "Register" })).toHaveAttribute("href", "/register");
-    }
+  });
+
+  it.each(["/", "/login", "/register"])("removes guest primary navigation and its empty menu on %s", pathname => {
+    state.pathname = pathname;
+    renderWithLocale(<AppShell currentYear={2026}>Content</AppShell>);
+    const header = within(screen.getByRole("banner"));
+    expect(header.queryByRole("navigation")).not.toBeInTheDocument();
+    expect(header.queryByRole("button", { name: "Menu" })).not.toBeInTheDocument();
+    expect(header.queryByRole("link", { name: "Overview" })).not.toBeInTheDocument();
+    expect(header.getByRole("link", { name: "BandPilot home" })).toHaveAttribute("href", "/");
+    expect(header.getByRole("link", { name: "Login" })).toHaveAttribute("href", "/login");
+    expect(header.getByRole("link", { name: "Register" })).toHaveAttribute("href", "/register");
+    expect(header.getByLabelText(/Vietnam time: .*GMT\+7/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Switch to Vietnamese" }));
+    expect(header.queryByRole("link", { name: "Tổng quan" })).not.toBeInTheDocument();
+    expect(header.getByRole("link", { name: "Trang chủ BandPilot" })).toHaveAttribute("href", "/");
+  });
+
+  it.each(["USER", "TEACHER", "ADMIN"] as const)("localizes Home without replacing the link or active indicator for %s", role => {
+    state.role = role;
+    renderWithLocale(<AppShell currentYear={2026}>Content</AppShell>);
+    const link = within(screen.getByRole("banner")).getByRole("link", { name: "Home" });
+    expect(link).toHaveAttribute("href", "/");
+    expect(link).toHaveAttribute("aria-current", "page");
+    fireEvent.click(screen.getByRole("button", { name: "Switch to Vietnamese" }));
+    expect(screen.getByRole("link", { name: "Trang chủ" })).toBe(link);
+    expect(link).toHaveAttribute("aria-current", "page");
   });
 
   it("keeps teacher Classrooms beside Builder in the same primary navigation", () => {
@@ -105,7 +133,7 @@ describe("horizontal application shell", () => {
     const links = within(screen.getByRole("navigation", { name: "Primary" })).getAllByRole("link");
     fireEvent.click(screen.getByRole("button", { name: "Switch to Vietnamese" }));
     const translated = within(screen.getByRole("navigation", { name: "Chính" })).getAllByRole("link");
-    expect(translated.map((link) => link.textContent)).toEqual(["Tổng quan", "Thư viện đề", "Luyện từng kỹ năng", "Lịch sử luyện tập", "Thống kê", "Quản trị", "Biên soạn đề", "Chuyển đề", "Duyệt nội dung", "Lớp học"]);
+    expect(translated.map((link) => link.textContent)).toEqual(["Trang chủ", "Thư viện đề", "Luyện từng kỹ năng", "Lịch sử luyện tập", "Thống kê", "Quản trị", "Biên soạn đề", "Chuyển đề", "Duyệt nội dung", "Lớp học"]);
     expect(translated.map((link) => link.getAttribute("href"))).toEqual(routes);
     expect(screen.getAllByRole("navigation")).toHaveLength(1);
     expect(screen.getByRole("banner").querySelector(".app-header-inner")).toContainElement(translated[0]);
@@ -137,7 +165,8 @@ describe("horizontal application shell", () => {
   it.each(["loading", "error"])("keeps conservative auth actions during %s", (mode) => {
     state.loading = mode === "loading"; state.sessionError = mode === "error" ? "Session unavailable" : null;
     render(<AppShell currentYear={2026}>Content</AppShell>);
-    expect(within(screen.getByRole("navigation")).getAllByRole("link")).toHaveLength(1);
+    expect(within(screen.getByRole("banner")).queryByRole("navigation")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Menu" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Login" })).not.toBeInTheDocument();
     if (mode === "error") expect(screen.getByRole("alert")).toHaveTextContent("Session unavailable");
   });
