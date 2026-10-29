@@ -26,6 +26,38 @@ WritingService quản lý authored task; AttemptService lưu responses/human sco
 
 Input persisted → permission/cache check → durable run → worker/provider → validated criterion checkpoints → SSE/snapshot → advisory cards. Human final save đi API grading riêng, không do stream event tự ghi.
 
+### Sequence: tạo và quan sát một AI run
+
+Đối chiếu [create_run router](../../backend/app/api/v1/writing_ai.py), [WritingAIService.create](../../backend/app/services/writing_ai.py) và [worker](../../backend/app/services/writing_ai_worker.py). Diagram giản lược pipeline từng criterion; Task 1 và Task 2 vẫn có thứ tự riêng trong [AI handbook](../handbook/ai-architecture.md).
+
+```mermaid
+sequenceDiagram
+    participant UI as Writing review
+    participant API as Writing AI API
+    participant DB as PostgreSQL
+    participant W as Detached worker
+    participant P as Configured provider
+    UI->>API: POST AI run, force flag
+    API->>DB: Lock attempt; validate ownership, finalization and input
+    alt Reusable completed or active run, force=false
+        DB-->>API: Existing run identity
+        API-->>UI: cache_hit or existing_active; no new worker
+    else New run
+        API->>DB: Persist PENDING run and fingerprint; commit
+        API->>W: launch(run_id)
+        API-->>UI: run_id
+        W->>DB: Check PENDING and fingerprint; mark RUNNING
+        W->>P: Provider readiness and assessment outside DB transaction
+        P-->>W: Criterion outputs or provider failure
+        W->>DB: Short transactions for validated checkpoints and terminal state
+    end
+    UI->>API: GET snapshot or SSE events
+    API->>DB: Authorized persisted progress
+    API-->>UI: Advisory result; no human-score mutation
+```
+
+`force=true` bỏ nhánh reuse trong service; không có bảo đảm mọi request đều được deduplicate. Nếu process chết sau commit nhưng trước `launch`, row PENDING không tự trở thành công việc trong một broker: stale-run recovery đánh dấu gián đoạn, người dùng có thể yêu cầu chạy lại. Đóng SSE observer cũng không phải cancel worker. Các giới hạn này quan trọng khi thiết kế worker fleet sau này.
+
 Các đường dẫn sau dùng prefix `/api/v1`; DTO, dependency và response model ở router được dẫn trong bảng. [Source map](../handbook/source-map.md) liệt kê toàn bộ route cùng khai báo gốc.
 
 - `PUT /writing/tasks/{task_id}`

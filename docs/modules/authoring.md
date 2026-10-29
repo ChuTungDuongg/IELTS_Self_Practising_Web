@@ -26,6 +26,34 @@ TestService phối hợp clone/validation/lifecycle; Reading/Listening/Writing/S
 
 Luồng dữ liệu: structured editor → typed Builder API → mutable-version policy/revision → schema validation → PostgreSQL → Builder DTO; publish validation dùng graph thật, không tin cờ “valid” từ frontend.
 
+### Sequence: xuất bản đề do ADMIN biên soạn
+
+Đối chiếu `TestService.publish` trong [service](../../backend/app/services/tests.py). Đây là nhánh direct publish cho nội dung ADMIN; đề có `origin=TEACHER` phải qua [moderation service](../../backend/app/services/content_governance.py), kể cả khi người gọi là ADMIN.
+
+```mermaid
+sequenceDiagram
+    participant UI as Builder
+    participant API as Tests API
+    participant S as TestService / AccessPolicy
+    participant DB as PostgreSQL
+    UI->>API: POST publish version
+    API->>S: Authenticated actor + version ID
+    S->>DB: Begin transaction; lock actor, Test, TestVersion
+    S->>S: Check ADMIN, origin, pending moderation, archive, DRAFT
+    S->>S: Validate complete content graph
+    alt Invalid content or forbidden transition
+        S-->>API: AppError; transaction rolled back
+        API-->>UI: Error details allowed by API contract
+    else Valid ADMIN-authored draft
+        S->>DB: Persist normalized draft; archive previous published version
+        S->>DB: Set PUBLISHED and published_at; commit
+        S-->>API: Reload version
+        API-->>UI: Published version DTO
+    end
+```
+
+Nút validate trước đó chỉ giúp UX: publish luôn validate lại trong transaction. Việc archive bản published trước không sửa authored content của bản đó; historical attempts vẫn giữ cùng version ID.
+
 Các đường dẫn sau dùng prefix `/api/v1`; DTO, dependency và response model ở router được dẫn trong bảng. [Source map](../handbook/source-map.md) liệt kê toàn bộ route cùng khai báo gốc.
 
 - `POST /tests`
