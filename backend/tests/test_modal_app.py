@@ -57,6 +57,7 @@ def load_app(
     app = modal.App.return_value
     app.cls.return_value = lambda cls: cls
     app.function.return_value = lambda function: function
+    modal.concurrent.return_value = lambda cls: cls
     for decorator in ("enter", "exit", "web_server"):
         getattr(modal, decorator).return_value = lambda function: function
     llm = ModuleType("deploy.modal.writing_llm")
@@ -142,6 +143,17 @@ def test_explicit_web_only_does_not_include_gpu(monkeypatch):
     module, modal, _ = load_app(monkeypatch, enabled=False)
     assert not module.AI_ENABLED
     modal.App.return_value.include.assert_not_called()
+
+
+def test_web_uses_bounded_concurrency_with_one_cpu_container(monkeypatch):
+    _, modal, _ = load_app(monkeypatch, enabled=False)
+    modal.concurrent.assert_called_once_with(max_inputs=8)
+    options = modal.App.return_value.cls.call_args.kwargs
+    assert options["min_containers"] == 1
+    assert options["max_containers"] == 1
+    assert options["cpu"] == 2
+    assert options["memory"] == 4096
+    assert "gpu" not in options
 
 
 def test_asset_volume_default_and_explicit_isolation(monkeypatch):

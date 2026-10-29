@@ -1,0 +1,90 @@
+{
+  "baseline": {
+    "nginx_3000_request_s": {
+      "samples": 398,
+      "p50_ms": 3.0,
+      "p95_ms": 14.0,
+      "max_ms": 35.0
+    },
+    "nginx_3000_upstream_s": {
+      "samples": 398,
+      "p50_ms": 3.0,
+      "p95_ms": 14.0,
+      "max_ms": 36.0
+    },
+    "nginx_3000_connect_s": {
+      "samples": 398,
+      "p50_ms": 0.0,
+      "p95_ms": 1.0,
+      "max_ms": 1.0
+    },
+    "nginx_9001_request_s": {
+      "samples": 133,
+      "p50_ms": 4.0,
+      "p95_ms": 6.0,
+      "max_ms": 8.0
+    },
+    "nginx_9001_upstream_s": {
+      "samples": 133,
+      "p50_ms": 4.0,
+      "p95_ms": 6.0,
+      "max_ms": 7.0
+    },
+    "nginx_9001_connect_s": {
+      "samples": 133,
+      "p50_ms": 0.0,
+      "p95_ms": 1.0,
+      "max_ms": 2.0
+    },
+    "fastapi_asgi_total": {
+      "samples": 269,
+      "p50_ms": 2.87,
+      "p95_ms": 5.24,
+      "max_ms": 62.31
+    }
+  },
+  "after": {
+    "nginx_3000_request_s": {
+      "samples": 398,
+      "p50_ms": 3.0,
+      "p95_ms": 20.0,
+      "max_ms": 47.0
+    },
+    "nginx_3000_upstream_s": {
+      "samples": 398,
+      "p50_ms": 3.0,
+      "p95_ms": 20.0,
+      "max_ms": 47.0
+    },
+    "nginx_3000_connect_s": {
+      "samples": 398,
+      "p50_ms": 0.0,
+      "p95_ms": 1.0,
+      "max_ms": 1.0
+    },
+    "nginx_9001_request_s": {
+      "samples": 133,
+      "p50_ms": 4.0,
+      "p95_ms": 5.0,
+      "max_ms": 21.0
+    },
+    "nginx_9001_upstream_s": {
+      "samples": 133,
+      "p50_ms": 4.0,
+      "p95_ms": 5.0,
+      "max_ms": 21.0
+    },
+    "nginx_9001_connect_s": {
+      "samples": 133,
+      "p50_ms": 0.0,
+      "p95_ms": 1.0,
+      "max_ms": 2.0
+    },
+    "fastapi_asgi_total": {
+      "samples": 269,
+      "p50_ms": 2.4,
+      "p95_ms": 4.96,
+      "max_ms": 57.25
+    }
+  }
+}

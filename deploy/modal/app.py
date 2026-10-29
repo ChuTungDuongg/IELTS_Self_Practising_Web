@@ -238,6 +238,7 @@ def migrate_database():
     timeout=900,
     scaledown_window=300,
 )
+@modal.concurrent(max_inputs=8)
 class Web:
     @modal.enter()
     def start(self):

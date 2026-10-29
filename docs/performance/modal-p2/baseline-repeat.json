@@ -1,0 +1,462 @@
+{
+  "origin": "https://tungduong156glis--bandpilot-perf-p2-app-265b0d2e-web-web.us-east.modal.run",
+  "timestamp_utc": "2026-10-29T02:45:10.540251+00:00",
+  "warmup_per_endpoint": 2,
+  "warmup_errors": {
+    "/": 0,
+    "/api/v1/ready": 0,
+    "/icon.svg": 0,
+    "/_next/static/chunks/4013uxh3niqjj.css": 0
+  },
+  "static_asset_discovered": true,
+  "results": [
+    {
+      "path": "/",
+      "concurrency": 1,
+      "requests": 16,
+      "elapsed_s": 21.758,
+      "requests_per_s": 0.74,
+      "successful_requests_per_s": 0.74,
+      "latency_ms": {
+        "p50": 1298.99,
+        "p90": 1606.82,
+        "p95": 1634.89,
+        "max": 1634.89
+      },
+      "ttfb_ms": {
+        "p50": 1046.1,
+        "p95": 1295.26
+      },
+      "response_bytes": {
+        "min": 37681,
+        "max": 37681,
+        "mean": 37681
+      },
+      "errors": 0,
+      "statuses": {
+        "200": 16
+      },
+      "error_types": {}
+    },
+    {
+      "path": "/",
+      "concurrency": 4,
+      "requests": 16,
+      "elapsed_s": 11.168,
+      "requests_per_s": 1.43,
+      "successful_requests_per_s": 1.43,
+      "latency_ms": {
+        "p50": 2542.91,
+        "p90": 2835.82,
+        "p95": 3372.62,
+        "max": 3372.62
+      },
+      "ttfb_ms": {
+        "p50": 2202.2,
+        "p95": 3043.98
+      },
+      "response_bytes": {
+        "min": 37681,
+        "max": 37681,
+        "mean": 37681
+      },
+      "errors": 0,
+      "statuses": {
+        "200": 16
+      },
+      "error_types": {}
+    },
+    {
+      "path": "/",
+      "concurrency": 8,
+      "requests": 16,
+      "elapsed_s": 10.93,
+      "requests_per_s": 1.46,
+      "successful_requests_per_s": 1.46,
+      "latency_ms": {
+        "p50": 4872.66,
+        "p90": 5187.41,
+        "p95": 5913.29,
+        "max": 5913.29
+      },
+      "ttfb_ms": {
+        "p50": 4624.09,
+        "p95": 5374.35
+      },
+      "response_bytes": {
+        "min": 37681,
+        "max": 37681,
+        "mean": 37681
+      },
+      "errors": 0,
+      "statuses": {
+        "200": 16
+      },
+      "error_types": {}
+    },
+    {
+      "path": "/",
+      "concurrency": 16,
+      "requests": 16,
+      "elapsed_s": 11.01,
+      "requests_per_s": 1.45,
+      "successful_requests_per_s": 1.45,
+      "latency_ms": {
+        "p50": 5541.64,
+        "p90": 10097.2,
+        "p95": 10670.86,
+        "max": 10670.86
+      },
+      "ttfb_ms": {
+        "p50": 5286.65,
+        "p95": 10349.12
+      },
+      "response_bytes": {
+        "min": 37681,
+        "max": 37681,
+        "mean": 37681
+      },
+      "errors": 0,
+      "statuses": {
+        "200": 16
+      },
+      "error_types": {}
+    },
+    {
+      "path": "/api/v1/ready",
+      "concurrency": 1,
+      "requests": 16,
+      "elapsed_s": 18.38,
+      "requests_per_s": 0.87,
+      "successful_requests_per_s": 0.87,
+      "latency_ms": {
+        "p50": 1056.08,
+        "p90": 1274.78,
+        "p95": 1479.91,
+        "max": 1479.91
+      },
+      "ttfb_ms": {
+        "p50": 1054.86,
+        "p95": 1278.22
+      },
+      "response_bytes": {
+        "min": 62,
+        "max": 62,
+        "mean": 62
+      },
+      "errors": 0,
+      "statuses": {
+        "200": 16
+      },
+      "error_types": {}
+    },
+    {
+      "path": "/api/v1/ready",
+      "concurrency": 4,
+      "requests": 16,
+      "elapsed_s": 10.46,
+      "requests_per_s": 1.53,
+      "successful_requests_per_s": 1.53,
+      "latency_ms": {
+        "p50": 2438.81,
+        "p90": 2586.16,
+        "p95": 3018.96,
+        "max": 3018.96
+      },
+      "ttfb_ms": {
+        "p50": 2438.47,
+        "p95": 3018.36
+      },
+      "response_bytes": {
+        "min": 62,
+        "max": 62,
+        "mean": 62
+      },
+      "errors": 0,
+      "statuses": {
+        "200": 16
+      },
+      "error_types": {}
+    },
+    {
+      "path": "/api/v1/ready",
+      "concurrency": 8,
+      "requests": 16,
+      "elapsed_s": 10.507,
+      "requests_per_s": 1.52,
+      "successful_requests_per_s": 1.52,
+      "latency_ms": {
+        "p50": 4898.71,
+        "p90": 5102.93,
+        "p95": 5404.96,
+        "max": 5404.96
+      },
+      "ttfb_ms": {
+        "p50": 4898.21,
+        "p95": 5404.33
+      },
+      "response_bytes": {
+        "min": 62,
+        "max": 62,
+        "mean": 62
+      },
+      "errors": 0,
+      "statuses": {
+        "200": 16
+      },
+      "error_types": {}
+    },
+    {
+      "path": "/api/v1/ready",
+      "concurrency": 16,
+      "requests": 16,
+      "elapsed_s": 10.364,
+      "requests_per_s": 1.54,
+      "successful_requests_per_s": 1.54,
+      "latency_ms": {
+        "p50": 5142.76,
+        "p90": 9382.77,
+        "p95": 10218.82,
+        "max": 10218.82
+      },
+      "ttfb_ms": {
+        "p50": 5141.89,
+        "p95": 10218.39
+      },
+      "response_bytes": {
+        "min": 62,
+        "max": 62,
+        "mean": 62
+      },
+      "errors": 0,
+      "statuses": {
+        "200": 16
+      },
+      "error_types": {}
+    },
+    {
+      "path": "/icon.svg",
+      "concurrency": 1,
+      "requests": 16,
+      "elapsed_s": 21.045,
+      "requests_per_s": 0.76,
+      "successful_requests_per_s": 0.76,
+      "latency_ms": {
+        "p50": 1254.09,
+        "p90": 1475.05,
+        "p95": 1498.33,
+        "max": 1498.33
+      },
+      "ttfb_ms": {
+        "p50": 1054.92,
+        "p95": 1298.19
+      },
+      "response_bytes": {
+        "min": 1278,
+        "max": 1278,
+        "mean": 1278
+      },
+      "errors": 0,
+      "statuses": {
+        "200": 16
+      },
+      "error_types": {}
+    },
+    {
+      "path": "/icon.svg",
+      "concurrency": 4,
+      "requests": 16,
+      "elapsed_s": 10.649,
+      "requests_per_s": 1.5,
+      "successful_requests_per_s": 1.5,
+      "latency_ms": {
+        "p50": 2488.92,
+        "p90": 2577.01,
+        "p95": 3248.66,
+        "max": 3248.66
+      },
+      "ttfb_ms": {
+        "p50": 2287.88,
+        "p95": 3042.6
+      },
+      "response_bytes": {
+        "min": 1278,
+        "max": 1278,
+        "mean": 1278
+      },
+      "errors": 0,
+      "statuses": {
+        "200": 16
+      },
+      "error_types": {}
+    },
+    {
+      "path": "/icon.svg",
+      "concurrency": 8,
+      "requests": 16,
+      "elapsed_s": 10.649,
+      "requests_per_s": 1.5,
+      "successful_requests_per_s": 1.5,
+      "latency_ms": {
+        "p50": 4973.73,
+        "p90": 5037.12,
+        "p95": 5724.44,
+        "max": 5724.44
+      },
+      "ttfb_ms": {
+        "p50": 4772.85,
+        "p95": 5524.07
+      },
+      "response_bytes": {
+        "min": 1278,
+        "max": 1278,
+        "mean": 1278
+      },
+      "errors": 0,
+      "statuses": {
+        "200": 16
+      },
+      "error_types": {}
+    },
+    {
+      "path": "/icon.svg",
+      "concurrency": 16,
+      "requests": 16,
+      "elapsed_s": 10.732,
+      "requests_per_s": 1.49,
+      "successful_requests_per_s": 1.49,
+      "latency_ms": {
+        "p50": 5476.73,
+        "p90": 9785.7,
+        "p95": 10381.65,
+        "max": 10381.65
+      },
+      "ttfb_ms": {
+        "p50": 5275.72,
+        "p95": 10180.75
+      },
+      "response_bytes": {
+        "min": 1278,
+        "max": 1278,
+        "mean": 1278
+      },
+      "errors": 0,
+      "statuses": {
+        "200": 16
+      },
+      "error_types": {}
+    },
+    {
+      "path": "/_next/static/chunks/4013uxh3niqjj.css",
+      "concurrency": 1,
+      "requests": 16,
+      "elapsed_s": 25.409,
+      "requests_per_s": 0.63,
+      "successful_requests_per_s": 0.63,
+      "latency_ms": {
+        "p50": 1539.27,
+        "p90": 1886.45,
+        "p95": 1904.52,
+        "max": 1904.52
+      },
+      "ttfb_ms": {
+        "p50": 1038.04,
+        "p95": 1255.82
+      },
+      "response_bytes": {
+        "min": 42141,
+        "max": 42141,
+        "mean": 42141
+      },
+      "errors": 0,
+      "statuses": {
+        "200": 16
+      },
+      "error_types": {}
+    },
+    {
+      "path": "/_next/static/chunks/4013uxh3niqjj.css",
+      "concurrency": 4,
+      "requests": 16,
+      "elapsed_s": 10.988,
+      "requests_per_s": 1.46,
+      "successful_requests_per_s": 1.46,
+      "latency_ms": {
+        "p50": 2497.72,
+        "p90": 3049.76,
+        "p95": 3700.02,
+        "max": 3700.02
+      },
+      "ttfb_ms": {
+        "p50": 1994.04,
+        "p95": 3044.21
+      },
+      "response_bytes": {
+        "min": 42141,
+        "max": 42141,
+        "mean": 42141
+      },
+      "errors": 0,
+      "statuses": {
+        "200": 16
+      },
+      "error_types": {}
+    },
+    {
+      "path": "/_next/static/chunks/4013uxh3niqjj.css",
+      "concurrency": 8,
+      "requests": 16,
+      "elapsed_s": 10.823,
+      "requests_per_s": 1.48,
+      "successful_requests_per_s": 1.48,
+      "latency_ms": {
+        "p50": 4812.58,
+        "p90": 5548.92,
+        "p95": 6122.16,
+        "max": 6122.16
+      },
+      "ttfb_ms": {
+        "p50": 4310.38,
+        "p95": 5478.07
+      },
+      "response_bytes": {
+        "min": 42141,
+        "max": 42141,
+        "mean": 42141
+      },
+      "errors": 0,
+      "statuses": {
+        "200": 16
+      },
+      "error_types": {}
+    },
+    {
+      "path": "/_next/static/chunks/4013uxh3niqjj.css",
+      "concurrency": 16,
+      "requests": 16,
+      "elapsed_s": 11.231,
+      "requests_per_s": 1.42,
+      "successful_requests_per_s": 1.42,
+      "latency_ms": {
+        "p50": 5829.77,
+        "p90": 10059.31,
+        "p95": 10897.65,
+        "max": 10897.65
+      },
+      "ttfb_ms": {
+        "p50": 5333.34,
+        "p95": 10258.09
+      },
+      "response_bytes": {
+        "min": 42141,
+        "max": 42141,
+        "mean": 42141
+      },
+      "errors": 0,
+      "statuses": {
+        "200": 16
+      },
+      "error_types": {}
+    }
+  ]
+}
