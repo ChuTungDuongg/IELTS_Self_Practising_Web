@@ -54,7 +54,14 @@ describe("horizontal application shell", () => {
     expect(within(footer).getByRole("link", { name: "LinkedIn" })).toHaveAttribute("href", "https://www.linkedin.com/in/duongchunguyen/");
     expect(within(footer).getByRole("link", { name: "Facebook" })).toHaveAttribute("href", "https://www.facebook.com/rendezvouss0344/");
     expect(within(footer).getByRole("link", { name: "Zalo" })).toHaveAttribute("href", "https://zalo.me/0367365703");
-    if (path !== "/") expect(within(footer).queryByRole("group", { name: "Sphere animation" })).not.toBeInTheDocument();
+    if (path !== "/") {
+      expect(within(footer).queryByRole("group", { name: "Sphere animation" })).not.toBeInTheDocument();
+      expect(footer.querySelector(".gravity-wordmark, .gravity-footer-top, .gravity-footer-ticker, .footer-contacts-showcase")).toBeNull();
+      expect(footer.querySelector("strong")).toHaveTextContent("BandPilot");
+    } else {
+      expect(footer.querySelector(".gravity-footer-signature .gravity-wordmark")).toBeInTheDocument();
+      expect(footer.querySelector(".gravity-footer-side .gravity-motion-controls")).toBeInTheDocument();
+    }
     expect(container.querySelector(".app-content")?.nextElementSibling).toBe(footer);
     expect(screen.getByRole("banner")).toBeInTheDocument();
   });

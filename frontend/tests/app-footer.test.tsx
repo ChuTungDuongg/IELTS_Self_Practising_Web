@@ -34,6 +34,66 @@ describe("shared footer", () => {
     expect(markup).toContain("Pause scrolling text");
   });
 
+  it("groups the original wordmark and copy beside navigation and the sphere card without duplicate branding", () => {
+    renderWithLocale(<AppFooter year={2031} home />);
+    const footer = screen.getByRole("contentinfo");
+    const showcase = footer.querySelector(".gravity-footer-top")!;
+    const brand = showcase.querySelector(".gravity-footer-signature")!;
+    const side = showcase.querySelector(".gravity-footer-side")!;
+    const bottom = footer.querySelector(".gravity-footer-bottom")!;
+    const wordmark = brand.querySelector("p.gravity-wordmark");
+    expect(wordmark).toHaveTextContent("BandPilot");
+    expect(wordmark).toHaveAttribute("aria-hidden", "true");
+    expect(footer.querySelectorAll(".gravity-wordmark")).toHaveLength(1);
+    expect(footer.querySelector("strong")).toBeNull();
+    expect(within(brand as HTMLElement).getByRole("heading", { name: "Your next step starts here." })).toBeInTheDocument();
+    expect(within(brand as HTMLElement).getByText("Practice smarter. Reach your band.")).toHaveAttribute("lang", "en");
+    expect(footer.querySelectorAll(".gravity-footer-copy")).toHaveLength(1);
+    expect(footer.querySelector(".gravity-footer-atmosphere")).toHaveAttribute("aria-hidden", "true");
+    expect(side.querySelector(".gravity-motion-controls")).toBeInTheDocument();
+    expect(footer.querySelectorAll(".gravity-motion-controls")).toHaveLength(1);
+    expect(footer.querySelectorAll(".gravity-footer-ticker")).toHaveLength(1);
+    expect(footer.firstElementChild).toHaveClass("gravity-footer-ticker");
+    expect(footer.firstElementChild?.nextElementSibling).toBe(showcase);
+    expect(showcase.nextElementSibling).toBe(bottom);
+    expect(bottom.querySelectorAll(".footer-contacts")).toHaveLength(1);
+    expect(bottom).toHaveTextContent("© 2031 BandPilot");
+    expect(bottom.querySelector("strong")).toBeNull();
+    expect([...side.querySelectorAll(".gravity-footer-navigation a")].map(link => link.getAttribute("href"))).toEqual(["/practice", "/library", "/history", "/analytics"]);
+    for (const link of side.querySelectorAll<HTMLAnchorElement>(".gravity-footer-navigation a")) {
+      expect(link.tabIndex).toBe(0);
+      link.focus(); expect(link).toHaveFocus();
+    }
+    fireEvent.click(screen.getByRole("button", { name: "Switch to Vietnamese" }));
+    expect(within(brand as HTMLElement).getByRole("heading", { name: "Bước tiếp theo bắt đầu ở đây." })).toBeInTheDocument();
+    expect(brand).toHaveTextContent("Luyện tập và biên soạn đề");
+    expect(bottom).toHaveTextContent("Kết nối với tôi");
+    expect(bottom).toHaveTextContent("Tiếng Việt");
+    expect(footer.querySelectorAll(".gravity-wordmark")).toHaveLength(1);
+  });
+
+  it("preserves the signature wordmark and marquee CSS typography contracts", () => {
+    const css = postcss.parse(readFileSync(resolve("src/app/gravity-home.css"), "utf8"));
+    function declarations(selector: string) {
+      const result: Record<string, string> = {};
+      css.walkRules(rule => {
+        if (rule.selector !== selector) return;
+        rule.walkDecls(declaration => { result[declaration.prop] = declaration.value; });
+      });
+      return result;
+    }
+    expect(declarations(".gravity-footer .gravity-wordmark")).toMatchObject({
+      "font-family": "var(--font-display)", "font-size": "clamp(48px, 7.5vw, 112px)",
+      "font-weight": "600", "line-height": "1.15", "letter-spacing": "-.055em",
+    });
+    expect(declarations(".gravity-footer-ticker").padding).toBe("18px 0");
+    expect(declarations(".gravity-footer-ticker > div").animation).toBe("gravity-ticker var(--ticker-duration, 26s) linear infinite");
+    expect(declarations(".gravity-footer-ticker span")).toMatchObject({
+      "font-family": "var(--font-display)", "font-size": "clamp(18px, 1.8vw, 26px)",
+      "font-weight": "500", "line-height": "1.3", "letter-spacing": "-.02em", "white-space": "nowrap",
+    });
+  });
+
   it("shows product information, current language and contact links without sphere controls on ordinary pages", () => {
     renderWithLocale(<AppFooter year={2026} />);
     const footer = screen.getByRole("contentinfo");
@@ -50,6 +110,7 @@ describe("shared footer", () => {
     expect(within(footer).getByText("Tiếng Việt")).toHaveAttribute("lang", "vi");
     expect(footer.querySelectorAll("a")).toHaveLength(4);
     expect(footer.querySelector("button, select")).toBeNull();
+    expect(footer.querySelector(".gravity-footer-top, .gravity-wordmark, .gravity-footer-ticker, .footer-contacts-showcase")).toBeNull();
     expect(footer).toHaveTextContent("Kết nối với tôi");
   });
 
@@ -69,6 +130,8 @@ describe("shared footer", () => {
       expect(link.tabIndex).toBe(0);
       expect(link.querySelector("svg")).toHaveAttribute("data-brand", name);
       expect(link.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
+      if (home) expect(link.querySelector(".footer-social-name")).toHaveTextContent(name);
+      else expect(link.querySelector(".footer-social-name")).toBeNull();
     }
     expect(footer.getByRole("link", { name: "Zalo" }).querySelector("text")).toHaveTextContent("Zalo");
     expect(footer.getByRole("link", { name: "0367365703" })).toHaveAttribute("href", "tel:+84367365703");

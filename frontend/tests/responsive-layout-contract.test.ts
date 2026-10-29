@@ -94,12 +94,13 @@ describe("responsive layout contracts", () => {
     expect(styles(track, 390, true)["animation-play-state"]).toBe("paused");
   });
 
-  it("stacks the Gravity footer sections instead of inheriting the legacy flex row", () => {
-    fixture('<div class="gravity-story"></div><footer class="app-footer gravity-footer"><div class="gravity-footer-ticker"><div><span>More purposeful practice</span></div></div><div class="gravity-footer-top"><h2>Next step</h2><div><a href="/practice">Practice</a></div></div><p class="gravity-wordmark">BandPilot</p><div class="app-footer-inner"></div></footer>');
+  it("keeps the Gravity footer in normal flow and stacks its two-column showcase on phones", () => {
+    fixture('<div class="gravity-story"></div><footer class="app-footer gravity-footer"><div class="gravity-footer-ticker"><div><span>More purposeful practice</span></div></div><div class="gravity-footer-top"><div class="gravity-footer-signature"><h2>Next step</h2><p class="gravity-wordmark">BandPilot</p></div><div class="gravity-footer-side"><div class="gravity-footer-navigation"><a href="/practice">Practice</a></div></div></div><div class="app-footer-inner gravity-footer-bottom"></div></footer>');
     const footer = document.querySelector("footer")!;
     expect(styles(footer, 1280).display).toBe("block");
     expect(styles(footer, 390).display).toBe("block");
-    expect(styles(document.querySelector(".gravity-footer-top")!, 390)["flex-direction"]).toBe("column");
+    expect(styles(document.querySelector(".gravity-footer-top")!, 390)["grid-template-columns"]).toBe("minmax(0, 1fr)");
+    expect(styles(document.querySelector(".gravity-footer-top")!, 1280)["grid-template-columns"]).toContain("1.65fr");
     expect(styles(document.querySelector(".gravity-footer-ticker span")!, 1280)["max-width"]).toBe("none");
     expect(styles(document.querySelector(".gravity-footer-ticker span")!, 390)["white-space"]).toBe("nowrap");
     expect(styles(document.querySelector(".gravity-story")!, 1280).overflow).toBe("clip");
@@ -119,12 +120,30 @@ describe("responsive layout contracts", () => {
     expect(styles(controls, width).position).not.toBe("absolute");
     expect(styles(controls, width).display).toBe("grid");
     expect(styles(document.querySelector(".gravity-motion-buttons")!, width)["flex-wrap"]).toBe("wrap");
-    expect(styles(document.querySelector(".gravity-control")!, width)["min-height"]).toBe("44px");
-    expect(styles(document.querySelector(".footer-social-links a")!, width)).toMatchObject({ width: "44px", height: "44px" });
+    expect(Number.parseFloat(styles(document.querySelector(".gravity-control")!, width)["min-height"])).toBeGreaterThanOrEqual(44);
+    expect(styles(document.querySelector(".footer-social-links a")!, width)).toMatchObject({ width: "auto", "min-width": "44px", "min-height": "44px" });
     expect(styles(document.querySelector(".gravity-footer-controls")!, width)["max-width"]).toBe("100%");
     expect(styles(document.querySelector(".footer-contacts")!, width)["--contact-ink"]).toBe("#e6edff");
     document.documentElement.dataset.theme = "dark";
     expect(styles(document.querySelector(".footer-contacts")!, width)["--contact-ink"]).toBe("#e6edff");
+  });
+
+  it.each([320, 390, 767, 768, 1024, 1280, 2048])("retains signature type and contains the footer composition at %spx", width => {
+    fixture('<footer class="app-footer gravity-footer"><div class="gravity-footer-top"><div class="gravity-footer-signature"><div class="gravity-footer-atmosphere"></div><p class="gravity-wordmark">BandPilot</p></div><div class="gravity-footer-side"><div class="gravity-footer-navigation"></div><div class="gravity-motion-controls"><div class="gravity-motion-buttons"><button class="gravity-control"></button></div></div></div></div><div class="app-footer-inner gravity-footer-bottom"><div class="footer-contacts footer-contacts-showcase"></div><div class="footer-legal"></div></div></footer>');
+    expect(styles(document.querySelector(".gravity-wordmark")!, width)).toMatchObject({
+      "font-family": "var(--font-display)", "font-size": "clamp(48px, 7.5vw, 112px)",
+      "font-weight": "600", "line-height": "1.15", "letter-spacing": "-.055em",
+    });
+    expect(styles(document.querySelector(".gravity-footer-top")!, width)).toMatchObject({ display: "grid", "max-width": "1920px" });
+    expect(styles(document.querySelector(".gravity-footer-navigation")!, width)["grid-template-columns"]).toBe("repeat(2, minmax(0, 1fr))");
+    expect(styles(document.querySelector(".gravity-footer-atmosphere")!, width)["pointer-events"]).toBe("none");
+    expect(styles(document.querySelector(".gravity-footer-side")!, width)["min-width"]).toBe("0");
+    expect(styles(document.querySelector(".gravity-motion-buttons")!, width)["flex-wrap"]).toBe("wrap");
+    if (width < 768) {
+      expect(styles(document.querySelector(".gravity-footer-top")!, width)["grid-template-columns"]).toBe("minmax(0, 1fr)");
+      expect(styles(document.querySelector(".gravity-footer-bottom")!, width)["grid-template-columns"]).toBe("minmax(0, 1fr)");
+      expect(styles(document.querySelector(".footer-legal")!, width)["grid-column"]).toBe("1");
+    }
   });
 
   it("keeps tablet filters in one column inside their narrow sidebar", () => {

@@ -161,6 +161,11 @@ describe("homepage progressive scene", () => {
     await waitFor(() => expect(mock.create).toHaveBeenCalledOnce());
     const footer = screen.getByRole("contentinfo");
     const group = within(footer).getByRole("group", { name: "Sphere animation" });
+    expect(group.closest(".gravity-footer-side")).toBeInTheDocument();
+    for (const icon of group.querySelectorAll("svg")) {
+      expect(icon).toHaveAttribute("aria-hidden", "true");
+      expect(icon).toHaveAttribute("focusable", "false");
+    }
     expect(within(group).getAllByRole("button")).toHaveLength(2);
     expect(container.querySelectorAll(".gravity-motion-controls")).toHaveLength(1);
     expect(container.querySelector(".gravity-tools .gravity-motion-controls")).toBeNull();
