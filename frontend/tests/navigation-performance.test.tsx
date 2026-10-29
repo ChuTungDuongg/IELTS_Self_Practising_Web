@@ -26,7 +26,7 @@ it("keeps the header and notification requests stable across ordinary route chan
   expect(screen.getByRole("button", { name: "Menu" })).toHaveAttribute("aria-expanded", "true");
   view.rerender(<GlobalHeader pathname="/practice" />);
   await waitFor(() => expect(screen.getByRole("button", { name: "Menu" })).toHaveAttribute("aria-expanded", "false"));
-  expect(state.listNotifications).toHaveBeenCalledTimes(1);
+  expect(state.listNotifications).not.toHaveBeenCalled();
   expect(state.getUnreadNotificationCount).toHaveBeenCalledTimes(1);
   expect(screen.getByRole("banner")).toBe(header);
   view.rerender(<GlobalHeader pathname="/library" />);

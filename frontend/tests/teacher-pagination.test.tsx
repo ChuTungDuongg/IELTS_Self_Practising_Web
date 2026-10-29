@@ -74,7 +74,7 @@ it("notification Load more exposes older records without marking them read", asy
   await waitFor(() => expect(mock.markNotificationRead).toHaveBeenCalledWith("older"));
   expect(await screen.findByRole("button", { name: "Notifications (29 unread)" })).toBeInTheDocument();
   expect(screen.getByText("You were invited to Older class.")).toBeInTheDocument();
-  expect(mock.listNotifications).toHaveBeenCalledTimes(3);
+  expect(mock.listNotifications).toHaveBeenCalledTimes(2);
 });
 
 it("notification pagination advances by fetched rows when an overlapping item is deduplicated", async () => {

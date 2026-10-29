@@ -14,6 +14,24 @@ from pathlib import Path
 from deploy.runtime_config import validate_runtime
 
 
+def nginx_config_with_timings(config: str) -> str:
+    """Enable opt-in timings without logging URLs, headers, client addresses or request data."""
+    marker = "    access_log off;"
+    if config.count(marker) != 1:
+        raise RuntimeError("Unexpected nginx configuration; cannot enable timing logs")
+    timing = (
+        "    log_format timing 'id=$request_id status=$status "
+        "request_s=$request_time upstream=$upstream_addr "
+        "upstream_s=$upstream_response_time connect_s=$upstream_connect_time';\n"
+        "    access_log /dev/stdout timing;"
+    )
+    config = config.replace(marker, timing, 1)
+    host_header = "            proxy_set_header Host $host;"
+    if config.count(host_header) != 2:
+        raise RuntimeError("Unexpected nginx proxy configuration; cannot enable timing logs")
+    return config.replace(host_header, host_header + "\n            proxy_set_header X-Request-ID $request_id;")
+
+
 def configure_ai_environment(enabled: bool, model: str, endpoint: str | None) -> None:
     os.environ["AI_WRITING_ENABLED"] = str(enabled).lower()
     # Both graders share the Writing transport. The explicit Speaking provider/model
@@ -92,6 +110,7 @@ class WebRuntime:
         self.pgdata = self.database_root / "pgdata"
         self.local_postgres = not bool(os.environ.get("DATABASE_URL"))
         self.database_ca_path: Path | None = None
+        self.nginx_timing_config: Path | None = None
 
     def command(self, args: list[str], *, cwd: str | None = None, postgres: bool = False) -> str:
         operation = args[0]
@@ -178,9 +197,16 @@ class WebRuntime:
         )
         self.wait_http("http://127.0.0.1:9001/api/v1/ready")
         self.wait_http("http://127.0.0.1:3000/")
+        nginx_config = Path("/workspace/deploy/modal/nginx.conf")
+        if os.environ.get("IELTS_MODAL_WEB_TIMINGS", "").lower() in {"1", "true", "yes"}:
+            # The generated file changes access logging only; proxy behavior remains intact.
+            with tempfile.NamedTemporaryFile(mode="w", prefix="ielts-nginx-", suffix=".conf", delete=False) as file:
+                self.nginx_timing_config = Path(file.name)
+                file.write(nginx_config_with_timings(nginx_config.read_text(encoding="utf-8")))
+            nginx_config = self.nginx_timing_config
         self.processes.append(
             subprocess.Popen(
-                ["nginx", "-c", "/workspace/deploy/modal/nginx.conf", "-g", "daemon off;"],
+                ["nginx", "-c", str(nginx_config), "-g", "daemon off;"],
                 env={key: os.environ[key] for key in ("PATH", "LANG") if key in os.environ},
             )
         )
@@ -300,3 +326,6 @@ class WebRuntime:
             if os.environ.get("PGSSLROOTCERT") == str(self.database_ca_path):
                 os.environ.pop("PGSSLROOTCERT", None)
             self.database_ca_path = None
+        if self.nginx_timing_config is not None:
+            self.nginx_timing_config.unlink(missing_ok=True)
+            self.nginx_timing_config = None

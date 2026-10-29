@@ -1,4 +1,5 @@
 import asyncio
+import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -45,6 +46,10 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+if os.environ.get("IELTS_MODAL_WEB_TIMINGS", "").lower() in {"1", "true", "yes"}:
+    from app.core.request_timing import RequestTimingMiddleware
+
+    app.add_middleware(RequestTimingMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[settings.frontend_origin],

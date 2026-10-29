@@ -1,7 +1,7 @@
 "use client";
 
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { listNotifications, getUnreadNotificationCount, markNotificationRead, markAllNotificationsRead, type Notification } from "@/lib/api/notifications";
 import { useTranslation } from "@/lib/i18n/locale-provider";
@@ -54,37 +54,37 @@ export function NotificationCenter({ userId }: {
   const [nextOffset, setNextOffset] = useState(0);
   const [failed, setFailed] = useState(false);
   const [pending, setPending] = useState(false);
+  const requestVersion = useRef(0);
   const refresh = useCallback(async () => {
-    const [list, count] = await Promise.all([
-      listNotifications(undefined, { limit: GOVERNANCE_PAGE_SIZE, offset: 0 }),
-      getUnreadNotificationCount(),
-    ]);
-    setItems(list);
-    setHasMore(list.length === GOVERNANCE_PAGE_SIZE);
-    setNextOffset(list.length);
-    setUnread(count);
-    setFailed(false);
+    const version = ++requestVersion.current;
+    try {
+      const [list, count] = await Promise.all([
+        listNotifications(undefined, { limit: GOVERNANCE_PAGE_SIZE, offset: 0 }),
+        getUnreadNotificationCount(),
+      ]);
+      if (version !== requestVersion.current) return;
+      setItems(list);
+      setHasMore(list.length === GOVERNANCE_PAGE_SIZE);
+      setNextOffset(list.length);
+      setUnread(count);
+      setFailed(false);
+    } catch {
+      if (version === requestVersion.current) setFailed(true);
+    }
   }, []);
   useEffect(() => {
     if (!userId)
       return;
-    let disposed = false;
-    Promise.all([
-      listNotifications(undefined, { limit: GOVERNANCE_PAGE_SIZE, offset: 0 }),
-      getUnreadNotificationCount(),
-    ]).then(([list, count]) => {
-      if (!disposed) {
-        setItems(list);
-        setHasMore(list.length === GOVERNANCE_PAGE_SIZE);
-        setNextOffset(list.length);
-        setUnread(count);
-      }
+    const requests = requestVersion;
+    const version = ++requests.current;
+    getUnreadNotificationCount().then(count => {
+      if (version === requests.current) setUnread(count);
     }).catch(() => {
-      if (!disposed)
+      if (version === requests.current)
         setFailed(true);
     });
     return () => {
-      disposed = true;
+      requests.current++;
     };
   }, [userId]);
   if (!userId)
@@ -135,7 +135,7 @@ export function NotificationCenter({ userId }: {
     <button type="button" className="btn btn-ghost" aria-label={t("notifications.bell", { count: unread })} aria-expanded={open} onClick={() => {
       setOpen(value => !value);
       if (!open)
-        void refresh().catch(() => setFailed(true));
+        void refresh();
     }}>
       <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
         <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" />

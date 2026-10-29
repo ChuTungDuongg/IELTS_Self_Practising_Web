@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
 import { NotificationCenter } from "@/features/notifications/notification-center";
 import { renderWithLocale } from "./locale-test-utils";
@@ -29,11 +29,33 @@ beforeEach(() => {
 it("shows unread count and opening the list does not mark anything read", async () => {
   renderWithLocale(<NotificationCenter userId="user" />);
   const bell = await screen.findByRole("button", { name: "Notifications (1 unread)" });
+  expect(api.listNotifications).not.toHaveBeenCalled();
   fireEvent.click(bell);
   expect(await screen.findByText("You were invited to Evening class.")).toBeInTheDocument();
+  expect(api.listNotifications).toHaveBeenCalledOnce();
   expect(screen.getByRole("link", { name: "Open" })).toHaveAttribute("href", "/classrooms");
   expect(api.markNotificationRead).not.toHaveBeenCalled();
   expect(api.markAllNotificationsRead).not.toHaveBeenCalled();
+});
+it("does not let a delayed initial count overwrite the refreshed count", async () => {
+  let resolveInitial!: (count: number) => void;
+  api.getUnreadNotificationCount.mockReset()
+    .mockReturnValueOnce(new Promise<number>(resolve => { resolveInitial = resolve; }))
+    .mockResolvedValue(4);
+  renderWithLocale(<NotificationCenter userId="user" />);
+  fireEvent.click(screen.getByRole("button", { name: "Notifications (0 unread)" }));
+  await screen.findByRole("button", { name: "Notifications (4 unread)" });
+  await act(async () => { resolveInitial(1); });
+  expect(screen.getByRole("button", { name: "Notifications (4 unread)" })).toBeInTheDocument();
+});
+it("retries a failed initial count when the panel is opened", async () => {
+  api.getUnreadNotificationCount.mockReset().mockRejectedValueOnce(new Error("offline")).mockResolvedValue(2);
+  renderWithLocale(<NotificationCenter userId="user" />);
+  await waitFor(() => expect(api.getUnreadNotificationCount).toHaveBeenCalledOnce());
+  fireEvent.click(screen.getByRole("button", { name: "Notifications (0 unread)" }));
+  expect(await screen.findByRole("button", { name: "Notifications (2 unread)" })).toBeInTheDocument();
+  expect(await screen.findByText("You were invited to Evening class.")).toBeInTheDocument();
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
 });
 it("marks one and all only through explicit actions and refetches count", async () => {
   renderWithLocale(<NotificationCenter userId="user" />);

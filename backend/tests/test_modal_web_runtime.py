@@ -13,6 +13,38 @@ module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 
 
+def test_opt_in_nginx_timing_format_contains_no_private_request_data():
+    source = (Path(__file__).resolve().parents[2] / "deploy/modal/nginx.conf").read_text()
+    enabled = module.nginx_config_with_timings(source)
+    assert "access_log off;" in source
+    assert "access_log /dev/stdout timing;" in enabled
+    assert "request_s=$request_time" in enabled
+    assert "upstream_s=$upstream_response_time" in enabled
+    assert "connect_s=$upstream_connect_time" in enabled
+    assert all(
+        field not in enabled
+        for field in (
+            "$request_uri",
+            "$args",
+            "$http_cookie",
+            "$http_authorization",
+            "$remote_addr",
+        )
+    )
+    assert enabled.count("proxy_set_header X-Request-ID $request_id;") == 2
+    restored = enabled.replace(
+        enabled[enabled.index("    log_format timing") : enabled.index("    server {")],
+        "    access_log off;\n",
+    )
+    restored = restored.replace("\n            proxy_set_header X-Request-ID $request_id;", "")
+    assert restored == source
+
+
+def test_timing_config_refuses_unexpected_source():
+    with pytest.raises(RuntimeError):
+        module.nginx_config_with_timings("http {}")
+
+
 @pytest.fixture(autouse=True)
 def isolated_runtime_environment():
     # Runtime helpers write os.environ directly, outside monkeypatch's bookkeeping.
