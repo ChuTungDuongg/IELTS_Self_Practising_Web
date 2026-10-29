@@ -24,7 +24,7 @@ test("Reading Practice keeps answers through resizing, highlighting, refresh and
     await expect(runner).toHaveCount(1);
     await expect(runner).toHaveClass(/reading-exam/);
     await expect(runner).toHaveAttribute("data-presentation", "PRACTICE");
-    await expect(page.getByRole("link", { name: "BandPilot overview" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "BandPilot home", exact: true })).toBeVisible();
     const header = page.getByRole("banner");
     await expect(header.locator("time")).toHaveText(/\d{2}:\d{2}:\d{2}GMT\+7/);
     const headerBounds = (await header.boundingBox())!;

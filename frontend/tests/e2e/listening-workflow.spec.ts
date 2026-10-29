@@ -26,7 +26,7 @@ test("takes and reviews a fictional Listening practice attempt", async ({ page, 
 
     const player = page.getByLabel("Listening audio player");
     await expect(player).toBeVisible();
-    await expect(page.getByRole("link", { name: "BandPilot overview" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "BandPilot home", exact: true })).toBeVisible();
     await expect(page.locator(".app-header time")).toHaveText(/\d{2}:\d{2}:\d{2}GMT\+7/);
     const viewport = page.viewportSize()!;
     const runnerBounds = (await page.locator(".listening-attempt").boundingBox())!;
