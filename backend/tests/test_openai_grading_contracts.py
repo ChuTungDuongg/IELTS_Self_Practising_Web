@@ -6,11 +6,13 @@ from uuid import uuid4
 
 import httpx
 import pytest
+import test_writing_ai as writing_cases
 from test_openai_integration import intercept, settings
-from test_writing_ai import writing  # noqa: F401 - shared fictional rollback fixture
 
 from app.providers.speaking_llm import create_provider as speaking_provider
 from app.providers.writing_llm import create_provider
+
+writing = writing_cases.writing
 
 
 def wire(monkeypatch, fake, actual):

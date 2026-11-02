@@ -30,6 +30,11 @@
     "documentation": "102 Markdown files, 1804 local links valid; 27 Mermaid blocks parsed",
     "frontend_typecheck": "PASS",
     "review": "No unresolved P1/P2; malformed/refusal usage preservation fixed and regression-tested",
-    "frontend_lint": "PASS"
+    "frontend_lint": "PASS",
+    "ci_initial": {
+      "run_id": 41494054578,
+      "result": "FAIL at Ruff F811 in last-added fixture import",
+      "resolution": "Use module-qualified fixture alias; canonical Ruff lint/format pass; 4 grading contract tests pass in 1.76s"
+    }
   }
 }

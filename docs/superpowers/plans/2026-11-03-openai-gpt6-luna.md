@@ -69,7 +69,7 @@ Files: `backend/.env.example`, `docs/ai-writing.md`, `docs/speaking-grading.md`,
 ### 6. Kiểm chứng và bàn giao
 
 - [x] Review full diff, check links/Mermaid/format/lint/typecheck và grading regressions/isolated PostgreSQL.
-- [ ] Fetch/reconcile origin/main, giữ local changes, commit và push main sau kiểm chứng.
+- [x] Fetch/reconcile origin/main, giữ local changes, commit và push main sau kiểm chứng.
 - [ ] Kiểm đúng SHA trên remote, CI và E2E; phân biệt mock/API thật/deployment thật.
 
 ## Kết quả trước bàn giao
@@ -79,3 +79,5 @@ Files: `backend/.env.example`, `docs/ai-writing.md`, `docs/speaking-grading.md`,
 - Ruff lint/format đạt; frontend typecheck/lint đạt. 102 tài liệu/1.804 local links hợp lệ; 27 Mermaid diagrams parse thành công.
 - Review độc lập phát hiện usage bị mất trên malformed/refusal content; đã sửa qua chu kỳ đỏ/xanh, giữ metadata allowlisted. Không còn P1/P2 chưa xử lý.
 - Không cần migration hoặc SDK mới. Rollback: chọn provider vLLM/cấu hình cũ và restart workers; không sửa/xóa historical results.
+
+- CI đầu bắt F811 ở fixture import của test cuối thêm sau lượt lint. Đã đổi sang tham chiếu fixture qua module, chạy lại đúng lệnh Ruff CI (lint/format đạt) và PostgreSQL grading contracts (4 pass, 1,76 s). Không sửa runtime hoặc gọi thêm paid API.
