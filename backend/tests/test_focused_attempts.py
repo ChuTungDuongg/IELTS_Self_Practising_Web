@@ -577,21 +577,29 @@ async def test_even_40_question_focused_reading_cannot_become_a_band(db_session)
     async with db_session.begin():
         db_session.add(test)
         await db_session.flush()
+        # Authorization refreshes may expire the content graph. Seed answers
+        # from scalar fixture values, independently of later ORM lazy loading.
+        answers = [
+            (question.id, f"answer {question.number}")
+            for question in version.modules[0].question_groups[0].questions[:20]
+        ]
     service = AttemptService(db_session)
     focused = await service.start(
         request(version, ModuleType.READING, version.modules[0].passages[0])
     )
     full = await service.start(request(version, ModuleType.READING))
+    # Exercise persisted content instead of relying on incidental identity-map state.
+    db_session.expire_all()
     async with db_session.begin():
         for attempt_id in [focused.attempt_id, full.attempt_id]:
             db_session.add_all(
                 AttemptAnswer(
                     attempt_id=attempt_id,
-                    question=question,
-                    value=f"answer {question.number}",
+                    question_id=question_id,
+                    value=value,
                     is_correct=True,
                 )
-                for question in version.modules[0].question_groups[0].questions[:20]
+                for question_id, value in answers
             )
     partial = await service.submit(focused.attempt_id)
     complete = await service.submit(full.attempt_id)
