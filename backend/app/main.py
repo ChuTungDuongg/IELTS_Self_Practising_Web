@@ -15,7 +15,7 @@ from app.services.speaking_transcript_worker import (
     SpeakingTranscriptWorker,
     stop_speaking_transcript_workers,
 )
-from app.services.writing_ai_worker import stop_writing_ai_workers
+from app.services.writing_ai_worker import WritingAIWorker, stop_writing_ai_workers
 from app.storage.factory import initialize_asset_storage
 
 settings = get_settings()
@@ -30,6 +30,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         await cleanup_private_media()
         await SpeakingTranscriptWorker(SessionFactory, settings).recover()
         await SpeakingAIWorker(SessionFactory, settings).recover()
+        WritingAIWorker(SessionFactory, settings).start()
         yield
     finally:
         try:

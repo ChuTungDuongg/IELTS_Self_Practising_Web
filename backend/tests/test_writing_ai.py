@@ -103,7 +103,8 @@ async def test_cancel_does_not_rewrite_terminal_run(db_session, writing, setting
     if completed:
         await runner.execute(created.run_id)
     else:
-        await runner._fail(created.run_id, "AI_PROVIDER_TIMEOUT", "Provider timeout", None)
+        token = await claim_run(db_session, settings, created.run_id)
+        await runner._fail(created.run_id, "AI_PROVIDER_TIMEOUT", "Provider timeout", None, token)
     before, events_before = await api.snapshot(created.run_id, 0)
     assert await api.cancel(created.run_id) == before
     _, events_after = await api.snapshot(created.run_id, 0)
@@ -130,21 +131,30 @@ async def test_cancel_preserves_partial_and_official_scores_blocks_late_worker_u
     api = service(db_session, settings)
     created = await api.create(attempt_id, task_id, force=False)
     runner = worker(db_session, settings)
+    token = await claim_run(db_session, settings, created.run_id)
     result = CriterionResult(
         score=6, feedback="Fictional feedback", strengths=[], improvements=[], evidence=[]
     )
     for trait in ("ta", "cc"):
         await runner._checkpoint(
-            created.run_id, "criterion.completed", EventPayload(criterion=trait, result=result)
+            created.run_id,
+            "criterion.completed",
+            EventPayload(criterion=trait, result=result),
+            token=token,
         )
-    await runner._checkpoint(created.run_id, "criterion.started", EventPayload(criterion="lr"))
+    await runner._checkpoint(
+        created.run_id, "criterion.started", EventPayload(criterion="lr"), token=token
+    )
     before = await api.get(created.run_id)
     stopped = await api.cancel(created.run_id)
     assert stopped.progress == before.progress and set(stopped.progress) == {"ta", "cc"}
     assert stopped.failures == {} and stopped.result is None
     with pytest.raises(RunStopped):
         await runner._checkpoint(
-            created.run_id, "criterion.completed", EventPayload(criterion="lr", result=result)
+            created.run_id,
+            "criterion.completed",
+            EventPayload(criterion="lr", result=result),
+            token=token,
         )
     # Must return before accessing the proposed result: cancellation acquired its lock first.
     await runner._complete(created.run_id, Mock(), Mock())
@@ -202,8 +212,7 @@ async def test_user_cancel_stops_provider_work_and_survives_asyncio_cleanup(
     created = await api.create(attempt_id, task_id, force=False)
     provider = WaitingProvider()
     runner = worker(db_session, settings, provider)
-    runner.launch(created.run_id)
-    job = _tasks[created.run_id]
+    job = asyncio.create_task(runner.execute(created.run_id))
     try:
         await asyncio.wait_for(provider.waiting.wait(), timeout=5)
         assert (await api.get(created.run_id)).status == WritingAIRunStatus.RUNNING
@@ -281,7 +290,6 @@ async def test_cancel_endpoint_authorization_commit_then_stop_and_sse_replay(
 async def test_cancel_interrupts_inflight_criteria_and_retains_completed_results(
     db_session, writing, settings
 ):
-    from app.services.writing_ai_worker import _tasks
 
     class PartialProvider(FakeProvider):
         def __init__(self):
@@ -324,8 +332,7 @@ async def test_cancel_interrupts_inflight_criteria_and_retains_completed_results
                 partial_ready.set()
 
     runner._checkpoint = record_checkpoint
-    runner.launch(created.run_id)
-    job = _tasks[created.run_id]
+    job = asyncio.create_task(runner.execute(created.run_id))
     try:
         await asyncio.wait_for(asyncio.gather(provider.waiting.wait(), partial_ready.wait()), 5)
         stopped = await api.cancel(created.run_id)
@@ -478,6 +485,19 @@ def worker(session, settings, provider=None):
         session.bind, expire_on_commit=False, join_transaction_mode="create_savepoint"
     )
     return WritingAIWorker(factory, settings, provider or FakeProvider())
+
+
+async def claim_run(session, settings, run_id):
+    from app.repositories.writing_ai import WritingAIRepository
+
+    async with session.begin():
+        run = await WritingAIRepository(session).claim(
+            run_id=run_id,
+            lease_seconds=settings.ai_writing_lease_seconds,
+            max_running=settings.ai_writing_max_running_runs,
+        )
+        assert run is not None
+        return run.lease_token
 
 
 @pytest.mark.integration
@@ -974,7 +994,7 @@ async def test_partial_checkpoint_visible_during_concurrent_work_and_heartbeat_i
         if event == "criterion.completed" and payload.criterion == "ta":
             before = await api.get(created.run_id)
             assert "ta" in before.progress and before.result is None
-            await original(created.run_id, "heartbeat", EventPayload())
+            await original(created.run_id, "heartbeat", EventPayload(), token=args[-1])
             after = await api.get(created.run_id)
             assert after.progress == before.progress and after.activity == before.activity
 
@@ -1319,7 +1339,9 @@ async def test_provider_failure_safe_retryable(db_session, writing, settings, co
 
 @pytest.mark.integration
 @pytest.mark.parametrize("status", [WritingAIRunStatus.PENDING, WritingAIRunStatus.RUNNING])
-async def test_stale_run_recovery_and_no_resurrection(db_session, writing, settings, status):
+async def test_periodic_recovery_fails_expired_running_but_never_pending(
+    db_session, writing, settings, status
+):
     attempt_id, _, task_id = writing
     api = service(db_session, settings)
     created = await api.create(attempt_id, task_id, force=False)
@@ -1327,8 +1349,14 @@ async def test_stale_run_recovery_and_no_resurrection(db_session, writing, setti
         run = await db_session.get(WritingAIGradingRun, created.run_id)
         run.status = status
         run.updated_at = datetime.now(UTC) - timedelta(seconds=100)
+    # Reads are observational; age alone cannot invalidate a durable queued job.
+    assert (await api.get(created.run_id)).status == status
+    await worker(db_session, settings).recover()
     result, events = await api.snapshot(created.run_id, 0)
-    assert result.status == WritingAIRunStatus.FAILED and result.error_code == "STALE_RUN"
+    if status == WritingAIRunStatus.PENDING:
+        assert result.status == status and events == []
+        return
+    assert result.status == WritingAIRunStatus.FAILED and result.error_code == "RUN_INTERRUPTED"
     assert [item.event_type for item in events] == ["run.failed"]
     provider = FakeProvider()
     await worker(db_session, settings, provider).execute(created.run_id)
@@ -1504,7 +1532,10 @@ async def test_protocol_adapter_rejects_invalid_score_after_one_repair(score, re
 async def test_worker_heartbeat_is_persisted(db_session, writing, settings):
     attempt_id, _, task_id = writing
     created = await service(db_session, settings).create(attempt_id, task_id, force=False)
-    await worker(db_session, settings)._checkpoint(created.run_id, "heartbeat", EventPayload())
+    token = await claim_run(db_session, settings, created.run_id)
+    await worker(db_session, settings)._checkpoint(
+        created.run_id, "heartbeat", EventPayload(), token=token
+    )
     async with db_session.begin():
         event = await db_session.scalar(
             select(WritingAIGradingEvent).where(WritingAIGradingEvent.run_id == created.run_id)

@@ -32,6 +32,8 @@ class WritingAIGradingRun(UUIDPrimaryKeyMixin, TimestampMixin, Base):
             "input_fingerprint",
             "status",
         ),
+        Index("ix_writing_ai_runs_dispatch", "status", "created_at", "id"),
+        Index("ix_writing_ai_runs_lease", "status", "lease_expires_at"),
         CheckConstraint("raw_mean >= 0 AND raw_mean <= 9", name="raw_mean_range"),
         CheckConstraint(
             "overall_band >= 0 AND overall_band <= 9 AND mod(overall_band * 2, 1) = 0",
@@ -59,6 +61,8 @@ class WritingAIGradingRun(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     error_message: Mapped[str | None] = mapped_column(String(300))
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    lease_token: Mapped[UUID | None] = mapped_column()
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class WritingAIGradingEvent(UUIDPrimaryKeyMixin, Base):

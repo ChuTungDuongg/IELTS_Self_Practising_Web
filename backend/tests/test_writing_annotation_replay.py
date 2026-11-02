@@ -18,6 +18,14 @@ from app.services.writing_ai import persist_activity
 lifecycle = lifecycle_tests.lifecycle
 
 
+async def claim_lifecycle(lifecycle):
+    async with lifecycle.sessions() as session, session.begin():
+        row = await lifecycle_tests.MemoryRepository(session).claim(
+            run_id=lifecycle.store.row.id, lease_seconds=60, max_running=4
+        )
+        return row.lease_token
+
+
 @pytest.mark.parametrize(
     ("event_type", "expected_phase"),
     [
@@ -42,7 +50,7 @@ def test_feedback_activity_snapshots_describe_generation_after_scoring(event_typ
 
 async def test_feedback_checkpoints_replay_and_final_snapshot_keep_the_same_annotation(lifecycle):
     row = lifecycle.store.row
-    row.status = WritingAIRunStatus.RUNNING
+    token = await claim_lifecycle(lifecycle)
     row.started_at = datetime.now(UTC)
     annotation = {
         "id": "stable-grammar-id",
@@ -77,6 +85,7 @@ async def test_feedback_checkpoints_replay_and_final_snapshot_keep_the_same_anno
         row.id,
         "criterion.feedback.started",
         EventPayload(criterion="gra", stage="feedback", result=accepted_band),
+        token=token,
     )
     active, _ = await lifecycle.api.snapshot(row.id, 0)
     assert active.activity.phase == "generating_feedback"
@@ -89,12 +98,14 @@ async def test_feedback_checkpoints_replay_and_final_snapshot_keep_the_same_anno
         EventPayload.model_validate(
             {"criterion": "gra", "stage": "feedback", "annotation": annotation}
         ),
+        token=token,
     )
     for event_type in ("criterion.feedback.completed", "criterion.completed"):
         await lifecycle.runner._checkpoint(
             row.id,
             event_type,
             EventPayload(criterion="gra", stage="feedback", result=final_criterion),
+            token=token,
         )
     final_result = AIWritingResult(
         criteria={
@@ -110,6 +121,7 @@ async def test_feedback_checkpoints_replay_and_final_snapshot_keep_the_same_anno
         row.id,
         final_result,
         SimpleNamespace(usage=[], diagnostics=[], latency_summary=lambda: {}),
+        token,
     )
     saved, events = await lifecycle.api.snapshot(row.id, 0)
     assert saved.result.criteria.gra.annotations[0].id == "stable-grammar-id"
@@ -146,7 +158,7 @@ async def test_feedback_checkpoints_replay_and_final_snapshot_keep_the_same_anno
 
 async def test_unavailable_feedback_checkpoint_keeps_accepted_score_when_run_later_fails(lifecycle):
     row = lifecycle.store.row
-    row.status = WritingAIRunStatus.RUNNING
+    token = await claim_lifecycle(lifecycle)
     unavailable = CriterionResult(
         score=6.5,
         feedback="Nhận xét chi tiết tạm thời chưa khả dụng.",
@@ -159,8 +171,11 @@ async def test_unavailable_feedback_checkpoint_keeps_accepted_score_when_run_lat
         row.id,
         "criterion.feedback.completed",
         EventPayload(criterion="gra", stage="feedback", result=unavailable),
+        token=token,
     )
-    await lifecycle.runner._fail(row.id, "AI_PROVIDER_TIMEOUT", "Chấm AI bị gián đoạn.", None)
+    await lifecycle.runner._fail(
+        row.id, "AI_PROVIDER_TIMEOUT", "Chấm AI bị gián đoạn.", None, token
+    )
     saved, events = await lifecycle.api.snapshot(row.id, 0)
     assert saved.status == WritingAIRunStatus.FAILED and saved.result is None
     assert saved.progress["gra"].score == 6.5
@@ -172,7 +187,7 @@ async def test_unavailable_feedback_checkpoint_keeps_accepted_score_when_run_lat
 
 async def test_snapshot_retains_both_pending_feedback_states_when_activity_moves(lifecycle):
     row = lifecycle.store.row
-    row.status = WritingAIRunStatus.RUNNING
+    token = await claim_lifecycle(lifecycle)
     accepted = CriterionResult(
         score=7,
         feedback="Đang chờ nhận xét.",
@@ -186,6 +201,7 @@ async def test_snapshot_retains_both_pending_feedback_states_when_activity_moves
             row.id,
             "criterion.feedback.started",
             EventPayload(criterion=trait, stage="feedback", result=accepted),
+            token=token,
         )
     snapshot, _ = await lifecycle.api.snapshot(row.id, 0)
     assert snapshot.activity.criterion == "lr"
@@ -199,7 +215,7 @@ async def test_interrupted_pending_feedback_persists_each_failure_without_losing
     lifecycle, interruption
 ):
     row = lifecycle.store.row
-    row.status = WritingAIRunStatus.RUNNING
+    token = await claim_lifecycle(lifecycle)
     complete = CriterionResult(
         score=7, feedback="Nhận xét đã sẵn sàng.", strengths=[], improvements=[], evidence=[]
     )
@@ -211,15 +227,19 @@ async def test_interrupted_pending_feedback_persists_each_failure_without_losing
             row.id,
             "criterion.feedback.started" if trait in {"gra", "lr"} else "criterion.completed",
             EventPayload(criterion=trait, stage="feedback", result=result),
+            token=token,
         )
     before = await lifecycle.api.get(row.id)
     if interruption == "worker_shutdown":
         scoring = MTSWritingScoringService(FakeProvider())
         for trait in ("gra", "lr"):
             scoring.states[trait].stage = "feedback"
-        await lifecycle.runner._fail(row.id, "RUN_INTERRUPTED", "Chấm AI bị gián đoạn.", scoring)
+        await lifecycle.runner._fail(
+            row.id, "RUN_INTERRUPTED", "Chấm AI bị gián đoạn.", scoring, token
+        )
     else:
-        row.updated_at = datetime.now(UTC) - timedelta(minutes=10)
+        row.lease_expires_at = datetime.now(UTC) - timedelta(minutes=10)
+        await lifecycle.runner.recover()
     restored, events = await lifecycle.api.snapshot(row.id, 0)
     assert restored.status == WritingAIRunStatus.FAILED
     assert restored.progress == before.progress

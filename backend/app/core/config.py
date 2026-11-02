@@ -12,7 +12,12 @@ from app.schemas.speaking_ai import AudioQualityConfig, PronunciationConfig
 class Settings(BaseSettings):
     app_name: str = "BandPilot API"
     api_v1_prefix: str = "/api/v1"
-    database_url: str = "postgresql+asyncpg://ielts:ielts@localhost:5433/ielts"
+    database_url: str = Field(
+        default="postgresql+asyncpg://ielts:ielts@localhost:5433/ielts", repr=False
+    )
+    database_pool_size: int = Field(default=5, ge=1)
+    database_max_overflow: int = Field(default=10, ge=0)
+    database_pool_timeout_seconds: float = Field(default=30, gt=0, allow_inf_nan=False)
     frontend_origin: str = "http://localhost:3000"
     storage_backend: Literal["local", "s3", "r2"] = "local"
     storage_root: Path = Path("../storage")
@@ -84,6 +89,12 @@ class Settings(BaseSettings):
     initial_admin_password: str | None = None
     initial_admin_name: str | None = None
     ai_writing_enabled: bool = False
+    ai_writing_worker_enabled: bool = True
+    ai_writing_worker_concurrency: int = Field(default=2, ge=1, le=32)
+    ai_writing_max_running_runs: int = Field(default=4, ge=1, le=1000)
+    ai_writing_max_pending_runs: int = Field(default=100, ge=1, le=100000)
+    ai_writing_worker_poll_seconds: float = Field(default=2, gt=0, le=60, allow_inf_nan=False)
+    ai_writing_lease_seconds: int = Field(default=60, ge=10, le=1800)
     ai_writing_provider: str = "vllm"
     ai_writing_vllm_base_url: str = ""
     ai_writing_vllm_api_key: str = Field(default="", repr=False)

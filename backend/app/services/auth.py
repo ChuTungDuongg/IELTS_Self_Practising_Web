@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 import secrets
 import urllib.parse
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from weakref import WeakValueDictionary
 
 import httpx
 from sqlalchemy import select, update
@@ -24,6 +26,34 @@ from app.core.security import (
 from app.models import OAuthAccount, RefreshSession, User
 from app.models.enums import OAuthProvider, UserRole
 from app.schemas.auth import RegisterRequest
+
+_password_gates: WeakValueDictionary[asyncio.AbstractEventLoop, asyncio.Semaphore] = (
+    WeakValueDictionary()
+)
+
+
+async def _password_work(function, *args):
+    # One event loop per API process. Bound submitted CPU work before it reaches
+    # the default executor's unbounded queue; idle loops/gates are not retained.
+    loop = asyncio.get_running_loop()
+    gate = _password_gates.get(loop)
+    if gate is None:
+        gate = asyncio.Semaphore(2)
+        _password_gates[loop] = gate
+    async with gate:
+        work = asyncio.create_task(asyncio.to_thread(function, *args))
+        try:
+            return await asyncio.shield(work)
+        except asyncio.CancelledError:
+            # A thread cannot be cancelled. Keep its slot until it actually exits,
+            # including when the request receives repeated cancellation signals.
+            settled = asyncio.gather(work, return_exceptions=True)
+            while not settled.done():
+                try:
+                    await asyncio.shield(settled)
+                except asyncio.CancelledError:
+                    pass
+            raise
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,7 +86,7 @@ class AuthService:
             user = User(
                 email=email,
                 display_name=data.display_name,
-                password_hash=hash_password(data.password),
+                password_hash=await _password_work(hash_password, data.password),
                 role=UserRole.USER,
                 is_active=True,
                 email_verified=False,
@@ -71,7 +101,9 @@ class AuthService:
             user = await self.session.scalar(
                 select(User).where(User.email == normalize_email(email))
             )
-            if user is None or not verify_password(password, user.password_hash):
+            if user is None or not await _password_work(
+                verify_password, password, user.password_hash
+            ):
                 raise AppError("INVALID_CREDENTIALS", "Email or password is incorrect.", 401)
             if not user.is_active:
                 raise AppError("ACCOUNT_INACTIVE", "This account is inactive.", 403)
@@ -137,7 +169,7 @@ class AuthService:
                     "This account does not have a local password to change.",
                     409,
                 )
-            if not verify_password(current_password, user.password_hash):
+            if not await _password_work(verify_password, current_password, user.password_hash):
                 raise AppError(
                     "CURRENT_PASSWORD_INVALID", "The current password is incorrect.", 400
                 )
@@ -147,7 +179,7 @@ class AuthService:
                     "Choose a password different from your current password.",
                     400,
                 )
-            user.password_hash = hash_password(new_password)
+            user.password_hash = await _password_work(hash_password, new_password)
             await self.session.execute(
                 update(RefreshSession)
                 .where(RefreshSession.user_id == user.id, RefreshSession.revoked_at.is_(None))

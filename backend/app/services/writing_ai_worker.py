@@ -1,9 +1,10 @@
 import asyncio
 import logging
 from contextlib import suppress
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import Settings
@@ -13,9 +14,9 @@ from app.domains.writing.visual_families import VisualFamily, visual_family
 from app.models.enums import WritingAIRunStatus
 from app.providers.chart_derendering import ChartDerenderingProvider
 from app.providers.chart_derendering.deplot import DePlotChartDerenderingProvider
-from app.providers.writing_llm import create_provider, provider_identity
+from app.providers.writing_llm import create_provider, is_configured, provider_identity
 from app.providers.writing_llm.base import LLMProvider, ProviderFailure
-from app.repositories.writing_ai import ACTIVE, WritingAIRepository
+from app.repositories.writing_ai import WritingAIRepository
 from app.schemas.writing_ai import (
     TRAITS,
     CriterionFailure,
@@ -30,6 +31,7 @@ from app.services.writing_ai import WritingAIService, fail_run, input_fingerprin
 from app.services.writing_execution import TraceFailure, WritingLatencyMetrics, durable_checkpoint
 
 _tasks: dict[UUID, asyncio.Task] = {}
+_dispatcher = None
 logger = logging.getLogger(__name__)
 
 
@@ -51,25 +53,95 @@ class WritingAIWorker:
         self.settings = settings
         self.provider = provider
         self.chart_derenderer = chart_derenderer
+        self.consumers: list[asyncio.Task] = []
+        self.active_jobs: set[asyncio.Task] = set()
+        self.scanner: asyncio.Task | None = None
+        self.wakeup = asyncio.Event()
 
     def launch(self, run_id: UUID) -> None:
-        if run_id in _tasks and not _tasks[run_id].done():
+        # The committed PENDING row is the queue. Missing this optimization is
+        # harmless: every enabled consumer scans periodically, across replicas.
+        if _dispatcher is not None:
+            _dispatcher.wakeup.set()
+
+    def start(self) -> None:
+        global _dispatcher
+        if (
+            not self.settings.ai_writing_worker_enabled
+            or not is_configured(self.settings)
+            or self.consumers
+        ):
             return
-        task = asyncio.create_task(self.execute(run_id), name=f"writing-ai-{run_id}")
-        _tasks[run_id] = task
+        if _dispatcher is not None:
+            raise RuntimeError("Writing dispatcher is already running in this process")
+        _dispatcher = self
+        self.consumers = [
+            asyncio.create_task(self._consume(), name=f"writing-consumer-{index}")
+            for index in range(self.settings.ai_writing_worker_concurrency)
+        ]
+        self.scanner = asyncio.create_task(self._scan(), name="writing-recovery-scanner")
 
-        def discard(done: asyncio.Task) -> None:
-            if _tasks.get(run_id) is done:
-                _tasks.pop(run_id)
+    async def _scan(self) -> None:
+        while True:
+            try:
+                if await self.recover():
+                    self.wakeup.set()
+            except Exception:
+                logger.warning("Writing recovery unavailable; retrying")
+            await asyncio.sleep(self.settings.ai_writing_worker_poll_seconds)
 
-        task.add_done_callback(discard)
+    async def _consume(self) -> None:
+        while True:
+            try:
+                self.wakeup.clear()
+                # One active child per fixed consumer. User/lease cancellation
+                # stops that child without permanently shrinking the consumer pool.
+                job = asyncio.create_task(self.execute(None))
+                self.active_jobs.add(job)
+                try:
+                    executed = await job
+                finally:
+                    self.active_jobs.discard(job)
+                if executed:
+                    continue
+            except asyncio.CancelledError:
+                if asyncio.current_task().cancelling():
+                    raise
+                continue
+            except Exception:
+                # Keep the bounded consumers alive through DB outages; do not
+                # log SQL/input/credentials. Leases fence ambiguous writes.
+                logger.warning("Writing dispatch unavailable; retrying")
+            with suppress(TimeoutError):
+                await asyncio.wait_for(
+                    self.wakeup.wait(), self.settings.ai_writing_worker_poll_seconds
+                )
+
+    async def recover(self) -> int:
+        async with self.sessions() as session, session.begin():
+            repository = WritingAIRepository(session)
+            runs = await repository.expired(
+                legacy_stale_seconds=self.settings.ai_writing_stale_after_seconds,
+                limit=self.settings.ai_writing_max_running_runs,
+            )
+            for run in runs:
+                # MTS has no durable stage-resumption contract. Preserve the
+                # partial checkpoint and let an explicit retry create a new run.
+                await fail_run(
+                    repository,
+                    run,
+                    "RUN_INTERRUPTED",
+                    "Chấm AI bị gián đoạn. Bạn có thể thử chấm lại.",
+                )
+            return len(runs)
 
     def cancel(self, run_id: UUID) -> None:
         cancel_writing_ai_worker(run_id)
 
-    async def execute(self, run_id: UUID) -> None:
+    async def execute(self, run_id: UUID | None) -> bool:
         heartbeat = None
         mts = None
+        token = None
         latency = WritingLatencyMetrics()
         checkpoint_lock = asyncio.Lock()
 
@@ -84,20 +156,32 @@ class WritingAIWorker:
                         mts.usage,
                         mts.diagnostics,
                         mts.latency_summary(),
+                        token,
                     )
                 )
 
         async def fail(code, message):
             latency.finish()
             async with checkpoint_lock:
-                await durable_checkpoint(self._fail(run_id, code, message, mts))
+                await durable_checkpoint(self._fail(run_id, code, message, mts, token))
 
         try:
             async with self.sessions() as session, session.begin():
                 repository = WritingAIRepository(session)
-                run = await repository.run(run_id, lock=True)
-                if run is None or run.status != WritingAIRunStatus.PENDING:
-                    return
+                run = await repository.claim(
+                    lease_seconds=self.settings.ai_writing_lease_seconds,
+                    max_running=self.settings.ai_writing_max_running_runs,
+                    run_id=run_id,
+                )
+                if run is None:
+                    return False
+                run_id, token = run.id, run.lease_token
+                persist_activity(run, "run.started", EventPayload())
+                await repository.append_event(run, "run.started", EventPayload())
+            _tasks[run_id] = asyncio.current_task()
+            heartbeat = asyncio.create_task(self._heartbeat(run_id, token, asyncio.current_task()))
+            async with self.sessions() as session, session.begin():
+                run = await self._owned(WritingAIRepository(session), run_id, token)
                 request = await WritingAIService(
                     session, run.requested_by_user_id, self.settings
                 ).input(run.attempt_id, run.writing_task_id)
@@ -116,10 +200,6 @@ class WritingAIWorker:
                         "Cấu hình AI đã thay đổi. Bạn có thể thử chấm lại.",
                         409,
                     )
-                run.status = WritingAIRunStatus.RUNNING
-                run.started_at = run.updated_at = datetime.now(UTC)
-                persist_activity(run, "run.started", EventPayload())
-                await repository.append_event(run, "run.started", EventPayload())
             provider_client = self.provider or create_provider(self.settings)
             mts = (
                 Task1WritingScoringService(
@@ -139,7 +219,6 @@ class WritingAIWorker:
                     latency=latency,
                 )
             )
-            heartbeat = asyncio.create_task(self._heartbeat(checkpoint))
             await checkpoint("provider.starting", EventPayload())
             with latency.stage("provider_ready"):
                 await provider_client.ensure_ready()
@@ -157,10 +236,10 @@ class WritingAIWorker:
                     failure.error_code,
                     "Một số tiêu chí chưa thể chấm xong. Các kết quả đã hoàn tất được giữ lại; bạn có thể thử chấm lại.",
                 )
-                return
+                return True
             latency.finish()
             async with checkpoint_lock:
-                await durable_checkpoint(self._complete(run_id, result, mts))
+                await durable_checkpoint(self._complete(run_id, result, mts, token))
         except RunStopped:
             logger.info("AI grading worker stopped: source=terminal_state")
         except asyncio.CancelledError:
@@ -184,12 +263,24 @@ class WritingAIWorker:
                 heartbeat.cancel()
                 with suppress(asyncio.CancelledError, Exception):
                     await heartbeat
+            if token is not None and _tasks.get(run_id) is asyncio.current_task():
+                _tasks.pop(run_id, None)
+        return True
 
-    async def _complete(self, run_id, result, mts):
+    async def _owned(self, repository, run_id, token):
+        run = await repository.owned(run_id, token)
+        if run is None:
+            raise RunStopped
+        now = await repository.session.scalar(select(func.clock_timestamp()))
+        run.updated_at = now
+        run.lease_expires_at = now + timedelta(seconds=self.settings.ai_writing_lease_seconds)
+        return run
+
+    async def _complete(self, run_id, result, mts, token=None):
         async with self.sessions() as session, session.begin():
             repository = WritingAIRepository(session)
-            run = await repository.run(run_id, lock=True)
-            if run is None or run.status not in ACTIVE:
+            run = await repository.owned(run_id, token)
+            if run is None:
                 return
             run.result_json = result.model_dump(mode="json")
             run.raw_mean = result.raw_mean
@@ -200,6 +291,7 @@ class WritingAIWorker:
                 "latency": mts.latency_summary(),
             }
             run.status = WritingAIRunStatus.COMPLETED
+            run.lease_token = run.lease_expires_at = None
             run.completed_at = run.updated_at = datetime.now(UTC)
             persist_activity(run, "run.completed", EventPayload())
             await repository.append_event(run, "run.completed", EventPayload())
@@ -212,13 +304,11 @@ class WritingAIWorker:
         usage: list[dict[str, int]] | None = None,
         diagnostics: list[OutputDiagnostic] | None = None,
         latency: dict | None = None,
+        token: UUID | None = None,
     ) -> None:
         async with self.sessions() as session, session.begin():
             repository = WritingAIRepository(session)
-            run = await repository.run(run_id, lock=True)
-            if run is None or run.status not in ACTIVE:
-                raise RunStopped
-            run.updated_at = datetime.now(UTC)
+            run = await self._owned(repository, run_id, token)
             if usage is not None:
                 run.usage_json = {**(run.usage_json or {}), "calls": list(usage)}
             if diagnostics is not None:
@@ -270,21 +360,32 @@ class WritingAIWorker:
                         }
             await repository.append_event(run, event_type, payload)
 
-    async def _heartbeat(self, checkpoint) -> None:
+    async def _heartbeat(self, run_id, token, owner) -> None:
         while True:
-            await asyncio.sleep(15)
-            await checkpoint("heartbeat", EventPayload())
+            await asyncio.sleep(min(5, self.settings.ai_writing_lease_seconds / 3))
+            try:
+                await self._checkpoint(run_id, "heartbeat", EventPayload(), None, None, None, token)
+            except Exception:
+                # A cross-replica cancellation, lease loss, or DB outage must
+                # stop blocked provider work even if it emits no new checkpoint.
+                owner.cancel()
+                return
 
     async def _fail(
-        self, run_id: UUID, code: str, message: str, mts: MTSWritingScoringService | None
+        self,
+        run_id: UUID,
+        code: str,
+        message: str,
+        mts: MTSWritingScoringService | None,
+        token: UUID | None = None,
     ) -> None:
-        # A database outage is recovered by the persisted lease on the next read.
+        # A database outage is recovered by the periodic persisted-lease scanner.
         try:
             async with self.sessions() as session, session.begin():
                 repository = WritingAIRepository(session)
-                run = await repository.run(run_id, lock=True)
+                run = await repository.owned(run_id, token)
                 if run:
-                    if mts and run.status in ACTIVE:
+                    if mts:
                         run.usage_json = {
                             **(run.usage_json or {}),
                             "calls": mts.usage,
@@ -336,7 +437,18 @@ def cancel_writing_ai_worker(run_id: UUID, *, source="explicit_user") -> None:
 
 
 async def stop_writing_ai_workers() -> None:
-    tasks = list(_tasks.values())
+    global _dispatcher
+    dispatcher, _dispatcher = _dispatcher, None
+    tasks = set(_tasks.values())
+    if dispatcher is not None:
+        # Cancelling a consumer propagates once to its awaited active job. Avoid
+        # cancelling that child again while its shielded final checkpoint drains.
+        tasks.difference_update(dispatcher.active_jobs)
+        tasks.update(dispatcher.consumers)
+        dispatcher.consumers = []
+        if dispatcher.scanner is not None:
+            tasks.add(dispatcher.scanner)
+            dispatcher.scanner = None
     if tasks:
         logger.info("AI grading worker cancellation: source=shutdown")
     for task in tasks:

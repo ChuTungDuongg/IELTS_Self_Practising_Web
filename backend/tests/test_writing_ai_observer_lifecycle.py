@@ -2,7 +2,7 @@
 
 import asyncio
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -33,6 +33,9 @@ class MemorySession:
     async def __aexit__(self, *_exc):
         return None
 
+    async def scalar(self, _query):
+        return datetime.now(UTC)
+
     @asynccontextmanager
     async def begin(self):
         async with self.store.lock:
@@ -43,7 +46,38 @@ class MemoryRepository:
     """Replace only DB access; production state transitions and event payloads still run."""
 
     def __init__(self, session):
+        self.session = session
         self.store = session.store
+
+    async def claim(self, *, lease_seconds, max_running, run_id=None):
+        row = self.store.row
+        if row.status != WritingAIRunStatus.PENDING or run_id not in {None, row.id}:
+            return None
+        row.status = WritingAIRunStatus.RUNNING
+        row.lease_token = uuid4()
+        row.started_at = row.updated_at = datetime.now(UTC)
+        row.lease_expires_at = row.updated_at + timedelta(seconds=lease_seconds)
+        return row
+
+    async def owned(self, run_id, token):
+        row = await self.run(run_id)
+        return (
+            row
+            if row
+            and row.status == WritingAIRunStatus.RUNNING
+            and token is not None
+            and row.lease_token == token
+            and row.lease_expires_at > datetime.now(UTC)
+            else None
+        )
+
+    async def expired(self, **_kwargs):
+        row = self.store.row
+        return (
+            [row]
+            if row.status == WritingAIRunStatus.RUNNING and row.lease_expires_at < datetime.now(UTC)
+            else []
+        )
 
     async def run(self, run_id, *, user_id=None, lock=False):
         row = self.store.row
@@ -210,8 +244,7 @@ async def test_sse_observer_disappearing_keeps_detached_provider_and_run_alive(
     lifecycle, disconnect
 ):
     run_id = lifecycle.store.row.id
-    lifecycle.runner.launch(run_id)
-    job = writing_ai_worker._tasks[run_id]
+    job = asyncio.create_task(lifecycle.runner.execute(run_id))
     observer = stream = None
     disconnected = False
     polled = asyncio.Event()
@@ -272,8 +305,7 @@ async def test_sse_observer_disappearing_keeps_detached_provider_and_run_alive(
 async def test_process_shutdown_remains_a_legitimate_worker_stop(lifecycle, caplog):
     caplog.set_level("INFO", logger="app.services.writing_ai_worker")
     row = lifecycle.store.row
-    lifecycle.runner.launch(row.id)
-    job = writing_ai_worker._tasks[row.id]
+    job = asyncio.create_task(lifecycle.runner.execute(row.id))
     try:
         await asyncio.wait_for(lifecycle.provider.waiting.wait(), 2)
         await asyncio.wait_for(lifecycle.store.partial_ready.wait(), 2)
@@ -294,8 +326,7 @@ async def test_explicit_cancel_endpoint_still_interrupts_provider_and_preserves_
 ):
     caplog.set_level("INFO", logger="app.services.writing_ai_worker")
     row = lifecycle.store.row
-    lifecycle.runner.launch(row.id)
-    job = writing_ai_worker._tasks[row.id]
+    job = asyncio.create_task(lifecycle.runner.execute(row.id))
     try:
         await asyncio.wait_for(lifecycle.provider.waiting.wait(), 2)
         await asyncio.wait_for(lifecycle.store.partial_ready.wait(), 2)
@@ -321,3 +352,54 @@ async def test_explicit_cancel_endpoint_still_interrupts_provider_and_preserves_
         if not job.done():
             job.cancel()
         await asyncio.gather(job, return_exceptions=True)
+
+
+async def test_fixed_consumers_keep_scanning_after_cross_replica_cancellation(lifecycle):
+    class BlockedProvider:
+        waiting = asyncio.Event()
+        interrupted = asyncio.Event()
+
+        async def ensure_ready(self):
+            self.waiting.set()
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                self.interrupted.set()
+                raise
+
+    provider = BlockedProvider()
+    lifecycle.runner.provider = provider
+    row = lifecycle.store.row
+    lifecycle.runner.start()
+    try:
+        await asyncio.wait_for(provider.waiting.wait(), 2)
+        await lifecycle.api.cancel(row.id)
+        # Another API process cannot call the local task registry. The real
+        # heartbeat must detect the durable terminal row and interrupt inference.
+        await asyncio.wait_for(provider.interrupted.wait(), 6)
+        await asyncio.sleep(0)
+        assert len(lifecycle.runner.consumers) == 2
+        assert all(not task.done() for task in lifecycle.runner.consumers)
+        assert (await lifecycle.api.get(row.id)).error_code == CANCELLATION_CODE
+    finally:
+        await writing_ai_worker.stop_writing_ai_workers()
+
+
+async def test_recovery_scanner_continues_while_all_consumers_are_busy(lifecycle, monkeypatch):
+    scanned = asyncio.Event()
+
+    async def scan():
+        scanned.set()
+        return 0
+
+    lifecycle.runner.settings.ai_writing_worker_concurrency = 1
+    lifecycle.runner.settings.ai_writing_worker_poll_seconds = 0.02
+    monkeypatch.setattr(lifecycle.runner, "recover", scan)
+    lifecycle.runner.start()
+    try:
+        await asyncio.wait_for(lifecycle.provider.waiting.wait(), 2)
+        scanned.clear()
+        await asyncio.wait_for(scanned.wait(), 0.3)
+        assert lifecycle.store.row.status == WritingAIRunStatus.RUNNING
+    finally:
+        await writing_ai_worker.stop_writing_ai_workers()

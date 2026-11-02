@@ -9,8 +9,8 @@ import httpx
 import pytest
 import pytest_asyncio
 from sqlalchemy import delete, func, select
+from test_writing_ai import claim_run, worker
 from test_writing_ai import settings as settings
-from test_writing_ai import worker
 from test_writing_ai import writing as writing
 from test_writing_relevance import RelevanceProvider, assessment
 
@@ -395,6 +395,7 @@ async def test_partial_relevance_metadata_and_auxiliary_activity_survive_reconne
     api = WritingAIService(db_session, db_session.info["current_user_id"], settings)
     created = await api.create(attempt_id, task_id, force=False)
     runner = worker(db_session, settings)
+    token = await claim_run(db_session, settings, created.run_id)
     relevance = WritingRelevanceResult(
         verdict="PARTIALLY_RELEVANT",
         confidence="MEDIUM",
@@ -403,7 +404,10 @@ async def test_partial_relevance_metadata_and_auxiliary_activity_survive_reconne
         short_circuit_applied=False,
     )
     await runner._checkpoint(
-        created.run_id, "relevance.started", EventPayload(criterion="ta", stage="relevance")
+        created.run_id,
+        "relevance.started",
+        EventPayload(criterion="ta", stage="relevance"),
+        token=token,
     )
     partial = await api.get(created.run_id)
     assert partial.activity.phase == "checking_relevance" and partial.result is None
@@ -411,6 +415,7 @@ async def test_partial_relevance_metadata_and_auxiliary_activity_survive_reconne
         created.run_id,
         "relevance.completed",
         EventPayload(criterion="ta", stage="relevance", relevance=relevance),
+        token=token,
     )
     partial, events = await api.snapshot(created.run_id, 0)
     assert partial.result is None and partial.relevance == relevance
@@ -421,10 +426,11 @@ async def test_partial_relevance_metadata_and_auxiliary_activity_survive_reconne
         created.run_id,
         "relevance.failed",
         EventPayload(criterion="ta", stage="relevance", error_code="AI_RELEVANCE_FAILED"),
+        token=token,
     )
     partial = await api.get(created.run_id)
     assert (
-        partial.status == WritingAIRunStatus.PENDING
+        partial.status == WritingAIRunStatus.RUNNING
         and partial.activity.phase == "relevance_failed"
     )
     assert not partial.failures

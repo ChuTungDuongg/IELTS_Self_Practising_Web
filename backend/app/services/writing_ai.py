@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -175,6 +175,7 @@ async def fail_run(
     if run.status not in ACTIVE:
         return
     run.status = WritingAIRunStatus.FAILED
+    run.lease_token = run.lease_expires_at = None
     run.error_code = code
     run.error_message = message
     run.completed_at = run.updated_at = datetime.now(UTC)
@@ -303,27 +304,6 @@ class WritingAIService:
             paragraph_mode="textarea",
         )
 
-    async def recover_stale(self, run: WritingAIGradingRun) -> None:
-        if run.status in ACTIVE and run.updated_at < datetime.now(UTC) - timedelta(
-            seconds=self.settings.ai_writing_stale_after_seconds
-        ):
-            attempt = await self.repository.attempt(run.attempt_id, self.user_id)
-            if attempt is None:
-                raise AppError("ATTEMPT_NOT_FOUND", "Không tìm thấy lượt làm bài này.", 404)
-            try:
-                await require_classroom_attempt_mutation(self.session, self.user_id, attempt)
-            except AppError as error:
-                if error.code != "CLASSROOM_OBSERVER_READ_ONLY":
-                    raise
-                # Observation may read stale progress without rewriting the run or event stream.
-                return
-            await fail_run(
-                self.repository,
-                run,
-                "STALE_RUN",
-                "Chấm AI bị gián đoạn. Bạn có thể thử chấm lại.",
-            )
-
     async def create(self, attempt_id: UUID, task_id: UUID, *, force: bool) -> CreateRunResponse:
         async with self.session.begin():
             # PostgreSQL serializes duplicate clicks across API processes. This lock
@@ -336,8 +316,6 @@ class WritingAIService:
                 else effective_prompt_version(self.settings.ai_writing_prompt_version)
             )
             fingerprint = input_fingerprint(request, prompt_version, provider, model)
-            for run in await self.repository.runs(attempt_id, task_id, lock=True, limit=None):
-                await self.recover_stale(run)
             if not force:
                 cached = await self.repository.equivalent(
                     attempt_id, task_id, fingerprint, (WritingAIRunStatus.COMPLETED,)
@@ -352,6 +330,16 @@ class WritingAIService:
                         run_id=active.id, cache_hit=False, existing_active=True
                     )
             create_provider(self.settings)  # Fail before inserting an unserviceable run.
+            await self.repository.dispatch_lock()
+            if (
+                await self.repository.count_status(WritingAIRunStatus.PENDING)
+                >= self.settings.ai_writing_max_pending_runs
+            ):
+                raise AppError(
+                    "AI_WRITING_QUEUE_FULL",
+                    "Hàng đợi chấm AI đang đầy. Vui lòng thử lại sau.",
+                    503,
+                )
             run = WritingAIGradingRun(
                 attempt_id=attempt_id,
                 writing_task_id=task_id,
@@ -371,9 +359,7 @@ class WritingAIService:
     async def list(self, attempt_id: UUID, task_id: UUID) -> RunListResponse:
         async with self.session.begin():
             await self.input(attempt_id, task_id, require_essay=False)
-            runs = await self.repository.runs(attempt_id, task_id, lock=True)
-            for run in runs:
-                await self.recover_stale(run)
+            runs = await self.repository.runs(attempt_id, task_id)
             return RunListResponse(
                 configured=is_configured(self.settings), items=[present_run(run) for run in runs]
             )
@@ -402,7 +388,6 @@ class WritingAIService:
             run = await self.repository.run(run_id, user_id=self.user_id, lock=True)
             if run is None:
                 raise AppError("AI_RUN_NOT_FOUND", "Không tìm thấy bài đánh giá AI này.", 404)
-            await self.recover_stale(run)
             events = await self.repository.events(run_id, after) if include_events else []
             return present_run(run), [
                 EventResponse(
