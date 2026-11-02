@@ -110,6 +110,16 @@ def public_retry_stages(events):
     return [payload.stage for event, payload in events if event == "criterion.retrying"]
 
 
+def assert_wire_reasoning_policy(bodies, provider):
+    for body in bodies:
+        assert "reasoning" not in body and "reasoning_content" not in body
+        if provider == "openai":
+            assert body["model"] == "gpt-6-luna"
+            assert body["reasoning_effort"] == "none"
+        else:
+            assert "reasoning_effort" not in body
+
+
 async def test_task2_success_runs_score_evidence_then_feedback_once_per_criterion():
     provider = BudgetProvider()
     result, service, events = await assess(provider)
@@ -306,11 +316,8 @@ async def test_production_wire_contract_has_tiny_score_and_separate_feedback(
     assert [body[parameter] for body in bodies] == [768] + [128, 1800, 1200] * 4
     assert "private ignored reasoning" not in result.model_dump_json()
     other = "max_completion_tokens" if parameter == "max_tokens" else "max_tokens"
-    assert all(
-        other not in body
-        and not ({"reasoning", "reasoning_effort", "reasoning_content"} & body.keys())
-        for body in bodies
-    )
+    assert all(other not in body for body in bodies)
+    assert_wire_reasoning_policy(bodies, provider)
 
 
 @pytest.mark.parametrize("stage", ["evidence", "score", "feedback"])
@@ -652,4 +659,5 @@ async def test_provider_adapters_map_typed_stage_budgets_and_preserve_defaults(
     assert bodies[0][parameter] == (default if requested is None else requested)
     assert bodies[1][parameter] == default
     other = "max_completion_tokens" if parameter == "max_tokens" else "max_tokens"
-    assert all(other not in body and "reasoning" not in json.dumps(body) for body in bodies)
+    assert all(other not in body for body in bodies)
+    assert_wire_reasoning_policy(bodies, provider)

@@ -81,3 +81,5 @@ Files: `backend/.env.example`, `docs/ai-writing.md`, `docs/speaking-grading.md`,
 - Không cần migration hoặc SDK mới. Rollback: chọn provider vLLM/cấu hình cũ và restart workers; không sửa/xóa historical results.
 
 - CI đầu bắt F811 ở fixture import của test cuối thêm sau lượt lint. Đã đổi sang tham chiếu fixture qua module, chạy lại đúng lệnh Ruff CI (lint/format đạt) và PostgreSQL grading contracts (4 pass, 1,76 s). Không sửa runtime hoặc gọi thêm paid API.
+- CI đầy đủ tiếp theo ghi 3.387 backend tests pass, 2 skip và 8 fail tại assertions wire contract cũ cấm mọi trường reasoning; cả 8 đều được tái hiện ngoại tuyến. Cập nhật assertions để yêu cầu chính xác `reasoning_effort=none` cho model OpenAI `gpt-6-luna`, tiếp tục cấm reasoning content và giữ vLLM không có tham số này. Không đổi token budgets, rubric hay runtime để làm tests xanh. Frontend 1.887 tests và 4 E2E đã pass ở revision trước lần sửa assertions này.
+- Sau sửa assertions: 96 tests liên quan pass, 1 integration test deselected trong lượt ngoại tuyến; Ruff lint và format đạt (493 files). CI đầy đủ được chạy lại trên commit sửa này.
