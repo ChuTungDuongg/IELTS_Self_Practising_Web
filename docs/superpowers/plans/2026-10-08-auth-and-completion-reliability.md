@@ -1,37 +1,18 @@
-# Auth and Writing completion reliability
+# Độ tin cậy của xác thực và hoàn tất Writing
 
-> **Documentation audit: HISTORICAL.** Historical reference; không phải contract hiện hành.
+> **Phân loại tài liệu: HISTORICAL.** Tham khảo lịch sử; không phải contract hiện hành.
 > Mục đích: Auth and Writing completion reliability. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../../../backend/app/services/auth.py).
-> Đọc cùng [current module/guide](../../modules/identity.md); [audit và giới hạn](../../DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+> Đọc cùng [hướng dẫn module hiện hành](../../modules/identity.md); [audit và giới hạn](../../DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
 
-Starting point: 7a23d5b88fe17efd64c2443892dbc42c5fff3d47; clean local main.
-Implement the supplied two-bug specification without changing refresh security,
-IELTS guidance, Task 1 perception, or T1-B/T1-C evaluation semantics.
+Baseline: 7a23d5b88fe17efd64c2443892dbc42c5fff3d47; local main sạch.
+Triển khai đặc tả hai bugs đã được cung cấp, không đổi refresh security, IELTS guidance, Task 1 perception hoặc semantics đánh giá T1-B/T1-C.
 
-1. Confirm both existing refresh owners and the provider's current output schema
-   and caps. Inspect backend one-time token rotation and existing concurrency tests.
-2. Add failing frontend regressions for proxy 401 restoration, single refresh
-   ownership, loading/authenticated login guards, safe destinations, full replacement
-   navigation, restoration failure, and protected sidebar prefetch. Preserve logout.
-   Implement a shared destination helper and an unprotected restoration route using
-   the existing browser API client. Proxy checks access only and never rotates tokens.
-3. Add failing backend tests at actual completion request boundaries. Introduce
-   typed CompletionOptions with optional max_tokens; keep adapter parameter names
-   inside providers. Give evidence and scoring separate bounded budgets, with larger
-   headroom only on a length-specific bounded repair. Preserve all validation rules
-   and historical persisted scoring DTOs; inference requests use only four score fields.
-4. Forward options through existing evaluation instrumentation and update fake
-   providers for the interface without changing benchmark identity or scoring rules.
-   Verify success uses one scoring call, length failure uses at most two, and other
-   repairs do not gain length headroom.
-5. Run focused frontend auth/proxy/restoration tests, typecheck, targeted ESLint;
-   focused backend auth/concurrency, MTS/provider, Task 1 and Task 2 regressions;
-   exact CI Ruff lint/format commands and git diff --check. Independently review the
-   combined diff. No browser, Playwright, real GPU requests, full benchmark, or push.
+1. Xác nhận cả hai refresh owners hiện có, output schema và caps của provider. Kiểm backend one-time token rotation và concurrency tests hiện tại.
+2. Thêm frontend regressions đang fail cho proxy401 restoration, single refresh ownership, login guards khi loading/authenticated, safe destinations, full replacement navigation, restoration failure và protected sidebar prefetch. Giữ logout. Triển khai shared destination helper và unprotected restoration route dùng browser API client hiện có. Proxy chỉ kiểm access, không rotate tokens.
+3. Thêm backend tests đang fail tại completion request boundaries thực. Bổ sung typed CompletionOptions với max_tokens tùy chọn; giữ tên adapter parameters bên trong providers. Evidence và scoring dùng bounded budgets riêng; chỉ length-specific bounded repair mới có thêm headroom. Giữ mọi validation rules và historical persisted scoring DTOs; inference requests chỉ dùng bốn score fields.
+4. Forward options qua evaluation instrumentation hiện có, cập nhật fake providers theo interface mà không đổi benchmark identity/scoring rules. Kiểm success dùng một scoring call, length failure tối đa hai calls và các repairs khác không có length headroom.
+5. Chạy focused frontend auth/proxy/restoration tests, typecheck, scoped ESLint; backend auth/concurrency, MTS/provider, Task 1/Task 2 regressions; đúng CI Ruff lint/format commands và git diff --check. Review combined diff độc lập. Không browser, Playwright, real GPU requests, full benchmark hoặc push.
 
-Frontend and backend implementation are delegated independently. The parent
-owns integration review and verification, including unchanged refresh concurrency.
+Frontend và backend được giao triển khai độc lập. Agent cha sở hữu integration review/verification, gồm refresh concurrency không đổi.
 
-Review focus: access 401 versus transient failures; unsafe destinations and restore
-loops; no Login form while session state is unresolved/authenticated; length retry
-versus semantic repair; actual guided provider schema and all completion wrappers.
+Trọng tâm review: phân biệt access401 với transient failures; unsafe destinations/restore loops; không hiện Login form khi session chưa được xác định hoặc đã authenticated; length retry khác semantic repair; guided provider schema thực và tất cả completion wrappers.

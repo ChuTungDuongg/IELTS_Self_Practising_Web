@@ -1,101 +1,101 @@
-# Note Completion Authoring Implementation Plan
+# Kế hoạch triển khai trình soạn Note Completion
 
-> **Documentation audit: HISTORICAL.** Historical reference; không phải contract hiện hành.
-> Mục đích: Note Completion Authoring Implementation Plan. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../../../backend/app/services/auth.py).
-> Đọc cùng [current module/guide](../../modules/identity.md); [audit và giới hạn](../../DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+> **Phân loại tài liệu: HISTORICAL.** Tham khảo lịch sử; không phải contract hiện hành.
+> Mục đích: kế hoạch triển khai trình soạn Note Completion. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [mã triển khai](../../../backend/app/services/auth.py).
+> Đọc cùng [hướng dẫn module hiện hành](../../modules/identity.md); [audit và giới hạn](../../DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **Dành cho tác nhân triển khai:** bắt buộc dùng skill superpowers:subagent-driven-development (khuyến nghị) hoặc superpowers:executing-plans để thực hiện từng công việc. Theo dõi tiến độ bằng checkbox (`- [ ]`).
 
-**Goal:** Build a semantic, inline Note Completion authoring workflow with stable mixed text/gap segments and faithful candidate rendering.
+**Mục tiêu:** xây dựng quy trình soạn Note Completion inline có ngữ nghĩa rõ ràng, giữ ổn định các đoạn văn bản/gap xen kẽ và render đúng ở giao diện làm bài.
 
-**Architecture:** Add dedicated Note layout types, integrity/order helpers, editor, and renderer while retaining the legacy structured editor for other completion families. Normalize legacy NOTE nodes in FastAPI before Pydantic validation, and validate exact question/GAP identity in both draft and publish paths.
+**Kiến trúc:** thêm kiểu layout Note, helpers kiểm tính toàn vẹn/thứ tự, editor và renderer chuyên biệt; giữ structured editor cũ cho các completion families khác. Chuẩn hóa NOTE nodes cũ trong FastAPI trước khi Pydantic kiểm tra; xác nhận chính xác định danh question/GAP ở cả đường lưu draft và publish.
 
-**Tech Stack:** Next.js/React/TypeScript, Vitest/Testing Library, FastAPI/Pydantic, pytest.
+**Công nghệ:** Next.js/React/TypeScript, Vitest/Testing Library, FastAPI/Pydantic, pytest.
 
-**Spec:** `docs/superpowers/specs/2026-09-22-note-completion-authoring-design.md`
+**Đặc tả:** `docs/superpowers/specs/2026-09-22-note-completion-authoring-design.md`
 
-## Global Constraints
+## Ràng buộc chung
 
-- Do not implement Speaking, authentication, AI scoring, or unrelated question-type redesigns.
-- Do not add a rich-text dependency or persist the authoring token `{{gap}}`.
-- Keep answer keys outside layout JSON and candidate payloads.
-- Preserve stable UUIDs and global Reading/Listening numbering.
-- Keep Form, Flow-chart, Summary, Sentence, Text, Table, and Diagram behavior unchanged.
+- Không triển khai Speaking, xác thực, chấm AI hoặc thiết kế lại question type không liên quan.
+- Không thêm dependency rich-text hoặc persist token soạn thảo `{{gap}}`.
+- Giữ answer keys ngoài layout JSON và payload làm bài.
+- Giữ UUID ổn định và cách đánh số Reading/Listening toàn cục.
+- Giữ hành vi Form, Flow-chart, Summary, Sentence, Text, Table và Diagram.
 
-## Review Focus
+## Trọng tâm review
 
-- Pasting `{{gap}}{{gap}}` or tokens at the beginning/end of a segment must preserve empty boundary text and create two distinct linked questions.
-- A drag within the same block and a drag across blocks must move exactly one existing GAP object without losing surrounding text.
-- Empty authoring blocks may exist locally but must not autosave or pass backend persisted validation.
-- Legacy normalization must be deterministic across repeated loads and must not merge adjacent legacy nodes.
-- Removing a block containing multiple gaps must remove exactly those questions and renumber the survivors from the supplied base number.
+- Dán `{{gap}}{{gap}}` hoặc token ở đầu/cuối đoạn phải giữ phần văn bản rỗng tại biên và tạo hai câu hỏi liên kết riêng.
+- Kéo trong cùng block hoặc qua block khác phải di chuyển đúng một GAP object hiện có, không mất văn bản xung quanh.
+- Block soạn thảo rỗng có thể tồn tại cục bộ nhưng không được autosave hoặc vượt qua validation lưu trữ của backend.
+- Chuẩn hóa dữ liệu cũ phải cho kết quả xác định qua các lần tải và không gộp các node cũ liền nhau.
+- Xóa block chứa nhiều gaps phải xóa đúng các câu hỏi đó và đánh số lại phần còn lại từ số bắt đầu được cung cấp.
 
 ---
 
-### Task 1: Backend Note model and legacy normalization
+### Công việc 1: Model Note backend và chuẩn hóa dữ liệu cũ
 
-**Files:**
-- Modify: `backend/tests/test_question_registry.py`
-- Modify: `backend/app/domains/questions/registry.py`
-- Modify: `backend/app/domains/questions/normalization.py`
-- Modify: `backend/app/services/reading.py`
-- Modify: `backend/app/services/tests.py`
+**Tệp:**
+- Sửa: `backend/tests/test_question_registry.py`
+- Sửa: `backend/app/domains/questions/registry.py`
+- Sửa: `backend/app/domains/questions/normalization.py`
+- Sửa: `backend/app/services/reading.py`
+- Sửa: `backend/app/services/tests.py`
 
-**Interfaces:**
-- Consumes: existing `StructuredCompletionGroupConfig`, `_stable_uuid`, `QuestionGroupWrite`, and TEXT evaluator.
-- Produces: Pydantic `NoteSegment`/`NoteBlock` validation and `_normalize_note_layout(config, group_id)` returning canonical `layout.blocks`.
+**Giao diện:**
+- Đầu vào: `StructuredCompletionGroupConfig`, `_stable_uuid`, `QuestionGroupWrite` và TEXT evaluator hiện có.
+- Đầu ra: validation Pydantic `NoteSegment`/`NoteBlock` và `_normalize_note_layout(config, group_id)` trả về `layout.blocks` chuẩn.
 
-- [ ] **Step 1: Write failing backend tests** for optional title, TEXT+GAP+TEXT blocks, indent/style/UUID validation, duplicate/unknown/orphan references, and deterministic legacy node normalization without merging.
-- [ ] **Step 2: Verify RED** with `.\.venv\Scripts\python.exe -m pytest tests/test_question_registry.py -q`; failures must show NOTE blocks are not yet modeled or normalized.
-- [ ] **Step 3: Implement minimal backend models and normalization** with discriminated TEXT/GAP validation, block uniqueness, indent `0..3`, title `<=300`, non-empty persisted blocks, stable UUIDv5 legacy conversion, and NOTE-specific reference checks in draft and publish services.
-- [ ] **Step 4: Verify GREEN** with `.\.venv\Scripts\python.exe -m pytest tests/test_question_registry.py tests/test_completion_identity.py tests/test_listening.py tests/test_reading_publish_regression.py tests/test_transfer.py -q`.
+- [ ] **Bước 1: Viết backend tests đang fail** cho tiêu đề tùy chọn, block TEXT+GAP+TEXT, kiểm indent/style/UUID, tham chiếu lặp/không tồn tại/mồ côi và chuẩn hóa node cũ có tính xác định, không gộp node.
+- [ ] **Bước 2: Xác nhận RED** bằng `.\.venv\Scripts\python.exe -m pytest tests/test_question_registry.py -q`; lỗi phải cho thấy NOTE blocks chưa được mô hình hóa hoặc chuẩn hóa.
+- [ ] **Bước 3: Triển khai model và chuẩn hóa backend tối thiểu** với validation phân biệt TEXT/GAP, block duy nhất, indent `0..3`, title `<=300`, persisted blocks không rỗng, chuyển dữ liệu cũ bằng UUIDv5 ổn định và kiểm tham chiếu riêng cho NOTE trong service draft/publish.
+- [ ] **Bước 4: Xác nhận GREEN** bằng `.\.venv\Scripts\python.exe -m pytest tests/test_question_registry.py tests/test_completion_identity.py tests/test_listening.py tests/test_reading_publish_regression.py tests/test_transfer.py -q`.
 
-### Task 2: Frontend Note types, registry, integrity, and renderer
+### Công việc 2: Kiểu Note frontend, registry, tính toàn vẹn và renderer
 
-**Files:**
-- Create: `frontend/src/features/questions/note-completion.ts`
-- Create: `frontend/src/features/questions/note-completion-renderer.tsx`
-- Create: `frontend/tests/note-completion.test.tsx`
-- Modify: `frontend/src/features/questions/types.ts`
-- Modify: `frontend/src/features/questions/registry.tsx`
-- Modify: `frontend/src/features/test-builder/question-group-editor.tsx`
+**Tệp:**
+- Tạo: `frontend/src/features/questions/note-completion.ts`
+- Tạo: `frontend/src/features/questions/note-completion-renderer.tsx`
+- Tạo: `frontend/tests/note-completion.test.tsx`
+- Sửa: `frontend/src/features/questions/types.ts`
+- Sửa: `frontend/src/features/questions/registry.tsx`
+- Sửa: `frontend/src/features/test-builder/question-group-editor.tsx`
 
-**Interfaces:**
-- Consumes: backend canonical `layout.blocks`, `questionTarget`, `SelectableText`, and Builder base question number.
-- Produces: `NoteCompletionLayout`, `noteCompletionIntegrityErrors(group)`, `normalizeNoteCompletionOrder(group, layout, base)`, and `NoteCompletionRenderer`.
+**Giao diện:**
+- Đầu vào: `layout.blocks` chuẩn từ backend, `questionTarget`, `SelectableText` và số câu bắt đầu của Builder.
+- Đầu ra: `NoteCompletionLayout`, `noteCompletionIntegrityErrors(group)`, `normalizeNoteCompletionOrder(group, layout, base)` và `NoteCompletionRenderer`.
 
-- [ ] **Step 1: Write failing frontend tests** for the zero-question default, optional title, Preview/Candidate/Review rendering, heading/bullet/indent presentation, inline answer input, correct `onAnswer` UUID, canonical order, exact integrity validation, and hidden generic Add question action.
-- [ ] **Step 2: Verify RED** with `npm test -- tests/note-completion.test.tsx`; failures must be caused by the missing dedicated Note implementation.
-- [ ] **Step 3: Implement minimal types, pure helpers, registry definition, QuestionGroupEditor routing, and dedicated renderer**. Keep other structured completion definitions in their existing registry loop.
-- [ ] **Step 4: Verify GREEN** with `npm test -- tests/note-completion.test.tsx tests/question-registry.test.tsx tests/table-completion.test.tsx`.
+- [ ] **Bước 1: Viết frontend tests đang fail** cho mặc định không có câu hỏi, tiêu đề tùy chọn, render Preview/Candidate/Review, heading/bullet/indent, ô trả lời inline, UUID `onAnswer` đúng, thứ tự chuẩn, validation toàn vẹn chính xác và ẩn thao tác Add question chung.
+- [ ] **Bước 2: Xác nhận RED** bằng `npm test -- tests/note-completion.test.tsx`; lỗi phải do thiếu triển khai Note chuyên biệt.
+- [ ] **Bước 3: Triển khai tối thiểu các kiểu, pure helpers, định nghĩa registry, routing QuestionGroupEditor và renderer riêng**. Giữ các structured completion khác trong registry loop hiện có.
+- [ ] **Bước 4: Xác nhận GREEN** bằng `npm test -- tests/note-completion.test.tsx tests/question-registry.test.tsx tests/table-completion.test.tsx`.
 
-### Task 3: Inline Note authoring canvas
+### Công việc 3: Canvas soạn Note inline
 
-**Files:**
-- Create: `frontend/src/features/questions/note-completion-editor.tsx`
-- Modify: `frontend/tests/note-completion.test.tsx`
-- Modify: `frontend/src/features/questions/registry.tsx`
-- Modify: `frontend/src/app/globals.css`
+**Tệp:**
+- Tạo: `frontend/src/features/questions/note-completion-editor.tsx`
+- Sửa: `frontend/tests/note-completion.test.tsx`
+- Sửa: `frontend/src/features/questions/registry.tsx`
+- Sửa: `frontend/src/app/globals.css`
 
-**Interfaces:**
-- Consumes: `NoteCompletionLayout`, `normalizeNoteCompletionOrder`, `noteCompletionIntegrityErrors`, `EditorProps`, and `ConfirmDialog`.
-- Produces: `NoteCompletionEditor` with local TEXT-segment conversion, caret insertion, cross-block GAP movement, block controls, selected-gap inspector, and confirmed destructive actions.
+**Giao diện:**
+- Đầu vào: `NoteCompletionLayout`, `normalizeNoteCompletionOrder`, `noteCompletionIntegrityErrors`, `EditorProps` và `ConfirmDialog`.
+- Đầu ra: `NoteCompletionEditor` chuyển TEXT segment cục bộ, chèn tại caret, di chuyển GAP qua block, controls cho block, inspector gap đang chọn và xác nhận thao tác xóa.
 
-- [ ] **Step 1: Add failing interaction tests** for one-token typing, two-token paste, surrounding-text edits preserving existing IDs/keys, explicit caret insertion, same/cross-block drag, style changes, Enter block creation, gap removal, and confirmed block removal with affected question numbers.
-- [ ] **Step 2: Verify RED** with `npm test -- tests/note-completion.test.tsx`; each interaction must fail on a missing observable behavior rather than a test setup error.
-- [ ] **Step 3: Implement the editor minimally** using one browser-owned `contentEditable` span per TEXT segment, segment-local token splitting, stable GAP buttons, semantic toolbar controls, and debounced Builder state updates through `onChange` only.
-- [ ] **Step 4: Verify GREEN** with `npm test -- tests/note-completion.test.tsx tests/text-completion-canvas.test.tsx tests/table-completion.test.tsx`.
+- [ ] **Bước 1: Thêm interaction tests đang fail** cho gõ một token, dán hai token, sửa văn bản quanh gap nhưng giữ IDs/keys, chèn rõ tại caret, kéo trong/qua block, đổi style, tạo block bằng Enter, xóa gap và xác nhận xóa block kèm số câu bị ảnh hưởng.
+- [ ] **Bước 2: Xác nhận RED** bằng `npm test -- tests/note-completion.test.tsx`; mỗi tương tác phải fail vì thiếu hành vi quan sát được, không phải lỗi setup test.
+- [ ] **Bước 3: Triển khai editor tối thiểu** bằng một span `contentEditable` do browser quản lý cho mỗi TEXT segment, tách token trong từng segment, nút GAP ổn định, toolbar có ngữ nghĩa và chỉ cập nhật Builder state có debounce qua `onChange`.
+- [ ] **Bước 4: Xác nhận GREEN** bằng `npm test -- tests/note-completion.test.tsx tests/text-completion-canvas.test.tsx tests/table-completion.test.tsx`.
 
-### Task 4: Full verification and regression repair
+### Công việc 4: Kiểm chứng đầy đủ và sửa regression
 
-**Files:**
-- Modify only files implicated by failing checks introduced by Tasks 1–3.
+**Tệp:**
+- Chỉ sửa tệp liên quan đến kiểm tra fail do công việc 1–3 tạo ra.
 
-**Interfaces:**
-- Consumes: all production and test interfaces above.
-- Produces: a clean typecheck/lint/backend suite and a documented distinction for any unchanged baseline failure.
+**Giao diện:**
+- Đầu vào: mọi giao diện production và test nêu trên.
+- Đầu ra: typecheck/lint/backend suite sạch và ghi rõ các lỗi baseline không thay đổi.
 
-- [ ] **Step 1: Run frontend verification** with `npm test`, `npm run typecheck`, and `npm run lint`; compare the Table title timeout against the recorded clean-main baseline.
-- [ ] **Step 2: Run backend verification** with `.\.venv\Scripts\python.exe -m pytest` and `.\.venv\Scripts\python.exe -m ruff check app tests`.
-- [ ] **Step 3: For each introduced failure, write or retain the smallest reproducing test, verify RED, implement the minimal fix, and rerun the owning suite to GREEN.**
-- [ ] **Step 4: Inspect `git diff --check`, changed-file scope, candidate DTO behavior, and answer-key isolation before final review.**
+- [ ] **Bước 1: Kiểm frontend** bằng `npm test`, `npm run typecheck` và `npm run lint`; đối chiếu timeout tiêu đề Table với baseline clean-main đã ghi.
+- [ ] **Bước 2: Kiểm backend** bằng `.\.venv\Scripts\python.exe -m pytest` và `.\.venv\Scripts\python.exe -m ruff check app tests`.
+- [ ] **Bước 3: Với mỗi lỗi mới tạo ra, viết hoặc giữ test tái hiện nhỏ nhất, xác nhận RED, sửa tối thiểu rồi chạy lại suite phụ trách đến GREEN.**
+- [ ] **Bước 4: Kiểm `git diff --check`, phạm vi tệp thay đổi, hành vi DTO làm bài và cách ly answer keys trước review cuối.**

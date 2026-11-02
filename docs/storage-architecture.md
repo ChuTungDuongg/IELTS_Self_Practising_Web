@@ -1,58 +1,31 @@
-# Portable private asset storage
+# Lưu trữ tài sản riêng tư có thể chuyển đổi nhà cung cấp
 
-> **Documentation audit: CURRENT.** Canonical concern này; source-check các boundary/API, không live validation.
-> Mục đích: Portable private asset storage. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../backend/app/storage/factory.py).
-> Đọc cùng [current module/guide](modules/assets-transfer.md); [audit và giới hạn](DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+> **Kiểm toán tài liệu: CURRENT.** Tài liệu chuẩn cho nội dung này; đã đối chiếu ranh giới/API trong mã nguồn, chưa xác minh môi trường đang chạy.
+> Mục đích: Lưu trữ tài sản riêng tư có thể chuyển đổi nhà cung cấp. Đối chiếu mã nguồn `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [mã triển khai](../backend/app/storage/factory.py).
+> Đọc cùng [mô-đun/hướng dẫn hiện hành](modules/assets-transfer.md); [audit và giới hạn](DOCS_AUDIT.md). Kết quả kiểm thử/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong lần kiểm toán này.
 
-PostgreSQL owns identity, ownership, lifecycle and relationships. Asset rows store
-portable relative keys, never provider URLs. The application selects Local (the
-default), S3 or R2 through `app/storage/factory.py` and existing `Settings`.
-FastAPI authorizes private media before streaming it; no recovery command makes
-Speaking media or buckets public. TestVersion identity/history is unchanged.
 
-Persistent references are inventoried without active/published filters:
+PostgreSQL quản lý định danh, quyền sở hữu, vòng đời và các quan hệ. Bản ghi tài sản lưu khóa tương đối có thể di chuyển, không lưu URL của nhà cung cấp. Ứng dụng chọn Local (mặc định), S3 hoặc R2 qua `app/storage/factory.py` và `Settings` hiện có. FastAPI cấp quyền truy cập nội dung riêng tư trước khi truyền dữ liệu; không lệnh khôi phục nào công khai nội dung Speaking hoặc bucket. Định danh/lịch sử TestVersion được giữ nguyên.
 
-| Database source | Assets / lifecycle |
+Danh mục tham chiếu bền vững không lọc theo trạng thái hoạt động/đã xuất bản:
+
+| Nguồn trong cơ sở dữ liệu | Tài sản / vòng đời |
 | --- | --- |
-| `assets.relative_path` | Reading diagrams, Writing images, Listening audio; all draft, archived and historical versions, including unused uploads still owned by a version |
-| `test_covers.relative_path` | Current test-owned covers |
-| `classroom_resources.storage_key` | FILE resources, including archived resources |
-| `speaking_audio_chunks.storage_key` | Private takes/chunks, including retained inactive takes; expected size/SHA-256 from PostgreSQL and MIME from segment |
-| `speaking_normalized_audio.storage_key` | Retained normalized WAV/cache objects |
-| `writing_benchmark_samples.task1_image_key` | Benchmark images, including draft samples |
+| `assets.relative_path` | Sơ đồ Reading, ảnh Writing, âm thanh Listening; mọi phiên bản nháp, lưu trữ và lịch sử, kể cả tệp tải lên chưa dùng nhưng vẫn thuộc một phiên bản |
+| `test_covers.relative_path` | Ảnh bìa hiện thuộc bài thi |
+| `classroom_resources.storage_key` | Tài nguyên FILE, kể cả tài nguyên đã lưu trữ |
+| `speaking_audio_chunks.storage_key` | Lượt thu/khối âm thanh riêng tư, kể cả lượt không hoạt động còn được giữ; kích thước/SHA-256 kỳ vọng từ PostgreSQL và MIME từ đoạn thu |
+| `speaking_normalized_audio.storage_key` | Đối tượng WAV/bộ nhớ đệm đã chuẩn hóa còn được giữ |
+| `writing_benchmark_samples.task1_image_key` | Ảnh benchmark, kể cả mẫu nháp |
 
-`speaking_media_cleanup` is a pending-deletion outbox, not a live reference. Its
-keys are reported separately. The table has no failure flag; a pending job is
-not automatically described as failed. Reconciliation can identify jobs whose
-objects still exist, but never runs cleanup. If references and cleanup overlap,
-the reference remains required and must not be deleted.
+`speaking_media_cleanup` là outbox chờ xóa, không phải tham chiếu đang dùng. Các khóa này được báo cáo riêng. Bảng không có cờ thất bại; tác vụ đang chờ không tự động được mô tả là đã thất bại. Đối soát có thể tìm tác vụ mà đối tượng vẫn tồn tại nhưng không chạy dọn dẹp. Nếu tham chiếu trùng với mục dọn dẹp, đối tượng vẫn bắt buộc phải giữ và không được xóa.
 
-FFmpeg and ZIP staging, model caches, PostgreSQL files and backups are not ordinary
-asset references. Default migration/backup copies only referenced objects. An
-explicit namespace listing reports potential orphans without deleting them; it
-may also include legitimate temporary files, `.gitkeep` or processing remnants.
-Never infer that an unreferenced object is safe to delete during live writes.
+Vùng tạm FFmpeg/ZIP, bộ nhớ đệm mô hình, tệp PostgreSQL và bản sao lưu không phải tham chiếu tài sản thông thường. Di chuyển/sao lưu mặc định chỉ sao chép đối tượng có tham chiếu. Việc liệt kê namespace theo yêu cầu báo cáo đối tượng có thể mồ côi mà không xóa; danh sách cũng có thể chứa tệp tạm hợp lệ, `.gitkeep` hoặc phần còn lại của quá trình xử lý. Không suy ra rằng đối tượng không có tham chiếu có thể được xóa an toàn khi hệ thống đang ghi.
 
-Operator tooling reuses the storage port. `migration.py` implements bounded copy,
-checksums and read-only reconciliation; `operations.py` handles explicit source/
-destination settings and database snapshots; `recovery.py` handles portable v2
-backup bundles. The existing migration script and backup/restore entrypoints use
-these modules. There is no second business storage architecture or dual-write mode.
+Công cụ vận hành tái sử dụng cổng trừu tượng lưu trữ. `migration.py` thực hiện sao chép có giới hạn, kiểm tra checksum và đối soát chỉ đọc; `operations.py` xử lý cấu hình nguồn/đích tường minh và snapshot cơ sở dữ liệu; `recovery.py` xử lý gói sao lưu v2 có thể chuyển đổi nhà cung cấp. Script di chuyển và điểm vào sao lưu/khôi phục hiện có dùng các mô-đun này. Không có kiến trúc lưu trữ nghiệp vụ thứ hai hoặc chế độ ghi kép.
 
-Object operations use 1 MiB read buffers, 1–8 copy workers, bounded queued work and
-the adapter's existing timeouts/retries/conditional creates. Objects are limited
-to the existing 5 GiB single-object contract; backup metadata is bounded to a
-64 MiB manifest / 250,000 objects. Metadata inventories remain O(number of rows).
-S3 writes spool an individual object to temporary disk, so provision scratch
-space for the largest object per worker. Backups additionally need disk space
-for the database dump and compressed archive. No ETag is used as a digest.
+Thao tác đối tượng dùng bộ đệm đọc 1 MiB, 1–8 worker sao chép, lượng việc chờ có giới hạn và cơ chế timeout/thử lại/tạo có điều kiện hiện có của adapter. Mỗi đối tượng tuân theo hợp đồng 5 GiB; siêu dữ liệu sao lưu giới hạn manifest 64 MiB / 250,000 đối tượng. Danh mục siêu dữ liệu vẫn có độ phức tạp O(số bản ghi). S3 ghi từng đối tượng qua đĩa tạm, vì vậy cần đủ dung lượng tạm cho đối tượng lớn nhất trên mỗi worker. Sao lưu còn cần chỗ cho dump cơ sở dữ liệu và tệp nén. Không dùng ETag làm mã băm.
 
-Temporary cloud materialization remains explicit and bounded. Operations run
-blocking SDK/PG/file work outside async database coordination; cancellation joins
-an in-flight dump/archive write before releasing its exported snapshot. No new
-bucket listing is added to application startup, HTTP routes or workers.
+Việc đưa dữ liệu đám mây xuống tệp tạm luôn tường minh và có giới hạn. Tác vụ SDK/PG/tệp gây chặn chạy ngoài luồng điều phối cơ sở dữ liệu bất đồng bộ; khi hủy, công cụ chờ tác vụ dump/ghi archive đang chạy kết thúc trước khi giải phóng snapshot đã xuất. Không thêm thao tác liệt kê bucket vào khởi động ứng dụng, tuyến HTTP hoặc worker.
 
-See [migration](storage-migration.md), [backup/recovery](storage-backup-restore.md),
-[Modal](modal-web.md), [AWS](aws-deployment.md) and [verification status](storage-portability-work-in-progress.md).
-Offline verification is separate from real IAM/R2/Modal, TLS/networking and
-production restore drills. Nothing automatically migrates data when Settings change.
+Xem [di chuyển](storage-migration.md), [sao lưu/khôi phục](storage-backup-restore.md), [Modal](modal-web.md), [AWS](aws-deployment.md) và [trạng thái xác minh](storage-portability-work-in-progress.md). Xác minh ngoại tuyến tách biệt với IAM/R2/Modal thực tế, TLS/mạng và diễn tập khôi phục production. Thay đổi Settings không tự động di chuyển dữ liệu.

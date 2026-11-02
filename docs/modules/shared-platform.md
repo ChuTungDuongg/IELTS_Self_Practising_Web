@@ -1,9 +1,9 @@
-# Shared platform: shell, localization, notifications và probes
+# Nền tảng dùng chung: shell, bản địa hóa, thông báo và kiểm tra trạng thái
 
 > Mục đích và phạm vi: Các hạ tầng dùng chung của UI/API mà không chứa luật thi hoặc quyền cấp từ frontend.
 > Đối chiếu mã nguồn tại `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`. Đây là kiểm tra tĩnh; không xác nhận trạng thái deployment đang chạy.
 
-## A–C. Mục đích, workflow và ownership
+## A–C. Mục đích, quy trình và phân chia trách nhiệm
 
 Các hạ tầng dùng chung của UI/API mà không chứa luật thi hoặc quyền cấp từ frontend.
 
@@ -11,7 +11,7 @@ Root layout cung cấp locale/personalization/auth và AppShell. Header/footer d
 
 Design-system tokens sở hữu shared surfaces/type; gravity-home styles scope homepage, globals giữ reset/exam defaults, gravity-product xử lý product components. Typed API client giữ errors/refresh; backend notifications sở hữu recipient/read state. Health/readiness không phải UI state.
 
-## D. Implementation map
+## D. Bản đồ triển khai
 
 | Lớp | Source |
 | --- | --- |
@@ -20,7 +20,7 @@ Design-system tokens sở hữu shared surfaces/type; gravity-home styles scope 
 | Backend | [backend/app/api/v1/notifications.py](../../backend/app/api/v1/notifications.py); [backend/app/services/notifications.py](../../backend/app/services/notifications.py); [backend/app/repositories/notifications.py](../../backend/app/repositories/notifications.py); [backend/app/models/notifications.py](../../backend/app/models/notifications.py); [backend/app/api/v1/health.py](../../backend/app/api/v1/health.py); [backend/app/core/exceptions.py](../../backend/app/core/exceptions.py); [backend/app/core/request_timing.py](../../backend/app/core/request_timing.py) |
 | Styles/tests | [frontend/src/app/design-system.css](../../frontend/src/app/design-system.css); [frontend/src/app/gravity-home.css](../../frontend/src/app/gravity-home.css); [frontend/tests/app-shell.test.tsx](../../frontend/tests/app-shell.test.tsx); [frontend/tests/gravity-field.test.tsx](../../frontend/tests/gravity-field.test.tsx); [frontend/tests/notification-center.test.tsx](../../frontend/tests/notification-center.test.tsx); [frontend/tests/localization-matrix.test.tsx](../../frontend/tests/localization-matrix.test.tsx) |
 
-## E–F. Data flow và API contracts
+## E–F. Luồng dữ liệu và hợp đồng API
 
 RootLayout → locale/personalization/AuthProvider → AppShell. Domain transaction → Notification → unread-count → bell; open → paginated list. Homepage GravityMotionProvider connects footer controls to original scene, ticker có state riêng.
 
@@ -33,27 +33,27 @@ Các đường dẫn sau dùng prefix `/api/v1`; DTO, dependency và response mo
 - `GET /health`
 - `GET /ready`
 
-## G. Persistence
+## G. Lưu trữ
 
 Notification recipient/type/entity/payload/read_at ở PostgreSQL; domain event creation cùng transaction và dedup. UserPreference giữ locale/theme/accent. Motion/ticker state là UI-only, không cần database. Diagnostics timing không lưu student body.
 
-## H. Business rules
+## H. Quy tắc nghiệp vụ
 
 Không dịch nội dung authored exam bằng system translation. Preserve display font/logo và theme hydration. Sphere controls chỉ homepage, ticker pause độc lập scene pause. Reduced motion/Save-Data/offscreen không được recreate WebGL chỉ vì footer click. Exam layout bypass global shell đúng path; preview không thêm footer.
 
-## I. Security
+## I. Bảo mật
 
 Notification target vẫn cần backend authorization; unseen/read không cấp quyền. API errors giữ code/status để caller phân biệt denial với lỗi mạng. CSS state/hidden button không enforce role.
 
-## J. Failure và recovery
+## J. Lỗi và khôi phục
 
 UI stale request version bảo vệ recipient change. Scene failed/unavailable có fallback, dispose khi unmount. Health chỉ process liveness; ready kiểm DB timeout, không ngụ ý asset/model ready. Timing logging optional, disabled mặc định.
 
-## K. Focused testing
+## K. Kiểm thử tập trung
 
 App shell/footer/localization/hydration contracts, motion provider + scene cleanup, notification closed-panel list count=0 và unread behavior. Focus/keyboard/reduced-motion checks; rendering thật trên thiết bị không được khẳng định từ jsdom.
 
-## L. Extension guide
+## L. Hướng dẫn mở rộng
 
 Thêm system string phải cập nhật en/vi và types/tests; shared component dùng tokens thay root override rải rác. Thêm notification type cập nhật enum/schema/transaction dedup/payload → translated text/link → recipient tests. Không fetch full list chỉ để badge.
 

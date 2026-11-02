@@ -1,25 +1,25 @@
-# Note Completion Authoring Design
+# Thiết kế biên soạn Note Completion
 
-> **Documentation audit: HISTORICAL.** Historical reference; không phải contract hiện hành.
-> Mục đích: Note Completion Authoring Design. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../../../backend/app/services/auth.py).
-> Đọc cùng [current module/guide](../../modules/identity.md); [audit và giới hạn](../../DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+> **Kiểm toán tài liệu: HISTORICAL.** Tài liệu tham khảo lịch sử; không phải hợp đồng hiện hành.
+> Mục đích: Thiết kế biên soạn Note Completion. Đối chiếu mã nguồn `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [triển khai](../../../backend/app/services/auth.py).
+> Đọc cùng [mô-đun/hướng dẫn hiện hành](../../modules/identity.md); [audit và giới hạn](../../DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
 
-## Outcome
+## Kết quả mong muốn
 
-Replace Note Completion's legacy standalone `layout.nodes` authoring flow with a dedicated note document model. Authors edit semantic note blocks inline, type `{{gap}}` or use **Insert gap** to create linked questions at the caret, and see the same title, headings, bullets, indentation, and inline gaps in Builder Preview, Candidate, and Review.
+Thay luồng biên soạn độc lập cũ dựa trên `layout.nodes` của Note Completion bằng mô hình tài liệu ghi chú chuyên biệt. Người biên soạn chỉnh sửa trực tiếp các khối ghi chú có ngữ nghĩa, nhập `{{gap}}` hoặc dùng **Insert gap** để tạo câu hỏi được liên kết tại vị trí con trỏ, và thấy cùng tiêu đề, đề mục, dấu đầu dòng, thụt lề và chỗ trống nội tuyến trong Builder Preview, Candidate và Review.
 
-## Scope and constraints
+## Phạm vi và ràng buộc
 
-- Change only `note_completion`; Form, Flow-chart, Summary, Sentence, Text, Table, and Diagram behavior stays on its existing implementation.
-- Keep PostgreSQL authoritative and all validation/evaluation in FastAPI.
-- Reuse the existing TEXT question config, answer-key schema, and evaluator.
-- Do not add a rich-text dependency or store `{{gap}}` in persisted content.
-- Preserve UUID-bound questions, answer keys, and configs when text, style, indentation, block order, or gap placement changes.
-- Preserve global Reading/Listening numbering by accepting the Builder-provided base question number.
+- Chỉ thay đổi `note_completion`; hành vi Form, Flow-chart, Summary, Sentence, Text, Table và Diagram tiếp tục dùng triển khai hiện có.
+- PostgreSQL tiếp tục là nguồn chuẩn; mọi xác thực/đánh giá nằm trong FastAPI.
+- Tái sử dụng cấu hình câu hỏi TEXT, schema đáp án và bộ đánh giá hiện có.
+- Không thêm thư viện văn bản giàu định dạng hoặc lưu `{{gap}}` trong nội dung được lưu trữ.
+- Bảo toàn câu hỏi gắn với UUID, đáp án và cấu hình khi thay đổi văn bản, kiểu trình bày, thụt lề, thứ tự khối hoặc vị trí chỗ trống.
+- Bảo toàn cách đánh số toàn cục Reading/Listening bằng cách nhận số câu hỏi cơ sở do Builder cung cấp.
 
-## Data model
+## Mô hình dữ liệu
 
-`config.layout` for Note Completion becomes:
+`config.layout` của Note Completion trở thành:
 
 ```json
 {
@@ -43,26 +43,26 @@ Replace Note Completion's legacy standalone `layout.nodes` authoring flow with a
 }
 ```
 
-The empty legacy collections keep `StructuredLayout` serialization compatible while `blocks` is the authoritative Note representation. Block styles are `HEADING`, `TEXT`, `BULLET`, and `EXAMPLE`; the optional note title is stored separately in `layout.title`. Indent is an integer from 0 through 3. Segment, block, gap, and question identities are UUIDs.
+Các tập hợp cũ rỗng giữ tương thích tuần tự hóa `StructuredLayout`, còn `blocks` là biểu diễn Note chuẩn. Kiểu khối gồm `HEADING`, `TEXT`, `BULLET` và `EXAMPLE`; tiêu đề ghi chú tùy chọn được lưu riêng trong `layout.title`. Mức thụt lề là số nguyên từ 0 đến 3. Danh tính đoạn, khối, chỗ trống và câu hỏi là UUID.
 
-Persisted Note layouts require at least one non-empty block. Every GAP references one group question, every question is referenced exactly once, and all linked questions use valid TEXT answer keys. The initial unsaved Builder draft may contain one blank TEXT block and zero questions; it becomes saveable only after valid content and at least one gap exist.
+Bố cục Note được lưu phải có ít nhất một khối không rỗng. Mỗi GAP tham chiếu một câu hỏi của nhóm, mỗi câu hỏi được tham chiếu đúng một lần và mọi câu hỏi liên kết dùng đáp án TEXT hợp lệ. Bản nháp Builder ban đầu chưa lưu có thể chứa một khối TEXT trống và không có câu hỏi; chỉ có thể lưu sau khi có nội dung hợp lệ và ít nhất một chỗ trống.
 
-## Authoring behavior
+## Hành vi biên soạn
 
-The editor owns one `contentEditable` text span per TEXT segment and one React button per GAP segment. When the active span contains one or more complete `{{gap}}` tokens, only that span is split left-to-right. Each token creates a new question and GAP UUID with `max_words: 2`, `max_numbers: 1`, and `{kind: "TEXT", accepted: ["answer"], case_sensitive: false}`. Existing segments and questions are untouched.
+Trình biên tập sở hữu một span văn bản `contentEditable` cho mỗi đoạn TEXT và một nút React cho mỗi đoạn GAP. Khi span đang hoạt động chứa một hoặc nhiều token `{{gap}}` hoàn chỉnh, chỉ span đó được tách từ trái sang phải. Mỗi token tạo câu hỏi mới và UUID GAP với `max_words: 2`, `max_numbers: 1` và `{kind: "TEXT", accepted: ["answer"], case_sensitive: false}`. Các đoạn và câu hỏi hiện có không bị thay đổi.
 
-The Insert gap action performs the same split at the remembered caret. Enter creates a block below: BULLET continues BULLET, HEADING continues as BULLET, TEXT continues TEXT, and EXAMPLE continues TEXT. Block style and indent controls alter presentation only. Moving blocks or gaps reorders existing objects, then canonical numbering is derived from block order followed by segment order.
+Thao tác Insert gap thực hiện cùng phép tách tại vị trí con trỏ đã ghi nhớ. Enter tạo khối bên dưới: BULLET tiếp tục bằng BULLET, HEADING tiếp tục bằng BULLET, TEXT tiếp tục bằng TEXT và EXAMPLE tiếp tục bằng TEXT. Điều khiển kiểu khối và thụt lề chỉ thay đổi cách trình bày. Di chuyển khối hoặc chỗ trống đổi thứ tự các đối tượng hiện có, sau đó số thứ tự chuẩn được suy ra từ thứ tự khối rồi đến thứ tự đoạn.
 
-Dragging a gap removes the same segment object from its source block and inserts it into the target TEXT segment at the pointer caret. It never creates a replacement question. Removing a gap merges adjacent text and removes only its linked question. Removing a block without gaps is immediate; removing a block with gaps uses the shared confirmation dialog and lists the affected question numbers.
+Kéo chỗ trống lấy chính đối tượng đoạn đó khỏi khối nguồn rồi chèn vào đoạn TEXT đích tại vị trí con trỏ chuột. Thao tác này tuyệt đối không tạo câu hỏi thay thế. Xóa chỗ trống hợp nhất văn bản liền kề và chỉ xóa câu hỏi liên kết của nó. Xóa khối không có chỗ trống diễn ra ngay; xóa khối có chỗ trống dùng hộp thoại xác nhận chung và liệt kê số các câu hỏi bị ảnh hưởng.
 
-## Rendering
+## Hiển thị
 
-A dedicated Note renderer displays a centered non-empty title, bold HEADING blocks, automatic bullet markers for BULLET blocks, distinct EXAMPLE text, and consistent semantic indentation. Each GAP renders the existing question target attributes, question number, and compact input inline between surrounding text. Candidate, Preview, and Review use this same renderer.
+Bộ hiển thị Note chuyên biệt căn giữa tiêu đề không rỗng, in đậm khối HEADING, tự thêm dấu đầu dòng cho khối BULLET, phân biệt văn bản EXAMPLE và thụt lề nhất quán theo ngữ nghĩa. Mỗi GAP hiển thị các thuộc tính đích câu hỏi hiện có, số câu hỏi và ô nhập gọn ngay giữa văn bản xung quanh. Candidate, Preview và Review dùng chung bộ hiển thị này.
 
-## Legacy normalization
+## Chuẩn hóa dữ liệu cũ
 
-FastAPI normalizes legacy NOTE `nodes` before schema validation. Each legacy node becomes one block without guessing adjacency: TEXT becomes a TEXT-style block containing one TEXT segment; GAP becomes a TEXT-style block containing one GAP segment. UUIDv5 identities derived from group/node position make repeated normalization stable. Modern blocks are normalized without changing valid UUIDs. The normalized output clears `nodes` and uses `blocks`.
+FastAPI chuẩn hóa `nodes` NOTE cũ trước khi xác thực schema. Mỗi node cũ trở thành một khối mà không suy đoán quan hệ liền kề: TEXT trở thành khối kiểu TEXT chứa một đoạn TEXT; GAP trở thành khối kiểu TEXT chứa một đoạn GAP. Danh tính UUIDv5 suy ra từ vị trí nhóm/node giúp chuẩn hóa lặp lại vẫn ổn định. Khối hiện đại được chuẩn hóa mà không thay đổi UUID hợp lệ. Đầu ra đã chuẩn hóa xóa `nodes` và dùng `blocks`.
 
-## Validation and testing
+## Xác thực và kiểm thử
 
-Frontend integrity checks and both backend reference-validation paths compare the ordered Note GAP list with the group question set, rejecting duplicates, unknown references, and orphans. Backend Pydantic models enforce UUID, style, indent, segment shape, non-empty persisted blocks, and title limits. Tests cover the model, shortcut/paste conversion, caret insertion, stable identity, gap drag, ordering, styles/indent, destructive actions, legacy normalization, inline candidate responses, Builder controls, and the existing Text/Table/other structured suites.
+Kiểm tra tính toàn vẹn frontend và cả hai luồng xác thực tham chiếu backend so sánh danh sách GAP Note theo thứ tự với tập câu hỏi của nhóm, từ chối bản trùng, tham chiếu không xác định và đối tượng mồ côi. Mô hình Pydantic backend cưỡng chế UUID, kiểu, thụt lề, cấu trúc đoạn, khối lưu trữ không rỗng và giới hạn tiêu đề. Kiểm thử bao quát mô hình, chuyển đổi phím tắt/dán, chèn tại con trỏ, danh tính ổn định, kéo chỗ trống, thứ tự, kiểu/thụt lề, thao tác phá hủy, chuẩn hóa cũ, trả lời nội tuyến của thí sinh, điều khiển Builder và các bộ kiểm thử Text/Table/cấu trúc khác hiện có.

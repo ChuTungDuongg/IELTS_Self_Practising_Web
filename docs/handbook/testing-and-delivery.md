@@ -43,6 +43,8 @@ Không dùng `-m 'not integration'` để khẳng định không chạm DB nếu
 
 ## Delivery và evidence
 
+Quy trình kiểm thử tải mới: [hướng dẫn tái lập](../../benchmarks/load/README.md), [báo cáo năng lực phục vụ](../performance/5000-user-capacity.md), [bằng chứng gốc](../performance/5000-user/evidence.json). Bằng chứng sở hữu môi trường loopback và giới hạn 10 VUs là các guard bắt buộc; readiness tests không thay workload làm bài. Tính đúng đắn của hàng đợi Writing được kiểm bằng [regressions dùng sessions độc lập](../../backend/tests/test_writing_durable_dispatch.py); shutdown được kiểm bằng [process signals](../../backend/tests/test_writing_worker_process.py). Không chạy các suites này trên database development.
+
 Diff review → focused tests → static checks → kiểm scope/secrets → commit → fetch/reconcile → push không force. Test “đã có” khác “đã chạy lần này”. Ghi rõ command, pass/skip/fail, database mode và hạn chế. Không sửa workflow chỉ để bypass lỗi. Không coi `health` 200 là schema hoặc storage ready; `ready` kiểm DB có timeout.
 
 Chưa thực thi CI/E2E tại revision này trong audit tài liệu; mô tả dựa workflow/source. [Playbook](feature-development-playbook.md) giúp chọn test theo change; [security](security-and-reliability.md) ghi threat-specific checks.

@@ -1,34 +1,36 @@
-# Module catalog và ownership map
+# Danh mục mô-đun và bản đồ trách nhiệm
 
-> Mục đích và phạm vi: Điểm bắt đầu để xác định domain chịu trách nhiệm và tài liệu tương ứng.
-> Đối chiếu mã nguồn tại `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`. Đây là kiểm tra tĩnh; không xác nhận trạng thái deployment đang chạy.
+> Mục đích và phạm vi: Điểm bắt đầu để xác định miền nghiệp vụ chịu trách nhiệm và tài liệu tương ứng.
+> Đối chiếu mã nguồn tại `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`. Đây là kiểm tra tĩnh; không xác nhận trạng thái triển khai đang chạy.
 
-Chọn module theo **state và policy nó sở hữu**, không theo URL gần giống. Bảng map cả frontend/backend; source map liệt kê toàn bộ route/model/page ở revision được kiểm tra. Những services nhỏ được nhóm dưới domain liên quan để tránh hàng chục trang trùng lặp.
+Chọn mô-đun theo **trạng thái và chính sách nó quản lý**, không theo URL gần giống. Bảng ánh xạ cả frontend/backend; bản đồ mã nguồn liệt kê mọi tuyến/model/trang ở revision được kiểm tra. Các service nhỏ được nhóm dưới miền nghiệp vụ liên quan để tránh hàng chục trang trùng lặp.
 
-| Module | Canonical guide | Scope sở hữu / integration |
+| Mô-đun | Hướng dẫn chuẩn | Phạm vi quản lý / tích hợp |
 | --- | --- | --- |
-| Identity, accounts, profile và preferences | [identity](../modules/identity.md) | Auth local/OAuth, refresh/restore/logout, profile/goals/preferences |
-| Test Builder, question registry và content governance | [authoring](../modules/authoring.md) | Draft/publish/moderation, content graph, question/key registry, covers |
-| Reading và Listening: objective question engine | [reading-listening](../modules/reading-listening.md) | Reading passage/highlights, Listening player/ranges, objective evaluation |
-| Attempts, Full Mock, timers và history | [attempts](../modules/attempts.md) | Autosave, deadline/pause, focused scope, Full Mock, review/history |
-| Writing: authored tasks, human grading và advisory AI | [writing](../modules/writing.md) | Task1/Task2, human final, advisory snapshots, annotations, benchmark bank |
-| Speaking: recording, processing, scoring và recovery | [speaking](../modules/speaking.md) | Prompts/recording/recovery, media, ASR/evidence, advisory/human scoring |
-| Classrooms, staff, assignments, content và gradebook | [classrooms](../modules/classrooms.md) | Membership/staff, feed/classwork, schedule/targets/extensions, gradebook, archive/delete |
-| Analytics, learning goals và improvement plans | [analytics](../modules/analytics.md) | Personal metrics, classroom evidence/recommendations/goals/plans |
-| Administration, moderation và benchmark bank | [administration](../modules/administration.md) | Users/directory, moderation, admin benchmark operations, observer boundary |
-| Asset storage, transfer, migration và recovery | [assets-transfer](../modules/assets-transfer.md) | Local/S3/R2, private ranges, transfer/draft import, migration/backup/restore |
-| Shared platform: shell, localization, notifications và probes | [shared-platform](../modules/shared-platform.md) | Shell/i18n/themes, homepage motion, notifications, errors, health/timings |
+| Danh tính, tài khoản, hồ sơ và tùy chọn | [danh tính](../modules/identity.md) | Xác thực cục bộ/OAuth, refresh/khôi phục/logout, hồ sơ/mục tiêu/tùy chọn |
+| Test Builder, registry câu hỏi và quản trị nội dung | [soạn đề](../modules/authoring.md) | Bản nháp/xuất bản/kiểm duyệt, đồ thị nội dung, registry câu hỏi/đáp án, ảnh bìa |
+| Reading và Listening: bộ máy câu hỏi khách quan | [Reading/Listening](../modules/reading-listening.md) | Đoạn đọc/highlight Reading, player/khoảng phát Listening, đánh giá đáp án khách quan |
+| Attempt, Full Mock, bộ đếm thời gian và lịch sử | [attempt](../modules/attempts.md) | Autosave, thời hạn/tạm dừng, phạm vi focused, Full Mock, review/lịch sử |
+| Writing: bài tác giả soạn, chấm thủ công và AI tham khảo | [Writing](../modules/writing.md) | Task1/Task2, điểm cuối người chấm, snapshot tham khảo, chú thích, ngân hàng benchmark |
+| Speaking: ghi âm, xử lý, chấm điểm và khôi phục | [Speaking](../modules/speaking.md) | Đề/ghi âm/khôi phục, media, ASR/bằng chứng, điểm tham khảo/người chấm |
+| Lớp học, nhân sự, bài giao, nội dung và sổ điểm | [lớp học](../modules/classrooms.md) | Thành viên/nhân sự, luồng tin/classwork, lịch/đối tượng/gia hạn, sổ điểm, lưu trữ/xóa |
+| Phân tích, mục tiêu học tập và kế hoạch cải thiện | [phân tích](../modules/analytics.md) | Chỉ số cá nhân, bằng chứng/gợi ý/mục tiêu/kế hoạch của lớp học |
+| Quản trị, kiểm duyệt và ngân hàng benchmark | [quản trị](../modules/administration.md) | Người dùng/danh bạ, kiểm duyệt, thao tác benchmark admin, ranh giới quan sát |
+| Lưu trữ asset, chuyển dữ liệu, di chuyển và khôi phục | [asset/chuyển dữ liệu](../modules/assets-transfer.md) | Cục bộ/S3/R2, khoảng byte riêng tư, chuyển dữ liệu/import bản nháp, di chuyển/sao lưu/khôi phục |
+| Nền tảng dùng chung: shell, bản địa hóa, thông báo và kiểm tra trạng thái | [nền tảng dùng chung](../modules/shared-platform.md) | Shell/i18n/theme, chuyển động trang chủ, thông báo, lỗi, sức khỏe hệ thống/thời gian xử lý |
 
-## Shared ownership rules
+## Quy tắc phân chia trách nhiệm dùng chung
 
-- API/domain mutations đi FastAPI. Bổ sung UI không tạo nguồn authority mới.
-- Classroom assignments gọi existing attempt/session engine. Gradebook/learning analytics reuse selected roots/human final, không fork scoring.
-- Storage provider factory dùng chung cả content, covers, speech, classroom resources và benchmark images; metadata owner vẫn thuộc domain.
-- AI provider/worker không sở hữu authentication, final objective grading hay human final records.
-- Notification service ghi recipient events do domain phát sinh; không cấp quyền cho link đích.
+Hiệu năng/mở rộng là chủ đề xuyên suốt: [khảo sát khả năng phục vụ](../performance/5000-user-capacity.md), [công cụ thử tải](../../benchmarks/load/README.md). Điều phối Writing thuộc Writing, ngân sách kết nối thuộc hạ tầng; thẩm quyền bài thi không chuyển sang lớp benchmark.
 
-## Tình trạng implementation
+- Mọi thay đổi dữ liệu API/nghiệp vụ đi qua FastAPI. Bổ sung UI không tạo nguồn thẩm quyền mới.
+- Bài giao lớp học gọi bộ máy attempt/session hiện có. Sổ điểm/phân tích học tập dùng lại bản ghi gốc đã chọn/điểm cuối người chấm, không tách nhánh chấm điểm.
+- Factory provider lưu trữ dùng chung cho nội dung, ảnh bìa, giọng nói, tài nguyên lớp học và ảnh benchmark; miền nghiệp vụ vẫn quản lý metadata.
+- Provider/worker AI không quản lý xác thực, điểm cuối câu hỏi khách quan hay bản ghi điểm cuối người chấm.
+- Service thông báo ghi sự kiện theo người nhận do nghiệp vụ phát sinh; không cấp quyền cho liên kết đích.
 
-Các module trong bảng có code, route và test files hiện hữu. AI/OAuth/cloud/reminders tùy cấu hình; không phải tất cả đang bật ở một deployment. RAG/pgvector, payments, email delivery/realtime presence không được xác nhận là capabilities hiện hành. Legacy AI scorers dưới evaluation là experimental/historical benchmark candidates, không default runtime.
+## Tình trạng triển khai
 
-[Coverage matrix](../DOCUMENTATION_COVERAGE.md) ghi Partial/Not verified chứ không báo 100%. [Playbook](feature-development-playbook.md) hướng dẫn thay đổi, [source map](source-map.md) tra cứu endpoint chính xác.
+Mọi mô-đun trong bảng đều có mã, tuyến và tệp test hiện hữu. AI/OAuth/cloud/nhắc hạn tùy cấu hình; không phải tất cả đang bật trong một lần triển khai. RAG/pgvector, thanh toán, gửi email/hiện diện thời gian thực chưa được xác nhận là khả năng hiện hành. Bộ chấm AI cũ dưới evaluation là ứng viên benchmark thử nghiệm/lịch sử, không phải runtime mặc định.
+
+[Ma trận bao phủ](../DOCUMENTATION_COVERAGE.md) ghi Partial/Not verified, không báo 100%. [Hướng dẫn phát triển](feature-development-playbook.md) chỉ cách thay đổi, [bản đồ mã nguồn](source-map.md) giúp tra endpoint chính xác.

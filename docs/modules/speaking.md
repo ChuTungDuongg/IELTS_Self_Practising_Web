@@ -1,9 +1,9 @@
-# Speaking: recording, processing, scoring và recovery
+# Speaking: ghi âm, xử lý, chấm điểm và khôi phục
 
 > Mục đích và phạm vi: Ghi âm riêng tư có khả năng khôi phục, xử lý transcript/evidence và tách AI khỏi human final.
 > Đối chiếu mã nguồn tại `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`. Đây là kiểm tra tĩnh; không xác nhận trạng thái deployment đang chạy.
 
-## A–C. Mục đích, workflow và ownership
+## A–C. Mục đích, quy trình và phân chia trách nhiệm
 
 Ghi âm riêng tư có khả năng khôi phục, xử lý transcript/evidence và tách AI khỏi human final.
 
@@ -11,7 +11,7 @@ Builder tạo Part 1/2/3 và prompts. Runner preflight microphone, bắt đầu 
 
 SpeakingAttemptService owns prompt timing; SpeakingMediaService owns raw media; TranscriptWorker owns normalization/ASR/evidence; SpeakingAIWorker owns advisory run. Frontend recorder quản lý MediaRecorder và transport, không tự xác nhận prompt đã hoàn tất.
 
-## D. Implementation map
+## D. Bản đồ triển khai
 
 | Lớp | Source |
 | --- | --- |
@@ -21,7 +21,7 @@ SpeakingAttemptService owns prompt timing; SpeakingMediaService owns raw media; 
 | Repositories/models | [backend/app/repositories/speaking.py](../../backend/app/repositories/speaking.py); [backend/app/repositories/speaking_transcript.py](../../backend/app/repositories/speaking_transcript.py); [backend/app/repositories/speaking_ai.py](../../backend/app/repositories/speaking_ai.py); [backend/app/models/speaking.py](../../backend/app/models/speaking.py); [backend/app/models/speaking_transcript.py](../../backend/app/models/speaking_transcript.py); [backend/app/models/speaking_ai.py](../../backend/app/models/speaking_ai.py) |
 | Tests | [backend/tests/test_speaking_media.py](../../backend/tests/test_speaking_media.py); [backend/tests/test_full_mock_speaking.py](../../backend/tests/test_full_mock_speaking.py); [frontend/tests/speaking-transport.test.ts](../../frontend/tests/speaking-transport.test.ts); [frontend/tests/speaking-runner.test.tsx](../../frontend/tests/speaking-runner.test.tsx) |
 
-## E–F. Data flow và API contracts
+## E–F. Luồng dữ liệu và hợp đồng API
 
 Prompt state → acknowledged raw chunks → committed take → normalized WAV → ASR/timings → quality/fluency/pronunciation bundle → advisory criterion scores/feedback → explicit human final workflow riêng. Xem sequence trong [AI architecture](../handbook/ai-architecture.md).
 
@@ -36,27 +36,27 @@ Các đường dẫn sau dùng prefix `/api/v1`; DTO, dependency và response mo
 - `POST /speaking-attempts/{attempt_id}/ai-runs`
 - `PUT /speaking-attempts/{attempt_id}/final-score`
 
-## G. Persistence
+## G. Lưu trữ
 
 Part/Prompt authored content, Response/Take/PromptProgress runtime state; AudioSegment/Chunk tham chiếu private storage. NormalizedAudio, TranscriptRun/Event/Transcript và AIGradingRun/Event có identity và checkpoints. MediaCleanup lưu công việc dọn private artifacts; AttemptSpeakingScore là human final.
 
-## H. Business rules
+## H. Quy tắc nghiệp vụ
 
 Recovery tạo container segment mới, không nối byte của các MediaRecorder container khác nhau tùy ý. Chunk sequence và manifest kiểm đầy đủ/idempotency. Prompt deadlines/recovery không được dùng để time farming. Scratch notes loại khỏi chấm. PR cần acoustic evidence; missing/unusable audio không sinh score mặc định.
 
-## I. Security
+## I. Bảo mật
 
 Mọi private media/transcript/events kiểm owner hoặc assignment provenance. Teacher/ADMIN observer không có candidate run/cancel quyền chỉ vì đọc được result. API sensitive errors không echo body/paths. Retained classwork artifacts xử lý khác personal deletion.
 
-## J. Failure và recovery
+## J. Lỗi và khôi phục
 
 FFmpeg normalization trước ASR; cached derivatives có fingerprint/integrity check và rebuild path. Lease fencing ngăn stale worker checkpoint sau recovery. Startup recover Speaking workers; cleanup outbox xử lý raw/derived storage. Explicit cancel không được phá transcript task dùng chung.
 
-## K. Focused testing
+## K. Kiểm thử tập trung
 
 Media retry/sequence/lost-ack tests, transcript/evidence/AI workers bằng fake provider, Full Mock Speaking, private range/storage và frontend transport tests. Live microphone/browser/ASR/GPU chưa chạy trong audit này.
 
-## L. Extension guide
+## L. Hướng dẫn mở rộng
 
 Đọc binding spec + plan + self-review trước thay Speaking. Thêm processing stage phải thiết kế cache fingerprint, lease/checkpoint, sanitized errors, cleanup và observer semantics; không nhét inference vào GET review.
 

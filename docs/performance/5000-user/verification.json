@@ -1,0 +1,51 @@
+{
+  "commands": {
+    "baseline_pure": "pytest tests/test_writing_concurrency.py tests/test_writing_ai_observer_lifecycle.py tests/test_deployment_profiles.py tests/test_modal_app.py tests/test_modal_web_runtime.py -q",
+    "baseline_database": "pytest tests/test_attempt_response_concurrency.py tests/test_auth_refresh_concurrency.py tests/test_concurrency_hardening.py tests/test_writing_ai.py tests/test_speaking_ai_runs.py tests/test_speaking_transcript.py -q",
+    "final_focused": "pytest tests/test_attempt_response_concurrency.py tests/test_auth.py tests/test_auth_refresh_concurrency.py tests/test_concurrency_hardening.py tests/test_writing_ai.py tests/test_writing_ai_practice_feedback.py tests/test_writing_annotation_replay.py tests/test_writing_concurrency.py tests/test_writing_score_first.py tests/test_writing_durable_dispatch.py tests/test_speaking_ai_runs.py tests/test_speaking_transcript.py tests/test_auth_password_offload.py tests/test_database_pool.py tests/test_load_harness.py tests/test_load_journeys.py tests/test_load_telemetry.py tests/test_load_speaking_probe.py tests/test_writing_ai_observer_lifecycle.py tests/test_writing_worker_process.py tests/test_deployment_profiles.py tests/test_modal_app.py tests/test_modal_web_runtime.py -q --tb=short",
+    "frontend": [
+      "npm --prefix frontend run typecheck",
+      "npm --prefix frontend run lint"
+    ],
+    "migration": [
+      "alembic upgrade head",
+      "alembic downgrade 20261028_0043",
+      "alembic upgrade head",
+      "alembic heads"
+    ],
+    "offline_docs": "python -m benchmarks.load.validate_docs",
+    "offline_evidence": "python -m benchmarks.load.validate_evidence",
+    "ruff": "From backend: ruff check app tests ../benchmarks/load; ruff format --check ../benchmarks/load app/services/writing_ai_worker.py tests/test_load_probe_safety.py tests/test_writing_dispatch_backoff.py",
+    "review_final_focused": "pytest tests/test_attempt_response_concurrency.py tests/test_auth.py tests/test_auth_refresh_concurrency.py tests/test_concurrency_hardening.py tests/test_writing_ai.py tests/test_writing_ai_practice_feedback.py tests/test_writing_annotation_replay.py tests/test_writing_concurrency.py tests/test_writing_score_first.py tests/test_writing_durable_dispatch.py tests/test_speaking_ai_runs.py tests/test_speaking_transcript.py tests/test_auth_password_offload.py tests/test_database_pool.py tests/test_load_harness.py tests/test_load_journeys.py tests/test_load_telemetry.py tests/test_load_speaking_probe.py tests/test_load_probe_safety.py tests/test_writing_dispatch_backoff.py tests/test_writing_ai_observer_lifecycle.py tests/test_writing_worker_process.py tests/test_deployment_profiles.py tests/test_modal_app.py tests/test_modal_web_runtime.py -q --tb=short"
+  },
+  "results": {
+    "baseline_pure": "111 passed,1 skipped,6.86s",
+    "baseline_database": "203 passed,255.51s",
+    "final_focused": "469 passed,1 skipped,307.22s",
+    "frontend_typecheck": "exit0",
+    "frontend_lint": "exit0",
+    "migration_cycle": "PASS;head20261102_0044",
+    "clean_locked_dev_offline": "66 passed,0 skipped,8.14s; clean uv sync --locked --group dev; no Locust installed",
+    "review": "Four findings fixed; follow-up read-only review: no remaining findings; 7 affected regressions passed",
+    "review_final_focused": "476 passed,1 skipped,263.05s",
+    "ruff": "PASS app/tests/benchmarks; scoped format PASS; uv lock --check PASS"
+  },
+  "isolation": "owned disposable PostgreSQL container; primary/p2/migration/load databases separate; no prod/dev data",
+  "limits": [
+    "No full suites or browser/E2E run",
+    "Initial two pytest invocations referenced nonexistent test filenames and ran zero tests; corrected before accepted baseline",
+    "One root-cwd Ruff invocation misclassified app imports; canonical cwd/backend run passed, no unrelated bulk reformat",
+    "An initial final regression run used the old Python compatibility double:475passed1failed1skip; isolated double corrected and66clean-devtests passed; broad rerun recorded separately"
+  ],
+  "documentation": {
+    "local_markdown": "105 files,1782 inline local link/anchor targets PASS",
+    "mermaid": "26/26 syntax parse with mermaid11.12.2 and jsdom; no rendered visual claim",
+    "translation": "No fully English prose documents remain in scanned docs/benchmark README scope; heuristic scan plus per-file manual translation",
+    "fences": "Existing executable fences retained; 3 intentional Mermaid updates: 2 legacy parser fixes and Writing durable-dispatch diagram",
+    "inline_code_exceptions": "ai-writing obsolete asyncio.create_task,updated_at,run.failed removed by current worker architecture correction,not translation loss",
+    "evidence": "Stored UTF-8/LF byte hashes;3HTTP summaries recomputed;measurements unchanged",
+    "secret_scope": "147 staged paths checked:no .runs,caches,private assets,credentials; focused pattern/key scan plus diff review",
+    "limits": "Local inline Markdown targets/anchors; does not verify external URLs,reference-style links or all historical source identifiers"
+  },
+  "cleanup": "All owned load servers stopped, all4initialized fixture runs schema/storage/credentials cleared, both owned tmpfs PostgreSQL containers stopped/removed. Docker Engine and pre-existing databases/assets untouched."
+}

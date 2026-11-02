@@ -1,618 +1,175 @@
-# BandPilot advisory AI Academic Writing
+# AI tư vấn Academic Writing của BandPilot
 
-> **Documentation audit: CURRENT.** Canonical concern này; source-check các boundary/API, không live validation.
-> Mục đích: BandPilot advisory AI Academic Writing. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../backend/app/services/mts_writing.py).
-> Đọc cùng [current module/guide](modules/writing.md); [audit và giới hạn](DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+> **Kiểm toán tài liệu: CURRENT.** Tài liệu chuẩn cho chủ đề này; đã đối chiếu ranh giới/API trong mã nguồn, chưa xác thực trực tiếp trên hệ thống chạy.
+> Mục đích: mô tả AI tư vấn Academic Writing của BandPilot. Đối chiếu mã nguồn `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [phần triển khai](../backend/app/services/mts_writing.py).
+> Đọc cùng [mô-đun/hướng dẫn hiện hành](modules/writing.md); [kiểm toán và giới hạn](DOCS_AUDIT.md). Kết quả kiểm thử/benchmark bên dưới thuộc lần thực hiện gốc, không phải kết quả chạy lại trong đợt kiểm toán này.
 
-The standalone ADMIN [Writing benchmark bank](writing-benchmark-bank.md) stores
-human ground truth only and exports JSONL/images/CSV for offline Task 1/Task 2
-evaluation. Task 2 reuses production MTS scoring and shared score metrics. Reports
-remain in CLI/Colab output; labels never enter inference and no scoring prompts,
-calibration or provider defaults are changed by the bank.
+[Ngân hàng benchmark Writing](writing-benchmark-bank.md) ADMIN độc lập chỉ lưu dữ liệu chuẩn do người chấm, xuất JSONL/hình/CSV để đánh giá Task 1/Task 2 ngoại tuyến. Task 2 tái sử dụng MTS sản xuất và chỉ số điểm dùng chung. Báo cáo ở đầu ra CLI/Colab; nhãn không vào suy luận, ngân hàng không thay lời nhắc chấm, hiệu chuẩn hoặc mặc định nhà cung cấp.
 
-Task 1 and Task 2 share the configured `mistralai/Ministral-3-8B-Instruct-2512`
-model, provider adapters and existing Modal/vLLM GPU function. Task 2 retains
-its text-only pipeline with the `mts-task2-v12` cache contract. Task 1
-uses `mts-task1-scoring-v12`, composite `mts-task1-visual-v12`, and the unchanged
-`mts-task1-visual-v3` perception contract. See
-[the latency engineering case study](enhance_latency.md) for bounded concurrent
-execution, serving settings, measurements and reproduction.
+Task 1 và Task 2 dùng chung mô hình `mistralai/Ministral-3-8B-Instruct-2512`, bộ tiếp hợp nhà cung cấp và hàm GPU Modal/vLLM hiện có. Task 2 giữ chuỗi chỉ văn bản với hợp đồng bộ nhớ đệm `mts-task2-v12`. Task 1 dùng `mts-task1-scoring-v12`, phiên bản tổng hợp `mts-task1-visual-v12` và hợp đồng nhận thức `mts-task1-visual-v3` không đổi. Xem [nghiên cứu tình huống kỹ thuật độ trễ](enhance_latency.md) về thực thi đồng thời có giới hạn, cấu hình phục vụ, số đo và cách tái hiện.
 
-## Conservative task relevance (v8)
+## Kiểm tra độ liên quan với đề theo hướng thận trọng (v8)
 
-A shared text-only auxiliary classifier returns `ON_TOPIC`, `PARTIALLY_RELEVANT`
-or `WHOLLY_UNRELATED`, confidence `HIGH`/`MEDIUM`/`LOW`, up to four stable essay
-source IDs and a concise Vietnamese reason. The backend resolves exact essay
-quotes. Only **WHOLLY_UNRELATED + HIGH** skips TA/TR evidence, scoring and feedback and
-constructs a valid TA/TR **1.0** result explaining the Band 1 descriptor. CC,
-LR and GRA still run independently; the existing equal-weight aggregate is unchanged.
+Bộ phân loại phụ trợ chỉ văn bản dùng chung trả `ON_TOPIC`, `PARTIALLY_RELEVANT` hoặc `WHOLLY_UNRELATED`, độ tin cậy `HIGH`/`MEDIUM`/`LOW`, tối đa bốn ID nguồn bài viết ổn định và lý do tiếng Việt ngắn. Backend phân giải trích dẫn đúng nguyên văn. Chỉ **WHOLLY_UNRELATED + HIGH** bỏ qua bằng chứng, chấm và nhận xét TA/TR, tạo kết quả TA/TR **1.0** hợp lệ giải thích mô tả Band 1. CC, LR, GRA vẫn chạy độc lập; phép tổng hợp trọng số đều không đổi.
 
-On-topic, partial and uncertain verdicts follow normal TA/TR scoring. Weak language,
-missing an overview, inaccurate numbers/trends, omissions or discussing only one
-view are insufficient for wholly-unrelated classification when a meaningful task
-connection remains. Ambiguity favours partial relevance. This does not detect
-plagiarism, memorisation, cheating or authorship.
+Kết luận đúng đề, liên quan một phần hoặc chưa chắc đều đi qua chấm TA/TR thông thường. Ngôn ngữ yếu, thiếu tổng quan, số/xu hướng sai, thiếu ý hoặc chỉ bàn một quan điểm không đủ kết luận hoàn toàn lạc đề khi vẫn có liên hệ có nghĩa với đề. Khi mơ hồ ưu tiên liên quan một phần. Cơ chế này không phát hiện đạo văn, học thuộc, gian lận hoặc tác giả.
 
-Task 2 starts relevance alongside linguistic criteria; only TR waits for the
-decision. Task 1 first completes primary visual grounding, then reuses compact
-structured context (labels/relationships/categories, without chart point/cell
-values) in text-only relevance. No additional image call is made for relevance.
-After a short-circuit, primary grounding metadata is retained and **claims,
-verification, facts, optional DePlot, TA evidence, TA scoring and TA feedback never start**.
-Otherwise the post-gate specialist/facts and claims paths may overlap before TA.
-Linguistic criteria remain independent of both dependencies. UNUSABLE grounding
-preserves TA's existing failure and linguistic progress; it never causes a text-only
-Band 1 decision. Chart, table, map, process, system and other visual families remain supported.
+Task 2 khởi động kiểm tra độ liên quan song song tiêu chí ngôn ngữ; chỉ TR chờ quyết định. Task 1 hoàn thành bước tiếp nhận thị giác chính trước, rồi tái sử dụng ngữ cảnh cấu trúc gọn (nhãn/quan hệ/nhóm, không có giá trị điểm/ô biểu đồ) cho kiểm tra chỉ văn bản. Không gọi hình thêm cho độ liên quan. Khi kết luận sớm, giữ siêu dữ liệu thị giác chính và **không khởi động phát biểu, kiểm chứng, dữ kiện, DePlot tùy chọn, bằng chứng TA, chấm TA hoặc nhận xét TA**. Nếu không, sau cổng kiểm tra, nhánh chuyên đọc/dữ kiện và phát biểu có thể chạy chồng lấp trước TA. Tiêu chí ngôn ngữ độc lập với cả hai phụ thuộc. Tiếp nhận thị giác UNUSABLE giữ lỗi TA và tiến độ ngôn ngữ hiện có, không gây quyết định Band 1 chỉ từ văn bản. Các họ biểu đồ, bảng, bản đồ, quy trình, hệ thống và thị giác khác vẫn được hỗ trợ.
 
-Relevance uses the run-local bounded provider, a **768-token** cap and a 30-second
-per-call timeout. Invalid JSON/schema/source IDs or non-stop finish reasons permit
-one repair, never a third attempt. Timeout/provider/auxiliary failures fail open
-and cannot fail a scoreable run. Diagnostics retain fixed reasons, safe field types,
-usage and timings, without raw content or exception bodies. Evidence, score-only
-and feedback use the bounded stage budgets below; finish validation stays strict. A normal healthy assessment adds one text call; a relevance repair
-adds at most one more. Healthy short-circuits use ten LLM calls for Task 2 and eleven
-for Task 1, including primary grounding and all nine linguistic calls. No live-model
-accuracy or speed claim follows from scripted tests.
+Kiểm độ liên quan dùng nhà cung cấp giới hạn trong từng lượt, trần **768 token**, thời gian chờ mỗi lần 30 giây. JSON/lược đồ/ID nguồn không hợp lệ hoặc lý do kết thúc khác stop cho một lần sửa, không có lần thứ ba. Lỗi thời gian chờ/nhà cung cấp/phụ trợ cho phép tiếp tục, không làm thất bại lượt có thể chấm. Chẩn đoán giữ lý do cố định, kiểu trường an toàn, mức dùng và thời gian, không giữ nội dung thô/thân ngoại lệ. Bằng chứng, chỉ điểm và nhận xét dùng ngân sách bước hữu hạn bên dưới; kiểm kết thúc vẫn nghiêm. Đánh giá bình thường thêm một lần gọi văn bản; sửa độ liên quan thêm tối đa một. Kết luận sớm bình thường dùng mười lần gọi LLM cho Task 2, mười một cho Task 1, gồm tiếp nhận thị giác chính và chín lần gọi ngôn ngữ. Kiểm thử kịch bản không chứng minh độ chính xác/tốc độ mô hình thật.
 
-Optional `relevance` metadata is stored in the existing run result JSON and exposed
-in full/partial DTOs. Durable `relevance.started`, `.completed`, `.failed` events
-replay through SSE; auxiliary failure continues normal assessment. Historic runs
-without relevance still parse. Effective Task 2 v12 includes old deployed version
-labels through v11, so prior cached results stay readable without being reused.
-Task 1 v12 fingerprints invalidate earlier scoring caches while retaining perception
-v3 and the v7 TA/CC guidance. Offline benchmarks use the current contract; frozen v3/v5
-retain their historical pre-gate combined-output contracts.
-Task-tab cleanup still stops observation only; explicit Stop cancels grading.
+Siêu dữ liệu `relevance` tùy chọn lưu trong JSON kết quả lượt hiện có, lộ qua DTO đầy đủ/một phần. Sự kiện bền vững `relevance.started`, `.completed`, `.failed` phát lại qua SSE; lỗi phụ trợ tiếp tục đánh giá thường. Lượt lịch sử thiếu relevance vẫn đọc được. Task 2 v12 có hiệu lực bao gồm nhãn phiên bản từng triển khai đến v11, nên kết quả đệm cũ vẫn đọc nhưng không tái sử dụng. Dấu vân tay Task 1 v12 vô hiệu hóa bộ nhớ đệm chấm cũ, giữ nhận thức v3 và hướng dẫn TA/CC v7. Benchmark ngoại tuyến dùng hợp đồng hiện hành; v3/v5 đóng băng giữ hợp đồng đầu ra gộp trước cổng kiểm tra. Dọn thẻ tác vụ vẫn chỉ dừng theo dõi; Dừng rõ ràng mới hủy chấm.
 
-## Personal focused Writing feedback
+## Nhận xét Writing cá nhân theo phạm vi
 
-`writing_ai_practice_feedback` stores one explicit latest advisory snapshot per
-`(user_id, attempt_id, writing_task_id)`: source AI run, four criterion score/feedback
-pairs and creation/update timestamps. Migration `20261011_0023` follows
-`20261010_0022`. PostgreSQL UPSERT converges concurrent saves onto the same row;
-there is no snapshot history, DELETE endpoint or duplicate overall score.
+`writing_ai_practice_feedback` lưu một ảnh chụp tư vấn mới nhất được người dùng lưu rõ ràng cho mỗi `(user_id, attempt_id, writing_task_id)`: lượt AI nguồn, bốn cặp điểm/nhận xét tiêu chí và dấu thời gian tạo/cập nhật. Migration `20261011_0023` kế tiếp `20261010_0022`. PostgreSQL UPSERT hội tụ lưu đồng thời về cùng dòng; không có lịch sử ảnh chụp, điểm cuối DELETE hoặc điểm tổng trùng.
 
-Authenticated resource paths:
+Đường dẫn tài nguyên cần xác thực:
 
-- `GET /api/v1/attempts/{attempt_id}/writing/{writing_task_id}/ai-practice-feedback`
-  returns a snapshot or `null` if none was saved.
-- `PUT` at the same path accepts **only** `{ "source_run_id": "UUID" }`. Extra
-  fields are rejected. FastAPI validates the durable completed run through production
-  result schemas and copies its four scores/feedback; browser-supplied scores are never used.
+- `GET /api/v1/attempts/{attempt_id}/writing/{writing_task_id}/ai-practice-feedback` trả ảnh chụp hoặc `null` nếu chưa lưu.
+- `PUT` cùng đường dẫn **chỉ** nhận `{ "source_run_id": "UUID" }`, từ chối trường dư. FastAPI kiểm lượt hoàn tất đã lưu qua lược đồ kết quả sản xuất và sao chép bốn điểm/nhận xét; không dùng điểm trình duyệt gửi lên.
 
-The attempt must belong to the caller, be standalone WRITING/FOCUSED_UNIT and select
-that task. The source run must match the attempt/task/requester and contain a complete
-validated result. Full-module/Full Mock, foreign attempts/tasks/runs, pending/running/failed
-runs and malformed/incomplete results are rejected. Snapshot foreign keys cascade with
-attempt/user removal. Human final grading follows attempt provenance: personal owners and ADMIN may save final criteria; classroom students cannot.
+Lượt làm bài phải thuộc người gọi, là WRITING/FOCUSED_UNIT riêng và chọn đúng tác vụ đó. Lượt AI nguồn phải khớp lượt làm bài/tác vụ/người yêu cầu, có kết quả đầy đủ đã xác thực. Từ chối toàn mô-đun/Full Mock, lượt/tác vụ/lượt AI của người khác, lượt chờ/đang chạy/thất bại và kết quả sai/thiếu. Khóa ngoại ảnh chụp xóa dây chuyền khi xóa lượt/người dùng. Chấm cuối do người theo nguồn gốc lượt: chủ sở hữu cá nhân và ADMIN được lưu tiêu chí cuối; học viên lớp không được.
 
-USER review exposes Save/Update only for focused Writing. The separately loaded card
-shows four criterion scores, feedback, saved/update times and an advisory badge in
-EN/VI. Regrading does not overwrite the card; another explicit save replaces it. An
-unrelated source run shows its explanation alongside the independent linguistic scores.
-Personal owners and ADMIN may copy AI criteria into the final form, edit and explicitly Save. Classroom teachers use the assignment-scoped form. Snapshot saves never modify `AttemptWritingScore`,
-attempt band, History, Analytics or official Full Mock state.
+Trang xem lại USER chỉ mở Lưu/Cập nhật cho Writing theo phạm vi. Thẻ tải riêng hiển thị bốn điểm tiêu chí, nhận xét, thời gian lưu/cập nhật và nhãn tư vấn EN/VI. Chấm lại không ghi đè thẻ; lưu rõ ràng lần nữa mới thay. Lượt nguồn lạc đề hiển thị giải thích cạnh điểm ngôn ngữ độc lập. Chủ sở hữu cá nhân và ADMIN có thể chép tiêu chí AI vào biểu mẫu cuối, sửa rồi Lưu rõ ràng. Giáo viên lớp dùng biểu mẫu theo bài giao. Lưu ảnh chụp không sửa `AttemptWritingScore`, band lượt làm bài, History, Analytics hoặc trạng thái Full Mock chính thức.
 
-Inline annotations belong to the source AI run's criterion results. The saved
-practice snapshot retains its compatible score/text summary; saving it creates
-no separate annotation columns or annotation history.
+Chú thích nội tuyến thuộc kết quả tiêu chí của lượt AI nguồn. Ảnh chụp luyện tập đã lưu giữ bản tóm tắt điểm/văn bản tương thích; thao tác lưu không tạo cột hoặc lịch sử chú thích riêng.
 
-## Task 2: text-only assessment
+## Task 2: đánh giá chỉ từ văn bản
 
-This is the project's **multi-trait IELTS pipeline**, an
-online adaptation rather than a faithful reproduction of an academic RMTS
-experiment. Four independent criteria use the official IELTS descriptor
-semantics: Task Response (`ta` for compatibility), Coherence and Cohesion,
-Lexical Resource, and Grammatical Range and Accuracy. Each criterion now runs
-**score-only → source evidence selection → structured feedback → public display**.
-Task 1 retains its evidence → score-only → feedback flow. No other criterion's score is shared.
-There is no default band, score offset, ceiling, error-count penalty, dataset
-min-max scaling or outlier clipping. Whole-response descriptor fit remains the
-scoring authority; generated assessments never steer Task 2 score inference.
-Half-bands interpolate adjacent official whole-band profiles across
-0–9, including low bands and supported Band 8/9 outcomes.
+Đây là **chuỗi IELTS đa tiêu chí** của dự án, phiên bản thích nghi trực tuyến chứ không tái hiện trung thành thí nghiệm RMTS học thuật. Bốn tiêu chí độc lập dùng ngữ nghĩa mô tả IELTS chính thức: Task Response (`ta` để tương thích), Coherence and Cohesion, Lexical Resource, Grammatical Range and Accuracy. Mỗi tiêu chí nay chạy **chỉ chấm điểm → chọn bằng chứng nguồn → nhận xét có cấu trúc → hiển thị công khai**. Task 1 giữ luồng bằng chứng → chỉ điểm → nhận xét. Không chia sẻ điểm tiêu chí khác. Không có band mặc định, cộng độ lệch, trần, phạt theo số lỗi, co giãn min-max tập dữ liệu hoặc cắt ngoại lệ. Mức khớp mô tả toàn bài vẫn quyết định điểm; đánh giá sinh ra không dẫn suy luận điểm Task 2. Nửa band nội suy hồ sơ nguyên band chính thức lân cận trong 0–9, gồm band thấp và kết quả Band 8/9 có căn cứ.
 
-The Writing editor is a plain textarea. Its explicit Enter characters travel
-unchanged through JSON submission, `AttemptWritingResponse.content` in PostgreSQL
-and the scoring request; visual soft wrapping adds no newline. The former generic
-segmenter treated only blank lines as paragraph boundaries, so essays using one
-Enter per paragraph appeared as a single P1. Production Task 2 input now carries
-internal textarea provenance: each explicit LF/CRLF/CR separates paragraphs,
-with repeated empty lines ignored. The generic/Task 1 default still treats single
-newlines as possible wrapped lines and blank lines as paragraph boundaries.
-Nothing rewrites the student's lexical content, punctuation, spacing or database
-response. Source IDs P1S1, P2S1, etc. resolve exact original slices and offsets;
-repeated sentences remain independently addressable. All Task 2 inference stages
-and relevance use the same source mapping.
+Trình soạn Writing là textarea thuần. Ký tự Enter rõ ràng đi nguyên vẹn qua JSON, `AttemptWritingResponse.content` PostgreSQL và yêu cầu chấm; xuống dòng mềm khi hiển thị không thêm ký tự. Bộ tách chung trước chỉ coi dòng trống là ranh giới đoạn, nên bài dùng một Enter mỗi đoạn bị thành một P1. Đầu vào Task 2 sản xuất nay mang nguồn gốc textarea nội bộ: mỗi LF/CRLF/CR rõ ràng tách đoạn, bỏ dòng trống lặp. Mặc định chung/Task 1 vẫn coi xuống dòng đơn có thể do ngắt dòng hiển thị, dòng trống mới tách đoạn. Không ghi lại từ, dấu câu, khoảng trắng hoặc câu trả lời cơ sở dữ liệu. ID P1S1, P2S1... phân giải đúng lát cắt/độ lệch gốc; câu lặp vẫn định địa chỉ riêng. Mọi bước suy luận Task 2 và độ liên quan dùng cùng ánh xạ nguồn.
 
-After accepting the strict score, the auxiliary evidence request selects at most four stable
-source IDs. Backend lookup resolves each ID to the exact original English slice;
-the model never reproduces evidence quotations. Generated selector assessments
-are replaced with neutral backend-resolved locations and do not enter score or
-feedback prompts. Task 2 now parses a `RawTask2EvidenceSelection` envelope and
-validates each choice independently. Explanatory assessment/focus strings are
-locally bounded to the existing 320/160-character limits with the Unicode-safe
-normalizer. Unknown source IDs, malformed items, blank assessments and duplicates
-are omitted; at most four valid choices survive. Unknown IDs never become evidence.
-If no usable choices remain, feedback receives an empty selection and the full essay.
-No presentation excess or invalid individual choice causes an LLM retry.
-Unrepresentable source quotes are omitted rather than clipped into invented wording.
+Sau khi nhận điểm nghiêm ngặt, yêu cầu bằng chứng phụ trợ chọn tối đa bốn ID nguồn ổn định. Backend tra mỗi ID ra lát cắt tiếng Anh đúng nguyên văn; mô hình không tái tạo trích dẫn. Nhận định sinh bởi bộ chọn được thay bằng vị trí trung lập do backend phân giải, không vào lời nhắc điểm hoặc nhận xét. Task 2 nay phân tích vỏ `RawTask2EvidenceSelection`, kiểm độc lập mỗi lựa chọn. Chuỗi giải thích assessment/focus được giới hạn cục bộ ở 320/160 ký tự hiện có bằng bộ chuẩn hóa an toàn Unicode. Bỏ ID lạ, mục sai, assessment trống và trùng; giữ tối đa bốn lựa chọn hợp lệ. ID lạ không thành bằng chứng. Nếu hết lựa chọn dùng được, nhận xét nhận danh sách rỗng và toàn bài. Dư thừa trình bày hoặc lựa chọn đơn lẻ sai không gây thử lại LLM. Trích dẫn không biểu diễn được bị bỏ thay vì cắt thành câu chữ bịa.
 
-Malformed top-level evidence JSON/schema or incomplete output still gets one
-bounded repair. If the recoverable explanatory-output problem remains, Task 2
-uses empty evidence and continues with its already-validated score. Evidence
-quality therefore cannot block a valid Task 2 score. Auth, transport, timeout,
-provider abort/error, cancellation and unexpected application/persistence failures
-remain hard failures. Task 1 retains its original strict evidence contract.
+JSON/lược đồ bằng chứng cấp gốc sai hoặc đầu ra thiếu vẫn được một lần sửa hữu hạn. Nếu lỗi giải thích có thể phục hồi còn lại, Task 2 dùng bằng chứng rỗng và tiếp tục với điểm đã xác thực. Chất lượng bằng chứng vì vậy không chặn điểm Task 2 hợp lệ. Lỗi xác thực, truyền tải, thời gian chờ, nhà cung cấp hủy/lỗi, hủy thao tác và lỗi ứng dụng/lưu trữ bất ngờ vẫn là lỗi cứng. Task 1 giữ hợp đồng bằng chứng nghiêm ban đầu.
 
-The `CriterionBandScore` inference schema contains **only `score`**, for example
-`{"score":6.5}`. The existing authoritative 0–9 half-band validator remains.
-The score prompt contains only the question, full segmented essay and the
-same criterion-specific official descriptor context. No generated evidence
-assessment, strength, improvement or feedback is included. One invalid score gets one
-score-only repair; a second invalid or truncated score fails the criterion.
-There is no invented, inferred, default or replacement score. vLLM retains
-temperature 0 and seed 0. Request IDs, timestamps and other trait scores never
-enter semantic prompts; source and evidence ordering remains deterministic.
+Lược đồ suy luận `CriterionBandScore` **chỉ có `score`**, ví dụ `{"score":6.5}`. Bộ kiểm nửa band 0–9 có thẩm quyền hiện có giữ nguyên. Lời nhắc điểm chỉ chứa đề, toàn bài chia đoạn và cùng ngữ cảnh mô tả chính thức riêng tiêu chí. Không có nhận định bằng chứng, điểm mạnh, cải thiện hoặc nhận xét sinh ra. Một điểm sai được một lần sửa chỉ điểm; điểm sai/cắt cụt lần hai làm tiêu chí thất bại. Không bịa, suy đoán, mặc định hoặc thay điểm. vLLM giữ temperature 0, seed 0. ID yêu cầu, dấu thời gian và điểm tiêu chí khác không vào lời nhắc ngữ nghĩa; thứ tự nguồn/bằng chứng tất định.
 
-After score validation, a separate internal `RawTask2FeedbackDraft` request receives
-the fixed band as immutable metadata, full essay, selected source IDs and
-descriptor context. The score is not a target that feedback must rationalize:
-there is no requirement to explain each half-band difference or find defects
-below 9. Empty observations, limitations and improvements are valid; uncertain
-claims must be omitted. This schema has no writable score or free-form summary.
+Sau kiểm điểm, yêu cầu nội bộ `RawTask2FeedbackDraft` riêng nhận band cố định như siêu dữ liệu bất biến, toàn bài, ID nguồn chọn và ngữ cảnh mô tả. Điểm không là mục tiêu nhận xét phải biện minh: không buộc giải thích mỗi nửa band hoặc tìm khuyết điểm dưới 9. Quan sát, hạn chế, cải thiện rỗng hợp lệ; nhận định chưa chắc phải bỏ. Lược đồ không có điểm ghi được hoặc tóm tắt tự do.
 
-The provider contract guides supported object shapes/enums while accepting raw
-explanatory string lengths. Backend sanitizers validate items separately before
-constructing a bounded `Task2FeedbackDraft`. At most four representative observations carry
-`source_id`, `kind` (`STRENGTH`, `LIMITATION`,
-`ERROR`, `OPTIONAL_REFINEMENT`), concise Vietnamese `observation`, confidence,
-and optional exact `original_span`/`suggested_revision`. Observation/revision prose
-is bounded to complete sentences of at most 240 characters, with no whole-response retry for length.
-An oversized rewrite is omitted rather than clipped into a partial correction.
-Unknown source IDs, malformed items, model-generated location prose, conflicting
-Band claims, low-confidence observations, non-HIGH negative claims and unusable
-optional rewrites are dropped individually. Remaining valid observations survive.
-Complete prose is checked before bounding so forbidden claims cannot hide beyond
-the display limit. The backend derives locations from validated source metadata.
+Hợp đồng nhà cung cấp hướng dẫn cấu trúc/enum hỗ trợ nhưng chấp nhận độ dài chuỗi giải thích thô. Bộ làm sạch backend kiểm từng mục trước khi dựng `Task2FeedbackDraft` hữu hạn. Tối đa bốn quan sát đại diện có `source_id`, `kind` (`STRENGTH`, `LIMITATION`, `ERROR`, `OPTIONAL_REFINEMENT`), `observation` tiếng Việt ngắn, độ tin cậy và `original_span`/`suggested_revision` đúng nguyên văn tùy chọn. Văn bản quan sát/sửa giới hạn ở câu trọn tối đa 240 ký tự, không thử lại toàn phản hồi vì độ dài. Bản viết lại quá lớn bị bỏ thay vì cắt thành sửa dở. Bỏ riêng ID lạ, mục sai, mô tả vị trí do mô hình tạo, khẳng định Band mâu thuẫn, độ tin cậy thấp, nhận định tiêu cực không HIGH và bản sửa tùy chọn không dùng được. Quan sát hợp lệ còn lại được giữ. Kiểm văn bản đầy đủ trước giới hạn để nhận định cấm không ẩn sau ngưỡng hiển thị. Backend suy vị trí từ siêu dữ liệu nguồn đã kiểm.
 
-GRA/LR ERROR claims still require an exact, non-blank source span. ERROR claims
-with an invented supplied span and OPTIONAL_REFINEMENT rewrites depending on a
-non-exact span are omitted. For STRENGTH/LIMITATION, an unusable optional span and
-its dependent revision are removed; an otherwise valid source-linked observation
-can survive. Original spans are never truncated or normalized into apparent
-exactness. These checks establish source grounding, not proof that a linguistic
-judgement is true.
+Nhận định GRA/LR ERROR vẫn cần đoạn nguồn đúng nguyên văn, không trống. Bỏ ERROR có đoạn được bịa và bản viết lại OPTIONAL_REFINEMENT phụ thuộc đoạn không khớp. Với STRENGTH/LIMITATION, bỏ đoạn tùy chọn không dùng được và bản sửa phụ thuộc; quan sát gắn nguồn hợp lệ còn lại vẫn giữ. Không cắt/chuẩn hóa đoạn gốc thành vẻ như khớp chính xác. Các kiểm tra chứng minh căn cứ nguồn, không chứng minh phán đoán ngôn ngữ là đúng.
 
-Criterion-specific instructions require actual standard-English errors before
-GRA reports a correction, including checking subjects, agreement, articles,
-punctuation, copular constructions and gerund subjects. LR must not swap synonyms
-merely for variety, reject accurate common/topic vocabulary or British/American
-variants, or change meaning, register or collocation. CC accepts clear logical
-progression without extra explicit linkers. Task Response does not require
-research, studies, statistics, citations or named-country case studies: relevant
-reasoning and plausible hypothetical examples may support an argument.
+Hướng dẫn riêng tiêu chí yêu cầu lỗi tiếng Anh chuẩn thật trước khi GRA báo sửa, gồm kiểm chủ ngữ, hòa hợp, mạo từ, dấu câu, cấu trúc hệ từ và chủ ngữ danh động từ. LR không được đổi đồng nghĩa chỉ để đa dạng, bác từ thông dụng/đúng chủ đề hoặc biến thể Anh/Mỹ hợp lệ, hay đổi nghĩa, ngữ vực, kết hợp từ. CC chấp nhận tiến triển logic rõ mà không cần thêm từ nối. Task Response không đòi nghiên cứu, thống kê, trích dẫn hoặc ví dụ quốc gia có tên: lập luận liên quan và ví dụ giả định hợp lý có thể hỗ trợ.
 
-The backend retains the compatible public `CriterionResult` fields (`feedback`,
-`strengths`, `improvements`, `evidence`) from accepted observations. It never
-uses unvalidated selector assessments or a model-generated summary. Optional
-rewrites use a backend-owned "Gợi ý tùy chọn: có thể diễn đạt…" template rather
-than model-authored factual-error prose. Existing display limits remain one
-summary of 800 characters, assembled from at most two whole observations, and
-structured strengths/improvements of 240 characters each. All four accepted
-observations remain in their structured lists even if they do not fit the summary.
-A conflicting Band claim is dropped with its observation; an
-injected top-level score field is a structural failure and receives bounded repair.
-Feedback never alters the accepted numeric band.
+Backend giữ trường công khai `CriterionResult` tương thích (`feedback`, `strengths`, `improvements`, `evidence`) từ quan sát chấp nhận. Không dùng nhận định bộ chọn chưa kiểm hoặc tóm tắt mô hình tự sinh. Bản sửa tùy chọn dùng mẫu backend “Gợi ý tùy chọn: có thể diễn đạt…” thay văn bản mô hình khẳng định lỗi thực tế. Giới hạn hiển thị hiện có vẫn một tóm tắt 800 ký tự ghép tối đa hai quan sát trọn câu, điểm mạnh/cải thiện có cấu trúc mỗi mục 240 ký tự. Cả bốn quan sát chấp nhận vẫn ở danh sách cấu trúc dù không vừa tóm tắt. Nhận định Band mâu thuẫn bị bỏ cùng quan sát; chèn trường điểm cấp gốc là lỗi cấu trúc và được sửa hữu hạn. Nhận xét không đổi band số đã chấp nhận.
 
-Each stage has at most one correction. Actual completion caps are:
+Mỗi bước tối đa một lần sửa. Trần hoàn thành thực tế:
 
-| Stage | Normal tokens | Length-repair tokens |
+| Bước | Token bình thường | Token sửa do độ dài |
 | --- | ---: | ---: |
-| Evidence | 1800 | 2056 |
-| Score-only | 128 | 256 |
-| Feedback | 1200 | 1400 |
+| Bằng chứng | 1800 | 2056 |
+| Chỉ điểm | 128 | 256 |
+| Nhận xét | 1200 | 1400 |
 
-Other schema repairs keep the normal cap. Both adapters receive the same typed
-stage options. vLLM's verified `CompletionContextExceeded` resubmission may lower
-an explicit cap once without truncating input. Unsupported guided-schema string
-constraints (`minLength`, `maxLength`, `pattern`, `format`) remain stripped. Guided
-JSON therefore cannot guarantee display string lengths. Backend raw parsing,
-item-local sanitization and bounded domain construction are authoritative; limits
-are not increased and the score contract is not weakened. Prompts still request
-concise descriptions, but presentation normalization never appends a repair prompt.
-Feedback structural repairs append one compact correction, not the full guidance again.
+Lỗi lược đồ khác giữ trần thường. Hai bộ tiếp hợp nhận cùng tùy chọn bước có kiểu. Gửi lại `CompletionContextExceeded` đã xác minh của vLLM có thể hạ một lần trần rõ ràng mà không cắt đầu vào. Ràng buộc chuỗi guided-schema không hỗ trợ (`minLength`, `maxLength`, `pattern`, `format`) vẫn bị bỏ. JSON được hướng dẫn không đảm bảo độ dài chuỗi hiển thị. Phân tích thô, làm sạch từng mục và dựng miền hữu hạn ở backend có thẩm quyền; không tăng giới hạn hoặc nới hợp đồng điểm. Lời nhắc vẫn yêu cầu mô tả ngắn, nhưng chuẩn hóa hiển thị không thêm lời nhắc sửa. Sửa cấu trúc nhận xét thêm một hướng dẫn sửa gọn, không lặp toàn chỉ dẫn.
 
-If feedback still has invalid top-level JSON/schema, empty content, excessive
-output or `finish_reason=length` after one repair, or local sanitization leaves no
-usable observations, the criterion completes with its fixed valid score and
-validated evidence. Its Vietnamese fallback says detailed
-feedback is unavailable but the advisory criterion score is complete; strengths
-and improvements are empty. Safe internal diagnostics distinguish `score` from
-`feedback`, including `EVIDENCE_PRESENTATION_NORMALIZED`, `EVIDENCE_ITEM_DROPPED`,
-`EVIDENCE_FALLBACK_USED`, `FEEDBACK_OBSERVATION_DROPPED`,
-`FEEDBACK_FALLBACK_USED` and `FEEDBACK_PRESENTATION_NORMALIZED`. Diagnostics contain
-only fixed reasons, safe field/index paths and types, never oversized provider text.
-Intentionally empty valid drafts do not create validation errors or retries.
-Auth, transport, timeout, cancellation,
-explicit Stop and unexpected state/persistence failures remain hard failures.
-Raw provider errors, essays, credentials, prompts and hidden reasoning are never
-logged, persisted as diagnostics or streamed. Existing public SSE stages and
-`CriterionResult` DTOs remain compatible. Score-stage public events are buffered
-until auxiliary evidence is ready (possibly empty) to retain the existing public evidence/scoring order;
-internal inference is score-first. A feedback failure cannot erase a
-valid band through the recoverable-output path.
+Nếu nhận xét vẫn sai JSON/lược đồ cấp gốc, trống, quá lớn hoặc `finish_reason=length` sau một sửa, hoặc làm sạch hết quan sát dùng được, tiêu chí hoàn tất với điểm cố định hợp lệ và bằng chứng đã kiểm. Dự phòng tiếng Việt nói nhận xét chi tiết không khả dụng nhưng điểm tư vấn đã hoàn tất; điểm mạnh/cải thiện rỗng. Chẩn đoán nội bộ an toàn phân biệt `score` và `feedback`, gồm `EVIDENCE_PRESENTATION_NORMALIZED`, `EVIDENCE_ITEM_DROPPED`, `EVIDENCE_FALLBACK_USED`, `FEEDBACK_OBSERVATION_DROPPED`, `FEEDBACK_FALLBACK_USED`, `FEEDBACK_PRESENTATION_NORMALIZED`. Chỉ giữ lý do cố định, đường dẫn trường/chỉ số an toàn và kiểu, không giữ văn bản nhà cung cấp quá dài. Bản nháp hợp lệ cố ý rỗng không tạo lỗi/thử lại. Lỗi xác thực, truyền tải, thời gian chờ, hủy, Dừng rõ ràng và trạng thái/lưu trữ bất ngờ vẫn là lỗi cứng. Không ghi nhật ký, lưu chẩn đoán hoặc truyền lỗi thô, bài viết, thông tin xác thực, lời nhắc, suy luận ẩn. Bước SSE công khai và DTO `CriterionResult` giữ tương thích. Sự kiện công khai bước điểm được đệm tới khi bằng chứng phụ trợ sẵn sàng (có thể rỗng) để giữ thứ tự bằng chứng/chấm công khai; suy luận nội bộ chạy điểm trước. Đường phục hồi đầu ra không cho lỗi nhận xét xóa band hợp lệ.
 
-Task 2 now uses **`mts-task2-v12`**. Configured v1–v11 labels resolve to v12, and
-custom labels are prefixed with v12 for cache identity. Existing v11 results remain
-readable and are never reused for the new contract. Legacy combined-output
-schemas/calibration helpers remain available for historical tooling, separate
-from production score-only inference.
+Task 2 nay dùng **`mts-task2-v12`**. Nhãn cấu hình v1–v11 phân giải thành v12, nhãn tùy chọn được thêm tiền tố v12 cho danh tính bộ nhớ đệm. Kết quả v11 hiện có vẫn đọc và không dùng lại cho hợp đồng mới. Lược đồ đầu ra gộp/hàm hiệu chuẩn cũ vẫn dành cho công cụ lịch sử, tách khỏi suy luận chỉ điểm sản xuất.
 
-Fake-provider regressions verify reliability, isolation, schema validation and
-request determinism. No local human-labelled scoring corpus was available, so
-these checks do not establish improved human-examiner score agreement or real-model
-feedback accuracy. No score calibration or official descriptor semantics change
-is claimed, and no live-model accuracy claim is supported by fake-provider tests.
-The AI score remains advisory. Descriptor guidance continues to use the
-[official IELTS descriptors](https://ielts.org/cdn/ielts-guides/ielts-writing-band-descriptors.pdf)
-(May 2023), as documented by the existing descriptor-fit checks.
+Hồi quy nhà cung cấp giả kiểm độ tin cậy, cô lập, xác thực lược đồ và tính tất định yêu cầu. Không có tập chấm cục bộ gán nhãn người, nên không chứng minh đồng thuận điểm với giám khảo hoặc độ chính xác nhận xét mô hình thật tốt hơn. Không tuyên bố đổi hiệu chuẩn/ngữ nghĩa mô tả chính thức; kiểm giả không hỗ trợ tuyên bố độ chính xác mô hình trực tiếp. Điểm AI vẫn tư vấn. Hướng dẫn mô tả tiếp tục dùng [mô tả IELTS chính thức](https://ielts.org/cdn/ielts-guides/ielts-writing-band-descriptors.pdf) (tháng 5 năm 2023), theo kiểm mức khớp mô tả hiện có.
 
-Every criterion must be in 0–9 in steps of 0.5. FastAPI computes the Decimal
-equal-weight mean and rounds it with the existing `round_to_half` helper:
-`(6.5 + 6 + 7 + 6) / 4 = 6.375 → 6.5`. Both values are persisted only if all four
-criteria succeed. Otherwise the run ends FAILED after attempting all criteria,
-with successful results and individual failures preserved and no aggregate.
-**AI Task 2 Overall** is advisory. It never updates `AttemptWritingScore`,
-`Attempt.band_score`, official Writing, History or Analytics. An authorized personal owner or admin can copy
-scores/feedback into the final form; explicit human Save is required. Classroom
-teachers enter final criteria through the assignment form while consulting advisory results. The official Task 1 × 1 / Task 2 × 2 rule is unchanged.
-Classroom students cannot use AI to gain final grading access. Speaking AI remains a separate feature.
+Mỗi tiêu chí phải ở 0–9 theo bước 0.5. FastAPI tính trung bình Decimal trọng số đều, làm tròn bằng `round_to_half`: `(6.5 + 6 + 7 + 6) / 4 = 6.375 → 6.5`. Chỉ lưu cả hai giá trị nếu đủ bốn tiêu chí thành công. Nếu không, lượt kết thúc FAILED sau khi thử mọi tiêu chí, giữ kết quả thành công/lỗi riêng và không có tổng. **Điểm tổng AI Task 2** là tư vấn; không cập nhật `AttemptWritingScore`, `Attempt.band_score`, Writing chính thức, History hoặc Analytics. Chủ sở hữu cá nhân/quản trị được phép chép điểm/nhận xét vào biểu mẫu cuối; cần Lưu rõ ràng của người chấm. Giáo viên lớp nhập tiêu chí cuối qua biểu mẫu bài giao khi tham khảo tư vấn. Quy tắc Task 1 × 1 / Task 2 × 2 chính thức không đổi. Học viên lớp không được dùng AI để có quyền chấm cuối. AI Speaking là tính năng riêng.
 
-## Shared concise feedback and inline annotations
+## Nhận xét ngắn và chú thích nội tuyến dùng chung
 
-Both tasks request zero to four useful observations per criterion, normally one
-sentence of about 180 characters. High-confidence errors take priority over
-recurring limitations and sparse optional refinements. There is no required
-positive/negative balance, generic rubric lecture or exhaustive proofreading.
-Long prose is kept only at complete sentence boundaries or omitted; summaries
-never cut a word or thought, and exact spans/revisions are never clipped.
+Hai tác vụ yêu cầu từ 0 đến bốn quan sát hữu ích mỗi tiêu chí, thường một câu khoảng 180 ký tự. Lỗi độ tin cậy cao ưu tiên trước hạn chế lặp và vài gợi ý tinh chỉnh tùy chọn. Không buộc cân bằng tích cực/tiêu cực, giảng thang chấm chung chung hoặc soát mọi lỗi. Văn dài chỉ giữ ở ranh giới câu trọn hoặc bỏ; tóm tắt không cắt từ/ý, đoạn đúng nguyên văn/bản sửa không bị cắt.
 
-Each public criterion adds `annotations`, defaulting to `[]` for historical
-results, and `feedback_status` (`PENDING`, `COMPLETED`, `UNAVAILABLE`), defaulting
-to `COMPLETED` for historical DTOs. This separates an accepted band checkpoint
-from finished feedback even when several criteria generate concurrently.
-A `WritingAnnotation` carries a deterministic ID, criterion, kind,
-source ID, original span, optional suggested revision, concise message,
-confidence and an optional controlled category. ERROR requires HIGH confidence;
-LOW never survives normalization. GRA owns grammar and punctuation; LR owns
-spelling, word formation, word choice and collocation. Valid copular/gerund
-constructions, common synonyms and accepted British/American variants are
-conservatively protected. Location checks cannot prove every linguistic judgement.
+Mỗi tiêu chí công khai thêm `annotations`, mặc định `[]` cho lịch sử, và `feedback_status` (`PENDING`, `COMPLETED`, `UNAVAILABLE`), mặc định `COMPLETED` cho DTO lịch sử. Nhờ đó tách checkpoint điểm đã chấp nhận khỏi nhận xét hoàn tất khi nhiều tiêu chí sinh đồng thời. `WritingAnnotation` gồm ID tất định, tiêu chí, loại, ID nguồn, đoạn gốc, bản sửa tùy chọn, thông điệp ngắn, độ tin cậy và nhóm kiểm soát tùy chọn. ERROR cần HIGH; LOW không qua chuẩn hóa. GRA sở hữu ngữ pháp/dấu câu; LR sở hữu chính tả, cấu tạo từ, chọn từ/kết hợp từ. Cấu trúc hệ từ/danh động từ đúng, đồng nghĩa thông dụng và biến thể Anh/Mỹ hợp lệ được bảo vệ thận trọng. Kiểm vị trí không chứng minh mọi phán đoán ngôn ngữ.
 
-The backend resolves a span inside its validated `SourceSegment`, requiring
-exactly one occurrence in that source and verifying the absolute saved-essay
-slice. Repeated phrases in different sources are disambiguated by source ID.
-Ambiguous occurrences inside one source remain panel feedback without an inline
-annotation. Public `start_offset`/`end_offset` are **UTF-16 code units into the
-exact persisted essay string**, with an exclusive end. Internal source offsets
-remain Python character indices. CRLF, whitespace and non-BMP characters are
-preserved, so JavaScript `content.slice(start_offset, end_offset)` matches the
-original span without fuzzy search or line-ending normalization.
+Backend phân giải đoạn trong `SourceSegment` đã kiểm, yêu cầu đúng một lần xuất hiện trong nguồn và xác minh lát cắt tuyệt đối của bài đã lưu. Cụm lặp ở nguồn khác phân biệt bằng ID nguồn. Trùng mơ hồ trong một nguồn vẫn là nhận xét bảng, không thành chú thích nội tuyến. `start_offset`/`end_offset` công khai là **đơn vị mã UTF-16 trong đúng chuỗi bài viết đã lưu**, điểm cuối loại trừ. Độ lệch nguồn nội bộ vẫn là chỉ số ký tự Python. Giữ CRLF, khoảng trắng, ký tự ngoài BMP để JavaScript `content.slice(start_offset, end_offset)` khớp đoạn gốc mà không tìm mờ hoặc chuẩn hóa xuống dòng.
 
-The shared read-only `AnnotatedEssay` decorates GRA/LR only, with a restrained
-error underline and a softer optional/limitation underline. Hover, keyboard focus
-and tap expose the criterion, message and original → suggested revision; Escape
-or Close dismisses the popover. Overlaps split into non-overlapping text segments
-that can expose multiple suggestions while rendering essay text once. Semantic
-styles support light/dark themes and reduced motion. Normal density is at most
-four GRA plus four LR annotations; zero is valid. TA/CC stay in criterion panels.
+`AnnotatedEssay` chỉ đọc dùng chung chỉ trang trí GRA/LR: gạch chân lỗi tiết chế, gạch nhẹ hơn cho tùy chọn/hạn chế. Di chuột, tiêu điểm bàn phím và chạm lộ tiêu chí, thông điệp, gốc → gợi ý sửa; Escape hoặc Đóng tắt bảng nổi. Chỗ chồng tách thành phân đoạn không chồng, có thể lộ nhiều gợi ý nhưng chỉ dựng văn bản bài một lần. Kiểu dáng ngữ nghĩa hỗ trợ sáng/tối và giảm chuyển động. Mật độ thường tối đa bốn GRA cộng bốn LR; 0 là hợp lệ. TA/CC ở bảng tiêu chí.
 
-After the accepted score checkpoint, durable `criterion.feedback.started` with
-`stage=feedback` exposes `generating_feedback` activity before the provider call.
-Only complete parsed and validated annotations produce individual
-`criterion.feedback.annotation` events. `criterion.feedback.completed` carries
-the final criterion block and `feedback_completed` activity, followed by existing
-`criterion.completed`. These are semantic events, **not raw token streaming** or
-partially parsed JSON. They use the existing sequence/replay storage; the client
-deduplicates annotation IDs, shows live feedback and underlines, and reconciles
-against the authoritative final snapshot. A selected/new run has its own state;
-failed runs clear underlines while preserving accepted scores and the saved essay.
+Sau checkpoint điểm, sự kiện bền vững `criterion.feedback.started` với `stage=feedback` lộ hoạt động `generating_feedback` trước gọi nhà cung cấp. Chỉ chú thích phân tích/kiểm đầy đủ mới tạo `criterion.feedback.annotation` riêng. `criterion.feedback.completed` mang khối tiêu chí cuối và hoạt động `feedback_completed`, tiếp theo `criterion.completed` hiện có. Đây là sự kiện ngữ nghĩa, **không truyền token thô** hoặc JSON phân tích dở. Chúng dùng kho số thứ tự/phát lại hiện có; máy khách khử trùng ID chú thích, hiển thị nhận xét/gạch chân trực tiếp và đối chiếu ảnh chụp cuối có thẩm quyền. Lượt mới/được chọn có trạng thái riêng; lượt lỗi xóa gạch chân, giữ điểm đã nhận và bài đã lưu.
 
-Annotations are advisory teaching evidence. Their count/severity never determines
-a band, applies a hidden penalty or changes an accepted score. Official/manual
-scores, Task 1 grounding, Task 2 relevance and provider settings remain unchanged.
-Final annotations and events use existing JSONB storage; this redesign requires
-no database migration and does not mutate historical results.
+Chú thích là bằng chứng dạy học tư vấn. Số lượng/mức nghiêm trọng không quyết định band, phạt ẩn hoặc đổi điểm đã chấp nhận. Điểm chính thức/thủ công, nền tảng Task 1, độ liên quan Task 2 và cấu hình nhà cung cấp không đổi. Chú thích/sự kiện cuối dùng JSONB hiện có; thiết kế này không cần migration hoặc sửa kết quả lịch sử.
 
-## Task 1: visual grounding before assessment
+## Task 1: tiếp nhận thị giác có căn cứ trước đánh giá
 
-Task 1 also uses score-only inference followed by fixed-band feedback, with the
-same stage budgets and recoverable feedback fallback as Task 2. Its current
-composite version is **`mts-task1-visual-v12`** and scoring version is
-**`mts-task1-scoring-v12`**; the visual contract remains **`mts-task1-visual-v3`**.
-TA scoring retains the visual reference, deterministic facts and verified claims;
-feedback selects validated claims and uses backend-owned factual display text.
-Task 1 TA/CC calibration
-and linguistic criterion boundaries remain intact. Frozen v3/v5 offline
-benchmark services retain their original combined-output contracts and budgets.
-Current benchmark configurations identify v12 accurately. Historical v7/v8
-retain their combined-output prompts and budgets; report/result schemas remain readable.
-The benchmark CLI defaults to `--scoring-version v12`; `both` compares frozen v5
-with current v12. Frozen score-first v11 remains available explicitly, alongside v3/v5/v7/v8.
-Historical report records still parse, but old versions are not reused
-as a label for the new production candidate.
+Task 1 cũng suy luận chỉ điểm rồi nhận xét theo band cố định, cùng ngân sách bước và dự phòng nhận xét phục hồi như Task 2. Phiên bản tổng hợp hiện là **`mts-task1-visual-v12`**, phiên bản chấm **`mts-task1-scoring-v12`**; hợp đồng thị giác vẫn **`mts-task1-visual-v3`**. Chấm TA giữ tham chiếu thị giác, dữ kiện tất định và phát biểu đã kiểm; nhận xét chọn phát biểu hợp lệ, dùng văn bản dữ kiện do backend sở hữu. Hiệu chuẩn TA/CC Task 1 và ranh giới tiêu chí ngôn ngữ giữ nguyên. Dịch vụ benchmark ngoại tuyến v3/v5 đóng băng giữ hợp đồng gộp/ngân sách gốc. Cấu hình benchmark hiện hành định danh đúng v12. V7/v8 lịch sử giữ lời nhắc/ngân sách gộp; lược đồ báo cáo/kết quả vẫn đọc được. CLI mặc định `--scoring-version v12`; `both` so v5 đóng băng với v12 hiện tại. V11 điểm trước đóng băng vẫn chọn rõ ràng, bên cạnh v3/v5/v7/v8. Bản ghi lịch sử vẫn phân tích được, không lấy nhãn cũ cho ứng viên sản xuất mới.
 
-### Task 1 skeptical language feedback and adjacent-band calibration (v12)
+### Task 1: kiểm chứng nhận xét ngôn ngữ theo hướng hoài nghi và hiệu chuẩn band lân cận (v12)
 
-Task 1 follows **candidate feedback → source/schema sanitization → skeptical LR/GRA
-linguistic verification → public feedback/annotations**. The accepted score is already
-fixed before verification; decisions cannot change it or trigger rescoring. Source
-matching proves a quotation's location, not the truth of a language criticism.
+Task 1 theo **nhận xét đề xuất → làm sạch nguồn/lược đồ → kiểm chứng ngôn ngữ LR/GRA theo hướng hoài nghi → nhận xét/chú thích công khai**. Điểm đã cố định trước kiểm chứng; quyết định không đổi điểm hoặc kích hoạt chấm lại. Khớp nguồn chứng minh vị trí trích dẫn, không chứng minh lời phê bình ngôn ngữ đúng.
 
-Only sanitized LR/GRA ERROR or LIMITATION candidates trigger verification: one
-batched call per affected criterion, at most four indexed decisions, 384 output
-tokens and a 30-second timeout, with no auxiliary retry. TA/CC, empty candidates,
-strengths and optional-only drafts add no verifier call. Independent linguistic
-criteria retain the existing run-local provider concurrency limit.
+Chỉ đề xuất LR/GRA ERROR hoặc LIMITATION đã làm sạch kích hoạt kiểm chứng: một lần gọi gộp mỗi tiêu chí chịu ảnh hưởng, tối đa bốn quyết định có chỉ số, 384 token đầu ra, thời gian chờ 30 giây, không thử lại phụ trợ. TA/CC, đề xuất rỗng, điểm mạnh hoặc bản nháp chỉ có tùy chọn không thêm lần gọi. Tiêu chí ngôn ngữ độc lập giữ giới hạn đồng thời nhà cung cấp trong lượt.
 
-The verifier assumes standard English is acceptable and rejects uncertain criticisms,
-stylistic preferences and valid alternatives. ERROR requires a genuinely necessary
-language correction; LIMITATION requires material or recurring evidence across the
-essay. The strict decision contract contains no score, explanation or learner-visible
-prose. Missing/duplicate/foreign decisions, inconsistent reasons, malformed output,
-non-stop completion, timeout and provider failure omit all unverified negatives while
-retaining safe strengths and the accepted band. Internal diagnostics record only
-`LANGUAGE_FEEDBACK_VERIFICATION_UNAVAILABLE`; provider internals never reach the UI.
+Bộ kiểm mặc định tiếng Anh chuẩn được chấp nhận, bác lời phê chưa chắc, sở thích phong cách và phương án hợp lệ. ERROR cần sửa ngôn ngữ thật sự cần thiết; LIMITATION cần bằng chứng đáng kể hoặc lặp trong bài. Hợp đồng quyết định nghiêm không có điểm, giải thích hoặc văn cho người học. Quyết định thiếu/trùng/ngoại lai, lý do không nhất quán, đầu ra sai, kết thúc khác stop, quá giờ/lỗi nhà cung cấp bỏ mọi nhận định tiêu cực chưa kiểm, giữ điểm mạnh an toàn và band. Chẩn đoán nội bộ chỉ ghi `LANGUAGE_FEEDBACK_VERIFICATION_UNAVAILABLE`; nội bộ nhà cung cấp không tới UI.
 
-Only verified HIGH-confidence exact-span LR/GRA ERROR items may become inline
-annotations. Verified material LIMITATION items stay in the criterion panel. Optional
-stylistic rewrites are omitted from Task 1 public feedback, summaries, evidence and
-Fix next; zero inline issues is a valid successful result. Task 2 keeps its existing
-display and scoring semantics, and historical runs are not rewritten.
+Chỉ LR/GRA ERROR độ tin cậy HIGH đã kiểm, có đoạn đúng nguyên văn, được thành chú thích nội tuyến. LIMITATION đáng kể đã kiểm vẫn ở bảng tiêu chí. Bỏ viết lại tùy chọn theo phong cách khỏi nhận xét công khai, tóm tắt, bằng chứng và mục Cần sửa tiếp theo của Task 1; không có lỗi nội tuyến vẫn là thành công. Task 2 giữ hiển thị/ngữ nghĩa điểm hiện có, lượt lịch sử không bị viết lại.
 
-Task 1 scoring separately strengthens LR/GRA adjacent-band discrimination: Band 8
-permits occasional slips, rewards precise natural vocabulary and mostly accurate,
-task-appropriate structural range, and requires neither a thesaurus nor perfection.
-CC accepts natural explicit markers and effective introduction/overview/year-detail
-organisation; 6.5/7 are not compromise defaults. Language evidence represents the
-whole response's quality instead of mining defects. TA guidance, visual grounding,
-facts and claim verification remain intact. There are no score offsets, floors/caps,
-error-count penalties or feedback-driven score adjustments. Fake-provider tests verify
-these boundaries, without claiming measured live-model calibration improvement.
+Chấm Task 1 riêng củng cố phân biệt LR/GRA band lân cận: Band 8 cho phép sơ suất thỉnh thoảng, ghi nhận từ tự nhiên chính xác và độ đa dạng cấu trúc phù hợp nhiệm vụ phần lớn đúng, không đòi từ điển đồng nghĩa hay hoàn hảo. CC chấp nhận dấu nối tự nhiên và tổ chức mở bài/tổng quan/chi tiết theo năm hiệu quả; 6.5/7 không là mặc định dung hòa. Bằng chứng ngôn ngữ thể hiện chất lượng toàn bài, không săn lỗi. Hướng dẫn TA, tham chiếu thị giác, dữ kiện/kiểm chứng giữ nguyên. Không có độ lệch cộng, sàn/trần, phạt số lỗi hoặc sửa điểm theo nhận xét. Kiểm giả chứng minh ranh giới, không tuyên bố đã đo cải thiện hiệu chuẩn mô hình trực tiếp.
 
-### Task 1 paragraph and feedback reliability (v10)
+### Task 1: độ tin cậy đoạn văn và nhận xét (v10)
 
-Both Writing tasks use the same plain `<textarea>`, revision autosave JSON `content`,
-and `AttemptWritingResponse.content`. Explicit Enter is saved as a newline;
-visual soft wrapping inserts none. Task 1 previously omitted the Task 2 internal
-`paragraph_mode="textarea"` provenance and several consumers called the default
-blank-line segmenter directly. Consequently four single-Enter paragraphs became P1.
-Production Task 1 now carries textarea provenance, and relevance, evidence selection,
-score context, structured feedback, claim extraction, verification and quote lookup
-all use `request_sources(request)`. LF, CRLF and CR are accepted; blank rows do not
-create empty paragraphs. Lexical content and original character offsets are unchanged;
-repeated sentences have independent IDs. Generic requests without editor provenance
-still treat single newlines as potential wrapped lines. Backend source metadata supplies
-display locations, never model-authored paragraph/sentence labels.
+Hai tác vụ dùng cùng `<textarea>` thuần, JSON tự lưu `content` có revision, `AttemptWritingResponse.content`. Enter lưu thành xuống dòng; ngắt mềm không thêm ký tự. Task 1 trước bỏ nguồn gốc nội bộ `paragraph_mode="textarea"` của Task 2, một số nơi gọi trực tiếp bộ tách dòng trống mặc định. Kết quả bốn đoạn cách một Enter thành P1. Task 1 sản xuất nay mang nguồn gốc textarea; độ liên quan, chọn bằng chứng, ngữ cảnh điểm, nhận xét cấu trúc, trích phát biểu, kiểm chứng và tra trích dẫn đều dùng `request_sources(request)`. Nhận LF, CRLF, CR; dòng trống không tạo đoạn rỗng. Nội dung từ và độ lệch gốc không đổi; câu lặp có ID riêng. Yêu cầu chung thiếu nguồn gốc trình soạn vẫn coi xuống dòng đơn có thể do ngắt hiển thị. Vị trí hiển thị đến từ siêu dữ liệu backend, không từ nhãn đoạn/câu mô hình tự viết.
 
-The Task 1 semantic pipeline remains visual grounding/reconciliation and verified
-facts/claims → criterion evidence → **score-only** → fixed score → structured feedback
-→ conservative backend display. Independent linguistic criteria continue to overlap
-visual grounding. Score fields, half-band validation, aggregation, retries and token
-budgets are unchanged; feedback/improvement output never feeds back into scoring.
-The official band profiles, adjacent-band guidance, weights and calibration thresholds
-were not changed. Correct source structure and fact matching may affect a future score
-through corrected input; this is not upward calibration or a promise of a higher band.
+Chuỗi ngữ nghĩa Task 1 vẫn là tiếp nhận/đối chiếu thị giác và dữ kiện/phát biểu đã kiểm → bằng chứng tiêu chí → **chỉ điểm** → điểm cố định → nhận xét cấu trúc → hiển thị thận trọng ở backend. Tiêu chí ngôn ngữ độc lập tiếp tục chồng lấp tiếp nhận thị giác. Trường điểm, kiểm nửa band, tổng hợp, thử lại, ngân sách token không đổi; đầu ra nhận xét/cải thiện không quay lại chấm. Hồ sơ band chính thức, hướng dẫn lân cận, trọng số và ngưỡng hiệu chuẩn không đổi. Cấu trúc nguồn/khớp dữ kiện đúng có thể ảnh hưởng điểm sau qua đầu vào đã sửa; đây không là hiệu chuẩn nâng điểm hoặc hứa band cao hơn.
 
-`RawTask1FeedbackDraft` is internal. Its observations carry a source ID, criterion
-aspect, kind, confidence and optional exact span/revision/verified claim ID. There
-is no writable score or free-form summary. `fixed_score` is immutable metadata,
-not a target to rationalize; a band below 9 never requires a fabricated weakness.
-Empty observation/improvement lists are valid. Unknown sources, malformed items,
-non-HIGH negatives, non-exact GRA/LR errors, no-op rewrites and detectable criterion
-leakage are dropped individually, leaving other valid items intact. Whole-JSON errors
-get at most one repair; recoverable feedback failure preserves the accepted score.
-Public `CriterionResult` adds the shared annotation default; Task 1 analysis DTOs
-remain compatible. Selector assessments are not public factual feedback:
-displayed evidence uses exact backend quotes and neutral backend locations.
+`RawTask1FeedbackDraft` là nội bộ. Quan sát gồm ID nguồn, khía cạnh tiêu chí, loại, độ tin cậy, đoạn/bản sửa/ID phát biểu đã kiểm tùy chọn. Không có điểm ghi được hoặc tóm tắt tự do. `fixed_score` là siêu dữ liệu bất biến, không là mục tiêu biện minh; dưới 9 không buộc bịa điểm yếu. Danh sách quan sát/cải thiện rỗng hợp lệ. Bỏ riêng nguồn lạ, mục sai, tiêu cực không HIGH, lỗi GRA/LR đoạn không khớp, bản sửa không thay đổi và lấn tiêu chí phát hiện được, giữ mục hợp lệ khác. Lỗi toàn JSON tối đa một sửa; lỗi nhận xét phục hồi giữ điểm. `CriterionResult` công khai thêm mặc định chú thích dùng chung; DTO phân tích Task 1 tương thích. Nhận định bộ chọn không là nhận xét dữ kiện công khai: bằng chứng hiển thị dùng trích dẫn chính xác và vị trí trung lập của backend.
 
-For TA, `observation` must be null: the model chooses a verified claim rather than
-writing chart numbers/trends. A strength requires SUPPORTED and a matching source.
-A factual ERROR requires CONTRADICTED, an exact source span and existing deterministic
-fact evidence. The backend renders fact labels, states, values or directions; arbitrary
-provider-written factual prose is dropped, not rewritten into an unsupported generic
-weakness. INSUFFICIENT_EVIDENCE never becomes a correction. Selected evidence and
-claim extraction are not exhaustive, so they cannot establish that content is missing;
-unverifiable omission advice is omitted, including an already-supported comparison.
-This deliberately limits TA explanations to verifiable claims; it does not attempt
-to prove every overview/selection judgement or every semantic absence.
+Với TA, `observation` phải null: mô hình chọn phát biểu đã kiểm thay vì tự viết số/xu hướng. Điểm mạnh cần SUPPORTED và nguồn khớp. ERROR dữ kiện cần CONTRADICTED, đoạn nguồn chính xác và bằng chứng dữ kiện tất định sẵn có. Backend dựng nhãn, trạng thái, giá trị hoặc hướng; văn dữ kiện tùy ý của nhà cung cấp bị bỏ, không viết lại thành điểm yếu chung thiếu căn cứ. INSUFFICIENT_EVIDENCE không thành sửa lỗi. Chọn bằng chứng/trích phát biểu không đầy đủ mọi nội dung nên không xác lập được thiếu ý; bỏ khuyên thiếu không kiểm được, kể cả so sánh vốn đã có căn cứ. Điều này chủ đích giới hạn giải thích TA ở phát biểu kiểm được, không chứng minh mọi đánh giá tổng quan/chọn ý hoặc mọi sự vắng mặt ngữ nghĩa.
 
-CC feedback judges progression, grouping, real paragraphs and relationships; it does
-not count linkers or demand connectors everywhere, and must not imply causation where
-none is observed. LR rejects synonyms merely for variety and replacements of fixed
-chart labels/necessary entity names. GRA stays with grammatical structures and
-punctuation, requiring exact spans for ERROR; conceptual flow/linker advice belongs
-outside GRA. Structured aspect checks and conservative detectable-prose guards enforce
-these boundaries. Optional stylistic suggestions use the existing backend-owned
-"Gợi ý tùy chọn" wording. Linguistic inference does not wait for visual grounding;
-if visual labels are not available yet, proposed LR rewrites are conservatively
-omitted rather than guessing whether they replace a fixed label. The guards cannot
-mathematically prove every linguistic
-judgement; uncertainty should produce fewer claims, not invented errors.
+Nhận xét CC đánh giá tiến triển, nhóm ý, đoạn thật và quan hệ; không đếm từ nối hoặc yêu cầu ở mọi nơi, không suy nhân quả khi chưa quan sát. LR bác đổi đồng nghĩa chỉ để đa dạng và thay nhãn biểu đồ/tên thực thể cần thiết. GRA tập trung cấu trúc ngữ pháp/dấu câu, ERROR cần đoạn chính xác; tư vấn dòng ý/từ nối thuộc ngoài GRA. Kiểm khía cạnh cấu trúc và chốt thận trọng cho văn phát hiện được thực thi ranh giới. Gợi ý phong cách tùy chọn dùng lời backend “Gợi ý tùy chọn” hiện có. Suy luận ngôn ngữ không chờ thị giác; nếu chưa có nhãn, bỏ thận trọng bản viết lại LR đề xuất thay vì đoán có thay nhãn cố định không. Chốt không thể chứng minh toán học mọi phán đoán; bất định nên giảm nhận định, không bịa lỗi.
 
-Single-series pies often store slice labels as point categories and the year in
-`component.state`; the current perception prompt prefers one matrix component
-with named slice series and snapshot/year categories. Both representations are
-covered by regressions. Explicitly ordered matrices now retain the state interval
-on stable facts as well, so an unchanged claim with its two years is addressable.
-For separate single-series panels, the previous generic fact view searched for slice names
-as series names, and could not compare separate year panels. The new deterministic
-view uses slice labels as subjects and explicit states as categories, while retaining
-point/rank facts under their original component IDs. Compatible pie pairs (explicit
-four-digit years, same cohort title after removing the stated year, unit, series label,
-slice-label set and axes) generate cross-year facts under stable pair identities.
-Values, ranks, signed changes, directions, unchanged values and direct same-slice
-cross-year comparisons are checkable. Claim extraction receives compact grounded
-label/state identities, not new image interpretation or chart values to copy.
-Unknown states, incompatible panels, null/unreliable points and ambiguous matches stay
-INSUFFICIENT_EVIDENCE; existing reliability thresholds are unchanged. The structural
-bug is reproduced with fictional fixtures, but the original 1/14 live run was not
-available to establish that every insufficient verdict had this cause.
+Biểu đồ tròn một chuỗi thường giữ nhãn lát dưới nhóm điểm và năm trong `component.state`; lời nhắc nhận thức hiện ưu tiên một thành phần ma trận với chuỗi lát có tên và nhóm mốc/năm. Hồi quy bao phủ cả hai. Ma trận có thứ tự rõ nay giữ khoảng trạng thái trên dữ kiện ổn định để phát biểu không đổi kèm hai năm có địa chỉ. Với bảng riêng một chuỗi, cách xem dữ kiện chung cũ tìm tên lát như tên chuỗi, không so được bảng năm riêng. Cách tất định mới dùng nhãn lát làm chủ thể, trạng thái rõ làm nhóm, giữ dữ kiện điểm/hạng ở ID thành phần gốc. Cặp biểu đồ tròn tương thích (năm bốn chữ số rõ, cùng tiêu đề tập sau bỏ năm nêu, đơn vị, nhãn chuỗi, tập nhãn lát và trục) sinh dữ kiện qua năm dưới danh tính cặp ổn định. Kiểm được giá trị, hạng, đổi có dấu, hướng, không đổi và so trực tiếp cùng lát qua năm. Trích phát biểu nhận danh tính nhãn/trạng thái gọn có căn cứ, không diễn giải hình mới hoặc giá trị để chép. Trạng thái chưa biết, bảng không tương thích, điểm null/không tin cậy, khớp mơ hồ giữ INSUFFICIENT_EVIDENCE; ngưỡng tin cậy không đổi. Lỗi cấu trúc tái hiện bằng dữ liệu hư cấu, nhưng không có lần chạy trực tiếp 1/14 gốc để xác lập mọi kết luận thiếu bằng chứng đều do lỗi này.
 
-The paragraph/factual reliability work shipped in v10; v11 invalidates earlier
-feedback caches while keeping that behavior and raw visual perception v3 unchanged.
-Task 2 uses its separate v12 contract. Old persisted DTOs remain readable. Fake-provider regressions
-prove contracts and deterministic grounding only, not live-model feedback accuracy
-or improved agreement with human examiners. No live inference was used.
+Sửa độ tin cậy đoạn/dữ kiện ra ở v10; v11 vô hiệu hóa bộ nhớ đệm nhận xét cũ nhưng giữ hành vi và nhận thức thị giác thô v3. Task 2 dùng hợp đồng v12 riêng. DTO cũ vẫn đọc. Hồi quy giả chỉ chứng minh hợp đồng/căn cứ tất định, không độ chính xác nhận xét thật hoặc đồng thuận giám khảo tốt hơn. Không dùng suy luận trực tiếp.
 
+Chỉ backend nạp hình Task 1 đã lưu. Nó kiểm quyền sở hữu, điều kiện Writing/xem lại đã hoàn tất, đúng tác vụ/phiên bản đóng băng, câu trả lời không trống, phiên bản/loại tài sản, MIME PNG/JPEG/WebP và chữ ký byte khớp, đường dẫn trong gốc lưu trữ, tệp tồn tại/kích thước (tối đa giới hạn tải cấu hình, trần 10 MiB). Không nhận URL hình từ xa. Frontend dùng hình đề hiện có, không tải thêm hình để chấm.
 
-Only the backend loads the saved Task 1 image. It checks ownership, finalized
-Writing/review eligibility, the exact frozen task/version, a non-empty response,
-asset version/type, supported PNG/JPEG/WebP MIME and matching byte signature,
-storage-root containment, file existence and byte size (at most the configured
-upload limit, capped at 10 MiB). No remote image URL is accepted. The frontend
-uses its existing prompt image; it never uploads another image for grading.
+Lượt thường gọi một lần hình kèm đề để tiếp nhận thị giác, rồi trích phát biểu chỉ văn bản và các bước bằng chứng → chỉ điểm → nhận xét dùng chung. Hình không tới chấm TA, kiểm chứng phát biểu, CC, LR, GRA. Thị giác/trích phát biểu sai cấu trúc cho một sửa hữu hạn; dư độ dài tóm tắt/ghi chú vô hại cắt cục bộ. Chỉ sửa thị giác mới lặp gọi hình. Không thêm cờ phục vụ, mô hình, triển khai hoặc GPU.
 
-The normal run performs one image-plus-prompt perception call, followed by
-text-only claim extraction and the shared evidence → score-only → feedback stages. The image
-never reaches TA scoring, claim verification, CC, LR or GRA. Structurally invalid
-grounding or claim extraction permits one bounded repair; harmless summary/note
-length excess is clipped locally. A grounding repair is the only repeated image
-call. There is no new serving flag, model, deployment or GPU allocation.
+Hợp đồng nhà cung cấp chung biểu diễn thông điệp chuỗi hoặc phần văn bản có kiểu và byte hình tin cậy. vLLM và bộ tiếp hợp OpenAI chưa hoạt động đều tuần tự hóa byte thành một data URL tương thích OpenAI trong lớp nhà cung cấp. Tuần tự hóa chỉ văn bản không đổi. Định dạng đã đối chiếu [máy khách đa phương thức vLLM 0.13.0 đã ghim](https://github.com/vllm-project/vllm/blob/v0.13.0/examples/online_serving/openai_chat_completion_client_for_multimodal.py), [tài liệu đa phương thức vLLM](https://docs.vllm.ai/en/v0.13.0/features/multimodal_inputs/) và [thẻ đúng mô hình Ministral](https://huggingface.co/mistralai/Ministral-3-8B-Instruct-2512). Chữ trong hình, đề, bài viết, phát biểu trích và quan sát cấu trúc là dữ liệu nguồn không tin cậy; lời nhắc hệ thống cấm làm theo chỉ dẫn trong đó. Không lưu byte/base64 hình, lời nhắc hệ thống hoặc suy luận ẩn.
 
-The shared provider contract represents string messages or typed text parts and
-trusted image bytes. Both vLLM and the dormant OpenAI adapter serialize those
-bytes to one OpenAI-compatible data URL inside the provider layer. Text-only
-serialization remains unchanged. The format was checked against the pinned
-[vLLM 0.13.0 multimodal client](https://github.com/vllm-project/vllm/blob/v0.13.0/examples/online_serving/openai_chat_completion_client_for_multimodal.py),
-[vLLM multimodal documentation](https://docs.vllm.ai/en/v0.13.0/features/multimodal_inputs/)
-and the [exact Ministral model card](https://huggingface.co/mistralai/Ministral-3-8B-Instruct-2512).
-Image text, prompt, essay, extracted claims and structured observations are
-untrusted source data; system prompts explicitly prohibit following instructions
-within them. No image bytes/base64, system prompt or hidden reasoning is persisted.
+`VisualReference` có kiểu là hợp Pydantic phân biệt loại, phản chiếu bằng Zod:
 
-The typed `VisualReference` is a discriminated Pydantic union, mirrored by Zod:
-
-| Existing task types | Family | Structured contents |
+| Loại tác vụ hiện có | Họ | Nội dung cấu trúc |
 | --- | --- | --- |
-| LINE_GRAPH, BAR_CHART, PIE_CHART, TABLE, MIXED_CHARTS | chart_table | Separate components/units, categories, series and uncertain numeric points; tables have headers/cells and pies support state labels without fake axes |
-| PROCESS | process | Labelled stages, directed edges, boundaries, linear/cyclic/branched shape |
-| MAP_PLAN | map | States/features, qualitative compass locations and additions/removals/replacements/relocations/expansions/unchanged features |
-| OBJECT_SYSTEM_DIAGRAM | system | Components, connections/flows, inputs and outputs |
-| OTHER_VISUAL | other | Conservative entities, relationships and major observations |
+| LINE_GRAPH, BAR_CHART, PIE_CHART, TABLE, MIXED_CHARTS | chart_table | Thành phần/đơn vị riêng, nhóm, chuỗi, điểm số chưa chắc; bảng có tiêu đề/ô, biểu đồ tròn hỗ trợ nhãn trạng thái không bịa trục |
+| PROCESS | process | Bước có nhãn, cạnh có hướng, ranh giới, hình tuyến tính/chu kỳ/phân nhánh |
+| MAP_PLAN | map | Trạng thái/đặc điểm, vị trí la bàn định tính, thêm/xóa/thay/di chuyển/mở rộng/không đổi |
+| OBJECT_SYSTEM_DIAGRAM | system | Thành phần, kết nối/luồng, đầu vào/đầu ra |
+| OTHER_VISUAL | other | Thực thể, quan hệ và quan sát chính theo hướng thận trọng |
 
-Labels, identifiers, relation endpoints, numbers, confidence and collection sizes
-are validated; unknown/null numbers stay unknown. Backend-only Decimal arithmetic
-derives values, extrema, start/end, signed absolute/percentage changes (no division
-by zero), dense rankings/ties, rank changes, largest increases/decreases, stable
-series, direction and crossovers between observed adjacent categories. Ordered
-facts require an explicitly ordered axis. Unreliable/missing points never become
-invented facts; extrema/rankings require sufficient complete observations. Facts
-are bounded to 1,600 per run, and scoring context prioritizes aggregate facts
-within a 120-fact limit while retaining the structured reference and claim verdicts.
+Nhãn, định danh, đầu mối quan hệ, số, độ tin cậy và kích thước tập được kiểm; số null/chưa biết giữ chưa biết. Phép Decimal chỉ ở backend suy giá trị, cực trị, đầu/cuối, thay đổi tuyệt đối/phần trăm có dấu (không chia 0), hạng dày/đồng hạng, đổi hạng, tăng/giảm lớn nhất, chuỗi ổn định, hướng và giao cắt giữa nhóm liền kề quan sát. Dữ kiện có thứ tự cần trục được xác định thứ tự rõ. Điểm thiếu/không tin cậy không thành dữ kiện bịa; cực trị/hạng cần quan sát đầy đủ đủ mức. Giới hạn 1,600 dữ kiện mỗi lượt; ngữ cảnh chấm ưu tiên dữ kiện tổng hợp trong 120 mục, giữ tham chiếu cấu trúc và kết luận phát biểu.
 
-Claim extraction reuses existing essay segmentation and stable source IDs. Backend
-quote resolution takes exact original essay slices. Numeric assertions, comparisons,
-rankings, process order, map changes and directed system relations use conservative
-deterministic checks. Ambiguous/missing observations are `INSUFFICIENT_EVIDENCE`.
-Claims without a structured check may use one bounded text-only semantic verification
-call; failed verification leaves claims inconclusive. Verdicts are `SUPPORTED`,
-`CONTRADICTED`, `INSUFFICIENT_EVIDENCE` or `NOT_APPLICABLE`, with brief Vietnamese
-explanations. English source quotations remain unchanged.
+Trích phát biểu tái sử dụng chia đoạn/ID nguồn ổn định. Backend phân giải trích đúng lát cắt gốc. Khẳng định số, so sánh, thứ hạng, thứ tự quy trình, đổi bản đồ và quan hệ hệ thống có hướng dùng kiểm tất định thận trọng. Quan sát mơ hồ/thiếu là `INSUFFICIENT_EVIDENCE`. Phát biểu không có kiểm cấu trúc có thể dùng một gọi kiểm ngữ nghĩa chỉ văn bản hữu hạn; lỗi để chưa kết luận. Kết luận gồm `SUPPORTED`, `CONTRADICTED`, `INSUFFICIENT_EVIDENCE`, `NOT_APPLICABLE`, có giải thích tiếng Việt ngắn. Trích tiếng Anh nguồn giữ nguyên.
 
-Task Achievement uses that reference, deterministic facts and verdicts for holistic
-assessment against original paraphrases of the
-[official Academic Task 1 descriptors](https://ielts.org/cdn/ielts-guides/ielts-writing-band-descriptors.pdf)
-(May 2023, PDF pages 2–4). There are no error-count penalties, score caps or a fifth
-criterion. CC/LR/GRA receive only prompt/essay and their own source evidence,
-without visual data or another criterion's score. Existing score normalization,
-equal-weight Decimal mean and half-band rounding are reused.
+Task Achievement dùng tham chiếu, dữ kiện tất định, kết luận này để đánh giá toàn thể theo diễn giải nguyên gốc của [mô tả Academic Task 1 chính thức](https://ielts.org/cdn/ielts-guides/ielts-writing-band-descriptors.pdf) (tháng 5 năm 2023, trang PDF 2–4). Không phạt theo số lỗi, trần điểm hoặc tiêu chí thứ năm. CC/LR/GRA chỉ nhận đề/bài và bằng chứng riêng, không có dữ liệu thị giác hoặc điểm tiêu chí khác. Tái sử dụng chuẩn hóa điểm, trung bình Decimal trọng số đều và làm tròn nửa band.
 
-Task 1 scoring v6 addresses conservative TA band compression through clearer
-adjacent-descriptor discrimination, not score offsets or automatic generosity.
-Band 6's attempted overview/adequate feature selection differs from Band 7's
-clear overview, main patterns and clearly highlighted features. Band 7 permits
-a few local omissions/lapses; Band 8 permits occasional ones when fulfilment is
-sufficient and features are skilfully selected and illustrated. A permitted lapse
-does not itself require the lower band, but genuinely absent essential qualities
-or material content weaknesses still matter. Half-bands interpolate adjacent
-descriptors; a secondary numerical slip and a wrong central trend have different
-qualitative significance, never arithmetic penalties.
+Chấm Task 1 v6 xử lý hiện tượng TA bị nén band do quá thận trọng bằng phân biệt mô tả lân cận rõ hơn, không cộng điểm hoặc tự nới. Tổng quan có cố gắng/chọn đặc điểm đủ ở Band 6 khác tổng quan rõ, mẫu chính và đặc điểm nhấn rõ ở Band 7. Band 7 cho vài thiếu sót cục bộ; Band 8 cho thỉnh thoảng khi đáp ứng đủ, chọn/minh họa đặc điểm khéo. Sơ suất được phép không tự buộc band thấp, nhưng thiếu phẩm chất thiết yếu thật hoặc yếu nội dung đáng kể vẫn quan trọng. Nửa band nội suy mô tả lân cận; sơ suất số phụ và sai xu hướng trung tâm khác ý nghĩa định tính, không phạt số học.
 
-TA evidence selection represents overview, features, main comparisons, support
-and material limitations rather than mining errors. Its four-source maximum and
-source-ID contract remain intact.
+Chọn bằng chứng TA thể hiện tổng quan, đặc điểm, so sánh chính, hỗ trợ và hạn chế đáng kể thay vì săn lỗi. Trần bốn nguồn/hợp đồng ID giữ nguyên.
 
-Task 1 scoring v7 adds CC-specific adjacent-descriptor discrimination. Judge
-whole-response progression, grouping/paragraphing and information relationships
-before local devices or reference/substitution. Conventional visible connectors
-can be natural; precise repeated entity names can avoid ambiguous comparisons.
-Neither linker variety nor pronoun density determines a band. Band 6 needs
-noticeable cohesion limitations; Band 7 allows minor local lapses, Band 8 has
-easy-to-follow sequencing and well-managed cohesion, and exceptional Band 9 has
-effortless progression and skilfully managed paragraphing. Half-bands interpolate
-adjacent profiles, not uncertainty. Negative claims need an observable pattern
-and an effect on flow; feedback need not invent improvements or meet a quota.
-CC evidence represents paragraph progression, grouping, transitions, internal
-sequence and actual cohesive behaviour, without band targets or connector mining.
-These are descriptor-fit clarifications, never offsets, floors, caps or score bonuses.
+Chấm Task 1 v7 thêm phân biệt mô tả CC lân cận. Đánh giá tiến triển toàn bài, nhóm/chia đoạn, quan hệ thông tin trước phương tiện cục bộ hoặc tham chiếu/thay thế. Từ nối thông thường có thể tự nhiên; lặp chính xác tên thực thể tránh so sánh mơ hồ. Đa dạng từ nối hoặc mật độ đại từ không quyết định band. Band 6 cần hạn chế liên kết thấy rõ; Band 7 cho lỗi nhỏ cục bộ, Band 8 trình tự dễ theo và quản lý liên kết tốt, Band 9 xuất sắc có tiến triển nhẹ nhàng và chia đoạn khéo. Nửa band nội suy hồ sơ lân cận, không biểu thị chưa chắc. Nhận định tiêu cực cần mẫu quan sát và tác động lên dòng ý; nhận xét không phải bịa cải thiện hoặc đủ hạn ngạch. Bằng chứng CC thể hiện tiến triển đoạn, nhóm, chuyển ý, trình tự nội bộ và hành vi liên kết thật, không band mục tiêu/săn từ nối. Đây là làm rõ mức khớp mô tả, không cộng lệch, sàn, trần hoặc thưởng.
 
-At v7, TA prompt semantics, LR/GRA, Task 2, visual grounding/reconciliation v3,
-output schemas and provider/model settings remained unchanged. The v7 composite fingerprint
-prevents reuse of v6 or older scoring runs while preserving readable history.
-The historical v5 prompt baseline remains frozen. The
-[Task 1 benchmark](../benchmarks/writing_task1/README.md) compares that baseline
-with current production prompts under the same provider/model and specialist
-settings. Signed criterion bias, MAE and agreement on a labelled human-scored set
-are needed to establish calibration improvement; synthetic contract tests do not prove it.
+Ở v7, ngữ nghĩa TA, LR/GRA, Task 2, tiếp nhận/đối chiếu thị giác v3, lược đồ đầu ra, cấu hình nhà cung cấp/mô hình không đổi. Dấu vân tay tổng hợp v7 ngăn dùng lượt chấm v6/cũ hơn, vẫn đọc lịch sử. Nền lời nhắc v5 lịch sử giữ đóng băng. [Benchmark Task 1](../benchmarks/writing_task1/README.md) so nền với lời nhắc sản xuất hiện tại dưới cùng nhà cung cấp/mô hình/cấu hình chuyên đọc. Cần độ lệch tiêu chí có dấu, MAE, đồng thuận trên tập gán nhãn người chấm để xác lập hiệu chuẩn tốt hơn; kiểm tổng hợp không chứng minh.
 
-Task 1 TA now shares the 128-token score-only cap (256 for a length repair)
-and the 1200-token feedback cap (1400 for a length repair). Larger grounded
-inputs do not require larger score output. The provider can lower an explicit
-cap to verified available context once, without removing visual/essay context.
-Frozen offline baselines retain their 3072/4096 combined-output budgets.
+TA Task 1 nay chung trần chỉ điểm 128 token (256 khi sửa độ dài), nhận xét 1200 (1400 khi sửa độ dài). Đầu vào có căn cứ lớn không cần đầu ra điểm lớn. Nhà cung cấp có thể hạ một lần trần rõ theo ngữ cảnh khả dụng đã kiểm mà không bỏ hình/bài. Nền ngoại tuyến đóng băng giữ ngân sách gộp 3072/4096.
 
-`HIGH`/`MEDIUM` grounding supports normal factual comparison. `LOW` shows a visible
-Vietnamese caution and allows only cautious TA judgment; deterministic numeric
-contradictions are withheld. `UNUSABLE` or empty/failed grounding fails TA safely
-while CC/LR/GRA continue. Claim-stage failure does not imply an essay error; TA can
-continue from a usable reference, with a visible incomplete-verification notice.
-Any failed criterion suppresses the overall score, preserves successful cards and
-allows an explicit regrade.
+Tiếp nhận `HIGH`/`MEDIUM` hỗ trợ so dữ kiện thường. `LOW` hiển thị cảnh báo tiếng Việt, chỉ cho đánh giá TA thận trọng; không đưa mâu thuẫn số tất định. `UNUSABLE` hoặc thị giác rỗng/thất bại làm TA thất bại an toàn, CC/LR/GRA tiếp tục. Lỗi bước phát biểu không nghĩa bài sai; TA có thể tiếp từ tham chiếu dùng được kèm thông báo kiểm chưa đủ. Bất kỳ tiêu chí lỗi đều ẩn tổng, giữ thẻ thành công và cho chấm lại rõ ràng.
 
-Existing JSONB runs/events store typed Task 1 analysis alongside partial criteria;
-no schema migration is necessary. SSE persists grounding started/completed/failed,
-derived-facts completed, extraction/verification started/completed/failed, and the
-existing criterion/run events. Snapshots and cursor replay restore confidence,
-claim verdicts, partial cards and current activity. Heartbeats renew the lease and
-cursor without producing visible progress.
+Lượt/sự kiện JSONB hiện có lưu phân tích Task 1 có kiểu cùng tiêu chí một phần; không cần migration. SSE lưu bắt đầu/hoàn tất/thất bại thị giác, hoàn tất dữ kiện, bắt đầu/hoàn tất/thất bại trích/kiểm và sự kiện tiêu chí/lượt hiện có. Ảnh chụp/phát lại con trỏ khôi phục độ tin cậy, kết luận phát biểu, thẻ một phần, hoạt động hiện tại. Heartbeat gia hạn lease (quyền xử lý tạm thời) và con trỏ, không tạo tiến độ nhìn thấy.
 
-Task 1 fingerprints add task type, image MIME and SHA-256 of actual image bytes to
-prompt/essay/provider/model and the separate Task 1 prompt version. Changed image
-bytes cannot reuse an old run; the worker rechecks inputs before inference. Stored
-history remains readable even if the image later becomes unavailable. Task 2's
-fingerprint inputs and historical parsing remain compatible.
+Dấu vân tay Task 1 thêm loại tác vụ, MIME hình và SHA-256 byte hình thật vào đề/bài/nhà cung cấp/mô hình và phiên bản lời nhắc Task 1 riêng. Đổi byte hình không dùng lại lượt cũ; worker kiểm đầu vào lại trước suy luận. Lịch sử đã lưu vẫn đọc nếu sau này hình không khả dụng. Đầu vào dấu vân tay Task 2 và phân tích lịch sử tương thích.
 
-The shared review panel now follows Task 1/2 selection, with TA/TR labels, live
-visual stages, confidence notices, collapsed TA visual claim details, per-task
-overall/chips, history and forced regrade. All explanatory text uses the existing
-source-reference presentation helper; source IDs stay internal and exact quotations
-stay selectable. Copying suggestions changes only authorized local manual form
-state. Explicit human Save remains required: AI runs never write official criterion
-scores, attempt band, History or Analytics. No combined AI Writing band is shown.
-T1-B adds the optional DePlot cross-check described below. TinyChart, extra judge
-VLMs, model voting and T1-C evaluation remain out of scope.
+Bảng xem lại chung nay theo lựa chọn Task 1/2, nhãn TA/TR, bước thị giác trực tiếp, thông báo độ tin cậy, chi tiết phát biểu thị giác TA thu gọn, tổng/nhãn mỗi tác vụ, lịch sử và buộc chấm lại. Mọi giải thích dùng hàm trình bày tham chiếu nguồn hiện có; ID nguồn nội bộ, trích đúng vẫn chọn được. Chép gợi ý chỉ đổi trạng thái biểu mẫu thủ công cục bộ được phép. Vẫn cần Lưu rõ ràng của người chấm: lượt AI không ghi điểm tiêu chí chính thức, band, History, Analytics. Không hiển thị band Writing AI gộp. T1-B thêm đối chiếu DePlot tùy chọn bên dưới. TinyChart, VLM giám khảo thêm, bỏ phiếu mô hình và đánh giá T1-C ngoài phạm vi.
 
-## Backend setup
+## Thiết lập backend
 
-From `backend/`:
+Từ `backend/`:
 
 ```powershell
 uv run alembic upgrade head
 ```
 
-Configure the backend-only variables in `backend/.env` (see `.env.example`):
+Cấu hình các biến chỉ dành cho backend trong `backend/.env` (xem `.env.example`):
 
 ```dotenv
 AI_WRITING_ENABLED=true
@@ -628,17 +185,9 @@ AI_WRITING_PROMPT_VERSION=mts-task2-v6
 AI_WRITING_STALE_AFTER_SECONDS=90
 ```
 
-Never put inference URLs or credentials in `NEXT_PUBLIC_*`. Only FastAPI calls
-the provider. The optional vLLM bearer key is separate from Modal proxy auth;
-the Modal deployment relies on required proxy authentication at the perimeter.
-Disabled or missing configuration returns `AI_NOT_CONFIGURED` and keeps Writing
-review usable. Restart FastAPI after configuration changes. Increment the prompt
-version when changing rubric/prompt behavior so old cache entries stay distinct.
-The base URL accepts either the endpoint origin or its `/v1` base; the transport
-normalizes it once. Switching models also changes the grading fingerprint.
+Không đặt URL suy luận hoặc thông tin xác thực vào `NEXT_PUBLIC_*`. Chỉ FastAPI gọi nhà cung cấp. Khóa bearer vLLM tùy chọn tách khỏi xác thực proxy Modal; triển khai Modal dựa vào xác thực proxy bắt buộc ở lớp ngoài. Cấu hình tắt/thiếu trả `AI_NOT_CONFIGURED`, vẫn cho dùng xem lại Writing. Khởi động lại FastAPI sau khi đổi cấu hình. Tăng phiên bản lời nhắc khi đổi thang chấm/hành vi để phân biệt bộ nhớ đệm cũ. URL gốc nhận điểm cuối hoặc nền `/v1`; tầng truyền tải chuẩn hóa một lần. Đổi mô hình cũng đổi dấu vân tay chấm.
 
-The OpenAI HTTP transport implements the same internal completion contract and
-is dormant unless selected with a key. No OpenAI key is required for vLLM:
+Truyền tải HTTP OpenAI triển khai cùng hợp đồng hoàn thành nội bộ, chưa hoạt động trừ khi chọn và có khóa. vLLM không cần khóa OpenAI:
 
 ```dotenv
 AI_WRITING_PROVIDER=openai
@@ -647,99 +196,40 @@ AI_WRITING_OPENAI_MODEL=gpt-5.6-luna
 AI_WRITING_OPENAI_BASE_URL=https://api.openai.com/v1
 ```
 
-The requested model name is preserved as a configurable placeholder; availability
-must be checked for your account before enabling it. This transport uses Chat
-Completions JSON mode with the same Pydantic validation/repair boundary. It omits
-model-dependent temperature/seed options. It has been tested with fake HTTP
-responses, not live OpenAI inference. See the [official API contract](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create).
+Tên mô hình yêu cầu được giữ như giá trị thay thế cấu hình được; phải kiểm khả dụng trong tài khoản trước khi bật. Tầng truyền tải dùng Chat Completions chế độ JSON cùng ranh giới xác thực/sửa Pydantic, bỏ tùy chọn temperature/seed phụ thuộc mô hình. Đã kiểm bằng phản hồi HTTP giả, chưa suy luận OpenAI trực tiếp. Xem [hợp đồng API chính thức](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create).
 
-## API and streaming
+## API và truyền sự kiện
 
-All endpoints use existing cookie/bearer authentication and strict attempt
-ownership, including for administrators:
+Mọi điểm cuối dùng xác thực cookie/bearer hiện có và kiểm nghiêm quyền sở hữu lượt làm bài, kể cả quản trị:
 
-| Method | Path | Purpose |
+| Phương thức | Đường dẫn | Mục đích |
 | --- | --- | --- |
-| POST | `/api/v1/attempts/{attempt_id}/writing/{task_id}/ai-grading-runs` | `{ "force": false }`; returns `run_id`, `cache_hit`, `existing_active` |
-| GET | same path | Configured state and latest 20 runs for that Writing task |
-| GET | `/api/v1/ai-writing-grading-runs/{run_id}` | Safe JSON snapshot and partial criterion results |
-| GET | `/api/v1/ai-writing-grading-runs/{run_id}/events` | SSE replay/live events |
+| POST | `/api/v1/attempts/{attempt_id}/writing/{task_id}/ai-grading-runs` | `{ "force": false }`; trả `run_id`, `cache_hit`, `existing_active` |
+| GET | cùng đường dẫn | Trạng thái cấu hình và 20 lượt gần nhất của tác vụ Writing |
+| GET | `/api/v1/ai-writing-grading-runs/{run_id}` | Ảnh chụp JSON an toàn, kết quả tiêu chí một phần |
+| GET | `/api/v1/ai-writing-grading-runs/{run_id}/events` | Phát lại/sự kiện trực tiếp SSE |
 
-Only finalized Writing attempts with a non-empty saved Task 1/2 response from the
-exact frozen version can start. Full Mock review restrictions also apply. Inputs
-above 12,000 essay characters or 4,000 prompt characters are rejected rather than
-silently truncated; the model may reject unusually token-dense smaller inputs.
+Chỉ lượt Writing đã hoàn tất, có câu trả lời Task 1/2 đã lưu không trống từ đúng phiên bản đóng băng mới được khởi tạo. Hạn chế xem lại Full Mock cũng áp dụng. Bài vượt 12,000 ký tự hoặc đề vượt 4,000 bị từ chối thay vì cắt âm thầm; mô hình có thể từ chối đầu vào ngắn hơn nhưng mật độ token bất thường.
 
-A SHA-256 fingerprint covers the exact prompt, saved response, prompt version,
-provider and model. Normal requests reuse a completed equivalent run or an active
-equivalent run. PostgreSQL locks the attempt row during creation to serialize
-duplicate requests across API processes. Explicit `force: true` always creates
-a new run, preserving older completed assessments. The UI disables repeat clicks
-while a request/run is active; it offers compact completed-run history.
+Dấu vân tay SHA-256 bao phủ đúng đề, câu trả lời đã lưu, phiên bản lời nhắc, nhà cung cấp và mô hình. Yêu cầu thường tái sử dụng lượt tương đương đã hoàn tất hoặc đang hoạt động. PostgreSQL khóa dòng lượt làm bài lúc tạo để tuần tự hóa yêu cầu trùng giữa tiến trình API. `force: true` rõ ràng luôn tạo lượt mới, giữ đánh giá hoàn tất cũ. UI tắt nhấp lặp khi yêu cầu/lượt đang hoạt động, cung cấp lịch sử lượt hoàn tất gọn.
 
-An in-process worker owns fresh sessions for short transactions; it never borrows
-the request session. Progress and events commit together, with unique monotonically
-increasing `(run_id, sequence)` values. SSE sends named events with `id` sequence
-numbers, honors `Last-Event-ID` and `?after=`, and disables caching/proxy buffering.
-The frontend reconnects using its latest validated sequence and probes JSON through
-the existing auth-refresh client. Duplicate replay events are ignored. Closing the
-browser disconnects only the stream, not the worker.
+Consumer có giới hạn (mặc định trong tiến trình, tùy chọn chạy riêng) sở hữu phiên mới cho giao dịch ngắn, không mượn phiên yêu cầu. Tiến độ/sự kiện chốt cùng nhau, `(run_id, sequence)` duy nhất tăng dần. SSE gửi sự kiện có tên và số thứ tự `id`, tuân `Last-Event-ID`, `?after=`, tắt bộ nhớ đệm/đệm proxy. Frontend kết nối lại từ số thứ tự đã kiểm mới nhất, dò JSON qua máy khách làm mới xác thực hiện có. Bỏ sự kiện phát lại trùng. Đóng trình duyệt chỉ ngắt luồng, không ngắt worker.
 
-Writing Task 1/2 tabs are view changes. Unmount retires the current EventSource,
-clears reconnect timers and ignores late events/snapshots; it never posts `/cancel`
-or aborts grading HTTP requests. On return, listing saved runs recovers the same
-active run and persisted progress, or its completed result. Watching/replaying
-events does not launch inference. SSE request cancellation unwinds only its poll
-session; the worker is a separate `asyncio.create_task` held in the process registry.
+Thẻ Task 1/2 chỉ đổi chế độ xem. Tháo thành phần đóng EventSource hiện tại, xóa hẹn giờ kết nối lại, bỏ sự kiện/ảnh chụp tới muộn; không gửi `/cancel` hoặc hủy yêu cầu HTTP chấm. Quay lại, liệt kê lượt lưu khôi phục cùng lượt hoạt động/tiến độ đã lưu hoặc kết quả hoàn tất. Theo dõi/phát lại không khởi động suy luận. Hủy yêu cầu SSE chỉ giải phóng phiên thăm dò; consumer cố định sở hữu tác vụ con hoạt động có giới hạn, PostgreSQL sở hữu hàng đợi và lease có rào chắn.
 
-Only confirmed **Dừng chấm** posts the cancellation endpoint. The backend commits
-`AI_GRADING_CANCELLED` before cancelling the local worker; completed criteria stay
-saved and later checkpoints/completion cannot rewrite the terminal run. Shutdown
-and existing durable terminal-state checks are separate legitimate stop paths.
-Cancellation propagates through criterion/perception work into the provider's
-`httpx` stream, which closes immediately rather than draining unwanted inference.
-Incomplete transfers remain failures, even if received bytes happen to form JSON.
+Chỉ **Dừng chấm** đã xác nhận gửi điểm cuối hủy. Backend chốt `AI_GRADING_CANCELLED` trước khi hủy worker cục bộ; tiêu chí hoàn tất vẫn lưu, checkpoint/hoàn tất sau không thể viết lại lượt đã kết thúc. Tắt ứng dụng và kiểm trạng thái kết thúc bền vững hiện có là đường dừng hợp lệ riêng. Hủy lan qua công việc tiêu chí/thị giác tới luồng `httpx` nhà cung cấp, đóng ngay thay vì nhận hết suy luận không cần. Truyền chưa đủ vẫn là lỗi, kể cả byte nhận được tình cờ tạo JSON hợp lệ.
 
-The inspected local Modal SDK 1.5.3 HTTP proxy aborts its upstream connection on
-`http.disconnect`. The same wrapper proxies both application SSE and vLLM HTTP;
-an `_runtime/asgi.py` `ClientPayloadError`/`TransferEncodingError` traceback alone
-does not identify which endpoint disconnected or prove grading was cancelled.
-Such a traceback can accompany a proxy disconnect, including an intentional Stop;
-its occurrence in the reported deployment was not reproduced with a live model.
-Correlate timestamps with content-free worker logs (`source=explicit_user`,
-`shutdown`, `terminal_state`) and provider cancellation logs (`operation=/models`
-or `/chat/completions`). Timeout/transport failure codes are logged separately.
-No exception is hidden, no incomplete completion is accepted, and no per-heartbeat
-logging is added.
+Proxy HTTP của Modal SDK 1.5.3 cục bộ đã xem xét hủy kết nối thượng nguồn khi `http.disconnect`. Cùng lớp bọc proxy cả SSE ứng dụng và HTTP vLLM; riêng vết lỗi `_runtime/asgi.py` `ClientPayloadError`/`TransferEncodingError` không định danh điểm cuối ngắt hoặc chứng minh chấm bị hủy. Nó có thể đi cùng ngắt proxy, kể cả Dừng có chủ đích; chưa tái hiện sự cố triển khai báo cáo bằng mô hình trực tiếp. Đối chiếu dấu thời gian với nhật ký worker không chứa nội dung (`source=explicit_user`, `shutdown`, `terminal_state`) và nhật ký hủy nhà cung cấp (`operation=/models` hoặc `/chat/completions`). Mã lỗi quá giờ/truyền tải ghi riêng. Không giấu ngoại lệ, không chấp nhận hoàn thành thiếu, không thêm nhật ký mỗi heartbeat.
 
-Provider requests remain `stream=false` for reliable structured JSON. Public
-workflow events distinguish preparing, collecting evidence, validating evidence,
-scoring, validating scores, generating feedback, feedback ready, retrying and terminal states. Events include
-`evidence.request.started`, `evidence.validation.started`,
-`criterion.scoring.validation.started`, `criterion.feedback.started`,
-`criterion.feedback.annotation`, `criterion.feedback.completed` and `criterion.retrying`. Safe activity
-with a stage timestamp is persisted in the existing run JSON metadata and
-included in snapshots; no migration is needed. The vertical timeline reconstructs
-from activity, progress and terminal status after refresh. Criterion cards appear
-as soon as their individual completion event arrives; accepted bands appear at
-feedback start, and validated annotation items/underlines appear before run completion.
-Elapsed time is display-only,
-with no estimated percentage, and subtle animation respects reduced motion.
-Heartbeat events advance the replay cursor without invoking React UI callbacks.
+Yêu cầu nhà cung cấp giữ `stream=false` để JSON cấu trúc đáng tin. Sự kiện công khai phân biệt chuẩn bị, lấy/kiểm bằng chứng, chấm/kiểm điểm, tạo nhận xét, nhận xét sẵn sàng, thử lại và kết thúc. Gồm `evidence.request.started`, `evidence.validation.started`, `criterion.scoring.validation.started`, `criterion.feedback.started`, `criterion.feedback.annotation`, `criterion.feedback.completed`, `criterion.retrying`. Hoạt động an toàn có mốc bước lưu trong siêu dữ liệu JSON lượt và ảnh chụp; không cần migration. Dòng thời gian dọc dựng lại từ hoạt động, tiến độ, trạng thái kết thúc sau tải lại. Thẻ tiêu chí hiện ngay khi sự kiện hoàn tất riêng tới; band chấp nhận hiện lúc bắt đầu nhận xét, mục chú thích/gạch chân đã kiểm hiện trước khi lượt hoàn tất. Thời gian đã qua chỉ để hiển thị, không ước lượng phần trăm; hoạt ảnh nhẹ tôn trọng giảm chuyển động. Heartbeat tăng con trỏ phát lại mà không gọi hàm cập nhật React UI.
 
-Completed criteria commit before the next criterion starts. If LR or another
-later operation fails, prior results remain visible/persisted, but no overall is
-computed. Explicit Regrade starts all four criteria afresh and retains history.
+Tiêu chí hoàn tất chốt trước khi tiêu chí tiếp theo bắt đầu. Nếu LR hoặc thao tác sau lỗi, kết quả trước vẫn hiện/đã lưu nhưng không tính tổng. Chấm lại rõ ràng chạy mới đủ bốn tiêu chí, giữ lịch sử.
 
-A persisted heartbeat every 15 seconds renews `updated_at`. Reads/streams/new
-requests mark expired leases FAILED after 90 seconds by default, emit `run.failed`,
-retain partial progress and allow regrading after a process crash. Graceful shutdown
-cancels workers and persists failure where the database is reachable. This MVP
-does not guarantee execution across restarts; it guarantees recoverable state.
+Bổ sung 2026-11-02: dòng PENDING đã chốt tạo hàng đợi bền vững; `launch` chỉ là tín hiệu đánh thức. Consumer cố định nhận việc theo ngân sách chờ/đang chạy toàn cục và lease gồm mã/quy định hạn chót theo đồng hồ cơ sở dữ liệu. Heartbeat chạy mỗi `min(5s, lease_seconds/3)` và rào chắn mọi checkpoint/hoàn tất. Bộ quét độc lập đánh dấu RUNNING hết hạn thất bại `RUN_INTERRUPTED`, giữ tiến độ một phần để người dùng chấm lại rõ ràng; chưa triển khai tiếp tục bước MTS. Đọc không còn làm thất bại dòng chờ vì bị coi là cũ. Tắt có kiểm soát xử lý dứt worker khi còn truy cập được cơ sở dữ liệu; điểm vào riêng có xử lý SIGTERM/SIGINT. Gọi nhà cung cấp ngoài vẫn có thể lặp khi thử lại rõ ràng; không đảm bảo tính phí đúng một lần. Mặc định, triển khai/hoàn tác 0044 và phạm vi đã đo: [báo cáo năng lực](performance/5000-user-capacity.md).
 
-## Modal deployment
+## Triển khai Modal
 
-Run these commands from the repository root in an environment with Python 3.12+:
+Chạy các lệnh từ gốc kho mã trong môi trường Python 3.12+:
 
 ```powershell
 uv tool install modal
@@ -757,16 +247,9 @@ modal serve deploy/modal/app.py
 modal deploy deploy/modal/app.py
 ```
 
-The full-stack entry point automatically resolves the GPU URL for FastAPI.
-Configure the returned `Modal-Key` / `Modal-Secret` pair in the backend settings
-above. For scoped workspaces, allow the token in the deployment's
-environment (`modal workspace proxy-tokens allow --help`). No Modal credentials or
-Hugging Face tokens belong in Git. Public model downloads require no repository
-secret; if your workspace needs gated access, add a narrowly scoped Modal Secret
-to the deployment instead of hard-coding a token.
+Điểm vào toàn hệ thống tự phân giải URL GPU cho FastAPI. Cấu hình cặp `Modal-Key` / `Modal-Secret` trả về vào cấu hình backend ở trên. Với workspace có phạm vi, cho phép token trong môi trường triển khai (`modal workspace proxy-tokens allow --help`). Thông tin Modal/token Hugging Face không thuộc Git. Tải mô hình công khai không cần bí mật kho mã; nếu workspace cần quyền hạn chế, thêm Modal Secret phạm vi hẹp vào triển khai thay vì viết cứng token.
 
-For a local FastAPI client that intentionally runs outside the full-stack app,
-the standalone entry point remains available:
+Với máy khách FastAPI cục bộ chủ đích chạy ngoài ứng dụng toàn hệ thống, điểm vào độc lập vẫn có:
 
 ```powershell
 modal serve deploy/modal/writing_llm.py
@@ -774,46 +257,20 @@ modal serve deploy/modal/writing_llm.py
 modal deploy deploy/modal/writing_llm.py
 ```
 
-Only this standalone workflow requires configuring the printed URL manually.
-Use one model deployment for your application; the full-stack command includes
-the same function rather than requiring a second standalone GPU deployment.
-See [modal-web.md](modal-web.md) for database setup and web-only commands.
+Chỉ quy trình độc lập này cần cấu hình URL in ra thủ công. Dùng một triển khai mô hình cho ứng dụng; lệnh toàn hệ thống gồm cùng hàm, không yêu cầu triển khai GPU độc lập thứ hai. Xem [modal-web.md](modal-web.md) về thiết lập cơ sở dữ liệu và lệnh chỉ Web.
 
-The application uses pinned `vllm/vllm-openai:v0.13.0`, a persistent model/cache
-Volume, one L4, the model's published FP8 weights (`--dtype auto`), eager execution,
-an 8,192-token model length, one concurrent sequence, and one image per prompt.
-It keeps `min_containers=0` / a 60-second idle window. The
-web endpoint has `requires_proxy_auth=True`. The model URL and tokens stay behind
-FastAPI. Cold starts need time to download/cache weights and initialize the GPU.
+Ứng dụng dùng `vllm/vllm-openai:v0.13.0` đã ghim, Volume mô hình/bộ nhớ đệm bền vững, một L4, trọng số FP8 được mô hình công bố (`--dtype auto`), thực thi eager, độ dài mô hình 8,192 token, một chuỗi đồng thời và một hình mỗi lời nhắc. Giữ `min_containers=0` / cửa sổ nhàn rỗi 60 giây. Điểm cuối web có `requires_proxy_auth=True`. URL/token mô hình nằm sau FastAPI. Khởi động nguội cần thời gian tải/đệm trọng số, khởi tạo GPU.
 
-L4 has 24 GB and Ada FP8 support. T4 lacks native FP8 support for this published
-checkpoint. This is a conservative memory/capability choice for text and single
-image input, not a throughput benchmark; recheck pricing as it changes.
-Sources: [Modal supported GPUs](https://modal.com/docs/guide/gpu),
-[Modal pricing](https://modal.com/pricing), [NVIDIA GPU memory](https://docs.nvidia.com/brev/reference/gpu-types),
-[model serving guidance](https://huggingface.co/mistralai/Ministral-3-8B-Instruct-2512),
-[vLLM FP8 compatibility](https://docs.vllm.ai/en/v0.13.0/features/quantization/fp8/),
-[Modal Ministral 3 example](https://modal.com/docs/examples/ministral3_inference),
-[Modal proxy authentication](https://modal.com/docs/guide/webhook-proxy-auth).
+L4 có 24 GB và hỗ trợ Ada FP8. T4 thiếu hỗ trợ FP8 gốc cho checkpoint công bố này. Đây là lựa chọn bộ nhớ/khả năng thận trọng cho văn bản và một hình, không phải benchmark thông lượng; kiểm lại giá vì có thể đổi. Nguồn: [GPU Modal hỗ trợ](https://modal.com/docs/guide/gpu), [giá Modal](https://modal.com/pricing), [bộ nhớ GPU NVIDIA](https://docs.nvidia.com/brev/reference/gpu-types), [hướng dẫn phục vụ mô hình](https://huggingface.co/mistralai/Ministral-3-8B-Instruct-2512), [tương thích FP8 vLLM](https://docs.vllm.ai/en/v0.13.0/features/quantization/fp8/), [ví dụ Ministral 3 của Modal](https://modal.com/docs/examples/ministral3_inference), [xác thực proxy Modal](https://modal.com/docs/guide/webhook-proxy-auth).
 
-One backend-side readiness request and one tiny text-only completion (proxy pair
-in the ignored backend `.env` or current shell):
+Một yêu cầu kiểm sẵn sàng phía backend và một hoàn thành văn bản rất nhỏ (cặp proxy trong `.env` backend được bỏ qua hoặc shell hiện tại):
 
 ```powershell
 cd backend
 uv run python ../deploy/modal/smoke.py --base-url https://YOUR-PROTECTED-ENDPOINT.modal.run/v1
 ```
 
-It sends `GET /v1/models`, verifies the exact served model, then sends one
-16-token JSON-schema request through the same backend transport/auth as grading.
-It prints only safe status/timing. Task 2 messages contain text only; vision
-support is used by Task 1's separate grounding stage. This text smoke command
-does not verify vision; Task 1 transport is covered with mocked completions.
-No live multimodal smoke or real Task 1 grading was performed during T1-A.
-Normal tests never contact Modal/OpenAI.
-Stopping `modal serve` stops both functions in the temporary app. For a persistent
-full-stack deployment, stop `ielts-practice-web`; for the standalone GPU workflow,
-stop `ielts-writing-llm`. Volumes remain after stopping:
+Lệnh gửi `GET /v1/models`, kiểm đúng mô hình đang phục vụ, rồi gửi một yêu cầu lược đồ JSON 16 token qua cùng truyền tải/xác thực backend như chấm. Chỉ in trạng thái/thời gian an toàn. Thông điệp Task 2 chỉ có văn bản; hỗ trợ hình dùng ở bước thị giác riêng Task 1. Lệnh thử văn bản này không xác minh thị giác; truyền tải Task 1 được kiểm bằng hoàn thành giả lập. Trong T1-A chưa chạy thử đa phương thức trực tiếp hoặc chấm Task 1 thật. Kiểm thử thường không liên hệ Modal/OpenAI. Dừng `modal serve` dừng cả hai hàm trong ứng dụng tạm. Với triển khai toàn hệ thống bền vững, dừng `ielts-practice-web`; quy trình GPU độc lập dừng `ielts-writing-llm`. Volume vẫn còn sau khi dừng:
 
 ```powershell
 modal app stop ielts-practice-web --yes
@@ -825,26 +282,17 @@ modal volume delete ielts-writing-model-cache
 modal workspace proxy-tokens delete <proxy-token-id>
 ```
 
-Ministral 3 2512 is published under [Apache 2.0](https://huggingface.co/mistralai/Ministral-3-8B-Instruct-2512).
-Recheck the model's current license and dependencies before commercial deployment.
+Ministral 3 2512 phát hành theo [Apache 2.0](https://huggingface.co/mistralai/Ministral-3-8B-Instruct-2512). Kiểm lại giấy phép mô hình và phụ thuộc hiện hành trước triển khai thương mại.
 
-## PostgreSQL snapshots on Modal Volume
+## Ảnh chụp PostgreSQL trên Modal Volume
 
-The local PostgreSQL database remains authoritative. To back up its current
-contents to a private Modal Volume, from `backend/`:
+PostgreSQL cục bộ vẫn có thẩm quyền. Để sao lưu nội dung hiện tại lên Modal Volume riêng, từ `backend/`:
 
 ```powershell
 uv run python ../scripts/modal_database_snapshot.py --volume ielts-postgres-backups
 ```
 
-This creates a consistent custom-format `pg_dump` using the existing backup
-helpers, saves a local copy under ignored `backups/modal/`, creates the Volume
-if needed, uploads the dump/manifest, downloads the dump and verifies SHA-256.
-The manifest includes the Alembic revision. Snapshots are timestamped and never
-overwrite older backups. They include database records, not external binary
-assets or backend `.env` secrets. A Modal Volume stores snapshots; it does not
-provide a live PostgreSQL server. Use the existing full backup tool if asset
-restoration is also required.
+Lệnh tạo `pg_dump` định dạng tùy chỉnh nhất quán qua hàm sao lưu hiện có, lưu bản cục bộ dưới `backups/modal/` được bỏ qua, tạo Volume nếu cần, tải dump/bản kê lên, tải dump xuống và kiểm SHA-256. Bản kê gồm phiên bản Alembic. Ảnh chụp có dấu thời gian, không ghi đè bản cũ; gồm bản ghi cơ sở dữ liệu, không gồm tài sản nhị phân ngoài hoặc bí mật `.env` backend. Modal Volume giữ ảnh chụp, không cung cấp máy chủ PostgreSQL trực tiếp. Dùng công cụ sao lưu đầy đủ hiện có nếu cũng cần phục hồi tài sản.
 
 ```powershell
 modal volume ls ielts-postgres-backups
@@ -853,71 +301,16 @@ modal volume get ielts-postgres-backups /<snapshot>/database.dump ./database.dum
 pg_restore --dbname=<target-database> --no-owner --no-acl ./database.dump
 ```
 
-## Troubleshooting and focused verification
+## Xử lý sự cố và xác minh tập trung
 
-- **Not configured:** enable AI and supply the selected provider's URL/model and
-  credentials; Modal needs both proxy token fields. Restart FastAPI.
-- **Startup:** `provider.starting` is emitted before an authenticated models
-  request; `provider.ready` is emitted only after the configured model is listed.
-  Heartbeats continue during readiness. Default readiness budget is 600 seconds;
-  normal inference stays at its existing 300-second budget.
-- **150-second failure:** Modal can return HTTP 303 with a result-poll URL while
-  the original request continues. The backend follows at most four same-origin,
-  same-path Modal redirects as GET requests inside the original total budget.
-  It never resubmits the completion POST or forwards credentials to another host.
-  See [Modal's Web Function timeout contract](https://modal.com/docs/guide/webhook-timeouts).
-- **Provider failures:** `AI_PROVIDER_UNREACHABLE`, `AI_PROVIDER_AUTH_FAILED`,
-  `AI_PROVIDER_ENDPOINT_ERROR`, `AI_MODEL_UNAVAILABLE`,
-  `AI_PROVIDER_STARTUP_TIMEOUT`, `AI_PROVIDER_TIMEOUT` and
-  `AI_PROVIDER_BAD_RESPONSE` distinguish connectivity, credentials, path/model,
-  startup, inference and invalid output. Check `modal app logs ielts-practice-web-dev`
-  (or the deployed app name). Safe logs contain operation/code/status only.
-  Failed rows and partial progress remain; Regrade creates a new retryable run.
-- **Invalid assessment:** score-only remains strict with one targeted repair;
-  a second invalid score emits/persists `criterion.failed`. Task 2 evidence and
-  observations sanitize invalid items/presentation locally, without retrying the
-  whole response. Structural/incomplete auxiliary output permits one repair,
-  then empty evidence or safe feedback fallback preserves the valid score.
-  Task 1 evidence remains strict. Real provider/application failures remain failures.
-  Other criteria continue; the run becomes FAILED only if a criterion fails.
-  Internal `usage_json.diagnostics` and safe log lines contain only stage,
-  criterion, attempt, finish reason, allowlisted field/index paths and built-in
-  Pydantic error types (never input, context or messages). Unknown extra-field
-  names are masked as `<extra>` because names can contain untrusted content.
-  Fixed reasons include `INVALID_JSON`, `SCHEMA_VALIDATION`,
-  `INVALID_HALF_BAND`, `EVIDENCE_UNKNOWN_SOURCE_ID`, `EVIDENCE_SCHEMA_INVALID`,
-  `SCORE_SCHEMA_INVALID`, `EVIDENCE_ITEM_TOO_LONG`,
-  `TOO_MANY_EVIDENCE_ITEMS`, `PROVIDER_FINISH_LENGTH`, `EMPTY_MODEL_CONTENT`,
-  `MALFORMED_COMPLETION_ENVELOPE` or `OUTPUT_TOO_LARGE`. These diagnostics are
-  excluded from API/SSE. Optional metadata can produce non-fatal
-  `CALIBRATION_DROPPED`, `CALIBRATION_SOURCE_DROPPED` or
-  `CALIBRATION_METADATA_NORMALIZED` diagnostics, without retry or failure.
-  `SCORE_CALIBRATION_INVALID` remains readable for historical v3 diagnostics only.
-  Current feedback presentation limits yield `FEEDBACK_PRESENTATION_NORMALIZED`
-  without another inference call; legacy combined-output tooling retains
-  `SCORE_PRESENTATION_NORMALIZED`. Required semantic/structural failures still use bounded repair.
-  Raw output, Pydantic input and prompts are not persisted.
-  The failed criterion stops animating immediately even if JSON reconciliation
-  is temporarily offline; later criteria still run. Snapshot `failures` preserves
-  local failure states across reload/reconnect. Completed cards appear on each
-  `criterion.completed`, before the full run finishes. Counts distinguish
-  completed/failed/active criteria. Heartbeats never change visible progress.
-- **Finish metadata:** safe logs/diagnostics distinguish stop, length, abort,
-  error and other/missing/tool/filter reasons. vLLM 0.13's [engine contract](https://github.com/vllm-project/vllm/blob/v0.13.0/vllm/v1/engine/__init__.py)
-  defines length as a token/context limit, abort as interrupted generation and
-  error as an internal failure; these are not successful stop completions.
-  Length is rejected even if the JSON happens to look complete, with one bounded
-  repair. Unknown metadata is sanitised to `other`, never logged verbatim. The
-  existing guided JSON-schema integration and temperature 0/seed 0 remain;
-  current per-stage token budgets are listed above. Evidence assessments are at most 320 characters/two
-  requested sentences; separate feedback is at most 800 characters, strengths and
-  improvements preserve up to four accepted observations. Both tasks' internal observations are at most four,
-  with 240-character descriptions; Task 2 scoring contains no generated evidence.
-  No global token increase or GPU smoke job is required.
-- **Interrupted run:** wait for the heartbeat lease to expire or revisit review;
-  stale state becomes FAILED and Regrade is available.
-- **Trace disconnected:** the client probes saved JSON and reconnects with its
-  cursor. Check API cookie/CORS configuration and proxy SSE buffering.
+- **Chưa cấu hình:** bật AI, cung cấp URL/mô hình/thông tin xác thực nhà cung cấp đã chọn; Modal cần cả hai trường proxy token. Khởi động lại FastAPI.
+- **Khởi động:** phát `provider.starting` trước yêu cầu models có xác thực; chỉ phát `provider.ready` sau khi thấy mô hình đã cấu hình trong danh sách. Heartbeat tiếp tục lúc chờ. Ngân sách sẵn sàng mặc định 600 giây; suy luận thường giữ 300 giây.
+- **Lỗi sau 150 giây:** Modal có thể trả HTTP 303 với URL thăm dò kết quả khi yêu cầu gốc vẫn chạy. Backend theo tối đa bốn chuyển hướng Modal cùng nguồn/cùng đường dẫn dưới dạng GET trong ngân sách tổng ban đầu. Không gửi lại POST hoàn thành hoặc chuyển thông tin xác thực sang máy khác. Xem [hợp đồng thời gian chờ Web Function Modal](https://modal.com/docs/guide/webhook-timeouts).
+- **Lỗi nhà cung cấp:** `AI_PROVIDER_UNREACHABLE`, `AI_PROVIDER_AUTH_FAILED`, `AI_PROVIDER_ENDPOINT_ERROR`, `AI_MODEL_UNAVAILABLE`, `AI_PROVIDER_STARTUP_TIMEOUT`, `AI_PROVIDER_TIMEOUT`, `AI_PROVIDER_BAD_RESPONSE` phân biệt kết nối, thông tin xác thực, đường dẫn/mô hình, khởi động, suy luận, đầu ra sai. Kiểm `modal app logs ielts-practice-web-dev` (hoặc tên triển khai). Nhật ký an toàn chỉ có thao tác/mã/trạng thái. Dòng thất bại/tiến độ một phần vẫn giữ; Chấm lại tạo lượt mới thử được.
+- **Đánh giá sai định dạng:** chỉ điểm giữ nghiêm, một lần sửa có mục tiêu; điểm sai lần hai phát/lưu `criterion.failed`. Bằng chứng/quan sát Task 2 làm sạch mục/trình bày sai cục bộ, không thử toàn phản hồi. Đầu ra phụ trợ sai cấu trúc/thiếu cho một sửa rồi dùng bằng chứng rỗng/nhận xét dự phòng để giữ điểm hợp lệ. Bằng chứng Task 1 vẫn nghiêm. Lỗi nhà cung cấp/ứng dụng thật vẫn là lỗi. Tiêu chí khác tiếp tục; lượt chỉ FAILED khi có tiêu chí lỗi. `usage_json.diagnostics` nội bộ và nhật ký an toàn chỉ chứa bước, tiêu chí, lần thử, lý do kết thúc, đường dẫn trường/chỉ số cho phép và kiểu lỗi Pydantic tích hợp (không đầu vào, ngữ cảnh, thông điệp). Tên trường dư lạ bị che `<extra>` vì tên có thể chứa nội dung không tin cậy. Lý do cố định gồm `INVALID_JSON`, `SCHEMA_VALIDATION`, `INVALID_HALF_BAND`, `EVIDENCE_UNKNOWN_SOURCE_ID`, `EVIDENCE_SCHEMA_INVALID`, `SCORE_SCHEMA_INVALID`, `EVIDENCE_ITEM_TOO_LONG`, `TOO_MANY_EVIDENCE_ITEMS`, `PROVIDER_FINISH_LENGTH`, `EMPTY_MODEL_CONTENT`, `MALFORMED_COMPLETION_ENVELOPE`, `OUTPUT_TOO_LARGE`. Không lộ chẩn đoán qua API/SSE. Siêu dữ liệu tùy chọn có thể tạo `CALIBRATION_DROPPED`, `CALIBRATION_SOURCE_DROPPED`, `CALIBRATION_METADATA_NORMALIZED` không gây lỗi/thử lại. `SCORE_CALIBRATION_INVALID` chỉ còn đọc cho chẩn đoán v3 lịch sử. Giới hạn trình bày nhận xét hiện tạo `FEEDBACK_PRESENTATION_NORMALIZED` không thêm suy luận; công cụ gộp cũ giữ `SCORE_PRESENTATION_NORMALIZED`. Lỗi ngữ nghĩa/cấu trúc bắt buộc vẫn sửa hữu hạn. Không lưu đầu ra thô, đầu vào Pydantic, lời nhắc. Tiêu chí lỗi dừng hoạt ảnh ngay dù đối chiếu JSON tạm ngoại tuyến; tiêu chí sau vẫn chạy. `failures` trong ảnh chụp giữ lỗi qua tải lại/kết nối lại. Thẻ hoàn tất hiện ở mỗi `criterion.completed` trước toàn lượt; bộ đếm tách hoàn tất/lỗi/đang hoạt động. Heartbeat không đổi tiến độ hiển thị.
+- **Siêu dữ liệu kết thúc:** nhật ký/chẩn đoán an toàn phân biệt stop, length, abort, error và lý do khác/thiếu/tool/filter. [Hợp đồng engine vLLM 0.13](https://github.com/vllm-project/vllm/blob/v0.13.0/vllm/v1/engine/__init__.py) định nghĩa length là giới hạn token/ngữ cảnh, abort là sinh bị ngắt, error là lỗi nội bộ; không phải hoàn thành stop thành công. Length bị từ chối kể cả JSON trông đầy đủ, có một sửa hữu hạn. Siêu dữ liệu lạ làm sạch thành `other`, không ghi nguyên văn. Giữ guided JSON-schema, temperature 0/seed 0; ngân sách bước hiện hành ở trên. Assessment bằng chứng tối đa 320 ký tự/hai câu được yêu cầu; nhận xét riêng tối đa 800 ký tự, điểm mạnh/cải thiện giữ tối đa bốn quan sát chấp nhận. Quan sát nội bộ hai tác vụ tối đa bốn, mô tả 240 ký tự; chấm Task 2 không chứa bằng chứng sinh ra. Không cần tăng token toàn cục hoặc lượt thử GPU.
+- **Lượt gián đoạn:** chờ lease heartbeat hết hạn hoặc quay lại xem lại; trạng thái quá hạn thành FAILED và có Chấm lại.
+- **Luồng theo dõi ngắt:** máy khách dò JSON đã lưu, kết nối lại bằng con trỏ. Kiểm cookie/CORS API và đệm SSE proxy.
 
 ```powershell
 cd backend
@@ -935,124 +328,40 @@ uv run --project backend ruff check $writingPythonPaths
 git diff --check
 ```
 
-These score-first checks use fake providers and synthetic fixtures. No browser,
-Playwright, live model, deployment, server startup or broad E2E suite is required.
+Các kiểm tra điểm trước này dùng nhà cung cấp giả và dữ liệu tổng hợp. Không yêu cầu trình duyệt, Playwright, mô hình trực tiếp, triển khai, khởi động máy chủ hoặc bộ E2E diện rộng.
 
-### Runtime investigation, 2026-10-08
+### Điều tra vận hành, 2026-10-08
 
-The later failed run on Ministral 3 completed Task Response (7.5) and Coherence
-and Cohesion (7.0). Its persisted usage records contain both LR evidence calls
-(normal and repair), and events end after `criterion.started` for LR without
-`criterion.evidence.completed` or LR scoring. This confirms failure in the LR
-evidence JSON/schema/quote validation boundary, rather than scoring or the earlier
-provider connectivity problem. The previous code collapsed validation errors and
-stored no reason; it is impossible to distinguish quote mismatch from JSON/schema
-failure retrospectively. No raw provider output was recovered or saved. The new
-diagnostics make subsequent failures distinguishable. This update used fake
-providers for verification; no additional real GPU inference was performed.
+Lượt lỗi sau trên Ministral 3 hoàn tất Task Response (7.5), Coherence and Cohesion (7.0). Bản ghi mức dùng đã lưu có cả hai lần bằng chứng LR (thường/sửa), sự kiện kết thúc sau `criterion.started` cho LR, không có `criterion.evidence.completed` hoặc chấm LR. Điều này xác nhận lỗi ở ranh giới kiểm JSON/lược đồ/trích dẫn bằng chứng LR, không ở chấm hoặc sự cố kết nối trước. Mã cũ gộp lỗi kiểm và không lưu lý do nên không thể phân biệt hồi cứu trích dẫn không khớp với lỗi JSON/lược đồ. Không phục hồi/lưu đầu ra thô nhà cung cấp. Chẩn đoán mới giúp phân biệt lỗi sau. Cập nhật được xác minh bằng nhà cung cấp giả, không thêm suy luận GPU thật.
 
-The inspected failed dev run used the previous 2410 model and stored
-`PROVIDER_HTTP_ERROR` after 150 seconds, with no completed evidence or provider
-usage. Its GPU endpoint was deployed, authenticated and processing the request;
-the vLLM completion finished successfully after the backend had already failed.
-The configured HTTP timeout was 300 seconds. The failure was classification of
-Modal's 303 result-poll redirect, not missing configuration, bad credentials or
-an application timeout set to 150 seconds. The old FAILED row remains unchanged.
+Lượt dev lỗi đã xem dùng mô hình 2410 cũ, lưu `PROVIDER_HTTP_ERROR` sau 150 giây, không có bằng chứng hoàn tất hoặc mức dùng. Điểm cuối GPU đã triển khai, xác thực, đang xử lý; hoàn thành vLLM thành công sau khi backend đã báo lỗi. HTTP timeout cấu hình 300 giây. Lỗi là phân loại chuyển hướng thăm dò kết quả 303 của Modal, không thiếu cấu hình, sai xác thực hoặc timeout ứng dụng 150 giây. Dòng FAILED cũ không đổi.
 
-The updated full-stack dev app was started with `modal serve deploy/modal/app.py`.
-FastAPI's process environment was checked without printing secrets: enabled vLLM,
-the exact unified model, the same app's protected `/v1` endpoint, both proxy fields,
-300-second inference timeout and 600-second readiness timeout were all confirmed.
-One real models request completed after 256.3 seconds, including initial container
-startup and downloading the new weights. One tiny text-only JSON-schema completion
-then passed in 4.4 seconds. vLLM reported FP8 weights using about 9.77 GiB, with
-image profiling enabled. No real essay or image grading was sent. The temporary
-dev app was stopped after validation; the existing production app was unchanged.
+Ứng dụng dev toàn hệ thống cập nhật được chạy bằng `modal serve deploy/modal/app.py`. Đã kiểm môi trường FastAPI không in bí mật: vLLM bật, đúng mô hình thống nhất, điểm cuối `/v1` được bảo vệ cùng ứng dụng, đủ hai trường proxy, timeout suy luận 300 giây/sẵn sàng 600 giây. Một yêu cầu models thật hoàn tất sau 256.3 giây, gồm khởi động container và tải trọng số mới. Một hoàn thành JSON-schema văn bản nhỏ sau đó đạt trong 4.4 giây. vLLM báo trọng số FP8 dùng khoảng 9.77 GiB, có lập cấu hình hình ảnh. Không gửi bài viết/hình thật để chấm. Đã dừng ứng dụng dev tạm sau xác minh; ứng dụng sản xuất hiện có không đổi.
 
-Fresh HTTP navigation through the same dev Web returned 307 to login without a
-session and 200 for `/auth/me`, `/library`, `/history` and `/admin` with a valid
-cookie. Current auth code was retained. Protected links still use Next's default
-prefetch, and client router-cache behavior was not reproduced without a browser;
-the earlier stale-prefetch hypothesis remains unconfirmed. Focused regressions
-cover fresh cookie checks, validated login destinations, waiting for session
-confirmation, roles and logout. No blanket prefetch/auth change was made.
+Điều hướng HTTP mới qua cùng Web dev trả 307 tới đăng nhập khi thiếu phiên, 200 cho `/auth/me`, `/library`, `/history`, `/admin` khi cookie hợp lệ. Giữ mã xác thực hiện tại. Liên kết được bảo vệ vẫn dùng prefetch mặc định Next; chưa tái hiện hành vi bộ nhớ đệm router máy khách do không có trình duyệt, nên giả thuyết prefetch cũ chưa xác nhận. Hồi quy tập trung bao phủ kiểm cookie mới, đích đăng nhập đã kiểm, chờ xác nhận phiên, vai trò, đăng xuất. Không đổi xác thực/prefetch hàng loạt.
 
+## T1-B: đối chiếu nhận thức biểu đồ tùy chọn
 
-## T1-B: optional chart perception cross-check
+T1-A vẫn là bộ tiếp nhận thị giác tổng quát chính. T1-B thêm một lần trích hình thành bảng độc lập `google/deplot`, chỉ cho LINE_GRAPH, BAR_CHART, PIE_CHART, TABLE, MIXED_CHARTS. PROCESS, MAP_PLAN, OBJECT_SYSTEM_DIAGRAM, OTHER_VISUAL giữ T1-A; Task 2 chỉ văn bản. Không thêm mô hình giám khảo thứ ba hoặc chấm hình lặp. DePlot không nhận bài viết hoặc cấp điểm IELTS.
 
-T1-A remains the primary general visual grounder. T1-B adds one independent
-`google/deplot` image-to-table extraction only for LINE_GRAPH, BAR_CHART,
-PIE_CHART, TABLE and MIXED_CHARTS. PROCESS, MAP_PLAN, OBJECT_SYSTEM_DIAGRAM and
-OTHER_VISUAL retain T1-A; Task 2 stays text-only. No third judge model or repeated
-image scoring is introduced. DePlot never receives the essay or assigns IELTS scores.
+[Thẻ mô hình chính thức](https://huggingface.co/google/deplot) xác định checkpoint Pix2Struct Apache-2.0. Ghim revision `6e76d62430da16986be3426bae32301fb9115397`, Transformers **5.13.0**, PyTorch **2.10.0**, Pillow **12.1.1**, SentencePiece **0.2.1**, FastAPI **0.135.1**. [API Transformers trực tiếp](https://huggingface.co/docs/transformers/v5.13.0/model_doc/deplot) dùng `AutoProcessor`, `Pix2StructForConditionalGeneration`, hình PIL RGB và chỉ dẫn cố định chuyển biểu đồ thành bảng. Không cài pipeline lỗi thời hoặc kho nghiên cứu Google. Đầu ra phải kết thúc trong 512 token sinh.
 
-The [official model card](https://huggingface.co/google/deplot) identifies an
-Apache-2.0 Pix2Struct checkpoint. We pin revision
-`6e76d62430da16986be3426bae32301fb9115397`, Transformers **5.13.0**, PyTorch
-**2.10.0**, Pillow **12.1.1**, SentencePiece **0.2.1** and FastAPI **0.135.1**.
-The [direct Transformers API](https://huggingface.co/docs/transformers/v5.13.0/model_doc/deplot)
-uses `AutoProcessor` and `Pix2StructForConditionalGeneration`, a PIL RGB image
-and the fixed chart-to-table instruction. No deprecated pipeline or Google
-research repository is installed. Outputs must finish within 512 generated tokens.
+`ChartDerenderingProvider` chỉ backend nhận byte `ImagePart` tin cậy. Bản HTTP gửi một lần đến dịch vụ chuyên đọc được bảo vệ, kiểm mô hình/revision báo về và giới hạn byte/thời gian phản hồi. Bảng tuyến tính thô phân tích cục bộ, không lưu/truyền. Giới hạn bộ phân tích: 16,384 ký tự, 30 dòng dữ liệu, 30 cột giá trị, 120 ký tự mỗi nhãn. Ô dùng hợp đồng Decimal hữu hạn có giới hạn hiện có, trạng thái VALUE/MISSING/UNPARSEABLE rõ và đơn vị phần trăm; dấu phân cách hàng nghìn mơ hồ, chuỗi số mũ, mã và văn tùy ý không phải số.
 
-The backend-only `ChartDerenderingProvider` accepts trusted `ImagePart` bytes.
-Its HTTP implementation submits once to the protected specialist service,
-checks the reported model/revision, and bounds response bytes and time. Raw
-linearized tables are parsed locally and never persisted or streamed. Parser
-limits are 16,384 characters, 30 data rows, 30 value columns and 120 characters
-per label. Cells use the existing finite bounded Decimal contract, explicit
-VALUE/MISSING/UNPARSEABLE states and percentage units; ambiguous thousands
-separators, exponent strings, code and arbitrary prose are not numbers.
+Đối chiếu chuẩn hóa nhãn bằng NFC, cắt/gộp khoảng trắng, casefold. Chỉ nhận khớp dòng/cột chính xác hoặc chuyển vị, không khớp ngữ nghĩa mờ. Vùng nhiều biểu đồ tròn khớp qua trạng thái/tiêu đề thành phần chính và nhãn lát, không suy trục thời gian. Thành phần hỗn hợp/đơn vị giữ riêng. Một ô chuyên đọc không xác nhận hai thành phần chính. Đơn vị lạ/mâu thuẫn ghi là bất định.
 
-Reconciliation normalizes labels with NFC, whitespace trimming/collapsing and
-casefold. It accepts exact row/column or transposed correspondence, never fuzzy
-semantic matches. Multi-pie regions align via the primary component state/title
-and sector labels; no time axis is inferred. Mixed components and units stay
-separate. A specialist cell cannot confirm two primary components. Unknown or
-conflicting units are recorded as uncertainty.
+So số bằng Decimal chính xác, **không có dung sai**. Vì vậy 48, 48.0, 48% đồng thuận khi đã xác lập nghĩa phần trăm. Giá trị in, tỷ lệ lát, ô bảng khớp độc lập có thể tăng độ tin cậy điểm; giá trị biểu đồ liên tục được ghi rõ là ước lượng vẫn dưới ngưỡng dữ kiện chính xác hiện có. Giá trị một nguồn giữ độ tin cậy gốc; ô chỉ có ở bộ chuyên đọc không bịa dữ liệu chính mới. Không nâng độ tin cậy gốc LOW/UNUSABLE.
 
-Numeric comparison is exact Decimal equality, with **no tolerance**. Thus 48,
-48.0 and 48% agree when percentage semantics are established. Independently
-matching printed values, pie percentages and table cells may strengthen point
-confidence; explicitly estimated continuous-chart values remain below the
-existing exact-fact reliability threshold. One-source values retain their
-original confidence; specialist-only cells do not fabricate new primary data.
-Root LOW/UNUSABLE confidence is never promoted.
+Giá trị tranh chấp thành null với độ tin cậy điểm 0 trước `derive_facts()`. Dữ kiện chính xác phụ thuộc và mâu thuẫn tất định không được dùng chúng. Tóm tắt chính xóa nhận định số có thể cũ; bỏ dự phòng ngữ nghĩa cho phát biểu không cấu trúc khi có bất đồng. Dữ kiện có căn cứ khác vẫn dùng. TA nhận thông tin có căn cứ thận trọng, **không phạt band theo số bất đồng**.
 
-Disputed values become null with zero point confidence before `derive_facts()`.
-Dependent exact facts and deterministic contradictions therefore cannot use them.
-The primary summary is cleared of potentially stale numerical claims, and semantic
-fallback is skipped for unstructured claims when disagreement exists. Other
-supported facts remain usable. TA receives cautious grounded information, with
-**no band penalty derived from disagreement counts**.
+Bộ chuyên đọc quá giờ, không khả dụng, đầu ra sai hoặc sai danh tính mô hình quay về tham chiếu chính không đổi. Chẩn đoán có kiểu an toàn chỉ có danh tính mô hình, số đồng thuận/bất đồng/không khớp/chưa biết hữu hạn và cảnh báo cho phép. DePlot không thay tham chiếu chính không dùng được; TA thất bại riêng, CC/LR/GRA tiếp tục. Điểm người chấm hiện có vẫn có thẩm quyền. Lịch sử T1-A cũ vẫn đọc qua `cross_check` tùy chọn; danh tính bộ nhớ đệm biểu đồ bổ sung bật/nhà cung cấp/mô hình, revision ghim, phiên bản hợp đồng phân tích/đối chiếu bên cạnh băm thị giác và phiên bản lời nhắc chấm. Dấu vân tay không phải biểu đồ bỏ cấu hình chuyên đọc.
 
-Specialist timeout, unavailability, malformed output or wrong model identity
-falls back to the unchanged primary reference. Safe typed diagnostics contain
-only model identity, bounded agreement/disagreement/unmatched/unknown counts and
-allowlisted warnings. An unusable primary reference cannot be replaced by DePlot;
-TA fails independently while CC/LR/GRA continue. Existing human grading remains
-authoritative. Old persisted T1-A history remains readable through optional
-`cross_check`; chart cache identity additionally includes enabled/provider/model,
-pinned revision and parser/reconciliation contract version, alongside the visual
-hash and scoring prompt version. Non-chart fingerprints omit specialist settings.
+Bước SSE là `chart_specialist.started`, `.completed`, `.failed`, `chart_reconciliation.completed`, trước bước dữ kiện/phát biểu/tiêu chí hiện có. Ảnh chụp lưu chẩn đoán an toàn để phát lại. UI mô tả xác nhận biểu đồ, bất định hoặc quay về dự phòng bằng tiếng Việt, không bảng thô/nội bộ mô hình.
 
-SSE stages are `chart_specialist.started`, `.completed`, `.failed` and
-`chart_reconciliation.completed`, preceding existing facts/claims/criteria stages.
-Snapshots persist safe diagnostics for replay. The UI describes chart confirmation,
-uncertainty or graceful fallback in Vietnamese without raw tables/model internals.
+Bật qua `AI_WRITING_CHART_SPECIALIST_ENABLED=true` chỉ backend và `AI_WRITING_DEPLOT_BASE_URL` tin cậy; mặc định nhà cung cấp/mô hình/revision ở `backend/.env.example`. Cặp proxy Modal hiện có bảo vệ cả hai dịch vụ. Bộ chuyên đọc mặc định tắt, không bắt buộc cho tiêu chí ngôn ngữ. Timeout backend mặc định 90 giây (tối đa 120), kể cả chờ khởi động nguội. Chi tiết triển khai/bộ nhớ đệm/chi phí và kết quả chạy thử đo được ở [triển khai Modal](modal-web.md#optional-t1-b-chart-service). TinyChart là ứng viên so sánh tương lai; chưa triển khai T1-C, bỏ phiếu mô hình hoặc bảng đánh giá.
 
-Enable with backend-only `AI_WRITING_CHART_SPECIALIST_ENABLED=true` and a trusted
-`AI_WRITING_DEPLOT_BASE_URL`; provider/model/revision defaults are in
-`backend/.env.example`. Existing Modal proxy credentials protect both services.
-The specialist is disabled by default and never required for language criteria.
-The backend timeout defaults to 90 seconds (maximum 120), including cold-start
-waiting. Deploy/cache/cost details and the measured smoke result are documented in
-[Modal deployment](modal-web.md#optional-t1-b-chart-service). TinyChart remains a future comparison candidate; T1-C,
-model voting and evaluation dashboards are not implemented.
+## Điểm cuối Writing do người chấm
 
+AI vẫn tư vấn. Chủ sở hữu bài luyện cá nhân được tự đánh giá thủ công hoặc chép tiêu chí AI hoàn tất vào biểu mẫu điểm cuối, chỉnh rồi Lưu rõ ràng. Chép chưa lưu dữ liệu; chú thích không tham gia tính điểm. Học viên lớp chỉ xem kết quả cuối hoặc “Đang chờ giáo viên chấm”. Nhân sự có quyền chấm của lớp được lưu/sửa tiêu chí qua route giới hạn theo bài giao. **ADMIN chỉ quan sát lớp học, không được chấm điểm cuối cho bài của lớp**, kể cả qua route cá nhân; quyền chấm bài luyện cá nhân trên nền tảng là quyền riêng. Chính sách hiện hành tại [GradingPolicy](../backend/app/services/grading_policy.py) và [capabilities lớp học](../backend/app/services/classroom_capabilities.py) có ưu tiên hơn mô tả giai đoạn cũ.
 
-## Human final Writing grading
-
-AI remains advisory. Personal owners may manually self-assess or copy completed AI criteria into the final practice form, edit, then explicitly Save. Copying does not persist; annotations never enter score arithmetic. Classroom students see read-only teacher final results or “Waiting for teacher grading” (VI: “Đang chờ giáo viên chấm”). The exact classroom owner teacher may save/revise criteria through an assignment-scoped route; ADMIN retains authority.
-
-Both standalone assignment IDs and parent Full Mock assignment IDs count as classroom provenance. Existing review locks and focused task-only band behavior remain. Review DTOs expose backend `grading` capabilities; mutation routes recheck them. See [teacher-classrooms.md](teacher-classrooms.md#human-final-subjective-grading) for the shared policy and routes. The existing focused AI practice snapshot is separate from human final grading.
+Cả ID bài giao riêng và ID bài giao Full Mock cha đều là nguồn gốc lớp học. Giữ khóa xem lại và hành vi band chỉ tác vụ theo phạm vi. DTO xem lại lộ khả năng `grading` từ backend; tuyến thay đổi kiểm lại. Xem [teacher-classrooms.md](teacher-classrooms.md#human-final-subjective-grading) về chính sách/tuyến dùng chung. Ảnh chụp luyện tập AI theo phạm vi hiện có tách khỏi chấm cuối do người.

@@ -1,20 +1,20 @@
-# Structured Draft Import (`ielts-draft-import-v1`)
+# Import bản nháp có cấu trúc (`ielts-draft-import-v1`)
 
-> **Documentation audit: CURRENT (corrected from NEEDS UPDATE).** Canonical concern này; source-check các boundary/API, không live validation.
-> Mục đích: Structured Draft Import (`ielts-draft-import-v1`). Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../backend/app/services/draft_import.py).
-> Đọc cùng [current module/guide](modules/assets-transfer.md); [audit và giới hạn](DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+> **Phân loại tài liệu: CURRENT (đã sửa từ NEEDS UPDATE).** Tài liệu chuẩn cho chủ đề này; đối chiếu boundaries/API từ source, không xác minh deployment đang chạy.
+> Mục đích: import bản nháp có cấu trúc (`ielts-draft-import-v1`). Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../backend/app/services/draft_import.py).
+> Đọc cùng [hướng dẫn module hiện hành](modules/assets-transfer.md); [audit và giới hạn](DOCS_AUDIT.md). Kết quả tests/benchmark thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
 
-Draft Import accepts text and answer data that has already been transcribed from screenshots or scans. It does not run OCR or AI inference. The command creates one new `Test`, version 1, in `DRAFT` status. Open the reported Builder URL to review and publish through the normal workflow.
+Draft Import nhận văn bản và đáp án đã được chép lại từ ảnh chụp hoặc bản scan. Công cụ không chạy OCR hay AI inference. Lệnh tạo một `Test` mới, version 1, trạng thái `DRAFT`. Mở Builder URL được trả về để kiểm tra và publish theo workflow bình thường.
 
-A ready-to-run fictional manifest is in [docs/examples/draft-import-manifest.json](examples/draft-import-manifest.json).
+Manifest hư cấu có thể chạy ngay nằm ở [docs/examples/draft-import-manifest.json](examples/draft-import-manifest.json).
 
-From `backend/`:
+Chạy từ `backend/`:
 
 ```sh
 uv run python -m app.import_draft path/to/manifest.json --owner-user-id ADMIN_UUID
 ```
 
-Asset paths are relative to the directory containing `manifest.json`. Keep them in an `assets/` subdirectory. The importer rejects absolute paths, `..` traversal, missing files, unsupported extensions, malformed file signatures, and files above the existing upload size limits. It copies accepted files through the configured `get_asset_storage` provider and links them to the new version; local input files remain local sources even when the destination provider is S3/R2. On a failed import, the service exits the transaction and compensates operation-owned files after checking durable database references. A lost commit acknowledgement or unavailable database must not cause deletion of potentially committed assets; reconciliation may be required.
+Asset paths được tính tương đối từ thư mục chứa `manifest.json`; nên đặt trong thư mục con `assets/`. Importer từ chối absolute paths, traversal `..`, file thiếu, extensions không hỗ trợ, file signatures sai và file vượt upload size limits hiện có. File hợp lệ được copy qua provider cấu hình bởi `get_asset_storage` và liên kết với version mới; input files vẫn là nguồn local kể cả khi destination là S3/R2. Khi import thất bại, service thoát transaction rồi dọn file thuộc operation sau khi kiểm durable database references. Mất commit acknowledgement hoặc database không truy cập được không được dẫn tới xóa assets có thể đã commit; trường hợp đó có thể cần đối soát.
 
 ## Manifest
 
@@ -27,41 +27,41 @@ Asset paths are relative to the directory containing `manifest.json`. Keep them 
 }
 ```
 
-`modules` contains any combination of one `READING`, one `LISTENING`, and one `WRITING` module. The importer rejects duplicate module types. Titles are optional on modules. `recommended_duration_seconds` is optional; omitted values default to 3600 for Reading, 1800 for Listening, and 3600 for Writing. Explicit positive values are preserved. Questions and passage blocks do not need UUIDs; the importer generates them and keeps them stable through Builder fetch and save.
+`modules` có thể chứa tổ hợp của tối đa một module `READING`, một `LISTENING` và một `WRITING`. Importer từ chối trùng module type. Module titles là tùy chọn. `recommended_duration_seconds` cũng tùy chọn; giá trị thiếu mặc định là 3600 cho Reading, 1800 cho Listening và 3600 cho Writing. Giá trị dương được cung cấp tường minh được giữ nguyên. Questions và passage blocks không cần UUIDs; importer tạo IDs và giữ chúng ổn định qua Builder fetch/save.
 
-Set `"allow_incomplete": true` only when the source has no answer key or some question numbers cannot yet be represented. In this mode, omitted answers are stored as empty keys, and explicit question-number gaps are kept in the unpublished draft. Other structural validation still applies. The draft remains unpublishable until keys and numbering are resolved. The default is `false`.
+Chỉ đặt `"allow_incomplete": true` khi nguồn chưa có answer key hoặc có question numbers chưa biểu diễn được. Trong mode này, đáp án thiếu được lưu thành empty keys và các khoảng trống question numbering tường minh được giữ trong unpublished draft. Các structural validations khác vẫn có hiệu lực. Draft chưa thể publish cho đến khi giải quyết keys và numbering. Mặc định là `false`.
 
 ### Reading
 
-Reading has `passages`. Each passage has a `title`, one or more `blocks`, and zero or more `question_groups`. A block is a `heading` or `paragraph` with `text`. Paragraph `label` is optional; missing labels are generated A, B, C, and so on. A supplied label is preserved. Matching Headings targets use `"Paragraph A"` or `"A"` and must resolve to exactly one paragraph.
+Reading có `passages`. Mỗi passage có `title`, một hoặc nhiều `blocks`, và từ không đến nhiều `question_groups`. Block là `heading` hoặc `paragraph` có `text`. Paragraph `label` tùy chọn; nếu thiếu sẽ tạo A, B, C,...; label được cung cấp sẵn được giữ nguyên. Matching Headings targets dùng `"Paragraph A"` hoặc `"A"` và phải xác định đúng một paragraph.
 
 ### Listening
 
-Listening has up to four `sections`; these become Builder Listening Parts. Each section has a `title` and `question_groups`. A module-level `audio` path is optional. The current single shared Listening audio asset remains the only audio model. Missing audio produces a Draft warning.
+Listening có tối đa bốn `sections`, tương ứng Builder Listening Parts. Mỗi section có `title` và `question_groups`. Đường dẫn `audio` cấp module là tùy chọn. Mô hình audio duy nhất vẫn là một Listening audio asset dùng chung. Thiếu audio tạo Draft warning.
 
 ### Writing
 
-Writing has `tasks`, each with `task_number` 1 or 2, `prompt`, optional `task_type`, and optional `minimum_recommended_words`. `task_type` is a structured authoring tag, not an official IELTS taxonomy. Task 1 accepts `LINE_GRAPH`, `BAR_CHART`, `PIE_CHART`, `TABLE`, `MIXED_CHARTS`, `PROCESS`, `MAP_PLAN`, `OBJECT_SYSTEM_DIAGRAM`, or `OTHER_VISUAL`. Task 2 accepts `OPINION`, `DISCUSS_BOTH_VIEWS`, `DISCUSS_BOTH_VIEWS_AND_OPINION`, `ADVANTAGES_DISADVANTAGES`, `ADVANTAGES_OUTWEIGH_DISADVANTAGES`, `PROBLEM_SOLUTION`, `CAUSE_SOLUTION`, `TWO_PART_QUESTION`, or `OTHER_ESSAY`. Omit `task_type` to leave it unclassified; the importer does not infer it from prompt text. Task 1 may contain an `image` path. Task 2 cannot have an image. A missing task is represented by the Builder's fixed empty task slot and reported as a warning. The standard word guidance is 150 for Task 1 and 250 for Task 2 unless supplied otherwise.
+Writing có `tasks`, mỗi task gồm `task_number` là 1 hoặc 2, `prompt`, `task_type` tùy chọn và `minimum_recommended_words` tùy chọn. `task_type` là structured authoring tag, không phải hệ phân loại IELTS chính thức. Task 1 nhận `LINE_GRAPH`, `BAR_CHART`, `PIE_CHART`, `TABLE`, `MIXED_CHARTS`, `PROCESS`, `MAP_PLAN`, `OBJECT_SYSTEM_DIAGRAM` hoặc `OTHER_VISUAL`. Task 2 nhận `OPINION`, `DISCUSS_BOTH_VIEWS`, `DISCUSS_BOTH_VIEWS_AND_OPINION`, `ADVANTAGES_DISADVANTAGES`, `ADVANTAGES_OUTWEIGH_DISADVANTAGES`, `PROBLEM_SOLUTION`, `CAUSE_SOLUTION`, `TWO_PART_QUESTION` hoặc `OTHER_ESSAY`. Bỏ `task_type` để giữ trạng thái chưa phân loại; importer không suy loại từ prompt text. Task 1 có thể có đường dẫn `image`; Task 2 không được có ảnh. Task thiếu được biểu diễn bằng fixed empty task slot của Builder và có warning. Hướng dẫn số từ chuẩn là 150 cho Task 1 và 250 cho Task 2 nếu không cung cấp giá trị khác.
 
-## Question groups
+## Nhóm câu hỏi
 
-Use the exact `question_type` names from the current question registry:
+Dùng chính xác tên `question_type` trong question registry hiện tại:
 
-`multiple_choice`, `multiple_choice_multiple`, `true_false_not_given`, `yes_no_not_given`, `text_completion`, `matching_headings`, `matching`, `matching_information`, `matching_features`, `matching_sentence_endings`, `summary_completion_word_list`, `plan_labelling`, `map_labelling`, `diagram_labelling`, `form_completion`, `note_completion`, `table_completion`, `flow_chart_completion`, `summary_completion`, `sentence_completion`, and `short_answer`.
+`multiple_choice`, `multiple_choice_multiple`, `true_false_not_given`, `yes_no_not_given`, `text_completion`, `matching_headings`, `matching`, `matching_information`, `matching_features`, `matching_sentence_endings`, `summary_completion_word_list`, `plan_labelling`, `map_labelling`, `diagram_labelling`, `form_completion`, `note_completion`, `table_completion`, `flow_chart_completion`, `summary_completion`, `sentence_completion` và `short_answer`.
 
-Each group may have an `instruction`. Missing instructions are allowed with a warning. For ordinary questions, supply `questions` with `prompt` and `answer`. A `number` is optional; missing numbers are assigned in order within the module. Explicit numbers are preserved, but the complete module must number questions exactly 1 through N, without gaps or duplicates, and must stay within 1–40. Ambiguous or invalid numbering is fatal unless `allow_incomplete` is true; duplicates are always fatal.
+Mỗi group có thể có `instruction`; thiếu instruction được chấp nhận kèm warning. Với câu hỏi thông thường, cung cấp `questions` gồm `prompt` và `answer`. `number` tùy chọn; nếu thiếu sẽ đánh số theo thứ tự trong module. Số được cung cấp sẵn được giữ nguyên, nhưng module hoàn chỉnh phải đánh đúng từ 1 đến N, không thiếu/trùng và nằm trong 1–40. Numbering mơ hồ hoặc sai làm import thất bại trừ khi `allow_incomplete=true`; trùng số luôn làm import thất bại.
 
-For `true_false_not_given`, answers are `TRUE`, `FALSE`, or `NOT_GIVEN`; for `yes_no_not_given`, they are `YES`, `NO`, or `NOT_GIVEN`. Case and simple whitespace variants are normalized by the existing question system. Invalid values are fatal.
+Với `true_false_not_given`, đáp án là `TRUE`, `FALSE` hoặc `NOT_GIVEN`; với `yes_no_not_given`, là `YES`, `NO` hoặc `NOT_GIVEN`. Hệ thống câu hỏi hiện có chuẩn hóa chữ hoa/thường và các biến thể khoảng trắng đơn giản. Giá trị không hợp lệ làm import thất bại.
 
-For `multiple_choice`, each question has `options` such as `[{"key":"A","text":"River"},{"key":"B","text":"Hill"}]`, and its `answer` is a key such as `"A"`. `multiple_choice_multiple` uses an array, for example `"answer": ["A", "B"]`. A shared multi-select question consumes one IELTS number per required selection. Set equal `min_selections` and `max_selections` when the answer is omitted, or provide `number` and inclusive `end_number` (for example 13 and 14); the importer validates that the range and selection count agree. The next question starts after that range. Candidate answers are unordered.
+Với `multiple_choice`, mỗi câu có `options`, ví dụ `[{"key":"A","text":"River"},{"key":"B","text":"Hill"}]`, và `answer` là key như `"A"`. `multiple_choice_multiple` dùng mảng, ví dụ `"answer": ["A", "B"]`. Một shared multi-select question chiếm một IELTS number cho mỗi lựa chọn bắt buộc. Nếu bỏ đáp án, đặt `min_selections` bằng `max_selections`, hoặc cung cấp `number` và `end_number` bao gồm cả hai đầu, ví dụ 13 và 14; importer kiểm số lựa chọn khớp khoảng số. Câu tiếp theo bắt đầu sau khoảng đó. Candidate answers không có thứ tự.
 
-For `matching_headings`, put `options` at group level and give each question a `target` such as `"Paragraph A"` and an `answer` option key. `matching`, `matching_features`, and `matching_sentence_endings` use group options and question answers the same way. `matching_information` uses a paragraph label such as `"A"` as the answer and resolves it to its block ID. `allow_option_reuse` is available on matching groups.
+Với `matching_headings`, đặt `options` ở cấp group; mỗi câu có `target` như `"Paragraph A"` và `answer` là option key. `matching`, `matching_features` và `matching_sentence_endings` dùng group options/question answers tương tự. `matching_information` dùng paragraph label như `"A"` làm đáp án và ánh xạ tới block ID. Matching groups có `allow_option_reuse`.
 
-For `short_answer` and text answers, `answer` is a string or an array of accepted alternatives. `max_words` and `max_numbers` may be set per question. The server's registered evaluator remains authoritative.
+Với `short_answer` và đáp án văn bản, `answer` là string hoặc mảng các phương án được chấp nhận. Có thể đặt `max_words`, `max_numbers` cho từng câu. Registered evaluator phía server vẫn là nơi quyết định kết quả.
 
-## `{{gap}}` completion
+## Điền chỗ trống `{{gap}}`
 
-Use `content` and one `answers` item per `{{gap}}`, in reading order. `numbers` is an optional array of explicit question numbers. Alternatively, use `questions` with one answer per gap. Do not supply both `answers` and `questions`.
+Dùng `content` và một phần tử `answers` cho mỗi `{{gap}}`, theo thứ tự đọc. `numbers` là mảng số câu tường minh tùy chọn. Có thể thay bằng `questions` với một đáp án mỗi gap. Không cung cấp đồng thời `answers` và `questions`.
 
 ```json
 {
@@ -71,25 +71,27 @@ Use `content` and one `answers` item per `{{gap}}`, in reading order. `numbers` 
 }
 ```
 
-`text_completion`, `summary_completion_word_list`, `note_completion`, `form_completion`, `flow_chart_completion`, `summary_completion`, and `sentence_completion` use string lines. `table_completion` uses `content` as rows of string cells, for example `[["Place", "Feature"], ["River", "{{gap}}"]]`; `columns` supplies the matching column labels or defaults to `Column 1`, `Column 2`, etc. `summary_completion_word_list` also needs group `options`, and each answer is an option key.
+`text_completion`, `summary_completion_word_list`, `note_completion`, `form_completion`, `flow_chart_completion`, `summary_completion` và `sentence_completion` dùng các dòng string. `table_completion` dùng `content` dạng các hàng chứa string cells, ví dụ `[["Place", "Feature"], ["River", "{{gap}}"]]`; `columns` cung cấp column labels tương ứng hoặc mặc định `Column 1`, `Column 2`,... `summary_completion_word_list` còn cần group `options` và mỗi đáp án là option key.
 
-The importer turns each marker into one structured GAP with a generated ID linked to one generated question ID. Text around gaps stays in order. Multiple gaps in one line, adjacent gaps, and gaps at the start or end are supported. Text, note, and table segment models retain empty boundary text where their canonical structure needs it. Literal markers are not saved in those structured layouts. The exception is `diagram_labelling`, whose existing Builder prompt format intentionally uses one literal `{{gap}}` per diagram question.
+Importer biến mỗi marker thành một structured GAP có ID tạo mới, liên kết với một question ID tạo mới. Thứ tự text quanh gaps được giữ nguyên. Hỗ trợ nhiều gaps cùng dòng, gaps liền nhau, ở đầu hoặc cuối. Text/note/table segment models giữ empty boundary text khi canonical structure yêu cầu. Literal markers không được lưu trong các structured layouts này. Ngoại lệ là `diagram_labelling`: Builder prompt format hiện có chủ đích dùng một literal `{{gap}}` cho mỗi diagram question.
 
-## Images and audio
+## Ảnh và audio
 
-`plan_labelling` and `map_labelling` require group `image`, group `options`, and question answers. Reading questions also need normalized `x` and `y` marker positions between 0 and 1. Listening's current visual model does not store markers. `diagram_labelling` requires group `image` and, for each question, `box` (`x`, `y`, `width`) and `arrow` (`start_x`, `start_y`, `end_x`, `end_y`) using normalized coordinates. A diagram question's `prompt` receives one `{{gap}}` if it does not already have one. Writing Task 1 can have `image`; Listening can have one module-level `audio`.
+`plan_labelling` và `map_labelling` yêu cầu group `image`, group `options` và question answers. Reading questions còn cần normalized marker positions `x`, `y` trong khoảng 0 đến 1. Visual model hiện tại của Listening không lưu markers. `diagram_labelling` yêu cầu group `image`; mỗi câu có `box` (`x`, `y`, `width`) và `arrow` (`start_x`, `start_y`, `end_x`, `end_y`) bằng normalized coordinates. `prompt` của diagram question được thêm một `{{gap}}` nếu chưa có. Writing Task 1 có thể có `image`; Listening có thể có một `audio` cấp module.
 
-Supported images: PNG, JPEG, WebP. Supported audio: MP3, M4A, AAC, WAV, Ogg. File content must match its extension.
+Ảnh được hỗ trợ: PNG, JPEG, WebP. Audio được hỗ trợ: MP3, M4A, AAC, WAV, Ogg. Nội dung file phải khớp extension.
 
-## Validation
+## Kiểm tra dữ liệu
 
-Fatal errors stop the import and leave no test or copied asset: invalid JSON/schema, unknown question types, invalid answers, duplicate or noncanonical numbers, missing matching targets, mismatched gap and answer counts, unsafe or malformed assets, and any structural Builder validation error. The message includes the manifest path or Builder field that needs correction.
+Tùy chọn `allow_incomplete` chỉ nới điều kiện đầy đủ của bản nháp; các kiểm tra cấu trúc và an toàn vẫn có hiệu lực.
 
-Readiness warnings are printed with a successful Draft: missing Listening audio, fewer than three Reading passages or four Listening sections, fewer than 40 questions in a Reading or Listening module, incomplete Writing tasks, and missing group instructions. The administrator should review OCR ambiguity, paragraph labels, answer keys, visual marker placement, diagram geometry, and audio synchronization before publishing.
+Fatal errors dừng import và không để lại test hoặc copied asset: JSON/schema sai, question types không biết, đáp án sai, numbering trùng/không canonical, matching target thiếu, gap count không khớp answer count, assets không an toàn/sai định dạng, hoặc structural Builder validation errors. Thông báo chỉ rõ manifest path hoặc Builder field cần sửa.
 
-## Complete fictional example
+Readiness warnings đi kèm Draft tạo thành công gồm: thiếu Listening audio, ít hơn ba Reading passages hoặc bốn Listening sections, ít hơn 40 câu trong Reading/Listening module, Writing tasks chưa đủ và group instructions bị thiếu. Trước publish, administrator cần rà OCR ambiguity, paragraph labels, answer keys, visual marker placement, diagram geometry và audio synchronization.
 
-Save this as `manifest.json` beside `assets/fictional-chart.png` if you want to include the optional image. Remove the `image` property to run the example without any asset.
+## Ví dụ hoàn chỉnh bằng dữ liệu hư cấu
+
+Lưu nội dung dưới đây thành `manifest.json` cạnh `assets/fictional-chart.png` nếu muốn có ảnh tùy chọn. Bỏ thuộc tính `image` để chạy ví dụ không cần asset.
 
 ```json
 {

@@ -1,31 +1,33 @@
-# Text Completion and highlight regression report
+# Báo cáo hồi quy Text Completion và highlight
 
-> **Documentation audit: HISTORICAL.** Historical reference; không phải contract hiện hành.
-> Mục đích: Text Completion and highlight regression report. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../frontend/src/features/questions/text-completion-canvas.tsx).
-> Đọc cùng [current module/guide](modules/reading-listening.md); [audit và giới hạn](DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+> **Kiểm toán tài liệu: HISTORICAL.** Tài liệu tham khảo lịch sử; không phải hợp đồng hiện hành.
+> Mục đích: Báo cáo hồi quy Text Completion và highlight. Đối chiếu mã nguồn `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [mã triển khai](../frontend/src/features/questions/text-completion-canvas.tsx).
+> Đọc cùng [mô-đun/hướng dẫn hiện hành](modules/reading-listening.md); [audit và giới hạn](DOCS_AUDIT.md). Kết quả kiểm thử/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong lần kiểm toán này.
 
-Implemented against the existing working tree at HEAD `2d4d7c0`. Previous sentence-block, preview, and Reading navigation changes were preserved. No reset, migration, or commit was performed.
 
-## Findings and fixes
+Triển khai trên working tree hiện có tại HEAD `2d4d7c0`. Giữ thay đổi block câu, preview và điều hướng Reading trước đó. Không reset, migration hoặc commit.
 
-1. **Multi-click editor root cause.** The large white editor was a non-editable container with no whitespace focus behavior. Only the individual TEXT spans accepted input, including tiny empty spans.
-2. **Caret lifecycle.** Stable keys did not prevent React from reconciling changed text children inside `contentEditable`. Every input also ran segment normalization, which removed empty segments and could merge away active segment identities. Ordinary nonempty spans were not necessarily remounted, but text reconciliation and structural normalization could disrupt selection.
-3. **Editing architecture.** A stable `EditableText` span lets the browser own its text node and selection. A layout effect synchronizes only when the DOM text differs from the model. Input updates `segment.text` without structural normalization. Whitespace clicks focus the final TEXT segment at its end; a trailing editable segment is created only when structurally needed. Empty single-text sentences have a full-width hit area. Direct text clicks retain native caret placement. Structural operations clear stale caret references; add/split actions focus once after rendering, without timers.
-4. **Q? cause.** A GAP refers to an absent Question UUID. Display numbering cannot repair it. Historical Reading update code created new ORM questions without the submitted `id`; the latest existing commit had already corrected this. That fix was preserved and verified.
-5. **Exact lifecycle divergence.** In the old Reading path, and the still-broken Listening path, adding a new question during group update passed validation with the submitted UUID, then ORM creation assigned a different UUID while JSONB GAP references retained the submitted UUID. Version cloning also allocated new question IDs without remapping copied GAP references. Frontend normalization compounded broken drafts by dropping unmatched questions.
-6. **Question identity.** Reading create/update retains its existing submitted-ID behavior. Listening update now explicitly supplies the submitted ID for new questions. Modern normalization preserves supplied IDs; visible numbering and ordering do not create identities.
-7. **GAP identity.** Save/refetch preserves GAP IDs and question references. A new version necessarily receives distinct question primary keys; cloning now applies an explicit old-to-new UUID map to structured `question_id` references, leaving the source frozen version untouched. This remapping is restricted to version cloning.
-8. **Save validation.** Builder detects missing/unresolved GAP links, orphan questions, duplicate references, duplicate/missing question identities, and duplicate/missing block or segment identities. It displays readable errors and blocks Save. Order normalization preserves invalid content rather than dropping it.
-9. **Existing broken drafts.** No guessed automatic relinking occurs. Authors can explicitly link a selected GAP to an unlinked surviving question, add a missing GAP for a surviving question, or create a replacement answer for a GAP whose question has been lost. The replacement requires author configuration; previously deleted answers cannot be reconstructed. An explicitly empty modern layout is no longer treated as legacy prompt-based content.
-10. **Invalid HTML cause.** `SelectableText` rendered its block dialog inside its inline span, which can itself be inside `QuestionHeader`'s paragraph.
-11. **Portal fix.** Both creation and removal dialogs use `createPortal(..., document.body)`. The selectable subtree contains only inline-safe content. The paragraph header remains semantic. Related label/paragraph wrappers in matching and legacy text rendering were corrected locally.
-12. **SSR safety and interaction.** Dialog state starts null on both server and initial client render; `document` is guarded and portal creation occurs only after interaction. Fixed viewport positioning remains. Portal refs preserve inside/outside click handling, Escape, peer dismissal, pending buttons, and API errors. Scroll/resize dismiss stale positions. Selection alone does not persist a highlight.
+## Phát hiện và cách sửa
 
-## Files changed in this task
+1. **Nguyên nhân phải click nhiều lần trong editor.** Vùng editor trắng lớn là container không sửa được và không có hành vi focus khi bấm khoảng trắng. Chỉ từng span TEXT nhận nhập liệu, kể cả span rỗng rất nhỏ.
+2. **Vòng đời con trỏ.** Key ổn định không ngăn React đối soát text child thay đổi trong `contentEditable`. Mỗi input còn chuẩn hóa segment, xóa segment rỗng và có thể gộp mất định danh segment active. Span thường không rỗng không nhất thiết mount lại, nhưng đối soát văn bản/chuẩn hóa cấu trúc có thể làm gián đoạn selection.
+3. **Kiến trúc soạn thảo.** Span `EditableText` ổn định để trình duyệt quản lý text node/selection. Layout effect chỉ đồng bộ khi văn bản DOM khác model. Input cập nhật `segment.text` không chuẩn hóa cấu trúc. Click khoảng trắng focus cuối segment TEXT cuối; chỉ tạo segment cuối sửa được khi cấu trúc cần. Câu chỉ có một text rỗng có vùng bấm toàn chiều rộng. Click trực tiếp văn bản giữ vị trí con trỏ native. Thao tác cấu trúc xóa tham chiếu con trỏ cũ; thêm/tách focus một lần sau render, không timer.
+4. **Nguyên nhân Q?.** GAP tham chiếu UUID Question không tồn tại. Đánh số hiển thị không sửa được. Mã cập nhật Reading cũ tạo câu ORM không truyền `id` gửi lên; commit hiện có mới nhất đã sửa. Giữ và xác minh sửa đó.
+5. **Điểm lệch vòng đời chính xác.** Đường Reading cũ và Listening vẫn lỗi: thêm câu khi cập nhật nhóm vượt xác minh bằng UUID gửi lên, nhưng ORM tạo UUID khác trong khi tham chiếu GAP JSONB giữ UUID gửi lên. Clone phiên bản còn cấp ID câu mới nhưng không ánh xạ lại GAP đã sao chép. Chuẩn hóa frontend làm draft lỗi nặng hơn khi bỏ câu không khớp.
+6. **Định danh câu hỏi.** Reading create/update giữ hành vi ID gửi lên hiện có. Listening update nay truyền ID gửi lên tường minh cho câu mới. Chuẩn hóa hiện đại giữ ID được cấp; số hiển thị/thứ tự không tạo định danh.
+7. **Định danh GAP.** Save/refetch giữ GAP ID/tham chiếu câu. Phiên bản mới phải có khóa chính câu khác; clone nay áp ánh xạ UUID cũ-sang-mới tường minh cho `question_id` có cấu trúc, không sửa phiên bản nguồn đóng băng. Chỉ clone phiên bản dùng ánh xạ này.
+8. **Xác minh lưu.** Builder phát hiện liên kết GAP thiếu/chưa giải quyết, câu mồ côi, tham chiếu trùng, định danh câu trùng/thiếu, định danh block/segment trùng/thiếu. Hiện lỗi dễ đọc và chặn Save. Chuẩn hóa thứ tự giữ nội dung sai thay vì bỏ.
+9. **Draft lỗi đã có.** Không tự đoán nối lại. Tác giả có thể nối GAP chọn với câu còn sống chưa liên kết, thêm GAP thiếu cho câu còn sống hoặc tạo đáp án thay cho GAP đã mất câu. Thay thế cần cấu hình tác giả; không thể dựng lại đáp án đã xóa. Bố cục hiện đại cố ý rỗng không còn bị coi là nội dung cũ dựa prompt.
+10. **Nguyên nhân HTML sai.** `SelectableText` render dialog dạng block trong span inline của nó, vốn có thể nằm trong đoạn văn `QuestionHeader`.
+11. **Sửa portal.** Dialog tạo/xóa đều dùng `createPortal(..., document.body)`. Cây chọn văn bản chỉ chứa nội dung an toàn inline. Header dạng đoạn giữ ngữ nghĩa. Wrapper label/paragraph liên quan trong matching/render văn bản cũ được sửa cục bộ.
+12. **An toàn SSR và tương tác.** Trạng thái dialog ban đầu null cả server/client đầu; có bảo vệ `document`, chỉ tạo portal sau tương tác. Giữ vị trí cố định theo viewport. Ref portal giữ xử lý click trong/ngoài, Escape, đóng peer, nút pending và lỗi API. Cuộn/resize đóng vị trí cũ. Chỉ chọn văn bản không lưu highlight.
 
-Production:
+## Tệp đổi trong nhiệm vụ này
+
+Mã ứng dụng:
+
 - `frontend/src/features/questions/text-completion-canvas.tsx`
-- `frontend/src/features/questions/text-completion-integrity.ts` (new)
+- `frontend/src/features/questions/text-completion-integrity.ts` (mới)
 - `frontend/src/features/test-builder/question-group-editor.tsx`
 - `frontend/src/features/highlighting/selectable-text.tsx`
 - `frontend/src/features/questions/renderers.tsx`
@@ -34,48 +36,49 @@ Production:
 - `backend/app/services/listening.py`
 - `backend/app/services/tests.py`
 
-Regression coverage:
+Kiểm thử hồi quy:
+
 - `frontend/tests/text-completion-canvas.test.tsx`
 - `frontend/tests/selectable-text.test.tsx`
-- `backend/tests/test_completion_identity.py` (new)
+- `backend/tests/test_completion_identity.py` (mới)
 
-The existing uncommitted changes in Reading runner/navigation, draft preview, and their tests remain in place. `editors.tsx`, question types/registry, DTOs, Reading persistence/canonicalization, Reading review, passage rendering, and group instructions were audited. No domain rule was moved into React.
+Thay đổi chưa commit hiện có ở Reading runner/navigation, draft preview và kiểm thử tương ứng vẫn giữ. Đã kiểm toán `editors.tsx`, question types/registry, DTO, lưu trữ/chuẩn hóa Reading, Reading review, render passage và hướng dẫn nhóm. Không chuyển quy tắc nghiệp vụ sang React.
 
-## Tests and results
+## Kiểm thử và kết quả
 
-New coverage checks stable text-node/caret identity during middle editing, whitespace/empty focus, trailing text creation, invalid-data preservation and save blocking, explicit relinking, replacement answers, reopened UUID-based answer targets, both body portals under a real TFNG paragraph, SSR markup, console nesting warnings, creation/deletion, API failure, inside/outside clicks, Escape, peer close, and scroll dismissal. PostgreSQL tests exercise Reading and Listening create/update/refetch/reorder with IDs, accepted alternatives, case sensitivity, and numeric limits preserved. Clone tests verify remapped links and unchanged source config.
+Kiểm thử mới kiểm text-node/định danh con trỏ ổn định khi sửa giữa, focus khoảng trắng/rỗng, tạo text cuối, giữ dữ liệu lỗi/chặn lưu, nối lại tường minh, đáp án thay thế, mở lại đích đáp án UUID, cả hai portal body dưới đoạn TFNG thật, markup SSR, cảnh báo lồng console, tạo/xóa, lỗi API, click trong/ngoài, Escape, đóng peer và đóng khi cuộn. PostgreSQL kiểm Reading/Listening create/update/refetch/reorder giữ ID, đáp án thay thế được chấp nhận, phân biệt hoa/thường và giới hạn số. Clone kiểm ánh xạ liên kết/cấu hình nguồn không đổi.
 
-| Check | Final result |
+| Kiểm tra | Kết quả cuối |
 | --- | --- |
-| Frontend `npm test` | 116 passed across 19 files |
-| `npm run lint` | Passed |
-| `npm run typecheck` | Passed |
-| `npm run build` | Passed, all routes generated |
-| Backend full `pytest -q` | 103 passed, including PostgreSQL integration tests |
-| Ruff `check app tests` | Passed |
-| `git diff --check` | Passed |
+| Frontend `npm test` | 116 đạt trên 19 tệp |
+| `npm run lint` | Đạt |
+| `npm run typecheck` | Đạt |
+| `npm run build` | Đạt, tạo mọi tuyến |
+| Backend toàn bộ `pytest -q` | 103 đạt, gồm tích hợp PostgreSQL |
+| Ruff `check app tests` | Đạt |
+| `git diff --check` | Đạt |
 
-The additional lost-question recovery test was first observed failing because the action was absent, then passed after implementation. Tests use real timers; no hung test process required termination.
+Ca khôi phục câu bị mất bổ sung được quan sát thất bại trước vì thiếu hành động, rồi đạt sau triển khai. Kiểm thử dùng timer thật; không có tiến trình treo cần kết thúc cưỡng bức.
 
-## Live browser verification
+## Xác minh bằng trình duyệt đang chạy
 
-Used the user's running frontend and backend and created the fictional local test **Completion regression QA**.
+Dùng frontend/backend người dùng đang chạy và tạo bài Local hư cấu **Completion regression QA**.
 
-- One click in sentence text, immediate typing, and `m|jor` + `a` produced `major`.
-- One click in an empty sentence surface accepted typing immediately.
-- Insert GAP immediately showed Q2 and opened the correct answer controls.
-- Save, full page reload, and reopen preserved both question UUIDs and GAP links; no Q? appeared.
-- Correct answer `major`, alternative `important`, case-sensitive grading, maximum 3 words and 2 numbers survived reload. Edit answer still resolved by UUID.
-- Cloned the published QA version into draft v2. GAPs resolved to the new version's question UUIDs. Reordered sentences, saved, fully reloaded, and confirmed the changed order and original draft UUID/answer associations.
-- Started a Reading attempt, selected TFNG header text, and opened the creation dialog. Live DOM inspection confirmed `parentElement.tagName === BODY` and no paragraph ancestor.
-- Selection left highlight count at zero; clicking Highlight changed it to one. Reload retained the saved highlight.
-- Opened removal options; DOM inspection again showed a body portal. Escape and outside click dismissed it. Remove highlight returned count to zero.
-- No invalid nesting or hydration warnings were emitted by the tested highlight flow. A fresh reopened attempt tab recorded zero console errors. An earlier temporary source-encoding build error during development was corrected before final checks.
+- Click một lần trong câu, gõ ngay; `m|jor` + `a` tạo `major`.
+- Click một lần bề mặt câu rỗng nhận gõ ngay.
+- Insert GAP hiện Q2 ngay và mở đúng điều khiển đáp án.
+- Save, reload toàn trang, mở lại giữ UUID hai câu và liên kết GAP; không có Q?.
+- Đáp án đúng `major`, thay thế `important`, chấm phân biệt hoa/thường, tối đa 3 từ và 2 số còn nguyên sau reload. Edit answer vẫn phân giải theo UUID.
+- Clone phiên bản QA đã publish thành draft v2. GAP trỏ UUID câu của phiên bản mới. Đổi thứ tự câu, lưu, reload toàn bộ, xác nhận thứ tự mới và liên kết UUID/đáp án draft gốc.
+- Bắt đầu Reading attempt, chọn văn bản header TFNG, mở dialog tạo. Kiểm DOM đang chạy xác nhận `parentElement.tagName === BODY`, không có tổ tiên paragraph.
+- Chọn văn bản giữ số highlight bằng không; click Highlight đổi thành một. Reload giữ highlight đã lưu.
+- Mở tùy chọn xóa; kiểm DOM lại thấy portal body. Escape/click ngoài đóng. Remove highlight trả số lượng về không.
+- Luồng highlight được thử không có cảnh báo lồng sai/hydration. Tab attempt mở lại mới ghi không lỗi console. Lỗi build mã hóa nguồn tạm trước đó trong phát triển đã sửa trước kiểm cuối.
 
-## Preserved behavior and limitations
+## Hành vi giữ nguyên và giới hạn
 
-One block per sentence, sentence add/reorder/remove confirmation, PASSAGE layout, Reading bottom navigation/flags, and absence of per-gap technical hints in Candidate/Preview/Review are preserved. PostgreSQL remains authoritative; active exam key separation, immutable published versions, server evaluation, and semantic highlight offsets are unchanged.
+Giữ mỗi câu một block, xác nhận thêm/đổi thứ tự/xóa câu, bố cục PASSAGE, điều hướng dưới/cờ Reading và không có gợi ý kỹ thuật từng gap ở Candidate/Preview/Review. PostgreSQL vẫn có thẩm quyền; giữ tách đáp án bài đang làm, phiên bản publish bất biến, đánh giá server và offset highlight ngữ nghĩa.
 
-Already-lost answer content cannot be inferred or recovered automatically. Structurally corrupt duplicate block/segment identities are detected and blocked rather than silently rewritten. Browser verification used Chromium; cross-browser/IME-specific testing was not performed. The independent reviewer identified the lost-question recovery issue above; that finding was fixed and tested, but the reviewer could not finish its full verdict because its usage limit was reached.
+Không thể tự suy ra/khôi phục nội dung đáp án đã mất. Định danh block/segment trùng làm hỏng cấu trúc được phát hiện/chặn thay vì âm thầm viết lại. Xác minh trình duyệt dùng Chromium; chưa thử riêng trình duyệt khác/IME. Người rà soát độc lập phát hiện lỗi khôi phục câu bị mất trên; đã sửa/kiểm thử, nhưng không hoàn tất kết luận toàn bộ vì chạm giới hạn sử dụng.
 
-The fictional QA fixture remains locally: published v1, draft v2, and a Reading attempt. Existing user test content was not edited. Changes are uncommitted for review.
+Fixture QA hư cấu vẫn còn Local: published v1, draft v2 và Reading attempt. Không sửa nội dung test hiện có người dùng. Thay đổi chưa commit để rà soát.

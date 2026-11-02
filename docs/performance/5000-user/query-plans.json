@@ -1,0 +1,98 @@
+{
+  "scope": "attested rollback-only query component; no API/ORM graph capacity claim",
+  "measured_at_utc": "2026-11-02T11:05:01.149013+00:00",
+  "source_identity": {
+    "app_source_sha256": "ab7fe6afa7d036d7c6da35e02b6ca9c05de066b4eec3103492ed96078362a55e",
+    "git_head": "d871ae1d9a0c8d6a9f1427eaf3580e178f1b3a45",
+    "tracked_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "synthetic_users": 1000,
+  "synthetic_attempts": 10000,
+  "attempts_per_synthetic_user": 10,
+  "existing_attempts_before": 27,
+  "existing_attempts_after_rollback": 27,
+  "plans": {
+    "history_root": [
+      {
+        "Plan": {
+          "Node Type": "Sort",
+          "Plan Rows": 10,
+          "Actual Startup Time": 0.035,
+          "Actual Total Time": 0.036,
+          "Actual Rows": 10,
+          "Actual Loops": 1,
+          "Sort Method": "quicksort",
+          "Sort Space Used": 26,
+          "Sort Space Type": "Memory",
+          "Shared Hit Blocks": 3,
+          "Shared Read Blocks": 0,
+          "Plans": [
+            {
+              "Node Type": "Bitmap Heap Scan",
+              "Relation Name": "attempts",
+              "Plan Rows": 10,
+              "Actual Startup Time": 0.024,
+              "Actual Total Time": 0.027,
+              "Actual Rows": 10,
+              "Actual Loops": 1,
+              "Shared Hit Blocks": 3,
+              "Shared Read Blocks": 0,
+              "Plans": [
+                {
+                  "Node Type": "Bitmap Index Scan",
+                  "Index Name": "ix_attempts_user_id",
+                  "Plan Rows": 10,
+                  "Actual Startup Time": 0.006,
+                  "Actual Total Time": 0.006,
+                  "Actual Rows": 10,
+                  "Actual Loops": 1,
+                  "Shared Hit Blocks": 2,
+                  "Shared Read Blocks": 0
+                }
+              ]
+            }
+          ]
+        },
+        "Planning Time": 0.269,
+        "Execution Time": 0.057
+      }
+    ],
+    "save_attempt_lock": [
+      {
+        "Plan": {
+          "Node Type": "LockRows",
+          "Plan Rows": 1,
+          "Actual Startup Time": 0.016,
+          "Actual Total Time": 0.017,
+          "Actual Rows": 1,
+          "Actual Loops": 1,
+          "Shared Hit Blocks": 4,
+          "Shared Read Blocks": 0,
+          "Plans": [
+            {
+              "Node Type": "Index Scan",
+              "Index Name": "pk_attempts",
+              "Relation Name": "attempts",
+              "Plan Rows": 1,
+              "Actual Startup Time": 0.012,
+              "Actual Total Time": 0.013,
+              "Actual Rows": 1,
+              "Actual Loops": 1,
+              "Rows Removed by Filter": 0,
+              "Shared Hit Blocks": 3,
+              "Shared Read Blocks": 0
+            }
+          ]
+        },
+        "Planning Time": 0.074,
+        "Execution Time": 0.035
+      }
+    ]
+  },
+  "limitations": [
+    "One frozen version, no answers/media in added history rows",
+    "One local warm-cache sample; EXPLAIN overhead present",
+    "Only root history and lock queries, not selectinload graph/HTTP",
+    "No new index or before-after SQL optimization is claimed"
+  ]
+}

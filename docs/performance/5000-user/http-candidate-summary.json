@@ -1,0 +1,487 @@
+{
+  "source_identity": {
+    "app_source_sha256": "ab7fe6afa7d036d7c6da35e02b6ca9c05de066b4eec3103492ed96078362a55e",
+    "git_head": "d871ae1d9a0c8d6a9f1427eaf3580e178f1b3a45",
+    "tracked_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "started_at_utc": "2026-11-02T10:58:36.941055+00:00",
+  "target_users": 5,
+  "maximum_observed_users": 5,
+  "profile": "smoke",
+  "scenario": "mixed",
+  "actual_duration_seconds": 85.8022022000514,
+  "steady_window": {
+    "start_seconds": 6,
+    "end_seconds": 75.0,
+    "duration_seconds": 69.0
+  },
+  "total_requests": 692,
+  "steady_requests": 572,
+  "steady_successful_2xx": 564,
+  "steady_rps": 8.289855072463768,
+  "steady_successful_2xx_rps": 8.173913043478262,
+  "all_unexpected_failures": 0,
+  "steady_unexpected_failures": 0,
+  "steady_unexpected_error_rate": 0.0,
+  "all_http_4xx": 8,
+  "all_http_5xx": 0,
+  "journeys_completed": {
+    "A": 3,
+    "C": 1,
+    "B": 2
+  },
+  "journeys_failed": {},
+  "resources": {
+    "api_cpu_seconds_delta": 71.3125,
+    "api_mean_cpu_cores_all_window": 0.8311266863959033,
+    "api_sampled_rss_peak_bytes": 168853504,
+    "db_sampled_connections_peak_excluding_observer": 11.0,
+    "db_sampled_lock_waiters_peak": 1.0,
+    "db_sampled_oldest_transaction_seconds": 2.536668,
+    "pool_sampled_checked_out_peak": 10,
+    "sql_cursor_count_delta": 15810,
+    "observation_errors_delta": 0,
+    "generator_cpu_percent_peak": 9.3
+  },
+  "steady_endpoints": {
+    "assignment.start": {
+      "requests": 1,
+      "successful_requests": 1,
+      "successful_rps": 0.014,
+      "http_4xx": 0,
+      "http_5xx": 0,
+      "p99_sample_warning": true,
+      "failures": 0,
+      "statuses": {
+        "201": 1
+      },
+      "failure_codes": {},
+      "p50_ms": 1509,
+      "p95_ms": 1509,
+      "p99_ms": 1509,
+      "max_ms": 1509,
+      "rps": 0.014
+    },
+    "attempt.exam": {
+      "requests": 12,
+      "successful_requests": 12,
+      "successful_rps": 0.174,
+      "http_4xx": 0,
+      "http_5xx": 0,
+      "p99_sample_warning": true,
+      "failures": 0,
+      "statuses": {
+        "200": 12
+      },
+      "failure_codes": {},
+      "p50_ms": 719,
+      "p95_ms": 1606,
+      "p99_ms": 1606,
+      "max_ms": 1606,
+      "rps": 0.174
+    },
+    "answer.autosave": {
+      "requests": 452,
+      "successful_requests": 452,
+      "successful_rps": 6.551,
+      "http_4xx": 0,
+      "http_5xx": 0,
+      "p99_sample_warning": true,
+      "failures": 0,
+      "statuses": {
+        "200": 452
+      },
+      "failure_codes": {},
+      "p50_ms": 404,
+      "p95_ms": 1064,
+      "p99_ms": 1342,
+      "max_ms": 1573,
+      "rps": 6.551
+    },
+    "listening.audio_range": {
+      "requests": 4,
+      "successful_requests": 4,
+      "successful_rps": 0.058,
+      "http_4xx": 0,
+      "http_5xx": 0,
+      "p99_sample_warning": true,
+      "failures": 0,
+      "statuses": {
+        "206": 4
+      },
+      "failure_codes": {},
+      "p50_ms": 56,
+      "p95_ms": 281,
+      "p99_ms": 281,
+      "max_ms": 281,
+      "rps": 0.058
+    },
+    "attempt.navigation": {
+      "requests": 35,
+      "successful_requests": 35,
+      "successful_rps": 0.507,
+      "http_4xx": 0,
+      "http_5xx": 0,
+      "p99_sample_warning": true,
+      "failures": 0,
+      "statuses": {
+        "200": 35
+      },
+      "failure_codes": {},
+      "p50_ms": 456,
+      "p95_ms": 992,
+      "p99_ms": 1195,
+      "max_ms": 1195,
+      "rps": 0.507
+    },
+    "attempt.submit": {
+      "requests": 11,
+      "successful_requests": 11,
+      "successful_rps": 0.159,
+      "http_4xx": 0,
+      "http_5xx": 0,
+      "p99_sample_warning": true,
+      "failures": 0,
+      "statuses": {
+        "200": 11
+      },
+      "failure_codes": {},
+      "p50_ms": 244,
+      "p95_ms": 996,
+      "p99_ms": 996,
+      "max_ms": 996,
+      "rps": 0.159
+    },
+    "mock.review_locked": {
+      "requests": 8,
+      "successful_requests": 0,
+      "successful_rps": 0.0,
+      "http_4xx": 8,
+      "http_5xx": 0,
+      "p99_sample_warning": true,
+      "failures": 0,
+      "statuses": {
+        "409": 8
+      },
+      "failure_codes": {},
+      "p50_ms": 170,
+      "p95_ms": 330,
+      "p99_ms": 330,
+      "max_ms": 330,
+      "rps": 0.116
+    },
+    "attempt.review": {
+      "requests": 3,
+      "successful_requests": 3,
+      "successful_rps": 0.043,
+      "http_4xx": 0,
+      "http_5xx": 0,
+      "p99_sample_warning": true,
+      "failures": 0,
+      "statuses": {
+        "200": 3
+      },
+      "failure_codes": {},
+      "p50_ms": 217,
+      "p95_ms": 306,
+      "p99_ms": 306,
+      "max_ms": 306,
+      "rps": 0.043
+    },
+    "history": {
+      "requests": 2,
+      "successful_requests": 2,
+      "successful_rps": 0.029,
+      "http_4xx": 0,
+      "http_5xx": 0,
+      "p99_sample_warning": true,
+      "failures": 0,
+      "statuses": {
+        "200": 2
+      },
+      "failure_codes": {},
+      "p50_ms": 275,
+      "p95_ms": 279,
+      "p99_ms": 279,
+      "max_ms": 279,
+      "rps": 0.029
+    },
+    "mock.advance": {
+      "requests": 8,
+      "successful_requests": 8,
+      "successful_rps": 0.116,
+      "http_4xx": 0,
+      "http_5xx": 0,
+      "p99_sample_warning": true,
+      "failures": 0,
+      "statuses": {
+        "200": 8
+      },
+      "failure_codes": {},
+      "p50_ms": 195,
+      "p95_ms": 487,
+      "p99_ms": 487,
+      "max_ms": 487,
+      "rps": 0.116
+    },
+    "learning.student": {
+      "requests": 1,
+      "successful_requests": 1,
+      "successful_rps": 0.014,
+      "http_4xx": 0,
+      "http_5xx": 0,
+      "p99_sample_warning": true,
+      "failures": 0,
+      "statuses": {
+        "200": 1
+      },
+      "failure_codes": {},
+      "p50_ms": 1501,
+      "p95_ms": 1501,
+      "p99_ms": 1501,
+      "max_ms": 1501,
+      "rps": 0.014
+    },
+    "auth.login": {
+      "requests": 4,
+      "successful_requests": 4,
+      "successful_rps": 0.058,
+      "http_4xx": 0,
+      "http_5xx": 0,
+      "p99_sample_warning": true,
+      "failures": 0,
+      "statuses": {
+        "200": 4
+      },
+      "failure_codes": {},
+      "p50_ms": 222,
+      "p95_ms": 515,
+      "p99_ms": 515,
+      "max_ms": 515,
+      "rps": 0.058
+    },
+    "mock.start": {
+      "requests": 2,
+      "successful_requests": 2,
+      "successful_rps": 0.029,
+      "http_4xx": 0,
+      "http_5xx": 0,
+      "p99_sample_warning": true,
+      "failures": 0,
+      "statuses": {
+        "201": 2
+      },
+      "failure_codes": {},
+      "p50_ms": 145,
+      "p95_ms": 454,
+      "p99_ms": 454,
+      "max_ms": 454,
+      "rps": 0.029
+    },
+    "learning.recommendations": {
+      "requests": 1,
+      "successful_requests": 1,
+      "successful_rps": 0.014,
+      "http_4xx": 0,
+      "http_5xx": 0,
+      "p99_sample_warning": true,
+      "failures": 0,
+      "statuses": {
+        "200": 1
+      },
+      "failure_codes": {},
+      "p50_ms": 969,
+      "p95_ms": 969,
+      "p99_ms": 969,
+      "max_ms": 969,
+      "rps": 0.014
+    },
+    "notifications.read": {
+      "requests": 1,
+      "successful_requests": 1,
+      "successful_rps": 0.014,
+      "http_4xx": 0,
+      "http_5xx": 0,
+      "p99_sample_warning": true,
+      "failures": 0,
+      "statuses": {
+        "204": 1
+      },
+      "failure_codes": {},
+      "p50_ms": 46,
+      "p95_ms": 46,
+      "p99_ms": 46,
+      "max_ms": 46,
+      "rps": 0.014
+    },
+    "classroom.results": {
+      "requests": 1,
+      "successful_requests": 1,
+      "successful_rps": 0.014,
+      "http_4xx": 0,
+      "http_5xx": 0,
+      "p99_sample_warning": true,
+      "failures": 0,
+      "statuses": {
+        "200": 1
+      },
+      "failure_codes": {},
+      "p50_ms": 111,
+      "p95_ms": 111,
+      "p99_ms": 111,
+      "max_ms": 111,
+      "rps": 0.014
+    },
+    "learning.teacher": {
+      "requests": 1,
+      "successful_requests": 1,
+      "successful_rps": 0.014,
+      "http_4xx": 0,
+      "http_5xx": 0,
+      "p99_sample_warning": true,
+      "failures": 0,
+      "statuses": {
+        "200": 1
+      },
+      "failure_codes": {},
+      "p50_ms": 2854,
+      "p95_ms": 2854,
+      "p99_ms": 2854,
+      "max_ms": 2854,
+      "rps": 0.014
+    },
+    "learning.teacher_student": {
+      "requests": 1,
+      "successful_requests": 1,
+      "successful_rps": 0.014,
+      "http_4xx": 0,
+      "http_5xx": 0,
+      "p99_sample_warning": true,
+      "failures": 0,
+      "statuses": {
+        "200": 1
+      },
+      "failure_codes": {},
+      "p50_ms": 1121,
+      "p95_ms": 1121,
+      "p99_ms": 1121,
+      "max_ms": 1121,
+      "rps": 0.014
+    },
+    "catalog": {
+      "requests": 1,
+      "successful_requests": 1,
+      "successful_rps": 0.014,
+      "http_4xx": 0,
+      "http_5xx": 0,
+      "p99_sample_warning": true,
+      "failures": 0,
+      "statuses": {
+        "200": 1
+      },
+      "failure_codes": {},
+      "p50_ms": 691,
+      "p95_ms": 691,
+      "p99_ms": 691,
+      "max_ms": 691,
+      "rps": 0.014
+    },
+    "attempt.start": {
+      "requests": 1,
+      "successful_requests": 1,
+      "successful_rps": 0.014,
+      "http_4xx": 0,
+      "http_5xx": 0,
+      "p99_sample_warning": true,
+      "failures": 0,
+      "statuses": {
+        "201": 1
+      },
+      "failure_codes": {},
+      "p50_ms": 242,
+      "p95_ms": 242,
+      "p99_ms": 242,
+      "max_ms": 242,
+      "rps": 0.014
+    },
+    "writing.autosave": {
+      "requests": 8,
+      "successful_requests": 8,
+      "successful_rps": 0.116,
+      "http_4xx": 0,
+      "http_5xx": 0,
+      "p99_sample_warning": true,
+      "failures": 0,
+      "statuses": {
+        "200": 8
+      },
+      "failure_codes": {},
+      "p50_ms": 452,
+      "p95_ms": 820,
+      "p99_ms": 820,
+      "max_ms": 820,
+      "rps": 0.116
+    },
+    "speaking.state": {
+      "requests": 8,
+      "successful_requests": 8,
+      "successful_rps": 0.116,
+      "http_4xx": 0,
+      "http_5xx": 0,
+      "p99_sample_warning": true,
+      "failures": 0,
+      "statuses": {
+        "200": 8
+      },
+      "failure_codes": {},
+      "p50_ms": 203,
+      "p95_ms": 634,
+      "p99_ms": 634,
+      "max_ms": 634,
+      "rps": 0.116
+    },
+    "speaking.begin": {
+      "requests": 4,
+      "successful_requests": 4,
+      "successful_rps": 0.058,
+      "http_4xx": 0,
+      "http_5xx": 0,
+      "p99_sample_warning": true,
+      "failures": 0,
+      "statuses": {
+        "200": 4
+      },
+      "failure_codes": {},
+      "p50_ms": 202,
+      "p95_ms": 310,
+      "p99_ms": 310,
+      "max_ms": 310,
+      "rps": 0.058
+    },
+    "speaking.finish": {
+      "requests": 2,
+      "successful_requests": 2,
+      "successful_rps": 0.029,
+      "http_4xx": 0,
+      "http_5xx": 0,
+      "p99_sample_warning": true,
+      "failures": 0,
+      "statuses": {
+        "200": 2
+      },
+      "failure_codes": {},
+      "p50_ms": 119,
+      "p95_ms": 583,
+      "p99_ms": 583,
+      "max_ms": 583,
+      "rps": 0.029
+    }
+  },
+  "limits": [
+    "One local sample; no confidence interval",
+    "No aggregate latency percentile derived by averaging endpoints",
+    "Backend resource deltas include ramp/drain; latency table uses steady window",
+    "Sampled resource peaks can miss short spikes",
+    "Successful RPS means 2xx; accepted 409 remains expected 4xx"
+  ]
+}

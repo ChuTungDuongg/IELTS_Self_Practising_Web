@@ -1,173 +1,80 @@
-# Task 1 evaluation (T1-C)
+# Đánh giá Task 1 (T1-C)
 
-> **Documentation audit: CURRENT.** Canonical concern này; source-check các boundary/API, không live validation.
-> Mục đích: Task 1 evaluation (T1-C). Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../../scripts/benchmark_task1.py).
-> Đọc cùng [current module/guide](../../docs/modules/writing.md); [audit và giới hạn](../../docs/DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+> **Kiểm toán tài liệu: CURRENT.** Tài liệu chuẩn cho chủ đề này; đã đối chiếu ranh giới/API trong mã nguồn, chưa xác thực trực tiếp trên hệ thống chạy.
+> Mục đích: mô tả đánh giá Task 1 (T1-C). Đối chiếu mã nguồn `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [phần triển khai](../../scripts/benchmark_task1.py).
+> Đọc cùng [mô-đun/hướng dẫn hiện hành](../../docs/modules/writing.md); [kiểm toán và giới hạn](../../docs/DOCS_AUDIT.md). Kết quả kiểm thử/benchmark bên dưới thuộc lần thực hiện gốc, không phải kết quả chạy lại trong đợt kiểm toán này.
 
-The CLI reuses production visual grounding, optional fail-open DePlot,
-deterministic facts, claim verification, source evidence and four-criterion MTS.
-It needs no database. Production uses composite fingerprint `mts-task1-visual-v12`
-with perception contract `mts-task1-visual-v3` and scoring guidance `mts-task1-scoring-v12`.
-The default candidate is v12, including concise feedback and advisory inline annotations.
-V12 adds conservative LR/GRA feedback verification; score semantics remain unchanged from v10. Frozen v11 remains available with --scoring-version v11. Historical v7/v8 retain their combined-output contracts;
-historical reports remain readable. `--scoring-version both` compares a frozen v5 baseline
-with v12, reusing the same essays, human scores, perception pipeline/contract,
-provider/model and chart-specialist setting. Historical v3 prompts remain explicitly
-available with `--scoring-version v3`; unfrozen v4/v6 are not aliases for current prompts.
-Old v6 report metadata remains readable. Task 2 is not run by this CLI.
+CLI tái sử dụng tiếp nhận thị giác có căn cứ từ sản xuất, DePlot tùy chọn cho phép tiếp tục khi lỗi, dữ kiện tất định, kiểm chứng phát biểu, bằng chứng nguồn và MTS bốn tiêu chí. Không cần cơ sở dữ liệu. Sản xuất dùng dấu vân tay tổng hợp `mts-task1-visual-v12`, hợp đồng nhận thức `mts-task1-visual-v3` và hướng dẫn chấm `mts-task1-scoring-v12`. Phiên bản ứng viên mặc định là v12, gồm nhận xét ngắn và chú thích nội tuyến tư vấn. V12 thêm kiểm chứng thận trọng nhận xét LR/GRA; ngữ nghĩa điểm không đổi từ v10. Bản v11 đóng băng vẫn có qua --scoring-version v11. V7/v8 lịch sử giữ hợp đồng đầu ra gộp; báo cáo lịch sử vẫn đọc được. `--scoring-version both` so nền v5 đóng băng với v12, tái sử dụng cùng bài viết, điểm người chấm, chuỗi/hợp đồng nhận thức, nhà cung cấp/mô hình và cấu hình bộ chuyên đọc biểu đồ. Lời nhắc v3 lịch sử vẫn có rõ ràng qua `--scoring-version v3`; v4/v6 không đóng băng không phải bí danh lời nhắc hiện hành. Siêu dữ liệu báo cáo v6 cũ vẫn đọc được. CLI này không chạy Task 2.
 
-V6 introduced Task Achievement discrimination through adjacent
-descriptor fit: Band 7 permits a few local omissions/lapses and Band 8 permits
-occasional ones, without requiring perfection or overlooking material weaknesses.
-TA evidence selection represents whole-response fulfilment instead of mining errors.
-There are no offsets, floors, caps or automatic generosity. Factual grounding,
-perception v3 and LR/GRA descriptor context remain unchanged; output contracts change at v9.
+V6 đưa vào phân biệt Task Achievement theo mức khớp mô tả band lân cận: Band 7 cho phép vài thiếu sót/sơ suất cục bộ, Band 8 cho phép thỉnh thoảng có, không đòi hoàn hảo hoặc bỏ qua điểm yếu đáng kể. Chọn bằng chứng TA thể hiện mức đáp ứng toàn bài thay vì đào tìm lỗi. Không có độ lệch cộng, sàn, trần hoặc tự tăng tay điểm. Nền tảng dữ kiện, nhận thức v3 và ngữ cảnh mô tả LR/GRA không đổi; hợp đồng đầu ra đổi ở v9.
 
-V7 preserves that TA guidance and adds CC discrimination based on whole-response
-progression, grouping, relationships and actual cohesion. Visible conventional
-connectors and precise entity repetition are not automatically weaknesses. CC
-evidence represents the whole response without band targets or quotas. There
-are no score offsets, floors or bonuses. No accuracy improvement is claimed
-without a labelled human-scored comparison.
+V7 giữ hướng dẫn TA và thêm phân biệt CC theo tiến triển, nhóm ý, quan hệ và liên kết thật toàn bài. Từ nối thông thường nhìn thấy và lặp thực thể chính xác không tự là điểm yếu. Bằng chứng CC thể hiện toàn bài, không có band mục tiêu hoặc hạn ngạch. Không cộng độ lệch, sàn hoặc thưởng điểm. Không tuyên bố tăng độ chính xác nếu thiếu so sánh có nhãn người chấm.
 
-## Local dataset
+## Tập dữ liệu cục bộ
 
-Use a UTF-8 JSONL manifest: one schema-versioned sample per line.
-`schema_version: 1` is file-format compatibility, not a bank/dataset version.
-The ADMIN bank exports directly compatible one-rater manifests; see
-[the bank/Colab guide](../../docs/writing-benchmark-bank.md). The generated
-`manifest.schema.json` is the input contract. Required fields are:
+Dùng bản kê UTF-8 JSONL: mỗi dòng một mẫu có phiên bản lược đồ. `schema_version: 1` là tương thích định dạng, không phải phiên bản ngân hàng/tập dữ liệu. Ngân hàng ADMIN xuất bản kê một người chấm tương thích trực tiếp; xem [hướng dẫn ngân hàng/Colab](../../docs/writing-benchmark-bank.md). `manifest.schema.json` được sinh là hợp đồng đầu vào. Trường cần có:
 
-- `schema_version: 1`, a unique ASCII `id`, `split: dev | holdout`, and a Task 1
-  `task_type` from the production registry.
-- `prompt`, `essay`, and `image_path`. Paths may be absolute or relative to the
-  manifest. Only local PNG/JPEG/WebP images up to 10 MiB are accepted; URL images
-  are never fetched.
-- `human_scores` containing `ta`, `cc`, `lr`, `gra`, each from 0 to 9 in half-band
-  increments. Use agreed/adjudicated human or authorised reference scores.
-  Do not label another model's predictions as ground truth.
-- `raters` (defaults to 1), `provenance` describing authorship/licence and score
-  source, and `redistributable`. One rater is sufficient; keep the agreed target
-  and the number of raters rather than silently rounding their mean.
-- Optional `visual_truth`: the production typed VisualReference shape, with
-  independently annotated chart/table categories, series or cells and values.
-  Provide complete semantic annotation for the selected components. Labels and
-  units matter; opaque component/series IDs do not. Unknown or estimated truth
-  cannot certify exact perception. Other visual families may be benchmarked for
-  scores, but currently have no automated factual metric.
+- `schema_version: 1`, `id` ASCII duy nhất, `split: dev | holdout` và `task_type` Task 1 từ registry sản xuất.
+- `prompt`, `essay`, `image_path`. Đường dẫn tuyệt đối hoặc tương đối với bản kê. Chỉ nhận hình PNG/JPEG/WebP cục bộ tối đa 10 MiB; không tải hình từ URL.
+- `human_scores` gồm `ta`, `cc`, `lr`, `gra`, mỗi điểm 0–9 theo nửa band. Dùng điểm người chấm đã thống nhất/phân xử hoặc nguồn tham chiếu được cho phép. Không gán dự đoán mô hình khác thành dữ liệu chuẩn.
+- `raters` (mặc định 1), `provenance` mô tả tác giả/giấy phép và nguồn điểm, `redistributable`. Một người chấm là đủ; giữ điểm đích thống nhất và số người chấm, không âm thầm làm tròn trung bình.
+- `visual_truth` tùy chọn: cấu trúc VisualReference có kiểu của sản xuất, với nhãn nhóm/chuỗi/ô và giá trị biểu đồ/bảng được gán độc lập. Cần chú giải ngữ nghĩa đầy đủ cho thành phần đã chọn. Nhãn và đơn vị có ý nghĩa; ID thành phần/chuỗi không diễn giải nội dung thì không. Dữ liệu chuẩn chưa biết hoặc ước lượng không xác nhận nhận thức chính xác. Họ thị giác khác có thể benchmark điểm nhưng hiện chưa có chỉ số dữ kiện tự động.
 
-For repeated pies sharing a legend/unit, annotate one `pie_chart` component:
-categories are regions, series are legend categories, and each series has a
-point per region. Percentages use numeric chart units: 48 means 48%, not 0.48.
+Với nhiều biểu đồ tròn chung chú giải/đơn vị, chú giải một thành phần `pie_chart`: nhóm là vùng, chuỗi là nhóm trong chú giải, mỗi chuỗi có một điểm cho mỗi vùng. Phần trăm dùng đơn vị số biểu đồ: 48 nghĩa là 48%, không phải 0.48.
 
-Keep private/licensed datasets in `private/` or outside the repository. The
-benchmark does not copy source images/essays or upload content except to the
-configured scoring provider and explicitly requested existing DePlot provider.
-`private/`, JSONL/image datasets and generated reports/cache are ignored here.
-Custom output paths outside this tree need your own ignore rules. No essays,
-quotations, raw completions, chart labels/values or secret URLs are in reports
-or checkpoints; only IDs, hashes, scores, counts and safe status codes remain.
+Giữ dữ liệu riêng tư/có giấy phép ở `private/` hoặc ngoài kho mã. Benchmark không sao chép hình/bài viết nguồn hoặc tải nội dung lên ngoài nhà cung cấp chấm đã cấu hình và DePlot hiện có được yêu cầu rõ ràng. `private/`, tập JSONL/hình và báo cáo/bộ nhớ đệm sinh ra được bỏ qua ở đây. Đường dẫn đầu ra tùy chọn ngoài cây này cần quy tắc bỏ qua riêng. Báo cáo/điểm kiểm tra không chứa bài viết, trích dẫn, phản hồi thô, nhãn/giá trị biểu đồ hoặc URL bí mật; chỉ giữ ID, băm, điểm, số đếm và mã trạng thái an toàn.
 
-## Commands
+## Lệnh
 
-From `backend/`, first validate your local data without inference:
+Từ `backend/`, trước hết xác thực dữ liệu cục bộ không suy luận:
 
 ```powershell
 uv run python ../scripts/benchmark_task1.py --manifest ../benchmarks/writing_task1/private/manifest.jsonl --split dev --scoring-version v12 --chart-specialist off --dry-run --output ../benchmarks/writing_task1/reports/dev-plan
 ```
 
-An explicit one-sample real smoke, using existing backend provider settings:
+Chạy thử thật một mẫu rõ ràng, dùng cấu hình nhà cung cấp backend hiện có:
 
 ```powershell
 uv run python ../scripts/benchmark_task1.py --manifest ../benchmarks/writing_task1/private/manifest.jsonl --split dev --limit 1 --scoring-version v12 --chart-specialist off --resume --output ../benchmarks/writing_task1/reports/dev-smoke
 ```
 
-Controlled v5 baseline / v12 candidate comparison at a fixed specialist setting:
+So sánh nền v5 / ứng viên v12 có kiểm soát với cấu hình bộ chuyên đọc cố định:
 
 ```powershell
 uv run python ../scripts/benchmark_task1.py --manifest ../benchmarks/writing_task1/private/manifest.jsonl --split dev --scoring-version both --chart-specialist off --resume --output ../benchmarks/writing_task1/reports/dev-v5-v12
 ```
 
-To also compare DePlot off/on:
+Để so thêm DePlot tắt/bật:
 
 ```powershell
 uv run python ../scripts/benchmark_task1.py --manifest ../benchmarks/writing_task1/private/manifest.jsonl --split dev --scoring-version both --chart-specialist both --resume --output ../benchmarks/writing_task1/reports/dev-ablation
 ```
 
-`both` × `both` runs four configurations **per sample**: v5/v12 × DePlot off/on.
-Scoring ablations report v5 as baseline and v12 as candidate, with candidate-minus-baseline
-TA signed bias, MAE and agreement deltas. `--limit` limits unique
-samples, not the number of provider requests. Specialist-on applies only to
-chart/table families, remains fail-open, and may fall back if unavailable.
-Run one-sample/single-configuration smoke first. No benchmark is started by the
-application. From repository root, the equivalent entry point is
-`uv run --project backend python -m scripts.benchmark_task1 ...`.
+`both` × `both` chạy bốn cấu hình **mỗi mẫu**: v5/v12 × DePlot tắt/bật. So sánh biến thể chấm báo v5 là nền, v12 là ứng viên, kèm độ lệch có dấu TA, MAE và chênh lệch đồng thuận theo ứng viên trừ nền. `--limit` giới hạn số mẫu duy nhất, không phải số yêu cầu nhà cung cấp. Chế độ bật bộ chuyên đọc chỉ áp dụng họ biểu đồ/bảng, cho phép tiếp tục khi lỗi và có thể quay về dự phòng nếu không khả dụng. Chạy thử một mẫu/một cấu hình trước. Ứng dụng không tự khởi động benchmark. Từ gốc kho mã, điểm vào tương đương là `uv run --project backend python -m scripts.benchmark_task1 ...`.
 
-Use `--split holdout` with a different output directory for the final untouched
-evaluation set. Develop prompts on dev only; repeated inspection/tuning against
-holdout invalidates its purpose. Targets and annotations never enter requests
-to the scoring or specialist provider.
+Dùng `--split holdout` với thư mục đầu ra khác cho tập đánh giá cuối chưa đụng tới. Chỉ phát triển lời nhắc trên dev; xem/tinh chỉnh lặp dựa vào holdout làm mất mục đích giữ riêng. Điểm đích và chú giải không được gửi tới nhà cung cấp chấm hoặc bộ chuyên đọc.
 
-## Reports and resume
+## Báo cáo và tiếp tục
 
-Each output directory contains `report.json`, `report.md`,
-`disagreements.csv`, an atomic `cache/` checkpoint per sample/configuration,
-and append-only `attempts/` records preserving earlier failures and costs.
-Reports default to IDs rather than full essays. They include:
+Mỗi thư mục đầu ra chứa `report.json`, `report.md`, `disagreements.csv`, điểm kiểm tra `cache/` nguyên tử mỗi mẫu/cấu hình và bản ghi `attempts/` chỉ thêm để giữ lỗi/chi phí trước. Mặc định báo cáo dùng ID thay cho bài viết đầy đủ. Nội dung gồm:
 
-- Criterion and backend-rounded Task 1 overall exact, ±0.5, ±1.0 agreement,
-  MAE, signed prediction-minus-target bias, RMSE, and QWK.
-- Counts for every aggregate, task-type/family/split strata and each criterion's
-  target-band bucket. QWK requires at least 10 comparable half-band pairs and
-  nonzero expected variance; otherwise JSON records the reason it is unavailable.
-- Separate primary and reconciled perception: labelled numeric agreement,
-  semantic alignment, missing/extra/unknown values and reconciliation disagreements.
-- Per-sample error decomposition, wall time, completion request counts/token
-  usage, specialist calls/time/fallbacks, and partial linguistic scores after a
-  genuine primary failure. Overall agreement uses only all-four-criterion results.
-- Paired ablations and largest score disagreements by sample ID. Failed runs
-  remain visible rather than silently disappearing from failure statistics.
-  Score deltas use the same valid paired cases for each criterion. Failure and
-  latency comparisons also include failed cases; dropout cannot masquerade as
-  better score agreement.
+- Đồng thuận chính xác, ±0.5, ±1.0, MAE, độ lệch dự đoán trừ điểm đích có dấu, RMSE và QWK cho tiêu chí cùng tổng Task 1 làm tròn bởi backend.
+- Số mẫu cho mọi tổng hợp, nhóm loại/họ tác vụ/phần chia và nhóm band đích từng tiêu chí. QWK cần ít nhất 10 cặp nửa band so sánh được và phương sai kỳ vọng khác 0; nếu không JSON ghi lý do không khả dụng.
+- Nhận thức chính và sau đối chiếu riêng: đồng thuận số có nhãn, khớp ngữ nghĩa, giá trị thiếu/thừa/chưa biết và bất đồng đối chiếu.
+- Phân rã lỗi từng mẫu, thời gian thực, số yêu cầu hoàn thành/mức dùng token, số gọi/thời gian/dự phòng bộ chuyên đọc và điểm ngôn ngữ một phần sau lỗi chính thật. Đồng thuận tổng chỉ dùng kết quả đủ bốn tiêu chí.
+- So sánh biến thể theo cặp và bất đồng điểm lớn nhất theo ID. Lượt thất bại vẫn hiển thị, không biến mất khỏi thống kê lỗi. Chênh lệch điểm dùng cùng cặp hợp lệ cho từng tiêu chí. So lỗi/độ trễ cũng gồm ca thất bại; rơi mẫu không được giả thành đồng thuận tốt hơn.
 
-Resume identity includes sample content/targets/truth, image bytes, provider and
-model, hashed endpoints, separate perception/scoring versions, pinned specialist
-model/revision/contract, timeout settings, benchmark version and implementation
-hash. Paths and presentation labels do not change identity. Changing annotations
-invalidates checkpoints to prevent stale metrics. `--resume` reuses only validated
-successful records; a corrupt checkpoint can recover from its validated latest
-attempt, while failures or unavailable valid records retry. Atomic attempts and
-checkpoints are written after each run, so interruption does not lose previous successes.
-Cache hits retain historical latency/usage; report `new_*_calls` excludes hits.
-Scoring metrics describe the latest outcome. Operational statistics separately
-show first-attempt and all-recorded-attempt failure rates and cumulative recorded
-calls, usage and latency. Retrying to success never erases an earlier failure or
-its recorded cost. An interrupted in-flight request has unknown final usage;
-these statistics cover completed attempt records only.
+Danh tính tiếp tục gồm nội dung/điểm đích/dữ liệu thị giác chuẩn, byte hình, nhà cung cấp/mô hình, điểm cuối đã băm, phiên bản nhận thức/chấm riêng, mô hình/bản sửa/hợp đồng bộ chuyên đọc đã ghim, cấu hình thời gian chờ, phiên bản benchmark và băm triển khai. Đường dẫn/nhãn trình bày không đổi danh tính. Đổi chú giải vô hiệu hóa điểm kiểm tra để tránh chỉ số cũ. `--resume` chỉ tái sử dụng bản ghi thành công đã xác thực; điểm kiểm tra hỏng có thể phục hồi từ lần thử mới nhất đã xác thực, còn thất bại hoặc bản ghi hợp lệ không khả dụng sẽ thử lại. Lần thử/điểm kiểm tra nguyên tử được ghi sau mỗi lần chạy để gián đoạn không mất thành công trước. Trúng bộ nhớ đệm giữ độ trễ/mức dùng lịch sử; `new_*_calls` không tính lần trúng. Chỉ số điểm mô tả kết quả mới nhất. Thống kê vận hành tách tỷ lệ lỗi lần đầu và mọi lần ghi nhận, cùng số gọi, mức dùng và độ trễ lũy kế. Thử lại thành công không xóa lỗi/chi phí đã ghi trước đó. Yêu cầu đang chạy bị gián đoạn có mức dùng cuối chưa biết; thống kê chỉ bao phủ bản ghi lần thử đã hoàn tất.
 
-## Interpretation
+## Diễn giải
 
-Positive signed bias means generosity; negative bias means under-scoring. Read
-each criterion separately so mixed errors cannot cancel in overall.
-For v5/v12, inspect signed TA bias, MAE and exact/within-band agreement together;
-an upward shift alone is not evidence of better accuracy. Both versions invoke
-the same perception pipeline, but live perception can still vary between runs.
-Use the primary/reconciled perception metrics to identify that confound rather
-than attributing every TA difference to scoring prompts.
+Độ lệch có dấu dương nghĩa là chấm rộng, âm nghĩa là chấm thấp. Đọc riêng từng tiêu chí để lỗi trái dấu không triệt tiêu trong tổng. Với v5/v12, xem độ lệch TA có dấu, MAE và đồng thuận chính xác/trong khoảng band cùng nhau; riêng dịch điểm lên không chứng minh chính xác hơn. Hai phiên bản gọi cùng chuỗi nhận thức nhưng nhận thức trực tiếp vẫn có thể biến thiên giữa lần chạy. Dùng chỉ số nhận thức chính/sau đối chiếu để nhận ra yếu tố nhiễu thay vì quy mọi chênh lệch TA cho lời nhắc.
 
-- Bad perception and TA disagreement: investigate perception/reconciliation.
-- Accurate perception but TA disagreement: investigate Task Achievement guidance.
-- CC/LR/GRA positive bias with good perception: investigate scorer calibration.
-- Persisting broad bias after prompt work: evaluate stronger scoring or a
-  benchmark-only descriptor adjudicator before promoting any production tool.
+- Nhận thức sai và TA bất đồng: kiểm tra nhận thức/đối chiếu.
+- Nhận thức đúng nhưng TA bất đồng: kiểm tra hướng dẫn Task Achievement.
+- CC/LR/GRA lệch dương khi nhận thức tốt: kiểm tra hiệu chuẩn bộ chấm.
+- Thiên lệch diện rộng còn sau sửa lời nhắc: đánh giá bộ chấm mạnh hơn hoặc bộ phân xử mô tả chỉ dùng benchmark trước khi đưa công cụ vào sản xuất.
 
-Error categories include perception OK with scores OK/high/low/mixed,
-PERCEPTION_ERROR, SPECIALIST_DISAGREEMENT, UNUSABLE, and explicit unannotated
-perception variants. Score OK means each criterion is within 0.5 of its reference;
-this evaluation convention never changes a predicted score. Specialist disagreement
-does not establish which reader is correct; consult independent visual truth.
+Nhóm lỗi gồm nhận thức đúng với điểm đúng/cao/thấp/hỗn hợp, PERCEPTION_ERROR, SPECIALIST_DISAGREEMENT, UNUSABLE và biến thể nhận thức chưa chú giải rõ ràng. Điểm đúng nghĩa là mỗi tiêu chí cách tham chiếu không quá 0.5; quy ước đánh giá này không đổi dự đoán. Bất đồng bộ chuyên đọc không xác lập bên đọc nào đúng; cần dữ liệu thị giác chuẩn độc lập.
 
-No experimental adjudicator, second judge, automatic deployment, numeric offset,
-band cap, or production auto-calibration is implemented. Small synthetic tests
-prove arithmetic and orchestration; effectiveness requires a labelled human set.
+Chưa triển khai bộ phân xử thử nghiệm, giám khảo thứ hai, tự triển khai, độ lệch số cộng thêm, trần band hoặc tự hiệu chuẩn sản xuất. Kiểm thử tổng hợp nhỏ chứng minh phép tính/điều phối; hiệu quả cần tập có nhãn người chấm.

@@ -1,4 +1,4 @@
-# AI engineering: Writing, Speaking và provider boundaries
+# Kiến trúc AI: Writing, Speaking và ranh giới provider
 
 > Mục đích và phạm vi: Pipeline hiện có, worker durability, benchmark và giới hạn advisory.
 > Đối chiếu mã nguồn tại `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`. Đây là kiểm tra tĩnh; không xác nhận trạng thái deployment đang chạy.
@@ -63,7 +63,9 @@ Run input loại scratch notes, raw paths và superseded takes. Human final FC/L
 
 ## Background jobs và durability
 
-**Detached task** là asyncio task không phụ thuộc thời gian HTTP observer sống. PostgreSQL giữ run/event checkpoints; process memory giữ task đang chạy. Đây không phải một queue service triển khai riêng. Speaking dùng heartbeat + lease token để fencing: worker cũ không được ghi sau khi worker mới tiếp quản. Startup recover Speaking runs; Writing có stale-run recovery qua service/read paths. Không hứa exactly-once provider invocation khi process chết giữa call và commit.
+Bổ sung ngày 2026-11-02: Writing dùng các hàng PENDING trong PostgreSQL làm hàng đợi bền vững. Fixed consumers áp dụng admission, giới hạn RUNNING toàn cục và fencing bằng token/deadline. API có AI được bật và cấu hình sẽ khởi động consumers mặc định; đặt `AI_WRITING_WORKER_ENABLED=false` trên replicas chỉ phục vụ HTTP, dùng `python -m app.workers.writing` để chạy consumer riêng. Scanner xử lý PENDING đã commit; RUNNING hết lease chuyển lỗi `RUN_INTERRUPTED`, giữ checkpoints từng phần để retry rõ ràng, không tự chạy lại MTS stages. Đường đọc không còn đánh PENDING là stale rồi chuyển lỗi. Xem [cấu hình, migration, rollback và bằng chứng](../performance/5000-user-capacity.md).
+
+Speaking giữ detached local tasks, DB lease tokens và recovery khi startup/request hiện có; chưa triển khai admission toàn cục hoặc fleet hữu hạn. Cả hai dùng sessions ngắn để lưu checkpoints ngoài thời gian inference; không hứa gọi provider đúng một lần khi process chết giữa lời gọi và commit. Trạng thái bền vững trong database không bảo đảm tác dụng phụ tại provider chỉ xảy ra một lần.
 
 SSE là **Server-Sent Events**, luồng một chiều từ server tới client; sequence IDs phục vụ replay/reconnect. Observer đóng tab chỉ dừng đọc, explicit cancel mới dừng job theo policy. Nginx buffering off được giữ cho streaming. Worker shutdown và [main lifespan](../../backend/app/main.py) phối hợp stop/cleanup; không tự khởi động mọi AI run trên mỗi page load.
 

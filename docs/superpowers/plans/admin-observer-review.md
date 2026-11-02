@@ -1,46 +1,46 @@
-# Independent final review — 2026-10-27
+# Review độc lập cuối cùng — 2026-10-27
 
-> **Documentation audit: HISTORICAL.** Historical reference; không phải contract hiện hành.
-> Mục đích: Independent final review — 2026-10-27. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../../../backend/app/services/classroom_capabilities.py).
-> Đọc cùng [current module/guide](../../modules/classrooms.md); [audit và giới hạn](../../DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+> **Phân loại tài liệu: HISTORICAL.** Tham khảo lịch sử; không phải contract hiện hành.
+> Mục đích: Review độc lập cuối cùng — 2026-10-27. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [mã triển khai](../../../backend/app/services/classroom_capabilities.py).
+> Đọc cùng [hướng dẫn module hiện hành](../../modules/classrooms.md); [audit và giới hạn](../../DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
 
-## Scope
+## Phạm vi
 
-Reviewed the task-specific working-tree changes against base `54ff874b41f36bb8409509d77fd17adf411e50d8`, repository AGENTS instructions, `docs/architecture.md`, the supplied task specification, implementation plan and worker reports. Inspected the approved reference image directly. Excluded unrelated untracked skill/configuration/design-reference files.
+Review các thay đổi thuộc nhiệm vụ trong worktree so với base `54ff874b41f36bb8409509d77fd17adf411e50d8`, AGENTS của repository, `docs/architecture.md`, đặc tả được cung cấp, kế hoạch triển khai và báo cáo của các tác nhân. Đã xem trực tiếp ảnh tham chiếu được duyệt. Loại trừ các tệp skill/configuration/design-reference chưa được theo dõi, không liên quan.
 
-Review covered classroom capability resolution; direct API mutation paths; legacy memberships and classroom attempts; personal/scoped Writing and Speaking final grading; AI creation/cancellation/read side effects; teacher/co-teacher/TA preservation; bounded directory queries and response privacy; shared observer controls; Classwork search, archive safety and responsive CSS.
+Phạm vi gồm xác định capability lớp học; đường ghi API trực tiếp; membership và classroom attempts cũ; chấm điểm cuối Writing/Speaking qua route cá nhân/theo lớp; tác dụng phụ của AI creation/cancellation/reads; giữ quyền teacher/co-teacher/TA; truy vấn danh bạ có giới hạn và riêng tư response; control quan sát dùng chung; tìm kiếm Classwork, an toàn lưu trữ và CSS responsive.
 
-Also reviewed the subsequent authorized homepage locale-anchor fix: both auth translations reserve intrinsic width in one CSS grid cell, sizing text is hidden from accessibility APIs and pointer interaction, and visible link labels still track the selected locale. No additional finding identified.
+Đã review thêm bản sửa vị trí nút ngôn ngữ trang chủ được cho phép sau đó: hai bản dịch xác thực cùng dự trữ độ rộng nội tại trong một ô CSS grid; văn bản đo kích thước ẩn khỏi accessibility APIs và pointer interaction; nhãn liên kết hiển thị vẫn theo locale. Không phát hiện vấn đề bổ sung.
 
-## Outstanding findings
+## Vấn đề còn mở
 
-None after the review corrections below were inspected in source.
+Không còn sau khi kiểm mã nguồn của các bản sửa dưới đây.
 
-## Corrections verified during review
+## Các bản sửa đã kiểm trong review
 
-1. **P1 — Writing AI cancellation trusted historical ownership.** `backend/app/services/writing_ai.py:385`. An administrator who owned a legacy classroom attempt/run could cancel the run without passing the new classroom mutation boundary. Cancellation now resolves the attempt and checks classroom provenance before `fail_run`.
-2. **P2 — Writing AI reads could persist stale-run state.** `backend/app/services/writing_ai.py:306`. List/get/event snapshot paths invoked `recover_stale`, which could write failure state and append events for a legacy Admin classroom run. The recovery boundary now checks provenance and preserves read-only observation without writing that run. Speaking AI snapshots were also inspected; they present stale state without this persistence path.
-3. **P2 — Archived resource controls overlapped at 481–640 px.** `frontend/src/features/classrooms/content/classroom-workspace.css:199`. The compact resource View button and archive overflow originally occupied grid column 2, row 1. View now occupies row 2 throughout the compact breakpoint; the management overflow remains in row 1.
+1. **P1 — Writing AI cancellation tin quyền sở hữu lịch sử.** `backend/app/services/writing_ai.py:385`. Admin sở hữu classroom attempt/run cũ có thể cancel mà không qua ranh giới mutation mới. Cancellation hiện tải attempt và kiểm nguồn gốc lớp trước `fail_run`.
+2. **P2 — Writing AI reads có thể ghi trạng thái run cũ.** `backend/app/services/writing_ai.py:306`. Các đường list/get/event snapshot gọi `recover_stale`, có thể ghi FAILED và nối events cho run lớp cũ của Admin. Ranh giới recovery hiện kiểm nguồn gốc và giữ quan sát chỉ đọc, không ghi run đó. Đã kiểm Speaking AI snapshots: chúng biểu diễn trạng thái cũ mà không đi qua đường persist này.
+3. **P2 — Controls của resource lưu trữ chồng lên nhau tại 481–640 px.** `frontend/src/features/classrooms/content/classroom-workspace.css:199`. Nút View gọn và menu archive ban đầu cùng chiếm cột 2, hàng 1. View hiện ở hàng 2 trong toàn breakpoint gọn; menu quản lý vẫn ở hàng 1.
 
-These are closed findings against the reviewed final source, not unresolved release blockers.
+Đây là các phát hiện đã đóng đối với source cuối được review, không phải release blockers còn mở.
 
-## Specification compliance verdict
+## Kết luận tuân thủ đặc tả
 
-**Pass by source inspection, subject to the verification limits below.** Admin capabilities use an explicit read-only allowlist and take precedence over legacy owner/staff rows. Shared service boundaries reject classroom writes, and final-grade policy covers both classroom and personal endpoints with direct/Full Mock provenance. Owner restoration remains available; co-teacher and TA scopes remain distinct. Separate global account management and test moderation retain their existing policies.
+**Đạt qua kiểm mã nguồn, với các giới hạn kiểm chứng bên dưới.** Capability Admin dùng allowlist chỉ đọc rõ ràng, ưu tiên hơn owner/staff rows cũ. Ranh giới service dùng chung từ chối ghi lớp; chính sách điểm cuối bao phủ endpoint lớp lẫn cá nhân với nguồn gốc trực tiếp/Full Mock. Chủ lớp vẫn khôi phục được lớp; phạm vi co-teacher và TA tách biệt. Quản lý tài khoản toàn cục và kiểm duyệt đề giữ chính sách riêng.
 
-The Admin directory uses server-side filters, deterministic paginated queries, bounded page sizes and minimal people/classroom fields. Its observer and roster links open the existing shared classroom workspace. Admin presentation omits management, authoring, participation, final-grade and personal-progress controls while preserving browsing, search, disclosure and permitted academic views.
+Danh bạ Admin dùng bộ lọc server, truy vấn phân trang có thứ tự xác định, kích thước trang hữu hạn và trường người/lớp tối thiểu. Liên kết observer và roster mở workspace lớp dùng chung hiện có. Giao diện Admin bỏ control quản lý, soạn nội dung, tham gia, điểm cuối và tiến độ cá nhân, nhưng giữ duyệt, tìm kiếm, mở/đóng nội dung và các góc nhìn học thuật được phép.
 
-Classwork source follows the approved book/search heading, folder topic, neutral observer empty state and distinct compact archive composition. Vietnamese search normalizes case/accents including đ, retains parent/child context, and archive actions reuse protected deletion/removal and deadline-preserving restoration. Restored resources remain drafts.
+Source Classwork theo bố cục được duyệt: tiêu đề sách/tìm kiếm, topic dạng thư mục, trạng thái trống trung tính của observer và vùng archive gọn riêng. Tìm kiếm tiếng Việt chuẩn hóa hoa/thường/dấu, gồm đ; giữ ngữ cảnh cha/con. Thao tác archive dùng lại xóa/bỏ tham chiếu có bảo vệ và khôi phục không đổi deadline. Resources khôi phục vẫn là bản nháp.
 
-## Code quality verdict
+## Kết luận chất lượng mã
 
-**Acceptable for integration.** Authorization remains in FastAPI services, query logic stays in repositories, and frontend controls derive from explicit read/write capability props. The shared presentation avoids a separate Admin screen implementation. No change to published version content, attempt/score history, schema, or protected-history deletion rules was identified.
+**Có thể tích hợp.** Phân quyền vẫn ở FastAPI services, query logic ở repositories, frontend controls dựa trên props quyền đọc/ghi rõ ràng. Giao diện dùng chung tránh tạo riêng màn hình Admin. Không thấy thay đổi nội dung version đã publish, lịch sử attempt/điểm, schema hoặc quy tắc xóa bảo vệ lịch sử.
 
-## Verification evidence and limits
+## Bằng chứng và giới hạn kiểm chứng
 
-- Existing implementer/root evidence supplied for this review: 222 task-focused frontend tests plus 62 disjoint homepage/Gravity/Classwork CSS checks passed; TypeScript typecheck and scoped lint passed. Backend report records 167 focused authorization/archive/AI read/worker/SSE/cancellation tests and scoped Ruff passed. Directory worker separately records seven focused backend contract tests. The root worker will perform its final combined focused validation after source freeze.
-- The independent reviewer did not rerun test suites or invoke database fixtures. A focused `git diff --check` on the final Writing AI and mobile CSS corrections passed with only Git line-ending notices.
-- Backend authorization REST tests use real routers/services with controlled database doubles. Actual isolated PostgreSQL behavior, row-count/concurrency/query-plan checks and the modified PostgreSQL integration tests remain unverified because an explicitly isolated test database was unavailable.
-- No server, browser, Playwright/Cypress, production build, persistent process, database reset, commit or push was performed during this review. Approved-image/source comparison is not rendered-UI screenshot verification; actual desktop/mobile geometry and theme contrast remain unverified.
+- Bằng chứng từ bên triển khai/tác nhân chính: 222 frontend tests của nhiệm vụ và 62 kiểm tra homepage/Gravity/Classwork CSS không trùng nhau pass; TypeScript và lint theo phạm vi pass. Báo cáo backend ghi 167 tests tập trung authorization/archive/AI reads/worker/SSE/cancellation và Ruff pass. Tác nhân danh bạ ghi riêng bảy backend contract tests tập trung. Tác nhân chính sẽ kiểm tập trung kết hợp sau khi đóng băng source.
+- Reviewer độc lập không chạy lại suites hoặc database fixtures. `git diff --check` tập trung vào các bản sửa Writing AI và mobile CSS cuối pass, chỉ có thông báo line endings của Git.
+- REST authorization tests dùng routers/services thật với database doubles có kiểm soát. PostgreSQL cách ly thực tế, row counts/concurrency/query plans và các integration tests được sửa còn chưa xác minh vì chưa có test database cách ly được chỉ định.
+- Trong review này không chạy server, browser, Playwright/Cypress, production build, tiến trình thường trú, reset database, commit hoặc push. So ảnh được duyệt với source không phải kiểm screenshot UI render; hình học desktop/mobile và contrast theme thực tế vẫn chưa xác minh.
 
-Final integration validation by the primary agent: 176 focused backend tests and 284 focused frontend tests passed; changed-file Ruff/ESLint, TypeScript and diff whitespace checks passed. No rendered UI or PostgreSQL integration claim is made.
+Kiểm chứng tích hợp cuối của tác nhân chính: 176 backend tests tập trung và 284 frontend tests tập trung pass; Ruff/ESLint theo tệp thay đổi, TypeScript và kiểm khoảng trắng diff pass. Không tuyên bố đã kiểm UI render hoặc PostgreSQL integration.

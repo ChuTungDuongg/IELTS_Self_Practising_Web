@@ -1,96 +1,97 @@
-# BandPilot concurrency audit
+# Kiểm toán xử lý đồng thời BandPilot
 
-> **Documentation audit: HISTORICAL.** Historical reference; không phải contract hiện hành.
-> Mục đích: BandPilot concurrency audit. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../backend/app/services/asset_cleanup.py).
-> Đọc cùng [current module/guide](handbook/data-architecture.md); [audit và giới hạn](DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+> **Kiểm toán tài liệu: HISTORICAL.** Tài liệu tham khảo lịch sử; không phải hợp đồng hiện hành.
+> Mục đích: Kiểm toán xử lý đồng thời BandPilot. Đối chiếu mã nguồn `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [mã triển khai](../backend/app/services/asset_cleanup.py).
+> Đọc cùng [mô-đun/hướng dẫn hiện hành](handbook/data-architecture.md); [audit và giới hạn](DOCS_AUDIT.md). Kết quả kiểm thử/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong lần kiểm toán này.
 
-Date: 2026-10-26. Baseline: `43fdc9d4cb0e8ba4f5e5e3f48beb06733de7b688` on `main`; fetched remote matched. Scope: targeted correctness changes within Next.js → FastAPI → PostgreSQL. Existing storage, provider infrastructure, UI, question registries, authentication contracts and advisory/human scoring boundaries remain.
 
-Local unrelated changes (`storage` placeholders, `.agents`, `.taste-skill`, design references and skill lock) are excluded from delivery. Tests use freshly migrated, dedicated PostgreSQL 17 databases named `bandpilot_concurrency_test` and `bandpilot_concurrency_fault_test` on loopback port 5544. No development/production schema or data is modified. Provider tests use fakes; no browser sessions or paid inference.
+Ngày: 2026-10-26. Mốc ban đầu: `43fdc9d4cb0e8ba4f5e5e3f48beb06733de7b688` trên `main`; mã từ xa vừa fetch trùng khớp. Phạm vi: sửa tính đúng đắn có mục tiêu trong Next.js → FastAPI → PostgreSQL. Giữ lưu trữ, hạ tầng nhà cung cấp, UI, registry câu hỏi, hợp đồng xác thực và ranh giới điểm AI tư vấn/điểm người chấm hiện có.
 
-## Confirmed defects and corrections
+Thay đổi Local không liên quan (placeholder `storage`, `.agents`, `.taste-skill`, tài liệu thiết kế và khóa skill) không thuộc bản bàn giao. Kiểm thử dùng DB PostgreSQL 17 riêng vừa migration, tên `bandpilot_concurrency_test` và `bandpilot_concurrency_fault_test`, trên cổng loopback 5544. Không sửa schema/dữ liệu development/production. Kiểm thử nhà cung cấp dùng giả lập; không mở trình duyệt hoặc suy luận trả phí.
 
-### C1 — Full Mock child/parent lock inversion (fixed)
+## Lỗi đã xác nhận và cách sửa
 
-- **Operation/actors:** last-module submit/timeout versus session `get`, `advance` or deletion; same `Attempt` and `TestSession` rows, separate connections.
-- **Existing protection:** attempt `FOR UPDATE`, session `FOR UPDATE`, unique `(test_session_id, module_type)` partial index; Speaking already takes parent then child.
-- **Failure:** generic submit held the attempt and later updated its parent. Session operations held the parent and updated/deleted its child. Both transactions could wait for the other. Timeout synchronization also used an unlocked, preloaded child snapshot.
-- **Impact:** PostgreSQL deadlock aborts legitimate lifecycle operations; stale snapshots risk inconsistent finalization.
-- **Evidence:** three forced overlapping transaction tests failed on baseline with `asyncpg.exceptions.DeadlockDetectedError`, including the `UPDATE test_sessions` wait. Coordination uses events and `pg_blocking_pids`, not sleeps.
-- **Correction:** generic mutation loading now locks parent before attempt, matching Speaking; refresh locked ORM state. Timeout synchronization explicitly locks/refreshes child columns while retaining the parent collection. Remove the unnecessary eager-loading cycle back through sibling attempts.
-- **Verification:** `test_mock_timeout_submit_and_session_operations_have_stable_lock_order[get/advance/delete]`; duplicate advance; independent Full Mock sessions. Existing module order, review locks and uniqueness constraints remain.
+### C1 — Đảo thứ tự khóa con/cha Full Mock (đã sửa)
 
-### C2 — Files left behind by upload rollback/cancellation (fixed for handled failures)
+- **Thao tác/tác nhân:** nộp/timeout mô-đun cuối so với `get`, `advance` hoặc xóa session; cùng bản ghi `Attempt` và `TestSession`, kết nối riêng.
+- **Bảo vệ sẵn có:** `FOR UPDATE` attempt, `FOR UPDATE` session, index riêng phần duy nhất `(test_session_id, module_type)`; Speaking đã khóa cha rồi con.
+- **Lỗi:** nộp thông thường giữ attempt rồi cập nhật cha. Thao tác session giữ cha rồi cập nhật/xóa con. Hai giao dịch có thể chờ nhau. Đồng bộ timeout còn dùng snapshot con tải trước không khóa.
+- **Tác động:** deadlock PostgreSQL hủy thao tác vòng đời hợp lệ; snapshot cũ gây nguy cơ hoàn tất không nhất quán.
+- **Bằng chứng:** ba kiểm thử ép giao dịch chồng lấn thất bại trên mốc ban đầu với `asyncpg.exceptions.DeadlockDetectedError`, gồm chờ `UPDATE test_sessions`. Điều phối dùng event và `pg_blocking_pids`, không dùng sleep.
+- **Sửa:** bộ tải mutation thông thường nay khóa cha trước attempt, thống nhất Speaking; làm mới trạng thái ORM đã khóa. Đồng bộ timeout khóa/làm mới cột con tường minh, giữ collection cha. Bỏ chu trình eager-load không cần thiết qua attempt anh em.
+- **Xác minh:** `test_mock_timeout_submit_and_session_operations_have_stable_lock_order[get/advance/delete]`; advance trùng; session Full Mock độc lập. Giữ thứ tự mô-đun, khóa xem lại và ràng buộc duy nhất.
 
-- **Operation/actors:** author asset upload, Speaking chunk upload and ZIP import; request cancellation or database flush failure after file creation.
-- **Existing protection:** draft/attempt row locks and UUID storage names; Speaking/import had `except Exception` compensation, public upload had none.
-- **Failure:** DB rollback cannot undo a file write. `asyncio.CancelledError` also bypassed `except Exception`.
-- **Impact:** unreferenced files survive failed requests, including private speech recordings.
-- **Evidence:** injected post-write flush failures leave public image files; cancellation leaves Speaking chunks and all three imported asset files. These assertions failed against baseline.
-- **Correction:** compensation after transaction exit handles cancellation and ordinary errors, joins the public upload's file-writing thread before cleanup, and verifies committed references on a fresh session before removing operation-owned paths. Filesystem work is offloaded to a thread where appropriate.
-- **Verification:** public image flush failure/cancellation and staging-thread cancellation; private chunk rollback/cancellation; import rollback/cancellation; all assert file/DB consistency using temporary storage directories.
-- **Boundary:** process kill or a database outage that also prevents reference verification still requires reconciliation; see deferred risks. This is not a distributed filesystem transaction.
+### C2 — Tệp còn lại sau rollback/hủy upload (đã sửa với lỗi được xử lý)
 
-### C3 — Lost commit acknowledgement deletes committed media (fixed in chunk/import/version-clone paths)
+- **Thao tác/tác nhân:** tác giả tải tài sản, tải chunk Speaking, nhập ZIP; hủy yêu cầu hoặc lỗi flush DB sau khi tạo tệp.
+- **Bảo vệ sẵn có:** khóa bản ghi draft/attempt và tên lưu trữ UUID; Speaking/import có bù trừ `except Exception`, upload công khai chưa có.
+- **Lỗi:** rollback DB không hoàn tác ghi tệp. `asyncio.CancelledError` cũng không đi qua `except Exception`.
+- **Tác động:** tệp không được tham chiếu tồn tại sau yêu cầu lỗi, kể cả ghi âm riêng tư.
+- **Bằng chứng:** tiêm lỗi flush sau ghi để lại ảnh công khai; hủy để lại chunk Speaking và cả ba tệp tài sản nhập. Các kiểm tra này thất bại trên mốc ban đầu.
+- **Sửa:** bù trừ sau khi thoát giao dịch xử lý hủy/lỗi thường, chờ luồng ghi upload công khai kết thúc trước dọn dẹp và xác minh tham chiếu đã commit bằng session mới trước khi xóa đường dẫn của thao tác. Công việc filesystem được chuyển sang thread khi phù hợp.
+- **Xác minh:** lỗi flush/hủy ảnh công khai và hủy thread vùng tạm; rollback/hủy chunk riêng tư; rollback/hủy import; tất cả kiểm tra nhất quán tệp/DB trong thư mục tạm.
+- **Ranh giới:** kill tiến trình hoặc DB mất kết nối khiến không xác minh được tham chiếu vẫn cần đối soát; xem rủi ro hoãn lại. Đây không phải giao dịch filesystem phân tán.
 
-- **Operation/actors:** a committing Speaking upload, ZIP import or version clone, followed by a connection error/cancellation before the caller observes success; DB rows and their physical files.
-- **Existing protection:** generated paths and rollback compensation, but compensation assumed every exception meant rollback.
-- **Failure:** transaction commits, context exit raises, unconditional compensation deletes files still referenced by committed rows.
-- **Impact:** persisted asset/chunk records point to missing source files; recordings or cloned/imported content become unusable.
-- **Evidence:** transaction wrappers commit successfully, then inject a lost-acknowledgement exception. Baseline private chunk, import and clone tests find committed rows with missing files.
-- **Correction:** shared compensation checks public assets, raw Speaking chunks and normalized Speaking artifacts before unlinking; committed references win. If verification fails, retain potentially committed files and issue a content-free reconciliation warning.
-- **Verification:** lost-commit-acknowledgement tests in `test_concurrency_hardening.py`, `test_speaking_media.py`, `test_transfer.py`, `test_asset_cloning.py`. Public upload covers both ordinary exception and cancellation after commit. ZIP roundtrip and asset IDs remain compatible.
+### C3 — Mất xác nhận commit dẫn đến xóa media đã commit (đã sửa ở chunk/import/clone phiên bản)
 
-### C4 — Unbounded concurrent upload allocations / synchronous copies (fixed for public upload)
+- **Thao tác/tác nhân:** upload Speaking, import ZIP hoặc clone phiên bản đang commit, rồi lỗi kết nối/hủy trước khi bên gọi biết thành công; bản ghi DB và tệp vật lý tương ứng.
+- **Bảo vệ sẵn có:** đường dẫn sinh tự động và bù trừ rollback, nhưng bù trừ giả định mọi exception đều đồng nghĩa rollback.
+- **Lỗi:** giao dịch commit, thoát context ném lỗi, bù trừ vô điều kiện xóa tệp vẫn được bản ghi đã commit tham chiếu.
+- **Tác động:** bản ghi asset/chunk đã lưu trỏ tệp nguồn thiếu; bản ghi âm/nội dung clone hoặc import không dùng được.
+- **Bằng chứng:** wrapper giao dịch commit thành công rồi tiêm lỗi mất xác nhận. Kiểm thử chunk riêng tư, import và clone ban đầu tìm được bản ghi đã commit nhưng thiếu tệp.
+- **Sửa:** bù trừ chung kiểm tra tài sản công khai, chunk Speaking thô và artifact Speaking chuẩn hóa trước unlink; ưu tiên tham chiếu đã commit. Nếu xác minh lỗi, giữ tệp có thể đã commit và cảnh báo đối soát không chứa nội dung.
+- **Xác minh:** kiểm thử mất xác nhận commit trong `test_concurrency_hardening.py`, `test_speaking_media.py`, `test_transfer.py`, `test_asset_cloning.py`. Upload công khai kiểm tra cả exception thường và hủy sau commit. Giữ tương thích ZIP khứ hồi và ID tài sản.
 
-- **Operation/actors:** simultaneous author image/audio uploads; RAM, event loop and Builder locks.
-- **Existing protection:** 10 MB image / 100 MB audio validation in storage, applied only after `await upload.read()` allocated the entire input.
-- **Failure:** each request reads arbitrarily large input before enforcing the limit, and then writes synchronously while holding authoring locks.
-- **Impact:** avoidable memory exhaustion and lock/event-loop contention under moderate concurrent uploads.
-- **Evidence:** baseline fails the bounded-read assertion. New storage test supplies 2 MiB with a 1 MiB limit and verifies reading stops at exactly limit + 1 byte with no output left behind.
-- **Correction:** bounded stream reader uses at most 1 MiB chunks in a worker thread, before opening the authoring transaction. Existing MIME/extension/size limits and response DTO stay unchanged. Exclusive destination creation and ownership-aware copy cleanup avoid unlinking a preexisting path on creation failure.
-- **Verification:** bounded read, oversize rejection, successful bytes/metadata, cancellation and rollback tests. Three additional independent-transaction tests pause the file writer while a competing transaction commits published/archived/deleted state, then verify the upload rejects the stale draft and removes its staged file. No application-wide concurrency limiter introduced.
+### C4 — Cấp phát upload đồng thời không giới hạn / sao chép đồng bộ (đã sửa upload công khai)
 
-## Existing protections retained and checked
+- **Thao tác/tác nhân:** tác giả tải ảnh/âm thanh đồng thời; RAM, event loop và khóa Builder.
+- **Bảo vệ sẵn có:** xác minh ảnh 10 MB / âm thanh 100 MB trong storage, chỉ áp dụng sau khi `await upload.read()` cấp phát toàn bộ đầu vào.
+- **Lỗi:** mỗi yêu cầu đọc đầu vào lớn tùy ý trước kiểm giới hạn, rồi ghi đồng bộ khi giữ khóa soạn thảo.
+- **Tác động:** nguy cơ hết bộ nhớ và tranh chấp khóa/event loop có thể tránh được ngay với số upload đồng thời vừa phải.
+- **Bằng chứng:** mốc ban đầu không đạt kiểm tra đọc có giới hạn. Kiểm thử storage mới cấp 2 MiB với giới hạn 1 MiB, xác minh dừng đọc đúng giới hạn + 1 byte và không để lại đầu ra.
+- **Sửa:** đọc luồng có giới hạn dùng chunk tối đa 1 MiB trên worker thread, trước khi mở giao dịch soạn thảo. Giữ giới hạn MIME/phần mở rộng/kích thước và DTO phản hồi. Tạo đích độc quyền/dọn sao chép theo quyền sở hữu tránh unlink đường dẫn tồn tại trước khi lỗi tạo tệp.
+- **Xác minh:** đọc có giới hạn, từ chối quá cỡ, dữ liệu/siêu dữ liệu thành công, hủy và rollback. Ba kiểm thử giao dịch độc lập bổ sung dừng bộ ghi tệp trong khi giao dịch cạnh tranh commit trạng thái published/archived/deleted, rồi xác minh upload từ chối draft cũ và xóa tệp tạm. Không thêm giới hạn đồng thời toàn ứng dụng.
 
-| Area | Existing boundary and result | Evidence |
+## Bảo vệ hiện có được giữ và kiểm tra
+
+| Phạm vi | Ranh giới hiện có và kết quả | Bằng chứng |
 | --- | --- | --- |
-| Answer/Writing autosave | Attempt lock plus per-answer/task revision. Identical committed payload replay does not increment revision; conflicting stale value returns established 409. Ownership filters remain. | Existing independent-connection `test_attempt_response_concurrency.py`; no evaluator or revision contract rewrite. |
-| Autosave versus submit | Both serialize on attempt. First committed save is scored; submit-first rejects the delayed mutation. Server reads deadline after acquiring its lock. | New forced tests for both lock winners, deadline expiration while waiting, and another learner saving/submitting while the first attempt is held. |
-| Frontend finalization | `RevisionAutosaveQueue.flush()` drains relevant workers; submit awaits it, reconciles ambiguous outcomes, and terminal lifecycle latch rejects delayed reopening. | Read all four requested hooks/queue/lifecycle files; existing Vitest autosave, draft recovery and lifecycle coverage retained. No frontend source change. |
-| Full Mock uniqueness/order | Existing partial unique index prevents duplicate module attempts; parent serialization protects lazy next-module creation and review completion. | Existing Full Mock/Speaking history tests plus forced duplicate advance and session-isolation tests. Independent practice attempts remain supported. |
-| Builder revisions/publish | Actor → test → version → resource locking, revision checks, draft/published partial unique indexes and unique version numbers. Publish waits for committed edit or editor receives immutable-version conflict. | Existing `test_test_version_concurrency.py` explicitly exercises both publish/edit interleavings and independent resource revisions. No new constraints required. |
-| Moderation | Same version/test lock boundary freezes a pending submission; request row lock, terminal status check and unique notification key serialize decisions. | `test_moderation_concurrency.py`, governance tests; existing independent approval test verifies one publish and one notification. |
-| Speaking media retries | Parent → attempt lock, unique segment/sequence constraints, checksum equality for identical replay, conflicting bytes rejected, closed contiguous manifest required before finalization. | Existing independently connected duplicate chunk test, manifest/finalization/recovery tests; new cancellation and ambiguous-commit tests. Durable private cleanup outbox retained. |
-| Writing AI | Attempt lock deduplicates creation, `force=True` intentionally creates another run, run lock atomically claims only PENDING, terminal status guards checkpoints/completion/cancel, sequenced events serialize under run lock. | Existing Writing AI tests plus new independently connected create/claim/cancel tests with a controlled fake provider. Local task registry is only a dispatch optimization. |
-| Speaking AI | DB run claim + lease token fence, heartbeat, token-checked checkpoints; committed cancellation cannot be reversed by stale worker. | Existing `test_speaking_ai_runs.py` independent create/claim, completion/cancel winners and stale restart/fencing tests. |
-| ASR | Separate DB claim/lease/checkpoints, normalized-artifact/cache uniqueness, READY response reuse, restart preserves completed transcription. | Existing `test_speaking_transcript.py` independent worker claims, stale token, shutdown/recovery and replay tests. No real speech provider invoked. |
-| Classroom/auth/admin | Classroom lock plus pending-invite/active-membership indexes; assignment start rechecks membership/archive/eligibility inside creation transaction; actor locks coordinate demotion. Refresh row lock permits one successor; requests reload account active status. Notifications use DB conflict handling. | Existing classroom, assignment, admin, notification and independent refresh-rotation tests; no process-local correctness locks added. |
+| Autosave Answer/Writing | Khóa attempt và revision từng đáp án/task. Phát lại payload đã commit giống nhau không tăng revision; giá trị cũ xung đột trả 409 hiện có. Giữ lọc chủ sở hữu. | `test_attempt_response_concurrency.py` với kết nối độc lập hiện có; không viết lại evaluator/hợp đồng revision. |
+| Autosave so với nộp | Cùng tuần tự hóa qua attempt. Save commit trước được chấm; submit trước từ chối mutation đến muộn. Server đọc deadline sau khi lấy khóa. | Kiểm thử ép cả hai bên thắng khóa, deadline hết trong lúc chờ và học viên khác save/submit khi giữ attempt đầu. |
+| Hoàn tất frontend | `RevisionAutosaveQueue.flush()` chờ worker liên quan; nộp chờ flush, đối soát kết quả chưa rõ, chốt vòng đời cuối từ chối mở lại muộn. | Đã đọc bốn tệp hook/queue/lifecycle được yêu cầu; giữ Vitest autosave, khôi phục draft và lifecycle. Không đổi mã frontend. |
+| Duy nhất/thứ tự Full Mock | Index duy nhất riêng phần ngăn attempt mô-đun trùng; tuần tự cha bảo vệ tạo lười mô-đun kế và hoàn tất xem lại. | Kiểm thử Full Mock/lịch sử Speaking hiện có cùng ép advance trùng/cô lập session. Vẫn hỗ trợ attempt luyện tập độc lập. |
+| Revision/publish Builder | Khóa actor → test → version → resource, kiểm revision, index duy nhất riêng phần draft/published và số phiên bản duy nhất. Publish chờ edit commit hoặc editor nhận xung đột phiên bản bất biến. | `test_test_version_concurrency.py` kiểm tường minh hai thứ tự publish/edit và revision tài nguyên độc lập. Không cần ràng buộc mới. |
+| Kiểm duyệt | Cùng ranh giới khóa version/test đóng băng đề nghị chờ duyệt; khóa request, kiểm trạng thái cuối và khóa thông báo duy nhất tuần tự quyết định. | `test_moderation_concurrency.py`, kiểm thử governance; phê duyệt độc lập hiện có xác minh một publish/một thông báo. |
+| Thử lại media Speaking | Khóa cha → attempt, ràng buộc duy nhất segment/sequence, checksum bằng nhau khi phát lại giống nhau, từ chối dữ liệu khác, yêu cầu manifest liên tục đã đóng trước hoàn tất. | Kiểm thử chunk trùng kết nối độc lập, manifest/hoàn tất/khôi phục hiện có; hủy và commit chưa rõ mới. Giữ outbox dọn media riêng tư bền vững. |
+| Writing AI | Khóa attempt khử trùng tạo, `force=True` chủ ý tạo lượt mới, khóa run chỉ nhận PENDING nguyên tử, trạng thái cuối bảo vệ checkpoint/hoàn tất/hủy, sự kiện có thứ tự dưới khóa run. | Kiểm thử Writing AI hiện có và create/claim/cancel kết nối độc lập mới với provider giả được kiểm soát. Registry tác vụ Local chỉ tối ưu dispatch. |
+| Speaking AI | Claim run trong DB + hàng rào lease token, heartbeat, checkpoint kiểm token; hủy đã commit không bị worker cũ đảo ngược. | `test_speaking_ai_runs.py` hiện có: create/claim độc lập, bên thắng complete/cancel và restart/fencing cũ. |
+| ASR | Claim/lease/checkpoint DB riêng, duy nhất artifact/cache chuẩn hóa, tái dùng response READY, restart giữ phiên âm xong. | `test_speaking_transcript.py` hiện có: claim worker độc lập, token cũ, dừng/khôi phục, phát lại. Không gọi provider lời nói thật. |
+| Classroom/auth/admin | Khóa Classroom và index lời mời chờ/thành viên hoạt động; bắt đầu bài tập kiểm lại thành viên/archive/đủ điều kiện trong giao dịch tạo; khóa actor phối hợp hạ quyền. Khóa refresh cho một session kế; yêu cầu tải lại trạng thái tài khoản. Thông báo xử lý xung đột bằng DB. | Kiểm thử Classroom, bài tập, admin, thông báo và xoay refresh độc lập hiện có; không thêm khóa tính đúng đắn cục bộ tiến trình. |
 
-## Recovery and remaining risks
+## Khôi phục và rủi ro còn lại
 
-1. **Verified recovery semantics, no rewrite:** Writing marks stale active runs FAILED (`STALE_RUN`) on get/list/create; retry creates a new run, and terminal guards fence the old one. Speaking AI/ASR recover PENDING and expired leases at startup; explicit create/retry also requeues stale work, preserving safe checkpoints. Existing APIs therefore provide a recovery path if commit preceded local task dispatch. No periodic global scanner is added. Unobserved work can wait for startup or an explicit retry; document this operational latency rather than claiming automatic continuous dispatch.
-2. **Plausible/operational, deferred:** abrupt process death after file creation and before DB commit/compensation, or DB outage during ambiguity verification, can leave orphan files. Cleanup deliberately retains files whose committed status cannot be checked. A durable upload journal plus reference-aware reconciliation would address this; do not perform blind age-based deletion or silently claim crash-atomic storage. Existing Speaking cleanup outbox continues to cover committed deletions.
-3. **Plausible, needs dedicated reproduction:** legacy inherited-asset repair has its own copy/exception cleanup paths in Reading/Listening/Writing; do not generalize version-clone verification to those paths. Further injected lost-commit tests are needed before expanding changes there.
-4. **External side effects, deferred:** DB leases fence persisted results, not already-sent provider requests. Provider consumption immediately before crash/checkpoint can be repeated after retry without a provider-supported idempotency key. No claim of exactly-once external billing; `force=True` intentionally permits another assessment.
-5. **Plausible contention, not reproduced as correctness failure:** ZIP validation/import copies and some existing storage cleanup remain synchronous; services may hold short DB transactions for content traversal. No measured pool exhaustion or unrelated-user serialization justifies a queue, global lock or pool change. Public upload's avoidable whole-file allocation is corrected directly.
-6. **Auth overlap, no new defect demonstrated:** a refresh already in flight can overlap account disabling, but subsequent authenticated requests reload active account status. Existing token rotation and role/resource locks are retained; no speculative new token semantics.
-7. **Preexisting schema metadata drift, deferred:** a clean Alembic upgrade and the single head (`20261013_0035`) pass, but the optional `alembic check` reports `ix_attempt_events_attempt_type` exists in migrations/database and is absent from ORM metadata. This index is already present at the baseline; no migration is changed or index dropped by this task.
+1. **Ngữ nghĩa khôi phục đã xác minh, không viết lại:** Writing đánh dấu run active cũ FAILED (`STALE_RUN`) khi get/list/create; thử lại tạo run mới, bảo vệ trạng thái cuối chặn run cũ. Speaking AI/ASR khôi phục PENDING/lease hết hạn lúc khởi động; create/retry tường minh cũng xếp lại việc cũ, giữ checkpoint an toàn. API hiện có vì vậy cho đường khôi phục nếu commit xảy ra trước dispatch Local. Không thêm scanner toàn cục định kỳ. Việc không ai quan sát có thể chờ khởi động hoặc retry tường minh; ghi rõ độ trễ vận hành này, không tuyên bố dispatch tự động liên tục.
+2. **Khả dĩ/vận hành, hoãn lại:** tiến trình chết đột ngột sau tạo tệp trước commit/bù trừ, hoặc DB lỗi khi xác minh kết quả chưa rõ, có thể để lại tệp mồ côi. Dọn dẹp chủ ý giữ tệp chưa xác minh được commit. Nhật ký upload bền vững và đối soát theo tham chiếu có thể xử lý; không xóa mù theo tuổi hoặc ngầm hứa lưu trữ nguyên tử khi crash. Outbox Speaking hiện có vẫn xử lý xóa đã commit.
+3. **Khả dĩ, cần tái hiện riêng:** sửa tài sản kế thừa cũ có đường sao chép/dọn exception riêng trong Reading/Listening/Writing; không khái quát xác minh clone phiên bản sang đó. Cần thêm kiểm thử tiêm mất xác nhận commit trước khi mở rộng sửa.
+4. **Tác dụng phụ bên ngoài, hoãn lại:** lease DB bảo vệ kết quả lưu, không bảo vệ yêu cầu đã gửi provider. Tiêu thụ provider ngay trước crash/checkpoint có thể lặp khi retry nếu provider không hỗ trợ idempotency key. Không tuyên bố tính phí bên ngoài đúng một lần; `force=True` chủ ý cho đánh giá mới.
+5. **Tranh chấp khả dĩ, chưa tái hiện thành lỗi tính đúng đắn:** xác minh/sao chép import ZIP và một số dọn storage vẫn đồng bộ; service có thể giữ giao dịch DB ngắn để duyệt nội dung. Chưa đo hết pool hoặc tuần tự hóa người dùng không liên quan để biện minh queue, khóa toàn cục hay đổi pool. Đã sửa trực tiếp cấp phát toàn tệp có thể tránh của upload công khai.
+6. **Auth chồng lấn, chưa chứng minh lỗi mới:** refresh đang chạy có thể chồng lúc vô hiệu hóa tài khoản, nhưng yêu cầu xác thực sau tải lại trạng thái hoạt động. Giữ xoay token/khóa role/tài nguyên; không suy đoán ngữ nghĩa token mới.
+7. **Lệch metadata schema có từ trước, hoãn lại:** nâng cấp Alembic sạch và head duy nhất (`20261013_0035`) đạt, nhưng `alembic check` tùy chọn báo `ix_attempt_events_attempt_type` có trong migration/DB, thiếu ORM metadata. Index đã có ở mốc ban đầu; nhiệm vụ không sửa migration hoặc xóa index.
 
-## Verification and measurements
+## Xác minh và đo lường
 
-Focused regressions were first run against vulnerable paths: three real Full Mock deadlocks, public upload leak/unbounded read, two private chunk failures, two ZIP import failures and version-clone lost-acknowledgement failure. Corrected cases are rerun with existing related suites. Real concurrency uses independent PostgreSQL sessions/connections and explicit barriers; fault tests intentionally inject failures at flush or after successful commit. No task failure is silently counted as a successful result.
+Hồi quy tập trung chạy trước trên đường có lỗi: ba deadlock Full Mock thật, rò tệp/đọc không giới hạn upload công khai, hai lỗi chunk riêng, hai lỗi import ZIP và lỗi mất xác nhận clone phiên bản. Chạy lại ca đã sửa cùng bộ liên quan hiện có. Đồng thời thật dùng session/kết nối PostgreSQL độc lập và hàng rào tường minh; kiểm thử lỗi chủ ý tiêm tại flush hoặc sau commit thành công. Không âm thầm tính tác vụ lỗi là thành công.
 
-A bounded eight-connection save/submit smoke test forces all eight attempt locks to overlap and records distinct PostgreSQL backend PIDs, latency and persisted scores. The first measured local run used eight distinct connections: median 1306.7 ms, maximum 1310.7 ms for each save-plus-submit pair, including barrier wait, while other validation was running. This is loopback regression evidence, not a production capacity benchmark. No arbitrary global limiter or new queue infrastructure is introduced.
+Kiểm tra nhanh save/submit giới hạn tám kết nối ép tám khóa attempt chồng lấn và ghi PID backend PostgreSQL khác nhau, độ trễ, điểm đã lưu. Lần đo Local đầu dùng tám kết nối riêng: trung vị 1306.7 ms, cao nhất 1310.7 ms mỗi cặp save-cộng-submit, gồm chờ hàng rào, trong lúc xác minh khác cũng chạy. Đây là bằng chứng hồi quy loopback, không phải benchmark năng lực production. Không thêm limiter toàn cục tùy tiện hoặc hạ tầng queue mới.
 
-| Local check | Result |
+| Kiểm tra Local | Kết quả |
 | --- | --- |
-| Full backend pytest | 2,603 passed, 2 skipped in 772.58 s on dedicated PostgreSQL. The additional three upload/lifecycle cases were validated separately in the 22-case focused-module run. Skips are existing Windows symlink guards (`test_modal_web_runtime.py`, `test_writing_benchmark_images.py`); no concurrency regression was skipped. |
-| Focused backend lifecycle/storage/transfer suites | 78 passed; the new regression module was then extended with three upload/lifecycle interleavings and rerun: 22 passed. |
-| Ruff lint and formatting | Passed; 362 Python files already formatted. |
-| Frontend TypeScript and ESLint | Passed. |
-| Full Vitest | 123 files, 1,406 tests passed with `--maxWorkers=2`. The first unbounded-worker run had an unrelated existing test timeout during parallel validation; the complete bounded-worker rerun passed without changing a test or timeout. |
-| Alembic | Both dedicated databases upgraded cleanly to the single head `20261013_0035`; no migration changed. Optional metadata check reports the preexisting index drift documented above. |
-| `git diff --check` | Passed for all delivery paths. |
+| Toàn bộ pytest backend | 2,603 đạt, 2 bỏ qua trong 772.58 s trên PostgreSQL riêng. Ba ca upload/vòng đời bổ sung được xác minh riêng trong lần chạy mô-đun tập trung 22 ca. Bỏ qua là bảo vệ symlink Windows hiện có (`test_modal_web_runtime.py`, `test_writing_benchmark_images.py`); không bỏ qua hồi quy đồng thời. |
+| Bộ backend vòng đời/storage/transfer tập trung | 78 đạt; sau đó mở rộng mô-đun hồi quy thêm ba thứ tự xen kẽ upload/vòng đời, chạy lại: 22 đạt. |
+| Ruff lint và định dạng | Đạt; 362 tệp Python đã đúng định dạng. |
+| TypeScript và ESLint frontend | Đạt. |
+| Toàn bộ Vitest | 123 tệp, 1,406 kiểm thử đạt với `--maxWorkers=2`. Lần đầu không giới hạn worker có timeout kiểm thử cũ không liên quan khi xác minh song song; lần chạy lại toàn bộ có giới hạn đạt mà không sửa kiểm thử/timeout. |
+| Alembic | Hai DB riêng nâng cấp sạch tới head duy nhất `20261013_0035`; không đổi migration. Kiểm metadata tùy chọn báo lệch index có sẵn như trên. |
+| `git diff --check` | Đạt trên mọi đường dẫn bàn giao. |
 
-Delivery is the commit containing this audit, on `main`. The user's final delivery instruction explicitly requests pushing and ending the task without monitoring CI; CI and Golden Path results for this delivery will therefore remain unverified here. No migration is needed; existing uniqueness/index guarantees are preserved.
+Bản bàn giao là commit chứa kiểm toán này trên `main`. Chỉ dẫn cuối của người dùng yêu cầu push và kết thúc không theo dõi CI; vì vậy kết quả CI/Golden Path của bản này chưa được xác minh tại đây. Không cần migration; giữ bảo đảm duy nhất/index hiện có.

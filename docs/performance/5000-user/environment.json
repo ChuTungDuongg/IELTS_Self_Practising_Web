@@ -1,0 +1,60 @@
+{
+  "os": "Windows 11 Home Single Language",
+  "os_version": "10.0.26100",
+  "cpu": "Intel Core i5-13500H",
+  "physical_cores": 12,
+  "logical_processors": 16,
+  "physical_memory_bytes": 16833724416,
+  "python": "3.13.9",
+  "node": "v24.21.0",
+  "docker_engine": "29.4.3",
+  "postgresql": "17.11 Debian 17.11-1.pgdg13+2 x86_64",
+  "database_limits": {
+    "cpus": 2,
+    "memory_bytes": 1073741824,
+    "max_connections": 100,
+    "shared_buffers": "128MB",
+    "storage": "tmpfs",
+    "bind": "loopback only"
+  },
+  "packages": {
+    "SQLAlchemy": "2.0.54",
+    "asyncpg": "0.31.0",
+    "httpx": "0.28.1",
+    "FastAPI": "0.141.1",
+    "Locust": "2.43.3",
+    "psutil": "7.2.2"
+  },
+  "topology": {
+    "api_processes": 1,
+    "api_cpu_memory_limit": "NOT RECORDED; host process has no cgroup limit",
+    "frontend_processes_in_workload": 0,
+    "nginx_processes_in_workload": 0,
+    "postgres_process_topology": "one disposable Docker instance, separate databases/roles",
+    "load_generator": "same Windows host, separate Locust process",
+    "object_storage": "run-owned local directory; no cloud",
+    "ai": "disabled HTTP; deterministic providers in separate component probes"
+  },
+  "dataset": {
+    "public_tests": 1,
+    "published_versions": 1,
+    "objective_questions": 80,
+    "reading_passages": 3,
+    "listening_parts": 4,
+    "writing_tasks": 2,
+    "speaking_prompts": 3,
+    "cohorts": 5,
+    "users_including_admin_and_migration_sentinel": 12,
+    "candidate_attempts_after_smoke_and_burst": 27,
+    "candidate_full_mock_sessions_after_smoke_and_burst": 4,
+    "synthetic_query_plan_users_rolled_back": 1000,
+    "synthetic_query_plan_attempts_rolled_back": 10000
+  },
+  "not_recorded": [
+    "Docker Desktop VM outer memory/CPU envelope",
+    "network interface bandwidth",
+    "cloud region/RTT",
+    "cloud token pricing",
+    "frontend SSR/static caching throughput"
+  ]
+}

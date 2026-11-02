@@ -1,9 +1,9 @@
-# Writing: authored tasks, human grading và advisory AI
+# Writing: bài tác giả soạn, chấm thủ công và AI tham khảo
 
 > Mục đích và phạm vi: Phân biệt bài viết đã lưu, điểm human final và phản hồi AI theo task.
 > Đối chiếu mã nguồn tại `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`. Đây là kiểm tra tĩnh; không xác nhận trạng thái deployment đang chạy.
 
-## A–C. Mục đích, workflow và ownership
+## A–C. Mục đích, quy trình và phân chia trách nhiệm
 
 Phân biệt bài viết đã lưu, điểm human final và phản hồi AI theo task.
 
@@ -11,7 +11,7 @@ Tác giả tạo Task 1/2 và ảnh nếu cần. Người học viết/autosave 
 
 WritingService quản lý authored task; AttemptService lưu responses/human scores; WritingAIService và detached worker quản lý run. MTS và Task1 services điều phối provider. Benchmark bank là domain riêng cho ADMIN labels, không gắn nhãn vào production inference.
 
-## D. Implementation map
+## D. Bản đồ triển khai
 
 | Lớp | Source |
 | --- | --- |
@@ -22,41 +22,51 @@ WritingService quản lý authored task; AttemptService lưu responses/human sco
 | Repositories/models | [backend/app/repositories/writing_ai.py](../../backend/app/repositories/writing_ai.py); [backend/app/repositories/writing_benchmark.py](../../backend/app/repositories/writing_benchmark.py); [backend/app/models/writing_ai.py](../../backend/app/models/writing_ai.py); [backend/app/models/writing_benchmark.py](../../backend/app/models/writing_benchmark.py); [backend/app/models/entities.py](../../backend/app/models/entities.py) |
 | Tests | [backend/tests/test_writing_score_first.py](../../backend/tests/test_writing_score_first.py); [backend/tests/test_writing_concurrency.py](../../backend/tests/test_writing_concurrency.py); [backend/tests/test_writing_attempts.py](../../backend/tests/test_writing_attempts.py); [frontend/tests/writing-ai-assessment.test.tsx](../../frontend/tests/writing-ai-assessment.test.tsx) |
 
-## E–F. Data flow và API contracts
+## E–F. Luồng dữ liệu và hợp đồng API
 
 Input persisted → permission/cache check → durable run → worker/provider → validated criterion checkpoints → SSE/snapshot → advisory cards. Human final save đi API grading riêng, không do stream event tự ghi.
 
-### Sequence: tạo và quan sát một AI run
+### Trình tự: tạo và quan sát một run AI
 
 Đối chiếu [create_run router](../../backend/app/api/v1/writing_ai.py), [WritingAIService.create](../../backend/app/services/writing_ai.py) và [worker](../../backend/app/services/writing_ai_worker.py). Diagram giản lược pipeline từng criterion; Task 1 và Task 2 vẫn có thứ tự riêng trong [AI handbook](../handbook/ai-architecture.md).
 
 ```mermaid
 sequenceDiagram
-    participant UI as Writing review
+    participant UI as Trang review Writing
     participant API as Writing AI API
     participant DB as PostgreSQL
-    participant W as Detached worker
-    participant P as Configured provider
-    UI->>API: POST AI run, force flag
-    API->>DB: Lock attempt; validate ownership, finalization and input
-    alt Reusable completed or active run, force=false
-        DB-->>API: Existing run identity
-        API-->>UI: cache_hit or existing_active; no new worker
-    else New run
-        API->>DB: Persist PENDING run and fingerprint; commit
-        API->>W: launch(run_id)
-        API-->>UI: run_id
-        W->>DB: Check PENDING and fingerprint; mark RUNNING
-        W->>P: Provider readiness and assessment outside DB transaction
-        P-->>W: Criterion outputs or provider failure
-        W->>DB: Short transactions for validated checkpoints and terminal state
+    participant W as Consumers hữu hạn
+    participant P as Provider đã cấu hình
+    UI->>API: POST AI run, cờ force
+    API->>DB: Khóa attempt, kiểm ownership, finalization và input
+    alt Có run dùng lại và force=false
+        DB-->>API: Định danh run hiện có
+        API-->>UI: cache_hit hoặc existing_active, không tạo job mới
+    else Cần run mới
+        API->>DB: Khóa admission toàn cục, kiểm giới hạn PENDING
+        alt Hàng đợi đầy
+            API-->>UI: 503 AI_WRITING_QUEUE_FULL, có thể retry
+        else Còn chỗ
+            API->>DB: Lưu PENDING và fingerprint, commit
+            API-->>W: launch(run_id) là tín hiệu đánh thức cục bộ
+            API-->>UI: run_id
+        end
     end
-    UI->>API: GET snapshot or SSE events
-    API->>DB: Authorized persisted progress
-    API-->>UI: Advisory result; no human-score mutation
+    loop Quét định kỳ, kể cả khi mất tín hiệu launch
+        W->>DB: Claim PENDING trong giới hạn RUNNING toàn cục
+        DB-->>W: Lease token và deadline theo đồng hồ DB
+    end
+    opt Đã claim được run
+        W->>P: Kiểm readiness và chấm ngoài DB transaction
+        P-->>W: Kết quả criterion hoặc lỗi provider
+        W->>DB: Heartbeat, checkpoint và trạng thái cuối qua token fencing
+    end
+    UI->>API: GET snapshot hoặc SSE events
+    API->>DB: Đọc tiến độ đã lưu trong phạm vi được phép
+    API-->>UI: Kết quả tham khảo, không sửa điểm cuối do người chấm
 ```
 
-`force=true` bỏ nhánh reuse trong service; không có bảo đảm mọi request đều được deduplicate. Nếu process chết sau commit nhưng trước `launch`, row PENDING không tự trở thành công việc trong một broker: stale-run recovery đánh dấu gián đoạn, người dùng có thể yêu cầu chạy lại. Đóng SSE observer cũng không phải cancel worker. Các giới hạn này quan trọng khi thiết kế worker fleet sau này.
+`force=true` bỏ nhánh tái sử dụng kết quả nhưng vẫn chịu admission của hàng đợi toàn cục. Bổ sung ngày 2026-11-02: consumers hữu hạn quét định kỳ và dispatch các hàng PENDING đã commit, kể cả khi process chết trước `launch`. Lease token/deadline ngăn worker mất quyền ghi checkpoint hoặc trạng thái cuối. RUNNING hết lease chuyển sang `RUN_INTERRUPTED`, giữ điểm từng phần để người dùng retry bằng run mới; chưa tự tiếp tục MTS stage. Đóng SSE không hủy worker. Xem [báo cáo và hướng dẫn rollout](../performance/5000-user-capacity.md), [consumer riêng](../../backend/app/workers/writing.py).
 
 Các đường dẫn sau dùng prefix `/api/v1`; DTO, dependency và response model ở router được dẫn trong bảng. [Source map](../handbook/source-map.md) liệt kê toàn bộ route cùng khai báo gốc.
 
@@ -67,27 +77,27 @@ Các đường dẫn sau dùng prefix `/api/v1`; DTO, dependency và response mo
 - `GET /ai-writing-grading-runs/{run_id}/events`
 - `PUT /attempts/{attempt_id}/writing/{writing_task_id}/ai-practice-feedback`
 
-## G. Persistence
+## G. Lưu trữ
 
 WritingTask, AttemptWritingResponse và AttemptWritingScore tách khỏi WritingAIGradingRun/Event/PracticeFeedback. BenchmarkSample giữ ground truth và optional private image. Run identity gồm input/config/version; một run cũ vẫn đọc được nhưng không nhất thiết được reuse.
 
-## H. Business rules
+## H. Quy tắc nghiệp vụ
 
 TA/TR, CC, LR, GRA cần valid half-band theo contract. Task 2 score-only đi trước evidence/feedback; Task 1 giữ visual grounding và evidence trước score. Điểm checkpoint không bị feedback lỗi xóa. Task-specific relevance không được coi mọi bài yếu/ngắn là unrelated. Human final phải explicit Save, AI snapshot không sửa history score.
 
-## I. Security
+## I. Bảo mật
 
 Owner có quyền AI run/cancel; classroom observer đọc theo provenance không tự chạy/cancel AI. Personal human grading và classroom staff grading có policy khác, dùng grading_policy. Benchmark CRUD/export ADMIN-only; labels không đưa vào scorer input.
 
-## J. Failure và recovery
+## J. Lỗi và khôi phục
 
 SSE reconnect đọc durable events; tab cleanup chỉ stop observation. Provider not configured/unavailable, invalid output, context/length budget, timeout được thể hiện riêng. Repair bị giới hạn; không sinh fallback band. Stale-run logic trong service giữ valid score checkpoints.
 
-## K. Focused testing
+## K. Kiểm thử tập trung
 
 Score-first, source-ID, paragraph preservation, relevance, annotations, output normalization và worker concurrency tests. Benchmark metrics/capacity/export tests kiểm labels riêng. Không thay scripted tests bằng khẳng định model đạt examiner accuracy.
 
-## L. Extension guide
+## L. Hướng dẫn mở rộng
 
 Thêm feedback field qua schemas/result validation → worker checkpoint/presenter → typed client/card → fixtures backward compatibility. Thêm provider ở adapter/factory; không gọi API trực tiếp từ React. Nếu đổi scoring semantics, version cache và benchmark tách Task1/Task2.
 

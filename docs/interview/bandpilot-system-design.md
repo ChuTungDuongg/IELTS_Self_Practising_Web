@@ -1,4 +1,4 @@
-# BandPilot — System Design & Engineering Interview Guide
+# BandPilot — Hướng dẫn phỏng vấn thiết kế hệ thống và kỹ thuật
 
 > Mục đích và phạm vi: Ôn Software/Backend/AI/System Design bằng kiến trúc thực, không phóng đại đóng góp.
 > Đối chiếu mã nguồn tại `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`. Đây là kiểm tra tĩnh; không xác nhận trạng thái deployment đang chạy.

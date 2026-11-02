@@ -1,0 +1,76 @@
+{
+  "scope": "local PostgreSQL queue component with deterministic fake provider; no HTTP or GPU throughput claim",
+  "measured_at_utc": "2026-11-02T10:47:09.165392+00:00",
+  "runtime": {
+    "python": "3.13.9",
+    "platform": "Windows-11-10.0.26100-SP0",
+    "database": "isolated Docker PostgreSQL 17, loopback, 2 CPUs / 1 GiB, tmpfs",
+    "database_connections": "independent sessions, bounded pool_size=5/max_overflow=0/pool_timeout=30s"
+  },
+  "input": {
+    "runs": 10,
+    "fixed_consumers": 2,
+    "global_running_cap": 2,
+    "per_run_llm_cap": 2,
+    "fake_delay_per_call_ms": 20,
+    "poll_seconds": 0.05,
+    "lease_seconds": 10
+  },
+  "queue_wait_ms": {
+    "samples": [
+      281.243,
+      304.03,
+      1055.186,
+      1062.956,
+      1706.693,
+      1712.305,
+      2349.726,
+      2351.747,
+      3245.025,
+      3248.031
+    ],
+    "median": 1709.499,
+    "max": 3248.031
+  },
+  "accepted_to_completed_ms": {
+    "samples": [
+      1039.001,
+      1082.402,
+      1729.343,
+      1739.011,
+      2366.381,
+      2372.677,
+      3241.931,
+      3253.724,
+      4324.567,
+      4357.927
+    ],
+    "median": 2369.529,
+    "max": 4357.927
+  },
+  "drain_ms_after_consumer_start": 4388.099,
+  "completed": 10,
+  "failed": 0,
+  "observed_peak_running_rows": 2,
+  "observed_peak_local_run_tasks": 2,
+  "observed_peak_fake_llm_calls": 4,
+  "fake_provider_calls": 130,
+  "cross_session_blocked_provider_cancel_ms": 3193.665,
+  "expired_lease_scan_ms": 12.784,
+  "expired_lease_status": "FAILED",
+  "expired_lease_error": "RUN_INTERRUPTED",
+  "partial_checkpoint_preserved": true,
+  "launch_burst_regression": {
+    "persisted_queue_hints": 1000,
+    "baseline_tasks_created": 1000,
+    "candidate_tasks_created": 0,
+    "evidence": "test_writing_durable_dispatch.py test_launch_is_a_hint; observed red then green, structural comparison only"
+  },
+  "limits": [
+    "An earlier NullPool probe failed the 90s drain guard; no successful throughput metrics were emitted for that attempt",
+    "One local component sample, no production capacity estimate or speedup claim",
+    "Fake inference cost and queue drainage are not real provider throughput",
+    "No claim of exactly-once provider invocation or billing",
+    "Remote cancellation detection uses a heartbeat; already accepted provider work may continue remotely"
+  ]
+}

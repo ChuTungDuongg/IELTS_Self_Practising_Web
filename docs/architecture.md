@@ -1,103 +1,59 @@
-# BandPilot architecture boundaries
+# Ranh giới kiến trúc BandPilot
 
-BandPilot is a modular monolith. Next.js renders the frontend and calls FastAPI through the typed clients in `frontend/src/lib/api/`. FastAPI owns domain mutations, authorization, validation, lifecycle transitions, scoring and PostgreSQL access. Browser and server-side API clients both preserve structured `ApiError` codes; page-level guards handle only known denial codes and propagate other failures.
+BandPilot là một modular monolith. Next.js dựng giao diện và gọi FastAPI qua các typed clients trong `frontend/src/lib/api/`. FastAPI chịu trách nhiệm thay đổi dữ liệu nghiệp vụ, phân quyền, validation, chuyển trạng thái vòng đời, chấm điểm và truy cập PostgreSQL. API clients trên browser và server đều giữ mã lỗi có cấu trúc `ApiError`; guards ở cấp page chỉ xử lý những mã từ chối đã biết và chuyển tiếp các lỗi khác.
 
-> Boundary/source review at `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`; static inspection only. Purpose: current ownership contracts; deployment/test results retain their own verification scope.
-> Start with the [knowledge base](README.md), [module map](handbook/module-catalog.md), [runtime diagrams](handbook/runtime-architecture.md) and [feature playbook](handbook/feature-development-playbook.md). See [audit limitations](DOCS_AUDIT.md).
+> Đối chiếu ranh giới và source tại `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`; chỉ kiểm tra tĩnh. Mục đích là mô tả trách nhiệm hiện hành; kết quả deployment và tests giữ phạm vi xác minh riêng.
+> Bắt đầu từ [kho kiến thức](README.md), [bản đồ module](handbook/module-catalog.md), [sơ đồ runtime](handbook/runtime-architecture.md) và [quy trình phát triển feature](handbook/feature-development-playbook.md). Xem [giới hạn audit](DOCS_AUDIT.md).
 
 ## Backend
 
-- Routers authenticate requests, parse inputs and return response schemas. Services enforce business rules and own transaction scope. Repositories contain reusable SQLAlchemy loading and query logic. A service may issue a small, local query directly when a repository wrapper would add no clarity.
-- Keep one `AsyncSession` through an operation. Service methods own `session.begin()` for mutations, including locks, writes and asset cleanup. Pure validation and presentation code must not create a separate database session inside that transaction.
-- `AccessPolicy` is authoritative for content visibility and ownership. Listing uses a batch of approved public version IDs for the current request; it does not cache authorization across requests. Classroom approval alone does not make a version public. Archived content is excluded from public access.
-- Published `TestVersion` rows remain immutable and historical attempts reference them. Active exam responses omit keys. The attempt service enforces ownership, deadlines, Full Mock progression and review locks before presenting answers.
-- `backend/app/domains/questions/registry.py` owns Pydantic contracts and evaluation; `frontend/src/features/questions/registry.tsx` owns editors and renderers. Every objective type must exist in both registries and in the frontend `QuestionType` union. Add compatible schemas and tests when a type changes.
-- Transfer import validates the archive, manifest, graph, checksums and content before persistence. Source-to-import ID mapping is isolated in `transfer_ids.py`; `TransferService` still owns the database transaction and compensating asset cleanup. Keep the transfer format compatible.
-- AI provider integrations live under `backend/app/providers/`. Writing and Speaking workers run provider work outside HTTP requests and persist durable checkpoints through their services and repositories. AI feedback is advisory; it does not replace server-side objective grading or authorized human final scores.
-- Classroom staff capabilities resolve separately from global roles in `classroom_capabilities.py`. Keep Builder ownership/moderation in AccessPolicy. Gradebook and learning analytics share P2 root acceptance/status SQL and native final-score provenance; neither is a second exam/scoring lifecycle. Roster pages, matrix columns, charts and exports must remain bounded and authorized per request.
-- P4 aggregate SQL lives in `repositories/classroom_learning.py`; `ClassroomLearningService` resolves scoped dashboards and deterministic evidence/recommendations. `LearningPlanService` manages normalized references to existing activities, not attempts. Reuse profile skill targets and the optional explicit overall target. See [analytics definitions and API](classroom-learning-analytics.md) and [Classroom workspace design](classroom-workspace.md).
+- Routers xác thực request, phân tích input và trả response theo schema. Services thực thi quy tắc nghiệp vụ và sở hữu phạm vi transaction. Repositories chứa logic query và loading SQLAlchemy có thể tái sử dụng. Service có thể trực tiếp thực hiện một query nhỏ, cục bộ nếu thêm repository wrapper không giúp mã rõ hơn.
+- Giữ một `AsyncSession` xuyên suốt operation. Service methods sở hữu `session.begin()` cho mutations, gồm locks, ghi dữ liệu và dọn assets. Mã validation hoặc presentation thuần túy không được tạo database session riêng bên trong transaction đó.
+- `AccessPolicy` là nơi quyết định quyền xem và quyền sở hữu nội dung. Listing dùng batch IDs của các public versions đã được duyệt cho request hiện tại; không cache authorization giữa các requests. Chỉ được classroom phê duyệt không làm version trở thành public. Nội dung đã archive không được truy cập công khai.
+- Các bản ghi `TestVersion` đã publish là bất biến và historical attempts tham chiếu chúng. Response của bài thi đang diễn ra không chứa answer keys. Attempt service kiểm ownership, deadlines, tiến trình Full Mock và review locks trước khi trình bày đáp án.
+- `backend/app/domains/questions/registry.py` sở hữu Pydantic contracts và evaluation; `frontend/src/features/questions/registry.tsx` sở hữu editors và renderers. Mọi objective type phải có trong cả hai registries và frontend union `QuestionType`. Khi thay đổi type, bổ sung schemas tương thích và tests.
+- Transfer import kiểm archive, manifest, graph, checksums và nội dung trước khi lưu. Ánh xạ IDs nguồn sang IDs sau import được tách trong `transfer_ids.py`; `TransferService` vẫn sở hữu database transaction và asset cleanup để bù trừ khi lỗi. Giữ tương thích transfer format.
+- Tích hợp AI providers nằm trong `backend/app/providers/`. Writing và Speaking workers gọi provider ngoài HTTP requests và lưu durable checkpoints qua services/repositories của chúng. AI feedback chỉ mang tính tham khảo, không thay thế objective grading phía server hoặc human final scores được người có quyền nhập.
+- Quyền của classroom staff được phân giải riêng với global roles trong `classroom_capabilities.py`. Ownership/moderation của Builder vẫn thuộc AccessPolicy. Gradebook và learning analytics dùng chung SQL acceptance/status của P2 roots và nguồn gốc final score từ các bảng nghiệp vụ; không tạo vòng đời thi/chấm điểm thứ hai. Roster pages, matrix columns, charts và exports phải luôn có giới hạn và được phân quyền theo từng request.
+- Aggregate SQL của P4 nằm trong `repositories/classroom_learning.py`; `ClassroomLearningService` xử lý dashboards đúng phạm vi và evidence/recommendations theo quy tắc xác định. `LearningPlanService` quản lý normalized references tới activities hiện có, không quản lý attempts. Tái sử dụng skill targets của profile và explicit overall target tùy chọn. Xem [định nghĩa và API analytics](classroom-learning-analytics.md) và [thiết kế Classroom workspace](classroom-workspace.md).
 
-## Asset storage
+## Lưu trữ assets
 
-`app/storage/factory.py` is the sole application provider selector. `local` is the
-default; `s3` and `r2` use the shared boto3 adapter. PostgreSQL keeps opaque object
-keys and authorized relationships, never bucket URLs. Private media is served
-through FastAPI after the existing access policies. Bounded byte-range reads
-preserve Listening/Speaking seeking. SDK work runs off the event loop; writes
-finish before cancellation compensation inspects database references.
+`app/storage/factory.py` là nơi duy nhất chọn storage provider của ứng dụng. Mặc định là `local`; `s3` và `r2` dùng chung boto3 adapter. PostgreSQL lưu opaque object keys và quan hệ được phân quyền, không lưu bucket URLs. Private media được phục vụ qua FastAPI sau các access policies hiện có. Đọc byte range có giới hạn giữ khả năng seek của Listening/Speaking. SDK chạy ngoài event loop; thao tác ghi hoàn tất trước khi cancellation compensation kiểm tra database references.
 
-Cloud Settings require a bucket and region; R2 additionally requires its HTTPS
-account endpoint, region `auto`, and scoped access/secret keys. AWS can use IAM
-roles through the standard credential chain. Incomplete configuration fails
-closed. Startup initializes only the selected backend; cloud mode does not create
-`STORAGE_ROOT`. Temporary FFmpeg/ZIP files and local evaluation fixtures remain
-local. Switching a provider does not migrate bytes; verify and copy referenced
-keys before an operator-controlled cutover.
+Cloud Settings yêu cầu bucket và region; R2 cần thêm HTTPS account endpoint, region `auto` và access/secret keys có scope phù hợp. AWS có thể dùng IAM roles qua standard credential chain. Cấu hình thiếu bị từ chối theo nguyên tắc fail closed. Startup chỉ khởi tạo backend đã chọn; cloud mode không tạo `STORAGE_ROOT`. FFmpeg/ZIP temporary files và local evaluation fixtures vẫn ở local. Chuyển provider không tự di chuyển bytes: phải xác minh và copy các keys đang được tham chiếu trước khi operator chuyển hệ thống sang provider mới.
 
-The P3 gates are verified offline with boto3 Stubber, fake S3 clients and isolated
-PostgreSQL. Live cloud/staging validation, Modal durability and deployment remain
-separate operations. Legacy local backup/restore remains compatible and refuses
-cloud mode. Its explicit `--portable` workflow produces v2 database/object
-backups, verifies checksums and recovers into an isolated destination. Operator
-tools require a maintenance window; they never switch providers or delete sources.
-See [storage architecture](storage-architecture.md), [migration](storage-migration.md)
-and [backup/recovery](storage-backup-restore.md).
-See [storage configuration and progress](storage-portability-work-in-progress.md).
+Các P3 gates đã được kiểm offline bằng boto3 Stubber, fake S3 clients và PostgreSQL cách ly. Kiểm cloud/staging thật, Modal durability và deployment là các thao tác riêng. Local backup/restore cũ vẫn tương thích và từ chối cloud mode. Workflow `--portable` được gọi tường minh tạo v2 database/object backups, kiểm checksums và restore vào destination cách ly. Operator tools cần maintenance window; chúng không tự đổi providers hoặc xóa dữ liệu nguồn. Xem [kiến trúc storage](storage-architecture.md), [migration](storage-migration.md), [backup/recovery](storage-backup-restore.md) và [cấu hình, tiến độ storage](storage-portability-work-in-progress.md).
 
-## Frontend styling
+## Styling frontend
 
-- `globals.css` owns resets, account accent preferences and exam-specific defaults.
-- `design-system.css` owns shared light/dark product tokens, typography, surfaces and reusable workspace patterns. Shared root tokens must not be redefined in the Gravity stylesheets.
-- `gravity-home.css` owns homepage presentation, interaction and motion; its Gravity palette is scoped to `.gravity-story`. `gravity-product.css` owns the deliberate product component treatment without redefining theme tokens.
-- Preserve light/dark themes, account accents, responsive exam layouts, keyboard focus and reduced-motion behavior. The homepage must render useful static content before WebGL enhancement.
+- `globals.css` sở hữu resets, account accent preferences và exam-specific defaults.
+- `design-system.css` sở hữu product tokens chung cho light/dark, typography, surfaces và workspace patterns tái sử dụng. Không định nghĩa lại shared root tokens trong Gravity stylesheets.
+- `gravity-home.css` sở hữu cách trình bày, tương tác và chuyển động của homepage; Gravity palette của nó được giới hạn trong `.gravity-story`. `gravity-product.css` sở hữu cách thể hiện các product components, không định nghĩa lại theme tokens.
+- Giữ light/dark themes, account accents, responsive exam layouts, keyboard focus và reduced-motion behavior. Homepage phải có nội dung tĩnh hữu ích trước khi bổ sung WebGL.
 
-## Verification
+## Kiểm chứng
 
-- Use Vitest for component and CSS contracts, pytest with an isolated PostgreSQL database for backend behavior and query counts, and the four browser specs selected by `.github/workflows/e2e.yml`: Listening, Writing, Full Mock and Reading Practice.
-- Authorization tests must cover owner, admin, public, classroom-only, archived and unauthorized views. A locked Full Mock must never expose review answers, regardless of the HTTP status produced by a streamed Next.js page.
-- Keep fixture exam content fictional. Never run migrations or destructive integration setup against a development or production database.
+- Dùng Vitest cho component/CSS contracts, pytest với PostgreSQL cách ly cho backend behavior và query counts; bốn browser specs được chọn bởi `.github/workflows/e2e.yml` là Listening, Writing, Full Mock và Reading Practice.
+- Authorization tests phải bao phủ owner, admin, public, classroom-only, archived và unauthorized views. Full Mock đang bị khóa không bao giờ được lộ đáp án review, bất kể HTTP status của streamed Next.js page.
+- Exam fixtures phải là nội dung hư cấu. Không chạy migrations hoặc destructive integration setup trên development/production database.
 
-## Deployment configuration
+## Cấu hình deployment
 
-### Modal Web concurrency
+Bổ sung ngày 2026-11-02: [capacity audit](performance/5000-user-capacity.md) thêm DB pool budget có cấu hình, giữ defaults 5+10/30s, và durable bounded Writing dispatch dùng PostgreSQL run rows, leases và admission control. Writing consumers có thể chạy riêng qua [entrypoint](../backend/app/workers/writing.py); HTTP-only replicas tắt consumers. Code đã có nhưng chưa cloud deployed hoặc được xác minh với 5.000 VUs. Giới hạn Speaking và single-owner Modal demo vẫn là các ràng buộc riêng.
 
-The Modal Web class uses `@modal.concurrent(max_inputs=8)` to admit up to eight
-inputs per container, while retaining `min_containers=1` and `max_containers=1`.
-The embedded PostgreSQL topology requires a single owner for its database Volume;
-additional Web replicas would require a separate, reviewed database and storage
-architecture. Web runs on CPU; configured AI inference functions run separately
-on GPUs. See the [Modal performance case study](case-studies/modal-web-performance.md)
-for staging evidence, trade-offs and measurement limits.
+### Concurrency của Modal Web
 
-P4 keeps the existing Modal demo (one Web container, guarded embedded PostgreSQL
-17, original named Volumes) and adds a managed-database/S3/R2 topology. Non-secret
-frozen markers select mounts; backend Secrets select the actual P3 provider and
-must agree. Cloud topology has no persistent local Volume dependency. Explicit
-mode-specific asset Volumes/Secrets, an opt-in strict dev isolation check, and a
-matching runtime environment label guard against accidental environment reuse.
-Legacy shared demo assets remain an explicitly warned compatibility default.
+Modal Web class dùng `@modal.concurrent(max_inputs=8)` để nhận tối đa tám inputs/container, đồng thời giữ `min_containers=1` và `max_containers=1`. Embedded PostgreSQL topology yêu cầu một owner duy nhất cho database Volume; muốn thêm Web replicas cần kiến trúc database/storage riêng đã được review. Web chạy CPU; các AI inference functions được cấu hình chạy riêng trên GPU. Xem [case study Modal performance](case-studies/modal-web-performance.md) để biết staging evidence, trade-offs và giới hạn đo lường.
 
-Modal Local uploads have asynchronous Volume durability; HTTP/database success
-is not an immediate durable snapshot acknowledgement. Reload happens before
-process startup only, and explicit commit follows shutdown of all application
-processes. Failures are surfaced. Use managed PostgreSQL and object storage for
-production. External database startup cannot seed or initialize PostgreSQL and
-requires separate operator migrations; embedded startup retains its defaults.
+P4 giữ Modal demo hiện có: một Web container, embedded PostgreSQL 17 có guard và các named Volumes ban đầu; đồng thời bổ sung managed-database/S3/R2 topology. Frozen markers không chứa secrets chọn mounts; backend Secrets chọn P3 provider thực và hai bên phải khớp. Cloud topology không phụ thuộc persistent local Volumes. Asset Volumes/Secrets riêng theo mode, strict dev isolation check bật tùy chọn và runtime environment label tương ứng giúp ngăn reuse nhầm môi trường. Legacy shared demo assets vẫn là compatibility default có cảnh báo rõ.
 
-The EC2/Docker template uses non-root backend/frontend containers and HTTPS
-Nginx, an external TLS PostgreSQL URL, and S3/R2. Only proxy ports are published.
-Runtime credentials never enter frontend configuration or image build inputs;
-Modal restricts the Next/Nginx child-process environments as well.
-Database migrations are an explicit tools-profile command, separate from Web
-startup. `/api/v1/health` remains liveness; `/api/v1/ready` checks database access
-with a short timeout. Offline tests validate configuration; images, live TLS,
-cloud IAM/networking and durability still require staging validation.
+Modal Local uploads có Volume durability bất đồng bộ; HTTP/database success không phải xác nhận durable snapshot ngay lập tức. Reload chỉ diễn ra trước process startup, còn explicit commit diễn ra sau khi mọi application process đã dừng. Lỗi được báo ra ngoài. Production nên dùng managed PostgreSQL và object storage. Startup với external database không được seed/init PostgreSQL và cần operator migrations riêng; embedded startup giữ defaults hiện có.
 
-See [Modal deployment](modal-web.md), [four profiles and EC2/Docker](aws-deployment.md)
-and [storage progress](storage-portability-work-in-progress.md). P5 operator tools
-provide migration inventories, verified copies and isolated cloud backup/restore;
-production cutover and disaster-recovery drills remain separate live operations.
+EC2/Docker template dùng backend/frontend containers chạy non-root, HTTPS Nginx, external TLS PostgreSQL URL và S3/R2. Chỉ proxy publish ports. Runtime credentials không đi vào frontend config hoặc image build inputs; Modal cũng giới hạn environment của Next/Nginx child processes. Database migrations là explicit tools-profile command, tách khỏi Web startup. `/api/v1/health` vẫn là liveness; `/api/v1/ready` kiểm database access với timeout ngắn. Offline tests kiểm configuration; images, TLS thật, cloud IAM/networking và durability vẫn cần staging validation.
 
-## Deliberate limits
+Xem [Modal deployment](modal-web.md), [bốn profiles và EC2/Docker](aws-deployment.md), [tiến độ storage](storage-portability-work-in-progress.md). P5 operator tools cung cấp migration inventories, verified copies và cloud backup/restore cách ly; production cutover và disaster-recovery drills là thao tác live riêng.
 
-`AttemptService` still coordinates lifecycle, autosave, review, history and grading in one module. Its methods share transaction, timer and ownership invariants; splitting those paths without a dedicated contract suite risks changing behavior. `TestService` still contains version cloning and validation, and the question registry still contains the canonical schema table. Further extraction should be driven by a concrete repeated dependency or testable boundary, not file length alone.
+## Những giới hạn được giữ có chủ đích
+
+`AttemptService` vẫn điều phối lifecycle, autosave, review, history và grading trong một module. Các methods chia sẻ invariants về transaction, timer và ownership; tách các paths này khi chưa có contract suite riêng có nguy cơ đổi hành vi. `TestService` vẫn chứa version cloning/validation và question registry vẫn giữ canonical schema table. Chỉ nên tiếp tục tách khi có dependency lặp lại cụ thể hoặc boundary có thể kiểm thử, không dựa đơn thuần vào độ dài file.

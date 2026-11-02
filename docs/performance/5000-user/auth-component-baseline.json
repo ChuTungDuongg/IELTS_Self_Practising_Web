@@ -1,0 +1,26 @@
+{
+  "label": "baseline-inline-scrypt",
+  "scope": "AuthService.authenticate with real scrypt; controlled DB boundary; no HTTP/database/provider calls",
+  "python": "3.13.9",
+  "platform": "Windows",
+  "process_cpu_count": 16,
+  "total_calls": 50,
+  "batch_concurrency": 5,
+  "batches": 10,
+  "heartbeat_interval_ms": 10,
+  "scrypt": {
+    "n": 16384,
+    "r": 8,
+    "p": 1,
+    "dklen": 32
+  },
+  "wall_seconds": 2.381339,
+  "process_cpu_seconds": 2.296875,
+  "peak_password_callbacks": 1,
+  "password_callback_thread_count": 1,
+  "password_callback_on_event_loop": true,
+  "heartbeat_samples": 10,
+  "heartbeat_lag_p50_ms": 219.5589,
+  "heartbeat_lag_p95_ms": 264.1801,
+  "heartbeat_lag_max_ms": 264.1801
+}

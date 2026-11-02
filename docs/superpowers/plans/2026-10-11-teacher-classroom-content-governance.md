@@ -1,87 +1,87 @@
-# Teacher, Classroom, Content Governance & Notification Implementation Plan
+# Kế hoạch triển khai giáo viên, lớp học, quản trị nội dung và thông báo
 
-> **Documentation audit: HISTORICAL.** Historical reference; không phải contract hiện hành.
-> Mục đích: Teacher, Classroom, Content Governance & Notification Implementation Plan. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../../../backend/app/services/classroom_capabilities.py).
-> Đọc cùng [current module/guide](../../modules/classrooms.md); [audit và giới hạn](../../DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+> **Kiểm toán tài liệu: HISTORICAL.** Tham khảo lịch sử, không phải hợp đồng hiện hành.
+> Mục đích: kế hoạch triển khai giáo viên, lớp học, quản trị nội dung và thông báo. Đối chiếu mã nguồn `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [phần triển khai](../../../backend/app/services/classroom_capabilities.py).
+> Đọc cùng [mô-đun/hướng dẫn hiện hành](../../modules/classrooms.md); [kiểm toán và giới hạn](../../DOCS_AUDIT.md). Kết quả kiểm thử/benchmark bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong đợt kiểm toán này.
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **Dành cho worker tác nhân:** KỸ NĂNG PHỤ BẮT BUỘC: dùng superpowers:subagent-driven-development (khuyến nghị) hoặc superpowers:executing-plans để triển khai từng tác vụ. Các bước dùng ô đánh dấu (`- [ ]`) để theo dõi.
 
-**Goal:** Add TEACHER accounts, teacher-owned tests with ADMIN moderation, classrooms/invitations/assignments, generic in-app notifications, and read-only teacher access to assignment-originated student work without weakening existing USER/ADMIN security or history semantics.
+**Mục tiêu:** thêm tài khoản TEACHER, đề thuộc giáo viên với ADMIN kiểm duyệt, lớp/lời mời/bài giao, thông báo chung trong ứng dụng, quyền giáo viên chỉ đọc bài học viên có nguồn gốc bài giao, không nới bảo mật USER/ADMIN hoặc ngữ nghĩa lịch sử hiện có.
 
-**Architecture:** Keep the existing `Test`/`TestVersion` content lifecycle (`DRAFT`, `PUBLISHED`, `ARCHIVED`) and layer ownership, moderation, classroom access and notification resources around it. Authorization is server-side and resource-scoped; assignment provenance, not student membership plus test identity, is the boundary that lets a teacher inspect student work. Frontend work is intentionally minimal: expose the approved flows, reuse existing Builder/review components where possible, and do not introduce a separate visual-design project.
+**Kiến trúc:** giữ vòng đời nội dung `Test`/`TestVersion` hiện có (`DRAFT`, `PUBLISHED`, `ARCHIVED`), thêm lớp quyền sở hữu, kiểm duyệt, truy cập lớp và thông báo quanh đó. Phân quyền phía máy chủ theo tài nguyên; nguồn gốc bài giao, không phải chỉ tư cách thành viên cộng định danh đề, là ranh giới cho giáo viên xem bài. Frontend chủ đích tối thiểu: mở luồng đã duyệt, dùng Builder/xem lại hiện có khi được, không tạo dự án thiết kế riêng.
 
-**Tech Stack:** FastAPI, SQLAlchemy async ORM, PostgreSQL/Alembic, Pydantic, Next.js 16, React 19, TypeScript, Zod, Vitest/RTL.
+**Công nghệ:** FastAPI, SQLAlchemy async ORM, PostgreSQL/Alembic, Pydantic, Next.js 16, React 19, TypeScript, Zod, Vitest/RTL.
 
-**Spec:** `docs/superpowers/specs/2026-10-11-teacher-classroom-content-governance-design.md`
+**Đặc tả:** `docs/superpowers/specs/2026-10-11-teacher-classroom-content-governance-design.md`
 
-## Global Constraints
+## Ràng buộc chung
 
-- Public registration always creates `USER`; only ADMIN may promote `USER -> TEACHER`.
-- `TEACHER` keeps normal USER capabilities; it is not a separate account table.
-- Teacher-created content remains teacher-owned after approval; ADMIN moderation must never silently transfer ownership.
-- Every teacher-created version must be ADMIN-approved before another user can use it, including classroom-only use.
-- `CLASSROOM` and `PUBLIC` moderation are separate scopes; PUBLIC approval implies classroom eligibility, not vice versa.
-- Keep `VersionStatus = DRAFT | PUBLISHED | ARCHIVED`; moderation state belongs in a separate table.
-- Approved/published teacher versions are immutable; editing requires a new draft/version and fresh moderation.
-- Each classroom has exactly one teacher owner in v1; no co-teacher or ownership-transfer workflow.
-- Invitations are in-app only in v1; unknown emails remain pending until a matching account authenticates, and students must Accept/Decline explicitly.
-- Assignment provenance is authoritative for teacher result access. Personal practice on the same test remains private.
-- Teacher result access is read-only; existing ADMIN-only Writing grading mutations remain ADMIN-only.
-- Archive/revocation changes future activity/visibility but never deletes academic history.
-- Notifications are generic UX/event projections and never authorization tokens.
-- Assignment retries are allowed; do not add a one-attempt-per-student unique constraint.
-- Preserve current official/admin test visibility and existing attempt/history behavior outside classrooms.
-- Current migration head at plan creation is `20261011_0023`; create the next migration from the actual head after pulling main and do not fork Alembic history if upstream moved.
-- Keep validation focused and cheap: unit/integration tests only; no browser, Playwright, E2E, dev server, live model/GPU, Modal or deployment.
+- Đăng ký công khai luôn tạo `USER`; chỉ ADMIN nâng `USER -> TEACHER`.
+- `TEACHER` giữ khả năng USER thường, không là bảng tài khoản riêng.
+- Nội dung giáo viên tạo vẫn thuộc giáo viên sau phê duyệt; ADMIN không được âm thầm chuyển quyền sở hữu khi kiểm duyệt.
+- Mọi phiên bản giáo viên tạo phải được ADMIN duyệt trước khi người khác dùng, kể cả chỉ trong lớp.
+- Kiểm duyệt `CLASSROOM`, `PUBLIC` là phạm vi riêng; PUBLIC cho đủ điều kiện lớp, chiều ngược lại không đúng.
+- Giữ `VersionStatus = DRAFT | PUBLISHED | ARCHIVED`; trạng thái kiểm duyệt ở bảng riêng.
+- Phiên bản giáo viên đã duyệt/xuất bản bất biến; sửa cần nháp/phiên bản mới và kiểm duyệt mới.
+- V1 mỗi lớp đúng một giáo viên sở hữu; không đồng giảng/chuyển chủ.
+- V1 lời mời chỉ trong ứng dụng; email chưa có tài khoản giữ chờ đến khi tài khoản khớp xác thực, học viên phải Chấp nhận/Từ chối rõ ràng.
+- Nguồn gốc bài giao quyết định quyền xem kết quả. Luyện cá nhân cùng đề vẫn riêng tư.
+- Giáo viên chỉ đọc kết quả; thao tác chấm Writing vốn chỉ ADMIN vẫn chỉ ADMIN.
+- Lưu trữ/thu hồi đổi hoạt động/hiển thị tương lai, không xóa lịch sử học tập.
+- Thông báo là biểu diễn UX/sự kiện chung, không là mã cấp quyền.
+- Cho làm lại bài giao; không thêm ràng buộc mỗi học viên duy nhất một lượt.
+- Giữ hiển thị đề chính thức/quản trị và hành vi lượt/lịch sử ngoài lớp hiện có.
+- Đầu migration khi lập kế hoạch là `20261011_0023`; tạo tiếp từ đầu thực sau kéo main, không rẽ lịch sử Alembic nếu thượng nguồn đổi.
+- Xác minh tập trung, ít chi phí: chỉ kiểm đơn vị/tích hợp; không trình duyệt, Playwright, E2E, máy chủ dev, mô hình/GPU trực tiếp, Modal, triển khai.
 
-## Review Focus
+## Trọng tâm rà soát
 
-1. Two concurrent Accept requests for the same invitation must create one active membership and one accepted transition, not duplicate rows.
-2. A teacher who knows another teacher's test/version/classroom/assignment IDs must still receive 403/404 according to project conventions; IDs never bypass ownership checks.
-3. Revoking PUBLIC approval while CLASSROOM approval remains must remove global visibility but preserve classroom eligibility; revoking the final active approval must block new assignment starts without deleting history.
-4. Approving v2 of a test must never mutate attempts bound to v1; previous published content/history remains referentially valid even if v1 becomes archived for future starts.
-5. Pending invitation binding on repeated login/registration must be idempotent: no duplicate invitation binding, membership, or notification.
+1. Hai yêu cầu Chấp nhận đồng thời cùng lời mời phải tạo một tư cách thành viên hoạt động, một chuyển sang chấp nhận, không dòng trùng.
+2. Giáo viên biết ID đề/phiên bản/lớp/bài giao giáo viên khác vẫn nhận 403/404 theo quy ước; ID không bỏ qua kiểm quyền sở hữu.
+3. Thu hồi PUBLIC khi còn CLASSROOM phải bỏ hiển thị toàn cục, giữ điều kiện lớp; thu hồi phê duyệt cuối đang hiệu lực phải chặn khởi tạo bài giao mới mà không xóa lịch sử.
+4. Duyệt v2 không sửa lượt gắn v1; nội dung/lịch sử cũ vẫn hợp tham chiếu dù v1 lưu trữ cho lần khởi tạo tương lai.
+5. Gắn lời mời chờ qua đăng nhập/đăng ký lặp phải lặp an toàn: không gắn trùng, không thành viên/thông báo trùng.
 
 ---
 
-### Task 1: Domain enums, persistence model, and Alembic migration
+### Tác vụ 1: Enum miền, mô hình lưu trữ và migration Alembic
 
-**Files:**
-- Modify: `backend/app/models/enums.py`
-- Modify: `backend/app/models/entities.py`
-- Create: `backend/app/models/content_governance.py`
-- Create: `backend/app/models/classroom.py`
-- Create: `backend/app/models/notifications.py`
-- Modify: `backend/app/models/__init__.py`
-- Create: `backend/alembic/versions/20261011_0024_teacher_classroom_governance.py` (or the next revision from the actual pulled head)
-- Test: `backend/tests/test_teacher_domain_models.py`
+**Tệp:**
+- Sửa: `backend/app/models/enums.py`
+- Sửa: `backend/app/models/entities.py`
+- Tạo: `backend/app/models/content_governance.py`
+- Tạo: `backend/app/models/classroom.py`
+- Tạo: `backend/app/models/notifications.py`
+- Sửa: `backend/app/models/__init__.py`
+- Tạo: `backend/alembic/versions/20261011_0024_teacher_classroom_governance.py` (hoặc revision tiếp từ đầu vừa kéo thực tế)
+- Kiểm thử: `backend/tests/test_teacher_domain_models.py`
 
-**Interfaces:**
-- Produces `UserRole.TEACHER` plus `TestOrigin`, `ModerationScope`, `ModerationStatus`, `ClassroomStatus`, `InvitationStatus`, `AssignmentStatus`, and the notification type/entity enums used by later tasks.
-- Produces `Test.owner_user_id`, `Test.origin`, `TestVersionModeration`, `Classroom`, `ClassroomInvitation`, `ClassroomMembership`, `ClassroomAssignment`, `Notification`, and nullable assignment provenance FKs on `Attempt`/`TestSession` as selected below.
-- Full-mock provenance lives on `TestSession.classroom_assignment_id`; standalone/focused module provenance lives on `Attempt.classroom_assignment_id`. Do not duplicate the full-mock assignment FK onto child attempts unless an existing query requires it and tests justify the duplication.
+**Giao diện:**
+- Tạo `UserRole.TEACHER` cùng `TestOrigin`, `ModerationScope`, `ModerationStatus`, `ClassroomStatus`, `InvitationStatus`, `AssignmentStatus` và enum loại/thực thể thông báo dùng về sau.
+- Tạo `Test.owner_user_id`, `Test.origin`, `TestVersionModeration`, `Classroom`, `ClassroomInvitation`, `ClassroomMembership`, `ClassroomAssignment`, `Notification`, khóa ngoại nguồn gốc bài giao null trên `Attempt`/`TestSession` như chọn dưới.
+- Nguồn gốc Full Mock ở `TestSession.classroom_assignment_id`; mô-đun riêng/theo phạm vi ở `Attempt.classroom_assignment_id`. Không nhân khóa bài giao Full Mock lên lượt con trừ khi truy vấn sẵn cần và kiểm thử chứng minh cần.
 
-- [x] **Step 1: Write failing model/migration contract tests**
+- [x] **Bước 1: viết kiểm hợp đồng mô hình/migration thất bại**
 
-Add focused tests asserting the new enum values, teacher/test ownership columns, one-active-membership uniqueness, one-pending-invite uniqueness, one-pending-moderation-per-scope uniqueness, notification recipient/index fields, and nullable assignment provenance columns. Include a legacy test proving `origin=ADMIN, owner_user_id=NULL` is representable for pre-migration official tests.
+Thêm kiểm tập trung cho enum mới, cột giáo viên/chủ đề, duy nhất thành viên hoạt động, lời mời chờ, kiểm duyệt chờ mỗi phạm vi, người nhận/chỉ mục thông báo, cột nguồn gốc null. Có kiểm cũ chứng minh `origin=ADMIN, owner_user_id=NULL` biểu diễn được đề chính thức trước migration.
 
-- [x] **Step 2: Run the model tests and verify they fail**
+- [x] **Bước 2: chạy kiểm mô hình, xác nhận thất bại**
 
-Run: `cd backend && uv run pytest tests/test_teacher_domain_models.py -q`
+Chạy: `cd backend && uv run pytest tests/test_teacher_domain_models.py -q`
 
-Expected: FAIL because the enums/models/columns do not exist yet.
+Kỳ vọng: FAIL vì enum/mô hình/cột chưa có.
 
-- [x] **Step 3: Implement the ORM model and migration contract**
+- [x] **Bước 3: triển khai hợp đồng ORM/migration**
 
-Use separate focused model files for new subsystems instead of expanding `entities.py` further. The migration must safely add `TEACHER` to PostgreSQL `user_role`, backfill existing tests as `origin=ADMIN` with nullable legacy owner, create the new tables/indexes/constraints, and preserve all existing rows/FKs. New application-created tests will require an owner even though the DB column remains nullable for legacy official content.
+Dùng tệp mô hình tập trung riêng cho hệ mới, không mở thêm `entities.py`. Migration phải an toàn thêm `TEACHER` vào `user_role` PostgreSQL, gán bù đề cũ `origin=ADMIN` với chủ cũ null, tạo bảng/chỉ mục/ràng buộc mới, giữ mọi dòng/khóa ngoại. Đề ứng dụng tạo mới cần chủ dù cột DB vẫn null cho nội dung chính thức cũ.
 
-- [x] **Step 4: Run model tests and migration smoke checks**
+- [x] **Bước 4: kiểm mô hình và chạy thử migration**
 
-Run: `cd backend && uv run pytest tests/test_teacher_domain_models.py -q`
+Chạy: `cd backend && uv run pytest tests/test_teacher_domain_models.py -q`
 
-Run the repository's existing Alembic upgrade/downgrade smoke command if present; otherwise run the smallest existing migration test target. Expected: PASS.
+Chạy lệnh thử nâng/hạ Alembic hiện có nếu có; nếu không chạy kiểm migration nhỏ nhất sẵn có. Kỳ vọng: PASS.
 
-- [x] **Step 5: Commit**
+- [x] **Bước 5: commit**
 
 ```bash
 git add backend/app/models backend/alembic/versions backend/tests/test_teacher_domain_models.py
@@ -90,46 +90,46 @@ git commit -m "Add teacher classroom governance domain model"
 
 ---
 
-### Task 2: Teacher role administration, policy layer, and test ownership
+### Tác vụ 2: Quản trị vai trò giáo viên, lớp chính sách, quyền sở hữu đề
 
-**Files:**
-- Create: `backend/app/services/access_policy.py`
-- Modify: `backend/app/services/admin.py`
-- Modify: `backend/app/schemas/admin.py`
-- Modify: `backend/app/api/v1/admin.py`
-- Modify: `backend/app/services/tests.py`
-- Modify: `backend/app/api/v1/tests.py`
-- Modify: `backend/app/schemas/tests.py`
-- Modify: `backend/app/api/v1/assets.py`
-- Modify the existing Reading/Listening/Writing/question builder mutation routes/services that currently rely on ADMIN-only access or `ensure_draft` without ownership context.
-- Test: `backend/tests/test_teacher_roles_and_test_ownership.py`
-- Test regression: `backend/tests/test_admin.py`
+**Tệp:**
+- Tạo: `backend/app/services/access_policy.py`
+- Sửa: `backend/app/services/admin.py`
+- Sửa: `backend/app/schemas/admin.py`
+- Sửa: `backend/app/api/v1/admin.py`
+- Sửa: `backend/app/services/tests.py`
+- Sửa: `backend/app/api/v1/tests.py`
+- Sửa: `backend/app/schemas/tests.py`
+- Sửa: `backend/app/api/v1/assets.py`
+- Sửa tuyến/dịch vụ thay đổi Builder Reading/Listening/Writing/câu hỏi hiện dựa chỉ ADMIN hoặc `ensure_draft` thiếu ngữ cảnh quyền sở hữu.
+- Kiểm thử: `backend/tests/test_teacher_roles_and_test_ownership.py`
+- Kiểm hồi quy: `backend/tests/test_admin.py`
 
-**Interfaces:**
-- Produces centralized policy methods equivalent to `require_test_create`, `require_test_edit`, `require_version_mutable`, `require_classroom_manage`, `require_assignment_view`, and `require_admin_moderation` that later services call before mutations/reads.
-- `TestService.create_test(..., actor)` records `origin` and `owner_user_id`; teacher list/read responses expose only owned private/draft content plus otherwise-readable content, while ordinary USER behavior remains published-access only.
+**Giao diện:**
+- Tạo chính sách tập trung tương đương `require_test_create`, `require_test_edit`, `require_version_mutable`, `require_classroom_manage`, `require_assignment_view`, `require_admin_moderation`, dịch vụ sau gọi trước thay đổi/đọc.
+- `TestService.create_test(..., actor)` ghi `origin`, `owner_user_id`; phản hồi danh sách/đọc giáo viên chỉ lộ nháp/riêng thuộc sở hữu và nội dung vốn được đọc; USER thường vẫn chỉ nội dung xuất bản có quyền.
 
-- [x] **Step 1: Write failing authorization tests**
+- [x] **Bước 1: viết kiểm phân quyền thất bại**
 
-Cover ADMIN promotion USER→TEACHER; public registration remaining USER; teacher creation of an owned test; USER create forbidden; teacher editing own draft allowed; teacher editing another teacher's test forbidden; teacher mutating an approved/published version forbidden; ADMIN override retained; and demotion returning `TEACHER_HAS_ACTIVE_RESOURCES` when active teacher resources/pending moderation exist.
+Bao phủ ADMIN nâng USER→TEACHER; đăng ký công khai vẫn USER; giáo viên tạo đề thuộc mình; cấm USER tạo; cho sửa nháp của mình, cấm sửa đề giáo viên khác/phiên bản đã duyệt/xuất bản; giữ ADMIN ghi đè; hạ vai trò trả `TEACHER_HAS_ACTIVE_RESOURCES` khi còn tài nguyên giáo viên hoạt động/kiểm duyệt chờ.
 
-- [x] **Step 2: Run the focused authorization tests and verify failure**
+- [x] **Bước 2: chạy kiểm phân quyền tập trung, xác nhận thất bại**
 
-Run: `cd backend && uv run pytest tests/test_teacher_roles_and_test_ownership.py tests/test_admin.py -q`
+Chạy: `cd backend && uv run pytest tests/test_teacher_roles_and_test_ownership.py tests/test_admin.py -q`
 
-Expected: new tests FAIL on missing role/policy/ownership behavior while existing ADMIN tests still pass or expose intentional contract changes.
+Kỳ vọng: kiểm mới FAIL vì thiếu vai trò/chính sách/quyền sở hữu; kiểm ADMIN cũ vẫn đạt hoặc lộ đổi hợp đồng có chủ đích.
 
-- [x] **Step 3: Implement policy-based Builder authorization**
+- [x] **Bước 3: triển khai phân quyền Builder theo chính sách**
 
-Keep `AdminUser` for genuinely ADMIN-only endpoints such as official Writing grading. For Builder/content mutation endpoints, use authenticated users plus the centralized resource policy; do not replace `AdminUser` with unrestricted `CurrentUser`. Thread actor/resource checks through asset and Reading/Listening/Writing/question mutations so a teacher cannot bypass ownership by calling a lower-level builder endpoint directly.
+Giữ `AdminUser` cho điểm cuối thực sự chỉ ADMIN như chấm Writing chính thức. Điểm cuối đổi nội dung/Builder dùng người xác thực + chính sách tài nguyên tập trung; không thay `AdminUser` bằng `CurrentUser` không hạn chế. Truyền kiểm tác nhân/tài nguyên xuyên thay đổi tài sản/Reading/Listening/Writing/câu để giáo viên không gọi tầng dưới né quyền.
 
-- [x] **Step 4: Run focused backend tests**
+- [x] **Bước 4: chạy kiểm backend tập trung**
 
-Run: `cd backend && uv run pytest tests/test_teacher_roles_and_test_ownership.py tests/test_admin.py tests/test_writing_builder.py tests/test_asset_access.py -q`
+Chạy: `cd backend && uv run pytest tests/test_teacher_roles_and_test_ownership.py tests/test_admin.py tests/test_writing_builder.py tests/test_asset_access.py -q`
 
-Expected: PASS.
+Kỳ vọng: PASS.
 
-- [x] **Step 5: Commit**
+- [x] **Bước 5: commit**
 
 ```bash
 git add backend/app/services backend/app/api/v1 backend/app/schemas backend/tests
@@ -138,45 +138,45 @@ git commit -m "Add teacher role and owned Builder access"
 
 ---
 
-### Task 3: Version moderation and official/community visibility
+### Tác vụ 3: Kiểm duyệt phiên bản, hiển thị chính thức/cộng đồng
 
-**Files:**
-- Create: `backend/app/schemas/content_governance.py`
-- Create: `backend/app/repositories/content_governance.py`
-- Create: `backend/app/services/content_governance.py`
-- Create: `backend/app/api/v1/content_governance.py`
-- Modify: `backend/app/api/v1/router.py`
-- Modify: `backend/app/services/tests.py`
-- Modify: `backend/app/api/v1/tests.py`
-- Modify: `backend/app/api/v1/presenters.py` if ownership/origin/moderation metadata belongs in existing test/version DTOs.
-- Test: `backend/tests/test_test_version_moderation.py`
-- Test regression: `backend/tests/test_api_contract.py`
+**Tệp:**
+- Tạo: `backend/app/schemas/content_governance.py`
+- Tạo: `backend/app/repositories/content_governance.py`
+- Tạo: `backend/app/services/content_governance.py`
+- Tạo: `backend/app/api/v1/content_governance.py`
+- Sửa: `backend/app/api/v1/router.py`
+- Sửa: `backend/app/services/tests.py`
+- Sửa: `backend/app/api/v1/tests.py`
+- Sửa: `backend/app/api/v1/presenters.py` nếu siêu dữ liệu chủ/nguồn/kiểm duyệt thuộc DTO đề/phiên bản hiện có.
+- Kiểm thử: `backend/tests/test_test_version_moderation.py`
+- Kiểm hồi quy: `backend/tests/test_api_contract.py`
 
-**Interfaces:**
-- Produces teacher `submit_moderation(version_id, scope, note, actor)`, `cancel_request(request_id, actor)`, ADMIN `approve/reject/revoke`, and `version_access(version, user)` helpers used by library/classroom tasks.
-- A version with any PENDING moderation request is locked against content mutation. First successful teacher approval transitions the version to immutable `PUBLISHED`; later PUBLIC approval may reuse the same published version. PUBLIC approval grants global community visibility and classroom eligibility; CLASSROOM approval grants only classroom eligibility.
+**Giao diện:**
+- Tạo `submit_moderation(version_id, scope, note, actor)`, `cancel_request(request_id, actor)` cho giáo viên, `approve/reject/revoke` ADMIN và hàm `version_access(version, user)` cho thư viện/lớp.
+- Bất kỳ yêu cầu PENDING đều khóa phiên bản khỏi sửa nội dung. Duyệt giáo viên thành công đầu chuyển sang `PUBLISHED` bất biến; duyệt PUBLIC sau có thể tái dùng. PUBLIC cho hiển thị cộng đồng toàn cục/điều kiện lớp, CLASSROOM chỉ điều kiện lớp.
 
-- [x] **Step 1: Write failing moderation/state-machine tests**
+- [x] **Bước 1: viết kiểm kiểm duyệt/máy trạng thái thất bại**
 
-Cover submit/cancel; duplicate pending request conflict; draft lock while review pending; owner-only submit; ADMIN-only review; approve/reject idempotency/concurrency semantics; PUBLIC/CLASSROOM independence; PUBLIC⇒classroom eligibility; public visibility only after PUBLIC approval; legacy/admin official published tests staying globally visible; revocation rules; and v2 approval preserving v1-bound history while preventing mutation of published versions.
+Bao phủ gửi/hủy, xung đột yêu cầu chờ trùng, khóa nháp lúc chờ, chỉ chủ gửi/ADMIN xét, duyệt/từ chối lặp an toàn và đồng thời, độc lập PUBLIC/CLASSROOM, PUBLIC⇒đủ lớp, chỉ công khai sau PUBLIC, đề chính thức quản trị/cũ đã xuất bản vẫn toàn cục, quy tắc thu hồi, duyệt v2 giữ lịch sử v1 và chặn sửa bản xuất bản.
 
-- [x] **Step 2: Run moderation tests and verify failure**
+- [x] **Bước 2: chạy kiểm kiểm duyệt, xác nhận thất bại**
 
-Run: `cd backend && uv run pytest tests/test_test_version_moderation.py tests/test_api_contract.py -q`
+Chạy: `cd backend && uv run pytest tests/test_test_version_moderation.py tests/test_api_contract.py -q`
 
-Expected: FAIL on missing moderation APIs/service/visibility policy.
+Kỳ vọng: FAIL vì thiếu API/dịch vụ/chính sách hiển thị kiểm duyệt.
 
-- [x] **Step 3: Implement moderation service and API**
+- [x] **Bước 3: triển khai dịch vụ/API kiểm duyệt**
 
-Persist every submission as an audit row instead of overwriting prior decisions. Use transactional row locking or the project's equivalent concurrency pattern for approve/reject/cancel/revoke. When a newer version becomes the active published version, preserve the prior version and every referencing attempt/session; archive it only for future content selection, never rewrite historical foreign keys. Notify the teacher through the Notification service interface introduced in Task 4; until Task 4 lands, keep notification emission behind a small injectable/no-op interface rather than coupling moderation to raw notification inserts.
+Mỗi lần gửi là dòng kiểm toán mới, không ghi đè quyết định cũ. Dùng khóa dòng trong giao dịch hoặc mẫu đồng thời tương đương cho duyệt/từ chối/hủy/thu hồi. Bản mới thành bản xuất bản hoạt động phải giữ bản trước và mọi lượt/phiên tham chiếu; chỉ lưu trữ cho chọn nội dung tương lai, không sửa khóa lịch sử. Thông báo giáo viên qua giao diện Notification Tác vụ 4; trước đó dùng giao diện nhỏ tiêm được/không thao tác thay vì gắn kiểm duyệt với chèn thông báo thô.
 
-- [x] **Step 4: Run moderation and library regressions**
+- [x] **Bước 4: chạy hồi quy kiểm duyệt/thư viện**
 
-Run: `cd backend && uv run pytest tests/test_test_version_moderation.py tests/test_api_contract.py tests/test_asset_access.py -q`
+Chạy: `cd backend && uv run pytest tests/test_test_version_moderation.py tests/test_api_contract.py tests/test_asset_access.py -q`
 
-Expected: PASS.
+Kỳ vọng: PASS.
 
-- [x] **Step 5: Commit**
+- [x] **Bước 5: commit**
 
 ```bash
 git add backend/app/schemas/content_governance.py backend/app/repositories/content_governance.py backend/app/services/content_governance.py backend/app/api/v1/content_governance.py backend/app/api/v1/router.py backend/app/services/tests.py backend/app/api/v1/tests.py backend/app/api/v1/presenters.py backend/tests/test_test_version_moderation.py backend/tests/test_api_contract.py
@@ -185,46 +185,46 @@ git commit -m "Add teacher test moderation workflow"
 
 ---
 
-### Task 4: Classrooms, invitations, membership, and notifications
+### Tác vụ 4: Lớp, lời mời, thành viên và thông báo
 
-**Files:**
-- Create: `backend/app/schemas/classrooms.py`
-- Create: `backend/app/repositories/classrooms.py`
-- Create: `backend/app/services/classrooms.py`
-- Create: `backend/app/api/v1/classrooms.py`
-- Create: `backend/app/schemas/notifications.py`
-- Create: `backend/app/repositories/notifications.py`
-- Create: `backend/app/services/notifications.py`
-- Create: `backend/app/api/v1/notifications.py`
-- Modify: `backend/app/api/v1/router.py`
-- Modify: `backend/app/services/auth.py` (or the exact existing post-auth hook) to bind pending invitations idempotently after matching-email registration/login.
-- Test: `backend/tests/test_classrooms_and_notifications.py`
+**Tệp:**
+- Tạo: `backend/app/schemas/classrooms.py`
+- Tạo: `backend/app/repositories/classrooms.py`
+- Tạo: `backend/app/services/classrooms.py`
+- Tạo: `backend/app/api/v1/classrooms.py`
+- Tạo: `backend/app/schemas/notifications.py`
+- Tạo: `backend/app/repositories/notifications.py`
+- Tạo: `backend/app/services/notifications.py`
+- Tạo: `backend/app/api/v1/notifications.py`
+- Sửa: `backend/app/api/v1/router.py`
+- Sửa: `backend/app/services/auth.py` (hoặc hook sau xác thực đúng hiện có) để gắn lời mời chờ lặp an toàn sau đăng ký/đăng nhập email khớp.
+- Kiểm thử: `backend/tests/test_classrooms_and_notifications.py`
 
-**Interfaces:**
-- Produces classroom CRUD/archive/restore, invitation create/cancel/accept/decline, member remove/leave, `NotificationService.create_once(...)`, list/unread-count/read/read-all, and `bind_pending_invitations(user)`.
-- Notifications are unique/idempotent per recipient + event type + entity identity; notification actions always reload and authorize the underlying invitation/classroom/moderation entity.
+**Giao diện:**
+- Tạo CRUD/lưu trữ/khôi phục lớp, tạo/hủy/chấp nhận/từ chối lời mời, xóa/rời thành viên, `NotificationService.create_once(...)`, danh sách/số chưa đọc/đọc/đọc hết và `bind_pending_invitations(user)`.
+- Thông báo duy nhất/lặp an toàn theo người nhận + loại sự kiện + định danh thực thể; thao tác luôn tải lại và phân quyền lời mời/lớp/kiểm duyệt bên dưới.
 
-- [x] **Step 1: Write failing classroom/invitation/notification tests**
+- [x] **Bước 1: viết kiểm lớp/lời mời/thông báo thất bại**
 
-Cover one-owner TEACHER classroom creation; USER create forbidden; other-teacher management forbidden; archive read-only semantics; ADMIN archive/restore; invite existing and unknown email; duplicate invite prevention; explicit Accept/Decline; email mismatch rejection; double-Accept concurrency; leave/remove preserving historical membership; unknown-email invitation binding on later login; repeated login creating no duplicate notification; unread count; mark-one/read-all; and notification entity IDs not bypassing authorization.
+Bao phủ TEACHER tạo lớp một chủ; cấm USER tạo/giáo viên khác quản; lưu trữ chỉ đọc; ADMIN lưu trữ/khôi phục; mời email có/chưa có; chống mời trùng; Chấp nhận/Từ chối rõ; từ chối email sai; hai Chấp nhận đồng thời; rời/xóa giữ thành viên lịch sử; email chưa biết gắn khi đăng nhập sau; đăng nhập lặp không trùng thông báo; số chưa đọc; đọc một/hết; ID thông báo không né phân quyền.
 
-- [x] **Step 2: Run classroom tests and verify failure**
+- [x] **Bước 2: chạy kiểm lớp, xác nhận thất bại**
 
-Run: `cd backend && uv run pytest tests/test_classrooms_and_notifications.py -q`
+Chạy: `cd backend && uv run pytest tests/test_classrooms_and_notifications.py -q`
 
-Expected: FAIL because classroom/notification APIs do not exist.
+Kỳ vọng: FAIL vì API lớp/thông báo chưa có.
 
-- [x] **Step 3: Implement classroom and notification services**
+- [x] **Bước 3: triển khai dịch vụ lớp/thông báo**
 
-Use transactional membership/invitation resolution. Do not hard-delete classroom or membership history. Archived classrooms reject new invites/member changes/assignments/starts. Keep email delivery out of scope. Wire moderation approve/reject notifications through `NotificationService.create_once` now that the service exists.
+Giải quyết thành viên/lời mời trong giao dịch. Không xóa cứng lịch sử lớp/thành viên. Lớp lưu trữ cấm mời mới/đổi thành viên/giao bài/khởi tạo. Gửi email ngoài phạm vi. Nay dịch vụ có, nối thông báo duyệt/từ chối qua `NotificationService.create_once`.
 
-- [x] **Step 4: Run classroom plus auth regressions**
+- [x] **Bước 4: chạy hồi quy lớp/xác thực**
 
-Run: `cd backend && uv run pytest tests/test_classrooms_and_notifications.py tests/test_admin.py -q`
+Chạy: `cd backend && uv run pytest tests/test_classrooms_and_notifications.py tests/test_admin.py -q`
 
-Add the smallest existing auth test file if needed for login/registration hooks. Expected: PASS.
+Thêm tệp kiểm xác thực sẵn nhỏ nhất nếu cần cho hook đăng nhập/đăng ký. Kỳ vọng: PASS.
 
-- [x] **Step 5: Commit**
+- [x] **Bước 5: commit**
 
 ```bash
 git add backend/app/schemas/classrooms.py backend/app/repositories/classrooms.py backend/app/services/classrooms.py backend/app/api/v1/classrooms.py backend/app/schemas/notifications.py backend/app/repositories/notifications.py backend/app/services/notifications.py backend/app/api/v1/notifications.py backend/app/api/v1/router.py backend/app/services/auth.py backend/tests/test_classrooms_and_notifications.py
@@ -233,43 +233,43 @@ git commit -m "Add classrooms invitations and notifications"
 
 ---
 
-### Task 5: Classroom assignments and durable attempt provenance
+### Tác vụ 5: Bài giao lớp và nguồn gốc lượt bền vững
 
-**Files:**
-- Extend: `backend/app/schemas/classrooms.py`
-- Extend: `backend/app/repositories/classrooms.py`
-- Extend: `backend/app/services/classrooms.py`
-- Extend: `backend/app/api/v1/classrooms.py`
-- Modify: `backend/app/services/attempts.py`
-- Modify: `backend/app/services/test_sessions.py`
-- Modify: `backend/app/schemas/attempts.py` only if an internal assignment-start adapter DTO is needed; do not let the normal public attempt-start API accept arbitrary assignment provenance.
-- Test: `backend/tests/test_classroom_assignments.py`
-- Test regression: `backend/tests/test_focused_attempts.py`
-- Test regression: existing TestSession/full-mock tests.
+**Tệp:**
+- Mở rộng: `backend/app/schemas/classrooms.py`
+- Mở rộng: `backend/app/repositories/classrooms.py`
+- Mở rộng: `backend/app/services/classrooms.py`
+- Mở rộng: `backend/app/api/v1/classrooms.py`
+- Sửa: `backend/app/services/attempts.py`
+- Sửa: `backend/app/services/test_sessions.py`
+- Chỉ sửa `backend/app/schemas/attempts.py` nếu cần DTO tiếp hợp khởi tạo bài giao nội bộ; API khởi tạo công khai thường không được nhận nguồn gốc bài giao tùy ý.
+- Kiểm thử: `backend/tests/test_classroom_assignments.py`
+- Kiểm hồi quy: `backend/tests/test_focused_attempts.py`
+- Kiểm hồi quy: TestSession/Full Mock hiện có.
 
-**Interfaces:**
-- Produces `create_assignment`, `archive_assignment`, assignment list/detail, and `start_assignment(assignment_id, request, actor)`.
-- `start_assignment` derives `test_version_id`, classroom, teacher and provenance from the assignment. Support both module/focused attempt starts and full-mock/TestSession starts by adapting to existing services; the browser never attaches an assignment to an existing attempt/session.
+**Giao diện:**
+- Tạo `create_assignment`, `archive_assignment`, danh sách/chi tiết bài giao và `start_assignment(assignment_id, request, actor)`.
+- `start_assignment` suy `test_version_id`, lớp, giáo viên, nguồn gốc từ bài giao. Hỗ trợ lượt mô-đun/theo phạm vi và Full Mock/TestSession qua dịch vụ hiện có; trình duyệt không gắn bài giao vào lượt/phiên đã có.
 
-- [x] **Step 1: Write failing assignment/provenance tests**
+- [x] **Bước 1: viết kiểm bài giao/nguồn gốc thất bại**
 
-Cover assignment only from active owned classroom; teacher-owned version requires CLASSROOM or PUBLIC approval; ADMIN official published tests are assignable; revoked/archived versions and archived classrooms reject new assignments/starts; only active members may start; retries create separate attempts/sessions; provenance is persisted; arbitrary normal `/attempts` or `/test-sessions` calls cannot forge assignment provenance; and old submissions remain readable after membership ends.
+Bao phủ chỉ lớp hoạt động thuộc sở hữu được giao; phiên bản giáo viên cần CLASSROOM/PUBLIC; đề chính thức ADMIN đã xuất bản giao được; phiên bản thu hồi/lưu trữ và lớp lưu trữ cấm giao/khởi mới; chỉ thành viên hoạt động khởi được; làm lại tạo lượt/phiên riêng; lưu nguồn gốc; gọi `/attempts`/`/test-sessions` thường không giả được nguồn; bài cũ vẫn đọc sau kết thúc thành viên.
 
-- [x] **Step 2: Run focused assignment tests and verify failure**
+- [x] **Bước 2: chạy kiểm bài giao tập trung, xác nhận thất bại**
 
-Run: `cd backend && uv run pytest tests/test_classroom_assignments.py tests/test_focused_attempts.py -q`
+Chạy: `cd backend && uv run pytest tests/test_classroom_assignments.py tests/test_focused_attempts.py -q`
 
-Expected: FAIL on missing assignment/start/provenance behavior.
+Kỳ vọng: FAIL vì thiếu bài giao/khởi tạo/nguồn gốc.
 
-- [x] **Step 3: Implement assignment start orchestration**
+- [x] **Bước 3: điều phối khởi tạo bài giao**
 
-Reuse `AttemptService` and `TestSessionService` for the actual exam lifecycle instead of creating parallel attempt logic. Pass trusted provenance internally from `start_assignment`; keep the existing normal start DTOs backward compatible. For full mock, store assignment provenance on `TestSession`; for standalone/focused module work, store it on `Attempt`.
+Dùng `AttemptService`, `TestSessionService` cho vòng đời thi thực, không tạo logic lượt song song. Truyền nguồn gốc tin cậy nội bộ từ `start_assignment`; giữ DTO khởi thường tương thích ngược. Full Mock lưu nguồn ở `TestSession`; mô-đun riêng/theo phạm vi ở `Attempt`.
 
-- [x] **Step 4: Run assignment and lifecycle regressions**
+- [x] **Bước 4: chạy hồi quy bài giao/vòng đời**
 
-Run the new assignment test plus the smallest existing attempt/TestSession regression set that covers full module, focused unit and full mock. Expected: PASS.
+Chạy kiểm bài giao mới cùng tập hồi quy lượt/TestSession nhỏ nhất bao phủ toàn mô-đun, đơn vị theo phạm vi, Full Mock. Kỳ vọng: PASS.
 
-- [x] **Step 5: Commit**
+- [x] **Bước 5: commit**
 
 ```bash
 git add backend/app/schemas/classrooms.py backend/app/repositories/classrooms.py backend/app/services/classrooms.py backend/app/api/v1/classrooms.py backend/app/services/attempts.py backend/app/services/test_sessions.py backend/app/schemas/attempts.py backend/tests/test_classroom_assignments.py backend/tests/test_focused_attempts.py
@@ -278,40 +278,40 @@ git commit -m "Add classroom assignments and attempt provenance"
 
 ---
 
-### Task 6: Teacher read-only assignment results
+### Tác vụ 6: Giáo viên chỉ đọc kết quả bài giao
 
-**Files:**
-- Create: `backend/app/services/classroom_results.py`
-- Extend: `backend/app/schemas/classrooms.py`
-- Extend: `backend/app/api/v1/classrooms.py`
-- Reuse, without weakening: existing attempt review/history presenters/services in `backend/app/services/attempts.py`, `backend/app/schemas/attempts.py`, Writing AI read models, and scoring/history services.
-- Test: `backend/tests/test_teacher_assignment_results.py`
+**Tệp:**
+- Tạo: `backend/app/services/classroom_results.py`
+- Mở rộng: `backend/app/schemas/classrooms.py`
+- Mở rộng: `backend/app/api/v1/classrooms.py`
+- Tái dùng, không nới: trình bày/dịch vụ xem lại/lịch sử trong `backend/app/services/attempts.py`, `backend/app/schemas/attempts.py`, mô hình đọc Writing AI và dịch vụ điểm/lịch sử hiện có.
+- Kiểm thử: `backend/tests/test_teacher_assignment_results.py`
 
-**Interfaces:**
-- Produces assignment result summary and per-student attempt/session detail endpoints that authorize strictly through assignment provenance + classroom owner.
-- Result detail is read-only and may include existing Listening/Reading answers/correctness/bands, Writing submission, existing manual/official score and existing AI result/feedback already associated with the authorized attempt.
+**Giao diện:**
+- Tạo điểm cuối tóm tắt kết quả bài giao, chi tiết lượt/phiên từng học viên, phân quyền nghiêm qua nguồn gốc bài giao + chủ lớp.
+- Chi tiết chỉ đọc có thể gồm câu trả lời/đúng sai/band Listening/Reading, bài Writing, điểm thủ công/chính thức, kết quả/nhận xét AI hiện gắn lượt đã được phép.
 
-- [x] **Step 1: Write failing teacher-result privacy tests**
+- [x] **Bước 1: viết kiểm riêng tư kết quả giáo viên thất bại**
 
-Cover teacher can read own assignment-originated result after student leaves; teacher cannot read another teacher's assignment; same student + same test done as personal practice remains private; USER cannot use teacher result endpoints; and teacher cannot call existing ADMIN Writing score mutation even for an owned-classroom submission.
+Bao phủ giáo viên đọc kết quả bài mình giao sau học viên rời; không đọc bài giáo viên khác; cùng học viên/cùng đề luyện cá nhân vẫn riêng; USER không dùng điểm cuối giáo viên; giáo viên không gọi thay điểm Writing chỉ ADMIN kể cả bài của lớp mình.
 
-- [x] **Step 2: Run the result/privacy tests and verify failure**
+- [x] **Bước 2: chạy kiểm kết quả/riêng tư, xác nhận thất bại**
 
-Run: `cd backend && uv run pytest tests/test_teacher_assignment_results.py tests/test_writing_attempts.py -q`
+Chạy: `cd backend && uv run pytest tests/test_teacher_assignment_results.py tests/test_writing_attempts.py -q`
 
-Expected: FAIL on missing teacher result endpoints while ADMIN grading regression stays protected.
+Kỳ vọng: FAIL vì thiếu điểm cuối giáo viên, hồi quy chấm ADMIN vẫn bảo vệ.
 
-- [x] **Step 3: Implement provenance-scoped read-only result service**
+- [x] **Bước 3: triển khai dịch vụ kết quả chỉ đọc theo nguồn gốc**
 
-Reuse existing review/read models after first authorizing `(assignment.classroom.teacher_id == actor.id)` and matching the attempt/session provenance. Do not add a broad `allow_any_user=True` path for teachers and do not expose a teacher-wide student history endpoint.
+Dùng mô hình xem lại/đọc sau khi kiểm `(assignment.classroom.teacher_id == actor.id)` và nguồn gốc lượt/phiên khớp. Không thêm đường `allow_any_user=True` rộng cho giáo viên, không điểm cuối lịch sử toàn học viên cho giáo viên.
 
-- [x] **Step 4: Run privacy and grading regressions**
+- [x] **Bước 4: chạy hồi quy riêng tư/chấm**
 
-Run: `cd backend && uv run pytest tests/test_teacher_assignment_results.py tests/test_writing_attempts.py tests/test_attempt_scoring_history.py -q`
+Chạy: `cd backend && uv run pytest tests/test_teacher_assignment_results.py tests/test_writing_attempts.py tests/test_attempt_scoring_history.py -q`
 
-Expected: PASS.
+Kỳ vọng: PASS.
 
-- [x] **Step 5: Commit**
+- [x] **Bước 5: commit**
 
 ```bash
 git add backend/app/services/classroom_results.py backend/app/schemas/classrooms.py backend/app/api/v1/classrooms.py backend/tests/test_teacher_assignment_results.py
@@ -320,51 +320,51 @@ git commit -m "Add read-only teacher assignment results"
 
 ---
 
-### Task 7: Minimal frontend role, classroom, moderation, Builder, and notification UX
+### Tác vụ 7: UX frontend tối thiểu cho vai trò, lớp, kiểm duyệt, Builder, thông báo
 
-**Files:**
-- Modify: `frontend/src/lib/api/auth.ts`
-- Modify: `frontend/src/lib/api/admin.ts`
-- Modify: `frontend/src/lib/api/tests.ts`
-- Create: `frontend/src/lib/api/classrooms.ts`
-- Create: `frontend/src/lib/api/content-governance.ts`
-- Create: `frontend/src/lib/api/notifications.ts`
-- Modify: `frontend/src/components/ui/global-header.tsx`
-- Modify: `frontend/src/components/ui/app-shell.tsx`
-- Modify: `frontend/src/lib/i18n/translations.ts`
-- Modify: `frontend/src/features/auth/admin-user-actions.tsx`
-- Reuse/refactor existing `frontend/src/features/test-builder/*` so TEACHER gets an owner-scoped Builder entry point without entering the ADMIN dashboard.
-- Create minimal role-neutral/teacher pages under `frontend/src/app/teacher/` for owned tests and classrooms, and ADMIN moderation pages under `frontend/src/app/admin/` using existing shared components where practical.
-- Create: `frontend/src/features/classrooms/*` focused components for classroom detail, invitations, assignments and read-only result navigation.
-- Create: `frontend/src/features/notifications/notification-center.tsx`
-- Test: `frontend/tests/teacher-classroom-ui.test.tsx`
-- Test: `frontend/tests/notification-center.test.tsx`
-- Test regression: existing auth/admin/i18n shell tests.
+**Tệp:**
+- Sửa: `frontend/src/lib/api/auth.ts`
+- Sửa: `frontend/src/lib/api/admin.ts`
+- Sửa: `frontend/src/lib/api/tests.ts`
+- Tạo: `frontend/src/lib/api/classrooms.ts`
+- Tạo: `frontend/src/lib/api/content-governance.ts`
+- Tạo: `frontend/src/lib/api/notifications.ts`
+- Sửa: `frontend/src/components/ui/global-header.tsx`
+- Sửa: `frontend/src/components/ui/app-shell.tsx`
+- Sửa: `frontend/src/lib/i18n/translations.ts`
+- Sửa: `frontend/src/features/auth/admin-user-actions.tsx`
+- Tái dùng/tái cấu trúc `frontend/src/features/test-builder/*` hiện có để TEACHER vào Builder theo chủ mà không vào bảng ADMIN.
+- Tạo trang giáo viên/trung lập tối thiểu dưới `frontend/src/app/teacher/` cho đề/lớp thuộc sở hữu, trang kiểm duyệt ADMIN dưới `frontend/src/app/admin/`, dùng thành phần chung khi hợp lý.
+- Tạo: `frontend/src/features/classrooms/*`, thành phần tập trung cho chi tiết lớp, lời mời, bài giao, điều hướng kết quả chỉ đọc.
+- Tạo: `frontend/src/features/notifications/notification-center.tsx`
+- Kiểm thử: `frontend/tests/teacher-classroom-ui.test.tsx`
+- Kiểm thử: `frontend/tests/notification-center.test.tsx`
+- Kiểm hồi quy: khung xác thực/quản trị/i18n hiện có.
 
-**Interfaces:**
-- Auth Zod schema accepts `USER | TEACHER | ADMIN` and renders a localized teacher role label.
-- Teacher navigation exposes Builder/Classrooms; ADMIN keeps Admin/Builder and gets moderation; USER sees neither teacher nor admin authoring actions.
-- Header notification bell shows backend unread count; opening the panel does not mark all read; actions call real invitation endpoints.
+**Giao diện:**
+- Lược đồ Zod xác thực nhận `USER | TEACHER | ADMIN`, dựng nhãn giáo viên bản địa hóa.
+- Điều hướng giáo viên mở Builder/Lớp; ADMIN giữ Quản trị/Builder và thêm kiểm duyệt; USER không thấy soạn giáo viên/quản trị.
+- Chuông đầu trang hiện số chưa đọc từ backend; mở bảng không đánh đọc hết; thao tác gọi điểm cuối lời mời thật.
 
-- [x] **Step 1: Write failing UI/API contract tests**
+- [x] **Bước 1: viết kiểm hợp đồng UI/API thất bại**
 
-Cover TEACHER parsing; role-specific nav; ADMIN role promotion control; USER/TEACHER/ADMIN action visibility; teacher owner-only Builder links; classroom invitation Accept/Decline; classroom assignment list/start; read-only teacher result label; moderation approve/reject actions ADMIN-only; Official vs Community attribution in Library; notification unread count plus mark-one/read-all; and EN/VI translations for all new chrome.
+Bao phủ phân tích TEACHER; điều hướng theo vai trò; ADMIN nâng vai trò; hiển thị thao tác USER/TEACHER/ADMIN; link Builder chỉ chủ; Chấp nhận/Từ chối lời mời; danh sách/khởi bài giao; nhãn kết quả chỉ đọc giáo viên; duyệt/từ chối chỉ ADMIN; nguồn Chính thức/Cộng đồng trong thư viện; số chưa đọc/đọc một/hết; EN/VI mọi nhãn mới.
 
-- [x] **Step 2: Run only the new/relevant Vitest files and verify failure**
+- [x] **Bước 2: chỉ chạy Vitest mới/liên quan, xác nhận thất bại**
 
-Run: `cd frontend && npm test -- --run tests/teacher-classroom-ui.test.tsx tests/notification-center.test.tsx`
+Chạy: `cd frontend && npm test -- --run tests/teacher-classroom-ui.test.tsx tests/notification-center.test.tsx`
 
-Expected: FAIL on missing role/schema/components.
+Kỳ vọng: FAIL vì thiếu vai trò/lược đồ/thành phần.
 
-- [x] **Step 3: Implement the minimal approved UI**
+- [x] **Bước 3: triển khai UI tối thiểu đã duyệt**
 
-Keep layout simple; do not start an unrelated redesign. Reuse existing Builder and attempt-review components, add clear `Official` versus `Community · contributed by <teacher>` labeling, show archived classroom/history read-only states, and never expose mutation controls on teacher result views.
+Giữ bố cục đơn giản, không bắt đầu thiết kế lại ngoài phạm vi. Dùng Builder/xem lại hiện có, nhãn rõ `Official` so `Community · contributed by <teacher>`, trạng thái lớp lưu trữ/lịch sử chỉ đọc, không điều khiển thay đổi ở màn kết quả giáo viên.
 
-- [x] **Step 4: Run frontend focused tests and typecheck**
+- [x] **Bước 4: chạy kiểm frontend tập trung/kiểm kiểu**
 
-Run the new tests plus the smallest existing auth/admin/i18n shell tests, then `cd frontend && npm run typecheck`. Expected: PASS.
+Chạy kiểm mới và kiểm khung xác thực/quản trị/i18n sẵn nhỏ nhất, rồi `cd frontend && npm run typecheck`. Kỳ vọng: PASS.
 
-- [x] **Step 5: Commit**
+- [x] **Bước 5: commit**
 
 ```bash
 git add frontend/src frontend/tests
@@ -373,33 +373,33 @@ git commit -m "Add teacher classroom and moderation UI"
 
 ---
 
-### Task 8: Documentation, security regression sweep, and final verification
+### Tác vụ 8: Tài liệu, quét hồi quy bảo mật, xác minh cuối
 
-**Files:**
-- Modify: `README.md` or the project's existing developer/user documentation entry point only where teacher/classroom setup belongs.
-- Create or update: `docs/teacher-classrooms.md` if no suitable existing doc exists.
-- Update API/docs/tests only for intentional contract changes discovered in Tasks 1–7.
+**Tệp:**
+- Chỉ sửa `README.md` hoặc điểm vào tài liệu người dùng/phát triển hiện có ở chỗ thiết lập giáo viên/lớp.
+- Tạo/cập nhật: `docs/teacher-classrooms.md` nếu chưa có tài liệu phù hợp.
+- Chỉ cập nhật API/tài liệu/kiểm cho đổi hợp đồng có chủ đích phát hiện trong Tác vụ 1–7.
 
-**Interfaces:**
-- Documents the three roles, ownership/Official-vs-Community semantics, moderation scopes, classroom invitation lifecycle, assignment provenance/privacy rule, archive behavior, and the v1 non-goals (no email, no co-teacher, no teacher grading mutations, no realtime notification requirement, no attempt limit).
+**Giao diện:**
+- Ghi ba vai trò, ngữ nghĩa chủ/Chính thức-Cộng đồng, phạm vi kiểm duyệt, vòng đời lời mời, nguồn gốc/riêng tư bài giao, lưu trữ, mục ngoài v1 (không email/đồng giảng/thay điểm giáo viên/yêu cầu thông báo trực tiếp/giới hạn lượt).
 
-- [x] **Step 1: Add/refresh focused regression assertions for the five Review Focus cases**
+- [x] **Bước 1: thêm/làm mới khẳng định hồi quy tập trung cho năm trọng tâm rà soát**
 
-Ensure each Review Focus item is pinned by a concrete backend/frontend test from the owning task; add only missing assertions, not duplicate suites.
+Mỗi trọng tâm phải có kiểm backend/frontend cụ thể từ tác vụ sở hữu; chỉ thêm khẳng định thiếu, không bộ kiểm trùng.
 
-- [x] **Step 2: Run the focused backend suite**
+- [x] **Bước 2: chạy tập backend tập trung**
 
-Run the new teacher/classroom/moderation/result tests plus targeted `test_admin.py`, `test_api_contract.py`, `test_asset_access.py`, `test_writing_builder.py`, focused attempt/TestSession tests, and Writing grading/history regressions. Expected: PASS.
+Chạy kiểm giáo viên/lớp/kiểm duyệt/kết quả mới, mục tiêu `test_admin.py`, `test_api_contract.py`, `test_asset_access.py`, `test_writing_builder.py`, kiểm lượt/TestSession tập trung, hồi quy chấm/lịch sử Writing. Kỳ vọng: PASS.
 
-- [x] **Step 3: Run static checks**
+- [x] **Bước 3: chạy kiểm tĩnh**
 
-Run Ruff on changed Python files, relevant frontend Vitest tests, `npm run typecheck`, relevant ESLint scope if supported, and `git diff --check`. Do not run Playwright/E2E/browser/dev server/build unless a focused failure requires it.
+Chạy Ruff tệp Python sửa, Vitest frontend liên quan, `npm run typecheck`, ESLint phạm vi liên quan nếu hỗ trợ, `git diff --check`. Không Playwright/E2E/trình duyệt/máy chủ dev/build trừ khi lỗi tập trung đòi hỏi.
 
-- [x] **Step 4: Update documentation and inspect the final diff**
+- [x] **Bước 4: cập nhật tài liệu, xem diff cuối**
 
-Confirm there are no generated/cache artifacts, no accidental relaxation of ADMIN-only Writing grading, no public registration path that can self-assign TEACHER, and no teacher result query authorized by `student_id + test_version_id` alone.
+Xác nhận không tệp sinh/bộ nhớ đệm, không vô tình nới chấm Writing chỉ ADMIN, không đăng ký tự gán TEACHER, không truy vấn kết quả giáo viên chỉ phân quyền bằng `student_id + test_version_id`.
 
-- [x] **Step 5: Commit and push**
+- [x] **Bước 5: commit và đẩy**
 
 ```bash
 git add docs README.md backend frontend
@@ -408,40 +408,40 @@ git status
 git push origin main
 ```
 
-Final report must include final commit SHAs, migration revision, exact focused test commands/pass counts, ownership/moderation behavior, invitation/notification behavior, assignment provenance/privacy behavior, UI routes added, deliberate v1 non-goals, and confirmation that `origin/main` contains the implementation and the working tree is clean.
+Báo cáo cuối phải có SHA commit cuối, revision migration, đúng lệnh/số đạt tập trung, hành vi chủ/kiểm duyệt, lời mời/thông báo, nguồn gốc/riêng tư bài giao, tuyến UI thêm, mục ngoài v1 có chủ đích, xác nhận `origin/main` chứa triển khai và cây làm việc sạch.
 
-## Implementation record — 2026-10-11
+## Bản ghi triển khai — 2026-10-11
 
-Baseline after fetching and fast-forwarding main: `ad2201783bd39cd4127204d9d3d358a2506dc0c0`. The actual starting Alembic head was `20261011_0023`; the single new head is `20261011_0024`.
+Nền sau lấy/fast-forward main: `ad2201783bd39cd4127204d9d3d358a2506dc0c0`. Đầu Alembic thực ban đầu `20261011_0023`; đầu mới duy nhất `20261011_0024`.
 
-Tasks 1–7 were implemented with focused failing tests before their production changes. Backend tasks were grouped into domain (`20d09c9`), role/ownership (`321d4e6`), moderation/classrooms/notifications (`d07b6e5`) and assignment provenance/read-only results (`6a29080`). Frontend workflows/localization are in `cec1213`; documentation follows in the final commit.
+Tác vụ 1–7 triển khai kiểm thất bại tập trung trước mã sản xuất. Backend nhóm miền (`20d09c9`), vai trò/chủ (`321d4e6`), kiểm duyệt/lớp/thông báo (`d07b6e5`), nguồn gốc bài giao/kết quả chỉ đọc (`6a29080`). Frontend/bản địa hóa ở `cec1213`; tài liệu theo commit cuối.
 
-Implementation choices within the approved architecture:
+Lựa chọn triển khai trong kiến trúc duyệt:
 
-- Assignment and result schemas/services/routes live in focused `classroom_assignments` and `classroom_results` files rather than enlarging the classroom service.
-- Full Mock provenance lives only on its `TestSession`; standalone/focused provenance lives on `Attempt`. A database check rejects child attempts with a second assignment identity.
-- Owner cancellation uses the durable moderation state `CANCELLED`, distinct from reviewer rejection. Version lifecycle states are unchanged.
-- The OCR CLI now requires `--owner-user-id ADMIN_UUID`; imports cannot create content under an invented actor.
-- A final independent review identified and rechecked two fixes: personal Library/Practice uses server `public_only` eligibility even for authors, and result/moderation/notification lists expose older records through pagination. ADMIN overview Builder counts retain their previous meaning.
+- Lược đồ/dịch vụ/tuyến bài giao/kết quả ở tệp `classroom_assignments`, `classroom_results` tập trung, không phình dịch vụ lớp.
+- Nguồn Full Mock chỉ ở `TestSession`; riêng/theo phạm vi ở `Attempt`. CHECK cơ sở dữ liệu từ chối lượt con có danh tính bài giao thứ hai.
+- Chủ hủy dùng trạng thái bền `CANCELLED`, khác người xét từ chối. Trạng thái vòng đời phiên bản không đổi.
+- OCR CLI nay cần `--owner-user-id ADMIN_UUID`; nhập không tạo nội dung dưới tác nhân bịa.
+- Rà độc lập cuối nhận diện/kiểm lại hai sửa: Library/Practice cá nhân dùng điều kiện `public_only` máy chủ cả tác giả; danh sách kết quả/kiểm duyệt/thông báo lộ bản cũ qua phân trang. Số Builder tổng quan ADMIN giữ nghĩa cũ.
 
-The five Review Focus cases are pinned by concrete tests:
+Năm trọng tâm được ghim bằng kiểm cụ thể:
 
-| Case | Regression |
+| Trường hợp | Hồi quy |
 | --- | --- |
-| Concurrent invitation acceptance | `test_classrooms_and_notifications.py::test_concurrent_accept_creates_exactly_one_membership` |
-| Known foreign resource IDs do not bypass ownership | `test_teacher_roles_and_test_ownership.py`, `test_classrooms_and_notifications.py::test_other_teacher_cannot_manage_members_invites_or_known_classroom_ids`, `test_teacher_assignment_results.py::test_result_paths_scope_assignment_classroom_and_student_without_cross_resource_leaks` |
-| PUBLIC revocation retains an independent CLASSROOM approval | `test_classroom_assignments.py::test_revoking_public_keeps_classroom_starts_until_final_approval_is_revoked` |
-| v2 approval preserves frozen v1 history | `test_test_version_moderation.py::test_classroom_v2_replaces_public_v1_and_preserves_attempt_history` |
-| Repeated authentication binds invitations once, without joining | `test_classrooms_and_notifications.py::test_future_auth_binds_pending_email_once_without_auto_join` |
+| Chấp nhận lời mời đồng thời | `test_classrooms_and_notifications.py::test_concurrent_accept_creates_exactly_one_membership` |
+| ID tài nguyên khác biết trước không bỏ quyền sở hữu | `test_teacher_roles_and_test_ownership.py`, `test_classrooms_and_notifications.py::test_other_teacher_cannot_manage_members_invites_or_known_classroom_ids`, `test_teacher_assignment_results.py::test_result_paths_scope_assignment_classroom_and_student_without_cross_resource_leaks` |
+| Thu hồi PUBLIC giữ phê duyệt CLASSROOM độc lập | `test_classroom_assignments.py::test_revoking_public_keeps_classroom_starts_until_final_approval_is_revoked` |
+| Duyệt v2 giữ lịch sử v1 đóng băng | `test_test_version_moderation.py::test_classroom_v2_replaces_public_v1_and_preserves_attempt_history` |
+| Xác thực lặp chỉ gắn lời mời một lần, không tự tham gia | `test_classrooms_and_notifications.py::test_future_auth_binds_pending_email_once_without_auto_join` |
 
-Final focused commands are reproduced in [teacher-classrooms.md](../../teacher-classrooms.md#focused-verification). Results on the final source tree:
+Lệnh tập trung cuối tái hiện trong [teacher-classrooms.md](../../teacher-classrooms.md#focused-verification). Kết quả trên cây mã cuối:
 
-- Backend: **355 passed** across 27 affected test files, with no failures or warnings.
-- Frontend: **269 passed** across 20 affected test files.
-- `npm run typecheck`: passed.
-- Ruff check and format check: passed on all **57** changed/new Python files.
-- Targeted ESLint: passed on all **75** changed/new TS/TSX files.
-- Fresh database upgrade from zero, empty-domain downgrade to `20261011_0023`, and re-upgrade: passed; one Alembic head. A focused test also verifies downgrade refusal preserves teacher-origin content after its owner's role changes.
-- Working/index diff whitespace checks passed before commits. The final remote SHA and clean Git status are verified after push and reported to the user.
+- Backend: **355 đạt** trên 27 tệp chịu ảnh hưởng, không lỗi/cảnh báo.
+- Frontend: **269 đạt** trên 20 tệp chịu ảnh hưởng.
+- `npm run typecheck`: đạt.
+- Ruff kiểm mã/định dạng: đạt toàn bộ **57** tệp Python mới/sửa.
+- ESLint có mục tiêu: đạt toàn bộ **75** tệp TS/TSX mới/sửa.
+- Nâng DB mới từ 0, hạ khi miền rỗng về `20261011_0023`, nâng lại: đạt, một đầu Alembic. Kiểm tập trung cũng xác nhận từ chối hạ giữ nội dung nguồn giáo viên sau khi chủ đổi vai trò.
+- Kiểm khoảng trắng diff cây/vùng chờ đạt trước commit. SHA từ xa cuối/trạng thái sạch được kiểm sau đẩy và báo người dùng.
 
-No browser, Playwright/E2E, dev server, build, live model/GPU, Modal or deployment was run. Test content is fictional and no new dependency was added. The final independent review reported no remaining Critical or Important findings after the two fixes.
+Không chạy trình duyệt, Playwright/E2E, máy chủ dev, build, mô hình/GPU trực tiếp, Modal hoặc triển khai. Nội dung kiểm hư cấu, không thêm phụ thuộc. Rà độc lập cuối không còn phát hiện Critical/Important sau hai sửa.

@@ -1,0 +1,48 @@
+{
+  "scope": "SpeakingScorer component; fake transcript/acoustic evidence/LLM; no DB/audio/ASR/network",
+  "measured_at_utc": "2026-11-02T11:02:56.998960+00:00",
+  "source_identity": {
+    "app_source_sha256": "ab7fe6afa7d036d7c6da35e02b6ca9c05de066b4eec3103492ed96078362a55e",
+    "git_head": "d871ae1d9a0c8d6a9f1427eaf3580e178f1b3a45",
+    "tracked_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "jobs": 5,
+  "generator_concurrency": 2,
+  "fake_call_delay_ms": 20.0,
+  "completed": 5,
+  "score_checkpoints": 20,
+  "completion_checkpoints": 20,
+  "provider_calls": 40,
+  "peak_executing_jobs": 2,
+  "peak_fake_provider_calls": 2,
+  "calls_left_active": 0,
+  "cancel_drained": true,
+  "queue_wait_ms": {
+    "samples": [
+      0.10569998994469643,
+      1.0215999791398644,
+      222.8635000064969,
+      223.66900002816692,
+      467.92359999381006
+    ],
+    "median": 222.8635000064969,
+    "max": 467.92359999381006
+  },
+  "accepted_to_completed_ms": {
+    "samples": [
+      222.66999998828396,
+      222.82810002798215,
+      467.62130002025515,
+      467.8760999813676,
+      693.8705000211485
+    ],
+    "median": 467.62130002025515,
+    "max": 693.8705000211485
+  },
+  "limitations": [
+    "Generator gate is not production admission control",
+    "Checkpoints counted in memory; durable recovery verified only in PostgreSQL tests",
+    "No real audio privacy/normalization/ASR throughput or grading quality measurement",
+    "No inference capacity, token usage or cost claim"
+  ]
+}

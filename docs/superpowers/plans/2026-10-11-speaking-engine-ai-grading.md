@@ -1,560 +1,560 @@
-# Speaking Engine, Recording, Transcript & AI Grading Implementation Plan
+# Kế hoạch triển khai bộ máy Speaking, ghi âm, chép lời và chấm AI
 
-> **Documentation audit: CURRENT.** Canonical concern này; source-check các boundary/API, không live validation.
-> Mục đích: Speaking Engine, Recording, Transcript & AI Grading Implementation Plan. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../../../backend/app/services/speaking_attempts.py).
-> Đọc cùng [current module/guide](../../modules/speaking.md); [audit và giới hạn](../../DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
-> Speaking instructions vẫn binding theo AGENTS; không archive hoặc vô hiệu hóa self-review amendments.
+> **Kiểm toán tài liệu: CURRENT.** Tài liệu chuẩn cho chủ đề này; đã đối chiếu ranh giới/API trong mã nguồn, chưa xác thực trực tiếp trên hệ thống chạy.
+> Mục đích: kế hoạch triển khai bộ máy Speaking, ghi âm, chép lời và chấm AI. Đối chiếu mã nguồn `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [phần triển khai](../../../backend/app/services/speaking_attempts.py).
+> Đọc cùng [mô-đun/hướng dẫn hiện hành](../../modules/speaking.md); [kiểm toán và giới hạn](../../DOCS_AUDIT.md). Kết quả kiểm thử/benchmark bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong đợt kiểm toán này.
+> Chỉ dẫn Speaking vẫn có tính ràng buộc theo AGENTS; không lưu trữ hoặc vô hiệu hóa các bổ sung tự rà soát.
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **Dành cho worker tác nhân:** KỸ NĂNG PHỤ BẮT BUỘC: dùng superpowers:subagent-driven-development (khuyến nghị) hoặc superpowers:executing-plans để triển khai từng tác vụ. Các bước dùng ô đánh dấu (`- [ ]`) để theo dõi.
 
-**Goal:** Add Speaking as the fourth first-class IELTS skill, including Part 1/2/3 Builder support, crash-resilient per-prompt recording, read-only per-question transcription, hybrid audio+text AI grading, dynamic review UX, Full Mock/history/classroom integration, and benchmark tooling.
+**Mục tiêu:** thêm Speaking thành kỹ năng IELTS thứ tư đầy đủ, gồm Builder Part 1/2/3, ghi âm từng câu chịu được sự cố, bản chép lời chỉ đọc theo câu, chấm AI kết hợp âm thanh/văn bản, trải nghiệm xem lại động, tích hợp Full Mock/lịch sử/lớp học và công cụ benchmark.
 
-**Architecture:** Keep Speaking inside the existing `TestVersion -> TestModule -> Attempt` architecture. Store authored Speaking parts/prompts as structured versioned content, but store candidate recordings as private attempt media outside PostgreSQL with database manifests and authorization. Build speech processing behind replaceable ASR/alignment/acoustic provider interfaces; grading is holistic by criterion and uses the already-proven score-first pattern from Writing (`evidence -> score-only -> persist -> feedback`).
+**Kiến trúc:** giữ Speaking trong `TestVersion -> TestModule -> Attempt` hiện có. Lưu Part/câu hỏi do người soạn dưới dạng nội dung cấu trúc có phiên bản; bản ghi người làm bài là tệp riêng tư của lượt làm bài ngoài PostgreSQL, có bản kê cơ sở dữ liệu và phân quyền. Xử lý tiếng nói qua giao diện nhà cung cấp ASR/căn chỉnh/âm học thay thế được; chấm tổng thể theo tiêu chí, dùng mẫu điểm trước đã chứng minh từ Writing (`evidence -> score-only -> persist -> feedback`).
 
-**Tech Stack:** FastAPI, SQLAlchemy async ORM, PostgreSQL/Alembic, Pydantic, local asset storage, browser MediaRecorder/Web Audio APIs, FFmpeg preprocessing, optional faster-whisper/alignment/audio-analysis dependencies, existing structured LLM providers, Next.js 16, React 19, TypeScript, Zod, Vitest/RTL.
+**Công nghệ:** FastAPI, SQLAlchemy async ORM, PostgreSQL/Alembic, Pydantic, kho tài sản cục bộ, API MediaRecorder/Web Audio của trình duyệt, tiền xử lý FFmpeg, phụ thuộc faster-whisper/căn chỉnh/phân tích âm thanh tùy chọn, nhà cung cấp LLM cấu trúc hiện có, Next.js 16, React 19, TypeScript, Zod, Vitest/RTL.
 
-**Spec:** `docs/superpowers/specs/2026-10-11-speaking-engine-ai-grading-design.md`
+**Đặc tả:** `docs/superpowers/specs/2026-10-11-speaking-engine-ai-grading-design.md`
 
-**Planning base:** `origin/main` was `d606bfaedf871bbc45326223cf4f1d74f54399e9` when this plan was written. Every execution phase starts with `git fetch origin && git pull --ff-only origin main`; adapt migration revision IDs to the actual current Alembic head instead of assuming this SHA remains current.
+**Nền lập kế hoạch:** `origin/main` là `d606bfaedf871bbc45326223cf4f1d74f54399e9` khi viết. Mỗi giai đoạn thực thi bắt đầu bằng `git fetch origin && git pull --ff-only origin main`; chỉnh ID migration theo đầu Alembic hiện hành thực tế thay vì giả định SHA này vẫn mới nhất.
 
-## Global Constraints
+## Ràng buộc chung
 
-- Speaking is a first-class module beside Reading, Listening, and Writing; do not implement it as a detached demo.
-- The stale root `AGENTS.md` line `Do not implement Speaking.` is superseded by the approved spec and must be replaced at implementation start with a scoped Speaking invariant, while unrelated historical plan documents remain historical.
-- Part 1 and Part 3 use ordered prompts. Part 2 uses a long-turn cue card plus optional authored follow-ups. Persistence uses stable IDs + `order_index`, not linked-list pointers.
-- Part 1/3 application default response time is 60 seconds; Part 2 defaults to 60 seconds preparation and 120 seconds response. These are configurable product defaults, not claims of a fixed official IELTS per-question limit.
-- Practice allows Listen/Retry only for the current uncommitted response. Exam/Full Mock never allows replay, retry, previous-question navigation, or reopening a committed response.
-- Server time/state is authoritative. Browser timers and animations are presentation only.
-- Reload/crash recovery restores the same prompt and last server-confirmed remaining-time snapshot, grants exactly one 7-second reconnect/preparation grace for that interruption, then resumes the original remaining time. Repeated refresh must not stack grace or rewind time.
-- Raw candidate audio is private attempt data. Reuse the physical storage abstraction, but do **not** shoehorn candidate recordings into the published-content `Asset` authorization model tied to `test_version_id`.
-- Prefer `audio/webm;codecs=opus` where supported, with capability-driven fallback. Frontend must not encode WAV. Speech preprocessing may derive 16 kHz mono PCM/WAV.
-- Upload small MediaRecorder chunks (target 2–5 seconds). Because a hard crash creates a new MediaRecorder container/session, model one logical take as one or more ordered recording segments, each containing idempotent ordered chunks.
-- `Generate Transcript` and `Grade with AI` are separate user actions. Grading may reuse or internally generate a valid transcript, but it must not create duplicate ASR work for the same fingerprint.
-- Transcript is read-only, per-question only. A clean transcript may normalize punctuation/casing/filler presentation but must never grammar-correct or silently improve what the candidate said.
-- Technical/audio failures are nonscorable states, not low IELTS bands.
-- Fluency metrics are evidence only. Never create hard band rules such as `pause_count > N => Band X`.
-- Pronunciation requires audio-derived evidence. A transcript-only LLM must never invent a Pronunciation score.
-- No per-question or per-Part score averaging. Criterion scores are holistic across the whole Speaking attempt; question-level analysis exists only for evidence/feedback.
-- Preserve the Writing AI score-first implementation at `d606bfae...`; do not regress or rewrite Writing to build Speaking.
-- Speaking criterion AI scores remain advisory half-band values (`0..9` in `0.5` increments) as approved. Store `raw_mean`; use the project `round_to_half` presentation policy for the advisory Speaking overall unless a later calibration/version explicitly changes it. Never claim examiner-certified rounding/accuracy.
-- Full Mock eventually becomes Listening -> Reading -> Writing -> Speaking. The four-skill project overall is available only when all four module bands exist.
-- Teacher/classroom ownership, moderation, assignment provenance, immutable published versions, and read-only teacher result access keep their existing governance semantics.
-- UI is state-driven and polished: realtime mic level, timer progress, light 150–250ms transitions, save/recovery/transcript/AI progress, theme/accent support, and `prefers-reduced-motion`. No parallax, particles, or motion that delays state/network transitions.
-- Heavy speech dependencies must not make ordinary backend unit tests load models. Put them behind provider factories/optional dependency groups and test with fakes/stubs/tiny fixtures.
-- Keep verification focused and cheap per user preference: no browser automation, Playwright/E2E, dev server, real microphone, real ASR/acoustic model download, live LLM/GPU/Modal, or deployment runs. Use focused pytest/Vitest, targeted Ruff/ESLint, TypeScript typecheck, and `git diff --check`.
-- TDD for behavior changes: write focused failing test, run and confirm RED, implement minimally, rerun GREEN, then commit. Do not batch all phases into one commit.
+- Speaking là mô-đun đầy đủ cạnh Reading, Listening, Writing; không làm bản trình diễn tách rời.
+- Dòng cũ `Do not implement Speaking.` trong `AGENTS.md` gốc đã bị đặc tả phê duyệt thay thế, phải đổi lúc bắt đầu triển khai thành bất biến Speaking có phạm vi; tài liệu kế hoạch lịch sử không liên quan vẫn giữ tính lịch sử.
+- Part 1 và Part 3 dùng câu hỏi có thứ tự. Part 2 dùng thẻ gợi ý bài nói dài, có câu hỏi tiếp tùy chọn do người soạn. Lưu bằng ID ổn định + `order_index`, không dùng con trỏ danh sách liên kết.
+- Mặc định ứng dụng Part 1/3 trả lời 60 giây; Part 2 chuẩn bị 60 giây, trả lời 120 giây. Đây là mặc định sản phẩm cấu hình được, không tuyên bố giới hạn từng câu IELTS chính thức cố định.
+- Luyện tập chỉ cho Nghe/Thử lại câu hiện tại chưa chốt. Thi/Full Mock không cho phát lại, thử lại, về câu trước hoặc mở lại câu đã chốt.
+- Thời gian/trạng thái máy chủ có thẩm quyền. Bộ đếm và hoạt ảnh trình duyệt chỉ để trình bày.
+- Khôi phục sau tải lại/sự cố trả cùng câu hỏi và ảnh chụp thời gian còn lại được máy chủ xác nhận gần nhất, cấp đúng một khoảng bù kết nối/chuẩn bị 7 giây cho gián đoạn đó, rồi tiếp tục thời gian gốc. Tải lại lặp không cộng dồn bù hoặc tua ngược thời gian.
+- Âm thanh gốc là dữ liệu riêng tư của lượt làm bài. Tái sử dụng lớp lưu trữ vật lý, nhưng **không** ép bản ghi vào mô hình phân quyền nội dung xuất bản `Asset` gắn với `test_version_id`.
+- Ưu tiên `audio/webm;codecs=opus` nếu hỗ trợ, dự phòng theo khả năng. Frontend không được mã hóa WAV. Tiền xử lý tiếng nói có thể tạo PCM/WAV mono 16 kHz.
+- Tải các đoạn MediaRecorder nhỏ (mục tiêu 2–5 giây). Sự cố cứng tạo bộ chứa/phiên MediaRecorder mới, nên một lần ghi logic gồm một hoặc nhiều phân đoạn có thứ tự, mỗi phân đoạn chứa đoạn dữ liệu có thứ tự và lặp an toàn.
+- `Generate Transcript` và `Grade with AI` là thao tác riêng. Chấm có thể tái sử dụng hoặc tự tạo bản chép lời hợp lệ, nhưng không được tạo công việc ASR trùng cho cùng dấu vân tay.
+- Bản chép lời chỉ đọc, chỉ theo câu. Bản sạch có thể chuẩn hóa dấu câu/chữ hoa/cách hiện từ đệm nhưng không được sửa ngữ pháp hoặc âm thầm làm tốt hơn điều người làm bài nói.
+- Lỗi kỹ thuật/âm thanh là trạng thái không chấm được, không phải band IELTS thấp.
+- Chỉ số lưu loát chỉ là bằng chứng. Không tạo quy tắc band cứng như `pause_count > N => Band X`.
+- Phát âm cần bằng chứng từ âm thanh. LLM chỉ nhận bản chép lời không được bịa điểm Pronunciation.
+- Không lấy trung bình điểm từng câu/Part. Điểm tiêu chí đánh giá tổng thể toàn lượt Speaking; phân tích từng câu chỉ để bằng chứng/nhận xét.
+- Giữ triển khai Writing AI điểm trước ở `d606bfae...`; không gây hồi quy hoặc viết lại Writing để xây Speaking.
+- Điểm AI tiêu chí Speaking vẫn là giá trị nửa band tư vấn (`0..9`, bước `0.5`) đã phê duyệt. Lưu `raw_mean`; dùng chính sách hiển thị `round_to_half` của dự án cho tổng tư vấn, trừ khi phiên bản/hiệu chuẩn sau đổi rõ ràng. Không tuyên bố làm tròn/độ chính xác được giám khảo chứng nhận.
+- Full Mock cuối cùng thành Listening -> Reading -> Writing -> Speaking. Tổng dự án bốn kỹ năng chỉ có khi đủ band bốn mô-đun.
+- Quyền sở hữu giáo viên/lớp, kiểm duyệt, nguồn gốc bài giao, phiên bản xuất bản bất biến và quyền giáo viên chỉ đọc kết quả giữ ngữ nghĩa quản trị hiện có.
+- UI theo trạng thái và được trau chuốt: mức micro trực tiếp, tiến độ thời gian, chuyển nhẹ 150–250 ms, tiến độ lưu/khôi phục/chép lời/AI, hỗ trợ giao diện/màu nhấn và `prefers-reduced-motion`. Không parallax, hạt trang trí hoặc chuyển động làm chậm đổi trạng thái/mạng.
+- Phụ thuộc tiếng nói nặng không được khiến kiểm thử đơn vị backend thường nạp mô hình. Đặt sau factory nhà cung cấp/nhóm phụ thuộc tùy chọn, kiểm bằng giả lập/stub/dữ liệu nhỏ.
+- Xác minh tập trung, ít chi phí theo ý người dùng: không tự động hóa trình duyệt, Playwright/E2E, máy chủ dev, micro thật, tải mô hình ASR/âm học thật, LLM/GPU/Modal trực tiếp hoặc triển khai. Dùng pytest/Vitest tập trung, Ruff/ESLint có mục tiêu, kiểm kiểu TypeScript và `git diff --check`.
+- Thay đổi hành vi theo TDD: viết kiểm thử tập trung thất bại, chạy xác nhận RED, triển khai tối thiểu, chạy GREEN, rồi commit. Không gộp mọi giai đoạn vào một commit.
 
-## File Structure
+## Cấu trúc tệp
 
-New backend responsibilities should stay focused rather than expanding `entities.py` and Writing-specific modules indefinitely:
+Trách nhiệm backend mới nên tập trung, không mở rộng mãi `entities.py` và mô-đun riêng Writing:
 
-- `backend/app/models/speaking.py` — authored Speaking content plus response/take/progress/media metadata.
-- `backend/app/models/speaking_transcript.py` — transcript runs/events/transcripts.
-- `backend/app/models/speaking_ai.py` — AI grading runs/events/results metadata.
-- `backend/app/schemas/speaking.py` — Builder, runner, response, recovery, review DTOs.
-- `backend/app/schemas/speaking_ai.py` — transcript/feature/grading schemas.
-- `backend/app/repositories/speaking.py`, `speaking_transcript.py`, `speaking_ai.py` — persistence only.
-- `backend/app/services/speaking_builder.py` — authoring/validation/order semantics.
-- `backend/app/services/speaking_attempts.py` — prompt state machine, practice/exam rules, finalization.
-- `backend/app/services/speaking_media.py` — private chunk/segment storage and playback authorization.
-- `backend/app/services/speaking_transcript.py` — transcript orchestration/cache.
-- `backend/app/services/speaking_audio.py` — FFmpeg normalization + quality/preprocessing helpers.
-- `backend/app/services/speaking_features.py` — deterministic fluency/prosody evidence.
-- `backend/app/services/speaking_ai.py`, `speaking_ai_worker.py` — score-first grading orchestration + durable worker lifecycle.
-- `backend/app/providers/speaking_asr/` — ASR/alignment provider protocol + optional implementation.
-- `backend/app/providers/speaking_pronunciation/` — audio-derived pronunciation evidence protocol + baseline alignment/prosody implementation.
-- `backend/app/domains/scoring/speaking_prompts.py` — descriptor/evidence/score/feedback prompt contracts.
-- `frontend/src/features/speaking/` — preflight, recorder hook/controller, runner, review, transcript and AI panels.
-- `frontend/src/lib/api/speaking.ts`, `speaking-ai.ts` — typed/Zod network contracts.
+- `backend/app/models/speaking.py` — nội dung Speaking do người soạn và siêu dữ liệu câu trả lời/lần ghi/tiến độ/tệp âm thanh.
+- `backend/app/models/speaking_transcript.py` — lượt chép lời/sự kiện/bản chép lời.
+- `backend/app/models/speaking_ai.py` — siêu dữ liệu lượt chấm AI/sự kiện/kết quả.
+- `backend/app/schemas/speaking.py` — DTO Builder, làm bài, câu trả lời, khôi phục, xem lại.
+- `backend/app/schemas/speaking_ai.py` — lược đồ bản chép lời/đặc trưng/chấm.
+- `backend/app/repositories/speaking.py`, `speaking_transcript.py`, `speaking_ai.py` — chỉ lưu trữ.
+- `backend/app/services/speaking_builder.py` — ngữ nghĩa soạn/kiểm/thứ tự.
+- `backend/app/services/speaking_attempts.py` — máy trạng thái câu hỏi, quy tắc luyện tập/thi, hoàn tất.
+- `backend/app/services/speaking_media.py` — lưu đoạn/phân đoạn riêng tư và phân quyền phát lại.
+- `backend/app/services/speaking_transcript.py` — điều phối/bộ nhớ đệm chép lời.
+- `backend/app/services/speaking_audio.py` — chuẩn hóa FFmpeg và hàm chất lượng/tiền xử lý.
+- `backend/app/services/speaking_features.py` — bằng chứng độ lưu loát/ngữ điệu tất định.
+- `backend/app/services/speaking_ai.py`, `speaking_ai_worker.py` — điều phối chấm điểm trước và vòng đời worker bền vững.
+- `backend/app/providers/speaking_asr/` — giao thức nhà cung cấp ASR/căn chỉnh và bản triển khai tùy chọn.
+- `backend/app/providers/speaking_pronunciation/` — giao thức bằng chứng phát âm từ âm thanh và bản cơ sở căn chỉnh/ngữ điệu.
+- `backend/app/domains/scoring/speaking_prompts.py` — hợp đồng lời nhắc mô tả/bằng chứng/điểm/nhận xét.
+- `frontend/src/features/speaking/` — kiểm trước khi làm bài, hook/bộ điều khiển ghi âm, làm bài, xem lại, bảng chép lời/AI.
+- `frontend/src/lib/api/speaking.ts`, `speaking-ai.ts` — hợp đồng mạng có kiểu/Zod.
 
-Do not create all files up front. Create each when its owning task reaches GREEN.
+Không tạo mọi tệp trước. Chỉ tạo khi tác vụ sở hữu tệp đạt GREEN.
 
-## Review Focus
+## Trọng tâm rà soát
 
-1. Duplicate/out-of-order chunk retries after a flaky network must produce exactly one ordered logical recording; a resumed MediaRecorder session must start a new segment rather than corrupting the previous WebM container.
-2. Refresh/reconnect loops during an active answer must never gain more speech time: the backend restores one bounded remaining snapshot and one 7-second grace per valid interruption, while completed prompts stay closed.
-3. Private candidate audio/transcripts must be inaccessible by ID to unrelated users/teachers; assignment teachers may read only assignment-originated work under the existing provenance predicate.
-4. ASR/audio failure must not silently become a valid LR/GRA/Pronunciation score. Missing/stale transcript or acoustic evidence must be explicit and criterion/run failure behavior must be deterministic.
-5. Navigation/reload while transcription or AI grading is running must disconnect only observation; backend work continues and SSE/JSON reconciliation resumes without duplicate processing or lost persisted scores.
+1. Thử lại đoạn dữ liệu trùng/sai thứ tự khi mạng chập chờn phải tạo đúng một bản ghi logic có thứ tự; phiên MediaRecorder tiếp tục phải mở phân đoạn mới thay vì làm hỏng bộ chứa WebM trước.
+2. Lặp tải lại/kết nối trong câu đang trả lời không được tăng thời gian nói: backend khôi phục một ảnh chụp còn lại hữu hạn, một bù 7 giây cho mỗi gián đoạn hợp lệ; câu hoàn tất vẫn đóng.
+3. Người dùng/giáo viên không liên quan không được truy cập âm thanh/bản chép lời riêng bằng ID; giáo viên giao bài chỉ đọc bài có nguồn gốc bài giao theo điều kiện hiện có.
+4. Lỗi ASR/âm thanh không được âm thầm thành điểm LR/GRA/Pronunciation hợp lệ. Bản chép lời/bằng chứng âm học thiếu/cũ phải rõ ràng; hành vi lỗi tiêu chí/lượt phải tất định.
+5. Điều hướng/tải lại khi chép lời/chấm AI chỉ ngắt theo dõi; backend tiếp tục, đối chiếu SSE/JSON nối lại không xử lý trùng hoặc mất điểm đã lưu.
 
 ---
 
-# P1 — Domain + DB + Builder
+# P1 — Miền nghiệp vụ + cơ sở dữ liệu + Builder
 
-### Task 1: Enable Speaking scope and authored persistence
+### Tác vụ 1: bật phạm vi Speaking và lưu nội dung soạn
 
-**Files:**
-- Modify: `AGENTS.md`
-- Modify: `backend/app/models/enums.py`
-- Create: `backend/app/models/speaking.py`
-- Modify: `backend/app/models/__init__.py`
-- Create: `backend/alembic/versions/<next_revision>_speaking_content.py`
-- Modify: `backend/app/schemas/content.py`
-- Create: `backend/app/schemas/speaking.py`
-- Test: `backend/tests/test_speaking_builder.py`
+**Tệp:**
+- Sửa: `AGENTS.md`
+- Sửa: `backend/app/models/enums.py`
+- Tạo: `backend/app/models/speaking.py`
+- Sửa: `backend/app/models/__init__.py`
+- Tạo: `backend/alembic/versions/<next_revision>_speaking_content.py`
+- Sửa: `backend/app/schemas/content.py`
+- Tạo: `backend/app/schemas/speaking.py`
+- Kiểm thử: `backend/tests/test_speaking_builder.py`
 
-**Interfaces:**
-- Produces `ModuleType.SPEAKING`, `SpeakingPromptType = SHORT_ANSWER | LONG_TURN | FOLLOW_UP`, `SpeakingPart`, `SpeakingPrompt`, and Builder DTOs nested under the existing `TestModule`/Builder response.
-- `SpeakingPart` belongs to one SPEAKING `TestModule`; unique `(module_id, part_number)` for part 1/2/3. `SpeakingPrompt` has stable UUID, `order_index`, `prompt_text`, `preparation_seconds`, `response_seconds`, bounded `config_json` for cue points/presentation data.
+**Giao diện:**
+- Tạo `ModuleType.SPEAKING`, `SpeakingPromptType = SHORT_ANSWER | LONG_TURN | FOLLOW_UP`, `SpeakingPart`, `SpeakingPrompt` và DTO Builder lồng trong phản hồi `TestModule`/Builder hiện có.
+- `SpeakingPart` thuộc một `TestModule` SPEAKING; `(module_id, part_number)` duy nhất cho Part 1/2/3. `SpeakingPrompt` có UUID ổn định, `order_index`, `prompt_text`, `preparation_seconds`, `response_seconds`, `config_json` hữu hạn cho gợi ý/dữ liệu trình bày.
 
-- [x] **Step 1: Write failing model/Builder contract tests**
+- [x] **Bước 1: viết kiểm thử hợp đồng mô hình/Builder thất bại**
 
-Add tests proving `ModuleType.SPEAKING` is accepted; three parts can be represented; duplicate part numbers are rejected; stable prompt IDs survive reorder; draft content can be incomplete; and Builder serialization exposes `speaking_parts` without changing Reading/Listening/Writing DTOs.
+Thêm kiểm thử chứng minh `ModuleType.SPEAKING` được chấp nhận; biểu diễn đủ ba Part; từ chối số Part trùng; ID câu hỏi ổn định qua đổi thứ tự; bản nháp có thể thiếu; tuần tự hóa Builder lộ `speaking_parts` mà không đổi DTO Reading/Listening/Writing.
 
-- [x] **Step 2: Run and verify RED**
+- [x] **Bước 2: chạy và xác nhận RED**
 
-Run: `cd backend && uv run pytest tests/test_speaking_builder.py -q`
+Chạy: `cd backend && uv run pytest tests/test_speaking_builder.py -q`
 
-Expected: FAIL because Speaking enum/models/schemas do not exist.
+Kỳ vọng: FAIL vì enum/mô hình/lược đồ Speaking chưa có.
 
-- [x] **Step 3: Implement enum, focused model file, schema, migration, and repository guidance**
+- [x] **Bước 3: triển khai enum, tệp mô hình tập trung, lược đồ, migration và hướng dẫn repository**
 
-Before migration creation run `uv run alembic heads`; generate from the actual single current head. Replace only the stale root `AGENTS.md` Speaking prohibition with an invariant that Speaking work follows the approved spec/plan. Do not rewrite old historical plan docs that said Speaking was out of scope for those older tasks.
+Trước tạo migration chạy `uv run alembic heads`; sinh từ đúng đầu duy nhất hiện tại. Chỉ thay cấm Speaking cũ trong `AGENTS.md` gốc bằng bất biến công việc Speaking theo đặc tả/kế hoạch đã duyệt. Không viết lại tài liệu lịch sử nói Speaking ngoài phạm vi tác vụ cũ.
 
-- [x] **Step 4: Run GREEN + model lint**
+- [x] **Bước 4: chạy GREEN và kiểm mã mô hình**
 
-Run: `cd backend && uv run pytest tests/test_speaking_builder.py -q && uv run ruff check app/models/enums.py app/models/speaking.py app/schemas/speaking.py tests/test_speaking_builder.py`
+Chạy: `cd backend && uv run pytest tests/test_speaking_builder.py -q && uv run ruff check app/models/enums.py app/models/speaking.py app/schemas/speaking.py tests/test_speaking_builder.py`
 
-- [x] **Step 5: Commit**
+- [x] **Bước 5: commit**
 
 ```bash
 git add AGENTS.md backend/app/models backend/app/schemas backend/alembic/versions backend/tests/test_speaking_builder.py
 git commit -m "Add Speaking content domain model"
 ```
 
-### Task 2: Speaking Builder CRUD, validation, version cloning, and transfer
+### Tác vụ 2: CRUD Builder Speaking, kiểm tra, nhân bản phiên bản và chuyển dữ liệu
 
-**Files:**
-- Create: `backend/app/repositories/speaking.py`
-- Create: `backend/app/services/speaking_builder.py`
-- Create: `backend/app/api/v1/speaking.py`
-- Modify: `backend/app/api/v1/router.py`
-- Modify: `backend/app/api/v1/reading.py` only where the shared Builder response is assembled
-- Modify: `backend/app/api/v1/tests.py`
-- Modify: version-clone service(s) that clone Reading/Listening/Writing module content
-- Modify: `backend/app/api/v1/transfer.py` and its service/schema files as needed
-- Test: `backend/tests/test_speaking_builder.py`
-- Test: existing clone/transfer tests
+**Tệp:**
+- Tạo: `backend/app/repositories/speaking.py`
+- Tạo: `backend/app/services/speaking_builder.py`
+- Tạo: `backend/app/api/v1/speaking.py`
+- Sửa: `backend/app/api/v1/router.py`
+- Sửa: `backend/app/api/v1/reading.py` chỉ ở chỗ dựng phản hồi Builder dùng chung
+- Sửa: `backend/app/api/v1/tests.py`
+- Sửa: dịch vụ nhân bản phiên bản đang nhân nội dung mô-đun Reading/Listening/Writing
+- Sửa: `backend/app/api/v1/transfer.py` cùng tệp dịch vụ/lược đồ khi cần
+- Kiểm thử: `backend/tests/test_speaking_builder.py`
+- Kiểm thử: bộ kiểm nhân bản/chuyển dữ liệu hiện có
 
-**Interfaces:**
-- Produces Builder mutations for part/prompt create/update/delete/reorder plus `validate_speaking_module(module_id)`.
-- Validation on publish/moderation requires parts 1/2/3, exactly one Part 2 `LONG_TURN`, non-empty prompt text, positive timers, unique normalized order, and legal prompt types by part. Draft autosave remains permissive for incomplete intermediate state.
+**Giao diện:**
+- Tạo thao tác Builder thêm/cập nhật/xóa/đổi thứ tự Part/câu và `validate_speaking_module(module_id)`.
+- Kiểm khi xuất bản/kiểm duyệt cần Part 1/2/3, đúng một `LONG_TURN` Part 2, đề không trống, thời gian dương, thứ tự chuẩn hóa duy nhất và loại câu hợp Part. Tự lưu nháp vẫn cho trạng thái trung gian chưa đủ.
 
-- [x] **Step 1: Add failing API/service tests** for append order, reorder normalization, Part 2 cue points/default 60/120 timers, configurable Part 1/3 60s default, malformed publish rejection, owner/published immutability policy, clone preserving IDs only where existing clone semantics require new IDs, and ZIP export/import round-trip.
-- [x] **Step 2: Run RED:** `cd backend && uv run pytest tests/test_speaking_builder.py tests/test_asset_cloning.py -q` plus the existing transfer test file.
-- [x] **Step 3: Implement minimal repository/service/routes and wire publish validation.** Reuse `require_content_author`/current access policy; never add a Speaking-specific teacher bypass.
-- [x] **Step 4: Run GREEN + Ruff** on touched files.
-- [x] **Step 5: Commit:** `git commit -am "Add Speaking Builder API and validation"` (stage new files explicitly first).
+- [x] **Bước 1: thêm kiểm thử API/dịch vụ thất bại** cho thêm cuối, chuẩn hóa thứ tự, gợi ý Part 2/thời gian 60/120 mặc định, mặc định 60 giây Part 1/3 cấu hình được, từ chối xuất bản sai, chính sách chủ sở hữu/bất biến đã xuất bản, nhân bản tạo ID mới theo ngữ nghĩa nhân bản hiện có và ZIP xuất/nhập khứ hồi.
+- [x] **Bước 2: chạy RED:** `cd backend && uv run pytest tests/test_speaking_builder.py tests/test_asset_cloning.py -q` cùng tệp kiểm chuyển dữ liệu hiện có.
+- [x] **Bước 3: triển khai repository/dịch vụ/tuyến tối thiểu, nối kiểm xuất bản.** Tái sử dụng `require_content_author`/chính sách truy cập hiện tại; không thêm lối bỏ qua cho giáo viên riêng Speaking.
+- [x] **Bước 4: chạy GREEN + Ruff** cho tệp đã sửa.
+- [x] **Bước 5: commit:** `git commit -am "Add Speaking Builder API and validation"` (đưa tệp mới vào vùng chờ rõ ràng trước).
 
-### Task 3: Dynamic Speaking Builder UI
+### Tác vụ 3: giao diện Speaking Builder động
 
-**Files:**
-- Modify: `frontend/src/lib/api/builder.ts`
-- Create: `frontend/src/features/test-builder/speaking-builder.tsx`
-- Create: `frontend/src/features/test-builder/speaking-prompt-editor.tsx`
-- Modify: `frontend/src/features/test-builder/builder-editor-page.tsx`
-- Modify: `frontend/src/features/test-builder/builder-workspace-navigation.tsx`
-- Modify: `frontend/src/features/test-builder/content-summary.tsx`
-- Modify: `frontend/src/app/globals.css`
-- Modify: `frontend/src/lib/i18n/en.ts`
-- Modify: `frontend/src/lib/i18n/vi.ts`
-- Create: `frontend/tests/speaking-builder.test.tsx`
+**Tệp:**
+- Sửa: `frontend/src/lib/api/builder.ts`
+- Tạo: `frontend/src/features/test-builder/speaking-builder.tsx`
+- Tạo: `frontend/src/features/test-builder/speaking-prompt-editor.tsx`
+- Sửa: `frontend/src/features/test-builder/builder-editor-page.tsx`
+- Sửa: `frontend/src/features/test-builder/builder-workspace-navigation.tsx`
+- Sửa: `frontend/src/features/test-builder/content-summary.tsx`
+- Sửa: `frontend/src/app/globals.css`
+- Sửa: `frontend/src/lib/i18n/en.ts`
+- Sửa: `frontend/src/lib/i18n/vi.ts`
+- Tạo: `frontend/tests/speaking-builder.test.tsx`
 
-**Interfaces:**
-- Builder workspace union becomes `overview | reading | listening | writing | speaking`; module type unions include `SPEAKING`.
-- `SpeakingBuilder` presents Part 1/2/3, append-at-end questions, reorder/delete, Part 2 cue points + timers + optional follow-ups, and uses existing autosave lifecycle.
+**Giao diện:**
+- Hợp kiểu workspace Builder thành `overview | reading | listening | writing | speaking`; hợp kiểu mô-đun có `SPEAKING`.
+- `SpeakingBuilder` hiển thị Part 1/2/3, thêm câu cuối, đổi thứ tự/xóa, gợi ý + thời gian + câu tiếp tùy chọn Part 2, dùng vòng đời tự lưu hiện có.
 
-- [x] **Step 1: Write failing RTL tests** for workspace navigation, creation, append/reorder, Part 2 defaults, autosave payload, frozen published/under-moderation behavior, focus moving to a newly added card, and reduced-motion-compatible class/state behavior.
-- [x] **Step 2: Run RED:** `cd frontend && npx vitest run tests/speaking-builder.test.tsx`.
-- [x] **Step 3: Implement UI/API schemas.** Use existing semantic theme tokens; add lightweight 150–250ms enter/reorder transitions and `prefers-reduced-motion`, no new animation library.
-- [x] **Step 4: Run GREEN + typecheck/targeted ESLint:** `npx vitest run tests/speaking-builder.test.tsx && npm run typecheck` then ESLint touched files.
-- [x] **Step 5: Commit:** `git commit -m "Add Speaking Builder workspace"`.
+- [x] **Bước 1: viết kiểm thử RTL thất bại** cho điều hướng workspace, tạo, thêm/đổi thứ tự, mặc định Part 2, dữ liệu tự lưu, hành vi đóng băng đã xuất bản/đang kiểm duyệt, chuyển tiêu điểm tới thẻ mới, lớp/trạng thái tương thích giảm chuyển động.
+- [x] **Bước 2: chạy RED:** `cd frontend && npx vitest run tests/speaking-builder.test.tsx`.
+- [x] **Bước 3: triển khai UI/lược đồ API.** Dùng token giao diện ngữ nghĩa hiện có; thêm chuyển xuất hiện/đổi thứ tự nhẹ 150–250 ms và `prefers-reduced-motion`, không thư viện hoạt ảnh mới.
+- [x] **Bước 4: chạy GREEN, kiểm kiểu/ESLint có mục tiêu:** `npx vitest run tests/speaking-builder.test.tsx && npm run typecheck` rồi ESLint tệp đã sửa.
+- [x] **Bước 5: commit:** `git commit -m "Add Speaking Builder workspace"`.
 
-**P1 gate:** stop and review. Do not start runner work until P1 tests are green and Builder/publish/clone/transfer contracts are coherent.
-
----
-
-# P2 — Runner + Recording State + Timers
-
-### Task 4: Speaking attempt state machine and current-prompt API
-
-**Files:**
-- Extend: `backend/app/models/speaking.py`
-- Create: `backend/alembic/versions/<next_revision>_speaking_attempt_state.py`
-- Create: `backend/app/services/speaking_attempts.py`
-- Extend: `backend/app/repositories/speaking.py`
-- Extend: `backend/app/schemas/speaking.py`
-- Extend: `backend/app/api/v1/speaking.py`
-- Modify: `backend/app/services/attempts.py`
-- Modify: `backend/app/services/attempt_scope.py`
-- Test: `backend/tests/test_speaking_attempts.py`
-
-**Interfaces:**
-- Produces `SpeakingResponse`, `SpeakingResponseTake`, and `SpeakingPromptProgress`.
-- Service entry points conceptually: `get_state(attempt_id)`, `begin_prompt(...)`, `heartbeat(...)`, `finish_current_response(..., completion_reason)`, `retry_current_response(...)`.
-- Progress stores active prompt/phase, authoritative phase timestamps/deadline, `last_confirmed_remaining_ms`, interruption generation/count, grace-used state, and last resume time.
-
-- [x] **Step 1: Write failing state tests** for ordered Part 1→Part 2 prep→long turn/follow-up→Part 3 flow; current prompt only; Done/Next; timeout; locked committed response; practice retry allowed only current prompt; exam/full-mock retry/replay forbidden; focused Speaking prompt target; and client remaining-time values never increasing server state.
-- [x] **Step 2: Run RED:** `cd backend && uv run pytest tests/test_speaking_attempts.py tests/test_focused_attempts.py -q`.
-- [x] **Step 3: Implement state machine using `TimerService.now()` and DB state.** Do not add `setInterval` semantics server-side. Keep the overall `Attempt` lifecycle generic while Speaking prompt progress is its child state.
-- [x] **Step 4: Run GREEN + Ruff.**
-- [x] **Step 5: Commit:** `git commit -m "Add Speaking attempt state machine"`.
-
-### Task 5: Browser preflight, recorder abstraction, and runner UI state
-
-**Files:**
-- Create: `frontend/src/lib/api/speaking.ts`
-- Create: `frontend/src/features/speaking/speaking-recorder.ts`
-- Create: `frontend/src/features/speaking/use-speaking-recorder.ts`
-- Create: `frontend/src/features/speaking/speaking-preflight.tsx`
-- Create: `frontend/src/features/speaking/speaking-runner.tsx`
-- Modify: `frontend/src/app/attempt/[attemptId]/page.tsx`
-- Modify: shared attempt destination/routing helpers as needed
-- Modify: `frontend/src/app/globals.css`, i18n files
-- Create: `frontend/tests/speaking-preflight.test.tsx`
-- Create: `frontend/tests/speaking-runner.test.tsx`
-- Modify: `frontend/tests/attempt-page.test.tsx`
-
-**Interfaces:**
-- `SpeakingRecorder` wraps native `MediaRecorder`, `navigator.mediaDevices`, and Web Audio level sampling; production code receives state callbacks/chunk callbacks rather than manipulating UI directly.
-- Runner state mirrors backend phases: question enter, preparing, recording, finalizing/uploading, completed, restoring.
-
-- [x] **Step 1: Add failing tests** with fake `MediaRecorder`, `mediaDevices`, `AudioContext`, and fake timers: permission denied; supported MIME selection preferring WebM/Opus; level meter; current question only in exam; Part 2 preparation + start countdown; Done/Next and timeout; no exam retry/replay; practice Retry confirmation; no advance before persistence callback resolves; reduced-motion behavior.
-- [x] **Step 2: Run RED:** `cd frontend && npx vitest run tests/speaking-preflight.test.tsx tests/speaking-runner.test.tsx tests/attempt-page.test.tsx`.
-- [x] **Step 3: Implement native-browser recorder abstraction and state-driven UI.** Do not add third-party waveform/recording dependency; use lightweight level bars from analyser data.
-- [x] **Step 4: Run GREEN + `npm run typecheck` + targeted ESLint.**
-- [x] **Step 5: Commit:** `git commit -m "Add Speaking preflight and runner state UI"`.
-
-**P2 gate:** runner/state tests must pass with mocked recorder/network. It is not yet crash-durable until P3; do not market/enable production Speaking flow until P3 completes.
+**Chốt P1:** dừng và rà soát. Chưa bắt đầu làm giao diện thi khi kiểm P1 chưa đạt và hợp đồng Builder/xuất bản/nhân bản/chuyển dữ liệu chưa nhất quán.
 
 ---
 
-# P3 — Private Chunk Upload + Recovery + Review
+# P2 — Giao diện làm bài + trạng thái ghi âm + bộ đếm
 
-### Task 6: Private segmented audio persistence and authorization
+### Tác vụ 4: máy trạng thái Speaking và API câu hiện tại
 
-**Files:**
-- Extend: `backend/app/models/speaking.py`
-- Create: `backend/alembic/versions/<next_revision>_speaking_audio_chunks.py`
-- Create: `backend/app/services/speaking_media.py`
-- Extend: `backend/app/repositories/speaking.py`
-- Extend: `backend/app/api/v1/speaking.py`
-- Modify: `backend/app/storage/local.py`
-- Modify: `backend/app/core/config.py`, `.env.example`, `backend/.env.example` only for new bounded Speaking settings
-- Test: `backend/tests/test_speaking_media.py`
+**Tệp:**
+- Mở rộng: `backend/app/models/speaking.py`
+- Tạo: `backend/alembic/versions/<next_revision>_speaking_attempt_state.py`
+- Tạo: `backend/app/services/speaking_attempts.py`
+- Mở rộng: `backend/app/repositories/speaking.py`
+- Mở rộng: `backend/app/schemas/speaking.py`
+- Mở rộng: `backend/app/api/v1/speaking.py`
+- Sửa: `backend/app/services/attempts.py`
+- Sửa: `backend/app/services/attempt_scope.py`
+- Kiểm thử: `backend/tests/test_speaking_attempts.py`
 
-**Interfaces:**
-- Add `SpeakingAudioSegment(response_take_id, segment_index, mime_type, ...)` and `SpeakingAudioChunk(segment_id, sequence, storage_key, sha256, byte_size, ...)` with unique idempotency constraints.
-- One practice take may have multiple segments after crash/recovery. A new MediaRecorder process/session always starts a new segment; chunks are ordered only within the segment. Final logical audio fingerprint hashes ordered segment/chunk hashes + committed take identity.
-- Private playback/read endpoint authorizes attempt owner or an existing assignment-authorized teacher result view; unrelated IDs never grant access.
+**Giao diện:**
+- Tạo `SpeakingResponse`, `SpeakingResponseTake`, `SpeakingPromptProgress`.
+- Các điểm vào dịch vụ về khái niệm: `get_state(attempt_id)`, `begin_prompt(...)`, `heartbeat(...)`, `finish_current_response(..., completion_reason)`, `retry_current_response(...)`.
+- Tiến độ lưu câu/pha đang hoạt động, mốc/hạn pha có thẩm quyền, `last_confirmed_remaining_ms`, thế hệ/số lần gián đoạn, trạng thái đã dùng bù và thời gian tiếp tục gần nhất.
 
-- [x] **Step 1: Write failing tests** for WebM MIME acceptance, size limits, duplicate `(segment,sequence)` retry idempotency, conflicting duplicate hash rejection, out-of-order arrival yielding ordered manifest, new segment after recovery, superseded practice take exclusion, final fingerprint determinism, and owner/teacher/unrelated-user playback authorization.
-- [x] **Step 2: Run RED:** `cd backend && uv run pytest tests/test_speaking_media.py tests/test_asset_access.py tests/test_classroom_assignments.py -q`.
-- [x] **Step 3: Implement private storage manifests.** Reuse `LocalAssetStorage` filesystem safety but store under a private Speaking namespace; do not create public content `Asset` rows for candidate audio. Extend MIME handling for browser WebM/Opus.
-- [x] **Step 4: Run GREEN + Ruff.**
-- [x] **Step 5: Commit:** `git commit -m "Add private Speaking chunk storage"`.
+- [x] **Bước 1: viết kiểm trạng thái thất bại** cho thứ tự Part 1→chuẩn bị Part 2→bài nói dài/câu tiếp→Part 3; chỉ câu hiện tại; Xong/Tiếp; hết giờ; khóa câu đã chốt; chỉ thử lại câu hiện tại ở luyện tập; cấm thử lại/phát lại khi thi/Full Mock; đích câu Speaking theo phạm vi; thời gian còn lại máy khách không tăng trạng thái máy chủ.
+- [x] **Bước 2: chạy RED:** `cd backend && uv run pytest tests/test_speaking_attempts.py tests/test_focused_attempts.py -q`.
+- [x] **Bước 3: triển khai máy trạng thái bằng `TimerService.now()` và trạng thái cơ sở dữ liệu.** Không thêm ngữ nghĩa `setInterval` ở máy chủ. Giữ vòng đời `Attempt` tổng quát, tiến độ câu Speaking là trạng thái con.
+- [x] **Bước 4: chạy GREEN + Ruff.**
+- [x] **Bước 5: commit:** `git commit -m "Add Speaking attempt state machine"`.
 
-### Task 7: Interruption/recovery protocol with one 7-second grace
+### Tác vụ 5: kiểm trình duyệt trước khi làm bài, lớp ghi âm và trạng thái giao diện
 
-**Files:**
-- Extend: `backend/app/services/speaking_attempts.py`
-- Extend: `backend/app/api/v1/speaking.py`
-- Extend: `backend/app/schemas/speaking.py`
-- Extend: `backend/app/core/config.py`
-- Test: `backend/tests/test_speaking_recovery.py`
+**Tệp:**
+- Tạo: `frontend/src/lib/api/speaking.ts`
+- Tạo: `frontend/src/features/speaking/speaking-recorder.ts`
+- Tạo: `frontend/src/features/speaking/use-speaking-recorder.ts`
+- Tạo: `frontend/src/features/speaking/speaking-preflight.tsx`
+- Tạo: `frontend/src/features/speaking/speaking-runner.tsx`
+- Sửa: `frontend/src/app/attempt/[attemptId]/page.tsx`
+- Sửa: hàm đích lượt làm bài/định tuyến dùng chung khi cần
+- Sửa: `frontend/src/app/globals.css`, tệp i18n
+- Tạo: `frontend/tests/speaking-preflight.test.tsx`
+- Tạo: `frontend/tests/speaking-runner.test.tsx`
+- Sửa: `frontend/tests/attempt-page.test.tsx`
 
-**Interfaces:**
-- Produces explicit `interrupt`/`resume` semantics or equivalent idempotent state transitions keyed by current prompt/take + interruption generation.
-- Resume response returns server-authorized `remaining_ms`, `recovery_grace_seconds=7`, current prompt/take/next segment identity, and whether recovery is allowed.
-- Add a bounded reconnect eligibility window setting (conservative default chosen in implementation, documented and tested); this bounds abuse/outage recovery but never changes the visible 7-second grace contract.
+**Giao diện:**
+- `SpeakingRecorder` bọc `MediaRecorder`, `navigator.mediaDevices` gốc và lấy mẫu mức Web Audio; mã sản xuất nhận callback trạng thái/đoạn dữ liệu thay vì trực tiếp thao tác UI.
+- Trạng thái giao diện phản chiếu pha backend: vào câu, chuẩn bị, ghi, hoàn tất/tải, hoàn tất, khôi phục.
 
-- [x] **Step 1: Write failing tests** for 31s snapshot → 7s grace → 31s resumed; repeated refresh during same generation not stacking grace; stale resume token/generation rejected; completed prompt not reopened; late/unrecoverable interruption fails closed; heartbeat/chunk confirmation can decrease but never increase remaining; concurrent resume idempotency.
-- [x] **Step 2: Run RED:** `cd backend && uv run pytest tests/test_speaking_recovery.py -q`.
-- [x] **Step 3: Implement transaction-safe recovery.** Persist audit-safe state only; do not log transcript/audio bodies.
-- [x] **Step 4: Run GREEN + Ruff.**
-- [x] **Step 5: Commit:** `git commit -m "Add Speaking crash recovery protocol"`.
+- [x] **Bước 1: thêm kiểm thử thất bại** bằng `MediaRecorder`, `mediaDevices`, `AudioContext`, bộ đếm giả: từ chối quyền; chọn MIME ưu tiên WebM/Opus; thước mức âm; thi chỉ hiện câu hiện tại; chuẩn bị Part 2 + đếm trước bắt đầu; Xong/Tiếp và hết hạn; thi không thử/phát lại; xác nhận Thử lại luyện tập; không chuyển trước khi callback lưu xong; giảm chuyển động.
+- [x] **Bước 2: chạy RED:** `cd frontend && npx vitest run tests/speaking-preflight.test.tsx tests/speaking-runner.test.tsx tests/attempt-page.test.tsx`.
+- [x] **Bước 3: triển khai lớp ghi âm trình duyệt gốc và UI theo trạng thái.** Không thêm phụ thuộc sóng âm/ghi của bên thứ ba; dùng thanh mức nhẹ từ dữ liệu bộ phân tích.
+- [x] **Bước 4: chạy GREEN + `npm run typecheck` + ESLint có mục tiêu.**
+- [x] **Bước 5: commit:** `git commit -m "Add Speaking preflight and runner state UI"`.
 
-### Task 8: Connect chunk transport/recovery to runner and build review playback
-
-**Files:**
-- Extend: `frontend/src/lib/api/speaking.ts`
-- Extend: `frontend/src/features/speaking/speaking-recorder.ts`
-- Extend: `frontend/src/features/speaking/speaking-runner.tsx`
-- Create: `frontend/src/features/speaking/speaking-review.tsx`
-- Modify: attempt/review routing destination files
-- Modify: `frontend/src/app/globals.css`, i18n files
-- Extend: `frontend/tests/speaking-runner.test.tsx`
-- Create: `frontend/tests/speaking-review.test.tsx`
-
-**Interfaces:**
-- Recorder emits chunks every configured ~2–5 seconds, retries upload idempotently, flushes before finalization, and opens a new segment after recovery.
-- Review renders Part 1/2/3 response cards with question/cue card, duration, authorized audio player, and later transcript/AI placeholders.
-
-- [x] **Step 1: Write failing frontend tests** for chunk retry, upload ACK before next prompt, hard-reload resume snapshot/grace countdown, new segment on resumed recorder, failed final upload staying on same prompt, practice Listen/Retry vs exam hidden controls, and per-question review playback.
-- [x] **Step 2: Run RED** with only Vitest/mocks.
-- [x] **Step 3: Implement transport/recovery/review UI.** Recovery page shows restored state + 7→1 countdown and pauses original remaining timer during grace.
-- [x] **Step 4: Run GREEN + typecheck/targeted ESLint.**
-- [x] **Step 5: Commit:** `git commit -m "Connect Speaking recording recovery and review"`.
-
-**P3 gate:** Speaking exam/practice recording must now be durably usable without transcript/AI. Verify no private media exposure and no time farming before P4.
+**Chốt P2:** kiểm giao diện/trạng thái phải đạt với bộ ghi/mạng giả. Chưa bền vững qua sự cố tới P3; không quảng bá/bật luồng Speaking sản xuất trước khi xong P3.
 
 ---
 
-# P4 — Transcript Pipeline
+# P3 — Tải đoạn âm thanh riêng tư + khôi phục + xem lại
 
-### Task 9: ASR provider contract, transcript persistence, durable transcript runs
+### Tác vụ 6: lưu âm thanh riêng tư theo phân đoạn và phân quyền
 
-**Files:**
-- Create: `backend/app/providers/speaking_asr/base.py`
-- Create: `backend/app/providers/speaking_asr/faster_whisper.py`
-- Create: `backend/app/providers/speaking_asr/__init__.py`
-- Create: `backend/app/models/speaking_transcript.py`
-- Create: `backend/alembic/versions/<next_revision>_speaking_transcripts.py`
-- Create: `backend/app/repositories/speaking_transcript.py`
-- Create: `backend/app/services/speaking_transcript.py`
-- Extend: `backend/app/schemas/speaking_ai.py`
-- Extend: `backend/app/api/v1/speaking.py`
-- Modify: `backend/app/main.py` for worker shutdown if a background task registry is used
-- Modify: `backend/pyproject.toml` to add optional `speech` extras instead of loading heavy dependencies in base tests
-- Test: `backend/tests/test_speaking_transcript.py`
+**Tệp:**
+- Mở rộng: `backend/app/models/speaking.py`
+- Tạo: `backend/alembic/versions/<next_revision>_speaking_audio_chunks.py`
+- Tạo: `backend/app/services/speaking_media.py`
+- Mở rộng: `backend/app/repositories/speaking.py`
+- Mở rộng: `backend/app/api/v1/speaking.py`
+- Sửa: `backend/app/storage/local.py`
+- Sửa: `backend/app/core/config.py`, `.env.example`, `backend/.env.example` chỉ cho cấu hình Speaking mới có giới hạn
+- Kiểm thử: `backend/tests/test_speaking_media.py`
 
-**Interfaces:**
-- `SpeechASRProvider.transcribe(audio: NormalizedAudio) -> ASRResult` returns verbatim text, word timestamps/confidence metadata, provider/model/version.
-- Persist `SpeakingTranscriptRun` + monotonic events and two transcript records per successful response (`VERBATIM`, `CLEAN`) keyed by audio fingerprint + ASR/alignment version/config.
-- Matching active/completed runs are reused; different fingerprint/version invalidates cache.
+**Giao diện:**
+- Thêm `SpeakingAudioSegment(response_take_id, segment_index, mime_type, ...)`, `SpeakingAudioChunk(segment_id, sequence, storage_key, sha256, byte_size, ...)` với ràng buộc duy nhất bảo đảm lặp an toàn.
+- Một lần ghi luyện tập có thể nhiều phân đoạn sau sự cố/khôi phục. Phiên/tiến trình MediaRecorder mới luôn tạo phân đoạn mới; thứ tự đoạn dữ liệu chỉ trong phân đoạn. Dấu vân tay âm thanh logic cuối băm thứ tự băm phân đoạn/đoạn + danh tính lần ghi đã chốt.
+- Điểm cuối đọc/phát riêng phân quyền chủ lượt hoặc màn kết quả giáo viên được bài giao cho phép hiện có; ID không liên quan không cấp truy cập.
 
-- [x] **Step 1: Write failing tests** using a fake provider: per-response isolation, one failed response does not delete successful transcripts, matching active run reuse, cache hit, retry-audio invalidation, word timing validation, and clean normalization preserving grammar errors (e.g. `He go to school` must not become `He goes...`).
-- [x] **Step 2: Run RED:** `cd backend && uv run pytest tests/test_speaking_transcript.py -q`.
-- [x] **Step 3: Implement provider abstraction + durable job with fake-friendly factory.** The optional faster-whisper adapter is import-lazy; ordinary app/test import succeeds without the speech extra installed. No diarization in v1.
-- [x] **Step 4: Run GREEN + Ruff.** Do not download/run a real Whisper model.
-- [x] **Step 5: Commit:** `git commit -m "Add durable Speaking transcription pipeline"`.
+- [x] **Bước 1: viết kiểm thử thất bại** cho MIME WebM, giới hạn kích thước, thử lại trùng `(segment,sequence)` lặp an toàn, từ chối băm trùng mâu thuẫn, tới sai thứ tự vẫn ra bản kê đúng, phân đoạn mới sau khôi phục, loại lần ghi luyện tập bị thay, dấu vân tay tất định và phân quyền phát chủ/giáo viên/người ngoài.
+- [x] **Bước 2: chạy RED:** `cd backend && uv run pytest tests/test_speaking_media.py tests/test_asset_access.py tests/test_classroom_assignments.py -q`.
+- [x] **Bước 3: triển khai bản kê lưu trữ riêng.** Dùng lại an toàn hệ thống tệp `LocalAssetStorage`, lưu trong không gian Speaking riêng; không tạo dòng nội dung công khai `Asset` cho âm thanh người làm bài. Mở xử lý MIME WebM/Opus trình duyệt.
+- [x] **Bước 4: chạy GREEN + Ruff.**
+- [x] **Bước 5: commit:** `git commit -m "Add private Speaking chunk storage"`.
 
-### Task 10: Transcript action, SSE/reconciliation, and per-question read-only UI
+### Tác vụ 7: giao thức gián đoạn/khôi phục với một lần bù 7 giây
 
-**Files:**
-- Extend: `frontend/src/lib/api/speaking.ts`
-- Create/extend: `frontend/src/lib/api/speaking-ai.ts`
-- Create: `frontend/src/features/speaking/speaking-transcript-panel.tsx`
-- Extend: `frontend/src/features/speaking/speaking-review.tsx`
-- Create: `frontend/tests/speaking-transcript.test.tsx`
-- Create: `frontend/tests/speaking-api.test.ts`
+**Tệp:**
+- Mở rộng: `backend/app/services/speaking_attempts.py`
+- Mở rộng: `backend/app/api/v1/speaking.py`
+- Mở rộng: `backend/app/schemas/speaking.py`
+- Mở rộng: `backend/app/core/config.py`
+- Kiểm thử: `backend/tests/test_speaking_recovery.py`
 
-**Interfaces:**
-- Review exposes `Generate Transcript` separately from `Grade with AI`.
-- Event watcher follows Writing semantics: sequence monotonicity, duplicate suppression, JSON snapshot reconciliation, view cleanup disconnects observation only.
+**Giao diện:**
+- Tạo ngữ nghĩa `interrupt`/`resume` rõ hoặc chuyển trạng thái lặp an toàn tương đương, định khóa bằng câu/lần ghi hiện tại + thế hệ gián đoạn.
+- Phản hồi tiếp tục trả `remaining_ms` do máy chủ cho phép, `recovery_grace_seconds=7`, danh tính câu/lần ghi/phân đoạn kế và khả năng khôi phục.
+- Thêm cấu hình cửa sổ đủ điều kiện kết nối lại hữu hạn (chọn mặc định thận trọng khi triển khai, ghi tài liệu/kiểm); hạn chế lạm dụng/khôi phục sự cố nhưng không đổi hợp đồng bù 7 giây hiển thị.
 
-- [x] **Step 1: Write failing tests** for button state, per-question Ready/Processing/Failed, read-only transcript, no merged Full Transcript, SSE duplicate/reconnect handling, and navigation cleanup not calling cancel.
-- [x] **Step 2: Run RED.**
-- [x] **Step 3: Implement typed/Zod API + live panel.**
-- [x] **Step 4: Run GREEN + typecheck/ESLint.**
-- [x] **Step 5: Commit:** `git commit -m "Add Speaking transcript review UI"`.
+- [x] **Bước 1: viết kiểm thất bại** cho ảnh chụp 31 giây → bù 7 giây → tiếp 31 giây; tải lặp cùng thế hệ không cộng bù; từ chối mã/thế hệ cũ; không mở câu hoàn tất; gián đoạn muộn/không khôi phục bị từ chối an toàn; heartbeat/xác nhận đoạn chỉ giảm không tăng còn lại; tiếp tục đồng thời lặp an toàn.
+- [x] **Bước 2: chạy RED:** `cd backend && uv run pytest tests/test_speaking_recovery.py -q`.
+- [x] **Bước 3: triển khai khôi phục an toàn giao dịch.** Chỉ lưu trạng thái an toàn kiểm toán, không ghi nội dung chép lời/âm thanh vào nhật ký.
+- [x] **Bước 4: chạy GREEN + Ruff.**
+- [x] **Bước 5: commit:** `git commit -m "Add Speaking crash recovery protocol"`.
 
-**P4 gate:** transcription can be used without grading; transcript cannot be edited and failures remain per response.
+### Tác vụ 8: nối truyền đoạn/khôi phục với giao diện làm bài và tạo phát lại xem lại
 
----
+**Tệp:**
+- Mở rộng: `frontend/src/lib/api/speaking.ts`
+- Mở rộng: `frontend/src/features/speaking/speaking-recorder.ts`
+- Mở rộng: `frontend/src/features/speaking/speaking-runner.tsx`
+- Tạo: `frontend/src/features/speaking/speaking-review.tsx`
+- Sửa: tệp đích định tuyến làm bài/xem lại
+- Sửa: `frontend/src/app/globals.css`, tệp i18n
+- Mở rộng: `frontend/tests/speaking-runner.test.tsx`
+- Tạo: `frontend/tests/speaking-review.test.tsx`
 
-# P5 — Audio Quality + Fluency + Pronunciation Evidence
+**Giao diện:**
+- Bộ ghi phát đoạn dữ liệu mỗi khoảng ~2–5 giây cấu hình được, thử tải lặp an toàn, đẩy hết trước hoàn tất, mở phân đoạn mới sau khôi phục.
+- Xem lại dựng thẻ trả lời Part 1/2/3 có câu/thẻ gợi ý, thời lượng, trình phát được phân quyền và chỗ dành chép lời/AI về sau.
 
-### Task 11: Audio normalization and quality gate
+- [x] **Bước 1: viết kiểm frontend thất bại** cho thử lại đoạn, ACK tải trước câu kế, ảnh chụp/bù đếm ngược khi tải lại cứng, phân đoạn mới sau tiếp ghi, tải cuối lỗi giữ câu, Nghe/Thử lại luyện tập so điều khiển thi ẩn, phát lại từng câu.
+- [x] **Bước 2: chạy RED** chỉ với Vitest/giả lập.
+- [x] **Bước 3: triển khai UI truyền/khôi phục/xem lại.** Trang khôi phục hiện trạng thái phục hồi + đếm 7→1 và tạm dừng thời gian gốc trong khoảng bù.
+- [x] **Bước 4: chạy GREEN + kiểm kiểu/ESLint có mục tiêu.**
+- [x] **Bước 5: commit:** `git commit -m "Connect Speaking recording recovery and review"`.
 
-**Files:**
-- Create: `backend/app/services/speaking_audio.py`
-- Create: `backend/app/services/speaking_quality.py`
-- Modify: `backend/app/core/config.py`, env examples for FFmpeg path/timeouts/quality thresholds as needed
-- Test: `backend/tests/test_speaking_audio.py`
-
-**Interfaces:**
-- `normalize_committed_take(...) -> NormalizedAudio` assembles ordered segments/chunks through FFmpeg into derived 16 kHz mono PCM/WAV without mutating raw source.
-- `assess_audio_quality(...) -> AudioQualityResult` emits at least `AUDIO_OK`, `NO_SPEECH`, `TOO_SHORT`, `AUDIO_CORRUPT`, `VERY_LOW_SIGNAL`, `SEVERE_CLIPPING`, `BACKGROUND_DOMINANT`, `ASR_UNUSABLE`.
-
-- [x] **Step 1: Write failing tests** around subprocess command construction/path safety and tiny synthetic/fixture metadata; nonscorable conditions must be explicit and never return a band.
-- [x] **Step 2: Run RED.**
-- [x] **Step 3: Implement bounded FFmpeg wrapper/quality contract.** Keep raw assets immutable; derived artifacts may be cached by fingerprint/version.
-- [x] **Step 4: Run GREEN + Ruff.** No external FFmpeg/model integration run is required; mock subprocess where appropriate.
-- [x] **Step 5: Commit:** `git commit -m "Add Speaking audio quality preprocessing"`.
-
-### Task 12: Deterministic fluency and audio-derived pronunciation evidence
-
-**Files:**
-- Create: `backend/app/services/speaking_features.py`
-- Create: `backend/app/providers/speaking_pronunciation/base.py`
-- Create: `backend/app/providers/speaking_pronunciation/alignment_prosody.py`
-- Create: `backend/app/providers/speaking_pronunciation/__init__.py`
-- Extend: `backend/app/schemas/speaking_ai.py`
-- Test: `backend/tests/test_speaking_features.py`
-
-**Interfaces:**
-- `extract_fluency_features(audio, verbatim_transcript, words) -> FluencyEvidence` computes duration, speech/silence ratio, WPM, articulation rate, pauses, long pauses, filler/repetition/false-start/self-correction signals, average turn length, Part 2 sustained duration.
-- `PronunciationEvidenceProvider.analyse(audio, transcript, alignment) -> PronunciationEvidence` provides audio-derived alignment/segmental-clarity proxies, low-confidence/unaligned spans, stress/rhythm/intonation/pitch-energy/prosody summaries, and intelligibility/listener-effort proxies. These are evidence, never direct IELTS band mappings.
-
-- [x] **Step 1: Write failing deterministic feature tests** for known timestamp fixtures, divide-by-zero/empty speech, long-pause distribution, disfluency preservation, Part 2 duration, and provider-unavailable/low-evidence states.
-- [x] **Step 2: Run RED.**
-- [x] **Step 3: Implement pure feature code + replaceable pronunciation provider.** Baseline may use ASR/forced-alignment confidence plus acoustic/prosodic features; do not call SpeechOcean/GOPT scores “IELTS bands” and do not use transcript text alone for PR.
-- [x] **Step 4: Run GREEN + Ruff.** No real acoustic model/GPU invocation.
-- [x] **Step 5: Commit:** `git commit -m "Add Speaking fluency and pronunciation evidence"`.
-
-**P5 gate:** preprocessing outputs explainable evidence only. Review specifically that no threshold accidentally became a band rule.
+**Chốt P3:** ghi Speaking thi/luyện phải dùng bền vững được không cần chép lời/AI. Kiểm không lộ tệp riêng hoặc lách tăng thời gian trước P4.
 
 ---
 
-# P6 — Hybrid IELTS Speaking AI Scorer
+# P4 — Chuỗi xử lý chép lời
 
-### Task 13: Speaking grading schemas, descriptors, score-first criterion service
+### Tác vụ 9: hợp đồng ASR, lưu bản chép lời và lượt xử lý bền vững
 
-**Files:**
-- Create: `backend/app/domains/scoring/speaking_prompts.py`
-- Create: `backend/app/services/speaking_ai.py`
-- Create: `backend/app/providers/speaking_llm/base.py`
-- Create: `backend/app/providers/speaking_llm/configured.py`
-- Create/extend: `backend/app/schemas/speaking_ai.py`
-- Modify: `backend/app/domains/scoring/__init__.py`
-- Test: `backend/tests/test_speaking_ai.py`
+**Tệp:**
+- Tạo: `backend/app/providers/speaking_asr/base.py`
+- Tạo: `backend/app/providers/speaking_asr/faster_whisper.py`
+- Tạo: `backend/app/providers/speaking_asr/__init__.py`
+- Tạo: `backend/app/models/speaking_transcript.py`
+- Tạo: `backend/alembic/versions/<next_revision>_speaking_transcripts.py`
+- Tạo: `backend/app/repositories/speaking_transcript.py`
+- Tạo: `backend/app/services/speaking_transcript.py`
+- Mở rộng: `backend/app/schemas/speaking_ai.py`
+- Mở rộng: `backend/app/api/v1/speaking.py`
+- Sửa: `backend/app/main.py` để dừng worker nếu dùng sổ tác vụ nền
+- Sửa: `backend/pyproject.toml` thêm gói bổ sung `speech` tùy chọn, không nạp phụ thuộc nặng trong kiểm cơ bản
+- Kiểm thử: `backend/tests/test_speaking_transcript.py`
 
-**Interfaces:**
-- Traits: `fc`, `lr`, `gra`, `pr`.
-- Each criterion pipeline: evidence bundle -> `CriterionBandScore {score}` (tiny JSON; 0.5 increments) -> durable valid score -> `CriterionFeedback {feedback,strengths,improvements}`.
-- FC consumes timing/verbatim/semantic evidence; LR/GRA consume transcript evidence; PR refuses to score without acceptable audio-derived pronunciation evidence.
-- `speaking_overall(criteria) -> (raw_mean, overall_band)` uses equal weights and project half-band presentation policy, while result remains labelled advisory.
+**Giao diện:**
+- `SpeechASRProvider.transcribe(audio: NormalizedAudio) -> ASRResult` trả văn bản nguyên văn, thời gian/độ tin cậy từ, nhà cung cấp/mô hình/phiên bản.
+- Lưu `SpeakingTranscriptRun` + sự kiện tăng dần, hai bản chép lời mỗi câu thành công (`VERBATIM`, `CLEAN`), định khóa theo dấu vân tay âm thanh + phiên bản/cấu hình ASR/căn chỉnh.
+- Tái sử dụng lượt hoạt động/hoàn tất khớp; dấu vân tay/phiên bản khác vô hiệu bộ nhớ đệm.
 
-- [x] **Step 1: Write failing tests** for descriptor evidence separation, whole-attempt input, no per-question averaging, 0.5 validation, tiny score token cap, one bounded score repair, feedback cannot override score, feedback failure retaining score with safe fallback, score failure never fabricating a default, PR missing acoustic evidence => explicit unavailable/failure, and equal-weight overall arithmetic.
-- [x] **Step 2: Run RED:** `cd backend && uv run pytest tests/test_speaking_ai.py -q`.
-- [x] **Step 3: Implement scorer using a Speaking LLM adapter that delegates to the configured structured LLM provider contract without renaming/refactoring Writing provider internals.** Keep Speaking prompt/version namespace independent so cache/version bumps never alter Writing v9 history.
-- [x] **Step 4: Run GREEN + Ruff.** Use fake completions only.
-- [x] **Step 5: Commit:** `git commit -m "Add score-first Speaking criterion scorer"`.
+- [x] **Bước 1: viết kiểm thất bại** với nhà cung cấp giả: cô lập từng câu, một câu lỗi không xóa bản thành công, tái sử dụng lượt hoạt động khớp, trúng bộ nhớ đệm, đổi âm thanh khi thử lại làm mất hiệu lực, kiểm mốc từ, chuẩn hóa sạch giữ lỗi ngữ pháp (ví dụ `He go to school` không thành `He goes...`).
+- [x] **Bước 2: chạy RED:** `cd backend && uv run pytest tests/test_speaking_transcript.py -q`.
+- [x] **Bước 3: triển khai lớp nhà cung cấp và công việc bền vững với factory dễ giả lập.** Bộ tiếp hợp faster-whisper nhập lười; nhập ứng dụng/kiểm thường vẫn được khi chưa cài gói speech. V1 không phân tách người nói.
+- [x] **Bước 4: chạy GREEN + Ruff.** Không tải/chạy mô hình Whisper thật.
+- [x] **Bước 5: commit:** `git commit -m "Add durable Speaking transcription pipeline"`.
 
-### Task 14: Durable AI grading runs, cache, cancellation, and SSE
+### Tác vụ 10: thao tác chép lời, SSE/đối chiếu và giao diện chỉ đọc từng câu
 
-**Files:**
-- Create: `backend/app/models/speaking_ai.py`
-- Create: `backend/alembic/versions/<next_revision>_speaking_ai_runs.py`
-- Create: `backend/app/repositories/speaking_ai.py`
-- Create: `backend/app/services/speaking_ai_worker.py`
-- Create: `backend/app/api/v1/speaking_ai.py`
-- Modify: `backend/app/api/v1/router.py`
-- Modify: `backend/app/main.py`
-- Extend: `backend/app/core/config.py`, env examples
-- Extend: `backend/tests/test_speaking_ai.py`
+**Tệp:**
+- Mở rộng: `frontend/src/lib/api/speaking.ts`
+- Tạo/mở rộng: `frontend/src/lib/api/speaking-ai.ts`
+- Tạo: `frontend/src/features/speaking/speaking-transcript-panel.tsx`
+- Mở rộng: `frontend/src/features/speaking/speaking-review.tsx`
+- Tạo: `frontend/tests/speaking-transcript.test.tsx`
+- Tạo: `frontend/tests/speaking-api.test.ts`
 
-**Interfaces:**
-- Run states/events expose `QUEUED/PENDING`, `QUALITY_CHECK`, `TRANSCRIBING`, `ANALYSING_AUDIO`, `BUILDING_EVIDENCE`, `SCORING`, `GENERATING_FEEDBACK`, terminal COMPLETED/FAILED/CANCELLED semantics.
-- Cache fingerprint includes committed audio fingerprint/take + ASR/alignment versions + feature extractor/pronunciation provider versions + rubric/prompt/model versions.
-- `Grade with AI` reuses matching transcript run/result or waits on matching active ASR work; it does not launch duplicate transcription.
-- SSE uses monotonic `(run_id, sequence)` events, `Last-Event-ID`/`after` reconciliation, no proxy caching, and browser disconnect never cancels worker. Explicit Stop is the only user cancellation.
+**Giao diện:**
+- Xem lại mở `Generate Transcript` riêng với `Grade with AI`.
+- Bộ theo dõi sự kiện theo Writing: số thứ tự tăng, khử trùng, đối chiếu ảnh chụp JSON; dọn màn chỉ ngắt theo dõi.
 
-- [x] **Step 1: Add failing persistence/API tests** for cache hit, stale-audio miss, duplicate active run, transcript reuse, worker surviving request/SSE disconnect, explicit cancel, restart/stale-run handling, score checkpoint durability before feedback, and event sequence uniqueness.
-- [x] **Step 2: Run RED.**
-- [x] **Step 3: Implement run repository/worker/router modeled on Writing’s durable semantics but in Speaking-specific tables/modules.** Avoid broad Writing refactors.
-- [x] **Step 4: Run GREEN + Ruff.** No live provider/model.
-- [x] **Step 5: Commit:** `git commit -m "Add durable Speaking AI grading runs"`.
+- [x] **Bước 1: viết kiểm thất bại** cho trạng thái nút, Sẵn sàng/Đang xử lý/Thất bại từng câu, chép lời chỉ đọc, không có Bản chép lời toàn bộ gộp, xử lý SSE trùng/kết nối lại, dọn điều hướng không gọi hủy.
+- [x] **Bước 2: chạy RED.**
+- [x] **Bước 3: triển khai API có kiểu/Zod và bảng trực tiếp.**
+- [x] **Bước 4: chạy GREEN + kiểm kiểu/ESLint.**
+- [x] **Bước 5: commit:** `git commit -m "Add Speaking transcript review UI"`.
 
-### Task 15: Dynamic AI assessment UI
-
-**Files:**
-- Extend: `frontend/src/lib/api/speaking-ai.ts`
-- Create: `frontend/src/features/speaking/speaking-ai-progress.tsx`
-- Create: `frontend/src/features/speaking/speaking-ai-assessment.tsx`
-- Extend: `frontend/src/features/speaking/speaking-review.tsx`
-- Modify: `frontend/src/app/globals.css`, i18n files
-- Create: `frontend/tests/speaking-ai-api.test.ts`
-- Create: `frontend/tests/speaking-ai-assessment.test.tsx`
-
-**Interfaces:**
-- Review keeps two actions: Generate Transcript and Grade with AI. Grade button works without prior transcript button.
-- Assessment displays advisory overall + FC/LR/GRA/PR, evidence/feedback, fluency/Part 2/pronunciation analysis, and live stage progress. Valid criterion scores already persisted remain visible even if later feedback fails.
-
-- [x] **Step 1: Write failing tests** for staged progress, SSE reconnect/duplicate suppression, Stop calling cancel, component unmount not cancelling, feedback fallback display, quality-unassessable messaging, advisory label, theme/reduced-motion behavior.
-- [x] **Step 2: Run RED.**
-- [x] **Step 3: Implement UI following Writing watcher semantics without coupling Speaking contracts to Writing trait names.**
-- [x] **Step 4: Run GREEN + `npm run typecheck` + targeted ESLint.**
-- [x] **Step 5: Commit:** `git commit -m "Add Speaking AI assessment UI"`.
-
-**P6 gate:** no claim of examiner accuracy. Confirm PR cannot succeed from text-only evidence and score checkpoint survives feedback failure.
+**Chốt P4:** dùng chép lời độc lập với chấm; không sửa bản chép lời, lỗi vẫn theo câu.
 
 ---
 
-# P7 — Full Mock + History + Classroom
+# P5 — Chất lượng âm thanh + độ lưu loát + bằng chứng phát âm
 
-### Task 16: Four-skill Full Mock and overall scoring
+### Tác vụ 11: chuẩn hóa âm thanh và cổng chất lượng
 
-**Files:**
-- Modify: `backend/app/services/test_sessions.py`
-- Modify: `backend/app/domains/module_durations.py`
-- Modify: `backend/app/domains/scoring/ielts_band.py`
-- Modify: `backend/app/domains/scoring/__init__.py`
-- Modify: `backend/app/schemas/test_sessions.py`
-- Test: existing TestSession/full-mock tests + `backend/tests/test_full_mock_history_delete.py`
-- Modify: `frontend/src/lib/api/exam.ts`
-- Modify: Full Mock transition components/tests
+**Tệp:**
+- Tạo: `backend/app/services/speaking_audio.py`
+- Tạo: `backend/app/services/speaking_quality.py`
+- Sửa: `backend/app/core/config.py`, ví dụ môi trường cho đường dẫn FFmpeg/thời gian chờ/ngưỡng chất lượng khi cần
+- Kiểm thử: `backend/tests/test_speaking_audio.py`
 
-**Interfaces:**
+**Giao diện:**
+- `normalize_committed_take(...) -> NormalizedAudio` ghép phân đoạn/đoạn đúng thứ tự qua FFmpeg thành PCM/WAV mono 16 kHz phái sinh, không sửa nguồn gốc.
+- `assess_audio_quality(...) -> AudioQualityResult` phát ít nhất `AUDIO_OK`, `NO_SPEECH`, `TOO_SHORT`, `AUDIO_CORRUPT`, `VERY_LOW_SIGNAL`, `SEVERE_CLIPPING`, `BACKGROUND_DOMINANT`, `ASR_UNUSABLE`.
+
+- [x] **Bước 1: viết kiểm thất bại** cho dựng lệnh tiến trình con/an toàn đường dẫn, siêu dữ liệu tổng hợp/mẫu nhỏ; trạng thái không chấm được phải rõ, không trả band.
+- [x] **Bước 2: chạy RED.**
+- [x] **Bước 3: triển khai lớp bọc FFmpeg/hợp đồng chất lượng hữu hạn.** Giữ tài sản gốc bất biến; có thể đệm phái sinh theo dấu vân tay/phiên bản.
+- [x] **Bước 4: chạy GREEN + Ruff.** Không cần chạy tích hợp FFmpeg/mô hình bên ngoài; giả lập tiến trình con khi phù hợp.
+- [x] **Bước 5: commit:** `git commit -m "Add Speaking audio quality preprocessing"`.
+
+### Tác vụ 12: độ lưu loát tất định và bằng chứng phát âm từ âm thanh
+
+**Tệp:**
+- Tạo: `backend/app/services/speaking_features.py`
+- Tạo: `backend/app/providers/speaking_pronunciation/base.py`
+- Tạo: `backend/app/providers/speaking_pronunciation/alignment_prosody.py`
+- Tạo: `backend/app/providers/speaking_pronunciation/__init__.py`
+- Mở rộng: `backend/app/schemas/speaking_ai.py`
+- Kiểm thử: `backend/tests/test_speaking_features.py`
+
+**Giao diện:**
+- `extract_fluency_features(audio, verbatim_transcript, words) -> FluencyEvidence` tính thời lượng, tỷ lệ nói/im, WPM, tốc độ phát âm, khoảng ngừng/ngừng dài, tín hiệu từ đệm/lặp/khởi đầu bỏ dở/tự sửa, độ dài lượt trung bình, thời lượng liên tục Part 2.
+- `PronunciationEvidenceProvider.analyse(audio, transcript, alignment) -> PronunciationEvidence` cung cấp chỉ báo từ âm thanh về căn chỉnh/độ rõ đoạn, đoạn độ tin cậy thấp/chưa căn, tóm tắt trọng âm/nhịp/ngữ điệu/cao độ-năng lượng/vận luật, chỉ báo dễ hiểu/nỗ lực người nghe. Đây là bằng chứng, không ánh xạ trực tiếp band IELTS.
+
+- [x] **Bước 1: viết kiểm đặc trưng tất định thất bại** với mốc thời gian biết trước, chia 0/lời nói rỗng, phân phối ngừng dài, giữ ngập ngừng, thời lượng Part 2, trạng thái nhà cung cấp không khả dụng/bằng chứng thấp.
+- [x] **Bước 2: chạy RED.**
+- [x] **Bước 3: triển khai mã đặc trưng thuần và nhà cung cấp phát âm thay thế được.** Bản cơ sở có thể dùng độ tin cậy ASR/căn chỉnh cưỡng bức cùng đặc trưng âm học/vận luật; không gọi điểm SpeechOcean/GOPT là “band IELTS”, không chỉ dùng bản chép lời cho PR.
+- [x] **Bước 4: chạy GREEN + Ruff.** Không gọi mô hình âm học/GPU thật.
+- [x] **Bước 5: commit:** `git commit -m "Add Speaking fluency and pronunciation evidence"`.
+
+**Chốt P5:** tiền xử lý chỉ tạo bằng chứng giải thích được. Rà riêng để không ngưỡng nào vô tình thành quy tắc band.
+
+---
+
+# P6 — Bộ chấm AI IELTS Speaking kết hợp
+
+### Tác vụ 13: lược đồ chấm, mô tả và dịch vụ tiêu chí điểm trước
+
+**Tệp:**
+- Tạo: `backend/app/domains/scoring/speaking_prompts.py`
+- Tạo: `backend/app/services/speaking_ai.py`
+- Tạo: `backend/app/providers/speaking_llm/base.py`
+- Tạo: `backend/app/providers/speaking_llm/configured.py`
+- Tạo/mở rộng: `backend/app/schemas/speaking_ai.py`
+- Sửa: `backend/app/domains/scoring/__init__.py`
+- Kiểm thử: `backend/tests/test_speaking_ai.py`
+
+**Giao diện:**
+- Tiêu chí: `fc`, `lr`, `gra`, `pr`.
+- Chuỗi mỗi tiêu chí: gói bằng chứng -> `CriterionBandScore {score}` (JSON nhỏ; bước 0.5) -> điểm hợp lệ bền vững -> `CriterionFeedback {feedback,strengths,improvements}`.
+- FC dùng bằng chứng thời gian/nguyên văn/ngữ nghĩa; LR/GRA dùng chép lời; PR từ chối khi thiếu bằng chứng phát âm từ âm thanh chấp nhận được.
+- `speaking_overall(criteria) -> (raw_mean, overall_band)` dùng trọng số đều và chính sách hiển thị nửa band dự án; kết quả vẫn ghi rõ tư vấn.
+
+- [x] **Bước 1: viết kiểm thất bại** cho tách bằng chứng mô tả, đầu vào toàn lượt, không trung bình từng câu, kiểm 0.5, trần token điểm nhỏ, một sửa hữu hạn, nhận xét không ghi đè điểm, lỗi nhận xét giữ điểm/dự phòng an toàn, lỗi điểm không bịa mặc định, thiếu âm học PR => không khả dụng/lỗi rõ, phép tổng trọng số đều.
+- [x] **Bước 2: chạy RED:** `cd backend && uv run pytest tests/test_speaking_ai.py -q`.
+- [x] **Bước 3: triển khai bộ chấm qua bộ tiếp hợp LLM Speaking ủy quyền hợp đồng LLM cấu trúc đã cấu hình, không đổi tên/tái cấu trúc nội bộ nhà cung cấp Writing.** Không gian lời nhắc/phiên bản Speaking độc lập để tăng phiên bản/bộ nhớ đệm không đổi lịch sử Writing v9.
+- [x] **Bước 4: chạy GREEN + Ruff.** Chỉ hoàn thành giả.
+- [x] **Bước 5: commit:** `git commit -m "Add score-first Speaking criterion scorer"`.
+
+### Tác vụ 14: lượt chấm AI bền vững, bộ nhớ đệm, hủy và SSE
+
+**Tệp:**
+- Tạo: `backend/app/models/speaking_ai.py`
+- Tạo: `backend/alembic/versions/<next_revision>_speaking_ai_runs.py`
+- Tạo: `backend/app/repositories/speaking_ai.py`
+- Tạo: `backend/app/services/speaking_ai_worker.py`
+- Tạo: `backend/app/api/v1/speaking_ai.py`
+- Sửa: `backend/app/api/v1/router.py`
+- Sửa: `backend/app/main.py`
+- Mở rộng: `backend/app/core/config.py`, ví dụ môi trường
+- Mở rộng: `backend/tests/test_speaking_ai.py`
+
+**Giao diện:**
+- Trạng thái/sự kiện lượt lộ `QUEUED/PENDING`, `QUALITY_CHECK`, `TRANSCRIBING`, `ANALYSING_AUDIO`, `BUILDING_EVIDENCE`, `SCORING`, `GENERATING_FEEDBACK` và ngữ nghĩa kết thúc COMPLETED/FAILED/CANCELLED.
+- Dấu vân tay bộ nhớ đệm gồm âm thanh/lần ghi đã chốt + phiên bản ASR/căn chỉnh + phiên bản trích đặc trưng/nhà cung cấp phát âm + thang chấm/lời nhắc/mô hình.
+- `Grade with AI` tái sử dụng lượt/kết quả chép khớp hoặc chờ ASR hoạt động khớp, không khởi chép trùng.
+- SSE dùng sự kiện `(run_id, sequence)` tăng dần, đối chiếu `Last-Event-ID`/`after`, không đệm proxy; ngắt trình duyệt không hủy worker. Chỉ Dừng rõ ràng là thao tác hủy của người dùng.
+
+- [x] **Bước 1: thêm kiểm lưu/API thất bại** cho trúng bộ nhớ đệm, sai do âm thanh cũ, lượt hoạt động trùng, tái sử dụng chép, worker sống qua ngắt yêu cầu/SSE, hủy rõ, khởi động lại/lượt cũ, checkpoint điểm bền trước nhận xét, số thứ tự sự kiện duy nhất.
+- [x] **Bước 2: chạy RED.**
+- [x] **Bước 3: triển khai repository/worker/router lượt theo ngữ nghĩa bền vững Writing nhưng ở bảng/mô-đun Speaking riêng.** Tránh tái cấu trúc Writing diện rộng.
+- [x] **Bước 4: chạy GREEN + Ruff.** Không nhà cung cấp/mô hình trực tiếp.
+- [x] **Bước 5: commit:** `git commit -m "Add durable Speaking AI grading runs"`.
+
+### Tác vụ 15: giao diện đánh giá AI động
+
+**Tệp:**
+- Mở rộng: `frontend/src/lib/api/speaking-ai.ts`
+- Tạo: `frontend/src/features/speaking/speaking-ai-progress.tsx`
+- Tạo: `frontend/src/features/speaking/speaking-ai-assessment.tsx`
+- Mở rộng: `frontend/src/features/speaking/speaking-review.tsx`
+- Sửa: `frontend/src/app/globals.css`, tệp i18n
+- Tạo: `frontend/tests/speaking-ai-api.test.ts`
+- Tạo: `frontend/tests/speaking-ai-assessment.test.tsx`
+
+**Giao diện:**
+- Xem lại giữ hai thao tác: Tạo bản chép lời và Chấm bằng AI. Nút Chấm dùng được trước khi bấm tạo bản chép lời.
+- Đánh giá hiện tổng tư vấn + FC/LR/GRA/PR, bằng chứng/nhận xét, phân tích độ lưu loát/Part 2/phát âm, tiến độ bước trực tiếp. Điểm tiêu chí hợp lệ đã lưu vẫn hiện dù nhận xét sau lỗi.
+
+- [x] **Bước 1: viết kiểm thất bại** cho tiến độ bước, SSE kết nối lại/khử trùng, Dừng gọi hủy, tháo thành phần không hủy, hiển thị nhận xét dự phòng, thông báo chất lượng không chấm được, nhãn tư vấn, giao diện/giảm chuyển động.
+- [x] **Bước 2: chạy RED.**
+- [x] **Bước 3: triển khai UI theo ngữ nghĩa theo dõi Writing, không gắn hợp đồng Speaking với tên tiêu chí Writing.**
+- [x] **Bước 4: chạy GREEN + `npm run typecheck` + ESLint có mục tiêu.**
+- [x] **Bước 5: commit:** `git commit -m "Add Speaking AI assessment UI"`.
+
+**Chốt P6:** không tuyên bố độ chính xác giám khảo. Xác nhận PR không thể thành công từ bằng chứng chỉ văn bản, checkpoint điểm sống qua lỗi nhận xét.
+
+---
+
+# P7 — Full Mock + lịch sử + lớp học
+
+### Tác vụ 16: Full Mock bốn kỹ năng và điểm tổng
+
+**Tệp:**
+- Sửa: `backend/app/services/test_sessions.py`
+- Sửa: `backend/app/domains/module_durations.py`
+- Sửa: `backend/app/domains/scoring/ielts_band.py`
+- Sửa: `backend/app/domains/scoring/__init__.py`
+- Sửa: `backend/app/schemas/test_sessions.py`
+- Kiểm thử: TestSession/Full Mock hiện có + `backend/tests/test_full_mock_history_delete.py`
+- Sửa: `frontend/src/lib/api/exam.ts`
+- Sửa: thành phần/kiểm chuyển Full Mock
+
+**Giao diện:**
 - `MODULE_ORDER = (LISTENING, READING, WRITING, SPEAKING)`.
-- `project_overall_band(reading, listening, writing, speaking)` returns `None` until all four exist and uses existing IELTS overall half-band policy.
-- Full Mock completes after final Speaking attempt, not Writing.
+- `project_overall_band(reading, listening, writing, speaking)` trả `None` tới khi đủ bốn, dùng chính sách nửa band tổng IELTS hiện có.
+- Full Mock hoàn tất sau lượt Speaking cuối, không phải Writing.
 
-- [x] **Step 1: Write failing backend/frontend tests** for four required modules/durations, Writing→Speaking transition, session completion after Speaking, missing Speaking rejection, four-band overall, and history deletion still deleting whole session safely.
-- [x] **Step 2: Run RED.**
-- [x] **Step 3: Implement order/duration/overall changes.** Choose a sensible Speaking recommended module duration default compatible with the authored prompt timers; do not use the old 11–14 minute official duration as a rigid per-attempt database invariant.
-- [x] **Step 4: Run GREEN + typecheck/Ruff as applicable.**
-- [x] **Step 5: Commit:** `git commit -m "Integrate Speaking into Full Mock"`.
+- [x] **Bước 1: viết kiểm backend/frontend thất bại** cho bốn mô-đun/thời lượng bắt buộc, chuyển Writing→Speaking, hoàn tất phiên sau Speaking, từ chối thiếu Speaking, tổng bốn band, xóa lịch sử vẫn xóa an toàn cả phiên.
+- [x] **Bước 2: chạy RED.**
+- [x] **Bước 3: triển khai đổi thứ tự/thời lượng/tổng.** Chọn mặc định thời lượng khuyến nghị Speaking hợp lý, khớp thời gian câu đã soạn; không dùng thời lượng chính thức 11–14 phút cũ làm bất biến cơ sở dữ liệu cứng cho lượt.
+- [x] **Bước 4: chạy GREEN + kiểm kiểu/Ruff khi phù hợp.**
+- [x] **Bước 5: commit:** `git commit -m "Integrate Speaking into Full Mock"`.
 
-### Task 17: History, focused practice, analytics, classroom assignment results and privacy
+### Tác vụ 17: lịch sử, luyện theo phạm vi, phân tích, kết quả bài giao và riêng tư
 
-**Files:**
-- Modify: `backend/app/services/history.py`, `backend/app/api/v1/history.py` if module-specific presentation needs extension
-- Modify: `backend/app/services/classroom_assignments.py`, `backend/app/api/v1/classroom_assignments.py`
-- Modify: analytics schemas/services only where skill enumerations are explicit
-- Modify: frontend history/classroom result APIs and components
-- Extend: `frontend/src/features/speaking/speaking-review.tsx` for teacher read-only mode
-- Tests: `backend/tests/test_classroom_assignments.py`, `backend/tests/test_focused_attempts.py`, history/analytics tests; frontend history/classroom tests
+**Tệp:**
+- Sửa: `backend/app/services/history.py`, `backend/app/api/v1/history.py` nếu cần mở trình bày riêng mô-đun
+- Sửa: `backend/app/services/classroom_assignments.py`, `backend/app/api/v1/classroom_assignments.py`
+- Sửa: lược đồ/dịch vụ phân tích chỉ nơi liệt kê kỹ năng rõ ràng
+- Sửa: API/thành phần lịch sử và kết quả lớp frontend
+- Mở rộng: `frontend/src/features/speaking/speaking-review.tsx` cho giáo viên chỉ đọc
+- Kiểm thử: `backend/tests/test_classroom_assignments.py`, `backend/tests/test_focused_attempts.py`, kiểm lịch sử/phân tích; kiểm lịch sử/lớp frontend
 
-**Interfaces:**
-- Personal history exposes Speaking attempts with audio/transcript/AI summary under normal owner authorization.
-- Teacher read-only view can inspect assignment-originated Speaking responses/audio/transcripts/attached advisory result only through the existing assignment provenance predicate; personal practice on the same version remains private.
-- Focused Speaking practice can target a prompt/part according to the approved attempt scope without weakening exam behavior.
+**Giao diện:**
+- Lịch sử cá nhân lộ lượt Speaking với tóm tắt âm thanh/chép lời/AI theo phân quyền chủ sở hữu thường.
+- Giáo viên chỉ đọc được câu trả lời/âm thanh/bản chép lời/kết quả tư vấn của bài giao qua đúng điều kiện nguồn gốc hiện có; luyện cá nhân trên cùng phiên bản vẫn riêng tư.
+- Luyện Speaking theo phạm vi có thể chọn câu/Part theo phạm vi lượt đã duyệt, không nới hành vi thi.
 
-- [x] **Step 1: Add failing privacy/integration tests** for teacher assignment access vs unrelated personal practice, membership removal preserving historical assignment read access, focused retry semantics, history rendering/deletion, and explicit Speaking analytics enumeration where present.
-- [x] **Step 2: Run RED.**
-- [x] **Step 3: Implement integration using existing provenance/access policy; no new teacher-wide student lookup shortcut.**
-- [x] **Step 4: Run GREEN + frontend typecheck/targeted lint.**
-- [x] **Step 5: Commit:** `git commit -m "Integrate Speaking history and classroom results"`.
+- [x] **Bước 1: thêm kiểm riêng tư/tích hợp thất bại** cho giáo viên truy cập bài giao so luyện cá nhân khác, bỏ thành viên vẫn giữ quyền đọc bài giao lịch sử, ngữ nghĩa thử lại theo phạm vi, dựng/xóa lịch sử, liệt kê Speaking phân tích nơi có.
+- [x] **Bước 2: chạy RED.**
+- [x] **Bước 3: tích hợp bằng nguồn gốc/chính sách truy cập hiện có; không thêm lối tra mọi học viên cho giáo viên.**
+- [x] **Bước 4: chạy GREEN + kiểm kiểu frontend/kiểm mã có mục tiêu.**
+- [x] **Bước 5: commit:** `git commit -m "Integrate Speaking history and classroom results"`.
 
-**P7 gate:** verify all four skills coexist; old three-skill historical sessions remain readable rather than being retroactively invalidated. New Full Mock starts require Speaking.
-
----
-
-# P8 — Benchmark + Calibration Tooling
-
-### Task 18: Human-labelled Speaking evaluation harness and documentation
-
-**Files:**
-- Create: `backend/app/benchmarks/speaking.py` (or follow existing benchmark package conventions)
-- Create: `backend/scripts/evaluate_speaking.py`
-- Create: `backend/tests/test_speaking_benchmark.py`
-- Create: `docs/ai-speaking.md`
-- Modify: README/roadmap docs only where Speaking status is currently listed as future
-
-**Interfaces:**
-- Evaluation input manifest references local/private audio by path or controlled fixture ID plus human FC/LR/GRA/PR/overall labels; never commit copyrighted/private candidate recordings.
-- Report per-criterion and overall MAE, RMSE, Pearson/Spearman when sample size permits, Quadratic Weighted Kappa, within ±0.5/±1.0, failure/nonscorable rate, and optional subgroup slices only when sample sizes are responsible.
-- Store scorer/provider/prompt/ASR/acoustic version metadata with every evaluation output so calibration changes are reproducible.
-
-- [x] **Step 1: Write failing metric/manifest tests** with synthetic labels/predictions, including missing/nonscorable rows and deterministic metric output.
-- [x] **Step 2: Run RED:** `cd backend && uv run pytest tests/test_speaking_benchmark.py -q`.
-- [x] **Step 3: Implement offline evaluation CLI and docs.** Explain that Speak & Improve/SpeechOcean/L2-ARCTIC may inform research but are not direct IELTS-labelled ground truth; do not add automatic dataset downloads or redistribution.
-- [x] **Step 4: Run GREEN + Ruff.**
-- [x] **Step 5: Commit:** `git commit -m "Add Speaking grading benchmark tooling"`.
-
-P8 verification: 142 focused tests passed (`test_speaking_ai.py`,
-`test_speaking_benchmark.py`, `test_speaking_benchmark_metrics.py`); targeted Ruff
-and `git diff --check` passed. Harness/CLI follow existing `app/evaluation` and
-root `scripts` conventions. No live providers, production score changes or new
-database migration were introduced by P8.
+**Chốt P7:** kiểm bốn kỹ năng cùng tồn tại; phiên lịch sử ba kỹ năng vẫn đọc được, không hồi tố thành không hợp lệ. Full Mock mới cần Speaking.
 
 ---
 
-## Phase Verification Commands
+# P8 — Công cụ benchmark + hiệu chuẩn
 
-At the end of each phase, run only the focused tests touched by that phase plus cheap static checks; do not open a browser or run live speech/LLM infrastructure. Typical commands:
+### Tác vụ 18: bộ chạy đánh giá Speaking có nhãn người chấm và tài liệu
+
+**Tệp:**
+- Tạo: `backend/app/benchmarks/speaking.py` (hoặc theo quy ước gói benchmark hiện có)
+- Tạo: `backend/scripts/evaluate_speaking.py`
+- Tạo: `backend/tests/test_speaking_benchmark.py`
+- Tạo: `docs/ai-speaking.md`
+- Sửa: README/lộ trình chỉ nơi còn liệt kê Speaking là tương lai
+
+**Giao diện:**
+- Bản kê đánh giá tham chiếu âm thanh cục bộ/riêng bằng đường dẫn hoặc ID mẫu kiểm soát, cùng nhãn người chấm FC/LR/GRA/PR/tổng; không commit bản ghi riêng/có bản quyền.
+- Báo MAE, RMSE từng tiêu chí/tổng, Pearson/Spearman khi đủ mẫu, Quadratic Weighted Kappa, trong ±0.5/±1.0, tỷ lệ lỗi/không chấm được; chỉ phân nhóm tùy chọn khi cỡ mẫu có trách nhiệm.
+- Lưu siêu dữ liệu phiên bản bộ chấm/nhà cung cấp/lời nhắc/ASR/âm học mỗi kết quả để tái hiện đổi hiệu chuẩn.
+
+- [x] **Bước 1: viết kiểm chỉ số/bản kê thất bại** với nhãn/dự đoán tổng hợp, gồm dòng thiếu/không chấm được, đầu ra tất định.
+- [x] **Bước 2: chạy RED:** `cd backend && uv run pytest tests/test_speaking_benchmark.py -q`.
+- [x] **Bước 3: triển khai CLI ngoại tuyến/tài liệu.** Giải thích Speak & Improve/SpeechOcean/L2-ARCTIC hỗ trợ nghiên cứu, không trực tiếp là dữ liệu chuẩn nhãn IELTS; không thêm tự tải/phân phối tập dữ liệu.
+- [x] **Bước 4: chạy GREEN + Ruff.**
+- [x] **Bước 5: commit:** `git commit -m "Add Speaking grading benchmark tooling"`.
+
+Xác minh P8: 142 kiểm thử tập trung đạt (`test_speaking_ai.py`,
+`test_speaking_benchmark.py`, `test_speaking_benchmark_metrics.py`); Ruff có mục tiêu
+và `git diff --check` đạt. Bộ chạy/CLI theo quy ước `app/evaluation` và
+`scripts` gốc hiện có. P8 không thêm nhà cung cấp trực tiếp, đổi điểm sản xuất hoặc
+migration cơ sở dữ liệu mới.
+
+---
+
+## Lệnh xác minh từng giai đoạn
+
+Cuối mỗi giai đoạn chỉ chạy kiểm thử tập trung chịu tác động cùng kiểm tĩnh ít chi phí; không mở trình duyệt hoặc chạy hạ tầng tiếng nói/LLM trực tiếp. Lệnh điển hình:
 
 ```bash
 cd backend
@@ -577,13 +577,13 @@ cd ..
 git diff --check
 ```
 
-If a focused command reveals a pre-existing unrelated failure, report it by name instead of expanding into a long unrelated suite. Do not claim a phase is verified unless its named tests/static checks actually passed.
+Nếu lệnh tập trung phát hiện lỗi cũ không liên quan, báo tên lỗi thay vì mở bộ kiểm dài ngoài phạm vi. Không nói đã xác minh giai đoạn nếu kiểm được nêu chưa thực sự đạt.
 
-## Recommended Commit/Review Gates
+## Chốt commit/rà soát khuyến nghị
 
-Implement P1 through P8 sequentially. Each numbered task has its own commit; each phase ends with a review before the next phase. The architecture has strong interface dependencies (content IDs -> attempt state -> media manifests -> transcripts -> features -> scoring -> product integration), so do not dispatch later phases against unstable earlier interfaces.
+Triển khai P1–P8 tuần tự. Mỗi tác vụ đánh số có commit riêng; mỗi giai đoạn kết thúc bằng rà soát trước giai đoạn sau. Kiến trúc phụ thuộc giao diện chặt (ID nội dung -> trạng thái lượt -> bản kê tệp -> chép lời -> đặc trưng -> chấm -> tích hợp sản phẩm), không giao giai đoạn sau khi giao diện trước chưa ổn.
 
-Before every phase:
+Trước mỗi giai đoạn:
 
 ```bash
 git fetch origin
@@ -591,16 +591,16 @@ git pull --ff-only origin main
 git status --short
 ```
 
-Require a clean tree before starting, preserve any upstream work such as Writing AI v9, and never force-push `main`.
+Yêu cầu cây làm việc sạch trước bắt đầu, giữ công việc thượng nguồn như Writing AI v9, không force-push `main`.
 
-## Self-Review Coverage
+## Phạm vi tự rà soát
 
-- Spec §§1–2: Tasks 1–3 (content domain, Builder, validation, dynamic authoring).
-- Spec §§3–5: Tasks 4–8 (preflight, runner, practice/exam rules, chunking, recovery, review).
-- Spec §§6–8: Tasks 9–12 (transcript, quality, ASR/alignment, fluency/acoustic evidence).
-- Spec §§9–12: Tasks 13–15 (holistic four-criterion score-first grading, durable runs/cache/SSE, AI UI).
-- Spec §§13–18: covered across Tasks 6–17 (privacy, retention provenance, dynamic UX, errors/config, Full Mock/classroom/history).
-- Spec §19 rollout: preserved exactly as P1–P8 review gates.
-- Spec §20 benchmark/calibration: Task 18.
+- Đặc tả §§1–2: Tác vụ 1–3 (miền nội dung, Builder, kiểm tra, soạn động).
+- Đặc tả §§3–5: Tác vụ 4–8 (kiểm trước, làm bài, quy tắc luyện/thi, chia đoạn, khôi phục, xem lại).
+- Đặc tả §§6–8: Tác vụ 9–12 (chép lời, chất lượng, ASR/căn chỉnh, bằng chứng độ lưu loát/âm học).
+- Đặc tả §§9–12: Tác vụ 13–15 (chấm tổng thể bốn tiêu chí điểm trước, lượt/bộ nhớ đệm/SSE bền vững, UI AI).
+- Đặc tả §§13–18: xuyên Tác vụ 6–17 (riêng tư, nguồn gốc giữ lại, UX động, lỗi/cấu hình, Full Mock/lớp/lịch sử).
+- Triển khai Đặc tả §19: giữ đúng chốt rà soát P1–P8.
+- Benchmark/hiệu chuẩn Đặc tả §20: Tác vụ 18.
 
-The five Review Focus risks are explicitly exercised in Tasks 6/7 (chunking/recovery), Task 6/17 (private authorization), Tasks 9/11/13 (ASR/audio failure), and Tasks 9/14/15 (durable background work and reconnect).
+Năm rủi ro Trọng tâm rà soát được kiểm rõ ở Tác vụ 6/7 (đoạn/khôi phục), 6/17 (phân quyền riêng tư), 9/11/13 (lỗi ASR/âm thanh), 9/14/15 (nền bền vững/kết nối lại).

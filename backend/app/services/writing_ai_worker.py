@@ -142,6 +142,7 @@ class WritingAIWorker:
         heartbeat = None
         mts = None
         token = None
+        claim_committed = False
         latency = WritingLatencyMetrics()
         checkpoint_lock = asyncio.Lock()
 
@@ -178,6 +179,7 @@ class WritingAIWorker:
                 run_id, token = run.id, run.lease_token
                 persist_activity(run, "run.started", EventPayload())
                 await repository.append_event(run, "run.started", EventPayload())
+            claim_committed = True
             _tasks[run_id] = asyncio.current_task()
             heartbeat = asyncio.create_task(self._heartbeat(run_id, token, asyncio.current_task()))
             async with self.sessions() as session, session.begin():
@@ -253,6 +255,12 @@ class WritingAIWorker:
             await fail(exc.code, exc.message)
         except Exception:
             # Exception bodies can contain credentials/prompts. Never serialize/log them.
+            if not claim_committed:
+                # No owned job was durably accepted. Let the consumer take its
+                # retry delay instead of spinning on immediate connection errors
+                # or an ambiguous claim commit. A committed lease can expire.
+                logger.warning("Writing claim unavailable; retrying")
+                return False
             await fail(
                 "AI_GRADING_FAILED",
                 "AI chưa thể hoàn tất bài chấm. Bạn có thể thử chấm lại.",

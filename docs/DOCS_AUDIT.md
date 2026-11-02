@@ -1,15 +1,17 @@
-# BandPilot documentation audit
+# Kiểm toán tài liệu BandPilot
 
-> Mục đích và phạm vi: Inventory, classification, source evidence và final action cho toàn bộ tracked baseline docs.
-> Đối chiếu mã nguồn tại `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`. Đây là kiểm tra tĩnh; không xác nhận trạng thái deployment đang chạy.
+Bổ sung 2026-11-02: [khảo sát khả năng phục vụ 5.000 người dùng](performance/5000-user-capacity.md), [nghiên cứu tình huống](case-studies/5000-user-scalability.md), [hỏi đáp](interview/5000-user-scalability-qa.md), [công cụ thử tải](../benchmarks/load/README.md) và [bằng chứng gốc](performance/5000-user/evidence.json) là đầu ra bàn giao mới. Danh mục/số lượng bên dưới thuộc mốc cũ, không tự cộng thêm hay xem là độ bao phủ runtime đầy đủ.
+
+> Mục đích và phạm vi: Danh mục, phân loại, bằng chứng mã nguồn và hành động cuối cho toàn bộ tài liệu mốc ban đầu được Git theo dõi.
+> Đối chiếu mã nguồn tại `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`. Đây là kiểm tra tĩnh; không xác nhận trạng thái triển khai đang chạy.
 
 ## Phạm vi, phương pháp và cách đọc
 
-Inventory baseline: **75 tracked Markdown files**, lấy từ `git ls-files` tại source commit ở đầu trang, gồm README/AGENTS/benchmarks/frontend ngoài docs. Đã đọc theo bounded batches: mục đích/headers, contract/constraints/verification sections và đối chiếu các implementation paths bên dưới. Không phải line-by-line review mọi source file, không rerun tất cả test hay tái thẩm định mọi paper/external link. Untracked `.agents`, `.codex`, `.taste-skill`, design references và launcher của người dùng không thuộc delivered baseline.
+Danh mục mốc ban đầu: **75 tệp Markdown được Git theo dõi**, lấy từ `git ls-files` tại commit mã nguồn ở đầu trang, gồm README/AGENTS/benchmarks/frontend ngoài docs. Đã đọc theo nhóm có giới hạn: mục đích/tiêu đề, phần hợp đồng/ràng buộc/kiểm chứng và đối chiếu đường dẫn triển khai bên dưới. Không phải review từng dòng của mọi tệp nguồn, không chạy lại mọi test hay thẩm định lại mọi bài nghiên cứu/liên kết bên ngoài. `.agents`, `.codex`, `.taste-skill` chưa được Git theo dõi, tài liệu tham chiếu thiết kế và chương trình khởi chạy của người dùng không thuộc mốc đã bàn giao.
 
-Classification là **tình trạng tại lúc audit trước correction**: CURRENT (current concern), NEEDS UPDATE (drift có thể sửa), HISTORICAL (phase/experiment), SUPERSEDED (đã có cách hiện hành thay), DUPLICATE (copy thực sự thừa), UNCERTAIN (thiếu bằng chứng). Final action cho biết đã làm gì. CURRENT không nghĩa mọi deployment/sample/test statement trong quá khứ được chạy lại hôm nay.
+Phân loại là **tình trạng tại thời điểm kiểm toán trước khi đính chính**: CURRENT (chủ đề hiện hành), NEEDS UPDATE (sai lệch có thể sửa), HISTORICAL (giai đoạn/thử nghiệm), SUPERSEDED (đã có cách hiện hành thay thế), DUPLICATE (bản sao thực sự thừa), UNCERTAIN (thiếu bằng chứng). Hành động cuối cho biết đã làm gì. CURRENT không có nghĩa mọi tuyên bố về triển khai/mẫu/test trước đây đều được chạy lại hôm nay.
 
-| Classification | Count |
+| Phân loại | Số lượng |
 | --- | ---: |
 | CURRENT | 31 |
 | NEEDS UPDATE | 4 |
@@ -18,11 +20,11 @@ Classification là **tình trạng tại lúc audit trước correction**: CURRE
 | DUPLICATE | 0 |
 | UNCERTAIN | 1 |
 
-Không xóa hoặc chuyển file: các plans có rationale/tests còn giá trị; Speaking có binding references. `frontend/CLAUDE.md` chỉ forward AGENTS, được giữ vì không phải bản sao nội dung. Không tạo archive directory rỗng cho đủ cấu trúc. [History index](superpowers/README.md) là nơi tra cứu.
+Không xóa hay chuyển tệp: kế hoạch có lý do/test còn giá trị; Speaking có tham chiếu ràng buộc. `frontend/CLAUDE.md` chỉ chuyển tiếp tới AGENTS, được giữ vì không phải bản sao nội dung. Không tạo thư mục lưu trữ rỗng chỉ để đủ cấu trúc. [Mục lục lịch sử](superpowers/README.md) là nơi tra cứu.
 
-## File-by-file audit
+## Kiểm toán từng tệp
 
-| File | Classification | Original purpose | Current relevance | Source evidence | Recommended action | Canonical replacement / companion | Final action |
+| Tệp | Phân loại | Mục đích ban đầu | Mức liên quan hiện tại | Bằng chứng mã nguồn | Hành động đề xuất | Tài liệu chuẩn thay thế / đi kèm | Hành động cuối |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | [AGENTS.md](../AGENTS.md) | CURRENT | Engineering invariants | Contract/ranh giới có source hiện hành; số test lịch sử không được chạy lại. | [backend/app/api/v1/router.py](../backend/app/api/v1/router.py) | Đối chiếu + sửa drift nếu có | [docs/README.md](README.md) | Thêm canonical pointers; sửa mô tả hiện hành có drift ở README/architecture. |
 | [README.md](../README.md) | NEEDS UPDATE | BandPilot | Sửa drift cụ thể và bổ sung navigation canonical. | [package.json](../package.json) | Đối chiếu + sửa drift nếu có | [docs/README.md](README.md) | Thêm canonical pointers; sửa mô tả hiện hành có drift ở README/architecture. |
@@ -100,21 +102,21 @@ Không xóa hoặc chuyển file: các plans có rationale/tests còn giá trị
 | [frontend/AGENTS.md](../frontend/AGENTS.md) | CURRENT | This is NOT the Next.js you know | Contract/ranh giới có source hiện hành; số test lịch sử không được chạy lại. | [frontend/package.json](../frontend/package.json) | Đối chiếu + sửa drift nếu có | [docs/handbook/feature-development-playbook.md](handbook/feature-development-playbook.md) | Giữ nguyên; ghi trạng thái và đường dẫn trong audit. |
 | [frontend/CLAUDE.md](../frontend/CLAUDE.md) | CURRENT | @AGENTS.md | Intentional one-line forwarding tới AGENTS, không phải duplicate nội dung cần xóa. | [frontend/AGENTS.md](../frontend/AGENTS.md) | Đối chiếu + sửa drift nếu có | [frontend/AGENTS.md](../frontend/AGENTS.md) | Giữ nguyên; ghi trạng thái và đường dẫn trong audit. |
 
-## Corrections cụ thể
+## Các đính chính cụ thể
 
-- Architecture: Golden Path workflow hiện chọn bốn browser specs, thêm Reading Practice; không tự chạy E2E trong documentation task.
-- Gradebook: bỏ claim ADMIN được classroom mutation/grading; capability hiện hành là ADMIN_OBSERVER. Mốc “head 0039 đã apply local” được ghi đúng là phase history; source head hiện 0043, live DB không kiểm tra.
-- Draft import: destination dùng configured storage factory, không còn mô tả luôn LocalAssetStorage. Local source file không có nghĩa local destination.
-- README: thêm knowledge-base entry và phân biệt computed profile target với optional explicit Learning Goals overall target.
-- Teacher P1/P2 và Writing latency v7 report: gắn lịch sử để các câu “ADMIN quản lý lớp”, “evidence trước score” cũ không lấn current module/code. Giữ số liệu/rationale nguyên vẹn.
-- Visual plans fantasy/horizontal-shell/redesign: SUPERSEDED về hướng dẫn visual hiện hành; vẫn giữ giới hạn/test history. Không import các chỉ dẫn chạy task cũ vào task mới.
+- Kiến trúc: workflow Golden Path hiện chọn bốn đặc tả trình duyệt, thêm Reading Practice; không tự chạy E2E trong nhiệm vụ tài liệu.
+- Sổ điểm: bỏ khẳng định ADMIN được sửa/chấm lớp học; quyền hiện hành là ADMIN_OBSERVER. Mốc “head 0039 đã áp dụng cục bộ” được ghi đúng là lịch sử giai đoạn; head mã nguồn hiện là 0043, không kiểm DB đang chạy.
+- Import bản nháp: đích dùng factory storage đã cấu hình, không còn mô tả luôn dùng LocalAssetStorage. Tệp nguồn cục bộ không đồng nghĩa đích cục bộ.
+- README: thêm điểm vào kho kiến thức, phân biệt mục tiêu hồ sơ tính toán với mục tiêu tổng thể Learning Goals do người dùng đặt tường minh, tùy chọn.
+- Báo cáo Teacher P1/P2 và độ trễ Writing v7: gắn trạng thái lịch sử để câu “ADMIN quản lý lớp”, “bằng chứng trước điểm” cũ không lấn mô-đun/mã hiện hành. Giữ số liệu/lý do nguyên vẹn.
+- Kế hoạch thị giác fantasy/horizontal-shell/redesign: SUPERSEDED đối với hướng dẫn thị giác hiện hành; vẫn giữ giới hạn/lịch sử kiểm thử. Không nhập chỉ dẫn thực hiện nhiệm vụ cũ vào nhiệm vụ mới.
 
-## Evidence artifacts ngoài Markdown
+## Bằng chứng ngoài Markdown
 
-Mười JSON trong [modal-p2](performance/modal-p2/) là nguồn measurements, không tài liệu cần consolidate. Baseline/repeat/after/local/server/shared-guard evidence giữ nguyên byte. AI manifests/synthetic fixtures dưới [benchmarks](../benchmarks/) và migrations dưới [Alembic](../backend/alembic/versions/) được xem như contracts/history, không xóa khi đã có handbook. Package manifests, lockfiles, env examples, CI và Docker configs được kiểm chỉ đọc.
+Mười JSON trong [modal-p2](performance/modal-p2/) là nguồn phép đo, không phải tài liệu cần hợp nhất. Bằng chứng baseline/repeat/after/local/server/shared-guard giữ nguyên byte. Manifest AI/dữ liệu mẫu giả lập dưới [benchmarks](../benchmarks/) và migration dưới [Alembic](../backend/alembic/versions/) được xem là hợp đồng/lịch sử, không xóa khi đã có cẩm nang. Chỉ đọc để kiểm tra manifest gói, lockfile, ví dụ môi trường, CI và cấu hình Docker.
 
 ## Những gì chưa thể xác minh
 
-Một baseline document có trạng thái UNCERTAIN: `docs/modal-web.md` có 51 dòng thay đổi sẵn và launcher untracked không thuộc commit đang audit; không sửa/stage phần đó. Committed Modal app/runtime topology đã đối chiếu và handbook link đúng. Những giới hạn chung khác: cloud/IAM/TLS/DB revision đang chạy, benchmark accuracy production, browser geometry, external links/paper validity và renderer Mermaid đầy đủ chưa được xác minh bởi audit này.
+Một tài liệu mốc ban đầu có trạng thái UNCERTAIN: `docs/modal-web.md` có sẵn 51 dòng thay đổi và chương trình khởi chạy chưa được Git theo dõi, không thuộc commit đang kiểm toán; không sửa/stage phần đó. Đã đối chiếu cấu trúc ứng dụng/runtime Modal được commit và cẩm nang liên kết đúng. Giới hạn chung khác chưa được lần kiểm toán này xác minh: cloud/IAM/TLS/revision DB đang chạy, độ chính xác benchmark production, hình học trình duyệt, tính hợp lệ liên kết bên ngoài/bài nghiên cứu và renderer Mermaid đầy đủ.
 
-[Coverage matrix](DOCUMENTATION_COVERAGE.md) nói rõ subsystem/axis đã map; không báo 100% code coverage. Tài liệu mới được liệt kê theo canonical paths ở [index](README.md), không đưa vào mẫu 75 tài liệu baseline để thổi phồng số inspected.
+[Ma trận bao phủ](DOCUMENTATION_COVERAGE.md) ghi rõ phân hệ/trục đã có trong bản đồ; không báo 100% độ bao phủ mã. Tài liệu mới được liệt kê theo đường dẫn chuẩn ở [mục lục](README.md), không đưa vào mẫu 75 tài liệu mốc ban đầu để thổi phồng số đã kiểm tra.

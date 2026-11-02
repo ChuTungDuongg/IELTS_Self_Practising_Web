@@ -1,29 +1,29 @@
-# Task 2 source grounding and calibration implementation plan
+# Kế hoạch source grounding và calibration Task 2
 
-> **Documentation audit: HISTORICAL.** Historical reference; không phải contract hiện hành.
+> **Phân loại tài liệu: HISTORICAL.** Tham khảo lịch sử; không phải contract hiện hành.
 > Mục đích: Task 2 source grounding and calibration implementation plan. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../../../backend/app/services/mts_writing.py).
-> Đọc cùng [current module/guide](../../modules/writing.md); [audit và giới hạn](../../DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+> Đọc cùng [hướng dẫn module hiện hành](../../modules/writing.md); [audit và giới hạn](../../DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
 
-> Execute inline using superpowers:executing-plans; preserve the current local checkout.
+> Thực thi trực tiếp bằng superpowers:executing-plans; giữ local checkout hiện tại.
 
-**Goal:** Reliable advisory Task 2 assessment with source-grounded Vietnamese feedback, calibrated bands, isolated failures, and live SSE cards.
+**Mục tiêu:** Advisory Task 2 assessment đáng tin cậy với phản hồi tiếng Việt dựa trên source, bands có calibration, lỗi được cô lập và live SSE cards.
 
-**Architecture:** A pure splitter maps PnSm IDs to original Python character spans. The evidence interaction selects IDs; backend lookup supplies quotes. Each criterion retains its independent evidence/scoring interactions and one repair per invalid interaction. Scoring adds bounded comparative justification in the same interaction. PostgreSQL checkpoints expose completed results and failed criteria through snapshots and replayable events.
+**Kiến trúc:** Pure splitter ánh xạ PnSm IDs tới original Python character spans. Evidence interaction chọn IDs; backend tra cứu để cung cấp quotes. Mỗi criterion giữ evidence/scoring interactions độc lập và một repair cho mỗi interaction sai. Scoring thêm comparative justification có giới hạn trong cùng interaction. PostgreSQL checkpoints trình bày completed results/failed criteria qua snapshots và replayable events.
 
-**Constraints:** User's Task 2 specification and subsequent calibration steering are authoritative. No Task 1, official score mutations, provider deployment changes, push, browser, Playwright, real inference, or unrelated suites. Keep historical DTO compatibility. v3 must invalidate v1/v2 cache fingerprints.
+**Ràng buộc:** Đặc tả Task 2 của user và chỉ dẫn calibration bổ sung có tính quyết định. Không làm Task 1, thay official scores, đổi provider deployment, push, browser, Playwright, real inference hoặc unrelated suites. Giữ historical DTO compatibility. v3 phải vô hiệu hóa v1/v2 cache fingerprints.
 
-## Tasks
+## Công việc
 
-- [x] Add `essay_sources.segment_essay(essay)` and invariant tests for IDs, paragraphs, CRLF/LF, abbreviations, repeated sentences, and Unicode punctuation.
-- [x] Add bounded evidence selection schemas and `resolve_evidence(selection, sources)`; replace quote matching with ID validation and exact lookup. Add resolution/repair tests.
-- [x] Upgrade prompts and configured version to `mts-task2-v3`. Use current official IELTS Task 2 descriptors, holistic adjacent-band comparison and half-band interpolation. Add bounded source-backed justification summaries and structural consistency tests, with no deterministic severity gates, deductions or caps. Keep low-temperature vLLM and its 1800-token budget.
-- [x] Classify safe provider finish metadata as stop/length/known terminal/other, reject length and unsupported terminals with one repair. Add mocked transport tests.
-- [x] Isolate criterion provider failures, checkpoint `criterion.failed`, attempt remaining traits, and fail the run without aggregate if any trait failed. Persist failures in JSONB and expose snapshots; test with fake providers and targeted PostgreSQL integration tests.
-- [x] Preserve the four-step UI; add persisted local failure states and live counts, retain immediate cards, replay, and heartbeat behavior. Test SSE continuation, reload/reconnect, terminal partial results and Vietnamese errors.
-- [x] Update AI documentation; run targeted pytest/Vitest, typecheck, touched Ruff/ESLint, and diff check; review the diff and report files/status and calibration verification limits.
+- [x] Thêm `essay_sources.segment_essay(essay)` và invariant tests cho IDs, paragraphs, CRLF/LF, abbreviations, câu lặp và Unicode punctuation.
+- [x] Thêm bounded evidence selection schemas và `resolve_evidence(selection, sources)`; thay quote matching bằng ID validation/exact lookup. Thêm resolution/repair tests.
+- [x] Nâng prompts/configured version thành `mts-task2-v3`. Dùng official IELTS Task 2 descriptors hiện hành, holistic adjacent-band comparison và half-band interpolation. Thêm source-backed justification summaries có giới hạn và structural consistency tests, không deterministic severity gates, deductions hoặc caps. Giữ low-temperature vLLM và budget1800tokens.
+- [x] Phân loại safe provider finish metadata thành stop/length/known terminal/other, từ chối length và unsupported terminals với một repair. Thêm mocked transport tests.
+- [x] Cô lập criterion provider failures, checkpoint `criterion.failed`, thử remaining traits và fail run không có aggregate nếu có trait lỗi. Lưu failures trong JSONB và expose snapshots; test fake providers và focused PostgreSQL integration.
+- [x] Giữ UI bốn bước; thêm persisted local failure states/live counts, giữ immediate cards, replay và heartbeat behavior. Test SSE continuation, reload/reconnect, terminal partial results và lỗi tiếng Việt.
+- [x] Cập nhật AI docs; chạy targeted pytest/Vitest, typecheck, Ruff/ESLint các file đã sửa và diff check; review diff, báo files/status cùng giới hạn kiểm chứng calibration.
 
-**Review focus:** Long unpunctuated sentences must not hit legacy quote limits; repeated text has distinct identity; old payloads remain readable; unknown finish values cannot leak text into logs; a failed trait cannot mark the run terminal while later traits are active.
+**Trọng tâm review:** Câu dài không dấu câu không vướng legacy quote limits; đoạn text lặp có identity riêng; old payloads vẫn đọc được; unknown finish values không làm lộ text vào logs; một trait fail không được làm run terminal khi traits sau còn active.
 
-**Execution notes:** User explicitly requires this current checkout; no worktree, commit or push. Follow-up correction supersedes proposed high-band heuristics: the only scoring dimensions are the four official criteria. Automated tests validate prompt and schema contracts with fake providers; they cannot establish empirical real-model calibration. PostgreSQL verification uses a temporary isolated local container rather than the unavailable configured development database.
+**Ghi chú thực thi:** User yêu cầu rõ checkout hiện tại: không worktree, commit hoặc push. Chỉ dẫn sửa sau thay thế proposed high-band heuristics; chỉ có bốn official criteria làm scoring dimensions. Automated tests dùng fake providers để kiểm prompt/schema contracts, không thể chứng minh empirical real-model calibration. PostgreSQL verification dùng temporary isolated local container thay configured development database không khả dụng.
 
-**Final verification:** 170 focused pytest tests and 24 focused Vitest tests passed. TypeScript typecheck, touched Ruff/ESLint and `git diff --check` passed. Review found overly compressed descriptor distinctions, a mixed LR-failure/GRA-interruption timeline bug and a Band 9 comparison contradiction; each has a regression that failed before the fix and passed afterward. All review findings were addressed. The temporary PostgreSQL container was stopped. No browser, Playwright, GPU inference, Task 1 work, official score mutation, staging, commit or push.
+**Kiểm chứng cuối:**170focused pytest tests và24focused Vitest tests pass. TypeScript, Ruff/ESLint các file sửa và `git diff --check` pass. Review tìm thấy descriptors phân biệt quá cô đọng, lỗi timeline LR-failure/GRA-interruption và Band9comparison contradiction; mỗi lỗi có regression fail trước fix/pass sau fix. Đã xử lý mọi review findings. Temporary PostgreSQL container đã stop. Không browser, Playwright, GPU inference, Task 1 work, official score mutation, staging, commit hoặc push.

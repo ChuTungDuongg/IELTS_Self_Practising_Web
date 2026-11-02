@@ -1,74 +1,74 @@
-# Speaking Implementation Plan — Self-Review Amendments
+# Kế hoạch triển khai Speaking — Các sửa đổi sau tự rà soát
 
-> **Documentation audit: CURRENT.** Canonical concern này; source-check các boundary/API, không live validation.
-> Mục đích: Speaking Implementation Plan — Self-Review Amendments. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../../../backend/app/services/speaking_attempts.py).
-> Đọc cùng [current module/guide](../../modules/speaking.md); [audit và giới hạn](../../DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
-> Speaking instructions vẫn binding theo AGENTS; không archive hoặc vô hiệu hóa self-review amendments.
+> **Kiểm toán tài liệu: CURRENT.** Đây là nguồn chuẩn cho phạm vi này; đã đối chiếu ranh giới/API với mã nguồn, chưa xác thực trên môi trường đang chạy.
+> Mục đích: Kế hoạch triển khai Speaking — Các sửa đổi sau tự rà soát. Đối chiếu mã nguồn `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [triển khai](../../../backend/app/services/speaking_attempts.py).
+> Đọc cùng [mô-đun/hướng dẫn hiện hành](../../modules/speaking.md); [audit và giới hạn](../../DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+> Các chỉ dẫn Speaking vẫn có tính ràng buộc theo AGENTS; không lưu trữ hoặc vô hiệu hóa các sửa đổi sau tự rà soát.
 
-> **Binding companion to:** `docs/superpowers/plans/2026-10-11-speaking-engine-ai-grading.md`
+> **Tài liệu đi kèm có tính ràng buộc của:** `docs/superpowers/plans/2026-10-11-speaking-engine-ai-grading.md`
 >
-> Implementation agents must read this file together with the approved design spec and the main implementation plan. These amendments resolve issues found during the required plan self-review; where wording conflicts, this file wins.
+> Các tác nhân triển khai phải đọc tệp này cùng đặc tả thiết kế đã được phê duyệt và kế hoạch triển khai chính. Các sửa đổi này giải quyết vấn đề phát hiện trong bước tự rà soát kế hoạch bắt buộc; khi cách diễn đạt xung đột, tệp này được ưu tiên.
 
-## 1. Fix the P4/P5 dependency: audio normalization belongs before ASR
+## 1. Sửa phụ thuộc P4/P5: chuẩn hóa âm thanh phải diễn ra trước ASR
 
-The main plan currently types the P4 ASR contract as `SpeechASRProvider.transcribe(audio: NormalizedAudio)` while creating `normalize_committed_take(...) -> NormalizedAudio` later in P5. That ordering is invalid.
+Kế hoạch chính hiện khai báo kiểu cho hợp đồng ASR ở P4 là `SpeechASRProvider.transcribe(audio: NormalizedAudio)` nhưng đến P5 mới tạo `normalize_committed_take(...) -> NormalizedAudio`. Thứ tự đó không hợp lệ.
 
-Amend the phase tasks as follows:
+Sửa các nhiệm vụ theo giai đoạn như sau:
 
-- **Task 9 (P4)** also creates the minimal `backend/app/services/speaking_audio.py` normalization boundary needed by transcription.
-- Task 9 must assemble the committed ordered segment/chunk manifest and derive a bounded **16 kHz mono PCM/WAV `NormalizedAudio`** through FFmpeg (or a fake/mocked equivalent in unit tests) before calling ASR.
-- Raw uploaded audio/chunks remain immutable source-of-truth artifacts; normalization creates a derived artifact/cache keyed by committed audio fingerprint + normalizer version.
-- Task 9 tests must cover manifest ordering, normalizer invocation/path safety, cache identity, and ASR receiving normalized audio. Do not run a real FFmpeg/Whisper integration during routine verification.
-- **Task 11 (P5)** no longer creates `speaking_audio.py` from scratch. It **extends** the P4 normalization service with the full quality-gate/readability metrics and creates `speaking_quality.py` as planned.
+- **Nhiệm vụ 9 (P4)** đồng thời tạo ranh giới chuẩn hóa tối thiểu `backend/app/services/speaking_audio.py` mà việc tạo bản chép lời cần đến.
+- Nhiệm vụ 9 phải ghép bản kê segment/chunk đã cam kết theo thứ tự và tạo **16 kHz mono PCM/WAV `NormalizedAudio`** có giới hạn thông qua FFmpeg (hoặc thành phần giả lập tương đương trong kiểm thử đơn vị) trước khi gọi ASR.
+- Âm thanh/chunk thô đã tải lên vẫn là hiện vật nguồn chuẩn bất biến; chuẩn hóa tạo hiện vật/bộ đệm dẫn xuất với khóa gồm dấu vân tay âm thanh đã cam kết + phiên bản bộ chuẩn hóa.
+- Kiểm thử Nhiệm vụ 9 phải bao quát thứ tự bản kê, việc gọi bộ chuẩn hóa/an toàn đường dẫn, danh tính bộ đệm và việc ASR nhận âm thanh đã chuẩn hóa. Không chạy tích hợp FFmpeg/Whisper thật trong xác minh thường lệ.
+- **Nhiệm vụ 11 (P5)** không còn tạo `speaking_audio.py` từ đầu. Nhiệm vụ này **mở rộng** dịch vụ chuẩn hóa P4 bằng đầy đủ chỉ số kiểm soát chất lượng/khả năng đọc và tạo `speaking_quality.py` theo kế hoạch.
 
-This preserves the intended rollout (`transcript` before richer acoustic/fluency analysis) without making P4 depend on a future P5 type.
+Điều này giữ đúng trình tự triển khai dự kiến (`transcript` trước phân tích âm học/độ trôi chảy sâu hơn) mà không khiến P4 phụ thuộc vào một kiểu dữ liệu chỉ xuất hiện ở P5.
 
-## 2. Part 2 scratch notes are runtime-only and excluded from grading
+## 2. Ghi chú nháp Part 2 chỉ thuộc thời gian làm bài và bị loại khỏi chấm điểm
 
-Add this as a hard invariant to Tasks 4/5 and their tests:
+Bổ sung các bất biến bắt buộc sau vào Nhiệm vụ 4/5 và kiểm thử tương ứng:
 
-- Part 2 preparation may expose a candidate scratchpad/notes field.
-- Notes are attempt-runtime convenience data only; they are not authored test content.
-- Notes must never be appended to the ASR transcript, criterion evidence, LLM grading prompt, pronunciation evidence, or final AI result.
-- If notes are persisted for crash recovery, scope them to the attempt/current Part 2 prompt, authorize them like private attempt data, and do not expose them to grading-provider inputs.
-- Exam/Full Mock recovery may restore the scratchpad, but it does not alter the 7-second recovery or speaking-time semantics.
+- Phần chuẩn bị Part 2 có thể cung cấp vùng ghi chú nháp cho thí sinh.
+- Ghi chú chỉ là dữ liệu tiện ích trong thời gian thực hiện lượt làm bài; chúng không phải nội dung đề được biên soạn.
+- Tuyệt đối không thêm ghi chú vào bản chép lời ASR, bằng chứng của tiêu chí, lời nhắc chấm điểm LLM, bằng chứng phát âm hoặc kết quả AI cuối cùng.
+- Nếu lưu ghi chú để khôi phục sau sự cố, phải giới hạn chúng theo lượt làm bài/câu hỏi Part 2 hiện tại, phân quyền như dữ liệu riêng tư của lượt làm bài và không đưa vào đầu vào nhà cung cấp chấm điểm.
+- Khôi phục Exam/Full Mock có thể khôi phục ghi chú nháp nhưng không thay đổi ngữ nghĩa khôi phục 7 giây hoặc thời gian nói.
 
-Add a focused backend/frontend test proving a distinctive scratch-note string cannot appear in transcript/grading input built from the same attempt.
+Bổ sung kiểm thử backend/frontend có trọng tâm chứng minh một chuỗi ghi chú nháp đặc trưng không thể xuất hiện trong đầu vào chép lời/chấm điểm tạo từ cùng lượt làm bài.
 
-## 3. Make response-finalization races explicit
+## 3. Làm rõ các tranh chấp đồng thời khi chốt câu trả lời
 
-Task 4/7 tests must include the spec-required race cases, not only the happy paths:
+Kiểm thử Nhiệm vụ 4/7 phải bao gồm các tình huống tranh chấp mà đặc tả yêu cầu, không chỉ luồng thành công:
 
-- `Done / Next` racing the authoritative timeout commits **one** final response state.
-- duplicate finalize requests are idempotent and do not create duplicate takes/chunks or advance two prompts.
-- practice Retry racing finalization cannot supersede a response after it becomes committed/locked.
-- recovery cannot reopen a response finalized concurrently on another request.
+- `Done / Next` chạy đua với thời điểm hết hạn do máy chủ quyết định chỉ cam kết **một** trạng thái trả lời cuối cùng.
+- Yêu cầu chốt trùng lặp phải có tính lũy đẳng, không tạo bản thu/chunk trùng và không chuyển qua hai câu hỏi.
+- Retry trong luyện tập chạy đua với việc chốt không được thay thế câu trả lời sau khi câu đó đã được cam kết/khóa.
+- Khôi phục không được mở lại câu trả lời vừa được chốt đồng thời bởi yêu cầu khác.
 
-Use database transaction/locking/idempotency patterns already used elsewhere in the repository; never resolve these races only in frontend state.
+Sử dụng các mẫu giao dịch/khóa/tính lũy đẳng của cơ sở dữ liệu đã có trong kho mã; tuyệt đối không chỉ giải quyết các tranh chấp này bằng trạng thái frontend.
 
-## 4. Attempt deletion/retention must include private speech artifacts
+## 4. Xóa/lưu giữ lượt làm bài phải bao gồm hiện vật lời nói riêng tư
 
-Strengthen Tasks 6 and 17:
+Bổ sung yêu cầu cho Nhiệm vụ 6 và 17:
 
-- Personal attempt deletion must clean up or queue cleanup for owned raw Speaking chunks/segments, assembled/normalized derived audio, transcripts, feature artifacts, and Speaking AI run artifacts according to the repository's existing deletion semantics.
-- Do not leave guessable orphaned media after the database authorization row is deleted.
-- If an assignment/classroom academic-history policy prevents deletion of an assignment-originated attempt, preserve the attempt and its required speech artifacts consistently rather than deleting media underneath retained history.
-- Cleanup must be scoped by ownership/reference; never delete a storage object still referenced by a retained attempt/artifact.
+- Xóa lượt làm bài cá nhân phải dọn dẹp hoặc đưa vào hàng đợi dọn dẹp các chunk/segment Speaking thô thuộc sở hữu, âm thanh dẫn xuất đã ghép/chuẩn hóa, bản chép lời, hiện vật đặc trưng và hiện vật lượt chạy Speaking AI theo ngữ nghĩa xóa hiện có của kho mã.
+- Không để lại tệp phương tiện mồ côi có thể đoán được sau khi hàng phân quyền trong cơ sở dữ liệu bị xóa.
+- Nếu chính sách lịch sử học tập của bài giao/lớp học cấm xóa lượt làm bài bắt nguồn từ bài giao, phải giữ nhất quán cả lượt làm bài và các hiện vật lời nói cần thiết, không xóa phương tiện trong khi vẫn giữ lịch sử.
+- Dọn dẹp phải giới hạn theo quyền sở hữu/tham chiếu; tuyệt đối không xóa đối tượng lưu trữ vẫn được lượt làm bài/hiện vật đang lưu giữ tham chiếu.
 
-Add focused tests to the existing attempt-deletion/history targets for: personal Speaking deletion cleanup, assignment-history preservation, and no unauthorized cross-attempt cleanup.
+Bổ sung kiểm thử có trọng tâm vào các đích kiểm thử xóa/lịch sử lượt làm bài hiện có cho: dọn dẹp khi xóa Speaking cá nhân, bảo toàn lịch sử bài giao và ngăn dọn dẹp chéo lượt làm bài trái phép.
 
-## 5. Security/error contract remains explicit across the new providers
+## 5. Hợp đồng bảo mật/lỗi phải rõ ràng xuyên suốt các nhà cung cấp mới
 
-During Tasks 6, 9, 11, and 14:
+Trong Nhiệm vụ 6, 9, 11 và 14:
 
-- never log raw audio bytes, transcript bodies, candidate scratch notes, provider request bodies, or arbitrary provider exception text;
-- private storage keys/URLs are not authorization tokens;
-- cloud ASR/pronunciation providers stay disabled until their data-handling configuration is documented;
-- map failures to the approved domain semantics (`SPEAKING_CHUNK_SEQUENCE_CONFLICT`, `SPEAKING_RECOVERY_NOT_AVAILABLE`, `SPEAKING_AUDIO_UNASSESSABLE`, transcript-generation and AI-grading failure/cancel codes) rather than leaking backend/provider errors.
+- tuyệt đối không ghi nhật ký byte âm thanh thô, nội dung bản chép lời, ghi chú nháp thí sinh, nội dung yêu cầu nhà cung cấp hoặc văn bản ngoại lệ tùy ý từ nhà cung cấp;
+- khóa/URL lưu trữ riêng tư không phải token phân quyền;
+- nhà cung cấp ASR/phát âm đám mây tiếp tục bị vô hiệu hóa cho đến khi cấu hình xử lý dữ liệu của chúng được ghi thành tài liệu;
+- ánh xạ lỗi sang ngữ nghĩa miền đã được phê duyệt (`SPEAKING_CHUNK_SEQUENCE_CONFLICT`, `SPEAKING_RECOVERY_NOT_AVAILABLE`, `SPEAKING_AUDIO_UNASSESSABLE`, các mã thất bại/hủy tạo bản chép lời và chấm AI), không làm lộ lỗi backend/nhà cung cấp.
 
-## Self-review result
+## Kết quả tự rà soát
 
-With the amendments above, the plan's dependency order is coherent:
+Với các sửa đổi trên, thứ tự phụ thuộc của kế hoạch trở nên nhất quán:
 
 ```text
 P1 authored content
@@ -81,4 +81,4 @@ P1 authored content
  -> P8 benchmark/calibration
 ```
 
-The approved design's five highest-risk areas now have explicit test ownership: segmented media idempotency, recovery anti-time-farming/finalization races, private media lifecycle authorization/cleanup, nonscorable ASR/audio failures, and durable transcript/AI workers that outlive frontend observers.
+Năm lĩnh vực rủi ro cao nhất của thiết kế đã được phê duyệt hiện có trách nhiệm kiểm thử rõ ràng: tính lũy đẳng của phương tiện chia đoạn, ngăn lợi dụng thời gian khôi phục/tranh chấp chốt câu trả lời, phân quyền/dọn dẹp vòng đời phương tiện riêng tư, lỗi ASR/âm thanh không đủ điều kiện chấm và worker chép lời/AI bền vững tiếp tục hoạt động sau khi trình quan sát frontend kết thúc.

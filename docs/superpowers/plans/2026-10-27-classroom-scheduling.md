@@ -1,37 +1,37 @@
-# Classroom P2 implementation and verification ledger
+# Nhật ký triển khai và kiểm chứng Classroom P2
 
-> **Documentation audit: HISTORICAL.** Historical reference; không phải contract hiện hành.
+> **Phân loại tài liệu: HISTORICAL.** Tham khảo lịch sử; không phải contract hiện hành.
 > Mục đích: Classroom P2 implementation and verification ledger. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../../../backend/app/services/classroom_capabilities.py).
-> Đọc cùng [current module/guide](../../modules/classrooms.md); [audit và giới hạn](../../DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+> Đọc cùng [hướng dẫn module hiện hành](../../modules/classrooms.md); [audit và giới hạn](../../DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
 
-Scope: user attachment `2ac4d7c5-1241-4028-a6d5-fc6ecc47e77d/Pasted text.txt`. Extend P1 in place on main; preserve existing dirty files. No browser/E2E/full suites/build/dev stack. Apply local migration as already requested in this conversation.
+Phạm vi: attachment của user `2ac4d7c5-1241-4028-a6d5-fc6ecc47e77d/Pasted text.txt`. Mở rộng P1 ngay trên main; giữ các dirty files có sẵn. Không browser/E2E/full suites/build/dev stack. Áp dụng local migration như user đã yêu cầu trong cuộc trao đổi này.
 
-## Policy decisions
+## Quyết định về chính sách
 
-- Instants are timezone-aware UTC. Availability opens inclusively; submissions/starts exactly at due/cutoff are allowed. Late means completion strictly after due; completion strictly after cutoff is not accepted.
-- Legacy assignments default to no windows/limit and `allow_late_submission=true`.
-- Root Attempt SUBMITTED/AUTO_SUBMITTED is a submission; INTERRUPTED/ABANDONED are not. A Full Mock requires parent COMPLETED and all expected modules submitted/auto-submitted; child completion alone never satisfies the assignment.
-- Append-only normalized policy events record base changes and individual override changes. Read models resolve the effective policy **at the authoritative root completion timestamp**, independently of read time. Later schedule/extension edits cannot relabel earlier completions. Pre-P2 completions resolve legacy unrestricted policy. In-progress work uses changes effective before it completes. Existing engine finalization paths remain unchanged (including Speaking, timeout and Full Mock).
-- Overrides use explicit override booleans: false inherits; true plus null removes the deadline. Extensions cannot shorten a finite base deadline. Additional attempts do not cap unlimited policies. Revocation appends history and restores inheritance for future completion/start decisions.
-- Start checks run under existing actor→version→classroom→assignment locks; successful root starts of all modes consume one shared slot, including abandoned work. Resume never creates a root.
-- Progress prioritizes the most recent accepted completion, otherwise active work, otherwise latest unaccepted submission. MISSED requires an eligible enrollment at/before closure; members joining after closure are NOT_STARTED. All counts and status decisions use scoped SQL roots and bulk queries, never personal practice.
-- Reminders: bounded one-shot CLI; 24-hour due-soon and overdue. Idempotency keys include effective deadlines/policy. Deployment scheduling is documented, not claimed deployed.
+- Các mốc thời gian là timezone-aware UTC. Availability mở theo biên bao gồm; submissions/starts đúng due/cutoff được chấp nhận. Late nghĩa là hoàn tất sau due theo so sánh nghiêm ngặt; hoàn tất sau cutoff không được chấp nhận.
+- Legacy assignments mặc định không có windows/limit và `allow_late_submission=true`.
+- Root Attempt SUBMITTED/AUTO_SUBMITTED là submission; INTERRUPTED/ABANDONED không phải. Full Mock cần parent COMPLETED và tất cả expected modules đã submitted/auto-submitted; child completion riêng không bao giờ đáp ứng assignment.
+- Append-only normalized policy events ghi base changes và individual override changes. Read models tính effective policy **tại authoritative root completion timestamp**, độc lập với thời điểm đọc. Sửa schedule/extension sau đó không được đổi nhãn earlier completions. Completions trước P2 dùng legacy unrestricted policy. In-progress work dùng những thay đổi có hiệu lực trước lúc hoàn tất. Giữ existing engine finalization paths, gồm Speaking, timeout và Full Mock.
+- Overrides dùng explicit override booleans: false kế thừa; true cộng null bỏ deadline. Extensions không được rút ngắn finite base deadline. Additional attempts không giới hạn unlimited policies. Revocation nối thêm history và khôi phục inheritance cho future completion/start decisions.
+- Start checks chạy dưới existing actor→version→classroom→assignment locks; successful root starts ở mọi modes dùng chung một slot, kể cả abandoned work. Resume không tạo root mới.
+- Progress ưu tiên accepted completion mới nhất, rồi active work, rồi unaccepted submission mới nhất. MISSED yêu cầu eligible enrollment tại/trước closure; người tham gia sau closure là NOT_STARTED. Mọi counts/status decisions dùng scoped SQL roots và bulk queries, không lấy personal practice.
+- Reminders: bounded one-shot CLI; nhắc due-soon24giờ và overdue. Idempotency keys gồm effective deadlines/policy. Deployment scheduling chỉ được hướng dẫn, không tuyên bố đã deploy.
 
-## Tasks
+## Công việc
 
-- [x] Audit origin/main, P1, locks, engine finalization, notification/storage conventions.
-- [x] Add fields, extensions, immutable audit event model and migration0037.
-- [x] Central pure policy + SQL progress roots and historical acceptance.
-- [x] Integrate transactional starts, schedule edits, extensions and immediate notifications.
-- [x] Bounded student progress, teacher monitoring/calendar and reminder CLI.
-- [x] Focused frontend schedule editor/progress/monitor/extensions/calendar integrated across P1.
-- [x] Focused unit/PostgreSQL/concurrency/component tests; migration test and local upgrade.
-- [x] Documentation, source review and scoped delivery preparation. Commit/push results are reported from Git after execution.
+- [x] Audit origin/main, P1, locks, engine finalization và notification/storage conventions.
+- [x] Thêm fields, extensions, immutable audit event model và migration0037.
+- [x] Central pure policy, SQL progress roots và historical acceptance.
+- [x] Tích hợp transactional starts, schedule edits, extensions và immediate notifications.
+- [x] Bounded student progress, teacher monitoring/calendar và reminder CLI.
+- [x] Tích hợp focused frontend schedule editor/progress/monitor/extensions/calendar xuyên P1.
+- [x] Focused unit/PostgreSQL/concurrency/component tests; migration test và local upgrade.
+- [x] Documentation, source review và scoped delivery preparation. Commit/push results được báo từ Git sau thực thi.
 
-## Design direction
+## Hướng thiết kế
 
-Keep the P1 editorial tokens and classroom identity. Actual assignment deadlines and root attempt usage form the content. Assignment schedule editor uses native datetime-local controls with explicit browser timezone, serialized as UTC; monitoring uses a narrow filterable table with mobile overflow contained locally. Calendar is an accessible agenda, without a new dependency.
+Giữ P1 editorial tokens và classroom identity. Actual assignment deadlines/root attempt usage là nội dung chính. Assignment schedule editor dùng native datetime-local controls, nêu rõ browser timezone và serialize UTC; monitoring dùng bảng hẹp có filter, giữ mobile overflow cục bộ. Calendar là accessible agenda, không thêm dependency.
 
-## Verification
+## Kiểm chứng
 
-Origin/main and local HEAD started aligned at fb529c9. Fresh isolated PostgreSQL database created; upgrade, empty downgrade/re-upgrade successful. 145 focused backend cases passed, 65 frontend cases passed; TypeScript/ESLint/Ruff clean. CLI smoke returned a successful empty batch report. Local database upgraded and confirmed at 20261027_0037 head. No browser/E2E/build/full suite or always-running scheduler was launched.
+Origin/main và local HEAD ban đầu cùng fb529c9. Tạo PostgreSQL database cách ly mới; upgrade, empty downgrade/re-upgrade thành công.145focused backend cases và65frontend cases pass; TypeScript/ESLint/Ruff sạch. CLI smoke trả empty batch report thành công. Local database đã upgrade, xác nhận head20261027_0037. Không browser/E2E/build/full suite hoặc always-running scheduler.

@@ -1,9 +1,9 @@
-# Identity, accounts, profile và preferences
+# Danh tính, tài khoản, hồ sơ và tùy chọn
 
 > Mục đích và phạm vi: Quản lý danh tính, session và tùy chọn tài khoản; tách authentication khỏi quyền truy cập resource.
 > Đối chiếu mã nguồn tại `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`. Đây là kiểm tra tĩnh; không xác nhận trạng thái deployment đang chạy.
 
-## A–C. Mục đích, workflow và ownership
+## A–C. Mục đích, quy trình và phân chia trách nhiệm
 
 Quản lý danh tính, session và tùy chọn tài khoản; tách authentication khỏi quyền truy cập resource.
 
@@ -11,7 +11,7 @@ Người dùng đăng ký/login local hoặc Google nếu đã cấu hình. Auth
 
 AuthService sở hữu password/session; dependencies nạp User hiện hành. AuthProvider giữ trạng thái UI với sessionVersion chống stale responses. Profile/learning-goal services giữ dữ liệu PostgreSQL; personalization provider đồng bộ locale/theme/accent theo tài khoản.
 
-## D. Implementation map
+## D. Bản đồ triển khai
 
 | Lớp | Source |
 | --- | --- |
@@ -21,7 +21,7 @@ AuthService sở hữu password/session; dependencies nạp User hiện hành. A
 | Service/model | [backend/app/services/auth.py](../../backend/app/services/auth.py); [backend/app/services/preferences.py](../../backend/app/services/preferences.py); [backend/app/services/learning_goals.py](../../backend/app/services/learning_goals.py); [backend/app/models/entities.py](../../backend/app/models/entities.py); [backend/app/models/preferences.py](../../backend/app/models/preferences.py) |
 | Tests | [backend/tests/test_auth.py](../../backend/tests/test_auth.py); [backend/tests/test_auth_refresh_concurrency.py](../../backend/tests/test_auth_refresh_concurrency.py); [frontend/tests/auth-session-restore.test.tsx](../../frontend/tests/auth-session-restore.test.tsx) |
 
-## E–F. Data flow và API contracts
+## E–F. Luồng dữ liệu và hợp đồng API
 
 ```mermaid
 sequenceDiagram
@@ -54,27 +54,27 @@ Các đường dẫn sau dùng prefix `/api/v1`; DTO, dependency và response mo
 - `GET /me/learning-goals`
 - `PUT /me/learning-goals`
 
-## G. Persistence
+## G. Lưu trữ
 
 User, OAuthAccount, RefreshSession và UserPreference là entities chính. Password hash scrypt; refresh fingerprint/revocation không dựa vào localStorage. User có bốn skill targets, target_band tính từ đủ kỹ năng và optional target_overall_band riêng cho learning goals; không đồng nhất hai khái niệm.
 
-## H. Business rules
+## H. Quy tắc nghiệp vụ
 
 Registration không nhận role đặc quyền. Backend kiểm user active và role hiện hành. Refresh rotation một lần phối hợp row locks; browser retry chỉ một vòng, Web Locks giảm cross-tab races khi hỗ trợ. Cookie secrets không đưa vào DTO.
 
-## I. Security
+## I. Bảo mật
 
 HttpOnly/Secure/SameSite được cấu hình ở backend. Next safeAuthDestination không chấp nhận redirect tùy ý. Google state và identity xử lý ở AuthService, không tự viết OAuth route khác trong UI.
 
-## J. Failure và recovery
+## J. Lỗi và khôi phục
 
 401 được phân biệt với 403 ACCOUNT_INACTIVE và network/server error. Refresh mất acknowledgement probe lại session; AbortSignal/sessionVersion ngăn response tài khoản cũ ghi đè tài khoản mới. Không nuốt transient error thành logout.
 
-## K. Focused testing
+## K. Kiểm thử tập trung
 
 Auth backend tests kiểm rotation và ownership; frontend auth, auth-proxy-browser-race, auth-session-restore và personalization tests kiểm redirect/recovery/account switch. Test thay đổi field phải kiểm cả request validation lẫn không đổi role.
 
-## L. Extension guide
+## L. Hướng dẫn mở rộng
 
 Thêm profile field qua schema → User/migration nếu cần → AuthService/profile presentation → typed client → profile UI. Nếu là learning goal, đồng bộ learning_goals thay vì tạo nguồn mục tiêu thứ hai. Không sửa refresh ownership để chữa riêng một màn hình.
 

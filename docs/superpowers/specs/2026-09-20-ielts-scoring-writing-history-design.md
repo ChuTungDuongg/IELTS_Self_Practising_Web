@@ -1,26 +1,26 @@
-# IELTS Scoring, Writing, and History Design
+# Thiết kế chấm điểm IELTS, Writing và lịch sử
 
-> **Documentation audit: HISTORICAL.** Historical reference; không phải contract hiện hành.
-> Mục đích: IELTS Scoring, Writing, and History Design. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../../../backend/app/services/mts_writing.py).
-> Đọc cùng [current module/guide](../../modules/writing.md); [audit và giới hạn](../../DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+> **Kiểm toán tài liệu: HISTORICAL.** Tài liệu tham khảo lịch sử; không phải hợp đồng hiện hành.
+> Mục đích: Thiết kế chấm điểm IELTS, Writing và lịch sử. Đối chiếu mã nguồn `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [triển khai](../../../backend/app/services/mts_writing.py).
+> Đọc cùng [mô-đun/hướng dẫn hiện hành](../../modules/writing.md); [audit và giới hạn](../../DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
 
-**Date:** 2026-09-20
+**Ngày:** 2026-09-20
 
-**Status:** Approved
+**Trạng thái:** Đã phê duyệt
 
-## Purpose
+## Mục đích
 
-Extend the existing IELTS practice application without replacing its Next.js → FastAPI → PostgreSQL architecture. The change adds backend-owned IELTS band scoring, a complete Writing builder and attempt flow, persistent manual Writing grading, and two coordinated history views while preserving all existing Reading and Listening behavior.
+Mở rộng ứng dụng luyện IELTS hiện có mà không thay kiến trúc Next.js → FastAPI → PostgreSQL. Thay đổi bổ sung chấm band IELTS do backend sở hữu, Builder và luồng làm Writing đầy đủ, lưu chấm Writing thủ công và hai chế độ lịch sử phối hợp, đồng thời bảo toàn mọi hành vi Reading/Listening hiện có.
 
-## Product Rules
+## Quy tắc sản phẩm
 
-- PostgreSQL remains authoritative. React never owns scoring or domain validation.
-- Published `TestVersion` records remain immutable and historical attempts remain attached to their frozen version.
-- Reading and Listening raw scores remain visible alongside official bands.
-- Reading and Listening receive an official band only when `max_score == 40`.
-- Reading and Listening use the same exact application product-rule table:
+- PostgreSQL tiếp tục là nguồn chuẩn. React tuyệt đối không sở hữu chấm điểm hoặc xác thực miền.
+- Bản ghi `TestVersion` đã xuất bản tiếp tục bất biến; lượt làm lịch sử gắn với phiên bản đóng băng của chúng.
+- Điểm thô Reading/Listening tiếp tục hiển thị cùng band chính thức.
+- Reading/Listening chỉ nhận band chính thức khi `max_score == 40`.
+- Reading/Listening dùng chính xác cùng bảng quy tắc sản phẩm của ứng dụng:
 
-  | Raw score | Band |
+  | Điểm thô | Band |
   |---|---:|
   | 39–40 | 9.0 |
   | 37–38 | 8.5 |
@@ -36,135 +36,135 @@ Extend the existing IELTS practice application without replacing its Next.js →
   | 7–9 | 3.5 |
   | 5–6 | 3.0 |
   | 3–4 | 2.5 |
-  | 0–2 | no official band (`null`) |
+  | 0–2 | không có band chính thức (`null`) |
 
-- Writing never receives an objective raw or maximum score. Its band is nullable until manually graded.
-- Writing manual bands range from 0.0 through 9.0 in 0.5 increments.
-- The project overall is the mean of exactly Reading, Listening, and Writing bands. It exists only when all three bands exist and is rounded to the nearest 0.5 using decimal half-up behavior. An exact quarter-band tie rounds upward for these non-negative scores.
-- Speaking and automated Writing scoring remain out of scope. The existing `WritingScoringProvider` protocol stays intact for future work.
+- Writing tuyệt đối không có điểm thô hoặc điểm tối đa khách quan. Band cho phép null cho đến khi chấm thủ công.
+- Band Writing thủ công từ 0.0 đến 9.0 theo bước 0.5.
+- Điểm tổng của dự án là trung bình chính xác ba band Reading, Listening và Writing. Chỉ có khi đủ ba band và được làm tròn tới 0.5 gần nhất bằng quy tắc thập phân half-up. Điểm nằm đúng giữa tại một phần tư band được làm tròn lên với các điểm không âm này.
+- Speaking và chấm Writing tự động vẫn ngoài phạm vi. Giao thức `WritingScoringProvider` hiện có giữ nguyên cho công việc tương lai.
 
-## Existing Architecture Findings
+## Kết quả khảo sát kiến trúc hiện có
 
-The Reading and Listening builders share a `BuilderVersion` DTO and the generic module creation endpoint. Their question behavior is centralized in matching frontend and backend registries. All requested Listening templates are already registered and covered by editors, exam renderers, review renderers, validators, evaluators, and tests, so no Listening type will be recreated.
+Builder Reading/Listening dùng chung DTO `BuilderVersion` và endpoint tạo mô-đun tổng quát. Hành vi câu hỏi tập trung trong registry frontend/backend tương ứng. Mọi mẫu Listening được yêu cầu đã đăng ký và có trình biên tập, hiển thị thi, hiển thị xem lại, xác thực, đánh giá và kiểm thử, nên không tạo lại loại Listening nào.
 
-`WritingTask`, `AttemptWritingResponse`, `WRITING_TASK_IMAGE`, backend and frontend word counters, and the Writing scoring provider protocol already exist. Writing tasks are already cloned by the version service, but builder payloads and candidate payloads do not expose them. `WritingTask` also lacks an explicit asset relationship.
+`WritingTask`, `AttemptWritingResponse`, `WRITING_TASK_IMAGE`, bộ đếm từ backend/frontend và giao thức nhà cung cấp chấm Writing đã tồn tại. Dịch vụ phiên bản đã nhân bản task Writing nhưng payload Builder và thí sinh chưa cung cấp chúng. `WritingTask` cũng thiếu quan hệ tài sản rõ ràng.
 
-The attempt service currently scores only explicit submissions. Timer expiry and AFK interruption finalize without scoring. Review routing handles Listening specially and otherwise assumes Reading. History is a flat list without stable test/version identifiers or band scores.
+Dịch vụ lượt làm hiện chỉ chấm yêu cầu nộp rõ ràng. Hết giờ và gián đoạn AFK chốt bài mà không chấm. Điều hướng xem lại xử lý Listening riêng, còn lại mặc định Reading. Lịch sử là danh sách phẳng thiếu định danh đề/phiên bản ổn định và band.
 
-## Persistence and Migration
+## Lưu trữ và migration
 
-Add a new Alembic migration after revision `20260919_0006`. It adds nullable `attempts.band_score NUMERIC(2,1)` and preserves all existing score columns and data. The downgrade drops only this new column.
+Thêm migration Alembic sau revision `20260919_0006`. Migration thêm `attempts.band_score NUMERIC(2,1)` cho phép null và bảo toàn toàn bộ cột/dữ liệu điểm hiện có. Downgrade chỉ xóa cột mới này.
 
-The SQLAlchemy `Attempt` model stores the value as `Decimal | None`; public Pydantic DTOs expose `float | None`. No score-source column is added because it is not required for the current manual workflow.
+Mô hình SQLAlchemy `Attempt` lưu giá trị dạng `Decimal | None`; DTO Pydantic công khai cung cấp `float | None`. Không thêm cột nguồn điểm vì luồng thủ công hiện tại không cần.
 
-Add `WritingTask.image_asset` as a relationship using its existing `image_asset_id` foreign key. No parallel Writing tables are introduced.
+Thêm quan hệ `WritingTask.image_asset` dùng khóa ngoại `image_asset_id` hiện có. Không thêm bảng Writing song song.
 
-## Scoring Domain
+## Miền chấm điểm
 
-Create a focused backend scoring module containing:
+Tạo mô-đun chấm điểm backend có trọng tâm gồm:
 
 - `listening_raw_to_band(raw_score: int, max_score: int) -> float | None`
 - `reading_raw_to_band(raw_score: int, max_score: int) -> float | None`
 - `round_to_half(value: Decimal) -> Decimal`
 - `project_overall_band(reading, listening, writing) -> float | None`
 
-Both raw-to-band functions delegate to the same immutable product-rule table but remain distinct public functions so Reading and Listening policy can diverge later without caller changes. Inputs outside `0 <= raw_score <= max_score` raise `ValueError`; a non-40 maximum returns `None`; raw scores 0–2 return `None`.
+Hai hàm đổi điểm thô sang band ủy quyền cho cùng bảng quy tắc sản phẩm bất biến nhưng vẫn là hàm công khai riêng, để chính sách Reading/Listening có thể khác về sau mà không đổi nơi gọi. Đầu vào ngoài `0 <= raw_score <= max_score` ném `ValueError`; điểm tối đa khác 40 trả `None`; điểm thô 0–2 trả `None`.
 
-The attempt service assigns an objective band after computing raw and maximum scores. It explicitly clears all three score fields for Writing. Backend-triggered finalization is made asynchronous so objective scoring occurs before a timer-expired or AFK-interrupted attempt becomes final.
+Dịch vụ lượt làm gán band khách quan sau tính điểm thô và tối đa. Nó xóa rõ cả ba trường điểm cho Writing. Chốt do backend kích hoạt được chuyển bất đồng bộ để chấm khách quan diễn ra trước khi lượt hết giờ hoặc gián đoạn AFK trở thành cuối cùng.
 
-## Writing Builder Domain
+## Miền Builder Writing
 
-`BuilderVersion` gains a `writing_tasks` list on each module. A builder task contains stable ID, fixed task number, fixed order index, prompt, optional image ID and image metadata, recommended minimum words, and recommended duration.
+`BuilderVersion` có thêm danh sách `writing_tasks` ở mỗi mô-đun. Task Builder gồm ID ổn định, số task cố định, chỉ số thứ tự cố định, đề bài, ID/metadata ảnh tùy chọn, số từ tối thiểu khuyến nghị và thời lượng khuyến nghị.
 
-Creating a `WRITING` module through the existing generic module endpoint atomically creates:
+Tạo mô-đun `WRITING` qua endpoint mô-đun tổng quát hiện có tạo nguyên tử:
 
-- Task 1: number 1, order 0, 150 words, 1,200 seconds, optional image.
-- Task 2: number 2, order 1, 250 words, 2,400 seconds, no image.
+- Task 1: số 1, thứ tự 0, 150 từ, 1,200 giây, ảnh tùy chọn.
+- Task 2: số 2, thứ tự 1, 250 từ, 2,400 giây, không ảnh.
 
-The Writing task update API exposes only editable fields. Task number and order cannot be changed through the API. Task 1 may reference one `WRITING_TASK_IMAGE` owned by the current draft version. Task 2 rejects any non-null image ID. Replacement and removal reuse existing unreferenced-asset cleanup behavior.
+API cập nhật task Writing chỉ cung cấp trường được sửa. Không thể đổi số task/thứ tự qua API. Task 1 có thể tham chiếu một `WRITING_TASK_IMAGE` thuộc bản nháp hiện tại. Task 2 từ chối mọi ID ảnh khác null. Thay thế/gỡ tái sử dụng hành vi dọn tài sản không còn tham chiếu hiện có.
 
-Drafts may be incomplete. Publishing validation treats missing tasks, blank prompts, and nonstandard readiness values as warnings where consistent with existing partial Reading/Listening policy. Invalid task identities, duplicate task numbers/orders, Task 2 images, wrong asset types, cross-version newly attached assets, and Writing tasks owned by non-Writing modules are blocking structural errors. At least one meaningful module remains required by the existing version validator.
+Bản nháp được phép chưa hoàn chỉnh. Xác thực xuất bản coi thiếu task, đề trống và giá trị sẵn sàng không chuẩn là cảnh báo tại nơi nhất quán với chính sách Reading/Listening chưa đầy đủ hiện có. Danh tính task không hợp lệ, trùng số/thứ tự, ảnh Task 2, sai loại tài sản, tài sản mới gắn chéo phiên bản và task Writing thuộc mô-đun không phải Writing là lỗi cấu trúc chặn. Bộ xác thực phiên bản hiện có vẫn yêu cầu ít nhất một mô-đun có ý nghĩa.
 
-Cloning continues to copy Writing tasks and preserve image references using the repository’s existing shared-asset semantics. New attachments to a cloned draft must still be assets uploaded for that draft.
+Nhân bản tiếp tục sao chép task Writing và giữ tham chiếu ảnh theo ngữ nghĩa tài sản dùng chung hiện có. Đính kèm mới vào bản nháp nhân bản vẫn phải là tài sản tải cho bản nháp đó.
 
-## Writing Attempt API and Lifecycle
+## API và vòng đời lượt làm Writing
 
-The generic active exam DTO gains `writing_tasks`. Candidate task rows include prompt, optional Task 1 image metadata, minimum words, recommended duration, saved content, and authoritative saved word count. They contain no answer keys.
+DTO bài thi đang diễn ra tổng quát thêm `writing_tasks`. Hàng task thí sinh gồm đề, metadata ảnh Task 1 tùy chọn, số từ tối thiểu, thời lượng khuyến nghị, nội dung đã lưu và số từ đã lưu chuẩn từ máy chủ. Không chứa đáp án.
 
-`PUT /attempts/{attempt_id}/writing/{writing_task_id}` accepts plain text content. The backend:
+`PUT /attempts/{attempt_id}/writing/{writing_task_id}` nhận nội dung văn bản thuần. Backend:
 
-1. locks and synchronizes the attempt;
-2. requires an in-progress Writing attempt;
-3. verifies that the task belongs to the attempt’s exact version and Writing module;
-4. computes word count with the existing backend helper;
-5. upserts `AttemptWritingResponse`;
-6. updates `last_active_at`; and
-7. records `WRITING_UPDATED` with the task ID in event metadata.
+1. khóa và đồng bộ lượt làm;
+2. yêu cầu lượt Writing đang làm;
+3. xác minh task thuộc chính xác phiên bản và mô-đun Writing của lượt làm;
+4. tính số từ bằng hàm backend hiện có;
+5. upsert `AttemptWritingResponse`;
+6. cập nhật `last_active_at`; và
+7. ghi `WRITING_UPDATED` với ID task trong metadata sự kiện.
 
-The Writing runner uses the existing timestamp-derived timer. Local word count is display feedback only. It restores server responses on load, debounces autosave, provides an immediate visible Save action, and saves the active task successfully before calling the standard submit endpoint. A failed final save prevents submission and shows a retryable error.
+Trình làm Writing dùng bộ đếm suy ra từ mốc thời gian hiện có. Đếm từ cục bộ chỉ là phản hồi hiển thị. Khi tải, nó khôi phục câu trả lời máy chủ, trì hoãn tự lưu để gộp thay đổi, cung cấp thao tác Save rõ ràng tức thì và lưu thành công task đang mở trước khi gọi endpoint nộp chuẩn. Lưu cuối thất bại chặn nộp và hiển thị lỗi có thể thử lại.
 
-Writing submission finalizes through the normal attempt state machine with `raw_score`, `max_score`, and `band_score` left null.
+Nộp Writing chốt qua máy trạng thái lượt làm bình thường với `raw_score`, `max_score` và `band_score` giữ null.
 
-## Writing Review and Manual Grading
+## Xem lại Writing và chấm thủ công
 
-Add a Writing-specific review payload and route. It contains every Writing task in order, prompt, Task 1 image metadata, saved response or an empty response, and server word count. It does not contain objective answer structures.
+Thêm payload và tuyến xem lại riêng Writing. Nó chứa mọi task theo thứ tự, đề, metadata ảnh Task 1, câu trả lời đã lưu hoặc rỗng và số từ máy chủ. Không chứa cấu trúc đáp án khách quan.
 
-`PUT /attempts/{attempt_id}/writing-score` accepts a constrained band. The backend requires:
+`PUT /attempts/{attempt_id}/writing-score` nhận band có ràng buộc. Backend yêu cầu:
 
-- a Writing attempt;
-- a status other than `IN_PROGRESS`;
-- a value from 0.0 through 9.0; and
-- a multiple of 0.5.
+- lượt làm Writing;
+- trạng thái khác `IN_PROGRESS`;
+- giá trị từ 0.0 đến 9.0; và
+- bội số của 0.5.
 
-The score persists to `Attempt.band_score`. The review UI provides a constrained selector, explicit Save control, success/error state, and immediate display of the saved band. The protocol for future automated scoring remains unchanged.
+Điểm lưu vào `Attempt.band_score`. Giao diện xem lại có bộ chọn ràng buộc, điều khiển Save rõ ràng, trạng thái thành công/lỗi và hiển thị ngay band đã lưu. Giao thức cho chấm tự động tương lai giữ nguyên.
 
-## History Contract
+## Hợp đồng lịch sử
 
-Keep one `/history` endpoint and extend its response rather than adding duplicate endpoints. It returns:
+Giữ một endpoint `/history` và mở rộng phản hồi thay vì thêm endpoint trùng. Nó trả:
 
-- `items`: every attempt in current reverse-chronological order;
-- `groups`: backend-produced aggregates keyed by exact `test_version_id`; and
+- `items`: mọi lượt làm theo thứ tự thời gian đảo ngược hiện tại;
+- `groups`: tổng hợp do backend tạo với khóa chính xác `test_version_id`; và
 - `total`.
 
-Each item includes `test_id`, `test_version_id`, title, version number, module, status, timestamps, raw score, maximum score, and band score.
+Mỗi mục gồm `test_id`, `test_version_id`, tiêu đề, số phiên bản, mô-đun, trạng thái, thời gian, điểm thô, điểm tối đa và band.
 
-For each test/version group, the backend selects the latest attempt whose status is not `IN_PROGRESS` for each module, ordered by `finished_at` and then `started_at`. Older attempts remain in `items`. The group exposes the selected Reading, Listening, and Writing items plus the backend-computed three-skill overall.
+Với mỗi nhóm đề/phiên bản, backend chọn lượt mới nhất có trạng thái khác `IN_PROGRESS` cho từng mô-đun, sắp theo `finished_at` rồi `started_at`. Lượt cũ giữ trong `items`. Nhóm cung cấp các mục Reading, Listening, Writing được chọn cùng điểm tổng ba kỹ năng do backend tính.
 
-The frontend renders two tabs over this single payload:
+Frontend hiển thị hai thẻ từ cùng payload này:
 
-- **By skill:** all individual attempts, with Continue for active attempts, Review for finalized attempts, deletion, official-band-unavailable copy for non-40 objective attempts, and Not graded for Writing without a band.
-- **By test:** one card per exact test version, selected module scores, overall only when all three bands exist, and links to the selected individual attempts.
+- **Theo kỹ năng:** mọi lượt riêng lẻ, Continue cho lượt đang làm, Review cho lượt đã chốt, xóa, thông báo không có band chính thức cho lượt khách quan không đủ 40 điểm tối đa và Not graded cho Writing chưa có band.
+- **Theo đề:** một thẻ cho mỗi phiên bản đề chính xác, điểm mô-đun được chọn, điểm tổng chỉ khi đủ ba band và liên kết tới lượt riêng được chọn.
 
-After deletion, the page refreshes from the backend so group selection and overall values are never recomputed independently in React.
+Sau xóa, trang làm mới từ backend để lựa chọn nhóm và điểm tổng tuyệt đối không được React tính lại độc lập.
 
-## Frontend Integration
+## Tích hợp frontend
 
-Enable `writing` in `BuilderWorkspace`, routing, overview metrics, and preview routing. Add focused Writing builder, runner, and review components rather than expanding Reading/Listening components with scattered module conditionals.
+Bật `writing` trong `BuilderWorkspace`, định tuyến, chỉ số tổng quan và định tuyến xem trước. Thêm thành phần Builder, trình làm và xem lại Writing chuyên biệt thay vì mở rộng thành phần Reading/Listening bằng điều kiện mô-đun rải rác.
 
-The practice library includes published Writing modules and starts them through the existing attempt start API. Writing uses the same 60-minute default timer infrastructure and the existing timer presets.
+Thư viện luyện tập gồm mô-đun Writing đã xuất bản và bắt đầu qua API khởi tạo lượt hiện có. Writing dùng cùng hạ tầng thời gian mặc định 60 phút và các cấu hình thời gian sẵn có.
 
-Draft preview renders both task prompts, Task 1 image when present, and each task’s word/duration recommendations. It has no candidate response editor and no Task 2 image placeholder.
+Xem trước bản nháp hiển thị cả hai đề, ảnh Task 1 nếu có và khuyến nghị từ/thời lượng từng task. Không có trình sửa câu trả lời thí sinh hoặc vùng giữ chỗ ảnh Task 2.
 
-New styles extend the existing visual tokens, controls, cards, module tones, dark mode, and responsive breakpoints. The long-form textarea uses a comfortable minimum height and resizes vertically without page-level horizontal overflow at 390, 768, 1024, and 1440 pixels.
+Kiểu mới mở rộng token thị giác, điều khiển, thẻ, sắc mô-đun, Dark Mode và breakpoint thích ứng hiện có. Textarea dài có chiều cao tối thiểu dễ dùng và đổi cỡ theo chiều dọc mà không tràn ngang toàn trang ở 390, 768, 1024 và 1440 pixel.
 
-## Compatibility and Error Handling
+## Tương thích và xử lý lỗi
 
-- Existing Reading and Listening payload fields remain unchanged; new fields are additive and default to empty/null in frontend schemas.
-- Published content cannot be mutated through Writing endpoints.
-- Active candidate payloads never expose answer keys.
-- Save, upload, grading, and delete errors remain retryable and use existing notice/dialog styles.
-- The existing local `frontend/next-env.d.ts` modification is preserved and excluded from task edits.
-- No copyrighted exam content or new runtime dependency is added.
+- Trường payload Reading/Listening hiện có giữ nguyên; trường mới chỉ bổ sung và mặc định rỗng/null trong schema frontend.
+- Không được thay đổi nội dung đã xuất bản qua endpoint Writing.
+- Payload thí sinh đang thi tuyệt đối không lộ đáp án.
+- Lỗi lưu, tải lên, chấm và xóa có thể thử lại và dùng kiểu thông báo/hộp thoại hiện có.
+- Thay đổi cục bộ `frontend/next-env.d.ts` hiện có được giữ và loại khỏi chỉnh sửa nhiệm vụ.
+- Không thêm nội dung thi có bản quyền hoặc thư viện phụ thuộc thời gian chạy mới.
 
-## Test Strategy
+## Chiến lược kiểm thử
 
-Tests are added before or alongside each implementation slice:
+Kiểm thử được thêm trước hoặc cùng mỗi phần triển khai:
 
-1. Pure scoring table boundaries, invalid inputs, non-40 behavior, decimal half-up rounding, and three-skill overall requirements.
-2. Migration/model/schema serialization and objective finalization, including backend-triggered finalization.
-3. Writing module initialization, task validation, asset ownership/type checks, cloning, and version validation.
-4. Writing response upsert, authoritative word count, resume payload, submission semantics, and manual grade validation.
-5. History identifiers, selected latest finalized attempts, band serialization, and backend overall calculation.
-6. Writing builder, runner autosave/explicit save, review grading, draft preview, routing, and both history tabs.
-7. Full backend tests and lint, full frontend tests, TypeScript typecheck, ESLint, and production build.
+1. Biên bảng chấm thuần, đầu vào không hợp lệ, hành vi khác 40, làm tròn thập phân half-up và yêu cầu điểm tổng ba kỹ năng.
+2. Tuần tự hóa migration/mô hình/schema và chốt khách quan, kể cả chốt do backend kích hoạt.
+3. Khởi tạo mô-đun Writing, xác thực task, kiểm tra quyền sở hữu/loại tài sản, nhân bản và xác thực phiên bản.
+4. Upsert câu trả lời Writing, số từ chuẩn do máy chủ tính, payload tiếp tục, ngữ nghĩa nộp và xác thực điểm thủ công.
+5. Định danh lịch sử, chọn lượt đã chốt mới nhất, tuần tự hóa band và tính điểm tổng backend.
+6. Builder Writing, tự lưu/lưu chủ động của trình làm, chấm ở xem lại, xem trước nháp, định tuyến và hai thẻ lịch sử.
+7. Toàn bộ kiểm thử và lint backend, toàn bộ kiểm thử frontend, kiểm tra kiểu TypeScript, ESLint và bản dựng production.
 

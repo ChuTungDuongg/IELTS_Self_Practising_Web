@@ -1,4 +1,4 @@
-# Runtime architecture: tiến trình và đường đi request
+# Kiến trúc runtime: tiến trình và đường đi request
 
 > Mục đích và phạm vi: Phân biệt năm topology hiện có, request lifecycle và failure boundaries.
 > Đối chiếu mã nguồn tại `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`. Đây là kiểm tra tĩnh; không xác nhận trạng thái deployment đang chạy.
@@ -88,6 +88,8 @@ flowchart LR
 Chỉ proxy publish host ports 80/443. Container backend/frontend non-root; database CA và TLS certificate được bind read-only; secrets backend không thành build args frontend. `migrate` thuộc Compose tools profile. Nguồn: [compose](../../deploy/aws/compose.yml), [Nginx](../../deploy/aws/nginx.conf), [runbook](../aws-deployment.md). Đây là template, không phải chứng cứ một EC2 đang chạy.
 
 ## 5. AI inference riêng
+
+Bổ sung ngày 2026-11-02: Writing có cơ chế dispatch bền vững qua database, giới hạn số consumer và có thể chạy consumer trong process riêng. Speaking vẫn dùng leases và local dispatch hiện có. [Sơ đồ hiện tại và kiến trúc mở rộng đề xuất](../performance/5000-user-capacity.md#9-kiến-trúc-hiện-tại-và-bước-scaling) phân biệt phần đã triển khai trong mã với phần chưa deploy; mức 5.000 người học vẫn chưa được xác minh. Sơ đồ dưới mô tả ranh giới provider chung, không chứng minh worker fleet đã được deploy.
 
 ```mermaid
 flowchart LR

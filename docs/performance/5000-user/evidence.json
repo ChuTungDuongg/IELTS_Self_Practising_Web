@@ -1,0 +1,198 @@
+{
+  "schema_version": 1,
+  "baseline_commit": "9027c413f2bf48c6fe760940e6e324848c496d98",
+  "implementation_commit": "d871ae1d9a0c8d6a9f1427eaf3580e178f1b3a45",
+  "verdict_5000": "NOT VERIFIED",
+  "maximum_observed_http_vus": 5,
+  "tests": {
+    "baseline_pure": {
+      "passed": 111,
+      "skipped": 1,
+      "seconds": 6.86
+    },
+    "baseline_postgresql": {
+      "passed": 203,
+      "skipped": 0,
+      "seconds": 255.51
+    },
+    "final_focused": {
+      "passed": 469,
+      "skipped": 1,
+      "seconds": 307.22,
+      "skip": "Windows symlink creation test_modal_web_runtime.py:158",
+      "commands_file": "verification.json"
+    },
+    "writing_agent_additional": {
+      "passed": 268,
+      "skipped": 0,
+      "seconds": 167.2
+    },
+    "frontend_typecheck": "PASS",
+    "frontend_lint": "PASS",
+    "alembic_cycle": "fresh upgrade0044 -> downgrade0043 -> upgrade0044 PASS; one head20261102_0044"
+  },
+  "experiments": [
+    {
+      "test_id": "HTTP-BEFORE-5",
+      "file": "http-baseline-smoke.json",
+      "scenario": "A/B/C",
+      "environment": "isolated local",
+      "status": "PASS smoke; capacity INCONCLUSIVE",
+      "source_identity": {
+        "app_source_sha256": "5ef6d35dbb36481e79839a79006125a51384cf2583315f0bded1686a44fcac16",
+        "git_head": "9027c413f2bf48c6fe760940e6e324848c496d98",
+        "tracked_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "measured_at_utc": "2026-11-02T10:51:59.217766+00:00",
+      "sha256": "5585a11f45c5794bae32797878bd3f7663b0d45a0b9608ded47204671f5b9ded"
+    },
+    {
+      "test_id": "HTTP-AFTER-5",
+      "file": "http-candidate-smoke.json",
+      "scenario": "A/B/C",
+      "environment": "isolated local",
+      "status": "PASS smoke; capacity INCONCLUSIVE",
+      "source_identity": {
+        "app_source_sha256": "ab7fe6afa7d036d7c6da35e02b6ca9c05de066b4eec3103492ed96078362a55e",
+        "git_head": "d871ae1d9a0c8d6a9f1427eaf3580e178f1b3a45",
+        "tracked_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "measured_at_utc": "2026-11-02T10:58:36.941055+00:00",
+      "sha256": "db6c6735d881d8f58fd0f84b3385182361ce5dfae8270706ea90fd72dd588c34"
+    },
+    {
+      "test_id": "HTTP-BURST-5",
+      "file": "http-candidate-burst.json",
+      "scenario": "A",
+      "environment": "isolated local",
+      "status": "PASS smoke; capacity INCONCLUSIVE",
+      "source_identity": {
+        "app_source_sha256": "ab7fe6afa7d036d7c6da35e02b6ca9c05de066b4eec3103492ed96078362a55e",
+        "git_head": "d871ae1d9a0c8d6a9f1427eaf3580e178f1b3a45",
+        "tracked_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "measured_at_utc": "2026-11-02T11:01:05.537459+00:00",
+      "sha256": "bf7c42336289beb30c531db0365917c0dbe4b41ab78dd3a20f0ee760cb7cd3dd"
+    },
+    {
+      "test_id": "AUTH-COMPONENT-BEFORE",
+      "file": "auth-component-baseline.json",
+      "scenario": "Auth component",
+      "environment": "isolated local",
+      "status": "PASS component",
+      "source_identity": "NOT RECORDED at measurement; AuthService scope delivered in d871ae1",
+      "measured_at_utc": "NOT RECORDED",
+      "sha256": "e4b1ef5d94bb76138899fcf830de9f5a777d770e7ff5f190c88a0d365c2ed26d"
+    },
+    {
+      "test_id": "AUTH-COMPONENT-AFTER",
+      "file": "auth-component-after.json",
+      "scenario": "Auth component",
+      "environment": "isolated local",
+      "status": "PASS component",
+      "source_identity": "NOT RECORDED at measurement; AuthService scope delivered in d871ae1",
+      "measured_at_utc": "NOT RECORDED",
+      "sha256": "a88e7d2ce294865f5b4faa4aa59e6c777cd28e2202b43117e57eeb67db484fa4"
+    },
+    {
+      "test_id": "SPEAKING-COMPONENT-5",
+      "file": "speaking-component.json",
+      "scenario": "D Speaking scorer component",
+      "environment": "isolated local",
+      "status": "PASS component",
+      "source_identity": {
+        "app_source_sha256": "ab7fe6afa7d036d7c6da35e02b6ca9c05de066b4eec3103492ed96078362a55e",
+        "git_head": "d871ae1d9a0c8d6a9f1427eaf3580e178f1b3a45",
+        "tracked_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "measured_at_utc": "2026-11-02T11:02:56.998960+00:00",
+      "sha256": "413b297b4365f60bf6ac0e9634878f8b7cab52708387700f39f7232c67cc5c57"
+    },
+    {
+      "test_id": "QUERY-PLAN-10000",
+      "file": "query-plans.json",
+      "scenario": "SQL component",
+      "environment": "isolated local",
+      "status": "PASS rollback/query shape",
+      "source_identity": {
+        "app_source_sha256": "ab7fe6afa7d036d7c6da35e02b6ca9c05de066b4eec3103492ed96078362a55e",
+        "git_head": "d871ae1d9a0c8d6a9f1427eaf3580e178f1b3a45",
+        "tracked_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "measured_at_utc": "2026-11-02T11:05:01.149013+00:00",
+      "sha256": "917efc4f35d3e3e34151fe75b1500adb49e11179591106aa062f08f53130f6ce"
+    },
+    {
+      "test_id": "WRITING-QUEUE-10",
+      "file": "../../../benchmarks/load/results/writing-queue-local.json",
+      "scenario": "D Writing durable queue component",
+      "status": "PASS component",
+      "git_revision_at_measurement": "NOT RECORDED: baseline 9027c413 plus then-uncommitted changes, delivered in d871ae1; exact per-file digest absent",
+      "measured_at_utc": "2026-11-02T10:47:09.165392+00:00",
+      "sha256": "34c04a85df9e17bed40fb96ee315ab7161b973da1e301dd79d740521df5a6b61"
+    },
+    {
+      "test_id": "WRITING-QUEUE-FINAL-10",
+      "file": "writing-queue-final.json",
+      "scenario": "D Writing durable queue component after review fixes",
+      "environment": "owned isolated local PostgreSQL database; CPU host shared with focused tests",
+      "status": "PASS functional fake queue; latency comparison INCONCLUSIVE",
+      "source_identity": {
+        "app_source_sha256": "3e4112a0bae1eac51671c1d1cb2cdc895e7eeff0b3e5fe64d95d9e9bcfe07eb8",
+        "git_head": "d871ae1d9a0c8d6a9f1427eaf3580e178f1b3a45",
+        "tracked_diff_sha256": "b850dacb9951821832668ba87dffcf60d389866fa93b487c890587b4574913c9"
+      },
+      "measured_at_utc": "2026-11-02T12:41:24.396375+00:00",
+      "sha256": "4ffc228150e85811af8b165f01f73c7df60b83aa3d7ab54b248e5b0d798b41c7",
+      "limits": [
+        "Fresh runner manifest/DB proof/non-superuser/no live database peers verified",
+        "Focused PostgreSQL tests ran concurrently on separate databases; shared CPU/VM prevents performance attribution",
+        "Same10jobs/2consumers/20msfakecall parameters; no real inference or HTTP capacity claim"
+      ]
+    }
+  ],
+  "unexecuted": {
+    "http_vus": [
+      10,
+      25,
+      50,
+      100,
+      250,
+      500,
+      1000,
+      2500,
+      5000
+    ],
+    "soak": "designed only, NOT RUN",
+    "real_ai": "NOT RUN",
+    "cloud_multi_replica": "NOT RUN"
+  },
+  "limits": [
+    "One before/after local pair, no confidence interval or sustained per-replica capacity estimate",
+    "Optional profile overrides were introduced with defaults preserving original timings; new candidate records defaults explicitly",
+    "Short offline test/edit activity overlapped candidate warmup; host resource isolation was incomplete, attribution of observed slowdown is INCONCLUSIVE",
+    "See failed-experiments.json; no rejected experiment is reclassified as successful performance evidence"
+  ],
+  "checksum_encoding": "SHA-256 of stored UTF-8 bytes; JSON pinned to LF by .gitattributes",
+  "review_followup": {
+    "findings_fixed": [
+      "Locked dev psutil for clean CI telemetry collection",
+      "Owned/fresh database proof before global fake Writing consumers",
+      "Retry wait after pre-claim DB or ambiguous commit failure",
+      "Python3.12 os.cpu_count fallback with isolated compatibility double"
+    ],
+    "clean_locked_dev_offline_tests": {
+      "passed": 66,
+      "skipped": 0,
+      "seconds": 8.14
+    },
+    "final_source_note": "HTTP candidate measurements are d871ae1 before backoff-only follow-up; final app digest recorded in WRITING-QUEUE-FINAL-10",
+    "final_focused": {
+      "passed": 476,
+      "skipped": 1,
+      "seconds": 263.05,
+      "skip": "Windows symlink fixture unavailable",
+      "commands_file": "verification.json"
+    }
+  }
+}

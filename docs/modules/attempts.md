@@ -1,9 +1,9 @@
-# Attempts, Full Mock, timers và history
+# Attempt, Full Mock, bộ đếm thời gian và lịch sử
 
 > Mục đích và phạm vi: Giữ lifecycle bài làm nhất quán qua reload, cạnh tranh autosave và nhiều kỹ năng.
 > Đối chiếu mã nguồn tại `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`. Đây là kiểm tra tĩnh; không xác nhận trạng thái deployment đang chạy.
 
-## A–C. Mục đích, workflow và ownership
+## A–C. Mục đích, quy trình và phân chia trách nhiệm
 
 Giữ lifecycle bài làm nhất quán qua reload, cạnh tranh autosave và nhiều kỹ năng.
 
@@ -11,7 +11,7 @@ Practice tạo Attempt theo full/focused scope; Full Mock tạo TestSession rồ
 
 AttemptService sở hữu mutation và finalization; TimerService tính thời gian; TestSessionService điều phối thứ tự. Speaking có prompt deadline/recovery riêng nhưng vẫn thuộc Attempt. Frontend queue và terminal latch bảo vệ UX, backend quyết định cuối.
 
-## D. Implementation map
+## D. Bản đồ triển khai
 
 | Lớp | Source |
 | --- | --- |
@@ -21,7 +21,7 @@ AttemptService sở hữu mutation và finalization; TimerService tính thời g
 | Contracts/models | [backend/app/domains/attempts/state_machine.py](../../backend/app/domains/attempts/state_machine.py); [backend/app/domains/timers/service.py](../../backend/app/domains/timers/service.py); [backend/app/schemas/attempts.py](../../backend/app/schemas/attempts.py); [backend/app/models/entities.py](../../backend/app/models/entities.py) |
 | Tests | [backend/tests/test_attempt_response_concurrency.py](../../backend/tests/test_attempt_response_concurrency.py); [backend/tests/test_full_mock_sessions.py](../../backend/tests/test_full_mock_sessions.py); [backend/tests/test_concurrency_hardening.py](../../backend/tests/test_concurrency_hardening.py); [frontend/tests/exam-draft-recovery.test.ts](../../frontend/tests/exam-draft-recovery.test.ts); [frontend/tests/attempt-lifecycle.test.ts](../../frontend/tests/attempt-lifecycle.test.ts) |
 
-## E–F. Data flow và API contracts
+## E–F. Luồng dữ liệu và hợp đồng API
 
 ```mermaid
 sequenceDiagram
@@ -47,27 +47,27 @@ Các đường dẫn sau dùng prefix `/api/v1`; DTO, dependency và response mo
 - `POST /test-sessions/{session_id}/advance`
 - `GET /history`
 
-## G. Persistence
+## G. Lưu trữ
 
 Attempt stores user/version/module/scope/timestamps/status; Answer/WritingResponse revisions, flags, highlights và AttemptEvent cùng nguồn dữ liệu. TestSession freezes module order. New mocks Listening → Reading → Writing → Speaking; legacy order giữ trong migration/data, không tự thêm stage vào history.
 
-## H. Business rules
+## H. Quy tắc nghiệp vụ
 
 Timestamp tính elapsed trừ paused duration; interval chỉ display. Deadline được server kiểm sau lock. Terminal states không reopen. Parent session lock trước child; child module attempt unique. New stage được tạo lazy để timer không chạy trước. Review/key của mock locked tới completion.
 
-## I. Security
+## I. Bảo mật
 
 Ownership và assignment provenance phải được kiểm cho cả read/mutate/delete. Retained assignment attempts khác personal deletable history; administrative classroom deletion là workflow explicit khác, không dùng nút delete personal để bypass.
 
-## J. Failure và recovery
+## J. Lỗi và khôi phục
 
 Client queue flush trước submit; ambiguous save/finalization cần read/reconcile thay gửi vô hạn. Stale revision trả conflict; same committed payload replay có thể idempotent. AFK và timeout do server sync state; không đợi browser báo đúng.
 
-## K. Focused testing
+## K. Kiểm thử tập trung
 
 State machine/timer pure tests; PostgreSQL competing connections cho save-submit/deadline-lock/duplicate advance. Frontend revision-autosave, recovery, terminal latch, test-session-transition tests. Không dùng sleep để giả định lock interleaving.
 
-## L. Extension guide
+## L. Hướng dẫn mở rộng
 
 Thêm transition phải cập nhật state machine, service lock/deadline behavior, DTO, UI lifecycle và history/classroom consequences. Đừng tách một đường submit mới cho từng page hoặc tạo Attempt trước khi full-mock stage bắt đầu.
 

@@ -1,99 +1,99 @@
-# Speaking Part-Focused Skill Practice Design
+# Thiết kế luyện kỹ năng Speaking tập trung theo Part
 
-> **Documentation audit: HISTORICAL.** Historical reference; không phải contract hiện hành.
-> Mục đích: Speaking Part-Focused Skill Practice Design. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../../../backend/app/services/speaking_attempts.py).
-> Đọc cùng [current module/guide](../../modules/speaking.md); [audit và giới hạn](../../DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+> **Kiểm toán tài liệu: HISTORICAL.** Tài liệu tham khảo lịch sử; không phải hợp đồng hiện hành.
+> Mục đích: Thiết kế luyện kỹ năng Speaking tập trung theo Part. Đối chiếu mã nguồn `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [triển khai](../../../backend/app/services/speaking_attempts.py).
+> Đọc cùng [mô-đun/hướng dẫn hiện hành](../../modules/speaking.md); [audit và giới hạn](../../DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
 
-## Status
+## Trạng thái
 
-Conversational design approved on 2026-10-13; written specification awaiting final user review before implementation planning.
+Thiết kế trao đổi được phê duyệt ngày 2026-10-13; đặc tả văn bản chờ người dùng rà soát cuối trước lập kế hoạch triển khai.
 
-This is an architectural extension of the existing focused-practice and Speaking runtime. It adds Speaking to **Skill Practice** as Part 1 / Part 2 / Part 3 units, reuses the existing recorder/recovery/transcript/AI stack, and introduces a free-navigation practice flow for Part 1 and Part 3 without weakening exam/full-mock restrictions.
+Đây là mở rộng kiến trúc luyện tập tập trung và hệ thống Speaking hiện có. Nó thêm Speaking vào **Skill Practice** thành đơn vị Part 1 / Part 2 / Part 3, tái sử dụng bộ ghi/khôi phục/chép lời/AI hiện có, thêm luồng luyện điều hướng tự do cho Part 1/Part 3 mà không làm yếu hạn chế thi/full-mock.
 
-## Goal
+## Mục tiêu
 
-Add Speaking to `/practice` so a learner can choose an authored Speaking Part from a published test and practice that whole Part as one focused attempt.
+Thêm Speaking vào `/practice` để học viên chọn một Speaking Part đã biên soạn từ đề xuất bản và luyện toàn Part đó trong một lượt tập trung.
 
-The experience must provide:
+Trải nghiệm phải cung cấp:
 
-- **Part 1**: Guided practice or Free question practice;
-- **Part 2**: Guided practice only;
-- **Part 3**: Guided practice or Free question practice;
-- existing microphone preflight, recorder, segmented audio persistence, recovery, Listen/Retry, transcript and AI assessment;
-- server-authoritative content scope and recording state;
-- focused-practice history/review semantics that never masquerade as a completed full Speaking module.
+- **Part 1**: luyện có hướng dẫn hoặc luyện câu hỏi tự do;
+- **Part 2**: chỉ luyện có hướng dẫn;
+- **Part 3**: luyện có hướng dẫn hoặc luyện câu hỏi tự do;
+- kiểm tra micro trước bắt đầu, bộ ghi, lưu âm thanh phân đoạn, khôi phục, Listen/Retry, bản chép lời và đánh giá AI hiện có;
+- phạm vi nội dung và trạng thái ghi do máy chủ quyết định;
+- ngữ nghĩa lịch sử/xem lại luyện tập tập trung tuyệt đối không giả thành mô-đun Speaking đầy đủ đã hoàn thành.
 
-## Non-goals
+## Ngoài phạm vi
 
-This change does not:
+Thay đổi này không:
 
-- add a second Speaking runner or media stack;
-- add adaptive AI-examiner questions;
-- add classroom assignment authoring for whole Speaking Parts;
-- alter Full Mock or exam-mode navigation/retry restrictions;
-- change IELTS Speaking scoring prompts/calibration merely to force Part scoring;
-- turn a Part-level AI/final practice score into a full-module Speaking band;
-- add focused Speaking records to full-module Analytics;
-- invoke live ASR/LLM/GPU services during implementation verification.
+- thêm trình làm Speaking hoặc hệ thống phương tiện thứ hai;
+- thêm câu hỏi giám khảo AI thích ứng;
+- thêm biên soạn bài giao lớp cho toàn Speaking Part;
+- đổi hạn chế điều hướng/làm lại Full Mock hoặc chế độ thi;
+- đổi prompt/hiệu chỉnh chấm Speaking IELTS chỉ để ép chấm Part;
+- biến điểm AI/luyện cuối cấp Part thành band Speaking toàn mô-đun;
+- thêm bản ghi Speaking tập trung vào Analytics toàn mô-đun;
+- gọi dịch vụ ASR/LLM/GPU thật khi xác minh triển khai.
 
-## Current architecture
+## Kiến trúc hiện tại
 
-The existing system already has authored `SpeakingPart` records for Parts 1/2/3 and ordered `SpeakingPrompt` records. Public `VersionDetail` data already exposes speaking parts and their prompts, so Skill Practice discovery does not need a second content API.
+Hệ thống hiện có bản ghi `SpeakingPart` đã biên soạn cho Part 1/2/3 và `SpeakingPrompt` theo thứ tự. Dữ liệu `VersionDetail` công khai đã cung cấp phần và câu hỏi Speaking, nên khám phá Skill Practice không cần API nội dung thứ hai.
 
-Focused attempts currently support `SPEAKING_PROMPT` through `Attempt.focused_speaking_prompt_id`. `AttemptScopeGuard`, API schemas, history labels and `SpeakingRepository.prompts()` therefore scope a focused Speaking attempt to one prompt. The current Speaking runner is sequential: finishing the active response durably commits it, locks it, and advances progress to the next prompt. Practice mode allows Listen/Retry for the current response; exam/full-mock mode does not.
+Lượt tập trung hiện hỗ trợ `SPEAKING_PROMPT` qua `Attempt.focused_speaking_prompt_id`. Vì vậy `AttemptScopeGuard`, schema API, nhãn lịch sử và `SpeakingRepository.prompts()` giới hạn lượt Speaking tập trung ở một câu hỏi. Trình làm Speaking hiện tuần tự: hoàn thành câu đang hoạt động cam kết bền vững, khóa và chuyển tiến độ sang câu sau. Chế độ Practice cho Listen/Retry câu hiện tại; thi/full-mock không cho.
 
-The design extends these existing boundaries rather than bypassing them.
+Thiết kế mở rộng các ranh giới hiện có, không bỏ qua.
 
-## 1. Focused Part domain model
+## 1. Mô hình miền Part tập trung
 
-Add a new focused unit kind:
+Thêm loại đơn vị tập trung mới:
 
 ```text
 SPEAKING_PART
 ```
 
-Add nullable attempt state:
+Thêm trạng thái lượt làm cho phép null:
 
 ```text
 focused_speaking_part_id -> speaking_parts.id
 speaking_practice_flow: GUIDED | FREE
 ```
 
-Keep the existing fields and semantics:
+Giữ trường và ngữ nghĩa hiện có:
 
 ```text
 focused_speaking_prompt_id
 speaking_mode: PRACTICE | EXAM
 ```
 
-`SPEAKING_PROMPT` remains supported for historical attempts and existing integrations. New Skill Practice starts use `SPEAKING_PART` only.
+`SPEAKING_PROMPT` tiếp tục hỗ trợ lượt lịch sử và tích hợp hiện có. Bắt đầu Skill Practice mới chỉ dùng `SPEAKING_PART`.
 
-`speaking_mode` and `speaking_practice_flow` are intentionally separate concepts:
+`speaking_mode` và `speaking_practice_flow` chủ động là khái niệm riêng:
 
-- `speaking_mode=PRACTICE` controls Practice capabilities such as replay/retry;
-- `speaking_mode=EXAM` keeps exam restrictions;
-- `speaking_practice_flow=GUIDED` controls sequential Part practice;
-- `speaking_practice_flow=FREE` enables learner-directed prompt navigation within the selected Part.
+- `speaking_mode=PRACTICE` điều khiển khả năng Practice như nghe/làm lại;
+- `speaking_mode=EXAM` giữ hạn chế thi;
+- `speaking_practice_flow=GUIDED` điều khiển luyện Part tuần tự;
+- `speaking_practice_flow=FREE` bật điều hướng câu hỏi do học viên chọn trong Part đã chọn.
 
-A focused Speaking attempt must target exactly one of `focused_speaking_prompt_id` or `focused_speaking_part_id`, never both.
+Lượt Speaking tập trung phải nhắm đúng một trong `focused_speaking_prompt_id` hoặc `focused_speaking_part_id`, tuyệt đối không cả hai.
 
-For backward compatibility, `speaking_practice_flow` is nullable on historical/full-module/prompt-focused records. For a new `SPEAKING_PART` Practice request, omitted flow defaults to `GUIDED`; `FREE` must be explicit. The backend rejects a non-null `speaking_practice_flow` where it is not meaningful rather than letting unrelated Speaking attempts inherit Free semantics accidentally.
+Để tương thích ngược, `speaking_practice_flow` cho phép null trên bản ghi lịch sử/toàn mô-đun/tập trung câu hỏi. Với yêu cầu Practice `SPEAKING_PART` mới, bỏ flow mặc định `GUIDED`; `FREE` phải khai báo rõ. Backend từ chối `speaking_practice_flow` khác null ở nơi không có ý nghĩa, không để lượt Speaking không liên quan vô tình kế thừa ngữ nghĩa Free.
 
 ## 2. Migration
 
-Create one Alembic migration after the current single head. It must:
+Tạo một migration Alembic sau head duy nhất hiện tại. Migration phải:
 
-- add nullable `attempts.focused_speaking_part_id` with a `RESTRICT` foreign key to `speaking_parts.id`;
-- add nullable/bounded `attempts.speaking_practice_flow` using repository conventions;
-- replace the focused-scope CHECK constraint so a focused Speaking attempt may have exactly one prompt target or one part target while all Reading/Listening/Writing exclusivity rules remain intact;
-- preserve all historical prompt-focused attempts without guessing their parent-Part intent;
-- preserve a single Alembic head.
+- thêm `attempts.focused_speaking_part_id` cho phép null với khóa ngoại `RESTRICT` tới `speaking_parts.id`;
+- thêm `attempts.speaking_practice_flow` cho phép null/có giới hạn theo quy ước kho mã;
+- thay CHECK phạm vi tập trung để lượt Speaking tập trung có đúng một đích câu hỏi hoặc một đích Part, giữ nguyên mọi quy tắc loại trừ Reading/Listening/Writing;
+- giữ mọi lượt tập trung câu hỏi lịch sử, không suy đoán ý định Part cha;
+- giữ một head Alembic duy nhất.
 
-The migration must be tested on a freshly migrated PostgreSQL schema. Do not rely only on ORM metadata-created test tables.
+Migration phải được kiểm thử trên schema PostgreSQL mới migration. Không chỉ dựa bảng kiểm thử tạo bằng metadata ORM.
 
-## 3. Attempt start contract and validation
+## 3. Hợp đồng bắt đầu lượt và xác thực
 
-The new request shape is conceptually:
+Cấu trúc yêu cầu mới về khái niệm:
 
 ```json
 {
@@ -107,23 +107,23 @@ The new request shape is conceptually:
 }
 ```
 
-Existing `SPEAKING_PROMPT` requests remain valid.
+Yêu cầu `SPEAKING_PROMPT` hiện có giữ hợp lệ.
 
-Backend validation is authoritative. For new Part-focused starts:
+Xác thực backend là nguồn chuẩn. Với bắt đầu tập trung Part mới:
 
-- the selected Part must belong to the exact Speaking module of the requested published test version;
-- Part 1 accepts `GUIDED` or `FREE`;
-- Part 2 accepts `GUIDED` only;
-- Part 3 accepts `GUIDED` or `FREE`;
-- `SPEAKING_PART + EXAM` is rejected for this Skill Practice contract;
-- Speaking focused practice uses count-up at the attempt level; authored prompt preparation/response timings remain authoritative inside the runner;
-- missing, foreign-version and foreign-module IDs receive the existing safe invalid-target treatment.
+- Part chọn phải thuộc chính xác mô-đun Speaking của phiên bản đề xuất bản yêu cầu;
+- Part 1 nhận `GUIDED` hoặc `FREE`;
+- Part 2 chỉ nhận `GUIDED`;
+- Part 3 nhận `GUIDED` hoặc `FREE`;
+- từ chối `SPEAKING_PART + EXAM` cho hợp đồng Skill Practice này;
+- luyện Speaking tập trung dùng đếm lên ở cấp lượt; thời gian chuẩn bị/trả lời đã biên soạn của câu hỏi tiếp tục là nguồn chuẩn trong trình làm;
+- ID thiếu, thuộc phiên bản/mô-đun khác nhận xử lý đích không hợp lệ an toàn hiện có.
 
-Frontend disabling is convenience only; these rules must also be enforced by the backend.
+Vô hiệu hóa frontend chỉ là tiện ích; backend cũng phải cưỡng chế các quy tắc này.
 
-## 4. Server-authoritative Part scope
+## 4. Phạm vi Part do máy chủ quyết định
 
-`SpeakingRepository.prompts(attempt)` becomes:
+`SpeakingRepository.prompts(attempt)` trở thành:
 
 ```text
 if focused_speaking_part_id:
@@ -134,13 +134,13 @@ else:
     return the complete Speaking module
 ```
 
-Every Speaking mutation continues to prove the prompt belongs to the attempt's scoped prompt set. A Part 1 attempt must not be able to begin, record, upload, retry, replay, select or finalize a Part 2/3 prompt even if a client manually sends its UUID.
+Mọi thao tác ghi Speaking tiếp tục chứng minh câu hỏi thuộc tập câu giới hạn của lượt. Lượt Part 1 không được bắt đầu, ghi, tải lên, làm lại, nghe lại, chọn hoặc chốt câu Part 2/3 dù client tự gửi UUID.
 
-The browser must never send an authoritative list of allowed prompt IDs.
+Trình duyệt tuyệt đối không được gửi danh sách ID câu hỏi có thẩm quyền.
 
-## 5. Skill Practice discovery and cards
+## 5. Khám phá Skill Practice và thẻ
 
-`/practice` becomes a four-skill browser:
+`/practice` trở thành trình duyệt bốn kỹ năng:
 
 ```text
 Reading
@@ -153,7 +153,7 @@ Speaking
   Part 3
 ```
 
-Published `VersionDetail.speaking_parts` supplies the units. Each Speaking card represents one entire Part, not one prompt. It shows concise information such as:
+`VersionDetail.speaking_parts` đã xuất bản cung cấp đơn vị. Mỗi thẻ Speaking đại diện toàn bộ một Part, không phải một câu. Thẻ hiện thông tin gọn như:
 
 ```text
 SPEAKING
@@ -163,60 +163,60 @@ Introduction and Interview
 IELTS Cambridge 11 Test 1 · Version 13
 ```
 
-Part 1 and Part 3 expose a compact practice-style selector:
+Part 1/Part 3 có bộ chọn kiểu luyện gọn:
 
 ```text
 Guided practice
 Free question practice
 ```
 
-Part 2 exposes Guided only. Speaking cards use the existing semantic Speaking color/style and do not add a new visual language.
+Part 2 chỉ cung cấp Guided. Thẻ Speaking dùng màu/kiểu Speaking ngữ nghĩa hiện có, không thêm ngôn ngữ thị giác mới.
 
-The existing Reading/Listening/Writing cards and timer behavior remain unchanged. Speaking does not show the generic focused minute selector; it starts with `COUNT_UP` and uses authored prompt timing inside the Speaking engine.
+Thẻ và hành vi thời gian Reading/Listening/Writing hiện có giữ nguyên. Speaking không hiện bộ chọn phút tập trung chung; bắt đầu `COUNT_UP` và dùng thời gian câu hỏi đã biên soạn trong bộ máy Speaking.
 
-## 6. Guided Part practice
+## 6. Luyện Part có hướng dẫn
 
-Guided practice reuses the existing Speaking runner and current durable sequencing semantics.
+Luyện có hướng dẫn tái sử dụng trình Speaking và ngữ nghĩa tuần tự bền vững hiện tại.
 
-Part 1 and Part 3 run the prompts in authored order:
+Part 1/Part 3 chạy câu hỏi theo thứ tự biên soạn:
 
 ```text
 prompt -> record -> durable finish acknowledgement -> next prompt
 ```
 
-Part 2 preserves its meaningful sequence:
+Part 2 giữ chuỗi có ý nghĩa của nó:
 
 ```text
 preparation -> long turn -> authored follow-up(s) -> finish
 ```
 
-Existing microphone preflight, chunk transport, retry/replay permissions, recovery grace, scratch-note behavior, timers and backend acknowledgement requirements remain in force.
+Kiểm tra micro, truyền chunk, quyền làm/nghe lại, khoảng khôi phục, hành vi ghi chú nháp, bộ đếm và yêu cầu xác nhận backend hiện có tiếp tục hiệu lực.
 
-No free question picker is shown in Guided mode. Existing Guided behavior may continue auto-entering the current prompt after preflight according to the current runner contract.
+Không hiện bộ chọn câu tự do ở Guided. Hành vi Guided hiện có có thể tiếp tục tự vào câu hiện tại sau kiểm tra ban đầu theo hợp đồng trình làm hiện tại.
 
-## 7. Free question practice
+## 7. Luyện câu hỏi tự do
 
-Free mode is available only for focused Part 1 and Part 3 Practice attempts.
+Free chỉ có cho lượt Practice tập trung Part 1/Part 3.
 
-The runner shows an accessible prompt picker, for example:
+Trình làm hiện bộ chọn câu hỏi có khả năng tiếp cận, ví dụ:
 
 ```text
 [1] [2✓] [3] [4✓] [5] ...
 ```
 
-plus Previous/Next convenience controls. A learner may navigate in any order, for example Q1 -> Q5 -> Q3 -> Q8. Each prompt maintains independent server-backed response state such as unanswered, selected, recording, committed and retried.
+cùng điều khiển tiện ích Previous/Next. Học viên có thể đi bất kỳ thứ tự, ví dụ Q1 -> Q5 -> Q3 -> Q8. Mỗi câu giữ trạng thái trả lời độc lập do máy chủ lưu như chưa trả lời, được chọn, đang ghi, đã cam kết và làm lại.
 
-Unlike Guided mode, selecting a Free prompt must **not** automatically start recording. The learner explicitly presses `Record`. This preserves the intended self-practice workflow: choose a question, think/read it, record when ready, then navigate freely.
+Khác Guided, chọn câu Free **không được** tự bắt đầu ghi. Học viên chủ động nhấn `Record`. Cách này giữ luồng tự luyện dự kiến: chọn câu, suy nghĩ/đọc, ghi khi sẵn sàng rồi điều hướng tự do.
 
-A committed prompt is revisit-able in Free mode. The learner may return to it, listen to its committed take and retry it. Retrying one prompt must not erase another prompt's recording.
+Có thể quay lại câu đã cam kết trong Free. Học viên được quay lại, nghe bản thu cam kết và làm lại. Làm lại một câu không được xóa bản ghi câu khác.
 
-This is a deliberate exception to Guided Practice's prior-prompt lock UX; it applies only when the attempt itself is persisted as `FREE`.
+Đây là ngoại lệ chủ động với UX khóa câu trước của Guided Practice; chỉ áp dụng khi chính lượt được lưu `FREE`.
 
-### 7.1 Free state contract
+### 7.1 Hợp đồng trạng thái Free
 
-The current sequential runtime cannot simply reuse "finish last canonical prompt => submit attempt". Free mode needs an explicit safe idle/browsing state or equivalent server representation.
+Hệ thống tuần tự hiện tại không thể đơn giản tái dùng “hoàn thành câu chuẩn cuối => nộp lượt”. Free cần trạng thái nghỉ/duyệt an toàn rõ ràng hoặc biểu diễn máy chủ tương đương.
 
-Conceptually:
+Về khái niệm:
 
 ```text
 BROWSING / IDLE
@@ -228,92 +228,92 @@ PREPARING? -> STARTING? -> RECORDING
 BROWSING / IDLE
 ```
 
-Exact phase naming may follow existing conventions, but the semantics are required:
+Tên pha cụ thể có thể theo quy ước hiện có nhưng ngữ nghĩa sau là bắt buộc:
 
-- a new Free attempt is not forced to begin Q1 automatically;
-- finishing Q8 first must **not** complete the attempt merely because Q8 is last in authored order;
-- committing one response returns to a safe state from which another allowed prompt can be selected;
-- attempt completion is a separate explicit `Finish practice` operation;
-- canonical prompt order still drives picker labels and Previous/Next, not completion authority.
+- lượt Free mới không bị ép tự bắt đầu Q1;
+- hoàn thành Q8 đầu tiên **không được** hoàn tất lượt chỉ vì Q8 đứng cuối thứ tự biên soạn;
+- cam kết một câu trả về trạng thái an toàn để chọn câu khác được phép;
+- hoàn tất lượt là thao tác `Finish practice` chủ động riêng;
+- thứ tự câu chuẩn vẫn điều khiển nhãn bộ chọn và Previous/Next, không quyết định hoàn thành.
 
-The public Speaking state for a Free Part must include enough bounded server data to reconstruct the picker after refresh, for example the selected prompt plus a prompt navigation summary containing prompt ID/order and safe status (`UNANSWERED`, `COMMITTED`, current). The frontend must not infer authoritative completion from its local component state.
+Trạng thái Speaking công khai của Free Part phải gồm đủ dữ liệu máy chủ có giới hạn để dựng lại bộ chọn sau tải lại, ví dụ câu được chọn và tóm tắt điều hướng chứa ID/thứ tự, trạng thái an toàn (`UNANSWERED`, `COMMITTED`, hiện tại). Frontend không được suy hoàn thành có thẩm quyền từ trạng thái thành phần cục bộ.
 
-### 7.2 Switching while recording
+### 7.2 Chuyển câu khi đang ghi
 
-Free navigation must never silently discard an active recording. If the learner selects another question while capture is active, show a confirmation with equivalent actions:
+Điều hướng Free tuyệt đối không âm thầm bỏ bản ghi đang hoạt động. Nếu học viên chọn câu khác khi đang thu, hiện xác nhận với thao tác tương đương:
 
 ```text
 Continue recording
 Stop & switch
 ```
 
-`Stop & switch` must:
+`Stop & switch` phải:
 
-1. stop the physical recorder;
-2. flush/close pending chunk transport;
-3. finalize the current response through the server;
-4. wait for the durable backend acknowledgement;
-5. only then activate the requested prompt.
+1. dừng bộ ghi vật lý;
+2. đẩy hết/đóng truyền chunk đang chờ;
+3. chốt câu hiện tại qua máy chủ;
+4. chờ xác nhận backend đã lưu bền vững;
+5. chỉ sau đó kích hoạt câu yêu cầu.
 
-There is no optimistic prompt switch before acknowledgement.
+Không chuyển câu lạc quan trước xác nhận.
 
-If persistence fails, stay on the current prompt and show the normal actionable save/retry error.
+Nếu lưu thất bại, ở lại câu hiện tại và hiện lỗi lưu/thử lại có hướng xử lý bình thường.
 
-### 7.3 Server prompt selection
+### 7.3 Chọn câu phía máy chủ
 
-Free navigation needs an explicit server-authoritative operation/state transition to select a prompt from the attempt's scoped Part. It must not be implemented as a frontend-only rewrite of `SpeakingPromptProgress.prompt_id` assumptions.
+Điều hướng Free cần thao tác/chuyển trạng thái rõ do máy chủ quyết định để chọn câu trong Part giới hạn của lượt. Không được triển khai chỉ bằng frontend viết lại giả định về `SpeakingPromptProgress.prompt_id`.
 
-The server permits selection only from a safe non-recording state, except that the client may first execute the acknowledged `Stop & switch` flow above. It rejects targets outside the Part.
+Máy chủ chỉ cho chọn từ trạng thái không ghi an toàn, trừ khi client trước hết thực hiện luồng `Stop & switch` được xác nhận nêu trên. Từ chối đích ngoài Part.
 
-Exact route naming follows existing Speaking API conventions; no generic arbitrary-progress mutation endpoint is introduced.
+Tên tuyến theo quy ước API Speaking hiện có; không thêm endpoint ghi tiến độ tùy ý chung.
 
-### 7.4 Replaying and retrying committed prompts
+### 7.4 Nghe lại và làm lại câu đã cam kết
 
-The existing sequential runtime treats previously committed responses as locked. Free mode deliberately needs a narrow server-authorized exception for committed prompts within the selected Part.
+Hệ thống tuần tự hiện coi câu đã cam kết trước là khóa. Free chủ động cần ngoại lệ hẹp do máy chủ phân quyền cho câu đã cam kết trong Part chọn.
 
-Selecting a committed prompt must be able to expose its committed response for replay without reopening unrelated prompts or bypassing Part scope.
+Chọn câu đã cam kết phải cung cấp được câu trả lời cam kết để nghe mà không mở câu không liên quan hoặc bỏ qua phạm vi Part.
 
-If the learner chooses Retry on a committed Free response, the previous committed take must remain the valid fallback until a replacement take is durably committed. A failed/abandoned retry must not destroy the last good recording. On successful replacement commit, update the response's active committed take/fingerprint atomically and mark the superseded take according to existing provenance conventions.
+Nếu chọn Retry trên câu Free đã cam kết, bản thu cam kết trước phải giữ làm dự phòng hợp lệ đến khi bản thay thế cam kết bền vững. Lần thử thất bại/bỏ dở không được phá bản ghi tốt cuối. Khi thay thế cam kết thành công, cập nhật nguyên tử bản thu/dấu vân tay cam kết hoạt động và đánh dấu bản bị thay theo quy ước nguồn gốc hiện có.
 
-This behavior is Free-only; Guided, Exam and Full Mock lock semantics do not change.
+Hành vi chỉ Free; ngữ nghĩa khóa Guided, Exam, Full Mock không đổi.
 
-## 8. Part 2 rule
+## 8. Quy tắc Part 2
 
-Part 2 is always Guided. Its cue-card preparation, long-turn response and related follow-up sequence are treated as one coherent practice flow.
+Part 2 luôn Guided. Chuẩn bị thẻ đề, lượt nói dài và chuỗi câu hỏi phụ liên quan được coi là một luồng luyện nhất quán.
 
-The backend rejects `Part 2 + FREE`; the frontend does not offer that option. Do not add a question picker that jumps directly into the middle of Part 2.
+Backend từ chối `Part 2 + FREE`; frontend không cung cấp lựa chọn đó. Không thêm bộ chọn nhảy trực tiếp vào giữa Part 2.
 
-## 9. Completion semantics
+## 9. Ngữ nghĩa hoàn thành
 
-Guided Part practice completes through the existing sequential flow when the selected Part's prompt sequence is complete.
+Luyện Part Guided hoàn tất qua luồng tuần tự hiện có khi chuỗi câu của Part chọn đã hoàn thành.
 
-Free Part practice completes only through an explicit `Finish practice` action. It may finish without answering every prompt, but it must require at least one durably committed response and must reject completion while an unresolved active recording/recovery transition is in progress.
+Luyện Part Free chỉ hoàn tất qua thao tác `Finish practice` chủ động. Có thể kết thúc khi chưa trả lời hết, nhưng phải có ít nhất một câu cam kết bền vững và phải từ chối hoàn tất khi còn chuyển trạng thái ghi/khôi phục đang hoạt động chưa giải quyết.
 
-Completion must not manufacture responses for unanswered prompts. Review presents them as `Not answered` based on the Part's authored prompt list.
+Hoàn tất không được tạo câu trả lời giả cho câu chưa trả lời. Xem lại hiển thị `Not answered` dựa danh sách câu đã biên soạn của Part.
 
-The attempt is a single focused attempt for the Part, not one attempt per question.
+Lượt làm là một lượt tập trung cho Part, không phải mỗi câu một lượt.
 
-## 10. Refresh, recovery and persistence
+## 10. Tải lại, khôi phục và lưu trữ
 
-`FREE`/`GUIDED` is persisted on the Attempt; it is not React-only state.
+`FREE`/`GUIDED` lưu trên Attempt, không chỉ là trạng thái React.
 
-After refresh, the backend remains authoritative for:
+Sau tải lại, backend tiếp tục quyết định:
 
-- selected Part and flow;
-- selected/current prompt and phase;
-- committed responses and active take numbers;
-- interrupted/recovery state;
-- prompt eligibility and picker statuses.
+- Part và luồng được chọn;
+- câu được chọn/hiện tại và pha;
+- câu trả lời cam kết và số bản thu hoạt động;
+- trạng thái gián đoạn/khôi phục;
+- điều kiện câu hỏi và trạng thái bộ chọn.
 
-The UI reconstructs the picker from backend state. Existing segmented-audio recovery remains unchanged: a crash/reload does not fabricate audio, reset response quota or switch to a different prompt.
+Giao diện dựng lại bộ chọn từ trạng thái backend. Khôi phục âm thanh phân đoạn hiện có không đổi: sự cố/tải lại không bịa âm thanh, đặt lại hạn mức trả lời hoặc chuyển câu khác.
 
-If a crash occurs during a Free retry, the existing committed take remains the fallback unless/until the replacement take was durably committed.
+Nếu sự cố khi Free làm lại, bản thu cam kết hiện có vẫn dự phòng trừ khi/cho đến bản thay thế đã cam kết bền vững.
 
-## 11. Review
+## 11. Xem lại
 
-Part-focused review shows the selected Part's full authored prompt list and response status, while audio/transcript controls exist only for answered prompts.
+Xem lại tập trung Part hiện toàn bộ danh sách câu đã biên soạn của Part chọn cùng trạng thái trả lời; điều khiển âm thanh/chép lời chỉ có cho câu đã trả lời.
 
-Example:
+Ví dụ:
 
 ```text
 Speaking · Part 1
@@ -324,231 +324,231 @@ Q2  Not answered
 Q3  31s
 ```
 
-Guided review identifies Guided practice. Legacy `SPEAKING_PROMPT` attempts continue to render their existing prompt-focused label rather than being silently reinterpreted as a Part attempt.
+Xem lại Guided ghi rõ luyện có hướng dẫn. Lượt `SPEAKING_PROMPT` cũ tiếp tục dùng nhãn tập trung câu hỏi hiện có, không âm thầm diễn giải thành lượt Part.
 
-Unanswered prompts are informational; they do not receive fabricated audio/transcripts/feedback.
+Câu chưa trả lời chỉ mang thông tin; không nhận âm thanh/bản chép lời/phản hồi giả.
 
-## 12. History and Analytics
+## 12. Lịch sử và Analytics
 
-Part-focused attempts belong to Focused Practice history. Presentation should distinguish Part 1/2/3 and, where useful, Guided/Free.
+Lượt tập trung Part thuộc lịch sử Focused Practice. Trình bày cần phân biệt Part 1/2/3 và Guided/Free khi hữu ích.
 
-They must not:
+Các lượt này không được:
 
-- occupy the full Speaking module slot in By-skill/By-test grouping;
-- count as a completed full Speaking module;
-- contribute a Part practice band as the full Speaking band;
-- contribute to a Full Mock overall;
-- enter full-module Speaking Analytics as if they were a complete test.
+- chiếm vị trí mô-đun Speaking đầy đủ trong nhóm By-skill/By-test;
+- tính là mô-đun Speaking đầy đủ đã hoàn thành;
+- đóng góp band luyện Part như band Speaking đầy đủ;
+- đóng góp điểm tổng Full Mock;
+- vào Analytics Speaking toàn mô-đun như đề đầy đủ.
 
-Existing focused-attempt exclusions are extended to `SPEAKING_PART`.
+Loại trừ lượt tập trung hiện có được mở rộng sang `SPEAKING_PART`.
 
-## 13. Transcript and audio review
+## 13. Bản chép lời và nghe lại âm thanh
 
-Transcript generation remains per committed response. A learner does not need to answer every prompt in a Free Part before generating/viewing transcript data for answered prompts.
+Tạo bản chép lời vẫn theo từng câu trả lời cam kết. Học viên không cần trả lời mọi câu trong Free Part trước khi tạo/xem bản chép lời câu đã trả lời.
 
-Raw audio remains private and governed by the existing media authorization. There is no new media storage format or merged full-Part audio asset requirement.
+Âm thanh thô giữ riêng tư theo phân quyền phương tiện hiện có. Không yêu cầu định dạng lưu mới hoặc tài sản âm thanh ghép toàn Part.
 
-## 14. AI assessment
+## 14. Đánh giá AI
 
-A focused Part may use the current Speaking AI pipeline when its committed evidence is assessable. The UI must identify the result as Part practice, e.g.:
+Part tập trung có thể dùng luồng Speaking AI hiện tại khi bằng chứng cam kết đủ chấm. Giao diện phải ghi rõ kết quả luyện Part, ví dụ:
 
 ```text
 AI Assessment · Part 1 practice
 Advisory
 ```
 
-The scorer may still return FC/LR/GRA/PR criterion assessments for the evidence actually present, but a Part result is not a complete IELTS Speaking test band.
+Bộ chấm vẫn có thể trả đánh giá tiêu chí FC/LR/GRA/PR cho bằng chứng thực có, nhưng kết quả Part không là band bài thi IELTS Speaking đầy đủ.
 
-If a Free attempt contains too little usable evidence, retain current unassessable behavior rather than fabricating a score. No AI prompt/calibration changes are introduced solely to force Part-level scoring.
+Nếu lượt Free quá ít bằng chứng dùng được, giữ hành vi không đủ điều kiện chấm hiện tại thay vì bịa điểm. Không đổi prompt/hiệu chỉnh AI chỉ để ép chấm cấp Part.
 
-## 15. Human/personal final score semantics
+## 15. Ngữ nghĩa điểm chốt con người/cá nhân
 
-The recently added provenance-aware subjective grading remains authoritative.
+Chấm chủ quan nhận biết nguồn gốc vừa bổ sung tiếp tục là nguồn chuẩn.
 
-A personal focused Speaking Part may retain a saved human/self-assessed practice score if supported by the current final-score flow. However, that score remains attached to the focused attempt and must not be promoted into:
+Speaking Part tập trung cá nhân có thể giữ điểm luyện do người/tự đánh giá đã lưu nếu luồng điểm cuối hiện tại hỗ trợ. Tuy nhiên điểm gắn lượt tập trung, không được nâng thành:
 
-- a full-module `attempt.band_score` where existing focused semantics keep it null;
-- Full Mock overall;
-- full Speaking Analytics.
+- `attempt.band_score` toàn mô-đun khi ngữ nghĩa tập trung hiện có giữ null;
+- điểm tổng Full Mock;
+- Analytics Speaking đầy đủ.
 
-AI results remain advisory and are never auto-promoted by run completion.
+Kết quả AI giữ tư vấn, tuyệt đối không tự nâng thành điểm cuối khi lượt hoàn thành.
 
-Classroom students/teachers retain the subjective grading boundaries introduced by `Add provenance-aware subjective skill grading`.
+Học viên/giáo viên lớp giữ ranh giới chấm chủ quan do `Add provenance-aware subjective skill grading` đưa vào.
 
-## 16. Classroom compatibility
+## 16. Tương thích lớp học
 
-This feature is for `/practice`. It does not add a new classroom UI for assigning a whole Part.
+Tính năng dành cho `/practice`. Không thêm giao diện lớp mới giao toàn Part.
 
-Existing `SPEAKING_PROMPT` assignment/start contracts remain backward-compatible. Shared API schemas may learn the `SPEAKING_PART` discriminator where required for common typing, but implementation must not silently broaden classroom assignment behavior.
+Hợp đồng giao/bắt đầu `SPEAKING_PROMPT` hiện có giữ tương thích ngược. Schema API dùng chung có thể nhận discriminator `SPEAKING_PART` nơi cần cho kiểu chung, nhưng triển khai không được âm thầm mở rộng hành vi giao bài lớp.
 
-Assignment provenance, teacher-only classroom final grading and private personal-practice boundaries must not regress.
+Không được suy giảm nguồn gốc bài giao, chấm cuối lớp chỉ giáo viên và ranh giới luyện cá nhân riêng tư.
 
-## 17. Accessibility, responsive UX and i18n
+## 17. Khả năng tiếp cận, UX thích ứng và i18n
 
-New visible copy is localized in EN + VI.
+Văn bản hiển thị mới được bản địa hóa EN + VI.
 
-The Free picker must:
+Bộ chọn Free phải:
 
-- use semantic buttons with clear current/completed/unanswered state not conveyed by color alone;
-- be keyboard operable;
-- preserve visible focus;
-- horizontally scroll or wrap safely on narrow screens without page overflow;
-- keep recording status and timer accessible;
-- respect reduced-motion settings for any subtle state transition.
+- dùng nút ngữ nghĩa, trạng thái hiện tại/hoàn thành/chưa trả lời rõ không chỉ dựa màu;
+- vận hành được bằng bàn phím;
+- giữ tiêu điểm nhìn thấy;
+- cuộn ngang hoặc xuống dòng an toàn trên màn hình hẹp, không tràn trang;
+- giữ trạng thái ghi và bộ đếm dễ tiếp cận;
+- tôn trọng giảm chuyển động cho mọi chuyển trạng thái nhẹ.
 
-Recording-navigation confirmation must be keyboard/touch accessible and reuse the project's dialog conventions.
+Xác nhận điều hướng khi ghi phải tiếp cận được bằng bàn phím/chạm và tái dùng quy ước hộp thoại dự án.
 
-## 18. Backward compatibility
+## 18. Tương thích ngược
 
-The implementation must preserve:
+Triển khai phải bảo toàn:
 
-- old full-module Speaking attempts;
-- old focused `SPEAKING_PROMPT` attempts;
-- existing Practice and Exam semantics;
-- Full Mock no-replay/no-retry/no-back restrictions;
-- existing audio chunks/takes/recovery behavior;
-- existing transcript cache/authorization;
-- existing Speaking AI advisory semantics;
-- current provenance-aware Writing/Speaking final grading;
-- Reading/Listening/Writing focused practice.
+- lượt Speaking toàn mô-đun cũ;
+- lượt `SPEAKING_PROMPT` tập trung cũ;
+- ngữ nghĩa Practice/Exam hiện có;
+- hạn chế Full Mock không nghe lại/làm lại/quay lại;
+- hành vi chunk/bản thu/khôi phục âm thanh hiện có;
+- cache/phân quyền bản chép lời hiện có;
+- ngữ nghĩa AI Speaking tư vấn hiện có;
+- chấm cuối Writing/Speaking nhận biết nguồn gốc hiện tại;
+- luyện tập tập trung Reading/Listening/Writing.
 
-No historical attempt is rewritten from prompt scope to part scope.
+Không viết lại lượt lịch sử từ phạm vi câu hỏi sang Part.
 
-## 19. Risks and mitigations
+## 19. Rủi ro và biện pháp
 
-### Free navigation bypasses current sequential lock assumptions
+### Điều hướng Free bỏ qua giả định khóa tuần tự hiện tại
 
-Mitigation: add explicit server transitions for Free prompt selection and keep the Part-scoped allowed-prompt set authoritative. Do not mutate progress locally in React.
+Biện pháp: thêm chuyển trạng thái máy chủ rõ cho chọn câu Free, giữ tập câu được phép theo Part làm nguồn chuẩn. Không sửa tiến độ cục bộ trong React.
 
-### Finishing the authored last prompt could accidentally submit a Free attempt
+### Hoàn thành câu cuối theo biên soạn có thể vô tình nộp lượt Free
 
-Mitigation: branch completion semantics on persisted `speaking_practice_flow`. Free response commit returns to browsing/safe state; only explicit `Finish practice` submits the attempt.
+Biện pháp: phân nhánh ngữ nghĩa hoàn thành theo `speaking_practice_flow` đã lưu. Cam kết câu Free trả về trạng thái duyệt/an toàn; chỉ `Finish practice` chủ động mới nộp lượt.
 
-### Navigating during recording can lose audio
+### Điều hướng khi ghi có thể mất âm thanh
 
-Mitigation: require stop -> flush/close -> durable finish ACK -> switch. Never discard a current recording implicitly.
+Biện pháp: yêu cầu dừng -> đẩy hết/đóng -> ACK hoàn thành bền vững -> chuyển. Tuyệt đối không ngầm bỏ bản đang ghi.
 
-### Retrying an already committed answer can lose the last good recording
+### Làm lại câu đã cam kết có thể mất bản ghi tốt cuối
 
-Mitigation: preserve the committed take until the replacement is durably committed; switch the active committed take atomically.
+Biện pháp: giữ bản cam kết đến khi bản thay thế cam kết bền vững; đổi bản cam kết hoạt động nguyên tử.
 
-### Part practice can pollute full-skill statistics
+### Luyện Part có thể làm sai thống kê kỹ năng đầy đủ
 
-Mitigation: retain `scope=FOCUSED_UNIT`, extend history/review labels, and add explicit regression coverage that focused Part scores do not promote to full-module band/Analytics/Full Mock.
+Biện pháp: giữ `scope=FOCUSED_UNIT`, mở rộng nhãn lịch sử/xem lại và thêm hồi quy rõ rằng điểm Part tập trung không nâng thành band toàn mô-đun/Analytics/Full Mock.
 
-### Migration can break historical scope constraints
+### Migration có thể phá ràng buộc phạm vi lịch sử
 
-Mitigation: make Part targeting additive, keep `focused_speaking_prompt_id`, test real upgrade constraints, and verify a single Alembic head.
+Biện pháp: thêm đích Part theo hướng bổ sung, giữ `focused_speaking_prompt_id`, kiểm thử ràng buộc nâng cấp thật và xác minh một head Alembic.
 
-## 20. Remote CI baseline gate
+## 20. Chốt kiểm tra CI từ xa tại mốc cơ sở
 
-Implementation MUST begin by inspecting the current `origin/main` GitHub Actions result and actual failing job logs before feature coding.
+Triển khai BẮT BUỘC bắt đầu bằng kiểm tra kết quả GitHub Actions hiện tại của `origin/main` và nhật ký tác vụ lỗi thật trước viết tính năng.
 
-At specification time, the feature baseline before documentation commits is:
+Tại thời điểm đặc tả, mốc tính năng trước các commit tài liệu là:
 
 ```text
 0a4a757c0788a2c0ce63ea671295770a12062bad
 Add provenance-aware subjective skill grading
 ```
 
-The push CI run `38346177088` is **red**. The failure is in unit-test stages, not lint/typecheck/migration-head checks:
+Lượt CI push `38346177088` **đỏ**. Lỗi nằm ở giai đoạn kiểm thử đơn vị, không phải lint/kiểm tra kiểu/head migration:
 
-- Backend Ruff lint: pass.
-- Backend Ruff format: pass.
-- Fresh PostgreSQL Alembic upgrade: pass.
-- Single Alembic head verification: pass.
-- Backend tests: **6 failed, 367 passed**. The observed common failure for the new subjective-grading tests is `sqlite3.OperationalError: no such table: attempt_speaking_scores`, indicating a test-schema/fixture path that did not include the new Speaking final-score table even though CI's migrated PostgreSQL upgrade itself passed.
-- Frontend typecheck: pass.
-- Frontend ESLint: pass.
-- Frontend unit tests: **3 failed, 281 passed**. One confirmed failure is in `tests/speaking-history-classroom.test.tsx`, where `getByRole("button", { name: "Use AI score as starting point" })` now matches multiple buttons after the subjective-grading UI change. The remaining frontend failures must be read from the actual remote log rather than guessed.
-- The separate `Golden path E2E` workflow for the same SHA completed successfully, but it does not override the red CI workflow.
+- Ruff lint backend: đạt.
+- Ruff format backend: đạt.
+- Nâng Alembic PostgreSQL mới: đạt.
+- Xác minh một head Alembic: đạt.
+- Kiểm thử backend: **6 lỗi, 367 đạt**. Lỗi chung quan sát ở kiểm thử chấm chủ quan mới là `sqlite3.OperationalError: no such table: attempt_speaking_scores`, cho thấy luồng schema/dữ liệu mẫu kiểm thử thiếu bảng điểm cuối Speaking mới dù chính nâng PostgreSQL bằng migration của CI đã đạt.
+- Kiểm tra kiểu frontend: đạt.
+- ESLint frontend: đạt.
+- Kiểm thử đơn vị frontend: **3 lỗi, 281 đạt**. Một lỗi xác nhận ở `tests/speaking-history-classroom.test.tsx`, nơi `getByRole("button", { name: "Use AI score as starting point" })` nay khớp nhiều nút sau đổi giao diện chấm chủ quan. Các lỗi frontend còn lại phải đọc từ nhật ký từ xa thật, không đoán.
+- Workflow riêng `Golden path E2E` cùng SHA hoàn thành thành công nhưng không ghi đè workflow CI đỏ.
 
-The implementation plan must therefore enforce this sequence:
+Vì vậy kế hoạch triển khai phải cưỡng chế trình tự:
 
-1. fetch latest `origin/main` and inspect remote Actions for that exact SHA;
-2. if main is still red, reproduce/fix the baseline CI failures first (or verify a newer main already fixed them);
-3. do not stack this feature on unexplained red CI;
-4. run the focused regression set while implementing the feature;
-5. after push, inspect GitHub Actions for the final SHA;
-6. do not declare completion while the relevant CI workflow is red;
-7. if remote CI fails, inspect the actual log, fix the root cause and push a normal follow-up commit; never force-push merely to hide failure.
+1. fetch `origin/main` mới nhất và kiểm tra Actions từ xa đúng SHA đó;
+2. nếu main còn đỏ, tái hiện/sửa lỗi CI cơ sở trước (hoặc xác minh main mới hơn đã sửa);
+3. không chồng tính năng lên CI đỏ chưa giải thích;
+4. chạy tập hồi quy có trọng tâm khi triển khai;
+5. sau push, kiểm tra GitHub Actions SHA cuối;
+6. không tuyên bố hoàn tất khi workflow CI liên quan đỏ;
+7. nếu CI từ xa lỗi, kiểm tra log thật, sửa gốc và push commit tiếp theo bình thường; tuyệt đối không force-push chỉ để giấu lỗi.
 
-## 21. Test strategy
+## 21. Chiến lược kiểm thử
 
-Backend coverage should include at minimum:
+Kiểm thử backend tối thiểu phải gồm:
 
-- `SPEAKING_PART` request/schema contract;
-- default `GUIDED` behavior when Part flow is omitted and invalid flow placement rejection;
-- Part belongs to exact published version/module;
-- Part 1/3 Guided + Free accepted;
-- Part 2 Free rejected;
-- `SPEAKING_PART + EXAM` rejected for this flow;
-- real migration + scope CHECK behavior;
-- Part repository returns all and only Part prompts in canonical order;
-- out-of-Part prompt begin/media/retry/replay/select/finalize rejected;
-- legacy `SPEAKING_PROMPT` behavior retained;
-- Guided progression retained;
-- Free starts without auto-recording and allows explicit Record;
-- Free out-of-order selection and picker-state reconstruction;
-- committing authored-last prompt does not auto-submit a Free attempt;
-- explicit Free finish requires >=1 committed response, permits unanswered prompts, and rejects unresolved active capture;
-- committed prompt replay/retry works only in Free Part scope;
-- failed committed-response retry preserves the prior committed recording;
-- switch-while-recording cannot bypass durable finalization;
-- refresh/recovery retains Part/flow/current state;
-- review contains selected Part and unanswered entries only;
-- focused Part remains excluded from full-module History/Analytics/Full Mock band promotion;
-- subjective grading/provenance regression coverage remains green.
+- hợp đồng yêu cầu/schema `SPEAKING_PART`;
+- mặc định `GUIDED` khi bỏ flow Part và từ chối khai báo flow sai chỗ;
+- Part thuộc chính xác phiên bản/mô-đun đã xuất bản;
+- chấp nhận Guided + Free cho Part 1/3;
+- từ chối Part 2 Free;
+- từ chối `SPEAKING_PART + EXAM` cho luồng này;
+- migration thật + hành vi CHECK phạm vi;
+- repository Part trả đủ và chỉ các câu của Part theo thứ tự chuẩn;
+- từ chối bắt đầu/phương tiện/làm lại/nghe lại/chọn/chốt câu ngoài Part;
+- giữ hành vi `SPEAKING_PROMPT` cũ;
+- giữ tiến trình Guided;
+- Free bắt đầu không tự ghi, cho Record chủ động;
+- Free chọn không theo thứ tự và dựng lại trạng thái bộ chọn;
+- cam kết câu biên soạn cuối không tự nộp lượt Free;
+- kết thúc Free chủ động yêu cầu >=1 câu cam kết, cho phép câu chưa trả lời và từ chối thu đang hoạt động chưa giải quyết;
+- nghe/làm lại câu cam kết chỉ hoạt động trong phạm vi Free Part;
+- thử lại câu cam kết thất bại giữ bản ghi cam kết trước;
+- chuyển khi ghi không thể bỏ qua chốt bền vững;
+- tải lại/khôi phục giữ Part/flow/trạng thái hiện tại;
+- xem lại chỉ chứa Part chọn và mục chưa trả lời;
+- Part tập trung tiếp tục bị loại khỏi nâng band History/Analytics/Full Mock toàn mô-đun;
+- hồi quy chấm chủ quan/nguồn gốc tiếp tục đạt.
 
-Frontend Vitest/RTL coverage should include at minimum:
+Kiểm thử Vitest/RTL frontend tối thiểu phải gồm:
 
-- Speaking appears in Skill Practice with All parts / Part 1 / Part 2 / Part 3 filters;
-- cards use `SPEAKING_PART` start payload;
-- Part 1/3 offer Guided and Free;
-- Part 2 offers Guided only;
-- Speaking uses count-up rather than generic minute presets;
-- Guided runner has no Free picker;
-- Free picker does not auto-start recording;
-- explicit Record starts the selected prompt;
-- Free picker navigates out of order;
-- completed/unanswered/current statuses are accessible;
-- revisit retains replay/retry behavior;
-- active-recording navigation asks for confirmation;
-- `Stop & switch` waits for persistence acknowledgement before moving;
-- failed persistence leaves the user on the current prompt;
-- explicit Finish Practice behavior and >=1-response guard;
-- refresh reconstruction uses backend state;
-- existing Speaking exam/full-mock restrictions do not change.
+- Speaking xuất hiện trong Skill Practice với bộ lọc All parts / Part 1 / Part 2 / Part 3;
+- thẻ dùng payload bắt đầu `SPEAKING_PART`;
+- Part 1/3 cung cấp Guided và Free;
+- Part 2 chỉ Guided;
+- Speaking đếm lên thay cấu hình phút chung;
+- trình Guided không có bộ chọn Free;
+- bộ chọn Free không tự bắt đầu ghi;
+- Record chủ động bắt đầu câu chọn;
+- bộ chọn Free điều hướng không theo thứ tự;
+- trạng thái hoàn thành/chưa trả lời/hiện tại dễ tiếp cận;
+- quay lại giữ nghe/làm lại;
+- điều hướng khi ghi yêu cầu xác nhận;
+- `Stop & switch` chờ xác nhận lưu trước chuyển;
+- lưu thất bại giữ người dùng ở câu hiện tại;
+- hành vi Finish Practice chủ động và chốt >=1 câu;
+- dựng lại sau tải dùng trạng thái backend;
+- hạn chế thi/full-mock Speaking hiện có không đổi.
 
-No browser/Playwright is required for implementation verification unless a later failure genuinely cannot be diagnosed with unit/component tests. Do not invoke Modal, live ASR, live LLM or GPU services for this task.
+Không yêu cầu trình duyệt/Playwright để xác minh triển khai trừ khi lỗi về sau thật sự không chẩn đoán được bằng kiểm thử đơn vị/thành phần. Không gọi Modal, ASR thật, LLM thật hoặc GPU cho nhiệm vụ này.
 
-## 22. Acceptance criteria
+## 22. Tiêu chí nghiệm thu
 
-The feature is complete only when:
+Tính năng chỉ hoàn tất khi:
 
-1. Skill Practice lists Speaking Part 1/2/3 from published versions.
-2. Starting a card creates one Part-focused Practice attempt.
-3. Part 1/3 support both Guided and Free flows; Part 2 is Guided only.
-4. Guided behavior remains equivalent to the existing sequential Speaking practice within the selected Part.
-5. Free mode permits safe out-of-order selection and does not auto-start recording.
-6. Free mode permits revisit, Listen and safe Retry while preserving recordings per prompt and the last good committed take on failed replacement.
-7. Navigating during active capture cannot lose/skip unacknowledged recording persistence.
-8. Finishing a response in Free mode never auto-submits merely because it is the last authored prompt; explicit Finish Practice controls completion.
-9. Backend rejects any prompt outside the selected Part.
-10. Refresh/recovery reconstructs the persisted flow, selected prompt and response/picker state.
-11. Review/history identify the Part and flow correctly; unanswered Free prompts are represented without fabrication.
-12. Part-level AI/human scores remain advisory/focused and never become a full Speaking module or Full Mock band.
-13. Legacy prompt-focused and full-module Speaking attempts still work.
-14. Current classroom/provenance-aware final grading remains intact.
-15. Alembic remains one head and the new migration passes against a fresh PostgreSQL database.
-16. The pre-existing red CI baseline is resolved before feature completion.
-17. GitHub Actions for the final pushed SHA is inspected and the relevant CI workflow is green.
+1. Skill Practice liệt kê Speaking Part 1/2/3 từ phiên bản xuất bản.
+2. Bắt đầu thẻ tạo một lượt Practice tập trung Part.
+3. Part 1/3 hỗ trợ Guided và Free; Part 2 chỉ Guided.
+4. Guided giữ tương đương luyện Speaking tuần tự hiện có trong Part chọn.
+5. Free cho chọn không theo thứ tự an toàn và không tự ghi.
+6. Free cho quay lại, Listen và Retry an toàn, giữ bản ghi từng câu cùng bản cam kết tốt cuối khi thay thất bại.
+7. Điều hướng khi đang thu không được làm mất/bỏ qua lưu bản ghi chưa xác nhận.
+8. Hoàn thành câu Free tuyệt đối không tự nộp chỉ vì là câu biên soạn cuối; Finish Practice chủ động kiểm soát hoàn tất.
+9. Backend từ chối mọi câu ngoài Part chọn.
+10. Tải lại/khôi phục dựng lại luồng, câu chọn, trạng thái trả lời/bộ chọn đã lưu.
+11. Xem lại/lịch sử xác định đúng Part và flow; câu Free chưa trả lời biểu diễn không bịa.
+12. Điểm AI/con người cấp Part giữ tư vấn/tập trung, tuyệt đối không thành band Speaking toàn mô-đun hoặc Full Mock.
+13. Lượt Speaking tập trung câu hỏi cũ và toàn mô-đun vẫn hoạt động.
+14. Chấm cuối nhận biết lớp/nguồn gốc hiện tại giữ nguyên.
+15. Alembic giữ một head, migration mới đạt trên cơ sở dữ liệu PostgreSQL mới.
+16. Mốc CI đỏ có trước được giải quyết trước hoàn tất tính năng.
+17. GitHub Actions SHA cuối đã push được kiểm tra, workflow CI liên quan xanh.
 
-## 23. Execution constraints for the later implementation plan
+## 23. Ràng buộc thực thi cho kế hoạch triển khai sau này
 
-- Never use Astra.
-- At most two non-nested subagents, and only if their non-Astra model can be guaranteed; otherwise execute inline.
-- Prefer focused backend/frontend unit/component tests while developing.
-- No manual browser/Playwright, Modal deployment, live ASR, live LLM or GPU invocation for this work.
-- Preserve BandPilot branding and the recently completed Writing/Speaking subjective-grading/AI work.
-- Use normal commits and safe fast-forward integration; never force-push.
+- Tuyệt đối không dùng Astra.
+- Tối đa hai tác nhân con không lồng, chỉ khi bảo đảm mô hình không phải Astra; nếu không thực hiện trực tiếp.
+- Ưu tiên kiểm thử đơn vị/thành phần backend/frontend có trọng tâm khi phát triển.
+- Không dùng trình duyệt thủ công/Playwright, triển khai Modal, ASR thật, LLM thật hoặc GPU cho công việc này.
+- Giữ thương hiệu BandPilot và phần chấm chủ quan/AI Writing/Speaking vừa hoàn thành.
+- Dùng commit bình thường và tích hợp fast-forward an toàn; tuyệt đối không force-push.

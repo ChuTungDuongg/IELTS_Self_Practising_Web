@@ -1,9 +1,9 @@
-# Test Builder, question registry và content governance
+# Test Builder, registry câu hỏi và quản trị nội dung
 
 > Mục đích và phạm vi: Biên soạn đề có cấu trúc, xuất bản nội dung frozen và quản lý eligibility.
 > Đối chiếu mã nguồn tại `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`. Đây là kiểm tra tĩnh; không xác nhận trạng thái deployment đang chạy.
 
-## A–C. Mục đích, workflow và ownership
+## A–C. Mục đích, quy trình và phân chia trách nhiệm
 
 Biên soạn đề có cấu trúc, xuất bản nội dung frozen và quản lý eligibility.
 
@@ -11,7 +11,7 @@ ADMIN/TEACHER tạo Test/draft, thêm module/passage/task/prompt, chỉnh câu/k
 
 TestService phối hợp clone/validation/lifecycle; Reading/Listening/Writing/Speaking builder services sở hữu hình dạng nội dung. Hai question registries là nguồn contract trung tâm, không phải switch riêng mỗi page.
 
-## D. Implementation map
+## D. Bản đồ triển khai
 
 | Lớp | Source |
 | --- | --- |
@@ -22,11 +22,11 @@ TestService phối hợp clone/validation/lifecycle; Reading/Listening/Writing/S
 | Domain/models | [backend/app/domains/questions/registry.py](../../backend/app/domains/questions/registry.py); [backend/app/domains/questions/normalization.py](../../backend/app/domains/questions/normalization.py); [backend/app/models/entities.py](../../backend/app/models/entities.py); [backend/app/models/content_governance.py](../../backend/app/models/content_governance.py) |
 | Tests | [backend/tests/test_test_version_concurrency.py](../../backend/tests/test_test_version_concurrency.py); [backend/tests/test_version_validation.py](../../backend/tests/test_version_validation.py); [frontend/tests/question-registry.test.tsx](../../frontend/tests/question-registry.test.tsx); [frontend/tests/builder-autosave.test.tsx](../../frontend/tests/builder-autosave.test.tsx) |
 
-## E–F. Data flow và API contracts
+## E–F. Luồng dữ liệu và hợp đồng API
 
 Luồng dữ liệu: structured editor → typed Builder API → mutable-version policy/revision → schema validation → PostgreSQL → Builder DTO; publish validation dùng graph thật, không tin cờ “valid” từ frontend.
 
-### Sequence: xuất bản đề do ADMIN biên soạn
+### Trình tự: xuất bản đề do ADMIN biên soạn
 
 Đối chiếu `TestService.publish` trong [service](../../backend/app/services/tests.py). Đây là nhánh direct publish cho nội dung ADMIN; đề có `origin=TEACHER` phải qua [moderation service](../../backend/app/services/content_governance.py), kể cả khi người gọi là ADMIN.
 
@@ -38,15 +38,15 @@ sequenceDiagram
     participant DB as PostgreSQL
     UI->>API: POST publish version
     API->>S: Authenticated actor + version ID
-    S->>DB: Begin transaction; lock actor, Test, TestVersion
+    S->>DB: Begin transaction, lock actor, Test, TestVersion
     S->>S: Check ADMIN, origin, pending moderation, archive, DRAFT
     S->>S: Validate complete content graph
     alt Invalid content or forbidden transition
-        S-->>API: AppError; transaction rolled back
+        S-->>API: AppError, transaction rolled back
         API-->>UI: Error details allowed by API contract
     else Valid ADMIN-authored draft
-        S->>DB: Persist normalized draft; archive previous published version
-        S->>DB: Set PUBLISHED and published_at; commit
+        S->>DB: Persist normalized draft, archive previous published version
+        S->>DB: Set PUBLISHED and published_at, commit
         S-->>API: Reload version
         API-->>UI: Published version DTO
     end
@@ -64,27 +64,27 @@ Các đường dẫn sau dùng prefix `/api/v1`; DTO, dependency và response mo
 - `POST /test-versions/{version_id}/moderation-requests`
 - `POST /admin/test-moderation-requests/{request_id}/approve`
 
-## G. Persistence
+## G. Lưu trữ
 
 Test → TestVersion → TestModule → structured content. QuestionGroup/Question có stable UUID/config/key JSON; TestVersionModeration lưu scope/status/reviewer riêng lifecycle nội dung. TestCover thuộc Test, không phải version; cover bytes qua storage.
 
-## H. Business rules
+## H. Quy tắc nghiệp vụ
 
 Published authored content bất biến; edit bằng clone draft. Pending moderation khóa nội dung; CLASSROOM approval không thành PUBLIC. Question numbering không đổi identity; completion dùng gap question IDs, image marker chuẩn hóa 0–1. Mỗi objective type cần editor, key editor, schema, evaluator, exam/review renderer.
 
-## I. Security
+## I. Bảo mật
 
 AccessPolicy lock actor → test → version trước mutation. Owner/ADMIN Builder permissions không đồng nghĩa learner public visibility. Active exam DTO tuyệt đối không lấy Builder schema có answer keys.
 
-## J. Failure và recovery
+## J. Lỗi và khôi phục
 
 Revision conflict 409 yêu cầu reconcile; autosave flush trước preview/publish. Upload/clone failure bù trừ bytes với durable-reference check. Concurrent publish/edit được serialize, không last-write-wins âm thầm.
 
-## K. Focused testing
+## K. Kiểm thử tập trung
 
 Backend validation/key/normalization/concurrency tests; frontend question-registry, draft-answer-autosave, builder-route, draft-preview và persisted-question-contracts. Kiểm từ authoring tới active DTO và review, không chỉ snapshot editor.
 
-## L. Extension guide
+## L. Hướng dẫn mở rộng
 
 Thêm objective type theo ví dụ A trong playbook: cả registry Python/TS, union, structured config, evaluator, renderers, clone/transfer remap, fixtures. Đừng hardcode test content hoặc thay historical IDs.
 

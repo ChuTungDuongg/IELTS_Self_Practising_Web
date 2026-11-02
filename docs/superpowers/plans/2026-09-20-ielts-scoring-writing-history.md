@@ -1,61 +1,61 @@
-# IELTS Scoring, Writing, and History Implementation Plan
+# Kế hoạch triển khai điểm IELTS, Writing và History
 
-> **Documentation audit: HISTORICAL.** Historical reference; không phải contract hiện hành.
-> Mục đích: IELTS Scoring, Writing, and History Implementation Plan. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../../../backend/app/services/mts_writing.py).
-> Đọc cùng [current module/guide](../../modules/writing.md); [audit và giới hạn](../../DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+> **Phân loại tài liệu: HISTORICAL.** Tham khảo lịch sử; không phải contract hiện hành.
+> Mục đích: kế hoạch triển khai điểm IELTS, Writing và History. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [mã triển khai](../../../backend/app/services/mts_writing.py).
+> Đọc cùng [hướng dẫn module hiện hành](../../modules/writing.md); [audit và giới hạn](../../DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **Dành cho tác nhân triển khai:** bắt buộc dùng skill superpowers:subagent-driven-development (khuyến nghị) hoặc superpowers:executing-plans theo từng công việc. Theo dõi bằng checkbox (`- [ ]`).
 
-**Goal:** Add product-rule IELTS band scoring, a persistent Writing builder/exam/review workflow, manual Writing grading, and backend-aggregated attempt history without regressing Reading or Listening.
+**Mục tiêu:** thêm tính band IELTS theo quy tắc sản phẩm, quy trình Writing builder/làm bài/review có lưu trữ, chấm Writing thủ công và lịch sử attempts do backend tổng hợp; không gây regression Reading/Listening.
 
-**Architecture:** Extend the existing SQLAlchemy/Pydantic service layer and additive REST DTOs. Keep score conversion, Writing validation, response persistence, aggregate selection, and overall rounding in FastAPI; add focused Next.js components that consume those contracts and reuse the current builder, timer, asset, review, and visual systems.
+**Kiến trúc:** mở rộng service layer SQLAlchemy/Pydantic và bổ sung REST DTOs tương thích. FastAPI giữ trách nhiệm quy đổi điểm, kiểm Writing, lưu bài, chọn dữ liệu tổng hợp và làm tròn overall. Thêm Next.js components tập trung sử dụng các contracts đó, tái dùng builder, timer, assets, review và hệ thống giao diện hiện có.
 
-**Tech Stack:** Python 3.12, FastAPI, Pydantic v2, SQLAlchemy asyncio, PostgreSQL, Alembic, pytest, Next.js 16, React 19, TypeScript 5.9, Zod 4, Vitest, Testing Library, Tailwind/CSS.
+**Công nghệ:** Python 3.12, FastAPI, Pydantic v2, SQLAlchemy asyncio, PostgreSQL, Alembic, pytest, Next.js 16, React 19, TypeScript 5.9, Zod 4, Vitest, Testing Library, Tailwind/CSS.
 
-**Spec:** `docs/superpowers/specs/2026-09-20-ielts-scoring-writing-history-design.md`
+**Đặc tả:** `docs/superpowers/specs/2026-09-20-ielts-scoring-writing-history-design.md`
 
-## Global Constraints
+## Ràng buộc chung
 
-- Reading and Listening use the exact shared product mapping in the spec; raw scores 0–2 and every non-40 module have `band_score = null`.
-- `attempts.band_score` is nullable `NUMERIC(2,1)` and `raw_score`/`max_score` remain unchanged.
-- Published versions are immutable; attempts retain frozen version references.
-- Writing has exactly fixed Task 1/order 0 and Task 2/order 1 when initialized; only Task 1 accepts a `WRITING_TASK_IMAGE`.
-- Writing responses use plain text and `AttemptWritingResponse`; backend word count is authoritative.
-- Writing has no objective raw/max score and no automatic band score.
-- Overall is computed by the backend from exactly three bands and rounded to 0.5 with decimal half-up behavior.
-- Active exam DTOs never expose objective answer keys.
-- Do not implement Speaking, authentication, or automated Writing scoring.
-- Preserve the local `frontend/next-env.d.ts` modification and do not stage or overwrite it.
-- Add no copyrighted exam content and no new runtime dependency.
+- Reading/Listening dùng đúng bảng quy đổi sản phẩm trong đặc tả; raw scores 0–2 và mọi module không có 40 câu đều có `band_score = null`.
+- `attempts.band_score` là `NUMERIC(2,1)` nullable; giữ `raw_score`/`max_score`.
+- Versions đã publish bất biến; attempts giữ tham chiếu version đóng băng.
+- Writing khởi tạo đúng Task 1/order 0 và Task 2/order 1 cố định; chỉ Task 1 nhận `WRITING_TASK_IMAGE`.
+- Bài Writing dùng plain text và `AttemptWritingResponse`; word count backend có thẩm quyền.
+- Writing không có raw/max score khách quan hoặc band tự động.
+- Backend tính overall từ đúng ba bands và làm tròn theo bước 0.5 bằng decimal half-up.
+- DTO làm bài đang diễn ra không bao giờ lộ answer keys khách quan.
+- Không triển khai Speaking, xác thực hoặc chấm Writing tự động.
+- Giữ sửa đổi local `frontend/next-env.d.ts`; không stage hoặc ghi đè.
+- Không thêm đề có bản quyền hoặc runtime dependency mới.
 
-## Review Focus
+## Trọng tâm review
 
-- A timer-expired objective attempt must be scored before finalization even when no explicit submit request caused the transition; Task 2 adds an integration test for it.
-- A cloned Writing task may retain the repository's existing shared image reference, but a newly attached image must belong to the editable draft; Task 3 tests both behaviors.
-- A failed explicit or pre-submit Writing save must leave the attempt unsubmitted and show a retryable error; Task 6 tests it.
-- Deleting the attempt selected by a history group must refresh the server-produced selection and overall rather than recomputing in React; Task 7 tests refresh behavior.
-- Empty or partial Writing drafts must remain editable and follow current publish-warning philosophy, while invalid task identity and Task 2 images remain blocking; Task 3 tests both classes.
+- Objective attempt hết giờ phải được chấm trước finalize, kể cả khi không có submit request rõ ràng; công việc 2 thêm integration test.
+- Writing task được clone có thể giữ tham chiếu ảnh dùng chung hiện có; ảnh mới gắn phải thuộc draft có thể sửa. Công việc 3 kiểm cả hai.
+- Lưu Writing rõ ràng hoặc trước submit mà fail phải giữ attempt chưa nộp, hiện lỗi có thể retry; công việc 6 kiểm.
+- Xóa attempt được history group chọn phải tải lại lựa chọn/overall từ server, không tính lại trong React; công việc 7 kiểm refresh.
+- Writing drafts rỗng/chưa đủ vẫn sửa được và theo chính sách publish warnings hiện tại; task identity sai và ảnh Task 2 vẫn phải chặn. Công việc 3 kiểm cả hai nhóm.
 
 ---
 
-### Task 1: Band Scoring Domain and Persistence
+### Công việc 1: Domain tính band và lưu trữ
 
-**Files:**
-- Create: `backend/app/domains/scoring/ielts_band.py`
-- Create: `backend/tests/test_ielts_band.py`
-- Create: `backend/alembic/versions/20260920_0007_attempt_band_score.py`
-- Modify: `backend/app/domains/scoring/__init__.py`
-- Modify: `backend/app/models/entities.py`
-- Modify: `backend/app/schemas/attempts.py`
+**Tệp:**
+- Tạo: `backend/app/domains/scoring/ielts_band.py`
+- Tạo: `backend/tests/test_ielts_band.py`
+- Tạo: `backend/alembic/versions/20260920_0007_attempt_band_score.py`
+- Sửa: `backend/app/domains/scoring/__init__.py`
+- Sửa: `backend/app/models/entities.py`
+- Sửa: `backend/app/schemas/attempts.py`
 
-**Interfaces:**
-- Produces: `listening_raw_to_band(int, int) -> float | None`
-- Produces: `reading_raw_to_band(int, int) -> float | None`
-- Produces: `round_to_half(Decimal) -> Decimal`
-- Produces: `project_overall_band(float | Decimal | None, float | Decimal | None, float | Decimal | None) -> float | None`
-- Produces: `Attempt.band_score` and `AttemptResponse.band_score`
+**Giao diện:**
+- Đầu ra: `listening_raw_to_band(int, int) -> float | None`
+- Đầu ra: `reading_raw_to_band(int, int) -> float | None`
+- Đầu ra: `round_to_half(Decimal) -> Decimal`
+- Đầu ra: `project_overall_band(float | Decimal | None, float | Decimal | None, float | Decimal | None) -> float | None`
+- Đầu ra: `Attempt.band_score` và `AttemptResponse.band_score`
 
-- [ ] **Step 1: Write the pure scoring tests**
+- [ ] **Bước 1: Viết pure scoring tests**
 
 ```python
 PRODUCT_BANDS = {
@@ -72,15 +72,15 @@ def test_reading_and_listening_use_product_table(raw, expected):
     assert listening_raw_to_band(raw, 40) == expected
 ```
 
-Also assert non-40 returns `None`, invalid raw/max combinations raise `ValueError`, missing overall inputs return `None`, the examples produce 7.0/7.0/7.5, and `round_to_half(Decimal("7.25")) == Decimal("7.5")`.
+Kiểm thêm module không có 40 câu trả `None`; raw/max không hợp lệ gây `ValueError`; thiếu đầu vào overall trả `None`; ví dụ cho kết quả 7.0/7.0/7.5; và `round_to_half(Decimal("7.25")) == Decimal("7.5")`.
 
-- [ ] **Step 2: Run the scoring test and verify it fails**
+- [ ] **Bước 2: Chạy scoring test và xác nhận fail**
 
-Run: `Set-Location backend; uv run pytest tests/test_ielts_band.py -q`
+Chạy: `Set-Location backend; uv run pytest tests/test_ielts_band.py -q`
 
-Expected: import failure for `app.domains.scoring.ielts_band`.
+Mong đợi: import `app.domains.scoring.ielts_band` fail.
 
-- [ ] **Step 3: Implement the immutable threshold table and Decimal rounding**
+- [ ] **Bước 3: Triển khai bảng ngưỡng bất biến và làm tròn Decimal**
 
 ```python
 _PRODUCT_THRESHOLDS = (
@@ -90,58 +90,58 @@ _PRODUCT_THRESHOLDS = (
 )
 ```
 
-Validate input before checking `max_score == 40`, return the first matching threshold, and use `ROUND_HALF_UP` after multiplying by two.
+Kiểm đầu vào trước điều kiện `max_score == 40`, trả ngưỡng khớp đầu tiên và dùng `ROUND_HALF_UP` sau khi nhân hai.
 
-- [ ] **Step 4: Add the model field, response field, and migration**
+- [ ] **Bước 4: Thêm model field, response field và migration**
 
-Use `sa.Numeric(precision=2, scale=1)` in the migration and `Numeric(2, 1)` with `Decimal | None` in SQLAlchemy. Add `band_score: float | None` to `AttemptResponse` and `HistoryItem`.
+Dùng `sa.Numeric(precision=2, scale=1)` trong migration và `Numeric(2, 1)` với `Decimal | None` trong SQLAlchemy. Thêm `band_score: float | None` vào `AttemptResponse` và `HistoryItem`.
 
-- [ ] **Step 5: Run focused tests and migration SQL validation**
+- [ ] **Bước 5: Chạy tests tập trung và kiểm SQL migration**
 
-Run: `Set-Location backend; uv run pytest tests/test_ielts_band.py -q; uv run alembic upgrade head --sql | Out-Null`
+Chạy: `Set-Location backend; uv run pytest tests/test_ielts_band.py -q; uv run alembic upgrade head --sql | Out-Null`
 
-Expected: scoring tests pass and Alembic renders without an exception.
+Mong đợi: scoring tests pass, Alembic render không exception.
 
-- [ ] **Step 6: Commit the scoring domain**
+- [ ] **Bước 6: Commit scoring domain**
 
 ```powershell
 git add backend/app/domains/scoring backend/app/models/entities.py backend/app/schemas/attempts.py backend/alembic/versions/20260920_0007_attempt_band_score.py backend/tests/test_ielts_band.py
 git commit -m "feat: add IELTS band scoring domain"
 ```
 
-### Task 2: Attempt Finalization and Backend History Aggregates
+### Công việc 2: Finalize attempt và tổng hợp lịch sử tại backend
 
-**Files:**
-- Modify: `backend/app/services/attempts.py`
-- Modify: `backend/app/repositories/attempts.py`
-- Modify: `backend/app/schemas/attempts.py`
-- Modify: `backend/tests/test_timer.py`
-- Create: `backend/tests/test_attempt_scoring_history.py`
+**Tệp:**
+- Sửa: `backend/app/services/attempts.py`
+- Sửa: `backend/app/repositories/attempts.py`
+- Sửa: `backend/app/schemas/attempts.py`
+- Sửa: `backend/tests/test_timer.py`
+- Tạo: `backend/tests/test_attempt_scoring_history.py`
 
-**Interfaces:**
-- Consumes: Task 1 scoring helpers and `Attempt.band_score`
-- Produces: async attempt synchronization that scores before finalization
-- Produces: `HistoryGroup` and `AttemptList.groups`
+**Giao diện:**
+- Đầu vào: scoring helpers của công việc 1 và `Attempt.band_score`
+- Đầu ra: đồng bộ attempt bất đồng bộ, chấm trước finalize
+- Đầu ra: `HistoryGroup` và `AttemptList.groups`
 
-- [ ] **Step 1: Write objective finalization and serialization tests**
+- [ ] **Bước 1: Viết tests finalize và serialization cho bài khách quan**
 
-Create a published 40-question fictional objective module, save boundary-count correct answers, submit it, and assert raw/max/band in `AttemptResponse`, review, and history. Add a timer-expiry case that calls `get()` after the deadline and asserts `AUTO_SUBMITTED` plus the same score fields. Add a Writing `_score` case asserting all three score fields are null.
+Tạo module khách quan giả tưởng 40 câu đã publish, lưu số câu đúng ở các biên quy đổi rồi submit; kiểm raw/max/band trong `AttemptResponse`, review và history. Thêm ca hết giờ gọi `get()` sau deadline, kiểm `AUTO_SUBMITTED` và cùng trường điểm. Thêm ca Writing `_score` xác nhận cả ba trường điểm null.
 
-- [ ] **Step 2: Write history grouping tests**
+- [ ] **Bước 2: Viết tests nhóm lịch sử**
 
-Create multiple finalized attempts for the same version/module with distinct finish times, plus attempts on another version. Assert groups never merge versions, select the latest finalized attempt per skill, retain all rows in `items`, require all three bands for overall, and apply the Task 1 example results.
+Tạo nhiều finalized attempts cùng version/module với giờ hoàn tất khác nhau, thêm attempts của version khác. Kiểm groups không gộp versions; chọn attempt finalized mới nhất từng kỹ năng; giữ mọi hàng trong `items`; cần đủ ba bands để có overall; áp dụng kết quả ví dụ công việc 1.
 
-- [ ] **Step 3: Run tests and verify failures**
+- [ ] **Bước 3: Chạy tests và xác nhận fail**
 
-Run: `Set-Location backend; uv run pytest tests/test_attempt_scoring_history.py tests/test_timer.py -q`
+Chạy: `Set-Location backend; uv run pytest tests/test_attempt_scoring_history.py tests/test_timer.py -q`
 
-Expected: missing band fields/groups and unscored timer finalization failures.
+Mong đợi: fail vì thiếu band fields/groups và chưa chấm khi timer finalize.
 
-- [ ] **Step 4: Refactor synchronization and scoring**
+- [ ] **Bước 4: Refactor đồng bộ và tính điểm**
 
-Change `_synchronize_state` to `async`, await it from `get`, activity, answer, flag, highlight, Writing save, and submit paths, and call `_score` before every terminal transition it initiates. `_score` switches explicitly on `ModuleType`: objective modules calculate raw/max/band; Writing clears them.
+Chuyển `_synchronize_state` thành `async`; await từ `get`, activity, answer, flag, highlight, Writing save và submit; gọi `_score` trước mọi terminal transition do hàm tạo. `_score` phân nhánh rõ theo `ModuleType`: module khách quan tính raw/max/band, Writing xóa các giá trị đó.
 
-- [ ] **Step 5: Add history schemas and aggregate construction**
+- [ ] **Bước 5: Thêm history schemas và xây dữ liệu tổng hợp**
 
 ```python
 class HistoryGroup(BaseModel):
@@ -155,329 +155,329 @@ class HistoryGroup(BaseModel):
     overall_band_score: float | None = None
 ```
 
-Select latest non-`IN_PROGRESS` items by `finished_at` then `started_at`, compute overall with the shared domain helper, and return `AttemptList(items=..., groups=..., total=...)`.
+Chọn items mới nhất không ở `IN_PROGRESS` theo `finished_at` rồi `started_at`; tính overall bằng domain helper dùng chung, trả `AttemptList(items=..., groups=..., total=...)`.
 
-- [ ] **Step 6: Run focused backend tests**
+- [ ] **Bước 6: Chạy backend tests tập trung**
 
-Run: `Set-Location backend; uv run pytest tests/test_attempt_scoring_history.py tests/test_timer.py tests/test_attempt_state_machine.py -q`
+Chạy: `Set-Location backend; uv run pytest tests/test_attempt_scoring_history.py tests/test_timer.py tests/test_attempt_state_machine.py -q`
 
-Expected: all pass.
+Mong đợi: tất cả đều pass.
 
-- [ ] **Step 7: Commit attempt scoring and history domain**
+- [ ] **Bước 7: Commit domain điểm attempt và lịch sử**
 
 ```powershell
 git add backend/app/services/attempts.py backend/app/repositories/attempts.py backend/app/schemas/attempts.py backend/tests/test_attempt_scoring_history.py backend/tests/test_timer.py
 git commit -m "feat: score finalized attempts and aggregate history"
 ```
 
-### Task 3: Writing Builder Backend and Validation
+### Công việc 3: Writing Builder backend và validation
 
-**Files:**
-- Create: `backend/app/services/writing.py`
-- Create: `backend/app/api/v1/writing.py`
-- Create: `backend/tests/test_writing_builder.py`
-- Modify: `backend/app/api/v1/router.py`
-- Modify: `backend/app/models/entities.py`
-- Modify: `backend/app/repositories/tests.py`
-- Modify: `backend/app/schemas/content.py`
-- Modify: `backend/app/services/reading.py`
-- Modify: `backend/app/services/tests.py`
-- Modify: `backend/tests/test_version_validation.py`
+**Tệp:**
+- Tạo: `backend/app/services/writing.py`
+- Tạo: `backend/app/api/v1/writing.py`
+- Tạo: `backend/tests/test_writing_builder.py`
+- Sửa: `backend/app/api/v1/router.py`
+- Sửa: `backend/app/models/entities.py`
+- Sửa: `backend/app/repositories/tests.py`
+- Sửa: `backend/app/schemas/content.py`
+- Sửa: `backend/app/services/reading.py`
+- Sửa: `backend/app/services/tests.py`
+- Sửa: `backend/tests/test_version_validation.py`
 
-**Interfaces:**
-- Produces: `BuilderWritingTask`, `WritingTaskWrite`, and `BuilderModule.writing_tasks`
-- Produces: `PUT /writing/tasks/{task_id}`
-- Extends: existing generic module creation to initialize fixed Writing tasks atomically
+**Giao diện:**
+- Đầu ra: `BuilderWritingTask`, `WritingTaskWrite` và `BuilderModule.writing_tasks`
+- Đầu ra: `PUT /writing/tasks/{task_id}`
+- Mở rộng: tạo module chung hiện có để khởi tạo các Writing tasks cố định một cách nguyên tử
 
-- [ ] **Step 1: Write Writing builder service tests**
+- [ ] **Bước 1: Viết tests cho Writing builder service**
 
-Test atomic module initialization and defaults, updates to prompt/word minimum/duration, Task 1 valid image attachment, wrong type and wrong version rejection, Task 2 image rejection, published-version immutability, image removal cleanup, and module deletion.
+Kiểm khởi tạo module nguyên tử và mặc định; sửa prompt/số từ tối thiểu/thời lượng; ảnh Task 1 hợp lệ; từ chối sai loại hoặc sai version; cấm ảnh Task 2; version đã publish bất biến; cleanup ảnh khi gỡ; xóa module.
 
-- [ ] **Step 2: Write validation and clone tests**
+- [ ] **Bước 2: Viết tests validation và clone**
 
-Assert a partial Writing draft saves and reports readiness warnings; invalid numbers/orders and Task 2 images are blocking; cloning preserves both tasks and existing image references; repository loading exposes image metadata.
+Kiểm Writing draft chưa đủ vẫn lưu và báo readiness warnings; số/thứ tự sai và ảnh Task 2 phải chặn; clone giữ cả hai tasks và tham chiếu ảnh; repository loading cung cấp metadata ảnh.
 
-- [ ] **Step 3: Run tests and verify failures**
+- [ ] **Bước 3: Chạy tests và xác nhận fail**
 
-Run: `Set-Location backend; uv run pytest tests/test_writing_builder.py tests/test_version_validation.py -q`
+Chạy: `Set-Location backend; uv run pytest tests/test_writing_builder.py tests/test_version_validation.py -q`
 
-Expected: missing DTO/service/route behavior.
+Mong đợi: thiếu hành vi DTO/service/route.
 
-- [ ] **Step 4: Extend the builder contract and relationship loading**
+- [ ] **Bước 4: Mở rộng builder contract và tải relationships**
 
-Add the explicit `WritingTask.image_asset` relationship, load it from `version_detail_query`, present it through `ReadingService._present_version`, and default `writing_tasks=[]` additively.
+Thêm relationship `WritingTask.image_asset` rõ ràng, tải từ `version_detail_query`, trình bày qua `ReadingService._present_version` và bổ sung mặc định `writing_tasks=[]` tương thích.
 
-- [ ] **Step 5: Add atomic initialization and task update validation**
+- [ ] **Bước 5: Thêm khởi tạo nguyên tử và validation cập nhật task**
 
-When `ModuleCreate.module_type == WRITING`, append the two fixed task records before flushing. `WritingTaskWrite` contains only `prompt`, `minimum_recommended_words`, `recommended_duration_seconds`, and `image_asset_id`. The service derives identity from the stored task and enforces the Task 1/Task 2 asset rules.
+Khi `ModuleCreate.module_type == WRITING`, thêm hai task records cố định trước flush. `WritingTaskWrite` chỉ chứa `prompt`, `minimum_recommended_words`, `recommended_duration_seconds` và `image_asset_id`. Service suy ra identity từ task lưu trữ và áp dụng quy tắc assets Task 1/Task 2.
 
-- [ ] **Step 6: Extend publish validation**
+- [ ] **Bước 6: Mở rộng publish validation**
 
-Check module ownership, task number/order uniqueness and allowed pairs, image type/ownership, and Task 2 prohibition as errors. Emit readiness warnings for missing tasks, blank prompts, and nonstandard recommendation values without preventing partial drafts from being saved.
+Xem ownership module, tính duy nhất số/thứ tự task và cặp cho phép, loại/chủ ảnh, quy tắc cấm ảnh Task 2 là errors. Phát readiness warnings cho thiếu task, prompt trống và recommendation không chuẩn, nhưng vẫn cho lưu draft chưa đủ.
 
-- [ ] **Step 7: Run focused builder tests and OpenAPI contract test**
+- [ ] **Bước 7: Chạy builder tests tập trung và OpenAPI contract test**
 
-Run: `Set-Location backend; uv run pytest tests/test_writing_builder.py tests/test_version_validation.py tests/test_api_contract.py -q`
+Chạy: `Set-Location backend; uv run pytest tests/test_writing_builder.py tests/test_version_validation.py tests/test_api_contract.py -q`
 
-Expected: all pass, including the new Writing task route in OpenAPI.
+Mong đợi: tất cả pass, gồm route Writing task mới trong OpenAPI.
 
-- [ ] **Step 8: Commit Writing builder backend**
+- [ ] **Bước 8: Commit Writing builder backend**
 
 ```powershell
 git add backend/app/api/v1/writing.py backend/app/api/v1/router.py backend/app/models/entities.py backend/app/repositories/tests.py backend/app/schemas/content.py backend/app/services/reading.py backend/app/services/tests.py backend/app/services/writing.py backend/tests/test_writing_builder.py backend/tests/test_version_validation.py backend/tests/test_api_contract.py
 git commit -m "feat: add Writing builder backend"
 ```
 
-### Task 4: Writing Response, Review, and Manual Grade APIs
+### Công việc 4: APIs bài Writing, review và điểm thủ công
 
-**Files:**
-- Modify: `backend/app/schemas/attempts.py`
-- Modify: `backend/app/schemas/content.py`
-- Modify: `backend/app/repositories/attempts.py`
-- Modify: `backend/app/services/attempts.py`
-- Modify: `backend/app/api/v1/attempts.py`
-- Create: `backend/tests/test_writing_attempts.py`
+**Tệp:**
+- Sửa: `backend/app/schemas/attempts.py`
+- Sửa: `backend/app/schemas/content.py`
+- Sửa: `backend/app/repositories/attempts.py`
+- Sửa: `backend/app/services/attempts.py`
+- Sửa: `backend/app/api/v1/attempts.py`
+- Tạo: `backend/tests/test_writing_attempts.py`
 
-**Interfaces:**
-- Produces: `WritingResponseUpdate`, `WritingResponse`, `WritingScoreUpdate`
-- Produces: `ExamWritingTask` in `AttemptExam.writing_tasks`
-- Produces: `WritingAttemptReview`
-- Produces: Writing save, Writing review, and manual score endpoints
+**Giao diện:**
+- Đầu ra: `WritingResponseUpdate`, `WritingResponse`, `WritingScoreUpdate`
+- Đầu ra: `ExamWritingTask` trong `AttemptExam.writing_tasks`
+- Đầu ra: `WritingAttemptReview`
+- Đầu ra: endpoints lưu Writing, review Writing và điểm thủ công
 
-- [ ] **Step 1: Write Writing response lifecycle tests**
+- [ ] **Bước 1: Viết tests vòng đời bài Writing**
 
-Start a published Writing attempt, assert empty saved content in the exam DTO, save both tasks, verify Unicode word counts, update one response through upsert, reload the exam DTO, submit, and assert responses remain while raw/max/band remain null.
+Bắt đầu Writing attempt đã publish; kiểm nội dung đã lưu ban đầu rỗng trong exam DTO; lưu cả hai tasks, kiểm Unicode word counts, upsert một response, tải lại DTO, submit; kiểm responses được giữ còn raw/max/band vẫn null.
 
-- [ ] **Step 2: Write ownership and grading validation tests**
+- [ ] **Bước 2: Viết tests ownership và validation điểm**
 
-Reject saves on objective attempts, wrong-version tasks, and finalized attempts. Accept every half-band from 0 through 9 on finalized Writing; reject -0.5, 7.25, 9.5, in-progress grading, and grading objective attempts. Assert review/history immediately reflect the saved band.
+Từ chối save vào objective attempts, task sai version và attempts đã finalize. Chấp nhận mọi nửa band từ 0 đến 9 cho Writing đã finalize; từ chối -0.5, 7.25, 9.5, chấm khi đang làm và chấm objective attempts. Kiểm review/history phản ánh ngay band đã lưu.
 
-- [ ] **Step 3: Run tests and verify failures**
+- [ ] **Bước 3: Chạy tests và xác nhận fail**
 
-Run: `Set-Location backend; uv run pytest tests/test_writing_attempts.py -q`
+Chạy: `Set-Location backend; uv run pytest tests/test_writing_attempts.py -q`
 
-Expected: missing API/service methods and schemas.
+Mong đợi: thiếu API/service methods và schemas.
 
-- [ ] **Step 4: Implement response upsert and active DTO presentation**
+- [ ] **Bước 4: Triển khai response upsert và DTO đang làm bài**
 
-Use PostgreSQL `insert(...).on_conflict_do_update` on `(attempt_id, writing_task_id)`, call backend `count_words`, update activity time, and add `WRITING_UPDATED` metadata. Present every version task with stored content defaulting to `""` and word count `0`.
+Dùng PostgreSQL `insert(...).on_conflict_do_update` trên `(attempt_id, writing_task_id)`, gọi `count_words` ở backend, cập nhật activity time và thêm metadata `WRITING_UPDATED`. Trình bày mọi task của version với nội dung lưu mặc định `""` và word count `0`.
 
-- [ ] **Step 5: Implement Writing review and manual grade**
+- [ ] **Bước 5: Triển khai Writing review và điểm thủ công**
 
-Build the review from frozen version tasks plus response lookup, include Task 1 image metadata, validate band with Decimal so 0.5 increments are exact, persist `Attempt.band_score`, and return the updated review or attempt response.
+Dựng review từ tasks của version đóng băng cùng response lookup, gồm metadata ảnh Task 1. Kiểm band bằng Decimal để bước 0.5 chính xác; lưu `Attempt.band_score`, trả review hoặc attempt response đã cập nhật.
 
-- [ ] **Step 6: Verify answer-key isolation and API contracts**
+- [ ] **Bước 6: Kiểm cách ly answer keys và API contracts**
 
-Run: `Set-Location backend; uv run pytest tests/test_writing_attempts.py tests/test_api_contract.py tests/test_writing_text.py -q`
+Chạy: `Set-Location backend; uv run pytest tests/test_writing_attempts.py tests/test_api_contract.py tests/test_writing_text.py -q`
 
-Expected: all pass; active schemas contain no answer-key field for Writing.
+Mong đợi: tất cả pass; active schemas không có answer-key field cho Writing.
 
-- [ ] **Step 7: Commit Writing attempt APIs**
+- [ ] **Bước 7: Commit Writing attempt APIs**
 
 ```powershell
 git add backend/app/api/v1/attempts.py backend/app/repositories/attempts.py backend/app/schemas/attempts.py backend/app/schemas/content.py backend/app/services/attempts.py backend/tests/test_writing_attempts.py backend/tests/test_api_contract.py
 git commit -m "feat: persist and grade Writing attempts"
 ```
 
-### Task 5: Writing Builder and Draft Preview Frontend
+### Công việc 5: Writing Builder và Draft Preview frontend
 
-**Files:**
-- Create: `frontend/src/features/test-builder/writing-builder.tsx`
-- Create: `frontend/tests/writing-builder.test.tsx`
-- Modify: `frontend/src/lib/api/builder.ts`
-- Modify: `frontend/src/lib/api/assets.ts`
-- Modify: `frontend/src/lib/routes.ts`
-- Modify: `frontend/src/features/test-builder/builder-workspace-navigation.tsx`
-- Modify: `frontend/src/features/test-builder/draft-preview.tsx`
-- Modify: `frontend/src/app/admin/tests/[testId]/versions/[versionId]/edit/page.tsx`
-- Modify: `frontend/src/app/admin/tests/[testId]/versions/[versionId]/preview/page.tsx`
-- Modify: `frontend/tests/builder-workspace-navigation.test.tsx`
-- Modify: `frontend/tests/builder-workspace-page.test.tsx`
-- Modify: `frontend/tests/draft-preview.test.tsx`
+**Tệp:**
+- Tạo: `frontend/src/features/test-builder/writing-builder.tsx`
+- Tạo: `frontend/tests/writing-builder.test.tsx`
+- Sửa: `frontend/src/lib/api/builder.ts`
+- Sửa: `frontend/src/lib/api/assets.ts`
+- Sửa: `frontend/src/lib/routes.ts`
+- Sửa: `frontend/src/features/test-builder/builder-workspace-navigation.tsx`
+- Sửa: `frontend/src/features/test-builder/draft-preview.tsx`
+- Sửa: `frontend/src/app/admin/tests/[testId]/versions/[versionId]/edit/page.tsx`
+- Sửa: `frontend/src/app/admin/tests/[testId]/versions/[versionId]/preview/page.tsx`
+- Sửa: `frontend/tests/builder-workspace-navigation.test.tsx`
+- Sửa: `frontend/tests/builder-workspace-page.test.tsx`
+- Sửa: `frontend/tests/draft-preview.test.tsx`
 
-**Interfaces:**
-- Consumes: Task 3 builder DTO and task update endpoint
-- Produces: `createWritingModule`, `updateWritingTask`, and Writing workspace UI
+**Giao diện:**
+- Đầu vào: builder DTO và task update endpoint của công việc 3
+- Đầu ra: `createWritingModule`, `updateWritingTask` và UI Writing workspace
 
-- [ ] **Step 1: Update frontend contract fixtures and write failing UI tests**
+- [ ] **Bước 1: Cập nhật frontend contract fixtures và viết UI tests đang fail**
 
-Add `writing_tasks: []` to existing builder fixtures. Test Writing navigation link/status, module initialization, fixed two-task rendering, editable prompts/minimums/durations, Task 1 upload/replace/remove/preview, absence of Task 2 upload controls, deletion confirmation, and Writing draft preview content.
+Thêm `writing_tasks: []` vào builder fixtures hiện có. Kiểm liên kết/trạng thái điều hướng Writing, khởi tạo module, render đúng hai tasks, sửa prompts/minimums/durations, upload/replace/remove/preview ảnh Task 1, không có upload Task 2, xác nhận xóa và nội dung Writing draft preview.
 
-- [ ] **Step 2: Run focused tests and verify failures**
+- [ ] **Bước 2: Chạy tests tập trung và xác nhận fail**
 
-Run: `Set-Location frontend; npm test -- writing-builder.test.tsx builder-workspace-navigation.test.tsx builder-workspace-page.test.tsx draft-preview.test.tsx`
+Chạy: `Set-Location frontend; npm test -- writing-builder.test.tsx builder-workspace-navigation.test.tsx builder-workspace-page.test.tsx draft-preview.test.tsx`
 
-Expected: missing schemas, route acceptance, and components.
+Mong đợi: thiếu schemas, route acceptance và components.
 
-- [ ] **Step 3: Extend Zod contracts and API functions**
+- [ ] **Bước 3: Mở rộng Zod contracts và API functions**
 
-Add `builderWritingTaskSchema`; default `writing_tasks`, passages, and listening parts to empty arrays; extend `builderPreviewPath` with `writing`; keep `uploadAsset("images", ...)` for Writing task images.
+Thêm `builderWritingTaskSchema`; mặc định `writing_tasks`, passages và listening parts thành mảng rỗng; mở rộng `builderPreviewPath` với `writing`; giữ `uploadAsset("images", ...)` cho ảnh Writing task.
 
-- [ ] **Step 4: Implement the focused Writing builder**
+- [ ] **Bước 4: Triển khai Writing builder tập trung**
 
-Reuse `BuilderLifecycleProvider`, existing buttons, `ConfirmDialog`, `uploadAsset`, module deletion, and `router.refresh`. Use controlled task editor cards and send one complete task update per Save/image mutation.
+Dùng lại `BuilderLifecycleProvider`, buttons hiện có, `ConfirmDialog`, `uploadAsset`, xóa module và `router.refresh`. Dùng controlled task editor cards; gửi cập nhật task đầy đủ một lần cho mỗi Save/image mutation.
 
-- [ ] **Step 5: Enable workspace, overview, and preview routing**
+- [ ] **Bước 5: Bật workspace, overview và preview routing**
 
-Add `writing` to `BuilderWorkspace`, enable its row, render Writing-specific overview task counts, select `WritingBuilder`, accept `?module=writing`, and render a noninteractive two-task preview.
+Thêm `writing` vào `BuilderWorkspace`, bật hàng tương ứng, render số tasks Writing trong overview, chọn `WritingBuilder`, nhận `?module=writing` và render preview hai tasks không tương tác.
 
-- [ ] **Step 6: Run focused frontend tests**
+- [ ] **Bước 6: Chạy frontend tests tập trung**
 
-Run: `Set-Location frontend; npm test -- writing-builder.test.tsx builder-workspace-navigation.test.tsx builder-workspace-page.test.tsx draft-preview.test.tsx`
+Chạy: `Set-Location frontend; npm test -- writing-builder.test.tsx builder-workspace-navigation.test.tsx builder-workspace-page.test.tsx draft-preview.test.tsx`
 
-Expected: all pass.
+Mong đợi: tất cả đều pass.
 
-- [ ] **Step 7: Commit Writing builder frontend**
+- [ ] **Bước 7: Commit Writing builder frontend**
 
 ```powershell
 git add frontend/src/features/test-builder/writing-builder.tsx frontend/src/features/test-builder/builder-workspace-navigation.tsx frontend/src/features/test-builder/draft-preview.tsx frontend/src/lib/api/builder.ts frontend/src/lib/api/assets.ts frontend/src/lib/routes.ts frontend/src/app/admin/tests/[testId]/versions/[versionId]/edit/page.tsx frontend/src/app/admin/tests/[testId]/versions/[versionId]/preview/page.tsx frontend/tests/writing-builder.test.tsx frontend/tests/builder-workspace-navigation.test.tsx frontend/tests/builder-workspace-page.test.tsx frontend/tests/draft-preview.test.tsx
 git commit -m "feat: add Writing builder workspace"
 ```
 
-### Task 6: Writing Runner and Review Frontend
+### Công việc 6: Writing Runner và Review frontend
 
-**Files:**
-- Create: `frontend/src/features/writing/writing-runner.tsx`
-- Create: `frontend/src/features/writing/writing-review.tsx`
-- Create: `frontend/tests/writing-runner.test.tsx`
-- Create: `frontend/tests/writing-review.test.tsx`
-- Modify: `frontend/src/lib/api/attempts.ts`
-- Modify: `frontend/src/lib/api/exam.ts`
-- Modify: `frontend/src/features/exam/start-attempt.tsx`
-- Modify: `frontend/src/app/library/page.tsx`
-- Modify: `frontend/src/app/attempt/[attemptId]/page.tsx`
-- Modify: `frontend/src/app/review/[attemptId]/page.tsx`
-- Modify: `frontend/src/features/reading/reading-review.tsx`
-- Modify: `frontend/src/features/listening/listening-review.tsx`
+**Tệp:**
+- Tạo: `frontend/src/features/writing/writing-runner.tsx`
+- Tạo: `frontend/src/features/writing/writing-review.tsx`
+- Tạo: `frontend/tests/writing-runner.test.tsx`
+- Tạo: `frontend/tests/writing-review.test.tsx`
+- Sửa: `frontend/src/lib/api/attempts.ts`
+- Sửa: `frontend/src/lib/api/exam.ts`
+- Sửa: `frontend/src/features/exam/start-attempt.tsx`
+- Sửa: `frontend/src/app/library/page.tsx`
+- Sửa: `frontend/src/app/attempt/[attemptId]/page.tsx`
+- Sửa: `frontend/src/app/review/[attemptId]/page.tsx`
+- Sửa: `frontend/src/features/reading/reading-review.tsx`
+- Sửa: `frontend/src/features/listening/listening-review.tsx`
 
-**Interfaces:**
-- Consumes: Task 4 exam/review/save/grade contracts
-- Produces: Writing candidate and Writing review experiences
-- Extends: objective review headers with `band_score`
+**Giao diện:**
+- Đầu vào: exam/review/save/grade contracts công việc 4
+- Đầu ra: giao diện làm bài và review Writing
+- Mở rộng: objective review headers với `band_score`
 
-- [ ] **Step 1: Write runner tests**
+- [ ] **Bước 1: Viết runner tests**
 
-Test both task tabs, Task 1 image, restored server text, local word count updates, 750 ms debounced autosave, immediate Save, error state, save-before-submit ordering, and prevention of submit after a failed save.
+Kiểm hai task tabs, ảnh Task 1, khôi phục text server, cập nhật word count cục bộ, autosave debounce 750 ms, Save ngay, lỗi, thứ tự save trước submit và chặn submit khi save fail.
 
-- [ ] **Step 2: Write review and routing tests**
+- [ ] **Bước 2: Viết review và routing tests**
 
-Test response/prompt/image/word count display, all 19 half-band options, save-score API invocation and updated display, Writing-specific attempt/review routing, and objective review headers showing band plus raw/max.
+Kiểm hiển thị response/prompt/ảnh/word count, đủ 19 lựa chọn nửa band, gọi API lưu điểm và cập nhật hiển thị, routing attempt/review riêng Writing, objective review headers có band cùng raw/max.
 
-- [ ] **Step 3: Run focused tests and verify failures**
+- [ ] **Bước 3: Chạy tests tập trung và xác nhận fail**
 
-Run: `Set-Location frontend; npm test -- writing-runner.test.tsx writing-review.test.tsx`
+Chạy: `Set-Location frontend; npm test -- writing-runner.test.tsx writing-review.test.tsx`
 
-Expected: missing API functions and components.
+Mong đợi: thiếu API functions và components.
 
-- [ ] **Step 4: Extend exam and attempt API schemas**
+- [ ] **Bước 4: Mở rộng exam và attempt API schemas**
 
-Add `band_score` to attempt schema, Writing task schema to exam payload, `saveWritingResponse`, `getWritingReview`, and `saveWritingScore`. Parse responses with Zod rather than unchecked casts.
+Thêm `band_score` vào attempt schema, Writing task schema vào exam payload, `saveWritingResponse`, `getWritingReview` và `saveWritingScore`. Parse responses bằng Zod, không ép kiểu thiếu kiểm tra.
 
-- [ ] **Step 5: Implement Writing runner**
+- [ ] **Bước 5: Triển khai Writing runner**
 
-Reuse timer offset helpers and activity heartbeat. Maintain per-task content, dirty revisions, debounce handles, and saved/error state. An explicit Save cancels the timer and persists immediately. Submit awaits a successful current-task save before calling `submitAttempt`.
+Dùng lại timer offset helpers và activity heartbeat. Giữ content, dirty revisions, debounce handles và saved/error state theo task. Save rõ ràng hủy timer và persist ngay. Submit đợi save task hiện tại thành công rồi mới gọi `submitAttempt`.
 
-- [ ] **Step 6: Implement Writing review and routing**
+- [ ] **Bước 6: Triển khai Writing review và routing**
 
-Render frozen prompts, optional Task 1 image, plain response text, and word count. Use a select generated from `Array.from({ length: 19 }, (_, index) => index / 2)`. Route `WRITING` explicitly before the Reading fallback.
+Render prompts đóng băng, ảnh Task 1 tùy chọn, bài plain text và word count. Sinh select bằng `Array.from({ length: 19 }, (_, index) => index / 2)`. Route `WRITING` rõ ràng trước Reading fallback.
 
-- [ ] **Step 7: Add Writing to the published library**
+- [ ] **Bước 7: Thêm Writing vào thư viện đã publish**
 
-Allow `StartAttempt` to accept all three modules, default Writing to 3,600 seconds, render Writing metadata using task count, and retain existing objective cards unchanged.
+Cho `StartAttempt` nhận cả ba modules, mặc định Writing 3,600 giây, render Writing metadata theo task count và giữ objective cards hiện có.
 
-- [ ] **Step 8: Run focused tests**
+- [ ] **Bước 8: Chạy tests tập trung**
 
-Run: `Set-Location frontend; npm test -- writing-runner.test.tsx writing-review.test.tsx word-count.test.ts`
+Chạy: `Set-Location frontend; npm test -- writing-runner.test.tsx writing-review.test.tsx word-count.test.ts`
 
-Expected: all pass.
+Mong đợi: tất cả đều pass.
 
-- [ ] **Step 9: Commit candidate and review UI**
+- [ ] **Bước 9: Commit UI làm bài và review**
 
 ```powershell
 git add frontend/src/features/writing frontend/src/lib/api/attempts.ts frontend/src/lib/api/exam.ts frontend/src/features/exam/start-attempt.tsx frontend/src/app/library/page.tsx frontend/src/app/attempt/[attemptId]/page.tsx frontend/src/app/review/[attemptId]/page.tsx frontend/src/features/reading/reading-review.tsx frontend/src/features/listening/listening-review.tsx frontend/tests/writing-runner.test.tsx frontend/tests/writing-review.test.tsx
 git commit -m "feat: add Writing runner and manual review"
 ```
 
-### Task 7: Two-Mode Attempt History Frontend
+### Công việc 7: History frontend có hai chế độ
 
-**Files:**
-- Modify: `frontend/src/lib/api/history.ts`
-- Modify: `frontend/src/features/history/attempt-history-list.tsx`
-- Modify: `frontend/src/app/history/page.tsx`
-- Modify: `frontend/tests/attempt-history-list.test.tsx`
+**Tệp:**
+- Sửa: `frontend/src/lib/api/history.ts`
+- Sửa: `frontend/src/features/history/attempt-history-list.tsx`
+- Sửa: `frontend/src/app/history/page.tsx`
+- Sửa: `frontend/tests/attempt-history-list.test.tsx`
 
-**Interfaces:**
-- Consumes: Task 2 `AttemptList` with server-produced groups
-- Produces: By skill and By test tabs without frontend score aggregation
+**Giao diện:**
+- Đầu vào: `AttemptList` của công việc 2 với groups do server tạo
+- Đầu ra: tabs By skill và By test; không tổng hợp điểm ở frontend
 
-- [ ] **Step 1: Expand fixtures and write failing history tests**
+- [ ] **Bước 1: Mở rộng fixtures và viết history tests đang fail**
 
-Test stable IDs and bands, tab switching, all individual attempts in By skill, exact-version grouping in By test, server-provided overall display, incomplete overall dash, selected latest module links, objective raw/unavailable-band copy, Writing Not graded, Continue/Review, and delete refresh.
+Kiểm IDs/bands ổn định, chuyển tabs, mọi attempts riêng trong By skill, nhóm đúng version trong By test, overall từ server, dấu gạch khi chưa đủ, liên kết module mới nhất được chọn, nội dung raw/band chưa có, Writing Not graded, Continue/Review và refresh sau xóa.
 
-- [ ] **Step 2: Run the history test and verify failures**
+- [ ] **Bước 2: Chạy history test và xác nhận fail**
 
-Run: `Set-Location frontend; npm test -- attempt-history-list.test.tsx`
+Chạy: `Set-Location frontend; npm test -- attempt-history-list.test.tsx`
 
-Expected: schema and tab/group rendering failures.
+Mong đợi: schema và render tabs/groups fail.
 
-- [ ] **Step 3: Extend the history Zod contract**
+- [ ] **Bước 3: Mở rộng history Zod contract**
 
-Model `HistoryItem`, `HistoryGroup`, and the response with `items`, `groups`, and `total`. Do not add a client-side overall helper.
+Mô hình hóa `HistoryItem`, `HistoryGroup` và response có `items`, `groups`, `total`. Không thêm overall helper phía client.
 
-- [ ] **Step 4: Refactor the history component into two views**
+- [ ] **Bước 4: Refactor history component thành hai góc nhìn**
 
-Keep delete state and confirmation shared. Render score copy by module and eligibility. Synchronize state when refreshed server props arrive so deleting a selected aggregate attempt updates both tabs from backend data.
+Dùng chung delete state và xác nhận. Hiển thị điểm theo module/eligibility. Đồng bộ state khi có server props mới để xóa attempt đang được chọn trong nhóm cập nhật cả hai tabs từ backend data.
 
-- [ ] **Step 5: Run history tests**
+- [ ] **Bước 5: Chạy history tests**
 
-Run: `Set-Location frontend; npm test -- attempt-history-list.test.tsx`
+Chạy: `Set-Location frontend; npm test -- attempt-history-list.test.tsx`
 
-Expected: all pass.
+Mong đợi: tất cả đều pass.
 
-- [ ] **Step 6: Commit history redesign**
+- [ ] **Bước 6: Commit History mới**
 
 ```powershell
 git add frontend/src/lib/api/history.ts frontend/src/features/history/attempt-history-list.tsx frontend/src/app/history/page.tsx frontend/tests/attempt-history-list.test.tsx
 git commit -m "feat: add grouped attempt history views"
 ```
 
-### Task 8: Visual Integration and Full Verification
+### Công việc 8: Tích hợp giao diện và kiểm chứng đầy đủ
 
-**Files:**
-- Modify: `frontend/src/app/globals.css`
-- Modify: `frontend/tests/builder-route.test.tsx`
-- Modify: `frontend/tests/listening-player.test.tsx`
-- Modify: `frontend/tests/reading-instructions.test.tsx`
-- Modify: `frontend/tests/reading-navigation.test.tsx`
-- Modify: `frontend/tests/version-actions.test.tsx`
+**Tệp:**
+- Sửa: `frontend/src/app/globals.css`
+- Sửa: `frontend/tests/builder-route.test.tsx`
+- Sửa: `frontend/tests/listening-player.test.tsx`
+- Sửa: `frontend/tests/reading-instructions.test.tsx`
+- Sửa: `frontend/tests/reading-navigation.test.tsx`
+- Sửa: `frontend/tests/version-actions.test.tsx`
 
-**Interfaces:**
-- Consumes: all previous UI components and existing CSS tokens
-- Produces: responsive, dark-mode-compatible Writing and history layouts
+**Giao diện:**
+- Đầu vào: mọi UI components trước đó và CSS tokens hiện có
+- Đầu ra: bố cục Writing/History responsive và tương thích dark mode
 
-- [ ] **Step 1: Add responsive visual rules**
+- [ ] **Bước 1: Thêm quy tắc giao diện responsive**
 
-Extend existing builder/module tone selectors for Writing, add Writing task/editor/runner/review and history tab/group classes, use `min-width: 0`, wrapping grids, and textarea sizing that does not cause horizontal overflow.
+Mở rộng builder/module tone selectors cho Writing; thêm classes task/editor/runner/review và history tab/group. Dùng `min-width: 0`, grids có wrapping và textarea sizing không gây tràn ngang.
 
-- [ ] **Step 2: Run the complete backend validation suite**
+- [ ] **Bước 2: Chạy toàn bộ backend validation suite**
 
-Run: `Set-Location backend; uv run ruff check .; uv run ruff format --check .; uv run pytest -q; uv run alembic upgrade head --sql | Out-Null`
+Chạy: `Set-Location backend; uv run ruff check .; uv run ruff format --check .; uv run pytest -q; uv run alembic upgrade head --sql | Out-Null`
 
-Expected: every command exits 0.
+Mong đợi: mọi lệnh trả exit code 0.
 
-- [ ] **Step 3: Run the complete frontend validation suite**
+- [ ] **Bước 3: Chạy toàn bộ frontend validation suite**
 
-Run: `Set-Location frontend; npm run lint; npm run typecheck; npm test; npm run build`
+Chạy: `Set-Location frontend; npm run lint; npm run typecheck; npm test; npm run build`
 
-Expected: every command exits 0.
+Mong đợi: mọi lệnh trả exit code 0.
 
-- [ ] **Step 4: Inspect the final diff and protected file**
+- [ ] **Bước 4: Kiểm final diff và tệp được bảo vệ**
 
-Run: `git diff --check; git status --short; git diff -- frontend/next-env.d.ts`
+Chạy: `git diff --check; git status --short; git diff -- frontend/next-env.d.ts`
 
-Expected: no whitespace errors; `frontend/next-env.d.ts` remains only the pre-existing local modification and is not staged by this work.
+Mong đợi: không lỗi khoảng trắng; `frontend/next-env.d.ts` chỉ giữ sửa đổi local có sẵn, không được stage trong nhiệm vụ này.
 
-- [ ] **Step 5: Commit final integration fixes**
+- [ ] **Bước 5: Commit các bản sửa tích hợp cuối**
 
 ```powershell
 git add frontend/src/app/globals.css backend frontend/src frontend/tests docs/superpowers/plans/2026-09-20-ielts-scoring-writing-history.md

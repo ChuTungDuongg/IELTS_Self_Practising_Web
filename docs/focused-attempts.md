@@ -1,180 +1,75 @@
-# Focused Practice — Phases 1–3
+# Luyện tập theo phạm vi — Giai đoạn 1–3
 
-> **Documentation audit: CURRENT.** Canonical concern này; source-check các boundary/API, không live validation.
-> Mục đích: Focused Practice — Phases 1–3. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../backend/app/services/attempt_scope.py).
-> Đọc cùng [current module/guide](modules/attempts.md); [audit và giới hạn](DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+> **Kiểm toán tài liệu: CURRENT.** Tài liệu chuẩn cho chủ đề này; đã đối chiếu ranh giới/API trong mã nguồn, chưa xác thực trực tiếp trên hệ thống chạy.
+> Mục đích: mô tả luyện tập theo phạm vi ở Giai đoạn 1–3. Đối chiếu mã nguồn `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [phần triển khai](../backend/app/services/attempt_scope.py).
+> Đọc cùng [mô-đun/hướng dẫn hiện hành](modules/attempts.md); [kiểm toán và giới hạn](DOCS_AUDIT.md). Kết quả kiểm thử/benchmark bên dưới thuộc lần thực hiện gốc, không phải kết quả chạy lại trong đợt kiểm toán này.
 
-Focused practice reuses `Attempt`, its owner, frozen published `TestVersion`, timer,
-autosave, pause/resume, submission and review lifecycle. Phase 1 provides the scope
-foundation; Phase 2 exposes Reading passages and Writing tasks; Phase 3 completes
-the user-facing flow with Listening sections and shared-recording audio ranges.
+Luyện tập theo phạm vi tái sử dụng `Attempt`, chủ sở hữu, `TestVersion` đã xuất bản và đóng băng, bộ đếm thời gian, tự lưu, tạm dừng/tiếp tục, nộp và vòng đời xem lại. Giai đoạn 1 tạo nền tảng phạm vi; Giai đoạn 2 mở bài đọc Reading và tác vụ Writing; Giai đoạn 3 hoàn thiện luồng người dùng với phần Listening và khoảng âm thanh trong bản ghi dùng chung.
 
-## Phase 2 — Reading and Writing
+## Giai đoạn 2 — Reading và Writing
 
-`/practice` (sidebar: **Skill practice**) uses the existing authenticated workspace
-and published-version APIs. It lists units from available, non-archived frozen
-tests in one compact grid, with exact test/version provenance on every card.
-An internal filter panel selects Reading, Listening or Writing and derives
-Passage/Section/Task filters from the published units. Client-side search matches
-test titles, unit titles and Writing prompt excerpts within those filters.
-The panel sits beside results on desktop and above them on smaller screens;
-cards adapt to the available width. Thumbnails are deferred. Test Library remains
-the place for full skills and Full Mock.
+`/practice` (thanh bên: **Luyện kỹ năng**) dùng không gian đã xác thực và API phiên bản đã xuất bản hiện có. Trang liệt kê đơn vị học từ đề đóng băng còn khả dụng, chưa lưu trữ, trong lưới gọn; mỗi thẻ ghi chính xác nguồn gốc đề/phiên bản. Bảng lọc nội bộ chọn Reading, Listening hoặc Writing và suy bộ lọc Bài đọc/Phần/Tác vụ từ đơn vị đã xuất bản. Tìm kiếm phía máy khách khớp tên đề, tên đơn vị và trích đoạn đề Writing trong bộ lọc đó. Trên máy tính bảng lọc cạnh kết quả, màn hình nhỏ đặt phía trên; thẻ thích ứng chiều rộng. Ảnh thu nhỏ được hoãn. Thư viện đề vẫn là nơi luyện toàn kỹ năng và Full Mock.
 
-Public VersionDetail summaries now include Reading passage IDs and Writing task
-IDs, minimum recommended words and recommended duration. Question-group summaries
-include the actual question-slot count, so unusual numbering does not imply a
-fictitious continuous range. Summaries contain no answer keys or explanations.
+Tóm tắt VersionDetail công khai nay gồm ID bài đọc Reading và tác vụ Writing, số từ khuyến nghị tối thiểu, thời lượng khuyến nghị. Tóm tắt nhóm câu hỏi có số vị trí câu thật để đánh số khác thường không bị diễn giải thành dải liên tục giả. Tóm tắt không chứa đáp án hoặc giải thích.
 
-Reading starts one passage with 20 / 25 / 30 minutes or count-up (default: 20).
-Writing starts one Task 1 or Task 2 with 20 / 25 / 30 / 35 / 40 minutes or count-up
-(defaults: Task 1 = 20, Task 2 = 40). Both use existing `POST /attempts`, scope
-FOCUSED_UNIT and the real published unit UUID, then open `/attempt/{id}`. Pending
-starts prevent duplicate clicks; failures retain the selected timer.
+Reading khởi tạo một bài đọc với 20 / 25 / 30 phút hoặc đếm tăng (mặc định 20). Writing khởi tạo một Task 1 hoặc Task 2 với 20 / 25 / 30 / 35 / 40 phút hoặc đếm tăng (mặc định Task 1 = 20, Task 2 = 40). Cả hai dùng `POST /attempts`, phạm vi FOCUSED_UNIT và UUID đơn vị đã xuất bản thật, rồi mở `/attempt/{id}`. Trạng thái đang khởi tạo chặn nhấp trùng; lỗi giữ bộ đếm đã chọn.
 
-Existing runners and paused gates identify the focused unit. A single Writing
-task has no redundant task switch. Autosave, highlights, flags, images, word count,
-timers and lifecycle transitions retain their existing behavior.
+Giao diện làm bài và chốt tạm dừng hiện có nhận diện đơn vị đã chọn. Một tác vụ Writing không có nút chuyển tác vụ dư thừa. Tự lưu, tô sáng, cờ, hình, đếm từ, bộ đếm và chuyển vòng đời giữ hành vi hiện có.
 
-Review and **Focused practice** history show Reading raw/max correct and one-decimal
-accuracy when max is positive; partial results never imply an IELTS band. Focused
-Writing shows **Task score** when criterion scores exist, otherwise **Not graded**.
-The nullable history `task_score` uses existing `calculate_task_overall` for the
-selected Writing task only, while `band_score` stays null. Other scopes/modules
-return null task_score. Review preserves the exact task average to two decimals;
-history formats it to one decimal. There is no weighted Writing overall for a
-single task. Existing manual criteria and task-specific AI assessment remain usable
-without changing scoring or provider lifecycle.
+Xem lại và lịch sử **Luyện tập theo phạm vi** hiển thị Reading điểm đúng thô/tối đa và tỷ lệ chính xác một chữ số thập phân khi tối đa dương; kết quả một phần không hàm ý band IELTS. Writing theo phạm vi hiển thị **Điểm tác vụ** nếu có điểm tiêu chí, nếu không là **Chưa chấm**. `task_score` có thể null trong lịch sử dùng `calculate_task_overall` hiện có cho đúng tác vụ Writing được chọn, còn `band_score` giữ null. Phạm vi/mô-đun khác trả task_score null. Xem lại giữ trung bình chính xác hai chữ số thập phân; lịch sử định dạng một chữ số. Không có tổng Writing trọng số cho một tác vụ. Tiêu chí thủ công và đánh giá AI riêng tác vụ vẫn dùng được mà không đổi chấm điểm/vòng đời nhà cung cấp.
 
-History tabs are **By skill**, **Focused practice**, **By test**, **By mock test**.
-Focused records appear in Focused practice rather than By skill. Continue, Resume,
-Review and standalone Delete use existing actions. By-test/Full Mock grouping,
-group deletion and full-skill analytics remain unchanged.
+Các thẻ lịch sử là **Theo kỹ năng**, **Luyện tập theo phạm vi**, **Theo đề**, **Theo bài thi thử**. Bản ghi theo phạm vi xuất hiện ở Luyện tập theo phạm vi thay vì Theo kỹ năng. Tiếp tục, Tiếp tục sau tạm dừng, Xem lại và Xóa lượt riêng dùng thao tác hiện có. Nhóm theo đề/Full Mock, xóa nhóm và phân tích toàn kỹ năng không đổi.
 
-## Phase 3 — Listening sections and audio ranges
+## Giai đoạn 3 — Phần Listening và khoảng âm thanh
 
-Listening keeps one optional recording on the module. Nullable integer
-`ListeningPart.audio_start_seconds` / `audio_end_seconds` locate each section in
-that recording; no files are split or duplicated for clips. Migration
-`20261010_0022_listening_audio_ranges` follows `20261010_0021`. Its PostgreSQL CHECK
-allows both fields null, or both present with start >= 0 and end > start, including
-explicit non-null checks. Old content remains valid without ranges.
+Listening giữ một bản ghi tùy chọn trên mô-đun. Hai số nguyên có thể null `ListeningPart.audio_start_seconds` / `audio_end_seconds` xác định vị trí phần trong bản ghi; không tách hoặc nhân bản tệp để tạo đoạn phát. Migration `20261010_0022_listening_audio_ranges` kế tiếp `20261010_0021`. CHECK PostgreSQL cho phép cả hai null hoặc cả hai hiện diện với start >= 0 và end > start, gồm kiểm tra khác null rõ ràng. Nội dung cũ vẫn hợp lệ khi thiếu khoảng.
 
-The Builder section editor saves title and both boundaries together through the
-existing revision-checked part update. Enter MM:SS, capture the current absolute
-playback position, or preview the selected clip in the existing shared player.
-Incomplete/malformed ranges, end <= start, and end beyond known browser duration
-block autosave and preview with an explanation. Duration comes from browser audio
-metadata; the backend validates range structure without probing/transcoding audio.
+Trình soạn phần Builder lưu tên và cả hai biên cùng nhau qua cập nhật phần có kiểm tra revision hiện có. Nhập MM:SS, lấy vị trí phát tuyệt đối hiện tại hoặc xem trước đoạn đã chọn trong trình phát chung. Khoảng thiếu/sai định dạng, end <= start hoặc end vượt thời lượng trình duyệt biết chặn tự lưu/xem trước và giải thích. Thời lượng đến từ siêu dữ liệu âm thanh trình duyệt; backend kiểm cấu trúc khoảng mà không dò/chuyển mã âm thanh.
 
-Replacing/removing the shared recording with a different asset ID resets all
-section ranges in the same transaction and advances affected section revisions.
-Reattaching the same ID preserves them. A stale editor cannot restore the old
-range after replacement. Version cloning and ZIP export/import preserve ranges
-while remapping section IDs; older schema-v1 archives without these optional fields
-still import. Publishing full Listening does not require section ranges.
+Thay/gỡ bản ghi chung bằng ID tài sản khác đặt lại mọi khoảng phần trong cùng giao dịch và tăng revision các phần bị ảnh hưởng. Gắn lại cùng ID giữ khoảng. Trình soạn cũ không thể khôi phục khoảng cũ sau thay thế. Nhân bản phiên bản và ZIP xuất/nhập giữ khoảng đồng thời ánh xạ lại ID phần; gói schema-v1 cũ không có trường tùy chọn này vẫn nhập được. Xuất bản toàn Listening không đòi khoảng phần.
 
-Public version summaries expose section UUIDs, start/end times, actual question
-counts and a module `has_audio` boolean, without storage paths or answer keys.
-Skill Practice allows focused section starts regardless of recording or range
-availability. The backend proves the unit belongs to the exact published
-module/version and validates the normal attempt scope and timer rules; audio is
-an optional enhancement, not a focused-start prerequisite.
+Tóm tắt phiên bản công khai lộ UUID phần, thời gian đầu/cuối, số câu thật và boolean mô-đun `has_audio`, không lộ đường dẫn kho hoặc đáp án. Luyện kỹ năng cho khởi tạo phần riêng dù có bản ghi/khoảng hay không. Backend chứng minh đơn vị thuộc đúng mô-đun/phiên bản đã xuất bản và kiểm quy tắc phạm vi/bộ đếm thông thường; âm thanh là bổ sung tùy chọn, không phải điều kiện khởi tạo.
 
-Focused Listening starts one LISTENING_PART via the existing attempt API with
-10 / 15 / 20 minutes or count-up (default: 10), then opens `/attempt/{id}`. Its
-runner and review receive only the selected section. With a configured range,
-playback uses absolute source positions but displays a section-relative
-00:00–clip-length timeline; seeking and
-skip controls stay within the range, playback pauses at its end, and Play replays
-from its start. Source/clip changes stop the previous playback without autoplay.
-Invalid or out-of-duration ranges produce an actionable error, not a shortened
-successful clip. Existing seeking/speed restrictions still apply.
+Listening theo phạm vi khởi tạo một LISTENING_PART qua API lượt làm bài hiện có với 10 / 15 / 20 phút hoặc đếm tăng (mặc định 10), rồi mở `/attempt/{id}`. Giao diện làm bài/xem lại chỉ nhận phần đã chọn. Khi có khoảng, phát dùng vị trí tuyệt đối trong nguồn nhưng hiển thị trục tương đối 00:00–độ dài đoạn; tua và nhảy nằm trong khoảng, tự dừng ở cuối, nút Phát chạy lại từ đầu. Đổi nguồn/đoạn dừng phát trước mà không tự phát. Khoảng sai hoặc ngoài thời lượng cho lỗi có cách xử lý, không tự rút ngắn rồi báo thành công. Hạn chế tua/tốc độ hiện có vẫn áp dụng.
 
-Without a section range, focused runner/review offer the full recording with the
-notice: "Section audio range is not configured. Full recording is available."
-Without a recording, they render no player and show: "No recording is attached.
-You can continue with the questions and use an external recording if needed."
-Questions and the normal attempt lifecycle remain available in both cases.
+Thiếu khoảng phần, trang làm bài/xem lại cho nghe toàn bản ghi và thông báo: “Chưa cấu hình khoảng âm thanh cho phần này. Bạn có thể nghe toàn bộ bản ghi.” Thiếu bản ghi, không hiển thị trình phát và thông báo: “Chưa đính kèm bản ghi. Bạn vẫn có thể làm câu hỏi và dùng bản ghi bên ngoài nếu cần.” Cả hai trường hợp vẫn có câu hỏi và vòng đời lượt làm bài thông thường.
 
-Full standalone Listening, full Listening review, and Full Mock ignore section
-ranges and continue using the entire recording; Full Mock seeking stays locked.
-Focused review and history show raw/max and one-decimal accuracy with no IELTS
-band. Pause/resume, autosave, flags, highlights and submission use the existing
-lifecycle. Full-module Listening band mapping is unchanged. Focused analytics
-remain out of scope; no AI, scoring prompts, grading versions or provider behavior
-change in this phase.
+Listening riêng toàn mô-đun, xem lại toàn Listening và Full Mock bỏ qua khoảng phần, tiếp tục dùng toàn bản ghi; Full Mock vẫn khóa tua. Xem lại/lịch sử theo phạm vi hiển thị điểm thô/tối đa, tỷ lệ chính xác một chữ số thập phân, không có band IELTS. Tạm dừng/tiếp tục, tự lưu, cờ, tô sáng và nộp dùng vòng đời hiện có. Ánh xạ band Listening toàn mô-đun không đổi. Phân tích lượt theo phạm vi vẫn ngoài phạm vi; giai đoạn này không đổi AI, lời nhắc chấm, phiên bản chấm hoặc nhà cung cấp.
 
-## Phase 1 foundation (preserved)
+## Nền tảng Giai đoạn 1 (giữ nguyên)
 
-`AttemptContext` remains STANDALONE / FULL_MOCK. The independent `AttemptScope` is
-FULL_MODULE / FOCUSED_UNIT. Full Mock always creates FULL_MODULE attempts and retains
-its frozen module durations and Listening → Reading → Writing progression.
+`AttemptContext` vẫn là STANDALONE / FULL_MOCK. `AttemptScope` độc lập là FULL_MODULE / FOCUSED_UNIT. Full Mock luôn tạo lượt FULL_MODULE, giữ thời lượng mô-đun đóng băng và thứ tự Listening → Reading → Writing.
 
-Migration `20261010_0021_focused_attempt_scope` backfills historical attempts as
-FULL_MODULE and adds a non-null scope plus nullable, RESTRICT foreign keys to
-`reading_passages`, `listening_parts` and `writing_tasks`. Check constraints require
-exactly the matching target for focused attempts, no target for full modules, and
-FULL_MODULE whenever `test_session_id` is set. Downgrade refuses to remove scope
-while focused records exist, preventing partial history from being reinterpreted.
+Migration `20261010_0021_focused_attempt_scope` gán FULL_MODULE cho lượt lịch sử, thêm phạm vi không null và khóa ngoại RESTRICT có thể null tới `reading_passages`, `listening_parts`, `writing_tasks`. Ràng buộc yêu cầu đúng một đích khớp cho lượt theo phạm vi, không đích cho toàn mô-đun và FULL_MODULE khi có `test_session_id`. Hạ migration từ chối bỏ phạm vi khi còn bản ghi theo phạm vi, ngăn diễn giải lại lịch sử một phần.
 
-Existing `POST /api/v1/attempts` requests may omit scope and still start FULL_MODULE.
-A focused request adds `scope: "FOCUSED_UNIT"` and a discriminated `focused_unit`
-object containing `kind` (READING_PASSAGE / LISTENING_PART / WRITING_TASK) and `id`.
-The server proves the target belongs to the exact available published version and
-module. Missing and foreign target IDs share the same safe error response.
+Yêu cầu `POST /api/v1/attempts` hiện có có thể bỏ scope và vẫn tạo FULL_MODULE. Yêu cầu theo phạm vi thêm `scope: "FOCUSED_UNIT"` và đối tượng phân biệt loại `focused_unit` gồm `kind` (READING_PASSAGE / LISTENING_PART / WRITING_TASK), `id`. Máy chủ chứng minh đích thuộc đúng phiên bản đã xuất bản khả dụng và mô-đun. ID đích thiếu và thuộc đối tượng khác dùng cùng phản hồi lỗi an toàn.
 
-Attempt and history DTOs return `scope` and `focused_unit` (null for full modules).
-The focused presentation contains kind, ID, original zero-based order index,
-`Passage N` / `Section N` / `Task N` label, and an optional title. Exam, paused state
-and review reuse this metadata; clients need no knowledge of the three storage FKs.
+DTO lượt làm bài/lịch sử trả `scope`, `focused_unit` (null cho toàn mô-đun). Siêu dữ liệu theo phạm vi gồm loại, ID, thứ tự gốc từ 0, nhãn `Passage N` / `Section N` / `Task N` và tên tùy chọn. Làm bài, tạm dừng và xem lại tái sử dụng siêu dữ liệu; máy khách không cần biết ba khóa ngoại lưu trữ.
 
-`TimerRequest` checks structure only: positive countdown duration required, no
-duration for count-up. Standalone start policy then validates module/scope presets:
+`TimerRequest` chỉ kiểm cấu trúc: đếm ngược cần thời lượng dương, đếm tăng không có thời lượng. Chính sách khởi tạo lượt riêng tiếp đó kiểm bộ giá trị mô-đun/phạm vi:
 
-| Scope | Countdown minutes |
+| Phạm vi | Số phút đếm ngược |
 | --- | --- |
-| Full module | 40 / 50 / 60 / 70 |
-| Focused Reading passage | 20 / 25 / 30 |
-| Focused Listening section | 10 / 15 / 20 |
-| Focused Writing task | 20 / 25 / 30 / 35 / 40 |
+| Toàn mô-đun | 40 / 50 / 60 / 70 |
+| Một bài đọc Reading | 20 / 25 / 30 |
+| Một phần Listening | 10 / 15 / 20 |
+| Một tác vụ Writing | 20 / 25 / 30 / 35 / 40 |
 
-All standalone scopes also support count-up. Full Mock bypasses these standalone
-presets and continues using its existing module duration contract.
+Mọi phạm vi lượt riêng cũng hỗ trợ đếm tăng. Full Mock bỏ qua các bộ giá trị lượt riêng và tiếp tục dùng hợp đồng thời lượng mô-đun hiện có.
 
-`AttemptScopeGuard` centralizes unit/group membership, scoped scoring predicates
-and presentation. Existing ownership/version checks run before scope checks for
-answers, flags, question visits, navigation, highlights, Writing responses, manual
-task scoring and AI eligibility. Exam and review return only the selected unit;
-unrelated content and answer keys are never sent for clients to hide. Listening
-module audio remains shared; only FOCUSED_UNIT playback applies section boundaries.
+`AttemptScopeGuard` tập trung kiểm đơn vị/nhóm thuộc phạm vi, điều kiện chấm theo phạm vi và trình bày. Kiểm chủ sở hữu/phiên bản hiện có chạy trước kiểm phạm vi cho câu trả lời, cờ, lượt xem câu, điều hướng, tô sáng, phản hồi Writing, chấm tác vụ thủ công và điều kiện AI. Làm bài/xem lại chỉ trả đơn vị đã chọn; không gửi nội dung/đáp án khác rồi để máy khách ẩn. Âm thanh mô-đun Listening vẫn dùng chung; chỉ phát FOCUSED_UNIT mới áp biên phần.
 
-Focused Reading/Listening store raw/max scores for their selected questions, with
-band null even if that unit happens to contain 40 questions. Expiration uses the
-same scoring path. A focused Writing task can retain its response and criterion/task
-scores, but attempt-level Writing band remains null. AI prompts, calibration and
-grading versions are unchanged.
+Reading/Listening theo phạm vi lưu điểm thô/tối đa của câu đã chọn, band null kể cả đơn vị có đúng 40 câu. Hết hạn dùng cùng đường chấm. Tác vụ Writing theo phạm vi có thể giữ câu trả lời và điểm tiêu chí/tác vụ, nhưng band Writing cấp lượt vẫn null. Lời nhắc AI, hiệu chuẩn và phiên bản chấm không đổi.
 
-Normal history items include focused records and their scope. Existing By-test
-full-module slots and existing analytics exclude focused attempts. Phase 2 adds
-the dedicated history view described above without introducing focused analytics.
+Mục lịch sử thường chứa bản ghi theo phạm vi và scope. Ô toàn mô-đun theo đề cùng phân tích hiện có loại lượt theo phạm vi. Giai đoạn 2 thêm màn lịch sử riêng đã mô tả mà không thêm phân tích lượt theo phạm vi.
 
-## Validation
+## Xác minh
 
-Phase 2 adds focused presenter/history contract tests and Vitest coverage for
-practice cards, timer/start behavior, protected navigation, scoped runners/reviews,
-paused gates and history actions. Full skill, Full Mock, deletion and AI assessment
-regressions use the existing tests. Validation uses isolated PostgreSQL, mocked
-frontend APIs, typecheck and targeted Ruff/ESLint checks, without live inference.
+Giai đoạn 2 thêm kiểm thử hợp đồng trình bày/lịch sử và Vitest cho thẻ luyện tập, bộ đếm/khởi tạo, điều hướng được bảo vệ, giao diện làm bài/xem lại theo phạm vi, chốt tạm dừng và thao tác lịch sử. Hồi quy toàn kỹ năng, Full Mock, xóa và đánh giá AI dùng kiểm thử hiện có. Xác minh dùng PostgreSQL cô lập, API frontend giả lập, kiểm tra kiểu và Ruff/ESLint có mục tiêu, không suy luận trực tiếp.
 
-Phase 3 adds real migration/constraint tests, range/revision/reset persistence,
-clone and legacy/current ZIP round trips, safe public summaries, focused start
-eligibility and scoped exam/review. Vitest covers MM:SS helpers, bounded playback,
-Builder capture/preview/autosave/conflicts/reset, Listening cards/timers/start,
-focused/full/Full Mock runners, review and paused gates. Tests use synthetic audio
-metadata and mocked APIs; no browser, E2E or live audio/model service is used.
+Giai đoạn 3 thêm kiểm migration/ràng buộc thật, lưu khoảng/revision/đặt lại, nhân bản và ZIP khứ hồi cũ/hiện hành, tóm tắt công khai an toàn, điều kiện khởi tạo và làm bài/xem lại theo phạm vi. Vitest bao phủ hàm MM:SS, phát trong giới hạn, Builder lấy vị trí/xem trước/tự lưu/xung đột/đặt lại, thẻ Listening/bộ đếm/khởi tạo, giao diện theo phạm vi/toàn mô-đun/Full Mock, xem lại và tạm dừng. Kiểm thử dùng siêu dữ liệu âm thanh tổng hợp, API giả lập; không dùng trình duyệt, E2E hoặc dịch vụ âm thanh/mô hình trực tiếp.
 
-Phase 3 focused validation commands (backend against isolated, migrated PostgreSQL):
+Lệnh xác minh tập trung Giai đoạn 3 (backend với PostgreSQL cô lập đã migration):
 
 ```powershell
 # backend/
@@ -184,23 +79,21 @@ npx vitest run tests/listening-audio-ranges.test.tsx tests/listening-player.test
 npm run typecheck
 ```
 
-Ruff lint/format checks and ESLint cover the changed/new Python and TypeScript
-files. `git diff --check` covers the complete change.
+Ruff kiểm mã/định dạng và ESLint bao phủ tệp Python/TypeScript mới hoặc sửa. `git diff --check` bao phủ toàn thay đổi.
 
-Phase 1 validation commands:
+Lệnh xác minh Giai đoạn 1:
 
-Executed against an isolated PostgreSQL database migrated with `uv run alembic
-upgrade head`. Migration tests execute the actual upgrade/downgrade DDL inside
-their rollback boundary; no metadata-created schema substitutes for migrations.
+Đã chạy trên PostgreSQL cô lập được migration bằng `uv run alembic
+upgrade head`. Kiểm migration thực thi DDL nâng/hạ thật trong ranh giới hoàn tác; không thay migration bằng lược đồ tạo từ siêu dữ liệu.
 
-From `backend/`:
+Từ `backend/`:
 
 ```powershell
 uv run pytest tests/test_focused_attempts.py tests/test_focused_scope_migration.py tests/test_focused_attempt_contract.py tests/test_timer.py tests/test_attempt_state_machine.py tests/test_attempt_scoring_history.py tests/test_attempt_pause.py tests/test_writing_attempts.py tests/test_full_mock_sessions.py tests/test_analytics.py -q
 uv run pytest tests/test_focused_attempts.py tests/test_lifecycle_refactor.py::test_generic_highlights_and_bulk_delete tests/test_lifecycle_refactor.py::test_text_completion_layout_and_answers_round_trip tests/test_lifecycle_refactor.py::test_archived_test_blocks_new_attempt_and_restore_allows_it tests/test_listening.py::test_listening_review_returns_saved_question_highlights tests/test_full_mock_history_delete.py tests/test_attempt_deletion.py tests/test_writing_ai.py -q
 ```
 
-From `frontend/`:
+Từ `frontend/`:
 
 ```powershell
 npx vitest run tests/focused-attempt-contract.test.ts tests/history-api.test.ts tests/attempt-lifecycle.test.ts tests/attempt-page.test.tsx tests/writing-review.test.tsx
@@ -208,5 +101,4 @@ npm run typecheck
 npx eslint src/lib/api/attempts.ts src/lib/api/history.ts tests/focused-attempt-contract.test.ts
 ```
 
-Ruff lint/format checks cover changed Python files; `git diff --check` covers the
-complete change. No browser, E2E, live model or deployment validation is used.
+Ruff kiểm mã/định dạng bao phủ tệp Python đã sửa; `git diff --check` bao phủ toàn thay đổi. Không dùng xác minh trình duyệt, E2E, mô hình trực tiếp hoặc triển khai.

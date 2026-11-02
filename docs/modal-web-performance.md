@@ -1,76 +1,73 @@
-# Modal Web latency investigation
+# Điều tra độ trễ Modal Web
 
-> **Documentation audit: CURRENT.** Canonical concern này; source-check các boundary/API, không live validation.
-> Mục đích: Modal Web latency investigation. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../scripts/benchmark_modal_web.py).
-> Đọc cùng [current module/guide](case-studies/modal-web-performance.md); [audit và giới hạn](DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+> **Kiểm toán tài liệu: CURRENT.** Tài liệu chuẩn cho nội dung này; đã đối chiếu ranh giới/API trong mã nguồn, chưa xác minh môi trường đang chạy.
+> Mục đích: Điều tra độ trễ Modal Web. Đối chiếu mã nguồn `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [mã triển khai](../scripts/benchmark_modal_web.py).
+> Đọc cùng [mô-đun/hướng dẫn hiện hành](case-studies/modal-web-performance.md); [audit và giới hạn](DOCS_AUDIT.md). Kết quả kiểm thử/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong lần kiểm toán này.
 
-For a Vietnamese explanation of the architecture, investigation and results, see the
-[educational case study](case-studies/modal-web-performance.md). For interview practice,
-see [performance engineering questions and answers](interview/modal-performance-qa.md).
 
-## Findings and limits (initial investigation)
+Để đọc giải thích bằng tiếng Việt về kiến trúc, quá trình điều tra và kết quả, xem [nghiên cứu tình huống](case-studies/modal-web-performance.md). Để luyện phỏng vấn, xem [câu hỏi và trả lời kỹ thuật hiệu năng](interview/modal-performance-qa.md).
 
-- Starting revision: `4a6b5b0850bb39161a308de3207f6d93b1c3a7e7`.
-- The supplied incident summary reports a static-asset waterfall in roughly 0.63 s steps and a median of approximately 1.84 s across 201 requests. The original request log was not available for independent analysis. The reported Modal execution metric is not equivalent to FastAPI/Next.js handler time.
-- The Web class has one container and no input-concurrency decorator. [Modal's concurrency documentation](https://modal.com/docs/guide/concurrent-inputs) states that the default is one input per container. Its documented class-level decorator is accepted by the installed Modal Python SDK 1.5.3 with this class/web-server shape, but this local declaration is not a deployed concurrency test. The reported waterfall is consistent with queueing; it does not establish where the delay occurs or how much is queueing.
-- No running, verified isolated staging deployment was available for this investigation. Listed dev apps were stopped; dev's default asset volume can be shared with production. There was no remote benchmark, region lookup, deployment, volume change, or production traffic. Consequently the compute region, Vietnam RTT, deployed CPU/memory, p50/p95 and throughput remain **unmeasured**. Do not infer a latency improvement from synthetic localhost timings.
-- Nginx allows multiple connections and proxies to separate Next.js and Uvicorn processes; that alone does not demonstrate their throughput under load. SQLAlchemy's local configuration uses a pool size of 5 plus up to 10 overflow connections per engine; database checkout or query latency has not been measured. No database pool, replica, Nginx buffering, caching, streaming, upload or range settings were changed.
-- Auth already coordinates refreshes in flight and uses a browser lock for cross-tab refresh. Session probes and restoration have security/recovery roles. Header navigation already uses intent-based prefetch and disables it for sensitive links. There was insufficient evidence to change these flows.
-- A focused component baseline showed one notification-list request while the panel was closed, followed by another on opening. The first is unnecessary: the updated component fetches only the unread count until the panel opens. With the same test harness, list requests before opening changed **1 → 0** and opening still fetches the current list and count. This is a request-count result, not a deployed latency measurement.
+## Phát hiện và giới hạn (điều tra ban đầu)
 
-## Safe benchmark
+- Revision khởi đầu: `4a6b5b0850bb39161a308de3207f6d93b1c3a7e7`.
+- Tóm tắt sự cố được cung cấp báo waterfall tài sản tĩnh theo bước khoảng 0.63 s và trung vị khoảng 1.84 s trên 201 yêu cầu. Không có log yêu cầu gốc để phân tích độc lập. Chỉ số thực thi Modal được báo không tương đương thời gian handler FastAPI/Next.js.
+- Lớp Web có một container, chưa có decorator input concurrency. [Tài liệu đồng thời của Modal](https://modal.com/docs/guide/concurrent-inputs) nêu mặc định một input mỗi container. Decorator cấp lớp được tài liệu mô tả được SDK Modal Python 1.5.3 đã cài chấp nhận với dạng lớp/web-server này, nhưng khai báo Local không phải kiểm thử đồng thời đã triển khai. Waterfall được báo phù hợp hiện tượng xếp hàng, chưa xác định vị trí hoặc tỷ lệ thời gian chờ.
+- Không có staging cô lập đang chạy đã xác minh cho điều tra này. App dev trong danh sách đã dừng; Volume tài sản mặc định dev có thể dùng chung production. Không benchmark từ xa, tra region, triển khai, đổi Volume hoặc gửi tải production. Vì vậy region tính toán, RTT từ Việt Nam, CPU/bộ nhớ đã triển khai, p50/p95 và thông lượng vẫn **chưa đo**. Không suy ra cải thiện độ trễ từ thời gian localhost tổng hợp.
+- Nginx cho nhiều kết nối và proxy tới tiến trình Next.js/Uvicorn riêng; điều đó chưa chứng minh thông lượng chịu tải. Cấu hình SQLAlchemy Local dùng pool 5 cộng tối đa 10 kết nối overflow mỗi engine; chưa đo độ trễ checkout hoặc truy vấn. Không đổi pool DB, replica, đệm Nginx, cache, streaming, upload hoặc range.
+- Auth đã phối hợp refresh đang chạy và dùng browser lock cho refresh xuyên tab. Thăm dò/khôi phục session phục vụ bảo mật/khôi phục. Điều hướng header đã prefetch theo ý định, tắt với liên kết nhạy cảm. Chưa đủ bằng chứng đổi các luồng này.
+- Mốc kiểm thử thành phần ghi một yêu cầu danh sách thông báo khi panel đóng, thêm một khi mở. Yêu cầu đầu không cần: thành phần mới chỉ fetch số chưa đọc tới khi mở. Cùng harness, yêu cầu danh sách trước mở đổi **1 → 0**, mở vẫn fetch danh sách/số đếm mới. Đây là kết quả số yêu cầu, không phải độ trễ triển khai.
 
-Use only an explicitly authorized, isolated staging deployment whose database, assets, secrets and ownership are verified independent of production. The script does not establish isolation for you. Do not point it at production without explicit authorization. It sends only unauthenticated GETs to `/`, `/api/v1/ready`, `/icon.svg` and a real same-origin Next.js static asset discovered in the HTML. It does not follow redirects or send credentials. The ready endpoint performs a database readiness check. The default is 16 requests per endpoint at each of concurrency 1, 4, 8 and 16, with two sequential warmups per endpoint, plus one HTML discovery request: at most 265 requests when an asset is found. Reduce the levels/count if even this is inappropriate for the environment.
+## Benchmark an toàn
+
+Chỉ dùng staging được cho phép tường minh, cô lập, với DB, tài sản, secret và quyền sở hữu đã xác minh độc lập production. Script không tự thiết lập cô lập. Không trỏ production nếu chưa được cho phép tường minh. Nó chỉ gửi GET không xác thực tới `/`, `/api/v1/ready`, `/icon.svg` và một tài sản Next.js tĩnh thật cùng origin tìm từ HTML. Không theo redirect hoặc gửi thông tin xác thực. Endpoint ready kiểm readiness DB. Mặc định 16 yêu cầu mỗi endpoint tại từng mức đồng thời 1, 4, 8, 16, hai lượt làm nóng tuần tự mỗi endpoint và một GET tìm HTML: tối đa 265 yêu cầu nếu tìm thấy tài sản. Giảm mức/số lượng nếu vẫn không phù hợp môi trường.
 
 ```powershell
 python scripts/benchmark_modal_web.py --base-url https://YOUR-ISOLATED-STAGING.modal.run --confirm-staging --requests 16 --concurrency 1,4,8,16 --warmup 2 --timeout 15 --output modal-before.json
 ```
 
-After an independently validated staging-only change, repeat the exact command with `--output modal-after.json`, using the same deployment mode, origin, warmup, endpoints, network and region. Compare successful-request p50/p90/p95/max and TTFB, errors, statuses, response sizes, throughput and elapsed time for each endpoint and concurrency. Also record Modal CPU/memory and region separately. A run with HTTP, validation, discovery or warmup failures exits nonzero; missing or failed data is not a latency success. The JSON reports each level separately; timings use nearest-rank percentiles of successful requests, and both all-request and successful-request throughput are provided. With 16 samples, p95 is the highest observed value: repeat controlled runs and use more samples within the script's 100-request cap for a meaningful tail comparison. Each request creates a new urllib connection, so the numbers include connection/TLS overhead and are not equivalent to a browser's reused connections. TTFB starts before DNS/connection establishment and is not a pure server or geographic RTT measurement.
+Sau thay đổi chỉ staging được xác minh độc lập, lặp đúng lệnh với `--output modal-after.json`, cùng chế độ triển khai, origin, làm nóng, endpoint, mạng và region. So p50/p90/p95/max yêu cầu thành công, TTFB, lỗi, trạng thái, kích thước phản hồi, thông lượng/thời gian mỗi endpoint và mức đồng thời. Ghi riêng CPU/bộ nhớ/region Modal. Lần chạy lỗi HTTP, xác minh, tìm tài sản hoặc làm nóng thoát khác không; dữ liệu thiếu/lỗi không phải thành công độ trễ. JSON tách từng mức; thời gian dùng phân vị nearest-rank của yêu cầu thành công, cung cấp thông lượng mọi yêu cầu và yêu cầu thành công. Với 16 mẫu, p95 là giá trị lớn nhất: lặp có kiểm soát và tăng mẫu trong trần 100 yêu cầu của script để so đuôi có ý nghĩa. Mỗi yêu cầu mở kết nối urllib mới nên gồm overhead kết nối/TLS, không tương đương trình duyệt tái dùng kết nối. TTFB bắt đầu trước DNS/kết nối, không phải thời gian server thuần hoặc RTT địa lý thuần.
 
-The benchmark's offline fixture checks can be run without a deployment:
+Có thể chạy kiểm tra fixture ngoại tuyến của benchmark không cần triển khai:
 
 ```powershell
 python -m unittest discover -s scripts/tests -p test_benchmark_modal_web.py -v
 ```
 
-## Optional timing diagnostics
+## Chẩn đoán thời gian tùy chọn
 
-Set `IELTS_MODAL_WEB_TIMINGS=true` in an appropriately isolated deployment's runtime environment and restart that deployment to enable temporary diagnostics. Default is off. Nginx then logs a generated request ID, status, request time, upstream address, upstream response time and upstream connection time, and sends its generated ID to the upstream. FastAPI logs that ID, method, status and total ASGI request time. No URL, query, headers, cookies, request/response body, user identifier or client address is logged. Remove the setting and restart to disable logging. Preserve normal operational access controls and retention for logs.
+Đặt `IELTS_MODAL_WEB_TIMINGS=true` trong môi trường runtime triển khai đã cô lập phù hợp, khởi động lại để bật chẩn đoán tạm. Mặc định tắt. Nginx ghi request ID sinh tự động, trạng thái, thời gian yêu cầu, địa chỉ upstream, thời gian phản hồi/kết nối upstream, rồi chuyển ID tới upstream. FastAPI ghi ID đó, phương thức, trạng thái và tổng thời gian yêu cầu ASGI. Không ghi URL, query, header, cookie, body yêu cầu/phản hồi, ID người dùng hoặc địa chỉ client. Gỡ cấu hình, khởi động lại để tắt log. Giữ kiểm soát truy cập/lưu giữ log vận hành thông thường.
 
-Nginx timings start only after ingress has sent the request to the container; they do not measure the Modal queue. Upstream and ASGI times include streaming and backpressure and should not be treated as CPU or handler-only duration. Correlate the generated ID for API requests; Next.js does not emit a corresponding timing log. Streaming stays unbuffered, and the timing middleware forwards ASGI messages unchanged. Validate streaming, protected media, range requests and uploads on the isolated environment before enabling any further proxy optimization.
+Thời gian Nginx chỉ bắt đầu sau ingress gửi yêu cầu tới container; không đo queue Modal. Thời gian upstream/ASGI gồm streaming/backpressure, không coi là CPU hoặc chỉ handler. Dùng ID sinh tự động tương quan yêu cầu API; Next.js không phát log thời gian tương ứng. Streaming vẫn không đệm; middleware chuyển ASGI message nguyên vẹn. Xác minh streaming, media được bảo vệ, range và upload trên môi trường cô lập trước tối ưu proxy khác.
 
-## Initial comparison status (before P2)
+## Trạng thái so sánh ban đầu (trước P2)
 
-| Metric | Before | After |
+| Chỉ số | Trước | Sau |
 | --- | --- | --- |
-| GET / p50 / p95 | Not measured | Not measured |
-| Ready p50 / p95 | Not measured | Not measured |
-| Static asset p95 | Not measured | Not measured |
-| Concurrent RPS / HTTP errors | Not measured | Not measured |
-| Modal Web CPU / memory | Not measured | Not measured |
+| GET / p50 / p95 | Chưa đo | Chưa đo |
+| Readiness p50 / p95 | Chưa đo | Chưa đo |
+| Tài sản tĩnh p95 | Chưa đo | Chưa đo |
+| RPS đồng thời / lỗi HTTP | Chưa đo | Chưa đo |
+| CPU / bộ nhớ Modal Web | Chưa đo | Chưa đo |
 
-On a verified staging instance, establish the baseline before trying bounded class-level `@modal.concurrent(max_inputs=8)` or `16`. Keep `max_containers=1` and the existing database ownership guard. Compare reliability and tail latency, monitor CPU, memory and database connections, and revert a candidate that worsens them. Modal's default one-input setting remained unchanged in the initial revision because no safe deployment data was available to choose a value. Investigate actual geography and RTT separately, without moving the PostgreSQL volume or changing regions. Check API timings and query plans only if the observations identify backend or database cost.
+Trên staging đã xác minh, lập mốc trước thử `@modal.concurrent(max_inputs=8)` hoặc `16` có giới hạn ở cấp lớp. Giữ `max_containers=1` và khóa chủ sở hữu DB hiện có. So độ tin cậy/độ trễ đuôi, giám sát CPU, bộ nhớ/kết nối DB, hoàn tác ứng viên làm xấu chúng. Cấu hình mặc định một input Modal chưa đổi trong revision ban đầu vì chưa có dữ liệu triển khai an toàn để chọn. Điều tra địa lý/RTT riêng, không di chuyển Volume PostgreSQL hoặc đổi region. Chỉ xem thời gian API/kế hoạch truy vấn khi quan sát chỉ ra chi phí backend/DB.
 
+## Thí nghiệm staging cô lập P2 — 2026-10-29
 
+**Quyết định: đặt `@modal.concurrent(max_inputs=8)` cấp lớp, giữ một container Web.** Hai lần chạy tương đương: readiness p95 với 16 yêu cầu client giảm 9.86/10.22 s xuống 2.13/2.14 s, thông lượng tăng 1.57/1.54 lên 6.82/6.87 yêu cầu/s, không lỗi HTTP trong phép đo. Đây là kết quả staging có kiểm soát, không hứa production hoặc điều hướng trình duyệt. Readiness p95 một yêu cầu trước 1.29/1.48 s, sau 1.32/1.29 s: đồng thời input không loại bỏ độ trễ mạng nền.
 
-## P2 isolated staging experiment — 2026-10-29
+Thử nghiệm dùng app Modal dev tên riêng `bandpilot-perf-p2-app-265b0d2e`, Volume riêng `bandpilot-perf-p2-db-265b0d2e`, `bandpilot-perf-p2-assets-265b0d2e`, `bandpilot-perf-p2-snapshots-265b0d2e`, Secret `bandpilot-perf-p2-config-265b0d2e`, Dict `bandpilot-perf-p2-owners-265b0d2e`. Dùng LocalAssetStorage/PostgreSQL nhúng, không nhập snapshot hoặc dữ liệu học viên. DB rỗng ban đầu được migration bằng cơ chế khởi động hiện có; migration `20260923_0012` tạo một chủ sở hữu cũ tổng hợp không hoạt động. Tắt AI/tải GPU.
 
-**Decision: set class-level `@modal.concurrent(max_inputs=8)` while retaining one Web container.** In two comparable runs the readiness p95 at 16 client requests fell from 9.86/10.22 s to 2.13/2.14 s, while throughput rose from 1.57/1.54 to 6.82/6.87 requests/s, with zero measured HTTP errors. This is a controlled staging result, not a promise about production or a browser navigation. Single-request readiness p95 was 1.29/1.48 s before and 1.32/1.29 s after: input concurrency does not remove the underlying network latency.
+Bản sao điểm vào khởi đầu tạm chỉ đổi tên owner Dict cho baseline, tránh dùng khóa production chung. Ứng viên thêm decorator đồng thời cấp lớp đã kiểm thử và chỉ cố định container **staging** tại `ap-south`, giá trị `MODAL_REGION` thực quan sát trong container baseline. Cả hai dùng cùng URL app, region định tuyến `us-east`, DB, tài sản, Secret, 2 CPU, 4096 MiB, `min_containers=1`, `max_containers=1`; dừng container đầu/giải phóng khóa riêng trước chạy container thứ hai. Xóa bản sao điểm vào sau thử. Mã production không cố định region. Nhãn region rộng không chứng minh cùng host vật lý hoặc zone; triển khai lại có thể đổi cả hai. [Tài liệu region Modal](https://modal.com/docs/guide/region-selection) phân biệt region container/định tuyến HTTP và mô tả phí bổ sung khi cố định region.
 
-The test used a separately named Modal dev app `bandpilot-perf-p2-app-265b0d2e`, private Volumes `bandpilot-perf-p2-db-265b0d2e`, `bandpilot-perf-p2-assets-265b0d2e`, `bandpilot-perf-p2-snapshots-265b0d2e`, Secret `bandpilot-perf-p2-config-265b0d2e`, and Dict `bandpilot-perf-p2-owners-265b0d2e`. LocalAssetStorage and embedded PostgreSQL were used, without importing any snapshot or learner data. The initially empty database was migrated by the existing startup mechanism; migration `20260923_0012` creates one inactive synthetic legacy owner. AI and GPU workloads were disabled.
+Hai lần thăm dò trước dùng Volume/Secret riêng nhưng Dict `ielts-web-database-owner` chung hiện có vì runtime gốc cố định tên. Chúng tạm ghi khóa riêng staging vào Dict chung rồi xóa. Không đổi khóa production; xác minh khóa staging không còn sau thử. Giữ kết quả đầu dưới tên `shared-guard-*`, không dùng làm so sánh chính. Container đó tình cờ chạy `us-east`: không thấy cùng mẫu queue mạnh, mức đồng thời 8 không có tác động đáng kể lặp lại. Vì vậy topology region/định tuyến là yếu tố đóng góp khả dĩ, không chứng minh topology production.
 
-A temporary copy of the starting entrypoint changed only the owner Dict name for the baseline, preventing the experiment from using the shared production guard. The candidate added the tested class-level concurrency decorator and pinned only the **staging** container to `ap-south`, the actual `MODAL_REGION` observed in the baseline container. Both used the same app URL, routing region `us-east`, database, assets, Secret, 2 CPU, 4096 MiB and `min_containers=1`, `max_containers=1`; the first container was stopped and its dedicated guard released before the second was started. The entrypoint copy was removed after testing. The production code is not pinned to a region. A broad region label does not prove the identical physical host or zone; redeployment may change either. Modal's [region documentation](https://modal.com/docs/guide/region-selection) distinguishes the container region from HTTP routing and describes the extra cost of pinning a region.
+**Sự cố dọn tài nguyên:** app staging cuối tiếp tục chạy sau lần đo sau thứ hai kết thúc 09:52:44 (UTC+7), dừng lúc 15:26:34, khoảng 5 h 34 min sau. Có thể phát sinh phí Modal bổ sung. Modal thay container sau đo; app nay dừng, không container chạy; khóa owner staging không còn trong Dict riêng/chung. Giữ Volume, Secret, Dict riêng thử nghiệm theo yêu cầu.
 
-Two earlier exploratory runs used separate Volumes and a Secret but the existing shared `ielts-web-database-owner` Dict because the original runtime hardcodes its name. They temporarily wrote a staging-specific key in that shared Dict, then removed it. No production key was changed; the staging key was verified absent afterward. Those initial results are preserved as `shared-guard-*` reports and are not the main comparison. Their containers happened to run in `us-east`: the same strong queueing pattern was not observed there, and concurrency 8 had no repeatable material effect. This makes region/routing topology a plausible contributor, not proof of the production topology.
+Mỗi báo cáo chính dùng 16 GET mỗi endpoint tại mức đồng thời 1, 4, 8, 16, hai lượt làm nóng tuần tự và timeout 30 giây, CSS `/_next/static/chunks/4013uxh3niqjj.css` (42,141 bytes) tìm từ HTML. Hai phiên bản được đo hai lần từ cùng client Windows tại Việt Nam. Mỗi yêu cầu urllib mở kết nối mới, yêu cầu identity encoding; không phải điều hướng trình duyệt. p95 nearest-rank là lớn nhất 16 quan sát nên nhạy nhiễu. Báo cáo đầy đủ gồm TTFB/kích thước/trạng thái/lỗi từng mức: [mốc ban đầu](performance/modal-p2/baseline.json), [lặp mốc](performance/modal-p2/baseline-repeat.json), [ứng viên](performance/modal-p2/after-8.json), [lặp ứng viên](performance/modal-p2/after-8-repeat.json), [mốc localhost](performance/modal-p2/baseline-local.json), [tổng hợp thời gian server](performance/modal-p2/server-timings.json).
 
-**Cleanup incident:** the final staging app continued running after the second after-run completed at 09:52:44 (UTC+7) and was stopped at 15:26:34, approximately 5 h 34 min later. It may have incurred additional Modal charges. Modal replaced its container after measurement; the app is now stopped with zero running containers, and the staging owner key is absent from both the dedicated and shared Dicts. Test Volumes, Secret and dedicated Dict were retained as requested.
+Hai giá trị mỗi ô lần lượt là lần chạy đầu/thứ hai, không phải khoảng tin cậy. Độ trễ tính mili giây; RPS đếm yêu cầu thành công.
 
-Each main report uses 16 GET requests per endpoint at concurrency 1, 4, 8 and 16, two sequential warmups and a 30-second timeout, with HTML-discovered `/_next/static/chunks/4013uxh3niqjj.css` (42,141 bytes). Both versions were measured twice from the same Windows client in Vietnam. Each urllib request opens a new connection and asks for identity encoding; this is not a browser navigation. Nearest-rank p95 is the maximum of 16 observations, so it is sensitive to noise. Complete reports include per-level TTFB, sizes, statuses and errors: [baseline](performance/modal-p2/baseline.json), [baseline repeat](performance/modal-p2/baseline-repeat.json), [candidate](performance/modal-p2/after-8.json), [candidate repeat](performance/modal-p2/after-8-repeat.json), [baseline localhost](performance/modal-p2/baseline-local.json), and [server timing aggregates](performance/modal-p2/server-timings.json).
-
-The two values in each cell are the first and second run, in order (not a confidence interval). Latencies are milliseconds; RPS counts successful requests.
-
-| Endpoint | Client concurrency | Baseline p50 / p95 | Concurrency 8 p50 / p95 | Baseline RPS | Concurrency 8 RPS |
+| Endpoint | Đồng thời client | Mốc ban đầu p50 / p95 | Đồng thời 8 p50 / p95 | RPS mốc ban đầu | Đồng thời 8 RPS |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | / | 1 | 1312.86, 1298.99 / 1770.70, 1634.89 | 1312.68, 1306.00 / 1936.68, 1630.91 | 0.72, 0.74 | 0.68, 0.72 |
 | / | 4 | 2380.78, 2542.91 / 3669.11, 3372.62 | 1434.54, 1596.26 / 1903.08, 1823.78 | 1.48, 1.43 | 2.52, 2.37 |
@@ -84,29 +81,28 @@ The two values in each cell are the first and second run, in order (not a confid
 | /icon.svg | 4 | 2506.17, 2488.92 / 3106.61, 3248.66 | 1283.19, 1316.75 / 1694.45, 1603.11 | 1.49, 1.50 | 2.60, 2.66 |
 | /icon.svg | 8 | 4978.59, 4973.73 / 5669.88, 5724.44 | 1513.72, 1453.94 / 1810.32, 1689.04 | 1.50, 1.50 | 4.75, 4.84 |
 | /icon.svg | 16 | 5563.69, 5476.73 / 10442.29, 10381.65 | 1514.81, 1666.75 / 2109.00, 2125.18 | 1.48, 1.49 | 6.96, 6.76 |
-| static CSS | 1 | 1564.55, 1539.27 / 1954.04, 1904.52 | 1565.42, 1562.51 / 1913.51, 1987.85 | 0.58, 0.63 | 0.59, 0.59 |
-| static CSS | 4 | 2472.47, 2497.72 / 4010.45, 3700.02 | 1665.07, 1810.17 / 1981.68, 2095.78 | 1.45, 1.46 | 2.11, 2.15 |
-| static CSS | 8 | 4832.38, 4812.58 / 6152.04, 6122.16 | 1808.49, 1777.22 / 2238.15, 2269.78 | 1.46, 1.48 | 3.60, 3.68 |
-| static CSS | 16 | 5933.25, 5829.77 / 11114.79, 10897.65 | 2008.86, 2010.92 / 2627.78, 2589.90 | 1.42, 1.42 | 5.70, 5.31 |
+| CSS tĩnh | 1 | 1564.55, 1539.27 / 1954.04, 1904.52 | 1565.42, 1562.51 / 1913.51, 1987.85 | 0.58, 0.63 | 0.59, 0.59 |
+| CSS tĩnh | 4 | 2472.47, 2497.72 / 4010.45, 3700.02 | 1665.07, 1810.17 / 1981.68, 2095.78 | 1.45, 1.46 | 2.11, 2.15 |
+| CSS tĩnh | 8 | 4832.38, 4812.58 / 6152.04, 6122.16 | 1808.49, 1777.22 / 2238.15, 2269.78 | 1.46, 1.48 | 3.60, 3.68 |
+| CSS tĩnh | 16 | 5933.25, 5829.77 / 11114.79, 10897.65 | 2008.86, 2010.92 / 2627.78, 2589.90 | 1.42, 1.42 | 5.70, 5.31 |
 
-
-| Additional metric | Baseline | Concurrency 8 |
+| Chỉ số bổ sung | Mốc ban đầu | Đồng thời 8 |
 | --- | --- | --- |
-| HTTP errors | 0 / 512 measured requests | 0 / 512 measured requests |
-| Readiness TTFB p95 at client concurrency 16 | 9,856.64 / 10,218.39 ms | 2,043.63 / 1,941.90 ms |
-| Nginx request-time p50 / p95, Next upstream | 3 / 14 ms | 3 / 20 ms |
-| Nginx upstream-response p50 / p95, Next | 3 / 14 ms | 3 / 20 ms |
-| Nginx request-time p50 / p95, FastAPI upstream | 4 / 6 ms | 4 / 5 ms |
-| Nginx upstream-response p50 / p95, FastAPI | 4 / 6 ms | 4 / 5 ms |
-| FastAPI ASGI total p50 / p95 | 2.87 / 5.24 ms | 2.40 / 4.96 ms |
-| Five-second cgroup CPU / memory sample | 0.086 cores / 534.1–535.6 MiB | 0.036 cores / 541.6–545.9 MiB |
+| Lỗi HTTP | 0 / 512 yêu cầu được đo | 0 / 512 yêu cầu được đo |
+| Readiness TTFB p95 khi client đồng thời 16 | 9,856.64 / 10,218.39 ms | 2,043.63 / 1,941.90 ms |
+| Thời gian yêu cầu Nginx p50 / p95, upstream Next | 3 / 14 ms | 3 / 20 ms |
+| Thời gian phản hồi upstream Nginx p50 / p95, Next | 3 / 14 ms | 3 / 20 ms |
+| Thời gian yêu cầu Nginx p50 / p95, upstream FastAPI | 4 / 6 ms | 4 / 5 ms |
+| Thời gian phản hồi upstream Nginx p50 / p95, FastAPI | 4 / 6 ms | 4 / 5 ms |
+| Tổng ASGI FastAPI p50 / p95 | 2.87 / 5.24 ms | 2.40 / 4.96 ms |
+| Mẫu CPU / bộ nhớ cgroup năm giây | 0.086 lõi / 534.1–535.6 MiB | 0.036 lõi / 541.6–545.9 MiB |
 
-Nginx aggregates contain 531 entries per configuration (including discovery and warmups): 398 Next upstream and 133 API upstream. ASGI logs contain 269 events, including internal Next auth probes. They are not paired one-to-one with benchmark requests; ASGI and upstream timing can include streaming/backpressure. Each CPU/memory observation is a five-second sample, not a peak or full-run average. A candidate PostgreSQL sample found four connections including the inspection connection, not a peak.
+Tổng hợp Nginx có 531 mục mỗi cấu hình (gồm tìm tài sản/làm nóng): 398 upstream Next, 133 upstream API. Log ASGI có 269 sự kiện, gồm thăm dò auth nội bộ Next. Không ghép một-một với yêu cầu benchmark; thời gian ASGI/upstream có thể gồm streaming/backpressure. Mỗi quan sát CPU/bộ nhớ là mẫu năm giây, không phải đỉnh hoặc trung bình toàn lượt. Một mẫu PostgreSQL ứng viên thấy bốn kết nối gồm kết nối kiểm tra, không phải số đỉnh.
 
-The baseline localhost benchmark inside the container bypassed Modal ingress and the external network: readiness at 16 clients had p95 49.69 ms and 224 requests/s. By contrast the public endpoint had p95 around 10 s and 1.5 requests/s. The nearly linear public waterfall, short internal timings and improvement from the bounded input setting provide strong evidence that one-at-a-time Modal input handling on the `us-east` routing → `ap-south` container path was a major bottleneck in this staging scenario. The instrumentation cannot precisely partition Modal queue time, ingress execution and network time, or establish the production deployment's actual region and queue behavior. It also does not measure the real browser waterfall.
+Benchmark localhost trong container ở mốc ban đầu bỏ qua ingress Modal/mạng ngoài: readiness với 16 client p95 49.69 ms, 224 yêu cầu/s. Endpoint công khai tương ứng p95 khoảng 10 s, 1.5 yêu cầu/s. Waterfall công khai gần tuyến tính, thời gian nội bộ ngắn và cải thiện từ cấu hình input giới hạn là bằng chứng mạnh rằng xử lý input Modal từng lượt trên đường định tuyến `us-east` → container `ap-south` là nút thắt lớn trong kịch bản staging này. Công cụ không tách chính xác thời gian queue Modal, ingress và mạng, không xác lập region/hành vi queue production thật. Cũng không đo waterfall trình duyệt thật.
 
-Staging safety checks confirmed `/library` returns a private no-store 307 to session restoration, unauthenticated auth/analytics/private assets and an SSE endpoint return 401, and a real static CSS range returns 206 with the expected Content-Range. Focused local tests cover authentication redirects, authorized storage byte ranges, speaking playback and streaming message forwarding. A live authenticated private-media or SSE stream was not exercised. No Nginx buffering/cache, PostgreSQL pool, replica count, production region, GPU workload or production deployment was changed. Evaluate routing and geographically closer isolated deployments separately; do not move an existing PostgreSQL Volume merely for a latency test.
+Kiểm an toàn staging xác nhận `/library` trả 307 riêng tư no-store tới khôi phục session, auth/analytics/tài sản riêng không xác thực và endpoint SSE trả 401, range CSS tĩnh thật trả 206 với Content-Range đúng. Kiểm thử Local tập trung bao phủ redirect xác thực, byte range storage có quyền, phát Speaking và chuyển tiếp message streaming. Chưa thực hiện stream media riêng/SSE có xác thực đang chạy. Không đổi đệm/cache Nginx, pool PostgreSQL, số replica, region production, tải GPU hoặc triển khai production. Đánh giá riêng định tuyến/triển khai cô lập gần địa lý hơn; không chuyển Volume PostgreSQL hiện có chỉ để thử độ trễ.
 
-## Knowledge-base navigation
+## Điều hướng kho kiến thức
 
-See the [engineering index](README.md), [system-design interview guide](interview/bandpilot-system-design.md) and [runtime architecture](handbook/runtime-architecture.md). Benchmark artifacts and original measurements above are preserved.
+Xem [mục lục kỹ thuật](README.md), [hướng dẫn phỏng vấn thiết kế hệ thống](interview/bandpilot-system-design.md), [kiến trúc runtime](handbook/runtime-architecture.md). Giữ artifact benchmark và phép đo gốc bên trên.

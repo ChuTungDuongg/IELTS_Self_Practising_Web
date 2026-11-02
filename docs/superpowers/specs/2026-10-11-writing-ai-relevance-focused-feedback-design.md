@@ -1,54 +1,54 @@
-# Writing AI relevance gate and focused-practice feedback snapshot
+# Cổng kiểm tra liên quan Writing AI và ảnh chụp phản hồi luyện tập tập trung
 
-> **Documentation audit: HISTORICAL.** Historical reference; không phải contract hiện hành.
-> Mục đích: Writing AI relevance gate and focused-practice feedback snapshot. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../../../backend/app/services/mts_writing.py).
-> Đọc cùng [current module/guide](../../modules/writing.md); [audit và giới hạn](../../DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+> **Kiểm toán tài liệu: HISTORICAL.** Tài liệu tham khảo lịch sử; không phải hợp đồng hiện hành.
+> Mục đích: Cổng kiểm tra liên quan Writing AI và ảnh chụp phản hồi luyện tập tập trung. Đối chiếu mã nguồn `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [triển khai](../../../backend/app/services/mts_writing.py).
+> Đọc cùng [mô-đun/hướng dẫn hiện hành](../../modules/writing.md); [audit và giới hạn](../../DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
 
-Date: 2026-10-11
+Ngày: 2026-10-11
 
-Status: Approved direction, specification only
+Trạng thái: Hướng đã được phê duyệt, chỉ là đặc tả
 
-Repository inspected: `ChuTungDuongg/IELTS_Self_Practising_Web`
+Kho mã được kiểm tra: `ChuTungDuongg/IELTS_Self_Practising_Web`
 
-Baseline: `d152f3675fbf4a96c2e34d0831fcb45049ba0858` — `Improve Task 1 coherence and cohesion calibration`
+Mốc cơ sở: `d152f3675fbf4a96c2e34d0831fcb45049ba0858` — `Improve Task 1 coherence and cohesion calibration`
 
-This document defines two coordinated Writing-AI changes: an IELTS-compatible relevance gate for Task 1 and Task 2, and a user-owned advisory AI-feedback snapshot for focused Writing practice. It does not implement either change. Existing manual/official grading remains authoritative.
+Tài liệu định nghĩa hai thay đổi Writing AI phối hợp: cổng kiểm tra mức liên quan tương thích IELTS cho Task 1/Task 2 và ảnh chụp phản hồi AI tư vấn thuộc người dùng cho luyện Writing tập trung. Tài liệu không triển khai thay đổi nào. Chấm thủ công/chính thức hiện có tiếp tục là nguồn chuẩn.
 
-## 1. Goals
+## 1. Mục tiêu
 
-1. Detect responses that are wholly unrelated to the Writing task before spending the full TA/TR assessment path.
-2. Preserve IELTS criterion independence: a wholly unrelated response receives Task Achievement/Task Response Band 1.0, while CC, LR and GRA continue to be assessed from the language actually written.
-3. Fail open on uncertain or failed relevance classification so an uncertain gate can never incorrectly short-circuit a valid response.
-4. Let a normal USER doing `FOCUSED_UNIT` Writing save one latest advisory AI snapshot per task containing the four AI criterion scores and criterion feedback.
-5. Keep that personal snapshot completely separate from `AttemptWritingScore`, official Writing bands, official History/Analytics and the existing ADMIN copy-to-manual-form workflow.
+1. Phát hiện câu trả lời hoàn toàn không liên quan đề Writing trước khi tiêu tốn toàn bộ luồng đánh giá TA/TR.
+2. Giữ độc lập tiêu chí IELTS: câu hoàn toàn không liên quan nhận Task Achievement/Task Response Band 1.0, còn CC, LR, GRA tiếp tục đánh giá từ ngôn ngữ thực sự đã viết.
+3. Khi phân loại liên quan không chắc chắn hoặc lỗi, tiếp tục luồng bình thường (fail-open), để cổng không chắc chắn tuyệt đối không rút ngắn sai đánh giá câu hợp lệ.
+4. Cho USER thường làm Writing `FOCUSED_UNIT` lưu một ảnh chụp AI tư vấn mới nhất mỗi task gồm bốn điểm tiêu chí AI và phản hồi từng tiêu chí.
+5. Giữ ảnh chụp cá nhân hoàn toàn tách biệt `AttemptWritingScore`, band Writing chính thức, History/Analytics chính thức và luồng ADMIN sao chép vào biểu mẫu thủ công hiện có.
 
-## 2. Non-goals
+## 2. Ngoài phạm vi
 
-- No `0/0/0/0` rule for off-topic writing.
-- No new official IELTS score source and no USER permission to write manual/official Writing scores.
-- No automatic copying of AI scores into `AttemptWritingScore`.
-- No relevance-based penalties for CC, LR or GRA.
-- No broad anti-cheating, plagiarism, memorisation or authorship detector.
-- No new rule for responses of 20 words or fewer in this slice; that descriptor rule is independent of relevance gating.
-- No model voting, second scoring judge, or broad calibration redesign.
-- No automatic overwrite of a saved personal snapshot after regrading; replacement requires an explicit user save action.
-- No snapshot history table and no delete UI in the first version.
+- Không có quy tắc `0/0/0/0` cho bài lạc đề.
+- Không thêm nguồn điểm IELTS chính thức và không cấp USER quyền ghi điểm Writing thủ công/chính thức.
+- Không tự sao chép điểm AI vào `AttemptWritingScore`.
+- Không phạt CC, LR hoặc GRA theo mức liên quan.
+- Không có bộ phát hiện gian lận, đạo văn, học thuộc hoặc tác giả tổng quát.
+- Không thêm quy tắc câu trả lời 20 từ trở xuống trong phần này; quy tắc mô tả đó độc lập cổng liên quan.
+- Không bỏ phiếu mô hình, giám khảo chấm thứ hai hoặc thiết kế lại hiệu chỉnh tổng thể.
+- Không tự ghi đè ảnh chụp cá nhân đã lưu sau chấm lại; thay thế yêu cầu người dùng chủ động lưu.
+- Phiên bản đầu không có bảng lịch sử ảnh chụp hoặc giao diện xóa.
 
-## 3. Existing architecture that constrains the design
+## 3. Kiến trúc hiện có ràng buộc thiết kế
 
-The current Task 2 service runs four independent evidence → scoring criterion paths through `MTSWritingScoringService`; a failure in one criterion suppresses the aggregate but preserves completed criterion results. Task 1 subclasses that service: CC/LR/GRA can run independently while TA waits for visual grounding, optional chart-specialist reconciliation, deterministic facts and claim verification.
+Dịch vụ Task 2 hiện chạy bốn luồng tiêu chí bằng chứng → chấm điểm độc lập qua `MTSWritingScoringService`; lỗi một tiêu chí ngăn tổng hợp nhưng giữ kết quả tiêu chí đã hoàn tất. Task 1 kế thừa dịch vụ: CC/LR/GRA có thể chạy độc lập khi TA chờ đối chiếu hình ảnh, hòa giải chuyên gia biểu đồ tùy chọn, dữ kiện xác định và xác minh phát biểu.
 
-`writing_ai_grading_runs` already owns immutable completed AI results, provider/model/prompt identity, input fingerprint, usage, diagnostics and event history. The worker persists partial criterion progress and completes the run only after all four criteria are present.
+`writing_ai_grading_runs` đã sở hữu kết quả AI hoàn tất bất biến, danh tính nhà cung cấp/mô hình/prompt, dấu vân tay đầu vào, mức sử dụng, chẩn đoán và lịch sử sự kiện. Worker lưu tiến độ tiêu chí từng phần, chỉ hoàn thành lượt khi đủ bốn tiêu chí.
 
-`WritingAIAssessment` already supports ADMIN-only `Chép gợi ý AI vào biểu mẫu`; `WritingReviewView.copyAISuggestions` copies AI scores and feedback into the local manual grading form, and the existing manual save API remains protected by `AdminUser`.
+`WritingAIAssessment` đã hỗ trợ `Chép gợi ý AI vào biểu mẫu` chỉ ADMIN; `WritingReviewView.copyAISuggestions` chép điểm/phản hồi AI vào biểu mẫu chấm thủ công cục bộ, còn API lưu thủ công hiện có tiếp tục được `AdminUser` bảo vệ.
 
-Focused practice is represented by persisted `Attempt.scope == FOCUSED_UNIT` plus `focused_writing_task_id`; `AttemptScopeGuard` already verifies the selected Writing task belongs to the focused attempt.
+Luyện tập tập trung được biểu diễn bởi `Attempt.scope == FOCUSED_UNIT` đã lưu cùng `focused_writing_task_id`; `AttemptScopeGuard` đã kiểm tra task Writing được chọn thuộc lượt tập trung.
 
-These existing boundaries are reused rather than bypassed.
+Tái sử dụng các ranh giới hiện có này, không bỏ qua chúng.
 
-## 4. Relevance contract
+## 4. Hợp đồng mức liên quan
 
-Add a small strict schema shared by Task 1 and Task 2 orchestration:
+Thêm schema nghiêm ngặt nhỏ dùng chung điều phối Task 1/Task 2:
 
 ```text
 RelevanceVerdict = ON_TOPIC | PARTIALLY_RELEVANT | WHOLLY_UNRELATED
@@ -61,37 +61,37 @@ WritingRelevanceAssessment
 - reason: concise Vietnamese explanation
 ```
 
-The classifier is evidence-grounded: any returned `source_id` must resolve to the same stable `P#S#` segments already used by scoring. The backend resolves IDs; the model never needs to reproduce quotes.
+Bộ phân loại dựa trên bằng chứng: mọi `source_id` trả về phải phân giải được tới cùng đoạn `P#S#` ổn định mà chấm điểm đang dùng. Backend phân giải ID; mô hình không cần chép lại trích dẫn.
 
-Only this exact condition may short-circuit TA/TR:
+Chỉ chính xác điều kiện này mới được rút ngắn luồng TA/TR:
 
 ```text
 verdict == WHOLLY_UNRELATED
 AND confidence == HIGH
 ```
 
-`WHOLLY_UNRELATED + MEDIUM/LOW`, invalid JSON, unknown source IDs, provider failure, timeout, context failure or any validation failure is fail-open and continues through the existing normal TA/TR pipeline.
+`WHOLLY_UNRELATED + MEDIUM/LOW`, JSON không hợp lệ, ID nguồn không biết, lỗi nhà cung cấp, hết thời gian, lỗi ngữ cảnh hoặc mọi lỗi xác thực đều fail-open, tiếp tục luồng TA/TR bình thường hiện có.
 
-The persisted/public relevance status therefore distinguishes the classifier's raw result from whether a short-circuit was actually applied.
+Vì vậy trạng thái liên quan lưu trữ/công khai phân biệt kết quả thô bộ phân loại với việc thực sự áp dụng rút ngắn luồng hay không.
 
-## 5. Relevance semantics and false-positive protection
+## 5. Ngữ nghĩa liên quan và bảo vệ khỏi kết luận sai
 
-`WHOLLY_UNRELATED` is reserved for responses whose communicated content does not address the assigned task at all. The gate must not use it merely because the response is weak, incomplete or inaccurate.
+`WHOLLY_UNRELATED` chỉ dành câu trả lời có nội dung truyền đạt hoàn toàn không đề cập yêu cầu đề. Cổng không được dùng nhãn này chỉ vì câu yếu, chưa đầy đủ hoặc không chính xác.
 
-The following remain `ON_TOPIC` or `PARTIALLY_RELEVANT` and must continue normal scoring:
+Các trường hợp sau vẫn là `ON_TOPIC` hoặc `PARTIALLY_RELEVANT` và phải tiếp tục chấm bình thường:
 
-- Task 2 answers the topic but misses one instruction, discusses one side only, gives a weak/unclear position, develops ideas poorly, includes tangential detail or misunderstands part of the question.
-- Task 1 attempts to describe the supplied visual but misses the overview, chooses weak key features, reports wrong numbers/trends, omits important comparisons, is short, poorly organised or linguistically weak.
-- A response contains one or more off-topic paragraphs but still substantially addresses the assigned task.
-- The classifier is uncertain whether apparent paraphrase or indirect discussion is relevant.
+- Task 2 trả lời chủ đề nhưng bỏ một yêu cầu, chỉ bàn một phía, quan điểm yếu/không rõ, phát triển ý kém, có chi tiết lan man hoặc hiểu sai một phần câu hỏi.
+- Task 1 cố mô tả hình được cung cấp nhưng thiếu tổng quan, chọn đặc điểm chính yếu, báo sai số/xu hướng, bỏ so sánh quan trọng, ngắn, tổ chức kém hoặc yếu ngôn ngữ.
+- Câu trả lời có một hay nhiều đoạn lạc đề nhưng vẫn giải quyết đáng kể yêu cầu đề.
+- Bộ phân loại không chắc cách diễn đạt lại hoặc bàn gián tiếp có liên quan hay không.
 
-Examples of genuine `WHOLLY_UNRELATED` include a Task 1 CO2 chart answered with an essay about learning foreign languages, or a Task 2 recycling prompt answered entirely with an unrelated account of tourism.
+Ví dụ thật sự `WHOLLY_UNRELATED` gồm biểu đồ CO2 Task 1 được trả bằng bài học ngoại ngữ, hoặc đề tái chế Task 2 được trả hoàn toàn bằng câu chuyện du lịch không liên quan.
 
-The prompt must explicitly prefer `PARTIALLY_RELEVANT` over `WHOLLY_UNRELATED` when meaningful task connection remains or the evidence is ambiguous. It must not infer memorisation or cheating.
+Prompt phải ưu tiên rõ `PARTIALLY_RELEVANT` hơn `WHOLLY_UNRELATED` khi còn liên hệ có ý nghĩa với đề hoặc bằng chứng mơ hồ. Không được suy luận học thuộc hoặc gian lận.
 
-## 6. Task 2 orchestration
+## 6. Điều phối Task 2
 
-Task 2 can run relevance concurrently with CC/LR/GRA to avoid adding gate latency to linguistic feedback:
+Task 2 có thể chạy liên quan đồng thời CC/LR/GRA để tránh cộng độ trễ cổng vào phản hồi ngôn ngữ:
 
 ```text
 prompt + essay
@@ -101,25 +101,25 @@ prompt + essay
 └─ GRA evidence → score
 ```
 
-If relevance does not meet the high-confidence short-circuit condition, run the existing TR (`ta`) evidence → scoring path unchanged.
+Nếu liên quan không đạt điều kiện rút ngắn có độ tin cậy cao, chạy luồng bằng chứng → chấm TR (`ta`) hiện có không đổi.
 
-If relevance is `WHOLLY_UNRELATED + HIGH`:
+Nếu liên quan là `WHOLLY_UNRELATED + HIGH`:
 
-- do not issue TR evidence or TR scoring requests;
-- create a deterministic `CriterionResult` for `ta` with score `1.0`;
-- feedback states in Vietnamese that the response is wholly unrelated to the prompt and therefore fits the supplied official Task Response Band 1 profile;
-- strengths/improvements stay criterion-pure and concise;
-- evidence is resolved from the classifier's valid representative source IDs where available;
-- emit normal criterion progress/completion events so the run remains a structurally complete four-criterion result;
-- continue normal CC/LR/GRA and calculate advisory overall using the existing equal-weight aggregation.
+- không gửi yêu cầu bằng chứng TR hoặc chấm TR;
+- tạo `CriterionResult` xác định cho `ta` với điểm `1.0`;
+- phản hồi nêu bằng tiếng Việt rằng câu trả lời hoàn toàn không liên quan đề, do đó phù hợp hồ sơ Task Response Band 1 chính thức được cung cấp;
+- điểm mạnh/cải thiện giữ thuần tiêu chí và ngắn gọn;
+- bằng chứng phân giải từ ID nguồn đại diện hợp lệ của bộ phân loại nếu có;
+- phát sự kiện tiến độ/hoàn thành tiêu chí bình thường để lượt vẫn là kết quả bốn tiêu chí đầy đủ cấu trúc;
+- tiếp tục CC/LR/GRA bình thường, tính tổng tư vấn bằng tổng hợp trọng số đều hiện có.
 
-This is descriptor application, not a numerical penalty or score cap. The existing Task 2 low-band prompt already states that wholly unrelated content fits Task Response Band 1 and that criteria are assessed independently.
+Đây là áp dụng mô tả, không phải phạt số hoặc trần điểm. Prompt band thấp Task 2 hiện có đã nêu nội dung hoàn toàn không liên quan phù hợp Task Response Band 1 và tiêu chí được đánh giá độc lập.
 
-## 7. Task 1 orchestration
+## 7. Điều phối Task 1
 
-Task 1 relevance needs visual-task context, but the first version must not add a second image/VLM call solely for relevance.
+Liên quan Task 1 cần ngữ cảnh đề hình ảnh, nhưng phiên bản đầu không được thêm lần gọi ảnh/VLM thứ hai chỉ để kiểm tra liên quan.
 
-Use the existing primary visual grounding output as structured task context:
+Dùng đầu ra đối chiếu hình ảnh chính hiện có làm ngữ cảnh đề có cấu trúc:
 
 ```text
 image + prompt
@@ -128,42 +128,42 @@ image + prompt
   → text-only relevance classification(prompt + compact visual context + essay)
 ```
 
-CC/LR/GRA remain independent and may continue concurrently.
+CC/LR/GRA giữ độc lập và có thể tiếp tục đồng thời.
 
-If the relevance short-circuit is not applied, preserve the current Task 1 TA path exactly: optional specialist reconciliation, deterministic facts, claim extraction/verification, TA evidence and TA scoring.
+Nếu không áp dụng rút ngắn liên quan, giữ chính xác luồng TA Task 1 hiện tại: hòa giải chuyên gia tùy chọn, dữ kiện xác định, trích xuất/xác minh phát biểu, bằng chứng TA và chấm TA.
 
-If `WHOLLY_UNRELATED + HIGH` is confirmed after usable primary grounding:
+Nếu xác nhận `WHOLLY_UNRELATED + HIGH` sau đối chiếu chính dùng được:
 
-- TA becomes deterministic Band `1.0` from the existing Task 1 Band 1 profile (`no relevant report content`);
-- skip TA claim extraction, claim verification, deterministic fact derivation, optional DePlot/chart-specialist work, TA evidence and TA scoring;
-- CC/LR/GRA continue normally;
-- Task 1 visual grounding metadata remains available because it supplied the relevance task context;
-- no false factual contradictions are created because the skipped path never compares irrelevant essay claims with chart facts.
+- TA thành Band `1.0` xác định theo hồ sơ Task 1 Band 1 hiện có (`no relevant report content`);
+- bỏ trích xuất phát biểu TA, xác minh phát biểu, suy dữ kiện xác định, DePlot/chuyên gia biểu đồ tùy chọn, bằng chứng TA và chấm TA;
+- CC/LR/GRA tiếp tục bình thường;
+- metadata đối chiếu hình ảnh Task 1 vẫn có vì đã cung cấp ngữ cảnh đề liên quan;
+- không tạo mâu thuẫn dữ kiện giả vì luồng bỏ qua không so sánh phát biểu bài không liên quan với dữ kiện biểu đồ.
 
-If primary visual grounding is unusable, relevance cannot safely establish that an essay is wholly unrelated to the visual. Fail open to the existing Task 1 behavior; do not derive Band 1 solely from the text prompt if the task meaning materially depends on the image.
+Nếu đối chiếu hình ảnh chính không dùng được, kiểm tra liên quan không thể an toàn kết luận bài hoàn toàn không liên quan hình. Fail-open sang hành vi Task 1 hiện có; không suy Band 1 chỉ từ đề văn bản nếu ý nghĩa đề phụ thuộc đáng kể hình.
 
-For non-chart Task 1 families, the same structured visual-reference approach applies.
+Với nhóm Task 1 không phải biểu đồ, áp dụng cùng cách tham chiếu hình ảnh có cấu trúc.
 
-## 8. Relevance provider behavior, repair and budgets
+## 8. Hành vi nhà cung cấp liên quan, sửa đầu ra và ngân sách
 
-Create one bounded text-only structured-completion helper for relevance rather than embedding relevance logic into each criterion scorer. Reuse the existing provider abstraction, deterministic `temperature=0`/seed behavior and run-level concurrency limiter.
+Tạo một hàm hoàn tất có cấu trúc chỉ văn bản, có giới hạn cho liên quan thay vì nhúng logic vào từng bộ chấm tiêu chí. Tái sử dụng trừu tượng nhà cung cấp, hành vi `temperature=0`/seed xác định và giới hạn đồng thời cấp lượt hiện có.
 
-The relevance interaction must:
+Tương tác liên quan phải:
 
-- treat prompt, essay and structured visual data as untrusted data;
-- return only the strict relevance JSON contract;
-- use a small dedicated output budget because the schema is tiny;
-- get at most one targeted repair for malformed/invalid provider output;
-- never turn a relevance failure into a run failure;
-- record safe diagnostics/latency/usage without raw model content.
+- coi đề, bài viết và dữ liệu hình ảnh có cấu trúc là dữ liệu không tin cậy;
+- chỉ trả hợp đồng JSON liên quan nghiêm ngặt;
+- dùng ngân sách đầu ra riêng nhỏ vì schema rất gọn;
+- tối đa một lần sửa có mục tiêu cho đầu ra nhà cung cấp sai định dạng/không hợp lệ;
+- tuyệt đối không biến lỗi liên quan thành lỗi cả lượt;
+- ghi chẩn đoán/độ trễ/mức sử dụng an toàn, không chứa nội dung mô hình thô.
 
-A repaired or failed classifier still follows the same high-confidence short-circuit rule. No third call is introduced.
+Bộ phân loại đã sửa hoặc lỗi vẫn theo cùng quy tắc rút ngắn độ tin cậy cao. Không thêm lần gọi thứ ba.
 
-## 9. Relevance persistence, events and cache identity
+## 9. Lưu trữ liên quan, sự kiện và danh tính cache
 
-Extend the public/persisted AI run result with optional relevance metadata. Historical runs without the field remain readable.
+Mở rộng kết quả lượt AI công khai/lưu trữ bằng metadata liên quan tùy chọn. Lượt lịch sử thiếu trường vẫn đọc được.
 
-Recommended result shape:
+Cấu trúc kết quả khuyến nghị:
 
 ```text
 relevance:
@@ -174,17 +174,17 @@ relevance:
   short_circuit_applied: boolean
 ```
 
-Persist relevance in `result_json`, not in a new relational table. It belongs to one AI run and is immutable with that run.
+Lưu liên quan trong `result_json`, không trong bảng quan hệ mới. Nó thuộc một lượt AI và bất biến cùng lượt đó.
 
-Add relevance-specific activity/events only where they improve live progress clarity, for example `relevance.started`, `relevance.completed`, and `relevance.failed`; a failed event means fail-open, not a failed run. Do not overload `criterion.failed` for this auxiliary stage.
+Chỉ thêm hoạt động/sự kiện riêng liên quan tại nơi giúp tiến độ trực tiếp rõ hơn, ví dụ `relevance.started`, `relevance.completed` và `relevance.failed`; sự kiện lỗi nghĩa là fail-open, không lỗi lượt. Không dùng sai `criterion.failed` cho giai đoạn phụ này.
 
-Because relevance can change the criterion execution path and result, its semantic prompt/contract must participate in AI cache identity. Bump Task 2 and Task 1 composite prompt/fingerprint versions when implementing this feature; do not change the unchanged Task 1 perception contract solely for the text relevance gate.
+Vì liên quan có thể đổi luồng thực thi/kết quả tiêu chí, prompt/hợp đồng ngữ nghĩa của nó phải tham gia danh tính cache AI. Tăng phiên bản prompt/fingerprint tổng hợp Task 2/Task 1 khi triển khai; không đổi hợp đồng tri giác Task 1 không thay đổi chỉ vì cổng liên quan văn bản.
 
-Historical completed runs keep their old versions and remain displayable.
+Lượt hoàn tất lịch sử giữ phiên bản cũ và vẫn hiển thị được.
 
-## 10. Advisory overall for wholly unrelated responses
+## 10. Điểm tổng tư vấn cho câu hoàn toàn không liên quan
 
-A high-confidence wholly unrelated response still produces all four criterion results:
+Câu hoàn toàn không liên quan với độ tin cậy cao vẫn tạo đủ bốn kết quả tiêu chí:
 
 ```text
 TA/TR = 1.0
@@ -193,15 +193,15 @@ LR    = normal assessment
 GRA   = normal assessment
 ```
 
-The existing equal-weight arithmetic computes the advisory task overall. No special aggregate override is added.
+Phép tính trọng số đều hiện có tính điểm tổng task tư vấn. Không thêm ghi đè tổng hợp đặc biệt.
 
-This value remains advisory AI output only. It never updates `AttemptWritingScore`, `Attempt.band_score`, official History or Analytics by itself.
+Giá trị này chỉ là đầu ra AI tư vấn. Bản thân nó tuyệt đối không cập nhật `AttemptWritingScore`, `Attempt.band_score`, History hoặc Analytics chính thức.
 
-## 11. Focused-practice personal feedback persistence
+## 11. Lưu phản hồi cá nhân cho luyện tập tập trung
 
-Add a new table/model dedicated to the USER's saved advisory snapshot, for example `writing_ai_practice_feedback`.
+Thêm bảng/mô hình riêng cho ảnh chụp tư vấn USER đã lưu, ví dụ `writing_ai_practice_feedback`.
 
-Required columns:
+Các cột bắt buộc:
 
 ```text
 id
@@ -223,70 +223,70 @@ created_at
 updated_at
 ```
 
-Use the same half-band constraints as AI criterion scores. Feedback uses bounded text columns or equivalent validated storage consistent with existing criterion feedback limits.
+Dùng cùng ràng buộc nửa band như điểm tiêu chí AI. Phản hồi dùng cột văn bản có giới hạn hoặc lưu trữ xác thực tương đương, nhất quán giới hạn phản hồi tiêu chí hiện có.
 
-Database invariants:
+Bất biến cơ sở dữ liệu:
 
-- unique `(user_id, attempt_id, writing_task_id)` so there is one latest snapshot;
-- `attempt_id` deletes cascade to the snapshot;
-- `user_id` deletes cascade;
-- `source_ai_run_id` references the source run and must not silently point to another attempt/task;
-- `writing_task_id` remains a real Writing task.
+- duy nhất `(user_id, attempt_id, writing_task_id)` để có một ảnh chụp mới nhất;
+- xóa `attempt_id` lan truyền tới ảnh chụp;
+- xóa `user_id` lan truyền;
+- `source_ai_run_id` tham chiếu lượt nguồn, không được âm thầm trỏ sang lượt làm/task khác;
+- `writing_task_id` phải là task Writing thực.
 
-Do not store a duplicated overall value; it is derivable from the four criterion scores if the UI wants to show an advisory task mean.
+Không lưu trùng giá trị tổng; có thể suy từ bốn điểm tiêu chí nếu giao diện muốn hiển thị trung bình task tư vấn.
 
-A second explicit save for the same user/attempt/task updates the existing row and `source_ai_run_id`; it does not append history.
+Lưu chủ động lần hai cùng người/lượt/task cập nhật hàng hiện có và `source_ai_run_id`; không nối lịch sử.
 
-## 12. Personal snapshot authorization
+## 12. Phân quyền ảnh chụp cá nhân
 
-A normal authenticated USER may save/read a snapshot only when all of these are true:
+USER thường đã xác thực chỉ được lưu/đọc ảnh chụp khi mọi điều kiện sau đúng:
 
-1. the attempt belongs to that current user;
-2. the attempt module is Writing;
+1. lượt làm thuộc người dùng hiện tại đó;
+2. mô-đun lượt làm là Writing;
 3. `attempt.scope == FOCUSED_UNIT`;
 4. `focused_writing_task_id == requested writing_task_id`;
-5. the source AI run belongs to the same attempt and task;
-6. the source AI run was requested by the same user and is `COMPLETED`;
-7. the source run has a complete validated four-criterion result.
+5. lượt AI nguồn thuộc cùng lượt làm và task;
+6. lượt AI nguồn được cùng người dùng yêu cầu và là `COMPLETED`;
+7. lượt nguồn có kết quả đủ bốn tiêu chí đã xác thực.
 
-The frontend supplies only `source_run_id`. It never supplies criterion scores or feedback for persistence. The backend copies the validated completed run result into the snapshot so a user cannot forge advisory AI scores by modifying a request body.
+Frontend chỉ cung cấp `source_run_id`. Tuyệt đối không cung cấp điểm tiêu chí/phản hồi để lưu. Backend sao chép kết quả lượt hoàn tất đã xác thực vào ảnh chụp, ngăn người dùng giả điểm AI tư vấn bằng sửa nội dung yêu cầu.
 
-Full-module Writing, Full Mock Writing, another user's attempt, another task, active/failed runs and malformed historical results are rejected.
+Từ chối Writing toàn mô-đun, Full Mock Writing, lượt người khác, task khác, lượt đang hoạt động/thất bại và kết quả lịch sử sai định dạng.
 
-ADMIN manual grading remains separate. The existing `PUT /attempts/{attempt_id}/writing-scores/{writing_task_id}` stays `AdminUser`-only and is not reused for personal snapshots.
+Chấm thủ công ADMIN vẫn riêng. `PUT /attempts/{attempt_id}/writing-scores/{writing_task_id}` hiện có tiếp tục chỉ `AdminUser`, không tái dùng cho ảnh chụp cá nhân.
 
-## 13. Personal snapshot API
+## 13. API ảnh chụp cá nhân
 
-Keep the resource under the current Writing-AI route family:
+Giữ tài nguyên dưới nhóm tuyến Writing AI hiện tại:
 
 ```text
 GET /attempts/{attempt_id}/writing/{writing_task_id}/ai-practice-feedback
 PUT /attempts/{attempt_id}/writing/{writing_task_id}/ai-practice-feedback
 ```
 
-`PUT` body:
+Nội dung `PUT`:
 
 ```json
 {"source_run_id":"<uuid>"}
 ```
 
-The response contains source run ID, the four saved criterion score/feedback pairs and timestamps. GET returns a nullable envelope or a repo-consistent not-found response; implementation should choose one convention and use it consistently in the frontend. Prefer a nullable response if it avoids expected-error handling for the common 'not saved yet' state.
+Phản hồi chứa ID lượt nguồn, bốn cặp điểm/phản hồi đã lưu và thời gian. GET trả cấu trúc cho phép null hoặc phản hồi không tìm thấy nhất quán kho mã; triển khai cần chọn một quy ước và dùng thống nhất ở frontend. Ưu tiên phản hồi null nếu tránh phải xử lý lỗi dự kiến cho trạng thái phổ biến “chưa lưu”.
 
-No DELETE endpoint is required in this version.
+Phiên bản này không yêu cầu endpoint DELETE.
 
-## 14. Review DTO integration
+## 14. Tích hợp DTO xem lại
 
-Do not merge personal advisory feedback into `WritingTaskScore`. That DTO represents the existing manual/official score and feedback semantics.
+Không gộp phản hồi tư vấn cá nhân vào `WritingTaskScore`. DTO đó biểu diễn ngữ nghĩa điểm/phản hồi thủ công/chính thức hiện có.
 
-Either add an optional `ai_practice_feedback` field to the focused Writing review task DTO or let `WritingAIAssessment` load the dedicated resource. Prefer the dedicated Writing-AI API when it avoids expanding generic review contracts for non-focused attempts.
+Có thể thêm trường `ai_practice_feedback` tùy chọn vào DTO task xem lại Writing tập trung, hoặc để `WritingAIAssessment` tải tài nguyên riêng. Ưu tiên API Writing AI riêng khi tránh mở rộng hợp đồng xem lại chung cho lượt không tập trung.
 
-Whichever presentation path is selected, a missing snapshot must not affect review loading.
+Dù chọn cách trình bày nào, thiếu ảnh chụp không được ảnh hưởng tải trang xem lại.
 
-## 15. Frontend behavior
+## 15. Hành vi frontend
 
-`WritingAIAssessment` receives enough attempt-scope and role context to choose the action explicitly.
+`WritingAIAssessment` nhận đủ ngữ cảnh phạm vi lượt làm và vai trò để chọn thao tác rõ ràng.
 
-ADMIN behavior remains:
+Hành vi ADMIN giữ nguyên:
 
 ```text
 Chép gợi ý AI vào biểu mẫu
@@ -296,7 +296,7 @@ Chép gợi ý AI vào biểu mẫu
 → official/manual score
 ```
 
-USER focused behavior becomes:
+Hành vi USER tập trung trở thành:
 
 ```text
 Lưu nhận xét AI vào bài luyện
@@ -305,99 +305,99 @@ Lưu nhận xét AI vào bài luyện
 → advisory only
 ```
 
-After a saved snapshot exists, label the action `Cập nhật nhận xét AI đã lưu` when the displayed completed run differs from the stored source run. Regrading alone does not overwrite the saved snapshot.
+Sau khi có ảnh chụp đã lưu, ghi nhãn thao tác `Cập nhật nhận xét AI đã lưu` khi lượt hoàn tất đang hiển thị khác lượt nguồn đã lưu. Chỉ chấm lại không ghi đè ảnh chụp.
 
-Render a separate card such as `Nhận xét AI đã lưu` containing TA/TR, CC, LR and GRA score + feedback, source-run time/update time and a visible `Tham khảo · Không phải điểm chính thức` label.
+Hiển thị thẻ riêng như `Nhận xét AI đã lưu`, chứa điểm + phản hồi TA/TR, CC, LR, GRA, thời gian lượt nguồn/cập nhật và nhãn rõ `Tham khảo · Không phải điểm chính thức`.
 
-A normal USER in a full-module/full-mock review gets neither ADMIN copy-to-form capability nor focused personal-save capability. Existing AI assessment viewing/regrading permissions remain otherwise unchanged.
+USER thường trong xem lại toàn mô-đun/full-mock không có khả năng chép biểu mẫu ADMIN hoặc lưu cá nhân tập trung. Quyền xem/chấm lại AI hiện có ngoài ra giữ nguyên.
 
-If the source run contains a high-confidence wholly unrelated relevance result, the saved card can display the relevance explanation from the source run; relevance metadata is not duplicated into the snapshot table.
+Nếu lượt nguồn chứa kết quả hoàn toàn không liên quan với độ tin cậy cao, thẻ đã lưu có thể hiển thị giải thích từ lượt nguồn; không sao chép metadata liên quan vào bảng ảnh chụp.
 
-## 16. Error handling and concurrency
+## 16. Xử lý lỗi và đồng thời
 
-Personal snapshot upsert must be transactional. Concurrent duplicate saves converge on one unique row; no duplicate snapshot records are created.
+Upsert ảnh chụp cá nhân phải trong giao dịch. Lưu trùng đồng thời hội tụ về một hàng duy nhất; không tạo bản ghi ảnh chụp trùng.
 
-If the requested source run finishes or changes state between frontend display and save, the backend rechecks the durable run row. Only a durable completed result can be copied.
+Nếu lượt nguồn yêu cầu hoàn thành hoặc đổi trạng thái giữa hiển thị frontend và lưu, backend kiểm tra lại hàng lượt bền vững. Chỉ được sao chép kết quả hoàn tất bền vững.
 
-Saving personal feedback never starts inference, never changes the source run, and never changes official scores.
+Lưu phản hồi cá nhân tuyệt đối không bắt đầu suy luận, không đổi lượt nguồn và không đổi điểm chính thức.
 
-Relevance failures are auxiliary fail-open failures. Scoring failures retain the existing criterion/run failure semantics after the gate decision.
+Lỗi liên quan là lỗi phụ fail-open. Lỗi chấm giữ ngữ nghĩa thất bại tiêu chí/lượt hiện có sau quyết định cổng.
 
-Cancellation behavior remains unchanged: task-tab unmount only stops observation; the explicit Stop action cancels the backend run.
+Hành vi hủy giữ nguyên: tháo thẻ task chỉ dừng quan sát; thao tác Stop chủ động hủy lượt backend.
 
-## 17. Prompt/versioning boundaries
+## 17. Ranh giới prompt/phiên bản
 
-Relevance semantics are a scoring-behavior change, so production cache versions must change when implemented.
+Ngữ nghĩa liên quan thay đổi hành vi chấm, nên phiên bản cache production phải đổi khi triển khai.
 
 Task 1:
 
-- bump the composite Task 1 prompt/fingerprint version and scoring/relevance semantic version as appropriate;
-- keep `TASK1_VISUAL_CONTRACT_VERSION = mts-task1-visual-v3` unchanged unless visual schema/perception instructions themselves are changed;
-- preserve the existing v7 TA and CC calibration guidance.
+- tăng phiên bản prompt/fingerprint tổng hợp Task 1 và phiên bản ngữ nghĩa chấm/liên quan phù hợp;
+- giữ `TASK1_VISUAL_CONTRACT_VERSION = mts-task1-visual-v3` trừ khi chính schema hình ảnh/hướng dẫn tri giác đổi;
+- giữ hướng dẫn hiệu chỉnh TA/CC v7 hiện có.
 
 Task 2:
 
-- bump the effective Task 2 prompt contract so old cached runs without relevance cannot masquerade as new behavior;
-- preserve criterion rubrics/scopes except for the minimum integration needed to expose the relevance short-circuit result.
+- tăng hợp đồng prompt Task 2 có hiệu lực để lượt cache cũ thiếu liên quan không thể giả là hành vi mới;
+- giữ rubric/phạm vi tiêu chí, trừ tích hợp tối thiểu cần để cung cấp kết quả rút ngắn liên quan.
 
-Do not introduce score bonuses, penalties, offsets, floors or caps beyond the descriptor-defined deterministic Band 1 case for a high-confidence wholly unrelated response.
+Không thêm thưởng, phạt, độ lệch, sàn hoặc trần điểm ngoài trường hợp Band 1 xác định theo mô tả cho câu hoàn toàn không liên quan độ tin cậy cao.
 
-## 18. Testing strategy
+## 18. Chiến lược kiểm thử
 
-Implementation must use focused TDD and cheap tests only; no browser, Playwright, live model, GPU, Modal or deployment runs are required for this feature.
+Triển khai phải dùng TDD có trọng tâm và chỉ kiểm thử chi phí thấp; tính năng không yêu cầu chạy trình duyệt, Playwright, mô hình thật, GPU, Modal hoặc triển khai.
 
-Backend contract tests should cover at least:
+Kiểm thử hợp đồng backend cần bao quát ít nhất:
 
-1. Task 2 `ON_TOPIC` and `PARTIALLY_RELEVANT` preserve the existing four criterion pipeline.
-2. `WHOLLY_UNRELATED + HIGH` skips TR evidence/scoring, produces TR 1.0 and still runs CC/LR/GRA.
-3. `WHOLLY_UNRELATED + MEDIUM/LOW` fails open and runs normal TR.
-4. malformed relevance, timeout/provider error, unknown evidence IDs and repair exhaustion fail open without failing the run.
-5. Task 1 high-confidence wholly unrelated after usable grounding skips claims/facts/specialist/TA evidence/scoring but still returns TA 1.0 + normal CC/LR/GRA.
-6. unusable Task 1 visual grounding does not short-circuit solely from textual relevance.
-7. relevance metadata persists, replays and parses for current runs while historical runs without it remain valid.
-8. cache/version fingerprint changes prevent reuse of pre-relevance completed runs.
-9. USER focused own attempt can create and update exactly one personal snapshot.
-10. USER full-module/full-mock, foreign attempt/task, mismatched run, active run and failed run cannot save a snapshot.
-11. backend copies score/feedback from `result_json`; client-supplied forged criterion values are impossible by schema.
-12. snapshot save/update does not mutate `AttemptWritingScore`, `Attempt.band_score`, History or Analytics official values.
-13. attempt deletion cascades personal snapshot deletion.
+1. Task 2 `ON_TOPIC` và `PARTIALLY_RELEVANT` giữ luồng bốn tiêu chí hiện có.
+2. `WHOLLY_UNRELATED + HIGH` bỏ bằng chứng/chấm TR, tạo TR 1.0 và vẫn chạy CC/LR/GRA.
+3. `WHOLLY_UNRELATED + MEDIUM/LOW` fail-open và chạy TR bình thường.
+4. Liên quan sai định dạng, hết giờ/lỗi nhà cung cấp, ID bằng chứng không biết và hết lượt sửa đều fail-open, không làm lỗi lượt.
+5. Task 1 hoàn toàn không liên quan độ tin cậy cao sau đối chiếu dùng được bỏ phát biểu/dữ kiện/chuyên gia/bằng chứng TA/chấm nhưng vẫn trả TA 1.0 + CC/LR/GRA bình thường.
+6. Đối chiếu hình ảnh Task 1 không dùng được không rút ngắn chỉ từ liên quan văn bản.
+7. Metadata liên quan được lưu, phát lại, phân tích cho lượt hiện tại, còn lượt lịch sử thiếu nó vẫn hợp lệ.
+8. Đổi dấu vân tay cache/phiên bản ngăn dùng lại lượt hoàn tất trước liên quan.
+9. USER có lượt tập trung của mình tạo/cập nhật được đúng một ảnh chụp cá nhân.
+10. USER toàn mô-đun/full-mock, lượt/task người khác, lượt không khớp, đang hoạt động và thất bại không lưu được ảnh chụp.
+11. Backend sao chép điểm/phản hồi từ `result_json`; schema không cho client gửi tiêu chí giả.
+12. Lưu/cập nhật ảnh chụp không đổi `AttemptWritingScore`, `Attempt.band_score`, giá trị chính thức History/Analytics.
+13. Xóa lượt làm lan truyền xóa ảnh chụp cá nhân.
 
-Frontend tests should cover at least:
+Kiểm thử frontend cần bao quát ít nhất:
 
-1. ADMIN still sees `Chép gợi ý AI vào biểu mẫu` and current copy behavior works.
-2. USER focused sees `Lưu nhận xét AI vào bài luyện` after a completed run.
-3. USER full-module/full-mock does not see the personal-save action.
-4. saved snapshot card renders the four scores/feedback and advisory label.
-5. a new regrade does not overwrite the saved card until explicit update.
-6. relevance status for wholly unrelated writing is clearly explained without implying CC/LR/GRA are zero or the response is cheating.
-7. historical runs without relevance metadata continue to render.
+1. ADMIN vẫn thấy `Chép gợi ý AI vào biểu mẫu` và hành vi sao chép hiện tại hoạt động.
+2. USER tập trung thấy `Lưu nhận xét AI vào bài luyện` sau lượt hoàn tất.
+3. USER toàn mô-đun/full-mock không thấy thao tác lưu cá nhân.
+4. Thẻ ảnh chụp đã lưu hiển thị bốn điểm/phản hồi và nhãn tư vấn.
+5. Chấm lại mới không ghi đè thẻ đã lưu cho đến cập nhật chủ động.
+6. Giải thích rõ trạng thái liên quan cho bài hoàn toàn không liên quan, không ngụ ý CC/LR/GRA bằng không hoặc bài gian lận.
+7. Lượt lịch sử thiếu metadata liên quan tiếp tục hiển thị.
 
-Run the smallest relevant pytest/Vitest files, TypeScript typecheck for changed frontend contracts, Ruff on changed Python, and `git diff --check`. Broader suites are unnecessary unless focused failures reveal a dependency.
+Chạy tệp pytest/Vitest liên quan nhỏ nhất, kiểm tra kiểu TypeScript cho hợp đồng frontend thay đổi, Ruff trên Python đổi và `git diff --check`. Không cần bộ rộng hơn trừ khi lỗi có trọng tâm phát hiện phụ thuộc.
 
-## 19. Documentation and observability
+## 19. Tài liệu và khả năng quan sát
 
-Update `docs/ai-writing.md` with:
+Cập nhật `docs/ai-writing.md` với:
 
-- relevance gate semantics and fail-open behavior;
-- Task 1/Task 2 execution differences;
-- Band 1 short-circuit rationale from the existing low-band descriptor profiles;
-- criterion independence for CC/LR/GRA;
-- personal focused-practice snapshot versus manual/official scoring;
-- new version identifiers and operational call-budget implications.
+- ngữ nghĩa cổng liên quan và hành vi fail-open;
+- khác biệt thực thi Task 1/Task 2;
+- cơ sở rút ngắn Band 1 từ hồ sơ mô tả band thấp hiện có;
+- độc lập tiêu chí CC/LR/GRA;
+- ảnh chụp luyện tập tập trung cá nhân so với chấm thủ công/chính thức;
+- định danh phiên bản mới và ảnh hưởng ngân sách lượt gọi khi vận hành.
 
-Latency/usage reporting should expose the relevance stage distinctly enough to compare normal and short-circuited runs without storing prompt/essay/model output content.
+Báo cáo độ trễ/mức dùng cần tách giai đoạn liên quan đủ rõ để so lượt bình thường và rút ngắn mà không lưu nội dung prompt/bài viết/đầu ra mô hình.
 
-## 20. Acceptance criteria
+## 20. Tiêu chí nghiệm thu
 
-The change is complete when all of the following hold:
+Thay đổi hoàn tất khi mọi điều sau thỏa:
 
-- A valid on-topic or partially relevant essay is never short-circuited by anything weaker than `WHOLLY_UNRELATED + HIGH`.
-- Relevance-classifier failure cannot fail an otherwise scoreable run.
-- A high-confidence wholly unrelated response produces TA/TR 1.0, normal CC/LR/GRA and a normal advisory aggregate; it never produces forced `0/0/0/0`.
-- Task 1 avoids unnecessary post-grounding TA analysis on a confirmed wholly unrelated response.
-- ADMIN manual grading/copy/save behavior is unchanged.
-- A normal USER can explicitly save/update one latest AI score+feedback snapshot for their own focused Writing task.
-- The personal snapshot cannot become or alter an official/manual score through this API.
-- Regrading does not silently replace a saved snapshot.
-- Historical AI runs and existing Writing attempts remain readable.
-- No live inference, browser/E2E, deployment or unrelated feature changes are required to validate the implementation.
+- Bài hợp lệ đúng chủ đề hoặc liên quan một phần tuyệt đối không bị rút ngắn bởi điều kiện yếu hơn `WHOLLY_UNRELATED + HIGH`.
+- Lỗi bộ phân loại liên quan không được làm lỗi lượt vốn chấm được.
+- Câu hoàn toàn không liên quan độ tin cậy cao tạo TA/TR 1.0, CC/LR/GRA bình thường và tổng tư vấn bình thường; tuyệt đối không ép `0/0/0/0`.
+- Task 1 tránh phân tích TA sau đối chiếu không cần thiết khi xác nhận hoàn toàn không liên quan.
+- Hành vi chấm thủ công/sao chép/lưu ADMIN không đổi.
+- USER thường có thể chủ động lưu/cập nhật một ảnh chụp điểm+phản hồi AI mới nhất cho task Writing tập trung của mình.
+- Ảnh chụp cá nhân không thể trở thành hoặc đổi điểm chính thức/thủ công qua API này.
+- Chấm lại không âm thầm thay ảnh chụp đã lưu.
+- Lượt AI lịch sử và lượt Writing hiện có vẫn đọc được.
+- Không cần suy luận thật, trình duyệt/E2E, triển khai hoặc thay tính năng không liên quan để xác thực triển khai.

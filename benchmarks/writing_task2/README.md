@@ -1,49 +1,29 @@
-# Offline Writing Task 2 benchmark
+# Benchmark Writing Task 2 ngoại tuyến
 
-> **Documentation audit: CURRENT.** Canonical concern này; source-check các boundary/API, không live validation.
-> Mục đích: Offline Writing Task 2 benchmark. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../../scripts/benchmark_task2.py).
-> Đọc cùng [current module/guide](../../docs/modules/writing.md); [audit và giới hạn](../../docs/DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+> **Kiểm toán tài liệu: CURRENT.** Tài liệu chuẩn cho chủ đề này; đã đối chiếu ranh giới/API trong mã nguồn, chưa xác thực trực tiếp trên hệ thống chạy.
+> Mục đích: mô tả benchmark Writing Task 2 ngoại tuyến. Đối chiếu mã nguồn `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [phần triển khai](../../scripts/benchmark_task2.py).
+> Đọc cùng [mô-đun/hướng dẫn hiện hành](../../docs/modules/writing.md); [kiểm toán và giới hạn](../../docs/DOCS_AUDIT.md). Kết quả kiểm thử/benchmark bên dưới thuộc lần thực hiện gốc, không phải kết quả chạy lại trong đợt kiểm toán này.
 
-The admin bank's `task2.jsonl` works directly with the CLI. JSONL is canonical;
-CSV is inspection only. `schema_version: 1` identifies the file format, not a
-bank/dataset version. The schema is generated from
-`app.evaluation.task2.models.BenchmarkSample`.
+`task2.jsonl` của ngân hàng quản trị dùng trực tiếp với CLI. JSONL là định dạng chuẩn; CSV chỉ để xem. `schema_version: 1` định danh định dạng tệp, không phải phiên bản ngân hàng/tập dữ liệu. Lược đồ sinh từ `app.evaluation.task2.models.BenchmarkSample`.
 
-Human labels are `tr`, `cc`, `lr`, `gra`, each 0–9 in half bands. Export uses
-one rater, a neutral provenance fallback, and false-default redistribution.
-Labels never enter inference. Task 2 has no image, perception or DePlot.
+Nhãn người chấm gồm `tr`, `cc`, `lr`, `gra`, mỗi điểm từ 0–9 theo bước nửa band. Khi xuất dùng một người chấm, giá trị nguồn gốc dự phòng trung lập và mặc định không cho phân phối lại. Nhãn không đi vào suy luận. Task 2 không có hình ảnh, nhận thức thị giác hoặc DePlot.
 
-From the repository root, validate without a provider:
+Từ thư mục gốc kho mã, xác thực mà không dùng nhà cung cấp:
 
 ```sh
 uv run --project backend python scripts/benchmark_task2.py --manifest benchmarks/writing_task2/private/task2.jsonl --split dev --dry-run --output benchmarks/writing_task2/reports/dev-plan
 ```
 
-Optional **manual** one-sample provider smoke (not an implementation/CI test):
+Tùy chọn chạy thử **thủ công** một mẫu qua nhà cung cấp (không phải kiểm thử triển khai/CI):
 
 ```sh
 uv run --project backend python scripts/benchmark_task2.py --manifest benchmarks/writing_task2/private/task2.jsonl --split dev --limit 1 --max-concurrent-llm-requests 2 --resume --output benchmarks/writing_task2/reports/dev-smoke
 ```
 
-Samples execute sequentially. Inside a sample, the production service bounds
-criterion requests to 1–4. Its effective prompt is currently `mts-task2-v12`;
-the evaluator does not change production prompts/calibration. Use DEV for
-iteration and a separate `--split holdout` output for final evaluation.
+Các mẫu chạy tuần tự. Trong mỗi mẫu, dịch vụ sản xuất giới hạn yêu cầu tiêu chí ở 1–4. Lời nhắc có hiệu lực hiện là `mts-task2-v12`; bộ đánh giá không đổi lời nhắc/hiệu chuẩn sản xuất. Dùng DEV để lặp cải tiến và thư mục đầu ra `--split holdout` riêng để đánh giá cuối cùng.
 
-Output: `report.json`, `report.md`, `disagreements.csv`, `cache/`, `attempts/`.
-Task 2 shares Task 1's exact/±0.5/±1.0 agreement, bias, MAE, RMSE and QWK code.
-QWK requires 10 comparable half-band pairs and nonzero expected variance.
-Failures remain visible; valid partial criteria may contribute metrics, while
-overall requires all four predictions. Earlier failed attempts/costs remain
-after retry-to-success. Cache hits add zero new requests. Interrupted in-flight
-costs are unknown, never manufactured.
+Đầu ra: `report.json`, `report.md`, `disagreements.csv`, `cache/`, `attempts/`. Task 2 dùng chung mã tính đồng thuận chính xác/±0.5/±1.0, độ lệch, MAE, RMSE và QWK của Task 1. QWK yêu cầu 10 cặp nửa band so sánh được và phương sai kỳ vọng khác 0. Lỗi vẫn hiển thị; tiêu chí hợp lệ trong kết quả một phần có thể góp vào chỉ số, còn điểm tổng yêu cầu đủ bốn dự đoán. Các lần thất bại/chi phí trước vẫn được giữ khi thử lại thành công. Kết quả trúng bộ nhớ đệm không thêm yêu cầu mới. Chi phí yêu cầu đang chạy bị gián đoạn là chưa biết, không tự tạo số liệu.
 
-Resume identity includes contents, labels, split, provider/model, hashed endpoint,
-effective prompt, runtime settings, textarea provenance, contract and implementation.
-Paths/presentation labels do not affect it. Failed/corrupt/inconsistent records
-are not successful cache hits.
+Danh tính tiếp tục bao gồm nội dung, nhãn, phần chia dữ liệu, nhà cung cấp/mô hình, điểm cuối đã băm, lời nhắc có hiệu lực, cấu hình chạy, nguồn gốc ô văn bản, hợp đồng và phần triển khai. Đường dẫn/nhãn hiển thị không ảnh hưởng danh tính. Bản ghi thất bại/hỏng/không nhất quán không được coi là kết quả trúng bộ nhớ đệm thành công.
 
-Keep private inputs and reports ignored or outside Git. Reports contain safe IDs,
-hashes, scores and counters, not source text or raw provider errors. Inference
-sends the prompt/essay to the configured provider. No production DB, admin
-session or API connection is needed. See [the Colab guide](../../docs/writing-benchmark-bank.md).
+Giữ đầu vào riêng tư và báo cáo ở nơi Git bỏ qua hoặc ngoài Git. Báo cáo chứa ID an toàn, giá trị băm, điểm và bộ đếm, không chứa văn bản nguồn hoặc lỗi thô của nhà cung cấp. Suy luận gửi đề bài/bài viết đến nhà cung cấp đã cấu hình. Không cần cơ sở dữ liệu sản xuất, phiên quản trị hoặc kết nối API. Xem [hướng dẫn Colab](../../docs/writing-benchmark-bank.md).

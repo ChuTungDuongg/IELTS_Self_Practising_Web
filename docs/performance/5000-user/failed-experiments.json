@@ -1,0 +1,46 @@
+{
+  "attempts": [
+    {
+      "artifact_original_name": "failed-harness-correctness-contract.json",
+      "actual_duration_seconds": 1.0289482000516728,
+      "target_users": 5,
+      "all_requests": 7,
+      "journeys_failed": {
+        "A:ACTIVE_CORRECTNESS_LEAK": 1
+      },
+      "failures": 1,
+      "classification": "HARNESS CONTRACT FAILURE; not application capacity failure",
+      "limits": "Pre-final harness; source revision/timestamp NOT RECORDED; original private run directory removed after sanitized summary"
+    },
+    {
+      "artifact_original_name": "results-smoke-mixed.json",
+      "actual_duration_seconds": 85.66958970000269,
+      "target_users": 5,
+      "all_requests": 952,
+      "journeys_failed": {},
+      "failures": 8,
+      "classification": "HARNESS CONTRACT FAILURE; not application capacity failure",
+      "limits": "Pre-final harness; source revision/timestamp NOT RECORDED; original private run directory removed after sanitized summary"
+    }
+  ],
+  "other_failed_attempts": [
+    {
+      "id": "SEED-GROUP-ORDER",
+      "reason": "Listening group order_index is module-global; generator initially reset per part. Partial draft deleted via authorized API, fresh run seeded.",
+      "requests": "NOT RECORDED",
+      "result": "FAIL fixture setup; no capacity claim"
+    },
+    {
+      "id": "WRITING-NULLPOOL",
+      "reason": "90s drain guard failed when each checkpoint opened a new authenticated DB connection; subsequently used runtime-like bounded pool.",
+      "requests": "NOT RECORDED",
+      "result": "FAIL component probe; no speedup comparison"
+    },
+    {
+      "id": "CLI-DRAIN-FLOAT",
+      "reason": "Locust rejected stop_timeout 10.0; runner now formats ceil(integer). No HTTP load began.",
+      "requests": 0,
+      "result": "FAIL harness CLI before load"
+    }
+  ]
+}

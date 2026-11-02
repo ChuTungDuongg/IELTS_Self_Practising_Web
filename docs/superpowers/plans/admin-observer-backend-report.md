@@ -1,56 +1,56 @@
-# Backend Admin Observer Report — 2026-10-27
+# Báo cáo backend: Admin ở vai trò quan sát — 2026-10-27
 
-> **Documentation audit: HISTORICAL.** Historical reference; không phải contract hiện hành.
-> Mục đích: Backend Admin Observer Report — 2026-10-27. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../../../backend/app/services/classroom_capabilities.py).
-> Đọc cùng [current module/guide](../../modules/classrooms.md); [audit và giới hạn](../../DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+> **Kiểm toán tài liệu: HISTORICAL.** Tham khảo lịch sử, không phải hợp đồng hiện hành.
+> Mục đích: báo cáo backend về vai trò quan sát của Admin — 2026-10-27. Đối chiếu mã nguồn `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [phần triển khai](../../../backend/app/services/classroom_capabilities.py).
+> Đọc cùng [mô-đun/hướng dẫn hiện hành](../../modules/classrooms.md); [kiểm toán và giới hạn](../../DOCS_AUDIT.md). Kết quả kiểm thử/benchmark bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong đợt kiểm toán này.
 
-## Root causes
+## Nguyên nhân gốc
 
-- `resolve_capabilities()` subtracted a handful of mutable capabilities from `ALL`, leaving administrators with classroom management, member management and final-grade editing.
-- `ClassroomAssignmentService.create()` explicitly skipped assignment authorization for administrators.
-- `AccessPolicy.require_classroom_manage()` returned early for administrators.
-- `ClassroomService.restore()` required global Admin moderation instead of classroom ownership.
-- `GradingPolicy` granted administrators classroom final-grade flags and accepted classroom final grading through personal Writing/Speaking endpoints.
-- Participant operations could trust historical membership or attempt ownership. A legacy Admin enrolment could therefore comment, leave/respond to invitations, complete resource plan items, start assignments, or mutate old classroom attempts independently of authoring capabilities.
+- `resolve_capabilities()` chỉ trừ một số ít quyền thay đổi khỏi `ALL`, khiến quản trị viên vẫn có quyền quản lý lớp, thành viên và sửa điểm cuối.
+- `ClassroomAssignmentService.create()` bỏ qua rõ ràng việc phân quyền giao bài cho quản trị viên.
+- `AccessPolicy.require_classroom_manage()` trả về sớm đối với quản trị viên.
+- `ClassroomService.restore()` yêu cầu quyền kiểm duyệt Admin toàn cục thay vì quyền sở hữu lớp.
+- `GradingPolicy` cấp cờ chấm điểm cuối của lớp cho quản trị viên, chấp nhận chấm cuối lớp qua điểm cuối Writing/Speaking cá nhân.
+- Thao tác người tham gia có thể tin tư cách thành viên lịch sử hoặc quyền sở hữu lượt làm bài. Vì vậy Admin từng ghi danh vẫn có thể bình luận, rời lớp/trả lời lời mời, hoàn tất mục tài nguyên trong kế hoạch, bắt đầu bài giao hoặc sửa lượt lớp cũ, độc lập với quyền soạn nội dung.
 
-## Implementation
+## Triển khai
 
-- Added `roster.view`, with an explicit Admin observer allowlist of `roster.view`, `grades.view`, `analytics.view`. Admin global role takes precedence over historical ownership/staff rows.
-- Roster listing requires `roster.view`; invitations and membership management still require `members.manage`. Owner and co-teacher receive roster access. Existing TA base and optional permissions are preserved; TA receives no new member-management permission.
-- Classroom mutation actor locks reload the account then reject Admin with `CLASSROOM_OBSERVER_READ_ONLY` (HTTP 403). This boundary covers settings, classroom lifecycle, memberships/invitation responses, staff operations, content/resources, topics/order, posts/comments, schedules/extensions, grade-selection policy and learning plans.
-- Classroom creation keeps its existing teacher-only check. Automatic invitation binding inside authentication explicitly retains its prior path; this does not accept an invitation or create membership.
-- Removed assignment-creation and classroom-management Admin bypasses. Existing assignment archive/restore/delete capability checks and protected-history checks remain intact.
-- Restoring a classroom now requires `classroom.manage`, meaning an active owner teacher; co-teachers and Admin cannot restore it. Existing active-owner validation and lifecycle locks remain.
-- Classroom final grading denies Admin before writing, including personal routes and Full Mock parent assignment provenance. Admin classroom grading flags are always false, even when `assignment_authorized=True` is supplied. Separate personal-attempt platform grading authority remains intact.
-- Added a classroom-attempt mutation guard for old Admin enrolments. It detects direct or parent-session assignment provenance and reloads the acting account. Applied to locked Attempt and Full Mock lifecycle operations, Speaking runtime/media/recovery, standalone history removal, Writing AI creation/cancellation/adoption and Speaking transcript/AI mutation authorization. Ordinary personal practice and student/teacher workflows continue through their existing policies.
-- Review follow-up: Writing AI list/get/snapshot may recover a stale run while reading. Recovery now checks classroom provenance before persisting failure state/events; Admin classroom observation returns the stored run without mutation. Ordinary student classroom recovery and personal recovery remain enabled.
-- Active classroom member counts now join account roles and exclude legacy Admin membership rows. Ordinary teacher accounts enrolled as students remain included.
-- Speaking AI/transcript stale-source reads already construct failure DTOs without changing persisted run state; focused tests now verify both paths.
+- Thêm `roster.view`, với danh sách quyền quan sát Admin rõ ràng: `roster.view`, `grades.view`, `analytics.view`. Vai trò Admin toàn cục ưu tiên hơn dòng chủ sở hữu/nhân sự lịch sử.
+- Liệt kê danh sách lớp cần `roster.view`; mời và quản lý thành viên vẫn cần `members.manage`. Chủ lớp và đồng giảng được xem danh sách. Giữ quyền cơ bản/tùy chọn TA hiện có; không cấp thêm quyền quản lý thành viên cho TA.
+- Khóa tác nhân thay đổi lớp nạp lại tài khoản rồi từ chối Admin bằng `CLASSROOM_OBSERVER_READ_ONLY` (HTTP 403). Ranh giới bao phủ cấu hình, vòng đời lớp, thành viên/phản hồi lời mời, nhân sự, nội dung/tài nguyên, chủ đề/thứ tự, bài đăng/bình luận, lịch/gia hạn, chính sách chọn điểm và kế hoạch học tập.
+- Tạo lớp giữ kiểm tra chỉ giáo viên hiện có. Gắn lời mời tự động trong xác thực được giữ nguyên đường xử lý trước; không chấp nhận lời mời hoặc tạo thành viên.
+- Bỏ lối Admin vượt phân quyền tạo bài giao/quản lý lớp. Giữ kiểm quyền lưu trữ/khôi phục/xóa bài giao và bảo vệ lịch sử hiện có.
+- Khôi phục lớp nay cần `classroom.manage`, nghĩa là giáo viên chủ đang hoạt động; đồng giảng và Admin không khôi phục được. Giữ kiểm chủ hoạt động và khóa vòng đời.
+- Chấm cuối lớp từ chối Admin trước khi ghi, gồm tuyến cá nhân và nguồn gốc bài giao ở phiên Full Mock cha. Cờ chấm lớp của Admin luôn false, kể cả khi truyền `assignment_authorized=True`. Giữ quyền chấm cấp nền tảng riêng cho lượt cá nhân.
+- Thêm chốt thay đổi lượt lớp cho Admin từng ghi danh. Chốt nhận nguồn gốc bài giao trực tiếp hoặc qua phiên cha và nạp lại tài khoản tác nhân. Áp dụng khi khóa thao tác vòng đời Attempt/Full Mock, vận hành/tệp âm thanh/khôi phục Speaking, xóa lịch sử lượt riêng, tạo/hủy/tiếp nhận kết quả Writing AI và phân quyền thay đổi bản chép lời/AI Speaking. Luyện cá nhân và luồng học viên/giáo viên thường tiếp tục qua chính sách hiện có.
+- Rà soát bổ sung: liệt kê/lấy/ảnh chụp Writing AI có thể khôi phục lượt quá hạn trong khi đọc. Nay khôi phục kiểm nguồn gốc lớp trước khi lưu trạng thái lỗi/sự kiện; Admin quan sát lớp nhận lượt đã lưu mà không thay đổi. Giữ khôi phục cho học viên lớp và lượt cá nhân thường.
+- Số thành viên lớp hoạt động nay nối vai trò tài khoản, loại dòng thành viên Admin cũ. Giáo viên thường ghi danh làm học viên vẫn được tính.
+- Đọc nguồn đã cũ của AI/bản chép lời Speaking vốn dựng DTO lỗi mà không đổi trạng thái lưu; kiểm tập trung nay xác minh cả hai đường.
 
-## Mutation audit
+## Kiểm toán thao tác thay đổi
 
-| Domain | Enforcement |
+| Miền | Cách thực thi |
 | --- | --- |
-| Classroom create | Teacher-only role gate |
-| Settings/archive/restore | Reloaded classroom mutation actor gate; owner checks / `classroom.manage` |
-| Member invite/cancel/remove/leave/accept/decline | Shared mutation gate; existing capability/recipient checks |
-| Staff invite/change/revoke/respond | Shared classroom mutation actor gate; existing staff capability/eligibility rules |
-| Topics/resources/files/placement/reorder/removal | `ContentAccess` shared mutation gate; existing content/assignment capability rules |
-| Announcements/discussions/publish/archive/pin/delete | Shared content mutation gate |
-| Comment create/edit/delete/moderation | Shared mutation gate and explicit participant check |
-| Assignment create/archive/restore/delete | Explicit assignment capability check; existing history safeguards |
-| Assignment schedule/individual extension | Shared mutation gate and assignment/extension capability |
-| Gradebook selection policy | Shared mutation gate and assignment capability |
-| Writing/Speaking final scores, personal and scoped routes | Provenance-aware `GradingPolicy`; Admin denied |
-| Learning-plan create/update/resource completion | Shared mutation gate and existing plan/student rules |
-| Assignment start, module and Full Mock | Fresh actor participant gate inside lifecycle transaction |
-| Existing legacy Admin attempts | Provenance guard on locked mutation loading; ordinary read-only review routes remain available |
-| AI grading/transcription creation, cancellation and practice adoption | Provenance guard at mutating attempt authorization |
-| Global account administration/test moderation | Unchanged; no classroom permission inherited from these policies |
+| Tạo lớp | Chốt vai trò chỉ giáo viên |
+| Cấu hình/lưu trữ/khôi phục | Nạp lại tác nhân thay đổi lớp; kiểm chủ / `classroom.manage` |
+| Mời/hủy/xóa/rời/chấp nhận/từ chối thành viên | Chốt thay đổi chung; kiểm quyền/người nhận hiện có |
+| Mời/đổi/thu hồi/trả lời nhân sự | Chốt tác nhân thay đổi lớp chung; quy tắc quyền/điều kiện nhân sự hiện có |
+| Chủ đề/tài nguyên/tệp/vị trí/thứ tự/gỡ | Chốt thay đổi chung `ContentAccess`; quyền nội dung/bài giao hiện có |
+| Thông báo/thảo luận/xuất bản/lưu trữ/ghim/xóa | Chốt thay đổi nội dung chung |
+| Tạo/sửa/xóa/kiểm duyệt bình luận | Chốt chung và kiểm người tham gia rõ ràng |
+| Tạo/lưu trữ/khôi phục/xóa bài giao | Kiểm quyền bài giao rõ; bảo vệ lịch sử hiện có |
+| Lịch bài giao/gia hạn cá nhân | Chốt chung và quyền bài giao/gia hạn |
+| Chính sách chọn điểm sổ điểm | Chốt chung và quyền bài giao |
+| Điểm cuối Writing/Speaking, tuyến cá nhân và theo phạm vi | `GradingPolicy` theo nguồn gốc; từ chối Admin |
+| Tạo/cập nhật kế hoạch học/hoàn tất tài nguyên | Chốt chung, quy tắc kế hoạch/học viên hiện có |
+| Khởi tạo bài giao, mô-đun và Full Mock | Chốt người tham gia với tài khoản mới nạp trong giao dịch vòng đời |
+| Lượt Admin cũ hiện có | Chốt nguồn gốc khi nạp để thay đổi có khóa; tuyến xem lại chỉ đọc thường vẫn dùng |
+| Tạo/hủy chấm AI/chép lời và tiếp nhận kết quả luyện tập | Chốt nguồn gốc khi phân quyền thay đổi lượt |
+| Quản trị tài khoản/kiểm duyệt đề toàn cục | Không đổi; không kế thừa quyền lớp từ các chính sách này |
 
-## Files changed by backend authorization worker
+## Tệp được worker phân quyền backend thay đổi
 
-Production services:
+Dịch vụ sản xuất:
 
 - `backend/app/services/classroom_capabilities.py`
 - `backend/app/services/access_policy.py`
@@ -65,50 +65,50 @@ Production services:
 - `backend/app/services/writing_ai.py`
 - `backend/app/services/writing_ai_practice_feedback.py`
 
-Tests:
+Kiểm thử:
 
-- New `backend/tests/test_classroom_admin_observer_unit.py`
-- New `backend/tests/test_classroom_admin_observer_rest.py`
-- New `backend/tests/test_classroom_observer_ai_reads.py`
-- Updated obsolete Admin error-code expectation in `backend/tests/test_classroom_classwork_unit.py`
-- Updated owner restoration / Admin denial expectations in `backend/tests/test_classrooms_and_notifications.py`
-- Updated obsolete personal-route Admin classroom final-grading expectation in `backend/tests/test_subjective_grading.py`
-- Extended the database double in `backend/tests/test_writing_ai_observer_lifecycle.py` with owner-scoped personal attempt loading, matching the new provenance authorization dependency; its real worker/SSE/cancellation behavior remains exercised.
+- Thêm `backend/tests/test_classroom_admin_observer_unit.py`
+- Thêm `backend/tests/test_classroom_admin_observer_rest.py`
+- Thêm `backend/tests/test_classroom_observer_ai_reads.py`
+- Cập nhật kỳ vọng mã lỗi Admin cũ trong `backend/tests/test_classroom_classwork_unit.py`
+- Cập nhật kỳ vọng khôi phục của chủ / từ chối Admin trong `backend/tests/test_classrooms_and_notifications.py`
+- Cập nhật kỳ vọng cũ cho Admin chấm cuối lớp qua tuyến cá nhân trong `backend/tests/test_subjective_grading.py`
+- Mở rộng đối tượng thay thế cơ sở dữ liệu trong `backend/tests/test_writing_ai_observer_lifecycle.py` để nạp lượt cá nhân theo chủ, khớp phụ thuộc phân quyền nguồn gốc mới; hành vi worker/SSE/hủy thực vẫn được kiểm.
 
-The Admin directory API/schema/repository work belongs to the root worker and is outside this change ownership.
+Công việc API/lược đồ/repository danh bạ Admin thuộc tác nhân điều phối chính, ngoài quyền sở hữu thay đổi này.
 
-## Verification evidence
+## Bằng chứng xác minh
 
-The required `backend/tests/conftest.py` was inspected first. It reads the configured `DATABASE_URL` and performs schema work inside a rollback-only transaction. No `TEST_DATABASE_URL` is configured in this session, so no PostgreSQL integration fixture was executed and no database was reset, migrated, or touched.
+Đã đọc `backend/tests/conftest.py` bắt buộc trước. Tệp đọc `DATABASE_URL` cấu hình, xử lý lược đồ trong giao dịch chỉ hoàn tác. Phiên này không có `TEST_DATABASE_URL`, nên không chạy fixture tích hợp PostgreSQL, không đặt lại, migration hoặc chạm cơ sở dữ liệu.
 
-Red-phase evidence:
+Bằng chứng giai đoạn RED:
 
-- Initial new authorization unit file: 12 failed, 2 passed, exposing mutable Admin capabilities, owner-policy bypass, comments with old membership, participant mutation entry, personal final-grade provenance, assignment start and owner restoration.
-- Added assignment-creation bypass test: failed because creation did not raise authorization error.
-- Added legacy attempt engine tests: 3 failed because Attempt, Full Mock and Speaking loaders permitted Admin classroom writes.
-- Added legacy AI creation/adoption tests: 3 failed because the requests reached lifecycle/scope validation instead of returning authorization denials.
-- Read-side recovery review regressions: 6 Admin classroom list/get/snapshot cases failed because reads rewrote stale runs; 9 ordinary student/personal cases already passed. Active-member SQL regression failed because the query counted memberships without excluding Admin accounts.
+- Tệp đơn vị phân quyền mới ban đầu: 12 thất bại, 2 đạt, bộc lộ quyền thay đổi của Admin, bỏ chính sách chủ, bình luận bằng thành viên cũ, điểm vào thay đổi người tham gia, nguồn gốc chấm cá nhân, khởi tạo bài giao, khôi phục của chủ.
+- Kiểm bổ sung lối vượt tạo bài giao: thất bại vì không phát lỗi phân quyền.
+- Kiểm bộ máy lượt cũ: 3 thất bại vì bộ nạp Attempt, Full Mock, Speaking cho Admin ghi lớp.
+- Kiểm tạo/tiếp nhận AI cũ: 3 thất bại vì đi tới kiểm vòng đời/phạm vi thay vì từ chối quyền.
+- Hồi quy khôi phục khi đọc: 6 ca Admin lớp liệt kê/lấy/ảnh chụp thất bại vì đọc viết lại lượt quá hạn; 9 ca học viên/cá nhân thường đã đạt. Hồi quy SQL thành viên hoạt động thất bại vì truy vấn đếm thành viên không loại Admin.
 
-Final focused command from `backend/`:
+Lệnh tập trung cuối từ `backend/`:
 
 ```powershell
 .\.venv\Scripts\python.exe -m pytest tests/test_classroom_observer_ai_reads.py tests/test_classroom_admin_observer_unit.py tests/test_classroom_admin_observer_rest.py tests/test_classroom_classwork_unit.py tests/test_classroom_archive_unit.py tests/test_writing_ai_observer_lifecycle.py -q
 ```
 
-Result after review follow-up: **167 passed in 12.87s**.
+Kết quả sau rà soát bổ sung: **167 đạt trong 12.87 giây**.
 
-The new REST matrix exercises 51 handcrafted requests through real FastAPI routers and services with database-boundary doubles. It covers settings/lifecycle, membership and staff operations, assignments, protected archive actions, topics/resources/order, announcements/comments, schedules/extensions, grade policy, learning plans and both personal/scoped Writing/Speaking final-score endpoints. Every request returned 403, existing ORM row snapshots remained unchanged, and no add/flush/delete/execute operation occurred.
+Ma trận REST mới thực thi 51 yêu cầu soạn tay qua router/dịch vụ FastAPI thật với đối tượng thay thế tại ranh giới cơ sở dữ liệu. Bao phủ cấu hình/vòng đời, thành viên/nhân sự, bài giao, thao tác lưu trữ được bảo vệ, chủ đề/tài nguyên/thứ tự, thông báo/bình luận, lịch/gia hạn, chính sách điểm, kế hoạch học và điểm cuối Writing/Speaking cá nhân/theo phạm vi. Mọi yêu cầu trả 403, ảnh chụp dòng ORM hiện có không đổi, không có add/flush/delete/execute.
 
-The unit cases cover Admin override precedence, permitted oversight flags, roster separation, teacher owner restore, co-teacher capabilities, TA optional capabilities, student/unrelated-teacher isolation, direct/parent grading provenance, legacy attempt mutations and preservation of separate personal platform grading authority.
+Ca đơn vị bao phủ ưu tiên vai trò Admin, cờ quan sát được phép, tách quyền xem danh sách, chủ giáo viên khôi phục, khả năng đồng giảng, quyền TA tùy chọn, cô lập học viên/giáo viên ngoài, nguồn gốc chấm trực tiếp/qua cha, sửa lượt cũ, giữ quyền chấm nền tảng cá nhân riêng.
 
-The 17 read-side AI cases cover Admin direct/parent assignment origins, student classroom recovery, personal Admin/student recovery across list/get/snapshot, and Speaking AI/transcript stale-source DTO isolation. Existing Writing AI worker/SSE/recovery/cancellation lifecycle tests also pass.
+17 ca AI phía đọc bao phủ Admin nguồn bài giao trực tiếp/qua cha, khôi phục học viên lớp, khôi phục cá nhân Admin/học viên qua liệt kê/lấy/ảnh chụp, cô lập DTO nguồn cũ của AI/bản chép lời Speaking. Kiểm vòng đời worker/SSE/khôi phục/hủy Writing AI hiện có cũng đạt.
 
-Scoped Ruff was run against all 19 owned Python files: **All checks passed**. Scoped `git diff --check` passed with only Git line-ending notices. No browser, server, production build, persistent process, full suite or PostgreSQL integration run was performed.
+Ruff đúng phạm vi chạy trên đủ 19 tệp Python thuộc sở hữu: **mọi kiểm tra đạt**. `git diff --check` đúng phạm vi đạt, chỉ có thông báo kết thúc dòng của Git. Không chạy trình duyệt, máy chủ, bản dựng sản xuất, tiến trình thường trực, toàn bộ bộ kiểm hoặc tích hợp PostgreSQL.
 
-## Remaining verification limits
+## Giới hạn xác minh còn lại
 
-- The REST no-write assertions use controlled database-boundary doubles; actual PostgreSQL rollback/row-count and concurrency coverage remains unexecuted because no explicitly isolated test database was available.
-- The two updated existing PostgreSQL integration test files were not executed.
-- The broad attempt guard adds a fresh account read for classroom attempt mutations and a parent-origin lookup for Full Mock attempts. Stale Writing AI recovery additionally reloads its attempt before any state write. Query-count/concurrency integration checks were not run.
-- A final audit found Writing AI run cancellation could still trust legacy ownership. A separate regression failed before the same provenance guard was added; cancellation now denies Admin classroom requests as well.
-- No commit or push was performed by this worker.
+- Khẳng định REST không ghi dùng đối tượng thay thế có kiểm soát ở ranh giới DB; chưa chạy hoàn tác/đếm dòng/cạnh tranh PostgreSQL thật vì chưa có DB kiểm cô lập được xác nhận.
+- Chưa chạy hai tệp tích hợp PostgreSQL hiện có đã cập nhật.
+- Chốt lượt chung thêm đọc tài khoản mới cho thay đổi lượt lớp, tra nguồn cha cho lượt Full Mock. Khôi phục Writing AI quá hạn còn nạp lại lượt làm bài trước mọi ghi trạng thái. Chưa chạy kiểm tích hợp số truy vấn/cạnh tranh.
+- Kiểm toán cuối phát hiện hủy Writing AI vẫn có thể tin quyền chủ cũ. Hồi quy riêng thất bại trước khi thêm cùng chốt nguồn gốc; nay hủy cũng từ chối Admin lớp.
+- Worker này không commit hoặc đẩy mã.

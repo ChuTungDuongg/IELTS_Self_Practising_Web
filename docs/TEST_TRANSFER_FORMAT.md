@@ -1,10 +1,10 @@
-# Test transfer package format
+# Định dạng gói chuyển nội dung đề thi
 
-> **Documentation audit: CURRENT.** Canonical concern này; source-check các boundary/API, không live validation.
-> Mục đích: Test transfer package format. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../backend/app/schemas/transfer.py).
-> Đọc cùng [current module/guide](modules/assets-transfer.md); [audit và giới hạn](DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+> **Phân loại tài liệu: CURRENT.** Tài liệu chuẩn cho chủ đề này; đối chiếu boundaries/API từ source, không xác minh deployment đang chạy.
+> Mục đích: định dạng gói chuyển nội dung đề thi. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../backend/app/schemas/transfer.py).
+> Đọc cùng [hướng dẫn module hiện hành](modules/assets-transfer.md); [audit và giới hạn](DOCS_AUDIT.md). Kết quả tests/benchmark bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
 
-BandPilot test packages use the format identifier `devweblocalforielts-test-bundle`. Exports without covers remain schema version 1. Exports with test covers use schema version 2. Imports accept both versions; existing version 1 packages do not require a cover.
+Gói đề thi BandPilot dùng format identifier `devweblocalforielts-test-bundle`. Bản export không có cover giữ schema version 1; bản có test cover dùng schema version 2. Import chấp nhận cả hai versions; gói version 1 hiện có không bắt buộc bổ sung cover.
 
 ```text
 ielts-test-bundle.zip
@@ -13,10 +13,10 @@ ielts-test-bundle.zip
 └── assets/<sha256>-<source-asset-uuid>.<extension>
 ```
 
-The manifest lists every test JSON file and referenced asset. Version 1 `assets` entries identify their source TestVersion and include a package path, asset type, MIME type, original filename, size and SHA-256 checksum. Version 2 adds a `covers` array: each cover has its own source ID, owning `source_test_id`, safe package path, MIME type, filename, size and checksum. The corresponding test JSON references it through `cover_id`. A cover belongs to the logical Test, not to a version. Absolute local storage paths are never included.
+Manifest liệt kê mọi test JSON và asset được tham chiếu. Các phần tử `assets` của version 1 xác định TestVersion nguồn, package path, asset type, MIME type, tên file gốc, kích thước và SHA-256 checksum. Version 2 thêm mảng `covers`: mỗi cover có source ID riêng, `source_test_id` sở hữu, package path an toàn, MIME type, filename, size và checksum. Test JSON tương ứng tham chiếu cover qua `cover_id`. Cover thuộc logical Test, không thuộc version. Không đưa absolute local storage paths vào gói.
 
-The explicit test JSON contract contains logical tests, version numbers and lifecycle states, modules, Reading passages, Listening parts, Writing tasks (including optional structured `task_type` tags), Speaking parts and prompts, question groups, questions, configurations and answer keys. Older bundles without `task_type` import those tasks as unclassified; older modules without `speaking_parts` default to an empty list. Module durations are preserved; missing legacy durations receive canonical module defaults on import. Only referenced covers, Listening audio, question images and Writing Task images are included. Candidate Speaking recordings, transcripts and grading results are private attempt data and are excluded.
+Test JSON contract tường minh chứa logical tests, version numbers và lifecycle states, modules, Reading passages, Listening parts, Writing tasks gồm structured `task_type` tags tùy chọn, Speaking parts/prompts, question groups, questions, configurations và answer keys. Gói cũ thiếu `task_type` sẽ import tasks ở trạng thái chưa phân loại; module cũ thiếu `speaking_parts` mặc định là danh sách rỗng. Module durations được giữ nguyên; legacy durations bị thiếu nhận canonical defaults khi import. Chỉ cover, Listening audio, question images và Writing Task images thực sự được tham chiếu mới có trong gói. Candidate Speaking recordings, transcripts và grading results là private attempt data nên bị loại trừ.
 
-Attempts, responses, highlights, flags, events, Writing scores or feedback, History, Analytics and Full Mock sessions are excluded. This is test-content portability, not an application backup.
+Gói không chứa attempts, responses, highlights, flags, events, Writing scores/feedback, History, Analytics hoặc Full Mock sessions. Đây là cơ chế chuyển nội dung đề thi, không phải bản backup ứng dụng.
 
-Before committing, import validates safe paths, file counts and expanded sizes, JSON schemas, lifecycle consistency, MIME/extension/signature, cover dimensions, byte sizes, checksums, ownership and references. All database identifiers and storage filenames are regenerated; explicit structured `question_id` references are domain-remapped. Importing the same package more than once creates independent tests and covers. A failed import compensates for files it created; if the database cannot be queried after an ambiguous commit, potentially referenced files are retained for reconciliation rather than deleted.
+Trước commit, import kiểm safe paths, số file và tổng dung lượng sau giải nén, JSON schemas, tính nhất quán lifecycle, MIME/extension/signature, kích thước cover, byte sizes, checksums, ownership và references. Tất cả database identifiers và storage filenames được tạo mới; các structured references `question_id` được ánh xạ lại theo domain. Import cùng gói nhiều lần tạo các tests/covers độc lập. Nếu import thất bại, hệ thống dọn những file do operation tạo; nếu không truy vấn được database sau một commit có kết quả chưa rõ, phải giữ các file có thể đang được tham chiếu để đối soát, không xóa ngay.

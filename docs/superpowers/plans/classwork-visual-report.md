@@ -1,43 +1,43 @@
-# Classwork visual implementation report
+# Báo cáo triển khai giao diện Classwork
 
-> **Documentation audit: HISTORICAL.** Historical reference; không phải contract hiện hành.
-> Mục đích: Classwork visual implementation report. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../../../backend/app/services/classroom_capabilities.py).
-> Đọc cùng [current module/guide](../../modules/classrooms.md); [audit và giới hạn](../../DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+> **Phân loại tài liệu: HISTORICAL.** Tham khảo lịch sử; không phải contract hiện hành.
+> Mục đích: Báo cáo triển khai giao diện Classwork. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [mã triển khai](../../../backend/app/services/classroom_capabilities.py).
+> Đọc cùng [hướng dẫn module hiện hành](../../modules/classrooms.md); [audit và giới hạn](../../DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
 
-## Reference and design decisions
+## Tham chiếu và quyết định thiết kế
 
-- Read the supplied task, `design-taste-frontend` app-screen guidance, `ui-ux-pro-max`, frontend AGENTS guidance and bundled Next.js client-component documentation.
-- Inspected the user's approved screenshot at `C:/Users/Admin/AppData/Local/Temp/codex-clipboard-d96b2861-114f-4f9d-88da-2acbcce89e64.png`.
-- The supplied composition governs this update: outlined blue book tile, right content search, folder topic header, centered dashed topic empty state, warm archive container, count badge, scoped archive search and compact direct row actions. Existing BandPilot typography and semantic light/dark tokens remain authoritative. No alternate random design direction was substituted.
-- Screen question: which classroom resources, assignments and archived work can I inspect or act on? All records and totals derive from authorized API data. No sample content was introduced.
+- Đã đọc nhiệm vụ được cung cấp, hướng dẫn app-screen của `design-taste-frontend`, `ui-ux-pro-max`, AGENTS frontend và tài liệu client-component Next.js đi kèm.
+- Đã xem ảnh được người dùng duyệt tại `C:/Users/Admin/AppData/Local/Temp/codex-clipboard-d96b2861-114f-4f9d-88da-2acbcce89e64.png`.
+- Bố cục được cung cấp chi phối bản cập nhật: ô sách viền xanh, tìm kiếm bên phải, tiêu đề topic dạng thư mục, trạng thái topic trống viền đứt ở giữa, vùng archive tông ấm, count badge, tìm archive theo phạm vi và thao tác hàng gọn trực tiếp. Typography và semantic tokens sáng/tối của BandPilot hiện có vẫn có thẩm quyền; không thay bằng hướng thiết kế ngẫu nhiên khác.
+- Câu hỏi màn hình cần trả lời: có thể xem hoặc thao tác resources, assignments và nội dung đã lưu trữ nào? Mọi bản ghi và tổng số lấy từ API đã phân quyền; không thêm dữ liệu mẫu.
 
-## Implementation
+## Triển khai
 
-- Added accent/case-insensitive Vietnamese topic/resource/assignment search, including `Đ/đ`. A topic match preserves all its children; a child match keeps its parent. Search opens matching groups, allows disclosure interaction and restores previous disclosure choices when cleared.
-- Added separate assignment/resource archive search, preserving the archived group's total count and other classroom topics.
-- Added shared folder/card/empty-state/archive styling with responsive search fields, compact action layout, date metadata and localized notices. Narrow student rows place dates and details on separate rows.
-- Teachers see direct Restore, Delete and View details; the less-used Remove from Classwork action stays in the desktop overflow. Mobile mounts one contextual control set, without duplicated buttons. Dialog state remains outside the responsive layout.
-- Observers receive details and neutral empty states without mounting mutation controls. Students retain their authorized history/result links. The root workspace supplies capability-safe flags and hides the panel's duplicate standalone create menu using `showCreateMenu={false}`.
-- Reused restore/delete/reference-removal APIs and confirmations. Protected-history deletion explains the reason and surfaces safe removal. Expired deadlines are warned about and never extended. Saved mutations retry synchronization without repeating the write. Resource restoration remains DRAFT until explicitly published.
+- Thêm tìm topic/resource/assignment tiếng Việt không phân biệt dấu/hoa thường, gồm `Đ/đ`. Topic khớp giữ mọi mục con; mục con khớp giữ cha. Tìm kiếm mở nhóm khớp, vẫn cho tương tác mở/đóng và khôi phục lựa chọn trước khi xóa từ khóa.
+- Thêm tìm archive assignment/resource riêng, giữ tổng số nhóm archive và các topic khác trong lớp.
+- Thêm styling folder/card/empty-state/archive dùng chung, ô tìm responsive, bố cục thao tác gọn, metadata ngày và thông báo bản địa hóa. Hàng học viên hẹp đặt ngày và chi tiết trên các hàng riêng.
+- Giáo viên thấy trực tiếp Restore, Delete và View details; Remove from Classwork ít dùng nằm trong menu desktop. Mobile chỉ dựng một bộ control theo ngữ cảnh, không lặp nút. Dialog state nằm ngoài layout responsive.
+- Observer có chi tiết và trạng thái trống trung tính, không dựng control ghi. Học viên giữ liên kết lịch sử/kết quả được phép. Workspace cha cung cấp flags bảo đảm capability và ẩn menu tạo độc lập bị lặp bằng `showCreateMenu={false}`.
+- Dùng lại APIs và xác nhận restore/delete/reference-removal. Khi xóa bị bảo vệ bởi lịch sử, giải thích nguyên nhân và đưa lựa chọn bỏ tham chiếu an toàn. Cảnh báo deadline hết hạn, không gia hạn. Mutation đã lưu chỉ retry đồng bộ đọc, không lặp thao tác ghi. Resource khôi phục vẫn DRAFT cho đến khi publish rõ ràng.
 
-## Files
+## Tệp
 
 - `frontend/src/features/classrooms/content/classwork-panel.tsx`
 - `frontend/src/features/classrooms/content/classwork-section.tsx`
 - `frontend/src/features/classrooms/content/classwork-item-row.tsx`
 - `frontend/src/features/classrooms/content/archived-assignment-actions.tsx`
-- `frontend/src/features/classrooms/content/archive-action-layout.tsx` (new)
-- `frontend/src/features/classrooms/content/classwork-search.ts` (new)
-- `frontend/src/features/classrooms/content/classwork-icons.tsx` (new)
+- `frontend/src/features/classrooms/content/archive-action-layout.tsx` (mới)
+- `frontend/src/features/classrooms/content/classwork-search.ts` (mới)
+- `frontend/src/features/classrooms/content/classwork-icons.tsx` (mới)
 - `frontend/src/features/classrooms/content/content-messages.ts`
-- Classwork-scoped sections of `frontend/src/features/classrooms/content/classroom-workspace.css`
+- Các phần thuộc Classwork của `frontend/src/features/classrooms/content/classroom-workspace.css`
 - `frontend/tests/classwork-compact.test.tsx`
 
-## Verification
+## Kiểm chứng
 
-- Red phase: focused Classwork tests showed five expected failures for missing search, observer archive metadata, direct teacher controls and compact action composition.
-- `npx vitest run tests/classwork-compact.test.tsx tests/classroom-content.test.tsx --reporter=dot`: **67 passed**, two files.
-- Scoped ESLint over the changed Classwork TS/TSX files and focused test: **passed**.
-- `git diff --check`: **passed** (Git emitted existing line-ending conversion notices).
-- No servers, browser, screenshots of the implemented UI, browser tests, production build, full test suite or persistent processes were run. Visual fidelity, exact responsive geometry and composed contrast in both themes remain unverified in a real browser, as required by the user's execution restrictions.
-- No commit or push performed by this worker; integration/delivery belongs to the parent task.
+- Giai đoạn RED: Classwork tests tập trung có năm lỗi dự kiến do thiếu tìm kiếm, metadata archive cho observer, control giáo viên trực tiếp và bố cục thao tác gọn.
+- `npx vitest run tests/classwork-compact.test.tsx tests/classroom-content.test.tsx --reporter=dot`: **67 pass**, hai tệp.
+- ESLint theo phạm vi trên TS/TSX Classwork thay đổi và test tập trung: **pass**.
+- `git diff --check`: **pass** (Git thông báo chuyển line endings có sẵn).
+- Không chạy server, browser, screenshot UI sau triển khai, browser tests, production build, toàn bộ test suite hoặc tiến trình thường trú. Độ giống hình, hình học responsive chính xác và contrast phối hợp của hai theme còn chưa được kiểm trong browser thật, theo giới hạn thực thi của yêu cầu gốc.
+- Tác nhân này không commit hoặc push; tích hợp/bàn giao thuộc nhiệm vụ cha.

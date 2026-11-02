@@ -1,12 +1,12 @@
-# Historical plans and specifications
+# Kế hoạch và đặc tả lịch sử
 
-> Purpose: navigation/status, not an execution plan. Verified against source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`.
+> Mục đích: chỉ dẫn điều hướng/trạng thái, không phải kế hoạch để thực thi. Đã đối chiếu với source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`.
 
-Plans/specs record decisions and task scopes at their dates. A completed checkbox is not current runtime evidence. See [current architecture](../architecture.md), [module catalog](../handbook/module-catalog.md), [full per-file audit](../DOCS_AUDIT.md).
+Plans/specs ghi lại quyết định và phạm vi công việc tại thời điểm của chúng. Checkbox đã đánh dấu hoàn tất không phải bằng chứng runtime hiện tại. Xem [kiến trúc hiện hành](../architecture.md), [mục lục module](../handbook/module-catalog.md), [audit đầy đủ từng file](../DOCS_AUDIT.md).
 
-Speaking engine design, implementation plan and self-review remain binding under [AGENTS](../../AGENTS.md). Later phase/runtime guides supplement them; do not archive them or read a general historical label as permission to ignore their invariants.
+Thiết kế Speaking engine, implementation plan và self-review vẫn có tính ràng buộc theo [AGENTS](../../AGENTS.md). Hướng dẫn phase/runtime về sau chỉ bổ sung cho chúng; không archive hoặc hiểu nhãn lịch sử chung là quyền bỏ qua các invariants này.
 
-| Document | Status | Current guide |
+| Tài liệu | Trạng thái | Hướng dẫn hiện hành |
 | --- | --- | --- |
 | [docs/superpowers/plans/2026-09-19-builder-listening-instructions-plan.md](plans/2026-09-19-builder-listening-instructions-plan.md) | HISTORICAL | [docs/modules/authoring.md](../modules/authoring.md) |
 | [docs/superpowers/plans/2026-09-20-fantasy-galaxy-visual-system-plan.md](plans/2026-09-20-fantasy-galaxy-visual-system-plan.md) | SUPERSEDED | [docs/modules/shared-platform.md](../modules/shared-platform.md) |
@@ -42,4 +42,6 @@ Speaking engine design, implementation plan and self-review remain binding under
 | [docs/superpowers/specs/2026-10-13-speaking-part-focused-practice-design.md](specs/2026-10-13-speaking-part-focused-practice-design.md) | HISTORICAL | [docs/modules/speaking.md](../modules/speaking.md) |
 | [docs/superpowers/specs/2026-10-13-writing-benchmark-bank-design.md](specs/2026-10-13-writing-benchmark-bank-design.md) | HISTORICAL | [docs/modules/writing.md](../modules/writing.md) |
 
-No files were moved or deleted: stable references from AGENTS and historical evidence are more valuable than an archive directory. Superseded visual plans keep their original body plus explicit status. Runtime validity beyond source/contract checks remains outside this audit.
+Không di chuyển hoặc xóa file: giữ tham chiếu ổn định từ AGENTS và chứng cứ lịch sử quan trọng hơn việc tạo archive directory. Visual plans bị thay thế giữ nguyên nội dung quyết định gốc và trạng thái tường minh; bản dịch chỉ đổi ngôn ngữ thuyết minh. Audit này không xác minh runtime ngoài source/contract checks.
+
+Bổ sung: [thiết kế capacity 5.000 users](specs/2026-11-02-5000-user-capacity-design.md), [kế hoạch thực thi](plans/2026-11-02-5000-user-capacity.md) và [report/evidence](../performance/5000-user-capacity.md). Kế hoạch không thay kết quả đo; verdict ghi trong report.

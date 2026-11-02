@@ -1,0 +1,2 @@
+# Dedicated tool environment: never add Locust to backend runtime dependencies.
+locust==2.43.3

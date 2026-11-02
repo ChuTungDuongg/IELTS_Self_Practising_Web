@@ -1,76 +1,76 @@
-# Teacher, Classroom, Content Governance & Notification Design
+# Thiết kế giáo viên, lớp học, quản trị nội dung và thông báo
 
-> **Documentation audit: HISTORICAL.** Historical reference; không phải contract hiện hành.
-> Mục đích: Teacher, Classroom, Content Governance & Notification Design. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../../../backend/app/services/classroom_capabilities.py).
-> Đọc cùng [current module/guide](../../modules/classrooms.md); [audit và giới hạn](../../DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+> **Kiểm toán tài liệu: HISTORICAL.** Tài liệu tham khảo lịch sử; không phải hợp đồng hiện hành.
+> Mục đích: Thiết kế giáo viên, lớp học, quản trị nội dung và thông báo. Đối chiếu mã nguồn `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [triển khai](../../../backend/app/services/classroom_capabilities.py).
+> Đọc cùng [mô-đun/hướng dẫn hiện hành](../../modules/classrooms.md); [audit và giới hạn](../../DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
 
-## Status
+## Trạng thái
 
-Approved conversational design captured for implementation planning. Detailed frontend layout is intentionally deferred; this spec fixes product semantics, authorization boundaries, persistence rules, workflows, and the minimum coherent UI behavior required for v1.
+Thiết kế đã được thống nhất trong trao đổi, ghi lại để lập kế hoạch triển khai. Chủ động hoãn bố cục frontend chi tiết; đặc tả này chốt ngữ nghĩa sản phẩm, ranh giới phân quyền, quy tắc lưu trữ, luồng và hành vi giao diện tối thiểu nhất quán cho v1.
 
-## Goal
+## Mục tiêu
 
-Extend the IELTS platform from USER/ADMIN into a three-role system with TEACHER accounts, teacher-owned tests, classroom membership and assignments, moderated classroom/public publication, per-user notifications, and teacher read-only visibility into assignment-originated student submissions.
+Mở rộng nền tảng IELTS từ USER/ADMIN thành hệ thống ba vai trò với tài khoản TEACHER, đề thuộc sở hữu giáo viên, thành viên và bài giao lớp, xuất bản lớp/công khai có kiểm duyệt, thông báo từng người và quyền giáo viên chỉ đọc bài nộp học viên bắt nguồn từ bài giao.
 
-The feature must preserve existing official/manual grading semantics, attempts/history, current USER behavior outside classrooms, and existing test-version references.
+Tính năng phải giữ ngữ nghĩa chấm chính thức/thủ công, lượt làm/lịch sử, hành vi USER hiện tại ngoài lớp và tham chiếu phiên bản đề hiện có.
 
-## Product decisions
+## Quyết định sản phẩm
 
-- Roles: `USER`, `TEACHER`, `ADMIN`.
-- Public registration always creates `USER`; only ADMIN may promote `USER -> TEACHER`.
-- `TEACHER` keeps normal USER capabilities and gains teacher capabilities; it is not a separate account model.
-- ADMIN may demote `TEACHER -> USER` only after active teacher resources and pending moderation are resolved. ADMIN may archive/disable resources first.
-- Teacher-created tests remain teacher-owned after approval/public contribution.
-- ADMIN-created published tests are official/global. Teacher-created PUBLIC-approved tests are community/contributed content with teacher attribution.
-- Every teacher-created version must be ADMIN-reviewed before another user can use it, even for classroom-only use.
-- Moderation is by content version, not by classroom.
-- `CLASSROOM` and `PUBLIC` are distinct moderation scopes. PUBLIC approval implies classroom eligibility; CLASSROOM approval does not imply public visibility.
-- Published/approved teacher versions are immutable. Editing requires a new draft/version and fresh moderation.
-- Each classroom has exactly one teacher owner in v1; no co-teachers or ownership transfer.
-- Teacher invites by email; invites may exist before the email has an account.
-- V1 uses in-app notifications only; no email delivery.
-- Students explicitly Accept or Decline invitations; no auto-join.
-- `ClassroomAssignment` is the class-sharing and attempt-provenance object.
-- Students may retry assignments; no one-attempt DB limit in v1.
-- Teachers may inspect full assignment-originated submissions read-only, but never unrelated personal practice.
-- Archived classrooms/resources preserve academic history read-only and disable future activity rather than deleting data.
-- Notifications are generic platform resources and never authorization tokens.
+- Vai trò: `USER`, `TEACHER`, `ADMIN`.
+- Đăng ký công khai luôn tạo `USER`; chỉ ADMIN được nâng `USER -> TEACHER`.
+- `TEACHER` giữ khả năng USER thường và thêm khả năng giáo viên; không phải mô hình tài khoản riêng.
+- ADMIN chỉ được hạ `TEACHER -> USER` sau giải quyết tài nguyên giáo viên hoạt động và kiểm duyệt chờ. ADMIN có thể lưu trữ/vô hiệu hóa tài nguyên trước.
+- Đề giáo viên tạo vẫn thuộc giáo viên sau phê duyệt/đóng góp công khai.
+- Đề ADMIN tạo đã xuất bản là chính thức/toàn cục. Đề giáo viên được duyệt PUBLIC là nội dung cộng đồng/đóng góp có ghi công giáo viên.
+- Mọi phiên bản giáo viên tạo phải được ADMIN duyệt trước người khác sử dụng, kể cả chỉ trong lớp.
+- Kiểm duyệt theo phiên bản nội dung, không theo lớp.
+- `CLASSROOM` và `PUBLIC` là phạm vi kiểm duyệt riêng. Duyệt PUBLIC bao hàm đủ điều kiện lớp; duyệt CLASSROOM không bao hàm công khai.
+- Phiên bản giáo viên đã xuất bản/duyệt bất biến. Sửa cần nháp/phiên bản mới và kiểm duyệt mới.
+- Mỗi lớp v1 có đúng một giáo viên chủ sở hữu; không đồng giảng viên hoặc chuyển quyền sở hữu.
+- Giáo viên mời qua email; lời mời có thể tồn tại trước khi email có tài khoản.
+- V1 chỉ thông báo trong ứng dụng; không gửi email.
+- Học viên chủ động Accept hoặc Decline lời mời; không tự tham gia.
+- `ClassroomAssignment` là đối tượng chia sẻ lớp và nguồn gốc lượt làm.
+- Học viên được làm lại bài giao; v1 không giới hạn một lượt ở cơ sở dữ liệu.
+- Giáo viên được xem đầy đủ bài nộp bắt nguồn bài giao ở chế độ chỉ đọc, tuyệt đối không luyện cá nhân không liên quan.
+- Lớp/tài nguyên đã lưu trữ giữ lịch sử học tập chỉ đọc và tắt hoạt động tương lai thay vì xóa dữ liệu.
+- Thông báo là tài nguyên nền tảng chung, tuyệt đối không là token phân quyền.
 
-## Current architecture constraints
+## Ràng buộc kiến trúc hiện tại
 
-The repository currently has USER/ADMIN roles; test creation/edit/publish is largely ADMIN-only. `Test` has no creator/owner. `TestVersion` uses `DRAFT`, `PUBLISHED`, `ARCHIVED`, with DB constraints for one draft and one published version per test.
+Kho mã hiện có vai trò USER/ADMIN; tạo/sửa/xuất bản đề phần lớn chỉ ADMIN. `Test` chưa có người tạo/chủ sở hữu. `TestVersion` dùng `DRAFT`, `PUBLISHED`, `ARCHIVED`, có ràng buộc cơ sở dữ liệu một nháp và một phiên bản xuất bản mỗi đề.
 
-This design keeps that content lifecycle and adds ownership, moderation, classroom access, and provenance around it. Moderation state must not be encoded into `VersionStatus`.
+Thiết kế giữ vòng đời nội dung đó và thêm quyền sở hữu, kiểm duyệt, truy cập lớp và nguồn gốc xung quanh. Không được mã hóa trạng thái kiểm duyệt vào `VersionStatus`.
 
-## 1. Roles, ownership, and policy
+## 1. Vai trò, quyền sở hữu và chính sách
 
-### 1.1 Capabilities
+### 1.1 Khả năng
 
-`USER` may use official/global tests, accept classroom invitations, use classroom assignments, manage own attempts/history, and receive notifications.
+`USER` được dùng đề chính thức/toàn cục, chấp nhận lời mời lớp, làm bài giao, quản lý lượt/lịch sử riêng và nhận thông báo.
 
-`TEACHER` additionally may create tests/drafts, edit only owned mutable content, submit owned versions for moderation, create/manage owned classrooms, invite/remove students, create assignments, and inspect assignment-originated results read-only.
+`TEACHER` còn được tạo đề/nháp, chỉ sửa nội dung thuộc sở hữu còn cho sửa, gửi phiên bản của mình kiểm duyệt, tạo/quản lý lớp thuộc sở hữu, mời/gỡ học viên, tạo bài giao và xem kết quả bài giao chỉ đọc.
 
-`ADMIN` retains existing administrative behavior and additionally manages teacher roles, moderation, global classroom/resource archive/restore, and administrative overrides without silently transferring ownership.
+`ADMIN` giữ hành vi quản trị hiện có, thêm quản lý vai trò giáo viên, kiểm duyệt, lưu trữ/khôi phục lớp/tài nguyên toàn cục và ghi đè quản trị mà không âm thầm chuyển quyền sở hữu.
 
-### 1.2 Test ownership
+### 1.2 Quyền sở hữu đề
 
-Extend `Test` conceptually:
+Mở rộng `Test` về mặt khái niệm:
 
 ```text
 owner_user_id: UUID | null
 origin: ADMIN | TEACHER
 ```
 
-Rules:
-- new ADMIN test: `origin=ADMIN`, `owner_user_id=admin.id`;
-- new TEACHER test: `origin=TEACHER`, `owner_user_id=teacher.id`;
-- legacy pre-migration official tests may use `origin=ADMIN`, `owner_user_id=NULL`; never invent a historical creator;
-- every new post-migration test must have an owner;
-- approval/publication never changes owner/origin.
+Quy tắc:
+- đề ADMIN mới: `origin=ADMIN`, `owner_user_id=admin.id`;
+- đề TEACHER mới: `origin=TEACHER`, `owner_user_id=teacher.id`;
+- đề chính thức cũ trước migration có thể dùng `origin=ADMIN`, `owner_user_id=NULL`; tuyệt đối không bịa người tạo lịch sử;
+- mọi đề mới sau migration phải có chủ sở hữu;
+- phê duyệt/xuất bản tuyệt đối không đổi chủ sở hữu/nguồn gốc.
 
-### 1.3 Policy layer
+### 1.3 Lớp chính sách
 
-Do not replace `AdminUser` with unrestricted `CurrentUser` and scatter role checks. Introduce focused backend policy/service checks equivalent to:
+Không thay `AdminUser` bằng `CurrentUser` không hạn chế rồi rải kiểm tra vai trò. Thêm kiểm tra chính sách/dịch vụ backend tập trung tương đương:
 
 ```text
 can_create_test(user)
@@ -83,19 +83,19 @@ can_submit_moderation(user, version, scope)
 can_moderate(user)
 ```
 
-Frontend visibility is UX only; backend authorization is authoritative.
+Hiển thị frontend chỉ phục vụ UX; phân quyền backend là nguồn chuẩn.
 
-### 1.4 Demotion
+### 1.4 Hạ vai trò
 
-`TEACHER -> USER` must conflict while teacher-only active resources remain, including active classrooms, pending moderation, or resources policy requires ADMIN to archive/disable first.
+`TEACHER -> USER` phải xung đột khi còn tài nguyên hoạt động chỉ dành giáo viên, gồm lớp hoạt động, kiểm duyệt chờ hoặc tài nguyên mà chính sách yêu cầu ADMIN lưu trữ/vô hiệu hóa trước.
 
-Already approved public historical content may remain public with attribution after demotion once other teacher resources are validly resolved. Role changes never cascade-delete academic history.
+Nội dung lịch sử công khai đã duyệt có thể tiếp tục công khai có ghi công sau hạ vai trò khi tài nguyên giáo viên khác được giải quyết hợp lệ. Đổi vai trò tuyệt đối không xóa lan truyền lịch sử học tập.
 
-## 2. Content lifecycle and moderation
+## 2. Vòng đời nội dung và kiểm duyệt
 
-### 2.1 VersionStatus remains content lifecycle
+### 2.1 VersionStatus tiếp tục là vòng đời nội dung
 
-Keep:
+Giữ:
 
 ```text
 DRAFT
@@ -103,24 +103,24 @@ PUBLISHED
 ARCHIVED
 ```
 
-`PUBLISHED` means immutable active content usable according to ownership/moderation/access rules; it does not inherently mean global visibility.
+`PUBLISHED` nghĩa là nội dung hoạt động bất biến dùng theo quy tắc quyền sở hữu/kiểm duyệt/truy cập; không mặc nhiên nghĩa là công khai toàn cục.
 
-ADMIN-created published official versions remain globally visible according to existing official behavior.
+Phiên bản chính thức ADMIN tạo đã xuất bản tiếp tục hiển thị toàn cục theo hành vi chính thức hiện có.
 
-### 2.2 One active published version per test
+### 2.2 Một phiên bản xuất bản hoạt động mỗi đề
 
-Preserve the existing invariant of at most one `PUBLISHED` version per `Test`.
+Giữ bất biến hiện có tối đa một phiên bản `PUBLISHED` mỗi `Test`.
 
-When a newer teacher draft is approved for either CLASSROOM or PUBLIC:
-- the newer version becomes the active `PUBLISHED` version;
-- the previous active `PUBLISHED` version becomes `ARCHIVED` in the same transaction;
-- old attempts/history continue referencing the archived version unchanged.
+Khi nháp giáo viên mới hơn được duyệt CLASSROOM hoặc PUBLIC:
+- phiên bản mới hơn trở thành phiên bản `PUBLISHED` hoạt động;
+- phiên bản `PUBLISHED` hoạt động trước thành `ARCHIVED` trong cùng giao dịch;
+- lượt/lịch sử cũ tiếp tục tham chiếu phiên bản lưu trữ không đổi.
 
-Because moderation is version-scoped, visibility/access follows the newly active version's approvals. Example: if v1 was PUBLIC-approved and v2 is approved only for CLASSROOM, v1 is archived and the test stops being globally visible until v2 itself receives PUBLIC approval. This explicit replacement behavior is intentional and avoids multiple simultaneously active published versions.
+Do kiểm duyệt theo phiên bản, quyền hiển thị/truy cập theo phê duyệt của phiên bản mới hoạt động. Ví dụ: v1 được duyệt PUBLIC và v2 chỉ duyệt CLASSROOM thì v1 bị lưu trữ, đề ngừng công khai toàn cục đến khi chính v2 được duyệt PUBLIC. Hành vi thay thế rõ ràng này là chủ ý để tránh nhiều phiên bản xuất bản cùng hoạt động.
 
-### 2.3 Moderation records
+### 2.3 Bản ghi kiểm duyệt
 
-Add a separate audit entity:
+Thêm thực thể kiểm toán riêng:
 
 ```text
 TestVersionModeration
@@ -139,39 +139,39 @@ TestVersionModeration
 - revoke_reason nullable
 ```
 
-Each submission creates a new row; do not overwrite historical requests.
+Mỗi lần gửi tạo hàng mới; không ghi đè yêu cầu lịch sử.
 
-Rules:
-- at most one `PENDING` request per `(test_version_id, scope)`;
-- any pending moderation locks the version content;
-- owner teacher may cancel own PENDING request; if no other pending request remains, a draft becomes editable again;
-- approve/reject/revoke are concurrency-safe and valid only from allowed prior states.
+Quy tắc:
+- tối đa một yêu cầu `PENDING` mỗi `(test_version_id, scope)`;
+- bất kỳ kiểm duyệt đang chờ nào cũng khóa nội dung phiên bản;
+- giáo viên chủ sở hữu được hủy yêu cầu PENDING của mình; nếu không còn yêu cầu chờ khác, nháp được sửa lại;
+- duyệt/từ chối/thu hồi phải an toàn đồng thời và chỉ hợp lệ từ trạng thái trước được phép.
 
-### 2.4 Scope semantics
+### 2.4 Ngữ nghĩa phạm vi
 
 `CLASSROOM APPROVED`:
-- version is/continues active `PUBLISHED` and immutable;
-- eligible for classroom assignments;
-- not visible in the global Community Library.
+- phiên bản là/tiếp tục `PUBLISHED` hoạt động và bất biến;
+- đủ điều kiện bài giao lớp;
+- không hiện trong Community Library toàn cục.
 
 `PUBLIC APPROVED`:
-- version is/continues active `PUBLISHED` and immutable;
-- visible system-wide as community/contributed content;
-- also eligible for classroom assignments.
+- phiên bản là/tiếp tục `PUBLISHED` hoạt động và bất biến;
+- hiện toàn hệ thống là nội dung cộng đồng/đóng góp;
+- đồng thời đủ điều kiện bài giao lớp.
 
-A teacher may submit directly for PUBLIC without prior classroom approval, or may later submit the same CLASSROOM-approved version for PUBLIC review.
+Giáo viên có thể gửi thẳng PUBLIC không cần duyệt lớp trước, hoặc gửi cùng phiên bản đã duyệt CLASSROOM để duyệt PUBLIC sau.
 
-### 2.5 Revocation
+### 2.5 Thu hồi
 
-PUBLIC revocation removes future global/community visibility but preserves attempts/history. Classroom eligibility may remain if CLASSROOM approval is still active.
+Thu hồi PUBLIC gỡ hiển thị toàn cục/cộng đồng tương lai nhưng giữ lượt/lịch sử. Có thể còn đủ điều kiện lớp nếu duyệt CLASSROOM còn hoạt động.
 
-CLASSROOM revocation prevents future classroom assignment/start paths that depend only on CLASSROOM approval; if PUBLIC approval remains active, classroom eligibility remains through PUBLIC approval.
+Thu hồi CLASSROOM ngăn giao/bắt đầu trong lớp tương lai chỉ phụ thuộc duyệt CLASSROOM; nếu duyệt PUBLIC còn hoạt động thì vẫn đủ điều kiện lớp qua PUBLIC.
 
-Moderation changes future access, never academic history.
+Kiểm duyệt đổi truy cập tương lai, tuyệt đối không đổi lịch sử học tập.
 
-## 3. Classroom domain
+## 3. Miền lớp học
 
-### 3.1 Classroom
+### 3.1 Lớp học
 
 ```text
 Classroom
@@ -185,14 +185,14 @@ Classroom
 - updated_at
 ```
 
-Rules:
-- exactly one active TEACHER owner;
-- no hard delete in v1;
-- owner teacher may archive own classroom;
-- ADMIN may archive/restore any classroom;
-- archived classroom is historical/read-only: no new invitations, memberships, assignments, or assignment starts; existing history remains readable under normal permissions.
+Quy tắc:
+- đúng một chủ sở hữu TEACHER hoạt động;
+- không xóa cứng ở v1;
+- giáo viên chủ sở hữu được lưu trữ lớp của mình;
+- ADMIN được lưu trữ/khôi phục mọi lớp;
+- lớp lưu trữ là lịch sử/chỉ đọc: không lời mời, thành viên, bài giao hoặc bắt đầu bài giao mới; lịch sử hiện có vẫn đọc theo quyền bình thường.
 
-### 3.2 Invitation
+### 3.2 Lời mời
 
 ```text
 ClassroomInvitation
@@ -208,19 +208,19 @@ ClassroomInvitation
 - cancelled_at nullable
 ```
 
-Rules:
-- normalize email exactly as auth/user lookup does;
-- no duplicate pending invite for the same classroom/email;
-- no invite for an already-active member;
-- prevent inviting the classroom owner into their own classroom;
-- if account exists, bind `invited_user_id` and create in-app notification;
-- if account does not exist, persist by normalized email only;
-- on matching registration/login, bind pending invitations and create missing notification idempotently;
-- never auto-accept or auto-join.
+Quy tắc:
+- chuẩn hóa email đúng như tra cứu xác thực/người dùng;
+- không có lời mời chờ trùng cho cùng lớp/email;
+- không mời thành viên đã hoạt động;
+- ngăn mời chủ sở hữu vào chính lớp của họ;
+- nếu tài khoản tồn tại, gắn `invited_user_id` và tạo thông báo trong ứng dụng;
+- nếu tài khoản chưa tồn tại, chỉ lưu theo email chuẩn hóa;
+- khi đăng ký/đăng nhập khớp, gắn lời mời chờ và tạo thông báo thiếu theo cách lũy đẳng;
+- tuyệt đối không tự chấp nhận hoặc tự tham gia.
 
-Accept is transactional: lock invitation, validate PENDING, recipient/email, ACTIVE classroom and no active membership; create membership; mark ACCEPTED; notify teacher; commit once.
+Chấp nhận nằm trong giao dịch: khóa lời mời, xác thực PENDING, người nhận/email, lớp ACTIVE và chưa có thành viên hoạt động; tạo thành viên; đánh dấu ACCEPTED; thông báo giáo viên; cam kết một lần.
 
-### 3.3 Membership
+### 3.3 Tư cách thành viên
 
 ```text
 ClassroomMembership
@@ -232,11 +232,11 @@ ClassroomMembership
 - removed_by_user_id nullable
 ```
 
-`left_at IS NULL` means active. Never delete membership history. At most one active membership per classroom/user. A later rejoin creates a new membership period. Student may leave voluntarily; teacher may remove; neither action deletes old assignment submissions.
+`left_at IS NULL` nghĩa là đang hoạt động. Tuyệt đối không xóa lịch sử thành viên. Tối đa một tư cách thành viên hoạt động mỗi lớp/người dùng. Tham gia lại về sau tạo giai đoạn thành viên mới. Học viên được tự rời; giáo viên được gỡ; cả hai không xóa bài nộp cũ.
 
-A TEACHER remains a normal user and may be a student/member in another teacher's classroom.
+TEACHER vẫn là người dùng bình thường và có thể làm học viên/thành viên trong lớp giáo viên khác.
 
-## 4. Assignment and attempt provenance
+## 4. Bài giao và nguồn gốc lượt làm
 
 ### 4.1 ClassroomAssignment
 
@@ -253,51 +253,51 @@ ClassroomAssignment
 - archived_at nullable
 ```
 
-Teacher can assign when:
-- classroom ACTIVE and owned by current teacher;
-- version is active `PUBLISHED`/immutable;
-- either the version is teacher-owned with active CLASSROOM or PUBLIC approval, or it is an official ADMIN/system published version;
-- ADMIN/system official tests may therefore be assigned without teacher moderation because they are already official content.
+Giáo viên được giao khi:
+- lớp ACTIVE thuộc giáo viên hiện tại;
+- phiên bản `PUBLISHED` đang hoạt động/bất biến;
+- phiên bản thuộc giáo viên với duyệt CLASSROOM hoặc PUBLIC còn hiệu lực, hoặc là phiên bản chính thức ADMIN/hệ thống đã xuất bản;
+- do đó đề chính thức ADMIN/hệ thống được giao không cần kiểm duyệt giáo viên vì đã là nội dung chính thức.
 
-No additional moderation is required per classroom.
+Không cần kiểm duyệt bổ sung cho từng lớp.
 
-### 4.2 Provenance
+### 4.2 Nguồn gốc
 
-Assignment-started activity must carry durable assignment provenance created only by backend assignment-start logic.
+Hoạt động bắt đầu từ bài giao phải mang nguồn gốc bài giao bền vững chỉ do logic bắt đầu bài giao backend tạo.
 
-Standalone/module attempts should reference the originating assignment where applicable. For Full Mock, provenance may live on `TestSession` and be inherited by child attempts, or be duplicated only if existing query patterns require it. Implementation planning must choose the least duplicated model that preserves an unambiguous security predicate.
+Lượt độc lập/mô-đun cần tham chiếu bài giao nguồn khi áp dụng. Với Full Mock, nguồn gốc có thể nằm trên `TestSession` và được lượt con kế thừa, hoặc chỉ sao chép nếu mẫu truy vấn hiện có yêu cầu. Lập kế hoạch phải chọn mô hình ít trùng nhất vẫn giữ điều kiện bảo mật không mơ hồ.
 
-A browser must not attach an arbitrary existing attempt to a classroom after creation.
+Trình duyệt không được gắn lượt hiện có tùy ý vào lớp sau khi tạo.
 
-### 4.3 Retry
+### 4.3 Làm lại
 
-Multiple attempts/sessions per student per assignment are allowed. Keep the full history; summaries may highlight latest/current attempt.
+Cho phép nhiều lượt/phiên mỗi học viên mỗi bài giao. Giữ đầy đủ lịch sử; tổng hợp có thể nhấn lượt mới nhất/hiện tại.
 
-### 4.4 Teacher visibility boundary
+### 4.4 Ranh giới quyền xem của giáo viên
 
-Teacher may read an attempt only when it originated from an assignment owned by that teacher's classroom:
+Giáo viên chỉ được đọc lượt khi bắt nguồn từ bài giao thuộc lớp của họ:
 
 ```text
 attempt originates from assignment
 AND assignment.classroom.teacher_id == current_teacher.id
 ```
 
-Never authorize from `student_id + test_version_id` alone. Personal practice on the same test remains private. Historical assignment-originated submissions remain teacher-readable after membership ends.
+Tuyệt đối không phân quyền chỉ từ `student_id + test_version_id`. Luyện cá nhân cùng đề vẫn riêng tư. Bài nộp lịch sử bắt nguồn bài giao vẫn cho giáo viên đọc sau hết thành viên.
 
-## 5. Teacher result view
+## 5. Giao diện kết quả giáo viên
 
-Read-only access may include:
-- status/timestamps;
-- Listening/Reading submitted answers, correctness, score/band;
-- Writing submission text;
-- existing Writing AI result/feedback attached to that attempt where the normal data contract permits;
-- existing official/manual Writing score if already present.
+Truy cập chỉ đọc có thể gồm:
+- trạng thái/thời gian;
+- câu trả lời Listening/Reading đã nộp, độ đúng, điểm/band;
+- văn bản Writing đã nộp;
+- kết quả/phản hồi Writing AI hiện có gắn với lượt đó tại nơi hợp đồng dữ liệu thường cho phép;
+- điểm Writing chính thức/thủ công nếu đã có.
 
-Teacher may not edit answers, delete attempts, mutate official/manual scores, invoke ADMIN-only grading mutations, or inspect unrelated personal practice. Frontend clearly labels teacher attempt review as read-only.
+Giáo viên không được sửa câu trả lời, xóa lượt, đổi điểm chính thức/thủ công, gọi thao tác chấm chỉ ADMIN hoặc xem luyện cá nhân không liên quan. Frontend ghi nhãn rõ xem lại lượt của giáo viên là chỉ đọc.
 
-## 6. Notification subsystem
+## 6. Phân hệ thông báo
 
-Use a generic per-user notification model with localizable event data:
+Dùng mô hình thông báo chung từng người với dữ liệu sự kiện bản địa hóa được:
 
 ```text
 Notification
@@ -311,9 +311,9 @@ Notification
 - created_at
 ```
 
-`type + payload_json` is the durable event contract; frontend EN/VI localization renders title/message. Payload should contain only safe display metadata required for rendering (for example classroom/test display names), not authorization state or secrets.
+`type + payload_json` là hợp đồng sự kiện bền vững; bản địa hóa EN/VI frontend hiển thị tiêu đề/thông điệp. Payload chỉ nên chứa metadata hiển thị an toàn cần cho trình bày (ví dụ tên hiển thị lớp/đề), không chứa trạng thái phân quyền hoặc bí mật.
 
-Initial types may include:
+Các loại ban đầu có thể gồm:
 - `CLASSROOM_INVITED`;
 - `CLASSROOM_INVITATION_ACCEPTED`;
 - `CLASSROOM_INVITATION_DECLINED`;
@@ -323,35 +323,35 @@ Initial types may include:
 - `TEST_PUBLIC_REJECTED`;
 - `CLASSROOM_ARCHIVED`.
 
-Rules:
-- `read_at IS NULL` means unread;
-- header shows unread count;
-- opening the panel does not mark everything read;
-- support mark-one and mark-all-read;
-- actions always load and authorize the real target entity;
-- notification/entity IDs never grant permission;
-- invitation-notification creation on registration/login is idempotent;
-- no generic WebSocket/SSE requirement in v1; fetch/refetch is sufficient;
-- no email delivery in v1.
+Quy tắc:
+- `read_at IS NULL` nghĩa là chưa đọc;
+- đầu trang hiển thị số chưa đọc;
+- mở bảng không đánh dấu tất cả đã đọc;
+- hỗ trợ đánh dấu một và tất cả đã đọc;
+- thao tác luôn tải và phân quyền thực thể đích thật;
+- ID thông báo/thực thể tuyệt đối không cấp quyền;
+- tạo thông báo lời mời khi đăng ký/đăng nhập có tính lũy đẳng;
+- v1 không yêu cầu WebSocket/SSE chung; tải/tải lại đủ;
+- v1 không gửi email.
 
-## 7. API/workflow shape
+## 7. Cấu trúc API/luồng
 
-Exact route naming follows current conventions, but required resource actions are:
+Tên tuyến cụ thể theo quy ước hiện tại, nhưng thao tác tài nguyên bắt buộc gồm:
 
-### 7.1 Tests
+### 7.1 Đề
 
-Reuse existing Builder/test routes.
+Tái sử dụng tuyến Builder/đề hiện có.
 
 `POST /tests`:
-- ADMIN => official owned test;
-- TEACHER => teacher owned test;
-- USER => forbidden.
+- ADMIN => đề chính thức thuộc sở hữu;
+- TEACHER => đề thuộc giáo viên;
+- USER => bị cấm.
 
-Existing mutate/create-version/delete/validate flows become policy-based where appropriate. Teacher mutations are owner-scoped and mutable-version-scoped; ADMIN retains global administrative control.
+Luồng sửa/tạo phiên bản/xóa/xác thực hiện có chuyển sang dựa chính sách tại nơi phù hợp. Thao tác giáo viên giới hạn theo chủ sở hữu và phiên bản được sửa; ADMIN giữ kiểm soát quản trị toàn cục.
 
-### 7.2 Moderation
+### 7.2 Kiểm duyệt
 
-Teacher:
+Giáo viên:
 
 ```text
 POST /test-versions/{version_id}/moderation-requests
@@ -368,9 +368,9 @@ POST /admin/test-moderation-requests/{id}/reject
 POST /admin/test-moderation-requests/{id}/revoke  (or equivalent scoped revocation action)
 ```
 
-Approval transaction validates PENDING state and the locked target version, applies active-version replacement when first publishing a newer version, records moderation result, creates notification, and commits atomically.
+Giao dịch phê duyệt xác thực trạng thái PENDING và phiên bản đích đã khóa, thay phiên bản hoạt động khi xuất bản lần đầu phiên bản mới hơn, ghi kết quả kiểm duyệt, tạo thông báo và cam kết nguyên tử.
 
-### 7.3 Classrooms/memberships
+### 7.3 Lớp học/thành viên
 
 ```text
 GET  /classrooms
@@ -383,9 +383,9 @@ POST /classrooms/{id}/members/{user_id}/remove
 POST /classrooms/{id}/leave
 ```
 
-ADMIN has global archive/restore capability.
+ADMIN có khả năng lưu trữ/khôi phục toàn cục.
 
-### 7.4 Invitations
+### 7.4 Lời mời
 
 ```text
 POST /classrooms/{id}/invitations
@@ -395,7 +395,7 @@ POST /classroom-invitations/{id}/accept
 POST /classroom-invitations/{id}/decline
 ```
 
-### 7.5 Assignments/results
+### 7.5 Bài giao/kết quả
 
 ```text
 GET  /classrooms/{id}/assignments
@@ -408,9 +408,9 @@ GET  /classrooms/{classroom_id}/assignments/{assignment_id}/results
 GET  /classrooms/{classroom_id}/assignments/{assignment_id}/students/{student_id}/attempts
 ```
 
-Assignment start derives classroom, test version, current user, membership, and provenance from server-side assignment state. Do not trust browser-supplied ownership/access IDs when derivable.
+Bắt đầu bài giao suy ra lớp, phiên bản đề, người dùng hiện tại, tư cách thành viên và nguồn gốc từ trạng thái bài giao phía máy chủ. Không tin ID quyền sở hữu/truy cập trình duyệt gửi khi có thể suy ra.
 
-### 7.6 Notifications
+### 7.6 Thông báo
 
 ```text
 GET  /notifications
@@ -419,23 +419,23 @@ POST /notifications/{id}/read
 POST /notifications/read-all
 ```
 
-## 8. Concurrency and transactions
+## 8. Đồng thời và giao dịch
 
-These operations must be transaction-safe and duplicate/conflict-safe:
-- invitation acceptance and active membership creation;
-- moderation submit/approve/reject/revoke;
-- active published-version replacement;
-- assignment creation;
-- assignment start/provenance creation;
-- teacher promotion/demotion validation;
-- classroom archive/restore;
-- idempotent notification creation for pending invites.
+Các thao tác này phải an toàn giao dịch và chống trùng/xung đột:
+- chấp nhận lời mời và tạo thành viên hoạt động;
+- gửi/duyệt/từ chối/thu hồi kiểm duyệt;
+- thay phiên bản đã xuất bản hoạt động;
+- tạo bài giao;
+- bắt đầu bài giao/tạo nguồn gốc;
+- xác thực nâng/hạ vai trò giáo viên;
+- lưu trữ/khôi phục lớp;
+- tạo thông báo lũy đẳng cho lời mời chờ.
 
-Double-click/concurrent requests must not create duplicate memberships, duplicate pending moderation, duplicate publication transitions, or duplicate notifications.
+Nhấp đúp/yêu cầu đồng thời không được tạo thành viên trùng, kiểm duyệt chờ trùng, chuyển trạng thái xuất bản trùng hoặc thông báo trùng.
 
-## 9. Domain errors
+## 9. Lỗi miền
 
-Use explicit domain semantics, with names adapted to existing conventions, including equivalents of:
+Dùng ngữ nghĩa miền rõ ràng, tên theo quy ước hiện có, gồm các mã tương đương:
 
 ```text
 TEACHER_REQUIRED
@@ -455,59 +455,59 @@ ACTIVE_MEMBERSHIP_REQUIRED
 TEACHER_HAS_ACTIVE_RESOURCES
 ```
 
-## 10. Minimum frontend behavior; detailed layout deferred
+## 10. Hành vi frontend tối thiểu; hoãn bố cục chi tiết
 
-Implementation must provide coherent surfaces for:
-- ADMIN promote/demote teacher with conflict feedback;
-- TEACHER using the existing Builder for owned tests and seeing ownership/moderation state;
-- TEACHER classroom/member/invitation/assignment management and read-only results;
-- ADMIN moderation queue/detail/actions;
-- USER invitation Accept/Decline, classroom/assignment views, and assignment start;
-- Test Library distinction between official ADMIN/system content and public community teacher content;
-- global notification bell with unread count/list/read actions;
-- archived resources rendered as historical read-only rather than deleted;
-- all new visible chrome in current EN/VI localization.
+Triển khai phải cung cấp giao diện nhất quán cho:
+- ADMIN nâng/hạ giáo viên với phản hồi xung đột;
+- TEACHER dùng Builder hiện có cho đề thuộc sở hữu và thấy trạng thái sở hữu/kiểm duyệt;
+- TEACHER quản lý lớp/thành viên/lời mời/bài giao và kết quả chỉ đọc;
+- hàng đợi/chi tiết/thao tác kiểm duyệt ADMIN;
+- USER Accept/Decline lời mời, xem lớp/bài giao và bắt đầu bài giao;
+- Test Library phân biệt nội dung ADMIN/hệ thống chính thức với nội dung giáo viên cộng đồng công khai;
+- chuông thông báo toàn cục với số chưa đọc/danh sách/thao tác đọc;
+- tài nguyên lưu trữ hiển thị lịch sử chỉ đọc thay vì xóa;
+- mọi thành phần giao diện mới hiển thị đều dùng bản địa hóa EN/VI hiện tại.
 
-Detailed dashboard layout, visual hierarchy, realtime notifications, deadlines, attempt limits, co-teachers, email delivery, teacher grading, and organization tenancy are outside v1.
+Bố cục bảng tổng quan chi tiết, phân cấp thị giác, thông báo thời gian thực, hạn, giới hạn lượt, đồng giảng viên, gửi email, chấm giáo viên và phân tách tổ chức ngoài v1.
 
-## 11. Compatibility and migration
+## 11. Tương thích và migration
 
-- Preserve current USER flows and official ADMIN/system tests.
-- Preserve all existing attempt/session/history references and IDs.
-- Legacy tests without creators migrate safely as `origin=ADMIN`, system-owned (`owner_user_id=NULL`); do not invent ownership.
-- Existing published version references remain valid even when the version later becomes ARCHIVED after a newer approval.
-- Do not rewrite historical attempts or official/manual Writing scores.
-- Preserve Builder/import/export/assets/versioning except where ownership/access metadata is required.
-- Review draft import/ZIP import paths so newly imported tests receive owner/origin from the authenticated importer and do not silently become unowned.
-- PostgreSQL enum migration for `UserRole.TEACHER` must be safe for existing data.
+- Giữ luồng USER hiện tại và đề ADMIN/hệ thống chính thức.
+- Giữ mọi tham chiếu/ID lượt làm/phiên/lịch sử hiện có.
+- Đề cũ thiếu người tạo migration an toàn thành `origin=ADMIN`, thuộc hệ thống (`owner_user_id=NULL`); không bịa quyền sở hữu.
+- Tham chiếu phiên bản đã xuất bản hiện có vẫn hợp lệ khi về sau phiên bản thành ARCHIVED sau phê duyệt mới hơn.
+- Không ghi lại lượt lịch sử hoặc điểm Writing chính thức/thủ công.
+- Giữ Builder/nhập/xuất/tài sản/phiên bản trừ nơi cần metadata sở hữu/truy cập.
+- Rà soát nhập nháp/ZIP để đề nhập mới nhận chủ sở hữu/nguồn gốc từ người nhập đã xác thực, không âm thầm thành vô chủ.
+- Migration enum PostgreSQL cho `UserRole.TEACHER` phải an toàn với dữ liệu hiện có.
 
-## 12. Security invariants
+## 12. Bất biến bảo mật
 
-1. USER cannot self-promote to TEACHER.
-2. TEACHER cannot edit another teacher's content.
-3. TEACHER cannot mutate approved/published versions.
-4. Teacher content is unusable by other users until an appropriate ADMIN approval exists.
-5. CLASSROOM approval never grants global visibility.
-6. PUBLIC approval grants community visibility and classroom eligibility.
-7. Teacher cannot read student personal practice outside assignment provenance.
-8. Notification presence never grants authorization.
-9. Archived/revoked resources stop future actions while preserving academic history.
-10. Backend policy, not frontend visibility, is authoritative.
+1. USER không được tự nâng lên TEACHER.
+2. TEACHER không được sửa nội dung giáo viên khác.
+3. TEACHER không được sửa phiên bản đã duyệt/xuất bản.
+4. Người dùng khác không dùng được nội dung giáo viên trước khi có phê duyệt ADMIN phù hợp.
+5. Duyệt CLASSROOM tuyệt đối không cấp hiển thị toàn cục.
+6. Duyệt PUBLIC cấp hiển thị cộng đồng và đủ điều kiện lớp.
+7. Giáo viên không được đọc luyện cá nhân học viên ngoài nguồn gốc bài giao.
+8. Có thông báo tuyệt đối không cấp phân quyền.
+9. Tài nguyên lưu trữ/thu hồi ngừng thao tác tương lai nhưng giữ lịch sử học tập.
+10. Chính sách backend là nguồn chuẩn, không phải hiển thị frontend.
 
-## 13. Explicit non-goals
+## 13. Nội dung rõ ràng ngoài phạm vi
 
-- Email invitation delivery.
-- Co-teachers/multiple classroom owners.
-- Classroom ownership transfer.
-- Assignment deadlines.
-- Attempt-count limits.
-- Teacher manual grading/editing of official Writing scores.
-- Generic realtime WebSocket/SSE notifications.
-- Organization/school tenants.
-- Paid courses/subscriptions.
-- Full classroom analytics beyond assignment status/result views.
+- Gửi lời mời qua email.
+- Đồng giảng viên/nhiều chủ sở hữu lớp.
+- Chuyển quyền sở hữu lớp.
+- Hạn bài giao.
+- Giới hạn số lượt làm.
+- Giáo viên chấm thủ công/sửa điểm Writing chính thức.
+- Thông báo WebSocket/SSE thời gian thực chung.
+- Phân vùng tổ chức/trường.
+- Khóa học/gói thuê bao trả phí.
+- Phân tích lớp đầy đủ ngoài xem trạng thái/kết quả bài giao.
 
-## 14. Acceptance path
+## 14. Luồng nghiệm thu
 
 ```text
 ADMIN promotes USER -> TEACHER
@@ -528,4 +528,4 @@ ADMIN approves PUBLIC
 version appears globally as community content with teacher attribution
 ```
 
-All historical academic data remains stable if membership, classroom, approval, publication, or teacher role state changes later.
+Mọi dữ liệu học tập lịch sử giữ ổn định nếu trạng thái thành viên, lớp, phê duyệt, xuất bản hoặc vai trò giáo viên đổi về sau.

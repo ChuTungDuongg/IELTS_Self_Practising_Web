@@ -1,19 +1,19 @@
-# Task 2 v3 verification — 2026-10-08
+# Kiểm chứng Task 2 v3 — 2026-10-08
 
-> **Documentation audit: HISTORICAL.** Historical reference; không phải contract hiện hành.
-> Mục đích: Task 2 v3 verification — 2026-10-08. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../backend/app/services/mts_writing.py).
-> Đọc cùng [current module/guide](ai-writing.md); [audit và giới hạn](DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+> **Phân loại tài liệu: HISTORICAL.** Tham khảo lịch sử; không phải contract hiện hành.
+> Mục đích: Kiểm chứng Task 2 v3 — 2026-10-08. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../backend/app/services/mts_writing.py).
+> Đọc cùng [hướng dẫn module hiện hành](ai-writing.md); [audit và giới hạn](DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
 
-1. **Previous LR root cause:** the model generated a quote, then exact/conservative Unicode-whitespace matching rejected punctuation or copying differences as `QUOTE_NOT_EXACT`. A second invalid evidence response escaped the sequential loop and prevented GRA from running. Provider connectivity was already working.
-2. **Evidence identity:** the v3 model selects only `source_id` plus concise Vietnamese `assessment`; optional `focus` does not determine validity and is not persisted. Unknown IDs cause one targeted repair, then a local criterion failure. The four independent evidence/scoring pairs remain.
-3. **Segmentation:** deterministic pure `essay_sources.segment_essay` numbers non-empty blank-line paragraphs and conservatively splits sentences. It retains original Python character offsets and exact slices, supports CRLF/LF, repeated sentences, abbreviations/decimals, quotes, apostrophes, dashes, multiple spaces and Unicode terminal punctuation. Every segment is tested against `essay[start:end]`.
-4. **Exact quotes:** backend source-map lookup supplies `source_id`, exact original `quote`, and assessment to snapshots/SSE. v3 never calls legacy quote matching. Long original sentences no longer hit the previous 600-character model-copy limit. English evidence is never translated.
-5. **Prompt/fingerprint:** `mts-task2-v3`. Configured v1/v2 use effective v3, and custom labels include v3. Old completed history remains readable but is not reused as v3 cache. Integration tests cover both old versions.
-6. **Finish reasons:** transport reads and sanitises metadata, preserving stop/length/abort/error and safe buckets for other, missing, filter or tool reasons. vLLM 0.13 semantics were checked in its primary source. Length is rejected even for complete-looking JSON; exactly one shorter repair is allowed. Evidence is max 4 items, assessment max 320 characters with two concise sentences requested. Guided JSON output, temperature 0/seed 0 and the existing 1800-token vLLM budget remain. No global token increase, deployment change or GPU job.
-7. **Failure isolation/completion:** persist and emit `criterion.failed`, then continue later traits. TA/CC success + LR failure + GRA success ends FAILED with three visible results and no raw mean/overall. Four successes alone produce COMPLETED and aggregates. Shutdown/stale recovery also preserves an interrupted later criterion alongside previous failures.
-8. **SSE/UI:** completed cards and Bands appear immediately. Exactly four vertical steps retain completed/active/waiting/failed styling and reduced-motion support. Live counts distinguish successes/errors/current work. Final failure notices only appear at terminal state. Persisted snapshots, sequence replay and reconnect retain completed cards and individual failures without restarting inference. Heartbeats affect only liveness.
-9. **Vietnamese/calibration:** generated assessments, feedback, strengths, improvements and concise comparison summaries explicitly request Vietnamese; safe errors/progress are Vietnamese. Only the four official IELTS criteria are used. Current official Task 2 descriptors (publication updated May 2023, checked 2026-10-08) are faithfully paraphrased, including lower bands and scope/extent distinctions. Scoring compares adjacent whole-band descriptors holistically; half-bands interpolate. High scores require concise affirmative justification within the same scoring interaction. Source IDs, comparison structure, next official whole-band value and the absence of an impossible higher-band blocker at 9 are validated. There are no score subtraction constants, error-count rules or deterministic severity caps. Prompts require score/feedback consistency. Fake tests establish the contract; they do not prove real-model calibration against human scores.
-10. **Focused verification:** all commands below passed. PostgreSQL integration used an isolated temporary local `postgres:17-alpine` container at port 55433, migrated with the repository's existing Alembic migrations, then stopped. All automated grading used fake providers. An initial attempt against the configured unavailable local DB was stopped and rerun against the isolated DB. Initial red tests and review regressions were repaired before the final runs. No unrelated suite, browser or Playwright.
+1. **Nguyên nhân gốc của lỗi LR trước đây:** model sinh quote, sau đó phép so khớp exact/conservative Unicode-whitespace từ chối khác biệt dấu câu hoặc sao chép bằng `QUOTE_NOT_EXACT`. Evidence response sai lần thứ hai thoát khỏi sequential loop, khiến GRA không chạy. Kết nối provider vốn đã hoạt động.
+2. **Định danh evidence:** model v3 chỉ chọn `source_id` và `assessment` ngắn bằng tiếng Việt; `focus` tùy chọn không quyết định validity và không được lưu. ID không tồn tại được repair có mục tiêu một lần, rồi chỉ criterion đó thất bại. Vẫn giữ bốn cặp evidence/scoring độc lập.
+3. **Phân đoạn:** hàm thuần xác định `essay_sources.segment_essay` đánh số các paragraphs không rỗng tách bằng blank lines và chia câu thận trọng. Hàm giữ original Python character offsets và exact slices; hỗ trợ CRLF/LF, câu lặp, abbreviations/decimals, quotes, apostrophes, dashes, nhiều spaces và Unicode terminal punctuation. Mỗi segment được kiểm với `essay[start:end]`.
+4. **Trích dẫn chính xác:** backend tra source map để đưa `source_id`, nguyên văn `quote` và assessment vào snapshots/SSE. v3 không gọi legacy quote matching. Câu gốc dài không còn vướng model-copy limit 600 characters trước đây. Evidence tiếng Anh không bao giờ bị dịch.
+5. **Prompt/fingerprint:** `mts-task2-v3`. Cấu hình v1/v2 dùng effective v3, custom labels cũng bao gồm v3. Lịch sử hoàn tất cũ vẫn đọc được nhưng không tái sử dụng làm v3 cache. Integration tests bao phủ cả hai old versions.
+6. **Finish reasons:** transport đọc và làm sạch metadata, giữ stop/length/abort/error cùng safe buckets cho other, missing, filter hoặc tool reasons. Đã đối chiếu semantics của vLLM 0.13 với primary source. Length bị từ chối ngay cả khi JSON trông hoàn chỉnh; chỉ cho phép đúng một repair ngắn hơn. Evidence tối đa 4 items, assessment tối đa 320 characters và prompt yêu cầu hai câu ngắn. Giữ guided JSON output, temperature 0/seed 0 và vLLM budget 1800 tokens hiện có. Không tăng global token budget, đổi deployment hoặc chạy GPU job.
+7. **Cô lập lỗi và hoàn tất:** lưu/phát `criterion.failed`, sau đó tiếp tục traits còn lại. TA/CC thành công + LR lỗi + GRA thành công kết thúc FAILED, có ba kết quả hiển thị nhưng không có raw mean/overall. Chỉ khi cả bốn thành công mới tạo COMPLETED và aggregates. Shutdown/stale recovery cũng giữ criterion bị gián đoạn cùng các lỗi đã có trước đó.
+8. **SSE/UI:** completed cards và Bands hiện ngay. Giữ đúng bốn vertical steps với styling completed/active/waiting/failed và reduced-motion support. Live counts phân biệt successes/errors/current work. Final failure notice chỉ xuất hiện ở terminal state. Persisted snapshots, sequence replay và reconnect giữ completed cards/individual failures mà không khởi động lại inference. Heartbeats chỉ phục vụ liveness.
+9. **Tiếng Việt và calibration:** prompts yêu cầu rõ assessments, feedback, strengths, improvements và comparison summaries ngắn bằng tiếng Việt; safe errors/progress cũng bằng tiếng Việt. Chỉ dùng bốn official IELTS criteria. Official Task 2 descriptors hiện hành, publication cập nhật May 2023 và kiểm ngày 2026-10-08, được diễn giải trung thực, gồm lower bands và phân biệt scope/extent. Scoring so adjacent whole-band descriptors một cách holistic; half-bands là nội suy. Điểm cao cần affirmative justification ngắn trong cùng scoring interaction. Backend kiểm source IDs, comparison structure, next official whole-band value và việc không có impossible higher-band blocker tại 9. Không có hằng số trừ điểm, quy tắc đếm lỗi hoặc deterministic severity caps. Prompts yêu cầu score/feedback nhất quán. Fake tests xác nhận contract, không chứng minh real-model calibration với human scores.
+10. **Kiểm chứng có chọn lọc:** các lệnh dưới đây đều pass. PostgreSQL integration dùng temporary local `postgres:17-alpine` container cách ly tại port 55433, migrate bằng Alembic migrations hiện có rồi stop. Toàn bộ automated grading dùng fake providers. Lần thử ban đầu với configured local DB không sẵn sàng được dừng và chạy lại trên DB cách ly. Initial red tests và review regressions được sửa trước final runs. Không chạy unrelated suites, browser hoặc Playwright.
 
 ```text
 # backend (DATABASE_URL directed to the temporary test database)
@@ -36,7 +36,7 @@ git diff --check
 # passed (Git emits only existing LF/CRLF conversion notices)
 ```
 
-11. **Files changed:**
+11. **Các file đã thay đổi:**
 
 - `backend/app/api/v1/writing_ai.py`
 - `backend/app/core/config.py`
@@ -66,7 +66,7 @@ git diff --check
 - `docs/superpowers/plans/2026-10-08-task2-source-calibration.md`
 - `docs/task2-v3-verification.md`
 
-12. **Git status:** branch `main`, starting HEAD `e1a951b` containing the prior local fixes. No staged changes; no reset, clean or remote checkout. The pre-existing untracked `docs/MTS.pdf` is preserved. Final status:
+12. **Trạng thái Git:** branch `main`, HEAD ban đầu `e1a951b` chứa các local fixes trước đó. Không có staged changes; không reset, clean hoặc checkout remote. Giữ nguyên file untracked `docs/MTS.pdf` đã có. Trạng thái cuối:
 
 ```text
  M backend/app/api/v1/writing_ai.py
@@ -99,7 +99,7 @@ git diff --check
 ?? docs/task2-v3-verification.md
 ```
 
-13. **Scope:** Task 1-A was NOT implemented. No Task 1 schema, UI, prompt or scoring code was added. No official Writing score writes; the existing Copy-to-form and explicit human Save policy remains. Integration tests confirm official score isolation. No model/deployment changes, new schema migration or secrets.
-14. **Publication:** nothing was pushed, staged or committed.
+13. **Phạm vi:** KHÔNG triển khai Task 1-A. Không thêm Task 1 schema, UI, prompt hoặc scoring code. Không ghi official Writing scores; giữ policy Copy-to-form và human Save tường minh hiện có. Integration tests xác nhận official score isolation. Không đổi model/deployment, thêm schema migration hoặc secrets.
+14. **Công bố:** không push, stage hoặc commit.
 
-Sources: [official IELTS Writing Band Descriptors](https://ielts.org/cdn/ielts-guides/ielts-writing-band-descriptors.pdf), [vLLM 0.13 finish semantics](https://github.com/vllm-project/vllm/blob/v0.13.0/vllm/v1/engine/__init__.py), [vLLM structured JSON output](https://docs.vllm.ai/en/v0.13.0/features/structured_outputs/).
+Nguồn: [official IELTS Writing Band Descriptors](https://ielts.org/cdn/ielts-guides/ielts-writing-band-descriptors.pdf), [vLLM 0.13 finish semantics](https://github.com/vllm-project/vllm/blob/v0.13.0/vllm/v1/engine/__init__.py), [vLLM structured JSON output](https://docs.vllm.ai/en/v0.13.0/features/structured_outputs/).

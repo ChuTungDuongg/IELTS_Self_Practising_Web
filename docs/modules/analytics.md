@@ -1,9 +1,9 @@
-# Analytics, learning goals và improvement plans
+# Phân tích, mục tiêu học tập và kế hoạch cải thiện
 
 > Mục đích và phạm vi: Chuyển persisted results thành thống kê có scope rõ, không tạo điểm hay forecast mới.
 > Đối chiếu mã nguồn tại `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`. Đây là kiểm tra tĩnh; không xác nhận trạng thái deployment đang chạy.
 
-## A–C. Mục đích, workflow và ownership
+## A–C. Mục đích, quy trình và phân chia trách nhiệm
 
 Chuyển persisted results thành thống kê có scope rõ, không tạo điểm hay forecast mới.
 
@@ -11,7 +11,7 @@ Personal analytics chọn skill/date, xem trend/accuracy/time và compare attemp
 
 AnalyticsService owns personal cohort/metrics; ClassroomLearningRepository owns P4 aggregate SQL, ClassroomLearningService resolves deterministic evidence; LearningPlanService owns normalized activity references. Gradebook selection/provenance là dependency chung.
 
-## D. Implementation map
+## D. Bản đồ triển khai
 
 | Lớp | Source |
 | --- | --- |
@@ -20,7 +20,7 @@ AnalyticsService owns personal cohort/metrics; ClassroomLearningRepository owns 
 | Services/repositories | [backend/app/services/analytics.py](../../backend/app/services/analytics.py); [backend/app/services/classroom_learning.py](../../backend/app/services/classroom_learning.py); [backend/app/services/classroom_learning_plans.py](../../backend/app/services/classroom_learning_plans.py); [backend/app/services/learning_goals.py](../../backend/app/services/learning_goals.py); [backend/app/repositories/classroom_learning.py](../../backend/app/repositories/classroom_learning.py); [backend/app/repositories/classroom_grades.py](../../backend/app/repositories/classroom_grades.py) |
 | Models/tests | [backend/app/models/classroom_learning.py](../../backend/app/models/classroom_learning.py); [backend/app/models/entities.py](../../backend/app/models/entities.py); [backend/tests/test_analytics_date_scope.py](../../backend/tests/test_analytics_date_scope.py); [backend/tests/test_classroom_learning.py](../../backend/tests/test_classroom_learning.py); [frontend/tests/analytics-scope.test.ts](../../frontend/tests/analytics-scope.test.ts); [frontend/tests/classroom-learning-ui.test.tsx](../../frontend/tests/classroom-learning-ui.test.tsx) |
 
-## E–F. Data flow và API contracts
+## E–F. Luồng dữ liệu và hợp đồng API
 
 Persisted attempt roots → authorized cohort/query → validated metrics DTO → client SVG/chart. Learning plan → existing assignment/resource references; không tạo independent attempt hoặc score lifecycle.
 
@@ -34,27 +34,27 @@ Các đường dẫn sau dùng prefix `/api/v1`; DTO, dependency và response mo
 - `GET /classrooms/{classroom_id}/my-recommendations`
 - `POST /classrooms/{classroom_id}/students/{student_id}/learning-plans`
 
-## G. Persistence
+## G. Lưu trữ
 
 Đọc Attempt/Answer/events/human scores và selected assignment roots; plan/item là bảng riêng có FK đến activities. Skill goals nằm trên User; explicit overall target có thể override fallback computed target trong learning-goal presentation.
 
-## H. Business rules
+## H. Quy tắc nghiệp vụ
 
 Personal dates dùng timezone-aware UTC half-open interval từ calendar UTC+7; recorded duration là tổng active time của cohort, không số giây nằm trong window. Classroom selection trước date filter; completion cohort khác performance sample. Null denominator → null percentage, missing human grades không thành zero. Focused evidence không thành full band.
 
-## I. Security
+## I. Bảo mật
 
 Personal API luôn user-scoped; classroom analytics cần analytics.view hoặc own-progress path. Student drill-down chỉ assignment-origin work. Recommendation/plan API rechecks membership/capability; không dùng dashboard data để suy quyền ghi.
 
-## J. Failure và recovery
+## J. Lỗi và khôi phục
 
 Validate naive/reversed/out-of-bound dates; empty datasets hiển thị no-data. Không interpolate fabricated scores giữa observations. Stable pagination/bounded exports tránh query cả hệ thống; đổi grade selection có thể đổi sample và cần caption rõ.
 
-## K. Focused testing
+## K. Kiểm thử tập trung
 
 Query scope/date validation/date scope, accepted-root gradebook, learning-plan access và frontend scope/chart tests. Khi thêm metric phải thử missing human score, focused scope, legacy mock và membership removal.
 
-## L. Extension guide
+## L. Hướng dẫn mở rộng
 
 Bắt đầu định nghĩa numerator/denominator/cohort/time/provenance. Query backend → response schema → typed client → chart; reuse selected_grades cho lớp. Nếu cần persisted metric mới, chứng minh aggregate query chưa đủ rồi mới đề xuất migration.
 

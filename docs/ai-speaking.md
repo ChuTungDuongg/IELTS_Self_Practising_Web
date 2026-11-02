@@ -1,102 +1,48 @@
-# BandPilot Speaking architecture and evaluation
+# Kiến trúc và đánh giá Speaking của BandPilot
 
-> **Documentation audit: CURRENT.** Canonical concern này; source-check các boundary/API, không live validation.
-> Mục đích: BandPilot Speaking architecture and evaluation. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../backend/app/services/speaking_ai_worker.py).
-> Đọc cùng [current module/guide](modules/speaking.md); [audit và giới hạn](DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+> **Kiểm toán tài liệu: CURRENT.** Tài liệu chuẩn cho chủ đề này; đã đối chiếu ranh giới/API trong mã nguồn, chưa xác thực trực tiếp trên hệ thống chạy.
+> Mục đích: mô tả kiến trúc và đánh giá Speaking của BandPilot. Đối chiếu mã nguồn `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [phần triển khai](../backend/app/services/speaking_ai_worker.py).
+> Đọc cùng [mô-đun/hướng dẫn hiện hành](modules/speaking.md); [kiểm toán và giới hạn](DOCS_AUDIT.md). Kết quả kiểm thử/benchmark bên dưới thuộc lần thực hiện gốc, không phải kết quả chạy lại trong đợt kiểm toán này.
 
-Speaking P1–P8 is implemented. All AI bands and feedback are advisory: this
-project has no benchmark evidence establishing examiner-equivalent accuracy.
-P8 adds an evaluation harness; it does not change production scores or schema.
+Speaking P1–P8 đã được triển khai. Mọi band và nhận xét AI đều mang tính tư vấn: dự án chưa có bằng chứng benchmark xác lập độ chính xác tương đương giám khảo. P8 thêm bộ chạy đánh giá, không thay điểm hoặc lược đồ sản xuất.
 
-## Runtime and grading
+## Vận hành và chấm điểm
 
-Next.js supplies authored prompts, microphone preflight, recording and review.
-FastAPI owns prompt transitions, timestamps/deadlines, retry restrictions and
-private media authorization. PostgreSQL stores frozen test versions and attempt
-provenance; audio containers live in private storage. Chunk uploads are
-idempotent. Reload recovery preserves server remaining time and grants one
-seven-second recovery grace without increasing the speaking quota. A recovered
-recorder creates a separate container segment. Final upload acknowledgements
-precede advancement. Scratch notes stay outside spoken-response grading inputs.
+Next.js cung cấp câu hỏi đã soạn, kiểm tra micro trước khi làm bài, ghi âm và xem lại. FastAPI sở hữu chuyển trạng thái câu hỏi, dấu thời gian/hạn chót, hạn chế thử lại và phân quyền tệp âm thanh riêng tư. PostgreSQL lưu phiên bản đề đóng băng và nguồn gốc lượt làm bài; bộ chứa âm thanh nằm trong kho riêng tư. Tải đoạn dữ liệu có thể lặp an toàn. Khôi phục sau tải lại giữ thời gian còn lại của máy chủ và cấp một khoảng chuẩn bị bù bảy giây mà không tăng hạn mức nói. Bộ ghi khôi phục tạo phân đoạn chứa riêng. Xác nhận tải lên cuối cùng phải có trước khi chuyển tiếp. Ghi chú riêng không tham gia đầu vào chấm lời nói.
 
-The pipeline is committed raw audio → normalized mono 16 kHz PCM → quality gate
-→ verbatim ASR with word timing → clean formatting and versioned fluency/acoustic
-features → holistic FC/LR/GRA/PR assessment. Recovery containers are decoded
-separately before combining PCM. Clean text preserves candidate words and grammar.
-On Modal, Web runs FFmpeg, quality, fluency and pronunciation evidence on CPU;
-only the normalized WAV travels from FastAPI to a separate, proxy-protected
-faster-whisper T4 service. Its pinned large-v3 model cache is on
-`ielts-speaking-asr-model-cache`; request audio uses disposable private temp
-files outside that Volume. The existing Ministral L4 service serves both Writing
-and Speaking criterion scoring. Both GPU services have zero minimum containers,
-so a Web startup alone does not load either model. A first transcription can
-incur model download/load and queueing; do not infer steady-state latency from it.
-Timing-derived features describe speech; they do not mechanically assign bands.
-Pronunciation needs measured audio evidence and cannot succeed from transcript
-text or ASR confidence alone. Unassessable audio or insufficient pronunciation
-evidence produces an unavailable criterion, not an invented zero or average.
+Chuỗi xử lý là âm thanh gốc đã chốt → PCM mono 16 kHz chuẩn hóa → cổng chất lượng → ASR nguyên văn có mốc thời gian từ → định dạng sạch và đặc trưng độ lưu loát/âm học có phiên bản → đánh giá tổng thể FC/LR/GRA/PR. Các bộ chứa khôi phục giải mã riêng trước khi nối PCM. Văn bản sạch giữ nguyên từ và ngữ pháp của người làm bài. Trên Modal, Web chạy FFmpeg, chất lượng, độ lưu loát và bằng chứng phát âm trên CPU; chỉ WAV chuẩn hóa đi từ FastAPI đến dịch vụ faster-whisper T4 riêng được bảo vệ qua proxy. Bộ nhớ đệm mô hình large-v3 đã ghim nằm trên `ielts-speaking-asr-model-cache`; âm thanh yêu cầu dùng tệp tạm riêng tư có thể hủy ngoài Volume đó. Dịch vụ Ministral L4 hiện có phục vụ cả chấm tiêu chí Writing và Speaking. Hai dịch vụ GPU đều có số container tối thiểu bằng 0, nên riêng khởi động Web không nạp mô hình nào. Lần chép lời đầu có thể gồm tải/nạp mô hình và chờ hàng đợi; không suy độ trễ ổn định từ nó. Đặc trưng thời gian mô tả lời nói, không tự gán band theo công thức. Phát âm cần bằng chứng âm thanh đã đo, không thể thành công chỉ từ văn bản chép lời hoặc độ tin cậy ASR. Âm thanh không đánh giá được hoặc thiếu bằng chứng phát âm khiến tiêu chí không khả dụng, không bịa điểm 0 hay trung bình.
 
-`SpeakingScorer` validates a half-band score first, persists it through a
-checkpoint, and then requests bounded feedback. Feedback failure keeps the valid
-score. The production overall uses equal FC/LR/GRA/PR weights and the project's
-half-band rounding; any missing criterion leaves overall unavailable. Durable
-workers and events support cancellation, reconnect and restart. Speaking joins
-Full Mock, history and classroom results. Teachers read recordings/transcripts and advisory AI through assignment provenance,
-and may explicitly save human final criteria for their classroom assignments.
-Unrelated personal attempts remain private.
+`SpeakingScorer` xác thực điểm nửa band trước, lưu qua điểm kiểm tra, rồi yêu cầu nhận xét hữu hạn. Lỗi nhận xét giữ điểm hợp lệ. Điểm tổng sản xuất dùng trọng số đều FC/LR/GRA/PR và cách làm tròn nửa band của dự án; thiếu một tiêu chí khiến tổng không khả dụng. Worker và sự kiện bền vững hỗ trợ hủy, kết nối lại và khởi động lại. Speaking tích hợp Full Mock, lịch sử và kết quả lớp học. Giáo viên đọc bản ghi/bản chép lời và AI tư vấn qua nguồn gốc bài giao, có thể lưu điểm cuối do người chấm rõ ràng cho bài giao lớp mình. Lượt cá nhân không liên quan vẫn riêng tư.
 
-## Private benchmark inputs
+## Đầu vào benchmark riêng tư
 
-The harness follows the existing `app/evaluation` and root `scripts` conventions.
-Use a UTF-8 JSONL manifest, one whole labelled performance per line:
+Bộ chạy tuân theo quy ước `app/evaluation` và thư mục `scripts` gốc hiện có. Dùng bản kê UTF-8 JSONL, mỗi dòng một phần thể hiện trọn vẹn đã được gán nhãn:
 
 ```json
 {"schema_version":1,"id":"synthetic-001","responses":[{"audio_path":"audio/fictional.wav","part_number":1,"prompt_type":"SHORT_ANSWER","prompt_text":"Describe a fictional garden."}],"human":{"fc":6,"lr":6.5,"gra":7,"pr":6.5,"overall":6.5},"subgroups":{"recording_environment":"quiet"},"assessor_version":"fictional-rater-v1"}
 ```
 
-This example is fictional, not human assessment evidence. Each response requires
-exactly one `audio_path` or controlled `fixture_id`; paths resolve beside the
-manifest and may point to private files outside git. Fixture IDs are for injected
-offline test loaders; the real audio loader fails closed on them. Prompts are
-required to reproduce contextual assessment. Optional `test_reference` is an
-opaque identifier. Assessor metadata is only a non-identifying version token.
-All five human labels are required finite numbers in 0–9 at half-band increments;
-human overall is an independent label and is not recomputed from its criteria.
-Unknown fields, duplicate IDs/JSON keys and sensitive subgroup keys are rejected.
-Inputs are capped at 16 MiB and 10,000 samples; validation examines all rows even
-when `--max-samples` limits evaluation to the first N.
+Ví dụ này là hư cấu, không phải bằng chứng đánh giá của người chấm. Mỗi câu trả lời cần đúng một `audio_path` hoặc `fixture_id` có kiểm soát; đường dẫn phân giải cạnh bản kê và có thể trỏ tới tệp riêng ngoài git. ID dữ liệu mẫu dành cho bộ nạp kiểm thử ngoại tuyến được tiêm; bộ nạp âm thanh thật từ chối chúng an toàn. Cần câu hỏi để tái tạo đánh giá theo ngữ cảnh. `test_reference` tùy chọn là định danh không diễn giải nội dung. Siêu dữ liệu người chấm chỉ là mã phiên bản không nhận diện cá nhân. Cả năm nhãn người chấm đều phải là số hữu hạn 0–9 theo bước nửa band; tổng của người chấm là nhãn độc lập, không tính lại từ tiêu chí. Trường lạ, ID/khóa JSON trùng và khóa phân nhóm nhạy cảm bị từ chối. Đầu vào giới hạn 16 MiB và 10,000 mẫu; xác thực xem mọi dòng kể cả khi `--max-samples` chỉ đánh giá N mẫu đầu.
 
-Keep candidate audio, manifests, private dotenv configuration and result files
-outside git or under ignored `benchmarks/speaking/private/` and
-`benchmarks/speaking/reports/`. Obtain permission and check licenses before
-processing speech with any external provider. Do not commit copyrighted tests,
-private recordings or identifying transcripts. Git ignores are an additional
-guard, not permission to redistribute data elsewhere.
+Giữ âm thanh người làm bài, bản kê, cấu hình dotenv riêng và kết quả ngoài git hoặc trong `benchmarks/speaking/private/` và `benchmarks/speaking/reports/` đã bỏ qua. Cần sự cho phép và kiểm giấy phép trước khi xử lý lời nói qua nhà cung cấp bên ngoài. Không commit đề có bản quyền, bản ghi riêng hoặc bản chép lời nhận diện cá nhân. Quy tắc Git bỏ qua là lớp bảo vệ bổ sung, không phải quyền phân phối dữ liệu nơi khác.
 
-## Offline workflow
+## Quy trình ngoại tuyến
 
-From `backend/`, manifest validation never constructs a provider:
+Từ `backend/`, xác thực bản kê không khởi tạo nhà cung cấp:
 
 ```powershell
 uv run python ../scripts/evaluate_speaking.py --manifest ../benchmarks/speaking/private/manifest.jsonl --validate-manifest
 ```
 
-For offline reports, import score-only results from an existing scorer run:
+Để tạo báo cáo ngoại tuyến, nhập kết quả chỉ có điểm từ một lần chạy bộ chấm hiện có:
 
 ```powershell
 uv run python ../scripts/evaluate_speaking.py --manifest ../benchmarks/speaking/private/manifest.jsonl --predictions ../benchmarks/speaking/private/predictions.json --output ../benchmarks/speaking/reports/offline
 ```
 
-Prediction JSON has `schema_version: 1`, a required `provenance` object (the
-`ScorerProvenance` contract) and `predictions`, each containing `id`, `scores`
-with FC/LR/GRA/PR half-bands or null, and optional allowlisted `reasons`.
-Do not supply overall: the harness calls production `speaking_overall`. Missing
-samples or criteria remain failures in denominators. Unknown sample IDs, arbitrary
-error text, transcripts and extra fields are rejected. Imported provider metadata
-is an assertion by the result author, not proof that the provider was invoked.
+JSON dự đoán có `schema_version: 1`, đối tượng `provenance` bắt buộc (hợp đồng `ScorerProvenance`) và `predictions`; mỗi mục gồm `id`, `scores` FC/LR/GRA/PR theo nửa band hoặc null và `reasons` tùy chọn thuộc danh sách cho phép. Không cung cấp tổng: bộ chạy gọi `speaking_overall` sản xuất. Mẫu/tiêu chí thiếu vẫn là lỗi trong mẫu số. ID mẫu lạ, văn bản lỗi tùy ý, bản chép lời và trường dư bị từ chối. Siêu dữ liệu nhà cung cấp nhập vào là khai báo của tác giả kết quả, không chứng minh nhà cung cấp đã được gọi.
 
-For a synthetic-only offline smoke, generate files with this Python snippet from
-`backend/`, then run the two commands above:
+Để chạy thử ngoại tuyến chỉ với dữ liệu tổng hợp, tạo tệp bằng đoạn Python sau từ `backend/`, rồi chạy hai lệnh trên:
 
 ```python
 import json
@@ -120,127 +66,48 @@ identity = provenance(Settings()).model_copy(update={
     encoding="utf-8")
 ```
 
-Synthetic predictions exercise arithmetic and file contracts; they cannot measure
-real scorer accuracy. Automated tests use synthetic evidence and fake providers:
+Dự đoán tổng hợp kiểm phép tính và hợp đồng tệp, không đo được độ chính xác thật của bộ chấm. Kiểm thử tự động dùng bằng chứng tổng hợp và nhà cung cấp giả:
 
 ```powershell
 uv run pytest tests/test_speaking_benchmark.py tests/test_speaking_benchmark_metrics.py -q
 ```
 
-## Manual configured scoring
+## Chấm thủ công với cấu hình nhà cung cấp
 
-Live scoring requires explicit `--allow-live`. The CLI reads the same backend
-`Settings` as production; `--config` selects a private dotenv file without putting
-secrets in command arguments. For local ASR, set `SPEAKING_ASR_PROVIDER=local`,
-install the optional `backend[speech]` extra, and point
-`SPEAKING_ASR_MODEL_DIRECTORY` at a complete local model. For Modal ASR, set
-`SPEAKING_ASR_PROVIDER=modal`, `SPEAKING_ASR_ENABLED=true`, the protected
-`SPEAKING_ASR_BASE_URL`, pinned `SPEAKING_ASR_MODEL`,
-`SPEAKING_ASR_MODEL_REVISION` and `SPEAKING_ASR_VERSION`, plus backend-only
-`AI_WRITING_MODAL_KEY`/`AI_WRITING_MODAL_SECRET`. Production Web hydrates these
-settings automatically; local manual evaluation needs private configuration.
-Enable the existing Speaking LLM transport and pronunciation provider separately.
-No dataset/model downloader is added to the benchmark workflow.
+Chấm trực tiếp yêu cầu `--allow-live` rõ ràng. CLI đọc cùng `Settings` backend với sản xuất; `--config` chọn tệp dotenv riêng mà không đặt bí mật trong đối số lệnh. Với ASR cục bộ, đặt `SPEAKING_ASR_PROVIDER=local`, cài gói bổ sung `backend[speech]` và trỏ `SPEAKING_ASR_MODEL_DIRECTORY` tới mô hình cục bộ đầy đủ. Với ASR Modal, đặt `SPEAKING_ASR_PROVIDER=modal`, `SPEAKING_ASR_ENABLED=true`, `SPEAKING_ASR_BASE_URL` được bảo vệ, `SPEAKING_ASR_MODEL` đã ghim, `SPEAKING_ASR_MODEL_REVISION`, `SPEAKING_ASR_VERSION`, cùng `AI_WRITING_MODAL_KEY`/`AI_WRITING_MODAL_SECRET` chỉ ở backend. Web sản xuất tự nạp các cấu hình này; đánh giá thủ công cục bộ cần cấu hình riêng. Bật truyền tải LLM Speaking hiện có và nhà cung cấp phát âm riêng biệt. Quy trình benchmark không thêm bộ tải tập dữ liệu/mô hình.
 
 ```powershell
 uv run python ../scripts/evaluate_speaking.py --manifest ../benchmarks/speaking/private/manifest.jsonl --allow-live --config ../benchmarks/speaking/private/providers.env --output ../benchmarks/speaking/reports/candidate --resume
 ```
 
-The adapter calls existing normalizer, quality, ASR, feature and `SpeakingScorer`
-contracts, not a second grader. WAV inputs must already be mono 16 kHz signed
-16-bit PCM; WebM/Ogg/MP4/M4A use the production bounded FFmpeg decoder. One file
-represents one complete response container. Supply immutable inputs; conversion
-uses temporary private artifacts. Unsupported, missing or oversized raw files
-(128 MiB limit), quality failures and provider failures produce safe failure
-codes. No production attempt or score row is modified.
+Bộ tiếp hợp gọi hợp đồng bộ chuẩn hóa, chất lượng, ASR, đặc trưng và `SpeakingScorer` hiện có, không tạo bộ chấm thứ hai. WAV đầu vào phải sẵn mono 16 kHz PCM có dấu 16 bit; WebM/Ogg/MP4/M4A dùng bộ giải mã FFmpeg sản xuất có giới hạn. Một tệp biểu diễn một bộ chứa câu trả lời đầy đủ. Cung cấp đầu vào bất biến; chuyển đổi dùng tệp tạm riêng tư. Tệp gốc không hỗ trợ, thiếu hoặc quá lớn (giới hạn 128 MiB), lỗi chất lượng và lỗi nhà cung cấp tạo mã lỗi an toàn. Không đổi dòng lượt làm bài hoặc điểm sản xuất.
 
-`predictions.json` is atomically checkpointed before each feedback request. Resume
-reuses only fully scored samples matching the exact sample, audio content hash,
-configuration and provenance; failed/partial samples are retried. It is a
-sequential local workflow: do not run multiple writers into one output directory.
-Feedback failures do not count as nonscorable if the criterion score was saved.
-Provider failures remain visible in the final failure rate; CLI exit 0 means the
-report was produced, not that all samples were scorable. Invalid input/I/O failures
-return exit 2 with bounded error codes. Routine tests never invoke live ASR/LLM,
-Modal or GPU services.
+`predictions.json` được ghi điểm kiểm tra nguyên tử trước mỗi yêu cầu nhận xét. Tiếp tục chỉ tái sử dụng mẫu đã đủ điểm khớp chính xác mẫu, băm nội dung âm thanh, cấu hình và nguồn gốc; mẫu thất bại/một phần được thử lại. Đây là quy trình cục bộ tuần tự: không để nhiều tiến trình cùng ghi một thư mục đầu ra. Lỗi nhận xét không bị tính là không chấm được nếu điểm tiêu chí đã lưu. Lỗi nhà cung cấp vẫn hiện trong tỷ lệ thất bại cuối; CLI thoát 0 nghĩa là đã tạo báo cáo, không phải mọi mẫu đều chấm được. Lỗi đầu vào/I/O trả mã thoát 2 cùng mã lỗi hữu hạn. Kiểm thử thường không gọi ASR/LLM trực tiếp, Modal hoặc dịch vụ GPU.
 
-## Reports and metrics
+## Báo cáo và chỉ số
 
-Outputs are deterministic `summary.json`, `summary.md`, `samples.csv` and
-`samples.jsonl`, plus score checkpoints for configured scoring. Reports contain
-sample IDs, bands, signed errors and safe reason codes, not audio bodies,
-transcripts, prompts, filesystem paths, hidden reasoning or provider messages.
-Summary includes largest disagreements, signed error distributions and descriptive
-human-band calibration buckets. These buckets apply no score correction.
+Đầu ra tất định gồm `summary.json`, `summary.md`, `samples.csv`, `samples.jsonl` và điểm kiểm tra điểm số khi chấm có cấu hình. Báo cáo chứa ID mẫu, band, sai số có dấu và mã nguyên nhân an toàn, không chứa nội dung âm thanh, bản chép lời, câu hỏi, đường dẫn hệ thống tệp, suy luận ẩn hoặc thông điệp nhà cung cấp. Tóm tắt gồm bất đồng lớn nhất, phân phối sai số có dấu và các nhóm hiệu chuẩn mô tả theo band người chấm. Những nhóm này không hiệu chỉnh điểm.
 
-All five criteria have total/valid counts, coverage and nonscorable/failure rate.
-MAE is mean absolute predicted-minus-human error; RMSE is its root mean square.
-Pearson measures linear association; Spearman uses average ranks for ties.
-Quadratic Weighted Kappa compares observed versus marginal expected squared
-category disagreement over the 19 project half-band bins from 0 to 9. Within
-±0.5/±1.0 and exact agreement are fractions of valid pairs. Correlation is not
-agreement: a shifted scorer can correlate well while having substantial MAE.
+Cả năm tiêu chí đều có số lượng tổng/hợp lệ, độ bao phủ và tỷ lệ không chấm được/thất bại. MAE là trung bình trị tuyệt đối của sai số dự đoán trừ người chấm; RMSE là căn trung bình bình phương. Pearson đo liên hệ tuyến tính; Spearman dùng hạng trung bình cho trường hợp bằng nhau. Quadratic Weighted Kappa so sánh bất đồng bình phương theo nhóm quan sát với kỳ vọng từ phân phối biên trên 19 ô nửa band từ 0 đến 9 của dự án. Đồng thuận trong ±0.5/±1.0 và chính xác là tỷ phần trên cặp hợp lệ. Tương quan không đồng nghĩa đồng thuận: bộ chấm bị lệch có thể tương quan tốt nhưng MAE lớn.
 
-Paired statistics exclude missing predictions but failures always remain in
-coverage denominators. Correlation requires at least three valid pairs; QWK five.
-Too few pairs, constant vectors and zero expected kappa disagreement yield null
-with an explanatory status, never NaN. All-failed cohorts still produce reports.
-Subgroups are optional recording environment, proficiency bucket, prompt group
-or microphone category. Default minimum is 20 labelled samples per slice;
-`--minimum-subgroup-samples` is configurable with a floor of five. Small slices
-are suppressed; remaining paired statistics still enforce their own sample
-limits. No sensitive demographic analysis or small-sample fairness claim is made.
+Thống kê cặp loại dự đoán thiếu, nhưng lỗi luôn giữ trong mẫu số độ bao phủ. Tương quan cần ít nhất ba cặp hợp lệ; QWK cần năm. Quá ít cặp, vector hằng hoặc bất đồng kappa kỳ vọng bằng 0 trả null kèm trạng thái giải thích, không trả NaN. Nhóm toàn lỗi vẫn tạo báo cáo. Phân nhóm tùy chọn gồm môi trường ghi âm, nhóm trình độ, nhóm câu hỏi hoặc loại micro. Mặc định mỗi nhóm cần 20 mẫu có nhãn; `--minimum-subgroup-samples` cấu hình được với sàn năm. Nhóm nhỏ bị ẩn; thống kê cặp còn lại vẫn áp giới hạn mẫu riêng. Không phân tích nhân khẩu nhạy cảm hoặc tuyên bố công bằng từ mẫu nhỏ.
 
-Every result records scorer/provider/model, rubric/prompt, score/feedback contracts,
-ASR provider/model/version and alignment, normalizer, quality, fluency and
-pronunciation versions, configuration/implementation hashes and git SHA when
-available. Secrets and model directory paths are hashed, not emitted. Model
-weights and deployment behavior must be pinned and their declared versions
-updated when changed; a model name alone does not identify mutable weights.
-Use the same cohort hash, labels and metric protocol when comparing runs, and
-examine failure-rate changes alongside agreement. No automatic promotion occurs.
+Mọi kết quả ghi bộ chấm/nhà cung cấp/mô hình, thang chấm/lời nhắc, hợp đồng điểm/nhận xét, nhà cung cấp/mô hình/phiên bản/căn chỉnh ASR, phiên bản chuẩn hóa, chất lượng, độ lưu loát và phát âm, băm cấu hình/triển khai và git SHA nếu có. Bí mật và đường dẫn thư mục mô hình được băm, không xuất ra. Trọng số mô hình và hành vi triển khai phải được ghim, phiên bản khai báo phải tăng khi đổi; riêng tên mô hình không định danh được trọng số có thể thay đổi. So sánh các lần chạy phải dùng cùng băm nhóm dữ liệu, nhãn và giao thức chỉ số, đồng thời xem thay đổi tỷ lệ lỗi cùng mức đồng thuận. Không tự động đưa phiên bản mới vào sản xuất.
 
-## Research data and calibration policy
+## Dữ liệu nghiên cứu và chính sách hiệu chuẩn
 
-[Speak & Improve Corpus 2025](https://researchdatasets.cambridge.org/datasets/speak-and-improve-corpus-2025)
-contains indicative holistic CEFR labels. Its publisher restricts redistribution
-and use, including non-commercial research/education licensing and approval for
-releasing derived material; check its terms and provider retention policy first.
-[SpeechOcean762](https://github.com/jimbozhang/speechocean762) targets pronunciation
-assessment. [L2-ARCTIC](https://psi.engr.tamu.edu/l2-arctic-corpus-docs/) supports
-research on non-native speech and pronunciation. These and other pronunciation
-corpora can support auxiliary validation; none automatically supplies official
-IELTS FC/LR/GRA/PR ground truth. Review each dataset's current license, consent and
-permitted use separately. No downloads or recordings are bundled here.
+[Speak & Improve Corpus 2025](https://researchdatasets.cambridge.org/datasets/speak-and-improve-corpus-2025) chứa nhãn CEFR tổng thể mang tính chỉ dẫn. Đơn vị xuất bản hạn chế phân phối và sử dụng, gồm giấy phép nghiên cứu/giáo dục phi thương mại và yêu cầu phê duyệt khi công bố tài liệu dẫn xuất; cần kiểm điều khoản và chính sách lưu giữ của nhà cung cấp trước. [SpeechOcean762](https://github.com/jimbozhang/speechocean762) hướng tới đánh giá phát âm. [L2-ARCTIC](https://psi.engr.tamu.edu/l2-arctic-corpus-docs/) hỗ trợ nghiên cứu lời nói/phát âm của người không bản ngữ. Các tập này và tập phát âm khác có thể hỗ trợ xác minh phụ trợ; không tập nào tự cung cấp dữ liệu chuẩn chính thức IELTS FC/LR/GRA/PR. Kiểm riêng giấy phép, sự đồng ý và cách dùng được phép hiện hành của mỗi tập. Không đóng gói bản tải xuống hoặc bản ghi ở đây.
 
-Do not map a SpeechOcean score or ASR confidence directly to IELTS Pronunciation
-or overall. Build a representative, independently labelled performance benchmark
-with assessor agreement and held-out evaluation before making accuracy claims.
-Use results to identify bias, compare versions, detect regressions and decide
-whether calibration is needed. A small run does not justify production offsets.
-Any future transformation must be explicit, versioned, separately reviewed and
-validated on held-out data. P8 contains no hidden calibration or score manipulation.
+Không ánh xạ trực tiếp điểm SpeechOcean hoặc độ tin cậy ASR sang IELTS Pronunciation hay điểm tổng. Cần benchmark phần thể hiện đại diện, gán nhãn độc lập, có mức đồng thuận giữa người chấm và đánh giá trên dữ liệu giữ riêng trước khi tuyên bố độ chính xác. Dùng kết quả để nhận diện thiên lệch, so phiên bản, phát hiện hồi quy và quyết định cần hiệu chuẩn hay không. Một lần chạy nhỏ không đủ căn cứ đặt độ lệch sản xuất. Biến đổi tương lai phải rõ ràng, có phiên bản, được xem xét riêng và xác minh trên dữ liệu giữ riêng. P8 không có hiệu chuẩn ẩn hoặc thao túng điểm.
 
+## Luyện kỹ năng theo từng Part
 
-## Part-focused Skill Practice
+`/practice` cung cấp toàn bộ Part Speaking đã xuất bản. Part 1 và Part 3 hỗ trợ luyện câu hỏi Có hướng dẫn hoặc Tự do; Part 2 luôn Có hướng dẫn. Khởi tạo dùng `SPEAKING_PART`, `PRACTICE` và đồng hồ lượt làm bài đếm tăng. Hạn chót câu hỏi đã soạn vẫn kiểm soát chuẩn bị/ghi âm. Lượt `SPEAKING_PROMPT` cũ giữ nguyên phạm vi.
 
-`/practice` offers whole published Speaking Parts. Part 1 and Part 3 support
-Guided or Free question practice; Part 2 stays Guided. Starts use `SPEAKING_PART`,
-`PRACTICE`, and a count-up attempt clock. Authored prompt deadlines still control
-preparation and recording. Legacy `SPEAKING_PROMPT` attempts keep their scope.
+Chọn tự do được lưu qua `POST /speaking-attempts/{id}/select-prompt`, không tự ghi âm. Chuyển khi đang ghi cần dừng, đóng tải lên, nhận xác nhận bền vững cho câu trả lời, rồi chọn câu khác. Lần ghi đã chốt vẫn là dự phòng tới khi bản thay thế chốt xong. `POST /speaking-attempts/{id}/finish-practice` rõ ràng cần ít nhất một câu đã lưu và cho phép còn câu chưa trả lời. Trang xem lại hiển thị câu đó không có âm thanh/bản chép lời. Điểm Part vẫn là bản ghi luyện tập có phạm vi, không góp vào band Speaking đầy đủ, điểm tổng Full Mock hoặc Analytics toàn mô-đun. Khởi tạo toàn Part từ lớp học bị từ chối. Migration `20261013_0034` thêm phạm vi và luồng này.
 
-Free selection is persisted through `POST /speaking-attempts/{id}/select-prompt`;
-it does not start capture. Switching during recording requires stop, upload
-closure, durable response acknowledgement, then selection. A committed take
-remains the fallback until a replacement is committed. Explicit
-`POST /speaking-attempts/{id}/finish-practice` requires at least one saved answer
-and permits unanswered questions. Review shows those questions without audio or
-transcripts. Part scores remain focused practice records, excluded from full
-Speaking bands, Full Mock overall, and full-module Analytics. Whole-Part
-classroom starts are rejected. Migration `20261013_0034` adds this scope and flow.
+## Điểm cuối Speaking do người chấm
 
-## Human final Speaking grading
+Chủ sở hữu bài luyện cá nhân có thể nhập tay FC/LR/GRA/PR hoặc chép kết quả AI hiện hành đã hoàn tất vào biểu mẫu, chỉnh sửa rồi Lưu rõ ràng. AI không tự ghi điểm cuối. Học viên lớp chỉ xem điểm cuối hoặc “Đang chờ giáo viên chấm”. Nhân sự có quyền chấm của lớp được lưu/sửa tiêu chí qua đúng nguồn gốc bài giao. ADMIN chỉ quan sát lớp và không được ghi điểm cuối cho bài của lớp, kể cả qua route cá nhân; quyền chấm bài luyện cá nhân của nền tảng được xét riêng. Chấm của giáo viên không cấp quyền tạo lại transcript hoặc sửa tệp gốc. Xem [GradingPolicy hiện hành](../backend/app/services/grading_policy.py).
 
-Personal owners may manually enter FC/LR/GRA/PR or copy a completed current AI result into the form, edit and explicitly Save. AI itself never writes a final score. Classroom students receive read-only teacher final results or “Waiting for teacher grading” (VI: “Đang chờ giáo viên chấm”). The owning classroom teacher may save/revise human criteria through exact assignment provenance; ADMIN retains grading authority. Teacher grading never grants transcript regeneration or raw media mutation.
-
-Human criteria and optional feedback are stored independently in `attempt_speaking_scores`, introduced by non-destructive Alembic `20261013_0033`. Overall uses the existing holistic equal-weight Speaking helper. Focused scores do not create a whole-module analytics band. Full Mock review locks remain authoritative. `SpeakingReviewData.final_score` carries this assessment, and `grading` carries backend capabilities. See [teacher-classrooms.md](teacher-classrooms.md#human-final-subjective-grading) for the shared authority policy and routes.
+Tiêu chí người chấm và nhận xét tùy chọn lưu độc lập trong `attempt_speaking_scores`, do Alembic không phá hủy `20261013_0033` thêm. Điểm tổng dùng hàm Speaking tổng thể trọng số đều hiện có. Điểm luyện tập có phạm vi không tạo band phân tích toàn mô-đun. Khóa xem lại Full Mock vẫn có thẩm quyền. `SpeakingReviewData.final_score` mang đánh giá này, `grading` mang khả năng backend cho phép. Xem [teacher-classrooms.md](teacher-classrooms.md#human-final-subjective-grading) về chính sách thẩm quyền và các tuyến dùng chung.

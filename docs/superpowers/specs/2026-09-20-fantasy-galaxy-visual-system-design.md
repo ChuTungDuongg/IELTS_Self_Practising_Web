@@ -1,134 +1,134 @@
-# Fantasy Galaxy Visual System Design
+# Thiết kế hệ thống thị giác thiên hà kỳ ảo
 
-> **Documentation audit: SUPERSEDED.** Historical reference; không phải contract hiện hành.
-> Mục đích: Fantasy Galaxy Visual System Design. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../../../frontend/src/components/ui/app-shell.tsx).
-> Đọc cùng [current module/guide](../../modules/shared-platform.md); [audit và giới hạn](../../DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+> **Kiểm toán tài liệu: SUPERSEDED.** Tài liệu tham khảo lịch sử; không phải hợp đồng hiện hành.
+> Mục đích: Thiết kế hệ thống thị giác thiên hà kỳ ảo. Đối chiếu mã nguồn `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [triển khai](../../../frontend/src/components/ui/app-shell.tsx).
+> Đọc cùng [mô-đun/hướng dẫn hiện hành](../../modules/shared-platform.md); [audit và giới hạn](../../DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
 
-**Date:** 2026-09-20
-**Status:** Approved for implementation
+**Ngày:** 2026-09-20
+**Trạng thái:** Đã phê duyệt để triển khai
 
-## Purpose
+## Mục đích
 
-Redesign the existing IELTS Studio frontend as a cohesive, premium learning platform inspired by a calm magical observatory. The visual identity uses deep cosmic navy, indigo, sapphire, violet, and cyan starlight while preserving the current product name, application architecture, and all behavior.
+Thiết kế lại frontend IELTS Studio hiện có thành nền tảng học tập thống nhất, cao cấp, lấy cảm hứng từ đài quan sát kỳ ảo yên tĩnh. Nhận diện dùng xanh hải quân vũ trụ đậm, chàm, sapphire, tím và ánh sao cyan, đồng thời giữ tên sản phẩm, kiến trúc ứng dụng và mọi hành vi hiện tại.
 
-The redesign must feel polished because of hierarchy, typography, spacing, surface depth, and consistent interaction patterns. It must not depend on copied branding or layouts, raster galaxy imagery, particles, WebGL, or excessive glow and glass effects.
+Thiết kế phải tạo cảm giác hoàn thiện nhờ phân cấp, kiểu chữ, khoảng cách, chiều sâu bề mặt và mẫu tương tác nhất quán. Không được dựa vào thương hiệu/bố cục sao chép, ảnh thiên hà raster, hạt, WebGL hoặc hiệu ứng phát sáng/kính quá mức.
 
-## Scope and constraints
+## Phạm vi và ràng buộc
 
-The work is frontend-only. It covers the application shell, navigation, dashboard, learner library, attempt history, admin test library, test detail, builder workspace, Reading and Listening builders, draft preview, Candidate Reading and Listening, review screens, shared dialogs, popovers, empty states, badges, forms, buttons, and question renderers.
+Công việc chỉ ở frontend. Phạm vi gồm khung ứng dụng, điều hướng, bảng tổng quan, thư viện học viên, lịch sử lượt làm, thư viện đề quản trị, chi tiết đề, không gian Builder, Builder Reading/Listening, xem trước bản nháp, Candidate Reading/Listening, màn hình xem lại, hộp thoại chung, popover, trạng thái rỗng, huy hiệu, biểu mẫu, nút và bộ hiển thị câu hỏi.
 
-The redesign does not change backend APIs, database models, migrations, persistence, evaluation, publishing, attempt lifecycle, or question data structures. It specifically preserves:
+Thiết kế lại không thay API backend, mô hình cơ sở dữ liệu, migration, lưu trữ, đánh giá, xuất bản, vòng đời lượt làm hoặc cấu trúc dữ liệu câu hỏi. Cụ thể phải bảo toàn:
 
-- one-sentence-per-block Text Completion authoring;
-- caret and focus behavior in the completion canvas;
-- stable GAP and Question UUID identity and correct numbering after reload;
-- alternative text answers and advanced answer settings;
-- multiline completion instructions;
-- validation and publish flows;
-- autosave and timestamp-derived timers;
-- bottom question navigation and flags;
-- semantic-offset highlights, hydration-safe popovers, and Delete all highlights;
-- shared Listening audio and player behavior;
-- History Continue, Review, and Delete actions;
-- archive, immutable version, and frozen-attempt lifecycle behavior.
+- biên soạn Text Completion mỗi khối một câu;
+- hành vi con trỏ và tiêu điểm trong vùng biên soạn điền chỗ trống;
+- danh tính UUID GAP và Question ổn định, đánh số đúng sau tải lại;
+- đáp án văn bản thay thế và thiết lập đáp án nâng cao;
+- hướng dẫn điền chỗ trống nhiều dòng;
+- luồng xác thực và xuất bản;
+- tự lưu và bộ đếm suy ra từ mốc thời gian;
+- điều hướng câu hỏi phía dưới và cờ;
+- tô sáng theo offset ngữ nghĩa, popover an toàn khi hydration và Delete all highlights;
+- âm thanh Listening dùng chung và hành vi trình phát;
+- thao tác Continue, Review và Delete trong History;
+- hành vi lưu trữ, phiên bản bất biến và vòng đời lượt làm đóng băng.
 
-## Visual direction
+## Hướng thị giác
 
-IELTS Studio becomes a quiet cosmic observatory for study rather than a gaming or cyberpunk interface.
+IELTS Studio trở thành đài quan sát vũ trụ yên tĩnh phục vụ học tập thay vì giao diện trò chơi hoặc cyberpunk.
 
-- Dark mode is the hero experience: midnight navy foundations, layered blue surfaces, subtle translucent borders, and localized cyan/violet illumination.
-- Light mode uses cool near-white foundations, crisp elevated surfaces, soft indigo shadows, and the same accent language.
-- Atmospheric depth comes from a small number of CSS radial gradients and lightweight pseudo-elements. Decorative star details appear only in shell and feature surfaces, never around long-form Reading content.
-- Most cards remain opaque or nearly opaque. Glass treatment is reserved for navigation, sticky toolbars, dialogs, and a few hero surfaces.
-- Motion is limited to 120–220 ms hover, focus, active-navigation, and dialog transitions, with `prefers-reduced-motion` support.
+- Dark mode là trải nghiệm chủ đạo: nền hải quân nửa đêm, bề mặt xanh theo lớp, viền trong nhẹ và ánh cyan/tím cục bộ.
+- Light mode dùng nền gần trắng lạnh, bề mặt nổi sắc nét, bóng chàm mềm và cùng hệ màu nhấn.
+- Chiều sâu không khí đến từ số ít gradient hướng tâm CSS và phần tử giả nhẹ. Chi tiết sao trang trí chỉ xuất hiện ở khung và bề mặt tính năng, tuyệt đối không bao quanh nội dung Reading dài.
+- Phần lớn thẻ đục hoặc gần đục. Hiệu ứng kính chỉ dành cho điều hướng, thanh công cụ cố định, hộp thoại và một số bề mặt hero.
+- Chuyển động giới hạn ở chuyển tiếp rê chuột, tiêu điểm, điều hướng hoạt động và hộp thoại 120–220 ms, hỗ trợ `prefers-reduced-motion`.
 
-## Semantic token architecture
+## Kiến trúc token ngữ nghĩa
 
-The existing `data-theme="light"` and `data-theme="dark"` architecture remains authoritative. `globals.css` defines a compact semantic token set:
+Kiến trúc `data-theme="light"` và `data-theme="dark"` hiện có tiếp tục là nguồn chuẩn. `globals.css` định nghĩa tập token ngữ nghĩa gọn:
 
-- Background: `--app-bg`, `--app-bg-elevated`
-- Surfaces: `--surface`, `--surface-raised`, `--surface-soft`, `--surface-hover`, `--surface-glass`
-- Text: `--ink`, `--ink-soft`, `--muted`
-- Lines: `--line`, `--line-strong`
-- Brand: `--accent`, `--accent-strong`, `--accent-soft`, `--accent-violet`, `--accent-cyan`
-- Semantic: `--success`, `--warning`, `--danger` and their restrained soft variants
-- Effects: `--shadow-sm`, `--shadow-md`, `--shadow-lg`, `--glow-accent`, `--glow-violet`
+- Nền: `--app-bg`, `--app-bg-elevated`
+- Bề mặt: `--surface`, `--surface-raised`, `--surface-soft`, `--surface-hover`, `--surface-glass`
+- Văn bản: `--ink`, `--ink-soft`, `--muted`
+- Đường viền: `--line`, `--line-strong`
+- Thương hiệu: `--accent`, `--accent-strong`, `--accent-soft`, `--accent-violet`, `--accent-cyan`
+- Ngữ nghĩa: `--success`, `--warning`, `--danger` và các biến thể nền nhẹ tiết chế
+- Hiệu ứng: `--shadow-sm`, `--shadow-md`, `--shadow-lg`, `--glow-accent`, `--glow-violet`
 
-Compatibility aliases may remain for existing specialized variables such as Reading, Listening, highlight, and exam tokens. Page-specific values are derived from semantic tokens instead of introducing unrelated colors.
+Có thể giữ bí danh tương thích cho biến chuyên biệt hiện có như token Reading, Listening, tô sáng và bài thi. Giá trị riêng trang suy ra từ token ngữ nghĩa thay vì thêm màu không liên quan.
 
-Candidate exam surfaces retain a dedicated `--exam-*` token layer derived from the active theme. This is not a second theme implementation; it is a semantic subset that limits atmosphere and maximizes readability.
+Bề mặt thi Candidate giữ lớp token `--exam-*` chuyên biệt suy ra từ giao diện đang dùng. Đây là tập con ngữ nghĩa nhằm hạn chế trang trí và tối đa khả năng đọc, không phải triển khai giao diện thứ hai.
 
-## Shared presentation system
+## Hệ thống trình bày dùng chung
 
-Existing primitives remain the primary boundaries. `PageHeading`, `StatusBadge`, `ModuleBadge`, `EmptyState`, `ConfirmDialog`, `ThemeToggle`, and AppShell receive consistent treatments through shared classes and tokens.
+Các thành phần cơ sở hiện có tiếp tục là ranh giới chính. `PageHeading`, `StatusBadge`, `ModuleBadge`, `EmptyState`, `ConfirmDialog`, `ThemeToggle` và AppShell nhận cách trình bày nhất quán qua lớp và token dùng chung.
 
-Buttons use five variants: primary, secondary, ghost, danger, and icon. Destructive actions stay compact and visually quieter than primary workflow actions. Forms share consistent height, padding, border, placeholder, focus, disabled, and validation states. Cards use moderate radii, subtle borders, restrained shadows, and only localized accent highlights.
+Nút có năm biến thể: primary, secondary, ghost, danger và icon. Thao tác phá hủy giữ gọn và ít nổi bật hơn thao tác chính. Biểu mẫu dùng chung chiều cao, khoảng đệm, viền, placeholder, tiêu điểm, vô hiệu hóa và trạng thái xác thực nhất quán. Thẻ dùng bán kính vừa, viền nhẹ, bóng tiết chế và chỉ nhấn màu cục bộ.
 
-Typography establishes reusable eyebrow, page title, subtitle, section title, card title, body, metadata, label, and status levels. Long Reading text prioritizes editorial line length, paragraph spacing, and line height over brand spectacle.
+Kiểu chữ xác lập các cấp tái sử dụng: dòng dẫn, tiêu đề trang, phụ đề, tiêu đề phần, tiêu đề thẻ, nội dung, metadata, nhãn và trạng thái. Văn bản Reading dài ưu tiên độ dài dòng biên tập, khoảng cách đoạn và chiều cao dòng hơn trình diễn thương hiệu.
 
-## Application shell and navigation
+## Khung ứng dụng và điều hướng
 
-The desktop shell keeps its header-and-sidebar structure while gaining the fantasy-galaxy atmosphere. The shell backdrop supplies static navy, cyan, and violet light layers. The raised header and sidebar use controlled translucency, and active navigation receives a single luminous accent. The current IELTS Studio name and route structure remain unchanged.
+Khung máy tính giữ cấu trúc đầu trang-thanh bên đồng thời thêm không khí thiên hà kỳ ảo. Nền khung cung cấp lớp sáng hải quân, cyan và tím tĩnh. Đầu trang/thanh bên nổi dùng độ trong có kiểm soát, còn điều hướng hoạt động nhận một điểm nhấn sáng duy nhất. Tên IELTS Studio và cấu trúc tuyến hiện tại giữ nguyên.
 
-Responsive behavior keeps the compact horizontal navigation pattern below the existing breakpoint. Navigation labels remain available at tablet widths and icon-only treatment is limited to small screens with accessible labels preserved.
+Hành vi thích ứng giữ mẫu điều hướng ngang gọn dưới breakpoint hiện có. Nhãn điều hướng vẫn có ở chiều rộng máy tính bảng; chỉ dùng biểu tượng ở màn hình nhỏ nhưng vẫn giữ nhãn cho công nghệ hỗ trợ.
 
-## Learner-facing pages
+## Trang dành cho học viên
 
-### Home
+### Trang chủ
 
-The dashboard becomes a product-led learning portal. A generous hero communicates the value proposition and offers a primary practice CTA plus a secondary authoring/history route. Summary metrics remain available but no longer dominate. Below the hero, four pathway cards organize Test Library, Reading, Listening, and History/Progress with disciplined module accents.
+Bảng tổng quan trở thành cổng học tập tập trung vào sản phẩm. Hero rộng truyền đạt giá trị, cung cấp CTA luyện tập chính và tuyến biên soạn/lịch sử phụ. Chỉ số tổng hợp vẫn có nhưng không chi phối. Dưới hero, bốn thẻ lộ trình tổ chức Test Library, Reading, Listening và History/Progress với màu nhấn mô-đun có kiểm soát.
 
-### Library
+### Thư viện
 
-Published modules appear as scan-friendly test cards with module identity, title, description, version metadata, and a prominent Start action. Reading uses cyan/blue; Listening uses violet. Card decoration remains restrained, with module identity expressed through a small top accent and localized glow.
+Mô-đun đã xuất bản xuất hiện thành thẻ đề dễ quét với danh tính mô-đun, tiêu đề, mô tả, metadata phiên bản và thao tác Start nổi bật. Reading dùng cyan/xanh; Listening dùng tím. Trang trí thẻ tiết chế, nhận diện mô-đun qua điểm nhấn nhỏ phía trên và phát sáng cục bộ.
 
-### History
+### Lịch sử
 
-Attempts become compact practice-record rows. Test title, module, version/date, status, elapsed time, and the primary Continue/Review action form the scan path. Delete remains a danger-ghost action and never competes with resumption or review.
+Lượt làm thành hàng hồ sơ luyện tập gọn. Tiêu đề đề, mô-đun, phiên bản/ngày, trạng thái, thời gian đã qua và thao tác Continue/Review chính tạo đường đọc. Delete giữ dạng danger-ghost và tuyệt đối không cạnh tranh với tiếp tục hoặc xem lại.
 
-## Admin and builder
+## Quản trị và Builder
 
-Admin pages use the same design system with slightly denser information layout. Status filters, search, Create Test, draft/published/archived distinctions, and version rows receive clearer hierarchy.
+Trang quản trị dùng cùng hệ thống thiết kế với mật độ thông tin cao hơn một chút. Bộ lọc trạng thái, tìm kiếm, Create Test, phân biệt nháp/đã xuất bản/đã lưu trữ và hàng phiên bản có phân cấp rõ hơn.
 
-The Builder preserves all working components and data flows. Its sticky toolbar clarifies Draft, Validate, Preview, Publish, and deletion priorities. The local structure navigation shows selected workspace and Created/Not created states with module accents. Main canvas surfaces reduce nested-card weight through spacing, softer group backgrounds, and clearer parent/child depth.
+Builder bảo toàn mọi thành phần và luồng dữ liệu đang hoạt động. Thanh công cụ cố định làm rõ ưu tiên Draft, Validate, Preview, Publish và xóa. Điều hướng cấu trúc cục bộ hiển thị không gian được chọn và trạng thái Created/Not created với màu nhấn mô-đun. Bề mặt biên soạn chính giảm nặng nề của thẻ lồng bằng khoảng cách, nền nhóm mềm và chiều sâu cha/con rõ hơn.
 
-Reading passages and Listening sections remain the strongest containers. Question groups become compact summary rows. Editors use visual sections for Instruction, Content, Answer configuration, and Advanced settings where the existing markup allows this without behavioral restructuring. Text Completion sentence blocks remain clean editing canvases with compact gap tokens and subtle selected states.
+Bài đọc Reading và phần Listening giữ vai trò khung chính. Nhóm câu hỏi thành hàng tóm tắt gọn. Trình biên tập dùng vùng thị giác cho Instruction, Content, Answer configuration và Advanced settings tại nơi markup hiện có cho phép mà không tái cấu trúc hành vi. Khối câu Text Completion giữ vùng sửa sạch với token chỗ trống gọn và trạng thái chọn nhẹ.
 
-## Candidate exam and preview
+## Bài thi Candidate và xem trước
 
-Candidate mode deliberately suppresses the dashboard atmosphere. It uses calm navy or cool-white foundations, opaque editorial surfaces, restrained borders, and minimal glow limited to controls and focus.
+Chế độ Candidate chủ động giảm trang trí của bảng tổng quan. Nó dùng nền hải quân dịu hoặc trắng lạnh, bề mặt biên tập đục, viền tiết chế và phát sáng tối thiểu chỉ ở điều khiển/tiêu điểm.
 
-Reading keeps the split-pane structure. Passage typography receives comfortable measure, line height, paragraph spacing, and heading scale. Questions use quiet group separation and clear instructions. Header, timer, save state, highlight controls, theme toggle, footer navigation, question chips, flags, and Submit retain current behavior.
+Reading giữ cấu trúc hai khung. Kiểu chữ bài đọc có độ dài dòng, chiều cao dòng, khoảng đoạn và cỡ đề mục dễ đọc. Câu hỏi phân nhóm nhẹ và hướng dẫn rõ. Đầu trang, bộ đếm, trạng thái lưu, điều khiển tô sáng, chuyển giao diện, điều hướng chân trang, chip câu hỏi, cờ và Submit giữ hành vi hiện tại.
 
-Listening may carry slightly more violet/blue identity in the raised audio player. Playback, seek, volume, speed, and time controls remain practical and do not imitate entertainment streaming products.
+Listening có thể mang sắc tím/xanh rõ hơn một chút trong trình phát âm thanh nổi. Điều khiển phát, tua, âm lượng, tốc độ và thời gian vẫn thực dụng, không mô phỏng sản phẩm phát trực tuyến giải trí.
 
-Draft Preview shares Candidate rendering but identifies itself with a restrained preview state and remains functionally isolated from saved answers.
+Draft Preview dùng chung bộ hiển thị Candidate nhưng nhận diện bằng trạng thái xem trước tiết chế, đồng thời vẫn tách biệt chức năng khỏi câu trả lời đã lưu.
 
-## Review, dialogs, and highlights
+## Xem lại, hộp thoại và tô sáng
 
-Review surfaces remain educational. Correct and wrong answers use subtle tinted borders rather than filled green/red panels. Your answer, Correct answer, and Explanation become distinct typographic rows while preserving the original question layout.
+Bề mặt xem lại giữ mục đích học tập. Câu đúng/sai dùng viền màu nhẹ thay bảng nền xanh/đỏ đầy. Your answer, Correct answer và Explanation trở thành hàng kiểu chữ riêng nhưng giữ bố cục câu hỏi gốc.
 
-Dialogs, highlight popovers, dropdown-style surfaces, and validation panels share surface, border, radius, shadow, spacing, and action alignment. Highlight colors remain readable and not overly saturated in either theme.
+Hộp thoại, popover tô sáng, bề mặt thả xuống và bảng xác thực dùng chung bề mặt, viền, bán kính, bóng, khoảng cách và căn thao tác. Màu tô sáng dễ đọc, không quá bão hòa ở cả hai giao diện.
 
-## Accessibility, responsiveness, and performance
+## Khả năng tiếp cận, thích ứng và hiệu năng
 
-- Preserve semantic HTML, keyboard navigation, ARIA labels, and existing focus behavior.
-- Maintain visible `focus-visible` rings with WCAG-conscious contrast.
-- Keep controls at practical touch sizes and prevent horizontal page overflow.
-- Preserve builder productivity on desktop while stacking or scrolling local navigation gracefully on smaller screens.
-- Use CSS gradients and pseudo-elements only; no new image or animation dependency.
-- Avoid continuous animation and disable nonessential transitions for reduced-motion users.
+- Giữ HTML ngữ nghĩa, điều hướng bàn phím, nhãn ARIA và hành vi tiêu điểm hiện có.
+- Giữ vòng `focus-visible` rõ với tương phản chú trọng WCAG.
+- Giữ kích thước chạm điều khiển thực dụng và ngăn tràn ngang toàn trang.
+- Giữ hiệu suất biên soạn trên máy tính, đồng thời xếp chồng hoặc cuộn điều hướng cục bộ hợp lý ở màn hình nhỏ.
+- Chỉ dùng gradient CSS và phần tử giả; không thêm thư viện ảnh hoặc chuyển động.
+- Tránh chuyển động liên tục và tắt chuyển tiếp không cần thiết cho người dùng giảm chuyển động.
 
-## Verification
+## Xác minh
 
-Implementation is complete only after:
+Triển khai chỉ hoàn tất sau khi:
 
-- visual inspection of Home, Library, History, Admin, Builder, Candidate, Preview, and Review where data is available;
-- light and dark theme inspection;
-- desktop and responsive viewport inspection;
+- kiểm tra trực quan Home, Library, History, Admin, Builder, Candidate, Preview và Review tại nơi có dữ liệu;
+- kiểm tra giao diện sáng và tối;
+- kiểm tra kích thước máy tính và thích ứng;
 - `npm test`;
 - `npm run lint`;
 - `npm run typecheck`;
 - `npm run build`;
 - `git diff --check` and `git diff --cached --check`;
-- final diff inspection confirming no backend, environment, secret, or unrelated changes.
+- kiểm tra diff cuối xác nhận không có thay đổi backend, môi trường, bí mật hoặc ngoài phạm vi.

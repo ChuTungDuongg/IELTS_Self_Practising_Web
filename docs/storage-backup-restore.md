@@ -1,98 +1,46 @@
-# Portable backups and isolated recovery
+# Sao lưu có thể chuyển đổi nhà cung cấp và khôi phục cô lập
 
-> **Documentation audit: CURRENT.** Canonical concern này; source-check các boundary/API, không live validation.
-> Mục đích: Portable backups and isolated recovery. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../backend/app/storage/recovery.py).
-> Đọc cùng [current module/guide](handbook/infrastructure.md); [audit và giới hạn](DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+> **Kiểm toán tài liệu: CURRENT.** Tài liệu chuẩn cho nội dung này; đã đối chiếu ranh giới/API trong mã nguồn, chưa xác minh môi trường đang chạy.
+> Mục đích: Sao lưu có thể chuyển đổi nhà cung cấp và khôi phục cô lập. Đối chiếu mã nguồn `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [mã triển khai](../backend/app/storage/recovery.py).
+> Đọc cùng [mô-đun/hướng dẫn hiện hành](handbook/infrastructure.md); [audit và giới hạn](DOCS_AUDIT.md). Kết quả kiểm thử/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong lần kiểm toán này.
 
-The original `scripts/backup.py` / `scripts/restore.py` local v1 format is retained.
-Legacy cloud invocations still fail before changes. Add `--portable` for the new
-executable provider-neutral v2 workflow. These are distinct from Test Transfer ZIP
-schema v1/v2, which is unchanged.
 
-Use a reviewed checkout, backend Python dependencies and PostgreSQL client tools
-compatible with the source server (normally the same major version). Portable
-operations use host `pg_dump`/`pg_restore`, with credentials in process environment,
-not command arguments or reports. They do not automatically exec into a normal
-development database container. The old local workflow retains its existing
-verified Compose fallback. The AWS Web image deliberately has no PG client tools;
-run operations from a separately prepared, secured operator environment with
-the matching tools, not by assuming `docker compose exec backend pg_dump` exists.
+Định dạng Local v1 gốc của `scripts/backup.py` / `scripts/restore.py` được giữ lại. Lệnh cloud kiểu cũ vẫn thất bại trước khi thay đổi dữ liệu. Thêm `--portable` để dùng quy trình v2 mới, độc lập nhà cung cấp và có thể thực thi. Quy trình này khác với schema v1/v2 của Test Transfer ZIP; schema ZIP không đổi.
 
-## Consistency and contents
+Dùng checkout đã rà soát, phụ thuộc Python backend và công cụ client PostgreSQL tương thích máy chủ nguồn (thường cùng phiên bản chính). Thao tác portable dùng `pg_dump`/`pg_restore` trên máy vận hành; thông tin xác thực nằm trong môi trường tiến trình, không nằm trong đối số lệnh hoặc báo cáo. Công cụ không tự động exec vào container cơ sở dữ liệu development thông thường. Quy trình Local cũ giữ phương án dự phòng Compose đã được xác minh. Image Web AWS chủ ý không có công cụ client PG; chạy từ môi trường vận hành được chuẩn bị riêng, bảo mật và có công cụ phù hợp, không giả định `docker compose exec backend pg_dump` tồn tại.
 
-Stop/drain **all** writers as described in [migration](storage-migration.md).
-`--maintenance-window` is mandatory for portable backup. It acknowledges an
-operator-enforced write freeze, not a distributed lock. PostgreSQL inventory and
-pg_dump share an exported read-only repeatable-read snapshot, and references are
-checked again after copying. Objects use immutable keys, but storage and PostgreSQL
-do not share a transaction. An external writer can invalidate a maintenance claim;
-this is not an online atomic cross-system backup. Freeze cleanup/deletion too.
+## Tính nhất quán và nội dung
 
-A completed private directory contains:
+Dừng/chờ **mọi** tác vụ ghi như mô tả trong [di chuyển](storage-migration.md). `--maintenance-window` bắt buộc khi sao lưu portable. Cờ này xác nhận người vận hành đã ngừng ghi, không phải khóa phân tán. Danh mục PostgreSQL và pg_dump dùng chung snapshot repeatable-read chỉ đọc đã xuất; tham chiếu được kiểm tra lại sau sao chép. Đối tượng dùng khóa bất biến, nhưng kho đối tượng và PostgreSQL không cùng giao dịch. Một tác vụ ghi bên ngoài có thể làm mất hiệu lực xác nhận bảo trì; đây không phải sao lưu nguyên tử trực tuyến xuyên hệ thống. Cũng phải đóng băng dọn dẹp/xóa.
 
-- `database.dump`: custom-format PostgreSQL logical backup, SHA-256 verified.
-- `storage.tar.gz`: streaming archive of referenced objects only, not an entire
-  bucket, with portable keys and original bytes.
-- `manifest.json`: explicit `format_version: 2`, source backend/environment and
-  hashed identities, per-object sizes/SHA-256/MIME/categories, file digests,
-  consistency acknowledgement and `complete: true` only after verification.
+Thư mục riêng tư đã hoàn tất chứa:
 
-Pending cleanup keys are diagnostics, not objects required for recovery. Orphans,
-temporary FFmpeg/ZIP files, model caches and database directories are excluded.
-All historical live references are included; this is broader than a public catalog
-or Test Transfer ZIP. The backup contains private records and answer keys: protect
-it as sensitive data, use restrictive operator permissions, encrypt at rest using
-your backup platform, and retain an independently verified copy off the Web host.
-No encryption key or credential is embedded in the manifest.
+- `database.dump`: bản sao lưu logic PostgreSQL định dạng custom, đã xác minh SHA-256.
+- `storage.tar.gz`: archive truyền theo luồng chỉ chứa đối tượng có tham chiếu, không phải toàn bucket, với khóa di động và dữ liệu gốc.
+- `manifest.json`: `format_version: 2` tường minh, backend/môi trường nguồn và định danh đã băm, kích thước/SHA-256/MIME/nhóm từng đối tượng, mã băm tệp, xác nhận nhất quán và chỉ đặt `complete: true` sau xác minh.
 
-Failure/cancellation leaves a private `.backup-incomplete-*` directory and
-`complete:false` manifest with a sanitized failure type. It is never promoted to
-a completed backup. Keep it for investigation; rerun backup into a new bundle.
-No source objects are deleted. Dump failures cannot become database-only success.
-An in-flight dump/archive thread is joined before releasing its snapshot. Allow
-space for the dump/archive and the adapter's per-object temporary spool.
+Khóa chờ dọn dẹp là thông tin chẩn đoán, không phải đối tượng cần khôi phục. Đối tượng mồ côi, tệp FFmpeg/ZIP tạm, bộ nhớ đệm mô hình và thư mục cơ sở dữ liệu bị loại trừ. Mọi tham chiếu lịch sử còn hiệu lực đều được đưa vào; phạm vi rộng hơn danh mục công khai hoặc Test Transfer ZIP. Bản sao lưu có dữ liệu riêng tư và đáp án: bảo vệ như dữ liệu nhạy cảm, giới hạn quyền người vận hành, mã hóa khi lưu bằng nền tảng sao lưu và giữ một bản độc lập đã xác minh ngoài máy Web. Manifest không chứa khóa mã hóa hoặc thông tin xác thực.
 
-## Create and verify
+Thất bại/hủy để lại thư mục riêng tư `.backup-incomplete-*` và manifest `complete:false` với loại lỗi đã lọc dữ liệu nhạy cảm. Thư mục không bao giờ được nâng thành sao lưu hoàn tất. Giữ để điều tra; chạy lại sao lưu vào gói mới. Không xóa đối tượng nguồn. Dump thất bại không thể trở thành thành công chỉ có cơ sở dữ liệu. Luồng dump/ghi archive đang chạy được chờ hoàn tất trước khi giải phóng snapshot. Dự trù dung lượng dump/archive và vùng spool tạm từng đối tượng của adapter.
 
-Set explicit `DATABASE_URL` and `SOURCE_*` as documented in the environment matrix
-in [migration](storage-migration.md). From `backend/`:
+## Tạo và xác minh
+
+Đặt `DATABASE_URL` và `SOURCE_*` tường minh theo bảng môi trường trong [di chuyển](storage-migration.md). Từ `backend/`:
 
 ```sh
 uv run python ../scripts/backup.py --portable --source s3 --backup-root /secure/backups --maintenance-window --report /secure/backup-report.json
 uv run python ../scripts/restore.py --portable /secure/backups/BUNDLE --verify-only --report /secure/verify-report.json
 ```
 
-Use `--source local` or `r2` with its independent configuration as appropriate.
-Installed backend packages also support equivalent commands without repository
-scripts: `python -m app.storage.recovery_cli backup ...` and
-`python -m app.storage.recovery_cli restore ...` (omit `--portable` there).
+Dùng `--source local` hoặc `r2` với cấu hình độc lập phù hợp. Gói backend đã cài còn hỗ trợ lệnh tương đương không cần script trong repository: `python -m app.storage.recovery_cli backup ...` và `python -m app.storage.recovery_cli restore ...` (bỏ `--portable` tại đó).
 
-Verification streams both files and every archive member. It rejects missing,
-extra, duplicate, case-colliding, traversal, link, sparse, wrong-size or corrupt
-entries without extracting archive paths. Manifest bounds are 64 MiB / 250,000
-objects; each object follows the 5 GiB storage contract. The report records the
-manifest SHA-256: retain that value independently in a trusted backup catalog.
-Checksums detect corruption, **not** a malicious party able to rewrite both bundle
-and manifest. Restore only trusted backups; PostgreSQL dumps can execute SQL code.
-Inspect unfamiliar dumps in quarantine. PostgreSQL documents both
-[exported snapshots](https://www.postgresql.org/docs/current/app-pgdump.html) and
-[restore trust/behavior](https://www.postgresql.org/docs/current/app-pgrestore.html).
+Xác minh đọc theo luồng cả hai tệp và mọi thành viên archive. Nó từ chối mục thiếu, thừa, trùng, xung đột hoa/thường, vượt thư mục, liên kết, sparse, sai kích thước hoặc hỏng mà không giải nén theo đường dẫn trong archive. Manifest giới hạn 64 MiB / 250,000 đối tượng; mỗi đối tượng tuân theo hợp đồng lưu trữ 5 GiB. Báo cáo ghi SHA-256 của manifest: giữ giá trị đó độc lập trong danh mục sao lưu đáng tin cậy. Checksum phát hiện hỏng dữ liệu, **không** chống bên độc hại có thể sửa cả gói và manifest. Chỉ khôi phục bản sao lưu tin cậy; dump PostgreSQL có thể thực thi SQL. Kiểm tra dump lạ trong môi trường cách ly. PostgreSQL mô tả [snapshot đã xuất](https://www.postgresql.org/docs/current/app-pgdump.html) và [độ tin cậy/hành vi khôi phục](https://www.postgresql.org/docs/current/app-pgrestore.html).
 
-## Isolated restore, separately controlled database operation
+## Khôi phục cô lập, với thao tác cơ sở dữ liệu được kiểm soát riêng
 
-Create a fresh private recovery bucket/prefix or local directory. Set
-`DESTINATION_ENVIRONMENT=recovery` and explicit `DESTINATION_*` values. The
-destination must differ from the backup source. Existing matching bytes can be
-reused; any differing key blocks **all writes in that run**. Never use the active
-application bucket as an accidental recovery destination. The tool never deletes
-objects or replaces conflicts; a failed run can be resumed after investigation.
+Tạo bucket/tiền tố recovery riêng tư hoặc thư mục Local mới. Đặt `DESTINATION_ENVIRONMENT=recovery` và giá trị `DESTINATION_*` tường minh. Đích phải khác nguồn sao lưu. Dữ liệu đã tồn tại và khớp có thể dùng lại; bất kỳ khóa khác biệt nào cũng chặn **mọi thao tác ghi trong lần chạy đó**. Không vô tình dùng bucket ứng dụng đang hoạt động làm đích khôi phục. Công cụ không xóa đối tượng hoặc thay thế xung đột; có thể tiếp tục lần chạy thất bại sau điều tra.
 
-Provision an empty recovery PostgreSQL database yourself. Set
-`RESTORE_DATABASE_URL` explicitly (not the ordinary application URL) and
-`RESTORE_ENVIRONMENT=recovery`. Its name must contain the `recovery`, `restore`
-or `test` token. It must differ from the source and application database, contain
-no user relations and have no other sessions. Restrict access so no application
-can race the preflight. The tool never creates/resets a database or starts a server.
+Tự cấp một cơ sở dữ liệu PostgreSQL recovery rỗng. Đặt `RESTORE_DATABASE_URL` tường minh (không dùng URL ứng dụng thường) và `RESTORE_ENVIRONMENT=recovery`. Tên phải chứa token `recovery`, `restore` hoặc `test`. Cơ sở dữ liệu phải khác nguồn và ứng dụng, không có quan hệ do người dùng tạo và không có session khác. Giới hạn truy cập để ứng dụng không thể chạy đua với bước tiền kiểm. Công cụ không tạo/đặt lại cơ sở dữ liệu hoặc khởi động máy chủ.
 
 ```sh
 # Full read-only preflight; emits destination target_id, database_id and manifest hash.
@@ -105,39 +53,12 @@ uv run python ../scripts/restore.py --portable /secure/backups/BUNDLE --destinat
 uv run python ../scripts/restore.py --portable /secure/backups/BUNDLE --destination r2 --reconcile-database --report /secure/restored-references.json
 ```
 
-Database recovery uses one pg_restore transaction, `--no-owner --no-acl`, no
-`--clean`, no `--create` and no schema downgrade. Recreate roles/grants separately
-under operator control. Before restoring, all objects must already match the
-bundle. Afterwards the actual restored database reference set and metadata must
-match the manifest and readable destination objects. Only then can application
-recovery report `complete:true`. A successful object upload alone is insufficient.
-If database commit succeeds but follow-up verification fails, keep writers stopped;
-objects/database remain for inspection and `--reconcile-database` can retry safely.
-Never retry pg_restore into a populated database: its empty-target gate will refuse.
+Khôi phục cơ sở dữ liệu dùng một giao dịch pg_restore, `--no-owner --no-acl`, không `--clean`, không `--create` và không hạ cấp schema. Tạo lại role/quyền riêng dưới kiểm soát người vận hành. Trước khi khôi phục, mọi đối tượng phải khớp gói. Sau đó, tập tham chiếu và siêu dữ liệu thực sự được khôi phục phải khớp manifest và các đối tượng đích đọc được. Chỉ khi đó khôi phục ứng dụng mới báo `complete:true`. Chỉ tải đối tượng thành công là chưa đủ. Nếu commit cơ sở dữ liệu thành công nhưng xác minh tiếp theo thất bại, tiếp tục dừng tác vụ ghi; giữ đối tượng/cơ sở dữ liệu để kiểm tra và có thể thử lại `--reconcile-database` an toàn. Không chạy lại pg_restore vào cơ sở dữ liệu đã có dữ liệu: điều kiện đích rỗng sẽ từ chối.
 
-## Deployment profiles and rollback
+## Cấu hình triển khai và hoàn tác
 
-Local development uses durable local roots and compatible client tools. Modal
-demo operators must use a controlled maintenance environment with access to the
-**same** embedded database and committed asset Volume, preserving the one-owner
-database guard. Do not mount/start a second embedded PostgreSQL owner. Exporting
-only the `/snapshots` legacy database dump is not a complete application backup.
-Stage/commit a verified v2 bundle independently and retain original Volumes; do
-not rely on Web shutdown alone for backup durability. A root mount symlink resolves
-to its canonical namespace for explicit target identity; asset listing rejects
-symlinks/junctions within that namespace.
+Development Local dùng thư mục bền vững và công cụ client tương thích. Người vận hành Modal demo phải dùng môi trường bảo trì được kiểm soát, truy cập **cùng** cơ sở dữ liệu nhúng và Volume tài sản đã commit, giữ cơ chế một chủ sở hữu cơ sở dữ liệu. Không mount/khởi động chủ sở hữu PostgreSQL nhúng thứ hai. Chỉ xuất dump cơ sở dữ liệu kiểu cũ từ `/snapshots` không phải sao lưu ứng dụng đầy đủ. Ghi/commit gói v2 đã xác minh độc lập và giữ Volume gốc; không chỉ dựa vào lúc Web dừng để bảo đảm độ bền bản sao lưu. Symlink mount gốc được phân giải thành namespace chuẩn để xác định đích tường minh; liệt kê tài sản từ chối symlink/junction bên trong namespace đó.
 
-Modal managed and AWS production use an operator host/job with secure access to
-the external TLS database and configured private S3/R2. No tool depends on the
-host being Modal/AWS. Existing P4 topology/Secrets/replica defaults remain unchanged.
-This phase does not add an automatic Modal backup endpoint, scheduled job or
-cloud deployment. In production, rehearse retrieval of independent backups and
-the database/client-CA configuration, not just creation on the same host.
+Modal managed và AWS production dùng máy/tác vụ vận hành có truy cập an toàn tới cơ sở dữ liệu TLS bên ngoài và S3/R2 riêng tư đã cấu hình. Không công cụ nào phụ thuộc máy chủ phải là Modal/AWS. Topology/Secrets/mặc định replica P4 hiện có không đổi. Giai đoạn này không thêm endpoint sao lưu Modal tự động, tác vụ định kỳ hoặc triển khai cloud. Ở production, diễn tập lấy bản sao lưu độc lập và cấu hình cơ sở dữ liệu/CA client, không chỉ tạo bản sao trên cùng máy.
 
-Retain source assets and their matching database backup before cutover. Rollback
-before new writes may reuse them; after new writes it needs a new maintenance
-window and reconciliation or an explicitly approved recovery point/data-loss
-decision. See [cutover/rollback](storage-migration.md). Offline tests verify actual
-PostgreSQL snapshot/dump/isolated restore and fake S3-backed object recovery;
-live provider permissions, storage durability, throughput and disaster-recovery
-drills remain separate operator-controlled staging gates.
+Giữ tài sản nguồn và bản sao lưu cơ sở dữ liệu tương ứng trước chuyển đổi. Trước ghi mới có thể dùng lại để hoàn tác; sau ghi mới cần cửa sổ bảo trì mới và đối soát hoặc quyết định điểm khôi phục/mất dữ liệu được phê duyệt tường minh. Xem [chuyển đổi/hoàn tác](storage-migration.md). Kiểm thử ngoại tuyến xác minh snapshot/dump/khôi phục PostgreSQL cô lập thật và khôi phục đối tượng qua S3 giả; quyền nhà cung cấp thật, độ bền lưu trữ, thông lượng và diễn tập phục hồi thảm họa vẫn là cổng staging riêng do người vận hành kiểm soát.

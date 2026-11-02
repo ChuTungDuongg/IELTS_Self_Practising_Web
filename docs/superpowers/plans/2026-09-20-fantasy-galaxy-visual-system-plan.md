@@ -1,291 +1,291 @@
-# Fantasy Galaxy Visual System Implementation Plan
+# Kế hoạch triển khai hệ thống giao diện Fantasy Galaxy
 
-> **Documentation audit: SUPERSEDED.** Historical reference; không phải contract hiện hành.
-> Mục đích: Fantasy Galaxy Visual System Implementation Plan. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../../../frontend/src/components/ui/app-shell.tsx).
-> Đọc cùng [current module/guide](../../modules/shared-platform.md); [audit và giới hạn](../../DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+> **Phân loại tài liệu: SUPERSEDED.** Tham khảo lịch sử; không phải contract hiện hành.
+> Mục đích: kế hoạch triển khai hệ thống giao diện Fantasy Galaxy. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [mã triển khai](../../../frontend/src/components/ui/app-shell.tsx).
+> Đọc cùng [hướng dẫn module hiện hành](../../modules/shared-platform.md); [audit và giới hạn](../../DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **Dành cho tác nhân triển khai:** bắt buộc dùng skill superpowers:subagent-driven-development (khuyến nghị) hoặc superpowers:executing-plans để thực hiện từng công việc. Theo dõi bằng checkbox (`- [ ]`).
 
-**Goal:** Apply a cohesive fantasy-galaxy visual system to the complete IELTS Studio frontend while preserving every existing behavior and data boundary.
+**Mục tiêu:** áp dụng hệ thống giao diện Fantasy Galaxy thống nhất cho toàn bộ frontend IELTS Studio, giữ mọi hành vi và ranh giới dữ liệu hiện có.
 
-**Architecture:** Keep the current Next.js component and route structure, introduce the visual system through semantic CSS tokens and shared presentation classes, then make small markup-only refinements that give those styles clear structural hooks. Preserve the existing `data-theme` mechanism and derive the calmer Candidate `--exam-*` layer from the same theme tokens.
+**Kiến trúc:** giữ cấu trúc components/routes Next.js hiện tại, đưa hệ thống giao diện vào qua semantic CSS tokens và presentation classes dùng chung, sau đó chỉ sửa markup nhỏ để tạo các điểm gắn cấu trúc rõ ràng. Giữ cơ chế `data-theme` hiện có; suy ra lớp làm bài `--exam-*` dịu hơn từ cùng theme tokens.
 
-**Tech Stack:** Next.js 16.3.5, React 19.3, TypeScript 5.9, Tailwind CSS 4, plain CSS custom properties, Vitest, Testing Library, Playwright.
+**Công nghệ:** Next.js 16.3.5, React 19.3, TypeScript 5.9, Tailwind CSS 4, CSS custom properties thuần, Vitest, Testing Library, Playwright.
 
-**Spec:** `docs/superpowers/specs/2026-09-20-fantasy-galaxy-visual-system-design.md`
+**Đặc tả:** `docs/superpowers/specs/2026-09-20-fantasy-galaxy-visual-system-design.md`
 
-## Global Constraints
+## Ràng buộc chung
 
-- Preserve the visible product name `IELTS Studio`; fantasy galaxy is the visual direction, not a rename.
-- Frontend-only changes: no backend API, database model, migration, evaluator, lifecycle, or persistence changes.
-- Continue using the existing `data-theme="light"` and `data-theme="dark"` implementation.
-- Use CSS gradients, layered surfaces, and restrained glow only; add no raster galaxy asset, particle system, WebGL, animation library, or continuously animated effect.
-- Preserve all Text Completion, highlight, autosave, timer, navigation, flags, Listening audio, History, publish-validation, archive, and immutable-version behavior.
-- Keep Candidate Reading and Listening substantially calmer than dashboard, admin, and builder surfaces.
-- Maintain semantic HTML, keyboard navigation, ARIA labels, focus-visible states, WCAG-conscious contrast, reduced-motion handling, and responsive behavior.
-- Make one focused commit at the end, as explicitly requested; do not create interim commits.
+- Giữ tên sản phẩm hiển thị `IELTS Studio`; Fantasy Galaxy là hướng giao diện, không phải đổi tên.
+- Chỉ sửa frontend; không đổi backend API, database model, migration, evaluator, lifecycle hoặc persistence.
+- Tiếp tục dùng triển khai `data-theme="light"` và `data-theme="dark"` hiện có.
+- Chỉ dùng CSS gradients, surfaces nhiều lớp và glow tiết chế; không thêm ảnh galaxy raster, particle system, WebGL, thư viện animation hoặc hiệu ứng chạy liên tục.
+- Giữ toàn bộ hành vi Text Completion, highlight, autosave, timer, điều hướng, flags, Listening audio, History, publish-validation, archive và version bất biến.
+- Giữ Reading/Listening làm bài dịu hơn đáng kể so với dashboard, admin và builder.
+- Giữ semantic HTML, điều hướng bàn phím, ARIA labels, focus-visible, contrast có xét WCAG, reduced-motion và responsive.
+- Theo yêu cầu gốc, chỉ tạo một commit tập trung ở cuối; không tạo commit trung gian.
 
-## Review Focus
+## Trọng tâm review
 
-- A stored `light` or `dark` preference must still initialize without hydration mismatch; keep the existing theme script and cover it with the root-layout test.
-- Candidate question navigation must remain horizontally scrollable and keep separate current, answered, unanswered, and flagged states; cover required selectors in the exam CSS test and retain the existing behavior test.
-- Completion sentence layout and gap inputs must remain inline and must not display per-gap limits; retain completion tests and assert the compact classes remain styled.
-- Narrow viewports must not hide primary actions or introduce page-level horizontal overflow; cover major responsive selectors in the visual-system CSS test and inspect mobile-sized screenshots.
-- Destructive actions must remain visually subordinate but keyboard-visible; assert danger-ghost and global focus-visible rules in the visual-system CSS test.
+- Preference `light` hoặc `dark` đã lưu vẫn phải khởi tạo không hydration mismatch; giữ theme script hiện có và kiểm bằng root-layout test.
+- Điều hướng câu hỏi khi làm bài vẫn cuộn ngang, phân biệt câu hiện tại/đã trả lời/chưa trả lời/đã đánh dấu; kiểm selectors cần thiết trong exam CSS test và giữ behavior test hiện có.
+- Câu completion và ô gap phải inline, không hiện giới hạn từng gap; giữ completion tests và xác nhận các compact classes vẫn có style.
+- Viewport hẹp không được ẩn thao tác chính hoặc gây tràn ngang toàn trang; kiểm responsive selectors chính trong visual-system CSS test và xem screenshot kích thước mobile.
+- Thao tác phá hủy phải ít nổi bật hơn nhưng vẫn thấy được khi dùng bàn phím; kiểm danger-ghost và focus-visible toàn cục trong visual-system CSS test.
 
 ---
 
-## File map
+## Bản đồ tệp
 
-- `frontend/src/app/globals.css`: owns semantic tokens, atmospheric shell, shared primitives, page systems, builder hierarchy, Candidate restraint, review treatment, responsive rules, and reduced-motion behavior.
-- `frontend/src/components/ui/app-shell.tsx`: supplies shell decoration hooks while preserving navigation and product name.
-- `frontend/src/components/ui/icons.tsx`: supplies lightweight inline SVG icons for hero/pathway presentation where existing icons are insufficient.
-- `frontend/src/app/page.tsx`: composes the redesigned dashboard hero, summary metrics, and learning pathways.
-- `frontend/src/app/library/page.tsx`: gives published Reading and Listening cards semantic structural classes and metadata hierarchy.
-- `frontend/src/app/history/page.tsx` and `frontend/src/features/history/attempt-history-list.tsx`: present attempt records and the reusable empty state with clear action priority.
-- `frontend/src/app/admin/tests/page.tsx`, `frontend/src/app/admin/tests/[testId]/page.tsx`, and existing builder components: add only presentation hooks needed by the shared admin/builder system.
-- `frontend/src/features/reading/reading-runner.tsx`, `frontend/src/features/listening/listening-runner.tsx`, `frontend/src/features/test-builder/draft-preview.tsx`: add editorial and Candidate-specific class hooks without changing state or event flow.
-- `frontend/src/features/reading/reading-review.tsx` and `frontend/src/features/listening/listening-review.tsx`: add review hierarchy hooks while retaining renderer data.
-- `frontend/tests/visual-system-css.test.ts`: locks semantic token, accessibility, responsive, Candidate, and restrained-effect requirements.
-- Existing focused tests: guard all behaviors named in the specification.
+- `frontend/src/app/globals.css`: quản lý semantic tokens, shell, shared primitives, hệ thống trang, phân cấp builder, độ dịu giao diện làm bài, review, responsive và reduced-motion.
+- `frontend/src/components/ui/app-shell.tsx`: cung cấp điểm gắn trang trí shell, giữ điều hướng và tên sản phẩm.
+- `frontend/src/components/ui/icons.tsx`: bổ sung SVG icons inline nhẹ cho hero/lộ trình khi icons hiện có chưa đủ.
+- `frontend/src/app/page.tsx`: tổ hợp dashboard hero mới, số liệu tóm tắt và lộ trình học.
+- `frontend/src/app/library/page.tsx`: thêm structural classes có ngữ nghĩa và phân cấp metadata cho thẻ Reading/Listening đã publish.
+- `frontend/src/app/history/page.tsx` và `frontend/src/features/history/attempt-history-list.tsx`: trình bày attempt records cùng empty state tái sử dụng, với ưu tiên thao tác rõ ràng.
+- `frontend/src/app/admin/tests/page.tsx`, `frontend/src/app/admin/tests/[testId]/page.tsx` và builder components hiện có: chỉ thêm presentation hooks cần cho hệ thống admin/builder dùng chung.
+- `frontend/src/features/reading/reading-runner.tsx`, `frontend/src/features/listening/listening-runner.tsx`, `frontend/src/features/test-builder/draft-preview.tsx`: thêm class hooks cho bố cục đọc và giao diện làm bài, không đổi state/event flow.
+- `frontend/src/features/reading/reading-review.tsx` và `frontend/src/features/listening/listening-review.tsx`: thêm phân cấp review, giữ dữ liệu renderer.
+- `frontend/tests/visual-system-css.test.ts`: bảo vệ yêu cầu semantic tokens, accessibility, responsive, giao diện làm bài và hiệu ứng tiết chế.
+- Tests tập trung hiện có: bảo vệ mọi hành vi được nêu trong đặc tả.
 
-### Task 1: Semantic tokens, shell, and shared primitives
+### Công việc 1: Semantic tokens, shell và shared primitives
 
-**Files:**
-- Create: `frontend/tests/visual-system-css.test.ts`
-- Modify: `frontend/src/app/globals.css`
-- Modify: `frontend/src/components/ui/app-shell.tsx`
-- Modify: `frontend/src/app/layout.tsx`
-- Test: `frontend/tests/visual-system-css.test.ts`
-- Test: `frontend/tests/root-layout.test.tsx`
-- Test: `frontend/tests/theme-toggle.test.tsx`
+**Tệp:**
+- Tạo: `frontend/tests/visual-system-css.test.ts`
+- Sửa: `frontend/src/app/globals.css`
+- Sửa: `frontend/src/components/ui/app-shell.tsx`
+- Sửa: `frontend/src/app/layout.tsx`
+- Kiểm thử: `frontend/tests/visual-system-css.test.ts`
+- Kiểm thử: `frontend/tests/root-layout.test.tsx`
+- Kiểm thử: `frontend/tests/theme-toggle.test.tsx`
 
-**Interfaces:**
-- Consumes: the existing `document.documentElement.dataset.theme` contract and current shared class names.
-- Produces: the semantic CSS variables listed in the spec plus stable `.app-shell`, `.app-header`, `.app-sidebar`, `.surface-card`, `.btn-*`, `.field`, `.select-field`, `.status-*`, `.empty-state`, `.dialog-*`, and focus styles used by all later tasks.
+**Giao diện:**
+- Đầu vào: contract `document.documentElement.dataset.theme` và các tên class dùng chung hiện có.
+- Đầu ra: semantic CSS variables trong đặc tả, cùng các class ổn định `.app-shell`, `.app-header`, `.app-sidebar`, `.surface-card`, `.btn-*`, `.field`, `.select-field`, `.status-*`, `.empty-state`, `.dialog-*` và focus styles cho các công việc sau.
 
-- [ ] **Step 1: Write the failing visual-system contract test**
+- [ ] **Bước 1: Viết visual-system contract test đang fail**
 
-Create a Vitest test that reads `src/app/globals.css` and asserts both theme blocks contain `--app-bg`, `--app-bg-elevated`, `--surface-hover`, `--surface-glass`, `--accent-violet`, `--accent-cyan`, `--glow-accent`, and `--glow-violet`. Assert the stylesheet includes `:focus-visible`, `@media (prefers-reduced-motion: reduce)`, the five button variants, responsive shell rules, and no `url(` background asset.
+Tạo Vitest test đọc `src/app/globals.css` và kiểm cả hai theme blocks chứa `--app-bg`, `--app-bg-elevated`, `--surface-hover`, `--surface-glass`, `--accent-violet`, `--accent-cyan`, `--glow-accent` và `--glow-violet`. Kiểm stylesheet có `:focus-visible`, `@media (prefers-reduced-motion: reduce)`, năm biến thể nút, responsive shell rules và không có background asset `url(`.
 
-- [ ] **Step 2: Run the contract test and confirm it fails for missing semantic variables**
+- [ ] **Bước 2: Chạy contract test, xác nhận fail do thiếu semantic variables**
 
-Run: `npm test -- visual-system-css.test.ts`
+Chạy: `npm test -- visual-system-css.test.ts`
 
-Expected: failure naming the first missing token, while the existing test harness loads successfully.
+Mong đợi: lỗi nêu token thiếu đầu tiên, trong khi test harness hiện có vẫn tải thành công.
 
-- [ ] **Step 3: Replace the root theme values with the compact semantic token system**
+- [ ] **Bước 3: Thay giá trị theme gốc bằng hệ semantic tokens gọn**
 
-Define light and dark values from the design spec, retain compatibility aliases such as `--paper`, `--reading`, `--listening`, and derive `--exam-*` values within the same two theme blocks. Use deep navy rather than black in dark mode and cool near-white rather than neutral grey in light mode.
+Định nghĩa giá trị sáng/tối theo đặc tả; giữ compatibility aliases như `--paper`, `--reading`, `--listening` và suy ra `--exam-*` trong cùng hai theme blocks. Theme tối dùng navy đậm thay đen; theme sáng dùng gần trắng lạnh thay xám trung tính.
 
-- [ ] **Step 4: Implement shell atmosphere and normalized shared primitives**
+- [ ] **Bước 4: Triển khai shell và shared primitives được chuẩn hóa**
 
-Use two or three static radial gradients on the app shell/body and small pseudo-element details. Restyle header, sidebar, active navigation, cards, buttons, fields, badges, dialogs, empty states, notices, and focus rings using only semantic tokens. Keep most surfaces opaque and reserve translucency for shell chrome and overlays.
+Dùng hai hoặc ba radial gradients tĩnh trên shell/body cùng chi tiết pseudo-element nhỏ. Đổi style header, sidebar, navigation active, cards, buttons, fields, badges, dialogs, empty states, notices và focus rings chỉ bằng semantic tokens. Phần lớn surfaces phải đặc; chỉ shell chrome và overlays dùng trong mờ.
 
-- [ ] **Step 5: Add nonsemantic decoration hooks without changing navigation behavior**
+- [ ] **Bước 5: Thêm hook trang trí không ngữ nghĩa, giữ hành vi điều hướng**
 
-Add `aria-hidden` shell/brand decoration only where CSS cannot express it through existing pseudo-elements. Keep `IELTS Studio`, navigation URLs, labels, active-route logic, and theme toggle unchanged. Update metadata description only if needed to describe the learning platform without renaming it.
+Chỉ thêm trang trí shell/brand `aria-hidden` ở nơi pseudo-elements hiện có không diễn đạt được. Giữ `IELTS Studio`, navigation URLs, labels, active-route logic và theme toggle. Chỉ cập nhật metadata description nếu cần mô tả nền tảng học, không đổi tên.
 
-- [ ] **Step 6: Run shell and theme tests**
+- [ ] **Bước 6: Chạy shell và theme tests**
 
-Run: `npm test -- visual-system-css.test.ts root-layout.test.tsx theme-toggle.test.tsx`
+Chạy: `npm test -- visual-system-css.test.ts root-layout.test.tsx theme-toggle.test.tsx`
 
-Expected: all selected tests pass.
+Mong đợi: mọi test đã chọn đều pass.
 
-### Task 2: Home, Library, and History
+### Công việc 2: Home, Library và History
 
-**Files:**
-- Modify: `frontend/src/app/page.tsx`
-- Modify: `frontend/src/app/library/page.tsx`
-- Modify: `frontend/src/app/history/page.tsx`
-- Modify: `frontend/src/features/history/attempt-history-list.tsx`
-- Modify: `frontend/src/components/ui/icons.tsx`
-- Modify: `frontend/src/app/globals.css`
-- Test: `frontend/tests/attempt-history-list.test.tsx`
+**Tệp:**
+- Sửa: `frontend/src/app/page.tsx`
+- Sửa: `frontend/src/app/library/page.tsx`
+- Sửa: `frontend/src/app/history/page.tsx`
+- Sửa: `frontend/src/features/history/attempt-history-list.tsx`
+- Sửa: `frontend/src/components/ui/icons.tsx`
+- Sửa: `frontend/src/app/globals.css`
+- Kiểm thử: `frontend/tests/attempt-history-list.test.tsx`
 
-**Interfaces:**
-- Consumes: Task 1 tokens and shared primitives; existing `getTests`, `getHistory`, `getVersion`, `StartAttempt`, and attempt deletion APIs.
-- Produces: `.home-hero`, `.home-metrics`, `.learning-path-grid`, `.learning-path-card`, `.practice-grid`, `.practice-card`, `.history-list`, and `.history-row` structural hooks.
+**Giao diện:**
+- Đầu vào: tokens/shared primitives công việc 1; `getTests`, `getHistory`, `getVersion`, `StartAttempt` và APIs xóa attempt hiện có.
+- Đầu ra: structural hooks `.home-hero`, `.home-metrics`, `.learning-path-grid`, `.learning-path-card`, `.practice-grid`, `.practice-card`, `.history-list` và `.history-row`.
 
-- [ ] **Step 1: Add presentation assertions to the History component test**
+- [ ] **Bước 1: Thêm assertions trình bày vào History component test**
 
-Extend the existing test to assert an attempt row exposes the Continue or Review link as the primary action and Delete remains a `btn-danger-ghost`. Assert the empty collection renders the shared empty-state title rather than a bare paragraph.
+Mở rộng test để xác nhận hàng attempt dùng Continue hoặc Review làm thao tác chính và Delete vẫn là `btn-danger-ghost`. Danh sách rỗng phải render tiêu đề empty state dùng chung thay cho đoạn văn đơn lẻ.
 
-- [ ] **Step 2: Run the focused History test and confirm the new empty-state assertion fails**
+- [ ] **Bước 2: Chạy History test tập trung và xác nhận assertion empty state mới fail**
 
-Run: `npm test -- attempt-history-list.test.tsx`
+Chạy: `npm test -- attempt-history-list.test.tsx`
 
-Expected: the new empty-state expectation fails before markup is updated.
+Mong đợi: assertion empty state mới fail trước khi cập nhật markup.
 
-- [ ] **Step 3: Recompose Home as a learner portal**
+- [ ] **Bước 3: Tổ hợp Home thành cổng học tập**
 
-Keep the existing server data calls. Render a hero with the current product identity, concise value proposition, `/library` primary CTA, and `/admin/tests` secondary CTA. Present counts as compact metrics, then add four pathway cards for Tests, Reading, Listening, and History using existing routes and inline SVG icons.
+Giữ các lời gọi dữ liệu server. Render hero với danh tính sản phẩm hiện tại, giá trị cốt lõi ngắn gọn, CTA chính `/library` và CTA phụ `/admin/tests`. Trình bày counts thành metrics gọn rồi thêm bốn thẻ lộ trình Tests, Reading, Listening, History bằng routes hiện có và SVG icons inline.
 
-- [ ] **Step 4: Refine Library card hierarchy**
+- [ ] **Bước 4: Cải thiện phân cấp thẻ Library**
 
-Keep one card per published module and preserve `StartAttempt`. Add module-specific semantic classes, version/module metadata, a quiet version-detail link, and a clear action region. Do not synthesize progress data that the API does not provide.
+Giữ một thẻ cho mỗi module đã publish và giữ `StartAttempt`. Thêm semantic classes theo module, metadata version/module, liên kết chi tiết version nhẹ và vùng thao tác rõ. Không bịa dữ liệu tiến độ mà API không cung cấp.
 
-- [ ] **Step 5: Refine History rows and empty state**
+- [ ] **Bước 5: Cải thiện hàng History và empty state**
 
-Use `EmptyState` for no attempts. Group test/module/version/date metadata, status, elapsed time, and primary Continue/Review action into responsive row sections. Preserve delete dialog behavior and API calls exactly.
+Dùng `EmptyState` khi không có attempts. Nhóm metadata test/module/version/ngày, trạng thái, thời gian đã dùng và thao tác chính Continue/Review thành các phần responsive. Giữ chính xác hành vi dialog xóa và API calls.
 
-- [ ] **Step 6: Style the three learner pages from shared tokens**
+- [ ] **Bước 6: Tạo style ba trang học từ tokens dùng chung**
 
-Implement hero atmosphere, compact metrics, pathway cards, module-specific practice cards, and responsive history rows. Use only localized gradients and ensure destructive actions are visually quiet.
+Triển khai hero, metrics gọn, thẻ lộ trình, thẻ luyện theo module và hàng history responsive. Chỉ dùng gradients cục bộ; giữ thao tác phá hủy ít nổi bật.
 
-- [ ] **Step 7: Run learner-page focused tests**
+- [ ] **Bước 7: Chạy tests tập trung cho các trang học**
 
-Run: `npm test -- attempt-history-list.test.tsx root-layout.test.tsx`
+Chạy: `npm test -- attempt-history-list.test.tsx root-layout.test.tsx`
 
-Expected: all selected tests pass.
+Mong đợi: mọi test đã chọn đều pass.
 
-### Task 3: Admin library, test detail, and Builder workspace
+### Công việc 3: Thư viện Admin, chi tiết đề và Builder workspace
 
-**Files:**
-- Modify: `frontend/src/app/admin/tests/page.tsx`
-- Modify: `frontend/src/app/admin/tests/[testId]/page.tsx`
-- Modify: `frontend/src/app/admin/tests/[testId]/versions/[versionId]/edit/page.tsx`
-- Modify: `frontend/src/features/test-builder/test-library-list.tsx`
-- Modify: `frontend/src/features/test-builder/builder-workspace-navigation.tsx`
-- Modify: `frontend/src/features/test-builder/version-actions.tsx`
-- Modify: `frontend/src/features/test-builder/reading-builder.tsx`
-- Modify: `frontend/src/features/test-builder/listening-builder.tsx`
-- Modify: `frontend/src/features/test-builder/question-group-editor.tsx`
-- Modify: `frontend/src/app/globals.css`
-- Test: `frontend/tests/test-library-list.test.tsx`
-- Test: `frontend/tests/builder-workspace-navigation.test.tsx`
-- Test: `frontend/tests/builder-workspace-page.test.tsx`
-- Test: `frontend/tests/version-actions.test.tsx`
+**Tệp:**
+- Sửa: `frontend/src/app/admin/tests/page.tsx`
+- Sửa: `frontend/src/app/admin/tests/[testId]/page.tsx`
+- Sửa: `frontend/src/app/admin/tests/[testId]/versions/[versionId]/edit/page.tsx`
+- Sửa: `frontend/src/features/test-builder/test-library-list.tsx`
+- Sửa: `frontend/src/features/test-builder/builder-workspace-navigation.tsx`
+- Sửa: `frontend/src/features/test-builder/version-actions.tsx`
+- Sửa: `frontend/src/features/test-builder/reading-builder.tsx`
+- Sửa: `frontend/src/features/test-builder/listening-builder.tsx`
+- Sửa: `frontend/src/features/test-builder/question-group-editor.tsx`
+- Sửa: `frontend/src/app/globals.css`
+- Kiểm thử: `frontend/tests/test-library-list.test.tsx`
+- Kiểm thử: `frontend/tests/builder-workspace-navigation.test.tsx`
+- Kiểm thử: `frontend/tests/builder-workspace-page.test.tsx`
+- Kiểm thử: `frontend/tests/version-actions.test.tsx`
 
-**Interfaces:**
-- Consumes: all current builder API calls, lifecycle provider, registry editors, preview paths, and publish validation result data.
-- Produces: polished admin cards/rows, a clearly ranked builder toolbar, module-aware local navigation, and parent/child surface hierarchy without altering callbacks or payloads.
+**Giao diện:**
+- Đầu vào: mọi builder API calls, lifecycle provider, registry editors, preview paths và dữ liệu publish validation hiện có.
+- Đầu ra: thẻ/hàng admin rõ ràng, toolbar builder có thứ bậc, điều hướng cục bộ nhận biết module và phân cấp surfaces cha/con; không đổi callbacks/payloads.
 
-- [ ] **Step 1: Extend existing component tests with presentation contracts**
+- [ ] **Bước 1: Mở rộng component tests với presentation contracts**
 
-Assert the admin library still exposes Active/Archived status tabs, search, primary create/continue/edit actions, and quiet destructive actions. Assert builder navigation continues to render Created/Not created states and an `aria-current` active row. Assert VersionActions retains Validate, Publish/Edit, and Delete draft behavior.
+Kiểm thư viện admin vẫn có tabs Active/Archived, tìm kiếm, create/continue/edit chính và thao tác phá hủy nhẹ. Builder navigation vẫn có Created/Not created và hàng active `aria-current`. VersionActions giữ Validate, Publish/Edit và Delete draft.
 
-- [ ] **Step 2: Run the focused admin/builder tests before markup changes**
+- [ ] **Bước 2: Chạy admin/builder tests tập trung trước sửa markup**
 
-Run: `npm test -- test-library-list.test.tsx builder-workspace-navigation.test.tsx builder-workspace-page.test.tsx version-actions.test.tsx`
+Chạy: `npm test -- test-library-list.test.tsx builder-workspace-navigation.test.tsx builder-workspace-page.test.tsx version-actions.test.tsx`
 
-Expected: existing behavioral assertions pass; any newly added structural assertion fails only for its missing class or grouping.
+Mong đợi: assertions hành vi hiện có pass; assertions cấu trúc mới chỉ fail do thiếu class hoặc nhóm.
 
-- [ ] **Step 3: Apply shared admin hierarchy**
+- [ ] **Bước 3: Áp dụng phân cấp admin dùng chung**
 
-Refine headings, toolbar density, status filters, test cards, version rows, and metadata grouping with semantic class hooks. Preserve all archive, restore, clone, permanent-delete, and routing behavior.
+Cải thiện headings, mật độ toolbar, bộ lọc trạng thái, test cards, version rows và nhóm metadata bằng semantic classes. Giữ mọi hành vi archive, restore, clone, permanent-delete và routing.
 
-- [ ] **Step 4: Refine builder shell and toolbar**
+- [ ] **Bước 4: Cải thiện builder shell và toolbar**
 
-Style Draft state, validation, preview links already present in module builders, Publish/Edit, and deletion with a clear action hierarchy. Keep the toolbar sticky on desktop and stacked on narrow screens.
+Phân cấp rõ Draft, validation, preview links có sẵn trong module builders, Publish/Edit và xóa. Toolbar sticky trên desktop, xếp chồng trên màn hình hẹp.
 
-- [ ] **Step 5: Refine module navigation and overview**
+- [ ] **Bước 5: Cải thiện điều hướng module và overview**
 
-Use Reading cyan and Listening violet accents for selected/created states. Keep Writing disabled and do not implement it. Reduce nested-card weight through spacing and surface levels rather than markup rewrites.
+Dùng accent cyan cho Reading, violet cho Listening ở trạng thái selected/created. Giữ Writing bị vô hiệu hóa, không triển khai. Giảm cảm giác thẻ lồng bằng spacing và mức surface thay vì viết lại markup.
 
-- [ ] **Step 6: Refine passage, section, group, and editor presentation**
+- [ ] **Bước 6: Cải thiện trình bày passage, section, group và editor**
 
-Keep passage/listening section cards as parent containers, group summaries as compact rows, and editors as focused work surfaces. Restyle Instruction, content, answer configuration, advanced fields, alternatives, and completion sentence/gap tokens without changing editor data flow or focus handlers.
+Giữ thẻ passage/listening section làm vùng cha, group summaries thành hàng gọn và editor thành vùng làm việc tập trung. Đổi style Instruction, nội dung, cấu hình đáp án, advanced fields, alternatives và sentence/gap tokens mà không đổi data flow hoặc focus handlers.
 
-- [ ] **Step 7: Run all builder behavior tests**
+- [ ] **Bước 7: Chạy mọi builder behavior tests**
 
-Run: `npm test -- builder-route.test.tsx builder-workspace-navigation.test.tsx builder-workspace-page.test.tsx draft-preview.test.tsx question-registry.test.tsx test-library-list.test.tsx text-completion-canvas.test.tsx version-actions.test.tsx`
+Chạy: `npm test -- builder-route.test.tsx builder-workspace-navigation.test.tsx builder-workspace-page.test.tsx draft-preview.test.tsx question-registry.test.tsx test-library-list.test.tsx text-completion-canvas.test.tsx version-actions.test.tsx`
 
-Expected: all selected tests pass, including Text Completion identity, sentence structure, alternatives, and navigation-related cases already encoded in the suite.
+Mong đợi: mọi tests đã chọn pass, gồm Text Completion identity, cấu trúc câu, alternatives và các ca điều hướng có sẵn.
 
-### Task 4: Candidate Reading, Listening, navigation, and Preview
+### Công việc 4: Reading/Listening làm bài, điều hướng và Preview
 
-**Files:**
-- Modify: `frontend/src/features/reading/reading-runner.tsx`
-- Modify: `frontend/src/features/listening/listening-runner.tsx`
-- Modify: `frontend/src/features/listening/audio-player.tsx`
-- Modify: `frontend/src/features/test-builder/draft-preview.tsx`
-- Modify: `frontend/src/features/questions/question-group-instruction.tsx`
-- Modify: `frontend/src/features/questions/renderers.tsx`
-- Modify: `frontend/src/app/globals.css`
-- Test: `frontend/tests/exam-theme-css.test.ts`
-- Test: `frontend/tests/reading-instructions.test.tsx`
-- Test: `frontend/tests/reading-navigation.test.tsx`
-- Test: `frontend/tests/listening-player.test.tsx`
-- Test: `frontend/tests/draft-preview.test.tsx`
-- Test: `frontend/tests/selectable-text.test.tsx`
+**Tệp:**
+- Sửa: `frontend/src/features/reading/reading-runner.tsx`
+- Sửa: `frontend/src/features/listening/listening-runner.tsx`
+- Sửa: `frontend/src/features/listening/audio-player.tsx`
+- Sửa: `frontend/src/features/test-builder/draft-preview.tsx`
+- Sửa: `frontend/src/features/questions/question-group-instruction.tsx`
+- Sửa: `frontend/src/features/questions/renderers.tsx`
+- Sửa: `frontend/src/app/globals.css`
+- Kiểm thử: `frontend/tests/exam-theme-css.test.ts`
+- Kiểm thử: `frontend/tests/reading-instructions.test.tsx`
+- Kiểm thử: `frontend/tests/reading-navigation.test.tsx`
+- Kiểm thử: `frontend/tests/listening-player.test.tsx`
+- Kiểm thử: `frontend/tests/draft-preview.test.tsx`
+- Kiểm thử: `frontend/tests/selectable-text.test.tsx`
 
-**Interfaces:**
-- Consumes: Candidate payloads, registry renderer contracts, timer helpers, autosave callbacks, flag/highlight APIs, audio element behavior, and existing navigation refs.
-- Produces: `.exam-passage`, `.exam-passage-body`, `.exam-question-panel-heading`, and calm Candidate styling derived from `--exam-*` tokens.
+**Giao diện:**
+- Đầu vào: payload làm bài, registry renderer contracts, timer helpers, autosave callbacks, flag/highlight APIs, hành vi audio element và navigation refs hiện có.
+- Đầu ra: `.exam-passage`, `.exam-passage-body`, `.exam-question-panel-heading` và style làm bài dịu suy ra từ tokens `--exam-*`.
 
-- [ ] **Step 1: Strengthen Candidate CSS contracts**
+- [ ] **Bước 1: Tăng bảo vệ Candidate CSS contracts**
 
-Extend `exam-theme-css.test.ts` to assert the Candidate shell uses `--exam-*` tokens, Reading passage and question panes have distinct opaque surfaces, the footer strip remains single-row horizontally scrollable, the four chip states remain styled, instruction text preserves whitespace, and completion gaps remain compact inline controls.
+Mở rộng `exam-theme-css.test.ts` để kiểm shell dùng tokens `--exam-*`; passage/question panes có surfaces đặc riêng; footer strip một hàng cuộn ngang; bốn chip states có style; instructions giữ whitespace; gaps vẫn là controls inline gọn.
 
-- [ ] **Step 2: Run Candidate tests and confirm new class assertions fail**
+- [ ] **Bước 2: Chạy Candidate tests, xác nhận assertions class mới fail**
 
-Run: `npm test -- exam-theme-css.test.ts reading-instructions.test.tsx reading-navigation.test.tsx listening-player.test.tsx draft-preview.test.tsx selectable-text.test.tsx`
+Chạy: `npm test -- exam-theme-css.test.ts reading-instructions.test.tsx reading-navigation.test.tsx listening-player.test.tsx draft-preview.test.tsx selectable-text.test.tsx`
 
-Expected: only newly introduced structural/CSS assertions fail.
+Mong đợi: chỉ assertions cấu trúc/CSS mới fail.
 
-- [ ] **Step 3: Add editorial Reading hooks**
+- [ ] **Bước 3: Thêm hooks cho bố cục Reading**
 
-Replace presentation-only utility groupings in passage markup with semantic classes while preserving `SelectableText`, target IDs, split panes, independent scrolling, active-question tracking, passage selection, question navigation, flags, highlights, autosave, timer, and submission code exactly.
+Thay nhóm utility chỉ phục vụ trình bày trong passage markup bằng semantic classes; giữ nguyên `SelectableText`, target IDs, split panes, cuộn độc lập, theo dõi câu active, chọn passage, điều hướng câu, flags, highlights, autosave, timer và mã submit.
 
-- [ ] **Step 4: Apply calm Candidate styling**
+- [ ] **Bước 4: Áp dụng style làm bài dịu**
 
-Use opaque editorial Reading surfaces, restrained header/footer chrome, quiet instructions, accessible controls, and focus-only glow. Do not place galaxy decoration behind passage text or question cards.
+Dùng Reading surfaces đặc, header/footer tiết chế, instructions nhẹ, controls dễ tiếp cận và chỉ glow khi focus. Không đặt trang trí galaxy sau passage hoặc thẻ câu hỏi.
 
-- [ ] **Step 5: Polish Listening player and section presentation**
+- [ ] **Bước 5: Cải thiện Listening player và section**
 
-Use a raised violet/blue player surface with practical control grouping. Preserve the single shared audio element, all player labels, seek, volume, speed, skip, and playback behavior.
+Dùng player surface nổi violet/xanh, nhóm controls thực dụng. Giữ một audio element dùng chung, mọi nhãn player, seek, âm lượng, tốc độ, skip và hành vi phát.
 
-- [ ] **Step 6: Align Draft Preview with Candidate rendering**
+- [ ] **Bước 6: Đồng bộ Draft Preview với render làm bài**
 
-Reuse the same passage, question, instruction, player, and navigation presentation with a small preview status treatment. Preserve the existing no-save preview behavior.
+Dùng lại cách trình bày passage, câu hỏi, instructions, player và điều hướng; thêm chỉ báo preview nhỏ. Giữ preview không lưu như hiện có.
 
-- [ ] **Step 7: Run Candidate and regression tests**
+- [ ] **Bước 7: Chạy Candidate và regression tests**
 
-Run: `npm test -- exam-theme-css.test.ts reading-instructions.test.tsx reading-navigation.test.tsx listening-player.test.tsx draft-preview.test.tsx selectable-text.test.tsx text-completion-canvas.test.tsx timer.test.ts word-boundaries.test.ts`
+Chạy: `npm test -- exam-theme-css.test.ts reading-instructions.test.tsx reading-navigation.test.tsx listening-player.test.tsx draft-preview.test.tsx selectable-text.test.tsx text-completion-canvas.test.tsx timer.test.ts word-boundaries.test.ts`
 
-Expected: all selected tests pass.
+Mong đợi: mọi test đã chọn đều pass.
 
-### Task 5: Review, dialogs, highlights, responsive polish, and full verification
+### Công việc 5: Review, dialogs, highlights, responsive và kiểm chứng đầy đủ
 
-**Files:**
-- Modify: `frontend/src/features/reading/reading-review.tsx`
-- Modify: `frontend/src/features/listening/listening-review.tsx`
-- Modify: `frontend/src/components/ui/confirm-dialog.tsx` only if a semantic hook is required
-- Modify: `frontend/src/features/highlighting/selectable-text.tsx` only if a semantic hook is required
-- Modify: `frontend/src/app/globals.css`
-- Modify: `frontend/tests/visual-system-css.test.ts`
-- Test: all `frontend/tests/**/*.test.*`
+**Tệp:**
+- Sửa: `frontend/src/features/reading/reading-review.tsx`
+- Sửa: `frontend/src/features/listening/listening-review.tsx`
+- Sửa: `frontend/src/components/ui/confirm-dialog.tsx` chỉ nếu cần semantic hook
+- Sửa: `frontend/src/features/highlighting/selectable-text.tsx` chỉ nếu cần semantic hook
+- Sửa: `frontend/src/app/globals.css`
+- Sửa: `frontend/tests/visual-system-css.test.ts`
+- Kiểm thử: toàn bộ `frontend/tests/**/*.test.*`
 
-**Interfaces:**
-- Consumes: finalized review DTOs, shared question renderers, current dialog callbacks, and portal-based highlight popovers.
-- Produces: educational review rows, unified overlay surfaces, and final responsive/accessibility guarantees.
+**Giao diện:**
+- Đầu vào: review DTOs đã finalize, question renderers dùng chung, dialog callbacks hiện có và highlight popovers qua portal.
+- Đầu ra: hàng review phục vụ học tập, overlay surfaces thống nhất và bảo đảm responsive/accessibility cuối cùng.
 
-- [ ] **Step 1: Add review and responsive expectations to the CSS contract**
+- [ ] **Bước 1: Thêm kỳ vọng review và responsive vào CSS contract**
 
-Assert review correct/wrong states use semantic soft colors and borders, dialog/popover surfaces use shared tokens, mobile breakpoints cover learner rows and Candidate chrome, and reduced-motion remains present.
+Kiểm trạng thái đúng/sai dùng semantic colors/borders nhẹ; dialog/popover dùng tokens chung; mobile breakpoints bao phủ hàng học tập và Candidate chrome; giữ reduced-motion.
 
-- [ ] **Step 2: Run the contract test and verify the new assertions fail before final styling**
+- [ ] **Bước 2: Chạy contract test, xác nhận assertions mới fail trước style cuối**
 
-Run: `npm test -- visual-system-css.test.ts`
+Chạy: `npm test -- visual-system-css.test.ts`
 
-Expected: newly added review/responsive assertions fail.
+Mong đợi: assertions review/responsive mới fail.
 
-- [ ] **Step 3: Refine Reading and Listening review hierarchy**
+- [ ] **Bước 3: Cải thiện phân cấp review Reading/Listening**
 
-Keep current answer-key data and renderers. Present score/section navigation clearly and separate Your answer, Correct answer, and Explanation with typography and subtle semantic borders rather than full saturated panels.
+Giữ answer-key data và renderers hiện có. Trình bày rõ điểm/điều hướng section; tách Your answer, Correct answer và Explanation bằng typography, semantic borders nhẹ thay cho mảng màu bão hòa lớn.
 
-- [ ] **Step 4: Unify dialogs, validation panels, and highlight popovers**
+- [ ] **Bước 4: Thống nhất dialogs, validation panels và highlight popovers**
 
-Use the shared raised surface, line, shadow, radius, and action-alignment system. Preserve portals, hydration safety, delete-all behavior, and all existing labels and callbacks.
+Dùng chung raised surface, đường viền, shadow, radius và căn thao tác. Giữ portals, hydration safety, delete-all, mọi labels và callbacks hiện có.
 
-- [ ] **Step 5: Complete responsive and accessibility styling**
+- [ ] **Bước 5: Hoàn tất responsive và accessibility styling**
 
-Check 1440 px, 1024 px, 768 px, and 390 px widths. Ensure shell navigation, hero, cards, history rows, builder toolbar/local navigation, passage/section cards, Candidate header/footer, and dialogs remain usable without page-level horizontal overflow. Verify light/dark contrast and keyboard-visible focus.
+Kiểm độ rộng 1440 px, 1024 px, 768 px và 390 px. Bảo đảm shell navigation, hero, cards, history rows, builder toolbar/local navigation, passage/section cards, Candidate header/footer và dialogs dùng được mà không tràn ngang toàn trang. Kiểm contrast sáng/tối và focus thấy được qua bàn phím.
 
-- [ ] **Step 6: Run the complete frontend verification suite**
+- [ ] **Bước 6: Chạy toàn bộ frontend verification suite**
 
-Run from `frontend/`:
+Chạy từ `frontend/`:
 
 ```text
 npm test
@@ -294,15 +294,15 @@ npm run typecheck
 npm run build
 ```
 
-Expected: every command exits with code 0. Fix implementation regressions rather than removing or weakening tests.
+Mong đợi: mọi lệnh trả exit code 0. Sửa regression triển khai, không xóa hoặc làm yếu tests.
 
-- [ ] **Step 7: Perform visual browser verification**
+- [ ] **Bước 7: Kiểm giao diện bằng browser**
 
-Inspect Home, Library, History, Admin, available Builder/Candidate/Review screens in both themes and desktop/mobile viewports. Confirm the dashboard identity is expressive while Candidate screens remain calm. Record any environment-limited screen in the final visual-debt note.
+Xem Home, Library, History, Admin và các màn hình Builder/Candidate/Review có thể truy cập trong cả hai theme, desktop/mobile. Dashboard cần thể hiện cá tính, giao diện làm bài vẫn dịu. Ghi màn hình bị giới hạn bởi môi trường vào phần visual debt cuối.
 
-- [ ] **Step 8: Inspect the repository diff and whitespace**
+- [ ] **Bước 8: Kiểm repository diff và khoảng trắng**
 
-Run from the repository root:
+Chạy từ thư mục gốc repository:
 
 ```text
 git status --short
@@ -311,11 +311,11 @@ git diff --stat
 git diff
 ```
 
-Confirm only the design spec, plan, task-related frontend source, and tests changed. Confirm no `.env`, `.env.local`, secret, storage binary, backend file, migration, or unrelated file is included.
+Xác nhận chỉ đổi design spec, plan, frontend source và tests thuộc nhiệm vụ. Không đưa `.env`, `.env.local`, secret, storage binaries, backend files, migration hoặc tệp không liên quan vào.
 
-- [ ] **Step 9: Stage only task files and verify the staged diff**
+- [ ] **Bước 9: Stage đúng tệp nhiệm vụ và kiểm staged diff**
 
-Stage explicit task-related paths, then run:
+Stage các đường dẫn thuộc nhiệm vụ một cách tường minh, rồi chạy:
 
 ```text
 git diff --cached --check
@@ -323,15 +323,15 @@ git diff --cached --stat
 git diff --cached
 ```
 
-Expected: clean whitespace check and one focused redesign diff.
+Mong đợi: kiểm khoảng trắng sạch và một diff tập trung vào redesign.
 
-- [ ] **Step 10: Commit and push**
+- [ ] **Bước 10: Commit và push**
 
-Run:
+Chạy:
 
 ```text
 git commit -m "feat: introduce fantasy galaxy visual system"
 git push
 ```
 
-Expected: one commit on `main`, pushed to `origin/main` without force. If authentication blocks the push, stop after reporting the exact blocker.
+Mong đợi: một commit trên `main`, push tới `origin/main` không force. Nếu xác thực chặn push, dừng và báo chính xác nguyên nhân.

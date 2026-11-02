@@ -1,63 +1,63 @@
-# Classroom staff and Gradebook (P3)
+# Nhân sự lớp học và bảng điểm Gradebook (P3)
 
-> **Documentation audit: CURRENT (corrected from NEEDS UPDATE).** Canonical concern này; source-check các boundary/API, không live validation.
-> Mục đích: Classroom staff and Gradebook (P3). Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../backend/app/services/classroom_capabilities.py).
-> Đọc cùng [current module/guide](modules/classrooms.md); [audit và giới hạn](DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+> **Kiểm toán tài liệu: CURRENT (đã sửa từ NEEDS UPDATE).** Đây là nguồn chuẩn cho phạm vi này; đã đối chiếu ranh giới/API với mã nguồn, chưa xác thực trên môi trường đang chạy.
+> Mục đích: Nhân sự lớp học và bảng điểm Gradebook (P3). Đối chiếu mã nguồn `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [triển khai](../backend/app/services/classroom_capabilities.py).
+> Đọc cùng [mô-đun/hướng dẫn hiện hành](modules/classrooms.md); [kiểm toán và giới hạn](DOCS_AUDIT.md). Kết quả kiểm thử/đo hiệu năng bên dưới thuộc lần thực hiện gốc, không phải lần chạy lại trong đợt kiểm toán này.
 
-P3 extends P1/P2. Global USER/TEACHER/ADMIN roles and Builder ownership stay independent of classroom staff. The owner remains `classrooms.teacher_id`; there is no owner staff row.
+P3 mở rộng P1/P2. Vai trò USER/TEACHER/ADMIN toàn cục và quyền sở hữu Builder tiếp tục độc lập với nhân sự lớp học. Chủ sở hữu vẫn là `classrooms.teacher_id`; không có hàng nhân sự cho chủ sở hữu.
 
-## Permissions and staff lifecycle
+## Quyền và vòng đời nhân sự
 
-`ClassroomStaff` stores explicit invitation state and four typed optional TA flags, not a free-form permission dictionary. The centralized `Capability` enum resolves the actor's current classroom role on every request. Owners have all classroom capabilities. Co-teachers may manage students, content, discussions, assignments/extensions, grades, analytics and improvement plans; they cannot change classroom settings/ownership or staff. TAs always have `grades.view`/`grades.edit`; `content.manage`, `discussion.moderate`, `analytics.view` and `learning_plans.manage` are opt-in owner-controlled flags. Students only see their authorized classroom and own work.
+`ClassroomStaff` lưu trạng thái lời mời rõ ràng và bốn cờ TA tùy chọn có kiểu, không dùng từ điển quyền tự do. Enum `Capability` tập trung xác định vai trò lớp học hiện tại của người thực hiện trên từng yêu cầu. Chủ sở hữu có mọi khả năng của lớp học. Đồng giảng viên có thể quản lý học viên, nội dung, thảo luận, bài giao/gia hạn, điểm, phân tích và kế hoạch cải thiện; họ không được đổi cài đặt/quyền sở hữu lớp hoặc nhân sự. TA luôn có `grades.view`/`grades.edit`; `content.manage`, `discussion.moderate`, `analytics.view` và `learning_plans.manage` là cờ phải được chủ sở hữu chủ động bật. Học viên chỉ thấy lớp học được phân quyền và bài làm của mình.
 
-Current ADMIN access is read-only classroom oversight: roster, grades and analytics, resolved by ADMIN_OBSERVER in classroom_capabilities.py. ADMIN cannot create/archive assignments, edit grades or participate through legacy membership. Owner/co-teacher/TA mutations require the specific current capability; classroom management remains owner-only.
+Quyền ADMIN hiện tại là giám sát lớp học chỉ đọc: danh sách lớp, điểm và phân tích, được xác định bởi ADMIN_OBSERVER trong classroom_capabilities.py. ADMIN không được tạo/lưu trữ bài giao, sửa điểm hoặc tham gia qua tư cách thành viên cũ. Thao tác ghi của chủ sở hữu/đồng giảng viên/TA yêu cầu khả năng hiện hành cụ thể; quản lý lớp học vẫn chỉ dành cho chủ sở hữu.
 
-Only existing active accounts can be invited. Co-teachers require global TEACHER; TAs require USER or TEACHER. Invitations require the recipient's explicit accept/decline. The owner can cancel, change role/flags and revoke access. A partial unique index permits one pending or accepted staff record per room/account. Actor/room locks serialize competing invitations and role changes. Every transition appends actor, role, status and flags to database-protected staff history. Accepted staff access is checked afresh; revocation does not grant access through a cached role.
+Chỉ tài khoản đang hoạt động đã tồn tại mới được mời. Đồng giảng viên yêu cầu vai trò toàn cục TEACHER; TA yêu cầu USER hoặc TEACHER. Người nhận phải chủ động chấp nhận/từ chối lời mời. Chủ sở hữu có thể hủy, đổi vai trò/cờ và thu hồi quyền. Chỉ mục duy nhất có điều kiện cho phép một bản ghi nhân sự đang chờ hoặc đã chấp nhận cho mỗi lớp/tài khoản. Khóa người thực hiện/lớp tuần tự hóa lời mời và thay đổi vai trò cạnh tranh. Mỗi chuyển trạng thái nối thêm người thực hiện, vai trò, trạng thái và cờ vào lịch sử nhân sự được cơ sở dữ liệu bảo vệ. Quyền nhân sự đã chấp nhận được kiểm tra lại; vai trò đã cache không cấp quyền sau thu hồi.
 
-Acceptance closes active student memberships in the same transaction. Historical submissions survive and remain discoverable, while staff are not ordinary active students in completion metrics. Re-enrollment as a student requires removing staff access and a new normal student invitation. Global TEACHER demotion/deactivation is blocked while a Co-teacher invitation/membership still requires TEACHER. Account deactivation continues to prevent authenticated access. Archived classrooms permit retained reads and block staff mutations.
+Chấp nhận lời mời đóng tư cách học viên đang hoạt động trong cùng giao dịch. Bài nộp lịch sử vẫn tồn tại và có thể tìm thấy, còn nhân sự không được tính như học viên đang hoạt động bình thường trong chỉ số hoàn thành. Đăng ký lại làm học viên yêu cầu gỡ quyền nhân sự và lời mời học viên mới theo quy trình thường. Chặn hạ vai trò/vô hiệu hóa TEACHER toàn cục khi lời mời/tư cách đồng giảng viên vẫn yêu cầu TEACHER. Vô hiệu hóa tài khoản tiếp tục chặn truy cập có xác thực. Lớp đã lưu trữ cho phép đọc dữ liệu giữ lại và chặn thay đổi nhân sự.
 
-Classroom assignment eligibility still requires official content or the owner's approved teacher content. Co-teachers receive a bounded assignable-test metadata endpoint; this does not grant Builder access, unpublished keys, editing rights or moderation bypasses.
+Điều kiện giao bài lớp học vẫn yêu cầu nội dung chính thức hoặc nội dung giáo viên đã được phê duyệt của chủ sở hữu. Đồng giảng viên nhận endpoint metadata đề đủ điều kiện giao có giới hạn; việc này không cấp quyền Builder, đáp án chưa xuất bản, quyền chỉnh sửa hay bỏ qua kiểm duyệt.
 
-## Scores and selection
+## Điểm và cách lựa chọn
 
-Gradebook shares P2's root provenance, immutable historical acceptance and cohort/status SQL. Direct assigned Attempts are roots; Full Mock TestSessions are single roots and their children appear only in the skill breakdown. Personal practice and rejected/unfinished roots never supply accepted grades. Retained results do not depend on current enrollment.
+Gradebook dùng chung nguồn gốc lượt gốc, chấp nhận lịch sử bất biến và SQL nhóm học viên/trạng thái của P2. Attempt được giao trực tiếp là lượt gốc; TestSession Full Mock là một lượt gốc và các lượt con chỉ xuất hiện trong chi tiết kỹ năng. Luyện tập cá nhân và lượt gốc bị từ chối/chưa hoàn tất không cung cấp điểm được chấp nhận. Kết quả giữ lại không phụ thuộc việc hiện còn tham gia lớp hay không.
 
-Objective scores are stored native backend scores. Writing/Speaking require the corresponding human-final records; AI runs are never consulted. A missing human grade is `PENDING_HUMAN`, never zero. Focused units never supply full-module bands. Focused Writing may show its native task average, distinctly labeled as a task score. Full Mock overall uses the native four-skill aggregator only when all four valid final bands exist; legacy three-skill sessions retain breakdowns without a fabricated four-skill overall.
+Điểm khách quan là điểm gốc do backend lưu. Writing/Speaking yêu cầu bản ghi chốt điểm của con người tương ứng; tuyệt đối không đọc lượt chạy AI. Thiếu điểm người chấm là `PENDING_HUMAN`, không bao giờ là không điểm. Đơn vị luyện tập tập trung không cung cấp band toàn mô-đun. Writing tập trung có thể hiển thị điểm trung bình gốc của task, ghi nhãn rõ là điểm task. Tổng Full Mock chỉ dùng bộ tổng hợp bốn kỹ năng gốc khi có đủ bốn band cuối hợp lệ; phiên ba kỹ năng cũ giữ chi tiết mà không bịa điểm tổng bốn kỹ năng.
 
-Each assignment defaults to `LATEST_ACCEPTED`. `FIRST_ACCEPTED` chooses the earliest accepted completion. `BEST_ACCEPTED` ranks only a homogeneous assessment context (skill, full/focused scope, stable focused unit; or persisted Full Mock module order). Available native bands/raw objective scores or focused Writing task averages determine rank; missing comparable scores fall back deterministically to latest completion. Heterogeneous contexts use latest accepted and explicitly return `mixed_context_fallback`. Filtering one skill can produce a comparable selection. Dates and UUIDs break ties. Schedule/extension history and exam content are not changed by selection policy edits; revision checks prevent stale writes.
+Mỗi bài giao mặc định `LATEST_ACCEPTED`. `FIRST_ACCEPTED` chọn lần hoàn thành được chấp nhận sớm nhất. `BEST_ACCEPTED` chỉ xếp hạng trong bối cảnh đánh giá đồng nhất (kỹ năng, phạm vi đầy đủ/tập trung, đơn vị tập trung ổn định; hoặc thứ tự mô-đun Full Mock đã lưu). Band/điểm thô khách quan gốc hiện có hoặc trung bình task Writing tập trung quyết định thứ hạng; thiếu điểm so sánh được sẽ chuyển xác định sang lần hoàn thành mới nhất. Bối cảnh không đồng nhất dùng lượt được chấp nhận mới nhất và trả rõ `mixed_context_fallback`. Lọc một kỹ năng có thể tạo tập so sánh được. Ngày và UUID phá hòa. Sửa chính sách lựa chọn không đổi lịch sử lịch/gia hạn và nội dung đề; kiểm tra revision ngăn ghi trạng thái lỗi thời.
 
-The matrix paginates students (default 30, maximum 100) and assignment columns (20). Search, assignment, skill, completion and name sorting are server-side. Score sorting requires an assignment and skill filter so a cross-skill ranking is never implied. Student profiles paginate assignment summaries and successful root history; status counts describe the displayed assignment page. Existing result/grading pages remain canonical.
+Ma trận phân trang học viên (mặc định 30, tối đa 100) và cột bài giao (20). Tìm kiếm, lọc bài giao, kỹ năng, hoàn thành và sắp tên thực hiện phía máy chủ. Sắp điểm yêu cầu lọc bài giao và kỹ năng để không ngụ ý xếp hạng chéo kỹ năng. Hồ sơ học viên phân trang tóm tắt bài giao và lịch sử lượt gốc thành công; số trạng thái mô tả trang bài giao đang hiển thị. Trang kết quả/chấm điểm hiện có tiếp tục là nguồn chuẩn.
 
-CSV uses the same permission checks, filters and selected score resolution. A bounded export contains at most 200 students and 20 assignment columns starting at the requested offsets; request subsequent pages for a larger class. It includes selection, skill, nullable final band/raw score, submission and grading provenance. Column order is stable. Python CSV escaping, a UTF-8 BOM and spreadsheet formula/control-character escaping protect exported names and titles. It contains no personal practice or answer keys.
+CSV dùng cùng kiểm tra quyền, bộ lọc và cách xác định điểm được chọn. Một lần xuất có giới hạn chứa tối đa 200 học viên và 20 cột bài giao từ offset yêu cầu; cần lấy các trang sau cho lớp lớn hơn. Nội dung gồm cách lựa chọn, kỹ năng, band cuối/điểm thô cho phép null, nguồn gốc bài nộp và chấm điểm. Thứ tự cột ổn định. Escape CSV của Python, UTF-8 BOM và escape công thức bảng tính/ký tự điều khiển bảo vệ tên và tiêu đề xuất ra. Không chứa luyện tập cá nhân hoặc đáp án.
 
 ## API
 
-Paths are under `/api/v1`:
+Các đường dẫn nằm dưới `/api/v1`:
 
-| Path | Operations |
+| Đường dẫn | Thao tác |
 | --- | --- |
-| `/me/classroom-staff-invitations` | GET own bounded invitation history |
-| `/classrooms/{id}/staff` | GET staff roster/history; POST owner invitation |
-| `/classrooms/{id}/staff/{staffId}` | PATCH owner role/typed flags; DELETE cancel/revoke |
-| `/classrooms/{id}/staff/{staffId}/{accept,decline}` | POST recipient response |
-| `/classrooms/{id}/assignable-tests` | GET bounded authorized published assignment metadata |
-| `/classrooms/{id}/gradebook` | GET paginated matrix |
-| `/classrooms/{id}/gradebook/export` | GET bounded authenticated CSV |
-| `/classrooms/{id}/assignments/{assignmentId}/grade-policy` | PATCH selection with expected revision |
-| `/classrooms/{id}/students/{studentId}/academic-profile` | GET retained classroom-only profile |
+| `/me/classroom-staff-invitations` | GET lịch sử lời mời của chính mình có giới hạn |
+| `/classrooms/{id}/staff` | GET danh sách/lịch sử nhân sự; POST lời mời của chủ sở hữu |
+| `/classrooms/{id}/staff/{staffId}` | PATCH vai trò/cờ có kiểu của chủ sở hữu; DELETE hủy/thu hồi |
+| `/classrooms/{id}/staff/{staffId}/{accept,decline}` | POST phản hồi của người nhận |
+| `/classrooms/{id}/assignable-tests` | GET metadata đề đã xuất bản được phân quyền, có giới hạn để giao |
+| `/classrooms/{id}/gradebook` | GET ma trận có phân trang |
+| `/classrooms/{id}/gradebook/export` | GET CSV có xác thực và giới hạn |
+| `/classrooms/{id}/assignments/{assignmentId}/grade-policy` | PATCH cách lựa chọn kèm revision kỳ vọng |
+| `/classrooms/{id}/students/{studentId}/academic-profile` | GET hồ sơ lưu giữ chỉ thuộc lớp học |
 
-`GET /classrooms/{id}` now returns contextual role/capabilities. Existing classroom member/content/assignment/result/scheduling/grading APIs check their specific capabilities. The Stream supports a server-side `content_kind` filter bound into pagination cursors.
+`GET /classrooms/{id}` nay trả vai trò/khả năng theo ngữ cảnh. API thành viên/nội dung/bài giao/kết quả/lập lịch/chấm điểm lớp học hiện có kiểm tra từng khả năng cụ thể. Stream hỗ trợ bộ lọc `content_kind` phía máy chủ được gắn vào con trỏ phân trang.
 
-## Classroom UX/UI overhaul
+## Cải tổ UX/UI lớp học
 
-The completed [dual-skill workspace refactor](classroom-workspace.md) adds topic-first content workflows, contextual creation/actions, responsive matrix/list views and integrated [P4 learning analytics/plans](classroom-learning-analytics.md). At that historical verification point, 0038 and 0039 were reported applied locally. The inspected repository now has Alembic head 20261028_0043; this audit did not inspect any live database revision. The original P3 verification below records its phase-specific snapshot.
+[Tái cấu trúc không gian làm việc với hai kỹ năng thiết kế](classroom-workspace.md) đã hoàn thành bổ sung luồng nội dung ưu tiên chủ đề, thao tác/tạo theo ngữ cảnh, chế độ ma trận/danh sách thích ứng và tích hợp [phân tích/kế hoạch học tập P4](classroom-learning-analytics.md). Ở mốc xác minh lịch sử đó, 0038 và 0039 được báo đã áp dụng cục bộ. Kho mã được kiểm tra hiện có Alembic head 20261028_0043; đợt kiểm toán này không kiểm tra revision cơ sở dữ liệu đang chạy. Xác minh P3 gốc bên dưới ghi lại ảnh chụp riêng của giai đoạn.
 
-The shared course shell uses a compact real-data header, one scrolling tab row, one fluid content plane and no empty permanent sidebars or duplicate section selectors. Archive/restore/leave live in a contextual management disclosure. Creation opens a focused assignment form; scheduling uses progressive disclosure. Staff see a real assignment/member overview and direct Gradebook/People/material navigation. Students see learning workflows without staff administration tabs.
+Khung khóa học dùng chung gồm đầu trang gọn với dữ liệu thực, một hàng thẻ cuộn, một vùng nội dung co giãn, không có thanh bên cố định rỗng hoặc bộ chọn phần trùng. Lưu trữ/khôi phục/rời lớp nằm trong vùng quản lý mở theo ngữ cảnh. Tạo mở biểu mẫu bài giao có trọng tâm; lập lịch hiển thị dần chi tiết. Nhân sự thấy tổng quan bài giao/thành viên thực và điều hướng trực tiếp Gradebook/People/tài liệu. Học viên thấy luồng học tập, không có thẻ quản trị nhân sự.
 
-Feed entries have prominent title fallbacks, a semantic localized timestamp, explicit content type and grouped deadlines. Classwork retains native resource access and keyboard/drag ordering and explains the empty course with a first-section action. Gradebook uses an internal scroll frame, sticky student column, semantic table headers and expandable result details. Small screens keep tab/table overflow inside their frames and use 44px actions. Both locales and shared light/dark tokens remain in use.
+Mục bảng tin có tiêu đề dự phòng nổi bật, thời gian bản địa hóa có ngữ nghĩa, loại nội dung rõ và các hạn được nhóm. Classwork giữ truy cập tài nguyên gốc và sắp thứ tự bằng bàn phím/kéo, đồng thời giải thích khóa học rỗng bằng thao tác tạo phần đầu tiên. Gradebook dùng khung cuộn nội bộ, cột học viên cố định, tiêu đề bảng có ngữ nghĩa và chi tiết kết quả mở rộng. Màn hình nhỏ giữ phần tràn thẻ/bảng trong khung và dùng thao tác 44px. Cả hai ngôn ngữ và token sáng/tối dùng chung tiếp tục được sử dụng.
 
-Design continuation: `design-taste-frontend`, achromatic-ledger seed 2734, existing palette/type retained; IELTS skill lanes and accepted/pending score provenance provide the product identity. The course screen answers “What needs teaching or completion next?” and Gradebook answers “Which accepted work has a final grade?” No browser, E2E, production build or full suite is used under this task's verification limits; responsive behavior is source/unit checked and visual browser verification is not claimed.
+Tiếp nối thiết kế: `design-taste-frontend`, achromatic-ledger seed 2734, giữ bảng màu/kiểu chữ hiện có; làn kỹ năng IELTS và nguồn gốc điểm đã chấp nhận/đang chờ tạo bản sắc sản phẩm. Màn hình khóa học trả lời “Tiếp theo cần dạy hoặc hoàn thành việc gì?” và Gradebook trả lời “Bài làm được chấp nhận nào đã có điểm cuối?” Theo giới hạn xác minh của nhiệm vụ, không dùng trình duyệt, E2E, bản dựng production hay toàn bộ bộ kiểm thử; hành vi thích ứng được kiểm tra mã nguồn/đơn vị và không tuyên bố đã xác minh trực quan trên trình duyệt.
 
 ## Migration
 
-Additive `20261027_0038` follows P2 `0037`, adding `classroom_staff`, append-only `classroom_staff_events`, indexes/constraints and `classroom_assignments.grade_selection`. Exam content, provenance, timers and scores are not rewritten. Downgrade is only for an unused feature domain and refuses retained staff/policy data. Apply through normal Alembic deployment after isolated migration verification.
+Migration bổ sung `20261027_0038` theo sau P2 `0037`, thêm `classroom_staff`, `classroom_staff_events` chỉ cho nối thêm, chỉ mục/ràng buộc và `classroom_assignments.grade_selection`. Không ghi lại nội dung đề, nguồn gốc, bộ đếm thời gian hay điểm. Downgrade chỉ dành cho miền tính năng chưa được dùng và từ chối khi còn dữ liệu nhân sự/chính sách được giữ lại. Áp dụng qua quy trình triển khai Alembic bình thường sau khi xác minh migration trên môi trường cô lập.

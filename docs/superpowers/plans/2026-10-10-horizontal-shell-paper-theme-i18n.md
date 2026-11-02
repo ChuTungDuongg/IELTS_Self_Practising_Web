@@ -1,102 +1,102 @@
-# Horizontal Shell, Paper Theme & EN/VI Implementation Plan
+# Kế hoạch triển khai khung điều hướng ngang, giao diện giấy và EN/VI
 
-> **Documentation audit: SUPERSEDED.** Historical reference; không phải contract hiện hành.
-> Mục đích: Horizontal Shell, Paper Theme & EN/VI Implementation Plan. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../../../frontend/src/components/ui/app-shell.tsx).
-> Đọc cùng [current module/guide](../../modules/shared-platform.md); [audit và giới hạn](../../DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+> **Kiểm toán tài liệu: SUPERSEDED.** Tài liệu tham khảo lịch sử; không phải hợp đồng hiện hành.
+> Mục đích: Kế hoạch triển khai khung điều hướng ngang, giao diện giấy và EN/VI. Đối chiếu mã nguồn `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [mã triển khai](../../../frontend/src/components/ui/app-shell.tsx).
+> Đọc cùng [mô-đun/hướng dẫn hiện hành](../../modules/shared-platform.md); [kiểm toán và giới hạn](../../DOCS_AUDIT.md). Kết quả kiểm thử/benchmark bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong lần kiểm toán này.
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **Dành cho agent triển khai:** SKILL PHỤ BẮT BUỘC: dùng superpowers:subagent-driven-development (khuyến nghị) hoặc superpowers:executing-plans để thực hiện lần lượt từng nhiệm vụ. Các bước dùng ô đánh dấu (`- [ ]`) để theo dõi.
 
-**Goal:** Replace the permanent workspace sidebar with horizontal navigation, add a shared footer, introduce a warm paper/graphite visual system, and add typed English/Vietnamese system UI localization without changing authored IELTS content or exam behavior.
+**Mục tiêu:** Thay sidebar workspace thường trực bằng điều hướng ngang, thêm footer chung, hệ thị giác giấy ấm/graphite và bản địa hóa UI hệ thống Anh/Việt có kiểu, không đổi nội dung IELTS do tác giả soạn hoặc hành vi thi.
 
-**Architecture:** RootLayout remains a server component and wraps the existing AuthProvider/AppShell tree in one client LocaleProvider. AppShell composes a horizontal GlobalHeader and AppFooter on workspace routes while preserving its existing exam-route bypass; CSS supplies responsive composition and explicitly protects current exam values from the new workspace palette. Typed bundled dictionaries translate system text through existing client views and small server/client presentation boundaries, without changing data fetching or feature identity.
+**Kiến trúc:** RootLayout vẫn là server component, bọc cây AuthProvider/AppShell hiện có trong một LocaleProvider phía client. AppShell ghép GlobalHeader ngang và AppFooter trên tuyến workspace, giữ cơ chế bỏ qua tuyến thi; CSS cung cấp bố cục đáp ứng và bảo vệ tường minh giá trị giao diện thi khỏi bảng màu workspace mới. Từ điển đóng gói có kiểu dịch văn bản hệ thống qua view client hiện có và ranh giới trình bày server/client nhỏ, không đổi fetch dữ liệu hoặc định danh tính năng.
 
-**Tech Stack:** Next.js, React, TypeScript, CSS, Vitest, React Testing Library
+**Công nghệ:** Next.js, React, TypeScript, CSS, Vitest, React Testing Library
 
-**Spec:** `docs/superpowers/specs/2026-10-10-horizontal-shell-paper-theme-i18n-design.md`
+**Đặc tả:** `docs/superpowers/specs/2026-10-10-horizontal-shell-paper-theme-i18n-design.md`
 
-## Global Constraints
+## Ràng buộc chung
 
-- Frontend only. No dependencies, backend/API/schema/DB/migration changes, font downloads, binary assets, or external services. Read `frontend/AGENTS.md` and relevant bundled Next.js guides before writing implementation code.
-- Exactly `en | vi`, default `en`, storage key `ielts-locale`. Exactly light/dark, storage key `ielts-theme`; saved valid theme wins, otherwise light. No system/auto mode, locale routes, cookies, flags, cross-tab synchronization, or generated translations.
-- Translate application-owned static UI and accessible labels. Preserve authored test titles/descriptions, passage titles/text, Listening content, question prompts/options, administrator instructions, Writing prompts/responses, manually authored section/task content, answer keys/explanations and user values. Locale changes the interface, not IELTS content.
-- Include common static runner/review/preview/paused-gate/Full Mock transition controls now. No runner redesign, new runner controls, blanket English runner boundary, or changes to exam layout/tokens, timers, autosave, highlighting, flags, playback policies, scoring, security, or attempt state transitions.
-- Preserve Full Listening, Full Mock, optional focused Listening audio, clipping, seeking/speed permissions and raw/max + accuracy with no focused Band. No Skill Practice or Test Library business-logic changes, AI changes, authentication redesign, or Speaking implementation. Existing Speaking target fields may receive translated labels only.
-- Keep published versions/frozen DTOs, routes, enum codes, IDs, payloads, validation branches and server guards intact. Translate local fallback branches; unknown server diagnostics and authored/API labels pass through unchanged.
-- Locale/theme never become page/card/attempt keys or dependencies that reset stores, recreate audio, navigate, or restart requests. SSR and first client text are English; locale restoration happens after hydration. Root theme bootstrap may change only `data-theme`, using the existing narrow root hydration suppression.
-- Preserve specialized Builder editors and range functionality. Defer their nested help, answer-key guidance, completion/diagram tools and audio-range guidance. IELTS instruction templates are excluded content, not a future translation backlog.
-- Verification uses targeted Vitest/RTL, CSS contracts/contrast arithmetic, typecheck, targeted ESLint and `git diff --check`. No browser, manual browser checks, Playwright/E2E, dev server, backend suites, AI calls, Modal, or real audio. DOM/CSS tests do not claim pixel-level rendering proof.
-- Test/ESLint/typecheck commands below run with working directory `frontend/`; Git commands run from the repository root. Use existing installed packages and scripts (`test: vitest run`, `typecheck: tsc --noEmit`). Mock HTTP and media APIs; use fictional fixtures only. Reset preference storage/root attributes and restore mocks/fake timers per test.
-- Each implementation commit includes only its listed changes and tests. Update obsolete assertions when their owning task changes behavior, preserving useful assertions; do not leave earlier tasks broken until Task 12. Run `npm run typecheck`, targeted `npx eslint <changed .ts/.tsx paths>` and root `git diff --check` before each commit.
+- Chỉ frontend. Không thêm phụ thuộc, đổi backend/API/schema/DB/migration, tải font, thêm tài sản nhị phân hoặc dịch vụ ngoài. Đọc `frontend/AGENTS.md` và hướng dẫn Next.js đi kèm liên quan trước viết mã triển khai.
+- Đúng `en | vi`, mặc định `en`, khóa storage `ielts-locale`. Đúng hai giao diện light/dark, khóa `ielts-theme`; ưu tiên giao diện đã lưu hợp lệ, nếu không dùng light. Không có system/auto, tuyến ngôn ngữ, cookie, cờ quốc gia, đồng bộ xuyên tab hoặc bản dịch sinh tự động.
+- Dịch UI tĩnh và nhãn hỗ trợ truy cập do ứng dụng sở hữu. Giữ tiêu đề/mô tả bài, tiêu đề/nội dung đoạn đọc, nội dung Listening, prompt/phương án câu hỏi, hướng dẫn quản trị viên, đề/response Writing, nội dung section/task soạn tay, đáp án/giải thích và giá trị người dùng. Ngôn ngữ đổi giao diện, không đổi nội dung IELTS.
+- Bao gồm ngay điều khiển tĩnh chung của runner/review/preview/paused-gate/chuyển Full Mock. Không thiết kế lại runner, thêm điều khiển mới, đặt ranh giới ép tiếng Anh toàn runner hoặc đổi bố cục/token thi, timer, autosave, highlight, cờ, chính sách phát, chấm, bảo mật hoặc chuyển trạng thái attempt.
+- Giữ Full Listening, Full Mock, âm thanh focused Listening tùy chọn, clip, quyền tua/tốc độ, raw/max + accuracy và không có focused Band. Không đổi nghiệp vụ Skill Practice/Test Library, AI, thiết kế auth hoặc triển khai Speaking. Trường đích Speaking hiện có chỉ được dịch nhãn.
+- Giữ phiên bản published/DTO đóng băng, tuyến, mã enum, ID, payload, nhánh xác minh và guard server. Dịch nhánh dự phòng cục bộ; chẩn đoán server chưa biết và nhãn tác giả/API đi qua nguyên trạng.
+- Ngôn ngữ/giao diện không trở thành key trang/thẻ/attempt hoặc phụ thuộc làm reset store, tạo lại audio, điều hướng hay gọi lại yêu cầu. SSR/văn bản client đầu là tiếng Anh; khôi phục ngôn ngữ sau hydration. Bootstrap giao diện gốc chỉ đổi `data-theme`, dùng phạm vi bỏ qua cảnh báo hydration hẹp hiện có ở root.
+- Giữ editor Builder chuyên biệt và chức năng range. Hoãn trợ giúp lồng, hướng dẫn đáp án, công cụ completion/diagram, hướng dẫn khoảng âm thanh. Mẫu hướng dẫn IELTS là nội dung bị loại khỏi dịch, không phải việc dịch tồn đọng tương lai.
+- Xác minh bằng Vitest/RTL tập trung, hợp đồng CSS/tính tương phản, typecheck, ESLint chọn lọc và `git diff --check`. Không trình duyệt/kiểm thủ công, Playwright/E2E, server dev, bộ backend, gọi AI, Modal hoặc âm thanh thật. Kiểm DOM/CSS không chứng minh render từng pixel.
+- Lệnh test/ESLint/typecheck dưới chạy tại `frontend/`; lệnh Git tại gốc repository. Dùng gói/script đã cài (`test: vitest run`, `typecheck: tsc --noEmit`). Giả HTTP/media API; chỉ fixture hư cấu. Reset storage tùy chọn/thuộc tính root, khôi phục mock/timer giả từng kiểm thử.
+- Mỗi commit triển khai chỉ gồm thay đổi/kiểm thử liệt kê. Cập nhật assertion lỗi thời khi nhiệm vụ sở hữu đổi hành vi, giữ kiểm tra hữu ích; không để nhiệm vụ trước hỏng đến Nhiệm vụ 12. Chạy `npm run typecheck`, `npx eslint <changed .ts/.tsx paths>` chọn lọc và `git diff --check` tại root trước mỗi commit.
 
-## Review Focus
+## Trọng tâm rà soát
 
-1. **ADMIN + Vietnamese + long names:** all eight primary links remain in one navigation landmark and can wrap without clipping or hiding actions. Owned by Task 3 `admin Vietnamese navigation preserves all routes` and Task 5 `header wraps at approved breakpoints`.
-2. **Blocked/corrupt preference storage:** reads/writes/getter failures and invalid values produce usable en/light defaults; current-document switches still work. Owned by Tasks 1–2 `locale storage failures are non-fatal` and `theme bootstrap defaults to light`.
-3. **Locale switch during an active attempt:** copy updates while runner/audio identity, drafts, timer timestamps and request counts remain stable. Owned by Task 11 `locale switch preserves active attempt state` for Reading, Listening and Writing.
-4. **Dark workspace tokens leaking into exams:** frozen light/dark exam and inherited shared properties resolve identically for attempt, paused gate and embedded preview. Owned by Task 6 `paper tokens cannot change resolved exam colors or controls`.
-5. **Exact preview footer exclusion:** Builder preview keeps its header/local exam footer but loses only the global footer; edit/detail/review/transition routes retain it. Owned by Task 4 `only exact Builder preview suppresses the global footer`.
+1. **ADMIN + tiếng Việt + tên dài:** cả tám liên kết chính trong một mốc điều hướng, xuống dòng không cắt/ẩn hành động. Nhiệm vụ 3 sở hữu `admin Vietnamese navigation preserves all routes`, Nhiệm vụ 5 sở hữu `header wraps at approved breakpoints`.
+2. **Storage tùy chọn bị chặn/hỏng:** lỗi đọc/ghi/getter hoặc giá trị sai dùng mặc định en/light hợp lệ; vẫn chuyển được trong document hiện tại. Nhiệm vụ 1–2 sở hữu `locale storage failures are non-fatal` và `theme bootstrap defaults to light`.
+3. **Đổi ngôn ngữ lúc đang làm:** văn bản cập nhật, định danh runner/audio, draft, timestamp timer và số yêu cầu ổn định. Nhiệm vụ 11 sở hữu `locale switch preserves active attempt state` cho Reading, Listening, Writing.
+4. **Token workspace tối rò vào thi:** giá trị thi light/dark đóng băng và thuộc tính dùng chung kế thừa phân giải giống nhau ở attempt, paused gate, preview nhúng. Nhiệm vụ 6 sở hữu `paper tokens cannot change resolved exam colors or controls`.
+5. **Loại footer đúng tuyến preview:** Builder preview giữ header/footer bài thi cục bộ, chỉ bỏ footer toàn cục; tuyến edit/detail/review/transition giữ footer. Nhiệm vụ 4 sở hữu `only exact Builder preview suppresses the global footer`.
 
-## File Map
+## Bản đồ tệp
 
-Paths below are relative to the repository root. New presentation files group a coherent feature's copy/attributes; existing fetching routes keep their fetching and guards. `PrimaryNavigation`, `HeaderActions` and `LocaleSwitcher` stay local to `global-header.tsx`. Icons, AppLogo, route constants, API clients, question registries/renderers, timer/autosave engines and server role layouts are reused without restructuring.
+Đường dẫn dưới tính từ gốc repository. Tệp trình bày mới nhóm văn bản/thuộc tính của một tính năng thống nhất; tuyến fetch hiện có giữ fetch/guard. `PrimaryNavigation`, `HeaderActions`, `LocaleSwitcher` ở cục bộ `global-header.tsx`. Tái dùng icon, AppLogo, hằng tuyến, API client, registry/renderer câu hỏi, bộ timer/autosave, layout role server, không tái cấu trúc.
 
-| Create | Single responsibility |
+| Tạo | Trách nhiệm duy nhất |
 | --- | --- |
-| `frontend/src/lib/i18n/en.ts`, `vi.ts` | Flat, paired system-copy dictionaries; English defines keys, Vietnamese supplies string values. |
-| `frontend/src/lib/i18n/types.ts` | Locale/key/dictionary/parameter/function types. |
-| `frontend/src/lib/i18n/translations.ts` | Pure translation/interpolation and common enum-to-message mappings. |
-| `frontend/src/lib/i18n/locale-provider.tsx` | Client preference context, hooks and wrapper-free UiText. |
-| `frontend/src/components/ui/global-header.tsx` | Single horizontal primary navigation and existing auth/preferences actions. |
-| `frontend/src/components/ui/app-footer.tsx` | Product description, server-supplied year and locale indication. |
-| `frontend/src/components/home/overview-content.tsx` | Overview presentation from existing serializable server results. |
-| `frontend/src/features/practice/library-content.tsx` | Library list/detail presentation, including translated native attributes. |
-| `frontend/src/features/auth/admin-content.tsx` | Admin dashboard/user-detail presentation from existing server results. |
-| `frontend/tests/locale-test-utils.tsx` | Shared test-only provider/switch harness that preserves child identity. |
-| `frontend/tests/translations.test.ts`, `locale-provider.test.tsx` | Dictionary, interpolation, hydration and persistence contracts. |
-| `frontend/tests/app-shell.test.tsx`, `app-footer.test.tsx`, `shell-layout-css.test.ts` | Role/route/chrome/width/responsive shell contracts. |
-| `frontend/tests/common-localization.test.tsx`, `workspace-localization.test.tsx`, `runner-localization.test.tsx`, `localization-matrix.test.tsx` | Focused bilingual presentation and state-preservation regressions. |
+| `frontend/src/lib/i18n/en.ts`, `vi.ts` | Cặp từ điển văn bản hệ thống phẳng; tiếng Anh định nghĩa key, tiếng Việt cung cấp giá trị chuỗi. |
+| `frontend/src/lib/i18n/types.ts` | Kiểu ngôn ngữ/key/từ điển/tham số/hàm. |
+| `frontend/src/lib/i18n/translations.ts` | Dịch/nội suy thuần và ánh xạ enum-thông điệp chung. |
+| `frontend/src/lib/i18n/locale-provider.tsx` | Context tùy chọn client, hook và UiText không wrapper. |
+| `frontend/src/components/ui/global-header.tsx` | Một điều hướng chính ngang, hành động auth/tùy chọn hiện có. |
+| `frontend/src/components/ui/app-footer.tsx` | Mô tả sản phẩm, năm từ server, chỉ báo ngôn ngữ. |
+| `frontend/src/components/home/overview-content.tsx` | Trình bày tổng quan từ kết quả server serialize được hiện có. |
+| `frontend/src/features/practice/library-content.tsx` | Trình bày danh sách/chi tiết Library, gồm thuộc tính native đã dịch. |
+| `frontend/src/features/auth/admin-content.tsx` | Trình bày dashboard/chi tiết người dùng Admin từ kết quả server hiện có. |
+| `frontend/tests/locale-test-utils.tsx` | Harness provider/chuyển ngôn ngữ chỉ test dùng chung, giữ định danh con. |
+| `frontend/tests/translations.test.ts`, `locale-provider.test.tsx` | Hợp đồng từ điển, nội suy, hydration, lưu tùy chọn. |
+| `frontend/tests/app-shell.test.tsx`, `app-footer.test.tsx`, `shell-layout-css.test.ts` | Hợp đồng role/tuyến/khung UI/chiều rộng/bố cục shell đáp ứng. |
+| `frontend/tests/common-localization.test.tsx`, `workspace-localization.test.tsx`, `runner-localization.test.tsx`, `localization-matrix.test.tsx` | Hồi quy trình bày song ngữ/giữ trạng thái có mục tiêu. |
 
-| Modify | Single responsibility in this change |
+| Sửa | Trách nhiệm duy nhất trong thay đổi này |
 | --- | --- |
-| `frontend/src/app/layout.tsx` | Provider placement, deterministic theme bootstrap and server footer year. |
-| `frontend/src/app/globals.css` | Horizontal shell, paper palette, scale/rhythm and explicit exam compatibility. |
-| `frontend/src/components/ui/app-shell.tsx` | Route exclusions, content width and shell composition. |
-| `frontend/src/components/ui/theme-toggle.tsx` | Deterministic reconciliation and localized next-action copy. |
-| `frontend/src/components/ui/page-heading.tsx`, `empty-state.tsx` | ReactNode text slots for server UiText/raw authored content. |
-| `frontend/src/components/ui/module-badge.tsx`, `status-badge.tsx` | Optional translated display labels with enum-based styling retained. |
-| `frontend/src/components/ui/confirm-dialog.tsx` | Localized default common labels, existing focus/pending behavior intact. |
-| `frontend/src/components/home/interactive-planet.tsx` | Existing generic accessible copy only; motion/identity untouched. |
-| `frontend/src/features/auth/auth-provider.tsx` | Translate only locally owned session-error fallback at presentation, retaining request lifecycle. |
-| `frontend/src/app/page.tsx`, `library/page.tsx`, `library/[versionId]/page.tsx` | Retain server loading/guards and hand presentation to cohesive client views. |
-| `frontend/src/app/practice/page.tsx`, `history/page.tsx`, `analytics/page.tsx`, `transfer/page.tsx` | Server static headings via UiText. |
-| `frontend/src/app/profile/page.tsx` | Existing client form copy; input values and request effects intact. |
-| `frontend/src/app/login/page.tsx`, `register/page.tsx`, `session/restore/page.tsx` | Static Suspense fallback copy only. |
-| `frontend/src/features/auth/auth-form.tsx`, `session-restore.tsx` | Auth/restore chrome and local fallback copy. |
-| `frontend/src/features/practice/skill-practice.tsx`, `start-focused-practice.tsx` | Filter/card/start text without changing filtering, targets or timers. |
-| `frontend/src/features/history/attempt-history-list.tsx` | Four tabs, status/action/confirmation copy. |
-| `frontend/src/features/analytics/analytics-dashboard.tsx` | Generic metrics/filter/chart/control labels; chart data unchanged. |
-| `frontend/src/features/exam/start-attempt.tsx`, `start-full-mock.tsx` | Start/timer/readiness presentation; attempt requests unchanged. |
-| `frontend/src/features/exam/focused-attempt.ts` | Pure display helpers accept an optional translator; score arithmetic unchanged. |
-| `frontend/src/features/test-builder/content-summary.tsx` | Typed generated unit headings, shared summary presentation and raw authored excerpts. |
-| `frontend/src/app/admin/page.tsx`, `admin/users/[userId]/page.tsx` | Server loading/guards retained, AdminContent presentation boundary. |
-| `frontend/src/app/admin/tests/page.tsx`, `admin/tests/new/page.tsx`, `admin/tests/[testId]/page.tsx`, `admin/tests/[testId]/versions/[versionId]/edit/page.tsx` | Major Builder route text only. |
-| `frontend/src/features/auth/admin-guard.tsx`, `admin-user-list.tsx`, `admin-user-actions.tsx` | Existing guard/list/common user-action copy. |
-| `frontend/src/features/test-builder/test-library-list.tsx`, `new-test-form.tsx`, `test-details-heading.tsx`, `version-actions.tsx`, `builder-workspace-navigation.tsx`, `builder-lifecycle.tsx`, `autosave-link.tsx` | First-pass list/metadata/version/tab/save-state chrome, preserving lifecycle logic. |
-| `frontend/src/features/test-builder/reading-builder.tsx`, `listening-builder.tsx`, `writing-builder.tsx`, `module-duration-editor.tsx`, `listening-section-editor.tsx` | Top-level module/create/delete/duration labels only; nested tools/guidance deferred. |
-| `frontend/src/features/transfer/transfer-portal.tsx` | Existing import/export/file/common result copy. |
-| `frontend/src/features/reading/reading-runner.tsx`, `reading-review.tsx` | Static runner/review strings and accessible labels only. |
-| `frontend/src/features/listening/listening-runner.tsx`, `listening-review.tsx`, `audio-player.tsx` | Static controls/fallback copy; existing three playback states unchanged. |
-| `frontend/src/features/writing/writing-runner.tsx`, `writing-review.tsx` | Static controls/review chrome; prompts/responses/assessment data preserved. |
-| `frontend/src/features/exam/pause-attempt-control.tsx`, `paused-attempt-gate.tsx`, `draft-recovery-notices.tsx`, `test-session-transition.tsx`, `terminal-attempt-redirect.tsx`, `use-exam-submit.ts` | Existing common static state/error/action copy, without locale-dependent lifecycle effects. |
-| `frontend/src/features/test-builder/draft-preview.tsx` | Common preview controls/generated labels only. |
-| `frontend/src/features/highlighting/selectable-text.tsx` | Existing highlight action/dialog/error labels only; selected text and semantic offsets untouched. |
-| `frontend/src/features/questions/renderers.tsx`, `note-completion-renderer.tsx`, `table-completion-renderer.tsx`, `diagram-labelling-renderer.tsx` | Generic Question accessible names and empty answer-selector placeholders only; authored content, IELTS option values and renderer layout unchanged. |
+| `frontend/src/app/layout.tsx` | Vị trí provider, bootstrap giao diện xác định, năm footer server. |
+| `frontend/src/app/globals.css` | Shell ngang, màu giấy, thang kích thước/nhịp, tương thích thi tường minh. |
+| `frontend/src/components/ui/app-shell.tsx` | Loại trừ tuyến, chiều rộng nội dung, ghép shell. |
+| `frontend/src/components/ui/theme-toggle.tsx` | Đối soát xác định, nội dung hành động kế đã dịch. |
+| `frontend/src/components/ui/page-heading.tsx`, `empty-state.tsx` | Ô văn bản ReactNode cho UiText server/nội dung tác giả nguyên gốc. |
+| `frontend/src/components/ui/module-badge.tsx`, `status-badge.tsx` | Nhãn dịch tùy chọn, giữ style theo enum. |
+| `frontend/src/components/ui/confirm-dialog.tsx` | Nhãn chung mặc định đã dịch, giữ focus/pending hiện có. |
+| `frontend/src/components/home/interactive-planet.tsx` | Chỉ nội dung hỗ trợ truy cập chung hiện có; không đổi chuyển động/định danh. |
+| `frontend/src/features/auth/auth-provider.tsx` | Chỉ dịch dự phòng lỗi session do Local sở hữu ở lớp trình bày, giữ vòng đời yêu cầu. |
+| `frontend/src/app/page.tsx`, `library/page.tsx`, `library/[versionId]/page.tsx` | Giữ tải/guard server, giao trình bày cho view client thống nhất. |
+| `frontend/src/app/practice/page.tsx`, `history/page.tsx`, `analytics/page.tsx`, `transfer/page.tsx` | Heading server tĩnh qua UiText. |
+| `frontend/src/app/profile/page.tsx` | Văn bản form client hiện có; giữ giá trị input/effect yêu cầu. |
+| `frontend/src/app/login/page.tsx`, `register/page.tsx`, `session/restore/page.tsx` | Chỉ văn bản dự phòng Suspense tĩnh. |
+| `frontend/src/features/auth/auth-form.tsx`, `session-restore.tsx` | Khung auth/restore, văn bản dự phòng cục bộ. |
+| `frontend/src/features/practice/skill-practice.tsx`, `start-focused-practice.tsx` | Văn bản bộ lọc/thẻ/bắt đầu, không đổi lọc/đích/timer. |
+| `frontend/src/features/history/attempt-history-list.tsx` | Bốn tab, văn bản trạng thái/hành động/xác nhận. |
+| `frontend/src/features/analytics/analytics-dashboard.tsx` | Nhãn metric/bộ lọc/biểu đồ/điều khiển chung; dữ liệu biểu đồ không đổi. |
+| `frontend/src/features/exam/start-attempt.tsx`, `start-full-mock.tsx` | Trình bày bắt đầu/timer/readiness; yêu cầu attempt không đổi. |
+| `frontend/src/features/exam/focused-attempt.ts` | Helper hiển thị thuần nhận hàm dịch tùy chọn; phép tính điểm không đổi. |
+| `frontend/src/features/test-builder/content-summary.tsx` | Heading đơn vị sinh có kiểu, tóm tắt chung, trích đoạn tác giả nguyên gốc. |
+| `frontend/src/app/admin/page.tsx`, `admin/users/[userId]/page.tsx` | Giữ tải/guard server, ranh giới trình bày AdminContent. |
+| `frontend/src/app/admin/tests/page.tsx`, `admin/tests/new/page.tsx`, `admin/tests/[testId]/page.tsx`, `admin/tests/[testId]/versions/[versionId]/edit/page.tsx` | Chỉ văn bản tuyến Builder chính. |
+| `frontend/src/features/auth/admin-guard.tsx`, `admin-user-list.tsx`, `admin-user-actions.tsx` | Văn bản guard/danh sách/hành động người dùng chung hiện có. |
+| `frontend/src/features/test-builder/test-library-list.tsx`, `new-test-form.tsx`, `test-details-heading.tsx`, `version-actions.tsx`, `builder-workspace-navigation.tsx`, `builder-lifecycle.tsx`, `autosave-link.tsx` | Dịch bước đầu khung danh sách/metadata/phiên bản/tab/trạng thái lưu, giữ logic vòng đời. |
+| `frontend/src/features/test-builder/reading-builder.tsx`, `listening-builder.tsx`, `writing-builder.tsx`, `module-duration-editor.tsx`, `listening-section-editor.tsx` | Chỉ nhãn mô-đun/tạo/xóa/thời lượng cấp cao; hoãn công cụ/hướng dẫn lồng. |
+| `frontend/src/features/transfer/transfer-portal.tsx` | Văn bản nhập/xuất/tệp/kết quả chung hiện có. |
+| `frontend/src/features/reading/reading-runner.tsx`, `reading-review.tsx` | Chỉ chuỗi tĩnh runner/review, nhãn hỗ trợ truy cập. |
+| `frontend/src/features/listening/listening-runner.tsx`, `listening-review.tsx`, `audio-player.tsx` | Văn bản điều khiển/dự phòng tĩnh; ba trạng thái phát hiện có không đổi. |
+| `frontend/src/features/writing/writing-runner.tsx`, `writing-review.tsx` | Điều khiển/khung review tĩnh; giữ đề/response/dữ liệu đánh giá. |
+| `frontend/src/features/exam/pause-attempt-control.tsx`, `paused-attempt-gate.tsx`, `draft-recovery-notices.tsx`, `test-session-transition.tsx`, `terminal-attempt-redirect.tsx`, `use-exam-submit.ts` | Văn bản trạng thái/lỗi/hành động tĩnh chung hiện có, không effect vòng đời phụ thuộc ngôn ngữ. |
+| `frontend/src/features/test-builder/draft-preview.tsx` | Chỉ điều khiển preview/nhãn sinh chung. |
+| `frontend/src/features/highlighting/selectable-text.tsx` | Chỉ nhãn hành động/dialog/lỗi highlight hiện có; không đổi văn bản chọn/offset ngữ nghĩa. |
+| `frontend/src/features/questions/renderers.tsx`, `note-completion-renderer.tsx`, `table-completion-renderer.tsx`, `diagram-labelling-renderer.tsx` | Chỉ tên hỗ trợ truy cập Question chung/placeholder selector đáp án rỗng; nội dung tác giả, giá trị IELTS, bố cục renderer không đổi. |
 
-Existing test files to modify are named in each task's **Files** block. No app route for attempt/review/test-session/preview needs a localization-driven fetching or dispatch change; their existing tests remain regression targets. Specialized question editor files are not translation targets. ListeningSectionEditor is included only for top-level section chrome; its range fields, capture/preview controls, validation guidance and range behavior remain deferred/unchanged.
+Tệp test hiện có cần sửa được nêu trong khối **Tệp** từng nhiệm vụ. Không tuyến attempt/review/test-session/preview nào cần đổi fetch/dispatch vì bản địa hóa; test hiện có vẫn là đích hồi quy. Không dịch tệp editor câu hỏi chuyên biệt. ListeningSectionEditor chỉ gồm khung section cấp cao; trường range, capture/preview, hướng dẫn xác minh/hành vi range vẫn hoãn/giữ nguyên.
 
-## Locked Shared Interfaces
+## Giao diện dùng chung đã chốt
 
-Task 1 owns these exports; later tasks must consume these names and types:
+Nhiệm vụ 1 sở hữu các export sau; nhiệm vụ tiếp phải dùng đúng tên/kiểu:
 
 ```ts
 // en.ts / vi.ts: named exports en and vi; types.ts imports en as a type.
@@ -124,13 +124,13 @@ export function UiText(props: {
 }): ReactElement;
 ```
 
-English uses `as const`; Vietnamese uses `satisfies TranslationDictionary`, not English literal-value types. UiText returns a fragment of escaped text. Context defaults to English with a no-op setter outside a provider, keeping existing isolated English component tests compatible; production always supplies the root provider. No HTML translation API. `translate` replaces named `{parameter}` tokens, retains an unresolved token if a parameter is absent, and defensively falls back to English for a missing runtime dictionary entry. Singular/plural use explicit keys selected by existing counts. No number/date-format changes.
+Tiếng Anh dùng `as const`; tiếng Việt dùng `satisfies TranslationDictionary`, không dùng kiểu literal giá trị tiếng Anh. UiText trả fragment văn bản đã escape. Context mặc định tiếng Anh, setter không làm gì khi ngoài provider, giữ tương thích test thành phần tiếng Anh cô lập hiện có; production luôn có provider root. Không có API dịch HTML. `translate` thay token tên `{parameter}`, giữ token chưa giải quyết khi thiếu tham số, dự phòng tiếng Anh nếu thiếu mục từ điển runtime. Số ít/nhiều dùng key tường minh theo số đếm hiện có. Không đổi định dạng số/ngày.
 
-Task 2 produces `AppShell({ children, currentYear }: { children: ReactNode; currentYear: number }): ReactElement`; RootLayout supplies the year once on the server. Task 3 produces `GlobalHeader({ pathname }: { pathname: string }): ReactElement`. Task 4 produces `AppFooter({ year }: { year: number }): ReactElement`. All are named exports; none is keyed by a preference.
+Nhiệm vụ 2 tạo `AppShell({ children, currentYear }: { children: ReactNode; currentYear: number }): ReactElement`; RootLayout cấp năm một lần ở server. Nhiệm vụ 3 tạo `GlobalHeader({ pathname }: { pathname: string }): ReactElement`. Nhiệm vụ 4 tạo `AppFooter({ year }: { year: number }): ReactElement`. Tất cả export có tên, không dùng tùy chọn làm key.
 
-Task 8 widens PageHeading's `eyebrow?: ReactNode`, `title: ReactNode`, `description?: ReactNode` and EmptyState's `title: ReactNode`, `description: ReactNode`; other props stay unchanged. ModuleBadge adds `label?: ReactNode` to its existing module prop; StatusBadge adds `label?: ReactNode` to its existing status prop. They remain server-compatible, use the override when supplied, and retain English fallback display for unconverted/deferred callers.
+Nhiệm vụ 8 mở rộng PageHeading: `eyebrow?: ReactNode`, `title: ReactNode`, `description?: ReactNode`; EmptyState: `title: ReactNode`, `description: ReactNode`; prop khác không đổi. ModuleBadge thêm `label?: ReactNode` bên prop module hiện có; StatusBadge thêm `label?: ReactNode` bên prop status. Vẫn tương thích server, dùng ghi đè khi được cấp, giữ hiển thị dự phòng tiếng Anh cho bên gọi chưa chuyển/được hoãn.
 
-Task 9's client presentation exports are fixed:
+Export trình bày client của Nhiệm vụ 9 được chốt:
 
 ```ts
 export function OverviewContent(props: {
@@ -147,9 +147,9 @@ export function LibraryVersionContent(props: {
 }): ReactElement;
 ```
 
-Use type-only imports of existing DTOs. Server routes still choose published versions, fetch records, apply role branches and call notFound. The views preserve existing calculation/ordering rules; no API function/server module enters them. Task 10's `AdminDashboardContent` props are `{ stats: AdminStats | null; users: AdminUserList | null; search: string; status: "active" | "deactivated"; offset: number }`; `AdminUserDetailContent` props are `{ detail: AdminUserDetail }`, both returning ReactElement from `admin-content.tsx`. Preserve the existing user-list key `${status}:${search}:${offset}`.
+Dùng import chỉ kiểu của DTO hiện có. Tuyến server vẫn chọn phiên bản published, fetch bản ghi, áp nhánh role, gọi notFound. View giữ quy tắc tính/thứ tự; không đưa hàm API/mô-đun server vào. Prop `AdminDashboardContent` Nhiệm vụ 10 là `{ stats: AdminStats | null; users: AdminUserList | null; search: string; status: "active" | "deactivated"; offset: number }`; prop `AdminUserDetailContent` là `{ detail: AdminUserDetail }`, cùng trả ReactElement từ `admin-content.tsx`. Giữ key danh sách `${status}:${search}:${offset}`.
 
-Task 9 extends only the pure display helpers:
+Nhiệm vụ 9 chỉ mở rộng helper hiển thị thuần:
 
 ```ts
 export function focusedUnitLabel(
@@ -161,429 +161,429 @@ export function accuracyLabel(
 ): string | null;
 ```
 
-Default translator is English. Generate unit labels from the existing `kind` and `order_index + 1`; keep any authored `title` verbatim beside the label, and preserve null/empty behavior. Never parse/translate a server label or title to discover its kind. Accuracy keeps the same null guard and `(raw / max * 100).toFixed(1)` calculation. Existing request/runner/player interfaces are otherwise unchanged.
+Hàm dịch mặc định tiếng Anh. Sinh nhãn đơn vị theo `kind`, `order_index + 1` hiện có; giữ `title` tác giả nguyên văn bên nhãn, giữ hành vi null/rỗng. Không phân tích/dịch nhãn server hoặc title để tìm kind. Accuracy giữ guard null/phép tính `(raw / max * 100).toFixed(1)`. Giao diện request/runner/player khác không đổi.
 
-## Tasks
+## Các nhiệm vụ
 
-### Task 1: Typed i18n foundation
+### Nhiệm vụ 1: Nền tảng i18n có kiểu
 
-**Files:**
-- Create: `frontend/src/lib/i18n/en.ts`, `vi.ts`, `types.ts`, `translations.ts`, `locale-provider.tsx`.
-- Test (create): `frontend/tests/translations.test.ts`, `locale-provider.test.tsx`, `locale-test-utils.tsx`.
+**Tệp:**
+- Tạo: `frontend/src/lib/i18n/en.ts`, `vi.ts`, `types.ts`, `translations.ts`, `locale-provider.tsx`.
+- Test (tạo): `frontend/tests/translations.test.ts`, `locale-provider.test.tsx`, `locale-test-utils.tsx`.
 
-**Interfaces:**
-- Consumes: React context/effects and existing Vitest/RTL setup.
-- Produces: All Task 1 exports in Locked Shared Interfaces; `LocaleControls` test-only component using useLocale and `renderWithLocale(ui: ReactElement): RenderResult` in `locale-test-utils.tsx`, which renders one provider with stable children plus those controls.
+**Giao diện:**
+- Đầu vào: Context/effect React và cấu hình Vitest/RTL hiện có.
+- Đầu ra: Mọi export của Nhiệm vụ 1 trong Giao diện dùng chung đã chốt; thành phần chỉ dùng cho test `LocaleControls` sử dụng useLocale và `renderWithLocale(ui: ReactElement): RenderResult` trong `locale-test-utils.tsx`, render một provider với các phần tử con ổn định cùng các điều khiển đó.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Bước 1: Viết test thất bại**
 
-Name tests `dictionaries have identical complete keys`, `interpolates scalar parameters as plain text`, `locale starts in English without render-time storage`, `restores only en or vi after mount`, and `locale storage failures are non-fatal`. Assert `Pause` / `Tạm dừng`, `Question {number}` / `Câu hỏi {number}` with number 2, absent-token retention, escaped `<img>` parameter, no read in SSR, VI restore/root lang, invalid/null => en, no default write before restore, and throwing storage getter/getItem/setItem. A failed write still updates UI/lang; no banner appears. A child mount counter remains one after toggles. Use renderToString plus hydrateRoot for deterministic first markup, not a snapshot.
+Đặt tên test là `dictionaries have identical complete keys`, `interpolates scalar parameters as plain text`, `locale starts in English without render-time storage`, `restores only en or vi after mount` và `locale storage failures are non-fatal`. Kiểm tra `Pause` / `Tạm dừng`, `Question {number}` / `Câu hỏi {number}` với số 2, giữ token khi thiếu tham số, escape tham số `<img>`, không đọc storage trong SSR, khôi phục VI/lang ở root, giá trị không hợp lệ/null => en, không ghi mặc định trước khi khôi phục, và getter/getItem/setItem của storage ném lỗi. Ghi thất bại vẫn cập nhật UI/lang; không hiện banner. Bộ đếm mount của phần tử con vẫn là một sau khi chuyển đổi. Dùng renderToString cùng hydrateRoot để kiểm tra markup đầu tiên xác định, không dùng snapshot.
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [ ] **Bước 2: Chạy test để xác nhận thất bại**
 
-Run: `npx vitest run tests/translations.test.ts tests/locale-provider.test.tsx`
+Chạy: `npx vitest run tests/translations.test.ts tests/locale-provider.test.tsx`
 
-Expected: FAIL because the dictionary/provider exports do not exist.
+Kỳ vọng: FAIL vì các export từ điển/provider chưa tồn tại.
 
-- [ ] **Step 3: Implement the minimal change**
+- [ ] **Bước 3: Triển khai thay đổi tối thiểu**
 
-Implement the locked signatures and seed paired `common.*`, `shell.*`, `theme.*`, `footer.*` and runner control keys needed by early tests. Grow both dictionaries alongside their consumers in later tasks. Use state initialized to en, one mount restoration effect, validated exact values and separately caught persistence writes. Update root lang in an effect; never inspect storage at import/render/state initialization or overwrite saved VI with default EN. Keep setLocale stable, derive t from current locale, and render UiText as a fragment. Define enum maps once, preserving codes and styling. The test harness switches the same provider instance rather than rerendering keyed children.
+Triển khai đúng chữ ký đã chốt và khởi tạo cặp key `common.*`, `shell.*`, `theme.*`, `footer.*` cùng key điều khiển runner cần cho các test đầu tiên. Bổ sung đồng thời cả hai từ điển và nơi sử dụng ở các nhiệm vụ sau. Khởi tạo state bằng en, dùng một effect khôi phục khi mount, chỉ nhận đúng giá trị hợp lệ và bắt riêng lỗi ghi lưu trữ. Cập nhật lang ở root trong effect; không truy cập storage khi import/render/khởi tạo state, không ghi đè VI đã lưu bằng EN mặc định. Giữ setLocale ổn định, suy ra t từ locale hiện tại và render UiText bằng fragment. Định nghĩa các ánh xạ enum một lần, giữ mã và kiểu trình bày. Bộ hỗ trợ test chuyển đổi trên cùng một instance provider thay vì render lại phần tử con có key.
 
-- [ ] **Step 4: Run focused tests**
+- [ ] **Bước 4: Chạy test tập trung**
 
-Run: `npx vitest run tests/translations.test.ts tests/locale-provider.test.tsx`
+Chạy: `npx vitest run tests/translations.test.ts tests/locale-provider.test.tsx`
 
-Expected: PASS, including restoration, escaping and mount identity; typecheck validates Vietnamese key parity.
+Kỳ vọng: PASS, gồm khôi phục, escape và định danh khi mount; kiểm tra kiểu xác nhận bộ key tiếng Việt tương ứng.
 
-- [ ] **Step 5: Commit**
+- [ ] **Bước 5: Commit**
 
 ```bash
 git add -- frontend/src/lib/i18n frontend/tests/translations.test.ts frontend/tests/locale-provider.test.tsx frontend/tests/locale-test-utils.tsx
 git commit -m "Add typed English and Vietnamese UI translations"
 ```
 
-### Task 2: Root layout and preference hydration
+### Nhiệm vụ 2: Layout root và hydrate tùy chọn
 
-**Files:**
-- Modify: `frontend/src/app/layout.tsx`, `frontend/src/components/ui/app-shell.tsx`, `theme-toggle.tsx`, `frontend/src/lib/i18n/en.ts`, `vi.ts`.
+**Tệp:**
+- Sửa: `frontend/src/app/layout.tsx`, `frontend/src/components/ui/app-shell.tsx`, `theme-toggle.tsx`, `frontend/src/lib/i18n/en.ts`, `vi.ts`.
 - Test: `frontend/tests/root-layout.test.tsx`, `theme-toggle.test.tsx`, `auth.test.tsx`, `locale-provider.test.tsx`, `builder-route.test.tsx`, `profile.test.tsx`, `skill-practice.test.tsx`, `transfer-portal.test.tsx`.
 
-**Interfaces:**
-- Consumes: LocaleProvider/useTranslation from Task 1; unchanged AuthProvider and `themeInitializationScript` export.
-- Produces: Required AppShell currentYear prop; deterministic two-theme bootstrap and ThemeToggle next-action labels.
+**Giao diện:**
+- Đầu vào: LocaleProvider/useTranslation từ Nhiệm vụ 1; AuthProvider và export `themeInitializationScript` giữ nguyên.
+- Đầu ra: Prop currentYear bắt buộc của AppShell; bootstrap hai giao diện xác định và nhãn hành động kế tiếp của ThemeToggle.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Bước 1: Viết test thất bại**
 
-Extend root-layout tests: provider nesting is LocaleProvider → AuthProvider → AppShell; server lang/text/theme remain en/light even with stored VI/dark; server supplies a frozen test year (2026). Evaluate the trusted bootstrap against mocked storage: saved light/dark wins; absent, corrupt and throwing reads select light even if mocked OS prefers dark; script contains no matchMedia or locale text rewriting. ThemeToggle starts with deterministic light markup, reconciles root dark after mount, shows `Use light theme`, toggles despite setItem failure and never writes/reads locale storage. Update every existing AppShell fixture in auth, builder-route, profile, skill-practice and transfer-portal tests with `currentYear={2026}` so the intermediate commit typechecks.
+Mở rộng test root-layout: các provider lồng theo LocaleProvider → AuthProvider → AppShell; lang/văn bản/theme ở server vẫn là en/light dù đã lưu VI/dark; server truyền năm cố định trong test (2026). Chạy bootstrap tin cậy với storage giả lập: light/dark đã lưu được ưu tiên; dữ liệu thiếu, hỏng hoặc đọc ném lỗi đều chọn light dù hệ điều hành giả lập ưu tiên dark; script không có matchMedia hay ghi lại văn bản theo locale. ThemeToggle bắt đầu bằng markup light xác định, đồng bộ với root dark sau mount, hiện `Use light theme`, vẫn chuyển khi setItem thất bại và không đọc/ghi storage locale. Cập nhật mọi fixture AppShell hiện có trong các test auth, builder-route, profile, skill-practice và transfer-portal với `currentYear={2026}` để commit trung gian qua kiểm tra kiểu.
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [ ] **Bước 2: Chạy test để xác nhận thất bại**
 
-Run: `npx vitest run tests/root-layout.test.tsx tests/theme-toggle.test.tsx tests/auth.test.tsx tests/locale-provider.test.tsx tests/builder-route.test.tsx tests/profile.test.tsx tests/skill-practice.test.tsx tests/transfer-portal.test.tsx`
+Chạy: `npx vitest run tests/root-layout.test.tsx tests/theme-toggle.test.tsx tests/auth.test.tsx tests/locale-provider.test.tsx tests/builder-route.test.tsx tests/profile.test.tsx tests/skill-practice.test.tsx tests/transfer-portal.test.tsx`
 
-Expected: FAIL on missing provider/year and existing implicit OS-dark branch.
+Kỳ vọng: FAIL do thiếu provider/năm và nhánh ngầm chọn dark theo hệ điều hành hiện có.
 
-- [ ] **Step 3: Implement the minimal change**
+- [ ] **Bước 3: Triển khai thay đổi tối thiểu**
 
-Wrap the existing tree without moving server API loading into clients. Pass `new Date().getFullYear()` from RootLayout to AppShell, which accepts it before footer integration. Keep the inline bootstrap in its trusted existing position and root-only suppressHydrationWarning; select saved valid theme or light in the catch/default branches. ThemeToggle initializes React state light, uses a post-hydration layout effect to reconcile data-theme and updates state/root synchronously on click before best-effort storage. Localize the next-action visible/accessible label without adding a theme provider or changing runner placement. Keep AuthProvider mounted across preference changes.
+Bọc cây hiện có mà không chuyển việc tải API ở server sang client. Truyền `new Date().getFullYear()` từ RootLayout vào AppShell; AppShell nhận prop này trước khi tích hợp footer. Giữ bootstrap nội tuyến ở vị trí tin cậy hiện có và suppressHydrationWarning chỉ tại root; chọn theme đã lưu hợp lệ hoặc light ở nhánh catch/mặc định. ThemeToggle khởi tạo state React là light, dùng layout effect sau hydration để đồng bộ data-theme, rồi cập nhật state/root đồng bộ khi nhấn trước khi thử ghi storage. Dịch nhãn hiển thị/hỗ trợ truy cập cho hành động kế tiếp, không thêm theme provider hay đổi vị trí runner. Giữ AuthProvider được mount khi thay đổi tùy chọn.
 
-- [ ] **Step 4: Run focused tests**
+- [ ] **Bước 4: Chạy test tập trung**
 
-Run: `npx vitest run tests/root-layout.test.tsx tests/theme-toggle.test.tsx tests/auth.test.tsx tests/locale-provider.test.tsx tests/builder-route.test.tsx tests/profile.test.tsx tests/skill-practice.test.tsx tests/transfer-portal.test.tsx`
+Chạy: `npx vitest run tests/root-layout.test.tsx tests/theme-toggle.test.tsx tests/auth.test.tsx tests/locale-provider.test.tsx tests/builder-route.test.tsx tests/profile.test.tsx tests/skill-practice.test.tsx tests/transfer-portal.test.tsx`
 
-Expected: PASS with no hydration-text suppression or preference-driven auth request.
+Kỳ vọng: PASS, không che cảnh báo văn bản hydration và không phát sinh request xác thực do đổi tùy chọn.
 
-- [ ] **Step 5: Commit**
+- [ ] **Bước 5: Commit**
 
 ```bash
 git add -- frontend/src/app/layout.tsx frontend/src/components/ui/app-shell.tsx frontend/src/components/ui/theme-toggle.tsx frontend/src/lib/i18n/en.ts frontend/src/lib/i18n/vi.ts frontend/tests/root-layout.test.tsx frontend/tests/theme-toggle.test.tsx frontend/tests/auth.test.tsx frontend/tests/locale-provider.test.tsx frontend/tests/builder-route.test.tsx frontend/tests/profile.test.tsx frontend/tests/skill-practice.test.tsx frontend/tests/transfer-portal.test.tsx
 git commit -m "Make locale and theme hydration deterministic"
 ```
 
-### Task 3: Global header and horizontal navigation
+### Nhiệm vụ 3: Header toàn cục và điều hướng ngang
 
-**Files:**
-- Create: `frontend/src/components/ui/global-header.tsx`.
-- Modify: `frontend/src/components/ui/app-shell.tsx`, `frontend/src/app/globals.css`, `frontend/src/lib/i18n/en.ts`, `vi.ts`.
-- Test (create): `frontend/tests/app-shell.test.tsx`; modify `frontend/tests/auth.test.tsx` and affected shell expectations in `dark-theme-css.test.ts`.
+**Tệp:**
+- Tạo: `frontend/src/components/ui/global-header.tsx`.
+- Sửa: `frontend/src/components/ui/app-shell.tsx`, `frontend/src/app/globals.css`, `frontend/src/lib/i18n/en.ts`, `vi.ts`.
+- Test (tạo): `frontend/tests/app-shell.test.tsx`; sửa `frontend/tests/auth.test.tsx` và các kỳ vọng shell bị ảnh hưởng trong `dark-theme-css.test.ts`.
 
-**Interfaces:**
-- Consumes: AppShell currentYear, existing useAuth/logout, ThemeToggle, AppLogo/icons, `TRANSFER_ROUTE`, useLocale/useTranslation.
-- Produces: GlobalHeader(pathname); local PrimaryNavigation/HeaderActions/LocaleSwitcher functions, one nav and stable route-based item identity.
+**Giao diện:**
+- Đầu vào: AppShell currentYear, useAuth/logout hiện có, ThemeToggle, AppLogo/icon, `TRANSFER_ROUTE`, useLocale/useTranslation.
+- Đầu ra: GlobalHeader(pathname); các hàm cục bộ PrimaryNavigation/HeaderActions/LocaleSwitcher, một nav và định danh mục ổn định theo tuyến.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Bước 1: Viết test thất bại**
 
-Add `guest user and admin navigation preserve routes`, `admin active matching is exact`, `admin Vietnamese navigation preserves all routes`, and `attempt routes bypass global chrome`. Guests get Overview plus Login/Register; loading/error never exposes privileged links. USER gets `/`, `/library`, `/practice`, `/history`, `/analytics`; ADMIN adds `/admin`, `/admin/tests`, `/transfer` in that order. `/admin` matches exactly; Builder matches descendants without also activating Admin. Assert all non-home links keep prefetch false, one Primary landmark, aria-current and stable link nodes across EN/VI. Assert no global aside, duplicate Workspace/current-section context or Built for focus note. Retain logout single-call/pending/cancel/focus tests. A long display name stays accessible. Locale controls have EN/VI, full language names, lang and aria-pressed, no flags/menu role.
+Thêm `guest user and admin navigation preserve routes`, `admin active matching is exact`, `admin Vietnamese navigation preserves all routes` và `attempt routes bypass global chrome`. Khách thấy Overview cùng Login/Register; trạng thái tải/lỗi không hiện liên kết đặc quyền. USER có `/`, `/library`, `/practice`, `/history`, `/analytics`; ADMIN thêm `/admin`, `/admin/tests`, `/transfer` theo thứ tự đó. `/admin` chỉ khớp chính xác; Builder khớp các tuyến con mà không đồng thời kích hoạt Admin. Kiểm tra mọi liên kết ngoài trang chủ giữ prefetch false, một landmark Primary, aria-current và node liên kết ổn định khi đổi EN/VI. Kiểm tra không có aside toàn cục, ngữ cảnh Workspace/phần hiện tại lặp lại hay ghi chú Built for focus. Giữ test logout chỉ gọi một lần/đang chờ/hủy/focus. Tên hiển thị dài vẫn đọc được qua công nghệ hỗ trợ. Điều khiển locale có EN/VI, tên ngôn ngữ đầy đủ, lang và aria-pressed, không có cờ/role menu.
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [ ] **Bước 2: Chạy test để xác nhận thất bại**
 
-Run: `npx vitest run tests/app-shell.test.tsx tests/auth.test.tsx tests/dark-theme-css.test.ts`
+Chạy: `npx vitest run tests/app-shell.test.tsx tests/auth.test.tsx tests/dark-theme-css.test.ts`
 
-Expected: FAIL on the current sidebar, absent locale buttons and header context.
+Kỳ vọng: FAIL với sidebar hiện tại, thiếu nút locale và ngữ cảnh header.
 
-- [ ] **Step 3: Implement the minimal change**
+- [ ] **Bước 3: Triển khai thay đổi tối thiểu**
 
-Move shell header/auth/logout presentation into GlobalHeader, preserving its guarded pending ref and ConfirmDialog lifecycle. Use route href as nav key and dictionary keys for labels; keep local functions in this file. Brand is the existing planet + IELTS Studio, without repeated tagline. Render brand, one text-first nav and actions; actions order locale, theme, user, logout, with guest auth alternatives. Preserve session errors and role visibility. AppShell retains its early `/attempt/` main.exam-shell return and otherwise composes header/main. Remove only global sidebar markup/rules; keep Practice filters and Builder local navigation. Supply minimal one-column/header flex styling now; Task 5 adds the exact responsive contracts. Replace removed-sidebar assertions in the affected dark CSS test now.
+Chuyển phần trình bày header/xác thực/logout của shell vào GlobalHeader, giữ ref chặn thao tác đang chờ và vòng đời ConfirmDialog. Dùng href tuyến làm key nav, key từ điển làm nhãn; giữ các hàm cục bộ trong tệp này. Thương hiệu gồm hành tinh hiện có + IELTS Studio, không lặp khẩu hiệu. Render thương hiệu, một nav ưu tiên văn bản và các hành động; thứ tự hành động là locale, theme, người dùng, logout, với lựa chọn xác thực tương ứng cho khách. Giữ lỗi phiên và quy tắc hiển thị theo role. AppShell giữ nhánh trả về sớm main.exam-shell cho `/attempt/`, các tuyến khác ghép header/main. Chỉ bỏ markup/quy tắc sidebar toàn cục; giữ bộ lọc Practice và điều hướng cục bộ Builder. Bổ sung CSS flex một cột/header tối thiểu ở bước này; Nhiệm vụ 5 thêm các hợp đồng responsive chính xác. Thay ngay các assertion sidebar đã bỏ trong test CSS dark bị ảnh hưởng.
 
-- [ ] **Step 4: Run focused tests**
+- [ ] **Bước 4: Chạy test tập trung**
 
-Run: `npx vitest run tests/app-shell.test.tsx tests/auth.test.tsx tests/dark-theme-css.test.ts`
+Chạy: `npx vitest run tests/app-shell.test.tsx tests/auth.test.tsx tests/dark-theme-css.test.ts`
 
-Expected: PASS for routes, roles, EN/VI nav, logout and attempt bypass.
+Kỳ vọng: PASS cho tuyến, role, nav EN/VI, logout và nhánh bỏ qua shell của attempt.
 
-- [ ] **Step 5: Commit**
+- [ ] **Bước 5: Commit**
 
 ```bash
 git add -- frontend/src/components/ui/global-header.tsx frontend/src/components/ui/app-shell.tsx frontend/src/app/globals.css frontend/src/lib/i18n/en.ts frontend/src/lib/i18n/vi.ts frontend/tests/app-shell.test.tsx frontend/tests/auth.test.tsx frontend/tests/dark-theme-css.test.ts
 git commit -m "Replace the workspace sidebar with horizontal navigation"
 ```
 
-### Task 4: Shared footer and exact route exclusions
+### Nhiệm vụ 4: Footer dùng chung và loại trừ tuyến chính xác
 
-**Files:**
-- Create: `frontend/src/components/ui/app-footer.tsx`.
-- Modify: `frontend/src/components/ui/app-shell.tsx`, `frontend/src/app/globals.css`, `frontend/src/lib/i18n/en.ts`, `vi.ts`.
-- Test (create): `frontend/tests/app-footer.test.tsx`; modify `frontend/tests/app-shell.test.tsx`, `root-layout.test.tsx`.
+**Tệp:**
+- Tạo: `frontend/src/components/ui/app-footer.tsx`.
+- Sửa: `frontend/src/components/ui/app-shell.tsx`, `frontend/src/app/globals.css`, `frontend/src/lib/i18n/en.ts`, `vi.ts`.
+- Test (tạo): `frontend/tests/app-footer.test.tsx`; sửa `frontend/tests/app-shell.test.tsx`, `root-layout.test.tsx`.
 
-**Interfaces:**
-- Consumes: Server currentYear, useLocale/useTranslation and usePathname.
-- Produces: AppFooter(year); local `isBuilderPreview(pathname: string): boolean` in AppShell, using `^/admin/tests/[^/]+/versions/[^/]+/preview/?$`.
+**Giao diện:**
+- Đầu vào: currentYear từ server, useLocale/useTranslation và usePathname.
+- Đầu ra: AppFooter(year); `isBuilderPreview(pathname: string): boolean` cục bộ trong AppShell, dùng `^/admin/tests/[^/]+/versions/[^/]+/preview/?$`.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Bước 1: Viết test thất bại**
 
-Add `only exact Builder preview suppresses the global footer`: attempt IDs (including paused/terminal children) get no header/footer; exact preview with optional trailing slash gets global header and existing local .exam-footer only. Builder edit/detail/list/new, `/review/id`, `/test-session/id`, `/session/restore`, auth/profile/transfer and misleading paths containing `preview` retain global footer. Query selection does not change pathname matching. Assert product name, 2026 prop, `Practice & authoring` / `Luyện tập và biên soạn đề` and English/Tiếng Việt indication; no invented legal/social links. SSR and first client footer use the same year.
+Thêm `only exact Builder preview suppresses the global footer`: ID attempt (gồm các tuyến con đang tạm dừng/kết thúc) không có header/footer; preview khớp chính xác, có thể có dấu gạch chéo cuối, chỉ có header toàn cục và .exam-footer cục bộ hiện có. Các tuyến Builder edit/detail/list/new, `/review/id`, `/test-session/id`, `/session/restore`, auth/profile/transfer và đường dẫn dễ nhầm chứa `preview` vẫn có footer toàn cục. Lựa chọn query không đổi cách khớp pathname. Kiểm tra tên sản phẩm, prop 2026, `Practice & authoring` / `Luyện tập và biên soạn đề` và chỉ báo English/Tiếng Việt; không tự thêm liên kết pháp lý/mạng xã hội. Footer SSR và lần render client đầu dùng cùng một năm.
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [ ] **Bước 2: Chạy test để xác nhận thất bại**
 
-Run: `npx vitest run tests/app-footer.test.tsx tests/app-shell.test.tsx tests/root-layout.test.tsx tests/draft-preview.test.tsx`
+Chạy: `npx vitest run tests/app-footer.test.tsx tests/app-shell.test.tsx tests/root-layout.test.tsx tests/draft-preview.test.tsx`
 
-Expected: FAIL because the shared footer and exact preview exclusion do not exist.
+Kỳ vọng: FAIL vì footer dùng chung và quy tắc loại trừ preview chính xác chưa tồn tại.
 
-- [ ] **Step 3: Implement the minimal change**
+- [ ] **Bước 3: Triển khai thay đổi tối thiểu**
 
-Compose AppFooter after growing main on all normal routes, excluding only the exact regex above. Keep attempts on their existing early bypass and preserve DraftPreview's local footer untouched. Footer uses server year, product identity/description and locale indication, with no second selector. Add opaque surface/top border, 24px vertical padding, desktop left/right groups and small stacked groups with 12px gap. No client clock, auth-dependent footer omission or broad substring matching.
+Ghép AppFooter sau main có khả năng giãn trên mọi tuyến thông thường, chỉ loại trừ regex chính xác ở trên. Giữ attempt theo nhánh bỏ qua sớm hiện có và không sửa footer cục bộ của DraftPreview. Footer dùng năm từ server, nhận diện/mô tả sản phẩm và chỉ báo locale, không thêm bộ chọn thứ hai. Thêm bề mặt đặc/viền trên, padding dọc 24px, nhóm trái/phải trên desktop và các nhóm xếp chồng ở màn hình nhỏ với gap 12px. Không dùng đồng hồ client, không ẩn footer theo xác thực hay khớp chuỗi con quá rộng.
 
-- [ ] **Step 4: Run focused tests**
+- [ ] **Bước 4: Chạy test tập trung**
 
-Run: `npx vitest run tests/app-footer.test.tsx tests/app-shell.test.tsx tests/root-layout.test.tsx tests/draft-preview.test.tsx`
+Chạy: `npx vitest run tests/app-footer.test.tsx tests/app-shell.test.tsx tests/root-layout.test.tsx tests/draft-preview.test.tsx`
 
-Expected: PASS across exact exclusions and ordinary routes.
+Kỳ vọng: PASS cho các trường hợp loại trừ chính xác và tuyến thông thường.
 
-- [ ] **Step 5: Commit**
+- [ ] **Bước 5: Commit**
 
 ```bash
 git add -- frontend/src/components/ui/app-footer.tsx frontend/src/components/ui/app-shell.tsx frontend/src/app/globals.css frontend/src/lib/i18n/en.ts frontend/src/lib/i18n/vi.ts frontend/tests/app-footer.test.tsx frontend/tests/app-shell.test.tsx frontend/tests/root-layout.test.tsx
 git commit -m "Add the shared footer with exam route exclusions"
 ```
 
-### Task 5: Shell widths and responsive composition
+### Nhiệm vụ 5: Chiều rộng shell và bố cục responsive
 
-**Files:**
-- Modify: `frontend/src/components/ui/app-shell.tsx`, `global-header.tsx`, `frontend/src/app/globals.css`.
-- Test (create): `frontend/tests/shell-layout-css.test.ts`; modify `frontend/tests/app-shell.test.tsx`, affected width assertions in `visual-system-css.test.ts`.
+**Tệp:**
+- Sửa: `frontend/src/components/ui/app-shell.tsx`, `global-header.tsx`, `frontend/src/app/globals.css`.
+- Test (tạo): `frontend/tests/shell-layout-css.test.ts`; sửa `frontend/tests/app-shell.test.tsx`, các assertion chiều rộng bị ảnh hưởng trong `visual-system-css.test.ts`.
 
-**Interfaces:**
-- Consumes: One header/nav/footer DOM and exact exclusion predicates.
-- Produces: Local `contentWidth(pathname: string): "standard" | "wide"`, classes `.app-content-standard` / `.app-content-wide`; CSS-only breakpoint composition.
+**Giao diện:**
+- Đầu vào: Một DOM header/nav/footer và các điều kiện loại trừ chính xác.
+- Đầu ra: `contentWidth(pathname: string): "standard" | "wide"` cục bộ, các class `.app-content-standard` / `.app-content-wide`; bố cục theo breakpoint chỉ dùng CSS.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Bước 1: Viết test thất bại**
 
-Add `page family selects the approved width` and `header wraps at approved breakpoints`. Standard outer width is 1280 for Overview/review/ordinary detail/forms; wide 1440 for Library list, Practice, History, Analytics, Admin lists/dashboard, Builder workspaces and Transfer. Explicit published `/library/[id]`, `/admin/users/[id]` and `/admin/tests/[id]` detail routes and `/admin/tests/new` stay standard; version edit/preview stay wide. Profile inner 920, new-test inner 720, auth inner 480 and transition inner 720. Assert border-box maxima include padding and descriptive prose <=72ch; attempts get no width class/padding. Read CSS declarations to prove >=1440, 768–1439 and <768 rules, wrapping/auto heights, no nav overflow clipping or nowrap, small non-sticky header, username maxima 120/96, one nav DOM and no width-dependent JS. RTL keeps all eight Vietnamese ADMIN links plus actions in DOM with long text; this is a structural test, not a claim of measured wrapping.
+Thêm `page family selects the approved width` và `header wraps at approved breakpoints`. Chiều rộng ngoài chuẩn là 1280 cho Overview/review/chi tiết/form thông thường; chiều rộng lớn 1440 cho danh sách Library, Practice, History, Analytics, danh sách/dashboard Admin, workspace Builder và Transfer. Các tuyến chi tiết published `/library/[id]`, `/admin/users/[id]`, `/admin/tests/[id]` và `/admin/tests/new` được nêu rõ vẫn dùng chuẩn; version edit/preview vẫn dùng rộng. Chiều rộng trong của Profile là 920, new-test 720, auth 480 và transition 720. Kiểm tra giới hạn border-box gồm padding và văn mô tả <=72ch; attempt không có class chiều rộng/padding. Đọc khai báo CSS để chứng minh quy tắc >=1440, 768–1439 và <768, khả năng xuống dòng/chiều cao tự động, nav không cắt tràn hay nowrap, header màn hình nhỏ không sticky, giới hạn tên người dùng 120/96, một DOM nav và không có JS phụ thuộc chiều rộng. RTL giữ đủ tám liên kết ADMIN tiếng Việt cùng hành động trong DOM với văn bản dài; đây là test cấu trúc, không khẳng định đã đo việc xuống dòng.
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [ ] **Bước 2: Chạy test để xác nhận thất bại**
 
-Run: `npx vitest run tests/shell-layout-css.test.ts tests/app-shell.test.tsx tests/visual-system-css.test.ts`
+Chạy: `npx vitest run tests/shell-layout-css.test.ts tests/app-shell.test.tsx tests/visual-system-css.test.ts`
 
-Expected: FAIL on missing width classes and current shell spacing/responsive rules.
+Kỳ vọng: FAIL do thiếu class chiều rộng và các quy tắc khoảng cách/responsive shell hiện tại.
 
-- [ ] **Step 3: Implement the minimal change**
+- [ ] **Bước 3: Triển khai thay đổi tối thiểu**
 
-Classify paths locally with the named detail/new-form exceptions before wide families; no route registry abstraction. Use min-height:100vh fallback followed by 100dvh, one column, main flex-grow, centered border-box containers. Header/footer max 1440. Horizontal/top/bottom main padding: desktop 32/40/48, medium 24/32/40, small 16/24/32. Desktop has a 72px minimum header height, automatic actual height and can fit brand/nav/actions on one row while wrapping naturally with VI. Medium keeps the sticky header as one auto-height unit, brand/actions first then nav with 8px horizontal/4px vertical gaps. Small uses brand, actions, wrapped nav below with no sticky positioning; at 320px several rows are allowed and targets remain 44px. Use one nav and flex/grid CSS, no drawer or window.innerWidth. Keep full username accessible while visual text ellipsizes; nav labels wrap at words without ellipsis. Apply inner form maxima/prose <=72ch to existing classes and replace fixed global-sidebar width assertions, preserving feature-local layout rules.
+Phân loại đường dẫn cục bộ, xét ngoại lệ chi tiết/form mới đã nêu trước nhóm dùng chiều rộng lớn; không tạo lớp trừu tượng registry tuyến. Dùng min-height:100vh dự phòng rồi 100dvh, một cột, main flex-grow, container border-box căn giữa. Header/footer tối đa 1440. Padding ngang/trên/dưới main: desktop 32/40/48, trung bình 24/32/40, nhỏ 16/24/32. Desktop có chiều cao header tối thiểu 72px, chiều cao thực tự động, đủ chỗ cho thương hiệu/nav/hành động một hàng và xuống dòng tự nhiên với VI. Màn hình trung bình giữ header sticky thành một khối tự tăng chiều cao, thương hiệu/hành động trước rồi nav với gap ngang 8px/dọc 4px. Màn hình nhỏ dùng thương hiệu, hành động, nav xuống dòng bên dưới và không sticky; tại 320px cho phép nhiều hàng, vùng bấm vẫn 44px. Dùng một nav cùng CSS flex/grid, không drawer hay window.innerWidth. Giữ toàn bộ tên người dùng cho công nghệ hỗ trợ, chỉ rút gọn thị giác bằng dấu ba chấm; nhãn nav xuống dòng theo từ, không dấu ba chấm. Áp dụng giới hạn trong của form/văn bản <=72ch vào class hiện có và thay assertion chiều rộng sidebar toàn cục cố định, giữ quy tắc bố cục riêng của tính năng.
 
-- [ ] **Step 4: Run focused tests**
+- [ ] **Bước 4: Chạy test tập trung**
 
-Run: `npx vitest run tests/shell-layout-css.test.ts tests/app-shell.test.tsx tests/visual-system-css.test.ts`
+Chạy: `npx vitest run tests/shell-layout-css.test.ts tests/app-shell.test.tsx tests/visual-system-css.test.ts`
 
-Expected: PASS for widths, breakpoint source contracts and reachable long-language navigation.
+Kỳ vọng: PASS cho chiều rộng, hợp đồng breakpoint trong mã nguồn và điều hướng dùng ngôn ngữ dài vẫn truy cập được.
 
-- [ ] **Step 5: Commit**
+- [ ] **Bước 5: Commit**
 
 ```bash
 git add -- frontend/src/components/ui/app-shell.tsx frontend/src/components/ui/global-header.tsx frontend/src/app/globals.css frontend/tests/shell-layout-css.test.ts frontend/tests/app-shell.test.tsx frontend/tests/visual-system-css.test.ts
 git commit -m "Apply responsive horizontal shell widths and spacing"
 ```
 
-### Task 6: Paper theme tokens and explicit exam compatibility
+### Nhiệm vụ 6: Token giao diện giấy và tương thích bài thi tường minh
 
-**Files:**
-- Modify: `frontend/src/app/globals.css`.
+**Tệp:**
+- Sửa: `frontend/src/app/globals.css`.
 - Test: `frontend/tests/visual-system-css.test.ts`, `dark-theme-css.test.ts`, `exam-theme-css.test.ts`, `shell-layout-css.test.ts`.
 
-**Interfaces:**
-- Consumes: Approved spec palette/shadow tables and current stylesheet's shared/exam consumers.
-- Produces: Exact light/dark paper tokens, scoped frozen exam values, opaque surfaces and neutral shadows; no component API change.
+**Giao diện:**
+- Đầu vào: Bảng màu/bóng đổ trong đặc tả đã duyệt và nơi sử dụng CSS dùng chung/bài thi hiện tại.
+- Đầu ra: Token giấy sáng/tối chính xác, giá trị bài thi cố định theo phạm vi, bề mặt đặc và bóng trung tính; không đổi API thành phần.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Bước 1: Viết test thất bại**
 
-Replace old palette expectations with the complete approved light/dark token tables, including light bg `#f5f2eb`, muted `#686155`, writing `#99562e`, line-strong `#8f8575`; dark bg `#201e1b`, muted `#b4aa9a`, writing `#d2ab8b`, line-strong `#8d8070`. Add `paper tokens cannot change resolved exam colors or controls`: capture current root/shared values used by .exam-shell/.exam-runner before editing, resolve their scoped light/dark declarations and compare after. Cover embedded Builder preview and paused gate; dark exam-accent must resolve to `#9aa6e8`, never new workspace `#a4afd9`. Freeze all --exam-* and highlight values, module accents, control/button/focus values and 15px exam body. Workspace contrast tests cover normal/hover text >=4.5 and meaningful border/focus >=3, including 8% module mixes and status soft fills; exam checks preserve the existing baseline rather than redesigning controls. Remove only superseded atmosphere/glow expectations.
+Thay kỳ vọng bảng màu cũ bằng toàn bộ bảng token sáng/tối đã duyệt, gồm nền sáng `#f5f2eb`, muted `#686155`, Writing `#99562e`, line-strong `#8f8575`; nền tối `#201e1b`, muted `#b4aa9a`, Writing `#d2ab8b`, line-strong `#8d8070`. Thêm `paper tokens cannot change resolved exam colors or controls`: ghi lại giá trị root/dùng chung mà .exam-shell/.exam-runner sử dụng trước khi sửa, phân giải khai báo sáng/tối theo phạm vi rồi đối chiếu sau sửa. Bao gồm preview nhúng trong Builder và màn hình chặn khi tạm dừng; exam-accent tối phải phân giải thành `#9aa6e8`, không thành accent workspace mới `#a4afd9`. Cố định mọi giá trị --exam-* và highlight, accent mô-đun, giá trị điều khiển/nút/focus và cỡ chữ thân bài thi 15px. Test độ tương phản workspace kiểm tra văn bản thường/hover >=4.5 và viền/focus có ý nghĩa >=3, gồm phối màu mô-đun 8% và nền trạng thái nhẹ; kiểm tra bài thi giữ mốc hiện có thay vì thiết kế lại điều khiển. Chỉ bỏ kỳ vọng không khí/glow đã bị thay thế.
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [ ] **Bước 2: Chạy test để xác nhận thất bại**
 
-Run: `npx vitest run tests/visual-system-css.test.ts tests/dark-theme-css.test.ts tests/exam-theme-css.test.ts tests/shell-layout-css.test.ts`
+Chạy: `npx vitest run tests/visual-system-css.test.ts tests/dark-theme-css.test.ts tests/exam-theme-css.test.ts tests/shell-layout-css.test.ts`
 
-Expected: FAIL on current galaxy palette and unprotected inherited exam aliases.
+Kỳ vọng: FAIL do bảng màu thiên hà hiện tại và alias bài thi kế thừa chưa được bảo vệ.
 
-- [ ] **Step 3: Implement the minimal change**
+- [ ] **Bước 3: Triển khai thay đổi tối thiểu**
 
-Copy every exact workspace value from the spec's palette tables; preserve established token names and compatible aliases. Copy approved neutral shadows: light sm/md/lg offsets 0 1px 3px / 0 4px 12px / 0 12px 32px with rgb(41 38 32) alpha .07/.08/.16; dark same offsets rgb(0 0 0) alpha .16/.20/.30. Glass is opaque; deprecated glow aliases become neutral shadow-sm. Freeze current shared properties actually inherited by exam-shell/runner (ink/surfaces/lines/module/status/contrast/shadows) with explicit scoped light/dark values. Keep --exam-bg/surface/alt/text/muted/border/control-bg/control-text/accent and highlights at the spec's frozen exam values; detach dark exam-accent from workspace accent. Apply compatibility inside nested preview as well as attempts, without new ExamShell or renderer rewrites.
+Chép đúng mọi giá trị workspace từ bảng màu đặc tả; giữ tên token đã có và alias tương thích. Chép bóng trung tính đã duyệt: độ lệch sm/md/lg sáng 0 1px 3px / 0 4px 12px / 0 12px 32px với rgb(41 38 32), alpha .07/.08/.16; tối dùng cùng độ lệch, rgb(0 0 0), alpha .16/.20/.30. Glass là bề mặt đặc; alias glow đã ngừng dùng chuyển thành shadow-sm trung tính. Cố định các thuộc tính dùng chung hiện thực sự được exam-shell/runner kế thừa (màu chữ/bề mặt/đường viền/mô-đun/trạng thái/tương phản/bóng) bằng giá trị sáng/tối theo phạm vi tường minh. Giữ --exam-bg/surface/alt/text/muted/border/control-bg/control-text/accent và highlight ở giá trị bài thi cố định của đặc tả; tách exam-accent tối khỏi accent workspace. Áp dụng tương thích cả trong preview lồng và attempt, không tạo ExamShell mới hay viết lại renderer.
 
-Remove body/shell ambient radials, shell atmospheric pseudo-element, header/toolbar blur, hero ambient/diagonal decoration, colored shadows and decorative card gradients in both themes. Keep the SVG planet and motion classes; remove ambient orbit glow, use a quiet solid core and no colored drop-shadow. Flatten card accents/empty/history/Builder/passage decoration to approved surfaces; preserve functional progress/charts/selection/focus/correctness/highlights. Retain existing exam responsive rules and explicit control appearance; ordinary review chrome can use paper surfaces.
+Bỏ gradient xuyên tâm trang trí ở body/shell, pseudo-element tạo không khí của shell, blur header/toolbar, trang trí không khí/đường chéo ở hero, bóng màu và gradient trang trí card trong cả hai theme. Giữ hành tinh SVG và class chuyển động; bỏ glow quỹ đạo xung quanh, dùng lõi màu đặc nhẹ và không drop-shadow màu. Làm phẳng trang trí accent card/empty/history/Builder/passage theo bề mặt đã duyệt; giữ tiến độ/biểu đồ/vùng chọn/focus/đúng sai/highlight có chức năng. Giữ quy tắc responsive bài thi và hình thức điều khiển tường minh hiện có; phần khung review thông thường có thể dùng bề mặt giấy.
 
-- [ ] **Step 4: Run focused tests**
+- [ ] **Bước 4: Chạy test tập trung**
 
-Run: `npx vitest run tests/visual-system-css.test.ts tests/dark-theme-css.test.ts tests/exam-theme-css.test.ts tests/shell-layout-css.test.ts tests/app-logo.test.tsx tests/interactive-planet.test.tsx`
+Chạy: `npx vitest run tests/visual-system-css.test.ts tests/dark-theme-css.test.ts tests/exam-theme-css.test.ts tests/shell-layout-css.test.ts tests/app-logo.test.tsx tests/interactive-planet.test.tsx`
 
-Expected: PASS with palette/contrast arithmetic and current exam baseline preserved, plus intact SVG/motion behavior.
+Kỳ vọng: PASS với phép tính bảng màu/tương phản và mốc bài thi hiện tại được giữ, cùng hành vi SVG/chuyển động nguyên vẹn.
 
-- [ ] **Step 5: Commit**
+- [ ] **Bước 5: Commit**
 
 ```bash
 git add -- frontend/src/app/globals.css frontend/tests/visual-system-css.test.ts frontend/tests/dark-theme-css.test.ts frontend/tests/exam-theme-css.test.ts frontend/tests/shell-layout-css.test.ts
 git commit -m "Introduce paper and graphite themes with exam isolation"
 ```
 
-### Task 7: Typography, buttons and shared visual primitives
+### Nhiệm vụ 7: Chữ, nút và thành phần thị giác dùng chung
 
-**Files:**
-- Modify: `frontend/src/app/globals.css`, `frontend/src/features/test-builder/content-summary.tsx`.
+**Tệp:**
+- Sửa: `frontend/src/app/globals.css`, `frontend/src/features/test-builder/content-summary.tsx`.
 - Test: `frontend/tests/visual-system-css.test.ts`, `dark-theme-css.test.ts`, `exam-theme-css.test.ts`, `shell-layout-css.test.ts`.
 
-**Interfaces:**
-- Consumes: Workspace/exam token separation and existing primitive classes.
-- Produces: Approved workspace font/scale/button/radius/rhythm contracts; no component prop change yet.
+**Giao diện:**
+- Đầu vào: Phân tách token workspace/bài thi và class thành phần cơ bản hiện có.
+- Đầu ra: Hợp đồng phông/thang cỡ/nút/bo góc/nhịp khoảng cách workspace đã duyệt; chưa đổi prop thành phần.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Bước 1: Viết test thất bại**
 
-Assert Segoe-first local stack with no Inter/font fetch; body 16/400/1.6, meta 13/400 or emphasis 500/1.5, nav 14/500 and active600/1.4, buttons14/600/1.4, eyebrow13/500/1.5/.01em, H1 32 (small28)/600/1.2/-.02em, H2 22 (small20)/600/1.3/-.01em, H3 18/600/1.35/-.01em, label14/500/1.4, status12/500/1.4 and module12/600/1.4/tracking<=.02em. Assert sentence case except short module labels, no uppercase authored-content rule, buttons radius8/min40 and small header target44, no hover transform/glow, cards12/fields8/dialogs14. Retain exam body15 and its existing metrics. Check PageHeading bottom24, eyebrow gap8, description12; form fields16/groups24; gaps follow the 4px scale, with compact Practice gap16 intact.
+Kiểm tra bộ phông cục bộ ưu tiên Segoe, không tải Inter/phông; thân bài 16/400/1.6, metadata 13/400 hoặc nhấn mạnh 500/1.5, nav 14/500 và active 600/1.4, nút 14/600/1.4, nhãn trên tiêu đề 13/500/1.5/.01em, H1 32 (nhỏ 28)/600/1.2/-.02em, H2 22 (nhỏ 20)/600/1.3/-.01em, H3 18/600/1.35/-.01em, nhãn 14/500/1.4, trạng thái 12/500/1.4 và mô-đun 12/600/1.4/tracking<=.02em. Kiểm tra viết hoa đầu câu trừ nhãn mô-đun ngắn, không có quy tắc viết hoa nội dung tác giả, nút có bán kính 8/tối thiểu 40 và vùng bấm header nhỏ 44, không transform/glow khi hover, card 12/trường 8/dialog 14. Giữ thân bài thi 15 và số đo hiện có. Kiểm tra PageHeading cách dưới 24, nhãn trên tiêu đề gap 8, mô tả 12; trường form 16/nhóm 24; gap theo thang 4px, giữ gap 16 gọn của Practice.
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [ ] **Bước 2: Chạy test để xác nhận thất bại**
 
-Run: `npx vitest run tests/visual-system-css.test.ts tests/dark-theme-css.test.ts tests/exam-theme-css.test.ts tests/shell-layout-css.test.ts`
+Chạy: `npx vitest run tests/visual-system-css.test.ts tests/dark-theme-css.test.ts tests/exam-theme-css.test.ts tests/shell-layout-css.test.ts`
 
-Expected: FAIL on old weights/tracking/uppercase and control radii.
+Kỳ vọng: FAIL do độ đậm/tracking/viết hoa và bán kính điều khiển cũ.
 
-- [ ] **Step 3: Implement the minimal change**
+- [ ] **Bước 3: Triển khai thay đổi tối thiểu**
 
-Apply the exact scale above to normal workspace selectors, excluding .exam-shell/.exam-runner descendants and preserving compatibility overrides from Task 6. Use `"Segoe UI Variable", "Segoe UI", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif`. Remove ContentSummary's uppercase/tracking utility treatment from generated headings rather than case-transforming authored strings. Flatten primary/secondary/ghost/danger/danger-ghost/Listening/Writing buttons; padding14, icon gap8, 120–160ms color/surface transition, no lift. Default cards have no shadow; raised cards sm, overlays md, dialogs lg. Apply field/form/heading rhythm and gaps8/12/16/24/32/48 in their approved contexts. Limit 700 to meaningful metrics; preserve tabular numeric values and focus/reduced-motion support.
+Áp dụng đúng thang trên vào selector workspace thông thường, loại trừ phần tử con .exam-shell/.exam-runner và giữ ghi đè tương thích từ Nhiệm vụ 6. Dùng `"Segoe UI Variable", "Segoe UI", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif`. Bỏ utility viết hoa/tracking của ContentSummary khỏi tiêu đề sinh tự động thay vì đổi kiểu chữ chuỗi tác giả. Làm phẳng nút primary/secondary/ghost/danger/danger-ghost/Listening/Writing; padding 14, gap icon 8, chuyển màu/bề mặt 120–160ms, không nhấc nút. Card mặc định không bóng; card nổi dùng sm, overlay md, dialog lg. Áp dụng nhịp trường/form/tiêu đề và gap 8/12/16/24/32/48 ở đúng ngữ cảnh đã duyệt. Chỉ dùng 700 cho chỉ số có ý nghĩa; giữ chữ số dạng bảng và hỗ trợ focus/giảm chuyển động.
 
-- [ ] **Step 4: Run focused tests**
+- [ ] **Bước 4: Chạy test tập trung**
 
-Run: `npx vitest run tests/visual-system-css.test.ts tests/dark-theme-css.test.ts tests/exam-theme-css.test.ts tests/shell-layout-css.test.ts tests/builder-workspace-page.test.tsx tests/skill-practice.test.tsx`
+Chạy: `npx vitest run tests/visual-system-css.test.ts tests/dark-theme-css.test.ts tests/exam-theme-css.test.ts tests/shell-layout-css.test.ts tests/builder-workspace-page.test.tsx tests/skill-practice.test.tsx`
 
-Expected: PASS; useful old CSS assertions are replaced intentionally, not discarded wholesale.
+Kỳ vọng: PASS; thay có chủ đích các assertion CSS cũ còn hữu ích, không loại bỏ hàng loạt.
 
-- [ ] **Step 5: Commit**
+- [ ] **Bước 5: Commit**
 
 ```bash
 git add -- frontend/src/app/globals.css frontend/src/features/test-builder/content-summary.tsx frontend/tests/visual-system-css.test.ts frontend/tests/dark-theme-css.test.ts frontend/tests/exam-theme-css.test.ts frontend/tests/shell-layout-css.test.ts
 git commit -m "Apply the workspace typography and primitive scale"
 ```
 
-### Task 8: Shell and common copy localization
+### Nhiệm vụ 8: Dịch shell và nội dung dùng chung
 
-**Files:**
-- Modify: `frontend/src/components/ui/global-header.tsx`, `app-shell.tsx`, `app-footer.tsx`, `theme-toggle.tsx`, `page-heading.tsx`, `empty-state.tsx`, `module-badge.tsx`, `status-badge.tsx`, `confirm-dialog.tsx`; `frontend/src/components/home/interactive-planet.tsx`; `frontend/src/features/auth/auth-provider.tsx`; `frontend/src/lib/i18n/en.ts`, `vi.ts`, `translations.ts`.
-- Test (create): `frontend/tests/common-localization.test.tsx`; modify `frontend/tests/app-shell.test.tsx`, `app-footer.test.tsx`, `theme-toggle.test.tsx`, `status-badge.test.tsx`, `auth.test.tsx`, `interactive-planet.test.tsx`, `translations.test.ts`.
+**Tệp:**
+- Sửa: `frontend/src/components/ui/global-header.tsx`, `app-shell.tsx`, `app-footer.tsx`, `theme-toggle.tsx`, `page-heading.tsx`, `empty-state.tsx`, `module-badge.tsx`, `status-badge.tsx`, `confirm-dialog.tsx`; `frontend/src/components/home/interactive-planet.tsx`; `frontend/src/features/auth/auth-provider.tsx`; `frontend/src/lib/i18n/en.ts`, `vi.ts`, `translations.ts`.
+- Test (tạo): `frontend/tests/common-localization.test.tsx`; sửa `frontend/tests/app-shell.test.tsx`, `app-footer.test.tsx`, `theme-toggle.test.tsx`, `status-badge.test.tsx`, `auth.test.tsx`, `interactive-planet.test.tsx`, `translations.test.ts`.
 
-**Interfaces:**
-- Consumes: Task 1 hooks/UiText and enum maps; header/footer already use keys from Tasks 3–4.
-- Produces: Locked ReactNode slots/optional badge labels; translated common default dialog labels and complete shell copy.
+**Giao diện:**
+- Đầu vào: Hook/UiText và ánh xạ enum của Nhiệm vụ 1; header/footer đã dùng key từ Nhiệm vụ 3–4.
+- Đầu ra: Vị trí ReactNode/nhãn badge tùy chọn đã chốt; nhãn dialog mặc định dùng chung đã dịch và toàn bộ văn bản shell.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Bước 1: Viết test thất bại**
 
-Add `common primitives accept translated nodes and raw authored titles`, `open logout dialog changes language without recreation`, and `locale switch does not recheck auth`. Keep user display name unchanged; role labels, next-theme action, language group, brand accessible name, footer description and logout title/description/pending/cancel update together. Switch with dialog open: same dialog node, cancel remains focused, Tab/Escape/pending rules preserved and logout request remains single-call. Assert enum styles/unknown fallback survive optional badge labels. SSR PageHeading/EmptyState can receive UiText fragments or raw strings without wrapper/layout changes. Unknown server session diagnostics remain exact; only the owned fallback translates. Theme and locale storage remain independent.
+Thêm `common primitives accept translated nodes and raw authored titles`, `open logout dialog changes language without recreation` và `locale switch does not recheck auth`. Giữ nguyên tên hiển thị người dùng; nhãn role, hành động theme kế tiếp, nhóm ngôn ngữ, tên thương hiệu cho công nghệ hỗ trợ, mô tả footer và tiêu đề/mô tả/đang chờ/hủy của logout cùng đổi. Chuyển ngôn ngữ khi dialog đang mở: vẫn cùng node dialog, focus vẫn ở nút hủy, giữ quy tắc Tab/Escape/đang chờ và request logout chỉ gọi một lần. Kiểm tra kiểu enum/giá trị dự phòng không rõ vẫn hoạt động với nhãn badge tùy chọn. PageHeading/EmptyState ở SSR có thể nhận fragment UiText hoặc chuỗi gốc mà không đổi wrapper/bố cục. Thông báo chẩn đoán phiên từ server không xác định giữ nguyên; chỉ dịch thông báo dự phòng do ứng dụng quản lý. Storage theme và locale vẫn độc lập.
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [ ] **Bước 2: Chạy test để xác nhận thất bại**
 
-Run: `npx vitest run tests/common-localization.test.tsx tests/app-shell.test.tsx tests/app-footer.test.tsx tests/theme-toggle.test.tsx tests/status-badge.test.tsx tests/auth.test.tsx tests/interactive-planet.test.tsx tests/translations.test.ts`
+Chạy: `npx vitest run tests/common-localization.test.tsx tests/app-shell.test.tsx tests/app-footer.test.tsx tests/theme-toggle.test.tsx tests/status-badge.test.tsx tests/auth.test.tsx tests/interactive-planet.test.tsx tests/translations.test.ts`
 
-Expected: FAIL on string-only primitive props and remaining static shared dialog/accessibility copy.
+Kỳ vọng: FAIL do prop thành phần cơ bản chỉ nhận chuỗi và phần văn bản dialog/hỗ trợ truy cập dùng chung còn tĩnh.
 
-- [ ] **Step 3: Implement the minimal change**
+- [ ] **Bước 3: Triển khai thay đổi tối thiểu**
 
-Widen only locked text slots and add optional badge display labels; keep markup/classes/styles and enum inputs unchanged. ConfirmDialog translates Cancel/Working defaults at render, still honoring explicit caller overrides and preserving effects keyed to open/pending/callbacks. Finish common/shell dictionaries and presentation slots, including theme/accessibility/skip-link labels. Keep skip link on normal shell only, targeting existing main `id="main-content"`. AuthProvider stores a distinguishable owned fallback state versus raw diagnostic and resolves the fallback at presentation; t/locale never enter auth loading/logout/refresh effect or callback dependencies. Translate the planet's existing generic accessible copy without changing pointer/reduced-motion effects. No arbitrary string-to-translation matching, function passed through server props or broadly clientified primitive.
+Chỉ mở rộng các vị trí văn bản đã chốt và thêm nhãn hiển thị badge tùy chọn; giữ markup/class/kiểu trình bày và đầu vào enum. ConfirmDialog dịch mặc định Cancel/Working lúc render, vẫn ưu tiên ghi đè tường minh từ bên gọi và giữ effect phụ thuộc open/pending/callback. Hoàn tất từ điển common/shell cùng vị trí trình bày, gồm nhãn theme/hỗ trợ truy cập/liên kết bỏ qua. Chỉ giữ liên kết bỏ qua ở shell thông thường, trỏ tới main hiện có `id="main-content"`. AuthProvider lưu state phân biệt thông báo dự phòng do ứng dụng quản lý với chẩn đoán gốc và phân giải dự phòng lúc trình bày; không đưa t/locale vào dependency của effect/callback tải xác thực/logout/refresh. Dịch nội dung hỗ trợ truy cập chung hiện có của hành tinh mà không đổi effect con trỏ/giảm chuyển động. Không tự khớp chuỗi bất kỳ sang bản dịch, truyền hàm qua prop server hay chuyển rộng các thành phần cơ bản thành client.
 
-- [ ] **Step 4: Run focused tests**
+- [ ] **Bước 4: Chạy test tập trung**
 
-Run the Step 2 command plus `npx vitest run tests/root-layout.test.tsx tests/locale-provider.test.tsx`.
+Chạy lệnh ở Bước 2 cùng `npx vitest run tests/root-layout.test.tsx tests/locale-provider.test.tsx`.
 
-Expected: PASS for common EN/VI UI, SSR boundaries, focus and stable auth identity.
+Kỳ vọng: PASS cho UI dùng chung EN/VI, ranh giới SSR, focus và định danh xác thực ổn định.
 
-- [ ] **Step 5: Commit**
+- [ ] **Bước 5: Commit**
 
 ```bash
 git add -- frontend/src/components/ui/global-header.tsx frontend/src/components/ui/app-shell.tsx frontend/src/components/ui/app-footer.tsx frontend/src/components/ui/theme-toggle.tsx frontend/src/components/ui/page-heading.tsx frontend/src/components/ui/empty-state.tsx frontend/src/components/ui/module-badge.tsx frontend/src/components/ui/status-badge.tsx frontend/src/components/ui/confirm-dialog.tsx frontend/src/components/home/interactive-planet.tsx frontend/src/features/auth/auth-provider.tsx frontend/src/lib/i18n/en.ts frontend/src/lib/i18n/vi.ts frontend/src/lib/i18n/translations.ts frontend/tests/common-localization.test.tsx frontend/tests/app-shell.test.tsx frontend/tests/app-footer.test.tsx frontend/tests/theme-toggle.test.tsx frontend/tests/status-badge.test.tsx frontend/tests/auth.test.tsx frontend/tests/interactive-planet.test.tsx frontend/tests/translations.test.ts
 git commit -m "Localize shared shell and common UI copy"
 ```
 
-### Task 9: Main workspace page localization
+### Nhiệm vụ 9: Dịch các trang workspace chính
 
-**Files:**
-- Create: `frontend/src/components/home/overview-content.tsx`, `frontend/src/features/practice/library-content.tsx`.
-- Modify: `frontend/src/app/page.tsx`, `library/page.tsx`, `library/[versionId]/page.tsx`, `practice/page.tsx`, `history/page.tsx`, `analytics/page.tsx`, `profile/page.tsx`, `login/page.tsx`, `register/page.tsx`, `session/restore/page.tsx`; `frontend/src/features/auth/auth-form.tsx`, `session-restore.tsx`; `frontend/src/features/practice/skill-practice.tsx`, `start-focused-practice.tsx`; `frontend/src/features/history/attempt-history-list.tsx`; `frontend/src/features/analytics/analytics-dashboard.tsx`; `frontend/src/features/exam/start-attempt.tsx`, `start-full-mock.tsx`, `focused-attempt.ts`; `frontend/src/features/test-builder/content-summary.tsx`; `frontend/src/lib/i18n/en.ts`, `vi.ts`.
-- Test (create): `frontend/tests/workspace-localization.test.tsx`; modify `frontend/tests/home-user-metric.test.tsx`, `practice-library.test.tsx`, `skill-practice.test.tsx`, `attempt-history-list.test.tsx`, `analytics-dashboard.test.tsx`, `profile.test.tsx`, `auth.test.tsx`, `auth-session-restore.test.tsx`, `translations.test.ts`.
+**Tệp:**
+- Tạo: `frontend/src/components/home/overview-content.tsx`, `frontend/src/features/practice/library-content.tsx`.
+- Sửa: `frontend/src/app/page.tsx`, `library/page.tsx`, `library/[versionId]/page.tsx`, `practice/page.tsx`, `history/page.tsx`, `analytics/page.tsx`, `profile/page.tsx`, `login/page.tsx`, `register/page.tsx`, `session/restore/page.tsx`; `frontend/src/features/auth/auth-form.tsx`, `session-restore.tsx`; `frontend/src/features/practice/skill-practice.tsx`, `start-focused-practice.tsx`; `frontend/src/features/history/attempt-history-list.tsx`; `frontend/src/features/analytics/analytics-dashboard.tsx`; `frontend/src/features/exam/start-attempt.tsx`, `start-full-mock.tsx`, `focused-attempt.ts`; `frontend/src/features/test-builder/content-summary.tsx`; `frontend/src/lib/i18n/en.ts`, `vi.ts`.
+- Test (tạo): `frontend/tests/workspace-localization.test.tsx`; sửa `frontend/tests/home-user-metric.test.tsx`, `practice-library.test.tsx`, `skill-practice.test.tsx`, `attempt-history-list.test.tsx`, `analytics-dashboard.test.tsx`, `profile.test.tsx`, `auth.test.tsx`, `auth-session-restore.test.tsx`, `translations.test.ts`.
 
-**Interfaces:**
-- Consumes: UiText/ReactNode server slots, useTranslation, badge overrides and common enum maps.
-- Produces: Locked OverviewContent/LibraryContent/LibraryVersionContent and optional translator display helpers. ContentSummary's existing SummaryUnit becomes exported with `heading: { message: "common.passageNumber" | "common.sectionNumber" | "common.taskNumber"; params: { number: number } }`; other fields stay unchanged. Both pure summary builders return that type; ContentSummary is a client presentation component and keys units by message+number, not translated text.
+**Giao diện:**
+- Đầu vào: Vị trí UiText/ReactNode ở server, useTranslation, nhãn badge ghi đè và ánh xạ enum dùng chung.
+- Đầu ra: OverviewContent/LibraryContent/LibraryVersionContent và helper hiển thị nhận hàm dịch tùy chọn theo giao diện đã chốt. SummaryUnit hiện có của ContentSummary được export với `heading: { message: "common.passageNumber" | "common.sectionNumber" | "common.taskNumber"; params: { number: number } }`; các trường khác giữ nguyên. Cả hai hàm tạo summary thuần trả kiểu đó; ContentSummary là thành phần trình bày client và dùng message+number làm key đơn vị, không dùng văn bản đã dịch.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Bước 1: Viết test thất bại**
 
-Add `workspace locale changes copy without changing selected state` and `generated labels translate while authored titles stay exact`. Exercise Overview headings/goals, Library list/detail/empty/readiness, Practice filters/search/counts/timers/audio helpers, all four History tabs/actions/statuses, Analytics generic labels, Profile/auth/restore chrome. Store a Practice query, skill/unit filter and nondefault timer; switch and assert unchanged selected cards/IDs/request input. Preserve History tab and open delete dialog, Analytics selection and Profile input draft. Fictional title `Section 2` remains exactly `Section 2` when authored, while generated Section 2 becomes `Phần 2`; include accents/HTML-like text/prompt excerpts/options. Compare serialized DTO fixtures before/after. Locally built fallback description translates only when authored description is null. Mock server routes once and assert switches do not rerun fetchers or startAttempt. Auth/restore effects do not restart; default restore text becomes English rather than current Vietnamese-only copy.
+Thêm `workspace locale changes copy without changing selected state` và `generated labels translate while authored titles stay exact`. Kiểm tra tiêu đề/mục tiêu Overview, danh sách/chi tiết/rỗng/sẵn sàng của Library, bộ lọc/tìm kiếm/số lượng/bộ đếm thời gian/hỗ trợ âm thanh của Practice, cả bốn tab/hành động/trạng thái History, nhãn chung Analytics, khung Profile/auth/restore. Lưu truy vấn Practice, bộ lọc kỹ năng/đơn vị và thời lượng không mặc định; chuyển ngôn ngữ rồi kiểm tra card/ID/đầu vào request đã chọn giữ nguyên. Giữ tab History và dialog xóa đang mở, lựa chọn Analytics và bản nháp nhập liệu Profile. Tiêu đề giả lập `Section 2` vẫn chính xác là `Section 2` khi do tác giả nhập, còn nhãn Section 2 sinh tự động đổi thành `Phần 2`; bao gồm dấu tiếng Việt/văn bản giống HTML/đoạn trích đề/options. So sánh fixture DTO đã serialize trước/sau. Mô tả dự phòng tạo cục bộ chỉ dịch khi mô tả tác giả là null. Giả lập tuyến server một lần và kiểm tra chuyển ngôn ngữ không gọi lại hàm fetch hay startAttempt. Effect auth/restore không khởi động lại; văn bản restore mặc định chuyển thành tiếng Anh thay cho nội dung hiện chỉ có tiếng Việt.
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [ ] **Bước 2: Chạy test để xác nhận thất bại**
 
-Run: `npx vitest run tests/workspace-localization.test.tsx tests/home-user-metric.test.tsx tests/practice-library.test.tsx tests/skill-practice.test.tsx tests/attempt-history-list.test.tsx tests/analytics-dashboard.test.tsx tests/profile.test.tsx tests/auth-session-restore.test.tsx tests/translations.test.ts`
+Chạy: `npx vitest run tests/workspace-localization.test.tsx tests/home-user-metric.test.tsx tests/practice-library.test.tsx tests/skill-practice.test.tsx tests/attempt-history-list.test.tsx tests/analytics-dashboard.test.tsx tests/profile.test.tsx tests/auth-session-restore.test.tsx tests/translations.test.ts`
 
-Expected: FAIL on remaining English literals and untyped generated summary headings.
+Kỳ vọng: FAIL do các chuỗi tiếng Anh còn lại và tiêu đề summary sinh tự động chưa có kiểu.
 
-- [ ] **Step 3: Implement the minimal change**
+- [ ] **Bước 3: Triển khai thay đổi tối thiểu**
 
-Move only Overview and Library presentation into the locked cohesive client files so their native aria-labels and labels can use t. Keep async fetching, published-version filtering, role-conditioned stats/profile loading, guard/notFound and serializable DTOs on the server. Other server pages pass UiText for headings and Suspense fallbacks; existing client features translate at their current slots. Preserve sort/search algorithms and original searchable authored data; never derive filter matching from newly translated labels. Use route/enum/UUID identity instead of translated titles for generated list keys.
+Chỉ chuyển phần trình bày Overview và Library vào các tệp client gắn kết đã chốt để aria-label và nhãn gốc của chúng dùng được t. Giữ fetch bất đồng bộ, lọc phiên bản published, tải stats/profile theo role, guard/notFound và DTO có thể serialize ở server. Các trang server khác truyền UiText cho tiêu đề và nội dung dự phòng Suspense; tính năng client hiện có dịch tại đúng vị trí hiện tại. Giữ thuật toán sắp xếp/tìm kiếm và dữ liệu tác giả gốc dùng để tìm; không suy ra kết quả lọc từ nhãn mới dịch. Dùng định danh tuyến/enum/UUID thay cho tiêu đề đã dịch làm key danh sách sinh tự động.
 
-Cover every included row of spec section 11 for these pages. Add paired `pages.*`, `practice.*`, `history.*`, `analytics.*`, `profile.*`, `auth.*` keys and shared generated unit/count/accuracy keys. Keep field values, raw scores and date formats intact. Summary builders carry heading descriptors rather than English strings; only application-owned type/category labels map to keys locally in summary/card presentation, leaving registry instruction templates and editor helpers untouched. Extend focusedUnitLabel/accuracyLabel as locked, with English default and current mathematical behavior. Client start views construct translated readiness prose from existing modules/counts but retain identical availability/timer/request rules. Local fallback/error state stores a key/branch, rendering through t; unknown server messages stay raw and t never enters request dependencies.
+Bao phủ mọi dòng thuộc phạm vi trong mục 11 của đặc tả cho các trang này. Thêm cặp key `pages.*`, `practice.*`, `history.*`, `analytics.*`, `profile.*`, `auth.*` và key chung cho đơn vị/số lượng/độ chính xác sinh tự động. Giữ giá trị trường, điểm thô và định dạng ngày. Hàm tạo summary mang mô tả heading thay cho chuỗi tiếng Anh; chỉ nhãn loại/nhóm do ứng dụng quản lý ánh xạ sang key cục bộ trong trình bày summary/card, không sửa mẫu hướng dẫn registry hay helper editor. Mở rộng focusedUnitLabel/accuracyLabel theo giao diện đã chốt, với mặc định tiếng Anh và phép tính hiện tại. View bắt đầu ở client tạo văn bản sẵn sàng đã dịch từ mô-đun/số lượng hiện có nhưng giữ nguyên quy tắc khả dụng/thời gian/request. State dự phòng/lỗi cục bộ lưu key/nhánh rồi render qua t; thông báo server không xác định giữ nguyên và không đưa t vào dependency request.
 
-- [ ] **Step 4: Run focused tests**
+- [ ] **Bước 4: Chạy test tập trung**
 
-Run the Step 2 command plus `npx vitest run tests/auth.test.tsx tests/builder-workspace-page.test.tsx tests/focused-reading-review.test.tsx tests/focused-listening-review.test.tsx` to cover shared-summary/helper English compatibility.
+Chạy lệnh ở Bước 2 cùng `npx vitest run tests/auth.test.tsx tests/builder-workspace-page.test.tsx tests/focused-reading-review.test.tsx tests/focused-listening-review.test.tsx` để bao phủ tương thích tiếng Anh của summary/helper dùng chung.
 
-Expected: PASS with state/content/payload preservation and unchanged focused availability/scoring.
+Kỳ vọng: PASS, giữ state/nội dung/payload và không đổi tính khả dụng/cách chấm focused.
 
-- [ ] **Step 5: Commit**
+- [ ] **Bước 5: Commit**
 
 ```bash
 git --literal-pathspecs add -- frontend/src/components/home/overview-content.tsx frontend/src/features/practice/library-content.tsx frontend/src/app/page.tsx frontend/src/app/library/page.tsx 'frontend/src/app/library/[versionId]/page.tsx' frontend/src/app/practice/page.tsx frontend/src/app/history/page.tsx frontend/src/app/analytics/page.tsx frontend/src/app/profile/page.tsx frontend/src/app/login/page.tsx frontend/src/app/register/page.tsx frontend/src/app/session/restore/page.tsx frontend/src/features/auth/auth-form.tsx frontend/src/features/auth/session-restore.tsx frontend/src/features/practice/skill-practice.tsx frontend/src/features/practice/start-focused-practice.tsx frontend/src/features/history/attempt-history-list.tsx frontend/src/features/analytics/analytics-dashboard.tsx frontend/src/features/exam/start-attempt.tsx frontend/src/features/exam/start-full-mock.tsx frontend/src/features/exam/focused-attempt.ts frontend/src/features/test-builder/content-summary.tsx frontend/src/lib/i18n/en.ts frontend/src/lib/i18n/vi.ts frontend/tests/workspace-localization.test.tsx frontend/tests/home-user-metric.test.tsx frontend/tests/practice-library.test.tsx frontend/tests/skill-practice.test.tsx frontend/tests/attempt-history-list.test.tsx frontend/tests/analytics-dashboard.test.tsx frontend/tests/profile.test.tsx frontend/tests/auth.test.tsx frontend/tests/auth-session-restore.test.tsx frontend/tests/translations.test.ts
 git commit -m "Localize main workspace pages and practice controls"
 ```
 
-### Task 10: Admin, Builder and Transfer first-pass localization
+### Nhiệm vụ 10: Dịch đợt đầu Admin, Builder và Transfer
 
-**Files:**
-- Create: `frontend/src/features/auth/admin-content.tsx`.
-- Modify: `frontend/src/app/admin/page.tsx`, `admin/users/[userId]/page.tsx`, `admin/tests/page.tsx`, `admin/tests/new/page.tsx`, `admin/tests/[testId]/page.tsx`, `admin/tests/[testId]/versions/[versionId]/edit/page.tsx`, `transfer/page.tsx`; `frontend/src/features/auth/admin-guard.tsx`, `admin-user-list.tsx`, `admin-user-actions.tsx`; `frontend/src/features/test-builder/test-library-list.tsx`, `new-test-form.tsx`, `test-details-heading.tsx`, `version-actions.tsx`, `builder-workspace-navigation.tsx`, `builder-lifecycle.tsx`, `autosave-link.tsx`, `reading-builder.tsx`, `listening-builder.tsx`, `writing-builder.tsx`, `module-duration-editor.tsx`, `listening-section-editor.tsx`; `frontend/src/features/transfer/transfer-portal.tsx`; `frontend/src/lib/i18n/en.ts`, `vi.ts`.
+**Tệp:**
+- Tạo: `frontend/src/features/auth/admin-content.tsx`.
+- Sửa: `frontend/src/app/admin/page.tsx`, `admin/users/[userId]/page.tsx`, `admin/tests/page.tsx`, `admin/tests/new/page.tsx`, `admin/tests/[testId]/page.tsx`, `admin/tests/[testId]/versions/[versionId]/edit/page.tsx`, `transfer/page.tsx`; `frontend/src/features/auth/admin-guard.tsx`, `admin-user-list.tsx`, `admin-user-actions.tsx`; `frontend/src/features/test-builder/test-library-list.tsx`, `new-test-form.tsx`, `test-details-heading.tsx`, `version-actions.tsx`, `builder-workspace-navigation.tsx`, `builder-lifecycle.tsx`, `autosave-link.tsx`, `reading-builder.tsx`, `listening-builder.tsx`, `writing-builder.tsx`, `module-duration-editor.tsx`, `listening-section-editor.tsx`; `frontend/src/features/transfer/transfer-portal.tsx`; `frontend/src/lib/i18n/en.ts`, `vi.ts`.
 - Test: `frontend/tests/admin-dashboard.test.tsx`, `admin-user-list.test.tsx`, `admin-user-detail.test.tsx`, `test-library-list.test.tsx`, `version-actions.test.tsx`, `builder-workspace-navigation.test.tsx`, `builder-workspace-page.test.tsx`, `builder-autosave.test.tsx`, `module-duration-editor.test.tsx`, `transfer-portal.test.tsx`, `workspace-localization.test.tsx`, `translations.test.ts`.
 
-**Interfaces:**
-- Consumes: Locked AdminContent DTO props, shared summaries/keys and unchanged BuilderLifecycle/context APIs.
-- Produces: Complete `admin.*`, `builder.*`, `transfer.*` first-pass keys; no editor/lifecycle/request API changes.
+**Giao diện:**
+- Đầu vào: Prop DTO AdminContent đã chốt, summary/key dùng chung và API BuilderLifecycle/context không đổi.
+- Đầu ra: Đầy đủ key đợt đầu `admin.*`, `builder.*`, `transfer.*`; không đổi API editor/vòng đời/request.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Bước 1: Viết test thất bại**
 
-Add bilingual assertions to existing feature fixtures for dashboard/guard/user roles and common dialogs; test-list tabs/search, new-test metadata, version Preview/Validate/Publish/Clone/Archive, Builder workspace tabs/module overview/create/delete/duration/save status and Transfer file/import/export/result controls. Switch while a metadata draft, Builder selected workspace, autosave pending request and Transfer selected file/version exist: values, keys, in-flight calls and file identity remain unchanged. Names/emails/test titles/descriptions/asset names/server validation diagnostics stay raw. A representative specialized editor's instructional text and authored template remain unchanged; shared Cancel may translate. Do not assert that every nested editor string is localized.
+Thêm assertion song ngữ vào fixture tính năng hiện có cho dashboard/guard/role người dùng và dialog dùng chung; tab/tìm kiếm danh sách test, metadata test mới, Preview/Validate/Publish/Clone/Archive phiên bản, tab workspace/tổng quan mô-đun/tạo/xóa/thời lượng/trạng thái lưu Builder và điều khiển tệp/import/export/kết quả Transfer. Chuyển ngôn ngữ khi đang có bản nháp metadata, workspace Builder đã chọn, request autosave đang chờ và tệp/phiên bản Transfer đã chọn: giá trị, key, lời gọi đang xử lý và định danh tệp giữ nguyên. Tên/email/tiêu đề đề/mô tả/tên asset/chẩn đoán validation từ server giữ nguyên. Nội dung hướng dẫn và mẫu do tác giả soạn trong một editor chuyên biệt đại diện giữ nguyên; Cancel dùng chung có thể dịch. Không khẳng định mọi chuỗi trong editor lồng đều đã dịch.
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [ ] **Bước 2: Chạy test để xác nhận thất bại**
 
-Run: `npx vitest run tests/admin-dashboard.test.tsx tests/admin-user-list.test.tsx tests/admin-user-detail.test.tsx tests/test-library-list.test.tsx tests/version-actions.test.tsx tests/builder-workspace-navigation.test.tsx tests/builder-workspace-page.test.tsx tests/builder-autosave.test.tsx tests/module-duration-editor.test.tsx tests/transfer-portal.test.tsx tests/workspace-localization.test.tsx tests/translations.test.ts`
+Chạy: `npx vitest run tests/admin-dashboard.test.tsx tests/admin-user-list.test.tsx tests/admin-user-detail.test.tsx tests/test-library-list.test.tsx tests/version-actions.test.tsx tests/builder-workspace-navigation.test.tsx tests/builder-workspace-page.test.tsx tests/builder-autosave.test.tsx tests/module-duration-editor.test.tsx tests/transfer-portal.test.tsx tests/workspace-localization.test.tsx tests/translations.test.ts`
 
-Expected: FAIL on the included first-pass English literals, with specialized-editor baseline assertions still passing.
+Kỳ vọng: FAIL với chuỗi tiếng Anh thuộc phạm vi đợt đầu, trong khi assertion mốc editor chuyên biệt vẫn PASS.
 
-- [ ] **Step 3: Implement the minimal change**
+- [ ] **Bước 3: Triển khai thay đổi tối thiểu**
 
-Use AdminContent for coherent dashboard/detail native attributes and mixed system/user labels. Keep Admin/Transfer server layouts, search/offset validation, fetching/redirect/notFound and user-list key intact. Builder/Transfer server headings use UiText; existing clients use t in text slots. Modify BuilderLifecycle only its save-status presentation; keep queues/refs/callback dependencies/transitions unchanged. Translate top-level module and section create/delete labels in the listed editors without traversing question-group/answer-key/completion/diagram/audio-range guidance. Preserve strings used to initialize/persist test content, including ListeningSectionEditor's fallback title in fields(); translating a displayed label must not change a created title or mutation input. No registry, clone/ZIP, audio capture/reset, validation or specialized tool changes. Preserve authored instruction templates byte-for-byte; deferred specialized copy may retain its existing language, with no blanket English boundary surrounding translated controls. Reuse paired common actions rather than duplicating their keys.
+Dùng AdminContent cho thuộc tính gốc dashboard/chi tiết nhất quán và nhãn pha trộn hệ thống/người dùng. Giữ layout server Admin/Transfer, validation search/offset, fetch/redirect/notFound và key danh sách người dùng. Tiêu đề server Builder/Transfer dùng UiText; client hiện có dùng t ở vị trí văn bản. Chỉ sửa trình bày trạng thái lưu trong BuilderLifecycle; giữ queue/ref/dependency callback/chuyển trạng thái. Dịch nhãn tạo/xóa mô-đun và section cấp cao trong các editor được liệt kê, không đi sâu vào hướng dẫn question-group/answer-key/completion/diagram/audio-range. Giữ chuỗi dùng khởi tạo/lưu nội dung đề, gồm tiêu đề dự phòng của ListeningSectionEditor trong fields(); dịch nhãn hiển thị không được đổi tiêu đề được tạo hay đầu vào mutation. Không đổi registry, clone/ZIP, ghi/reset âm thanh, validation hay công cụ chuyên biệt. Giữ nguyên từng byte mẫu hướng dẫn tác giả; nội dung chuyên biệt hoãn dịch có thể giữ ngôn ngữ hiện có, không đặt một ranh giới tiếng Anh chung bao quanh điều khiển đã dịch. Dùng lại cặp hành động common thay vì nhân đôi key.
 
-- [ ] **Step 4: Run focused tests**
+- [ ] **Bước 4: Chạy test tập trung**
 
-Run the Step 2 command plus `npx vitest run tests/builder-route.test.tsx tests/reading-builder-sync.test.tsx tests/listening-audio-ranges.test.tsx tests/writing-builder.test.tsx` as targeted invariants for touched top-level editor files.
+Chạy lệnh ở Bước 2 cùng `npx vitest run tests/builder-route.test.tsx tests/reading-builder-sync.test.tsx tests/listening-audio-ranges.test.tsx tests/writing-builder.test.tsx` làm kiểm tra bất biến có mục tiêu cho các tệp editor cấp cao đã sửa.
 
-Expected: PASS, including save/lifecycle/selection preservation and intact audio-range functionality.
+Kỳ vọng: PASS, giữ lưu/vòng đời/lựa chọn và chức năng khoảng âm thanh nguyên vẹn.
 
-- [ ] **Step 5: Commit**
+- [ ] **Bước 5: Commit**
 
 ```bash
 git --literal-pathspecs add -- frontend/src/features/auth/admin-content.tsx frontend/src/app/admin/page.tsx 'frontend/src/app/admin/users/[userId]/page.tsx' frontend/src/app/admin/tests/page.tsx frontend/src/app/admin/tests/new/page.tsx 'frontend/src/app/admin/tests/[testId]/page.tsx' 'frontend/src/app/admin/tests/[testId]/versions/[versionId]/edit/page.tsx' frontend/src/app/transfer/page.tsx frontend/src/features/auth/admin-guard.tsx frontend/src/features/auth/admin-user-list.tsx frontend/src/features/auth/admin-user-actions.tsx frontend/src/features/test-builder/test-library-list.tsx frontend/src/features/test-builder/new-test-form.tsx frontend/src/features/test-builder/test-details-heading.tsx frontend/src/features/test-builder/version-actions.tsx frontend/src/features/test-builder/builder-workspace-navigation.tsx frontend/src/features/test-builder/builder-lifecycle.tsx frontend/src/features/test-builder/autosave-link.tsx frontend/src/features/test-builder/reading-builder.tsx frontend/src/features/test-builder/listening-builder.tsx frontend/src/features/test-builder/writing-builder.tsx frontend/src/features/test-builder/module-duration-editor.tsx frontend/src/features/test-builder/listening-section-editor.tsx frontend/src/features/transfer/transfer-portal.tsx frontend/src/lib/i18n/en.ts frontend/src/lib/i18n/vi.ts frontend/tests/admin-dashboard.test.tsx frontend/tests/admin-user-list.test.tsx frontend/tests/admin-user-detail.test.tsx frontend/tests/test-library-list.test.tsx frontend/tests/version-actions.test.tsx frontend/tests/builder-workspace-navigation.test.tsx frontend/tests/builder-workspace-page.test.tsx frontend/tests/builder-autosave.test.tsx frontend/tests/module-duration-editor.test.tsx frontend/tests/transfer-portal.test.tsx frontend/tests/workspace-localization.test.tsx frontend/tests/translations.test.ts
 git commit -m "Localize Admin Builder and Transfer workspace chrome"
 ```
 
-### Task 11: Static exam and runner control localization
+### Nhiệm vụ 11: Dịch điều khiển tĩnh của bài thi và runner
 
-**Files:**
-- Modify: `frontend/src/features/reading/reading-runner.tsx`, `reading-review.tsx`; `frontend/src/features/listening/listening-runner.tsx`, `listening-review.tsx`, `audio-player.tsx`; `frontend/src/features/writing/writing-runner.tsx`, `writing-review.tsx`; `frontend/src/features/exam/pause-attempt-control.tsx`, `paused-attempt-gate.tsx`, `draft-recovery-notices.tsx`, `test-session-transition.tsx`, `terminal-attempt-redirect.tsx`, `use-exam-submit.ts`; `frontend/src/features/test-builder/draft-preview.tsx`; `frontend/src/lib/i18n/en.ts`, `vi.ts`.
-- Modify (shared static controls only): `frontend/src/features/highlighting/selectable-text.tsx`; `frontend/src/features/questions/renderers.tsx`, `note-completion-renderer.tsx`, `table-completion-renderer.tsx`, `diagram-labelling-renderer.tsx`.
-- Test (create): `frontend/tests/runner-localization.test.tsx`; modify `frontend/tests/reading-navigation.test.tsx`, `listening-navigation.test.tsx`, `listening-player.test.tsx`, `writing-runner.test.tsx`, `writing-review.test.tsx`, `focused-reading-review.test.tsx`, `focused-listening-review.test.tsx`, `pause-attempt-control.test.tsx`, `test-session-transition.test.tsx`, `draft-preview.test.tsx`, `translations.test.ts`.
-- Test (modify shared-control cases): `frontend/tests/selectable-text.test.tsx`, `question-registry.test.tsx`, `note-completion.test.tsx`, `table-completion.test.tsx`, `diagram-labelling.test.tsx`.
+**Tệp:**
+- Sửa: `frontend/src/features/reading/reading-runner.tsx`, `reading-review.tsx`; `frontend/src/features/listening/listening-runner.tsx`, `listening-review.tsx`, `audio-player.tsx`; `frontend/src/features/writing/writing-runner.tsx`, `writing-review.tsx`; `frontend/src/features/exam/pause-attempt-control.tsx`, `paused-attempt-gate.tsx`, `draft-recovery-notices.tsx`, `test-session-transition.tsx`, `terminal-attempt-redirect.tsx`, `use-exam-submit.ts`; `frontend/src/features/test-builder/draft-preview.tsx`; `frontend/src/lib/i18n/en.ts`, `vi.ts`.
+- Sửa (chỉ điều khiển tĩnh dùng chung): `frontend/src/features/highlighting/selectable-text.tsx`; `frontend/src/features/questions/renderers.tsx`, `note-completion-renderer.tsx`, `table-completion-renderer.tsx`, `diagram-labelling-renderer.tsx`.
+- Test (tạo): `frontend/tests/runner-localization.test.tsx`; sửa `frontend/tests/reading-navigation.test.tsx`, `listening-navigation.test.tsx`, `listening-player.test.tsx`, `writing-runner.test.tsx`, `writing-review.test.tsx`, `focused-reading-review.test.tsx`, `focused-listening-review.test.tsx`, `pause-attempt-control.test.tsx`, `test-session-transition.test.tsx`, `draft-preview.test.tsx`, `translations.test.ts`.
+- Test (sửa ca điều khiển dùng chung): `frontend/tests/selectable-text.test.tsx`, `question-registry.test.tsx`, `note-completion.test.tsx`, `table-completion.test.tsx`, `diagram-labelling.test.tsx`.
 
-**Interfaces:**
-- Consumes: Stable provider/test harness, t/UiText, common keys, optional-translator display helpers.
-- Produces: Complete common `runner.*` / `audio.*` keys; existing runner props, ListeningAudioPlayer src/clip/policy/ref/onDuration and public useExamSubmit return shape remain unchanged.
+**Giao diện:**
+- Đầu vào: Provider/bộ hỗ trợ test ổn định, t/UiText, key common, helper hiển thị nhận hàm dịch tùy chọn.
+- Đầu ra: Đầy đủ key chung `runner.*` / `audio.*`; prop runner hiện có, src/clip/policy/ref/onDuration của ListeningAudioPlayer và cấu trúc trả về công khai của useExamSubmit không đổi.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Bước 1: Viết test thất bại**
 
-Add table-driven `locale switch preserves active attempt state` for all three real runners, copying minimal fictional payload builders from their existing test files into runner-localization.test.tsx and mocking HTTP/media; never import a test file as a fixture module. Switch EN → VI → EN through the provider harness outside the attempt shell; do not add a runner locale selector. Assert existing Pause/Resume/Continue/Submit/Review/Exit-or-Leave/Back slots, Time remaining/Time elapsed, Question(s), generated Passage/Section/Task, saving/state/error/dialog copy and player accessible names update where those slots exist. Representative VI labels: `Tạm dừng`, `Tiếp tục`, `Nộp bài`, `Thời gian còn lại`, `Thời gian đã dùng`, `Câu hỏi 2`, `Phần 2`. Labels do not create missing controls.
+Thêm test theo bảng `locale switch preserves active attempt state` cho cả ba runner thực, chép hàm tạo payload giả lập tối thiểu từ test hiện có vào runner-localization.test.tsx rồi giả lập HTTP/media; không import tệp test như mô-đun fixture. Chuyển EN → VI → EN qua bộ hỗ trợ provider bên ngoài shell attempt; không thêm bộ chọn locale trong runner. Kiểm tra các vị trí Pause/Resume/Continue/Submit/Review/Exit-or-Leave/Back, Time remaining/Time elapsed, Question(s), Passage/Section/Task sinh tự động, văn bản lưu/trạng thái/lỗi/dialog và tên player cho công nghệ hỗ trợ được cập nhật ở nơi vốn có. Nhãn VI đại diện: `Tạm dừng`, `Tiếp tục`, `Nộp bài`, `Thời gian còn lại`, `Thời gian đã dùng`, `Câu hỏi 2`, `Phần 2`. Nhãn không tạo thêm điều khiển chưa có.
 
-Before switching, type an answer/Writing response, select a unit, set a flag/highlight and advance fake time. Compare runner/input/audio node identity, preserved response/draft revision, selected unit, timestamp-derived timer and highlights/flags after the switch. Observe lifecycle/store creation with spies, not merely a wrapper counter; queued save and initial navigation/activity calls retain counts/payloads, and switching emits no request or router action. Preserve audio currentTime/rate/volume/mute and play/pause/load call counts using mocked media; no real playback. Repeat for provider restoration after mount, pending autosave and an open common dialog. Keep fake timers from introducing unrelated periodic requests during the assertion interval.
+Trước khi chuyển, nhập đáp án/bài Writing, chọn đơn vị, đặt cờ/highlight và tăng thời gian giả lập. So sánh định danh node runner/input/audio, response/revision bản nháp được giữ, đơn vị đã chọn, bộ đếm dựa trên timestamp và highlight/cờ sau khi chuyển. Theo dõi việc tạo lifecycle/store bằng spy, không chỉ bộ đếm wrapper; tác vụ lưu đã xếp hàng và lời gọi điều hướng/hoạt động ban đầu giữ số lần/payload, chuyển ngôn ngữ không phát request hay hành động router. Giữ currentTime/rate/volume/mute và số lần gọi play/pause/load bằng media giả lập; không phát âm thanh thật. Lặp lại với khôi phục provider sau mount, autosave đang chờ và dialog dùng chung đang mở. Không để bộ đếm giả tạo request định kỳ không liên quan trong khoảng kiểm tra.
 
-Capture authored title/passage blocks/Listening section content/prompts/options/admin instruction/Writing prompt/response/keys/explanations before/after and compare exact strings/serialized fixture plus display text; authored `Section 2` stays English while generated label translates. Extend runner/review Listening fixtures for clip+audio, audio without clip, and no audio: same clip/policy/source behavior, translated neutral fallback notices, questions still present. Preserve full standalone allowSeeking/allowSpeed and Full Mock restrictions. Cover paused gate, review/preview generated controls, focused raw/max/accuracy/no Band and Full Mock transition polling/advance counts. AppShell tests separately prove no global chrome on full/focused/paused attempts.
+Ghi lại tiêu đề/khối passage/nội dung section Listening/đề/options/hướng dẫn admin/đề Writing/bài viết/đáp án/giải thích do tác giả soạn trước/sau, so sánh chính xác chuỗi/fixture đã serialize cùng văn bản hiển thị; `Section 2` do tác giả nhập giữ tiếng Anh, còn nhãn sinh tự động được dịch. Mở rộng fixture Listening của runner/review cho clip+audio, audio không có clip và không có audio: hành vi clip/policy/source không đổi, thông báo dự phòng trung tính được dịch, câu hỏi vẫn hiện. Giữ đầy đủ allowSeeking/allowSpeed của bài độc lập và hạn chế Full Mock. Bao phủ màn hình tạm dừng, điều khiển sinh tự động ở review/preview, điểm thô/tối đa/độ chính xác/không Band của focused và số lần polling/advance ở chuyển tiếp Full Mock. Test AppShell riêng chứng minh không có khung toàn cục trên attempt full/focused/paused.
 
-In existing shared-control tests, switch locale with a highlight popover open: its action/dialog/error labels and generic Question accessible names/empty selector placeholders update, but selected text, offsets, highlight ID, popover node/focus and answer values remain exact. IELTS answer choices such as TRUE/FALSE/NOT GIVEN, option text, diagram annotations, instruction templates and authored table/note content remain unchanged. These assertions cover the same static-system boundary inside reused renderers, not specialized Builder-editor translation.
+Trong test điều khiển dùng chung hiện có, chuyển locale khi popover highlight mở: nhãn hành động/dialog/lỗi và tên Question chung cho công nghệ hỗ trợ/placeholder selector trống cập nhật, nhưng văn bản được chọn, offset, ID highlight, node/focus popover và giá trị đáp án giữ nguyên chính xác. Lựa chọn IELTS như TRUE/FALSE/NOT GIVEN, nội dung option, chú thích sơ đồ, mẫu hướng dẫn và nội dung bảng/ghi chú tác giả không đổi. Các assertion này bao phủ cùng ranh giới hệ thống tĩnh bên trong renderer tái sử dụng, không phải dịch editor Builder chuyên biệt.
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [ ] **Bước 2: Chạy test để xác nhận thất bại**
 
-Run: `npx vitest run tests/runner-localization.test.tsx tests/reading-navigation.test.tsx tests/listening-navigation.test.tsx tests/listening-player.test.tsx tests/writing-runner.test.tsx tests/writing-review.test.tsx tests/focused-reading-review.test.tsx tests/focused-listening-review.test.tsx tests/pause-attempt-control.test.tsx tests/test-session-transition.test.tsx tests/draft-preview.test.tsx tests/translations.test.ts tests/selectable-text.test.tsx tests/question-registry.test.tsx tests/note-completion.test.tsx tests/table-completion.test.tsx tests/diagram-labelling.test.tsx`
+Chạy: `npx vitest run tests/runner-localization.test.tsx tests/reading-navigation.test.tsx tests/listening-navigation.test.tsx tests/listening-player.test.tsx tests/writing-runner.test.tsx tests/writing-review.test.tsx tests/focused-reading-review.test.tsx tests/focused-listening-review.test.tsx tests/pause-attempt-control.test.tsx tests/test-session-transition.test.tsx tests/draft-preview.test.tsx tests/translations.test.ts tests/selectable-text.test.tsx tests/question-registry.test.tsx tests/note-completion.test.tsx tests/table-completion.test.tsx tests/diagram-labelling.test.tsx`
 
-Expected: FAIL on untranslated runner/player UI; current lifecycle/scoring/playback assertions stay valid.
+Kỳ vọng: FAIL với UI runner/player chưa dịch; các assertion vòng đời/chấm điểm/phát âm thanh hiện tại vẫn hợp lệ.
 
-- [ ] **Step 3: Implement the minimal change**
+- [ ] **Bước 3: Triển khai thay đổi tối thiểu**
 
-Wire t into existing static text/accessible-label slots only. Preserve JSX hierarchy/classes, exam tokens/layout, authored rendering, input names/IDs, UUID keys, lifecycle hooks, timer calculations, autosave stores, flag/highlight handlers and attempt/player props. Pass t to display helpers; distinguish generated labels from authored titles by existing kind/order data. Translate only owned static fallback branches; arbitrary server messages/warnings and authored instructions remain raw. In the listed shared renderers translate only generic Question names/empty selector placeholders; do not translate question-registry content, answer values/IELTS choices, authored annotation text or change answer primitives. SelectableText translates only its existing application-owned labels and local error branches; its semantic-offset and portal/event lifecycle stays intact.
+Chỉ nối t vào các vị trí văn bản tĩnh/nhãn hỗ trợ truy cập hiện có. Giữ phân cấp/class JSX, token/bố cục bài thi, render nội dung tác giả, tên/ID input, key UUID, hook vòng đời, phép tính bộ đếm, store autosave, handler cờ/highlight và prop attempt/player. Truyền t cho helper hiển thị; phân biệt nhãn sinh tự động với tiêu đề tác giả bằng dữ liệu kind/order hiện có. Chỉ dịch nhánh dự phòng tĩnh do ứng dụng quản lý; thông báo/cảnh báo server bất kỳ và hướng dẫn tác giả giữ nguyên. Trong renderer dùng chung được liệt kê, chỉ dịch tên Question chung/placeholder selector trống; không dịch nội dung question-registry, giá trị đáp án/lựa chọn IELTS, chú thích tác giả hay đổi answer primitive. SelectableText chỉ dịch nhãn ứng dụng hiện có và nhánh lỗi cục bộ; giữ nguyên offset ngữ nghĩa và vòng đời portal/event.
 
-For static errors currently stored as English strings, store the existing branch's message key rather than translated output; resolve it at render. In useExamSubmit keep submitError's public string|null shape, but store its two owned fallback keys internally and resolve with current t outside the submit callback. Do not add t/locale to mutation/effect dependencies, timer/store/source derivation or audio reset effects. Audio player's reset effects remain dependent on src and start/end/duration/clip-error/preview-request only; translating labels does not change these values or audio node identity. Keep focused audio fallback semantics and use neutral notices. Review score labels/accuracy may translate, but raw/max/band/null arithmetic and authored explanations do not. No global header/footer or new preferences widget enters `/attempt/*`.
+Với lỗi tĩnh hiện lưu dưới dạng chuỗi tiếng Anh, lưu key thông báo của nhánh hiện có thay cho kết quả dịch; phân giải lúc render. Trong useExamSubmit, giữ kiểu công khai string|null của submitError nhưng lưu nội bộ hai key dự phòng do ứng dụng quản lý rồi phân giải bằng t hiện tại bên ngoài callback submit. Không thêm t/locale vào dependency mutation/effect, cách suy ra timer/store/source hay effect reset audio. Effect reset của player vẫn chỉ phụ thuộc src và start/end/duration/clip-error/preview-request; dịch nhãn không đổi các giá trị này hay định danh node audio. Giữ ngữ nghĩa dự phòng audio focused và dùng thông báo trung tính. Nhãn điểm/độ chính xác trong review có thể dịch, nhưng phép tính raw/max/band/null và giải thích tác giả không đổi. Không đưa header/footer toàn cục hay widget tùy chọn mới vào `/attempt/*`.
 
-- [ ] **Step 4: Run focused tests**
+- [ ] **Bước 4: Chạy test tập trung**
 
-Run the Step 2 command plus `npx vitest run tests/app-shell.test.tsx tests/attempt-page.test.tsx tests/reading-instructions.test.tsx tests/writing-routing.test.tsx tests/draft-answer-autosave.test.tsx tests/revision-autosave.test.ts tests/exam-draft-recovery.test.ts tests/timer.test.ts tests/exam-theme-css.test.ts`.
+Chạy lệnh ở Bước 2 cùng `npx vitest run tests/app-shell.test.tsx tests/attempt-page.test.tsx tests/reading-instructions.test.tsx tests/writing-routing.test.tsx tests/draft-answer-autosave.test.tsx tests/revision-autosave.test.ts tests/exam-draft-recovery.test.ts tests/timer.test.ts tests/exam-theme-css.test.ts`.
 
-Expected: PASS for EN/VI controls, byte/display-equivalent authored data, stable state/requests/audio and current exam behavior. No browser/E2E requirement.
+Kỳ vọng: PASS cho điều khiển EN/VI, dữ liệu tác giả tương đương từng byte/hiển thị, state/request/audio ổn định và hành vi bài thi hiện tại. Không yêu cầu trình duyệt/E2E.
 
-- [ ] **Step 5: Commit**
+- [ ] **Bước 5: Commit**
 
 ```bash
 git add -- frontend/src/features/reading/reading-runner.tsx frontend/src/features/reading/reading-review.tsx frontend/src/features/listening/listening-runner.tsx frontend/src/features/listening/listening-review.tsx frontend/src/features/listening/audio-player.tsx frontend/src/features/writing/writing-runner.tsx frontend/src/features/writing/writing-review.tsx frontend/src/features/exam/pause-attempt-control.tsx frontend/src/features/exam/paused-attempt-gate.tsx frontend/src/features/exam/draft-recovery-notices.tsx frontend/src/features/exam/test-session-transition.tsx frontend/src/features/exam/terminal-attempt-redirect.tsx frontend/src/features/exam/use-exam-submit.ts frontend/src/features/test-builder/draft-preview.tsx frontend/src/lib/i18n/en.ts frontend/src/lib/i18n/vi.ts frontend/tests/runner-localization.test.tsx frontend/tests/reading-navigation.test.tsx frontend/tests/listening-navigation.test.tsx frontend/tests/listening-player.test.tsx frontend/tests/writing-runner.test.tsx frontend/tests/writing-review.test.tsx frontend/tests/focused-reading-review.test.tsx frontend/tests/focused-listening-review.test.tsx frontend/tests/pause-attempt-control.test.tsx frontend/tests/test-session-transition.test.tsx frontend/tests/draft-preview.test.tsx frontend/tests/translations.test.ts
@@ -591,72 +591,72 @@ git add -- frontend/src/features/highlighting/selectable-text.tsx frontend/src/f
 git commit -m "Localize static runner controls without resetting attempts"
 ```
 
-### Task 12: Visual and regression contract consolidation
+### Nhiệm vụ 12: Hợp nhất hợp đồng thị giác và hồi quy
 
-**Files:**
-- Modify: `frontend/src/app/globals.css` only for a gap demonstrated by a new focused contract.
+**Tệp:**
+- Sửa: `frontend/src/app/globals.css` chỉ khi test hợp đồng tập trung mới chứng minh còn thiếu.
 - Test: `frontend/tests/visual-system-css.test.ts`, `dark-theme-css.test.ts`, `exam-theme-css.test.ts`, `shell-layout-css.test.ts`, `app-shell.test.tsx`.
 
-**Interfaces:**
-- Consumes: Final shell markup, exact paper/graphite tokens and frozen exam baseline.
-- Produces: Consolidated readable CSS contracts, no giant snapshots or new visual architecture.
+**Giao diện:**
+- Đầu vào: Markup shell cuối cùng, token giấy/graphite chính xác và mốc bài thi cố định.
+- Đầu ra: Hợp đồng CSS hợp nhất, dễ đọc, không có snapshot khổng lồ hay kiến trúc thị giác mới.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Bước 1: Viết test thất bại**
 
-Add `final workspace hover focus and reduced-motion contracts` for every button variant and card/field surface actually changed, including mixed badge/status contrast, 44px small actions, no colored glows/ambient gradients/blur, nav marker/focus/ordinary Tab order and no duplicate nav. Add an explicit source contract that workspace typography/selectors cannot override exam descendants' frozen metrics and embedded preview values. Preserve existing completion-gap, instruction white-space, question-strip scroll, history padding, responsive Writing/review and highlight correctness assertions. Retitle galaxy/old-sidebar test descriptions and remove obsolete expectations only where replacement contracts now prove the new requirement.
+Thêm `final workspace hover focus and reduced-motion contracts` cho mọi biến thể nút và bề mặt card/trường thực sự thay đổi, gồm tương phản badge/trạng thái phối màu, hành động nhỏ 44px, không glow màu/gradient không khí/blur, dấu nav/focus/thứ tự Tab thông thường và không trùng nav. Thêm hợp đồng mã nguồn tường minh rằng chữ/selector workspace không thể ghi đè số đo cố định của phần tử con bài thi và giá trị preview nhúng. Giữ assertion hiện có về gap completion, khoảng trắng hướng dẫn, cuộn dải câu hỏi, padding history, Writing/review responsive và độ đúng của highlight. Đổi tên mô tả test thiên hà/sidebar cũ và chỉ bỏ kỳ vọng lỗi thời khi hợp đồng thay thế đã chứng minh yêu cầu mới.
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [ ] **Bước 2: Chạy test để xác nhận thất bại**
 
-Run: `npx vitest run tests/visual-system-css.test.ts tests/dark-theme-css.test.ts tests/exam-theme-css.test.ts tests/shell-layout-css.test.ts tests/app-shell.test.tsx`
+Chạy: `npx vitest run tests/visual-system-css.test.ts tests/dark-theme-css.test.ts tests/exam-theme-css.test.ts tests/shell-layout-css.test.ts tests/app-shell.test.tsx`
 
-Expected: FAIL for a newly exposed missed cascade/hover/focus rule. If the completed earlier tasks already satisfy the new assertions, record PASS and retain the regression tests; do not manufacture a failure or gratuitous CSS change.
+Kỳ vọng: FAIL khi lộ quy tắc cascade/hover/focus còn thiếu. Nếu các nhiệm vụ trước đã hoàn tất và đáp ứng assertion mới, ghi PASS rồi giữ test hồi quy; không cố tạo thất bại hay sửa CSS không cần thiết.
 
-- [ ] **Step 3: Implement the minimal change**
+- [ ] **Bước 3: Triển khai thay đổi tối thiểu**
 
-Fix only evidenced cascade/selector gaps to match the approved values, within globals.css. Keep test parsing/contrast helpers local to current files unless existing duplication directly prevents accurate assertions; no CSS framework/tool dependency or broad cleanup. Cross-check obsolete assertions were replaced at owning tasks and all useful exam/feedback/reduced-motion tests remain. Pure test consolidation needs no production edit when already green.
+Chỉ sửa thiếu sót cascade/selector có bằng chứng trong globals.css để khớp giá trị đã duyệt. Giữ helper phân tích test/tính tương phản cục bộ trong tệp hiện tại trừ khi lặp mã hiện có trực tiếp ngăn assertion chính xác; không thêm framework CSS/phụ thuộc công cụ hay dọn dẹp diện rộng. Đối chiếu rằng assertion lỗi thời đã được thay trong nhiệm vụ sở hữu và mọi test bài thi/phản hồi/giảm chuyển động còn hữu ích đều được giữ. Hợp nhất test thuần không cần sửa production khi test đã xanh.
 
-- [ ] **Step 4: Run focused tests**
+- [ ] **Bước 4: Chạy test tập trung**
 
-Run the Step 2 command plus `npx vitest run tests/app-logo.test.tsx tests/interactive-planet.test.tsx tests/draft-preview.test.tsx tests/reading-navigation.test.tsx tests/listening-navigation.test.tsx tests/writing-runner.test.tsx`.
+Chạy lệnh ở Bước 2 cùng `npx vitest run tests/app-logo.test.tsx tests/interactive-planet.test.tsx tests/draft-preview.test.tsx tests/reading-navigation.test.tsx tests/listening-navigation.test.tsx tests/writing-runner.test.tsx`.
 
-Expected: PASS; record CSS/DOM proof without claiming browser pixel verification.
+Kỳ vọng: PASS; ghi bằng chứng CSS/DOM mà không khẳng định đã kiểm tra pixel trong trình duyệt.
 
-- [ ] **Step 5: Commit**
+- [ ] **Bước 5: Commit**
 
 ```bash
 git add -- frontend/tests/visual-system-css.test.ts frontend/tests/dark-theme-css.test.ts frontend/tests/exam-theme-css.test.ts frontend/tests/shell-layout-css.test.ts frontend/tests/app-shell.test.tsx
 git commit -m "Consolidate shell theme and exam regression contracts"
 ```
 
-If an evidenced CSS correction was necessary, add `frontend/src/app/globals.css` explicitly before this commit.
+Nếu cần sửa CSS theo bằng chứng, thêm tường minh `frontend/src/app/globals.css` trước commit này.
 
-### Task 13: Final cross-feature verification
+### Nhiệm vụ 13: Kiểm chứng cuối cùng giữa các tính năng
 
-**Files:**
-- Test (create): `frontend/tests/localization-matrix.test.tsx`.
-- Modify: No production file by default; a failing matrix case must be fixed in its already named owning file/task, without extending scope.
+**Tệp:**
+- Test (tạo): `frontend/tests/localization-matrix.test.tsx`.
+- Sửa: Mặc định không sửa tệp production; ca kiểm tra ma trận thất bại phải được sửa trong tệp/nhiệm vụ sở hữu đã nêu, không mở rộng phạm vi.
 
-**Interfaces:**
-- Consumes: Real AppShell, LocaleProvider, feature views and test harness; mock only existing auth/API/media boundaries.
-- Produces: A focused cross-feature matrix and recorded verification evidence.
+**Giao diện:**
+- Đầu vào: AppShell, LocaleProvider, view tính năng và bộ hỗ trợ test thực; chỉ giả lập ranh giới auth/API/media hiện có.
+- Đầu ra: Ma trận tập trung giữa các tính năng và bằng chứng kiểm chứng được ghi lại.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Bước 1: Viết test thất bại**
 
-Add `role locale theme route matrix preserves chrome and feature identity` using representative table rows rather than every redundant Cartesian combination. Include guest/en/light/auth, USER/vi/dark/Practice, USER/en/dark/History and review, ADMIN/vi/light/Builder edit/Transfer, ADMIN/vi/dark/exact preview, and en→vi in full/focused Reading/Listening/Writing and Full Mock transition fixtures. Assert expected role links/exclusions, same child identities, selected Practice/History/Builder state, logout dialog focus/single request and independent preference persistence across route transitions/logout. Refresh/mount with saved VI/dark, invalid/throwing storage and server year to cover hydration without a browser. Reuse feature fixtures in their existing test files when importing them would couple test execution; the matrix should be short and add cross-feature composition assertions rather than duplicate every renderer test.
+Thêm `role locale theme route matrix preserves chrome and feature identity` với dòng bảng đại diện thay vì mọi tổ hợp tích Descartes trùng lặp. Bao gồm guest/en/light/auth, USER/vi/dark/Practice, USER/en/dark/History và review, ADMIN/vi/light/Builder edit/Transfer, ADMIN/vi/dark/preview chính xác, và en→vi trong fixture Reading/Listening/Writing full/focused cùng chuyển tiếp Full Mock. Kiểm tra liên kết/loại trừ theo role đúng kỳ vọng, định danh phần tử con giữ nguyên, state Practice/History/Builder đã chọn, focus dialog logout/request duy nhất và lưu tùy chọn độc lập qua chuyển tuyến/logout. Refresh/mount với VI/dark đã lưu, storage không hợp lệ/ném lỗi và năm từ server để bao phủ hydration không cần trình duyệt. Dùng lại fixture tính năng trong tệp test hiện có khi import sẽ làm các lần chạy test phụ thuộc nhau; ma trận nên ngắn và bổ sung assertion ghép tính năng thay vì lặp mọi test renderer.
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [ ] **Bước 2: Chạy test để xác nhận thất bại**
 
-Run: `npx vitest run tests/localization-matrix.test.tsx`
+Chạy: `npx vitest run tests/localization-matrix.test.tsx`
 
-Expected: FAIL only if the new integration matrix exposes a missing composition guarantee. Earlier tasks should already satisfy it; an immediate PASS is valid final verification and must not trigger invented behavior changes.
+Kỳ vọng: Chỉ FAIL nếu ma trận tích hợp mới phát hiện thiếu bảo đảm khi ghép thành phần. Các nhiệm vụ trước lẽ ra đã đáp ứng; PASS ngay là kết quả kiểm chứng cuối hợp lệ, không được dẫn tới thay đổi hành vi bịa ra.
 
-- [ ] **Step 3: Implement the minimal change**
+- [ ] **Bước 3: Triển khai thay đổi tối thiểu**
 
-Resolve an evidenced integration failure in its owning file with its owning regression test, then rerun that task's focused checks. Otherwise make no product edit. Audit the changed-file diff: frontend only, static runner controls included, specialized Builder help still deferred, authored data excluded, exact preview/attempt exclusions, stable IDs/keys/effect dependencies, explicit exam compatibility, no new dependencies/generated files/secrets or domain payload changes. Confirm each included spec surface has both dictionary keys and call sites; key parity alone does not prove string coverage.
+Giải quyết lỗi tích hợp có bằng chứng trong tệp sở hữu cùng test hồi quy tương ứng, rồi chạy lại kiểm tra tập trung của nhiệm vụ đó. Nếu không có lỗi thì không sửa sản phẩm. Rà soát diff tệp đã đổi: chỉ frontend, có điều khiển runner tĩnh, hướng dẫn Builder chuyên biệt vẫn hoãn, không gồm dữ liệu tác giả, loại trừ preview/attempt chính xác, ID/key/dependency effect ổn định, tương thích bài thi tường minh, không thêm phụ thuộc/tệp sinh tự động/bí mật hay đổi payload nghiệp vụ. Xác nhận mỗi bề mặt thuộc đặc tả đều có cả key từ điển và nơi gọi; chỉ đối chiếu key không chứng minh bao phủ chuỗi.
 
-- [ ] **Step 4: Run focused tests**
+- [ ] **Bước 4: Chạy test tập trung**
 
-Run these explicit batches from `frontend/`, preserving the existing Vitest setup and mocks:
+Chạy các nhóm lệnh tường minh này từ `frontend/`, giữ cấu hình Vitest và mock hiện có:
 
 ```bash
 npx vitest run tests/translations.test.ts tests/locale-provider.test.tsx tests/root-layout.test.tsx tests/theme-toggle.test.tsx tests/common-localization.test.tsx tests/app-shell.test.tsx tests/app-footer.test.tsx tests/auth.test.tsx tests/auth-session-restore.test.tsx tests/localization-matrix.test.tsx
@@ -666,7 +666,7 @@ npx vitest run tests/visual-system-css.test.ts tests/dark-theme-css.test.ts test
 npm run typecheck
 ```
 
-For targeted lint, from the repository root use PowerShell to collect only this rollout's changed TS/TSX files, then run installed ESLint in frontend:
+Để lint có mục tiêu, từ root repository dùng PowerShell thu thập riêng tệp TS/TSX đã đổi trong đợt này, rồi chạy ESLint đã cài trong frontend:
 
 ```powershell
 $rolloutFiles = @(git diff --name-only 74f89315256610d35b7a061e751dcb687c07c019 -- frontend)
@@ -678,34 +678,34 @@ git diff --check 74f89315256610d35b7a061e751dcb687c07c019
 git diff --check
 ```
 
-The explicit matrix lint path covers it while untracked. If no other unstaged change exists, still inspect the rollout diff against the baseline above. Expected: all listed tests PASS, typecheck/ESLint exit 0 and no diff whitespace errors. Do not broaden into the entire test suite, browser/E2E or services. Record actual counts/commands, not assumed results.
+Đường dẫn lint ma trận tường minh bao phủ tệp này khi chưa được Git theo dõi. Nếu không có thay đổi chưa stage khác, vẫn xem diff của đợt triển khai so với mốc trên. Kỳ vọng: mọi test được liệt kê PASS, typecheck/ESLint thoát 0 và diff không có lỗi khoảng trắng. Không mở rộng sang toàn bộ bộ test, trình duyệt/E2E hay dịch vụ. Ghi số lượng/lệnh thực tế, không giả định kết quả.
 
-- [ ] **Step 5: Commit**
+- [ ] **Bước 5: Commit**
 
 ```bash
 git add -- frontend/tests/localization-matrix.test.tsx
 git commit -m "Verify locale theme and shell integration"
 ```
 
-Include any necessary, reviewed integration fix and its regression test with explicit paths. This plan does not itself authorize deployment or product publication; follow the implementation session's Git instructions after verification.
+Bao gồm mọi bản sửa tích hợp cần thiết đã được rà soát và test hồi quy với đường dẫn tường minh. Bản kế hoạch này không tự cấp phép triển khai hay xuất bản sản phẩm; làm theo chỉ dẫn Git của phiên triển khai sau khi kiểm chứng.
 
-## Spec Coverage and Review Gates
+## Bao phủ đặc tả và điều kiện rà soát
 
-| Approved specification area | Owning tasks |
+| Phạm vi đặc tả đã duyệt | Nhiệm vụ sở hữu |
 | --- | --- |
-| Goals, non-goals, existing constraints and route inventory | Global Constraints; Tasks 3–5, 9–11 |
-| Horizontal shell/components/navigation/auth behavior | Tasks 2–5, 8 |
-| Content widths, spacing and responsive composition | Tasks 5, 7, 12 |
-| Shared footer and route exclusions | Task 4; matrix in Task 13 |
-| Exact paper/graphite palette, elevation and decoration cleanup | Tasks 6–7, 12 |
-| Typography, buttons, fields, headings and semantic states | Tasks 6–7, 12 |
-| Typed dictionaries, locale controls and server/client boundaries | Tasks 1–2, 8–10 |
-| Translation table and specialized Builder deferral | Tasks 8–11; Global Constraints |
-| Amended common/static runner localization and authored-content exclusion | Task 11; state/content regressions in Tasks 9–10, 13 |
-| Exam-route isolation and frozen inherited/exam values | Tasks 3–6, 11–13 |
-| Accessibility, focus, contrast, language and reduced motion | Tasks 1, 3–8, 11–13 |
-| Hydration/preferences/year/state persistence | Tasks 1–2, 4, 8–11, 13 |
-| Testing strategy, risks and five high-risk state classes | Review Focus and each owning test; Tasks 12–13 |
-| Acceptance criteria and frontend-only implementation boundary | All task checks plus Task 13 diff audit |
+| Mục tiêu, ngoài phạm vi, ràng buộc hiện có và danh mục tuyến | Ràng buộc chung; Nhiệm vụ 3–5, 9–11 |
+| Shell ngang/thành phần/điều hướng/hành vi xác thực | Nhiệm vụ 2–5, 8 |
+| Chiều rộng nội dung, khoảng cách và bố cục responsive | Nhiệm vụ 5, 7, 12 |
+| Footer dùng chung và loại trừ tuyến | Nhiệm vụ 4; ma trận ở Nhiệm vụ 13 |
+| Bảng màu giấy/graphite chính xác, độ nổi và dọn trang trí | Nhiệm vụ 6–7, 12 |
+| Chữ, nút, trường, tiêu đề và trạng thái ngữ nghĩa | Nhiệm vụ 6–7, 12 |
+| Từ điển có kiểu, điều khiển locale và ranh giới server/client | Nhiệm vụ 1–2, 8–10 |
+| Bảng dịch và hoãn Builder chuyên biệt | Nhiệm vụ 8–11; Ràng buộc chung |
+| Bổ sung dịch điều khiển chung/tĩnh của runner và loại trừ nội dung tác giả | Nhiệm vụ 11; hồi quy state/nội dung ở Nhiệm vụ 9–10, 13 |
+| Cô lập tuyến bài thi và giá trị kế thừa/bài thi cố định | Nhiệm vụ 3–6, 11–13 |
+| Hỗ trợ truy cập, focus, tương phản, ngôn ngữ và giảm chuyển động | Nhiệm vụ 1, 3–8, 11–13 |
+| Hydration/tùy chọn/năm/giữ state | Nhiệm vụ 1–2, 4, 8–11, 13 |
+| Chiến lược test, rủi ro và năm nhóm state rủi ro cao | Trọng tâm rà soát và từng test sở hữu; Nhiệm vụ 12–13 |
+| Tiêu chí nghiệm thu và ranh giới chỉ triển khai frontend | Mọi kiểm tra nhiệm vụ cùng rà soát diff Nhiệm vụ 13 |
 
-The final review verifies signatures against Locked Shared Interfaces, both dictionary key parity and included call-site coverage, no authored string conversion, no blanket runner translation deferral, no runner redesign, no locale-driven reinitialization/request dependencies, no specialized-editor expansion, exact route exclusions and preserved exam appearance. Verification tasks may already be green; capture evidence instead of introducing unnecessary changes. This document is an implementation plan only; preparing it does not start any task above.
+Rà soát cuối đối chiếu chữ ký với Giao diện dùng chung đã chốt, cả tính tương ứng key từ điển lẫn bao phủ nơi gọi trong phạm vi; không chuyển đổi chuỗi tác giả, không hoãn dịch runner hàng loạt, không thiết kế lại runner, không khởi tạo lại/thêm dependency request do locale, không mở rộng editor chuyên biệt, loại trừ tuyến chính xác và giữ hình thức bài thi. Nhiệm vụ kiểm chứng có thể đã xanh; ghi bằng chứng thay vì thêm thay đổi không cần thiết. Tài liệu này chỉ là kế hoạch triển khai; chuẩn bị tài liệu không bắt đầu bất kỳ nhiệm vụ nào ở trên.

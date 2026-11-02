@@ -1,74 +1,74 @@
-# Admin Observer and Approved Classwork Implementation Plan
+# Kế hoạch Admin Observer và giao diện Classwork đã duyệt
 
-> **Documentation audit: HISTORICAL.** Historical reference; không phải contract hiện hành.
-> Mục đích: Admin Observer and Approved Classwork Implementation Plan. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../../../backend/app/services/classroom_capabilities.py).
-> Đọc cùng [current module/guide](../../modules/classrooms.md); [audit và giới hạn](../../DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+> **Phân loại tài liệu: HISTORICAL.** Tham khảo lịch sử; không phải contract hiện hành.
+> Mục đích: Kế hoạch Admin Observer và giao diện Classwork đã duyệt. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [mã triển khai](../../../backend/app/services/classroom_capabilities.py).
+> Đọc cùng [hướng dẫn module hiện hành](../../modules/classrooms.md); [audit và giới hạn](../../DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
 
-> **For agentic workers:** Use focused independent implementation work with task review and integration verification. The user explicitly requests implementation, commit and safe push to origin/main.
+> **Dành cho tác nhân triển khai:** thực hiện các phần độc lập với phạm vi rõ ràng, review từng phần và kiểm chứng tích hợp. Yêu cầu gốc cho phép triển khai, commit và push an toàn lên origin/main.
 
-**Goal:** Enforce read-only classroom oversight for platform administrators and share the approved Classwork presentation across roles.
+**Mục tiêu:** buộc quản trị viên nền tảng chỉ được quan sát lớp học và dùng chung giao diện Classwork đã duyệt giữa các vai trò.
 
-**Architecture:** FastAPI resolves explicit classroom capabilities and rejects writes at service boundaries. Next.js renders the existing workspace using separate read/write capability props. The admin directory uses bounded server queries, and archive operations retain existing history protection and refresh semantics.
+**Kiến trúc:** FastAPI xác định capability cụ thể của lớp học và từ chối thao tác ghi tại ranh giới service. Next.js dùng workspace hiện có với props phân biệt quyền đọc/ghi. Danh bạ Admin dùng truy vấn có giới hạn; lưu trữ vẫn giữ cơ chế bảo vệ lịch sử và đồng bộ lại dữ liệu.
 
-**Tech Stack:** FastAPI, SQLAlchemy/PostgreSQL, Next.js, React, Zod, pytest, Vitest.
+**Công nghệ:** FastAPI, SQLAlchemy/PostgreSQL, Next.js, React, Zod, pytest, Vitest.
 
-**Spec:** User-provided attachment `Pasted text.txt` (CODEX TASK — Match Approved Classwork Design + Enforce Strict Admin Observer Mode).
+**Đặc tả:** tệp người dùng cung cấp `Pasted text.txt` (CODEX TASK — Match Approved Classwork Design + Enforce Strict Admin Observer Mode).
 
-## Global Constraints
+## Ràng buộc chung
 
-- Preserve PostgreSQL authority, immutable TestVersions, attempts, scope, schedules and grading provenance.
-- Admin is an observer in classrooms, including when legacy membership/staff records exist.
-- Preserve separately authorized platform account administration and global test moderation.
-- Use existing APIs and shared workspace components; localize Vietnamese/English and preserve both themes.
-- Do not start servers, browsers, browser tests, production builds, persistent processes, database resets or the whole test suite.
-- Preserve existing untracked skills/design files. Commit only task files; push origin/main without force.
+- Giữ PostgreSQL là nguồn dữ liệu có thẩm quyền; giữ TestVersions bất biến, attempts, phạm vi truy cập, lịch và nguồn gốc điểm số.
+- Admin chỉ quan sát lớp học, kể cả khi có bản ghi membership/staff cũ.
+- Giữ quyền quản lý tài khoản nền tảng và kiểm duyệt đề toàn cục được cấp riêng.
+- Dùng API và workspace dùng chung hiện có; hỗ trợ tiếng Việt/Anh và cả hai theme.
+- Không khởi động server, browser, browser tests, production build, tiến trình thường trú; không reset database hoặc chạy toàn bộ test suite.
+- Giữ các tệp skills/design chưa được theo dõi. Chỉ commit tệp thuộc nhiệm vụ; push origin/main không dùng force.
 
-## Review Focus
+## Trọng tâm review
 
-- Personal Writing/Speaking routes must also reject Admin final grading of classroom attempts.
-- Read-only roster access must never imply member-management access.
-- Restoring an archived classroom must remain available to its owner, without Admin authority.
-- Search preserves matching topic children and finds Vietnamese content regardless of case/diacritics.
-- Archived assignment details remain accessible without mounting mutation controls; mobile actions are not duplicated.
+- Route Writing/Speaking cá nhân cũng phải từ chối Admin chấm điểm cuối cùng cho bài của lớp học.
+- Quyền xem danh sách thành viên không bao hàm quyền quản lý thành viên.
+- Chủ lớp vẫn có thể khôi phục lớp đã lưu trữ mà không cần quyền Admin.
+- Tìm kiếm giữ các mục con khớp với topic và tìm nội dung tiếng Việt không phân biệt hoa/thường hoặc dấu.
+- Chi tiết bài giao đã lưu trữ vẫn truy cập được, không dựng control ghi; không lặp thao tác trên mobile.
 
-### Task 1: Backend authorization
+### Công việc 1: Phân quyền backend
 
-**Files:** `backend/app/services/classroom_capabilities.py`, classroom services, `grading_policy.py`, focused backend tests.
+**Tệp:** `backend/app/services/classroom_capabilities.py`, các service lớp học, `grading_policy.py` và backend tests tập trung.
 
-- [x] Add failing focused capability/service/REST tests for Admin denials and teacher/co-teacher/student isolation.
-- [x] Explicitly allow roster/grade/analytics read capabilities; separate roster view from member mutation.
-- [x] Remove assignment and grading bypasses; audit all classroom mutations and owner restoration.
-- [x] Run focused tests and Ruff; record any database prerequisites without touching real data.
+- [x] Thêm capability/service/REST tests đang fail cho việc từ chối Admin và cách ly giáo viên/đồng giảng viên/học viên.
+- [x] Cho phép rõ ràng đọc roster/điểm/analytics; tách xem roster khỏi sửa thành viên.
+- [x] Bỏ bypass tạo assignment và chấm điểm; rà mọi mutation của lớp và quyền khôi phục của chủ lớp.
+- [x] Chạy tests tập trung và Ruff; ghi điều kiện database còn thiếu, không chạm dữ liệu thật.
 
-### Task 2: Shared Classwork visual presentation
+### Công việc 2: Giao diện Classwork dùng chung
 
-**Files:** `frontend/src/features/classrooms/content/` Classwork components and CSS, focused component tests.
+**Tệp:** components và CSS Classwork trong `frontend/src/features/classrooms/content/`, cùng component tests tập trung.
 
-- [x] Add tests for topic/resource/assignment search and teacher versus observer archived actions.
-- [x] Add book/search header, folder topics, neutral empty states and distinct compact archives using existing tokens.
-- [x] Surface direct teacher Restore/Delete/Details and mobile contextual actions; preserve confirmations/history-safe removal.
-- [x] Run focused Vitest and scoped ESLint. Browser/screenshot verification is explicitly excluded by the user.
+- [x] Thêm tests tìm topic/resource/assignment và thao tác lưu trữ của giáo viên so với người quan sát.
+- [x] Thêm header sách/tìm kiếm, topic dạng thư mục, trạng thái trống trung tính và vùng lưu trữ gọn với tokens hiện có.
+- [x] Hiện trực tiếp Restore/Delete/Details cho giáo viên và thao tác theo ngữ cảnh trên mobile; giữ xác nhận và xóa an toàn cho lịch sử.
+- [x] Chạy Vitest tập trung và ESLint theo phạm vi. Yêu cầu gốc loại trừ kiểm chứng bằng browser/screenshot.
 
-### Task 3: Admin directory and observer wiring
+### Công việc 3: Danh bạ Admin và kết nối chế độ quan sát
 
-**Files:** admin directory route/service/schema, typed frontend clients, admin directory UI, classroom detail/workspace/header/membership components, tests.
+**Tệp:** route/service/schema danh bạ Admin, frontend clients có kiểu, UI danh bạ, components chi tiết/workspace/header/membership của lớp và tests.
 
-- [x] Implement bounded Admin teacher/student/classroom discovery with ownership and enrolled counts.
-- [x] Separate roster/classroom/member/content/assignment/grade/analytics permissions throughout shared workspace.
-- [x] Display observer indicator and read-only roster; omit authoring, personal progress and grade controls for Admin.
-- [x] Run focused frontend/API tests, typecheck and scoped lint.
+- [x] Triển khai tìm giáo viên/học viên/lớp có giới hạn, hiển thị chủ lớp và số người đang tham gia.
+- [x] Tách quyền roster/classroom/member/content/assignment/grade/analytics xuyên suốt workspace dùng chung.
+- [x] Hiển thị chỉ báo quan sát và roster chỉ đọc; bỏ control soạn nội dung, tiến độ cá nhân và chấm điểm của Admin.
+- [x] Chạy frontend/API tests tập trung, typecheck và lint theo phạm vi.
 
-### Task 4: Integration and delivery
+### Công việc 4: Tích hợp và bàn giao
 
-- [x] Review all changed paths against the supplied access matrix and design composition.
-- [x] Run allowed focused checks and `git diff --check`, inspect task diffs and commit logical units.
-- [x] Prepare scoped logical commits and a safe push to origin/main; record actual commit/push evidence in the final response.
+- [x] Review mọi đường dẫn thay đổi theo ma trận quyền và bố cục được cung cấp.
+- [x] Chạy các kiểm tra được phép cùng `git diff --check`, xem diff và commit theo nhóm hợp lý.
+- [x] Chuẩn bị các commit đúng phạm vi và push an toàn lên origin/main; ghi bằng chứng commit/push thực tế trong phản hồi bàn giao gốc.
 
-## Final verification evidence
+## Bằng chứng kiểm chứng cuối cùng
 
-- 176 focused backend tests passed, including 51 direct REST denials; no database fixtures executed.
-- 284 focused frontend tests passed across 16 files.
-- Changed-file Ruff/ESLint, TypeScript and whitespace checks passed.
-- Independent review found no outstanding issues after fixes to AI cancellation/read recovery and compact resource rows.
-- Additional user request: homepage VI/EN controls retain their position using intrinsic sizing for both translated authentication labels; accessible labels and navigation remain unchanged.
-- Browser rendering, production build and real PostgreSQL integration were intentionally not run under the user restrictions.
+- 176 backend tests tập trung pass, gồm 51 trường hợp từ chối qua REST; không chạy database fixtures.
+- 284 frontend tests tập trung pass trên 16 tệp.
+- Ruff/ESLint cho tệp thay đổi, TypeScript và kiểm tra khoảng trắng đều pass.
+- Review độc lập không còn vấn đề sau khi sửa AI cancellation/read recovery và hàng resource dạng gọn.
+- Yêu cầu bổ sung: nút VI/EN ở trang chủ giữ vị trí nhờ kích thước nội tại của cả hai nhãn xác thực đã dịch; giữ accessible labels và điều hướng.
+- Theo giới hạn của yêu cầu gốc, không chạy browser rendering, production build hoặc tích hợp PostgreSQL thật.

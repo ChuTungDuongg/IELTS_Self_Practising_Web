@@ -1,78 +1,46 @@
-# Admin Writing benchmark bank
+# Ngân hàng benchmark Writing dành cho quản trị
 
-> **Documentation audit: CURRENT.** Canonical concern này; source-check các boundary/API, không live validation.
-> Mục đích: Admin Writing benchmark bank. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../backend/app/services/writing_benchmark.py).
-> Đọc cùng [current module/guide](modules/writing.md); [audit và giới hạn](DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+> **Kiểm toán tài liệu: CURRENT.** Tài liệu chuẩn cho chủ đề này; đã đối chiếu ranh giới/API trong mã nguồn, chưa xác thực trực tiếp trên hệ thống chạy.
+> Mục đích: mô tả ngân hàng benchmark Writing dành cho quản trị. Đối chiếu mã nguồn `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [phần triển khai](../backend/app/services/writing_benchmark.py).
+> Đọc cùng [mô-đun/hướng dẫn hiện hành](modules/writing.md); [kiểm toán và giới hạn](DOCS_AUDIT.md). Kết quả kiểm thử/benchmark bên dưới thuộc lần thực hiện gốc, không phải kết quả chạy lại trong đợt kiểm toán này.
 
-`/admin/writing-benchmark` is ADMIN-only, outside Workspace/Builder. The existing
-frontend guard and every backend action enforce that boundary. One bank stores
-ground truth only: at most 100 Task 1 and 100 Task 2 samples, including drafts.
-There are no dataset versions, rater accounts, adjudication, experiment runs,
-prediction tables or report tables.
+`/admin/writing-benchmark` chỉ dành cho ADMIN, nằm ngoài Workspace/Builder. Chốt bảo vệ frontend hiện có và mọi thao tác backend đều thực thi ranh giới này. Một ngân hàng chỉ lưu dữ liệu chuẩn: tối đa 100 mẫu Task 1 và 100 mẫu Task 2, kể cả bản nháp. Không có phiên bản tập dữ liệu, tài khoản người chấm, phân xử, lượt thí nghiệm, bảng dự đoán hoặc bảng báo cáo.
 
-## Authoring
+## Soạn dữ liệu
 
-The master/detail page shows stable `T1-001` / `T2-001` slot codes, Draft/Complete,
-DEV/HOLDOUT and derived overall. Deleting never renumbers neighbors. Reusing a
-deleted slot gives the new sample a new UUID. Creation always starts Draft.
+Trang danh sách/chi tiết hiển thị mã vị trí ổn định `T1-001` / `T2-001`, trạng thái Nháp/Hoàn tất, DEV/HOLDOUT và điểm tổng suy ra. Xóa không đánh lại số vị trí lân cận. Tái sử dụng vị trí đã xóa cấp UUID mới cho mẫu mới. Tạo mới luôn bắt đầu ở trạng thái Nháp.
 
-Autosave waits 1000 ms. Ctrl/Cmd+S saves immediately. Ctrl/Cmd+Enter saves the
-latest edits, waits for PATCH ACK, completes, waits for Complete ACK, then selects
-the next persisted incomplete sample. A technical row `revision` prevents stale
-writes; it is not a dataset version. Save failures/conflicts preserve local text.
-Conflict reload explicitly confirms discarding local edits. Selection, tabs,
-images, deletion and export flush/serialize pending edits.
+Tự lưu chờ 1000 ms. Ctrl/Cmd+S lưu ngay. Ctrl/Cmd+Enter lưu chỉnh sửa mới nhất, chờ PATCH ACK, chuyển hoàn tất, chờ Complete ACK, rồi chọn mẫu chưa hoàn tất kế tiếp đã được lưu. `revision` kỹ thuật của dòng ngăn ghi cũ, không phải phiên bản tập dữ liệu. Lỗi/xung đột lưu giữ văn bản cục bộ. Tải lại khi xung đột yêu cầu xác nhận rõ việc bỏ chỉnh sửa cục bộ. Chọn mẫu, chuyển thẻ, hình ảnh, xóa và xuất đều đẩy hết/tuần tự hóa chỉnh sửa đang chờ.
 
-Task 1 Complete requires prompt, essay, a production task type, valid private
-image and TA/CC/LR/GRA. Task 2 requires prompt, essay and TR/CC/LR/GRA. Both require
-a split. Only 0–9 half bands are accepted, before database rounding. Overall uses
-production four-criterion mean/half-up rounding and is never stored. Full Writing
-module weighting does not apply to individual essays. No human feedback is stored.
+Hoàn tất Task 1 cần đề, bài viết, loại tác vụ từ sản xuất, hình riêng tư hợp lệ và TA/CC/LR/GRA. Task 2 cần đề, bài viết và TR/CC/LR/GRA. Cả hai cần phần chia dữ liệu. Chỉ chấp nhận 0–9 theo nửa band trước khi cơ sở dữ liệu làm tròn. Điểm tổng dùng trung bình bốn tiêu chí/làm tròn nửa band hướng lên của sản xuất và không lưu riêng. Trọng số toàn mô-đun Writing không áp dụng cho bài đơn lẻ. Không lưu nhận xét của người chấm.
 
-Autosave never automatically completes. Invalidating a Complete record demotes it
-to Draft; removing a Task 1 image does likewise. Explicit completion returns safe
-field-path errors. Complete-only distribution and DEV 80 / HOLDOUT 20 targets are
-guidance, never quotas. Lower valid bands remain legal. Criterion histograms are P1.
+Tự lưu không tự chuyển hoàn tất. Khi bản ghi Hoàn tất mất tính hợp lệ, nó về Nháp; xóa hình Task 1 cũng vậy. Yêu cầu hoàn tất rõ ràng trả lỗi an toàn theo đường dẫn trường. Phân phối chỉ mẫu hoàn tất và mục tiêu DEV 80 / HOLDOUT 20 là hướng dẫn, không phải hạn ngạch. Band thấp hợp lệ vẫn được chấp nhận. Biểu đồ tần suất tiêu chí thuộc P1.
 
-## API and persistence
+## API và lưu trữ
 
-Routes are relative to `/api/v1/admin/writing-benchmark`, all using `AdminUser`:
+Các tuyến tương đối với `/api/v1/admin/writing-benchmark`, đều dùng `AdminUser`:
 
-| Action | Method / path |
+| Thao tác | Phương thức / đường dẫn |
 | --- | --- |
-| Summary | `GET /summary` |
-| Lightweight list | `GET /samples?task=1` or `task=2` |
-| New draft | `POST /samples` with `task_number` |
-| Detail | `GET /samples/{uuid}` |
-| Autosave | `PATCH /samples/{uuid}` with `expected_revision` |
-| Complete | `POST /samples/{uuid}/complete` with `expected_revision` |
-| Delete | `DELETE /samples/{uuid}?expected_revision=...` |
-| Upload image | `POST /samples/{uuid}/image`, multipart file/revision |
-| Read private image | `GET /samples/{uuid}/image` |
-| Remove image | `DELETE /samples/{uuid}/image?expected_revision=...` |
+| Tóm tắt | `GET /summary` |
+| Danh sách nhẹ | `GET /samples?task=1` hoặc `task=2` |
+| Bản nháp mới | `POST /samples` với `task_number` |
+| Chi tiết | `GET /samples/{uuid}` |
+| Tự lưu | `PATCH /samples/{uuid}` với `expected_revision` |
+| Hoàn tất | `POST /samples/{uuid}/complete` với `expected_revision` |
+| Xóa | `DELETE /samples/{uuid}?expected_revision=...` |
+| Tải hình lên | `POST /samples/{uuid}/image`, tệp/revision dạng multipart |
+| Đọc hình riêng tư | `GET /samples/{uuid}/image` |
+| Gỡ hình | `DELETE /samples/{uuid}/image?expected_revision=...` |
 | ZIP | `GET /export` |
 
-`writing_benchmark_samples` is the only new table. Migration `20261013_0035`
-follows `20261013_0034`. Named constraints cover tasks, unique slots, exact half
-bands, Complete requirements and revisions. Per-task PostgreSQL transaction-level
-advisory locks allocate the lowest free slot safely when concurrent creates race.
-List/summary queries do not load all essays. Identity, slot, image key and overall
-are server managed. No learner Attempt, grade or AI-run persistence is used.
+`writing_benchmark_samples` là bảng mới duy nhất. Migration `20261013_0035` kế tiếp `20261013_0034`. Ràng buộc có tên bao phủ tác vụ, vị trí duy nhất, nửa band chính xác, điều kiện Hoàn tất và revision. Khóa tư vấn PostgreSQL ở cấp giao dịch theo từng tác vụ cấp vị trí trống nhỏ nhất an toàn khi tạo đồng thời. Truy vấn danh sách/tóm tắt không nạp toàn bộ bài viết. Máy chủ quản lý định danh, vị trí, khóa hình và điểm tổng. Không dùng lưu trữ Attempt, điểm hoặc lượt AI của người học.
 
-## Images and bundle
+## Hình ảnh và gói xuất
 
-LocalAssetStorage holds images outside PostgreSQL in the dedicated namespace:
-`benchmark/writing/task1/<sample-uuid>/<fresh-asset-uuid>.<ext>`.
-PNG/JPEG/WebP reuse MIME, extension and signature validation. The limit is
-`min(max_image_upload_mb, 10 MiB)`. Every replacement uses an immutable key:
-write new file → commit row/revision → best-effort delete old file. An uncertain
-commit ACK retains the possibly committed new image. Traversal, foreign keys
-and symlinks are rejected. Private reads use authentication and `no-store`;
-bounded bytes are copied under a row lock before delivery to prevent unlink races.
-No generic Asset rows with fake TestVersion ownership are created.
+LocalAssetStorage giữ hình ngoài PostgreSQL trong không gian tên riêng: `benchmark/writing/task1/<sample-uuid>/<fresh-asset-uuid>.<ext>`. PNG/JPEG/WebP tái sử dụng kiểm tra MIME, phần mở rộng và chữ ký. Giới hạn là `min(max_image_upload_mb, 10 MiB)`. Mỗi lần thay dùng khóa bất biến: ghi tệp mới → chốt dòng/revision → cố gắng xóa tệp cũ. ACK chốt không chắc chắn sẽ giữ hình mới có thể đã chốt. Vượt đường dẫn, khóa của đối tượng khác và liên kết tượng trưng bị từ chối. Đọc riêng tư cần xác thực và `no-store`; sao chép số byte có giới hạn trong khóa dòng trước khi trả để tránh cuộc đua xóa tệp. Không tạo dòng Asset chung với quyền sở hữu TestVersion giả.
 
-Export flushes edits and reviews fresh Complete/Draft/DEV/HOLDOUT counts. Only
-Complete rows are included. Empty, partial and full bundles are all allowed:
+Xuất đẩy hết chỉnh sửa và xem lại số lượng Hoàn tất/Nháp/DEV/HOLDOUT mới. Chỉ gồm dòng Hoàn tất. Cho phép gói rỗng, một phần và đầy đủ:
 
 ```text
 writing-benchmark.zip
@@ -86,27 +54,15 @@ writing-benchmark.zip
     └── T1-XXX.png|jpg|webp
 ```
 
-All six root files are present even when one task is empty. JSONL is canonical;
-CSV preserves multiline quoting and has no input parser. Archive paths are
-generated from safe codes/extensions, never uploaded filenames or raw keys.
-Shared row locks protect the staged image/manifest snapshot, including during
-cancellation. Temporary ZIPs are removed after delivery/failure.
+Cả sáu tệp gốc đều hiện diện kể cả khi một tác vụ rỗng. JSONL là chuẩn; CSV giữ trích dẫn nhiều dòng và không có bộ phân tích đầu vào. Đường dẫn trong gói sinh từ mã/phần mở rộng an toàn, không từ tên tệp tải lên hoặc khóa thô. Khóa đọc chung của dòng bảo vệ ảnh chụp hình/bản kê đang chuẩn bị, kể cả khi hủy. ZIP tạm được xóa sau khi gửi xong/thất bại.
 
-Task 1 instantiates CURRENT `app.evaluation.task1.models.BenchmarkSample`, using
-canonical task types such as `PIE_CHART`, so no conversion is needed. Export uses
-`raters=1`, `visual_truth=null`, and neutral `admin-labelled benchmark sample`
-when the source note is blank. No authorship/license claim is invented.
-Redistribution defaults false. Task 2 is text-only with TR; its evaluation adapter
-maps production `ta` to `tr`. `schema_version=1` means file-format compatibility.
+Task 1 khởi tạo `app.evaluation.task1.models.BenchmarkSample` CURRENT, dùng loại chuẩn như `PIE_CHART`, nên không cần chuyển đổi. Xuất dùng `raters=1`, `visual_truth=null` và giá trị trung lập `admin-labelled benchmark sample` khi ghi chú nguồn trống. Không tự tạo tuyên bố tác giả/giấy phép. Mặc định không cho phân phối lại. Task 2 chỉ có văn bản với TR; bộ tiếp hợp đánh giá ánh xạ `ta` sản xuất sang `tr`. `schema_version=1` thể hiện tương thích định dạng tệp.
 
-## Google Colab / local workflow
+## Quy trình Google Colab / cục bộ
 
-Admin → Export ZIP → upload ZIP to Colab → clone repo → install backend dependencies
-→ unzip → provider secrets → Task 1 or Task 2 CLI → local reports.
-No production PostgreSQL credentials, admin JWT/session or production API access
-are required. There is no direct Colab ingestion from the production API.
+Quản trị → xuất ZIP → tải ZIP lên Colab → sao chép kho mã → cài phụ thuộc backend → giải nén → cấu hình bí mật nhà cung cấp → CLI Task 1 hoặc Task 2 → báo cáo cục bộ. Không cần thông tin xác thực PostgreSQL sản xuất, JWT/phiên quản trị hoặc truy cập API sản xuất. Không có cơ chế Colab lấy trực tiếp từ API sản xuất.
 
-In a Colab cell/terminal, adjusting paths as needed:
+Trong ô lệnh/terminal Colab, chỉnh đường dẫn khi cần:
 
 ```sh
 git clone https://github.com/ChuTungDuongg/IELTS_Self_Practising_Web.git
@@ -118,63 +74,31 @@ uv run --project backend python scripts/benchmark_task1.py --manifest /content/w
 uv run --project backend python scripts/benchmark_task2.py --manifest /content/writing-benchmark/task2.jsonl --split dev --dry-run --max-concurrent-llm-requests 2 --output benchmarks/writing_task2/reports/dev-plan
 ```
 
-Set Colab Secrets/environment variables for the current provider fields in
-`backend/.env.example`: `AI_WRITING_ENABLED=true`, `AI_WRITING_PROVIDER`, provider
-URL/model/API key, and existing proxy credentials when required. Production
-configuration defaults and prompts are unchanged. The CLI reads environment
-variables and optional `backend/.env`. Never commit secrets into notebooks.
+Đặt Colab Secrets/biến môi trường cho các trường nhà cung cấp hiện hành trong `backend/.env.example`: `AI_WRITING_ENABLED=true`, `AI_WRITING_PROVIDER`, URL/mô hình/khóa API của nhà cung cấp và thông tin proxy hiện có nếu cần. Mặc định cấu hình và lời nhắc sản xuất không đổi. CLI đọc biến môi trường và `backend/.env` tùy chọn. Không đưa bí mật vào notebook đã commit.
 
-Optional **manual** one-sample inference after provider setup (not a CI test):
+Tùy chọn suy luận **thủ công** một mẫu sau khi cấu hình nhà cung cấp (không phải kiểm thử CI):
 
 ```sh
 uv run --project backend python scripts/benchmark_task1.py --manifest /content/writing-benchmark/task1.jsonl --split dev --limit 1 --scoring-version v12 --chart-specialist off --resume --output benchmarks/writing_task1/reports/dev-smoke
 uv run --project backend python scripts/benchmark_task2.py --manifest /content/writing-benchmark/task2.jsonl --split dev --limit 1 --max-concurrent-llm-requests 2 --resume --output benchmarks/writing_task2/reports/dev-smoke
 ```
 
-Inference sends prompts, essays and Task 1 images to the configured provider.
-Keep private/licensed bundles private. Use DEV for iteration and separate HOLDOUT
-output for final evaluation; repeated tuning on HOLDOUT undermines that boundary.
+Suy luận gửi đề, bài viết và hình Task 1 đến nhà cung cấp đã cấu hình. Giữ riêng tư các gói riêng tư/có giấy phép. Dùng DEV để cải tiến, đầu ra HOLDOUT riêng để đánh giá cuối; tinh chỉnh lặp trên HOLDOUT làm suy yếu ranh giới này.
 
-Task 2 samples execute sequentially. The 1–4 limit bounds production criterion
-requests within each sample. MTSWritingScoringService runs directly, without
-learner persistence, AI workers, image perception or DePlot. Human labels never
-enter inference prompts. Shared metrics are exact/±0.5/±1 agreement, signed bias,
-MAE, RMSE and QWK. QWK needs 10 comparable half-band pairs and nonzero expected variance.
+Các mẫu Task 2 chạy tuần tự. Giới hạn 1–4 chặn số yêu cầu tiêu chí sản xuất trong mỗi mẫu. MTSWritingScoringService chạy trực tiếp, không cần lưu người học, worker AI, nhận thức hình ảnh hoặc DePlot. Nhãn người chấm không vào lời nhắc suy luận. Chỉ số dùng chung gồm đồng thuận chính xác/±0.5/±1, độ lệch có dấu, MAE, RMSE và QWK. QWK cần 10 cặp nửa band so sánh được, phương sai kỳ vọng khác 0.
 
-Outputs: `report.json`, `report.md`, `disagreements.csv`, `cache/`, `attempts/`.
-Failures remain visible; partial valid criteria contribute metrics but overall
-needs four predictions. Reports show latency, calls and available usage without
-source text/secret URLs/provider errors. Resume covers contents, labels, split,
-provider/model/hashed endpoint, effective prompt, runtime settings, paragraph
-provenance, contract and implementation. Paths/presentation captions do not
-invalidate it. Failed/corrupt/inconsistent records are not success hits. Earlier
-failed attempts/costs survive retry-to-success. Interrupted in-flight costs are
-unknown, never fabricated. Predictions/reports stay in CLI/Colab output and never
-automatically change production scoring. Accuracy must be established separately.
+Đầu ra: `report.json`, `report.md`, `disagreements.csv`, `cache/`, `attempts/`. Lỗi vẫn hiển thị; tiêu chí hợp lệ một phần góp vào chỉ số, còn tổng cần bốn dự đoán. Báo cáo thể hiện độ trễ, số gọi và mức sử dụng hiện có, không chứa văn bản nguồn/URL bí mật/lỗi nhà cung cấp. Danh tính tiếp tục bao phủ nội dung, nhãn, phần chia, nhà cung cấp/mô hình/điểm cuối đã băm, lời nhắc có hiệu lực, cấu hình chạy, nguồn gốc đoạn văn, hợp đồng và phần triển khai. Đường dẫn/chú thích hiển thị không làm mất hiệu lực. Bản ghi thất bại/hỏng/không nhất quán không phải kết quả thành công trong bộ nhớ đệm. Lượt thất bại/chi phí trước vẫn giữ khi thử lại thành công. Chi phí yêu cầu đang chạy bị gián đoạn là chưa biết, không được bịa. Dự đoán/báo cáo chỉ nằm trong đầu ra CLI/Colab, không tự đổi chấm điểm sản xuất. Độ chính xác phải được xác lập riêng.
 
-## Implementation validation — 2026-10-13
+<a id="implementation-validation--2026-10-13"></a>
 
-Implementation began on clean main `1ad0465a2b96d19fd41df3a117927f9d5cfa2989`.
-Its exact-SHA CI run `38396464810` and Golden Path E2E run `38396464698` were green;
-no baseline repair was needed. Fourteen sequential TDD tasks were committed.
+## Xác minh triển khai — 2026-10-13
 
-The final focused backend set passed **224 tests**, with **one skip** because this
-Windows host cannot create symlinks; Linux CI exercises that real-filesystem guard.
-The focused frontend set passed **58 tests**, including affected Builder/Admin
-regressions. Frontend typecheck, targeted Ruff lint/format, targeted ESLint and
-`git diff --check` passed. Only `.gitkeep` is tracked in private input/storage and
-generated-report directories; no private benchmark data was added.
+Triển khai bắt đầu từ main sạch `1ad0465a2b96d19fd41df3a117927f9d5cfa2989`. Lượt CI đúng SHA `38396464810` và Golden Path E2E `38396464698` đều đạt; không cần sửa nền. Đã commit mười bốn tác vụ TDD tuần tự.
 
-A fresh isolated PostgreSQL database, `bandpilot_benchmark_20261013_2138`, upgraded
-from empty through `alembic upgrade head`. The single head is `20261013_0035`.
-Actual migration round trips and capacity races used independent PostgreSQL
-connections and temporary schemas, not ORM-only schema construction.
+Tập backend tập trung cuối cùng đạt **224 kiểm thử**, **một bỏ qua** vì máy Windows này không tạo được liên kết tượng trưng; Linux CI kiểm tra chốt bảo vệ trên hệ thống tệp thật đó. Tập frontend tập trung đạt **58 kiểm thử**, gồm hồi quy Builder/Admin chịu ảnh hưởng. Kiểm tra kiểu frontend, Ruff kiểm mã/định dạng có mục tiêu, ESLint có mục tiêu và `git diff --check` đều đạt. Chỉ `.gitkeep` được theo dõi trong thư mục đầu vào riêng tư/lưu trữ và báo cáo sinh ra; không thêm dữ liệu benchmark riêng tư.
 
-The integrated API → ZIP → both current loaders → both fake-provider CLI test
-completed without changing learner Attempt/final-grade/AI-run rows. It exposed
-and covered repeated export cancellation: snapshot locks now remain held until
-the staging thread finishes, and canceled ZIPs are removed afterward.
+PostgreSQL mới cô lập `bandpilot_benchmark_20261013_2138` nâng từ rỗng bằng `alembic upgrade head`. Đầu migration duy nhất là `20261013_0035`. Kiểm thử nâng/hạ thực và cuộc đua cấp vị trí dùng kết nối PostgreSQL độc lập cùng lược đồ tạm, không chỉ dựng lược đồ ORM.
 
-No browser, local E2E, live provider, GPU inference, deployment or full local suite
-was used. Required remote workflows are checked on the final pushed SHA before
-completion is reported. Criterion histograms remain intentionally deferred P1.
+Kiểm thử tích hợp API → ZIP → cả hai bộ nạp hiện hành → cả hai CLI nhà cung cấp giả hoàn tất mà không đổi dòng Attempt/điểm cuối/lượt AI của người học. Nó phát hiện và bao phủ hủy xuất lặp lại: khóa ảnh chụp nay được giữ tới khi luồng chuẩn bị xong, rồi ZIP đã hủy mới bị xóa.
+
+Không dùng trình duyệt, E2E cục bộ, nhà cung cấp trực tiếp, suy luận GPU, triển khai hoặc toàn bộ bộ kiểm thử cục bộ. Các quy trình từ xa bắt buộc được kiểm trên SHA đẩy cuối trước khi báo hoàn tất. Biểu đồ tần suất tiêu chí vẫn được chủ đích hoãn sang P1.

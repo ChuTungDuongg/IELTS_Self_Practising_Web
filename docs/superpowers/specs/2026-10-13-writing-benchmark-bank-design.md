@@ -1,100 +1,100 @@
-# Admin Writing Benchmark Bank Design
+# Thiết kế kho dữ liệu đánh giá chuẩn Writing cho quản trị viên
 
-> **Documentation audit: HISTORICAL.** Historical reference; không phải contract hiện hành.
-> Mục đích: Admin Writing Benchmark Bank Design. Đối chiếu source `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [implementation](../../../backend/app/services/writing_benchmark.py).
-> Đọc cùng [current module/guide](../../modules/writing.md); [audit và giới hạn](../../DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
+> **Kiểm toán tài liệu: HISTORICAL.** Tài liệu tham khảo lịch sử; không phải hợp đồng hiện hành.
+> Mục đích: Thiết kế kho dữ liệu đánh giá chuẩn Writing cho quản trị viên. Đối chiếu mã nguồn `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [triển khai](../../../backend/app/services/writing_benchmark.py).
+> Đọc cùng [mô-đun/hướng dẫn hiện hành](../../modules/writing.md); [audit và giới hạn](../../DOCS_AUDIT.md). Kết quả test/benchmark ghi bên dưới thuộc lần thực hiện gốc, không phải chạy lại trong audit này.
 
-## Status
+## Trạng thái
 
-Conversational design approved on 2026-10-13; written specification awaiting final user review before implementation planning.
+Thiết kế trao đổi được phê duyệt ngày 2026-10-13; đặc tả văn bản chờ người dùng rà soát cuối trước lập kế hoạch triển khai.
 
-This is an architectural extension that adds a single ADMIN-only Writing benchmark data bank to the existing application. The web application is responsible only for authoring, validating, storing and exporting labelled benchmark samples. Benchmark inference remains an offline/Colab CLI workflow and must reuse the repository's existing Writing evaluation metrics and Task 1 benchmark machinery rather than becoming a production background job.
+Mở rộng kiến trúc này thêm một kho dữ liệu đánh giá chuẩn Writing duy nhất chỉ ADMIN vào ứng dụng hiện có. Ứng dụng web chỉ chịu trách nhiệm biên soạn, xác thực, lưu và xuất mẫu đánh giá đã gán nhãn. Suy luận đánh giá vẫn là luồng CLI ngoại tuyến/Colab, phải tái sử dụng chỉ số Writing và bộ máy đánh giá Task 1 hiện có của kho mã, không trở thành tác vụ nền production.
 
-## Goal
+## Mục tiêu
 
-Provide one canonical Writing benchmark bank containing at most:
+Cung cấp một kho đánh giá chuẩn Writing chứa tối đa:
 
-- 100 Academic Writing Task 1 samples;
-- 100 Writing Task 2 samples.
+- 100 mẫu Academic Writing Task 1;
+- 100 mẫu Writing Task 2.
 
-Each sample is entered and labelled by one ADMIN. There is no dataset versioning, no v1/v2 bank concept, no multi-rater workflow and no adjudication subsystem.
+Mỗi mẫu được một ADMIN nhập và gán nhãn. Không có phiên bản bộ dữ liệu, khái niệm kho v1/v2, luồng nhiều người chấm hoặc phân hệ phân xử.
 
-The bank must support:
+Kho phải hỗ trợ:
 
-- fast ADMIN-only data entry outside Workspace/Builder;
-- Task 1 prompt + image + essay + TA/CC/LR/GRA human labels;
-- Task 2 prompt + essay + TR/CC/LR/GRA human labels;
-- production-consistent derived overall bands;
-- DEV/HOLDOUT split assignment;
-- overall-band distribution guidance toward a balanced calibration set;
-- draft autosave and explicit completeness validation;
-- ZIP export for Google Colab containing canonical JSONL, Task 1 images and convenience CSV copies;
-- reuse of the existing Task 1 benchmark CLI;
-- a Task 2 benchmark CLI using the same agreement/error metric definitions where applicable.
+- nhập nhanh chỉ ADMIN ngoài Workspace/Builder;
+- đề Task 1 + ảnh + bài viết + nhãn con người TA/CC/LR/GRA;
+- đề Task 2 + bài viết + nhãn con người TR/CC/LR/GRA;
+- band tổng suy ra nhất quán production;
+- gán phân tập DEV/HOLDOUT;
+- hướng dẫn phân bố band tổng để tạo tập hiệu chỉnh cân bằng;
+- tự lưu nháp và xác thực đầy đủ rõ ràng;
+- xuất ZIP cho Google Colab chứa JSONL chuẩn, ảnh Task 1 và bản CSV tiện xem;
+- tái dùng CLI đánh giá Task 1 hiện có;
+- CLI đánh giá Task 2 dùng cùng định nghĩa chỉ số đồng thuận/sai số nơi áp dụng.
 
-## Non-goals
+## Ngoài phạm vi
 
-This feature does not:
+Tính năng này không:
 
-- create multiple benchmark datasets or dataset versions;
-- add rater accounts, inter-rater reliability or adjudication;
-- run 200-sample benchmarking from the production web application;
-- write benchmark predictions, reports, latency results or experiment histories back into the production database;
-- expose benchmark samples to USER or TEACHER roles;
-- reuse ordinary learner Attempt/WritingTask/AttemptWritingScore records as benchmark ground truth;
-- use CSV as the canonical benchmark input format;
-- commit private/licensed essays or images into the Git repository;
-- automatically tune, offset, cap or deploy AI scores from benchmark results.
+- tạo nhiều bộ dữ liệu đánh giá hoặc phiên bản dữ liệu;
+- thêm tài khoản người chấm, độ tin cậy giữa người chấm hoặc phân xử;
+- chạy đánh giá 200 mẫu từ ứng dụng web production;
+- ghi dự đoán, báo cáo, độ trễ hoặc lịch sử thử nghiệm đánh giá vào cơ sở dữ liệu production;
+- cung cấp mẫu đánh giá cho USER/TEACHER;
+- tái dùng Attempt/WritingTask/AttemptWritingScore học viên thường làm nhãn chuẩn đánh giá;
+- dùng CSV làm đầu vào chuẩn đánh giá;
+- commit bài viết/ảnh riêng tư hoặc được cấp phép vào Git;
+- tự tinh chỉnh, dịch điểm, đặt trần hoặc triển khai điểm AI từ kết quả đánh giá.
 
-## Current architecture to reuse
+## Kiến trúc hiện có cần tái sử dụng
 
-The repository already contains a substantial Task 1 evaluation stack under `backend/app/evaluation/task1/` plus `scripts/benchmark_task1.py`. Its local manifest contract contains a sample ID, `dev | holdout` split, Task 1 type, prompt, local image path, essay and TA/CC/LR/GRA human scores. Reports already include criterion/overall agreement metrics such as exact agreement, within ±0.5, within ±1.0, signed bias, MAE, RMSE and QWK, together with operational latency/failure/usage data and Task 1 perception diagnostics.
+Kho mã đã có hệ thống đánh giá Task 1 đáng kể dưới `backend/app/evaluation/task1/` cùng `scripts/benchmark_task1.py`. Hợp đồng manifest cục bộ gồm ID mẫu, phân tập `dev | holdout`, loại Task 1, đề, đường ảnh cục bộ, bài viết và điểm người chấm TA/CC/LR/GRA. Báo cáo đã gồm chỉ số đồng thuận tiêu chí/tổng như khớp chính xác, trong ±0.5, trong ±1.0, độ lệch có dấu, MAE, RMSE, QWK, cùng độ trễ/lỗi/mức dùng vận hành và chẩn đoán tri giác Task 1.
 
-The existing Task 1 `BenchmarkSample` also carries benchmark-only metadata such as `raters`, `provenance` and `redistributable`. This new web bank has exactly one human labeler per sample; export therefore writes `raters=1` deterministically and maps the bank's source/provenance metadata into the existing manifest contract. The production database does not need to model individual raters.
+`BenchmarkSample` Task 1 hiện có cũng mang metadata riêng đánh giá như `raters`, `provenance`, `redistributable`. Kho web mới có đúng một người gán nhãn mỗi mẫu; vì vậy xuất ghi `raters=1` xác định và ánh xạ metadata nguồn/nguồn gốc của kho vào hợp đồng manifest hiện có. Cơ sở dữ liệu production không cần mô hình từng người chấm.
 
-The repository already has `LocalAssetStorage` and authenticated asset handling for PNG/JPEG/WebP files. Task 1 benchmark images should reuse this storage abstraction instead of storing image bytes/base64 in PostgreSQL.
+Kho mã đã có `LocalAssetStorage` và xử lý tài sản PNG/JPEG/WebP có xác thực. Ảnh đánh giá Task 1 cần tái dùng lớp lưu trữ này thay vì lưu byte/base64 ảnh trong PostgreSQL.
 
-Task 2 currently has production scoring but no equivalent dedicated benchmark CLI. This design adds a Task 2 evaluation path without duplicating the entire Task 1 perception-specific stack.
+Task 2 hiện có chấm production nhưng chưa có CLI đánh giá chuyên biệt tương đương. Thiết kế thêm luồng đánh giá Task 2 mà không sao chép toàn hệ thống tri giác riêng Task 1.
 
-## 1. Admin route and access boundary
+## 1. Tuyến quản trị và ranh giới truy cập
 
-Add a standalone ADMIN page:
+Thêm trang ADMIN độc lập:
 
 ```text
 /admin/writing-benchmark
 ```
 
-It is outside Workspace/Builder and outside Teacher pages.
+Trang nằm ngoài Workspace/Builder và các trang Teacher.
 
-Both layers enforce ADMIN-only access:
+Cả hai lớp cưỡng chế truy cập chỉ ADMIN:
 
-- frontend route/presentation uses the existing admin authentication/guard conventions;
-- every CRUD, image and export backend route uses `AdminUser` or the project's equivalent ADMIN dependency;
-- hiding a nav item is never treated as authorization;
-- USER/TEACHER direct API calls receive the repository's normal safe unauthorized response.
+- tuyến/trình bày frontend dùng quy ước xác thực/chốt quản trị hiện có;
+- mọi tuyến CRUD, ảnh và xuất backend dùng `AdminUser` hoặc dependency ADMIN tương đương dự án;
+- ẩn mục điều hướng tuyệt đối không được xem là phân quyền;
+- USER/TEACHER gọi API trực tiếp nhận phản hồi từ chối an toàn bình thường của kho mã.
 
-The page may be linked from the Admin area, but should remain a distinct benchmark-data tool rather than being embedded into Test Builder.
+Có thể liên kết từ khu Admin nhưng trang cần giữ là công cụ dữ liệu đánh giá riêng, không nhúng vào Test Builder.
 
-## 2. Single canonical bank and capacity
+## 2. Một kho chuẩn duy nhất và dung lượng
 
-There is one logical benchmark bank only.
+Chỉ có một kho đánh giá logic.
 
-Capacity is fixed at:
+Dung lượng cố định:
 
 ```text
 Task 1: maximum 100 samples
 Task 2: maximum 100 samples
 ```
 
-The backend enforces the limits transactionally; frontend disabling is only convenience. It must not be possible to create sample 101 by racing API requests or bypassing UI controls.
+Backend cưỡng chế giới hạn trong giao dịch; vô hiệu hóa frontend chỉ tiện ích. Không được tạo mẫu 101 bằng yêu cầu API cạnh tranh hoặc bỏ qua điều khiển giao diện.
 
-There is no `BenchmarkDataset` table, bank version, release entity or bank selector.
+Không có bảng `BenchmarkDataset`, phiên bản kho, thực thể phát hành hoặc bộ chọn kho.
 
-## 3. Persistence model
+## 3. Mô hình lưu trữ
 
-Create a dedicated benchmark-ground-truth model instead of reusing learner attempts.
+Tạo mô hình nhãn chuẩn đánh giá riêng thay tái dùng lượt học viên.
 
-Conceptually:
+Về khái niệm:
 
 ```text
 WritingBenchmarkSample
@@ -117,26 +117,26 @@ WritingBenchmarkSample
 - updated_at
 ```
 
-Constraints:
+Ràng buộc:
 
-- unique `(task_number, sequence_number)`;
-- `sequence_number` between 1 and 100;
-- criterion labels must be production-valid Writing half bands from 0 to 9;
-- Task 1 may carry `task1_task_type`/image; Task 2 must not require them;
-- a COMPLETE Task 1 requires prompt, essay, task type, image, split and all four labels;
-- a COMPLETE Task 2 requires prompt, essay, split and all four labels;
-- DRAFT permits partially entered fields needed for autosave;
-- changing/removing a required field from a COMPLETE record demotes it to DRAFT or rejects an explicit COMPLETE update; the service must never leave an invalid COMPLETE record.
+- duy nhất `(task_number, sequence_number)`;
+- `sequence_number` từ 1 đến 100;
+- nhãn tiêu chí phải là nửa band Writing hợp lệ production từ 0 đến 9;
+- Task 1 có thể mang `task1_task_type`/ảnh; Task 2 không được yêu cầu chúng;
+- Task 1 COMPLETE yêu cầu đề, bài viết, loại task, ảnh, phân tập và đủ bốn nhãn;
+- Task 2 COMPLETE yêu cầu đề, bài viết, phân tập và đủ bốn nhãn;
+- DRAFT cho trường nhập từng phần cần cho tự lưu;
+- đổi/gỡ trường bắt buộc khỏi bản ghi COMPLETE đưa về DRAFT hoặc từ chối cập nhật COMPLETE rõ ràng; dịch vụ tuyệt đối không để lại COMPLETE không hợp lệ.
 
-`human_overall` is deliberately not stored. It is derived by the same production Writing four-criterion aggregation/rounding helper used by scoring so database values cannot drift from displayed/exported totals.
+Chủ động không lưu `human_overall`. Nó suy ra bằng cùng hàm tổng hợp/làm tròn bốn tiêu chí Writing production của chấm điểm, ngăn giá trị cơ sở dữ liệu lệch tổng hiển thị/xuất.
 
-Do not add separate Task 1 and Task 2 sample tables unless implementation constraints make the single typed model substantially less safe. The preferred model is one table with task-aware validation because the UI, distribution logic and export workflow are shared.
+Không thêm bảng mẫu Task 1/Task 2 riêng trừ khi ràng buộc triển khai khiến mô hình có kiểu duy nhất kém an toàn đáng kể. Ưu tiên một bảng với xác thực theo task vì dùng chung giao diện, logic phân bố và xuất.
 
-## 4. Human labelling semantics
+## 4. Ngữ nghĩa gán nhãn con người
 
-Exactly one ADMIN enters the canonical human labels for a sample.
+Đúng một ADMIN nhập nhãn con người chuẩn cho mỗi mẫu.
 
-Task 1 labels:
+Nhãn Task 1:
 
 ```text
 TA
@@ -145,7 +145,7 @@ LR
 GRA
 ```
 
-Task 2 labels:
+Nhãn Task 2:
 
 ```text
 TR
@@ -154,59 +154,59 @@ LR
 GRA
 ```
 
-No written feedback is stored or required.
+Không lưu hoặc yêu cầu phản hồi văn bản.
 
-The UI presents criterion labels as controlled half-band selects/comboboxes, not arbitrary numeric text fields.
+Giao diện cung cấp nhãn tiêu chí qua select/combobox nửa band có kiểm soát, không trường số văn bản tùy ý.
 
-The displayed overall is read-only and derived live for convenience, but the backend recomputes it independently when presenting, validating and exporting data.
+Tổng hiển thị chỉ đọc, suy ra trực tiếp cho tiện; backend tính lại độc lập khi trình bày, xác thực và xuất dữ liệu.
 
-No AI-generated score may silently populate the canonical human fields. Ground truth is human-entered data.
+Không điểm AI nào được âm thầm điền vào trường con người chuẩn. Nhãn chuẩn là dữ liệu con người nhập.
 
-## 5. DEV and HOLDOUT
+## 5. DEV và HOLDOUT
 
-Every sample has:
+Mỗi mẫu có:
 
 ```text
 DEV | HOLDOUT
 ```
 
-This is not dataset versioning; it is evaluation hygiene inside the single bank.
+Đây là nguyên tắc giữ đánh giá độc lập trong một kho, không phải tạo phiên bản dữ liệu.
 
-The recommended target is approximately:
+Mục tiêu khuyến nghị xấp xỉ:
 
 ```text
 80 DEV
 20 HOLDOUT
 ```
 
-per task.
+cho mỗi task.
 
-DEV is used for iterative prompt/calibration investigation. HOLDOUT is reserved for final evaluation and should not be repeatedly inspected/tuned against.
+DEV dùng khảo sát prompt/hiệu chỉnh lặp. HOLDOUT dành đánh giá cuối, không nên liên tục xem hoặc tinh chỉnh theo nó.
 
-The application shows split counts and guidance but does not automatically move samples between splits.
+Ứng dụng hiện số lượng phân tập/hướng dẫn, không tự chuyển mẫu giữa tập.
 
-New samples may default to DEV for faster authoring.
+Mẫu mới có thể mặc định DEV để nhập nhanh.
 
-## 6. Sample identity
+## 6. Danh tính mẫu
 
-Database identity is UUID.
+Danh tính cơ sở dữ liệu là UUID.
 
-Human-facing stable codes use task + slot:
+Mã ổn định cho người dùng dùng task + vị trí:
 
 ```text
 T1-001 ... T1-100
 T2-001 ... T2-100
 ```
 
-`sequence_number` is a stable slot, not array position. Deleting T1-037 must not renumber T1-038..T1-100. A future new sample may reuse the now-free 037 slot while receiving a new UUID.
+`sequence_number` là vị trí ổn định, không vị trí mảng. Xóa T1-037 không được đánh lại T1-038..T1-100. Mẫu mới tương lai được dùng lại vị trí 037 trống nhưng nhận UUID mới.
 
-Exports use the stable human-facing code as the benchmark sample `id` so reports remain easy to cross-reference with the admin bank.
+Bản xuất dùng mã ổn định hướng người dùng làm `id` mẫu đánh giá để dễ đối chiếu báo cáo với kho quản trị.
 
-## 7. Authoring UX
+## 7. UX biên soạn
 
-The page uses a master/detail editor rather than rendering 200 full forms.
+Trang dùng trình danh sách/chi tiết thay hiển thị 200 biểu mẫu đầy đủ.
 
-Desktop concept:
+Ý tưởng trên máy tính:
 
 ```text
 Writing Benchmark Bank
@@ -224,39 +224,39 @@ T1-003 ✓ 6.5               Image / task type
                             Derived overall
 ```
 
-The sample list shows at least:
+Danh sách mẫu hiển thị ít nhất:
 
-- stable code;
-- DRAFT/COMPLETE status;
-- derived overall when labels are complete;
-- DEV/HOLDOUT state where useful.
+- mã ổn định;
+- trạng thái DRAFT/COMPLETE;
+- tổng suy ra khi đủ nhãn;
+- trạng thái DEV/HOLDOUT khi hữu ích.
 
-On narrow screens, list and detail may stack/navigate using existing responsive conventions; do not attempt to squeeze two unusably narrow panes beside each other.
+Trên màn hình hẹp, danh sách/chi tiết có thể xếp hoặc điều hướng theo quy ước thích ứng hiện có; không ép hai khung quá hẹp không dùng được cạnh nhau.
 
-## 8. Draft autosave and fast-entry workflow
+## 8. Tự lưu nháp và luồng nhập nhanh
 
-The intended workload is manual entry of up to 200 samples, so losing a form is unacceptable.
+Khối lượng dự kiến là nhập thủ công tối đa 200 mẫu, nên mất dữ liệu biểu mẫu là không chấp nhận.
 
-Use debounced autosave for DRAFT/edited records, approximately 800–1200 ms after stable input, following existing project request/error conventions. Do not save on every keystroke without debounce.
+Dùng tự lưu có trì hoãn gộp thay đổi cho DRAFT/bản ghi đang sửa, khoảng 800–1200 ms sau đầu vào ổn định, theo quy ước yêu cầu/lỗi dự án. Không lưu mỗi phím khi chưa gộp.
 
-Provide explicit immediate-save behavior, including:
+Cung cấp lưu tức thì chủ động, gồm:
 
 ```text
 Ctrl/Cmd + S -> save immediately
 Ctrl/Cmd + Enter -> validate/mark COMPLETE and move to next incomplete sample when successful
 ```
 
-Exact shortcuts may be omitted on unsupported contexts, but desktop authoring should support them if they do not conflict with existing browser/editor behavior.
+Có thể bỏ phím tắt ở ngữ cảnh không hỗ trợ, nhưng biên soạn máy tính cần hỗ trợ nếu không xung đột hành vi trình duyệt/trình sửa hiện có.
 
-Autosave status should be subtle and clear, e.g. Saving / Saved / Retry required, without modal interruption.
+Trạng thái tự lưu cần nhẹ và rõ, ví dụ Saving / Saved / Retry required, không ngắt bằng hộp thoại.
 
-A failed autosave must not clear local form content.
+Tự lưu thất bại không được xóa nội dung biểu mẫu cục bộ.
 
-## 9. Task 1 image handling
+## 9. Xử lý ảnh Task 1
 
-Task 1 COMPLETE records require one task image.
+Bản ghi Task 1 COMPLETE yêu cầu một ảnh đề.
 
-Reuse `LocalAssetStorage` and existing image MIME/size validation conventions:
+Tái dùng `LocalAssetStorage` và quy ước xác thực MIME/kích thước ảnh hiện có:
 
 ```text
 PNG
@@ -264,51 +264,51 @@ JPEG
 WebP
 ```
 
-Store only a storage-relative key/path in the benchmark table.
+Chỉ lưu khóa/đường tương đối lưu trữ trong bảng đánh giá.
 
-Use a dedicated benchmark namespace, conceptually:
+Dùng namespace đánh giá riêng, về khái niệm:
 
 ```text
 benchmark/writing/task1/<sample-uuid>.<ext>
 ```
 
-The admin editor provides preview, replace and remove actions.
+Trình quản trị cung cấp xem trước, thay thế và gỡ.
 
-Replacing/deleting images must use existing safe cleanup patterns so obsolete benchmark assets do not accumulate unnecessarily. If the image is removed from a COMPLETE Task 1 sample, the sample becomes DRAFT.
+Thay/xóa ảnh phải dùng mẫu dọn an toàn hiện có để tài sản cũ không tích lũy không cần thiết. Gỡ ảnh khỏi mẫu Task 1 COMPLETE làm mẫu thành DRAFT.
 
-Benchmark images do not need an unauthenticated public URL. The admin preview/API remains authenticated, and ZIP export reads the asset server-side.
+Ảnh đánh giá không cần URL công khai không xác thực. Xem trước/API quản trị giữ xác thực, xuất ZIP đọc tài sản phía máy chủ.
 
-## 10. Completeness validation
+## 10. Xác thực tính đầy đủ
 
-Task 1 COMPLETE requires:
+Task 1 COMPLETE yêu cầu:
 
-- nonblank prompt;
-- nonblank essay;
-- valid Task 1 task type from the production registry;
-- valid stored image;
-- DEV/HOLDOUT split;
-- TA, CC, LR, GRA half-band labels.
+- đề không trống;
+- bài viết không trống;
+- loại Task 1 hợp lệ từ registry production;
+- ảnh lưu hợp lệ;
+- phân tập DEV/HOLDOUT;
+- nhãn nửa band TA, CC, LR, GRA.
 
-Task 2 COMPLETE requires:
+Task 2 COMPLETE yêu cầu:
 
-- nonblank prompt;
-- nonblank essay;
-- DEV/HOLDOUT split;
-- TR, CC, LR, GRA half-band labels.
+- đề không trống;
+- bài viết không trống;
+- phân tập DEV/HOLDOUT;
+- nhãn nửa band TR, CC, LR, GRA.
 
-No feedback is required.
+Không yêu cầu phản hồi.
 
-The API returns structured validation errors that the detail editor can associate with fields.
+API trả lỗi xác thực có cấu trúc để trình chi tiết gắn với trường.
 
-DRAFT records may remain incomplete indefinitely.
+Bản ghi DRAFT có thể chưa đầy đủ vô thời hạn.
 
-## 11. Distribution planner
+## 11. Công cụ lập phân bố
 
-The top of the page shows current count and progress for Task 1 and Task 2, plus a suggested overall-band distribution.
+Đầu trang hiển thị số lượng/tiến độ hiện tại Task 1/Task 2 cùng phân bố band tổng gợi ý.
 
-The suggested target for each 100-sample task bank is:
+Mục tiêu gợi ý cho mỗi kho task 100 mẫu:
 
-| Overall | Suggested |
+| Band tổng | Gợi ý |
 | ---: | ---: |
 | 4.0 | 8 |
 | 4.5 | 8 |
@@ -322,35 +322,35 @@ The suggested target for each 100-sample task bank is:
 | 8.5 | 6 |
 | 9.0 | 6 |
 
-Total: 100.
+Tổng: 100.
 
-This is guidance only, not a save/export constraint. It intentionally gives more density to the common 6.0–7.5 calibration region while preserving meaningful coverage at the ends of the scale.
+Đây chỉ là hướng dẫn, không ràng buộc lưu/xuất. Chủ động tăng mật độ vùng hiệu chỉnh thường gặp 6.0–7.5, vẫn phủ có ý nghĩa hai đầu thang.
 
-For each band, UI can show:
+Mỗi band, giao diện có thể hiện:
 
 ```text
 8.0: 5 / suggested 8 -> ~3 more recommended
 ```
 
-Distribution is computed from COMPLETE samples only.
+Chỉ tính phân bố từ mẫu COMPLETE.
 
-The page may additionally expose a compact criterion-distribution view for TA/TR, CC, LR and GRA to reveal label concentration, but there are no hard criterion-specific target quotas.
+Trang có thể thêm chế độ phân bố tiêu chí gọn TA/TR, CC, LR, GRA để thấy nhãn tập trung, nhưng không có chỉ tiêu cứng theo tiêu chí.
 
-Split guidance also shows approximate progress toward 80 DEV / 20 HOLDOUT per task.
+Split guidance also shows approximate progress toward 80 DEV / 20 HOLDOUT cho mỗi task.
 
-## 12. Export behavior
+## 12. Hành vi xuất
 
-Provide one action:
+Cung cấp một thao tác:
 
 ```text
 Export benchmark bundle
 ```
 
-Export includes COMPLETE samples only. DRAFT samples are never silently converted or partially exported.
+Xuất chỉ gồm mẫu COMPLETE. Tuyệt đối không âm thầm chuyển đổi hoặc xuất một phần mẫu DRAFT.
 
-The user may export before reaching 100/100 so the CLI/Colab pipeline can be smoke-tested on a small bank.
+Người dùng được xuất trước đạt 100/100 để kiểm tra nhanh luồng CLI/Colab bằng kho nhỏ.
 
-Before export, present a concise summary such as:
+Trước xuất, hiện tóm tắt gọn như:
 
 ```text
 Task 1: 93 complete, 7 draft
@@ -358,11 +358,11 @@ Task 2: 100 complete
 DEV/HOLDOUT counts
 ```
 
-The backend constructs the ZIP deterministically enough that its contents and manifest identities are reproducible from the same stored sample state. ZIP byte-for-byte timestamp identity is not required, but sample ordering, IDs and paths are stable.
+Backend tạo ZIP đủ xác định để nội dung/danh tính manifest tái tạo được từ cùng trạng thái mẫu đã lưu. Không yêu cầu ZIP giống từng byte thời gian, nhưng thứ tự mẫu, ID và đường dẫn ổn định.
 
-## 13. Canonical ZIP contract
+## 13. Hợp đồng ZIP chuẩn
 
-The bundle shape is:
+Cấu trúc gói:
 
 ```text
 writing-benchmark.zip
@@ -378,25 +378,25 @@ writing-benchmark.zip
     └── ...
 ```
 
-JSONL is canonical benchmark input. CSV is an inspection convenience only.
+JSONL là đầu vào đánh giá chuẩn. CSV chỉ tiện xem.
 
-Task 1 image filenames are stable sample codes plus the validated source extension. `task1.jsonl` references relative local paths such as:
+Tên ảnh Task 1 là mã mẫu ổn định cộng phần mở rộng nguồn đã xác thực. `task1.jsonl` tham chiếu đường cục bộ tương đối như:
 
 ```text
 images/T1-001.png
 ```
 
-No base64 images are placed in JSONL/CSV.
+Không đặt ảnh base64 trong JSONL/CSV.
 
-`manifest.schema.json` may contain separate Task 1/Task 2 definitions or a small wrapper documenting both contracts. It must reflect what the shipped CLIs actually accept.
+`manifest.schema.json` có thể chứa định nghĩa Task 1/Task 2 riêng hoặc wrapper nhỏ ghi cả hai hợp đồng. Nó phải phản ánh đầu vào CLI phát hành thực sự chấp nhận.
 
-`README.txt` provides short Colab/local invocation instructions and clearly states that the ZIP contains benchmark source material that may be private/licensed.
+`README.txt` cung cấp hướng dẫn gọi Colab/cục bộ ngắn, nêu rõ ZIP chứa tư liệu nguồn đánh giá có thể riêng tư/được cấp phép.
 
-## 14. Task 1 JSONL compatibility
+## 14. Tương thích JSONL Task 1
 
-Prefer direct compatibility with the existing `backend/app/evaluation/task1/models.py::BenchmarkSample` contract so `scripts/benchmark_task1.py` can consume an exported Task 1 manifest without a conversion script.
+Ưu tiên tương thích trực tiếp hợp đồng `backend/app/evaluation/task1/models.py::BenchmarkSample` hiện có để `scripts/benchmark_task1.py` dùng manifest Task 1 xuất ra không cần script chuyển đổi.
 
-Export each Task 1 sample conceptually as:
+Về khái niệm, xuất mỗi mẫu Task 1 dạng:
 
 ```json
 {
@@ -420,15 +420,15 @@ Export each Task 1 sample conceptually as:
 }
 ```
 
-The web bank does not add a multi-rater model merely because the CLI contract contains `raters`; it always exports `raters=1`.
+Kho web không thêm mô hình nhiều người chấm chỉ vì CLI có `raters`; luôn xuất `raters=1`.
 
-`visual_truth` is not required by this authoring page. It may remain `null`. Existing Task 1 score metrics still work; perception-truth metrics remain unavailable when no independent visual truth annotation exists.
+Trang biên soạn này không yêu cầu `visual_truth`, có thể giữ `null`. Chỉ số điểm Task 1 hiện có vẫn hoạt động; chỉ số đối chiếu tri giác với nhãn chuẩn không có khi thiếu chú giải hình ảnh chuẩn độc lập.
 
-For provenance, export a bounded nonblank string. If the admin did not provide a source note, use a deterministic neutral value such as `admin-labelled benchmark sample`; do not invent authorship/licence claims. `redistributable` defaults false unless ADMIN explicitly marks otherwise.
+Nguồn gốc xuất chuỗi không trống có giới hạn. Nếu quản trị viên không nhập ghi chú nguồn, dùng giá trị trung tính xác định như `admin-labelled benchmark sample`; không bịa tuyên bố tác giả/giấy phép. `redistributable` mặc định false trừ khi ADMIN đánh dấu khác rõ ràng.
 
-## 15. Task 2 JSONL contract
+## 15. Hợp đồng JSONL Task 2
 
-Add a dedicated strict Task 2 benchmark sample model, conceptually:
+Thêm mô hình mẫu đánh giá Task 2 nghiêm ngặt riêng, về khái niệm:
 
 ```json
 {
@@ -449,17 +449,17 @@ Add a dedicated strict Task 2 benchmark sample model, conceptually:
 }
 ```
 
-Use `tr` in the Task 2 benchmark contract for human-facing Task Response semantics even if production internals use `ta` as a generic trait key. The evaluation adapter maps the Task 2 benchmark label safely to the production Task Response criterion without altering scoring semantics.
+Dùng `tr` trong hợp đồng đánh giá Task 2 cho ngữ nghĩa Task Response hướng người dùng dù nội bộ production dùng `ta` làm khóa tiêu chí chung. Bộ chuyển đổi đánh giá ánh xạ nhãn Task 2 an toàn sang tiêu chí Task Response production mà không đổi ngữ nghĩa chấm.
 
-The schema validates the same 0–9 half-band range as production Writing criteria.
+Schema xác thực cùng miền nửa band 0–9 như tiêu chí Writing production.
 
-## 16. CSV convenience exports
+## 16. Bản xuất CSV tiện xem
 
-`task1.csv` and `task2.csv` are provided for Excel/Google Sheets inspection only.
+`task1.csv` và `task2.csv` chỉ để xem trong Excel/Google Sheets.
 
-Use standard UTF-8 CSV quoting so multiline prompts/essays remain valid.
+Dùng quoting CSV UTF-8 chuẩn để đề/bài nhiều dòng vẫn hợp lệ.
 
-Flattened columns include at least:
+Cột phẳng gồm ít nhất:
 
 ```text
 id
@@ -477,82 +477,82 @@ provenance
 redistributable
 ```
 
-CSV must not become a second canonical parser path for the benchmark runner.
+CSV không được thành luồng phân tích đầu vào chuẩn thứ hai của trình đánh giá.
 
-## 17. Shared score metrics
+## 17. Chỉ số điểm dùng chung
 
-Task 1 already implements pure score agreement arithmetic including:
+Task 1 đã triển khai phép tính đồng thuận điểm thuần gồm:
 
-- exact agreement;
-- within ±0.5;
-- within ±1.0;
-- signed prediction-minus-human bias;
+- khớp chính xác;
+- trong ±0.5;
+- trong ±1.0;
+- độ lệch có dấu dự đoán trừ điểm người;
 - MAE;
 - RMSE;
-- Quadratic Weighted Kappa over the 19 half-band bins.
+- Quadratic Weighted Kappa trên 19 nhóm nửa band.
 
-Task 2 must use the same definitions.
+Task 2 phải dùng cùng định nghĩa.
 
-Refactor only as much as needed to share the score-only metric primitives, for example into a small `backend/app/evaluation/writing/metrics.py`, while keeping Task 1 perception metrics Task-1-specific. Preserve compatibility for existing Task 1 imports/tests through direct import updates or a deliberate re-export.
+Chỉ tái cấu trúc đủ chia sẻ hàm chỉ số chỉ điểm, ví dụ vào `backend/app/evaluation/writing/metrics.py` nhỏ, giữ chỉ số tri giác Task 1 riêng Task 1. Bảo toàn tương thích import/kiểm thử Task 1 bằng cập nhật import trực tiếp hoặc tái xuất chủ động.
 
-Do not fork a second subtly different QWK/MAE implementation.
+Không tạo bản triển khai QWK/MAE thứ hai khác tinh vi.
 
-Task 2 overall must use the same production Writing four-criterion aggregation/half-band rounding as ordinary scoring.
+Tổng Task 2 phải dùng cùng tổng hợp bốn tiêu chí/làm tròn nửa band Writing production như chấm thường.
 
-## 18. Task 2 benchmark CLI
+## 18. CLI đánh giá Task 2
 
-Add a dedicated Task 2 CLI rather than overloading Task 1's image/perception runner.
+Thêm CLI Task 2 riêng thay nhồi vào trình ảnh/tri giác Task 1.
 
-Conceptually:
+Về khái niệm:
 
 ```text
 scripts/benchmark_task2.py
 ```
 
-It consumes `task2.jsonl`, invokes the production Task 2 score-first Writing scoring path with configured provider/model settings and records predictions without feeding human labels into the request.
+CLI dùng `task2.jsonl`, gọi luồng Writing Task 2 chấm trước production với cấu hình nhà cung cấp/mô hình, ghi dự đoán mà không đưa nhãn người vào yêu cầu.
 
-Required CLI behavior should mirror the useful non-perception portions of Task 1:
+Hành vi CLI bắt buộc cần tương ứng phần hữu ích không tri giác của Task 1:
 
 - `--manifest`;
 - `--split dev|holdout`;
-- `--limit` for smoke runs;
-- bounded concurrency;
-- `--resume` with cache identity that includes sample contents/labels, provider/model, prompt/scoring contract and relevant implementation identity;
-- output directory containing `report.json`, `report.md`, `disagreements.csv`, `cache/` and `attempts/` or equivalent existing conventions;
-- failed samples remain visible in failure statistics rather than disappearing;
-- labels are used only for post-inference metrics and never enter model prompts.
+- `--limit` cho kiểm tra nhanh;
+- đồng thời có giới hạn;
+- `--resume` có danh tính cache gồm nội dung/nhãn mẫu, nhà cung cấp/mô hình, hợp đồng prompt/chấm và danh tính triển khai liên quan;
+- thư mục đầu ra chứa `report.json`, `report.md`, `disagreements.csv`, `cache/` và `attempts/` hoặc quy ước hiện có tương đương;
+- mẫu thất bại vẫn xuất hiện trong thống kê lỗi, không biến mất;
+- nhãn chỉ dùng chỉ số sau suy luận, tuyệt đối không vào prompt mô hình.
 
-No Task 2 image/perception/DePlot fields are introduced.
+Không thêm trường ảnh/tri giác/DePlot Task 2.
 
-Do not create an experiment-tracking service or DB table for benchmark runs.
+Không tạo dịch vụ theo dõi thử nghiệm hoặc bảng cơ sở dữ liệu lượt đánh giá.
 
-## 19. Metrics and reports
+## 19. Chỉ số và báo cáo
 
-For Task 1, preserve the existing report semantics.
+Task 1 giữ ngữ nghĩa báo cáo hiện có.
 
-For Task 2, report at minimum for TR, CC, LR, GRA and derived overall:
+Task 2 báo tối thiểu cho TR, CC, LR, GRA và tổng suy ra:
 
-- comparable count;
-- exact agreement;
-- within ±0.5;
-- within ±1.0;
-- signed bias;
+- số mẫu so sánh được;
+- khớp chính xác;
+- trong ±0.5;
+- trong ±1.0;
+- độ lệch có dấu;
 - MAE;
 - RMSE;
-- QWK when sample-count/variance requirements are satisfied;
-- failure/nonscorable rate;
-- wall-clock latency;
-- provider request count/token usage when available.
+- QWK khi đủ yêu cầu số mẫu/phương sai;
+- tỷ lệ thất bại/không đủ điều kiện chấm;
+- độ trễ thời gian thực;
+- số yêu cầu nhà cung cấp/mức dùng token nếu có.
 
-If existing benchmark infrastructure already provides Pearson/Spearman in a reusable Writing/Speaking metrics module, Task 2 may include them consistently. Do not add a second formula merely to increase the report surface. The core acceptance requirement is the existing Writing Task 1 agreement/error metric set plus operational latency/failure information.
+Nếu hạ tầng đánh giá hiện có cung cấp Pearson/Spearman trong mô-đun chỉ số Writing/Speaking tái dùng được, Task 2 có thể thêm nhất quán. Không thêm công thức thứ hai chỉ để tăng diện tích báo cáo. Yêu cầu nghiệm thu cốt lõi là tập chỉ số đồng thuận/sai số Task 1 hiện có cùng thông tin độ trễ/lỗi vận hành.
 
-Reports should include band-bucket and split strata where inexpensive and consistent with Task 1 conventions so under/over-scoring at specific human bands is visible.
+Báo cáo cần có phân tầng nhóm band và phân tập nơi chi phí thấp, nhất quán quy ước Task 1 để thấy chấm thấp/cao ở band người cụ thể.
 
-## 20. Google Colab workflow
+## 20. Luồng Google Colab
 
-The production application never needs direct database access from Colab.
+Tuyệt đối không cần Colab truy cập trực tiếp cơ sở dữ liệu production.
 
-Recommended workflow:
+Luồng khuyến nghị:
 
 ```text
 ADMIN web page
@@ -566,38 +566,38 @@ ADMIN web page
 -> inspect report.json/report.md/disagreements.csv
 ```
 
-This intentionally avoids placing production PostgreSQL credentials or admin auth tokens in Colab.
+Cách này chủ động tránh đưa thông tin xác thực PostgreSQL production hoặc token quản trị vào Colab.
 
-The bundle README should show commands compatible with the repository's actual root/backend execution conventions.
+README gói cần nêu lệnh tương thích quy ước chạy root/backend thực của kho mã.
 
-## 21. Privacy and data handling
+## 21. Riêng tư và xử lý dữ liệu
 
-Benchmark source material may be private or licensed.
+Tư liệu nguồn đánh giá có thể riêng tư hoặc được cấp phép.
 
-Requirements:
+Yêu cầu:
 
-- ADMIN-only CRUD/export;
-- benchmark images are not exposed as anonymous public assets merely for this feature;
-- no essays/images are committed to Git by the application;
-- no benchmark data is written to logs beyond safe IDs/statuses;
-- export is an explicit ADMIN action;
-- `redistributable` defaults false;
-- CLI reports should continue defaulting to sample IDs/metrics rather than reproducing full essays or images;
-- provider calls necessarily send the benchmark input required for scoring, so README/documentation must state that running a benchmark uploads sample content to the configured scoring provider according to that provider setup.
+- CRUD/xuất chỉ ADMIN;
+- không cung cấp ảnh đánh giá thành tài sản công khai ẩn danh chỉ vì tính năng;
+- ứng dụng không commit bài viết/ảnh vào Git;
+- không ghi dữ liệu đánh giá vào log ngoài ID/trạng thái an toàn;
+- xuất là thao tác ADMIN chủ động;
+- `redistributable` mặc định false;
+- báo cáo CLI tiếp tục mặc định ID mẫu/chỉ số, không chép đầy đủ bài hoặc ảnh;
+- gọi nhà cung cấp bắt buộc gửi đầu vào đánh giá cần để chấm, nên README/tài liệu phải nêu chạy đánh giá sẽ tải nội dung mẫu tới nhà cung cấp đã cấu hình theo thiết lập đó.
 
-## 22. Delete/replace behavior
+## 22. Hành vi xóa/thay
 
-Deleting a benchmark sample deletes only benchmark-bank data and its dedicated image asset. It must not affect authored IELTS tests, learner attempts or AI run history.
+Xóa mẫu chỉ xóa dữ liệu kho đánh giá và tài sản ảnh riêng của nó. Không được ảnh hưởng đề IELTS biên soạn, lượt học viên hoặc lịch sử AI.
 
-Delete requires the existing destructive-action confirmation convention.
+Xóa yêu cầu quy ước xác nhận thao tác phá hủy hiện có.
 
-Replacement image cleanup is best-effort but must never delete the newly committed asset if a request races/fails. Follow existing storage-service patterns for write-then-update/cleanup ordering.
+Dọn ảnh thay thế theo khả năng tốt nhất nhưng tuyệt đối không xóa tài sản mới cam kết khi yêu cầu cạnh tranh/lỗi. Theo mẫu dịch vụ lưu trữ hiện có về thứ tự ghi-rồi-cập nhật/dọn.
 
-Stable sequence numbers of neighboring samples are never renumbered.
+Số thứ tự ổn định của mẫu lân cận tuyệt đối không được đánh lại.
 
-## 23. API shape
+## 23. Cấu trúc API
 
-Exact paths follow current `/api/v1/admin/...` conventions. Conceptually provide:
+Đường cụ thể theo quy ước `/api/v1/admin/...` hiện tại. Về khái niệm cung cấp:
 
 ```text
 GET    /admin/writing-benchmark/summary
@@ -611,109 +611,109 @@ DELETE /admin/writing-benchmark/samples/{id}/image
 GET    /admin/writing-benchmark/export
 ```
 
-The service layer owns capacity, completeness, overall calculation, storage and export rules. Routers remain thin.
+Lớp service sở hữu quy tắc dung lượng, đầy đủ, tính tổng, lưu và xuất. Router giữ mỏng.
 
-Autosave PATCH must allow partial DRAFT payloads but validate any supplied criterion values and task-specific fields.
+PATCH tự lưu phải cho payload DRAFT từng phần nhưng xác thực mọi giá trị tiêu chí/trường riêng task được gửi.
 
-Do not implement public/teacher equivalents.
+Không triển khai bản tương đương công khai/giáo viên.
 
-## 24. Summary endpoint
+## 24. Endpoint tổng hợp
 
-The page should not download every essay merely to build top-level distribution statistics.
+Trang không nên tải mọi bài viết chỉ để tạo thống kê phân bố đầu trang.
 
-Provide a bounded summary response containing at least:
+Cung cấp phản hồi tổng hợp có giới hạn gồm ít nhất:
 
-- total/draft/complete count by task;
-- DEV/HOLDOUT count by task;
-- complete-sample overall-band histogram by task;
-- optional criterion histograms;
-- suggested target histogram constants.
+- số tổng/nháp/hoàn tất theo task;
+- số DEV/HOLDOUT theo task;
+- biểu đồ tần suất band tổng mẫu hoàn tất theo task;
+- biểu đồ tần suất tiêu chí tùy chọn;
+- hằng số biểu đồ mục tiêu gợi ý.
 
-The list endpoint returns lightweight rows. Full prompt/essay is loaded for the selected sample/detail rather than duplicating all 200 essays in every summary refresh.
+Endpoint danh sách trả hàng nhẹ. Chỉ tải đầy đủ đề/bài cho mẫu/chi tiết chọn, không lặp toàn bộ 200 bài mỗi lần làm mới tổng hợp.
 
 ## 25. Migration
 
-Create one Alembic migration for the benchmark table and constraints after the current single head.
+Tạo một migration Alembic cho bảng/ràng buộc đánh giá sau head duy nhất hiện tại.
 
-No existing production tables need destructive modification.
+Không bảng production hiện có nào cần sửa phá hủy.
 
-Expected database changes are benchmark-specific only.
+Thay đổi cơ sở dữ liệu dự kiến chỉ riêng đánh giá.
 
-Validate:
+Xác minh:
 
-- fresh upgrade succeeds on PostgreSQL;
-- one Alembic head remains;
-- capacity/unique-slot constraints have service-level race protection where SQL CHECK alone cannot express per-task row count.
+- nâng cấp mới thành công trên PostgreSQL;
+- giữ một head Alembic;
+- ràng buộc dung lượng/vị trí duy nhất có bảo vệ cạnh tranh cấp service ở nơi CHECK SQL đơn lẻ không biểu diễn được số hàng mỗi task.
 
-Do not reset or mutate production data during implementation.
+Không đặt lại hoặc thay dữ liệu production khi triển khai.
 
-## 26. Testing strategy
+## 26. Chiến lược kiểm thử
 
-Use TDD and focused tests while developing.
+Dùng TDD và kiểm thử có trọng tâm khi phát triển.
 
-Backend coverage should include at minimum:
+Kiểm thử backend tối thiểu gồm:
 
-- ADMIN access succeeds; USER/TEACHER denied;
-- create/update DRAFT with partial fields;
-- Task 1 COMPLETE requirements;
-- Task 2 COMPLETE requirements;
-- half-band validation;
-- derived overall matches production aggregation;
-- unique slot and 100-per-task capacity, including concurrent/race-safe service behavior where practical;
-- Task 1 image MIME/size/storage path handling;
-- image remove/replace demotes invalid COMPLETE records safely;
-- delete cleans benchmark-owned image without touching unrelated assets;
-- summary counts/distribution and DEV/HOLDOUT counts;
-- export excludes DRAFT;
-- export before 100 samples is allowed;
-- Task 1 JSONL validates through the existing Task 1 `BenchmarkSample` model;
-- export writes `raters=1` and safe provenance/redistributable values;
-- ZIP paths cannot traverse outside bundle roots;
-- CSV correctly quotes multiline prompt/essay;
-- Task 2 benchmark model rejects invalid labels/extra fields;
-- Task 2 metric definitions match shared Task 1 score metrics;
-- Task 2 human labels never enter provider prompts;
-- Task 2 resume/cache identity changes when sample/label/model/prompt contract changes;
-- failed Task 2 inference remains represented in reports.
+- ADMIN truy cập thành công; USER/TEACHER bị từ chối;
+- tạo/cập nhật DRAFT với trường từng phần;
+- yêu cầu Task 1 COMPLETE;
+- yêu cầu Task 2 COMPLETE;
+- xác thực nửa band;
+- tổng suy ra khớp tổng hợp production;
+- vị trí duy nhất và dung lượng 100 mỗi task, kể cả hành vi service đồng thời/an toàn cạnh tranh khi thực tế;
+- xử lý MIME/kích thước/đường lưu ảnh Task 1;
+- gỡ/thay ảnh hạ bản ghi COMPLETE không hợp lệ an toàn;
+- xóa dọn ảnh thuộc kho đánh giá, không chạm tài sản không liên quan;
+- số tổng hợp/phân bố và số DEV/HOLDOUT;
+- xuất loại DRAFT;
+- cho xuất trước đủ 100 mẫu;
+- JSONL Task 1 xác thực qua mô hình `BenchmarkSample` Task 1 hiện có;
+- xuất ghi `raters=1` cùng giá trị nguồn gốc/redistributable an toàn;
+- đường ZIP không thể vượt thư mục gốc gói;
+- CSV quote đúng đề/bài nhiều dòng;
+- mô hình đánh giá Task 2 từ chối nhãn không hợp lệ/trường dư;
+- định nghĩa chỉ số Task 2 khớp chỉ số điểm Task 1 dùng chung;
+- nhãn người Task 2 tuyệt đối không vào prompt nhà cung cấp;
+- danh tính tiếp tục/cache Task 2 đổi khi mẫu/nhãn/mô hình/hợp đồng prompt đổi;
+- suy luận Task 2 thất bại vẫn có trong báo cáo.
 
-Frontend focused coverage should include:
+Kiểm thử frontend có trọng tâm gồm:
 
-- `/admin/writing-benchmark` access guard;
-- Task 1/Task 2 tabs and progress counts;
-- master/detail selection;
-- DRAFT/COMPLETE status;
-- debounce autosave and save-error preservation;
-- Ctrl/Cmd+S immediate save where implemented;
-- Complete-and-next workflow;
-- Task 1 image preview/replace/remove;
-- criterion selectors and derived overall;
-- overall-band distribution planner;
-- DEV/HOLDOUT counts;
-- export summary/action;
-- max-100 new-sample button behavior;
-- responsive list/detail rendering without horizontal overflow.
+- chốt truy cập `/admin/writing-benchmark`;
+- thẻ Task 1/Task 2 và số tiến độ;
+- chọn danh sách/chi tiết;
+- trạng thái DRAFT/COMPLETE;
+- trì hoãn gộp tự lưu và giữ dữ liệu khi lỗi lưu;
+- lưu ngay Ctrl/Cmd+S nơi triển khai;
+- luồng hoàn tất và tiếp theo;
+- xem trước/thay/gỡ ảnh Task 1;
+- bộ chọn tiêu chí và tổng suy ra;
+- công cụ lập phân bố band tổng;
+- số DEV/HOLDOUT;
+- tóm tắt/thao tác xuất;
+- hành vi nút mẫu mới tối đa 100;
+- hiển thị danh sách/chi tiết thích ứng không tràn ngang.
 
-No browser/Playwright/live AI is required for normal feature verification unless a focused test exposes a problem that cannot be diagnosed otherwise.
+Xác minh tính năng thường không yêu cầu trình duyệt/Playwright/AI thật trừ khi kiểm thử có trọng tâm phát hiện vấn đề không thể chẩn đoán cách khác.
 
-## 27. CI and implementation constraints
+## 27. CI và ràng buộc triển khai
 
-The implementation must inspect the current remote CI baseline before feature work and the final pushed SHA afterward.
+Triển khai phải kiểm tra mốc CI từ xa hiện tại trước làm tính năng và SHA cuối đã push sau đó.
 
-Use focused local tests during iteration. Do not spend quota on live model calls, Modal, GPU inference or broad browser E2E for this data-management feature.
+Dùng kiểm thử cục bộ có trọng tâm khi lặp. Không dùng hạn mức cho gọi mô hình thật, Modal, suy luận GPU hoặc E2E trình duyệt rộng cho tính năng quản lý dữ liệu này.
 
-Task 2 CLI tests use fake providers/fixtures. A one-sample real Colab smoke is a manual post-implementation workflow, not a CI test.
+Kiểm thử CLI Task 2 dùng nhà cung cấp/dữ liệu mẫu giả. Kiểm tra nhanh Colab thật một mẫu là luồng thủ công sau triển khai, không là kiểm thử CI.
 
-The final change should preserve:
+Thay đổi cuối cần giữ:
 
-- one Alembic head;
-- existing Task 1 benchmark compatibility;
-- existing Writing score-first production behavior;
-- Task 1/Task 2 AI prompt semantics except where a later independent calibration task changes them;
-- normal learner/admin/test-builder data boundaries.
+- một head Alembic;
+- tương thích đánh giá Task 1 hiện có;
+- hành vi Writing chấm trước production hiện có;
+- ngữ nghĩa prompt AI Task 1/Task 2 trừ khi nhiệm vụ hiệu chỉnh độc lập sau thay đổi;
+- ranh giới dữ liệu học viên/quản trị/Builder bình thường.
 
-## 28. Operational workflow after implementation
+## 28. Luồng vận hành sau triển khai
 
-Intended user flow:
+Luồng người dùng dự kiến:
 
 ```text
 1. ADMIN opens /admin/writing-benchmark
@@ -728,24 +728,24 @@ Intended user flow:
 10. prompt/model changes are evaluated on DEV; HOLDOUT is reserved for final checks
 ```
 
-The admin bank remains source ground truth only. Benchmark output stays outside the production database.
+Kho quản trị chỉ giữ dữ liệu nhãn chuẩn nguồn. Đầu ra đánh giá nằm ngoài cơ sở dữ liệu production.
 
-## 29. Acceptance criteria
+## 29. Tiêu chí nghiệm thu
 
-The feature is acceptable when all of the following hold:
+Tính năng được chấp nhận khi mọi điều sau thỏa:
 
-- only ADMIN can access CRUD/image/export behavior;
-- there is one bank, no dataset-version UX or schema;
-- Task 1 and Task 2 are independently capped at 100 samples;
-- one ADMIN-entered four-criterion human label set is canonical per sample;
-- overall is always derived with production scoring arithmetic;
-- DRAFT autosave supports incomplete work safely;
-- COMPLETE validation prevents incomplete samples entering export;
-- Task 1 images are stored privately through existing asset storage;
-- the page gives clear overall-band and split guidance without enforcing artificial quotas;
-- Task 1 export can be consumed directly by the current Task 1 benchmark CLI;
-- Task 2 has a dedicated CLI with the same score-agreement metric definitions;
-- ZIP includes canonical JSONL, images and convenience CSV;
-- Colab requires only the exported bundle, repository code and scoring-provider configuration, not production DB/admin credentials;
-- no benchmark predictions/results are written back to the application database;
-- existing CI and Task 1 benchmark behavior remain green.
+- chỉ ADMIN truy cập được CRUD/ảnh/xuất;
+- có một kho, không UX/schema phiên bản dữ liệu;
+- Task 1/Task 2 giới hạn độc lập 100 mẫu;
+- một bộ nhãn con người bốn tiêu chí do ADMIN nhập là chuẩn mỗi mẫu;
+- tổng luôn suy ra bằng phép tính chấm production;
+- tự lưu DRAFT hỗ trợ bài chưa đủ an toàn;
+- xác thực COMPLETE ngăn mẫu thiếu vào bản xuất;
+- ảnh Task 1 lưu riêng tư qua lưu trữ tài sản hiện có;
+- trang hướng dẫn rõ band tổng/phân tập mà không ép chỉ tiêu giả;
+- bản xuất Task 1 dùng trực tiếp được bởi CLI Task 1 hiện tại;
+- Task 2 có CLI riêng cùng định nghĩa chỉ số đồng thuận điểm;
+- ZIP gồm JSONL chuẩn, ảnh và CSV tiện xem;
+- Colab chỉ cần gói xuất, mã kho và cấu hình nhà cung cấp chấm, không thông tin cơ sở dữ liệu production/quản trị;
+- không ghi dự đoán/kết quả đánh giá vào cơ sở dữ liệu ứng dụng;
+- CI và hành vi đánh giá Task 1 hiện có tiếp tục đạt.
