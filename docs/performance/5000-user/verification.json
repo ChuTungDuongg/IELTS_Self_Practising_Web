@@ -47,5 +47,14 @@
     "secret_scope": "147 staged paths checked:no .runs,caches,private assets,credentials; focused pattern/key scan plus diff review",
     "limits": "Local inline Markdown targets/anchors; does not verify external URLs,reference-style links or all historical source identifiers"
   },
-  "cleanup": "All owned load servers stopped, all4initialized fixture runs schema/storage/credentials cleared, both owned tmpfs PostgreSQL containers stopped/removed. Docker Engine and pre-existing databases/assets untouched."
+  "cleanup": "All owned load servers stopped, all4initialized fixture runs schema/storage/credentials cleared, both owned tmpfs PostgreSQL containers stopped/removed. Docker Engine and pre-existing databases/assets untouched.",
+  "delivery": {
+    "implementation_and_docs_commit": "a8379fabc801865d8ff52b3a3025ccd0039ffe01",
+    "feature_branch": "perf/5000-user-capacity",
+    "main_integration": "fast-forward from9027c413",
+    "origin_main_verified_by": "git ls-remote --heads origin main",
+    "post_integration_offline": "66 passed,0 skipped,15.24s",
+    "local_user_changes": "51line Modal launcher addition preserved byte-for-byte;1line gitignore and pre-existing untracked paths unchanged;not committed",
+    "final_note": "A documentation-only follow-up records this completed delivery; final remote SHA is verified in the final response"
+  }
 }
