@@ -8,7 +8,7 @@ Sau bước thiết lập một lần bên dưới, chạy từ gốc repository
 modal serve deploy/modal/app.py
 ```
 
-Một lệnh cung cấp Web cùng dịch vụ LLM và Speaking ASR được bảo vệ. Frontend Next.js, backend FastAPI và tiến trình PostgreSQL 17 riêng tư hiện có dùng chung một container CPU; FFmpeg chuẩn hóa âm thanh Speaking riêng tư chia đoạn tại đó. Một hàm GPU L4 riêng phục vụ mô hình văn bản/hình ảnh thống nhất `mistralai/Ministral-3-8B-Instruct-2512` theo nhu cầu. Modal in URL HTTPS công khai. Nginx chuyển `/api/` tới FastAPI, đường dẫn khác tới Next.js, kể cả SSE không đệm. Lời gọi API trình duyệt dùng `/api/v1`; yêu cầu server component/proxy dùng `API_INTERNAL_BASE_URL` qua loopback. Cookie dùng cùng origin HTTPS. Trình duyệt không kết nối PostgreSQL, LLM hoặc nhà cung cấp Speaking ASR.
+Ở cấu hình vLLM mặc định, một lệnh cung cấp Web cùng dịch vụ LLM và Speaking ASR được bảo vệ. Frontend Next.js, backend FastAPI và tiến trình PostgreSQL 17 riêng tư hiện có dùng chung một container CPU; FFmpeg chuẩn hóa âm thanh Speaking riêng tư chia đoạn tại đó. Một hàm GPU L4 riêng phục vụ mô hình văn bản/hình ảnh thống nhất `mistralai/Ministral-3-8B-Instruct-2512` theo nhu cầu. Có thể chọn [Web CPU gọi OpenAI bên ngoài](#cpu-web-openai) để bỏ dịch vụ LLM GPU đi kèm. Modal in URL HTTPS công khai. Nginx chuyển `/api/` tới FastAPI, đường dẫn khác tới Next.js, kể cả SSE không đệm. Lời gọi API trình duyệt dùng `/api/v1`; yêu cầu server component/proxy dùng `API_INTERNAL_BASE_URL` qua loopback. Cookie dùng cùng origin HTTPS. Trình duyệt không kết nối PostgreSQL, LLM hoặc nhà cung cấp Speaking ASR.
 
 `modal serve` giữ ứng dụng hoạt động trong thời gian lệnh chạy. Theo dõi mã nguồn/tải lại trực tiếp của Modal hiện chưa hỗ trợ Windows; trên Windows phải khởi động lại lệnh sau khi đổi mã. Frontend được build chế độ production trong image. Để triển khai ổn định, tiếp tục hoạt động sau khi đóng terminal:
 
@@ -16,9 +16,76 @@ Một lệnh cung cấp Web cùng dịch vụ LLM và Speaking ASR được bả
 modal deploy deploy/modal/app.py
 ```
 
-Cả hai hàm GPU đi kèm có số container tối thiểu bằng không và thu hẹp sau 60 giây không hoạt động. Chúng không khởi động chỉ vì Web khởi động; Ministral bắt đầu ở yêu cầu readiness backend đầu tiên, ASR bắt đầu ở yêu cầu phiên âm đầu tiên. Web tự lấy URL đã được phân giải runtime, kể cả URL dev tạm thời. Không phải chép URL sau mỗi lần khởi động. Secret riêng tư `ielts-web-config` phải chứa `AI_WRITING_MODAL_KEY` và `AI_WRITING_MODAL_SECRET`; backend dùng lại token proxy này cho endpoint ASR được bảo vệ. Xem [ai-writing.md](ai-writing.md) về LLM. Container Web giữ một replica CPU. PostgreSQL demo nhúng vẫn chỉ có một bên ghi; chế độ external cũng giữ `max_containers=1`.
+Trong chế độ vLLM mặc định, cả hai hàm GPU đi kèm có số container tối thiểu bằng không và thu hẹp sau 60 giây không hoạt động. Chúng không khởi động chỉ vì Web khởi động; Ministral bắt đầu ở yêu cầu readiness backend đầu tiên, ASR bắt đầu ở yêu cầu phiên âm đầu tiên. Web tự lấy URL đã được phân giải runtime, kể cả URL dev tạm thời. Không phải chép URL sau mỗi lần khởi động. Secret backend được chọn phải chứa `AI_WRITING_MODAL_KEY` và `AI_WRITING_MODAL_SECRET` khi dùng vLLM, ASR Modal hoặc DePlot được bảo vệ; backend dùng lại token proxy này cho endpoint ASR. Xem [ai-writing.md](ai-writing.md) về LLM. Container Web giữ một replica CPU. PostgreSQL demo nhúng vẫn chỉ có một bên ghi; chế độ external cũng giữ `max_containers=1`.
 
-Khi `IELTS_WEB_AI_ENABLED=true`, Web bật chấm AI cho cả Writing và Speaking. Mặc định Speaking dùng cùng transport vLLM Writing được bảo vệ và mô hình Ministral đã phân giải URL, không thêm container LLM thứ hai. Ghi đè `SPEAKING_AI_PROVIDER` và `SPEAKING_AI_MODEL` tùy chọn chỉ ở backend có thể chọn transport/mô hình Writing khác đã cấu hình. Log khởi động chỉ ghi trạng thái bật, định danh nhà cung cấp/mô hình và cờ có transport an toàn; không in URL endpoint, thông tin proxy hoặc nội dung thí sinh. Speaking ASR vẫn độc lập.
+Khi `IELTS_WEB_AI_ENABLED=true`, Web bật chấm AI cho cả Writing và Speaking. Speaking kế thừa transport, mô hình và thông tin xác thực Writing; hai pipeline dùng chung OpenAI hoặc vLLM nếu không có ghi đè. Chọn `SPEAKING_AI_PROVIDER` tùy chọn trong shell **trước** lệnh Modal nếu cần hai provider khác nhau; `SPEAKING_AI_MODEL` chỉ ghi đè mô hình Speaking. App chỉ thêm vLLM khi ít nhất một grader đang bật chọn `vllm`, không thêm container LLM thứ hai cho Speaking. Log khởi động dùng danh sách trường cho phép gồm trạng thái bật/cấu hình, định danh nhà cung cấp/mô hình và cờ có transport; không in URL endpoint, thông tin xác thực hoặc nội dung thí sinh. Speaking ASR vẫn độc lập.
+
+<a id="cpu-web-openai"></a>
+
+## Web CPU gọi OpenAI bên ngoài
+
+Chế độ này dùng `AI_WRITING_PROVIDER=openai` với `AI_WRITING_OPENAI_MODEL=gpt-6-luna`; xem [cấu hình Writing](ai-writing.md) và [pipeline Speaking](ai-speaking.md). Khi cả hai grader chọn OpenAI, ASR và DePlot đều tắt, điểm vào không import/include app vLLM, không phân giải URL vLLM, không tạo dependency GPU hay bộ nhớ đệm trọng số LLM đi kèm. Web vẫn build Next.js và chạy FastAPI/PostgreSQL theo topology đã chọn. OpenAI API và tài nguyên Web/lưu trữ Modal có chi phí riêng.
+
+Ví dụ dưới đây dành cho **dev cô lập với PostgreSQL nhúng**. Trước khi chạy, người vận hành phải chọn tên Secret dev riêng và chuẩn bị Volume PostgreSQL **v2** riêng, Volume snapshot riêng có dump/manifest đã xác minh cùng Volume tài sản riêng khớp các khóa trong dump; xem [thiết lập và cô lập Volume](#cô-lập-và-độ-bền-volume-tài-sản). Tên Volume tùy chỉnh phải tồn tại trước; app không âm thầm tạo thay thế. Dùng snapshot dev/tổng hợp đã được người vận hành xác minh và cung cấp. Không tạo bản sao database production chỉ để thử API key; các lệnh này không tự tạo, upload hoặc sao chép snapshot/tài sản. Nếu chưa có bộ tài nguyên dev phù hợp, hoàn thành quy trình vận hành cô lập trước.
+
+1. Mở `backend/.env` riêng tư và đặt cấu hình dev; không commit file hoặc đưa key vào dòng lệnh. Các giá trị trong dấu `<...>` là chỗ thay bằng thông tin của bạn:
+
+   ```dotenv
+   JWT_SECRET=<JWT_RIENG_CHO_DEV_TOI_THIEU_32_KY_TU>
+   AI_WRITING_PROVIDER=openai
+   AI_WRITING_OPENAI_API_KEY=<OPENAI_API_KEY_CUA_BAN>
+   AI_WRITING_OPENAI_MODEL=gpt-6-luna
+   AI_WRITING_OPENAI_BASE_URL=https://api.openai.com/v1
+   SPEAKING_AI_PROVIDER=
+   SPEAKING_AI_MODEL=
+   ```
+
+   Key/model/base URL được đưa vào Secret backend và giữ nguyên khi Web khởi động. Speaking mặc định dùng chính cấu hình OpenAI này, không cần key Speaking thứ hai. Các biến môi trường shell có ưu tiên cao hơn `.env`; dùng phiên PowerShell sạch cho ví dụ này để không mang theo ghi đè `AI_WRITING_*` hoặc `SPEAKING_AI_*` cũ. Script không chép `DATABASE_URL` hay cấu hình storage từ `.env`; Secret dev đã chọn cũng phải không chứa kết nối database production.
+
+2. Từ **gốc repository**, thay các tên `YOUR-...` bằng tài nguyên dev đã chuẩn bị. Giữ shell này cho cả bước tạo Secret và chạy Web:
+
+   ```powershell
+   $env:IELTS_MODAL_MODE='dev'
+   $env:IELTS_MODAL_CONFIG_SECRET='YOUR-DEDICATED-DEV-CONFIG'
+   $env:IELTS_MODAL_STORAGE_BACKEND='local'
+   $env:IELTS_MODAL_DATABASE_MODE='embedded'
+   $env:IELTS_MODAL_DATABASE_VOLUME='YOUR-PRECREATED-DEV-POSTGRES-V2'
+   $env:IELTS_MODAL_SNAPSHOTS_VOLUME='YOUR-PRECREATED-DEV-SNAPSHOTS'
+   $env:IELTS_MODAL_ASSETS_VOLUME='YOUR-PRECREATED-DEV-ASSETS'
+   $env:IELTS_MODAL_REQUIRE_ASSET_ISOLATION='true'
+   $env:IELTS_WEB_AI_ENABLED='true'
+   $env:AI_WRITING_PROVIDER='openai'
+   $env:IELTS_WEB_SPEAKING_ASR_ENABLED='false'
+   $env:IELTS_WEB_CHART_SPECIALIST_ENABLED='false'
+   ```
+
+3. Tạo Secret chuyên biệt bằng script hiện có, rồi chạy Web. Thay `<VERIFIED_SNAPSHOT_PATH>` bằng **đúng đường dẫn snapshot đã xác minh do bạn cung cấp**, tương đối trong Volume snapshot đã chọn:
+
+   ```powershell
+   Push-Location backend
+   uv run python ../scripts/modal_web_setup.py --secret-name $env:IELTS_MODAL_CONFIG_SECRET --snapshot '<VERIFIED_SNAPSHOT_PATH>/database.dump'
+   Pop-Location
+   modal serve deploy/modal/app.py
+   ```
+
+   Tên Secret tùy chỉnh không bị ghi đè mặc định. Khi cần cập nhật key/model/base URL hoặc cấu hình Speaking sau khi sửa `backend/.env`, dừng phiên dev hiện tại rồi chạy lại cùng script với `--force` tường minh:
+
+   ```powershell
+   Push-Location backend
+   uv run python ../scripts/modal_web_setup.py --secret-name $env:IELTS_MODAL_CONFIG_SECRET --snapshot '<VERIFIED_SNAPSHOT_PATH>/database.dump' --force
+   Pop-Location
+   modal serve deploy/modal/app.py
+   ```
+
+   Script cũng chuyển các trường `SPEAKING_AI_*` đã cấu hình, gồm giới hạn token, timeout và phiên bản prompt/rubric. `IELTS_WEB_AI_ENABLED` vẫn quyết định bật cả hai grader tại runtime. Nếu cần app dev tiếp tục chạy sau khi đóng terminal, sau khi dừng phiên `serve` hiện tại dùng `modal deploy deploy/modal/app.py` trong cùng shell/cấu hình cô lập; một database chỉ được có một chủ sở hữu Web đang chạy.
+
+App cố định lựa chọn provider vào các dấu không chứa secrets `IELTS_WEB_AI_PROVIDER` và `IELTS_WEB_SPEAKING_AI_PROVIDER` (rỗng nghĩa là Speaking kế thừa), đồng thời cố định cờ ASR/chart trong image. Không tự đặt các dấu provider này trong Secret; provider cũ trong Secret không được đổi dependency graph Local/từ xa. Khi đổi provider, đặt lựa chọn trong shell và chạy lại lệnh Modal. Với cấu hình hỗn hợp, ví dụ Writing OpenAI nhưng `SPEAKING_AI_PROVIDER=vllm`, app vẫn thêm dịch vụ LLM GPU cần cho Speaking và hydrate URL/mô hình vLLM đi kèm. Model/base URL/key OpenAI vẫn được giữ.
+
+`IELTS_WEB_SPEAKING_ASR_ENABLED=false` là lựa chọn tối thiểu để thử Writing mà không tạo GPU phiên âm; Speaking AI vẫn có thể dùng transcript phù hợp đã có. Muốn tạo transcript Speaking mới qua Modal, thêm `AI_WRITING_MODAL_KEY`/`AI_WRITING_MODAL_SECRET` hợp lệ vào `backend/.env`, cập nhật Secret dev bằng bước `--force` trên, rồi đặt `$env:IELTS_WEB_SPEAKING_ASR_ENABLED='true'` trước khi chạy lại Web. Đây là [dịch vụ faster-whisper GPU riêng](#triển-khai-speaking-asr), có chi phí Modal riêng; OpenAI API key không xác thực endpoint ASR. Nếu không đặt cờ, ASR theo gate AI chung, nên ví dụ OpenAI tối thiểu luôn đặt `false` tường minh.
+
+DePlot cũng chỉ tham gia khi chủ ý đặt `$env:IELTS_WEB_CHART_SPECIALIST_ENABLED='true'` trước lệnh Modal và có thông tin proxy phù hợp; đó là [dịch vụ biểu đồ GPU tùy chọn riêng](#optional-t1-b-chart-service), có chi phí riêng. Để OpenAI chỉ gọi API ngoài, giữ cả hai cờ ASR/chart là `false`.
+
+Thay provider không đổi PostgreSQL, schema hay kho assets: PostgreSQL vẫn là nguồn dữ liệu chính, Volume và khóa một chủ sở hữu giữ nguyên, external database vẫn migration do người vận hành kiểm soát. Đường chạy managed PostgreSQL/S3/R2 phải dùng [topology external hiện có](#chế-độ-postgresql-managed-và-s3r2) với database/bucket dev riêng; không áp dụng lệnh embedded ở trên cho production. Các lệnh ở phần này là hướng dẫn chạy thủ công, chưa được thực thi trong lần thay đổi này. Kiểm thử ngoại tuyến đã xác minh lựa chọn dependency, bảo toàn cấu hình OpenAI và lọc log; chưa xác minh key/quyền model, kết nối OpenAI thật, tài nguyên Modal, độ bền Volume hoặc triển khai đang chạy.
 
 ## Triển khai Speaking ASR
 
@@ -35,10 +102,11 @@ $env:IELTS_WEB_AI_ENABLED='false'
 modal serve deploy/modal/app.py
 ```
 
-Để phát triển đầy đủ AI, bật lại:
+Để chọn lại dịch vụ vLLM đi kèm tường minh, dùng shell không giữ các dấu provider cố định từ phiên khác và đặt:
 
 ```powershell
 $env:IELTS_WEB_AI_ENABLED='true'
+$env:AI_WRITING_PROVIDER='vllm'
 modal serve deploy/modal/app.py
 ```
 
@@ -89,7 +157,7 @@ modal volume put ielts-web-assets storage/images /
 modal serve deploy/modal/app.py
 ```
 
-Script thiết lập chép danh sách cho phép các cấu hình JWT/AI vào Secret Modal riêng tư `ielts-web-config`. Không in giá trị hoặc tải `.env`. Nó chủ ý không chép URL DB Local hoặc cấu hình OAuth redirect; cấu hình OAuth cloud riêng nếu cần. Tài khoản/password hash hiện có được khôi phục từ snapshot, nên quy trình đăng nhập thường được giữ.
+Script thiết lập đọc `backend/.env`, chép danh sách cho phép các cấu hình JWT/AI vào Secret Modal riêng tư `ielts-web-config`, gồm các điều chỉnh Speaking AI và ghi đè provider/model tùy chọn. Nó không in giá trị hoặc upload nguyên file `.env`. Tên mặc định giữ hành vi ghi đè tương thích; tên chuyên biệt chỉ ghi đè khi truyền `--force`. Script chủ ý không chép URL DB Local hoặc cấu hình OAuth redirect; cấu hình OAuth cloud riêng nếu cần. Tài khoản/password hash hiện có được khôi phục từ snapshot, nên quy trình đăng nhập thường được giữ.
 
 Lần khởi động đầu khởi tạo `/database/pgdata` trên `ielts-web-postgres`, xác minh SHA-256 snapshot, khôi phục bằng `pg_restore` và áp dụng migration Alembic. Lần sau dùng lại cơ sở dữ liệu PostgreSQL, không nhập snapshot đè dữ liệu mới. Chỉ seed snapshot cho thư mục PostgreSQL mới khởi tạo; không ghi đè thư mục đã tồn tại nhưng thiếu dấu khôi phục. Tài sản nhị phân Local ở `ielts-web-assets`; tài sản tạo trên cloud cũng ở đó. Snapshot nhập gốc ở `ielts-postgres-backups`. Cơ sở dữ liệu cloud là bản sao riêng; thay đổi Local/cloud không được đồng bộ. `modal serve` dùng cơ sở dữ liệu `ielts-web-postgres-dev` riêng, seed từ cùng snapshot, nên có thể chạy cùng triển khai bền vững bằng một lệnh. Dev/production dùng chung Volume tài sản; tránh sửa tài sản chung ở dev.
 

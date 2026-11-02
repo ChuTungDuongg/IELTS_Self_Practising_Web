@@ -22,7 +22,7 @@ Nguồn chuẩn cho thuật toán Writing là [ai-writing](../ai-writing.md); Sp
 | Speaking grading | configured Speaking LLM + evidence | `SPEAKING_AI_ENABLED`, `SPEAKING_AI_PROVIDER`, `SPEAKING_AI_MODEL` |
 | Web-level feature gate | Modal runtime config | `IELTS_WEB_AI_ENABLED` quyết định bật grader; ASR cấu hình riêng |
 
-Provider factory cũng hỗ trợ `openai`; model name/base URL configurable. Model mặc định deploy vLLM: `mistralai/Ministral-3-8B-Instruct-2512`; Modal ASR dùng `Systran/faster-whisper-large-v3`, optional specialist `google/deplot`. Các tên này là source default, không chứng minh provider hiện được deploy. Credentials chỉ ở backend Secrets/env, không frontend. [Settings](../../backend/app/core/config.py), [provider factories](../../backend/app/providers/), [deploy](../../deploy/modal/).
+Provider factory hỗ trợ `openai`; profile chính thức dùng `gpt-6-luna`, Chat Completions JSON mode và local schema validation. Writing/Speaking chia sẻ credentials và gate giới hạn HTTP requests trong process. Model mặc định deploy vLLM vẫn là `mistralai/Ministral-3-8B-Instruct-2512`; Modal ASR dùng `Systran/faster-whisper-large-v3`, optional specialist `google/deplot`. OpenAI-only không gắn LLM GPU; ASR/chart có flags riêng. Các tên này là source defaults, không chứng minh provider hiện được deploy. Credentials chỉ ở backend Secrets/env, không frontend. [Hướng dẫn và smoke evidence](../ai-writing.md#openai-gpt6-luna), [Settings](../../backend/app/core/config.py), [provider factories](../../backend/app/providers/), [deploy](../../deploy/modal/).
 
 ## Writing Task 2
 

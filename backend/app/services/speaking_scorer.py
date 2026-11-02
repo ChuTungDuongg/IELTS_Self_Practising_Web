@@ -4,12 +4,19 @@ import json
 import re
 from collections.abc import Awaitable, Callable, Iterable, Mapping
 from decimal import Decimal
+from typing import get_args
 
 from pydantic import ValidationError
 
 from app.domains.scoring.ielts_band import round_to_half
 from app.domains.scoring.speaking_prompts import system_prompt
 from app.providers.speaking_llm.base import Completion, CompletionOptions, SpeakingLLMProvider
+from app.providers.writing_llm.base import (
+    OutputFailureReason,
+    ProviderFailure,
+    safe_completion_usage,
+    safe_finish_reason,
+)
 from app.schemas.speaking_ai import FluencyEvidence
 from app.schemas.speaking_grading import (
     CRITERIA,
@@ -41,6 +48,32 @@ _PR_LIMITATIONS = {
     "AUDIO_QUALITY_UNAVAILABLE",
     "LOW_EVIDENCE",
 }
+
+ProviderCallObserver = Callable[[dict], Awaitable[None]]
+
+
+def safe_provider_call(record: Mapping) -> dict:
+    """Keep only bounded, source-free completion accounting and fixed diagnostics."""
+    criterion, stage = record.get("criterion"), record.get("stage")
+    if criterion not in CRITERIA or stage not in ("score", "score_repair", "feedback"):
+        raise ValueError("Invalid Speaking provider accounting stage")
+    safe = {
+        "criterion": criterion,
+        "stage": stage,
+        "finish_reason": safe_finish_reason(record.get("finish_reason")),
+        "usage": safe_completion_usage(record.get("usage")),
+    }
+    code = record.get("provider_error_code")
+    if code is not None:
+        safe["provider_error_code"] = (
+            code
+            if isinstance(code, str) and code in ProviderFailure.MESSAGES
+            else "SPEAKING_AI_PROVIDER_FAILED"
+        )
+    reason = record.get("reason")
+    if isinstance(reason, str) and reason in get_args(OutputFailureReason):
+        safe["reason"] = reason
+    return safe
 
 
 def build_attempt_evidence(responses: Iterable[Mapping]) -> SpeakingAttemptEvidence:
@@ -229,6 +262,7 @@ class SpeakingScorer:
         *,
         score_max_tokens=192,
         feedback_max_tokens=1024,
+        on_provider_call: ProviderCallObserver | None = None,
     ):
         if type(score_max_tokens) is not int or not 128 <= score_max_tokens <= 256:
             raise ValueError("Invalid Speaking score output cap")
@@ -237,12 +271,29 @@ class SpeakingScorer:
         self.provider = provider
         self.score_options = CompletionOptions(max_tokens=score_max_tokens)
         self.feedback_options = CompletionOptions(max_tokens=feedback_max_tokens)
+        self.on_provider_call = on_provider_call
+
+    async def _observe_call(self, criterion, stage, outcome, observer):
+        callback = observer if observer is not None else self.on_provider_call
+        if callback is None:
+            return
+        record = {"criterion": criterion, "stage": stage}
+        if isinstance(outcome, (Completion, ProviderFailure)):
+            record.update(usage=outcome.usage, finish_reason=outcome.finish_reason)
+        if isinstance(outcome, ProviderFailure):
+            record.update(provider_error_code=outcome.code, reason=outcome.reason)
+        elif isinstance(outcome, Exception):
+            record["provider_error_code"] = "SPEAKING_AI_PROVIDER_FAILED"
+        # Persistence/lease failures are deliberately outside provider error handling.
+        await callback(safe_provider_call(record))
 
     async def score_criterion(
         self,
         criterion: SpeakingCriterion,
         evidence: SpeakingAttemptEvidence,
         checkpoint: Callable[[CriterionResult], Awaitable[None]],
+        *,
+        on_provider_call: ProviderCallObserver | None = None,
     ) -> CriterionResult:
         projected = criterion_evidence(criterion, evidence)
         if any(
@@ -276,7 +327,10 @@ class SpeakingScorer:
                     CriterionBandScore.model_json_schema(),
                     options=self.score_options,
                 )
-            except Exception:
+            except Exception as error:
+                await self._observe_call(
+                    criterion, "score_repair" if repair else "score", error, on_provider_call
+                )
                 return CriterionResult(
                     criterion=criterion,
                     status="FAILED",
@@ -284,6 +338,9 @@ class SpeakingScorer:
                     error_code="SPEAKING_AI_PROVIDER_FAILED",
                     evidence=projected,
                 )
+            await self._observe_call(
+                criterion, "score_repair" if repair else "score", completion, on_provider_call
+            )
             try:
                 score = _validate_output(completion, CriterionBandScore, 1024)
                 break
@@ -304,13 +361,17 @@ class SpeakingScorer:
         )
         # Do not catch checkpoint failures: no feedback may start before durable commit.
         await checkpoint(stored)
-        return await self.feedback_for_scored(criterion, evidence, stored)
+        return await self.feedback_for_scored(
+            criterion, evidence, stored, on_provider_call=on_provider_call
+        )
 
     async def feedback_for_scored(
         self,
         criterion: SpeakingCriterion,
         evidence: SpeakingAttemptEvidence,
         stored: CriterionResult,
+        *,
+        on_provider_call: ProviderCallObserver | None = None,
     ) -> CriterionResult:
         """Resume after a worker restart without re-scoring a checkpointed band."""
         stored = CriterionResult.model_validate(stored)
@@ -335,6 +396,12 @@ class SpeakingScorer:
                 CriterionFeedback.model_json_schema(),
                 options=self.feedback_options,
             )
+        except Exception as error:
+            await self._observe_call(criterion, "feedback", error, on_provider_call)
+            completion = None
+        else:
+            await self._observe_call(criterion, "feedback", completion, on_provider_call)
+        try:
             feedback = _validate_output(completion, CriterionFeedback, 12000)
         except Exception:
             return CriterionResult(

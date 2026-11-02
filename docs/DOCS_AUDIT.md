@@ -1,5 +1,7 @@
 # Kiểm toán tài liệu BandPilot
 
+Bổ sung 2026-11-03: tài liệu chuẩn [Writing/OpenAI](ai-writing.md#openai-gpt6-luna), [Speaking](speaking-grading.md), [Modal CPU](modal-web.md#cpu-web-openai) và [coverage](DOCUMENTATION_COVERAGE.md) được cập nhật cùng adapter/config/tests. [Bằng chứng đã lọc](openai-gpt6-luna-verification.json) ghi riêng một API smoke thật được cho phép; không thay kết luận của các kiểm toán/benchmark lịch sử dưới đây và không xác nhận deployment cloud.
+
 Bổ sung 2026-11-02: [khảo sát khả năng phục vụ 5.000 người dùng](performance/5000-user-capacity.md), [nghiên cứu tình huống](case-studies/5000-user-scalability.md), [hỏi đáp](interview/5000-user-scalability-qa.md), [công cụ thử tải](../benchmarks/load/README.md) và [bằng chứng gốc](performance/5000-user/evidence.json) là đầu ra bàn giao mới. Danh mục/số lượng bên dưới thuộc mốc cũ, không tự cộng thêm hay xem là độ bao phủ runtime đầy đủ.
 
 > Mục đích và phạm vi: Danh mục, phân loại, bằng chứng mã nguồn và hành động cuối cho toàn bộ tài liệu mốc ban đầu được Git theo dõi.

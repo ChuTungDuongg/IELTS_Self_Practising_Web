@@ -6,7 +6,7 @@
 
 [Ngân hàng benchmark Writing](writing-benchmark-bank.md) ADMIN độc lập chỉ lưu dữ liệu chuẩn do người chấm, xuất JSONL/hình/CSV để đánh giá Task 1/Task 2 ngoại tuyến. Task 2 tái sử dụng MTS sản xuất và chỉ số điểm dùng chung. Báo cáo ở đầu ra CLI/Colab; nhãn không vào suy luận, ngân hàng không thay lời nhắc chấm, hiệu chuẩn hoặc mặc định nhà cung cấp.
 
-Task 1 và Task 2 dùng chung mô hình `mistralai/Ministral-3-8B-Instruct-2512`, bộ tiếp hợp nhà cung cấp và hàm GPU Modal/vLLM hiện có. Task 2 giữ chuỗi chỉ văn bản với hợp đồng bộ nhớ đệm `mts-task2-v12`. Task 1 dùng `mts-task1-scoring-v12`, phiên bản tổng hợp `mts-task1-visual-v12` và hợp đồng nhận thức `mts-task1-visual-v3` không đổi. Xem [nghiên cứu tình huống kỹ thuật độ trễ](enhance_latency.md) về thực thi đồng thời có giới hạn, cấu hình phục vụ, số đo và cách tái hiện.
+Task 1 và Task 2 dùng chung bộ tiếp hợp nhà cung cấp: profile vLLM giữ `mistralai/Ministral-3-8B-Instruct-2512`; profile OpenAI dùng `gpt-6-luna` qua API bên ngoài. Task 2 giữ chuỗi chỉ văn bản với hợp đồng bộ nhớ đệm `mts-task2-v12`. Task 1 dùng `mts-task1-scoring-v12`, phiên bản tổng hợp `mts-task1-visual-v12` và hợp đồng nhận thức `mts-task1-visual-v3` không đổi. Xem [nghiên cứu tình huống kỹ thuật độ trễ](enhance_latency.md) về thực thi đồng thời có giới hạn, cấu hình phục vụ, số đo và cách tái hiện.
 
 ## Kiểm tra độ liên quan với đề theo hướng thận trọng (v8)
 
@@ -192,11 +192,113 @@ Truyền tải HTTP OpenAI triển khai cùng hợp đồng hoàn thành nội b
 ```dotenv
 AI_WRITING_PROVIDER=openai
 AI_WRITING_OPENAI_API_KEY=<backend-only key>
-AI_WRITING_OPENAI_MODEL=gpt-5.6-luna
+AI_WRITING_OPENAI_MODEL=gpt-6-luna
 AI_WRITING_OPENAI_BASE_URL=https://api.openai.com/v1
 ```
 
-Tên mô hình yêu cầu được giữ như giá trị thay thế cấu hình được; phải kiểm khả dụng trong tài khoản trước khi bật. Tầng truyền tải dùng Chat Completions chế độ JSON cùng ranh giới xác thực/sửa Pydantic, bỏ tùy chọn temperature/seed phụ thuộc mô hình. Đã kiểm bằng phản hồi HTTP giả, chưa suy luận OpenAI trực tiếp. Xem [hợp đồng API chính thức](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create).
+Tên mô hình được giữ đúng cấu hình; không tự thay model hoặc fallback sang vLLM. Tầng truyền tải dùng Chat Completions JSON mode cùng ranh giới validation/repair Pydantic, không phải bảo đảm schema strict từ server OpenAI. Với đúng `gpt-6-luna`, adapter gửi `reasoning_effort=none` để ngân sách điểm nhỏ dành cho JSON hiển thị; bỏ temperature/seed và dùng `max_completion_tokens`. Model khác vẫn giữ hành vi không gửi reasoning parameter. Xem [API chính thức](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create) và [cấu hình/kiểm chứng OpenAI](#openai-gpt6-luna).
+
+<a id="openai-gpt6-luna"></a>
+
+## OpenAI GPT-6 Luna: local, Modal CPU và AWS
+
+Tích hợp ngày 2026-11-03 bắt đầu tại HEAD `33f40c78756ea203ba1819111409557db02f9915`. Audit xác nhận đã có OpenAI adapter và Speaking dùng lại transport Writing. Các điểm cần sửa là model mặc định cũ, Modal gắn vLLM khi bật AI bất kể provider, thiếu giới hạn request dùng chung và Speaking chưa lưu token usage. Không đổi rubric, bốn tiêu chí, visual grounding/DePlot tùy chọn, human-final boundaries, API DTO hoặc schema database. Lease/checkpoint/recovery hiện có tiếp tục sở hữu lifecycle; inference ở ngoài transaction.
+
+```mermaid
+flowchart LR
+    B["Browser / Next.js"] --> F["FastAPI CPU; authorization; job lifecycle"]
+    F --> D[("PostgreSQL: jobs, leases, checkpoints")]
+    F --> S["Local assets hoặc S3/R2; private audio"]
+    W["Writing bounded consumers"] --> G["OpenAI gate dùng chung trong process"]
+    E["Speaking worker; FC/LR/GRA/PR"] --> G
+    G --> O["OpenAI API: gpt-6-luna"]
+    F --> W
+    F --> E
+    E --> A["ASR local hoặc Modal riêng"]
+    A --> P["Acoustic evidence; PR gate"]
+    P --> E
+    W --> D
+    E --> D
+```
+
+Sơ đồ mô tả code đã triển khai; không chứng minh deployment Modal/AWS đang chạy. OpenAI-only không tải LLM weights hoặc gắn hàm LLM GPU. ASR và chart specialist có lựa chọn/chi phí riêng. Modal demo vẫn một owner cho embedded PostgreSQL; provider OpenAI không thay điều kiện mở rộng database/storage.
+
+### Tự điền key ở máy local
+
+Tạo key riêng cho project tại [trang API keys](https://platform.openai.com/api-keys), cấp quyền tối thiểu phù hợp và thiết lập ngân sách/cảnh báo billing trong project. Key chỉ đặt ở `backend/.env`, không gửi vào chat, `NEXT_PUBLIC_*`, ảnh chụp, notebook hay Git. `.gitignore` loại `.env`; `git ls-files -- backend/.env` phải rỗng. Không chạy lệnh in nội dung file hoặc giá trị environment để chẩn đoán key.
+
+Từ gốc repository, chỉ sao chép mẫu khi chưa có file:
+
+```powershell
+uv sync --project backend --locked --group dev
+if (!(Test-Path backend/.env)) { Copy-Item backend/.env.example backend/.env }
+git check-ignore -v -- backend/.env
+```
+
+Tự sửa file bằng editor; giá trị key bên dưới cố ý để trống:
+
+```dotenv
+AI_WRITING_ENABLED=true
+AI_WRITING_PROVIDER=openai
+AI_WRITING_OPENAI_API_KEY=
+AI_WRITING_OPENAI_MODEL=gpt-6-luna
+AI_WRITING_OPENAI_BASE_URL=https://api.openai.com/v1
+SPEAKING_AI_ENABLED=true
+SPEAKING_AI_PROVIDER=openai
+SPEAKING_AI_MODEL=gpt-6-luna
+AI_WRITING_OPENAI_MAX_CONCURRENT_REQUESTS=4
+AI_WRITING_OPENAI_MAX_QUEUED_REQUESTS=16
+AI_WRITING_OPENAI_MAX_OUTPUT_TOKENS=4096
+AI_WRITING_OPENAI_READINESS_RETRIES=2
+AI_WRITING_REQUEST_TIMEOUT_SECONDS=300
+AI_WRITING_STARTUP_TIMEOUT_SECONDS=600
+```
+
+Giữ DATABASE_URL/JWT/storage hợp lệ của môi trường local hiện có. Khởi động backend bằng `cd backend` rồi `uv run fastapi dev app/main.py`; restart sau khi sửa cấu hình. Speaking kế thừa key/base URL Writing; `SPEAKING_AI_REQUEST_TIMEOUT_SECONDS` và `SPEAKING_AI_STARTUP_TIMEOUT_SECONDS` có thể ghi đè timeout. Giữ output budgets theo stage hiện có; cap OpenAI là trần trên, không nâng các cap score/feedback của rubric. Speaking ASR vẫn phải được cấu hình độc lập theo [hướng dẫn chép lời](speaking-transcription.md).
+
+### Giới hạn tải, retry và lỗi
+
+[Admission gate](../backend/app/providers/writing_llm/admission.py) giới hạn mặc định 4 request đang thực thi và 16 request chờ **chung Writing/Speaking trong một process/event loop**. Hàng chờ đầy trả lỗi an toàn `AI_PROVIDER_BUSY`; thời gian chờ slot nằm trong request timeout. Hủy coroutine trả slot. Các settings trong cùng process phải thống nhất, nếu khác sẽ trả `AI_PROVIDER_CONFIGURATION_ERROR`. Với N process/replica, phải tính tổng N × giới hạn; đây không phải rate limiter RPM/TPM toàn project hoặc queue bền vững toàn fleet.
+
+Writing vẫn có admission/consumers/leases PostgreSQL từ capacity audit. Speaking giữ local tasks và recovery hiện có; số task đợi ASR chưa có admission toàn cục. Gate chặn HTTP inference quá tải nhưng không chứng minh toàn bộ worker fleet đã được kiểm stress. Cần giới hạn service replicas, điều chỉnh gate theo rate limits thực của project và theo dõi pending jobs trước production traffic lớn.
+
+Chỉ readiness `GET /models` được thử lại tối đa 2 lần mặc định, backoff 0,5/1 giây cộng jitter 0–0,25 giây, trong startup timeout. Authentication/quota exhaustion không được retry. Completion `POST /chat/completions` không tự replay khi 429, 5xx, network error hoặc timeout: provider có thể đã tính phí trước khi kết nối mất. Repair đầu ra thành công nhưng JSON/điểm không hợp lệ vẫn là cơ chế chấm có giới hạn sẵn có, có thể phát sinh thêm phí. Không cam kết exactly-once provider execution khi crash giữa response và checkpoint.
+
+| Lỗi | Ý nghĩa / xử lý |
+| --- | --- |
+| `AI_NOT_CONFIGURED` / `SPEAKING_AI_NOT_CONFIGURED` | Kiểm tra enablement, provider/model/base URL và key local/Secret, không in giá trị key |
+| `AI_PROVIDER_AUTH_FAILED` | Kiểm tra key, project/quyền truy cập; không tự retry |
+| `AI_PROVIDER_QUOTA_EXHAUSTED` | `insufficient_quota` hoặc billing hard limit; kiểm billing/credit, không tạo vòng retry |
+| `AI_PROVIDER_RATE_LIMITED` | 429 tạm thời; giảm concurrency/RPM/TPM và thử lại có chủ đích |
+| `AI_MODEL_UNAVAILABLE` | Model không có quyền hoặc provider 502/503; giữ đúng model, không fallback |
+| `AI_PROVIDER_TIMEOUT` / `AI_PROVIDER_HTTP_ERROR` | Kết quả tính phí có thể chưa rõ; xem trạng thái run/checkpoints trước khi retry thủ công |
+| `AI_PROVIDER_BAD_RESPONSE` | Envelope/finish/content không hợp lệ; không nhận JSON bị cắt là thành công |
+
+Speaking giữ các public error codes tương thích; nguyên nhân provider allowlisted nằm trong usage metadata backend. Không trả provider error body, URL có credentials, prompts, audio hoặc nội dung reasoning vào logs/DTO.
+
+### Token usage và chi phí
+
+Writing giữ token usage/stage diagnostics hiện có. Speaking ghi `usage_json.calls` tối đa 32 bản ghi gần nhất, tổng `prompt_tokens`, `completion_tokens`, `total_tokens`, `observed_call_count` và `accounting=observed_partial`. Metadata được allowlist và ghi qua lease-fenced transaction; không chứa transcript/key. Score checkpoint vẫn commit trước feedback. Đây là số liệu đã quan sát, có thể thiếu response khi process chết trước checkpoint, không phải hóa đơn bảo đảm đầy đủ.
+
+Ước tính chuẩn: `cost = (prompt_tokens × input_price_per_million + completion_tokens × output_price_per_million) / 1_000_000`. Lấy giá tại [trang đúng model](https://developers.openai.com/api/docs/models/gpt-6-luna) vào ngày đo, tách cache/processing tier/region nếu billing cung cấp. Allowlist hiện chỉ giữ ba token counters nên không phân tách cached-input discounts; dùng giá uncached chỉ là ước tính. Đối chiếu dashboard Usage/Billing để kết luận phí thực. Không suy ra giá hoặc độ chính xác chấm IELTS từ một smoke request.
+
+### Smoke thật có opt-in
+
+[CLI smoke](../scripts/smoke_openai.py) mặc định từ chối chạy trước khi đọc credentials. Sau khi người sở hữu xác nhận đã cấu hình và đồng ý tiêu credits, từ gốc repo:
+
+```powershell
+uv run --project backend python scripts/smoke_openai.py --allow-paid-request
+```
+
+CLI chỉ chấp nhận OpenAI official base URL và đúng `gpt-6-luna`, gửi một completion JSON nhỏ với trần 64 output tokens, không readiness GET, không repair/retry. `--env-file` chọn file backend local; `--output` lưu JSON đã lọc nếu cần. Không chạy định kỳ hoặc trong CI. Kết quả PASS xác nhận transport/model và JSON response nhỏ, không chứng minh rubric quality, full grading, ASR, throughput hoặc Modal deployment.
+
+Ngày 2026-11-03, sau xác nhận người dùng, một request thật đạt PASS: 17 prompt + 11 completion = 28 tokens; client wall time 2,669 s. [Bằng chứng đã lọc](openai-gpt6-luna-verification.json) ghi trạng thái và phạm vi. Task 1/2 và Speaking bốn tiêu chí được kiểm bằng [HTTP mock qua adapter thật](../backend/tests/test_openai_grading_contracts.py); không gọi toàn bộ rubric với API trả phí trong nhiệm vụ này. Modal/AWS deployment thật **NOT VERIFIED**.
+
+### Modal, AWS và quay lại vLLM
+
+Theo [lệnh Modal CPU/Secret](modal-web.md#cpu-web-openai) để đóng băng provider tại deploy và chuyển key từ backend sang Modal Secret, không vào image. Tắt ASR chỉ phù hợp khi không cần chấm Speaking mới; PR vẫn cần acoustic evidence. AWS dùng cùng backend environment qua `BACKEND_ENV_FILE`/secret injection theo [hướng dẫn AWS](aws-deployment.md), không cần SDK/OpenAI key trên frontend hoặc LLM GPU. Không tự tạo cloud resources hoặc đổi database topology.
+
+Quay lại vLLM: đặt `AI_WRITING_PROVIDER=vllm`, `SPEAKING_AI_PROVIDER=vllm` (hoặc bỏ override để kế thừa), cung cấp endpoint/model và cặp proxy credentials hiện có. Với Modal đặt provider trong shell trước `serve/deploy`, cập nhật Secret theo hướng dẫn và restart workers. Historical outputs giữ provider/model cũ; cache mới có model, prompt, endpoint hash và output policy. OpenAI outputs cũ trước policy v2 không tái sử dụng, vẫn đọc được; không migration dữ liệu và không sửa score lịch sử.
 
 ## API và truyền sự kiện
 
@@ -365,3 +467,5 @@ Bật qua `AI_WRITING_CHART_SPECIALIST_ENABLED=true` chỉ backend và `AI_WRITI
 AI vẫn tư vấn. Chủ sở hữu bài luyện cá nhân được tự đánh giá thủ công hoặc chép tiêu chí AI hoàn tất vào biểu mẫu điểm cuối, chỉnh rồi Lưu rõ ràng. Chép chưa lưu dữ liệu; chú thích không tham gia tính điểm. Học viên lớp chỉ xem kết quả cuối hoặc “Đang chờ giáo viên chấm”. Nhân sự có quyền chấm của lớp được lưu/sửa tiêu chí qua route giới hạn theo bài giao. **ADMIN chỉ quan sát lớp học, không được chấm điểm cuối cho bài của lớp**, kể cả qua route cá nhân; quyền chấm bài luyện cá nhân trên nền tảng là quyền riêng. Chính sách hiện hành tại [GradingPolicy](../backend/app/services/grading_policy.py) và [capabilities lớp học](../backend/app/services/classroom_capabilities.py) có ưu tiên hơn mô tả giai đoạn cũ.
 
 Cả ID bài giao riêng và ID bài giao Full Mock cha đều là nguồn gốc lớp học. Giữ khóa xem lại và hành vi band chỉ tác vụ theo phạm vi. DTO xem lại lộ khả năng `grading` từ backend; tuyến thay đổi kiểm lại. Xem [teacher-classrooms.md](teacher-classrooms.md#human-final-subjective-grading) về chính sách/tuyến dùng chung. Ảnh chụp luyện tập AI theo phạm vi hiện có tách khỏi chấm cuối do người.
+
+Khi rollout policy/provider mới, cho jobs đang chạy kết thúc hoặc hủy có chủ đích trước khi restart. Run đang chờ từ cấu hình cũ có thể kết thúc với `AI_CONFIGURATION_CHANGED`/`SPEAKING_AI_CONFIGURATION_CHANGED` trước inference; retry tường minh tạo công việc theo identity mới. Không chỉnh fingerprint/điểm lịch sử để ép tái sử dụng.

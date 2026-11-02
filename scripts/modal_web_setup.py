@@ -25,6 +25,11 @@ def main(argv=None) -> None:
     )
     parser.add_argument("--secret-name", default="ielts-web-config")
     parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Explicitly replace an existing dedicated config Secret",
+    )
+    parser.add_argument(
         "--disable-ai",
         action="store_true",
         help="Isolated dev config with fresh JWT and no local AI credentials",
@@ -44,12 +49,14 @@ def main(argv=None) -> None:
         if name.startswith("ai_writing_"):
             value = getattr(settings, name)
             values[name.upper()] = str(value).lower() if isinstance(value, bool) else str(value)
-    # Speaking inherits the Writing transport and credentials. Only intentional
-    # provider/model overrides belong in the persistent Secret; runtime owns enablement.
-    for name in () if args.disable_ai else ("speaking_ai_provider", "speaking_ai_model"):
+    # Speaking shares Writing credentials. Preserve its tuning/explicit overrides;
+    # the frozen Web gate remains authoritative for runtime enablement.
+    for name in () if args.disable_ai else type(settings).model_fields:
+        if not name.startswith("speaking_ai_"):
+            continue
         value = getattr(settings, name)
-        if value:
-            values[name.upper()] = value
+        if value is not None and value != "":
+            values[name.upper()] = str(value).lower() if isinstance(value, bool) else str(value)
     if args.disable_ai:
         if args.secret_name == "ielts-web-config":
             raise SystemExit("Isolated dev setup requires a dedicated --secret-name")
@@ -72,7 +79,7 @@ def main(argv=None) -> None:
                 args.secret_name,
                 "--from-json",
                 str(file),
-                *(["--force"] if args.secret_name == "ielts-web-config" else []),
+                *(["--force"] if args.force or args.secret_name == "ielts-web-config" else []),
             ],
             capture_output=True,
             text=True,

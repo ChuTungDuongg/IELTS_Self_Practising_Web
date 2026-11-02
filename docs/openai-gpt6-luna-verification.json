@@ -1,0 +1,35 @@
+{
+  "status": "PASS",
+  "provider": "openai",
+  "model": "gpt-6-luna",
+  "completion_requests": 1,
+  "whole_grading_pipeline": "NOT_VERIFIED",
+  "modal_deployment": "NOT_VERIFIED",
+  "usage": {
+    "prompt_tokens": 17,
+    "completion_tokens": 11,
+    "total_tokens": 28
+  },
+  "elapsed_seconds": 2.669,
+  "executed_at_utc": "2026-11-02T17:28:21.315483+00:00",
+  "baseline_revision": "33f40c78756ea203ba1819111409557db02f9915",
+  "source_state": "Implementation worktree; hashes recorded when packaging evidence after the smoke. Follow-up failure-accounting fixes verified with mocks; no further paid calls.",
+  "source_sha256": {
+    "scripts/smoke_openai.py": "72630fb5bb652d07280778aa4646406bfa315b9cf6dc26f326200238a44121cd",
+    "backend/app/providers/writing_llm/openai.py": "b2d58300175f530bf95b4ab19c74b2a46b5eaa2db8d274347cf915b67998c750",
+    "backend/app/providers/writing_llm/admission.py": "56202a159665a56facb40b0b3cbbe339d29a82e765766962c508ef2d634e5f83"
+  },
+  "authorization": "User confirmed local backend configuration completed before execution; credentials never included in evidence.",
+  "checks": {
+    "focused_integration": "363 passed, 1 Windows symlink skip, 194.13s",
+    "provider_followup": "42 passed, 0 skipped, 0.60s",
+    "modal_deployment": "NOT_VERIFIED",
+    "whole_live_grading": "NOT_VERIFIED",
+    "provider_and_usage_final": "132 passed, 0 skipped, 1.52s",
+    "openai_worker_postgresql": "4 passed, 0 skipped, 1.92s",
+    "documentation": "102 Markdown files, 1804 local links valid; 27 Mermaid blocks parsed",
+    "frontend_typecheck": "PASS",
+    "review": "No unresolved P1/P2; malformed/refusal usage preservation fixed and regression-tested",
+    "frontend_lint": "PASS"
+  }
+}

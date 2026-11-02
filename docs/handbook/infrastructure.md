@@ -43,7 +43,7 @@ modal run deploy/modal/app.py::migrate_database
 
 Phải kiểm tra đích trước khi chạy lệnh. Web không tự seed cơ sở dữ liệu ngoài. Cấu hình provider dùng `STORAGE_BACKEND`, `S3_BUCKET`, `S3_REGION`, `S3_ENDPOINT_URL`, `S3_KEY_PREFIX`; tên biến thông tin xác thực nằm tại [Settings](../../backend/app/core/config.py). AWS có chuỗi cấp thông tin xác thực/IAM; R2 cần endpoint và thông tin xác thực tài khoản đúng. Không chuyển dự phòng sang cục bộ khi cloud lỗi.
 
-Writing LLM, Speaking ASR, DePlot có tệp triển khai và GPU/cache riêng; bật AI ở Web không chứng minh model đã sẵn sàng. [Kiến trúc AI](ai-architecture.md) giải thích trạng thái lạnh/ấm và chi phí theo cấu hình.
+Writing vLLM, Speaking ASR, DePlot có tệp triển khai và GPU/cache riêng; bật AI ở Web không chứng minh model đã sẵn sàng. [Profile OpenAI CPU Web](../modal-web.md#cpu-web-openai) chọn API ngoài cho cả hai grader, không gắn LLM GPU; ASR và DePlot vẫn được bật độc lập theo nhu cầu. [Kiến trúc AI](ai-architecture.md) giải thích trạng thái lạnh/ấm và chi phí theo cấu hình. Deployment thật của profile mới vẫn cần kiểm chứng riêng.
 
 ## Cách ly staging và chi phí
 

@@ -17,11 +17,17 @@ from app.providers.speaking_llm import create_provider
 from app.repositories.speaking_ai import SpeakingAIRepository
 from app.schemas.speaking_grading import CRITERIA, CriterionResult
 from app.services.speaking_ai import SpeakingAIService
-from app.services.speaking_scorer import SpeakingScorer, build_attempt_evidence, speaking_overall
+from app.services.speaking_scorer import (
+    SpeakingScorer,
+    build_attempt_evidence,
+    safe_provider_call,
+    speaking_overall,
+)
 from app.services.speaking_transcript import SpeakingTranscriptService, response_cache
 from app.services.speaking_transcript_worker import SpeakingTranscriptWorker
 
 _tasks: dict[UUID, asyncio.Task] = {}
+_MAX_USAGE_TOTAL = 9_007_199_254_740_991
 
 
 class GradingStopped(Exception):
@@ -140,6 +146,31 @@ class SpeakingAIWorker:
                 await SpeakingAIRepository(session).append(
                     run, "run.stage", {"stage": run.stage, "criterion": result.criterion}
                 )
+
+    async def _record_provider_call(self, run_id, token, record):
+        async with self.sessions() as session, session.begin():
+            run = await self._locked(session, run_id, token)
+            record = safe_provider_call(record)
+            previous = run.usage_json or {}
+            old_totals = previous.get("totals", {})
+            totals = {}
+            for name in ("prompt_tokens", "completion_tokens", "total_tokens"):
+                value = old_totals.get(name)
+                if type(value) is not int or not 0 <= value <= _MAX_USAGE_TOTAL:
+                    value = 0
+                if name in old_totals or name in record["usage"]:
+                    totals[name] = min(value + record["usage"].get(name, 0), _MAX_USAGE_TOTAL)
+            count = previous.get("observed_call_count", 0)
+            if type(count) is not int or not 0 <= count <= _MAX_USAGE_TOTAL:
+                count = 0
+            run.usage_json = {
+                **previous,
+                "calls": [*previous.get("calls", [])[-31:], record],
+                "totals": totals,
+                "observed_call_count": min(count + 1, _MAX_USAGE_TOTAL),
+                # Crashes can lose a response before its accounting checkpoint.
+                "accounting": "observed_partial",
+            }
 
     async def _heartbeat(self, run_id, token, owner):
         while True:
@@ -373,6 +404,10 @@ class SpeakingAIWorker:
                     ]
                 }
             await scorer.provider.ensure_ready()
+
+            async def observe_call(record):
+                await self._record_provider_call(run_id, token, record)
+
             for trait in CRITERIA:
                 previous = stored.get(trait)
                 if previous and previous["status"] in {"COMPLETED", "FEEDBACK_FAILED"}:
@@ -381,14 +416,19 @@ class SpeakingAIWorker:
                 if previous and previous.get("score") is not None:
                     await self._stage(run_id, token, "GENERATING_FEEDBACK", trait)
                     result = await scorer.feedback_for_scored(
-                        trait, evidence, CriterionResult.model_validate(previous)
+                        trait,
+                        evidence,
+                        CriterionResult.model_validate(previous),
+                        on_provider_call=observe_call,
                     )
                 else:
 
                     async def checkpoint(result):
                         await self._persist(run_id, token, result)
 
-                    result = await scorer.score_criterion(trait, evidence, checkpoint)
+                    result = await scorer.score_criterion(
+                        trait, evidence, checkpoint, on_provider_call=observe_call
+                    )
                 await self._persist(run_id, token, result)
             await self._finish(run_id, token)
         except GradingStopped:

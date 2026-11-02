@@ -195,6 +195,7 @@ class WritingAIWorker:
                     else effective_prompt_version(self.settings.ai_writing_prompt_version),
                     provider,
                     model,
+                    settings=self.settings,
                 )
                 if fingerprint != run.input_fingerprint:
                     raise AppError(

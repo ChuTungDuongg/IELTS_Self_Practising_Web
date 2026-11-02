@@ -16,6 +16,7 @@ from app.domains.writing.visual_families import VisualFamily, visual_family
 from app.models import TestSession, WritingAIGradingRun
 from app.models.enums import AttemptStatus, ModuleType, TestSessionStatus, WritingAIRunStatus
 from app.providers.writing_llm import create_provider, is_configured, provider_identity
+from app.providers.writing_llm.openai import output_identity
 from app.repositories.writing_ai import ACTIVE, WritingAIRepository
 from app.schemas.chart_cross_check import ChartSpecialistIdentity
 from app.schemas.task1_claims import Task1Analysis
@@ -90,7 +91,12 @@ def persist_activity(run: WritingAIGradingRun, event: EventType, payload: EventP
 
 
 def input_fingerprint(
-    request: WritingScoringRequest, prompt_version: str, provider: str, model: str
+    request: WritingScoringRequest,
+    prompt_version: str,
+    provider: str,
+    model: str,
+    *,
+    settings: Settings | None = None,
 ) -> str:
     inputs = {
         "prompt": request.prompt,
@@ -99,6 +105,8 @@ def input_fingerprint(
         "provider": provider,
         "model": model,
     }
+    if provider == "openai":
+        inputs["output_policy"] = output_identity(settings or Settings(_env_file=None), model=model)
     if isinstance(request, Task1ScoringRequest):
         inputs.update(
             task_number=1,
@@ -315,7 +323,9 @@ class WritingAIService:
                 if isinstance(request, Task1ScoringRequest)
                 else effective_prompt_version(self.settings.ai_writing_prompt_version)
             )
-            fingerprint = input_fingerprint(request, prompt_version, provider, model)
+            fingerprint = input_fingerprint(
+                request, prompt_version, provider, model, settings=self.settings
+            )
             if not force:
                 cached = await self.repository.equivalent(
                     attempt_id, task_id, fingerprint, (WritingAIRunStatus.COMPLETED,)

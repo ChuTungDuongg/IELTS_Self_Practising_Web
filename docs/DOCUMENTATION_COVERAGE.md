@@ -5,6 +5,8 @@
 
 ## Định nghĩa mức bao phủ
 
+Bổ sung 2026-11-03: [tích hợp OpenAI GPT-6 Luna](ai-writing.md#openai-gpt6-luna), [Speaking usage/policy](speaking-grading.md) và [Modal CPU/Secret](modal-web.md#cpu-web-openai) mô tả adapter, giới hạn request và cấu hình đã kiểm bằng mock. Sau xác nhận người sở hữu key, một completion thật đạt PASS (28 tokens); [bằng chứng](openai-gpt6-luna-verification.json) phân biệt transport smoke với full grading/audio/deployment. Modal/AWS deployment, chất lượng chấm IELTS và throughput thật vẫn **NOT VERIFIED**.
+
 Bổ sung 2026-11-02: [báo cáo khả năng phục vụ](performance/5000-user-capacity.md), [nghiên cứu tình huống](case-studies/5000-user-scalability.md), [hỏi đáp](interview/5000-user-scalability-qa.md) và [hướng dẫn tái lập](../benchmarks/load/README.md) bổ sung bằng chứng cục bộ/tính đúng đắn. Thử tải staging 5.000 VU, inference thực, tự mở rộng/độ bền cloud vẫn **NOT VERIFIED**; không nâng phép đo lịch sử thành kết quả mới.
 
 **Complete** = đã đối chiếu đầy đủ yêu cầu có phạm vi xác định (ví dụ danh sách tuyến tại revision được nêu); không có nghĩa bao phủ runtime/test 100%. **Partial** = đã có phân chia trách nhiệm/luồng/bản đồ mã nguồn nhưng chưa chứng minh mọi nhánh, hợp đồng hay trường trong phân hệ đều được giải thích. Chỉ có tệp/liên kết chưa đủ nâng phân hệ lên Complete. **Not applicable** = trục không thuộc phân hệ. **Not verified** = thiếu lần chạy/bằng chứng đo để xác nhận. Mọi kiểm chứng hệ thống đang chạy/trình duyệt/cloud trong nhiệm vụ này đều là Not verified.

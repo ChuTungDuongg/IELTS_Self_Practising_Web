@@ -6,6 +6,7 @@ from app.core.config import Settings
 from app.core.exceptions import AppError
 from app.providers.writing_llm import create_provider as create_writing_provider
 from app.providers.writing_llm import is_configured as writing_is_configured
+from app.providers.writing_llm.openai import output_identity
 
 
 def transport_settings(settings):
@@ -47,6 +48,7 @@ def config_identity(settings) -> dict:
         "feedback_max_tokens": getattr(settings, "speaking_ai_feedback_max_tokens", 1024),
         "request_timeout_seconds": delegated.ai_writing_request_timeout_seconds,
         "startup_timeout_seconds": delegated.ai_writing_startup_timeout_seconds,
+        **({"output_policy": output_identity(delegated)} if provider == "openai" else {}),
     }
 
 

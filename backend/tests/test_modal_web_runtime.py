@@ -214,6 +214,54 @@ def test_web_only_is_disabled_and_external_openai_selection_is_preserved(monkeyp
     assert os.environ["AI_WRITING_OPENAI_MODEL"] == "account-model"
 
 
+def test_frozen_openai_selection_replaces_stale_providers_without_changing_credentials(monkeypatch):
+    monkeypatch.setenv("AI_WRITING_PROVIDER", "vllm")
+    monkeypatch.setenv("SPEAKING_AI_PROVIDER", "vllm")
+    monkeypatch.setenv("AI_WRITING_OPENAI_API_KEY", "private-openai-key")
+    monkeypatch.setenv("AI_WRITING_OPENAI_MODEL", "account-model")
+    monkeypatch.setenv("AI_WRITING_OPENAI_BASE_URL", "https://private-gateway.invalid/v1")
+    module.configure_ai_environment(True, "", None, provider="openai", speaking_provider="")
+    assert os.environ["AI_WRITING_PROVIDER"] == "openai"
+    assert "SPEAKING_AI_PROVIDER" not in os.environ
+    assert os.environ["AI_WRITING_OPENAI_API_KEY"] == "private-openai-key"
+    assert os.environ["AI_WRITING_OPENAI_MODEL"] == "account-model"
+    assert os.environ["AI_WRITING_OPENAI_BASE_URL"] == "https://private-gateway.invalid/v1"
+    assert os.environ["AI_WRITING_ENABLED"] == os.environ["SPEAKING_AI_ENABLED"] == "true"
+
+
+def test_speaking_vllm_override_hydrates_transport_when_writing_uses_openai(monkeypatch):
+    monkeypatch.setenv("AI_WRITING_PROVIDER", "openai")
+    monkeypatch.setenv("SPEAKING_AI_PROVIDER", "vllm")
+    module.configure_ai_environment(True, "bundled-model", "https://fixture.modal.run")
+    assert os.environ["AI_WRITING_VLLM_BASE_URL"] == "https://fixture.modal.run/v1"
+    assert os.environ["AI_WRITING_VLLM_MODEL"] == "bundled-model"
+
+
+def test_safe_config_filters_unexpected_fields_and_wrong_types(monkeypatch):
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(
+        module.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(
+            returncode=0,
+            stdout=json.dumps(
+                {
+                    "speaking_provider": "openai",
+                    "speaking_ai_enabled": True,
+                    "speaking_asr_enabled": "private-wrong-type",
+                    "api_key": "private-key",
+                    "base_url": "https://private-gateway.invalid",
+                }
+            ),
+        ),
+    )
+    assert module.safe_ai_configuration() == {
+        "speaking_provider": "openai",
+        "speaking_ai_enabled": True,
+    }
+
+
 def test_modal_ai_enables_speaking_on_shared_ministral_transport(monkeypatch):
     from app.core.config import Settings
     from app.providers.speaking_llm import create_provider, provider_identity

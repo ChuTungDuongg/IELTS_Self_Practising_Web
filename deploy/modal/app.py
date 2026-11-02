@@ -8,18 +8,7 @@ from pathlib import Path
 from uuid import uuid4
 
 import modal
-from deploy.modal.chart_derenderer import MODEL as DEPLOT_MODEL
-from deploy.modal.chart_derenderer import REVISION as DEPLOT_REVISION
-from deploy.modal.chart_derenderer import app as chart_app
-from deploy.modal.chart_derenderer import serve as chart_serve
-from deploy.modal.speaking_asr import MODEL as ASR_MODEL
-from deploy.modal.speaking_asr import REVISION as ASR_REVISION
-from deploy.modal.speaking_asr import SERVICE_VERSION as ASR_VERSION
-from deploy.modal.speaking_asr import app as asr_app
-from deploy.modal.speaking_asr import serve_asr as asr_serve
-from deploy.modal.writing_llm import MODEL
-from deploy.modal.writing_llm import app as llm_app
-from deploy.modal.writing_llm import serve as llm_serve
+from deploy.modal.web_runtime import resolve_ai_providers
 from deploy.runtime_config import boolean
 
 ROOT = Path(__file__).resolve().parents[2] if modal.is_local() else Path("/workspace")
@@ -48,7 +37,13 @@ app = modal.App("ielts-practice-web-dev" if MODE == "dev" else "ielts-practice-w
 AI_ENABLED = os.environ.get(
     "IELTS_WEB_AI_ENABLED", os.environ.get("AI_WRITING_ENABLED", "true")
 ).lower() in {"true", "1", "yes"}
-if AI_ENABLED:
+AI_PROVIDER, SPEAKING_AI_PROVIDER = resolve_ai_providers(os.environ)
+VLLM_ENABLED = AI_ENABLED and "vllm" in {AI_PROVIDER, SPEAKING_AI_PROVIDER or AI_PROVIDER}
+if VLLM_ENABLED:
+    from deploy.modal.writing_llm import MODEL
+    from deploy.modal.writing_llm import app as llm_app
+    from deploy.modal.writing_llm import serve as llm_serve
+
     app.include(llm_app)
 ASR_ENABLED = os.environ.get("IELTS_WEB_SPEAKING_ASR_ENABLED", str(AI_ENABLED)).lower() in {
     "true",
@@ -56,12 +51,23 @@ ASR_ENABLED = os.environ.get("IELTS_WEB_SPEAKING_ASR_ENABLED", str(AI_ENABLED)).
     "yes",
 }
 if ASR_ENABLED:
+    from deploy.modal.speaking_asr import MODEL as ASR_MODEL
+    from deploy.modal.speaking_asr import REVISION as ASR_REVISION
+    from deploy.modal.speaking_asr import SERVICE_VERSION as ASR_VERSION
+    from deploy.modal.speaking_asr import app as asr_app
+    from deploy.modal.speaking_asr import serve_asr as asr_serve
+
     app.include(asr_app)
 CHART_SPECIALIST_ENABLED = AI_ENABLED and os.environ.get(
     "IELTS_WEB_CHART_SPECIALIST_ENABLED",
     os.environ.get("AI_WRITING_CHART_SPECIALIST_ENABLED", "false"),
 ).lower() in {"true", "1", "yes"}
 if CHART_SPECIALIST_ENABLED:
+    from deploy.modal.chart_derenderer import MODEL as DEPLOT_MODEL
+    from deploy.modal.chart_derenderer import REVISION as DEPLOT_REVISION
+    from deploy.modal.chart_derenderer import app as chart_app
+    from deploy.modal.chart_derenderer import serve as chart_serve
+
     app.include(chart_app)
 DEFAULT_DATABASE_VOLUME = "ielts-web-postgres-dev" if MODE == "dev" else "ielts-web-postgres"
 DATABASE_VOLUME_NAME = os.environ.get(
@@ -162,6 +168,9 @@ image = (
             "IELTS_MODAL_DATABASE_VOLUME": DATABASE_VOLUME_NAME,
             "IELTS_MODAL_SNAPSHOTS_VOLUME": SNAPSHOTS_VOLUME_NAME,
             "IELTS_WEB_AI_ENABLED": str(AI_ENABLED).lower(),
+            "IELTS_WEB_AI_PROVIDER": AI_PROVIDER,
+            "IELTS_WEB_SPEAKING_AI_PROVIDER": SPEAKING_AI_PROVIDER,
+            "IELTS_WEB_SPEAKING_ASR_ENABLED": str(ASR_ENABLED).lower(),
             "IELTS_WEB_CHART_SPECIALIST_ENABLED": str(CHART_SPECIALIST_ENABLED).lower(),
         }
     )
@@ -252,20 +261,26 @@ class Web:
             safe_ai_configuration,
         )
 
-        configure_ai_environment(AI_ENABLED, MODEL, llm_serve.get_web_url() if AI_ENABLED else None)
+        configure_ai_environment(
+            AI_ENABLED,
+            MODEL if VLLM_ENABLED else "",
+            llm_serve.get_web_url() if VLLM_ENABLED else None,
+            provider=AI_PROVIDER,
+            speaking_provider=SPEAKING_AI_PROVIDER,
+        )
         configure_speaking_asr_environment(
             ASR_ENABLED,
-            ASR_MODEL,
-            ASR_REVISION,
-            ASR_VERSION,
+            ASR_MODEL if ASR_ENABLED else "",
+            ASR_REVISION if ASR_ENABLED else "",
+            ASR_VERSION if ASR_ENABLED else "",
             asr_serve.get_web_url() if ASR_ENABLED else None,
         )
         from web_runtime import configure_chart_environment
 
         configure_chart_environment(
             CHART_SPECIALIST_ENABLED,
-            DEPLOT_MODEL,
-            DEPLOT_REVISION,
+            DEPLOT_MODEL if CHART_SPECIALIST_ENABLED else "",
+            DEPLOT_REVISION if CHART_SPECIALIST_ENABLED else "",
             chart_serve.get_web_url() if CHART_SPECIALIST_ENABLED else None,
         )
         print("Modal AI configuration: " + json.dumps(safe_ai_configuration()), flush=True)

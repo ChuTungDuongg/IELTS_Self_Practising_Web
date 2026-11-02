@@ -102,8 +102,12 @@ class Settings(BaseSettings):
     ai_writing_modal_key: str = Field(default="", repr=False)
     ai_writing_modal_secret: str = Field(default="", repr=False)
     ai_writing_openai_api_key: str = Field(default="", repr=False)
-    ai_writing_openai_model: str = "gpt-5.6-luna"
+    ai_writing_openai_model: str = "gpt-6-luna"
     ai_writing_openai_base_url: str = "https://api.openai.com/v1"
+    ai_writing_openai_max_output_tokens: int = Field(default=4096, ge=128, le=32768)
+    ai_writing_openai_max_concurrent_requests: int = Field(default=4, ge=1, le=32)
+    ai_writing_openai_max_queued_requests: int = Field(default=16, ge=0, le=256)
+    ai_writing_openai_readiness_retries: int = Field(default=2, ge=0, le=3)
     ai_writing_request_timeout_seconds: float = Field(default=300, gt=0, le=900)
     ai_writing_startup_timeout_seconds: float = Field(default=600, gt=0, le=900)
     ai_writing_max_concurrent_llm_requests: int = Field(default=2, ge=1, le=4)

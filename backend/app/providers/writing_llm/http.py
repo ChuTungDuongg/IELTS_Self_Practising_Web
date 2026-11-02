@@ -106,6 +106,8 @@ class ChatCompletionHTTP:
                         if status in {408, 504}:
                             raise ProviderFailure(timeout_code)
                         if status == 429:
+                            if self._quota_exhausted(content):
+                                raise ProviderFailure("AI_PROVIDER_QUOTA_EXHAUSTED")
                             raise ProviderFailure("AI_PROVIDER_RATE_LIMITED")
                         if 300 <= status < 500:
                             raise ProviderFailure("AI_PROVIDER_ENDPOINT_ERROR")
@@ -179,6 +181,14 @@ class ChatCompletionHTTP:
         return None
 
     @staticmethod
+    def _quota_exhausted(content: bytes) -> bool:
+        try:
+            error = json.loads(content).get("error", {})
+            return error.get("code") in {"insufficient_quota", "billing_hard_limit_reached"}
+        except (ValueError, AttributeError, TypeError):
+            return False
+
+    @staticmethod
     def _missing_model(content: bytes) -> bool:
         try:
             error = json.loads(content).get("error", {})
@@ -200,14 +210,15 @@ class ChatCompletionHTTP:
 
     async def send(self, body: dict[str, Any]) -> Completion:
         data = await self._json_request("POST", "/chat/completions", self.timeout, body)
+        safe_usage, finish = {}, None
         try:
+            usage = data.get("usage") or {}
+            safe_usage = safe_completion_usage(usage)
             choice = data["choices"][0]
             finish = safe_finish_reason(choice.get("finish_reason"))
             logger.info("AI provider completion: finish_reason=%s", finish)
             # Usage is safe metadata even when output was truncated. Preserve it
             # for stage/attempt diagnostics without retaining incomplete content.
-            usage = data.get("usage") or {}
-            safe_usage = safe_completion_usage(usage)
             try:
                 validate_finish(finish)
             except ProviderFailure as exc:
@@ -228,7 +239,14 @@ class ChatCompletionHTTP:
                 raise ProviderFailure("AI_PROVIDER_BAD_RESPONSE", reason="EMPTY_MODEL_CONTENT")
             # Discard reasoning fields, provider metadata and arbitrary usage properties.
             return Completion(text, safe_usage, finish)
+        except ProviderFailure as exc:
+            exc.usage = safe_usage
+            exc.finish_reason = finish
+            raise
         except (ValueError, KeyError, IndexError, TypeError, AttributeError):
             raise ProviderFailure(
-                "AI_PROVIDER_BAD_RESPONSE", reason="MALFORMED_COMPLETION_ENVELOPE"
+                "AI_PROVIDER_BAD_RESPONSE",
+                reason="MALFORMED_COMPLETION_ENVELOPE",
+                usage=safe_usage,
+                finish_reason=finish,
             ) from None

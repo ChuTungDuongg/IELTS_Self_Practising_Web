@@ -9,6 +9,7 @@ import tempfile
 import time
 import urllib.error
 import urllib.request
+from collections.abc import Mapping
 from pathlib import Path
 
 from deploy.runtime_config import validate_runtime
@@ -32,12 +33,51 @@ def nginx_config_with_timings(config: str) -> str:
     return config.replace(host_header, host_header + "\n            proxy_set_header X-Request-ID $request_id;")
 
 
-def configure_ai_environment(enabled: bool, model: str, endpoint: str | None) -> None:
+def resolve_ai_providers(env: Mapping[str, str]) -> tuple[str, str]:
+    """Frozen non-secret selections own the dependency graph; empty Speaking inherits."""
+    writing = env.get("IELTS_WEB_AI_PROVIDER", env.get("AI_WRITING_PROVIDER", "vllm")).strip().lower()
+    speaking = env.get(
+        "IELTS_WEB_SPEAKING_AI_PROVIDER", env.get("SPEAKING_AI_PROVIDER", "")
+    ).strip().lower()
+    if writing not in {"openai", "vllm"}:
+        raise ValueError("AI_WRITING_PROVIDER must be openai or vllm")
+    if speaking not in {"", "openai", "vllm"}:
+        raise ValueError("SPEAKING_AI_PROVIDER must be openai, vllm or empty to inherit")
+    return writing, speaking
+
+
+def configure_ai_environment(
+    enabled: bool,
+    model: str,
+    endpoint: str | None,
+    *,
+    provider: str | None = None,
+    speaking_provider: str | None = None,
+) -> None:
+    writing, speaking = resolve_ai_providers(
+        {
+            "AI_WRITING_PROVIDER": (
+                provider if provider is not None else os.environ.get("AI_WRITING_PROVIDER", "vllm")
+            ),
+            "SPEAKING_AI_PROVIDER": (
+                speaking_provider
+                if speaking_provider is not None
+                else os.environ.get("SPEAKING_AI_PROVIDER", "")
+            ),
+        }
+    )
+    if provider is not None:
+        os.environ["AI_WRITING_PROVIDER"] = writing
+    if speaking_provider is not None:
+        if speaking:
+            os.environ["SPEAKING_AI_PROVIDER"] = speaking
+        else:
+            os.environ.pop("SPEAKING_AI_PROVIDER", None)
     os.environ["AI_WRITING_ENABLED"] = str(enabled).lower()
     # Both graders share the Writing transport. The explicit Speaking provider/model
     # overrides remain optional; the adapter inherits the hydrated Writing defaults.
     os.environ["SPEAKING_AI_ENABLED"] = str(enabled).lower()
-    if enabled and os.environ.get("AI_WRITING_PROVIDER", "vllm") == "vllm":
+    if enabled and "vllm" in {writing, speaking or writing}:
         # Resolve this App's hydrated function URL: no temporary URL in .env.
         os.environ["AI_WRITING_VLLM_BASE_URL"] = endpoint.rstrip("/") + "/v1" if endpoint else ""
         os.environ["AI_WRITING_VLLM_MODEL"] = model
@@ -50,9 +90,14 @@ def safe_ai_configuration() -> dict[str, bool | str]:
     probe = """import json
 from app.core.config import Settings
 from app.providers.speaking_llm import is_configured, provider_identity
-settings = Settings()
+from app.providers.writing_llm import is_configured as writing_is_configured
+settings = Settings(_env_file=None)
 provider, model = provider_identity(settings)
 print(json.dumps({
+    'writing_ai_enabled': settings.ai_writing_enabled,
+    'writing_ai_configured': writing_is_configured(settings),
+    'writing_provider': settings.ai_writing_provider,
+    'writing_model': getattr(settings, f'ai_writing_{settings.ai_writing_provider}_model', ''),
     'speaking_ai_enabled': settings.speaking_ai_enabled,
     'speaking_ai_configured': is_configured(settings),
     'speaking_provider': provider,
@@ -69,7 +114,25 @@ print(json.dumps({
             timeout=15,
         )
         if result.returncode == 0:
-            return json.loads(result.stdout)
+            summary = json.loads(result.stdout)
+            allowed = {
+                "writing_ai_enabled": bool,
+                "writing_ai_configured": bool,
+                "writing_provider": str,
+                "writing_model": str,
+                "speaking_ai_enabled": bool,
+                "speaking_ai_configured": bool,
+                "speaking_provider": str,
+                "speaking_model": str,
+                "writing_vllm_transport_url_configured": bool,
+                "speaking_asr_enabled": bool,
+            }
+            if isinstance(summary, dict):
+                return {
+                    key: value
+                    for key, value in summary.items()
+                    if key in allowed and type(value) is allowed[key]
+                }
     except (OSError, ValueError, subprocess.TimeoutExpired):
         pass
     # Diagnostics must never prevent the existing application from starting.
