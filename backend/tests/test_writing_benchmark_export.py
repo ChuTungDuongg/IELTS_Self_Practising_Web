@@ -51,7 +51,7 @@ def test_task2_shipped_schema_and_colab_docs_match_current_contract():
         "benchmark_task2.py",
         "--dry-run",
         "--max-concurrent-llm-requests",
-        "No production PostgreSQL credentials",
+        "Không cần thông tin xác thực PostgreSQL sản xuất",
         "schema_version",
         "Ctrl/Cmd+Enter",
     ):

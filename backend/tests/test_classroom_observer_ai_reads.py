@@ -1,4 +1,4 @@
-"""Read-side AI recovery must preserve the classroom observer boundary."""
+"""AI reads preserve state; Writing recovery belongs to the durable worker scanner."""
 
 from copy import deepcopy
 from datetime import UTC, datetime, timedelta
@@ -18,17 +18,22 @@ from tests.test_classroom_classwork_unit import actor, session_double
 
 @pytest.mark.parametrize("operation", ["list", "snapshot", "get"])
 @pytest.mark.parametrize(
-    "role,origin,read_only",
+    "role,origin",
     [
-        ("ADMIN", "direct", True),
-        ("ADMIN", "parent", True),
-        ("ADMIN", "personal", False),
-        ("USER", "direct", False),
-        ("USER", "personal", False),
+        ("ADMIN", "direct"),
+        ("ADMIN", "parent"),
+        ("ADMIN", "personal"),
+        ("USER", "direct"),
+        ("USER", "personal"),
     ],
 )
-async def test_stale_ai_reads_preserve_observer_state_and_recover_authorized_work(
-    operation, role, origin, read_only
+@pytest.mark.parametrize(
+    "status,lease_offset",
+    [("PENDING", None), ("RUNNING", None), ("RUNNING", -60), ("RUNNING", 60)],
+    ids=["queued", "legacy-stale", "expired-lease", "live-lease"],
+)
+async def test_writing_ai_reads_preserve_state_until_worker_recovery(
+    operation, role, origin, status, lease_offset
 ):
     current = actor(role)
     assignment_id = uuid4()
@@ -38,13 +43,18 @@ async def test_stale_ai_reads_preserve_observer_state_and_recover_authorized_wor
         classroom_assignment_id=assignment_id if origin == "direct" else None,
         test_session_id=uuid4() if origin == "parent" else None,
     )
-    old = datetime.now(UTC) - timedelta(hours=2)
+    now = datetime.now(UTC)
+    old = now - timedelta(hours=2)
     run = WritingAIGradingRun(
         id=uuid4(),
         attempt_id=attempt.id,
         writing_task_id=uuid4(),
         requested_by_user_id=current.id,
-        status="RUNNING",
+        status=status,
+        lease_token=uuid4() if lease_offset is not None else None,
+        lease_expires_at=now + timedelta(seconds=lease_offset)
+        if lease_offset is not None
+        else None,
         provider="fictional",
         model="fictional",
         prompt_version="fictional",
@@ -55,7 +65,7 @@ async def test_stale_ai_reads_preserve_observer_state_and_recover_authorized_wor
     session = session_double(assignment_id if origin == "parent" else None)
     session.get = AsyncMock(return_value=current)
     service = WritingAIService(session, current.id, Settings(_env_file=None))
-    # Request composition and ORM loading are external to the recovery boundary.
+    # Request composition and ORM loading are external to this read-state boundary.
     service.input = AsyncMock(return_value=SimpleNamespace())
     service.repository.attempt = AsyncMock(return_value=attempt)
     service.repository.runs = AsyncMock(return_value=[run])
@@ -74,22 +84,25 @@ async def test_stale_ai_reads_preserve_observer_state_and_recover_authorized_wor
 
     service.repository.append_event = append_event
     service.repository.events = AsyncMock(return_value=events)
-    before = {column.key: getattr(run, column.key) for column in run.__table__.columns}
+    before = deepcopy({column.key: getattr(run, column.key) for column in run.__table__.columns})
     if operation == "list":
         result = (await service.list(attempt.id, run.writing_task_id)).items[0]
     elif operation == "snapshot":
         result, _ = await service.snapshot(run.id, 0)
     else:
         result = await service.get(run.id)
-    if read_only:
-        assert result.status == "RUNNING"
-        assert before == {key: getattr(run, key) for key in before}
-        assert events == []
-        session.flush.assert_not_awaited()
+    # Neither personal reads nor classroom observers own lease recovery. In
+    # particular, an old updated_at must not terminate a worker with a live lease.
+    assert result.status == status and result.error_code is None
+    assert before == {key: getattr(run, key) for key in before}
+    assert events == []
+    session.flush.assert_not_awaited()
+    session.add.assert_not_called()
+    if operation == "list":
+        service.input.assert_awaited_once_with(attempt.id, run.writing_task_id, require_essay=False)
+        service.repository.runs.assert_awaited_once_with(attempt.id, run.writing_task_id)
     else:
-        assert result.status == "FAILED" and result.error_code == "STALE_RUN"
-        assert [event.event_type for event in events] == ["run.failed"]
-        assert run.completed_at is not None and run.updated_at > old
+        service.repository.run.assert_awaited_once_with(run.id, user_id=current.id, lock=True)
 
 
 @pytest.mark.parametrize("engine", ["speaking_ai", "transcript"])

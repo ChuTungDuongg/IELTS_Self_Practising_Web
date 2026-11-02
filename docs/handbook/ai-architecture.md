@@ -67,6 +67,8 @@ Bổ sung ngày 2026-11-02: Writing dùng các hàng PENDING trong PostgreSQL l�
 
 Speaking giữ detached local tasks, DB lease tokens và recovery khi startup/request hiện có; chưa triển khai admission toàn cục hoặc fleet hữu hạn. Cả hai dùng sessions ngắn để lưu checkpoints ngoài thời gian inference; không hứa gọi provider đúng một lần khi process chết giữa lời gọi và commit. Trạng thái bền vững trong database không bảo đảm tác dụng phụ tại provider chỉ xảy ra một lần.
 
+Với Writing, các API đọc `list`, `get` và `snapshot` chỉ trả trạng thái đã lưu, không chuyển job sang FAILED dựa trên `updated_at`. Quy tắc này áp dụng cho cả bài cá nhân và người quan sát bài trong lớp. Worker/scanner chịu trách nhiệm phục hồi RUNNING hết lease, kể cả job cũ chưa có lease; cần duy trì ít nhất một worker được cấu hình hợp lệ để quá trình phục hồi diễn ra. Các kiểm thử [đường đọc](../../backend/tests/test_classroom_observer_ai_reads.py) và [durable dispatch](../../backend/tests/test_writing_durable_dispatch.py) bảo vệ hai trách nhiệm riêng này.
+
 SSE là **Server-Sent Events**, luồng một chiều từ server tới client; sequence IDs phục vụ replay/reconnect. Observer đóng tab chỉ dừng đọc, explicit cancel mới dừng job theo policy. Nginx buffering off được giữ cho streaming. Worker shutdown và [main lifespan](../../backend/app/main.py) phối hợp stop/cleanup; không tự khởi động mọi AI run trên mỗi page load.
 
 ## Model initialization, cost và đánh giá
