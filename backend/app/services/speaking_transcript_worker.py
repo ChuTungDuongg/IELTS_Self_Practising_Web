@@ -64,7 +64,16 @@ class SpeakingTranscriptWorker:
         task.add_done_callback(discard)
 
     async def _checkpoint(
-        self, run_id, token, rid=None, result=None, error=None, *, complete=False, evidence=None
+        self,
+        run_id,
+        token,
+        rid=None,
+        result=None,
+        error=None,
+        *,
+        complete=False,
+        evidence=None,
+        partial=False,
     ):
         async with self.sessions() as session, session.begin():
             repository = SpeakingTranscriptRepository(session)
@@ -74,7 +83,15 @@ class SpeakingTranscriptWorker:
             run.heartbeat_at = TimerService.now()
             if rid:
                 states = dict(run.responses_json)
-                states[rid] = {"status": "READY" if result else "FAILED" if error else "PROCESSING"}
+                states[rid] = {
+                    "status": "PARTIAL"
+                    if result and partial
+                    else "READY"
+                    if result
+                    else "FAILED"
+                    if error
+                    else "PROCESSING"
+                }
                 if error:
                     states[rid]["error_code"] = error
                 run.responses_json = states
@@ -114,11 +131,12 @@ class SpeakingTranscriptWorker:
                 )
             if complete:
                 ready = sum(s["status"] == "READY" for s in run.responses_json.values())
+                partial_ready = any(s["status"] == "PARTIAL" for s in run.responses_json.values())
                 run.status = (
                     "COMPLETED"
                     if ready == len(run.manifest_json)
                     else "PARTIAL"
-                    if ready
+                    if ready or partial_ready
                     else "FAILED"
                 )
                 run.lease_token = None
@@ -209,12 +227,22 @@ class SpeakingTranscriptWorker:
                         await persist_quality_result(session, audio, quality)
                     if not quality.assessable:
                         raise AppError(quality.state, "Recording quality is unavailable.", 409)
-                    result = ASRResult.model_validate(
-                        await asyncio.wait_for(
-                            provider.transcribe(audio),
-                            timeout=self.settings.speaking_processing_timeout_seconds,
+                    speech_analysis = None
+                    if self.settings.speaking_profile == "speaking_hybrid_v1":
+                        from app.services.speaking_analysis_cache import cached_speech_analysis
+                        from app.services.speaking_hybrid import analysis_to_asr
+
+                        speech_analysis = await cached_speech_analysis(
+                            self.sessions, audio, self.settings, provider.analyzer
                         )
-                    )
+                        result = analysis_to_asr(speech_analysis, audio)
+                    else:
+                        result = ASRResult.model_validate(
+                            await asyncio.wait_for(
+                                provider.transcribe(audio),
+                                timeout=self.settings.speaking_processing_timeout_seconds,
+                            )
+                        )
                     if any(w.end > audio.duration_ms / 1000 for w in result.words):
                         raise ValueError("Word timing exceeds audio")
                     asr_succeeded = True
@@ -229,10 +257,25 @@ class SpeakingTranscriptWorker:
                     async with self.sessions() as session:
                         await persist_quality_result(session, audio, quality)
                     bundle = await build_feature_bundle(
-                        audio, result, self.settings, part_number=part_number
+                        audio,
+                        result,
+                        self.settings,
+                        part_number=part_number,
+                        speech_analysis=speech_analysis,
                     )
                     await self._checkpoint(
-                        run_id, token, rid, result, evidence=bundle.model_dump(mode="json")
+                        run_id,
+                        token,
+                        rid,
+                        result,
+                        evidence=bundle.model_dump(mode="json"),
+                        partial=bool(
+                            speech_analysis
+                            and (
+                                len(speech_analysis) != audio.segment_count
+                                or any(r.status != "COMPLETE" for r in speech_analysis)
+                            )
+                        ),
                     )
                 except asyncio.CancelledError:
                     raise
@@ -255,6 +298,7 @@ class SpeakingTranscriptWorker:
                         and error.code
                         in {
                             "SPEAKING_ASR_UNAVAILABLE",
+                            "SPEAKING_ANALYSIS_BILLING_UNKNOWN",
                             "SPEAKING_AUDIO_UNASSESSABLE",
                             "TRANSCRIPT_SOURCE_CHANGED",
                             "TRANSCRIPT_CONFIGURATION_CHANGED",

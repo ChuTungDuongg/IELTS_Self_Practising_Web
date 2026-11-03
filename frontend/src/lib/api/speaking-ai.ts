@@ -3,11 +3,22 @@ import { API_BASE_URL, apiRequest } from "./client";
 
 const bandSchema = z.number().min(0).max(9).multipleOf(0.5);
 const safeMetrics = z.record(z.string().max(80), z.json()).refine((value) => JSON.stringify(value).length <= 16000, "Evidence summary exceeds limit");
+const audioSpanSchema = z.object({
+  response_id: z.string().uuid(), take_number: z.number().int().positive(), segment_id: z.string().uuid(),
+  start_ms: z.number().int().nonnegative(), end_ms: z.number().int().positive(),
+  normalized_start_ms: z.number().int().nonnegative(), normalized_end_ms: z.number().int().positive(),
+}).refine((span) => span.end_ms > span.start_ms && span.normalized_end_ms > span.normalized_start_ms, "Invalid audio span");
+const localCommentSchema = z.object({
+  text: z.string().max(1200), evidence_ids: z.array(z.string().max(200)).max(20),
+  audio_span: audioSpanSchema.nullable(), scope: z.enum(["LOCAL", "OVERVIEW"]),
+});
+export type SpeakingAudioSpan = z.infer<typeof audioSpanSchema>;
 const criterionSchema = z.object({
   status: z.enum(["WAITING", "SCORING", "SCORED", "COMPLETED", "FAILED", "UNAVAILABLE"]),
   score: bandSchema.nullable(), feedback_status: z.enum(["PENDING", "READY", "FALLBACK"]),
   feedback: z.string().max(1200).nullable(), strengths: z.array(z.string().max(300)).max(6), improvements: z.array(z.string().max(300)).max(6),
   error_code: z.string().max(200).nullable(), evidence_summary: safeMetrics.default({}),
+  local_comments: z.array(localCommentSchema).max(20).optional(),
 });
 const diagnosticSchema = z.object({
   response_id: z.string().uuid(), part_number: z.union([z.literal(1), z.literal(2), z.literal(3)]),
@@ -15,6 +26,7 @@ const diagnosticSchema = z.object({
   pronunciation_status: z.enum(["AVAILABLE", "LOW_EVIDENCE", "UNAVAILABLE"]),
   mean_alignment_confidence: z.number().min(0).max(1).nullable().default(null), pitch_range_hz: z.number().nonnegative().nullable().default(null),
   limitations: z.array(z.string().max(200)).max(20).default([]),
+  analysis_status: z.string().max(80).nullable().optional(), fc_eligible: z.boolean().nullable().optional(), pr_eligible: z.boolean().nullable().optional(),
 });
 export const speakingAIRunSchema = z.object({
   run_id: z.string().uuid(), attempt_id: z.string().uuid(), cache_key: z.string().max(512), created_at: z.string(),
@@ -22,7 +34,7 @@ export const speakingAIRunSchema = z.object({
   stage: z.enum(["PENDING", "QUALITY_CHECK", "TRANSCRIBING", "ANALYSING_AUDIO", "BUILDING_EVIDENCE", "SCORING", "GENERATING_FEEDBACK", "COMPLETED", "FAILED", "CANCELLED"]),
   last_sequence: z.number().int().nonnegative(), advisory: z.literal(true), raw_mean: z.number().min(0).max(9).nullable(), overall_band: bandSchema.nullable(),
   criteria: z.object({ fc: criterionSchema, lr: criterionSchema, gra: criterionSchema, pr: criterionSchema }), error_code: z.string().max(200).nullable(),
-  summary: z.object({ responses: z.array(diagnosticSchema).max(1000).default([]) }).default({ responses: [] }),
+  summary: z.object({ responses: z.array(diagnosticSchema).max(1000).default([]), profile: z.string().max(80).optional(), external_audio_processing: z.boolean().optional(), fc_eligible: z.boolean().optional(), pr_eligible: z.boolean().optional() }).default({ responses: [] }),
 });
 export type SpeakingAIRun = z.infer<typeof speakingAIRunSchema>;
 export type SpeakingAICriterion = keyof SpeakingAIRun["criteria"];

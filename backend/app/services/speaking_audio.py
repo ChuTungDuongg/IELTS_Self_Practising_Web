@@ -18,6 +18,7 @@ from sqlalchemy.dialects.postgresql import insert
 from app.core.exceptions import AppError
 from app.models.speaking import SpeakingMediaCleanup, SpeakingResponse, SpeakingResponseTake
 from app.models.speaking_transcript import SpeakingNormalizedAudio
+from app.schemas.speaking_timeline import AudioSegmentMapping, validate_timeline
 from app.services.asset_cleanup import compensate_files
 from app.services.speaking_media import committed_fingerprint, ordered_chunks, ordered_segments
 from app.storage.factory import get_asset_storage
@@ -45,7 +46,7 @@ def normalization_identity(settings):
         "rate": 16000,
         "channels": 1,
         "codec": "pcm_s16le",
-        "segment_metadata_version": 1,
+        "segment_metadata_version": 2 if settings.speaking_profile == "speaking_hybrid_v1" else 1,
         "maximum_seconds": settings.speaking_max_decoded_seconds,
     }
 
@@ -60,6 +61,8 @@ class NormalizedAudio:
     sample_rate: int = 16000
     channels: int = 1
     segment_count: int = 1
+    timeline: tuple[AudioSegmentMapping, ...] = ()
+    response_start_ms: int = 0
 
 
 @dataclass(frozen=True)
@@ -70,6 +73,7 @@ class NormalizedAudioRef:
     cache_key: str
     duration_ms: int
     segment_count: int = 1
+    timeline: tuple[AudioSegmentMapping, ...] = ()
 
 
 @asynccontextmanager
@@ -107,6 +111,7 @@ async def stage_normalized_audio(storage, ref: NormalizedAudioRef, maximum_secon
             ref.cache_key,
             ref.duration_ms,
             segment_count=ref.segment_count,
+            timeline=validate_timeline(ref.timeline, ref.duration_ms),
         )
 
 
@@ -214,6 +219,26 @@ def _render(groups, destination, settings, executor, storage):
         return wav_duration(destination, settings.speaking_max_decoded_seconds)
 
 
+def _render_mapped(groups, destination, settings, executor, storage):
+    """Decode containers independently and concatenate PCM without adding recovery silence."""
+    lengths, total_frames = [], 0
+    with tempfile.TemporaryDirectory(prefix="mapped-", dir=destination.parent) as directory:
+        with wave.open(str(destination), "wb") as output:
+            output.setparams((1, 2, 16000, 0, "NONE", "not compressed"))
+            for index, group in enumerate(groups):
+                path = Path(directory) / f"{index}.wav"
+                _render([group], path, settings, executor, storage)
+                with wave.open(str(path), "rb") as source:
+                    frames = source.getnframes()
+                    if total_frames + frames > settings.speaking_max_decoded_seconds * 16000:
+                        raise ValueError("Recording exceeds decoded limit")
+                    # Preserve exact sample bounds internally; integer milliseconds are presentation.
+                    output.writeframes(source.readframes(frames))
+                    total_frames += frames
+                    lengths.append(frames)
+    return wav_duration(destination, settings.speaking_max_decoded_seconds), lengths
+
+
 async def normalize_committed_take(
     session, response_id: UUID, settings, *, storage=None, executor=execute_ffmpeg
 ):
@@ -239,6 +264,7 @@ async def normalize_committed_take(
                 "SPEAKING_AUDIO_UNASSESSABLE", "Recording provenance is unavailable.", 409
             )
         source = response.committed_audio_fingerprint
+        repair_key = None
         key = fingerprint([source, normalization_identity(settings)])
         cached = await session.scalar(
             select(SpeakingNormalizedAudio).where(
@@ -255,6 +281,9 @@ async def normalize_committed_take(
                     key,
                     cached.duration_ms,
                     segment_count=cached.metadata_json.get("segment_count", 1),
+                    timeline=validate_timeline(
+                        cached.metadata_json.get("timeline", []), cached.duration_ms
+                    ),
                 )
                 async with stage_normalized_audio(
                     storage, result, settings.speaking_max_decoded_seconds
@@ -271,8 +300,13 @@ async def normalize_committed_take(
                 .values(storage_key=cached.storage_key)
                 .on_conflict_do_nothing(index_elements=["storage_key"])
             )
-            await session.delete(cached)
-        groups = []
+            if settings.speaking_profile == "speaking_hybrid_v1":
+                # The row also owns billable speech checkpoints. Keep them durable even
+                # if rendering fails or the process dies while repairing derivative bytes.
+                repair_key = cached.storage_key
+            else:
+                await session.delete(cached)
+        groups, segment_ids = [], []
         try:
             for segment in await ordered_segments(session, take.id):
                 chunks = await ordered_chunks(session, segment.id)
@@ -285,6 +319,7 @@ async def normalize_committed_take(
                             raise ValueError("Invalid recorded chunk size")
                         paths.append((chunk.storage_key, chunk.sha256, chunk.byte_size))
                     groups.append((segment.mime_type, paths))
+                    segment_ids.append(segment.id)
         except (AppError, OSError, ValueError):
             raise AppError(
                 "SPEAKING_AUDIO_UNASSESSABLE", "Recording data is unavailable.", 409
@@ -296,11 +331,14 @@ async def normalize_committed_take(
         object_key = f"speaking-derived/{uuid4().hex}.wav"
         uploaded = False
         try:
+            hybrid = settings.speaking_profile == "speaking_hybrid_v1"
+            renderer = _render_mapped if hybrid else _render
             rendering = asyncio.create_task(
-                asyncio.to_thread(_render, groups, candidate, settings, executor, storage)
+                asyncio.to_thread(renderer, groups, candidate, settings, executor, storage)
             )
             try:
-                duration = await asyncio.shield(rendering)
+                rendered = await asyncio.shield(rendering)
+                duration, lengths = rendered if hybrid else (rendered, [])
             except asyncio.CancelledError:
                 # A subprocess/thread cannot be cancelled by dropping its awaiter.
                 # Wait for the bounded decode before cleaning its private output.
@@ -313,6 +351,23 @@ async def normalize_committed_take(
             raise AppError(
                 "SPEAKING_AUDIO_UNASSESSABLE", "Recording could not be decoded.", 409
             ) from None
+
+        offset, timeline = 0, []
+        for sid, frames in zip(segment_ids, lengths, strict=hybrid):
+            timeline.append(
+                AudioSegmentMapping(
+                    response_id=response_id,
+                    take_number=take.take_number,
+                    segment_id=sid,
+                    normalized_start_ms=offset // 16,
+                    normalized_end_ms=(offset + frames) // 16,
+                    normalized_start_frame=offset,
+                    normalized_end_frame=offset + frames,
+                    gap_before_unknown=bool(timeline),
+                )
+            )
+            offset += frames
+        timeline = validate_timeline(timeline, duration)
 
         def upload():
             with candidate.open("rb") as file:
@@ -339,24 +394,38 @@ async def normalize_committed_take(
                 await compensate_files(session, storage, [object_key])
                 raise
             async with session.begin():
-                row_id = await session.scalar(
-                    insert(SpeakingNormalizedAudio)
-                    .values(
-                        response_id=response_id,
-                        cache_key=key,
-                        source_audio_fingerprint=source,
-                        normalizer_version=settings.speaking_normalizer_version,
-                        storage_key=object_key,
-                        duration_ms=duration,
-                        metadata_json={
-                            "sample_rate": 16000,
-                            "channels": 1,
-                            "segment_count": len(groups),
-                        },
-                    )
-                    .on_conflict_do_nothing(index_elements=["response_id", "cache_key"])
-                    .returning(SpeakingNormalizedAudio.id)
+                statement = insert(SpeakingNormalizedAudio).values(
+                    response_id=response_id,
+                    cache_key=key,
+                    source_audio_fingerprint=source,
+                    normalizer_version=settings.speaking_normalizer_version,
+                    storage_key=object_key,
+                    duration_ms=duration,
+                    metadata_json={
+                        "sample_rate": 16000,
+                        "channels": 1,
+                        "segment_count": len(groups),
+                        "timeline_version": "segment-ms-v1" if hybrid else None,
+                        "timeline": [row.model_dump(mode="json") for row in timeline],
+                    },
                 )
+                if repair_key:
+                    statement = statement.on_conflict_do_update(
+                        index_elements=["response_id", "cache_key"],
+                        set_={
+                            "storage_key": object_key,
+                            "duration_ms": duration,
+                            "metadata_json": SpeakingNormalizedAudio.metadata_json.op("||")(
+                                statement.excluded.metadata_json
+                            ),
+                        },
+                        where=SpeakingNormalizedAudio.storage_key == repair_key,
+                    )
+                else:
+                    statement = statement.on_conflict_do_nothing(
+                        index_elements=["response_id", "cache_key"]
+                    )
+                row_id = await session.scalar(statement.returning(SpeakingNormalizedAudio.id))
                 if row_id:
                     result = NormalizedAudioRef(
                         object_key,
@@ -365,6 +434,7 @@ async def normalize_committed_take(
                         key,
                         duration,
                         segment_count=len(groups),
+                        timeline=timeline,
                     )
                 else:
                     row = await session.scalar(
@@ -380,6 +450,9 @@ async def normalize_committed_take(
                         key,
                         row.duration_ms,
                         segment_count=row.metadata_json.get("segment_count", 1),
+                        timeline=validate_timeline(
+                            row.metadata_json.get("timeline", []), row.duration_ms
+                        ),
                     )
             if not row_id:
                 await compensate_files(session, storage, [object_key])

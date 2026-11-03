@@ -11,6 +11,17 @@ import modal
 from deploy.modal.web_runtime import resolve_ai_providers
 from deploy.runtime_config import boolean
 
+SPEAKING_PROFILE = os.environ.get(
+    "IELTS_WEB_SPEAKING_PROFILE", os.environ.get("SPEAKING_PROFILE", "legacy")
+).strip()
+if SPEAKING_PROFILE not in {"legacy", "speaking_hybrid_v1"}:
+    raise ValueError("IELTS_WEB_SPEAKING_PROFILE must be legacy or speaking_hybrid_v1")
+VAD_LOCAL_PATH = os.environ.get("IELTS_WEB_SPEAKING_VAD_MODEL_PATH", "").strip()
+VAD_INCLUDED = (
+    bool(VAD_LOCAL_PATH)
+    if modal.is_local()
+    else boolean(os.environ, "IELTS_WEB_SPEAKING_VAD_INCLUDED", "false")
+)
 ROOT = Path(__file__).resolve().parents[2] if modal.is_local() else Path("/workspace")
 MODE = os.environ.get(
     "IELTS_MODAL_MODE", "dev" if modal.is_local() and "serve" in sys.argv else "production"
@@ -45,11 +56,12 @@ if VLLM_ENABLED:
     from deploy.modal.writing_llm import serve as llm_serve
 
     app.include(llm_app)
-ASR_ENABLED = os.environ.get("IELTS_WEB_SPEAKING_ASR_ENABLED", str(AI_ENABLED)).lower() in {
+SPEECH_ENABLED = os.environ.get("IELTS_WEB_SPEAKING_ASR_ENABLED", str(AI_ENABLED)).lower() in {
     "true",
     "1",
     "yes",
 }
+ASR_ENABLED = SPEAKING_PROFILE == "legacy" and SPEECH_ENABLED
 if ASR_ENABLED:
     from deploy.modal.speaking_asr import MODEL as ASR_MODEL
     from deploy.modal.speaking_asr import REVISION as ASR_REVISION
@@ -170,7 +182,9 @@ image = (
             "IELTS_WEB_AI_ENABLED": str(AI_ENABLED).lower(),
             "IELTS_WEB_AI_PROVIDER": AI_PROVIDER,
             "IELTS_WEB_SPEAKING_AI_PROVIDER": SPEAKING_AI_PROVIDER,
-            "IELTS_WEB_SPEAKING_ASR_ENABLED": str(ASR_ENABLED).lower(),
+            "IELTS_WEB_SPEAKING_ASR_ENABLED": str(SPEECH_ENABLED).lower(),
+            "IELTS_WEB_SPEAKING_PROFILE": SPEAKING_PROFILE,
+            "IELTS_WEB_SPEAKING_VAD_INCLUDED": str(VAD_INCLUDED).lower(),
             "IELTS_WEB_CHART_SPECIALIST_ENABLED": str(CHART_SPECIALIST_ENABLED).lower(),
         }
     )
@@ -182,6 +196,12 @@ image = (
     )
     .add_local_python_source("deploy.modal", "deploy.runtime_config")
 )
+if SPEAKING_PROFILE == "speaking_hybrid_v1":
+    from deploy.modal.speaking_cpu import VAD_SHA256, include_vad_model, install_cpu_speech
+
+    image = install_cpu_speech(image).run_commands("python -m deploy.modal.speaking_cpu")
+    if modal.is_local() and VAD_LOCAL_PATH:
+        image = include_vad_model(image, Path(VAD_LOCAL_PATH), VAD_SHA256)
 
 # Explicit shell overrides travel as an ephemeral Secret, never image variables.
 web_secrets = [
@@ -192,7 +212,8 @@ web_secrets = [
         [
             key
             for key in os.environ
-            if key.startswith("AI_WRITING_") or key in {"SPEAKING_AI_PROVIDER", "SPEAKING_AI_MODEL"}
+            if key.startswith(("AI_WRITING_", "SPEAKING_AI_", "SPEAKING_AZURE_", "SPEAKING_VAD_"))
+            and key != "SPEAKING_AI_ENABLED"  # Frozen Web AI flag owns worker enablement.
         ]
     ),
 ]
@@ -254,6 +275,13 @@ class Web:
         import sys
 
         sys.path.insert(0, "/workspace/deploy/modal")
+        os.environ["SPEAKING_PROFILE"] = SPEAKING_PROFILE
+        if SPEAKING_PROFILE == "speaking_hybrid_v1":
+            from deploy.modal.speaking_cpu import VAD_CONTAINER_PATH, VAD_SHA256, probe
+
+            print(json.dumps(probe(), sort_keys=True), flush=True)
+            os.environ["SPEAKING_VAD_MODEL_PATH"] = VAD_CONTAINER_PATH if VAD_INCLUDED else ""
+            os.environ["SPEAKING_VAD_MODEL_SHA256"] = VAD_SHA256
         from web_runtime import (
             WebRuntime,
             configure_ai_environment,
@@ -275,6 +303,9 @@ class Web:
             ASR_VERSION if ASR_ENABLED else "",
             asr_serve.get_web_url() if ASR_ENABLED else None,
         )
+        if SPEAKING_PROFILE == "speaking_hybrid_v1":
+            # Existing ASR flag admits transcript jobs; hybrid selection owns provider choice.
+            os.environ["SPEAKING_ASR_ENABLED"] = str(SPEECH_ENABLED).lower()
         from web_runtime import configure_chart_environment
 
         configure_chart_environment(

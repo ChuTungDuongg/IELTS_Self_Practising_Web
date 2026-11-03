@@ -78,7 +78,7 @@ EVIDENCE_RULES = {
 }
 
 
-def system_prompt(criterion: SpeakingCriterion, *, feedback=False, repair=False):
+def system_prompt(criterion: SpeakingCriterion, *, feedback=False, repair=False, hybrid=False):
     if criterion not in CRITERION_NAMES:
         raise ValueError("Unsupported Speaking criterion")
     anchors = "\n".join(
@@ -104,8 +104,31 @@ def system_prompt(criterion: SpeakingCriterion, *, feedback=False, repair=False)
         "No arbitrary offsets, band caps, or metric-to-band rules.\n"
         f"{EVIDENCE_RULES[criterion]}\n{anchors}\n{stage}"
         + (
+            "\nASR is uncertain evidence, never ground truth: do not turn uncertain recognition into a definite "
+            "learner error. Lexical transcripts preserve spoken grammar; display punctuation is ASR formatting. "
+            "No provider score-to-IELTS conversion; Azure accuracy is not recognition confidence. "
+            "Never use WPM, pitch or pronunciation to anchor LR/GRA; grammar cannot compensate for missing PR. "
+            "For FC use both coherence and measured temporal delivery; unknown recovery gaps are not pauses. "
+            "Pause duration alone cannot establish searching for ideas or words. ASR punctuation alone cannot "
+            "establish a syntactic boundary. Do not automatically penalize fillers, repetition or self-repair. "
+            "Locale is a technical setting, not an accent requirement. Do not penalize non-US/native accents. "
+            "Sampled observations cover the response timeline and metric families. Respect full coverage "
+            "metadata and sampling limitations, and do not count sampled flags as an error rate."
+            if hybrid
+            else ""
+        )
+        + (
             "\nRepair the output shape once; return a valid score-only JSON object."
             if repair
+            else ""
+        )
+        + (
+            "\nOptional local_comments contain text, evidence_ids and scope LOCAL or OVERVIEW. "
+            "LOCAL FC/PR comments must cite supplied evidence IDs. Never output timestamps or audio_span; "
+            "the server resolves them. OVERVIEW has empty evidence_ids and no unique location. "
+            "Low accuracy alone cannot identify a sound substitution, missing final consonant or learner error. "
+            "Do not invent errors to explain a persisted band. Unsupported observations must remain qualified."
+            if feedback and hybrid
             else ""
         )
     )

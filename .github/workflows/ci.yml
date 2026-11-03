@@ -3,7 +3,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, 'codex/**']
 
 permissions:
   contents: read
@@ -115,3 +115,5 @@ jobs:
         run: npm run lint
       - name: Frontend unit tests
         run: npm test
+      - name: Production build
+        run: npm run build

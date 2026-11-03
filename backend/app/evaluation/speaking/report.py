@@ -4,9 +4,10 @@ import csv
 import io
 import json
 from collections import Counter
+from math import ceil
 from pathlib import Path
 
-from app.evaluation.speaking.manifest import BenchmarkInputError
+from app.evaluation.speaking.manifest import BenchmarkInputError, validate_speaker_splits
 from app.evaluation.speaking.metrics import METRICS_PROTOCOL_VERSION, score_metrics
 from app.schemas.speaking_grading import CRITERIA
 from app.services.speaking_audio import fingerprint
@@ -70,7 +71,46 @@ def _metrics(rows):
     }
 
 
+def _telemetry(predictions):
+    rows = [row.telemetry for row in predictions.predictions if row.telemetry is not None]
+    latencies = sorted(row.latency_ms for row in rows if row.latency_ms is not None)
+    calls = sum(row.provider_calls for row in rows)
+    errors = sum(row.provider_errors for row in rows)
+    return {
+        "sample_count": len(rows),
+        "latency_p50_ms": latencies[ceil(len(latencies) * 0.5) - 1] if latencies else None,
+        "latency_p95_ms": latencies[ceil(len(latencies) * 0.95) - 1] if latencies else None,
+        "logical_calls": calls if rows else None,
+        "transport_attempts": sum(row.provider_attempts for row in rows) if rows else None,
+        "failed_logical_calls": errors if rows else None,
+        "error_rate": errors / calls if calls else None,
+        "usage": {
+            key: sum(row.usage.get(key, 0) for row in rows)
+            for key in sorted({key for row in rows for key in row.usage})
+        },
+    }
+
+
+def _speech_telemetry(predictions):
+    rows = [
+        row.telemetry.speech
+        for row in predictions.predictions
+        if row.telemetry and row.telemetry.speech
+    ]
+    calls = sum(row.attempted_calls for row in rows)
+    failures = sum(row.failed_calls for row in rows)
+    return {
+        "sample_count": len(rows),
+        "attempted_calls": calls if rows else None,
+        "failed_calls": failures if rows else None,
+        "error_rate": failures / calls if calls else None,
+        "submitted_audio_ms": sum(row.submitted_audio_ms for row in rows) if rows else None,
+        "billing_uncertain": True,
+    }
+
+
 def build_report(samples, predictions, *, minimum_subgroup_samples=20):
+    validate_speaker_splits(samples)
     if type(minimum_subgroup_samples) is not int or not 5 <= minimum_subgroup_samples <= 10000:
         raise BenchmarkInputError("BENCHMARK_SUBGROUP_MINIMUM_INVALID")
     rows = sample_rows(samples, predictions)
@@ -106,6 +146,25 @@ def build_report(samples, predictions, *, minimum_subgroup_samples=20):
         )
         for trait in TRAITS
     }
+    splits = {}
+    for split in ("DEV", "HOLDOUT"):
+        ids = {s.id for s in samples if s.split == split}
+        criteria = _metrics([r for r in rows if r["sample_id"] in ids])
+        eligible = all(criteria[t]["count"] > 0 for t in ("fc", "pr"))
+        gate = (
+            all(
+                criteria[t]["mae"] <= 0.5 and abs(criteria[t]["signed_bias"]) <= 0.5
+                for t in ("fc", "pr")
+            )
+            if eligible
+            else None
+        )
+        splits[split] = {
+            "sample_count": len(ids),
+            "speaker_count": len({s.speaker_id for s in samples if s.id in ids}),
+            "criteria": criteria,
+            "fc_pr_half_band_gate": "pass" if gate else "fail" if gate is False else "unavailable",
+        }
     return {
         "schema_version": 1,
         "advisory": True,
@@ -113,12 +172,22 @@ def build_report(samples, predictions, *, minimum_subgroup_samples=20):
         "sample_count": len(samples),
         "cohort_hash": fingerprint(
             [
-                {"id": s.id, "human": s.human.model_dump(), "subgroups": s.subgroups}
+                {
+                    "id": s.id,
+                    "human": s.human.model_dump(),
+                    "subgroups": s.subgroups,
+                    "speaker_id": s.speaker_id,
+                    "split": s.split,
+                }
                 for s in sorted(samples, key=lambda s: s.id)
             ]
         ),
         "provenance": predictions.provenance.model_dump(mode="json"),
         "criteria": _metrics(rows),
+        "llm_telemetry": _telemetry(predictions),
+        "speech_telemetry": _speech_telemetry(predictions),
+        "splits": splits,
+        "speaker_split_status": "validated" if all(s.split for s in samples) else "unverified",
         "subgroups": subgroups,
         "nonscorable_reasons": failures,
         "largest_disagreements": disagreements,
@@ -154,8 +223,8 @@ def write_reports(output: Path, samples, predictions, report):
         "",
         f"Labelled samples: {len(samples)}. Failures are included in coverage.",
         "",
-        "| Criterion | Valid / total | Failure rate | MAE | RMSE | Pearson | Spearman | QWK | ±0.5 | ±1.0 |",
-        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+        "| Criterion | Valid / total | Failure rate | MAE | Signed bias | RMSE | Pearson | Spearman | QWK | ±0.5 | ±1.0 |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     for trait, values in report["criteria"].items():
         cells = [trait.upper(), f"{values['count']} / {values['total_count']}"] + [
@@ -163,6 +232,7 @@ def write_reports(output: Path, samples, predictions, report):
             for key in (
                 "failure_rate",
                 "mae",
+                "signed_bias",
                 "rmse",
                 "pearson",
                 "spearman",
@@ -172,6 +242,24 @@ def write_reports(output: Path, samples, predictions, report):
             )
         ]
         text.append("| " + " | ".join(cells) + " |")
+    text += ["", f"Speaker splits: {report['speaker_split_status']}."]
+    for split, values in report["splits"].items():
+        text.append(
+            f"{split}: {values['sample_count']} samples; descriptive FC/PR half-band gate: {values['fc_pr_half_band_gate']}."
+        )
+    if "speech_analysis" in report:
+        analysis = report["speech_analysis"]
+        text += [
+            "",
+            f"Lexical WER: {analysis['lexical_fidelity']['wer']}; token boundary MAE (ms): {analysis['timing']['boundary_mae_ms']}; feedback false-positive rate: {analysis['feedback']['false_positive_rate']}.",
+        ]
+    text += [
+        "",
+        "Recorded call/usage telemetry, missing values unknown:",
+        "```json",
+        dump({key: report[key] for key in ("llm_telemetry", "speech_telemetry")}).rstrip(),
+        "```",
+    ]
     text += [
         "",
         "Undefined statistics and subgroup suppression are explained in summary.json.",

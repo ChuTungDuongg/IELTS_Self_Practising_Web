@@ -21,6 +21,7 @@ Reason = Literal[
     "BENCHMARK_PROCESSING_FAILED",
     "SPEAKING_AUDIO_UNASSESSABLE",
     "SPEAKING_PR_UNASSESSABLE",
+    "SPEAKING_FC_UNASSESSABLE",
     "SPEAKING_AI_PROVIDER_FAILED",
     "SPEAKING_AI_INVALID_SCORE",
     "SPEAKING_AI_FEEDBACK_FAILED",
@@ -77,6 +78,21 @@ class BenchmarkSample(StrictDTO):
     ] = Field(default_factory=dict)
     assessor_version: Identifier | None = None
     test_reference: Identifier | None = None
+    speaker_id: Identifier | None = None
+    split: Literal["DEV", "HOLDOUT"] | None = None
+
+    @model_validator(mode="after")
+    def split_identity(self):
+        if (self.speaker_id is None) != (self.split is None):
+            raise ValueError("Speaker and split must be supplied together")
+        return self
+
+
+class InferenceSample(StrictDTO):
+    """The only sample contract passed to inference; no evaluator labels."""
+
+    id: Identifier
+    responses: list[BenchmarkResponse]
 
 
 class ScorerProvenance(StrictDTO):
@@ -101,11 +117,33 @@ class ScorerProvenance(StrictDTO):
     git_sha: str | None = Field(default=None, pattern=r"^[a-f0-9]{40}$")
 
 
+class SpeechEvaluationTelemetry(StrictDTO):
+    attempted_calls: int = Field(default=0, ge=0, strict=True)
+    failed_calls: int = Field(default=0, ge=0, strict=True)
+    submitted_audio_ms: int = Field(default=0, ge=0, strict=True)
+    latency_ms: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    billing_uncertain: Literal[True] = True
+
+
+class EvaluationTelemetry(StrictDTO):
+    speech_analysis_started: bool = False
+    latency_ms: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    provider_calls: int = Field(default=0, ge=0, strict=True)
+    provider_attempts: int = Field(default=0, ge=0, strict=True)
+    provider_errors: int = Field(default=0, ge=0, strict=True)
+    usage: dict[
+        Literal["prompt_tokens", "completion_tokens", "total_tokens", "reasoning_tokens"],
+        Annotated[int, Field(ge=0, strict=True)],
+    ] = Field(default_factory=dict)
+    speech: SpeechEvaluationTelemetry | None = None
+
+
 class Prediction(StrictDTO):
     id: Identifier
     scores: dict[Literal["fc", "lr", "gra", "pr"], float | None] = Field(default_factory=dict)
     reasons: dict[Literal["fc", "lr", "gra", "pr"], Reason] = Field(default_factory=dict)
     cache_key: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+    telemetry: EvaluationTelemetry | None = None
 
     @field_validator("scores", mode="before")
     @classmethod
@@ -134,10 +172,11 @@ class PredictionSet(StrictDTO):
 def provenance(settings) -> ScorerProvenance:
     from app.providers.speaking_asr import provider_identity
     from app.providers.speaking_llm import config_identity
-    from app.services.speaking_features import FEATURE_VERSION, feature_identity
+    from app.services.speaking_features import feature_identity
     from app.services.speaking_quality import quality_identity
 
     llm, asr = config_identity(settings), provider_identity(settings)
+    hybrid = settings.speaking_profile == "speaking_hybrid_v1"
     root = Path(__file__).resolve().parents[4]
     source = root / "backend/app"
     files = sorted(
@@ -146,8 +185,10 @@ def provenance(settings) -> ScorerProvenance:
             for pattern in (
                 "services/speaking*.py",
                 "providers/speaking*/*.py",
+                "providers/speech_analysis/*.py",
                 "domains/scoring/speaking_prompts.py",
                 "schemas/speaking*.py",
+                "schemas/speech_analysis.py",
                 "evaluation/speaking/*.py",
             )
             for path in source.glob(pattern)
@@ -181,16 +222,18 @@ def provenance(settings) -> ScorerProvenance:
         asr_provider=asr["provider"],
         asr_model=asr["model"],
         asr_version=asr["version"],
-        alignment_version="asr-word-timestamps-v1",
+        alignment_version="azure-absolute-ms-v1" if hybrid else "asr-word-timestamps-v1",
         normalizer_version=settings.speaking_normalizer_version,
         quality_version=settings.speaking_quality.version,
-        fluency_version=FEATURE_VERSION,
+        fluency_version=feature_identity(settings)["fluency"],
         pronunciation_provider=(
-            "alignment-acoustic-proxies"
+            "azure-speech"
+            if hybrid
+            else "alignment-acoustic-proxies"
             if settings.speaking_pronunciation_enabled
             else "unavailable"
         ),
-        pronunciation_version=settings.speaking_pronunciation.version,
+        pronunciation_version=asr["version"] if hybrid else settings.speaking_pronunciation.version,
         pipeline_config_hash=fingerprint(
             [
                 llm,

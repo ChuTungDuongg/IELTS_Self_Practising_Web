@@ -21,6 +21,8 @@ from app.services.speaking_ai import SpeakingAIService
 from app.services.speaking_scorer import (
     SpeakingScorer,
     build_attempt_evidence,
+    fluency_assessable,
+    pronunciation_assessable,
     safe_provider_call,
     speaking_overall,
 )
@@ -228,6 +230,12 @@ class SpeakingAIWorker:
                 snapshot = await self.transcript_service(session, actor).get(aid, created.run_id)
             if snapshot.status == "COMPLETED":
                 return snapshot
+            if (
+                self.settings.speaking_profile == "speaking_hybrid_v1"
+                and snapshot.status == "PARTIAL"
+                and all(r.status in {"READY", "PARTIAL"} and r.verbatim for r in snapshot.responses)
+            ):
+                return snapshot  # Lexical evidence remains usable with explicit uncertainty; FC/PR gated later.
             if snapshot.status in {"FAILED", "PARTIAL"}:
                 quality_codes = {
                     "NO_SPEECH",
@@ -417,6 +425,13 @@ class SpeakingAIWorker:
             async with self.sessions() as session, session.begin():
                 run = await self._locked(session, run_id, token)
                 run.summary_json = {
+                    "profile": getattr(self.settings, "speaking_profile", "legacy"),
+                    "external_audio_processing": getattr(
+                        self.settings, "speaking_profile", "legacy"
+                    )
+                    == "speaking_hybrid_v1",
+                    "fc_eligible": fluency_assessable(evidence),
+                    "pr_eligible": pronunciation_assessable(evidence),
                     "responses": [
                         {
                             "response_id": str(r.response_id),
@@ -427,9 +442,31 @@ class SpeakingAIWorker:
                             "mean_alignment_confidence": r.features.pronunciation.mean_alignment_confidence,
                             "pitch_range_hz": r.features.pronunciation.pitch_range_hz,
                             "limitations": r.features.pronunciation.limitations,
+                            "analysis_status": (
+                                "COMPLETE"
+                                if r.features.speech_analysis
+                                and all(a.status == "COMPLETE" for a in r.features.speech_analysis)
+                                else "PARTIAL"
+                            )
+                            if r.features.profile == "speaking_hybrid_v1"
+                            else None,
+                            "fc_eligible": r.features.fluency.temporal_eligible,
+                            "pr_eligible": r.features.pronunciation.band_eligible,
+                            "speech_usage": {
+                                "attempted_calls": sum(
+                                    a.usage.attempted_calls for a in r.features.speech_analysis
+                                ),
+                                "submitted_audio_ms": sum(
+                                    a.usage.submitted_audio_ms for a in r.features.speech_analysis
+                                ),
+                                "billing": "UNKNOWN",
+                                "latency_ms": sum(
+                                    a.latency_ms or 0 for a in r.features.speech_analysis
+                                ),
+                            },
                         }
                         for r in evidence.responses
-                    ]
+                    ],
                 }
             await scorer.provider.ensure_ready()
 

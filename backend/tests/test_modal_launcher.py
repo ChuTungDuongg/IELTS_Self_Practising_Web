@@ -270,3 +270,97 @@ def test_openai_check_needs_no_proxy_credentials_and_starts_no_service(
     output = capsys.readouterr().out
     assert "openai" in output.lower()
     assert "fictional-local-openai-key" not in output
+
+
+def setup_hybrid_launcher(monkeypatch, tmp_path, **changes):
+    import hashlib
+
+    launcher, config, calls = setup_openai_launcher(
+        monkeypatch,
+        tmp_path,
+        **{
+            "speaking_azure_key": "fictional-azure-key",
+            "speaking_azure_region": "southeastasia",
+            **changes,
+        },
+    )
+    model = tmp_path / "silero.onnx"
+    model.write_bytes(b"fictional-pinned-model")
+    monkeypatch.setattr(
+        launcher, "VAD_SHA256", hashlib.sha256(model.read_bytes()).hexdigest(), raising=False
+    )
+    config.write_text(
+        config.read_text()
+        + "IELTS_WEB_SPEAKING_PROFILE=speaking_hybrid_v1\n"
+        + f"IELTS_WEB_SPEAKING_VAD_MODEL_PATH={model.as_posix()}\n"
+    )
+    return launcher, config, calls, model
+
+
+def test_hybrid_default_launch_shares_azure_and_uses_openai_without_gpu_proxy(
+    monkeypatch, tmp_path, capsys
+):
+    launcher, config, calls, model = setup_hybrid_launcher(monkeypatch, tmp_path)
+    monkeypatch.setenv("IELTS_WEB_SPEAKING_AI_PROVIDER", "vllm")
+    assert launcher.main(["--config", str(config)]) == 0
+    assert len(calls) == 1
+    environment = calls[0][1]["env"]
+    assert environment["IELTS_WEB_SPEAKING_PROFILE"] == "speaking_hybrid_v1"
+    assert environment["IELTS_WEB_AI_PROVIDER"] == "openai"
+    assert environment["IELTS_WEB_SPEAKING_AI_PROVIDER"] == "openai"
+    assert environment["SPEAKING_AI_PROVIDER"] == "openai"
+    assert environment["SPEAKING_AZURE_KEY"] == "fictional-azure-key"
+    assert environment["SPEAKING_AZURE_REGION"] == "southeastasia"
+    assert environment["SPEAKING_AZURE_PROSODY"] == "true"
+    assert environment["IELTS_WEB_SPEAKING_VAD_MODEL_PATH"] == str(model.resolve())
+    assert environment["IELTS_WEB_CHART_SPECIALIST_ENABLED"] == "false"
+    assert not environment.get("AI_WRITING_MODAL_SECRET")
+    output = capsys.readouterr()
+    assert "fictional-azure-key" not in output.out + output.err
+
+
+def test_hybrid_missing_azure_fails_offline_without_attempting_a_service(
+    monkeypatch, tmp_path, capsys
+):
+    launcher, config, calls, _ = setup_hybrid_launcher(
+        monkeypatch, tmp_path, speaking_azure_region=""
+    )
+    assert launcher.main(["--config", str(config), "--check"]) == 1
+    assert calls == []
+    assert "SPEAKING_AZURE_KEY and SPEAKING_AZURE_REGION" in capsys.readouterr().err
+
+
+def test_hybrid_rejects_modified_vad_asset_before_launch(monkeypatch, tmp_path, capsys):
+    launcher, config, calls, model = setup_hybrid_launcher(monkeypatch, tmp_path)
+    model.write_bytes(b"modified-model")
+    assert launcher.main(["--config", str(config)]) == 1
+    assert calls == []
+    assert "checksum" in capsys.readouterr().err.lower()
+
+
+def test_hybrid_explicit_no_asr_does_not_require_azure_or_model(monkeypatch, tmp_path):
+    launcher, config, calls, model = setup_hybrid_launcher(
+        monkeypatch, tmp_path, speaking_azure_region=""
+    )
+    model.unlink()
+    assert launcher.main(["--config", str(config), "--no-asr"]) == 0
+    assert calls[0][1]["env"]["IELTS_WEB_SPEAKING_ASR_ENABLED"] == "false"
+
+
+def test_explicit_legacy_profile_overrides_local_hybrid_selection(monkeypatch, tmp_path):
+    launcher, config, calls, _ = setup_hybrid_launcher(monkeypatch, tmp_path)
+    assert (
+        launcher.main(
+            [
+                "--config",
+                str(config),
+                "--speaking-profile",
+                "legacy",
+                "--provider",
+                "openai",
+                "--no-asr",
+            ]
+        )
+        == 0
+    )
+    assert calls[0][1]["env"]["IELTS_WEB_SPEAKING_PROFILE"] == "legacy"

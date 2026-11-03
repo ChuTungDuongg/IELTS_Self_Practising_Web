@@ -5,11 +5,20 @@ import hashlib
 import json
 import tempfile
 from pathlib import Path
+from time import perf_counter
 from uuid import NAMESPACE_URL, uuid5
 
 from app.core.exceptions import AppError
 from app.evaluation.speaking.manifest import BenchmarkInputError, load_predictions
-from app.evaluation.speaking.models import Prediction, PredictionSet, Reason, provenance
+from app.evaluation.speaking.models import (
+    EvaluationTelemetry,
+    InferenceSample,
+    Prediction,
+    PredictionSet,
+    Reason,
+    SpeechEvaluationTelemetry,
+    provenance,
+)
 from app.evaluation.speaking.report import atomic_write
 from app.schemas.speaking_ai import ASRResult
 from app.services.speaking_audio import (
@@ -45,7 +54,7 @@ def input_key(sample, root, identity):
     return fingerprint([sample.model_dump(mode="json"), sources, identity.model_dump()])
 
 
-async def load_evidence(sample, root, settings):
+async def load_evidence(sample, root, settings, *, on_speech_usage=None):
     from app.providers.speaking_asr import create_provider, provider_identity
 
     rows = []
@@ -97,8 +106,34 @@ async def load_evidence(sample, root, settings):
             )
             if not quality.assessable or quality.state != "AUDIO_OK":
                 raise AppError("SPEAKING_AUDIO_UNASSESSABLE", "Audio unavailable for assessment.")
-            asr = asr or create_provider(settings)
-            transcript = ASRResult.model_validate(await asr.transcribe(audio))
+            speech_analysis = None
+            if settings.speaking_profile == "speaking_hybrid_v1":
+                from app.services.speaking_hybrid import analysis_to_asr, analyze_response
+
+                if not settings.speaking_asr_enabled:
+                    raise AppError(
+                        "SPEAKING_ASR_UNAVAILABLE", "Transcription is not configured.", 503
+                    )
+                speech_analysis = await analyze_response(audio, settings)
+                if on_speech_usage:
+                    await on_speech_usage(
+                        {
+                            "attempted_calls": sum(
+                                r.usage.attempted_calls for r in speech_analysis
+                            ),
+                            "failed_calls": sum(r.usage.failed_calls for r in speech_analysis),
+                            "submitted_audio_ms": sum(
+                                r.usage.submitted_audio_ms for r in speech_analysis
+                            ),
+                            "latency_ms": sum(r.latency_ms for r in speech_analysis)
+                            if all(r.latency_ms is not None for r in speech_analysis)
+                            else None,
+                        }
+                    )
+                transcript = analysis_to_asr(speech_analysis, audio)
+            else:
+                asr = asr or create_provider(settings)
+                transcript = ASRResult.model_validate(await asr.transcribe(audio))
             if any(
                 getattr(transcript, key) != expected_asr[key]
                 for key in ("provider", "model", "version")
@@ -107,7 +142,11 @@ async def load_evidence(sample, root, settings):
             if not transcript.text.strip():
                 raise AppError("SPEAKING_AUDIO_UNASSESSABLE", "Audio unavailable for assessment.")
             features = await build_feature_bundle(
-                audio, transcript, settings, part_number=response.part_number
+                audio,
+                transcript,
+                settings,
+                part_number=response.part_number,
+                **({"speech_analysis": speech_analysis} if speech_analysis is not None else {}),
             )
             rows.append(
                 {
@@ -180,6 +219,7 @@ async def evaluate_samples(
     for sample in sorted(samples, key=lambda s: s.id):
         row = Prediction(id=sample.id)
         results.append(row)
+        started = perf_counter()
         try:
             row.cache_key = await asyncio.to_thread(input_key, sample, root, identity)
             existing = saved.get(sample.id)
@@ -187,7 +227,51 @@ async def evaluate_samples(
                 results[-1] = existing
                 persist()
                 continue
-            evidence = await loader(sample, root, settings)
+            if (
+                existing
+                and existing.cache_key == row.cache_key
+                and settings.speaking_profile == "speaking_hybrid_v1"
+                and existing.telemetry
+                and (
+                    existing.telemetry.speech_analysis_started
+                    or existing.telemetry.speech
+                    and existing.telemetry.speech.attempted_calls
+                )
+            ):
+                # CLI checkpoints must not rebill audio just because a later rubric call failed.
+                # An operator may reconcile and explicitly choose a new output/run if needed.
+                results[-1] = existing
+                persist()
+                continue
+            inference_input = InferenceSample(id=sample.id, responses=sample.responses)
+            row.telemetry = EvaluationTelemetry()
+            if settings.speaking_profile == "speaking_hybrid_v1":
+                row.telemetry.speech_analysis_started = True
+                persist()  # Durable before any potentially billable audio leaves this process.
+
+            async def observe_speech(usage, current=row):
+                incoming = SpeechEvaluationTelemetry.model_validate(usage)
+                existing = current.telemetry.speech
+                current.telemetry.speech = (
+                    incoming
+                    if existing is None
+                    else SpeechEvaluationTelemetry(
+                        attempted_calls=existing.attempted_calls + incoming.attempted_calls,
+                        failed_calls=existing.failed_calls + incoming.failed_calls,
+                        submitted_audio_ms=existing.submitted_audio_ms
+                        + incoming.submitted_audio_ms,
+                        latency_ms=existing.latency_ms + incoming.latency_ms
+                        if existing.latency_ms is not None and incoming.latency_ms is not None
+                        else None,
+                    )
+                )
+
+            evidence = await loader(
+                inference_input,
+                root,
+                settings,
+                **({"on_speech_usage": observe_speech} if loader is load_evidence else {}),
+            )
             if scorer is None:
                 from app.providers.speaking_llm import create_provider
 
@@ -202,8 +286,21 @@ async def evaluate_samples(
                 current.scores[result.criterion] = result.score
                 persist()  # Production score-first callback: feedback cannot precede this ACK.
 
+            async def observe(record, current=row):
+                telemetry = current.telemetry
+                telemetry.provider_calls += 1
+                attempts = record.get("provider_attempts", ())
+                telemetry.provider_attempts += max(1, len(attempts))
+                telemetry.provider_errors += int(record.get("provider_error_code") is not None)
+                from app.providers.writing_llm.base import safe_completion_usage
+
+                for key, value in safe_completion_usage(record.get("usage")).items():
+                    telemetry.usage[key] = telemetry.usage.get(key, 0) + value
+
             for trait in ("fc", "lr", "gra", "pr"):
-                result = await scorer.score_criterion(trait, evidence, checkpoint)
+                result = await scorer.score_criterion(
+                    trait, evidence, checkpoint, on_provider_call=observe
+                )
                 row.scores[trait] = result.score
                 if result.score is None:
                     row.reasons[trait] = result.error_code or "BENCHMARK_PROCESSING_FAILED"
@@ -214,4 +311,7 @@ async def evaluate_samples(
                 if row.scores.get(trait) is None:
                     row.scores[trait], row.reasons[trait] = None, code
             persist()
+        finally:
+            if row.telemetry is not None:
+                row.telemetry.latency_ms = (perf_counter() - started) * 1000
     return persist()

@@ -1,5 +1,88 @@
 # Chạy BandPilot trên Modal
 
+<a id="speaking-hybrid-cpu"></a>
+
+## CPU speech preset `speaking_hybrid_v1` (opt-in)
+
+Bổ sung working tree trên `3cf5c9a`: `IELTS_WEB_SPEAKING_PROFILE` chọn graph
+speech `legacy` (default) hoặc `speaking_hybrid_v1`. Marker được frozen trong
+image, backend startup đặt `SPEAKING_PROFILE` theo marker này. Hybrid không
+import hoặc include dịch vụ faster-whisper T4 và không tải Whisper/torch/CUDA.
+Writing/Speaking **grader** vẫn do provider hiện có chọn riêng: hybrid speech
+không tự đổi vLLM thành OpenAI. Toàn graph chỉ CPU khi cả hai graders chọn
+OpenAI và chart specialist tắt. Legacy GPU entry points vẫn nguyên và có thể
+chọn lại; không tự chuyển production.
+
+Web image hybrid thêm Azure SDK `1.53.0`, `onnxruntime==1.23.2`, `numpy==2.2.6`
+và `libasound2`, `libssl3`, `ca-certificates`, `ffmpeg`. Azure key/region/locale/
+prosody/deadline/concurrency đi qua backend Secret; shell `SPEAKING_AZURE_*`
+overrides được chuyển bằng ephemeral Secret, không image/Next.js. Không copy
+`backend/.env`. Named config Secret đã chọn phải có key/provider settings trước
+chạy entry point trực tiếp; entry point không tự đọc dotenv local.
+
+Chuẩn bị VAD bằng [setup script](../scripts/setup_speaking_vad.py), rồi chỉ định
+**một** binary qua `IELTS_WEB_SPEAKING_VAD_MODEL_PATH`. Build kiểm pinned checksum
+`597d30b3ec076608d059477bb14cfeffdf951bf5cae370d38f65d33bbfe82004`, copy file vào
+`/opt/speaking/silero-v6.0.onnx` và backend startup đặt
+`SPEAKING_VAD_MODEL_PATH`/`SPEAKING_VAD_MODEL_SHA256`. Không copy cả `storage/`,
+không commit binary. Nếu không cung cấp asset thì VAD unavailable và FC có thể
+không đủ điều kiện; không download khi có yêu cầu hoặc tự fallback timing proxy.
+
+Ví dụ lựa chọn shell **chỉ cho staging đã cấu hình/được phép**, từ repository
+root; đây là hướng dẫn, chưa chạy serve/deploy trong lần triển khai này:
+
+```powershell
+$env:IELTS_WEB_SPEAKING_PROFILE = "speaking_hybrid_v1"
+$env:IELTS_WEB_SPEAKING_VAD_MODEL_PATH = (Resolve-Path storage/models/silero-v6.0.onnx).Path
+$env:IELTS_WEB_AI_PROVIDER = "openai"
+$env:IELTS_WEB_SPEAKING_AI_PROVIDER = "openai"
+$env:IELTS_WEB_CHART_SPECIALIST_ENABLED = "false"
+$env:IELTS_WEB_SPEAKING_ASR_ENABLED = "true"
+# Chọn đúng isolated config Secret/Volumes/mode theo hướng dẫn bên dưới trước:
+modal serve deploy/modal/app.py
+```
+
+`IELTS_WEB_SPEAKING_ASR_ENABLED=false` vẫn tắt transcript jobs cả với hybrid.
+Không dùng `--no-asr` nếu muốn Azure transcript. Windows launcher hỗ trợ profile,
+kiểm credential presence và pinned VAD checksum trước khi gọi Modal.
+OpenAI policy/token limits và single-owner embedded PostgreSQL không
+đổi. CPU speech không làm topology Web có thể tăng replica an toàn.
+
+Image build và container startup chạy native-load probe
+`python -m deploy.modal.speaking_cpu`: import SDK/ONNX/NumPy, nạp ALSA/OpenSSL,
+tạo audio format/options CPU; không tạo recognizer, không key, không model
+download, không provider call. Probe này không chứng minh API access, VAD
+weights/session hoặc whole Web readiness. Local verification đã thực hiện:
+
+```powershell
+docker build --file deploy/modal/Dockerfile.speaking-hybrid-probe --tag bandpilot-speaking-hybrid-probe:local .
+docker run --rm --network none bandpilot-speaking-hybrid-probe:local
+```
+
+Probe riêng cho lifecycle FastAPI (không deploy): build cùng Dockerfile với
+`--target backend-startup --tag bandpilot-speaking-hybrid-backend-probe:local`.
+Chạy với `DATABASE_URL` trỏ **DB test trống đã migrate** có tên
+`ielts_hybrid_cpu_test`; script từ chối tên khác. Không copy `.env`, private
+recordings hoặc credential vào image. Đã chạy 2026-11-03: lifespan startup/shutdown,
+`/api/v1/health` và `/api/v1/ready` đạt, output `CPU_BACKEND_STARTUP_OK`, zero
+provider calls, không import torch/faster-whisper/ctranslate2. Speech thiếu key
+được báo chưa configured. Đây là xác minh backend CPU local; topology Web đầy đủ
+và Modal account/deployment thật vẫn **CONTAINER_UNVERIFIED**, Azure **LIVE_UNVERIFIED**.
+
+Cả build và network-disabled run đạt `CPU_NATIVE_PROBE_OK`,
+`provider_calls=0`, `gpu_required=false` trên Linux/amd64 Debian Bookworm,
+Python 3.12, Docker Engine 29.4.3. Chỉ dependency/native compatibility probe
+được xác minh; không build toàn Web image, không deploy Modal, không test Azure
+live hoặc đo latency/cost/throughput. **LIVE_UNVERIFIED**; Modal runtime đầy đủ
+vẫn **CONTAINER_UNVERIFIED**. Script/Dockerfile không chứa secrets.
+
+Rollback: dừng staging session hiện tại theo quy trình single-owner, đổi
+`IELTS_WEB_SPEAKING_PROFILE=legacy`, chọn lại ASR/provider config legacy đã kiểm
+và rebuild/restart. Không xóa transcript/history hoặc sửa điểm human. Muốn tạm
+tắt speech thay vì đổi profile, đặt speech enable flag false. Không dùng probe
+hoặc offline metrics để tự động triển khai/cutover. Xem
+[privacy/chi phí](ai-speaking.md) và [hợp đồng speech](speaking-transcription.md#speaking-hybrid-v1).
+
 ## One-command Windows staging with on-demand AI
 
 From the repository root, run:
@@ -8,7 +91,36 @@ From the repository root, run:
 .\start-modal.cmd
 ```
 
-That default command preserves the vLLM setup. For OpenAI Luna grading, use:
+Without a profile override, that command preserves the legacy vLLM setup.
+For CPU speech and OpenAI Luna, add these non-secret fields to `.env.modal`:
+
+```dotenv
+IELTS_WEB_SPEAKING_PROFILE=speaking_hybrid_v1
+IELTS_WEB_AI_PROVIDER=openai
+IELTS_WEB_SPEAKING_VAD_MODEL_PATH=storage/models/silero-v6.0.onnx
+```
+
+Keep `SPEAKING_AZURE_KEY` and `SPEAKING_AZURE_REGION` in `backend/.env`, alongside
+the existing OpenAI settings. Azure prosody defaults to true; its availability
+and additional charge must be checked for the chosen resource/locale. Prepare
+the pinned VAD file once, then use the usual launcher:
+
+```powershell
+python scripts/setup_speaking_vad.py storage/models/silero-v6.0.onnx
+.\start-modal.cmd --check
+.\start-modal.cmd
+```
+
+The launcher forwards the actual private Azure key via an ephemeral backend
+Secret, not a masked SecretStr or an image variable. It forwards the complete
+Speaking AI policy, checks the model checksum without loading native libraries
+locally, and requires no Modal GPU proxy in this configuration. Missing Azure
+settings or VAD assets stop startup with an actionable message; `--check` makes
+zero API calls and does not claim live readiness. `--speaking-profile legacy`
+overrides the local profile for rollback; explicitly choose the intended grader
+with `--provider vllm` or `--provider openai`.
+
+For OpenAI Luna grading with speech disabled, use:
 
 ```powershell
 .\start-modal.cmd --provider openai --no-asr --check

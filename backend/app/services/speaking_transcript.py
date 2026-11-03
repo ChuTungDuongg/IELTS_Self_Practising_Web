@@ -159,7 +159,7 @@ class SpeakingTranscriptService:
             )
             if current.get(rid) != source:
                 dto.status, dto.error_code = "FAILED", "TRANSCRIPT_SOURCE_CHANGED"
-            elif dto.status == "READY":
+            elif dto.status in {"READY", "PARTIAL"}:
                 transcripts = list(
                     await self.session.scalars(
                         select(SpeakingTranscript).where(

@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { LocaleProvider } from "@/lib/i18n/locale-provider";
 import { SpeakingTranscriptSession, SpeakingTranscriptResponse } from "@/features/speaking/speaking-transcript-panel";
 import * as api from "@/lib/api/speaking-transcript";
 import type { TranscriptRun } from "@/lib/api/speaking-transcript";
@@ -10,6 +11,7 @@ const run: TranscriptRun = { run_id: "11111111-1111-4111-8111-111111111111", att
   { response_id: "44444444-4444-4444-8444-444444444444", status: "FAILED", verbatim: null, clean: null, words: [], error_code: "TRANSCRIPT_GENERATION_FAILED", source_audio_fingerprint: "audio2" },
 ] };
 beforeEach(() => { vi.clearAllMocks(); vi.mocked(api.latestTranscriptRun).mockResolvedValue(null); vi.mocked(api.createTranscriptRun).mockResolvedValue({ run_id: run.run_id, cache_hit: false, existing_active: false }); vi.mocked(api.getTranscriptRun).mockResolvedValue(run); vi.mocked(api.watchTranscriptRun).mockReturnValue(vi.fn()); });
+afterEach(() => localStorage.clear());
 function view() { return render(<SpeakingTranscriptSession attemptId={run.attempt_id}><section aria-label="Question 1"><SpeakingTranscriptResponse responseId={run.responses[0].response_id} /></section><section aria-label="Question 2"><SpeakingTranscriptResponse responseId={run.responses[1].response_id} /></section></SpeakingTranscriptSession>); }
 it("generates read-only per-question transcripts and preserves one successful response", async () => {
   view(); const generate = screen.getByRole("button", { name: "Generate Transcript" });
@@ -19,6 +21,13 @@ it("generates read-only per-question transcripts and preserves one successful re
   expect(within(screen.getByRole("region", { name: "Question 2" })).getByText("Failed")).toBeInTheDocument();
   expect(screen.queryByRole("textbox")).toBeNull(); expect(screen.queryByText("Full Transcript")).toBeNull(); expect(screen.queryByText("Grade with AI")).toBeNull();
   expect(api.createTranscriptRun).toHaveBeenCalledExactlyOnceWith(run.attempt_id);
+});
+it.each(["en", "vi"] as const)("keeps partial lexical text visible with a localized %s limitation", async locale => {
+  localStorage.setItem("ielts-locale", locale);
+  vi.mocked(api.latestTranscriptRun).mockResolvedValue({ ...run, responses: [{ ...run.responses[0], status: "PARTIAL" as TranscriptRun["responses"][number]["status"], verbatim: "Fictional partial lexical transcript", clean: null }] });
+  render(<LocaleProvider><SpeakingTranscriptSession attemptId={run.attempt_id}><SpeakingTranscriptResponse responseId={run.responses[0].response_id} /></SpeakingTranscriptSession></LocaleProvider>);
+  expect(await screen.findByText("Fictional partial lexical transcript")).toBeInTheDocument();
+  expect(screen.getByText(locale === "en" ? /Partial transcript; some speech could not be transcribed/ : /Bản chép lời chưa đầy đủ/)).toBeInTheDocument(); expect(screen.queryByRole("textbox")).toBeNull();
 });
 it("restores an active run on reload and disconnects only observation on unmount", async () => {
   const active = { ...run, status: "RUNNING", responses: run.responses.map((r) => ({ ...r, status: "PROCESSING" })) } as TranscriptRun;

@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { watchTranscriptRun } from "@/lib/api/speaking-transcript";
+import { transcriptRunSchema, watchTranscriptRun } from "@/lib/api/speaking-transcript";
 import { apiRequest } from "@/lib/api/client";
 vi.mock("@/lib/api/client", () => ({ API_BASE_URL: "https://fixture.test/api/v1", apiRequest: vi.fn() }));
 class FakeSource {
@@ -11,6 +11,11 @@ class FakeSource {
   emit(sequence: number) { this.handlers["response.updated"]({ data: JSON.stringify({ sequence, event_type: "response.updated", payload: {} }) } as MessageEvent); }
 }
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); FakeSource.items = []; vi.clearAllMocks(); });
+it("accepts partial lexical responses without dropping available transcript text", () => {
+  const response = { response_id: "33333333-3333-4333-8333-333333333333", status: "PARTIAL", verbatim: "Fictional partial speech", clean: null, words: [], error_code: null, source_audio_fingerprint: "fictional" };
+  const parsed = transcriptRunSchema.parse({ run_id: "11111111-1111-4111-8111-111111111111", attempt_id: "22222222-2222-4222-8222-222222222222", cache_key: "fixture", status: "PARTIAL", last_sequence: 1, created_at: "now", responses: [response] });
+  expect(parsed.responses[0].status).toBe("PARTIAL"); expect(parsed.responses[0].verbatim).toBe("Fictional partial speech");
+});
 it("ignores duplicate/older events, reconciles JSON and resumes observation without cancelling work", async () => {
   vi.useFakeTimers(); vi.stubGlobal("EventSource", FakeSource);
   const snapshot = vi.fn(); const event = vi.fn();

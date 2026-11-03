@@ -33,7 +33,7 @@ export function SpeakingTranscriptResponse({ responseId }: { responseId: string 
   const { t } = useTranslation(); const run = useContext(TranscriptContext); const response = run?.responses.find((r) => r.response_id === responseId);
   const status = response?.status ?? "WAITING";
   return <section className="speaking-transcript" aria-label={t("speakingTranscript.title")}><h3>{t("speakingTranscript.title")}</h3>
-    <p role="status">{t(status === "READY" ? "speakingTranscript.ready" : status === "FAILED" ? "speakingTranscript.failed" : status === "PROCESSING" ? "speakingTranscript.processing" : "speakingTranscript.waiting")}</p>
-    {status === "READY" ? <p className="speaking-transcript-text">{response?.verbatim}</p> : null}
+    <p role="status">{t(status === "READY" ? "speakingTranscript.ready" : status === "PARTIAL" ? "speakingTranscript.partial" : status === "FAILED" ? "speakingTranscript.failed" : status === "PROCESSING" ? "speakingTranscript.processing" : "speakingTranscript.waiting")}</p>
+    {status === "READY" || status === "PARTIAL" ? <p className="speaking-transcript-text">{response?.verbatim}</p> : null}
   </section>;
 }

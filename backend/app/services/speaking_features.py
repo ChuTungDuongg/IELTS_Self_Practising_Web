@@ -6,6 +6,7 @@ from statistics import mean, median
 
 from app.schemas.speaking_ai import ASRResult, FluencyEvidence, SpeakingFeatureBundle, WordTiming
 from app.services.speaking_audio import NormalizedAudio, await_audio_thread, fingerprint
+from app.services.speaking_hybrid_features import extract_hybrid_fluency
 from app.services.speaking_quality import assess_audio_quality
 
 FEATURE_VERSION = "fluency-v1"
@@ -31,6 +32,21 @@ def validate_alignment(audio, words):
 
 
 def feature_identity(settings):
+    if settings.speaking_profile == "speaking_hybrid_v1":
+        from app.services.speaking_vad import VAD_VERSION
+
+        return {
+            "profile": "speaking_hybrid_v1",
+            "fluency": "fluency-v2",
+            "evidence": "evidence-v2",
+            "vad": VAD_VERSION,
+            "vad_checksum": settings.speaking_vad_model_sha256,
+            "pause_ms": 250,
+            "long_pause_ms": 2000,
+            "eligibility": "coverage-v1",
+            "projection": "stratified-pr-300-v1",
+            "feedback": "validated-audio-ids-v1",
+        }
     return {
         "fluency": FEATURE_VERSION,
         "pause_seconds": PAUSE_SECONDS,
@@ -122,13 +138,44 @@ def extract_fluency_features(audio, verbatim_transcript, words, *, part_number=N
     return FluencyEvidence(**data)
 
 
-async def build_feature_bundle(audio, transcript: ASRResult, settings, *, part_number=None):
+async def build_feature_bundle(
+    audio, transcript: ASRResult, settings, *, part_number=None, speech_analysis=None
+):
     from app.providers.speaking_pronunciation import create_provider
 
     transcript = ASRResult.model_validate(transcript)
     quality = await await_audio_thread(
         asyncio.to_thread(assess_audio_quality, audio, settings.speaking_quality, asr_usable=True)
     )
+    if settings.speaking_profile == "speaking_hybrid_v1":
+        from app.services.speaking_hybrid_features import pronunciation_from_analysis
+        from app.services.speaking_vad import measure_vad_async
+
+        if speech_analysis is None:
+            raise ValueError("Hybrid features require the shared speech analysis result")
+        vad = await measure_vad_async(audio, settings)
+        fluency = extract_hybrid_fluency(
+            audio, transcript.text, transcript.words, vad, part_number=part_number
+        )
+        return SpeakingFeatureBundle(
+            version="evidence-v2",
+            profile="speaking_hybrid_v1",
+            timeline=list(audio.timeline),
+            speech_analysis=speech_analysis,
+            source_audio_fingerprint=audio.source_audio_fingerprint,
+            quality=quality,
+            fluency=fluency,
+            pronunciation=pronunciation_from_analysis(audio, speech_analysis),
+            cache_key=fingerprint(
+                [
+                    audio.cache_key,
+                    feature_identity(settings),
+                    transcript.model_dump(),
+                    [r.model_dump(mode="json") for r in speech_analysis],
+                    part_number,
+                ]
+            ),
+        )
     fluency = extract_fluency_features(
         audio, transcript.text, transcript.words, part_number=part_number
     )

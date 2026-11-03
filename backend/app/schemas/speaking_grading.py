@@ -11,6 +11,8 @@ from app.schemas.speaking_ai import (
     SpeakingFeatureBundle,
     WordTiming,
 )
+from app.schemas.speaking_timeline import FeedbackAudioSpan
+from app.schemas.speech_analysis import SpeechObservation, SpeechUncertainty, SpeechWord
 
 SpeakingCriterion = Literal["fc", "lr", "gra", "pr"]
 CRITERIA: tuple[SpeakingCriterion, ...] = ("fc", "lr", "gra", "pr")
@@ -34,10 +36,23 @@ class CriterionBandScore(StrictDTO):
 ShortFeedback = Annotated[str, Field(min_length=1, max_length=300)]
 
 
-class CriterionFeedback(StrictDTO):
+class FeedbackCommentInput(StrictDTO):
+    text: str = Field(min_length=1, max_length=1200)
+    evidence_ids: list[Annotated[str, Field(min_length=1, max_length=200)]] = Field(
+        default_factory=list, max_length=20
+    )
+    scope: Literal["LOCAL", "OVERVIEW"] = "LOCAL"
+
+
+class FeedbackComment(FeedbackCommentInput):
+    audio_span: FeedbackAudioSpan | None = None
+
+
+class CriterionFeedbackInput(StrictDTO):
     feedback: str = Field(min_length=1, max_length=1200)
     strengths: list[ShortFeedback] = Field(max_length=6)
     improvements: list[ShortFeedback] = Field(max_length=6)
+    local_comments: list[FeedbackCommentInput] = Field(default_factory=list, max_length=20)
 
     @field_validator("feedback")
     @classmethod
@@ -45,6 +60,10 @@ class CriterionFeedback(StrictDTO):
         if not value.strip():
             raise ValueError("Empty feedback")
         return value
+
+
+class CriterionFeedback(CriterionFeedbackInput):
+    local_comments: list[FeedbackComment] = Field(default_factory=list, max_length=20)
 
 
 class SpeakingResponseEvidence(StrictDTO):
@@ -112,6 +131,29 @@ class GradingPronunciationEvidence(StrictDTO):
     pitch_range_hz: float | None = Field(ge=0, le=320, allow_inf_nan=False)
     intelligibility_proxy: float | None = Field(ge=0, le=1, allow_inf_nan=False)
     limitations: list[str] = Field(max_length=20)
+    provider: str | None = None
+    version: str | None = None
+    observations: list[SpeechObservation] = Field(default_factory=list, max_length=30000)
+    evidence_coverage: float | None = Field(default=None, ge=0, le=1)
+    assessed_speech_ms: int | None = Field(default=None, ge=0)
+    band_eligible: bool | None = None
+    observation_count: int | None = Field(default=None, ge=0)
+    observations_selected: int | None = Field(default=None, ge=0)
+
+
+class GradingHybridPronunciationEvidence(StrictDTO):
+    """Hybrid observations have no legacy proxy zeroes masquerading as measurements."""
+
+    status: Literal["AVAILABLE", "LOW_EVIDENCE", "UNAVAILABLE"]
+    provider: str
+    version: str
+    observations: list[SpeechObservation] = Field(max_length=30000)
+    evidence_coverage: float | None = Field(default=None, ge=0, le=1)
+    assessed_speech_ms: int | None = Field(default=None, ge=0)
+    band_eligible: bool | None = None
+    observation_count: int = Field(ge=0)
+    observations_selected: int = Field(ge=0)
+    limitations: list[str] = Field(max_length=20)
 
 
 class CriterionResponseEvidence(StrictDTO):
@@ -129,7 +171,11 @@ class CriterionResponseEvidence(StrictDTO):
     )
     quality_state: QualityState | None = None
     fluency: FluencyEvidence | None = None
-    pronunciation: GradingPronunciationEvidence | None = None
+    pronunciation: GradingPronunciationEvidence | GradingHybridPronunciationEvidence | None = None
+    transcript_limitations: list[str] = Field(default_factory=list, max_length=30)
+    uncertain_word_ids: list[str] = Field(default_factory=list, max_length=10000)
+    recognized_words: list[SpeechWord] = Field(default_factory=list, max_length=10000)
+    uncertain_regions: list[SpeechUncertainty] = Field(default_factory=list, max_length=10000)
 
 
 class CriterionEvidence(StrictDTO):
@@ -150,6 +196,7 @@ class CriterionResult(StrictDTO):
             "SPEAKING_AI_INVALID_SCORE",
             "SPEAKING_AI_FEEDBACK_FAILED",
             "SPEAKING_PR_UNASSESSABLE",
+            "SPEAKING_FC_UNASSESSABLE",
             "SPEAKING_AUDIO_UNASSESSABLE",
         ]
         | None

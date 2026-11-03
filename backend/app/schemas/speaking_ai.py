@@ -6,6 +6,9 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
+from app.schemas.speaking_timeline import AudioSegmentMapping
+from app.schemas.speech_analysis import SpeechAnalysisResult, SpeechObservation
+
 
 class WordTiming(BaseModel):
     model_config = ConfigDict(extra="forbid", revalidate_instances="always")
@@ -42,7 +45,7 @@ class ASRResult(BaseModel):
 
 class TranscriptResponse(BaseModel):
     response_id: UUID
-    status: Literal["WAITING", "PROCESSING", "READY", "FAILED"]
+    status: Literal["WAITING", "PROCESSING", "READY", "PARTIAL", "FAILED"]
     verbatim: str | None = None
     clean: str | None = None
     words: list[WordTiming] = Field(default_factory=list)
@@ -162,6 +165,31 @@ class PronunciationConfig(BaseModel):
     minimum_pitch_correlation: float = Field(default=0.6, gt=0, le=1, allow_inf_nan=False)
 
 
+class FluencyEvent(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    evidence_id: str = Field(max_length=160)
+    kind: Literal[
+        "pause",
+        "leading_silence",
+        "trailing_silence",
+        "speech_run",
+        "filled_pause_candidate",
+        "repetition_candidate",
+        "repair_candidate",
+    ]
+    start_ms: int = Field(ge=0, le=1800000)
+    end_ms: int = Field(ge=0, le=1800000)
+    context: Literal["unknown", "phrase_boundary", "within_phrase"] = "unknown"
+    provenance: str = "silero-v6.0-onnx-cpu-v1"
+    token: str | None = None
+
+    @model_validator(mode="after")
+    def ordered(self):
+        if self.end_ms < self.start_ms:
+            raise ValueError("Invalid event span")
+        return self
+
+
 class FluencyEvidence(BaseModel):
     model_config = ConfigDict(extra="forbid")
     version: str = "fluency-v1"
@@ -184,12 +212,18 @@ class FluencyEvidence(BaseModel):
     long_pause_ratio: float | None = Field(default=None, ge=0, le=1, allow_inf_nan=False)
     average_turn_seconds: float | None = Field(default=None, ge=0, allow_inf_nan=False)
     part2_sustained_seconds: float | None = Field(default=None, ge=0, allow_inf_nan=False)
-    filled_pause_count: int = Field(ge=0)
+    filled_pause_count: int | None = Field(ge=0)
     token_repetition_count: int = Field(ge=0)
     phrase_repetition_count: int = Field(ge=0)
     false_start_count: int = Field(ge=0)
     self_correction_count: int = Field(ge=0)
     limitations: list[str] = Field(default_factory=list, max_length=20)
+    response_window_ms: int | None = Field(default=None, ge=0, le=1800000)
+    detected_speech_ms: int | None = Field(default=None, ge=0, le=1800000)
+    temporal_eligible: bool | None = None
+    vad_version: str | None = None
+    events: list[FluencyEvent] = Field(default_factory=list, max_length=10000)
+    speech_run_lengths_ms: list[int] = Field(default_factory=list, max_length=10000)
 
 
 class PronunciationEvidence(BaseModel):
@@ -219,6 +253,10 @@ class PronunciationEvidence(BaseModel):
     linguistic_stress: None = None
     listener_effort: None = None
     limitations: list[str] = Field(default_factory=list, max_length=20)
+    observations: list[SpeechObservation] = Field(default_factory=list, max_length=30000)
+    evidence_coverage: float | None = Field(default=None, ge=0, le=1)
+    assessed_speech_ms: int | None = Field(default=None, ge=0)
+    band_eligible: bool | None = None
 
 
 class SpeakingFeatureBundle(BaseModel):
@@ -229,3 +267,6 @@ class SpeakingFeatureBundle(BaseModel):
     quality: AudioQualityResult
     fluency: FluencyEvidence
     pronunciation: PronunciationEvidence
+    profile: Literal["legacy", "speaking_hybrid_v1"] = "legacy"
+    timeline: list[AudioSegmentMapping] = Field(default_factory=list, max_length=1000)
+    speech_analysis: list[SpeechAnalysisResult] = Field(default_factory=list, max_length=1000)
