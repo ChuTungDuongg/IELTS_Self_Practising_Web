@@ -1,5 +1,7 @@
 # Ma trận nghiệm thu và độ bao phủ tài liệu
 
+Bổ sung working tree trên HEAD `f950d30c`: profile Luna reasoned và TA ảnh được bao phủ bằng payload/workflow/cancellation/cache/Modal tests ngoại tuyến; xem [Writing](ai-writing.md#openai-task1-reasoned-policy) và [bản ghi lệnh/kết quả](superpowers/plans/2026-11-03-openai-task1-policy.md#verification-record-working-tree-no-commitdeploy). Band quality, live A–D, chi phí/latency thật và PostgreSQL race/persistence vẫn **chưa xác minh**. Không dùng confidence model hoặc smoke lịch sử để lấp các khoảng trống này.
+
 > Mục đích và phạm vi: Đối chiếu các trục nghiệp vụ/môi trường chạy; ghi rõ giới hạn Partial/Not verified.
 > Đối chiếu mã nguồn tại `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`. Đây là kiểm tra tĩnh; không xác nhận trạng thái triển khai đang chạy.
 

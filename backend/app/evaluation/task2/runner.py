@@ -13,6 +13,7 @@ from app.evaluation.writing import checkpoints
 from app.evaluation.writing.metrics import overall_score
 from app.evaluation.writing.runtime import CountedProvider, reconciled_usage
 from app.providers.writing_llm import create_provider, provider_identity
+from app.providers.writing_llm.openai import output_identity
 from app.services.mts_writing import MTSWritingScoringService
 
 
@@ -60,6 +61,7 @@ def configuration(settings: Settings, max_concurrent_llm_requests=None):
         request_timeout_seconds=settings.ai_writing_request_timeout_seconds,
         startup_timeout_seconds=settings.ai_writing_startup_timeout_seconds,
         implementation_hash=implementation_hash(),
+        openai_inference=output_identity(settings) if provider == "openai" else None,
     )
 
 
@@ -147,7 +149,13 @@ async def run_benchmark(
         expected = configuration(settings, config.max_concurrent_llm_requests)
         if any(
             getattr(expected, field) != getattr(config, field)
-            for field in ("provider", "model", "endpoint_hash", "prompt_version")
+            for field in (
+                "provider",
+                "model",
+                "endpoint_hash",
+                "prompt_version",
+                "openai_inference",
+            )
         ):
             raise ValueError("BENCHMARK_RUNTIME_IDENTITY_MISMATCH")
 

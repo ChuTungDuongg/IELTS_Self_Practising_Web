@@ -319,6 +319,7 @@ AssessmentStage = Literal[
     "scoring",
     "feedback",
     "visual_grounding",
+    "visual_reconciliation",
     "derived_facts",
     "claim_extraction",
     "claim_verification",

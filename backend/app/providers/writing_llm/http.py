@@ -42,10 +42,18 @@ def api_base_url(value: str) -> str:
 
 
 class ChatCompletionHTTP:
-    def __init__(self, base_url: str, headers: dict[str, str], timeout: float) -> None:
+    def __init__(
+        self,
+        base_url: str,
+        headers: dict[str, str],
+        timeout: float,
+        *,
+        openai_semantics: bool = False,
+    ) -> None:
         self.base_url = api_base_url(base_url)
         self.headers = headers
         self.timeout = timeout
+        self.openai_semantics = openai_semantics
 
     async def _json_request(
         self, method: str, path: str, budget_seconds: float, body: dict[str, Any] | None = None
@@ -217,6 +225,14 @@ class ChatCompletionHTTP:
             choice = data["choices"][0]
             finish = safe_finish_reason(choice.get("finish_reason"))
             logger.info("AI provider completion: finish_reason=%s", finish)
+            if (
+                self.openai_semantics
+                and isinstance(choice.get("message"), dict)
+                and choice["message"].get("refusal")
+            ):
+                raise ProviderFailure("AI_PROVIDER_BAD_RESPONSE", reason="PROVIDER_REFUSAL")
+            if self.openai_semantics and finish == "content_filter":
+                raise ProviderFailure("AI_PROVIDER_BAD_RESPONSE", reason="PROVIDER_CONTENT_FILTER")
             # Usage is safe metadata even when output was truncated. Preserve it
             # for stage/attempt diagnostics without retaining incomplete content.
             try:

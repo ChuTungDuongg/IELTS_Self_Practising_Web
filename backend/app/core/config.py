@@ -3,10 +3,21 @@ from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
 
-from pydantic import Field, SecretStr, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.schemas.speaking_ai import AudioQualityConfig, PronunciationConfig
+
+
+class OpenAIStageOverride(BaseModel):
+    """Only explicit inference policy fields are accepted in environment JSON."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    reasoning_effort: Literal["none", "low", "medium", "high", "xhigh", "max"] | None = None
+    total_completion_tokens: int | None = Field(default=None, ge=128, le=32768)
+    timeout_seconds: float | None = Field(default=None, gt=0, le=900, allow_inf_nan=False)
+    image_detail: Literal["auto", "low", "high", "original"] | None = None
 
 
 class Settings(BaseSettings):
@@ -104,7 +115,25 @@ class Settings(BaseSettings):
     ai_writing_openai_api_key: str = Field(default="", repr=False)
     ai_writing_openai_model: str = "gpt-6-luna"
     ai_writing_openai_base_url: str = "https://api.openai.com/v1"
-    ai_writing_openai_max_output_tokens: int = Field(default=4096, ge=128, le=32768)
+    ai_writing_openai_profile: Literal["openai_task1_reasoned_v1"] = "openai_task1_reasoned_v1"
+    ai_writing_openai_reasoning_effort: Literal["none", "low", "medium", "high", "xhigh", "max"] = (
+        "low"
+    )
+    ai_writing_openai_image_detail: Literal["auto", "low", "high", "original"] = "high"
+    ai_writing_openai_low_completion_tokens: int = Field(default=8192, ge=128, le=32768)
+    ai_writing_openai_medium_completion_tokens: int = Field(default=16384, ge=128, le=32768)
+    ai_writing_openai_repair_completion_tokens: int = Field(default=32768, ge=128, le=32768)
+    # Explicit safety cap. Incompatible profile budgets fail at OpenAI startup;
+    # old 4096 configurations require an intentional budget migration.
+    ai_writing_openai_max_output_tokens: int = Field(default=32768, ge=128, le=32768)
+    ai_writing_openai_task1_image_assessment: bool = True
+    ai_writing_openai_stage_timeout_seconds: float = Field(
+        default=300, gt=0, le=900, allow_inf_nan=False
+    )
+    ai_writing_openai_run_timeout_seconds: float = Field(
+        default=1800, gt=0, le=7200, allow_inf_nan=False
+    )
+    ai_writing_openai_stage_overrides: dict[str, OpenAIStageOverride] = Field(default_factory=dict)
     ai_writing_openai_max_concurrent_requests: int = Field(default=4, ge=1, le=32)
     ai_writing_openai_max_queued_requests: int = Field(default=16, ge=0, le=256)
     ai_writing_openai_readiness_retries: int = Field(default=2, ge=0, le=3)

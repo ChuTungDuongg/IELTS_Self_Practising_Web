@@ -297,18 +297,41 @@ def test_modal_ai_overrides_and_asr_remain_independent(monkeypatch):
 
     monkeypatch.setenv("AI_WRITING_PROVIDER", "vllm")
     monkeypatch.setenv("SPEAKING_AI_PROVIDER", "openai")
-    monkeypatch.setenv("SPEAKING_AI_MODEL", "independent-model")
+    # The provider override has its own model; OpenAI capabilities are explicit.
+    monkeypatch.setenv("SPEAKING_AI_MODEL", "gpt-6-luna")
     monkeypatch.setenv("AI_WRITING_OPENAI_API_KEY", "fixture-key")
     monkeypatch.setenv("SPEAKING_ASR_ENABLED", "true")
     monkeypatch.setenv("SPEAKING_ASR_PROVIDER", "modal")
     module.configure_ai_environment(True, "bundled-model", "https://fictional.modal.run")
     settings = Settings(_env_file=None)
-    assert provider_identity(settings) == ("openai", "independent-model")
+    assert provider_identity(settings) == ("openai", "gpt-6-luna")
     assert isinstance(create_provider(settings).delegate, OpenAIProvider)
+    assert settings.ai_writing_provider == "vllm"
+    assert settings.ai_writing_vllm_model == "bundled-model"
     assert settings.speaking_asr_enabled and settings.speaking_asr_provider == "modal"
     module.configure_ai_environment(False, "bundled-model", None)
     disabled = Settings(_env_file=None)
     assert not disabled.speaking_ai_enabled and disabled.speaking_asr_enabled
+
+
+def test_unknown_speaking_model_is_preserved_then_rejected_without_provider_fallback(monkeypatch):
+    from app.core.config import Settings
+    from app.core.exceptions import AppError
+    from app.providers.speaking_llm import create_provider, provider_identity
+
+    monkeypatch.setenv("AI_WRITING_PROVIDER", "vllm")
+    monkeypatch.setenv("SPEAKING_AI_PROVIDER", "openai")
+    monkeypatch.setenv("SPEAKING_AI_MODEL", "unsupported-fixture-model")
+    monkeypatch.setenv("AI_WRITING_OPENAI_API_KEY", "fixture-key")
+    module.configure_ai_environment(True, "bundled-model", "https://fictional.modal.run")
+    settings = Settings(_env_file=None)
+
+    assert provider_identity(settings) == ("openai", "unsupported-fixture-model")
+    with pytest.raises(AppError) as error:
+        create_provider(settings)
+    assert error.value.code == "AI_PROVIDER_CONFIGURATION_ERROR"
+    assert settings.ai_writing_provider == "vllm"
+    assert settings.ai_writing_vllm_model == "bundled-model"
 
 
 def test_safe_config_probe_failure_never_blocks_web_startup(monkeypatch):

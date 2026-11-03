@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from collections.abc import Awaitable, Callable
 from typing import TypeVar
@@ -92,6 +93,7 @@ FEEDBACK_RECOVERABLE_REASONS = frozenset(
         "MALFORMED_COMPLETION_ENVELOPE",
         "OUTPUT_TOO_LARGE",
         "PROVIDER_FINISH_LENGTH",
+        "COMPLETION_BUDGET_EXHAUSTED",
     }
 )
 EVIDENCE_RECOVERABLE_REASONS = frozenset(
@@ -103,6 +105,7 @@ EVIDENCE_RECOVERABLE_REASONS = frozenset(
         "MALFORMED_COMPLETION_ENVELOPE",
         "OUTPUT_TOO_LARGE",
         "PROVIDER_FINISH_LENGTH",
+        "COMPLETION_BUDGET_EXHAUSTED",
     }
 )
 
@@ -114,6 +117,7 @@ class MTSWritingScoringService:
     """
 
     score_schema = CriterionBandScore
+    inference_task = "task2"
 
     def __init__(
         self,
@@ -140,7 +144,11 @@ class MTSWritingScoringService:
 
     @property
     def usage(self) -> list[dict[str, int]]:
-        return self.aux_usage + [item for trait in TRAITS for item in self.states[trait].usage]
+        return (
+            self.aux_usage
+            + self.provider.cancelled_usage
+            + [item for trait in TRAITS for item in self.states[trait].usage]
+        )
 
     @property
     def diagnostics(self) -> list[OutputDiagnostic]:
@@ -163,7 +171,19 @@ class MTSWritingScoringService:
             **self.latency.summary(),
             "llm_concurrency_limit": self.provider.limit,
             "peak_active_llm_requests": self.provider.peak_active,
+            **(
+                {"cancelled_provider_attempts": list(self.provider.cancelled_attempts)}
+                if self.provider.cancelled_attempts
+                else {}
+            ),
         }
+
+    async def _gather_assessment(self, *work):
+        try:
+            async with asyncio.timeout(self.provider.run_timeout_seconds):
+                return await gather_isolated(*work)
+        except TimeoutError:
+            raise ProviderFailure("AI_PROVIDER_TIMEOUT") from None
 
     @staticmethod
     def protected_trace(trace: TraceCallback) -> TraceCallback:
@@ -249,14 +269,22 @@ class MTSWritingScoringService:
                                 if schema is RawCriterionFeedbackOutput
                                 else schema
                             ).model_json_schema(mode="serialization"),
-                            options=CompletionOptions(max_tokens=max_tokens),
+                            options=CompletionOptions(
+                                max_tokens=max_tokens,
+                                task=self.inference_task,
+                                stage=stage,
+                                criterion=trait,
+                                attempt=repair + 1,
+                            ),
                         )
                     except ProviderFailure as exc:
-                        self.latency.completion(timing, exc.finish_reason, exc.usage)
+                        self.latency.completion(timing, exc.finish_reason, exc.usage, exc.attempts)
                         if exc.usage:
                             state.usage.append(exc.usage)
                         raise
-                    self.latency.completion(timing, completion.finish_reason, completion.usage)
+                    self.latency.completion(
+                        timing, completion.finish_reason, completion.usage, completion.attempts
+                    )
                 state.usage.append(completion.usage)
                 finish_reason = safe_finish_reason(completion.finish_reason)
                 logger.info(
@@ -393,6 +421,16 @@ class MTSWritingScoringService:
             except ProviderFailure as exc:
                 if exc.code not in {"INVALID_PROVIDER_OUTPUT", "AI_PROVIDER_BAD_RESPONSE"}:
                     raise
+                if exc.reason in {
+                    "COMPLETION_BUDGET_EXHAUSTED",
+                    "PROVIDER_REFUSAL",
+                    "PROVIDER_CONTENT_FILTER",
+                } or (
+                    self.provider.reasoned_inference
+                    and exc.reason
+                    in {"PROVIDER_FINISH_OTHER", "PROVIDER_FINISH_ABORT", "PROVIDER_FINISH_ERROR"}
+                ):
+                    raise
                 reason = exc.reason or "SCHEMA_VALIDATION"
                 finish_reason = exc.finish_reason or finish_reason
             diagnostic = OutputDiagnostic(
@@ -449,7 +487,7 @@ class MTSWritingScoringService:
                 assessor=self._assess_task2_criterion,
             )
 
-        await gather_isolated(*(run(trait) for trait in TRAITS))
+        await self._gather_assessment(*(run(trait) for trait in TRAITS))
         return self._task2_result()
 
     def _task2_result(self) -> AIWritingResult | None:

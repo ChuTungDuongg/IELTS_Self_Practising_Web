@@ -1,3 +1,4 @@
+import math
 from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol, TypedDict, get_args
 
@@ -34,13 +35,23 @@ class Completion:
     text: str
     usage: dict[str, int] = field(default_factory=dict)
     finish_reason: str = "stop"
+    attempts: tuple[dict[str, Any], ...] = field(default_factory=tuple)
 
 
 @dataclass(frozen=True, slots=True)
 class CompletionOptions:
-    """Provider-neutral output cap; omitted values keep the adapter's default."""
+    """Explicit inference purpose, independent from the contents of a prompt.
+
+    ``max_tokens`` remains the legacy visible/business output target for vLLM.
+    OpenAI's policy supplies a separate total reasoning + visible token budget.
+    ``attempt`` is the caller's bounded schema-repair attempt (1 or 2).
+    """
 
     max_tokens: int | None = None
+    task: Literal["task1", "task2", "speaking"] | None = None
+    stage: str = "default"
+    criterion: str | None = None
+    attempt: int = 1
 
 
 SafeFinishReason = Literal[
@@ -65,13 +76,21 @@ def safe_finish_reason(value: object) -> SafeFinishReason:
 def safe_completion_usage(value: object) -> dict[str, int]:
     if not isinstance(value, dict):
         return {}
-    return {
+    counts = {
         key: count
         for key, count in value.items()
-        if key in {"prompt_tokens", "completion_tokens", "total_tokens"}
+        if key in {"prompt_tokens", "completion_tokens", "total_tokens", "reasoning_tokens"}
         and type(count) is int
         and 0 <= count <= 10_000_000
     }
+    details = value.get("completion_tokens_details")
+    if isinstance(details, dict):
+        reasoning = details.get("reasoning_tokens")
+        if type(reasoning) is int and 0 <= reasoning <= 10_000_000:
+            counts["reasoning_tokens"] = reasoning
+    # Reasoning is a subset of completion_tokens, never an additional billable
+    # quantity. Missing counters stay missing; do not estimate provider usage.
+    return counts
 
 
 OutputFailureReason = Literal[
@@ -96,6 +115,9 @@ OutputFailureReason = Literal[
     "PROVIDER_FINISH_ABORT",
     "PROVIDER_FINISH_ERROR",
     "PROVIDER_FINISH_OTHER",
+    "PROVIDER_CONTENT_FILTER",
+    "PROVIDER_REFUSAL",
+    "COMPLETION_BUDGET_EXHAUSTED",
 ]
 
 # Non-fatal explanation diagnostics are distinct from repair/failure reasons.
@@ -146,6 +168,7 @@ class ProviderFailure(Exception):
         reason: OutputFailureReason | None = None,
         finish_reason: str | None = None,
         usage: dict | None = None,
+        attempts: tuple[dict[str, Any], ...] = (),
     ) -> None:
         self.code = code
         self.message = self.MESSAGES[code]
@@ -154,7 +177,81 @@ class ProviderFailure(Exception):
             safe_finish_reason(finish_reason) if finish_reason is not None else None
         )
         self.usage = safe_completion_usage(usage)
+        self.attempts = attempts
         super().__init__(self.message)
+
+
+def safe_inference_attempts(value: object) -> list[dict[str, Any]]:
+    """Revalidate optional provider audit metadata at persistence boundaries.
+
+    There are at most two HTTP attempts per logical OpenAI completion. Allowlist
+    policy identifiers and counters; arbitrary bodies, prompts and reasoning
+    fields are never retained even from a mutated/mock Completion object.
+    """
+    if not isinstance(value, (list, tuple)):
+        return []
+    enums = {
+        "profile": {"openai_task1_reasoned_v1"},
+        "model": {"gpt-6-luna"},
+        "task": {"default", "task1", "task2", "speaking"},
+        "stage": {
+            "default",
+            "visual_grounding",
+            "visual_reconciliation",
+            "claim_extraction",
+            "claim_verification",
+            "evidence",
+            "evidence_selection",
+            "relevance",
+            "relevance_classification",
+            "scoring",
+            "feedback",
+            "language_feedback",
+        },
+        "criterion": {"ta", "tr", "cc", "lr", "gra", "fc", "pr"},
+        "reasoning_effort": {"none", "low", "medium", "high", "xhigh", "max"},
+        "image_detail": {"auto", "low", "high", "original"},
+    }
+    numeric_ranges = {
+        "schema_attempt": (1, 2),
+        "attempt": (1, 2),
+        "completion_budget": (128, 32768),
+        "latency_ms": (0, 900_000),
+    }
+    safe = []
+    for item in value[:2]:
+        if not isinstance(item, dict):
+            continue
+        if any(
+            not isinstance(item.get(key), str) or item[key] not in enums[key]
+            for key in ("profile", "model", "task", "stage")
+        ):
+            continue
+        record = {}
+        for key, allowed in enums.items():
+            field_value = item.get(key)
+            if isinstance(field_value, str) and field_value in allowed:
+                record[key] = field_value
+            elif key in {"criterion", "image_detail"} and field_value is None:
+                record[key] = None
+        for key, (minimum, maximum) in numeric_ranges.items():
+            field_value = item.get(key)
+            if type(field_value) is int and minimum <= field_value <= maximum:
+                record[key] = field_value
+        timeout = item.get("timeout_seconds")
+        if type(timeout) in {int, float} and 0 < timeout <= 900 and math.isfinite(timeout):
+            record["timeout_seconds"] = timeout
+        finish = item.get("finish_reason")
+        record["finish_reason"] = safe_finish_reason(finish) if finish is not None else None
+        record["usage"] = safe_completion_usage(item.get("usage"))
+        code = item.get("failure_code")
+        if isinstance(code, str) and code in ProviderFailure.MESSAGES:
+            record["failure_code"] = code
+        reason = item.get("failure_reason")
+        if isinstance(reason, str) and reason in get_args(OutputFailureReason):
+            record["failure_reason"] = reason
+        safe.append(record)
+    return safe
 
 
 class LLMProvider(Protocol):

@@ -10,7 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-from app.core.config import Settings  # noqa: E402
+from app.core.config import OpenAIStageOverride, Settings  # noqa: E402
 from app.providers.writing_llm import create_provider  # noqa: E402
 from app.providers.writing_llm.base import CompletionOptions, ProviderFailure  # noqa: E402
 from app.providers.writing_llm.http import api_base_url  # noqa: E402
@@ -34,7 +34,25 @@ async def smoke(settings):
         ):
             result["code"] = "OPENAI_SMOKE_CONFIG_REQUIRED"
             return result
-        provider = create_provider(settings)
+        # Connectivity smoke intentionally has its own fixed tiny inference
+        # settings, not the grading profile. It cannot trigger budget repair.
+        smoke_settings = settings.model_copy(
+            update={
+                "ai_writing_openai_repair_completion_tokens": 128,
+                "ai_writing_openai_stage_overrides": {
+                    "default.default": OpenAIStageOverride(
+                        reasoning_effort="none",
+                        total_completion_tokens=128,
+                    )
+                },
+            }
+        )
+        provider = create_provider(smoke_settings)
+        result["inference"] = {
+            "reasoning_effort": "none",
+            "total_completion_tokens": 128,
+            "budget_repairs": 0,
+        }
         # No readiness/model-list call and no repair loop. Exactly one completion
         # is attempted; reaching the model is checked by that response itself.
         result["completion_requests"] = 1

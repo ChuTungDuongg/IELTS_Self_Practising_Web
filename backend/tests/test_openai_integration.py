@@ -51,14 +51,14 @@ async def test_luna_default_model_budget_and_backend_only_auth(monkeypatch, fact
         assert str(request.url) == "https://api.openai.com/v1/chat/completions"
         assert request.headers["Authorization"] == "Bearer fictional-private-key"
         assert body["model"] == "gpt-6-luna"
-        assert body["reasoning_effort"] == "none"
-        assert body["max_completion_tokens"] == 128
+        assert body["reasoning_effort"] == "low"
+        assert body["max_completion_tokens"] == 8192
         assert body["response_format"] == {"type": "json_object"}
         assert not {"temperature", "seed", "max_tokens", "extra_body", "tools"} & body.keys()
         return completed()
 
     intercept(monkeypatch, handler)
-    result = await factory(settings(ai_writing_openai_max_output_tokens=128)).complete(
+    result = await factory(settings()).complete(
         [{"role": "user", "content": "Return JSON."}], {}, options=CompletionOptions(max_tokens=256)
     )
     assert json.loads(result.text) == {"ready": True}
@@ -183,7 +183,7 @@ def test_cache_identity_tracks_output_policy_without_secrets():
     from app.providers.writing_llm.openai import output_identity
 
     original = settings()
-    changed = settings(ai_writing_openai_max_output_tokens=1024)
+    changed = settings(ai_writing_openai_max_output_tokens=16384)
     assert output_identity(original) != output_identity(changed)
     assert config_identity(original) != config_identity(changed)
     assert output_identity(original) == output_identity(

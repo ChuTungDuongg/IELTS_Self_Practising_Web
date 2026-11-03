@@ -3,6 +3,7 @@
 import argparse
 import asyncio
 import sys
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -49,23 +50,63 @@ def main(argv=None) -> int:
         help="Reuse matching successful checkpoints; retry failed samples.",
     )
     parser.add_argument(
+        "--allow-live",
+        action="store_true",
+        help="Explicitly authorize provider calls for a normal benchmark run. Never implied by an API key.",
+    )
+    parser.add_argument(
+        "--openai-ablation",
+        action="store_true",
+        help="Plan fixed-model A/B/C/D inference-policy comparisons on DEV; dry-run only.",
+    )
+    parser.add_argument(
+        "--max-cost-usd",
+        default=None,
+        help="Requested A-D smoke ceiling (default 0.50 USD). Plans only; live cost admission is unavailable.",
+    )
+    parser.add_argument(
         "--output",
         type=Path,
         help="Local output directory; defaults to ignored benchmark reports.",
     )
     args = parser.parse_args(argv)
-    output = (
-        args.output
-        or ROOT
-        / "benchmarks"
-        / "writing_task1"
-        / "reports"
-        / f"{args.split}-{args.scoring_version}-{args.chart_specialist}"
+    output = args.output or ROOT / "benchmarks" / "writing_task1" / "reports" / (
+        f"{args.split}-openai-ablation-plan"
+        if args.openai_ablation
+        else f"{args.split}-{args.scoring_version}-{args.chart_specialist}"
     )
     try:
+        if args.openai_ablation:
+            from app.evaluation.task1.openai_ablation import LIVE_DISABLED
+
+            if args.split != "dev":
+                raise BenchmarkInputError("BENCHMARK_ABLATION_DEV_ONLY")
+            if not args.dry_run:
+                raise BenchmarkInputError(LIVE_DISABLED)
+            if args.scoring_version != "v12" or args.chart_specialist != "off":
+                raise BenchmarkInputError("BENCHMARK_ABLATION_REQUIRES_V12_DEPLOT_OFF")
+        elif not args.dry_run and not args.allow_live:
+            raise BenchmarkInputError(
+                "BENCHMARK_LIVE_OPT_IN_REQUIRED: use --allow-live or --dry-run."
+            )
+        if args.max_cost_usd is not None and not args.openai_ablation:
+            raise BenchmarkInputError(
+                "BENCHMARK_COST_LIMIT_UNAVAILABLE: normal runner has no hard dollar cap."
+            )
+        try:
+            requested_cost = Decimal(args.max_cost_usd or "0.50")
+        except InvalidOperation:
+            raise BenchmarkInputError("BENCHMARK_COST_LIMIT_INVALID") from None
+        if not requested_cost.is_finite() or not Decimal("0") < requested_cost <= Decimal("0.50"):
+            raise BenchmarkInputError("BENCHMARK_COST_LIMIT_INVALID")
         items = load_manifest(args.manifest, args.split, args.limit)
         settings = Settings(_env_file=ROOT / "backend" / ".env")
-        configs = configurations(settings, args.scoring_version, args.chart_specialist)
+        if args.openai_ablation:
+            from app.evaluation.task1.openai_ablation import ablation_configurations
+
+            configs = ablation_configurations(settings)
+        else:
+            configs = configurations(settings, args.scoring_version, args.chart_specialist)
         report = asyncio.run(
             run_benchmark(
                 items,
@@ -76,6 +117,12 @@ def main(argv=None) -> int:
                 settings=settings,
             )
         )
+        if args.openai_ablation:
+            from app.evaluation.task1.openai_ablation import annotate_plan
+            from app.evaluation.task1.report import write_report
+
+            annotate_plan(report, requested_cost)
+            write_report(output, report)
     except BenchmarkInputError as exc:
         print(str(exc), file=sys.stderr)
         return 2

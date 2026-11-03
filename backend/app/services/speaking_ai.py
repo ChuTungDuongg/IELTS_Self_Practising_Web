@@ -15,6 +15,7 @@ from app.schemas.speaking_ai_runs import (
     SpeakingAIRunData,
     SpeakingCriterionProgress,
 )
+from app.services.cancelled_usage import arm_cancelled_usage
 from app.services.speaking_audio import fingerprint
 from app.services.speaking_transcript import SpeakingTranscriptService
 
@@ -28,20 +29,27 @@ class SpeakingAIService:
         self.transcripts = SpeakingTranscriptService(
             session, actor, settings, identity=transcript_identity
         )
+        # Historical get/cancel paths must remain readable even when the current
+        # inference configuration needs migration. Validate only new identities.
+        self._llm_identity = llm_identity
+        self.repository = SpeakingAIRepository(session)
+
+    @property
+    def identity(self):
+        llm_identity = self._llm_identity
         if llm_identity is None:
             from app.providers.speaking_llm import config_identity
 
-            llm_identity = config_identity(settings)
-        self.identity = {
+            llm_identity = config_identity(self.settings)
+        return {
             "llm": llm_identity,
             "transcript": self.transcripts.identity,
-            "prompt_version": settings.speaking_ai_prompt_version,
-            "rubric_version": settings.speaking_ai_rubric_version,
+            "prompt_version": self.settings.speaking_ai_prompt_version,
+            "rubric_version": self.settings.speaking_ai_rubric_version,
             "score_contract": "half-band-v1",
             "feedback_contract": "bounded-feedback-v1",
-            "input_limit": settings.speaking_ai_max_input_characters,
+            "input_limit": self.settings.speaking_ai_max_input_characters,
         }
-        self.repository = SpeakingAIRepository(session)
 
     async def manifest(self, aid, *, mutate=False):
         return self.transcripts.manifest(await self.transcripts.authorized(aid, mutate=mutate))
@@ -188,6 +196,7 @@ class SpeakingAIService:
         async with self.session.begin():
             run = await self.owned_run(aid, run_id, mutate=True)
             if run.status not in TERMINAL:
+                run.usage_json = arm_cancelled_usage(run.usage_json, run.lease_token)
                 run.status = run.stage = "CANCELLED"
                 run.error_code = "SPEAKING_AI_GRADING_CANCELLED"
                 run.completed_at = TimerService.now()

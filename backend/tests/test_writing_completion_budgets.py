@@ -50,6 +50,8 @@ STAGE_OUTPUTS = {"evidence": EVIDENCE, "score": SCORE, "feedback": TASK2_FEEDBAC
 
 def completion_stage(schema):
     properties = schema["properties"]
+    if "verdict" in properties:
+        return "relevance"
     return (
         "evidence" if "evidence" in properties else "score" if "score" in properties else "feedback"
     )
@@ -115,7 +117,7 @@ def assert_wire_reasoning_policy(bodies, provider):
         assert "reasoning" not in body and "reasoning_content" not in body
         if provider == "openai":
             assert body["model"] == "gpt-6-luna"
-            assert body["reasoning_effort"] == "none"
+            assert body["reasoning_effort"] == "low"
         else:
             assert "reasoning_effort" not in body
 
@@ -172,7 +174,7 @@ def wire_schema(body, provider):
     if provider == "vllm":
         return body["response_format"]["json_schema"]["schema"]
     assert body["response_format"] == {"type": "json_object"}
-    return json.loads(body["messages"][0]["content"].split("JSON schema: ", 1)[1])
+    return json.loads(body["messages"][0]["content"].rsplit("JSON schema: ", 1)[1])
 
 
 def install_adapter(monkeypatch, handler, provider):
@@ -205,9 +207,7 @@ async def test_truncated_completion_retains_safe_token_usage_and_stage_diagnosti
     def handler(request):
         nonlocal truncated
         body = json.loads(request.content)
-        stage = (
-            "relevance" if body[parameter] == 768 else completion_stage(wire_schema(body, provider))
-        )
+        stage = completion_stage(wire_schema(body, provider))
         finish = "stop"
         if stage == "score" and not truncated:
             truncated = True
@@ -235,9 +235,23 @@ async def test_truncated_completion_retains_safe_token_usage_and_stage_diagnosti
 
     result, service, _ = await assess(install_adapter(monkeypatch, handler, provider))
     assert result is not None
-    assert {"completion_tokens": 128} in service.usage
     attempt = service.latency.summary()["stages"]["ta.score"]["attempts"][0]
-    assert attempt["finish_reason"] == "length" and attempt["completion_tokens"] == 128
+    if provider == "vllm":
+        assert {"completion_tokens": 128} in service.usage
+        assert attempt["finish_reason"] == "length" and attempt["completion_tokens"] == 128
+    else:
+        # One logical completion accounts for both billable HTTP attempts. The
+        # successful JSON is published only after the bounded budget repair.
+        assert service.usage.count({"completion_tokens": 138}) == 1
+        assert sum(call["completion_tokens"] for call in service.usage) == 258
+        assert attempt["finish_reason"] == "stop" and attempt["completion_tokens"] == 138
+        assert [
+            (item["finish_reason"], item["completion_budget"], item["usage"])
+            for item in attempt["provider_attempts"]
+        ] == [
+            ("length", 8192, {"completion_tokens": 128}),
+            ("stop", 32768, {"completion_tokens": 10}),
+        ]
     assert "private usage" not in str(service.usage) + str(service.diagnostics) + caplog.text
 
 
@@ -250,9 +264,7 @@ async def test_provider_failure_finish_wins_over_malformed_usage(
 ):
     def handler(request):
         body = json.loads(request.content)
-        stage = (
-            "relevance" if body[parameter] == 768 else completion_stage(wire_schema(body, provider))
-        )
+        stage = completion_stage(wire_schema(body, provider))
         return httpx.Response(
             200,
             json={
@@ -278,7 +290,7 @@ async def test_provider_failure_finish_wins_over_malformed_usage(
 @pytest.mark.parametrize(
     "provider,parameter", [("vllm", "max_tokens"), ("openai", "max_completion_tokens")]
 )
-async def test_production_wire_contract_has_tiny_score_and_separate_feedback(
+async def test_production_wire_contract_keeps_small_score_json_and_separate_feedback(
     monkeypatch, provider, parameter
 ):
     bodies = []
@@ -286,16 +298,16 @@ async def test_production_wire_contract_has_tiny_score_and_separate_feedback(
     def handler(request):
         body = json.loads(request.content)
         bodies.append(body)
-        if body[parameter] == 768:
+        schema = wire_schema(body, provider)
+        stage = completion_stage(schema)
+        if stage == "relevance":
             output = RELEVANCE
         else:
-            schema = wire_schema(body, provider)
-            stage = completion_stage(schema)
             output = STAGE_OUTPUTS[stage]
             expected = {stage} if stage in {"evidence", "score"} else {"observations"}
             assert set(schema["properties"]) == set(schema["required"]) == expected
             assert schema["additionalProperties"] is False
-            assert body[parameter] == STAGE_BUDGETS[stage]
+            assert body[parameter] == (STAGE_BUDGETS[stage] if provider == "vllm" else 8192)
         return httpx.Response(
             200,
             json={
@@ -313,7 +325,16 @@ async def test_production_wire_contract_has_tiny_score_and_separate_feedback(
 
     result, service, _events = await assess(install_adapter(monkeypatch, handler, provider))
     assert result.overall_band == Decimal("6.5") and not service.diagnostics
-    assert [body[parameter] for body in bodies] == [768] + [128, 1800, 1200] * 4
+    if provider == "vllm":
+        assert [body[parameter] for body in bodies] == [768] + [128, 1800, 1200] * 4
+    else:
+        # The visible score schema still contains only `score`; reasoning gets
+        # its own total completion allowance rather than being clamped to 128.
+        assert [completion_stage(wire_schema(body, provider)) for body in bodies] == [
+            "relevance",
+            *(["score", "evidence", "feedback"] * 4),
+        ]
+        assert [body[parameter] for body in bodies] == [8192] * 13
     assert "private ignored reasoning" not in result.model_dump_json()
     other = "max_completion_tokens" if parameter == "max_tokens" else "max_tokens"
     assert all(other not in body for body in bodies)
@@ -364,11 +385,11 @@ async def test_adapters_send_stage_specific_length_repair_budget(
     def handler(request):
         body = json.loads(request.content)
         bodies.append(body)
-        if body[parameter] == 768:
+        schema = wire_schema(body, provider)
+        actual_stage = completion_stage(schema)
+        if actual_stage == "relevance":
             output, finish = RELEVANCE, "stop"
         else:
-            schema = wire_schema(body, provider)
-            actual_stage = completion_stage(schema)
             output = STAGE_OUTPUTS[actual_stage]
             if actual_stage == stage:
                 stage_bodies.append(body)
@@ -383,12 +404,23 @@ async def test_adapters_send_stage_specific_length_repair_budget(
     result, service, events = await assess(install_adapter(monkeypatch, handler, provider))
     assert result is not None and result.criteria.ta.score == Decimal("6.5")
     assert len(bodies) == 14 and len(stage_bodies) == 5
-    assert [body[parameter] for body in stage_bodies] == [
-        STAGE_BUDGETS[stage],
-        REPAIR_BUDGETS[stage],
-        *([STAGE_BUDGETS[stage]] * 3),
-    ]
-    assert service.diagnostics[0].stage == stage and len(public_retry_stages(events)) == 1
+    if provider == "vllm":
+        assert [body[parameter] for body in stage_bodies] == [
+            STAGE_BUDGETS[stage],
+            REPAIR_BUDGETS[stage],
+            *([STAGE_BUDGETS[stage]] * 3),
+        ]
+        assert service.diagnostics[0].stage == stage and len(public_retry_stages(events)) == 1
+    else:
+        assert [body[parameter] for body in stage_bodies] == [8192, 32768, 8192, 8192, 8192]
+        assert stage_bodies[1]["messages"] == stage_bodies[0]["messages"]
+        assert not service.diagnostics and not public_retry_stages(events)
+        attempts = service.latency.summary()["stages"][f"ta.{stage}"]["attempts"]
+        assert len(attempts) == 1
+        assert [item["finish_reason"] for item in attempts[0]["provider_attempts"]] == [
+            "length",
+            "stop",
+        ]
 
 
 @pytest.mark.parametrize(
@@ -592,10 +624,24 @@ async def test_task1_counted_provider_forwards_split_budgets_and_keeps_perceptio
     assert result.task1_analysis.claims[0].verdict == "SUPPORTED"
     assert provider.ta_calls == 2 and counted.calls == 16
     assert counted.usage["total_tokens"] == 150
-    assert all(
-        options is None
+    perception_calls = [
+        (schema, options)
         for _messages, schema, options in provider.budget_calls
         if {"reference", "claims", "items"} & schema["properties"].keys()
+    ]
+    # These numeric chart claims are resolved deterministically; semantic claim
+    # verification must not add a model call just to exercise another stage.
+    assert len(perception_calls) == 2
+    assert [options.stage for _schema, options in perception_calls] == [
+        "visual_grounding",
+        "claim_extraction",
+    ]
+    assert all(
+        options.task == "task1"
+        and options.criterion == "ta"
+        and options.attempt == 1
+        and options.max_tokens is None
+        for _schema, options in perception_calls
     )
     scores = task1_stage_calls(provider, "score")
     ta_scores = [call for call in scores if "Criterion: Task Achievement." in call[0][0]["content"]]
@@ -637,14 +683,16 @@ async def test_task1_second_ta_score_length_failure_has_no_third_inference_or_fe
 
 @pytest.mark.parametrize(
     "provider,parameter,default",
-    [("vllm", "max_tokens", 1800), ("openai", "max_completion_tokens", 4096)],
+    [("vllm", "max_tokens", 1800), ("openai", "max_completion_tokens", 8192)],
 )
 @pytest.mark.parametrize("requested", [None, 128, 256, 1200, 1400, 1800, 2056])
 async def test_provider_adapters_map_typed_stage_budgets_and_preserve_defaults(
     monkeypatch, provider, parameter, default, requested
 ):
     assert hasattr(base, "CompletionOptions")
-    options = base.CompletionOptions(max_tokens=requested)
+    options = base.CompletionOptions(
+        max_tokens=requested, task="task2", stage="score", criterion="ta"
+    )
     bodies = []
 
     def handler(request):
@@ -656,7 +704,12 @@ async def test_provider_adapters_map_typed_stage_budgets_and_preserve_defaults(
     adapter = install_adapter(monkeypatch, handler, provider)
     await adapter.complete([], {}, options=options)
     await adapter.complete([], {})
-    assert bodies[0][parameter] == (default if requested is None else requested)
+    if provider == "vllm":
+        assert bodies[0][parameter] == (default if requested is None else requested)
+    else:
+        assert bodies[0][parameter] == 8192
+        assert bodies[0]["reasoning_effort"] == "low"
+        assert "max_tokens" not in bodies[0]
     assert bodies[1][parameter] == default
     other = "max_completion_tokens" if parameter == "max_tokens" else "max_tokens"
     assert all(other not in body for body in bodies)

@@ -5,12 +5,19 @@ model card. No placeholders, remote URLs, or additional image messages.
 """
 
 import base64
-from typing import Any
+from typing import Any, Literal
 
 from app.providers.writing_llm.base import ImagePart, Message
 
 
-def serialize_messages(messages: list[Message]) -> list[dict[str, Any]]:
+def serialize_messages(
+    messages: list[Message],
+    *,
+    image_detail: Literal["auto", "low", "high", "original"] | None = None,
+) -> list[dict[str, Any]]:
+    """Keep optional OpenAI preprocessing parameters out of vLLM's contract."""
+    if image_detail not in {None, "auto", "low", "high", "original"}:
+        raise ValueError("Unsupported image detail")
     images = sum(
         isinstance(part, ImagePart)
         for message in messages
@@ -34,6 +41,7 @@ def serialize_messages(messages: list[Message]) -> list[dict[str, Any]]:
                         "type": "image_url",
                         "image_url": {
                             "url": f"data:{part.mime_type};base64,{encoded}",
+                            **({"detail": image_detail} if image_detail is not None else {}),
                         },
                     }
                 )

@@ -14,6 +14,7 @@ from app.domains.scoring.mts_prompts import (
     source_text,
 )
 from app.providers.writing_llm.base import Message
+from app.schemas.task1_assessment import Task1ImageAssessment
 from app.schemas.task1_claims import Task1Analysis
 from app.schemas.task1_feedback import RawTask1FeedbackDraft, Task1LanguageFeedbackVerification
 from app.schemas.writing_ai import (
@@ -337,6 +338,26 @@ GROUNDED_TA_GUIDANCE = (
     "fulfilment and accuracy, not additional scoring criteria. Do not convert counts of supported "
     "or contradicted claims, omissions or comparisons into bands or penalties."
 )
+IMAGE_TA_GUIDANCE = (
+    "Compare the attached source image with the structured reference before assessing TA. "
+    "The extraction may be wrong: the reference, derived facts and claim verdicts are fallible "
+    "aids, not absolute visual truth. Check labels, axes, units, legend, numeric values, component "
+    "coverage, map states or process relationships as applicable. If a material discrepancy could "
+    "change the assessment or factual feedback, return CONFLICT with short source observations "
+    "and score=null; never silently choose a source and penalise the student. Unreadable images "
+    "or insufficient visual evidence require UNREADABLE or INSUFFICIENT_EVIDENCE, score=null. "
+    "Unreadable/null values are unknown, never student mistakes. Do not invent exact figures. "
+    "Model confidence alone is not independent evidence. If consistent and assessable, READY "
+    "requires a holistic descriptor-fit score for the whole essay: overview, key feature selection, "
+    "comparisons, coverage and factual accuracy. Reasonable approximations are acceptable. "
+    "Distinguish percentages from percentage-point differences and respect units/axes/legend. "
+    "Do not require every minor figure or count correct/incorrect claims to determine a band. "
+    "A clear overview may coexist with omitted minor detail; a missing overview or materially "
+    "wrong trend must be considered within the existing rubric, without automatic caps/penalties. "
+    "Do not replace the supplied reference or claim verdicts in a READY response. Report any "
+    "needed correction as CONFLICT so the backend can rebuild facts/verification first. "
+    "Return only status, score and bounded conflicts matching the schema; no reasoning narrative."
+)
 # Preserve the official exceptional low-response conditions, not a new calibration rule.
 OFFICIAL_LOW_RESPONSE_GUIDANCE = (
     "Official shared conditions: responses of at most 20 words fall at band 1. Band 0 applies only "
@@ -408,6 +429,8 @@ def _assessment_prompt(
     trait: Trait,
     evidence: EvidenceResult,
     analysis: Task1Analysis,
+    *,
+    source_image: bool = False,
 ) -> list[Message]:
     ta_guidance = f"{TASK1_TA_DESCRIPTOR_DISCRIMINATION_GUIDANCE}\n" if trait == "ta" else ""
     cc_guidance = f"{TASK1_CC_DESCRIPTOR_DISCRIMINATION_GUIDANCE}\n" if trait == "cc" else ""
@@ -423,7 +446,7 @@ def _assessment_prompt(
     if trait == "ta":
         payload["task_type"] = request.task_type.value
         payload.update(grounded_context(analysis))
-    schema = CriterionBandScore
+    schema = Task1ImageAssessment if source_image else CriterionBandScore
     return [
         {
             "role": "system",
@@ -436,17 +459,36 @@ def _assessment_prompt(
                 f"{ta_guidance}"
                 f"{cc_guidance}"
                 f"{TASK1_LANGUAGE_DESCRIPTOR_DISCRIMINATION_GUIDANCE.get(trait, '')}"
-                f"{GROUNDED_TA_GUIDANCE if trait == 'ta' else ''}\n"
-                f"{SCORE_ONLY_GUIDANCE}\n"
+                f"{IMAGE_TA_GUIDANCE if source_image else GROUNDED_TA_GUIDANCE if trait == 'ta' else ''}\n"
+                f"{'' if source_image else SCORE_ONLY_GUIDANCE}\n"
                 f"JSON schema: {json.dumps(schema.model_json_schema(mode='serialization'))}"
             ),
         },
-        {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": json.dumps(
+                        {**payload, "image_sha256": request.image_checksum}, ensure_ascii=False
+                    ),
+                },
+                request.image,
+            ]
+            if source_image
+            else json.dumps(payload, ensure_ascii=False),
+        },
     ]
 
 
 def score_prompt(request, trait, evidence, analysis) -> list[Message]:
     return _assessment_prompt(request, trait, evidence, analysis)
+
+
+def image_ta_score_prompt(request, evidence, analysis) -> list[Message]:
+    if request.image is None:
+        raise ValueError("Source image is required for TA visual assessment")
+    return _assessment_prompt(request, "ta", evidence, analysis, source_image=True)
 
 
 TASK1_CONSERVATIVE_FEEDBACK = (

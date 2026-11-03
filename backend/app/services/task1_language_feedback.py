@@ -24,18 +24,29 @@ async def verify_language_feedback(provider, request, trait, draft, sources, sta
         with latency.stage("feedback", trait):
             with latency.attempt("feedback", trait, 1) as timing:
                 try:
-                    async with asyncio.timeout(LANGUAGE_VERIFICATION_TIMEOUT_SECONDS):
+                    async with asyncio.timeout(
+                        None
+                        if getattr(provider, "reasoned_inference", False)
+                        else LANGUAGE_VERIFICATION_TIMEOUT_SECONDS
+                    ):
                         completion = await provider.complete(
                             language_verification_prompt(request, trait, draft, sources),
                             Task1LanguageFeedbackVerification.model_json_schema(),
-                            options=CompletionOptions(max_tokens=LANGUAGE_VERIFICATION_MAX_TOKENS),
+                            options=CompletionOptions(
+                                max_tokens=LANGUAGE_VERIFICATION_MAX_TOKENS,
+                                task="task1",
+                                stage="language_feedback",
+                                criterion=trait,
+                            ),
                         )
                 except ProviderFailure as exc:
-                    latency.completion(timing, exc.finish_reason, exc.usage)
+                    latency.completion(timing, exc.finish_reason, exc.usage, exc.attempts)
                     if exc.usage:
                         state.usage.append(exc.usage)
                     raise
-                latency.completion(timing, completion.finish_reason, completion.usage)
+                latency.completion(
+                    timing, completion.finish_reason, completion.usage, completion.attempts
+                )
             state.usage.append(completion.usage)
             validate_finish(completion.finish_reason)
             verification = Task1LanguageFeedbackVerification.model_validate_json(completion.text)

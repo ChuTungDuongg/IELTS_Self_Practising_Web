@@ -128,6 +128,22 @@ def _comparison_kind(left, right):
         right.model_dump(mode="json", exclude={"label"}),
     )
     if (
+        left.provider == right.provider == "openai"
+        and left.openai_inference
+        and right.openai_inference
+    ):
+        left_arm, right_arm = left.openai_inference.get("arm"), right.openai_inference.get("arm")
+        adjacent = {frozenset(pair) for pair in (("A", "B"), ("B", "C"), ("C", "D"))}
+        if (
+            left.openai_inference.get("planning_only")
+            and right.openai_inference.get("planning_only")
+            and frozenset((left_arm, right_arm)) in adjacent
+        ):
+            for key in ("openai_inference", "prompt_version", "scoring_prompt_version"):
+                a.pop(key)
+                b.pop(key)
+            return "openai_inference" if a == b else None
+    if (
         left.scoring_version == right.scoring_version
         and left.specialist.enabled != right.specialist.enabled
     ):
@@ -154,6 +170,11 @@ def _ablations(records, configs):
         if (kind == "chart_specialist" and left.specialist.enabled) or (
             kind == "scoring_prompt"
             and int(left.scoring_version[1:]) > int(right.scoring_version[1:])
+        ):
+            left, right = right, left
+        if (
+            kind == "openai_inference"
+            and left.openai_inference["arm"] > right.openai_inference["arm"]
         ):
             left, right = right, left
         baseline = {
@@ -237,6 +258,8 @@ def _ablations(records, configs):
 
 def _operational(attempts):
     count = len(attempts)
+    observed = [attempt for attempt in attempts if attempt.truncated_call_count is not None]
+    observed_calls = sum(attempt.provider_calls for attempt in observed)
     first = {}
     for attempt in attempts:
         first.setdefault(attempt.cache_key, attempt)
@@ -257,6 +280,24 @@ def _operational(attempts):
             attempt.specialist_latency_seconds for attempt in attempts
         ),
         "token_usage": dict(sum((Counter(attempt.token_usage) for attempt in attempts), Counter())),
+        "truncated_call_count": sum(attempt.truncated_call_count for attempt in observed),
+        "truncation_observed_attempt_count": len(observed),
+        "truncation_rate_per_call": sum(attempt.truncated_call_count for attempt in observed)
+        / observed_calls
+        if observed_calls
+        else None,
+        "cost_usd": None,
+        "cost_status": "unmeasured_no_verified_pricing",
+        "ta_assessment_statuses": dict(
+            Counter(
+                attempt.ta_assessment["status"] for attempt in attempts if attempt.ta_assessment
+            )
+        ),
+        "ta_visual_reconciliations": sum(
+            attempt.ta_assessment.get("reconciliations", 0)
+            for attempt in attempts
+            if attempt.ta_assessment
+        ),
     }
 
 
@@ -310,6 +351,12 @@ def build_report(records, configs, *, status="COMPLETED", attempts=None):
         "operational": _operational(attempts),
         "ablations": _ablations(records, configs),
         "largest_disagreements": disagreements[:20],
+        "measurements": {
+            "factual_feedback_accuracy": "unmeasured_missing_adjudicated_feedback_labels",
+            "repeat_stability": "unmeasured_no_repeat_protocol",
+            "perception_accuracy": "measured_only_for_independently_annotated_chart_table_truth",
+            "token_accounting": "reasoning_tokens are a subset of completion_tokens; never add them again for cost",
+        },
         "interpretation": {
             "bias_sign": "prediction minus human/reference; positive means higher predictions",
             "qwk_minimum_samples": 10,
@@ -341,8 +388,25 @@ def markdown_report(report):
                 "",
             ]
         )
+    if report.get("openai_ablation"):
+        lines.extend(
+            [
+                "A–D is a plan only. Historical A/B/C adapters are not emulated by the current provider.",
+                "Live ablation is blocked: a reliable pre-request dollar reservation for images, all arms, repairs and in-flight requests is unavailable.",
+                f"Requested smoke ceiling: ${report['openai_ablation']['budget']['requested_max_usd']} (not a verified live bound). Factual feedback accuracy, repeat stability and cost: unmeasured.",
+                "",
+            ]
+        )
     for aggregate in report["configurations"].values():
         cfg = aggregate["configuration"]
+        inference = cfg.get("openai_inference")
+        if inference and inference.get("planning_only"):
+            lines.extend(
+                [
+                    f"Arm {inference['arm']} (plan only): {inference['additional_change']}",
+                    "",
+                ]
+            )
         lines.extend(
             [
                 f"## {cfg['label']}",

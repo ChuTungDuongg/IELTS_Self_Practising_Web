@@ -15,7 +15,7 @@ from app.models.enums import WritingAIRunStatus
 from app.providers.chart_derendering import ChartDerenderingProvider
 from app.providers.chart_derendering.deplot import DePlotChartDerenderingProvider
 from app.providers.writing_llm import create_provider, is_configured, provider_identity
-from app.providers.writing_llm.base import LLMProvider, ProviderFailure
+from app.providers.writing_llm.base import LLMProvider, ProviderFailure, safe_completion_usage
 from app.repositories.writing_ai import WritingAIRepository
 from app.schemas.writing_ai import (
     TRAITS,
@@ -24,10 +24,17 @@ from app.schemas.writing_ai import (
     EventType,
     OutputDiagnostic,
 )
+from app.services.cancelled_usage import consume_cancelled_usage
 from app.services.mts_writing import MTSWritingScoringService
 from app.services.task1_input import TASK1_PROMPT_VERSION, Task1ScoringRequest
 from app.services.task1_writing import Task1WritingScoringService
-from app.services.writing_ai import WritingAIService, fail_run, input_fingerprint, persist_activity
+from app.services.writing_ai import (
+    CANCELLATION_CODE,
+    WritingAIService,
+    fail_run,
+    input_fingerprint,
+    persist_activity,
+)
 from app.services.writing_execution import TraceFailure, WritingLatencyMetrics, durable_checkpoint
 
 _tasks: dict[UUID, asyncio.Task] = {}
@@ -245,6 +252,10 @@ class WritingAIWorker:
                 await durable_checkpoint(self._complete(run_id, result, mts, token))
         except RunStopped:
             logger.info("AI grading worker stopped: source=terminal_state")
+            # A remote Stop can win just before a completed provider response
+            # reaches its normal checkpoint. The one-use cancellation fence
+            # permits accounting only; every score/state write remains revoked.
+            await fail("RUN_INTERRUPTED", "Chấm AI bị gián đoạn. Bạn có thể thử chấm lại.")
         except asyncio.CancelledError:
             # _fail holds the row lock and only updates ACTIVE runs. A committed
             # user cancellation always wins over this shutdown/interruption path.
@@ -393,6 +404,25 @@ class WritingAIWorker:
             async with self.sessions() as session, session.begin():
                 repository = WritingAIRepository(session)
                 run = await repository.owned(run_id, token)
+                if run is None and mts is not None:
+                    cancelled = await repository.run(run_id, lock=True)
+                    if (
+                        cancelled is not None
+                        and cancelled.status == WritingAIRunStatus.FAILED
+                        and cancelled.error_code == CANCELLATION_CODE
+                        and cancelled.lease_token is None
+                    ):
+                        final_usage = consume_cancelled_usage(cancelled.usage_json, token)
+                        if final_usage is not None:
+                            # Explicit Stop already owns terminal state/results.
+                            # Replace the run-local aggregate rather than adding
+                            # checkpointed calls again; only this lease can do it once.
+                            cancelled.usage_json = {
+                                **final_usage,
+                                "calls": [safe_completion_usage(item) for item in mts.usage],
+                                "latency": mts.latency_summary(),
+                            }
+                    return
                 if run:
                     if mts:
                         run.usage_json = {

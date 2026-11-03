@@ -16,6 +16,7 @@ from app.models.speaking_transcript import SpeakingTranscript
 from app.providers.speaking_llm import create_provider
 from app.repositories.speaking_ai import SpeakingAIRepository
 from app.schemas.speaking_grading import CRITERIA, CriterionResult
+from app.services.cancelled_usage import consume_cancelled_usage
 from app.services.speaking_ai import SpeakingAIService
 from app.services.speaking_scorer import (
     SpeakingScorer,
@@ -148,13 +149,32 @@ class SpeakingAIWorker:
                 )
 
     async def _record_provider_call(self, run_id, token, record):
+        stopped_after_accounting = False
         async with self.sessions() as session, session.begin():
-            run = await self._locked(session, run_id, token)
+            previous = None
+            try:
+                run = await self._locked(session, run_id, token)
+            except GradingStopped:
+                # A durable user Stop revokes the ordinary lease before the
+                # cancelled provider can report already-known billed usage.
+                # This separate authority can update accounting exactly once.
+                run = await SpeakingAIRepository(session).run(run_id, lock=True)
+                if (
+                    run is None
+                    or run.status != "CANCELLED"
+                    or run.lease_token is not None
+                    or run.error_code != "SPEAKING_AI_GRADING_CANCELLED"
+                ):
+                    raise
+                previous = consume_cancelled_usage(run.usage_json, token)
+                if previous is None:
+                    raise GradingStopped() from None
+                stopped_after_accounting = True
             record = safe_provider_call(record)
-            previous = run.usage_json or {}
+            previous = previous if previous is not None else run.usage_json or {}
             old_totals = previous.get("totals", {})
             totals = {}
-            for name in ("prompt_tokens", "completion_tokens", "total_tokens"):
+            for name in ("prompt_tokens", "completion_tokens", "total_tokens", "reasoning_tokens"):
                 value = old_totals.get(name)
                 if type(value) is not int or not 0 <= value <= _MAX_USAGE_TOTAL:
                     value = 0
@@ -171,6 +191,14 @@ class SpeakingAIWorker:
                 # Crashes can lose a response before its accounting checkpoint.
                 "accounting": "observed_partial",
             }
+        if stopped_after_accounting:
+            # Commit the accounting before stopping the scorer. A late invalid
+            # response must never initiate a schema repair after durable Stop.
+            # Preserve original task cancellation when this was its observer.
+            current = asyncio.current_task()
+            if current is not None and current.cancelling():
+                raise asyncio.CancelledError()
+            raise GradingStopped()
 
     async def _heartbeat(self, run_id, token, owner):
         while True:

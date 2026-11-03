@@ -27,9 +27,11 @@ from app.evaluation.writing import checkpoints as shared_checkpoints
 from app.evaluation.writing.checkpoints import atomic_write as atomic_write
 from app.evaluation.writing.checkpoints import save_attempt as save_attempt
 from app.evaluation.writing.runtime import CountedProvider as CountedProvider
+from app.evaluation.writing.runtime import reconciled_usage
 from app.providers.chart_derendering import ChartSpecialistFailure
 from app.providers.chart_derendering.deplot import DePlotChartDerenderingProvider
 from app.providers.writing_llm import create_provider, provider_identity
+from app.providers.writing_llm.openai import output_identity
 from app.schemas.chart_cross_check import ChartSpecialistIdentity
 from app.schemas.task1_claims import Task1Analysis
 from app.services.task1_input import (
@@ -124,6 +126,7 @@ def configurations(
                     startup_timeout_seconds=settings.ai_writing_startup_timeout_seconds,
                     specialist_timeout_seconds=settings.ai_writing_chart_specialist_timeout_seconds,
                     implementation_hash=implementation_hash(),
+                    openai_inference=output_identity(settings) if provider == "openai" else None,
                 )
             )
     return result
@@ -201,15 +204,17 @@ async def evaluate(
     predicted, failures = {}, {}
     analysis = Task1Analysis(visual_family=visual_family(sample.task_type).value)
     perception = {"primary": None, "reconciled": None}
-    provider, specialist = None, None
+    provider, specialist, scorer = None, None, None
 
     async def trace(event, payload):
         nonlocal analysis
         if payload.task1_analysis is not None:
             analysis = payload.task1_analysis.model_copy(deep=True)
         if event == "visual_grounding.completed":
-            perception["primary"] = perception_metrics(sample.visual_truth, analysis.reference)
-            perception["reconciled"] = perception["primary"]
+            current = perception_metrics(sample.visual_truth, analysis.reference)
+            if perception["primary"] is None:
+                perception["primary"] = current
+            perception["reconciled"] = current
         elif event == "chart_reconciliation.completed":
             perception["reconciled"] = perception_metrics(sample.visual_truth, analysis.reference)
         elif event == "criterion.completed":
@@ -260,6 +265,8 @@ async def evaluate(
     if perception["primary"] is None and sample.visual_truth is not None:
         perception["primary"] = perception_metrics(sample.visual_truth, None)
         perception["reconciled"] = perception["primary"]
+    if sample.visual_truth is not None:
+        perception["reconciled"] = perception_metrics(sample.visual_truth, analysis.reference)
     target = sample.human_scores.scores()
     disagreements = analysis.cross_check.disagreement_count if analysis.cross_check else 0
     return EvaluationRecord(
@@ -285,10 +292,17 @@ async def evaluate(
         ),
         wall_clock_seconds=time.perf_counter() - start,
         provider_calls=provider.calls if provider else 0,
-        token_usage=dict(provider.usage) if provider else {},
+        token_usage=reconciled_usage(provider, scorer) if provider else {},
         specialist_calls=specialist.calls if specialist else 0,
         specialist_latency_seconds=specialist.latency if specialist else 0,
         failures=failures,
+        truncated_call_count=provider.truncated_call_count if provider else 0,
+        ta_assessment={
+            key: value
+            for key, value in getattr(scorer, "ta_audit", {}).items()
+            if key in {"status", "reconciliations", "conflict_kinds"}
+        }
+        or None,
     )
 
 
@@ -304,6 +318,14 @@ async def run_benchmark(
     settings=None,
 ):
     from app.evaluation.task1.report import build_report, write_report
+
+    if not dry_run and any(
+        config.openai_inference and config.openai_inference.get("planning_only")
+        for config in configs
+    ):
+        from app.evaluation.task1.openai_ablation import LIVE_DISABLED
+
+        raise ValueError(LIVE_DISABLED)
 
     if not items or not configs or len({config.key for config in configs}) != len(configs):
         raise ValueError("BENCHMARK_CONFIGURATION_INVALID")
@@ -342,6 +364,13 @@ async def run_benchmark(
                 "ai_writing_chart_specialist_timeout_seconds": config.specialist_timeout_seconds,
             }
         )
+
+    if not dry_run and provider_factory is None:
+        for config in configs:
+            if config.provider == "openai" and config.openai_inference != output_identity(
+                runtime_settings(config)
+            ):
+                raise ValueError("BENCHMARK_RUNTIME_IDENTITY_MISMATCH")
 
     provider_factory = provider_factory or (
         lambda config: create_provider(runtime_settings(config))

@@ -83,7 +83,7 @@ def configure_ai_environment(
         os.environ["AI_WRITING_VLLM_MODEL"] = model
 
 
-def safe_ai_configuration() -> dict[str, bool | str]:
+def safe_ai_configuration() -> dict[str, bool | str | int | float]:
     """Log effective AI wiring without URLs, credentials, or candidate content."""
     # Modal imports its entry point as `app`, which shadows the backend's `app`
     # package in this process. Resolve effective Settings in the same cwd as uvicorn.
@@ -93,6 +93,20 @@ from app.providers.speaking_llm import is_configured, provider_identity
 from app.providers.writing_llm import is_configured as writing_is_configured
 settings = Settings(_env_file=None)
 provider, model = provider_identity(settings)
+openai = {}
+if 'openai' in {settings.ai_writing_provider, provider}:
+    openai = {
+        'writing_openai_profile': settings.ai_writing_openai_profile,
+        'writing_openai_reasoning_effort': settings.ai_writing_openai_reasoning_effort,
+        'writing_openai_image_detail': settings.ai_writing_openai_image_detail,
+        'writing_openai_low_completion_tokens': settings.ai_writing_openai_low_completion_tokens,
+        'writing_openai_medium_completion_tokens': settings.ai_writing_openai_medium_completion_tokens,
+        'writing_openai_repair_completion_tokens': settings.ai_writing_openai_repair_completion_tokens,
+        'writing_openai_max_output_tokens': settings.ai_writing_openai_max_output_tokens,
+        'writing_openai_task1_image_assessment': settings.ai_writing_openai_task1_image_assessment,
+        'writing_openai_stage_timeout_seconds': settings.ai_writing_openai_stage_timeout_seconds,
+        'writing_openai_run_timeout_seconds': settings.ai_writing_openai_run_timeout_seconds,
+    }
 print(json.dumps({
     'writing_ai_enabled': settings.ai_writing_enabled,
     'writing_ai_configured': writing_is_configured(settings),
@@ -104,6 +118,7 @@ print(json.dumps({
     'speaking_model': model,
     'writing_vllm_transport_url_configured': bool(settings.ai_writing_vllm_base_url),
     'speaking_asr_enabled': settings.speaking_asr_enabled,
+    **openai,
 }))"""
     try:
         result = subprocess.run(
@@ -126,6 +141,16 @@ print(json.dumps({
                 "speaking_model": str,
                 "writing_vllm_transport_url_configured": bool,
                 "speaking_asr_enabled": bool,
+                "writing_openai_profile": str,
+                "writing_openai_reasoning_effort": str,
+                "writing_openai_image_detail": str,
+                "writing_openai_low_completion_tokens": int,
+                "writing_openai_medium_completion_tokens": int,
+                "writing_openai_repair_completion_tokens": int,
+                "writing_openai_max_output_tokens": int,
+                "writing_openai_task1_image_assessment": bool,
+                "writing_openai_stage_timeout_seconds": float,
+                "writing_openai_run_timeout_seconds": float,
             }
             if isinstance(summary, dict):
                 return {

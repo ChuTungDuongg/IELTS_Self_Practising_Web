@@ -4,10 +4,16 @@ import asyncio
 import logging
 from collections.abc import Awaitable, Iterator
 from contextlib import contextmanager
+from copy import deepcopy
 from dataclasses import dataclass, field
 from time import perf_counter
 
-from app.providers.writing_llm.base import LLMProvider, safe_finish_reason
+from app.providers.writing_llm.base import (
+    LLMProvider,
+    safe_completion_usage,
+    safe_finish_reason,
+    safe_inference_attempts,
+)
 from app.schemas.writing_ai import (
     AssessmentStage,
     CriterionBandScore,
@@ -57,6 +63,7 @@ class WritingLatencyMetrics:
             "score",
             "feedback",
             "visual_grounding",
+            "visual_reconciliation",
             "chart_specialist",
             "chart_reconciliation",
             "derived_facts",
@@ -70,6 +77,7 @@ class WritingLatencyMetrics:
         self.finished: float | None = None
         self.first_completed_ms: float | None = None
         self.stages: dict[str, dict] = {}
+        self.attempt_limit = 2
 
     def key(self, stage: str, trait: Trait | None):
         if stage not in self.STAGES:
@@ -102,7 +110,8 @@ class WritingLatencyMetrics:
         finally:
             record["duration_ms"] = round((perf_counter() - started) * 1000, 3)
             records = self.stages.setdefault(key, {}).setdefault("attempts", [])
-            if len(records) < 2:
+            # Two schema attempts per assessment, at most two TA assessments.
+            if len(records) < self.attempt_limit:
                 records.append(record)
             logger.info(
                 "AI latency: stage=%s criterion=%s duration_ms=%s attempt=%s finish_reason=%s prompt_tokens=%s completion_tokens=%s",
@@ -116,12 +125,15 @@ class WritingLatencyMetrics:
             )
 
     @staticmethod
-    def completion(record: dict, finish_reason: object, usage: dict):
+    def completion(record: dict, finish_reason: object, usage: dict, attempts=()):
         record["finish_reason"] = safe_finish_reason(finish_reason)
-        for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
+        for key in ("prompt_tokens", "completion_tokens", "total_tokens", "reasoning_tokens"):
             value = usage.get(key)
             if type(value) is int and 0 <= value <= 1_000_000_000:
                 record[key] = value
+        safe_attempts = safe_inference_attempts(attempts)
+        if safe_attempts:
+            record["provider_attempts"] = safe_attempts
 
     def completed_criterion(self):
         if self.first_completed_ms is None:
@@ -145,11 +157,7 @@ class WritingLatencyMetrics:
             "stages": {
                 key: {
                     **value,
-                    **(
-                        {"attempts": [dict(item) for item in value["attempts"]]}
-                        if "attempts" in value
-                        else {}
-                    ),
+                    **({"attempts": deepcopy(value["attempts"])} if "attempts" in value else {}),
                 }
                 for key, value in sorted(self.stages.items())
             },
@@ -166,9 +174,23 @@ class BoundedWritingProvider:
         self.limit = limit
         self.semaphore = asyncio.Semaphore(limit)
         self.active = self.peak_active = 0
+        self.cancelled_usage = []
+        self.cancelled_attempts = []
 
     async def ensure_ready(self):
         await self.provider.ensure_ready()
+
+    @property
+    def task1_image_assessment(self) -> bool:
+        return getattr(self.provider, "task1_image_assessment", False) is True
+
+    @property
+    def reasoned_inference(self) -> bool:
+        return getattr(self.provider, "reasoned_inference", False) is True
+
+    @property
+    def run_timeout_seconds(self) -> float | None:
+        return getattr(self.provider, "run_timeout_seconds", None)
 
     async def complete(self, messages, schema, *, options=None):
         async with self.semaphore:
@@ -176,6 +198,14 @@ class BoundedWritingProvider:
             self.peak_active = max(self.peak_active, self.active)
             try:
                 return await self.provider.complete(messages, schema, options=options)
+            except asyncio.CancelledError as exc:
+                usage = safe_completion_usage(getattr(exc, "usage", None))
+                if usage:
+                    self.cancelled_usage.append(usage)
+                self.cancelled_attempts.extend(
+                    safe_inference_attempts(getattr(exc, "attempts", ()))
+                )
+                raise
             finally:
                 self.active -= 1
 

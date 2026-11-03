@@ -37,6 +37,7 @@ from app.schemas.writing_ai import (
     Trait,
     WritingRelevanceResult,
 )
+from app.services.cancelled_usage import arm_cancelled_usage
 from app.services.classroom_capabilities import require_classroom_attempt_mutation
 from app.services.task1_input import TASK1_PROMPT_VERSION, Task1ScoringRequest, load_task1_image
 
@@ -182,6 +183,8 @@ async def fail_run(
 ) -> None:
     if run.status not in ACTIVE:
         return
+    if code == CANCELLATION_CODE:
+        run.usage_json = arm_cancelled_usage(run.usage_json, run.lease_token)
     run.status = WritingAIRunStatus.FAILED
     run.lease_token = run.lease_expires_at = None
     run.error_code = code

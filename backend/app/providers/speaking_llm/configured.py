@@ -72,7 +72,9 @@ def create_provider(settings):
         raise AppError("SPEAKING_AI_NOT_CONFIGURED", "Speaking AI is not configured.", 503)
     try:
         delegate = create_writing_provider(transport_settings(settings))
-    except AppError:
+    except AppError as exc:
+        if exc.code == "AI_PROVIDER_CONFIGURATION_ERROR":
+            raise
         raise AppError(
             "SPEAKING_AI_NOT_CONFIGURED", "Speaking AI is not configured.", 503
         ) from None

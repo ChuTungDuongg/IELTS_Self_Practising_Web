@@ -6,11 +6,17 @@ from app.domains.scoring.ai_writing_validation import resolve_evidence
 from app.domains.scoring.essay_sources import request_sources
 from app.domains.scoring.task1_facts import derive_facts
 from app.domains.scoring.task1_feedback import normalize_task1_feedback, render_task1_feedback
-from app.domains.scoring.task1_prompts import evidence_prompt, feedback_prompt, score_prompt
+from app.domains.scoring.task1_prompts import (
+    evidence_prompt,
+    feedback_prompt,
+    image_ta_score_prompt,
+    score_prompt,
+)
 from app.domains.scoring.writing_annotations import build_writing_annotations
 from app.domains.writing.visual_families import visual_family
 from app.providers.chart_derendering import ChartDerenderingProvider
 from app.providers.writing_llm.base import LLMProvider, Message, ProviderFailure
+from app.schemas.task1_assessment import Task1ImageAssessment
 from app.schemas.task1_claims import ExtractedClaims, Task1Analysis
 from app.schemas.task1_feedback import RawTask1FeedbackDraft
 from app.schemas.writing_ai import (
@@ -53,6 +59,14 @@ class Task1WritingScoringService(MTSWritingScoringService):
     """Independent linguistic criteria overlap perception; TA waits for its dependencies."""
 
     language_verification_enabled = True
+    inference_task = "task1"
+
+    def _start_assessment(self) -> None:
+        super()._start_assessment()
+        self.ta_audit = {"status": "NOT_RUN", "reconciliations": 0, "conflict_kinds": []}
+
+    def latency_summary(self) -> dict:
+        return {**super().latency_summary(), "ta_assessment": dict(self.ta_audit)}
 
     def __init__(
         self,
@@ -78,6 +92,15 @@ class Task1WritingScoringService(MTSWritingScoringService):
         return super()._normal_completion_budget(trait, stage)
 
     def _repair_message(self, reason, schema, trait, stage):
+        if schema is Task1ImageAssessment:
+            return {
+                "role": "system",
+                "content": (
+                    f"Correction ({reason}): return the complete assessment envelope following its schema. "
+                    "READY requires score and no conflicts; other statuses require score=null. "
+                    "CONFLICT requires short image/reference observations. Do not infer unreadable values."
+                ),
+            }
         if schema is RawTask1FeedbackDraft:
             return {
                 "role": "system",
@@ -100,6 +123,8 @@ class Task1WritingScoringService(MTSWritingScoringService):
         evidence: EvidenceResult,
         analysis: Task1Analysis,
     ) -> list[Message]:
+        if trait == "ta" and self.provider.task1_image_assessment:
+            return image_ta_score_prompt(request, evidence, analysis)
         return score_prompt(request, trait, evidence, analysis)
 
     def _analysis_services(self):
@@ -127,14 +152,19 @@ class Task1WritingScoringService(MTSWritingScoringService):
         async def achievement():
             self.states["ta"].stage = "visual_grounding"
             await self._ground(request, analysis, grounding, trace)
-            if analysis.confidence != "UNUSABLE" and await self._relevance_gate(
-                request, analysis.reference, trace
+            # The text gate trusts extracted labels. In the source-image branch,
+            # relevance is part of the full TA assessment so a bad extraction
+            # cannot publish Band 1 before the image/reference audit.
+            if (
+                not self.provider.task1_image_assessment
+                and analysis.confidence != "UNUSABLE"
+                and await self._relevance_gate(request, analysis.reference, trace)
             ):
                 return
             await self._prepare_analysis(request, analysis, grounding, claims, trace)
             await self._task1_criterion(request, "ta", analysis, trace)
 
-        await gather_isolated(
+        await self._gather_assessment(
             achievement(),
             *(
                 self._task1_criterion(request, trait, analysis, trace)
@@ -162,7 +192,7 @@ class Task1WritingScoringService(MTSWritingScoringService):
                 await apply_chart_cross_check(request, analysis, prepared, trace, self.latency)
             await self._derive_facts(analysis, trace)
 
-    async def _ground(self, request, analysis, grounding, trace):
+    async def _ground(self, request, analysis, grounding, trace, *, reconciliation=False):
         logger.info(
             "Task1 visual grounding: chart_specialist_enabled=%s",
             str(request.chart_specialist.enabled).lower(),
@@ -171,8 +201,14 @@ class Task1WritingScoringService(MTSWritingScoringService):
             "visual_grounding.started", EventPayload(criterion="ta", stage="visual_grounding")
         )
         try:
-            with self.latency.stage("visual_grounding", "ta"):
-                output = await grounding.ground(request)
+            with self.latency.stage(
+                "visual_reconciliation" if reconciliation else "visual_grounding", "ta"
+            ):
+                output = (
+                    await grounding.ground(request, reconciliation=True)
+                    if reconciliation
+                    else await grounding.ground(request)
+                )
         except TraceFailure:
             raise
         except Exception:
@@ -330,23 +366,8 @@ class Task1WritingScoringService(MTSWritingScoringService):
         analysis,
     ):
         sources = {source.source_id: source for source in request_sources(request)}
-        selection = await self._validated(
-            evidence_messages, EvidenceSelection, sources, trait, "evidence", trace
-        )
-        evidence = resolve_evidence(selection, sources)
-        # Preserve score input/evidence semantics. Public selector prose is not
-        # verified feedback: only backend-resolved quotations/locations are shown.
-        display_evidence = evidence.model_copy(deep=True)
-        for item in display_evidence.evidence:
-            item.assessment = (
-                f"Trích dẫn từ đoạn {sources[item.source_id].paragraph_index} của bài viết."
-            )
-        await trace(
-            "criterion.evidence.completed",
-            EventPayload(criterion=trait, evidence=display_evidence.evidence),
-        )
-        score = await self._validated(
-            score_messages(evidence), CriterionBandScore, sources, trait, "score", trace
+        evidence, display_evidence, score = await self._task1_evidence_and_score(
+            request, trait, analysis, sources, trace, evidence_messages, score_messages
         )
         self.states[trait].band_score = score
         await self._feedback_started(trait, score, display_evidence, trace)
@@ -417,6 +438,105 @@ class Task1WritingScoringService(MTSWritingScoringService):
         )
         await self._feedback_completed(trait, result, trace)
         return result
+
+    async def _task1_evidence_and_score(
+        self, request, trait, analysis, sources, trace, evidence_messages, score_messages
+    ):
+        image_assessment = trait == "ta" and self.provider.task1_image_assessment
+        if image_assessment and any(
+            warning in analysis.warnings
+            for warning in (
+                "DERIVED_FACTS_FAILED",
+                "CLAIM_EXTRACTION_FAILED",
+                "CLAIM_VERIFICATION_FAILED",
+            )
+        ):
+            self.ta_audit["status"] = "INSUFFICIENT_EVIDENCE"
+            raise ProviderFailure("AI_PROVIDER_BAD_RESPONSE")
+        for reconciliation in range(2 if image_assessment else 1):
+            if reconciliation:
+                await self._reconcile_ta_reference(request, analysis, trace)
+                evidence_messages = self._evidence_prompt(request, trait, analysis)
+            evidence, display_evidence = await self._task1_evidence(
+                evidence_messages, sources, trait, trace
+            )
+            if image_assessment:
+                self.ta_audit["status"] = "ASSESSING"
+            try:
+                output = await self._validated(
+                    score_messages(evidence),
+                    Task1ImageAssessment if image_assessment else CriterionBandScore,
+                    sources,
+                    trait,
+                    "score",
+                    trace,
+                )
+            except ProviderFailure:
+                if image_assessment:
+                    self.ta_audit["status"] = "FAILED"
+                raise
+            if not image_assessment:
+                return evidence, display_evidence, output
+            self.ta_audit["status"] = output.status
+            self.ta_audit["conflict_kinds"] = sorted(
+                set(self.ta_audit["conflict_kinds"] + [item.kind for item in output.conflicts])
+            )
+            logger.info(
+                "Task1 image assessment: status=%s reconciliations=%s conflicts=%s",
+                output.status,
+                self.ta_audit["reconciliations"],
+                len(output.conflicts),
+            )
+            if output.status == "READY":
+                return evidence, display_evidence, CriterionBandScore(score=output.score)
+            if output.status != "CONFLICT" or reconciliation:
+                raise ProviderFailure("AI_PROVIDER_BAD_RESPONSE")
+        raise ProviderFailure("AI_PROVIDER_BAD_RESPONSE")
+
+    async def _reconcile_ta_reference(self, request, analysis, trace):
+        # No student text, prior score, disputed extraction or model-proposed correction
+        # enters this second perception pass. Rebuild every dependent input afterwards.
+        self.ta_audit.update(status="RECONCILING", reconciliations=1)
+        self.latency.attempt_limit = 4
+        analysis.reference, analysis.confidence = None, "UNUSABLE"
+        analysis.derived_facts, analysis.claims, analysis.cross_check = [], [], None
+        grounding, claims = self._analysis_services()
+        await self._ground(request, analysis, grounding, trace, reconciliation=True)
+        if analysis.confidence == "UNUSABLE":
+            self.ta_audit["status"] = "UNREADABLE"
+            raise ProviderFailure("AI_PROVIDER_BAD_RESPONSE")
+        await self._derive_facts(analysis, trace)
+        extracted = await self._extract_claims(request, claims, trace, analysis)
+        if extracted is not None:
+            await self._verify_claims(request, extracted, analysis, claims, trace)
+        if extracted is None or any(
+            warning in analysis.warnings
+            for warning in (
+                "DERIVED_FACTS_FAILED",
+                "CLAIM_EXTRACTION_FAILED",
+                "CLAIM_VERIFICATION_FAILED",
+            )
+        ):
+            self.ta_audit["status"] = "INSUFFICIENT_EVIDENCE"
+            raise ProviderFailure("AI_PROVIDER_BAD_RESPONSE")
+
+    async def _task1_evidence(self, evidence_messages, sources, trait, trace):
+        selection = await self._validated(
+            evidence_messages, EvidenceSelection, sources, trait, "evidence", trace
+        )
+        evidence = resolve_evidence(selection, sources)
+        # Preserve score input/evidence semantics. Public selector prose is not
+        # verified feedback: only backend-resolved quotations/locations are shown.
+        display_evidence = evidence.model_copy(deep=True)
+        for item in display_evidence.evidence:
+            item.assessment = (
+                f"Trích dẫn từ đoạn {sources[item.source_id].paragraph_index} của bài viết."
+            )
+        await trace(
+            "criterion.evidence.completed",
+            EventPayload(criterion=trait, evidence=display_evidence.evidence),
+        )
+        return evidence, display_evidence
 
     def _task1_result(self, analysis):
         if self.failures:

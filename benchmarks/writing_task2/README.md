@@ -17,7 +17,7 @@ uv run --project backend python scripts/benchmark_task2.py --manifest benchmarks
 Tùy chọn chạy thử **thủ công** một mẫu qua nhà cung cấp (không phải kiểm thử triển khai/CI):
 
 ```sh
-uv run --project backend python scripts/benchmark_task2.py --manifest benchmarks/writing_task2/private/task2.jsonl --split dev --limit 1 --max-concurrent-llm-requests 2 --resume --output benchmarks/writing_task2/reports/dev-smoke
+uv run --project backend python scripts/benchmark_task2.py --manifest benchmarks/writing_task2/private/task2.jsonl --split dev --limit 1 --max-concurrent-llm-requests 2 --allow-live --resume --output benchmarks/writing_task2/reports/dev-smoke
 ```
 
 Các mẫu chạy tuần tự. Trong mỗi mẫu, dịch vụ sản xuất giới hạn yêu cầu tiêu chí ở 1–4. Lời nhắc có hiệu lực hiện là `mts-task2-v12`; bộ đánh giá không đổi lời nhắc/hiệu chuẩn sản xuất. Dùng DEV để lặp cải tiến và thư mục đầu ra `--split holdout` riêng để đánh giá cuối cùng.

@@ -11,6 +11,7 @@ from pydantic import BaseModel, ValidationError
 from app.domains.scoring.task1_prompts import DATA_GUARD
 from app.domains.writing.visual_families import visual_family
 from app.providers.writing_llm.base import (
+    CompletionOptions,
     LLMProvider,
     Message,
     ProviderFailure,
@@ -75,7 +76,7 @@ class Task1StructuredCompletion:
         repair: bool = True,
         provider_schema: dict[str, Any] | None = None,
         stage: Literal[
-            "visual_grounding", "claim_extraction", "claim_verification"
+            "visual_grounding", "visual_reconciliation", "claim_extraction", "claim_verification"
         ] = "visual_grounding",
     ) -> T:
         for attempt in range(2 if repair else 1):
@@ -92,17 +93,26 @@ class Task1StructuredCompletion:
                             provider_schema
                             if provider_schema is not None
                             else schema.model_json_schema(mode="serialization"),
+                            options=CompletionOptions(
+                                task="task1", stage=stage, criterion="ta", attempt=attempt + 1
+                            ),
                         )
                     except ProviderFailure as exc:
+                        if exc.usage:
+                            self.usage.append(exc.usage)
                         if self.latency:
-                            self.latency.completion(timing, exc.finish_reason, {})
+                            self.latency.completion(
+                                timing, exc.finish_reason, exc.usage, exc.attempts
+                            )
                         raise
                     if self.latency:
-                        self.latency.completion(timing, completion.finish_reason, completion.usage)
+                        self.latency.completion(
+                            timing, completion.finish_reason, completion.usage, completion.attempts
+                        )
                 self.usage.append(completion.usage)
                 finish = safe_finish_reason(completion.finish_reason)
                 validate_finish(completion.finish_reason)
-                if stage == "visual_grounding":
+                if stage in {"visual_grounding", "visual_reconciliation"}:
                     # JSON numeric lexemes must reach Decimal before rounding.
                     result = schema.model_validate(json.loads(completion.text, parse_float=Decimal))
                 else:
@@ -135,6 +145,17 @@ class Task1StructuredCompletion:
                 }.get(reason, "PROVIDER_INVALID")
                 if exc.code not in {"AI_PROVIDER_BAD_RESPONSE", "INVALID_PROVIDER_OUTPUT"}:
                     self._diagnostic(stage, attempt + 1, reason, "PROVIDER_FAILED", issues, finish)
+                    raise
+                if exc.reason in {
+                    "COMPLETION_BUDGET_EXHAUSTED",
+                    "PROVIDER_REFUSAL",
+                    "PROVIDER_CONTENT_FILTER",
+                } or (
+                    getattr(self.provider, "reasoned_inference", False)
+                    and exc.reason
+                    in {"PROVIDER_FINISH_OTHER", "PROVIDER_FINISH_ABORT", "PROVIDER_FINISH_ERROR"}
+                ):
+                    self._diagnostic(stage, attempt + 1, reason, kind, issues, finish)
                     raise
             self._diagnostic(stage, attempt + 1, reason, kind, issues, finish)
             if attempt == 0 and repair:
@@ -173,7 +194,9 @@ class Task1StructuredCompletion:
 class Task1VisualGroundingService(Task1StructuredCompletion):
     """Perception only: trusted image and task prompt to a validated reference."""
 
-    async def ground(self, request: Task1ScoringRequest) -> VisualGroundingOutput:
+    async def ground(
+        self, request: Task1ScoringRequest, *, reconciliation: bool = False
+    ) -> VisualGroundingOutput:
         if request.image is None:
             raise ProviderFailure("AI_PROVIDER_BAD_RESPONSE")
         family = visual_family(request.task_type)
@@ -227,6 +250,7 @@ class Task1VisualGroundingService(Task1StructuredCompletion):
             VisualGroundingOutput,
             validate,
             provider_schema=provider_schema,
+            stage="visual_reconciliation" if reconciliation else "visual_grounding",
         )
         reference = output.reference
         match reference:

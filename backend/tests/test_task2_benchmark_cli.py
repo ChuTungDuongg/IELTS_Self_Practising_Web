@@ -96,7 +96,15 @@ def test_cli_safe_failure_exit_codes_and_interruption(tmp_path, capsys, monkeypa
     path = tmp_path / "manifest.jsonl"
     path.write_text(json.dumps(sample()), encoding="utf-8")
     script = cli()
-    args = ["--manifest", str(path), "--split", "dev", "--output", str(tmp_path / "report")]
+    args = [
+        "--manifest",
+        str(path),
+        "--split",
+        "dev",
+        "--allow-live",
+        "--output",
+        str(tmp_path / "report"),
+    ]
 
     async def failure(*args, **kwargs):
         raise RuntimeError("SECRET_PROVIDER_BODY")
@@ -117,3 +125,9 @@ def test_cli_safe_failure_exit_codes_and_interruption(tmp_path, capsys, monkeypa
 
     monkeypatch.setattr(script, "run_benchmark", partial)
     assert script.main(args) == 1
+
+
+def test_cli_requires_live_opt_in_before_loading_private_manifest(tmp_path, capsys):
+    result = cli().main(["--manifest", str(tmp_path / "absent.jsonl"), "--split", "dev"])
+    assert result == 2
+    assert "BENCHMARK_LIVE_OPT_IN_REQUIRED" in capsys.readouterr().err

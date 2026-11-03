@@ -4,6 +4,8 @@
 > Mục đích: mô tả AI tư vấn Academic Writing của BandPilot. Đối chiếu mã nguồn `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [phần triển khai](../backend/app/services/mts_writing.py).
 > Đọc cùng [mô-đun/hướng dẫn hiện hành](modules/writing.md); [kiểm toán và giới hạn](DOCS_AUDIT.md). Kết quả kiểm thử/benchmark bên dưới thuộc lần thực hiện gốc, không phải kết quả chạy lại trong đợt kiểm toán này.
 
+> Bổ sung working tree trên HEAD `f950d30c`: [policy OpenAI reasoned](#openai-task1-reasoned-policy) thay các giả định cap JSON/timeout self-host đối với Luna. Các mô tả v12 và phép đo lịch sử bên dưới giữ ngữ cảnh ban đầu; vLLM không đổi. Chưa chạy inference hoặc đo chất lượng thật cho profile mới.
+
 [Ngân hàng benchmark Writing](writing-benchmark-bank.md) ADMIN độc lập chỉ lưu dữ liệu chuẩn do người chấm, xuất JSONL/hình/CSV để đánh giá Task 1/Task 2 ngoại tuyến. Task 2 tái sử dụng MTS sản xuất và chỉ số điểm dùng chung. Báo cáo ở đầu ra CLI/Colab; nhãn không vào suy luận, ngân hàng không thay lời nhắc chấm, hiệu chuẩn hoặc mặc định nhà cung cấp.
 
 Task 1 và Task 2 dùng chung bộ tiếp hợp nhà cung cấp: profile vLLM giữ `mistralai/Ministral-3-8B-Instruct-2512`; profile OpenAI dùng `gpt-6-luna` qua API bên ngoài. Task 2 giữ chuỗi chỉ văn bản với hợp đồng bộ nhớ đệm `mts-task2-v12`. Task 1 dùng `mts-task1-scoring-v12`, phiên bản tổng hợp `mts-task1-visual-v12` và hợp đồng nhận thức `mts-task1-visual-v3` không đổi. Xem [nghiên cứu tình huống kỹ thuật độ trễ](enhance_latency.md) về thực thi đồng thời có giới hạn, cấu hình phục vụ, số đo và cách tái hiện.
@@ -16,7 +18,7 @@ Kết luận đúng đề, liên quan một phần hoặc chưa chắc đều đ
 
 Task 2 khởi động kiểm tra độ liên quan song song tiêu chí ngôn ngữ; chỉ TR chờ quyết định. Task 1 hoàn thành bước tiếp nhận thị giác chính trước, rồi tái sử dụng ngữ cảnh cấu trúc gọn (nhãn/quan hệ/nhóm, không có giá trị điểm/ô biểu đồ) cho kiểm tra chỉ văn bản. Không gọi hình thêm cho độ liên quan. Khi kết luận sớm, giữ siêu dữ liệu thị giác chính và **không khởi động phát biểu, kiểm chứng, dữ kiện, DePlot tùy chọn, bằng chứng TA, chấm TA hoặc nhận xét TA**. Nếu không, sau cổng kiểm tra, nhánh chuyên đọc/dữ kiện và phát biểu có thể chạy chồng lấp trước TA. Tiêu chí ngôn ngữ độc lập với cả hai phụ thuộc. Tiếp nhận thị giác UNUSABLE giữ lỗi TA và tiến độ ngôn ngữ hiện có, không gây quyết định Band 1 chỉ từ văn bản. Các họ biểu đồ, bảng, bản đồ, quy trình, hệ thống và thị giác khác vẫn được hỗ trợ.
 
-Kiểm độ liên quan dùng nhà cung cấp giới hạn trong từng lượt, trần **768 token**, thời gian chờ mỗi lần 30 giây. JSON/lược đồ/ID nguồn không hợp lệ hoặc lý do kết thúc khác stop cho một lần sửa, không có lần thứ ba. Lỗi thời gian chờ/nhà cung cấp/phụ trợ cho phép tiếp tục, không làm thất bại lượt có thể chấm. Chẩn đoán giữ lý do cố định, kiểu trường an toàn, mức dùng và thời gian, không giữ nội dung thô/thân ngoại lệ. Bằng chứng, chỉ điểm và nhận xét dùng ngân sách bước hữu hạn bên dưới; kiểm kết thúc vẫn nghiêm. Đánh giá bình thường thêm một lần gọi văn bản; sửa độ liên quan thêm tối đa một. Kết luận sớm bình thường dùng mười lần gọi LLM cho Task 2, mười một cho Task 1, gồm tiếp nhận thị giác chính và chín lần gọi ngôn ngữ. Kiểm thử kịch bản không chứng minh độ chính xác/tốc độ mô hình thật.
+Với vLLM, kiểm độ liên quan giữ trần **768 token**, timeout 30 giây và một schema repair. OpenAI dùng ngân sách tổng và timeout của [profile bên dưới](#openai-task1-reasoned-policy). Riêng OpenAI Task 1 có đối chiếu ảnh không chạy gate chỉ văn bản này: nhãn trích xuất sai không được tạo TA=1 trước khi kiểm ảnh; độ liên quan được đánh giá trong TA toàn bài cùng rubric. Task 2 và vLLM Task 1 giữ short-circuit hiện có. Lỗi phụ trợ cho phép tiếp tục, không bịa điểm. Các số call lịch sử trước nhánh ảnh không phải cam kết cho profile mới.
 
 Siêu dữ liệu `relevance` tùy chọn lưu trong JSON kết quả lượt hiện có, lộ qua DTO đầy đủ/một phần. Sự kiện bền vững `relevance.started`, `.completed`, `.failed` phát lại qua SSE; lỗi phụ trợ tiếp tục đánh giá thường. Lượt lịch sử thiếu relevance vẫn đọc được. Task 2 v12 có hiệu lực bao gồm nhãn phiên bản từng triển khai đến v11, nên kết quả đệm cũ vẫn đọc nhưng không tái sử dụng. Dấu vân tay Task 1 v12 vô hiệu hóa bộ nhớ đệm chấm cũ, giữ nhận thức v3 và hướng dẫn TA/CC v7. Benchmark ngoại tuyến dùng hợp đồng hiện hành; v3/v5 đóng băng giữ hợp đồng đầu ra gộp trước cổng kiểm tra. Dọn thẻ tác vụ vẫn chỉ dừng theo dõi; Dừng rõ ràng mới hủy chấm.
 
@@ -57,7 +59,7 @@ Hướng dẫn riêng tiêu chí yêu cầu lỗi tiếng Anh chuẩn thật tr�
 
 Backend giữ trường công khai `CriterionResult` tương thích (`feedback`, `strengths`, `improvements`, `evidence`) từ quan sát chấp nhận. Không dùng nhận định bộ chọn chưa kiểm hoặc tóm tắt mô hình tự sinh. Bản sửa tùy chọn dùng mẫu backend “Gợi ý tùy chọn: có thể diễn đạt…” thay văn bản mô hình khẳng định lỗi thực tế. Giới hạn hiển thị hiện có vẫn một tóm tắt 800 ký tự ghép tối đa hai quan sát trọn câu, điểm mạnh/cải thiện có cấu trúc mỗi mục 240 ký tự. Cả bốn quan sát chấp nhận vẫn ở danh sách cấu trúc dù không vừa tóm tắt. Nhận định Band mâu thuẫn bị bỏ cùng quan sát; chèn trường điểm cấp gốc là lỗi cấu trúc và được sửa hữu hạn. Nhận xét không đổi band số đã chấp nhận.
 
-Mỗi bước tối đa một lần sửa. Trần hoàn thành thực tế:
+Với vLLM, mỗi bước tối đa một lần sửa. Trần hoàn thành thực tế dưới đây chỉ là mục tiêu JSON hiển thị đối với OpenAI, không phải tổng ngân sách reasoning:
 
 | Bước | Token bình thường | Token sửa do độ dài |
 | --- | ---: | ---: |
@@ -97,7 +99,7 @@ Task 1 cũng suy luận chỉ điểm rồi nhận xét theo band cố định, 
 
 Task 1 theo **nhận xét đề xuất → làm sạch nguồn/lược đồ → kiểm chứng ngôn ngữ LR/GRA theo hướng hoài nghi → nhận xét/chú thích công khai**. Điểm đã cố định trước kiểm chứng; quyết định không đổi điểm hoặc kích hoạt chấm lại. Khớp nguồn chứng minh vị trí trích dẫn, không chứng minh lời phê bình ngôn ngữ đúng.
 
-Chỉ đề xuất LR/GRA ERROR hoặc LIMITATION đã làm sạch kích hoạt kiểm chứng: một lần gọi gộp mỗi tiêu chí chịu ảnh hưởng, tối đa bốn quyết định có chỉ số, 384 token đầu ra, thời gian chờ 30 giây, không thử lại phụ trợ. TA/CC, đề xuất rỗng, điểm mạnh hoặc bản nháp chỉ có tùy chọn không thêm lần gọi. Tiêu chí ngôn ngữ độc lập giữ giới hạn đồng thời nhà cung cấp trong lượt.
+Chỉ đề xuất LR/GRA ERROR hoặc LIMITATION đã làm sạch kích hoạt kiểm chứng: một lần gọi gộp mỗi tiêu chí chịu ảnh hưởng, tối đa bốn quyết định có chỉ số. vLLM giữ 384 token và timeout 30 giây, không schema repair phụ trợ. OpenAI stage `language_feedback` dùng low/8192 và timeout profile, có tối đa một budget repair khi API xác nhận length. TA/CC, đề xuất rỗng, điểm mạnh hoặc bản nháp chỉ có tùy chọn không thêm lần gọi. Tiêu chí ngôn ngữ độc lập giữ giới hạn đồng thời nhà cung cấp trong lượt.
 
 Bộ kiểm mặc định tiếng Anh chuẩn được chấp nhận, bác lời phê chưa chắc, sở thích phong cách và phương án hợp lệ. ERROR cần sửa ngôn ngữ thật sự cần thiết; LIMITATION cần bằng chứng đáng kể hoặc lặp trong bài. Hợp đồng quyết định nghiêm không có điểm, giải thích hoặc văn cho người học. Quyết định thiếu/trùng/ngoại lai, lý do không nhất quán, đầu ra sai, kết thúc khác stop, quá giờ/lỗi nhà cung cấp bỏ mọi nhận định tiêu cực chưa kiểm, giữ điểm mạnh an toàn và band. Chẩn đoán nội bộ chỉ ghi `LANGUAGE_FEEDBACK_VERIFICATION_UNAVAILABLE`; nội bộ nhà cung cấp không tới UI.
 
@@ -151,7 +153,7 @@ Chấm Task 1 v7 thêm phân biệt mô tả CC lân cận. Đánh giá tiến t
 
 Ở v7, ngữ nghĩa TA, LR/GRA, Task 2, tiếp nhận/đối chiếu thị giác v3, lược đồ đầu ra, cấu hình nhà cung cấp/mô hình không đổi. Dấu vân tay tổng hợp v7 ngăn dùng lượt chấm v6/cũ hơn, vẫn đọc lịch sử. Nền lời nhắc v5 lịch sử giữ đóng băng. [Benchmark Task 1](../benchmarks/writing_task1/README.md) so nền với lời nhắc sản xuất hiện tại dưới cùng nhà cung cấp/mô hình/cấu hình chuyên đọc. Cần độ lệch tiêu chí có dấu, MAE, đồng thuận trên tập gán nhãn người chấm để xác lập hiệu chuẩn tốt hơn; kiểm tổng hợp không chứng minh.
 
-TA Task 1 nay chung trần chỉ điểm 128 token (256 khi sửa độ dài), nhận xét 1200 (1400 khi sửa độ dài). Đầu vào có căn cứ lớn không cần đầu ra điểm lớn. Nhà cung cấp có thể hạ một lần trần rõ theo ngữ cảnh khả dụng đã kiểm mà không bỏ hình/bài. Nền ngoại tuyến đóng băng giữ ngân sách gộp 3072/4096.
+vLLM TA Task 1 giữ trần chỉ điểm 128 token (256 khi sửa độ dài), nhận xét 1200 (1400 khi sửa độ dài). OpenAI tách mục tiêu JSON ngắn khỏi tổng completion theo profile dưới đây. Không cắt ảnh/bài để vừa trần. Nền ngoại tuyến đóng băng giữ ngân sách gộp 3072/4096.
 
 Tiếp nhận `HIGH`/`MEDIUM` hỗ trợ so dữ kiện thường. `LOW` hiển thị cảnh báo tiếng Việt, chỉ cho đánh giá TA thận trọng; không đưa mâu thuẫn số tất định. `UNUSABLE` hoặc thị giác rỗng/thất bại làm TA thất bại an toàn, CC/LR/GRA tiếp tục. Lỗi bước phát biểu không nghĩa bài sai; TA có thể tiếp từ tham chiếu dùng được kèm thông báo kiểm chưa đủ. Bất kỳ tiêu chí lỗi đều ẩn tổng, giữ thẻ thành công và cho chấm lại rõ ràng.
 
@@ -196,13 +198,61 @@ AI_WRITING_OPENAI_MODEL=gpt-6-luna
 AI_WRITING_OPENAI_BASE_URL=https://api.openai.com/v1
 ```
 
-Tên mô hình được giữ đúng cấu hình; không tự thay model hoặc fallback sang vLLM. Tầng truyền tải dùng Chat Completions JSON mode cùng ranh giới validation/repair Pydantic, không phải bảo đảm schema strict từ server OpenAI. Với đúng `gpt-6-luna`, adapter gửi `reasoning_effort=none` để ngân sách điểm nhỏ dành cho JSON hiển thị; bỏ temperature/seed và dùng `max_completion_tokens`. Model khác vẫn giữ hành vi không gửi reasoning parameter. Xem [API chính thức](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create) và [cấu hình/kiểm chứng OpenAI](#openai-gpt6-luna).
+Tên mô hình được giữ đúng cấu hình; không tự thay model hoặc fallback sang vLLM. Chat Completions JSON mode vẫn cần validation Pydantic tại backend. Profile hiện hỗ trợ rõ `gpt-6-luna`; model chưa có capability đã kiểm được từ chối trước inference. Không còn ép `none` hoặc clamp tổng completion xuống cap JSON cũ. Bỏ temperature/seed; không dùng tham số của Responses API. Xem [API chính thức](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create) và [policy hiện hành](#openai-task1-reasoned-policy).
 
 <a id="openai-gpt6-luna"></a>
 
 ## OpenAI GPT-6 Luna: local, Modal CPU và AWS
 
 Tích hợp ngày 2026-11-03 bắt đầu tại HEAD `33f40c78756ea203ba1819111409557db02f9915`. Audit xác nhận đã có OpenAI adapter và Speaking dùng lại transport Writing. Các điểm cần sửa là model mặc định cũ, Modal gắn vLLM khi bật AI bất kể provider, thiếu giới hạn request dùng chung và Speaking chưa lưu token usage. Không đổi rubric, bốn tiêu chí, visual grounding/DePlot tùy chọn, human-final boundaries, API DTO hoặc schema database. Lease/checkpoint/recovery hiện có tiếp tục sở hữu lifecycle; inference ở ngoài transaction.
+
+<a id="openai-task1-reasoned-policy"></a>
+
+### Policy `openai_task1_reasoned_v1` — đối chiếu HEAD `f950d30c`
+
+Đợt triển khai tiếp theo xác nhận baseline ép Luna `none`, dùng `min(legacy cap, OpenAI cap)`, không gửi image detail và chấm TA chỉ từ text reference/facts/claims. Structured repair yêu cầu JSON ngắn hơn và làm rơi usage lỗi ở một số caller. Đây là lỗi/giới hạn contract đã xác nhận từ code. Chưa có ảnh, bài viết và response của lượt TA lỗi thực tế; ảnh hưởng đến band của reasoning, detail, sai extraction/verification hay diễn giải toàn bài vẫn cần đo độc lập.
+
+[Model Luna](https://developers.openai.com/api/docs/models/gpt-6-luna), [reasoning](https://developers.openai.com/api/docs/guides/reasoning), [vision](https://developers.openai.com/api/docs/guides/images-vision) và [Chat Completions](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create) được kiểm tra trước khi sửa. `reasoning_effort` và `max_completion_tokens` thuộc Chat; tổng cap bao gồm reasoning và JSON hiển thị. Không có tham số API tách riêng hai ngân sách này. 8192/16384 là điểm xuất phát cần đo, có thể vẫn thiếu trên input khó; tài liệu reasoning khuyến nghị headroom lớn hơn khi thử nghiệm ban đầu, không bảo đảm cap này luôn đủ.
+
+`CompletionOptions` truyền `task`, `stage`, `criterion`, `attempt` tường minh; `score` chuẩn hóa thành `scoring`. Wrapper giữ nguyên options, không dò từ khóa prompt. `max_tokens` vẫn là mục tiêu JSON/vLLM; OpenAI resolve tổng cap độc lập:
+
+| Task / stage | Effort mặc định | Tổng completion ban đầu | Image detail khi có ảnh |
+| --- | --- | ---: | --- |
+| Task 1 `visual_grounding`, `visual_reconciliation` | medium | 16384 | high |
+| Task 1 `claim_extraction` | low | 8192 | Không gửi ảnh |
+| Task 1 `claim_verification` | medium | 16384 | Không gửi ảnh |
+| Task 1 `scoring.ta` | medium | 16384 | high; cùng ảnh/checksum |
+| Evidence, feedback, relevance và language feedback | low | 8192 | Không gửi ảnh |
+| Task 2 và Speaking score/feedback | low | 8192 | Không gửi ảnh |
+| Một budget repair do `length` / schema attempt 2 | Giữ effort đã resolve | Tối đa 32768 trong safety cap | Giữ detail/ảnh của request |
+
+Mọi ảnh OpenAI có `image_url: {url: data:..., detail: ...}`. Chỉ serializer OpenAI thêm detail; vLLM không nhận tham số này. Không resize/re-encode, crop hoặc thêm pipeline nhiều ảnh. `high` không được coi là luôn tốt hơn `auto`; có thể so sánh DEV. Enum có `original` nhưng provider **từ chối cho Luna hiện tại**: Chat reference cho phép tên tham số, còn tài liệu model/vision chưa xác nhận rõ tổ hợp Luna + Chat. Không suy hỗ trợ chỉ từ ví dụ model khác.
+
+Luồng TA OpenAI: ảnh + đề → reference độc lập với bài viết → deterministic facts + extraction/verification → toàn bài + ảnh gốc + rubric + reference/facts/claims → envelope nội bộ → validation → band/feedback hiện có. Reference là bản trích xuất có thể sai, không phải chân lý. Envelope chỉ có `status`, `score`, tối đa bốn conflict observations ngắn; không yêu cầu/parse/lưu/stream chain-of-thought. Chỉ `READY` với nửa band hợp lệ và không xung đột mới qua checkpoint điểm.
+
+`CONFLICT` chặn điểm và cho **một** lượt đọc lại chỉ từ ảnh + đề, không đưa bài, band trước, reference cũ hoặc đề xuất sửa của model vào làm đáp án. Backend thay reference, xóa facts/claims/cross-check cũ, derive lại facts, extract/verify lại claims, chọn lại evidence và chấm lại. Nhãn/đơn vị/trục/chú giải, nhiều thành phần, map/process đều thuộc audit. Xung đột còn lại, ảnh `UNREADABLE`, `INSUFFICIENT_EVIDENCE` hoặc verification hỏng làm TA thất bại an toàn; CC/LR/GRA hợp lệ vẫn ở partial result, không tính overall khi thiếu TA. Feedback chỉ bắt đầu sau reference cuối đã kiểm; factual feedback vẫn do backend dựng từ claims/facts hợp lệ.
+
+Rubric, ranh giới tiêu chí, phép tổng hợp và deterministic numerical checks không đổi. TA xét overview, key features, so sánh, bao quát và factual accuracy toàn bài; không đếm lỗi/facts để tính band, không phạt thiếu mọi số phụ, không tự cộng band. Unknown/null/ước lượng hợp lý không thành lỗi học viên; confidence tự khai không thay chứng cứ. Nhánh vLLM giữ luồng chỉ text TA, schema và cap hiện tại.
+
+### Precedence, repair và timeout
+
+Settings mặc định → override `task.stage` → override `task.stage.criterion` → kiểm safety cap. Các override hợp lệ gồm `reasoning_effort`, `image_detail`, `total_completion_tokens`, `timeout_seconds`. Effort low/none chọn low budget, medium chọn medium budget, high/xhigh/max chọn repair budget nếu không ghi đè tổng cap. High có thể đặt cho một stage TA để đo sau; không bật mọi stage. `AI_WRITING_OPENAI_REASONING_EFFORT` đổi default các stage thông thường; các stage medium Task 1 cần stage override riêng.
+
+`AI_WRITING_OPENAI_MAX_OUTPUT_TOKENS` là **global safety cap**, không phải cap JSON. Nếu budget resolve vượt cap, trả `AI_PROVIDER_CONFIGURATION_ERROR` trước khi tạo run/POST. File cũ `...=4096` không được tự nâng hoặc bỏ qua: operator phải chủ động chọn 32768, hoặc hạ rõ cả low/medium/stage budgets trong giới hạn đã chấp nhận. Repair budget bị chặn bởi safety cap; không có headroom thì `length` kết thúc bằng failure, không replay cùng cap.
+
+Một logical completion chỉ budget-repair khi API xác nhận `finish_reason=length`; tăng cap, giữ nguyên input và effort. Không parse prefix JSON, kể cả prefix trông hợp lệ. Sau tối đa một budget repair trả `COMPLETION_BUDGET_EXHAUSTED`; caller không schema-retry lỗi này. JSON/schema sai có tối đa một schema repair; attempt 2 dùng cap repair và không budget-repair thêm. Vì vậy tối đa **ba POST cho một bước có schema repair**, hai POST nếu không schema repair. Refusal/content filter, timeout, 5xx/429 và hủy không được replay. Feedback/evidence fallback chỉ giữ band đã validation theo contract hiện có; không đoán band thiếu.
+
+Timeout hiệu lực mỗi logical completion là min(stage override/default, `AI_WRITING_REQUEST_TIMEOUT_SECONDS`), bao gồm admission và budget repair. OpenAI auxiliaries không còn bị timeout vLLM 30 giây cắt trước policy. Toàn assessment Writing có deadline `AI_WRITING_OPENAI_RUN_TIMEOUT_SECONDS` (1800 giây), drain mọi child khi hủy/timeout, giữ checkpoint hợp lệ; readiness có startup timeout riêng. Gate process và run concurrency vẫn giới hạn tải. Số call TA có ảnh bị chặn bởi hai assessment và một reconciliation; với các schema/budget repair hiện có toàn Task 1 tối đa 62 POST LLM, cộng tối đa một chart-specialist call nếu operator bật. Đây là trần tệ nhất, không phải số call/chi phí thường gặp; deadline có thể kết thúc sớm hơn.
+
+### Cache, rollback và giới hạn đo
+
+Output identity OpenAI bao gồm API/model/endpoint hash, profile, contract `source-image-envelope-v1`, effort/overrides, detail, budgets, safety cap, timeout/repair và cờ TA ảnh. Fingerprint chấm còn giữ prompt version, đề/bài, image checksum/MIME và chart identity hiện có. Không dùng lại cache none/auto/text-only cho policy mới, không xóa lịch sử. Production hiện không có cache perception riêng; benchmark giữ primary perception riêng với reference cuối và namespace cấu hình. Thay config chỉ OpenAI không đổi fingerprint vLLM. Historical Writing/Speaking kết quả trực tiếp vẫn đọc được khi cấu hình mới cần migration.
+
+Rollback hạn chế: đặt `AI_WRITING_OPENAI_TASK1_IMAGE_ASSESSMENT=false` để về TA text trong khi vẫn giữ policy reasoning/budget mới; output identity đổi nên không reuse kết quả nhánh ảnh. Muốn so baseline none/legacy cap thật cần code/cấu hình baseline đã đóng băng trong môi trường DEV riêng; không gọi profile mới là baseline cũ. Rollback bản phát hành do operator quản lý; không tự checkout, deploy, đổi model hoặc xóa run/cache.
+
+Kiểm thử HTTP mock xác nhận cùng bytes ảnh tại grounding/TA, detail đúng object, medium/16384 vượt cap JSON 128, refusal/truncation/repair/cancellation và độc lập bốn tiêu chí. Test mock không chứng minh band IELTS. [Benchmark A–D](writing-benchmark-bank.md#openai-luna-ablation) hiện chỉ dry-run; live bị khóa khi chưa có cost reservation đáng tin cậy cho mọi arm/repair/in-flight. Thiếu bộ DEV có nhãn và input lỗi thực tế; chưa đo MAE TA, factual feedback false positives, stability, latency/chi phí thật. Không kết luận TA chính xác hơn từ JSON hợp lệ.
+
+[Bản ghi kiểm chứng và lệnh đầy đủ](superpowers/plans/2026-11-03-openai-task1-policy.md#verification-record-working-tree-no-commitdeploy): bộ tập trung 781 pass; quét có guard ngoại tuyến 2647 pass/882 skip; kiểm tra terminal relevance bổ sung 109 pass. Thiếu PostgreSQL cô lập nên chưa xác minh DB race/persistence/SSE thật; không xem skip là pass. Dry-run CLI một fixture hư cấu tạo bốn kế hoạch, zero inference; không là benchmark chất lượng.
 
 ```mermaid
 flowchart LR
@@ -248,13 +298,23 @@ SPEAKING_AI_PROVIDER=openai
 SPEAKING_AI_MODEL=gpt-6-luna
 AI_WRITING_OPENAI_MAX_CONCURRENT_REQUESTS=4
 AI_WRITING_OPENAI_MAX_QUEUED_REQUESTS=16
-AI_WRITING_OPENAI_MAX_OUTPUT_TOKENS=4096
+AI_WRITING_OPENAI_PROFILE=openai_task1_reasoned_v1
+AI_WRITING_OPENAI_REASONING_EFFORT=low
+AI_WRITING_OPENAI_IMAGE_DETAIL=high
+AI_WRITING_OPENAI_LOW_COMPLETION_TOKENS=8192
+AI_WRITING_OPENAI_MEDIUM_COMPLETION_TOKENS=16384
+AI_WRITING_OPENAI_REPAIR_COMPLETION_TOKENS=32768
+AI_WRITING_OPENAI_MAX_OUTPUT_TOKENS=32768
+AI_WRITING_OPENAI_TASK1_IMAGE_ASSESSMENT=true
+AI_WRITING_OPENAI_STAGE_TIMEOUT_SECONDS=300
+AI_WRITING_OPENAI_RUN_TIMEOUT_SECONDS=1800
+AI_WRITING_OPENAI_STAGE_OVERRIDES={}
 AI_WRITING_OPENAI_READINESS_RETRIES=2
 AI_WRITING_REQUEST_TIMEOUT_SECONDS=300
 AI_WRITING_STARTUP_TIMEOUT_SECONDS=600
 ```
 
-Giữ DATABASE_URL/JWT/storage hợp lệ của môi trường local hiện có. Khởi động backend bằng `cd backend` rồi `uv run fastapi dev app/main.py`; restart sau khi sửa cấu hình. Speaking kế thừa key/base URL Writing; `SPEAKING_AI_REQUEST_TIMEOUT_SECONDS` và `SPEAKING_AI_STARTUP_TIMEOUT_SECONDS` có thể ghi đè timeout. Giữ output budgets theo stage hiện có; cap OpenAI là trần trên, không nâng các cap score/feedback của rubric. Speaking ASR vẫn phải được cấu hình độc lập theo [hướng dẫn chép lời](speaking-transcription.md).
+Giữ DATABASE_URL/JWT/storage hợp lệ của môi trường local hiện có. Khởi động backend bằng `cd backend` rồi `uv run fastapi dev app/main.py`; restart sau khi sửa cấu hình. Speaking kế thừa key/base URL và default low/8192 Writing; cap score 192 và feedback 1024 vẫn là mục tiêu JSON, không clamp tổng reasoning. Rubric/score-first checkpoint, PR audio gate và feedback fallback không đổi. `SPEAKING_AI_REQUEST_TIMEOUT_SECONDS` và `SPEAKING_AI_STARTUP_TIMEOUT_SECONDS` ghi đè timeout transport; timeout logical stage vẫn lấy min với policy. Speaking ASR cấu hình độc lập theo [hướng dẫn chép lời](speaking-transcription.md).
 
 ### Giới hạn tải, retry và lỗi
 
@@ -278,9 +338,9 @@ Speaking giữ các public error codes tương thích; nguyên nhân provider al
 
 ### Token usage và chi phí
 
-Writing giữ token usage/stage diagnostics hiện có. Speaking ghi `usage_json.calls` tối đa 32 bản ghi gần nhất, tổng `prompt_tokens`, `completion_tokens`, `total_tokens`, `observed_call_count` và `accounting=observed_partial`. Metadata được allowlist và ghi qua lease-fenced transaction; không chứa transcript/key. Score checkpoint vẫn commit trước feedback. Đây là số liệu đã quan sát, có thể thiếu response khi process chết trước checkpoint, không phải hóa đơn bảo đảm đầy đủ.
+Writing giữ usage cùng metadata per-HTTP attempt trong latency: policy/model/stage/effort/detail, cap, latency, finish, số lần thử và counters đã trả về. Speaking giữ `usage_json.calls` tối đa 32 bản ghi gần nhất, tổng `prompt_tokens`, `completion_tokens`, `total_tokens`, `reasoning_tokens` khi có, `observed_call_count` và `accounting=observed_partial`; mỗi logical call chứa các `provider_attempts`. Reasoning là tập con completion, không cộng thêm vào total/giá. Usage của length rồi repair thành công được cộng đúng một lần; request bị hủy hoặc lỗi có usage đã biết vẫn được giữ, in-flight không có số liệu thì để chưa biết. Metadata allowlist không chứa nội dung reasoning, ảnh, transcript/key hoặc raw provider body. Score checkpoint vẫn commit trước feedback. Crash trước accounting checkpoint vẫn có thể làm thiếu số liệu; đây không phải hóa đơn đầy đủ.
 
-Ước tính chuẩn: `cost = (prompt_tokens × input_price_per_million + completion_tokens × output_price_per_million) / 1_000_000`. Lấy giá tại [trang đúng model](https://developers.openai.com/api/docs/models/gpt-6-luna) vào ngày đo, tách cache/processing tier/region nếu billing cung cấp. Allowlist hiện chỉ giữ ba token counters nên không phân tách cached-input discounts; dùng giá uncached chỉ là ước tính. Đối chiếu dashboard Usage/Billing để kết luận phí thực. Không suy ra giá hoặc độ chính xác chấm IELTS từ một smoke request.
+Ước tính chuẩn: `cost = (prompt_tokens × input_price_per_million + completion_tokens × output_price_per_million) / 1_000_000`. Lấy giá tại [trang đúng model](https://developers.openai.com/api/docs/models/gpt-6-luna) vào ngày đo, tách cache/processing tier/region nếu billing cung cấp. Allowlist chưa giữ cached-input discounts; giá uncached chỉ là ước tính. Thiếu counters/giá thì không bịa token hoặc USD. Đối chiếu Usage/Billing để kết luận phí thực. Reasoning/detail có thể tăng chi phí và latency; chưa có benchmark thật cho profile mới.
 
 ### Smoke thật có opt-in
 
@@ -290,15 +350,15 @@ Writing giữ token usage/stage diagnostics hiện có. Speaking ghi `usage_json
 uv run --project backend python scripts/smoke_openai.py --allow-paid-request
 ```
 
-CLI chỉ chấp nhận OpenAI official base URL và đúng `gpt-6-luna`, gửi một completion JSON nhỏ với trần 64 output tokens, không readiness GET, không repair/retry. `--env-file` chọn file backend local; `--output` lưu JSON đã lọc nếu cần. Không chạy định kỳ hoặc trong CI. Kết quả PASS xác nhận transport/model và JSON response nhỏ, không chứng minh rubric quality, full grading, ASR, throughput hoặc Modal deployment.
+CLI chỉ chấp nhận OpenAI official base URL và đúng `gpt-6-luna`. Smoke kết nối có override riêng `none`/128 tổng tokens và repair cap 128, bảo đảm chỉ một completion, không readiness GET hoặc repair/retry; không kiểm policy chấm medium. `--env-file` chọn file backend local; `--output` lưu JSON đã lọc nếu cần. Không chạy định kỳ hoặc trong CI. PASS chỉ xác nhận transport/model và JSON nhỏ, không chứng minh rubric quality, full grading, ASR, throughput hoặc deployment.
 
-Ngày 2026-11-03, sau xác nhận người dùng, một request thật đạt PASS: 17 prompt + 11 completion = 28 tokens; client wall time 2,669 s. [Bằng chứng đã lọc](openai-gpt6-luna-verification.json) ghi trạng thái và phạm vi. Task 1/2 và Speaking bốn tiêu chí được kiểm bằng [HTTP mock qua adapter thật](../backend/tests/test_openai_grading_contracts.py); không gọi toàn bộ rubric với API trả phí trong nhiệm vụ này. Modal/AWS deployment thật **NOT VERIFIED**.
+Bằng chứng lịch sử trước profile reasoned: ngày 2026-11-03, một request thật được cho phép đạt PASS, 17 prompt + 11 completion = 28 tokens; client wall time 2,669 s. [Artifact gốc](openai-gpt6-luna-verification.json) được giữ nguyên, không phải phép đo của thay đổi hiện tại. Đợt policy này không gọi API thật. Task 1/2 và Speaking được kiểm bằng [HTTP mock qua adapter thật](../backend/tests/test_openai_grading_contracts.py). Modal/AWS deployment thật **NOT VERIFIED**.
 
 ### Modal, AWS và quay lại vLLM
 
 Theo [lệnh Modal CPU/Secret](modal-web.md#cpu-web-openai) để đóng băng provider tại deploy và chuyển key từ backend sang Modal Secret, không vào image. Tắt ASR chỉ phù hợp khi không cần chấm Speaking mới; PR vẫn cần acoustic evidence. AWS dùng cùng backend environment qua `BACKEND_ENV_FILE`/secret injection theo [hướng dẫn AWS](aws-deployment.md), không cần SDK/OpenAI key trên frontend hoặc LLM GPU. Không tự tạo cloud resources hoặc đổi database topology.
 
-Quay lại vLLM: đặt `AI_WRITING_PROVIDER=vllm`, `SPEAKING_AI_PROVIDER=vllm` (hoặc bỏ override để kế thừa), cung cấp endpoint/model và cặp proxy credentials hiện có. Với Modal đặt provider trong shell trước `serve/deploy`, cập nhật Secret theo hướng dẫn và restart workers. Historical outputs giữ provider/model cũ; cache mới có model, prompt, endpoint hash và output policy. OpenAI outputs cũ trước policy v2 không tái sử dụng, vẫn đọc được; không migration dữ liệu và không sửa score lịch sử.
+Quay lại vLLM: đặt `AI_WRITING_PROVIDER=vllm`, `SPEAKING_AI_PROVIDER=vllm` (hoặc bỏ override để kế thừa), cung cấp endpoint/model và cặp proxy credentials hiện có. Với Modal đặt provider trong shell trước `serve/deploy`, cập nhật Secret theo hướng dẫn và restart workers. Historical outputs giữ provider/model cũ; cache mới có model, prompt, endpoint hash và output policy. OpenAI outputs cũ trước `openai-chat-json-v3`/`openai_task1_reasoned_v1` không tái sử dụng, vẫn đọc được; không migration dữ liệu và không sửa score lịch sử.
 
 ## API và truyền sự kiện
 

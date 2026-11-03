@@ -30,6 +30,11 @@ def main(argv=None) -> int:
         action="store_true",
         help="Reuse matching successful checkpoints; retry failed samples.",
     )
+    parser.add_argument(
+        "--allow-live",
+        action="store_true",
+        help="Explicitly authorize provider calls; an API key alone never opts in.",
+    )
     parser.add_argument("--output", type=Path, help="Local output directory.")
     parser.add_argument(
         "--max-concurrent-llm-requests",
@@ -40,6 +45,10 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
     output = args.output or ROOT / "benchmarks/writing_task2/reports" / args.split
     try:
+        if not args.dry_run and not args.allow_live:
+            raise BenchmarkInputError(
+                "BENCHMARK_LIVE_OPT_IN_REQUIRED: use --allow-live or --dry-run."
+            )
         items = load_manifest(args.manifest, args.split, args.limit)
         settings = Settings(_env_file=ROOT / "backend/.env")
         config = configuration(settings, args.max_concurrent_llm_requests)

@@ -35,24 +35,26 @@ uv run python ../scripts/benchmark_task1.py --manifest ../benchmarks/writing_tas
 Chạy thử thật một mẫu rõ ràng, dùng cấu hình nhà cung cấp backend hiện có:
 
 ```powershell
-uv run python ../scripts/benchmark_task1.py --manifest ../benchmarks/writing_task1/private/manifest.jsonl --split dev --limit 1 --scoring-version v12 --chart-specialist off --resume --output ../benchmarks/writing_task1/reports/dev-smoke
+uv run python ../scripts/benchmark_task1.py --manifest ../benchmarks/writing_task1/private/manifest.jsonl --split dev --limit 1 --scoring-version v12 --chart-specialist off --allow-live --resume --output ../benchmarks/writing_task1/reports/dev-smoke
 ```
 
 So sánh nền v5 / ứng viên v12 có kiểm soát với cấu hình bộ chuyên đọc cố định:
 
 ```powershell
-uv run python ../scripts/benchmark_task1.py --manifest ../benchmarks/writing_task1/private/manifest.jsonl --split dev --scoring-version both --chart-specialist off --resume --output ../benchmarks/writing_task1/reports/dev-v5-v12
+uv run python ../scripts/benchmark_task1.py --manifest ../benchmarks/writing_task1/private/manifest.jsonl --split dev --scoring-version both --chart-specialist off --allow-live --resume --output ../benchmarks/writing_task1/reports/dev-v5-v12
 ```
 
 Để so thêm DePlot tắt/bật:
 
 ```powershell
-uv run python ../scripts/benchmark_task1.py --manifest ../benchmarks/writing_task1/private/manifest.jsonl --split dev --scoring-version both --chart-specialist both --resume --output ../benchmarks/writing_task1/reports/dev-ablation
+uv run python ../scripts/benchmark_task1.py --manifest ../benchmarks/writing_task1/private/manifest.jsonl --split dev --scoring-version both --chart-specialist both --allow-live --resume --output ../benchmarks/writing_task1/reports/dev-ablation
 ```
 
 `both` × `both` chạy bốn cấu hình **mỗi mẫu**: v5/v12 × DePlot tắt/bật. So sánh biến thể chấm báo v5 là nền, v12 là ứng viên, kèm độ lệch có dấu TA, MAE và chênh lệch đồng thuận theo ứng viên trừ nền. `--limit` giới hạn số mẫu duy nhất, không phải số yêu cầu nhà cung cấp. Chế độ bật bộ chuyên đọc chỉ áp dụng họ biểu đồ/bảng, cho phép tiếp tục khi lỗi và có thể quay về dự phòng nếu không khả dụng. Chạy thử một mẫu/một cấu hình trước. Ứng dụng không tự khởi động benchmark. Từ gốc kho mã, điểm vào tương đương là `uv run --project backend python -m scripts.benchmark_task1 ...`.
 
 Dùng `--split holdout` với thư mục đầu ra khác cho tập đánh giá cuối chưa đụng tới. Chỉ phát triển lời nhắc trên dev; xem/tinh chỉnh lặp dựa vào holdout làm mất mục đích giữ riêng. Điểm đích và chú giải không được gửi tới nhà cung cấp chấm hoặc bộ chuyên đọc.
+
+Mọi lệnh không có `--dry-run` cần `--allow-live`; API key không tự bật inference. Cờ này không bảo đảm trần dollar. So sánh OpenAI Luna A–D có chế độ `--openai-ablation --dry-run` riêng; live bị khóa đến khi có cost admission đáng tin cậy. Xem [giao thức, giới hạn và lệnh chuẩn](../../docs/writing-benchmark-bank.md#openai-luna-ablation); baseline v5/v12 ở trên là đối chiếu prompt lịch sử, không phải A–D inference policy.
 
 ## Báo cáo và tiếp tục
 

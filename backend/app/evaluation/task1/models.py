@@ -104,6 +104,9 @@ class BenchmarkConfig(Model):
     specialist_timeout_seconds: float
     benchmark_version: str = BENCHMARK_CONTRACT_VERSION
     implementation_hash: str = Field(pattern=r"^[a-f0-9]{64}$")
+    # Output-affecting OpenAI settings must not share vLLM's identity namespace.
+    # None keeps historical configurations readable without requiring credentials.
+    openai_inference: dict[str, Any] | None = None
 
     @property
     def key(self) -> str:
@@ -148,6 +151,9 @@ class EvaluationRecord(Model):
     specialist_calls: int = Field(ge=0)
     specialist_latency_seconds: float = Field(ge=0)
     failures: dict[str, str]
+    # Old checkpoints have no truncation telemetry; absent is unknown, not zero.
+    truncated_call_count: int | None = Field(default=None, ge=0)
+    ta_assessment: dict[str, Any] | None = None
 
     @field_validator("target", "predicted")
     @classmethod

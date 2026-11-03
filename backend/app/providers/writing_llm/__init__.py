@@ -4,9 +4,9 @@ import httpx
 
 from app.core.config import Settings
 from app.core.exceptions import AppError
-from app.providers.writing_llm.base import LLMProvider
+from app.providers.writing_llm.base import LLMProvider, ProviderFailure
 from app.providers.writing_llm.http import api_base_url
-from app.providers.writing_llm.openai import OpenAIProvider
+from app.providers.writing_llm.openai import OpenAIProvider, output_identity
 from app.providers.writing_llm.vllm import VLLMProvider
 
 
@@ -31,6 +31,10 @@ def is_configured(settings: Settings) -> bool:
     except (ValueError, TypeError, httpx.InvalidURL):
         return False
     if settings.ai_writing_provider == "openai":
+        try:
+            output_identity(settings)
+        except AppError:
+            return False
         return bool(
             settings.ai_writing_openai_api_key
             and settings.ai_writing_openai_base_url
@@ -49,8 +53,15 @@ def is_configured(settings: Settings) -> bool:
 
 
 def create_provider(settings: Settings) -> LLMProvider:
+    if settings.ai_writing_enabled and settings.ai_writing_provider == "openai":
+        # Validate separately so readiness can return false while a create
+        # request still distinguishes incompatible policy from missing keys.
+        output_identity(settings)
     if not is_configured(settings):
         raise AppError("AI_NOT_CONFIGURED", "Chấm AI chưa được cấu hình.", 503)
     if settings.ai_writing_provider == "openai":
-        return OpenAIProvider(settings)
+        try:
+            return OpenAIProvider(settings)
+        except ProviderFailure as exc:
+            raise AppError(exc.code, exc.message, 503) from None
     return VLLMProvider(settings)

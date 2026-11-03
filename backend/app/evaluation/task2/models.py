@@ -92,6 +92,7 @@ class BenchmarkConfig(Model):
     paragraph_mode: Literal["textarea"] = "textarea"
     benchmark_version: str = BENCHMARK_CONTRACT_VERSION
     implementation_hash: str = Field(pattern=r"^[a-f0-9]{64}$")
+    openai_inference: dict[str, Any] | None = None
 
     @property
     def key(self):
@@ -124,7 +125,8 @@ class EvaluationRecord(Model):
     @classmethod
     def safe_usage(cls, values):
         if any(
-            key not in {"prompt_tokens", "completion_tokens", "total_tokens"} or value < 0
+            key not in {"prompt_tokens", "completion_tokens", "total_tokens", "reasoning_tokens"}
+            or value < 0
             for key, value in values.items()
         ):
             raise ValueError("Unsafe usage counters")

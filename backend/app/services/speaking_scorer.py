@@ -1,8 +1,10 @@
 """Holistic score-first scorer; durable ownership belongs to the worker callback."""
 
+import asyncio
 import json
 import re
 from collections.abc import Awaitable, Callable, Iterable, Mapping
+from dataclasses import replace
 from decimal import Decimal
 from typing import get_args
 
@@ -16,6 +18,7 @@ from app.providers.writing_llm.base import (
     ProviderFailure,
     safe_completion_usage,
     safe_finish_reason,
+    safe_inference_attempts,
 )
 from app.schemas.speaking_ai import FluencyEvidence
 from app.schemas.speaking_grading import (
@@ -73,6 +76,9 @@ def safe_provider_call(record: Mapping) -> dict:
     reason = record.get("reason")
     if isinstance(reason, str) and reason in get_args(OutputFailureReason):
         safe["reason"] = reason
+    attempts = safe_inference_attempts(record.get("provider_attempts"))
+    if attempts:
+        safe["provider_attempts"] = attempts
     return safe
 
 
@@ -278,8 +284,12 @@ class SpeakingScorer:
         if callback is None:
             return
         record = {"criterion": criterion, "stage": stage}
-        if isinstance(outcome, (Completion, ProviderFailure)):
-            record.update(usage=outcome.usage, finish_reason=outcome.finish_reason)
+        if isinstance(outcome, (Completion, ProviderFailure, asyncio.CancelledError)):
+            record.update(
+                usage=getattr(outcome, "usage", {}),
+                finish_reason=getattr(outcome, "finish_reason", None),
+                provider_attempts=getattr(outcome, "attempts", ()),
+            )
         if isinstance(outcome, ProviderFailure):
             record.update(provider_error_code=outcome.code, reason=outcome.reason)
         elif isinstance(outcome, Exception):
@@ -325,8 +335,20 @@ class SpeakingScorer:
                 completion = await self.provider.complete(
                     messages,
                     CriterionBandScore.model_json_schema(),
-                    options=self.score_options,
+                    options=replace(
+                        self.score_options,
+                        task="speaking",
+                        stage="score",
+                        criterion=criterion,
+                        attempt=2 if repair else 1,
+                    ),
                 )
+            except asyncio.CancelledError as error:
+                if getattr(error, "usage", None) or getattr(error, "attempts", None):
+                    await self._observe_call(
+                        criterion, "score_repair" if repair else "score", error, on_provider_call
+                    )
+                raise
             except Exception as error:
                 await self._observe_call(
                     criterion, "score_repair" if repair else "score", error, on_provider_call
@@ -394,8 +416,14 @@ class SpeakingScorer:
             completion = await self.provider.complete(
                 messages,
                 CriterionFeedback.model_json_schema(),
-                options=self.feedback_options,
+                options=replace(
+                    self.feedback_options, task="speaking", stage="feedback", criterion=criterion
+                ),
             )
+        except asyncio.CancelledError as error:
+            if getattr(error, "usage", None) or getattr(error, "attempts", None):
+                await self._observe_call(criterion, "feedback", error, on_provider_call)
+            raise
         except Exception as error:
             await self._observe_call(criterion, "feedback", error, on_provider_call)
             completion = None

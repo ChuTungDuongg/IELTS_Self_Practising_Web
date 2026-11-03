@@ -25,8 +25,14 @@ def wire(monkeypatch, fake, actual):
         if request.method == "GET":
             return httpx.Response(200, json={"data": [{"id": "gpt-6-luna"}]})
         body = json.loads(request.content)
-        assert body["model"] == "gpt-6-luna" and body["reasoning_effort"] == "none"
-        completion = output.get()
+        completion, options = output.get()
+        medium = options.task == "task1" and (
+            options.stage in {"visual_grounding", "visual_reconciliation", "claim_verification"}
+            or (options.stage in {"score", "scoring"} and options.criterion == "ta")
+        )
+        assert body["model"] == "gpt-6-luna"
+        assert body["reasoning_effort"] == ("medium" if medium else "low")
+        assert body["max_completion_tokens"] == (16384 if medium else 8192)
         return httpx.Response(
             200,
             json={
@@ -43,11 +49,15 @@ def wire(monkeypatch, fake, actual):
     intercept(monkeypatch, handler)
 
     class Adapter:
+        task1_image_assessment = getattr(actual, "task1_image_assessment", False)
+        reasoned_inference = True
+        run_timeout_seconds = getattr(actual, "run_timeout_seconds", None)
+
         async def ensure_ready(self):
             await actual.ensure_ready()
 
         async def complete(self, messages, schema, *, options=None):
-            token = output.set(await fake.complete(messages, schema, options=options))
+            token = output.set((await fake.complete(messages, schema, options=options), options))
             try:
                 return await actual.complete(messages, schema, options=options)
             finally:
@@ -66,11 +76,12 @@ async def test_writing_task_pipelines_preserve_validated_results_through_openai_
     from app.services.mts_writing import MTSWritingScoringService
 
     if task == 1:
-        from test_task1_visual import Task1FakeProvider, request
+        from test_openai_task1_assessment import SourceImageProvider
+        from test_task1_visual import request
 
         from app.services.task1_writing import Task1WritingScoringService
 
-        fake, data, service = Task1FakeProvider(), request(), Task1WritingScoringService
+        fake, data, service = SourceImageProvider(), request(), Task1WritingScoringService
     else:
         fake, service = FakeProvider(), MTSWritingScoringService
         data = WritingScoringRequest(
@@ -92,6 +103,19 @@ async def test_writing_task_pipelines_preserve_validated_results_through_openai_
     assert set(result.criteria.model_dump()) == {"ta", "cc", "lr", "gra"}
     assert sum(event == "criterion.completed" for event, _ in events) >= 4
     assert any(request.method == "POST" for request in requests)
+    if task == 1:
+        import base64
+
+        bodies = [json.loads(r.content) for r in requests if r.method == "POST"]
+        visual = [body for body in bodies if isinstance(body["messages"][1]["content"], list)]
+        assert len(visual) == 2, "Grounding and TA must both contain actual image bytes"
+        for body in visual:
+            image_url = body["messages"][1]["content"][1]["image_url"]
+            assert image_url["detail"] == "high"
+            assert base64.b64decode(image_url["url"].split(",", 1)[1]) == data.image.data
+            assert body["reasoning_effort"] == "medium" and body["max_completion_tokens"] == 16384
+        assert "conflicts" in visual[1]["messages"][0]["content"]
+        assert fake.assessment_calls == 1
 
 
 async def test_speaking_all_criteria_keep_parts_acoustics_and_score_checkpoints(monkeypatch):
@@ -138,7 +162,7 @@ async def test_openai_worker_persists_identity_and_invalidates_cache_without_tou
     saved = await api.get(created.run_id)
     assert saved.status == "COMPLETED" and (saved.provider, saved.model) == ("openai", "gpt-6-luna")
     assert (await api.create(writing[0], writing[2], force=False)).run_id == saved.id
-    config.ai_writing_openai_max_output_tokens = 1024
+    config.ai_writing_openai_max_output_tokens = 16384
     assert (await api.create(writing[0], writing[2], force=False)).run_id != saved.id
     async with db_session.begin():
         score = await db_session.scalar(

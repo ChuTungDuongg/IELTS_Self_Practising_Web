@@ -32,7 +32,8 @@ def test_smoke_is_one_paid_post_with_safe_machine_readable_result(monkeypatch, c
     def handler(request):
         requests.append(request)
         body = json.loads(request.content)
-        assert body["max_completion_tokens"] == 64
+        assert body["max_completion_tokens"] == 128
+        assert body["reasoning_effort"] == "none"
         return httpx.Response(
             status,
             json={
