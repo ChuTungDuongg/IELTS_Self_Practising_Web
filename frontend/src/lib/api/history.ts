@@ -24,6 +24,7 @@ const historyItemSchema = z.object({
   max_score: z.number().int().nullable(),
   band_score: z.number().nullable(),
   task_score: z.number().nullable().optional(),
+  task_band: z.number().min(0).max(9).multipleOf(0.5).nullable().optional(),
   review_available: z.boolean().optional(),
   deletion_allowed: z.boolean().optional(),
   speaking_summary: z.object({ transcript_status: z.string().nullable(), ai_status: z.string().nullable(), advisory_overall_band: z.number().min(0).max(9).multipleOf(0.5).nullable(), ai_run_id: z.string().uuid().nullable() }).nullable().optional(),

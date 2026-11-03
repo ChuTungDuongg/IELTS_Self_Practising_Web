@@ -12,6 +12,7 @@ import { AnnotatedEssay } from "./annotated-essay";
 import { presentAIFeedback } from "./ai-feedback-presentation";
 import { aiTraits, type AIWritingResult } from "@/lib/api/writing-ai";
 import { assetContentUrl } from "@/lib/api/assets";
+import { writingTaskBand } from "./task-band";
 import { focusedUnitLabel } from "@/features/exam/focused-attempt";
 import {
   saveWritingTaskScore,
@@ -68,6 +69,7 @@ export function WritingReviewView({ data, readOnly = false, assignmentScope }: {
   const [errors, setErrors] = useState<Record<string, { message: import("@/lib/i18n/types").TranslationKey; number?: number } | null>>({});
   const task = reviewData.tasks[taskIndex];
   const focused = reviewData.review.attempt.scope === "FOCUSED_UNIT";
+  const taskBand = writingTaskBand(task?.score);
   const reviewRoot = useRef<HTMLDivElement>(null);
   const [essayState, setEssayState] = useState<EssayAnnotationState & { taskId: string } | null>(null);
   const selectedTaskId = task?.writing_task_id;
@@ -149,7 +151,7 @@ export function WritingReviewView({ data, readOnly = false, assignmentScope }: {
     {reviewData.grading?.context === "PERSONAL" ? <p>{t("grading.selfAssessed")}</p> : null}
     <header className="review-header">
       <div><p className="writing-review-kicker">{focused ? t("runner.writingFocused") : t("runner.writingReview")}</p><h1>{reviewData.review.test_title}</h1>{focusedUnitLabel(reviewData.review.attempt, t) ? <p>{focusedUnitLabel(reviewData.review.attempt, t)}</p> : null}</div>
-      <p className="review-score"><span className="review-result-label">{focused ? t("runner.taskScore") : finalLabel}</span><b>{focused ? task.score ? task.score.overall.toFixed(2) : t("runner.notGraded") : reviewData.band_score === null ? t("runner.pending") : t("runner.band", { score: reviewData.band_score.toFixed(1) })}</b></p>
+      <p className="review-score"><span className="review-result-label">{focused ? t("runner.taskScore") : finalLabel}</span><b>{focused ? taskBand !== null ? taskBand.toFixed(1) : t("runner.notGraded") : reviewData.band_score === null ? t("runner.pending") : t("runner.band", { score: reviewData.band_score.toFixed(1) })}</b></p>
     </header>
 
     {!focused ? <section className="writing-assessment-summary" aria-label={t("runner.writingSummary")}>
@@ -167,11 +169,13 @@ export function WritingReviewView({ data, readOnly = false, assignmentScope }: {
         const selection = selections[scoreTask.writing_task_id];
         const complete = selection && Object.values(selection).every((value) => value !== "");
         const saving = savingTaskId === scoreTask.writing_task_id;
+        const band = writingTaskBand(scoreTask.score);
+        const taskCriteria = criteria.map(([key, abbreviation, fullName]) => [key, key === "ta" && scoreTask.task_number === 2 ? "TR" : abbreviation, fullName] as const);
         return <section key={scoreTask.writing_task_id} className="writing-assessment-card" aria-label={t("runner.taskAssessment", { number: scoreTask.task_number })}>
-          <div className="writing-assessment-card-heading"><div><p className="writing-review-kicker">{t("runner.writingTask", { number: scoreTask.task_number })}</p><h2>{t("runner.taskAssessment", { number: scoreTask.task_number })}</h2></div><strong>{scoreTask.score ? `${focused ? t("runner.taskScore") : t("runner.overall")} ${scoreTask.score.overall.toFixed(2)}` : focused ? t("runner.notGraded") : t("runner.awaitingScores")}</strong></div>
+          <div className="writing-assessment-card-heading"><div><p className="writing-review-kicker">{t("runner.writingTask", { number: scoreTask.task_number })}</p><h2>{t("runner.taskAssessment", { number: scoreTask.task_number })}</h2></div><strong>{scoreTask.score ? `${focused ? t("runner.taskScore") : t("runner.overall")} ${(focused ? band?.toFixed(1) ?? t("runner.notGraded") : scoreTask.score.overall.toFixed(2))}` : focused ? t("runner.notGraded") : t("runner.awaitingScores")}</strong></div>
           <div className="writing-criteria-grid">
-            {canEdit ? criteria.map(([key, abbreviation, fullName]) => <div key={key} className="writing-criterion-field"><label><span><b>{abbreviation}</b><small>{key === "ta" && scoreTask.task_number === 2 ? t("runner.taskResponse") : t(fullName)}</small></span><select disabled={!canEdit} aria-label={t("runner.taskCriterion", { number: scoreTask.task_number, criterion: abbreviation })} className="select-field" value={selection?.[key] ?? ""} onChange={(event) => updateCriterion(scoreTask.writing_task_id, key, event.target.value)}><option value="">{t("runner.notScored")}</option>{bands.map((band) => <option key={band} value={band}>{band}</option>)}</select></label><label className="field-label">{t("runner.criterionFeedback", { criterion: abbreviation })} <span className="font-normal text-[var(--muted)]">{t("runner.optional")}</span><textarea readOnly={!canEdit} aria-label={t("runner.taskCriterionFeedback", { number: scoreTask.task_number, criterion: abbreviation })} className="textarea-field mt-2" rows={3} maxLength={4000} value={feedback[scoreTask.writing_task_id]?.[key] ?? ""} onChange={(event) => updateFeedback(scoreTask.writing_task_id, key, event.target.value)} /></label></div>) : null}
-            {!canEdit ? criteria.map(([key, abbreviation, fullName]) => <div key={key} className="writing-criterion-field"><p><b>{abbreviation}</b> · {key === "ta" && scoreTask.task_number === 2 ? t("runner.taskResponse") : t(fullName)}</p><p>{scoreTask.score?.[key]?.toFixed(1) ?? "—"}</p>{scoreTask.score?.[`${key}_feedback`] ? <p>{scoreTask.score[`${key}_feedback`]}</p> : null}</div>) : null}
+            {canEdit ? taskCriteria.map(([key, abbreviation, fullName]) => <div key={key} className="writing-criterion-field"><label><span><b>{abbreviation}</b><small> — {key === "ta" && scoreTask.task_number === 2 ? t("runner.taskResponse") : t(fullName)}</small></span><select disabled={!canEdit} aria-label={t("runner.taskCriterion", { number: scoreTask.task_number, criterion: abbreviation })} className="select-field" value={selection?.[key] ?? ""} onChange={(event) => updateCriterion(scoreTask.writing_task_id, key, event.target.value)}><option value="">{t("runner.notScored")}</option>{bands.map((band) => <option key={band} value={band}>{band}</option>)}</select></label><label className="field-label">{t("runner.criterionFeedback", { criterion: abbreviation })} <span className="font-normal text-[var(--muted)]">{t("runner.optional")}</span><textarea readOnly={!canEdit} aria-label={t("runner.taskCriterionFeedback", { number: scoreTask.task_number, criterion: abbreviation })} className="textarea-field mt-2" rows={3} maxLength={4000} value={feedback[scoreTask.writing_task_id]?.[key] ?? ""} onChange={(event) => updateFeedback(scoreTask.writing_task_id, key, event.target.value)} /></label></div>) : null}
+            {!canEdit ? taskCriteria.map(([key, abbreviation, fullName]) => <div key={key} className="writing-criterion-field"><p><b>{abbreviation}</b> — {key === "ta" && scoreTask.task_number === 2 ? t("runner.taskResponse") : t(fullName)}</p><p>{scoreTask.score?.[key]?.toFixed(1) ?? "—"}</p>{scoreTask.score?.[`${key}_feedback`] ? <p>{scoreTask.score[`${key}_feedback`]}</p> : null}</div>) : null}
 
           </div>
           {canEdit ? <button type="button" className="btn btn-writing" disabled={!complete || saving} onClick={() => void saveTaskScores(scoreTask.writing_task_id, scoreTask.task_number)}>{saving ? t("common.saving") : t("runner.saveTaskScores", { number: scoreTask.task_number })}</button> : null}

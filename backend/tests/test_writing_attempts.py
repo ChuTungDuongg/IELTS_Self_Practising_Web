@@ -18,6 +18,38 @@ from app.schemas.attempts import AttemptCreate, TimerRequest, WritingTaskScoreUp
 from app.services.attempts import AttemptService
 
 
+@pytest.mark.integration
+async def test_two_task_review_weights_raw_means_instead_of_display_bands(db_session):
+    version_id, task_one_id, task_two_id, _ = await _persist_writing_test(db_session)
+    service = AttemptService(db_session)
+    started = await service.start(
+        AttemptCreate(
+            test_version_id=version_id,
+            module=ModuleType.WRITING,
+            timer=TimerRequest(mode=TimerMode.COUNT_UP),
+        )
+    )
+    await service.submit(started.attempt_id)
+    await db_session.rollback()
+    first = await service.grade_writing_task(
+        started.attempt_id, task_one_id, WritingTaskScoreUpdate(ta=6, cc=6, lr=6, gra=6.5)
+    )
+    assert first.task1_overall == 6.125
+    assert first.tasks[0].score.task_band == 6.0
+    await db_session.rollback()
+    second = await service.grade_writing_task(
+        started.attempt_id, task_two_id, WritingTaskScoreUpdate(ta=6, cc=6, lr=6.5, gra=6.5)
+    )
+    assert second.task2_overall == 6.25
+    assert second.tasks[1].score.task_band == 6.5
+    assert second.weighted_overall == pytest.approx(6.208333333333333)
+    assert second.band_score == 6.0
+    await db_session.rollback()
+    db_session.expire_all()
+    reloaded = await service.writing_review(started.attempt_id)
+    assert reloaded.band_score == reloaded.review.attempt.band_score == 6.0
+
+
 async def _persist_writing_test(
     session: AsyncSession, *, title: str = "Fictional Writing attempt"
 ) -> tuple[UUID, UUID, UUID, UUID]:
@@ -335,6 +367,7 @@ async def test_writing_task_score_endpoint_returns_authoritative_summary(
         "lr": 7.0,
         "gra": 6.5,
         "overall": 6.75,
+        "task_band": 7.0,
         "ta_feedback": None,
         "cc_feedback": None,
         "lr_feedback": None,

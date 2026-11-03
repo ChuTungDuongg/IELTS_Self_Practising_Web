@@ -117,6 +117,7 @@ export const writingReviewTaskSchema = z.object({
     lr: z.number(),
     gra: z.number(),
     overall: z.number(),
+    task_band: z.number().min(0).max(9).multipleOf(0.5).nullable().optional(),
     ta_feedback: z.string().nullable().optional(),
     cc_feedback: z.string().nullable().optional(),
     lr_feedback: z.string().nullable().optional(),

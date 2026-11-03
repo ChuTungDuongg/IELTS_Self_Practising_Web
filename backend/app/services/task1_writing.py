@@ -124,6 +124,7 @@ class Task1WritingScoringService(MTSWritingScoringService):
         analysis: Task1Analysis,
     ) -> list[Message]:
         if trait == "ta" and self.provider.task1_image_assessment:
+            self.ta_audit["source_image_assessment"] = request.image is not None
             return image_ta_score_prompt(request, evidence, analysis)
         return score_prompt(request, trait, evidence, analysis)
 
@@ -145,6 +146,7 @@ class Task1WritingScoringService(MTSWritingScoringService):
         self, request: Task1ScoringRequest, trace: TraceCallback
     ) -> Task1WritingResult | None:
         self._start_assessment()
+        self.ta_audit["image_sha256"] = request.image_checksum
         trace = self.protected_trace(trace)
         analysis = Task1Analysis(visual_family=visual_family(request.task_type).value)
         grounding, claims = self._analysis_services()
@@ -488,6 +490,7 @@ class Task1WritingScoringService(MTSWritingScoringService):
                 len(output.conflicts),
             )
             if output.status == "READY":
+                self.ta_audit["validated_score"] = float(output.score)
                 return evidence, display_evidence, CriterionBandScore(score=output.score)
             if output.status != "CONFLICT" or reconciliation:
                 raise ProviderFailure("AI_PROVIDER_BAD_RESPONSE")

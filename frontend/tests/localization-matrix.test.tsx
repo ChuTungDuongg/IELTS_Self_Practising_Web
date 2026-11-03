@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, within, type RenderResult } from "@test
 import { useEffect, type ReactElement } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { AppShell } from "@/components/ui/app-shell";
-import { themeInitializationScript } from "@/app/layout";
+import { themeInitializationScript } from "@/features/personalization/theme-initialization";
 import { LocaleProvider, useLocale } from "@/lib/i18n/locale-provider";
 import { usePersonalization } from "@/features/personalization/personalization-provider";
 import { AuthProvider } from "@/features/auth/auth-provider";

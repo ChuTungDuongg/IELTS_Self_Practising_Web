@@ -107,10 +107,15 @@ class BenchmarkConfig(Model):
     # Output-affecting OpenAI settings must not share vLLM's identity namespace.
     # None keeps historical configurations readable without requiring credentials.
     openai_inference: dict[str, Any] | None = None
+    # Evaluation-only; absent in historical configurations and production.
+    ta_evidence_mode: Literal["selector_assessments", "source_ids_only"] | None = None
 
     @property
     def key(self) -> str:
-        return digest(self.model_dump(mode="json", exclude={"label"}))
+        data = self.model_dump(mode="json", exclude={"label"})
+        if self.ta_evidence_mode is None:
+            data.pop("ta_evidence_mode")
+        return digest(data)
 
 
 class EvaluationRecord(Model):
@@ -154,6 +159,8 @@ class EvaluationRecord(Model):
     # Old checkpoints have no truncation telemetry; absent is unknown, not zero.
     truncated_call_count: int | None = Field(default=None, ge=0)
     ta_assessment: dict[str, Any] | None = None
+    # Actual resolved attempt metadata only, never inferred from current defaults.
+    provider_attempts: list[dict[str, Any]] = Field(default_factory=list)
 
     @field_validator("target", "predicted")
     @classmethod

@@ -16,6 +16,7 @@ import { ApiError } from "@/lib/api/client";
 import { deleteStandaloneTestHistory, type HistoryGroup, type HistoryItem, type HistoryResponse, type MockHistoryGroup } from "@/lib/api/history";
 import { deleteTestSession } from "@/lib/api/test-sessions";
 import { formatProjectDateTime } from "@/lib/date-time";
+import { taskBandFromRawMean } from "@/features/writing/task-band";
 import { moduleTranslationKeys, statusTranslationKeys } from "@/lib/i18n/translations";
 import { accuracyLabel, focusedUnitLabel } from "@/features/exam/focused-attempt";
 
@@ -296,9 +297,10 @@ function AttemptScore({ item }: { item: HistoryItem }) {
     return <span className="history-score history-score-state" data-testid={`history-score-${item.attempt_id}`}>{t("history.progress")}</span>;
   }
   if (item.scope === "FOCUSED_UNIT") {
+    const taskBand = item.task_band ?? taskBandFromRawMean(item.task_score);
     if (item.module === "SPEAKING") return <span className="history-score history-score-state" data-testid={`history-score-${item.attempt_id}`}>{item.band_score === null ? t("history.notGraded") : t("runner.band", { score: item.band_score.toFixed(1) })}</span>;
     return <span className="history-score history-score-result" data-testid={`history-score-${item.attempt_id}`}>
-      {item.module === "WRITING" ? item.task_score == null ? t("history.notGraded") : t("history.taskScore", { score: item.task_score.toFixed(1) }) : <>
+      {item.module === "WRITING" ? taskBand == null ? t("history.notGraded") : t("history.taskScore", { score: taskBand.toFixed(1) }) : <>
         <strong>{t("history.correct", { raw: item.raw_score ?? "—", max: item.max_score ?? "—" })}</strong>
         <small>{accuracyLabel(item.raw_score, item.max_score, t)}</small>
       </>}

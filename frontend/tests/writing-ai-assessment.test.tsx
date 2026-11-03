@@ -558,7 +558,7 @@ describe("Writing AI assessment", () => {
     fireEvent.click(screen.getByRole("tab", { name: /Task 2/ }));
     fireEvent.click(await screen.findByRole("button", { name: "Chép gợi ý AI vào biểu mẫu" }));
     const expected = {
-      TA: "Luận điểm ở đoạn 1, câu 13.", CC: "Liên kết (đoạn 1, câu 3; đoạn 2, câu 1).",
+      TR: "Luận điểm ở đoạn 1, câu 13.", CC: "Liên kết (đoạn 1, câu 3; đoạn 2, câu 1).",
       LR: "Từ vựng tại đoạn 2, câu 4.", GRA: "Cấu trúc tại đoạn 1, câu 16.",
     };
     for (const [trait, feedback] of Object.entries(expected)) {
@@ -604,14 +604,14 @@ describe("Writing AI assessment", () => {
     expect(screen.getByRole("heading", { name: "Đánh giá AI · Task 1" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("tab", { name: /Task 2/ }));
     fireEvent.click(await screen.findByRole("button", { name: "Chép gợi ý AI vào biểu mẫu" }));
-    expect(screen.getByLabelText("Task 2 TA")).toHaveValue("6.5");
+    expect(screen.getByLabelText("Task 2 TR")).toHaveValue("6.5");
     expect(screen.getByLabelText("Task 2 CC")).toHaveValue("6.0");
     expect(screen.getByLabelText("Task 2 LR")).toHaveValue("7.0");
     expect(screen.getByLabelText("Task 2 GRA")).toHaveValue("6.0");
-    expect(screen.getByLabelText("Task 2 TA feedback")).toHaveValue(criterion.feedback);
+    expect(screen.getByLabelText("Task 2 TR feedback")).toHaveValue(criterion.feedback);
     expect(saveWritingTaskScore).not.toHaveBeenCalled();
     expect(screen.getByText("Waiting for all 8 criterion scores")).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("Task 2 TA"), { target: { value: "7.0" } });
+    fireEvent.change(screen.getByLabelText("Task 2 TR"), { target: { value: "7.0" } });
     vi.mocked(saveWritingTaskScore).mockResolvedValue(review());
     fireEvent.click(screen.getByRole("button", { name: "Save Task 2 scores" }));
     await waitFor(() => expect(saveWritingTaskScore).toHaveBeenCalledWith(attemptId, taskId, expect.objectContaining({ ta: 7, cc: 6, lr: 7, gra: 6, ta_feedback: criterion.feedback })));
@@ -841,7 +841,7 @@ describe("Writing AI assessment", () => {
     }
     expect(screen.getByLabelText("Task 1 TA feedback")).toHaveValue("Mô tả tại đoạn 1, câu 1.");
     expect(screen.getByLabelText("Task 1 TA feedback")).toBeEnabled();
-    expect(screen.getByLabelText("Task 2 TA")).toHaveValue("");
+    expect(screen.getByLabelText("Task 2 TR")).toHaveValue("");
     expect(saveWritingTaskScore).not.toHaveBeenCalled();
     expect(screen.getByText("Waiting for all 8 criterion scores")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("tab", { name: /Task 2/ }));

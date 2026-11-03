@@ -4,14 +4,17 @@ from datetime import timedelta
 from types import SimpleNamespace
 from uuid import uuid4
 
+import httpx
 import pytest
 from sqlalchemy import update
 from sqlalchemy.exc import IntegrityError
 
 from app.core.config import Settings
+from app.core.database import get_session
 from app.core.exceptions import AppError
 from app.domains.scoring import calculate_task_overall
 from app.domains.timers import TimerService
+from app.main import app
 from app.models import (
     Asset,
     Attempt,
@@ -627,6 +630,7 @@ async def test_focused_writing_history_exposes_task_score_without_overall_band(d
     await service.submit(writing.attempt_id)
     history = {item.attempt_id: item for item in (await service.history()).items}
     assert history[writing.attempt_id].task_score is None
+    assert history[writing.attempt_id].task_band is None
     await db_session.rollback()
     await service.grade_writing_task(
         writing.attempt_id,
@@ -641,3 +645,72 @@ async def test_focused_writing_history_exposes_task_score_without_overall_band(d
     assert history[writing.attempt_id].task_score == float(calculate_task_overall(6.5, 7, 6.5, 7))
     assert history[reading.attempt_id].task_score is None
     assert history[full.attempt_id].task_score is None
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("task_index", [0, 1])
+@pytest.mark.parametrize(
+    "criteria,raw,band",
+    [
+        ({"ta": 5, "cc": 5, "lr": 4, "gra": 4.5}, 4.625, 4.5),
+        ({"ta": 0, "cc": 0, "lr": 0, "gra": 0}, 0.0, 0.0),
+        ({"ta": 9, "cc": 9, "lr": 9, "gra": 9}, 9.0, 9.0),
+    ],
+)
+async def test_focused_writing_save_api_reload_and_history_band(
+    db_session, authenticated_admin, task_index, criteria, raw, band
+):
+    version, units = await content(db_session)
+    task_id = units[ModuleType.WRITING][task_index].id
+    service = AttemptService(db_session)
+    started = await service.start(
+        request(version, ModuleType.WRITING, units[ModuleType.WRITING][task_index])
+    )
+    await service.submit(started.attempt_id)
+    await db_session.rollback()
+
+    async def session_override():
+        yield db_session
+
+    app.dependency_overrides[get_session] = session_override
+    try:
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            url = f"/api/v1/attempts/{started.attempt_id}"
+            ungraded = await client.get(f"{url}/writing-review")
+            assert ungraded.status_code == 200
+            assert ungraded.json()["tasks"][0]["score"] is None
+            await db_session.rollback()
+            incomplete = await client.put(
+                f"{url}/writing-scores/{task_id}", json={"ta": 5, "cc": 5, "lr": 4}
+            )
+            assert incomplete.status_code == 422
+            response = await client.put(f"{url}/writing-scores/{task_id}", json=criteria)
+            assert response.status_code == 200
+            score = response.json()["tasks"][0]["score"]
+            assert {
+                key: score[key] for key in ("ta", "cc", "lr", "gra", "overall", "task_band")
+            } == {
+                **criteria,
+                "overall": raw,
+                "task_band": band,
+            }
+            assert response.json()["band_score"] is None
+            await db_session.rollback()
+            db_session.expire_all()
+            reloaded = await client.get(f"{url}/writing-review")
+            assert reloaded.status_code == 200
+            assert reloaded.json()["tasks"][0]["score"] == score
+            assert reloaded.json()["review"]["attempt"]["band_score"] is None
+            await db_session.rollback()
+            history_response = await client.get("/api/v1/history")
+            assert history_response.status_code == 200
+            history = history_response.json()
+            item = next(
+                item for item in history["items"] if item["attempt_id"] == str(started.attempt_id)
+            )
+            assert (item["task_score"], item["task_band"], item["band_score"]) == (raw, band, None)
+            assert history["groups"] == []
+    finally:
+        app.dependency_overrides.pop(get_session, None)

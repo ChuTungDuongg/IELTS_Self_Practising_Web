@@ -11,6 +11,7 @@ from app.providers.writing_llm.base import (
     ProviderFailure,
     safe_completion_usage,
     safe_finish_reason,
+    safe_inference_attempts,
 )
 
 
@@ -23,6 +24,7 @@ class CountedProvider:
         self.failure_usage = Counter()
         self.truncated_call_count = 0
         self.finish_reasons = Counter()
+        self.inference_attempts = []
 
     @property
     def calls(self):
@@ -34,6 +36,7 @@ class CountedProvider:
 
     def _record_attempts(self, result):
         attempts = getattr(result, "attempts", ())
+        self.inference_attempts.extend(safe_inference_attempts(attempts))
         if self._authoritative_attempts and not attempts:
             # Admission rejection, queued timeout and queued cancellation have
             # no POST or finish metadata. The provider counter is authoritative.
