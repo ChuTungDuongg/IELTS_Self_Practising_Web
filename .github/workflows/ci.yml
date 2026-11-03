@@ -115,3 +115,5 @@ jobs:
         run: npm run lint
       - name: Frontend unit tests
         run: npm test
+      - name: Production build
+        run: npm run build

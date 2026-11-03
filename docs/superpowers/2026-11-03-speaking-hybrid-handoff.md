@@ -14,6 +14,10 @@ User will add credentials later. The existing classroom page prop type error was
 with a route wrapper. Full frontend typecheck and ESLint now pass; Ruff lint/format and
 lock validation pass. Updated offline adapter/launcher/Modal/feature selection: **118 passed**.
 CI now runs on `codex/**` pushes as well as main and pull requests.
+Production `npm run build` also passed locally and is now a CI check so generated
+Next.js route contracts used by the Modal image are validated. The native Docker
+probe was repeated with network disabled and again passed with zero provider calls.
+The launcher explicitly selects both graders, overriding stale shell selectors.
 
 ## Changed interfaces and ownership
 

@@ -301,11 +301,13 @@ def test_hybrid_default_launch_shares_azure_and_uses_openai_without_gpu_proxy(
     monkeypatch, tmp_path, capsys
 ):
     launcher, config, calls, model = setup_hybrid_launcher(monkeypatch, tmp_path)
+    monkeypatch.setenv("IELTS_WEB_SPEAKING_AI_PROVIDER", "vllm")
     assert launcher.main(["--config", str(config)]) == 0
     assert len(calls) == 1
     environment = calls[0][1]["env"]
     assert environment["IELTS_WEB_SPEAKING_PROFILE"] == "speaking_hybrid_v1"
     assert environment["IELTS_WEB_AI_PROVIDER"] == "openai"
+    assert environment["IELTS_WEB_SPEAKING_AI_PROVIDER"] == "openai"
     assert environment["SPEAKING_AI_PROVIDER"] == "openai"
     assert environment["SPEAKING_AZURE_KEY"] == "fictional-azure-key"
     assert environment["SPEAKING_AZURE_REGION"] == "southeastasia"

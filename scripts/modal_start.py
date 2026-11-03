@@ -182,6 +182,7 @@ def main(argv=None):
             raise ValueError("IELTS_WEB_AI_PROVIDER must be openai or vllm")
         values["IELTS_WEB_SPEAKING_PROFILE"] = profile
         values["IELTS_WEB_AI_PROVIDER"] = provider
+        values["IELTS_WEB_SPEAKING_AI_PROVIDER"] = provider
         cli = values.pop("MODAL_CLI_PATH", None) or shutil.which("modal")
         if not cli or not Path(cli).is_file():
             raise ValueError("Modal CLI missing; set MODAL_CLI_PATH in .env.modal")
