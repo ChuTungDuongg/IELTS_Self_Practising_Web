@@ -155,7 +155,7 @@ def copy_verified_chunk(storage, key, expected_sha256, max_bytes, destination):
         raise
 
 
-def _render(groups, destination, settings, executor, storage):
+def _render(groups, destination, settings, executor, storage, *, window_ms=None):
     # Chunk concatenation is allowed inside one recorder container only. FFmpeg
     # independently decodes every recovered container before concatenating PCM.
     with tempfile.TemporaryDirectory(prefix="decode-", dir=destination.parent) as directory:
@@ -165,6 +165,8 @@ def _render(groups, destination, settings, executor, storage):
             "audio/webm;codecs=opus": "matroska",
             "audio/mp4": "mov",
             "audio/ogg;codecs=opus": "ogg",
+            "audio/mpeg": "mp3",
+            "audio/wav": "wav",
         }
         args = [
             settings.speaking_ffmpeg_path,
@@ -174,6 +176,8 @@ def _render(groups, destination, settings, executor, storage):
             "error",
             "-y",
         ]
+        if window_ms is not None:
+            args.extend(["-xerror", "-err_detect", "explode"])
         for index, (mime, chunks) in enumerate(groups):
             container = Path(directory) / f"segment-{index}"
             with container.open("xb") as output:
@@ -187,8 +191,20 @@ def _render(groups, destination, settings, executor, storage):
             args.extend(
                 ["-protocol_whitelist", "file,pipe", "-f", formats[mime], "-i", str(container)]
             )
+        window_filter = ""
+        if window_ms is not None:
+            start, end = window_ms
+            if (
+                len(groups) != 1
+                or not 0 <= start < end
+                or end - start > settings.speaking_max_decoded_seconds * 1000
+            ):
+                raise ValueError("Invalid normalized source window")
+            window_filter = (
+                f"atrim=start={start / 1000:.3f}:end={end / 1000:.3f},asetpts=PTS-STARTPTS,"
+            )
         filters = [
-            f"[{n}:a]aresample=16000,aformat=sample_fmts=s16:channel_layouts=mono[a{n}]"
+            f"[{n}:a]{window_filter}aresample=16000,aformat=sample_fmts=s16:channel_layouts=mono[a{n}]"
             for n in range(len(inputs))
         ]
         filters.append(

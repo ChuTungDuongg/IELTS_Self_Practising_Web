@@ -3,13 +3,15 @@ from app.services.speaking_audio import fingerprint
 
 
 def provider_identity(settings):
-    if settings.speaking_profile == "speaking_hybrid_v1":
-        from app.providers.speech_analysis.azure import azure_analysis_identity
+    if settings.speaking_asr_provider == "azure":
+        from app.providers.speech_analysis.azure import ADAPTER_VERSION, azure_analysis_identity
 
         return {
             **azure_analysis_identity(settings).model_dump(mode="json"),
+            "provider": "azure",
+            "region": settings.speaking_azure_region,
             "model": "service-managed-unknown",
-            "version": "azure-unscripted-v1",
+            "version": ADAPTER_VERSION,
         }
     if settings.speaking_asr_provider == "modal":
         return {
@@ -41,7 +43,7 @@ def provider_identity(settings):
 def create_provider(settings):
     if not settings.speaking_asr_enabled:
         raise AppError("SPEAKING_ASR_UNAVAILABLE", "Transcription is not configured.", 503)
-    if settings.speaking_profile == "speaking_hybrid_v1":
+    if settings.speaking_asr_provider == "azure":
         from app.services.speaking_hybrid import HybridASRProvider
 
         return HybridASRProvider(settings)

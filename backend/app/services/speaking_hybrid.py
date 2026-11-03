@@ -6,6 +6,10 @@ from dataclasses import replace
 from pathlib import Path
 
 from app.core.exceptions import AppError
+from app.providers.speech_analysis.azure_policy import (
+    TERMINAL_AZURE_ERRORS,
+    require_billing_authorization,
+)
 from app.schemas.speaking_ai import ASRResult, WordTiming
 from app.services.speaking_audio import await_audio_thread, fingerprint
 
@@ -77,6 +81,8 @@ async def analyze_response(audio, settings, *, analyzer=None, on_result=None):
 
 
 def analysis_to_asr(results, audio):
+    from app.providers.speech_analysis.azure import ADAPTER_VERSION
+
     text, words = [], []
     by_segment = {str(m.segment_id): m for m in audio.timeline}
     for result in results:
@@ -98,13 +104,22 @@ def analysis_to_asr(results, audio):
             if w.start_ms is not None and w.end_ms is not None
         )
     if not text:
+        terminal = next(
+            (r.error_code for r in results if r.error_code in TERMINAL_AZURE_ERRORS), None
+        )
+        if terminal:
+            raise AppError(
+                terminal,
+                "Speech resource is unavailable under the current policy.",
+                429 if terminal.endswith("QUOTA_EXCEEDED") else 409,
+            )
         raise AppError("ASR_UNUSABLE", "No usable lexical speech was recognized.", 409)
     return ASRResult(
         text=" ".join(text),
         words=words,
-        provider="azure-speech",
+        provider="azure",
         model="service-managed-unknown",
-        version="azure-unscripted-v1",
+        version=ADAPTER_VERSION,
         language=results[0].provider.locale,
         # Per-word or utterance recognition confidence is optional, never pronunciation accuracy.
         mean_confidence=None,
@@ -120,8 +135,9 @@ class HybridASRProvider:
         key = settings.speaking_azure_key
         if not key or not key.get_secret_value().strip() or not settings.speaking_azure_region:
             raise AppError("SPEAKING_ASR_UNAVAILABLE", "Azure Speech is not configured.", 503)
-        self.settings = settings
+        require_billing_authorization(settings)
         self.analyzer = AzureSpeechAnalyzer(settings)
+        self.settings = self.analyzer.settings
         from app.providers.speaking_asr import provider_identity
 
         self.identity = provider_identity(settings)

@@ -52,6 +52,8 @@ class Settings(BaseSettings):
     speaking_profile: Literal["legacy", "speaking_hybrid_v1"] = "legacy"
     speaking_azure_key: SecretStr | None = Field(default=None, repr=False)
     speaking_azure_region: str = Field(default="", max_length=80, pattern=r"^[a-z0-9-]*$")
+    speaking_azure_allow_paid: bool = False
+    speaking_azure_billing_mode: Literal["unknown", "free_only", "paid"] = "unknown"
     speaking_azure_locale: str = Field(default="en-US", pattern=r"^[a-z]{2}-[A-Z]{2}$")
     speaking_azure_prosody: bool = True
     speaking_azure_timeout_seconds: int = Field(default=180, ge=5, le=600)
@@ -61,7 +63,7 @@ class Settings(BaseSettings):
     speaking_vad_model_sha256: str = (
         "597d30b3ec076608d059477bb14cfeffdf951bf5cae370d38f65d33bbfe82004"
     )
-    speaking_asr_provider: Literal["local", "modal"] = "local"
+    speaking_asr_provider: Literal["local", "modal", "azure"] = "local"
     speaking_asr_base_url: str = ""
     speaking_asr_model_directory: str = ""
     speaking_asr_model: str = Field(default="local-model", min_length=1, max_length=200)
@@ -162,6 +164,14 @@ class Settings(BaseSettings):
     ai_writing_stale_after_seconds: int = Field(default=90, ge=45)
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", hide_input_in_errors=True)
+
+    @model_validator(mode="after")
+    def select_speech_profile(self):
+        # Explicit ASR selection activates the existing evidence contract, not another pipeline.
+        # Missing credentials are validated at the ASR boundary so Writing can still start.
+        if self.speaking_asr_provider == "azure":
+            self.speaking_profile = "speaking_hybrid_v1"
+        return self
 
     @model_validator(mode="after")
     def validate_storage(self):

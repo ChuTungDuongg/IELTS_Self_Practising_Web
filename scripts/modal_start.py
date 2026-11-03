@@ -124,6 +124,13 @@ def hybrid_environment(settings, model_path):
             "Configure SPEAKING_AZURE_KEY and SPEAKING_AZURE_REGION in backend/.env; "
             "see docs/modal-web.md#speaking-hybrid-cpu. No service was started."
         )
+    from app.providers.speech_analysis.azure_policy import billing_authorized
+
+    if not billing_authorized(settings):
+        raise ValueError(
+            "Azure billing blocked: set SPEAKING_AZURE_BILLING_MODE after verifying the resource "
+            "outside the worker. Paid mode also requires SPEAKING_AZURE_ALLOW_PAID=true."
+        )
     path = Path(model_path)
     path = (ROOT / path).resolve() if not path.is_absolute() else path.resolve()
     if not path.is_file():
@@ -154,6 +161,7 @@ def main(argv=None):
         help="Both graders' provider; OpenAI reads private backend/.env settings",
     )
     parser.add_argument("--speaking-profile", choices=("legacy", "speaking_hybrid_v1"))
+    parser.add_argument("--asr-provider", choices=("azure", "modal", "local"))
     parser.add_argument(
         "--no-asr",
         action="store_true",
@@ -173,11 +181,8 @@ def main(argv=None):
         profile = args.speaking_profile or values["IELTS_WEB_SPEAKING_PROFILE"]
         if profile not in {"legacy", "speaking_hybrid_v1"}:
             raise ValueError("IELTS_WEB_SPEAKING_PROFILE must be legacy or speaking_hybrid_v1")
-        provider = (
-            args.provider
-            or values.get("IELTS_WEB_AI_PROVIDER")
-            or ("openai" if profile == "speaking_hybrid_v1" else "vllm")
-        )
+        configured_provider = args.provider or values.get("IELTS_WEB_AI_PROVIDER")
+        provider = configured_provider or ("openai" if profile == "speaking_hybrid_v1" else "vllm")
         if provider not in {"openai", "vllm"}:
             raise ValueError("IELTS_WEB_AI_PROVIDER must be openai or vllm")
         values["IELTS_WEB_SPEAKING_PROFILE"] = profile
@@ -211,12 +216,39 @@ def main(argv=None):
                 settings = Settings(_env_file=ROOT / "backend/.env")
             except Exception:
                 raise ValueError("Cannot load backend/.env; verify backend configuration") from None
-            speech_enabled = environment["IELTS_WEB_SPEAKING_ASR_ENABLED"].lower() in {
+            provider = configured_provider or getattr(settings, "ai_writing_provider", "vllm")
+            if provider not in {"openai", "vllm"}:
+                raise ValueError("AI_WRITING_PROVIDER must be openai or vllm")
+            asr_provider = args.asr_provider or getattr(settings, "speaking_asr_provider", "modal")
+            profile = (
+                "speaking_hybrid_v1"
+                if asr_provider == "azure"
+                else (args.speaking_profile or "legacy")
+            )
+            speech_enabled = getattr(settings, "speaking_asr_enabled", True) and environment[
+                "IELTS_WEB_SPEAKING_ASR_ENABLED"
+            ].lower() in {
                 "true",
                 "1",
                 "yes",
             }
-            if profile == "speaking_hybrid_v1" and speech_enabled:
+            if speech_enabled and asr_provider == "local":
+                raise ValueError(
+                    "Modal Web does not include local ASR; select azure/modal or use --no-asr"
+                )
+            environment.update(
+                IELTS_WEB_AI_PROVIDER=provider,
+                IELTS_WEB_SPEAKING_AI_PROVIDER=provider,
+                IELTS_WEB_SPEAKING_PROFILE=profile,
+                IELTS_WEB_SPEAKING_ASR_PROVIDER=asr_provider,
+                IELTS_WEB_SPEAKING_ASR_ENABLED=str(speech_enabled).lower(),
+                SPEAKING_ASR_PROVIDER=asr_provider,
+                SPEAKING_ASR_ENABLED=str(speech_enabled).lower(),
+            )
+            for name in ("speaking_asr_language", "speaking_processing_timeout_seconds"):
+                if hasattr(settings, name):
+                    environment[name.upper()] = str(getattr(settings, name))
+            if asr_provider == "azure" and speech_enabled:
                 environment.update(
                     hybrid_environment(settings, values["IELTS_WEB_SPEAKING_VAD_MODEL_PATH"])
                 )
@@ -225,7 +257,7 @@ def main(argv=None):
             if provider == "openai":
                 environment.update(openai_environment(settings))
                 if (
-                    profile == "legacy"
+                    asr_provider == "modal"
                     and speech_enabled
                     and not (settings.ai_writing_modal_key and settings.ai_writing_modal_secret)
                 ):
@@ -233,7 +265,7 @@ def main(argv=None):
                         "ASR requires AI_WRITING_MODAL_KEY and AI_WRITING_MODAL_SECRET; "
                         "use --no-asr for OpenAI grading without ASR"
                     )
-                if profile == "legacy" and speech_enabled:
+                if asr_provider == "modal" and speech_enabled:
                     environment.update(
                         AI_WRITING_MODAL_KEY=settings.ai_writing_modal_key,
                         AI_WRITING_MODAL_SECRET=settings.ai_writing_modal_secret,

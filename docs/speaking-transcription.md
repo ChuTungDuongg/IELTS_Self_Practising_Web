@@ -4,15 +4,19 @@
 
 ## Azure unscripted + CPU VAD (opt-in)
 
-Bổ sung working tree trên `3cf5c9a`: chọn `SPEAKING_PROFILE=speaking_hybrid_v1`
-rõ ràng. Default vẫn `legacy`; phần faster-whisper và acoustic proxies bên dưới
+Xem [config/Secret/launcher và billing safety](modal-web.md#azure-configuration-secrets-and-canonical-command).
+
+Chọn `SPEAKING_ASR_PROVIDER=azure` để dùng profile `speaking_hybrid_v1` hiện có. Default vẫn `legacy`; phần faster-whisper và acoustic proxies bên dưới
 chỉ mô tả legacy. Không có production switch hoặc benchmark live trong lần này.
 
 ```dotenv
-SPEAKING_PROFILE=speaking_hybrid_v1
+SPEAKING_ASR_PROVIDER=azure
 SPEAKING_ASR_ENABLED=true
 SPEAKING_AZURE_KEY=<backend-secret-only>
-SPEAKING_AZURE_REGION=<your-approved-region>
+SPEAKING_AZURE_REGION=japaneast
+SPEAKING_AZURE_ALLOW_PAID=false
+# Set free_only only after out-of-band resource/feature billing verification.
+SPEAKING_AZURE_BILLING_MODE=unknown
 SPEAKING_AZURE_LOCALE=en-US
 SPEAKING_AZURE_PROSODY=true
 SPEAKING_AZURE_TIMEOUT_SECONDS=180

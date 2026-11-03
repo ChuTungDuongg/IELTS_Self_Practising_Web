@@ -6,6 +6,8 @@ import { activeSpeakingAI, cancelSpeakingAIRun, createSpeakingAIRun, getSpeaking
 import { SpeakingAIProgress } from "./speaking-ai-progress";
 import { useSpeakingReplay } from "./speaking-audio-replay";
 
+import { speakingServiceErrorKey } from "./speaking-service-error";
+
 const criteria: SpeakingAICriterion[] = ["fc", "lr", "gra", "pr"];
 export function SpeakingAIAssessment({ attemptId, canGrade = true, onTranscriptAvailable, onCopy, canCopy = false, initialRun, partNumber, showProcessingNotice = true }: { attemptId: string; canGrade?: boolean; onTranscriptAvailable?: () => void; canCopy?: boolean; onCopy?: (run: SpeakingAIRun) => void; initialRun?: SpeakingAIRun | null; partNumber?: number; showProcessingNotice?: boolean }) {
   return <AssessmentSession key={`${attemptId}:${canGrade}`} attemptId={attemptId} canGrade={canGrade} onTranscriptAvailable={onTranscriptAvailable} canCopy={canCopy} onCopy={onCopy} initialRun={initialRun} partNumber={partNumber} showProcessingNotice={showProcessingNotice} />;
@@ -13,7 +15,7 @@ export function SpeakingAIAssessment({ attemptId, canGrade = true, onTranscriptA
 function AssessmentSession({ attemptId, canGrade, onTranscriptAvailable, onCopy, canCopy, initialRun, partNumber, showProcessingNotice }: { attemptId: string; canGrade: boolean; onTranscriptAvailable?: () => void; canCopy: boolean; onCopy?: (run: SpeakingAIRun) => void; initialRun?: SpeakingAIRun | null; partNumber?: number; showProcessingNotice: boolean }) {
   const replay = useSpeakingReplay();
   const { t } = useTranslation(); const [run, setRun] = useState<SpeakingAIRun | null>(initialRun ?? null);
-  const [loading, setLoading] = useState(true); const [busy, setBusy] = useState(false); const [error, setError] = useState<"generic" | "notConfigured" | null>(null); const [reducedMotion, setReducedMotion] = useState(false);
+  const [loading, setLoading] = useState(true); const [busy, setBusy] = useState(false); const [error, setError] = useState<string | null>(null); const [reducedMotion, setReducedMotion] = useState(false);
   const alive = useRef(true); const pending = useRef(false); const current = useRef<SpeakingAIRun | null>(null);
   const announcedTranscripts = useRef(new Set<string>());
   const runId = run?.run_id; const active = activeSpeakingAI(run);
@@ -54,7 +56,7 @@ function AssessmentSession({ attemptId, canGrade, onTranscriptAvailable, onCopy,
       const next = await createSpeakingAIRun(attemptId); const snapshot = await getSpeakingAIRun(attemptId, next.run_id);
       accept(snapshot, !next.cache_hit && snapshot.run_id === next.run_id);
     }
-    catch (caught) { if (alive.current) setError(caught instanceof ApiError && caught.code === "SPEAKING_AI_NOT_CONFIGURED" ? "notConfigured" : "generic"); } finally { pending.current = false; if (alive.current) setBusy(false); }
+    catch (caught) { if (alive.current) setError(caught instanceof ApiError && caught.code === "SPEAKING_AI_NOT_CONFIGURED" ? "notConfigured" : caught instanceof ApiError ? caught.code : "generic"); } finally { pending.current = false; if (alive.current) setBusy(false); }
   }
   async function stop() {
     if (pending.current || !canGrade || !current.current || !activeSpeakingAI(current.current)) return;
@@ -69,10 +71,10 @@ function AssessmentSession({ attemptId, canGrade, onTranscriptAvailable, onCopy,
     </div> : null}</div>
     <p className="speaking-ai-advisory">{t("speakingAI.advisory")}</p>
     {showProcessingNotice && run?.summary.external_audio_processing === true ? <p className="notice speaking-ai-processing-notice">{t("speakingAI.externalAudioProcessing")}</p> : null}
-    {error ? <p role="alert" className="notice notice-error">{t(error === "notConfigured" ? "speakingAI.notConfigured" : "speakingAI.error")}</p> : null}
+    {error ? <p role="alert" className="notice notice-error">{t(speakingServiceErrorKey(error) ?? (error === "notConfigured" ? "speakingAI.notConfigured" : "speakingAI.error"))}</p> : null}
     {run ? <><SpeakingAIProgress run={run} />
       {canCopy && onCopy && run.attempt_id === attemptId && run.status === "COMPLETED" && criteria.every(key => run.criteria[key].status === "COMPLETED" && run.criteria[key].score !== null) ? <button type="button" className="btn btn-secondary" onClick={() => onCopy(run)}>{t("grading.copy")}</button> : null}
-      {run.status === "FAILED" ? <p className="notice notice-error">{t(run.error_code === "SPEAKING_AUDIO_UNASSESSABLE" ? "speakingAI.recordingQuality" : run.error_code === "SPEAKING_FC_UNASSESSABLE" ? "speakingAI.insufficientEvidence" : "speakingAI.failed")}</p> : null}
+      {run.status === "FAILED" ? <p role="alert" className="notice notice-error">{t(speakingServiceErrorKey(run.error_code) ?? (run.error_code === "SPEAKING_AUDIO_UNASSESSABLE" ? "speakingAI.recordingQuality" : run.error_code === "SPEAKING_FC_UNASSESSABLE" ? "speakingAI.insufficientEvidence" : "speakingAI.failed"))}</p> : null}
       <div className="speaking-ai-overall"><h3>{t("speakingAI.overall")}</h3><p className="speaking-ai-score">{run.overall_band === null ? t("speakingAI.overallWaiting") : run.overall_band.toFixed(1)}</p>
         {run.raw_mean !== null ? <p>{t("speakingAI.rawMean", { value: run.raw_mean })}</p> : null}</div>
       <div className="speaking-ai-criteria">{criteria.map((key) => {

@@ -366,6 +366,9 @@ export const en = {
   "speakingTranscript.waiting": "Waiting",
   "speakingTranscript.processing": "Processing",
   "speakingTranscript.error": "Transcript is unavailable. Check local transcription setup or try again.",
+  "speakingService.quotaExceeded": "The current Speech resource has reached a quota or is being throttled. Try again later; contact the administrator if this continues.",
+  "speakingService.billingBlocked": "Speech processing is paused because resource billing has not been authorized. Contact the administrator to check the configuration.",
+  "speakingService.authenticationFailed": "The Speech service could not authenticate. Contact the administrator to check its configuration.",
   "speakingRuntime.interrupted": "Recording interrupted; accepted audio saved",
 
   "speakingRuntime.mode": "Speaking mode",

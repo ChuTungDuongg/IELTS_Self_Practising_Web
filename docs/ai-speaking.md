@@ -2,7 +2,8 @@
 
 ## Profile `speaking_hybrid_v1` (opt-in, working tree trên `3cf5c9a`)
 
-Mặc định vẫn là `SPEAKING_PROFILE=legacy`. Profile mới dùng **một phiên Azure
+Mặc định vẫn là provider local/profile legacy. `SPEAKING_ASR_PROVIDER=azure` chọn
+profile `speaking_hybrid_v1`; tên canonical của credential là `SPEAKING_AZURE_KEY`. Profile mới dùng **một phiên Azure
 unscripted cho mỗi đoạn ghi liên tục**, dùng chung kết quả lexical transcript,
 timing và observations phát âm; CPU Silero ONNX đo hoạt động nói trên timeline.
 `SpeechAnalysisResult` có phiên bản, capability/coverage, nguồn gốc, usage và
@@ -101,6 +102,10 @@ tokens, không cộng hai lần. Cộng thêm CPU Modal, storage và network. Kh
 benchmark chi phí/độ trễ trực tiếp cho hybrid: **LIVE_UNVERIFIED**.
 
 ### Đánh giá hybrid ngoại tuyến
+
+Để replay MP3/WAV có sẵn mà không tạo attempt hoặc bắt buộc human bands, dùng
+[CLI audio replay](testing/speaking-audio-replay.md): prepare/validate offline,
+Azure-only smoke hoặc full Azure + CPU VAD + Luna với live opt-in và checkpoint riêng.
 
 Thêm `speaker_id` giả danh và `split: "DEV" | "HOLDOUT"` cùng nhau vào mỗi dòng
 manifest. Một speaker xuất hiện ở cả hai split bị từ chối trước chọn N mẫu;
@@ -256,3 +261,29 @@ Chọn tự do được lưu qua `POST /speaking-attempts/{id}/select-prompt`, k
 Chủ sở hữu bài luyện cá nhân có thể nhập tay FC/LR/GRA/PR hoặc chép kết quả AI hiện hành đã hoàn tất vào biểu mẫu, chỉnh sửa rồi Lưu rõ ràng. AI không tự ghi điểm cuối. Học viên lớp chỉ xem điểm cuối hoặc “Đang chờ giáo viên chấm”. Nhân sự có quyền chấm của lớp được lưu/sửa tiêu chí qua đúng nguồn gốc bài giao. ADMIN chỉ quan sát lớp và không được ghi điểm cuối cho bài của lớp, kể cả qua route cá nhân; quyền chấm bài luyện cá nhân của nền tảng được xét riêng. Chấm của giáo viên không cấp quyền tạo lại transcript hoặc sửa tệp gốc. Xem [GradingPolicy hiện hành](../backend/app/services/grading_policy.py).
 
 Tiêu chí người chấm và nhận xét tùy chọn lưu độc lập trong `attempt_speaking_scores`, do Alembic không phá hủy `20261013_0033` thêm. Điểm tổng dùng hàm Speaking tổng thể trọng số đều hiện có. Điểm luyện tập có phạm vi không tạo band phân tích toàn mô-đun. Khóa xem lại Full Mock vẫn có thẩm quyền. `SpeakingReviewData.final_score` mang đánh giá này, `grading` mang khả năng backend cho phép. Xem [teacher-classrooms.md](teacher-classrooms.md#human-final-subjective-grading) về chính sách thẩm quyền và các tuyến dùng chung.
+
+
+### Azure billing safety (configuration follow-up)
+
+`SPEAKING_AZURE_ALLOW_PAID=false` is the default. The additional local declaration
+`SPEAKING_AZURE_BILLING_MODE=unknown|free_only|paid` fails closed when unknown;
+paid also requires explicit allow-paid. Tier/feature eligibility is verified outside
+the worker: no ARM permission, upgrade, key/resource rotation or provider fallback.
+The current user's F0 resource is explicitly declared `free_only` in ignored dev
+configuration. This is not a live pricing verification or a hard cloud spending cap.
+
+The configured key/region is snapshotted per analyzer and contributes only a hash
+to cache identity. Policy changes invalidate analysis identity. SDK TooManyRequests
+or HTTP 429 maps to `SPEAKING_AZURE_QUOTA_EXCEEDED`, not a claim of monthly allowance
+exhaustion. Safe reason codes distinguish explicit rate/concurrency/quota subcodes
+when available; no raw details enter events/UI. The current stream is stopped, the
+remaining responses in that run are marked unavailable with the same code, and no
+second provider/session is tried. Durable failed/partial checkpoints are terminal;
+UI reconnect or explicit retry does not blindly resend potentially billed audio.
+A persisted quota checkpoint may need operator reconciliation after service recovery.
+
+See [Microsoft SDK cancellation codes](https://learn.microsoft.com/en-us/python/api/azure-cognitiveservices-speech/azure.cognitiveservices.speech.cancellationerrorcode)
+and [Speech quotas/concurrency](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/speech-services-quotas-and-limits),
+checked 2026-11-03. [Modal setup](modal-web.md#azure-configuration-secrets-and-canonical-command)
+contains the canonical launcher and Secret replacement commands. Live resource
+credentials, F0 prosody availability and billing remain **LIVE_UNVERIFIED**.

@@ -1,6 +1,7 @@
 """Optional Azure SDK boundary; no reference text, raw payload persistence or retries."""
 
 import asyncio
+import copy
 import hashlib
 import importlib.metadata
 import json
@@ -11,6 +12,13 @@ import wave
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
+from app.providers.speech_analysis.azure_policy import (
+    AUTHENTICATION_FAILED,
+    BILLING_BLOCKED,
+    QUOTA_EXCEEDED,
+    billing_authorized,
+    quota_reason,
+)
 from app.schemas.speech_analysis import (
     SpeechAnalysisIdentity,
     SpeechAnalysisResult,
@@ -25,7 +33,7 @@ from app.schemas.speech_analysis import (
 )
 from app.services.speaking_audio import NormalizedAudio, await_audio_thread
 
-ADAPTER_VERSION = "azure-unscripted-v1"
+ADAPTER_VERSION = "azure-unscripted-v2-billing"
 CLEANUP_GRACE_SECONDS = 0.25
 
 
@@ -83,7 +91,13 @@ def _span(raw, duration_ms):
 
 def azure_analysis_identity(settings) -> SpeechAnalysisIdentity:
     """Public cache identity; no SDK/native import and no credential values."""
+    key = settings.speaking_azure_key
+    key = key.get_secret_value() if hasattr(key, "get_secret_value") else key
     configuration = {
+        "resource_binding": _hash([key, settings.speaking_azure_region]),
+        "billing_policy_version": "azure-billing-v1",
+        "billing_mode": getattr(settings, "speaking_azure_billing_mode", "unknown"),
+        "allow_paid": getattr(settings, "speaking_azure_allow_paid", False),
         "region": settings.speaking_azure_region,
         "locale": settings.speaking_azure_locale,
         "prosody_requested": settings.speaking_azure_prosody,
@@ -129,7 +143,7 @@ def _read_pcm(audio):
 
 class AzureSpeechAnalyzer:
     def __init__(self, settings):
-        self.settings = settings
+        self.settings = copy.deepcopy(settings)
         concurrency, queue = (
             settings.speaking_azure_max_concurrency,
             settings.speaking_azure_max_queue,
@@ -184,6 +198,11 @@ class AzureSpeechAnalyzer:
         ):
             raise ValueError("One continuous mono 16kHz normalized segment is required")
         result = self._empty(audio, response_id, take_number, segment_id)
+        if not billing_authorized(self.settings):
+            result.error_code = BILLING_BLOCKED
+            result.usage.billing_uncertain = False
+            result.latency_ms = 0
+            return result
         if not self._pool.admission.acquire(blocking=False):
             return result.model_copy(
                 update={"error_code": "AZURE_CAPACITY_EXCEEDED", "latency_ms": 0}
@@ -230,6 +249,10 @@ class AzureSpeechAnalyzer:
             raise
 
     def _analyze_native(self, audio, pcm, result, cancel, gate):
+        if not billing_authorized(self.settings):
+            result.error_code = BILLING_BLOCKED
+            result.usage.billing_uncertain = False
+            return result
         if cancel.is_set():
             return result.model_copy(
                 update={"status": "CANCELLED", "error_code": "AZURE_CANCELLED"}
@@ -343,7 +366,7 @@ class AzureSpeechAnalyzer:
                         done.set()
 
             def canceled(event):
-                nonlocal error, completed
+                nonlocal error, completed, accepting
                 with gate:
                     if accepting:
                         if event.reason == sdk.CancellationReason.EndOfStream:
@@ -351,16 +374,23 @@ class AzureSpeechAnalyzer:
                         else:
                             codes = getattr(sdk, "CancellationErrorCode", None)
                             code = getattr(event, "error_code", None)
-                            if codes is not None and code == getattr(
+                            reason = quota_reason(
+                                event,
+                                sdk_code=code,
+                                too_many_requests=getattr(codes, "TooManyRequests", None),
+                            )
+                            if reason:
+                                error = QUOTA_EXCEEDED
+                                result.provider_reason_code = reason
+                            elif codes is not None and code == getattr(
                                 codes, "AuthenticationFailure", object()
                             ):
-                                error = "AZURE_AUTHENTICATION_FAILED"
-                            elif codes is not None and code == getattr(
-                                codes, "TooManyRequests", object()
-                            ):
-                                error = "AZURE_QUOTA_EXCEEDED"
+                                error = AUTHENTICATION_FAILED
                             else:
                                 error = "AZURE_SERVICE_ERROR"
+                            accepting = (
+                                False  # Fence fatal errors before native stop/late callbacks.
+                            )
                         done.set()
 
             recognizer.recognized.connect(recognized)
@@ -382,8 +412,18 @@ class AzureSpeechAnalyzer:
                 if time.monotonic() >= deadline:
                     error = "AZURE_TIMEOUT"
                     break
-        except (ImportError, OSError, RuntimeError, ValueError, TypeError, AttributeError):
-            error = "AZURE_UNAVAILABLE"
+        except (
+            ImportError,
+            OSError,
+            RuntimeError,
+            ValueError,
+            TypeError,
+            AttributeError,
+        ) as failure:
+            if error not in {QUOTA_EXCEEDED, AUTHENTICATION_FAILED}:
+                reason = quota_reason(failure)
+                error = QUOTA_EXCEEDED if reason else "AZURE_UNAVAILABLE"
+                result.provider_reason_code = reason
         finally:
             with gate:
                 accepting = False  # Fence before stop: late callbacks cannot mutate the result.

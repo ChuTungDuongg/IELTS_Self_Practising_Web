@@ -9,6 +9,12 @@ vi.mock("@/lib/api/speaking-ai", () => ({ latestSpeakingAIRun: vi.fn(), createSp
 const criterion: api.SpeakingAIRun["criteria"]["fc"] = { status: "WAITING", score: null, feedback_status: "PENDING", feedback: null, strengths: [], improvements: [], error_code: null, evidence_summary: {} };
 const base = { run_id: "11111111-1111-4111-8111-111111111111", attempt_id: "22222222-2222-4222-8222-222222222222", cache_key: "fixture", created_at: "now", status: "RUNNING", stage: "QUALITY_CHECK", last_sequence: 1, advisory: true, raw_mean: null, overall_band: null, criteria: { fc: criterion, lr: criterion, gra: criterion, pr: criterion }, error_code: null, summary: { responses: [] } } as api.SpeakingAIRun;
 const close = vi.fn();
+it("shows a stable Speech quota message for a failed grading run", async () => {
+  vi.mocked(api.latestSpeakingAIRun).mockResolvedValue({ ...base, status: "FAILED", stage: "FAILED", error_code: "SPEAKING_AZURE_QUOTA_EXCEEDED" });
+  render(<SpeakingAIAssessment attemptId={base.attempt_id} />);
+  expect(await screen.findByRole("alert")).toHaveTextContent(/quota.*throttled.*try again later/i);
+  expect(api.createSpeakingAIRun).not.toHaveBeenCalled();
+});
 beforeEach(() => { vi.clearAllMocks(); vi.mocked(api.latestSpeakingAIRun).mockResolvedValue(null); vi.mocked(api.getSpeakingAIRun).mockResolvedValue(base); vi.mocked(api.createSpeakingAIRun).mockResolvedValue({ run_id: base.run_id, cache_hit: false, existing_active: false }); vi.mocked(api.watchSpeakingAIRun).mockReturnValue(close); });
 afterEach(() => { vi.unstubAllGlobals(); localStorage.clear(); });
 async function gradingObserver() {

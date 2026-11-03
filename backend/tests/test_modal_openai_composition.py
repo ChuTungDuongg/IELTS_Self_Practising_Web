@@ -71,7 +71,7 @@ def test_openai_and_disabled_ai_can_keep_asr_without_llm(monkeypatch, enabled):
     monkeypatch.setenv("AI_WRITING_PROVIDER", "openai")
     module, modal, llm = load_app(monkeypatch, enabled=enabled, asr_enabled=True)
     modal.App.return_value.include.assert_called_once_with(module.asr_app)
-    assert module.ASR_ENABLED
+    assert module.MODAL_ASR_SERVICE_ENABLED
     stub_runtime(monkeypatch, external=True)
     module.Web().start()
     module.asr_serve.get_web_url.assert_called_once()

@@ -78,6 +78,7 @@ async def load_evidence(sample, root, settings, *, on_speech_usage=None):
                     ".ogg": "audio/ogg;codecs=opus",
                     ".mp4": "audio/mp4",
                     ".m4a": "audio/mp4",
+                    ".mp3": "audio/mpeg",
                 }.get(source.suffix.lower())
                 if mime is None:
                     raise BenchmarkInputError("BENCHMARK_AUDIO_UNAVAILABLE")

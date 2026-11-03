@@ -20,7 +20,7 @@ def test_hybrid_image_never_imports_whisper_and_does_not_change_writing_selectio
     monkeypatch.setattr(builtins, "__import__", guarded)
     module, modal, llm = load_app(monkeypatch, asr_enabled=True)
     assert module.SPEAKING_PROFILE == "speaking_hybrid_v1"
-    assert not module.ASR_ENABLED
+    assert not module.MODAL_ASR_SERVICE_ENABLED
     modal.App.return_value.include.assert_not_called()
     calls = str(modal.Image.from_registry.return_value.run_commands.call_args_list)
     assert "azure-cognitiveservices-speech==1.53.0" in calls
@@ -62,6 +62,13 @@ def test_hybrid_startup_preserves_explicit_speech_enablement_without_provider_ca
     )
     module, modal, llm = load_app(monkeypatch, asr_enabled=enabled)
     stub_runtime(monkeypatch, external=True)
+    import sys
+
+    from deploy.modal.web_runtime import configure_speaking_asr_environment
+
+    sys.modules[
+        "web_runtime"
+    ].configure_speaking_asr_environment = configure_speaking_asr_environment
     module.Web().start()
     assert os.environ["SPEAKING_PROFILE"] == "speaking_hybrid_v1"
     assert os.environ["SPEAKING_ASR_ENABLED"] == str(enabled).lower()

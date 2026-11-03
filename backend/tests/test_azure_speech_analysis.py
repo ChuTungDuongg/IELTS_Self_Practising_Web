@@ -29,6 +29,8 @@ def settings(**overrides):
             "speaking_azure_timeout_seconds": 0.3,
             "speaking_azure_max_concurrency": 1,
             "speaking_azure_max_queue": 1,
+            "speaking_azure_billing_mode": "free_only",
+            "speaking_azure_allow_paid": False,
             **overrides,
         }
     )
@@ -98,6 +100,7 @@ class Signal:
 
 
 class FakeSDK:
+    CancellationErrorCode = SimpleNamespace(AuthenticationFailure="auth", TooManyRequests="quota")
     __version__ = "offline-sdk"
     OutputFormat = SimpleNamespace(Detailed="Detailed")
     PropertyId = SimpleNamespace(SpeechServiceResponse_JsonResult="json")
@@ -327,7 +330,8 @@ async def test_partial_timeout_retains_final_and_deduplicates_observations(monke
 
 
 @pytest.mark.parametrize(
-    "code,expected", [("auth", "AZURE_AUTHENTICATION_FAILED"), ("quota", "AZURE_QUOTA_EXCEEDED")]
+    "code,expected",
+    [("auth", "SPEAKING_AZURE_AUTHENTICATION_FAILED"), ("quota", "SPEAKING_AZURE_QUOTA_EXCEEDED")],
 )
 async def test_classified_errors_do_not_expose_private_details(monkeypatch, audio, code, expected):
     def action(recognizer):

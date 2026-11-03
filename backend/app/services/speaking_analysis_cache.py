@@ -7,12 +7,14 @@ from sqlalchemy import select
 
 from app.core.exceptions import AppError
 from app.models.speaking_transcript import SpeakingNormalizedAudio
+from app.providers.speech_analysis.azure_policy import require_billing_authorization
 from app.schemas.speech_analysis import SpeechAnalysisResult
 from app.services.speaking_audio import fingerprint
 from app.services.speaking_hybrid import analyze_response
 
 
 async def cached_speech_analysis(sessions, audio, settings, analyzer):
+    require_billing_authorization(settings)
     identity = analyzer.identity.model_dump(mode="json")
 
     def content_hash():

@@ -67,3 +67,4 @@ storage/classroom-resources/*
 /benchmarks/speaking/**/*.ogg
 /benchmarks/speaking/**/*.mp4
 /benchmarks/speaking/**/*.m4a
+/benchmarks/speaking/**/*.mp3

@@ -38,7 +38,15 @@ def load_app(
     chart_enabled=False,
     frozen_chart_flag=None,
     asr_enabled=None,
+    asr_provider=None,
 ):
+    # Each graph test declares its inputs instead of inheriting backend test/runtime env.
+    monkeypatch.delenv("SPEAKING_ASR_ENABLED", raising=False)
+    monkeypatch.delenv("IELTS_WEB_SPEAKING_ASR_PROVIDER", raising=False)
+    if asr_provider is None:
+        monkeypatch.delenv("SPEAKING_ASR_PROVIDER", raising=False)
+    else:
+        monkeypatch.setenv("SPEAKING_ASR_PROVIDER", asr_provider)
     modal = MagicMock()
     modal.Volume.from_name.side_effect = lambda *args, **kwargs: MagicMock()
     modal.is_local.return_value = local
@@ -187,7 +195,7 @@ def test_explicit_asset_volume_does_not_create_empty_replacement(monkeypatch):
 
 def test_explicit_asr_disable_keeps_llm_without_asr_gpu(monkeypatch):
     module, modal, llm = load_app(monkeypatch, asr_enabled=False)
-    assert not module.ASR_ENABLED
+    assert not module.MODAL_ASR_SERVICE_ENABLED
     modal.App.return_value.include.assert_called_once_with(llm.app)
 
 

@@ -188,6 +188,7 @@ def setup_openai_launcher(monkeypatch, tmp_path, **changes):
         _env_file=None,
         **{
             "ai_writing_openai_api_key": "fictional-local-openai-key",
+            "ai_writing_provider": "openai",
             "ai_writing_modal_key": "",
             "ai_writing_modal_secret": "",
             "speaking_ai_model": None,
@@ -280,7 +281,10 @@ def setup_hybrid_launcher(monkeypatch, tmp_path, **changes):
         tmp_path,
         **{
             "speaking_azure_key": "fictional-azure-key",
+            "speaking_asr_enabled": True,
+            "speaking_asr_provider": "azure",
             "speaking_azure_region": "southeastasia",
+            "speaking_azure_billing_mode": "free_only",
             **changes,
         },
     )
@@ -306,6 +310,8 @@ def test_hybrid_default_launch_shares_azure_and_uses_openai_without_gpu_proxy(
     assert len(calls) == 1
     environment = calls[0][1]["env"]
     assert environment["IELTS_WEB_SPEAKING_PROFILE"] == "speaking_hybrid_v1"
+    assert environment["SPEAKING_ASR_PROVIDER"] == "azure"
+    assert environment["IELTS_WEB_SPEAKING_ASR_PROVIDER"] == "azure"
     assert environment["IELTS_WEB_AI_PROVIDER"] == "openai"
     assert environment["IELTS_WEB_SPEAKING_AI_PROVIDER"] == "openai"
     assert environment["SPEAKING_AI_PROVIDER"] == "openai"
@@ -345,6 +351,28 @@ def test_hybrid_explicit_no_asr_does_not_require_azure_or_model(monkeypatch, tmp
     model.unlink()
     assert launcher.main(["--config", str(config), "--no-asr"]) == 0
     assert calls[0][1]["env"]["IELTS_WEB_SPEAKING_ASR_ENABLED"] == "false"
+    assert calls[0][1]["env"]["SPEAKING_ASR_ENABLED"] == "false"
+    assert "SPEAKING_AZURE_KEY" not in calls[0][1]["env"]
+
+
+def test_openai_with_legacy_modal_asr_still_requires_proxy_credentials(
+    monkeypatch, tmp_path, capsys
+):
+    launcher, config, calls = setup_openai_launcher(
+        monkeypatch, tmp_path, speaking_asr_provider="modal", speaking_asr_enabled=True
+    )
+    assert launcher.main(["--config", str(config)]) == 1
+    assert calls == []
+    assert "AI_WRITING_MODAL_KEY" in capsys.readouterr().err
+
+
+def test_launcher_rejects_unapproved_paid_speech_before_modal(monkeypatch, tmp_path, capsys):
+    launcher, config, calls, _ = setup_hybrid_launcher(
+        monkeypatch, tmp_path, speaking_azure_billing_mode="paid", speaking_azure_allow_paid=False
+    )
+    assert launcher.main(["--config", str(config)]) == 1
+    assert calls == []
+    assert "billing blocked" in capsys.readouterr().err
 
 
 def test_explicit_legacy_profile_overrides_local_hybrid_selection(monkeypatch, tmp_path):
@@ -356,6 +384,8 @@ def test_explicit_legacy_profile_overrides_local_hybrid_selection(monkeypatch, t
                 str(config),
                 "--speaking-profile",
                 "legacy",
+                "--asr-provider",
+                "modal",
                 "--provider",
                 "openai",
                 "--no-asr",

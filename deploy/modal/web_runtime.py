@@ -176,11 +176,13 @@ def configure_chart_environment(
 
 
 def configure_speaking_asr_environment(
-    enabled: bool, model: str, revision: str, version: str, endpoint: str | None
+    enabled: bool, model: str, revision: str, version: str, endpoint: str | None, *, provider: str = "modal"
 ) -> None:
+    if provider not in {"azure", "modal", "local"}:
+        raise ValueError("Unknown Speaking ASR provider")
     os.environ["SPEAKING_ASR_ENABLED"] = str(enabled).lower()
-    if enabled:
-        os.environ["SPEAKING_ASR_PROVIDER"] = "modal"
+    os.environ["SPEAKING_ASR_PROVIDER"] = provider
+    if enabled and provider == "modal":
         os.environ["SPEAKING_ASR_BASE_URL"] = endpoint.rstrip("/") if endpoint else ""
         os.environ["SPEAKING_ASR_MODEL"] = model
         os.environ["SPEAKING_ASR_MODEL_REVISION"] = revision

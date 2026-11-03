@@ -13,6 +13,7 @@ from app.domains.timers import TimerService
 from app.models.speaking import SpeakingPart, SpeakingPrompt, SpeakingResponse
 from app.models.speaking_transcript import SpeakingTranscript, SpeakingTranscriptRun
 from app.providers.speaking_asr import create_provider
+from app.providers.speech_analysis.azure_policy import TERMINAL_AZURE_ERRORS
 from app.repositories.speaking_transcript import SpeakingTranscriptRepository
 from app.schemas.speaking_ai import ASRResult
 from app.services.speaking_audio import (
@@ -163,9 +164,13 @@ class SpeakingTranscriptWorker:
         heartbeat = asyncio.create_task(self._heartbeat(run_id, token))
         try:
             provider = self.provider
+            terminal_error = None
             for item in manifest:
                 rid = item["response_id"]
                 if rid in ready:
+                    continue
+                if terminal_error:
+                    await self._checkpoint(run_id, token, rid, error=terminal_error)
                     continue
                 if not await self._checkpoint(run_id, token, rid):
                     return
@@ -235,6 +240,14 @@ class SpeakingTranscriptWorker:
                         speech_analysis = await cached_speech_analysis(
                             self.sessions, audio, self.settings, provider.analyzer
                         )
+                        terminal_error = next(
+                            (
+                                r.error_code
+                                for r in speech_analysis
+                                if r.error_code in TERMINAL_AZURE_ERRORS
+                            ),
+                            None,
+                        )
                         result = analysis_to_asr(speech_analysis, audio)
                     else:
                         result = ASRResult.model_validate(
@@ -268,6 +281,7 @@ class SpeakingTranscriptWorker:
                         token,
                         rid,
                         result,
+                        error=terminal_error,
                         evidence=bundle.model_dump(mode="json"),
                         partial=bool(
                             speech_analysis
@@ -280,7 +294,16 @@ class SpeakingTranscriptWorker:
                 except asyncio.CancelledError:
                     raise
                 except Exception as error:
-                    if audio and quality and quality.assessable and not asr_succeeded:
+                    policy_failure = (
+                        isinstance(error, AppError) and error.code in TERMINAL_AZURE_ERRORS
+                    )
+                    if (
+                        audio
+                        and quality
+                        and quality.assessable
+                        and not asr_succeeded
+                        and not policy_failure
+                    ):
                         unusable = await await_audio_thread(
                             asyncio.to_thread(
                                 assess_audio_quality,
@@ -297,6 +320,7 @@ class SpeakingTranscriptWorker:
                         if isinstance(error, AppError)
                         and error.code
                         in {
+                            *TERMINAL_AZURE_ERRORS,
                             "SPEAKING_ASR_UNAVAILABLE",
                             "SPEAKING_ANALYSIS_BILLING_UNKNOWN",
                             "SPEAKING_AUDIO_UNASSESSABLE",
@@ -312,6 +336,8 @@ class SpeakingTranscriptWorker:
                         }
                         else "TRANSCRIPT_GENERATION_FAILED"
                     )
+                    if code in TERMINAL_AZURE_ERRORS:
+                        terminal_error = code
                     await self._checkpoint(run_id, token, rid, error=code)
                 finally:
                     await staging.aclose()

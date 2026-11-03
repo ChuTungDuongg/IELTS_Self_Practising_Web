@@ -368,6 +368,9 @@ export const vi = {
   "speakingTranscript.waiting": "Đang chờ",
   "speakingTranscript.processing": "Đang xử lý",
   "speakingTranscript.error": "Chưa thể tạo bản chép lời. Kiểm tra cấu hình xử lý trên máy hoặc thử lại.",
+  "speakingService.quotaExceeded": "Dịch vụ Speech hiện tại đã chạm quota hoặc đang bị giới hạn tốc độ. Hãy thử lại sau; liên hệ người quản trị nếu tình trạng này tiếp diễn.",
+  "speakingService.billingBlocked": "Xử lý Speech đang tạm dừng vì cấu hình chi phí chưa được cho phép. Hãy liên hệ người quản trị để kiểm tra cấu hình.",
+  "speakingService.authenticationFailed": "Chưa thể xác thực dịch vụ Speech. Hãy liên hệ người quản trị để kiểm tra cấu hình.",
   "speakingRuntime.interrupted": "Ghi âm bị gián đoạn; phần đã nhận được lưu",
 
   "speakingRuntime.mode": "Chế độ bài Nói",

@@ -16,6 +16,15 @@ SPEAKING_PROFILE = os.environ.get(
 ).strip()
 if SPEAKING_PROFILE not in {"legacy", "speaking_hybrid_v1"}:
     raise ValueError("IELTS_WEB_SPEAKING_PROFILE must be legacy or speaking_hybrid_v1")
+ASR_PROVIDER = os.environ.get(
+    "IELTS_WEB_SPEAKING_ASR_PROVIDER", os.environ.get(
+        "SPEAKING_ASR_PROVIDER", "azure" if SPEAKING_PROFILE == "speaking_hybrid_v1" else "modal"
+    )
+).strip().lower()
+if ASR_PROVIDER not in {"local", "modal", "azure"}:
+    raise ValueError("SPEAKING_ASR_PROVIDER must be local, modal or azure")
+if ASR_PROVIDER == "azure":
+    SPEAKING_PROFILE = "speaking_hybrid_v1"
 VAD_LOCAL_PATH = os.environ.get("IELTS_WEB_SPEAKING_VAD_MODEL_PATH", "").strip()
 VAD_INCLUDED = (
     bool(VAD_LOCAL_PATH)
@@ -56,13 +65,19 @@ if VLLM_ENABLED:
     from deploy.modal.writing_llm import serve as llm_serve
 
     app.include(llm_app)
-SPEECH_ENABLED = os.environ.get("IELTS_WEB_SPEAKING_ASR_ENABLED", str(AI_ENABLED)).lower() in {
+SPEECH_ENABLED = os.environ.get(
+    "IELTS_WEB_SPEAKING_ASR_ENABLED", os.environ.get("SPEAKING_ASR_ENABLED", str(AI_ENABLED))
+).lower() in {
     "true",
     "1",
     "yes",
 }
-ASR_ENABLED = SPEAKING_PROFILE == "legacy" and SPEECH_ENABLED
-if ASR_ENABLED:
+if SPEECH_ENABLED and ASR_PROVIDER == "local":
+    raise ValueError("Modal Web does not include local ASR; select azure/modal or disable ASR")
+if SPEECH_ENABLED and ASR_PROVIDER == "modal" and SPEAKING_PROFILE != "legacy":
+    raise ValueError("Modal ASR requires the legacy speech profile")
+MODAL_ASR_SERVICE_ENABLED = ASR_PROVIDER == "modal" and SPEECH_ENABLED
+if MODAL_ASR_SERVICE_ENABLED:
     from deploy.modal.speaking_asr import MODEL as ASR_MODEL
     from deploy.modal.speaking_asr import REVISION as ASR_REVISION
     from deploy.modal.speaking_asr import SERVICE_VERSION as ASR_VERSION
@@ -183,6 +198,7 @@ image = (
             "IELTS_WEB_AI_PROVIDER": AI_PROVIDER,
             "IELTS_WEB_SPEAKING_AI_PROVIDER": SPEAKING_AI_PROVIDER,
             "IELTS_WEB_SPEAKING_ASR_ENABLED": str(SPEECH_ENABLED).lower(),
+            "IELTS_WEB_SPEAKING_ASR_PROVIDER": ASR_PROVIDER,
             "IELTS_WEB_SPEAKING_PROFILE": SPEAKING_PROFILE,
             "IELTS_WEB_SPEAKING_VAD_INCLUDED": str(VAD_INCLUDED).lower(),
             "IELTS_WEB_CHART_SPECIALIST_ENABLED": str(CHART_SPECIALIST_ENABLED).lower(),
@@ -212,8 +228,13 @@ web_secrets = [
         [
             key
             for key in os.environ
-            if key.startswith(("AI_WRITING_", "SPEAKING_AI_", "SPEAKING_AZURE_", "SPEAKING_VAD_"))
-            and key != "SPEAKING_AI_ENABLED"  # Frozen Web AI flag owns worker enablement.
+            if (
+                key.startswith(("AI_WRITING_", "SPEAKING_AI_", "SPEAKING_AZURE_", "SPEAKING_VAD_"))
+                and key != "SPEAKING_AI_ENABLED"  # Frozen Web AI flag owns worker enablement.
+            ) or key in {
+                "SPEAKING_ASR_ENABLED", "SPEAKING_ASR_PROVIDER", "SPEAKING_ASR_LANGUAGE",
+                "SPEAKING_PROCESSING_TIMEOUT_SECONDS",
+            }
         ]
     ),
 ]
@@ -297,15 +318,13 @@ class Web:
             speaking_provider=SPEAKING_AI_PROVIDER,
         )
         configure_speaking_asr_environment(
-            ASR_ENABLED,
-            ASR_MODEL if ASR_ENABLED else "",
-            ASR_REVISION if ASR_ENABLED else "",
-            ASR_VERSION if ASR_ENABLED else "",
-            asr_serve.get_web_url() if ASR_ENABLED else None,
+            SPEECH_ENABLED,
+            ASR_MODEL if MODAL_ASR_SERVICE_ENABLED else "",
+            ASR_REVISION if MODAL_ASR_SERVICE_ENABLED else "",
+            ASR_VERSION if MODAL_ASR_SERVICE_ENABLED else "",
+            asr_serve.get_web_url() if MODAL_ASR_SERVICE_ENABLED else None,
+            provider=ASR_PROVIDER,
         )
-        if SPEAKING_PROFILE == "speaking_hybrid_v1":
-            # Existing ASR flag admits transcript jobs; hybrid selection owns provider choice.
-            os.environ["SPEAKING_ASR_ENABLED"] = str(SPEECH_ENABLED).lower()
         from web_runtime import configure_chart_environment
 
         configure_chart_environment(

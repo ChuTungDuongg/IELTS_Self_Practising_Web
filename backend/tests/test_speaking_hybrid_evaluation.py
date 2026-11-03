@@ -83,11 +83,13 @@ def test_hybrid_provenance_identifies_actual_evidence_versions_without_credentia
     from app.evaluation.speaking.models import provenance
 
     identity = provenance(
-        Settings(speaking_profile="speaking_hybrid_v1", speaking_azure_key="PRIVATE_AZURE_KEY")
+        Settings(speaking_asr_provider="azure", speaking_azure_key="PRIVATE_AZURE_KEY")
     )
     assert identity.fluency_version == "fluency-v2"
     assert identity.pronunciation_provider == "azure-speech"
-    assert identity.pronunciation_version == "azure-unscripted-v1"
+    from app.providers.speech_analysis.azure import ADAPTER_VERSION
+
+    assert identity.pronunciation_version == ADAPTER_VERSION
     assert "PRIVATE_AZURE_KEY" not in identity.model_dump_json()
 
 
@@ -357,13 +359,15 @@ async def test_hybrid_loader_shares_single_analysis_with_transcript_and_features
         return analysis
 
     def asr(results, _):
+        from app.providers.speech_analysis.azure import ADAPTER_VERSION
+
         assert results is analysis
         return ASRResult(
             text="fictional speech",
             words=[],
-            provider="azure-speech",
+            provider="azure",
             model="service-managed-unknown",
-            version="azure-unscripted-v1",
+            version=ADAPTER_VERSION,
             language="en-US",
         )
 
@@ -388,7 +392,7 @@ async def test_hybrid_loader_shares_single_analysis_with_transcript_and_features
     result = await runner.load_evidence(
         InferenceSample(id=raw["id"], responses=raw["responses"]),
         tmp_path,
-        Settings(speaking_profile="speaking_hybrid_v1", speaking_asr_enabled=True),
+        Settings(speaking_asr_provider="azure", speaking_asr_enabled=True),
         on_speech_usage=record_usage,
     )
     assert calls == ["analyze"]

@@ -11,6 +11,76 @@ from app.services.speaking_audio import normalize_committed_take
 from app.services.speaking_transcript import SpeakingTranscriptService
 
 
+async def test_quota_stops_remaining_responses_and_retry_reuses_terminal_checkpoint(
+    db_session, tmp_path, monkeypatch
+):
+    from datetime import timedelta
+    from types import SimpleNamespace
+
+    from test_speaking_media import recording
+
+    from app.domains.timers import TimerService
+    from app.providers.speaking_asr import provider_identity
+
+    now = TimerService.now()
+    monkeypatch.setattr(TimerService, "now", staticmethod(lambda: now))
+    runtime, media, aid, prompts, _, segment = await recording(db_session, tmp_path)
+    for index, prompt in enumerate(prompts):
+        if index:
+            state = await runtime.begin_prompt(aid, prompt)
+            if state.phase == "PREPARING":
+                now += timedelta(seconds=63)
+                await runtime.get_state(aid)
+            segment = await media.create_segment(aid, prompt, 1, 0, "audio/webm")
+        await media.upload_chunk(aid, segment.id, 0, b"fictional-container")
+        await media.close_segment(aid, segment.id, 1)
+        await runtime.finish_current_response(aid, prompt, 1, "USER_DONE")
+
+    settings = Settings(
+        speaking_profile="speaking_hybrid_v1",
+        speaking_asr_enabled=True,
+        speaking_azure_billing_mode="free_only",
+    )
+
+    class Throttled(Analyzer):
+        async def analyze(self, audio, **identity):
+            result = await super().analyze(audio, **identity)
+            return result.model_copy(
+                update={
+                    "status": "FAILED",
+                    "lexical_transcript": "",
+                    "display_transcript": None,
+                    "words": [],
+                    "error_code": "SPEAKING_AZURE_QUOTA_EXCEEDED",
+                    "provider_reason_code": "SDK_TOO_MANY_REQUESTS",
+                }
+            )
+
+    analyzer = Throttled(settings)
+    provider = SimpleNamespace(identity=provider_identity(settings), analyzer=analyzer)
+    service = SpeakingTranscriptService(
+        db_session, media.actor, settings, identity=provider.identity
+    )
+    worker = worker_for(db_session, settings, media.storage, provider)
+    for _ in range(2):
+        created = await service.create(aid)
+        await worker.execute(created.run_id)
+        run = await service.get(aid, created.run_id)
+        assert run.status == "FAILED" and len(run.responses) == 4
+        assert all(r.error_code == "SPEAKING_AZURE_QUOTA_EXCEEDED" for r in run.responses)
+        assert len(analyzer.calls) == 1, (
+            "No second session, response call or paid fallback is allowed"
+        )
+    async with db_session.begin():
+        rows = (await db_session.scalars(select(SpeakingNormalizedAudio))).all()
+        records = [
+            record
+            for row in rows
+            for record in row.metadata_json.get("speech_analysis", {}).values()
+        ]
+        assert records[0]["results"][0]["provider_reason_code"] == "SDK_TOO_MANY_REQUESTS"
+
+
 class Analyzer:
     def __init__(self, settings):
         self.identity = AzureSpeechAnalyzer(settings).identity
@@ -58,7 +128,11 @@ async def test_shared_result_persists_and_new_feature_does_not_rebill_after_asse
     db_session, tmp_path, monkeypatch
 ):
     aid, rid, media = await completed(db_session, tmp_path)
-    settings = Settings(speaking_profile="speaking_hybrid_v1", speaking_asr_enabled=True)
+    settings = Settings(
+        speaking_profile="speaking_hybrid_v1",
+        speaking_asr_enabled=True,
+        speaking_azure_billing_mode="free_only",
+    )
     analyzer = Analyzer(settings)
     from types import SimpleNamespace
 
@@ -120,7 +194,11 @@ async def test_partial_stream_is_readable_but_never_reused_as_complete(db_sessio
     from app.providers.speaking_asr import provider_identity
 
     aid, rid, media = await completed(db_session, tmp_path)
-    settings = Settings(speaking_profile="speaking_hybrid_v1", speaking_asr_enabled=True)
+    settings = Settings(
+        speaking_profile="speaking_hybrid_v1",
+        speaking_asr_enabled=True,
+        speaking_azure_billing_mode="free_only",
+    )
 
     class Partial(Analyzer):
         async def analyze(self, audio, **identity):
@@ -154,7 +232,11 @@ async def test_unknown_billable_attempt_is_not_blindly_retried(db_session, tmp_p
     from app.services.speaking_audio import stage_normalized_audio
 
     _, rid, media = await completed(db_session, tmp_path)
-    settings = Settings(speaking_profile="speaking_hybrid_v1", speaking_asr_enabled=True)
+    settings = Settings(
+        speaking_profile="speaking_hybrid_v1",
+        speaking_asr_enabled=True,
+        speaking_azure_billing_mode="free_only",
+    )
     analyzer = Analyzer(settings)
     calls = []
 

@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { LocaleProvider } from "@/lib/i18n/locale-provider";
+import { ApiError } from "@/lib/api/client";
 import { SpeakingTranscriptSession, SpeakingTranscriptResponse } from "@/features/speaking/speaking-transcript-panel";
 import * as api from "@/lib/api/speaking-transcript";
 import type { TranscriptRun } from "@/lib/api/speaking-transcript";
@@ -13,6 +14,23 @@ const run: TranscriptRun = { run_id: "11111111-1111-4111-8111-111111111111", att
 beforeEach(() => { vi.clearAllMocks(); vi.mocked(api.latestTranscriptRun).mockResolvedValue(null); vi.mocked(api.createTranscriptRun).mockResolvedValue({ run_id: run.run_id, cache_hit: false, existing_active: false }); vi.mocked(api.getTranscriptRun).mockResolvedValue(run); vi.mocked(api.watchTranscriptRun).mockReturnValue(vi.fn()); });
 afterEach(() => localStorage.clear());
 function view() { return render(<SpeakingTranscriptSession attemptId={run.attempt_id}><section aria-label="Question 1"><SpeakingTranscriptResponse responseId={run.responses[0].response_id} /></section><section aria-label="Question 2"><SpeakingTranscriptResponse responseId={run.responses[1].response_id} /></section></SpeakingTranscriptSession>); }
+it.each(["FAILED", "PARTIAL"] as const)("explains Speech quota/throttling for a %s response without claiming monthly exhaustion", async (status) => {
+  vi.mocked(api.latestTranscriptRun).mockResolvedValue({ ...run, responses: [
+    { ...run.responses[0], status, error_code: "SPEAKING_AZURE_QUOTA_EXCEEDED" },
+  ] });
+  view();
+  expect(await screen.findByRole("alert")).toHaveTextContent(/quota.*throttled.*try again later/i);
+  expect(screen.queryByText(/5 hours|monthly quota/i)).not.toBeInTheDocument();
+  expect(api.createTranscriptRun).not.toHaveBeenCalled();
+});
+it("shows a safe billing policy message for a rejected generation request", async () => {
+  vi.mocked(api.createTranscriptRun).mockRejectedValue(new ApiError("SPEAKING_AZURE_BILLING_NOT_AUTHORIZED", "private provider body", 409));
+  view();
+  const button = screen.getByRole("button", { name: "Generate Transcript" });
+  await waitFor(() => expect(button).toBeEnabled()); fireEvent.click(button);
+  expect(await screen.findByRole("alert")).toHaveTextContent(/billing.*authorized/i);
+  expect(screen.queryByText(/private provider body/)).not.toBeInTheDocument();
+});
 it("generates read-only per-question transcripts and preserves one successful response", async () => {
   view(); const generate = screen.getByRole("button", { name: "Generate Transcript" });
   await waitFor(() => expect(generate).toBeEnabled()); fireEvent.click(generate);

@@ -124,6 +124,16 @@ class SpeechAnalysisResult(SpeechModel):
     limitations: list[str] = Field(default_factory=list)
     usage: SpeechUsage = Field(default_factory=SpeechUsage)
     error_code: str | None = None
+    provider_reason_code: (
+        Literal[
+            "SDK_TOO_MANY_REQUESTS",
+            "HTTP_429",
+            "PROVIDER_RATE_LIMIT",
+            "PROVIDER_CONCURRENCY_LIMIT",
+            "PROVIDER_QUOTA_EXHAUSTED",
+        ]
+        | None
+    ) = None
     latency_ms: int | None = Field(default=None, ge=0)
 
     @model_validator(mode="after")

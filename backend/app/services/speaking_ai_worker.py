@@ -14,6 +14,7 @@ from app.models.speaking import SpeakingPart, SpeakingPrompt, SpeakingResponse
 from app.models.speaking_ai import SpeakingAIGradingRun
 from app.models.speaking_transcript import SpeakingTranscript
 from app.providers.speaking_llm import create_provider
+from app.providers.speech_analysis.azure_policy import TERMINAL_AZURE_ERRORS
 from app.repositories.speaking_ai import SpeakingAIRepository
 from app.schemas.speaking_grading import CRITERIA, CriterionResult
 from app.services.cancelled_usage import consume_cancelled_usage
@@ -237,6 +238,18 @@ class SpeakingAIWorker:
             ):
                 return snapshot  # Lexical evidence remains usable with explicit uncertainty; FC/PR gated later.
             if snapshot.status in {"FAILED", "PARTIAL"}:
+                terminal = next(
+                    (
+                        r.error_code
+                        for r in snapshot.responses
+                        if r.error_code in TERMINAL_AZURE_ERRORS
+                    ),
+                    None,
+                )
+                if terminal:
+                    raise AppError(
+                        terminal, "Speech processing is unavailable under the current policy.", 409
+                    )
                 quality_codes = {
                     "NO_SPEECH",
                     "TOO_SHORT",
@@ -367,6 +380,7 @@ class SpeakingAIWorker:
                 run.completed_at, run.lease_token = TimerService.now(), None
                 run.error_code = code
                 if code in {
+                    *TERMINAL_AZURE_ERRORS,
                     "SPEAKING_AUDIO_UNASSESSABLE",
                     "SPEAKING_AI_TRANSCRIPT_UNAVAILABLE",
                     "SPEAKING_ASR_UNAVAILABLE",
@@ -508,6 +522,7 @@ class SpeakingAIWorker:
             raise
         except Exception as error:
             safe = {
+                *TERMINAL_AZURE_ERRORS,
                 "SPEAKING_AI_CONFIGURATION_CHANGED",
                 "SPEAKING_AI_SOURCE_CHANGED",
                 "SPEAKING_AI_TRANSCRIPT_UNAVAILABLE",

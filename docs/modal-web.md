@@ -4,9 +4,10 @@
 
 ## CPU speech preset `speaking_hybrid_v1` (opt-in)
 
-Bổ sung working tree trên `3cf5c9a`: `IELTS_WEB_SPEAKING_PROFILE` chọn graph
-speech `legacy` (default) hoặc `speaking_hybrid_v1`. Marker được frozen trong
-image, backend startup đặt `SPEAKING_PROFILE` theo marker này. Hybrid không
+`SPEAKING_ASR_PROVIDER=azure` chọn profile `speaking_hybrid_v1`. Launcher đọc
+provider từ backend Settings và freeze selector không chứa secret trong image.
+`SPEECH_ENABLED` là feature gate; `MODAL_ASR_SERVICE_ENABLED` chỉ đúng khi provider
+là `modal` và ASR bật. Azure không
 import hoặc include dịch vụ faster-whisper T4 và không tải Whisper/torch/CUDA.
 Writing/Speaking **grader** vẫn do provider hiện có chọn riêng: hybrid speech
 không tự đổi vLLM thành OpenAI. Toàn graph chỉ CPU khi cả hai graders chọn
@@ -32,6 +33,7 @@ Ví dụ lựa chọn shell **chỉ cho staging đã cấu hình/được phép*
 root; đây là hướng dẫn, chưa chạy serve/deploy trong lần triển khai này:
 
 ```powershell
+$env:IELTS_WEB_SPEAKING_ASR_PROVIDER = "azure"
 $env:IELTS_WEB_SPEAKING_PROFILE = "speaking_hybrid_v1"
 $env:IELTS_WEB_SPEAKING_VAD_MODEL_PATH = (Resolve-Path storage/models/silero-v6.0.onnx).Path
 $env:IELTS_WEB_AI_PROVIDER = "openai"
@@ -77,7 +79,8 @@ live hoặc đo latency/cost/throughput. **LIVE_UNVERIFIED**; Modal runtime đ�
 vẫn **CONTAINER_UNVERIFIED**. Script/Dockerfile không chứa secrets.
 
 Rollback: dừng staging session hiện tại theo quy trình single-owner, đổi
-`IELTS_WEB_SPEAKING_PROFILE=legacy`, chọn lại ASR/provider config legacy đã kiểm
+`SPEAKING_ASR_PROVIDER=modal` (hoặc launcher `--asr-provider modal`), profile legacy,
+chọn lại ASR/provider config legacy đã kiểm
 và rebuild/restart. Không xóa transcript/history hoặc sửa điểm human. Muốn tạm
 tắt speech thay vì đổi profile, đặt speech enable flag false. Không dùng probe
 hoặc offline metrics để tự động triển khai/cutover. Xem
@@ -85,17 +88,92 @@ hoặc offline metrics để tự động triển khai/cutover. Xem
 
 ## One-command Windows staging with on-demand AI
 
+### Azure configuration, secrets and canonical command
+
+Canonical names remain `SPEAKING_AZURE_KEY`, `SPEAKING_AZURE_REGION`,
+`SPEAKING_AZURE_LOCALE`; no duplicate `SPEAKING_AZURE_SPEECH_*` aliases.
+On this developer machine missing fields were appended to ignored `backend/.env`,
+without changing existing values. The operator fills only the empty Azure key;
+region `japaneast` and locale `en-US` are prepared. Never paste keys in chat.
+
+```dotenv
+SPEAKING_ASR_ENABLED=true
+SPEAKING_ASR_PROVIDER=azure
+SPEAKING_AZURE_KEY=
+SPEAKING_AZURE_REGION=japaneast
+SPEAKING_AZURE_LOCALE=en-US
+SPEAKING_AZURE_ALLOW_PAID=false
+SPEAKING_AZURE_BILLING_MODE=free_only
+SPEAKING_AI_ENABLED=true
+SPEAKING_AI_PROVIDER=openai
+SPEAKING_AI_MODEL=gpt-6-luna
+```
+
+`free_only` is an operator declaration for the selected non-billable resource AND
+requested features, verified outside the worker. The user confirmed the current
+resource is F0. It does not mean an arbitrary credential is free, or that Azure
+has verified pricing through this application. Global default mode is `unknown`,
+which blocks submissions. A paid resource requires BOTH `BILLING_MODE=paid` and
+`ALLOW_PAID=true`. Do not label an S0 trial/credit resource as `free_only`.
+Prosody may be unavailable on the chosen free resource; never automatically
+upgrade, disable requested features or switch resources to make it succeed.
+
+From repository root, after filling the key:
+
+```powershell
+.\start-modal.cmd --provider openai --check
+.\start-modal.cmd --provider openai
+```
+
+This is the canonical Windows workflow (`uv run --locked --project backend python
+scripts/modal_start.py --provider openai` is equivalent). It selects the profile,
+environment and existing staging Secret/Volumes from `.env.modal`. No persistent
+Secret update is needed just to forward the local key: the launcher supplies a
+backend-only ephemeral Secret. The pinned VAD asset must have been prepared once
+using the existing setup script below; no model download occurs per request.
+
+To refresh the persistent backend Secret instead, reuse the existing setup script:
+
+```powershell
+uv run --locked --project backend python scripts/modal_web_setup.py --snapshot "<existing-snapshot>/database.dump" --force
+```
+
+It reads `.env.modal` for the selected CLI/profile/environment/Secret name, and
+`backend/.env` for backend values. Keep the same verified snapshot reference and
+JWT/settings used for that Secret. This explicitly replaces the config Secret;
+it does not merge unknown remote fields. There is no snapshot-free refresh mode
+that could silently discard the bootstrap reference. Optional `--secret-name`
+overrides the target; use only an authorized dedicated Secret. Nothing in this
+task runs this command against Modal. `--disable-ai` omits all Azure/AI keys and
+writes `SPEAKING_ASR_ENABLED=false`; launch that topology with AI/ASR gates off.
+
+Raw `modal serve deploy/modal/app.py` remains supported with the explicit frozen
+provider flags shown above AND a prepared backend Secret. A named remote Secret
+cannot select the local dependency graph retroactively; the canonical launcher
+forwards its non-secret selectors before composition. Azure runs from Web CPU;
+local ASR is rejected when enabled in this Modal image, and Modal ASR remains
+an explicit rollback choice. Neither Azure errors nor other available credentials
+can enable a T4/L4 or OpenAI transcription fallback.
+
+Readiness only inspects configuration/dependency availability. It submits no
+sample audio and does not prove authentication or free-tier feature availability.
+429/SDK TooManyRequests yields `SPEAKING_AZURE_QUOTA_EXCEEDED`; it may be quota,
+rate or concurrency throttling. Internal allowlisted reason codes preserve that
+distinction when exposed, without storing/logging raw provider errors. No automatic
+retry, resource rotation or ARM/pricing-tier permissions are introduced.
+
+
 From the repository root, run:
 
 ```powershell
 .\start-modal.cmd
 ```
 
-Without a profile override, that command preserves the legacy vLLM setup.
-For CPU speech and OpenAI Luna, add these non-secret fields to `.env.modal`:
+Launcher lấy LLM/ASR provider từ `backend/.env`; CLI override tường minh được ưu tiên.
+Giữ OpenAI reasoning/token settings hiện có. Với CPU speech/OpenAI, `.env.modal`
+chỉ chứa các selector và staging resource names không bí mật:
 
 ```dotenv
-IELTS_WEB_SPEAKING_PROFILE=speaking_hybrid_v1
 IELTS_WEB_AI_PROVIDER=openai
 IELTS_WEB_SPEAKING_VAD_MODEL_PATH=storage/models/silero-v6.0.onnx
 ```
@@ -116,8 +194,8 @@ Secret, not a masked SecretStr or an image variable. It forwards the complete
 Speaking AI policy, checks the model checksum without loading native libraries
 locally, and requires no Modal GPU proxy in this configuration. Missing Azure
 settings or VAD assets stop startup with an actionable message; `--check` makes
-zero API calls and does not claim live readiness. `--speaking-profile legacy`
-overrides the local profile for rollback; explicitly choose the intended grader
+zero API calls and does not claim live readiness. `--asr-provider modal`
+selects the legacy profile for rollback; explicitly choose the intended grader
 with `--provider vllm` or `--provider openai`.
 
 For OpenAI Luna grading with speech disabled, use:
@@ -131,8 +209,8 @@ The OpenAI mode reads the existing private `backend/.env`, validates the key's
 presence, model and inference policy offline, and forwards Writing/Speaking AI
 settings as backend-only ephemeral Secrets. It does not change the persistent
 Modal Secret, JWT, database or Volumes. Structured stage overrides are serialized
-as JSON. `--no-asr` disables the optional ASR service; omit it when ASR is needed
-and the Modal proxy credentials are configured. Keep the chart specialist disabled
+as JSON. `--no-asr` disables all ASR. Azure needs its configured key/region and authorized
+billing mode; only Modal ASR needs Modal proxy credentials. Keep the chart specialist disabled
 in `.env.modal` for the CPU-only OpenAI topology. No API inference runs during
 `--check`; a configured key is not proof of API access or successful grading.
 
