@@ -1449,6 +1449,7 @@ export const en = {
   "writingAI.relevanceExplanation": "TA/TR follows the Band 1 descriptor. CC, LR and GRA are assessed independently.",
   "writingAI.languageSuggestionsFound": "{count} language suggestions found",
   "writingAI.generatingFeedback": "Generating feedback…",
+  "writingAI.feedbackDraft": "Live draft · awaiting verification",
   "writingAI.feedbackReady": "Feedback ready",
   "writingAI.grammar": "Grammar",
   "writingAI.vocabulary": "Vocabulary",

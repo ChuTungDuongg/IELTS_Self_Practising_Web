@@ -1,4 +1,5 @@
 import asyncio
+from time import monotonic
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, Query, Request
@@ -130,6 +131,7 @@ async def event_stream(
     unwind the SSE poll/session normally without mutating grading state.
     """
     # New sessions per poll; the request's service session never escapes the route.
+    last_sent = monotonic()
     while not await request.is_disconnected():
         async with worker.sessions() as session:
             run, events = await WritingAIService(session, user_id, worker.settings).snapshot(
@@ -138,11 +140,15 @@ async def event_stream(
         for event in events:
             after = event.sequence
             yield f"id: {event.sequence}\nevent: {event.event_type}\ndata: {event.model_dump_json()}\n\n"
+            last_sent = monotonic()
         if (
             run.status in {WritingAIRunStatus.COMPLETED, WritingAIRunStatus.FAILED}
             and len(events) < 100
         ):
             return
+        if not events and monotonic() - last_sent >= 15:
+            yield ": heartbeat\n\n"
+            last_sent = monotonic()
         await asyncio.sleep(1)
 
 

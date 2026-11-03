@@ -1451,6 +1451,7 @@ export const vi = {
   "writingAI.relevanceExplanation": "TA/TR phù hợp mô tả Band 1. CC, LR và GRA được chấm độc lập.",
   "writingAI.languageSuggestionsFound": "Đã tìm thấy {count} gợi ý ngôn ngữ",
   "writingAI.generatingFeedback": "Đang tạo nhận xét…",
+  "writingAI.feedbackDraft": "Bản nháp trực tiếp · đang kiểm chứng",
   "writingAI.feedbackReady": "Nhận xét đã sẵn sàng",
   "writingAI.grammar": "Ngữ pháp",
   "writingAI.vocabulary": "Từ vựng",

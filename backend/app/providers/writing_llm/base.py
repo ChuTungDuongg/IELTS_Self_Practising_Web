@@ -1,4 +1,5 @@
 import math
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol, TypedDict, get_args
 
@@ -52,6 +53,8 @@ class CompletionOptions:
     stage: str = "default"
     criterion: str | None = None
     attempt: int = 1
+    # Business-output deltas only. None resets a provisional preview per attempt.
+    on_content: Callable[[str | None], Awaitable[None]] | None = field(default=None, repr=False)
 
 
 SafeFinishReason = Literal[

@@ -102,6 +102,48 @@ describe("AI feedback presentation", () => {
 });
 
 describe("Writing AI assessment", () => {
+  it.each([1, 2] as const)("updates Task %s feedback directly from SSE before the whole run completes", async taskNumber => {
+    vi.mocked(listAIWritingRuns).mockResolvedValue({ configured: true, items: [{ ...pending, status: "RUNNING", task_number: taskNumber }] });
+    render(<WritingAIAssessment attemptId={attemptId} taskId={taskId} taskNumber={taskNumber} hasEssay canCopy onCopy={vi.fn()} />);
+    await waitFor(() => expect(MockEventSource.instances).toHaveLength(1));
+    const stream = MockEventSource.instances[0];
+    act(() => stream.emit("criterion.feedback.started", 1, { criterion: "ta", stage: "feedback", result: { ...criterion, feedback_status: "PENDING", strengths: [], improvements: [] } }));
+    const card = screen.getByRole("article", { name: taskNumber === 1 ? "AI Task Achievement" : "AI Task Response" });
+    expect(card).toHaveAttribute("aria-busy", "true");
+    expect(card.querySelector('[data-streaming="true"]')).toBeInTheDocument();
+    act(() => stream.emit("criterion.feedback.draft", 2, { criterion: "ta", stage: "feedback", feedback_preview: "Nhận xét đang" }));
+    expect(within(card).getByText("Nhận xét đang")).toBeInTheDocument();
+    act(() => stream.emit("criterion.feedback.draft", 3, { criterion: "ta", stage: "feedback", feedback_preview: "Nhận xét đang được soạn trực tiếp." }));
+    expect(within(card).getByText("Nhận xét đang được soạn trực tiếp.")).toBeInTheDocument();
+    act(() => stream.emit("criterion.feedback.draft", 4, { criterion: "ta", stage: "feedback", feedback_preview: "" }));
+    expect(within(card).queryByText("Nhận xét đang được soạn trực tiếp.")).not.toBeInTheDocument();
+    act(() => stream.emit("criterion.feedback.completed", 5, { criterion: "ta", stage: "feedback", result: { ...criterion, feedback: "Nhận xét đã kiểm chứng vừa nhận qua SSE." } }));
+    expect(card).toHaveAttribute("aria-busy", "false");
+    expect(within(card).getByText("Nhận xét đã kiểm chứng vừa nhận qua SSE.")).toBeInTheDocument();
+    expect(within(card).getByText("Band 6.5")).toBeInTheDocument();
+    expect(card.querySelector('[data-streaming="true"]')).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Đang chấm với AI…" })).toBeDisabled();
+    expect(getAIWritingRun).not.toHaveBeenCalled();
+    act(() => stream.emit("criterion.feedback.draft", 6, { criterion: "ta", feedback_preview: "Stale provisional feedback." }));
+    expect(within(card).queryByText("Stale provisional feedback.")).not.toBeInTheDocument();
+  });
+
+  it.each([1, 2] as const)("keeps Task %s cards in rubric order when criteria arrive out of order", async taskNumber => {
+    vi.mocked(listAIWritingRuns).mockResolvedValue({ configured: true, items: [{ ...pending, status: "RUNNING", task_number: taskNumber, progress: { gra: result.criteria.gra } }] });
+    render(<WritingAIAssessment attemptId={attemptId} taskId={taskId} taskNumber={taskNumber} hasEssay canCopy onCopy={vi.fn()} />);
+    await screen.findByRole("article", { name: "AI Grammatical Range & Accuracy" });
+    await waitFor(() => expect(MockEventSource.instances).toHaveLength(1));
+    const stream = MockEventSource.instances[0];
+    for (const [index, trait] of (["lr", "cc", "ta"] as const).entries()) {
+      act(() => stream.emit("criterion.completed", index + 1, { criterion: trait, result: result.criteria[trait] }));
+    }
+    expect(screen.getAllByRole("article").map(card => within(card).getByRole("heading", { level: 3 }).textContent)).toEqual([
+      taskNumber === 1 ? "Task Achievement" : "Task Response",
+      "Coherence & Cohesion", "Lexical Resource", "Grammatical Range & Accuracy",
+    ]);
+    expect(screen.getAllByText("Dẫn chứng từ bài viết (1)")).toHaveLength(4);
+  });
+
   it("displays only the selected historical run and replaces its underlines on forced regrade", async () => {
     const data = review(); data.tasks = [data.tasks[1]]; data.tasks[0].content = "people tends to help.";
     const annotation = { id: "latest-issue", criterion: "gra" as const, kind: "ERROR" as const, source_id: "P1S1", start_offset: 0, end_offset: 12, original_span: "people tends", suggested_revision: "people tend", message: "Latest feedback.", confidence: "HIGH" as const, category: "grammar" as const };

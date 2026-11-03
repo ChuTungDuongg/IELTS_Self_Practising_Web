@@ -218,6 +218,127 @@ class ChatCompletionHTTP:
 
     async def send(self, body: dict[str, Any]) -> Completion:
         data = await self._json_request("POST", "/chat/completions", self.timeout, body)
+        return self._completion(data)
+
+    async def send_stream(self, body, on_content) -> Completion:
+        """Read Chat SSE; only delta.content leaves this transport as provisional text."""
+        usage, finish, text, refusal, done = {}, None, "", False, False
+        raw_usage = {}
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout, follow_redirects=False) as client:
+                async with client.stream(
+                    "POST", self.base_url + "/chat/completions", headers=self.headers, json=body
+                ) as response:
+                    status = response.status_code
+                    if status != 200:
+                        # Never replay a possibly billable POST, including redirects.
+                        content = bytearray()
+                        async for chunk in response.aiter_bytes():
+                            content.extend(chunk)
+                            if len(content) > 128_000:
+                                raise ProviderFailure(
+                                    "AI_PROVIDER_BAD_RESPONSE", reason="OUTPUT_TOO_LARGE"
+                                )
+                        code = (
+                            "AI_PROVIDER_AUTH_FAILED"
+                            if status in {401, 403}
+                            else "AI_PROVIDER_QUOTA_EXHAUSTED"
+                            if status == 429 and self._quota_exhausted(content)
+                            else "AI_PROVIDER_RATE_LIMITED"
+                            if status == 429
+                            else "AI_MODEL_UNAVAILABLE"
+                            if status in {502, 503} or self._missing_model(content)
+                            else "AI_PROVIDER_TIMEOUT"
+                            if status in {408, 504}
+                            else "AI_PROVIDER_HTTP_ERROR"
+                            if status >= 500
+                            else "AI_PROVIDER_ENDPOINT_ERROR"
+                        )
+                        raise ProviderFailure(code)
+                    if "text/event-stream" not in response.headers.get("content-type", ""):
+                        raise ProviderFailure(
+                            "AI_PROVIDER_BAD_RESPONSE", reason="MALFORMED_COMPLETION_ENVELOPE"
+                        )
+                    count = 0
+                    async for line in response.aiter_lines():
+                        if not line.startswith("data:"):
+                            continue
+                        count += 1
+                        if len(line) > 128_000 or count > 10_000:
+                            raise ProviderFailure(
+                                "AI_PROVIDER_BAD_RESPONSE", reason="OUTPUT_TOO_LARGE"
+                            )
+                        data = line[5:].strip()
+                        if data == "[DONE]":
+                            done = True
+                            break
+                        chunk = json.loads(data)
+                        if not isinstance(chunk, dict) or "error" in chunk:
+                            raise ValueError
+                        if chunk.get("usage") is not None:
+                            raw_usage = chunk["usage"]
+                            usage = safe_completion_usage(raw_usage)
+                        choices = chunk.get("choices")
+                        if not isinstance(choices, list):
+                            raise ValueError
+                        if not choices:
+                            continue  # include_usage's final counter-only chunk.
+                        choice = choices[0]
+                        if choice.get("index", 0) != 0:
+                            raise ValueError
+                        if choice.get("finish_reason") is not None:
+                            finish = choice["finish_reason"]
+                        delta = choice.get("delta")
+                        if not isinstance(delta, dict):
+                            raise ValueError
+                        refusal = refusal or bool(delta.get("refusal"))
+                        content = delta.get("content")
+                        if content is not None:
+                            if not isinstance(content, str):
+                                raise ValueError
+                            text += content
+                            if len(text.encode("utf-8")) > 128_000:
+                                raise ProviderFailure(
+                                    "AI_PROVIDER_BAD_RESPONSE", reason="OUTPUT_TOO_LARGE"
+                                )
+                            if content and not refusal:
+                                await on_content(content)
+            if not done:
+                raise ProviderFailure(
+                    "AI_PROVIDER_BAD_RESPONSE", reason="MALFORMED_COMPLETION_ENVELOPE"
+                )
+            return self._completion(
+                {
+                    "choices": [
+                        {"finish_reason": finish, "message": {"content": text, "refusal": refusal}}
+                    ],
+                    "usage": raw_usage,
+                }
+            )
+        except asyncio.CancelledError as exc:
+            exc.usage = usage
+            raise
+        except httpx.TimeoutException:
+            raise ProviderFailure(
+                "AI_PROVIDER_TIMEOUT", usage=usage, finish_reason=finish
+            ) from None
+        except httpx.RequestError:
+            raise ProviderFailure(
+                "AI_PROVIDER_UNREACHABLE", usage=usage, finish_reason=finish
+            ) from None
+        except ProviderFailure as exc:
+            exc.usage = usage
+            exc.finish_reason = finish
+            raise
+        except (ValueError, TypeError, KeyError, IndexError, AttributeError):
+            raise ProviderFailure(
+                "AI_PROVIDER_BAD_RESPONSE",
+                reason="MALFORMED_COMPLETION_ENVELOPE",
+                usage=usage,
+                finish_reason=finish,
+            ) from None
+
+    def _completion(self, data) -> Completion:
         safe_usage, finish = {}, None
         try:
             usage = data.get("usage") or {}

@@ -118,6 +118,9 @@ class OpenAIProvider:
             "response_format": {"type": "json_object"},
             "reasoning_effort": policy.reasoning_effort,
         }
+        streaming = policy.stage == "feedback" and options.on_content is not None
+        if streaming:
+            body.update(stream=True, stream_options={"include_usage": True})
         usages: dict[str, int] = {}
         attempts: list[dict[str, Any]] = []
         started = time.monotonic()
@@ -166,9 +169,20 @@ class OpenAIProvider:
                     for budget_attempt in range(2):
                         attempt_started = time.monotonic()
                         try:
+                            if streaming:
+                                await options.on_content(None)
                             self.request_attempts += 1
                             request_in_flight = True
-                            completion = await self.transport.send(body)
+                            completion = (
+                                await self.transport.send_stream(body, options.on_content)
+                                if streaming
+                                else await self.transport.send(body)
+                            )
+                        except asyncio.CancelledError as exc:
+                            if request_in_flight:
+                                record(usage=getattr(exc, "usage", {}), finish=None)
+                                request_in_flight = False
+                            raise
                         except ProviderFailure as exc:
                             request_in_flight = False
                             record(

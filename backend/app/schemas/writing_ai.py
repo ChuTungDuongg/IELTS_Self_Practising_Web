@@ -430,6 +430,7 @@ EventType = Literal[
     "criterion.scoring.started",
     "criterion.scoring.validation.started",
     "criterion.feedback.started",
+    "criterion.feedback.draft",
     "criterion.feedback.annotation",
     "criterion.feedback.completed",
     "criterion.retrying",
@@ -462,6 +463,7 @@ class EventPayload(StrictModel):
     evidence: list[Evidence] | None = Field(default=None, max_length=6)
     result: CriterionResult | None = None
     annotation: WritingAnnotation | None = None
+    feedback_preview: str | None = Field(default=None, strict=True, max_length=4000)
     error_code: str | None = Field(default=None, max_length=80)
     error_message: str | None = Field(default=None, max_length=300)
     task1_analysis: Task1Analysis | None = None

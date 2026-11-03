@@ -76,7 +76,7 @@ export const aiRunSchema = z.object({
   relevance: aiRelevanceSchema.nullable().optional(),
 });
 export type AIWritingRun = z.infer<typeof aiRunSchema>;
-export const aiEventTypes = ["relevance.started", "relevance.completed", "relevance.failed", "run.started", "provider.starting", "provider.ready", "criterion.started", "evidence.request.started", "evidence.validation.started", "criterion.evidence.completed", "criterion.scoring.started", "criterion.scoring.validation.started", "criterion.retrying", "criterion.feedback.started", "criterion.feedback.annotation", "criterion.feedback.completed", "criterion.completed", "criterion.failed", "run.completed", "run.failed", "heartbeat", "visual_grounding.started", "visual_grounding.completed", "visual_grounding.failed", "derived_facts.completed", "derived_facts.failed", "claim_extraction.started", "claim_extraction.completed", "claim_extraction.failed", "claim_verification.started", "claim_verification.completed", "claim_verification.failed", "chart_specialist.started", "chart_specialist.completed", "chart_specialist.failed", "chart_reconciliation.completed"] as const;
+export const aiEventTypes = ["relevance.started", "relevance.completed", "relevance.failed", "run.started", "provider.starting", "provider.ready", "criterion.started", "evidence.request.started", "evidence.validation.started", "criterion.evidence.completed", "criterion.scoring.started", "criterion.scoring.validation.started", "criterion.retrying", "criterion.feedback.started", "criterion.feedback.draft", "criterion.feedback.annotation", "criterion.feedback.completed", "criterion.completed", "criterion.failed", "run.completed", "run.failed", "heartbeat", "visual_grounding.started", "visual_grounding.completed", "visual_grounding.failed", "derived_facts.completed", "derived_facts.failed", "claim_extraction.started", "claim_extraction.completed", "claim_extraction.failed", "claim_verification.started", "claim_verification.completed", "claim_verification.failed", "chart_specialist.started", "chart_specialist.completed", "chart_specialist.failed", "chart_reconciliation.completed"] as const;
 export const aiEventSchema = z.object({
   sequence: z.number().int().positive(), event_type: z.enum(aiEventTypes),
   created_at: z.string().optional(),
@@ -89,6 +89,7 @@ export const aiEventSchema = z.object({
     task1_analysis: task1AnalysisSchema.nullable().optional(),
     relevance: aiRelevanceSchema.nullable().optional(),
     annotation: writingAnnotationSchema.nullable().default(null),
+    feedback_preview: z.string().max(4000).nullable().optional(),
   }),
 });
 export type AIWritingEvent = z.infer<typeof aiEventSchema>;

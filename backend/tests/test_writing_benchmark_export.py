@@ -388,6 +388,7 @@ async def test_bank_bundle_fake_cli_pipeline(db_session, tmp_path, monkeypatch):
                 str(unpacked / f"task{number}.jsonl"),
                 "--split",
                 "dev",
+                "--allow-live",  # Both runners are bound to fake providers above.
                 "--output",
                 str(output),
             ],

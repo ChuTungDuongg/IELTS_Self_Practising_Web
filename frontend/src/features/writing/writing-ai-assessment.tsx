@@ -18,19 +18,20 @@ import { SavedAIPracticeFeedback, WritingRelevanceNotice } from "./writing-ai-pr
 import { AnnotationDetails, validEssayAnnotations } from "./annotated-essay";
 
 export type EssayAnnotationState = { runId: string | null; annotations: WritingAnnotation[] };
-type LiveFeedback = { runId: string; annotations: Partial<Record<AITrait, WritingAnnotation[]>>; phases: Partial<Record<AITrait, "generating" | "completed">> };
+type LiveFeedback = { runId: string; annotations: Partial<Record<AITrait, WritingAnnotation[]>>; drafts: Partial<Record<AITrait, string>>; phases: Partial<Record<AITrait, "generating" | "completed">> };
 
 function reconcileFeedbackSnapshot(saved: AIWritingRun, previous: LiveFeedback | null): LiveFeedback | null {
   if (!isActiveAIRun(saved)) return null;
-  const current = previous?.runId === saved.id ? previous : { runId: saved.id, annotations: {}, phases: {} };
-  const annotations = { ...current.annotations }, phases = { ...current.phases };
+  const current = previous?.runId === saved.id ? previous : { runId: saved.id, annotations: {}, drafts: {}, phases: {} };
+  const annotations = { ...current.annotations }, phases = { ...current.phases }, drafts = { ...current.drafts };
   for (const trait of aiTraits) {
     const assessment = saved.result?.criteria[trait] ?? saved.progress[trait];
     if (saved.failures?.[trait] || (assessment && assessment.feedback_status !== "PENDING")) {
       annotations[trait] = []; phases[trait] = "completed";
+      delete drafts[trait];
     } else if (assessment?.feedback_status === "PENDING") phases[trait] = "generating";
   }
-  return { runId: saved.id, annotations, phases };
+  return { runId: saved.id, annotations, drafts, phases };
 }
 
 export function WritingAIAssessment({ attemptId, taskId, taskNumber = 2, hasEssay, canCopy, canSavePersonalFeedback = false, onCopy, essayContent, onAnnotationsChange, onViewAnnotation }: {
@@ -126,17 +127,20 @@ export function WritingAIAssessment({ attemptId, taskId, taskNumber = 2, hasEssa
         const annotation = event.payload.annotation;
         if (event.event_type.startsWith("criterion.feedback.") || event.event_type === "criterion.completed" || event.event_type === "criterion.failed") {
           setLiveFeedback(previous => {
-            const current = previous?.runId === runId ? previous : { runId, annotations: {}, phases: {} };
+            const current = previous?.runId === runId ? previous : { runId, annotations: {}, drafts: {}, phases: {} };
             if (!trait) return current;
-            if (current.phases[trait] === "completed" && (event.event_type === "criterion.feedback.started" || event.event_type === "criterion.feedback.annotation")) return current;
+            if (current.phases[trait] === "completed" && (event.event_type === "criterion.feedback.started" || event.event_type === "criterion.feedback.annotation" || event.event_type === "criterion.feedback.draft")) return current;
+            if (event.event_type === "criterion.feedback.draft" && event.payload.feedback_preview !== undefined) {
+              return { ...current, drafts: { ...current.drafts, [trait]: event.payload.feedback_preview ?? "" }, phases: { ...current.phases, [trait]: "generating" } };
+            }
             if (event.event_type === "criterion.feedback.annotation" && annotation?.criterion === trait) {
               const items = current.annotations[trait] ?? [];
               return items.some(item => item.id === annotation.id) || items.length >= 4 ? current
                 : { ...current, annotations: { ...current.annotations, [trait]: [...items, annotation] } };
             }
-            if (event.event_type === "criterion.feedback.started") return { ...current, annotations: { ...current.annotations, [trait]: [] }, phases: { ...current.phases, [trait]: "generating" } };
+            if (event.event_type === "criterion.feedback.started") return { ...current, annotations: { ...current.annotations, [trait]: [] }, drafts: { ...current.drafts, [trait]: "" }, phases: { ...current.phases, [trait]: "generating" } };
             if (event.event_type === "criterion.feedback.completed" || event.event_type === "criterion.completed" || event.event_type === "criterion.failed") {
-              return { ...current, annotations: { ...current.annotations, [trait]: [] }, phases: { ...current.phases, [trait]: "completed" } };
+              return { ...current, annotations: { ...current.annotations, [trait]: [] }, drafts: { ...current.drafts, [trait]: "" }, phases: { ...current.phases, [trait]: "completed" } };
             }
             return current;
           });
@@ -262,7 +266,7 @@ export function WritingAIAssessment({ attemptId, taskId, taskNumber = 2, hasEssa
     </section> : null}
     <div className={styles.criteria}>{aiTraits.map((trait) => {
       const assessment = run?.result?.criteria[trait] ?? run?.progress[trait];
-      return assessment ? <CriterionAssessmentCard key={trait} trait={trait} assessment={assessment} taskNumber={taskNumber} visualAnalysis={visualAnalysis} generatingFeedback={active && feedbackPhases?.[trait] === "generating"} feedbackFailed={!run?.result?.criteria[trait] && (Boolean(run?.failures?.[trait]) || (visibleRun?.status === "FAILED" && assessment.feedback_status === "PENDING"))} /> : null;
+      return assessment ? <CriterionAssessmentCard key={trait} trait={trait} assessment={assessment} taskNumber={taskNumber} visualAnalysis={visualAnalysis} generatingFeedback={active && feedbackPhases?.[trait] === "generating"} draftFeedback={active && liveFeedback?.runId === runId ? liveFeedback?.drafts[trait] : undefined} feedbackFailed={!run?.result?.criteria[trait] && (Boolean(run?.failures?.[trait]) || (visibleRun?.status === "FAILED" && assessment.feedback_status === "PENDING"))} /> : null;
     })}</div>
     {runs.some((item) => item.status === "COMPLETED" && item.id !== run?.id) ? <details className={styles.history}><summary>Các bài chấm AI trước</summary><ul>{runs.filter((item) => item.status === "COMPLETED").map((item) => <li key={item.id}><button type="button" className="btn" disabled={active || starting || stopping} onClick={() => { setRun(item); setTerminal(null); setError(""); setNotice(""); }}>{new Date(item.created_at).toLocaleString("vi-VN")} · {item.result?.overall_band.toFixed(1)} · {item.prompt_version}</button></li>)}</ul></details> : null}
   </section>;

@@ -1,6 +1,7 @@
 """Official OpenAI transport contracts, entirely in-process and fictional."""
 
 import asyncio
+import inspect
 import json
 
 import httpx
@@ -27,10 +28,48 @@ def settings(**changes):
     )
 
 
+def as_chat_stream(request, response):
+    """Keep fictional completion content/usage identical across JSON and Chat SSE."""
+    if (
+        request.method != "POST"
+        or not json.loads(request.content).get("stream")
+        or response.status_code != 200
+        or "application/json" not in response.headers.get("content-type", "")
+    ):
+        return response
+    data = response.json()
+    if not isinstance(data, dict) or not data.get("choices"):
+        return response
+    choice = data["choices"][0]
+    message = choice.get("message")
+    if not isinstance(message, dict):
+        return response
+    chunks = [
+        {"choices": [{"index": 0, "delta": message, "finish_reason": None}]},
+        {"choices": [{"index": 0, "delta": {}, "finish_reason": choice.get("finish_reason")}]},
+        {"choices": [], "usage": data.get("usage")},
+    ]
+    return httpx.Response(
+        200,
+        headers={"content-type": "text/event-stream"},
+        content="".join("data: " + json.dumps(chunk) + "\n\n" for chunk in chunks)
+        + "data: [DONE]\n\n",
+    )
+
+
 def intercept(monkeypatch, handler):
     original = httpx.AsyncClient
+
+    async def stream_aware(request):
+        response = handler(request)
+        if inspect.isawaitable(response):
+            response = await response
+        return as_chat_stream(request, response)
+
     monkeypatch.setattr(
-        httpx, "AsyncClient", lambda **kw: original(transport=httpx.MockTransport(handler), **kw)
+        httpx,
+        "AsyncClient",
+        lambda **kw: original(transport=httpx.MockTransport(stream_aware), **kw),
     )
 
 

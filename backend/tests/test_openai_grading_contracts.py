@@ -100,6 +100,12 @@ async def test_writing_task_pipelines_preserve_validated_results_through_openai_
 
     result = await service(provider).assess(data, trace)
     assert result is not None and result.overall_band is not None
+    bodies = [json.loads(request.content) for request in requests if request.method == "POST"]
+    feedback_bodies = [body for body in bodies if body.get("stream")]
+    assert len(feedback_bodies) == 4
+    assert all(body["stream_options"] == {"include_usage": True} for body in feedback_bodies)
+    previews = [payload for kind, payload in events if kind == "criterion.feedback.draft"]
+    assert previews and all(payload.result is None for payload in previews)
     assert set(result.criteria.model_dump()) == {"ta", "cc", "lr", "gra"}
     assert sum(event == "criterion.completed" for event, _ in events) >= 4
     assert any(request.method == "POST" for request in requests)

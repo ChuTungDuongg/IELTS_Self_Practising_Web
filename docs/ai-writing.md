@@ -463,6 +463,20 @@ modal volume get ielts-postgres-backups /<snapshot>/database.dump ./database.dum
 pg_restore --dbname=<target-database> --no-owner --no-acl ./database.dump
 ```
 
+## Feedback trực tiếp và bố cục tiêu chí
+
+Feedback Writing Task 1/2 dùng một cột ở mọi kích thước, theo thứ tự TA/TR → CC → LR → GRA. Chỉ grid card thay đổi; card vẫn cao theo nội dung, cách nhau 16px, giữ phần dẫn chứng đóng/mở và band ở đầu card.
+
+Với OpenAI, riêng request Writing `stage=feedback` có callback xem trước dùng Chat Completions `stream=true`, `stream_options.include_usage=true`. Đầu ra hoàn chỉnh vẫn được gom và đi qua cùng validation, factual/language verification và công thức điểm. Các stage khác, Speaking và payload vLLM giữ đường không stream hiện có. Tham chiếu schema: [Chat streaming events](https://developers.openai.com/api/reference/resources/chat/subresources/completions/streaming-events).
+
+Backend chỉ tách chuỗi nghiệp vụ `observation`/`feedback` từ `delta.content`, rồi phát sự kiện bền vững `criterion.feedback.draft` với `feedback_preview` là snapshot văn bản lũy kế. Không truyền JSON thô, ID, điểm đang sinh, refusal hay reasoning; không gọi thêm model để tạo hiệu ứng. Mỗi draft tối đa 4000 ký tự, giới hạn 100 cập nhật live mỗi tiêu chí cộng reset/flush hữu hạn; nội dung được gom theo ngưỡng 12 ký tự/100ms. Endpoint phát lại hiện tại poll mỗi giây, nên trình duyệt có thể nhận nhiều mảnh trong cùng một nhịp. Khi nhàn rỗi 15 giây, SSE gửi comment heartbeat, không tăng cursor hay tiến độ nghiệp vụ.
+
+UI ghi rõ bản nháp đang kiểm chứng, có con trỏ nhấp nháy tôn trọng reduced motion. Nhận xét cuối cùng thay thế bản nháp khi `criterion.feedback.completed` đến; repair xóa bản nháp cũ, lỗi/Dừng/terminal không giữ văn bản chưa xác minh. Con trỏ sự kiện chống phát lại trùng, bản nháp đến muộn không thay thế feedback hoàn tất; ngắt theo dõi không hủy worker. Bản nháp không cập nhật `CriterionResult` hoặc điểm. Kết quả đã cache hiện ngay, không có yêu cầu model mới để stream lại.
+
+Một số nhận xét TA Task 1 được render từ claim đã xác minh và model chỉ chọn ID với `observation=null`; những mục đó hiện sau bước đối chiếu, không phát sinh văn bản tự do để stream. Hành vi này giữ bảo vệ factual accuracy. Request bị cắt, thiếu `[DONE]`, refusal/filter hay finish khác `stop` không trở thành kết quả thành công; một budget repair có giới hạn vẫn reset preview và giữ usage các attempt. Không replay POST sau timeout/5xx/cancellation. Reasoning tokens vẫn là tập con completion tokens.
+
+Kiểm thử dùng HTTP SSE giả lập và Chromium với component thật/dữ liệu giả lập; không chứng minh truy cập API live, độ chính xác band hoặc deployment Modal. Từ root Windows, với cấu hình riêng tư/tài nguyên DEV hiện có, kiểm tra offline bằng `.\start-modal.cmd --provider openai --no-asr --check`, chạy bằng `.\start-modal.cmd --provider openai --no-asr`; dừng phiên serve cũ trước khi khởi động phiên mới. Không cần thêm biến môi trường hay đưa API key vào frontend.
+
 ## Xử lý sự cố và xác minh tập trung
 
 - **Chưa cấu hình:** bật AI, cung cấp URL/mô hình/thông tin xác thực nhà cung cấp đã chọn; Modal cần cả hai trường proxy token. Khởi động lại FastAPI.

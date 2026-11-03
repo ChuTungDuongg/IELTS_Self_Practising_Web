@@ -65,6 +65,7 @@ from app.services.writing_execution import (
     WritingLatencyMetrics,
     gather_isolated,
 )
+from app.services.writing_feedback_stream import FeedbackPreview
 from app.services.writing_relevance import classify_relevance
 
 T = TypeVar("T", bound=BaseModel)
@@ -233,6 +234,11 @@ class MTSWritingScoringService:
         reason = "SCHEMA_VALIDATION"
         normal_max_tokens = self._normal_completion_budget(trait, stage)
         public_stage = "scoring" if stage == "score" else stage
+        preview = (
+            FeedbackPreview(trait, trace)
+            if stage == "feedback" and getattr(self.provider, "reasoned_inference", False)
+            else None
+        )
         if stage != "feedback":
             await trace(
                 "evidence.request.started" if stage == "evidence" else "criterion.scoring.started",
@@ -275,6 +281,7 @@ class MTSWritingScoringService:
                                 stage=stage,
                                 criterion=trait,
                                 attempt=repair + 1,
+                                on_content=preview.feed if preview else None,
                             ),
                         )
                     except ProviderFailure as exc:
@@ -286,6 +293,8 @@ class MTSWritingScoringService:
                         timing, completion.finish_reason, completion.usage, completion.attempts
                     )
                 state.usage.append(completion.usage)
+                if preview:
+                    await preview.flush()
                 finish_reason = safe_finish_reason(completion.finish_reason)
                 logger.info(
                     "AI completion: stage=%s criterion=%s attempt=%s finish_reason=%s completion_tokens=%s",

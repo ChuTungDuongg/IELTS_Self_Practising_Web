@@ -6,6 +6,7 @@ from uuid import uuid4
 
 import httpx
 import pytest
+from test_openai_integration import as_chat_stream
 from test_task1_visual import Task1FakeProvider
 from test_task1_visual import request as task1_request
 
@@ -182,7 +183,12 @@ def install_adapter(monkeypatch, handler, provider):
     monkeypatch.setattr(
         httpx,
         "AsyncClient",
-        lambda **kwargs: original(transport=httpx.MockTransport(handler), **kwargs),
+        lambda **kwargs: original(
+            transport=httpx.MockTransport(
+                lambda request: as_chat_stream(request, handler(request))
+            ),
+            **kwargs,
+        ),
     )
     return create_provider(
         Settings(

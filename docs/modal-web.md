@@ -1,5 +1,74 @@
 # Chạy BandPilot trên Modal
 
+## One-command Windows staging with on-demand AI
+
+From the repository root, run:
+
+```powershell
+.\start-modal.cmd
+```
+
+That default command preserves the vLLM setup. For OpenAI Luna grading, use:
+
+```powershell
+.\start-modal.cmd --provider openai --no-asr --check
+.\start-modal.cmd --provider openai --no-asr
+```
+
+The OpenAI mode reads the existing private `backend/.env`, validates the key's
+presence, model and inference policy offline, and forwards Writing/Speaking AI
+settings as backend-only ephemeral Secrets. It does not change the persistent
+Modal Secret, JWT, database or Volumes. Structured stage overrides are serialized
+as JSON. `--no-asr` disables the optional ASR service; omit it when ASR is needed
+and the Modal proxy credentials are configured. Keep the chart specialist disabled
+in `.env.modal` for the CPU-only OpenAI topology. No API inference runs during
+`--check`; a configured key is not proof of API access or successful grading.
+
+The launcher reads the ignored root `.env.modal` configuration, explicitly selects
+its Modal profile/environment and existing isolated staging Volumes/Secret, then
+runs the existing `modal serve deploy/modal/app.py` entry point. Keep the terminal
+open and press Ctrl+C to end the ephemeral session. The wrapper lets Modal finish
+its own shutdown instead of killing it when the parent receives Ctrl+C. Windows
+supports serving, but automatic source-code reload is skipped by the installed
+SDK; restart the serve command after code changes.
+This staging helper refuses production/shared resources. On another
+machine, copy `.env.modal.example` to `.env.modal`, select pre-created staging
+resources and optionally set `MODAL_CLI_PATH`. The `uv` backend environment and
+Modal CLI must already be installed and authenticated.
+
+AI proxy credentials are read from `AI_WRITING_MODAL_KEY` and
+`AI_WRITING_MODAL_SECRET` in the existing backend Settings (`backend/.env`). They
+are passed as backend-only ephemeral Modal Secrets through the existing entry
+point; the launcher does not replace the staging JWT/Secret, copy a production
+database or embed credentials in an image/Next.js. Inherited OpenAI/provider
+overrides are excluded from the default vLLM command. The explicit OpenAI mode
+uses backend Settings (shell overrides take precedence over `backend/.env`) and
+selects OpenAI for both graders; it never silently falls back to vLLM.
+
+Writing AI, Speaking AI and Speaking ASR are enabled by default. The shared L4
+grader and T4 ASR retain zero minimum containers, at most one container per
+service and a 60-second idle scaledown window. No warmup/model request is sent by
+the launcher, Web health or database readiness checks. The first actual AI request
+can incur model cold-start delay; idle shutdown timing is controlled by Modal.
+Previously requested durable jobs recovered after a restart may also request AI;
+their existing recovery behavior is preserved. The optional experimental chart
+specialist remains disabled. Web/embedded PostgreSQL retain one Web container,
+so this is AI scale-to-zero rather than whole-application scale-to-zero.
+
+```powershell
+.\start-modal.cmd --check  # Offline configuration check, no deployment/inference
+.\start-modal.cmd --deploy # Persistent modal deploy instead of terminal-bound serve
+.\start-modal.cmd --stop   # Stop the selected profile's deployed development app
+```
+
+Only `--deploy` persists after the terminal closes. End a serve session with
+Ctrl+C; `--stop` addresses the named deployed app, not an arbitrary serve session.
+Do not run serve and a deployed app against the same PostgreSQL Volume at once:
+stop an existing deployed development app before switching to serve. `--stop`
+needs no AI credentials and preserves all Volumes and Secrets. This launcher has offline regression
+coverage; it does not establish that local proxy credentials are valid for a
+particular live workspace or that AI inference was tested there.
+
 P5 bổ sung [di chuyển portable](storage-migration.md) và [sao lưu cơ sở dữ liệu/đối tượng, khôi phục cô lập](storage-backup-restore.md). Backend đã cài hỗ trợ `python -m app.storage.recovery_cli backup|restore` với các đối số trong hướng dẫn. Chạy từ môi trường bảo trì do người vận hành kiểm soát, sau khi mọi tác vụ ghi Web/nền đã kết thúc, với đúng cơ sở dữ liệu và cấu hình SOURCE_/DESTINATION_ tường minh. Thao tác demo phải giữ cơ chế một chủ sở hữu cơ sở dữ liệu và đọc dữ liệu đã commit trên cùng Volume tài sản; không khởi động PostgreSQL nhúng thứ hai. Snapshot chỉ có cơ sở dữ liệu không phải sao lưu ứng dụng đầy đủ. Lưu gói đã xác minh độc lập và commit đầu ra Volume tường minh tại bước vận hành. Không thêm endpoint sao lưu tự động, triển khai, chuyển dữ liệu hoặc đổi số replica.
 
 Sau bước thiết lập một lần bên dưới, chạy từ gốc repository:
@@ -23,6 +92,15 @@ Khi `IELTS_WEB_AI_ENABLED=true`, Web bật chấm AI cho cả Writing và Speaki
 <a id="cpu-web-openai"></a>
 
 ## Web CPU gọi OpenAI bên ngoài
+
+Trên Windows với bộ tài nguyên dev riêng đã ghi trong `.env.modal`, dùng
+`.\start-modal.cmd --provider openai --no-asr` để nạp cả cấu hình dev và cấu hình
+AI riêng tư trong `backend/.env`. Lệnh `modal serve deploy/modal/app.py` trực tiếp
+**không tự đọc** hai file này: chỉ đặt provider/model trong shell không chuyển API
+key local vào container. Nếu Secret đã chọn chưa có key, backend có thể báo
+`writing_ai_enabled=true` nhưng `writing_ai_configured=false`. Launcher kiểm tra
+thiếu key hoặc policy không tương thích trước khi khởi động và chuyển các biến
+qua ephemeral Secret hiện có; không cần ghi đè Secret cấu hình đang dùng.
 
 Profile chấm hiện hành là [`openai_task1_reasoned_v1`](ai-writing.md#openai-task1-reasoned-policy). Trước khi restart DEV, chuyển **có chủ đích** cap cũ `AI_WRITING_OPENAI_MAX_OUTPUT_TOKENS=4096` sang cấu hình tương thích; cap cũ không bị bỏ qua và sẽ báo lỗi cấu hình. Các biến `AI_WRITING_OPENAI_*` (profile, effort, detail, low/medium/repair budgets, safety cap, stage overrides, TA image flag, stage/run timeouts) đi qua Secret backend và shell overrides hiện có; không nằm trong frontend/image build. Ví dụ đầy đủ và precedence ở [AI Writing](ai-writing.md#openai-task1-reasoned-policy), áp dụng giống local. Cấu hình khởi đầu: low/8192, Task 1 grounding/verification/TA medium/16384, detail high, repair/safety 32768, stage 300s, assessment 1800s. `original` chưa được bật cho Luna + Chat.
 
