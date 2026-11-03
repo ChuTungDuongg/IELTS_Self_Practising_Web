@@ -316,6 +316,62 @@ def test_empty_report_does_not_invent_cost_factual_truth_or_stability():
     assert report["operational"]["truncation_rate_per_call"] is None
 
 
+def test_cli_ta_evidence_comparison_is_dev_plan_only(manifest, tmp_path, monkeypatch):
+    script = cli()
+    monkeypatch.setattr(script, "Settings", lambda **_kwargs: luna())
+    output = tmp_path / "evidence"
+    assert (
+        script.main(
+            [
+                "--manifest",
+                str(manifest),
+                "--split",
+                "dev",
+                "--ta-evidence-ablation",
+                "--dry-run",
+                "--output",
+                str(output),
+            ]
+        )
+        == 0
+    )
+    report = json.loads((output / "report.json").read_text(encoding="utf-8"))
+    assert report["status"] == "DRY_RUN"
+    assert report["planned_scoring_runs"] == 2
+    assert report["evaluated_run_count"] == 0
+    assert report["ta_evidence_ablation"]["measured_quality_improvement"] is False
+    assert report["ta_evidence_ablation"]["budget"]["live_enabled"] is False
+    assert len(report["plan"][0]["image_hash"]) == 64
+    assert report["ablations"][0]["kind"] == "ta_evidence"
+
+
+@pytest.mark.parametrize(
+    "split,dry,reason",
+    [
+        ("dev", [], "BENCHMARK_ABLATION_LIVE_DISABLED"),
+        ("holdout", ["--dry-run"], "BENCHMARK_ABLATION_DEV_ONLY"),
+    ],
+)
+def test_cli_ta_evidence_rejects_live_and_holdout_before_reading_data(
+    tmp_path, capsys, split, dry, reason
+):
+    assert (
+        cli().main(
+            [
+                "--manifest",
+                str(tmp_path / "absent.jsonl"),
+                "--split",
+                split,
+                "--ta-evidence-ablation",
+                "--allow-live",
+                *dry,
+            ]
+        )
+        == 2
+    )
+    assert reason in capsys.readouterr().err
+
+
 async def test_runner_rejects_changed_openai_policy_before_instantiating_provider(
     manifest, tmp_path, monkeypatch
 ):

@@ -128,6 +128,14 @@ def _comparison_kind(left, right):
         right.model_dump(mode="json", exclude={"label"}),
     )
     if (
+        left.ta_evidence_mode
+        and right.ta_evidence_mode
+        and left.ta_evidence_mode != right.ta_evidence_mode
+    ):
+        a.pop("ta_evidence_mode")
+        b.pop("ta_evidence_mode")
+        return "ta_evidence" if a == b else None
+    if (
         left.provider == right.provider == "openai"
         and left.openai_inference
         and right.openai_inference
@@ -167,6 +175,8 @@ def _ablations(records, configs):
         kind = _comparison_kind(left, right)
         if kind is None:
             continue
+        if kind == "ta_evidence" and left.ta_evidence_mode != "selector_assessments":
+            left, right = right, left
         if (kind == "chart_specialist" and left.specialist.enabled) or (
             kind == "scoring_prompt"
             and int(left.scoring_version[1:]) > int(right.scoring_version[1:])

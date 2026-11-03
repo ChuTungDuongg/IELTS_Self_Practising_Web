@@ -60,9 +60,14 @@ def main(argv=None) -> int:
         help="Plan fixed-model A/B/C/D inference-policy comparisons on DEV; dry-run only.",
     )
     parser.add_argument(
+        "--ta-evidence-ablation",
+        action="store_true",
+        help="DEV-only comparison of current TA evidence assessments versus source IDs only; dry-run only.",
+    )
+    parser.add_argument(
         "--max-cost-usd",
         default=None,
-        help="Requested A-D smoke ceiling (default 0.50 USD). Plans only; live cost admission is unavailable.",
+        help="Requested ablation ceiling (default 0.50 USD). Plans only; live cost admission is unavailable.",
     )
     parser.add_argument(
         "--output",
@@ -71,12 +76,16 @@ def main(argv=None) -> int:
     )
     args = parser.parse_args(argv)
     output = args.output or ROOT / "benchmarks" / "writing_task1" / "reports" / (
-        f"{args.split}-openai-ablation-plan"
+        "dev-ta-evidence-plan"
+        if args.ta_evidence_ablation
+        else f"{args.split}-openai-ablation-plan"
         if args.openai_ablation
         else f"{args.split}-{args.scoring_version}-{args.chart_specialist}"
     )
     try:
-        if args.openai_ablation:
+        if args.openai_ablation and args.ta_evidence_ablation:
+            raise BenchmarkInputError("BENCHMARK_ABLATION_MODES_EXCLUSIVE")
+        if args.openai_ablation or args.ta_evidence_ablation:
             from app.evaluation.task1.openai_ablation import LIVE_DISABLED
 
             if args.split != "dev":
@@ -89,7 +98,9 @@ def main(argv=None) -> int:
             raise BenchmarkInputError(
                 "BENCHMARK_LIVE_OPT_IN_REQUIRED: use --allow-live or --dry-run."
             )
-        if args.max_cost_usd is not None and not args.openai_ablation:
+        if args.max_cost_usd is not None and not (
+            args.openai_ablation or args.ta_evidence_ablation
+        ):
             raise BenchmarkInputError(
                 "BENCHMARK_COST_LIMIT_UNAVAILABLE: normal runner has no hard dollar cap."
             )
@@ -101,7 +112,11 @@ def main(argv=None) -> int:
             raise BenchmarkInputError("BENCHMARK_COST_LIMIT_INVALID")
         items = load_manifest(args.manifest, args.split, args.limit)
         settings = Settings(_env_file=ROOT / "backend" / ".env")
-        if args.openai_ablation:
+        if args.ta_evidence_ablation:
+            from app.evaluation.task1.evidence_ablation import evidence_configurations
+
+            configs = evidence_configurations(settings)
+        elif args.openai_ablation:
             from app.evaluation.task1.openai_ablation import ablation_configurations
 
             configs = ablation_configurations(settings)
@@ -122,6 +137,24 @@ def main(argv=None) -> int:
             from app.evaluation.task1.report import write_report
 
             annotate_plan(report, requested_cost)
+            write_report(output, report)
+        if args.ta_evidence_ablation:
+            from app.evaluation.task1.report import write_report
+
+            report["ta_evidence_ablation"] = {
+                "protocol_version": "task1-ta-evidence-v1",
+                "status": "PLAN_ONLY_NO_INFERENCE",
+                "variable": "TA scoring evidence.assessment only; retain source IDs, full essay, image, rubric, facts and claims.",
+                "same_samples_all_arms": True,
+                "budget": {
+                    "requested_max_usd": format(requested_cost, "f"),
+                    "live_enabled": False,
+                    "bound_verified": False,
+                },
+                "measured_quality_improvement": False,
+                "factual_feedback_accuracy": "unmeasured",
+                "stability": "unmeasured",
+            }
             write_report(output, report)
     except BenchmarkInputError as exc:
         print(str(exc), file=sys.stderr)

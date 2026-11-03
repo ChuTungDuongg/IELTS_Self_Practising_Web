@@ -80,7 +80,7 @@ describe("focused personal AI feedback", () => {
     auth.role = "ADMIN";
     render(<WritingReviewView data={review("FOCUSED_UNIT")} />);
     fireEvent.click(await screen.findByText("Chép gợi ý AI vào biểu mẫu"));
-    expect(screen.getByRole("combobox", { name: "Task 2 TA" })).toHaveValue("7.0");
+    expect(screen.getByRole("combobox", { name: "Task 2 TR" })).toHaveValue("7.0");
     expect(saveWritingTaskScore).not.toHaveBeenCalled();
     expect(screen.queryByText("Save AI feedback to practice")).not.toBeInTheDocument();
     expect(getAIPracticeFeedback).not.toHaveBeenCalled();

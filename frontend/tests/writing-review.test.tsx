@@ -3,7 +3,7 @@ import { saveAssignmentWritingScore } from "@/lib/api/classroom-results";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { WritingReviewView } from "@/features/writing/writing-review";
-import { saveWritingTaskScore, type WritingReviewPayload } from "@/lib/api/exam";
+import { writingReviewSchema, saveWritingTaskScore, type WritingReviewPayload } from "@/lib/api/exam";
 import { listAIWritingRuns } from "@/lib/api/writing-ai";
 import { assetContentUrl } from "@/lib/api/assets";
 
@@ -94,7 +94,7 @@ function reviewPayload({ taskOne = null, taskTwo = null }: {
 }
 
 function selectTaskScores(taskNumber: number, values: [string, string, string, string]) {
-  for (const [index, criterion] of ["TA", "CC", "LR", "GRA"].entries()) {
+  for (const [index, criterion] of [taskNumber === 2 ? "TR" : "TA", "CC", "LR", "GRA"].entries()) {
     fireEvent.change(screen.getByLabelText(`Task ${taskNumber} ${criterion}`), {
       target: { value: values[index] },
     });
@@ -113,7 +113,9 @@ describe("WritingReviewView", () => {
     expect(screen.getByText("Describe fictional data.")).toBeInTheDocument();
     expect(screen.getByText("A saved fictional response.")).toBeInTheDocument();
     expect(screen.getByAltText("Writing Task 1 reference")).toBeInTheDocument();
-    expect(screen.getAllByText("TA")).toHaveLength(2);
+    expect(screen.getAllByText("TA")).toHaveLength(1);
+    expect(screen.getByText("TR")).toBeInTheDocument();
+    expect(screen.getByLabelText("Task 2 TR feedback")).toBeInTheDocument();
     expect(screen.getAllByText("CC")).toHaveLength(2);
     expect(screen.getAllByText("LR")).toHaveLength(2);
     expect(screen.getAllByText("GRA")).toHaveLength(2);
@@ -143,7 +145,7 @@ describe("WritingReviewView", () => {
     expect(vi.mocked(listAIWritingRuns).mock.calls.every(([, taskId]) => taskId === task.writing_task_id)).toBe(true);
     const graded = { ...data, tasks: [{ ...task, score: taskOneScore }] };
     rerender(<WritingReviewView key="graded" data={graded} />);
-    expect(screen.getByText("Task score 6.75")).toBeInTheDocument();
+    expect(screen.getByText("Estimated task band 7.0")).toBeInTheDocument();
     expect(screen.queryByText(/Band|Weighted overall|Task weighting/)).not.toBeInTheDocument();
     await waitFor(() => expect(listAIWritingRuns).toHaveBeenCalledWith(attemptId, task.writing_task_id));
   });
@@ -291,6 +293,45 @@ describe("WritingReviewView", () => {
     render(<WritingReviewView data={reviewPayload({ taskOne: scoredWithFeedback })} />);
     expect(screen.getByLabelText("Task 1 TA feedback")).toHaveValue("Previously saved feedback.");
   });
+});
+
+it.each([1, 2])("shows focused Task %i band after save and reload while preserving criteria", async (number) => {
+  const empty = reviewPayload();
+  empty.review.attempt.scope = "FOCUSED_UNIT";
+  empty.tasks = [empty.tasks[number - 1]];
+  const saved = writingReviewSchema.parse({
+    ...empty,
+    tasks: [{ ...empty.tasks[0], score: { ta: 5, cc: 5, lr: 4, gra: 4.5, overall: 4.625, task_band: 4.5 } }],
+  });
+  vi.mocked(saveWritingTaskScore).mockResolvedValue(saved);
+  const view = render(<WritingReviewView data={empty} />);
+  selectTaskScores(number, ["5.0", "5.0", "4.0", "4.5"]);
+  fireEvent.click(screen.getByRole("button", { name: `Save Task ${number} scores` }));
+  await waitFor(() => expect(document.querySelector(".review-score b")).toHaveTextContent(/^4.5$/));
+  expect(document.querySelector(".writing-assessment-card-heading strong")).toHaveTextContent(/4.5$/);
+  expect(screen.queryByText(/4\.63|4\.6$/)).not.toBeInTheDocument();
+  view.unmount();
+  render(<WritingReviewView data={saved} />);
+  expect(document.querySelector(".review-score b")).toHaveTextContent(/^4.5$/);
+  for (const [index, key] of [number === 2 ? "TR" : "TA", "CC", "LR", "GRA"].entries()) {
+    expect(screen.getByLabelText(`Task ${number} ${key}`)).toHaveValue(["5.0", "5.0", "4.0", "4.5"][index]);
+  }
+  expect(screen.queryByText(/Band 4/)).not.toBeInTheDocument();
+});
+
+it("shows a legacy focused score with half-up rounding, including zero", () => {
+  const data = reviewPayload({ taskOne: { ta: 0, cc: 0, lr: 0, gra: 0, overall: 0 } });
+  data.review.attempt.scope = "FOCUSED_UNIT";
+  data.tasks = [data.tasks[0]];
+  render(<WritingReviewView data={data} />);
+  expect(document.querySelector(".review-score b")).toHaveTextContent(/^0.0$/);
+});
+
+it("uses Task Response and TR in the read-only Task 2 form", () => {
+  render(<WritingReviewView data={reviewPayload({ taskTwo: taskTwoScore })} readOnly />);
+  const card = screen.getByRole("region", { name: "Task 2 assessment" });
+  expect(within(card).getByText("TR").parentElement).toHaveTextContent("TR — Task Response");
+  expect(within(card).queryByText("TA")).not.toBeInTheDocument();
 });
 
 it("saves teacher Writing only through exact assignment scope", async () => {

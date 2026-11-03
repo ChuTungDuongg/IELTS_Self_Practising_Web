@@ -1,5 +1,32 @@
 # Ngân hàng benchmark Writing dành cho quản trị
 
+<a id="ta-evidence-dev"></a>
+
+## DEV kiểm tra ảnh hưởng nhận định evidence lên TA — 2026-11-03
+
+Không có case TA 8→7 đã xác thực hoặc manifest có nhãn thật trong checkout; người yêu cầu xác nhận đây là mong muốn kiểm tra khách quan. Giao thức `task1-ta-evidence-v1` bổ sung vào runner hiện có, không thay các arm A–D lịch sử:
+
+```powershell
+uv run --project backend python scripts/benchmark_task1.py --manifest benchmarks/writing_task1/private/manifest.jsonl --split dev --ta-evidence-ablation --dry-run --max-cost-usd 0.50 --output benchmarks/writing_task1/reports/dev-ta-evidence-plan
+```
+
+Hai cấu hình `selector_assessments` và `source_ids_only` giữ cùng effective OpenAI policy, model Luna, prompt/rubric, image checksum/detail, v12 và DePlot off. Biến duy nhất trong score input TA là bỏ trường `evidence[].assessment` ở nhánh đối chứng. Source IDs, trích dẫn trong toàn bài, ảnh nguồn, facts/claims và reconciliation vẫn giữ; không đưa target/human scores/provenance vào scorer. Task 2, Speaking và vLLM production không đổi.
+
+Field benchmark `ta_evidence_mode` tạo config/cache key riêng cho hai nhánh; mode absent giữ cách tính key cũ. Version prompt/policy production không tăng vì không đổi inference production. Implementation hash tiếp tục bao phủ mã đánh giá theo contract hiện có. Checkpoint cũ vẫn đọc được; metadata provider attempt mới là additive và được allowlist; không giả metadata cũ bằng cấu hình hiện tại.
+
+CLI và cả entrypoint `run_benchmark/evaluate` khóa suy luận cho hai mode, kể cả có `--allow-live` hoặc injected provider factory. Chỉ dry-run DEV được phép; HOLDOUT bị từ chối trước khi gọi provider. Nhánh prompt đối chứng được chạy bằng provider giả trong contract tests, chưa được mở cho paid inference. Trần 0.50 USD trong plan là yêu cầu, `bound_verified=false`; cần reservation cho input/image, mọi arm, repair và request đang chạy trước khi mở live.
+
+| Kết quả kiểm chứng hiện có | Trạng thái thật |
+| --- | --- |
+| Test hợp đồng hai nhánh với điểm giả 4/7/8 | Giữ nguyên band; chỉ thay nhận định evidence, không thay ảnh/toàn bài/criteria khác; không phải nhãn IELTS tin cậy |
+| CLI dry-run trên fixture hư cấu | 2 scoring runs được lên kế hoạch, **0 inference**, paired samples đã đo = 0 |
+| Case thật / số bài DEV có nhãn đã chạy | 0 / 0 |
+| MAE TA, signed bias, tỷ lệ trong ±0.5, under/over scoring theo case/toàn tập | Chưa đo, không điền 0 giả |
+| Factual feedback bị báo sai / stability chạy lặp | Chưa đo; cần adjudicated feedback labels và giao thức repeat độc lập |
+| Lỗi/truncation, calls/latency/usage/cost của inference thật | Chưa đo; calls thật trong nhiệm vụ = 0 |
+
+Khi được mở live sau này, dùng báo cáo per-case và aggregate hiện có (MAE, signed predicted-minus-human bias, within ±0.5, failure/truncation, calls/latency/usage), so cả under/over-scoring trên nhiều mức bài và chart/map/process. Không chọn điểm cao nhất qua nhiều lần chạy. Thí nghiệm reasoning medium/high là biến riêng, không gộp với evidence. HOLDOUT chỉ dùng đánh giá cuối, không chỉnh prompt lặp lại. [AI Writing](ai-writing.md#kiểm-tra-ta-khách-quan--2026-11-03) ghi nguyên nhân đã xác nhận, giả thuyết còn lại và công cụ đọc metadata của run thật.
+
 > **Kiểm toán tài liệu: CURRENT.** Tài liệu chuẩn cho chủ đề này; đã đối chiếu ranh giới/API trong mã nguồn, chưa xác thực trực tiếp trên hệ thống chạy.
 > Mục đích: mô tả ngân hàng benchmark Writing dành cho quản trị. Đối chiếu mã nguồn `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [phần triển khai](../backend/app/services/writing_benchmark.py).
 > Đọc cùng [mô-đun/hướng dẫn hiện hành](modules/writing.md); [kiểm toán và giới hạn](DOCS_AUDIT.md). Kết quả kiểm thử/benchmark bên dưới thuộc lần thực hiện gốc, không phải kết quả chạy lại trong đợt kiểm toán này.

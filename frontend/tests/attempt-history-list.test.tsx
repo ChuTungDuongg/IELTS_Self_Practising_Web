@@ -163,7 +163,7 @@ describe("AttemptHistoryList", () => {
     render(<AttemptHistoryList initialHistory={history([{ ...writing, scope: "FOCUSED_UNIT", band_score: null, task_score: taskScore,
       focused_unit: { kind: "WRITING_TASK", id: writing.test_id, order_index: 0, label: "Task 1", title: null } }])} />);
     fireEvent.click(screen.getByRole("tab", { name: "Focused practice" }));
-    expect(screen.getByText(taskScore === null ? "Not graded" : "Task score 6.8")).toBeInTheDocument();
+    expect(screen.getByText(taskScore === null ? "Not graded" : "Estimated task band 7.0")).toBeInTheDocument();
     expect(screen.queryByText(/Band|Official band unavailable/)).not.toBeInTheDocument();
   });
 
@@ -641,4 +641,21 @@ it("keeps Speaking Part/Free history in Focused practice without a full-skill ba
   expect(screen.getByText("Free question practice")).toBeInTheDocument();
   expect(screen.getByText(part.test_title)).toBeInTheDocument();
   expect(screen.queryByText("Band 8.0")).toBeNull();
+});
+
+it.each([undefined, 4.5])("shows 4.625 as focused task band 4.5 with task_band=%s", (taskBand) => {
+  render(<AttemptHistoryList initialHistory={history([{ ...writing, scope: "FOCUSED_UNIT",
+    band_score: null, task_score: 4.625, task_band: taskBand,
+    focused_unit: { kind: "WRITING_TASK", id: writing.test_id, order_index: 0, label: "Task 1", title: null } }])} />);
+  fireEvent.click(screen.getByRole("tab", { name: "Focused practice" }));
+  expect(screen.getByText("Estimated task band 4.5")).toBeInTheDocument();
+  expect(screen.queryByText(/4\.63|4\.6$/)).not.toBeInTheDocument();
+});
+
+it.each([0, 9])("shows legacy focused task band %s as a score instead of missing", (raw) => {
+  render(<AttemptHistoryList initialHistory={history([{ ...writing, scope: "FOCUSED_UNIT",
+    band_score: null, task_score: raw }])} />);
+  fireEvent.click(screen.getByRole("tab", { name: "Focused practice" }));
+  expect(screen.getByText(`Estimated task band ${raw.toFixed(1)}`)).toBeInTheDocument();
+  expect(screen.queryByText("Not graded")).not.toBeInTheDocument();
 });

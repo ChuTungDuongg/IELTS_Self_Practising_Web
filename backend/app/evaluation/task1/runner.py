@@ -198,6 +198,12 @@ def classify(status, confidence, perception, disagreements, target, predicted):
 async def evaluate(
     item: LoadedSample, config: BenchmarkConfig, provider_factory, specialist_factory
 ) -> EvaluationRecord:
+    if config.ta_evidence_mode:
+        if item.sample.split != "dev":
+            raise ValueError("BENCHMARK_ABLATION_DEV_ONLY")
+        from app.evaluation.task1.openai_ablation import LIVE_DISABLED
+
+        raise ValueError(LIVE_DISABLED)
     start = time.perf_counter()
     sample_hash, image_hash, cache_key = fingerprint(item, config)
     sample = item.sample
@@ -300,9 +306,18 @@ async def evaluate(
         ta_assessment={
             key: value
             for key, value in getattr(scorer, "ta_audit", {}).items()
-            if key in {"status", "reconciliations", "conflict_kinds"}
+            if key
+            in {
+                "status",
+                "reconciliations",
+                "conflict_kinds",
+                "image_sha256",
+                "source_image_assessment",
+                "validated_score",
+            }
         }
         or None,
+        provider_attempts=provider.inference_attempts if provider else [],
     )
 
 
@@ -319,6 +334,15 @@ async def run_benchmark(
 ):
     from app.evaluation.task1.report import build_report, write_report
 
+    if any(config.ta_evidence_mode for config in configs):
+        if any(item.sample.split != "dev" for item in items):
+            raise ValueError("BENCHMARK_ABLATION_DEV_ONLY")
+        # A supplied factory might still construct a real provider. No injection
+        # bypass: all experiment inference needs reviewed cost admission first.
+        if not dry_run:
+            from app.evaluation.task1.openai_ablation import LIVE_DISABLED
+
+            raise ValueError(LIVE_DISABLED)
     if not dry_run and any(
         config.openai_inference and config.openai_inference.get("planning_only")
         for config in configs
@@ -388,6 +412,7 @@ async def run_benchmark(
                 "sample_id": item.sample.id,
                 "split": item.sample.split,
                 "task_type": item.sample.task_type.value,
+                "image_hash": fingerprint(item, configs[0])[1],
             }
             for item in items
         ]

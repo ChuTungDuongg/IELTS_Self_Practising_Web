@@ -101,6 +101,7 @@ jobs:
           npx playwright test \
             tests/e2e/listening-workflow.spec.ts \
             tests/e2e/writing-workflow.spec.ts \
+            tests/e2e/writing-focused-band.spec.ts \
             tests/e2e/full-mock-workflow.spec.ts \
             tests/e2e/reading-practice.spec.ts
       - name: Redact authentication data from failure artifacts

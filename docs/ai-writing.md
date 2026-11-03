@@ -1,5 +1,29 @@
 # AI tư vấn Academic Writing của BandPilot
 
+## Kiểm tra TA khách quan — 2026-11-03
+
+Đối chiếu nền `c1fc40f` (đã có `f0ee0ff`). Người yêu cầu xác nhận không có attempt/run ID, đề/ảnh/bài viết hoặc nguồn nhãn TA 8.0 của case được nêu. Các thư mục local `benchmarks/writing_task1/private`, `reports` và `storage/benchmark` chỉ có `.gitkeep`. Không tái hiện được “TA thật 8 bị trả 7”; không suy TA từ overall, không tạo ground truth bằng LLM.
+
+Đã đọc lại [IELTS Writing Band Descriptors chính thức](https://ielts.org/cdn/ielts-guides/ielts-writing-band-descriptors.pdf), bản hiện được công bố cập nhật tháng 5/2023. Band 7/8 khác ở mức đầy đủ, chọn lọc và minh họa đặc điểm chính; band 8 vẫn cho phép thiếu sót cục bộ. Các hằng `TASK1_TA_DESCRIPTOR_DISCRIMINATION_GUIDANCE` và `TASK1_TA_EVIDENCE_SELECTION_GUIDANCE` đã bao quát phân biệt này, materiality và ranh giới TA với LR/GRA. **Không đổi prompt, band, reasoning default, image detail hoặc quy tắc verification/reconciliation production.**
+
+Phát hiện đã xác nhận bằng đọc đường dữ liệu: `_task1_evidence_and_score()` chọn evidence trước; `_assessment_prompt()` đưa cả source ID và nhận định tự do `assessment` của selector vào TA score input. Đây là một đường truyền có thể gây anchoring; **chưa xác nhận nó gây lệch band**. Nhánh DEV đối chứng chỉ bỏ các nhận định đó, giữ source IDs, toàn bộ segmented essay/trích dẫn, ảnh gốc, rubric, reference/facts/claim verdicts, evidence selection, feedback và policy. Xem [giao thức benchmark](writing-benchmark-bank.md#ta-evidence-dev). Không chuyển production sang nhánh thử nghiệm.
+
+Theo đường code hiện tại, band qua schema half-band được giữ nguyên trong CriterionBandScore/CriterionResult, persistence, SSE và DTO; normalization chỉ sửa display feedback, không giảm điểm TA. Regression dùng provider giả xác nhận 4/7/8 được giữ nguyên và không tự ghi đè human final. Điều này chứng minh contract, không chứng minh tính đúng đắn của điểm do model thật chấm.
+
+### Chẩn đoán một lượt đã lưu
+
+Từ root, operator có quyền truy cập database cấu hình có thể chạy công cụ SELECT-only:
+
+```powershell
+uv run --project backend python scripts/diagnose_writing_run.py --run-id <UUID>
+```
+
+Công cụ đặt transaction PostgreSQL READ ONLY, chỉ xuất provider/model/prompt version/fingerprint đã lưu, các provider attempt đã resolve (task, stage chuẩn hóa, criterion, profile, reasoning, detail, budget, finish reason, latency, usage/schema/budget repairs), TA status/reconciliation, checksum ảnh và điểm TA đã validation so với điểm trong result. Không xuất đề/bài, ảnh/base64, raw response, secret hay chain-of-thought. Không lấy default hiện tại để giả là metadata lịch sử.
+
+Các lượt mới bổ sung `usage_json.latency.ta_assessment.image_sha256`, `source_image_assessment` khi thực sự tạo prompt assessment ảnh, và `validated_score` sau assessment READY. Version chẩn đoán là `task1-ta-audit-v1`; dữ liệu bổ sung không ảnh hưởng input inference nên prompt/policy/fingerprint production giữ nguyên: `mts-task1-visual-v12`, `mts-task1-scoring-v12`, `openai_task1_reasoned_v1`, `source-image-envelope-v1`. Lượt cũ/cache không được tự chấm lại hoặc sửa điểm; field thiếu là unknown. Cache hit không nằm trên run row: đối chiếu thêm response create-run (`cache_hit`/run ID/thời điểm), metadata worker/deploy và checksum nguồn đúng lượt. `cache_hit=null` trong báo cáo không có nghĩa cache miss.
+
+Chưa có run thật nên chưa xác minh được effective config của case, deployment có cập nhật hay không, ảnh/reference/claim nào sai, hoặc rubric bị áp dụng sai. Chưa đo MAE/bias/±0.5, false factual flags, stability, latency/usage của model thật; không tuyên bố sửa lỗi TA 7 thành 8. Muốn đo cần DEV có nhãn TA đáng tin cậy ở nhiều band và chart/map/process, ảnh đúng nguồn, nguyên văn có đoạn, kết quả/run metadata; HOLDOUT giữ độc lập. Live vẫn cần cho phép rõ và cost admission đáng tin cậy.
+
 > **Kiểm toán tài liệu: CURRENT.** Tài liệu chuẩn cho chủ đề này; đã đối chiếu ranh giới/API trong mã nguồn, chưa xác thực trực tiếp trên hệ thống chạy.
 > Mục đích: mô tả AI tư vấn Academic Writing của BandPilot. Đối chiếu mã nguồn `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [phần triển khai](../backend/app/services/mts_writing.py).
 > Đọc cùng [mô-đun/hướng dẫn hiện hành](modules/writing.md); [kiểm toán và giới hạn](DOCS_AUDIT.md). Kết quả kiểm thử/benchmark bên dưới thuộc lần thực hiện gốc, không phải kết quả chạy lại trong đợt kiểm toán này.

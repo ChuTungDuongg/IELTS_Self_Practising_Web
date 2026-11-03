@@ -27,6 +27,7 @@ from app.domains.scoring import (
     project_overall_band,
     reading_raw_to_band,
 )
+from app.domains.scoring.ielts_band import round_to_half
 from app.domains.timers import TimerService
 from app.domains.writing import count_words
 from app.models import (
@@ -673,6 +674,7 @@ class AttemptService:
             lr=float(score.lr),
             gra=float(score.gra),
             overall=float(overall),
+            task_band=float(round_to_half(overall)),
             ta_feedback=score.ta_feedback,
             cc_feedback=score.cc_feedback,
             lr_feedback=score.lr_feedback,
@@ -948,6 +950,11 @@ class AttemptService:
                     max_score=item.max_score,
                     band_score=item.band_score,
                     task_score=task_score,
+                    task_band=(
+                        float(round_to_half(Decimal(str(task_score))))
+                        if task_score is not None
+                        else None
+                    ),
                     speaking_summary=speaking.get(item.id),
                     deletion_allowed=item.test_session_id is None
                     and not (

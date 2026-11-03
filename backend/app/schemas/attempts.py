@@ -174,6 +174,8 @@ class WritingTaskScore(BaseModel):
     lr: float
     gra: float
     overall: float
+    # Derived presentation band; overall retains the exact raw criterion mean.
+    task_band: float | None = Field(default=None, ge=0, le=9, multiple_of=0.5)
     ta_feedback: str | None = None
     cc_feedback: str | None = None
     lr_feedback: str | None = None
@@ -268,6 +270,7 @@ class HistoryItem(BaseModel):
     max_score: int | None
     band_score: float | None
     task_score: float | None = None
+    task_band: float | None = Field(default=None, ge=0, le=9, multiple_of=0.5)
     review_available: bool = True
     speaking_summary: SpeakingHistorySummary | None = None
     deletion_allowed: bool = True

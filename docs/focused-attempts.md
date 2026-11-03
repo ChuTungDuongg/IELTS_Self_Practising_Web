@@ -16,7 +16,9 @@ Reading khởi tạo một bài đọc với 20 / 25 / 30 phút hoặc đếm t�
 
 Giao diện làm bài và chốt tạm dừng hiện có nhận diện đơn vị đã chọn. Một tác vụ Writing không có nút chuyển tác vụ dư thừa. Tự lưu, tô sáng, cờ, hình, đếm từ, bộ đếm và chuyển vòng đời giữ hành vi hiện có.
 
-Xem lại và lịch sử **Luyện tập theo phạm vi** hiển thị Reading điểm đúng thô/tối đa và tỷ lệ chính xác một chữ số thập phân khi tối đa dương; kết quả một phần không hàm ý band IELTS. Writing theo phạm vi hiển thị **Điểm tác vụ** nếu có điểm tiêu chí, nếu không là **Chưa chấm**. `task_score` có thể null trong lịch sử dùng `calculate_task_overall` hiện có cho đúng tác vụ Writing được chọn, còn `band_score` giữ null. Phạm vi/mô-đun khác trả task_score null. Xem lại giữ trung bình chính xác hai chữ số thập phân; lịch sử định dạng một chữ số. Không có tổng Writing trọng số cho một tác vụ. Tiêu chí thủ công và đánh giá AI riêng tác vụ vẫn dùng được mà không đổi chấm điểm/vòng đời nhà cung cấp.
+Xem lại và lịch sử **Luyện tập theo phạm vi** hiển thị Reading điểm đúng thô/tối đa và tỷ lệ chính xác một chữ số thập phân khi tối đa dương; kết quả một phần không hàm ý band IELTS. Writing theo phạm vi hiển thị **Band ước tính bài luyện** theo bước 0.5 nếu có đủ bốn điểm tiêu chí, nếu không là **Chưa chấm**. `score.overall` trong review và `task_score` trong history vẫn là trung bình thô từ `calculate_task_overall()`; không đổi semantics các field cũ. Field dẫn xuất `score.task_band` / `HistoryItem.task_band` dùng `round_to_half()` (Decimal, nửa lên), không lưu thêm cột database. Header, card, reload và history cùng hiển thị task band với một chữ số thập phân: TA/TR=5, CC=5, LR=4, GRA=4.5 → raw 4.625 → band 4.5; không dùng định dạng 4.63 hoặc 4.6. Điểm 0 là 0.0, không bị coi là thiếu. Payload cũ không có `task_band` dùng cùng helper frontend: review kiểm đủ tiêu chí, history suy từ `task_score` nếu có. Chi tiết điểm bài Writing theo phạm vi trong lớp cũng dùng helper trình bày này. Phạm vi/mô-đun khác trả `HistoryItem.task_score/task_band` null. `attempt.band_score` vẫn null cho bài lẻ; bài lẻ không trở thành band cả kỹ năng, IELTS overall hay một kỹ năng Full Mock đã hoàn thành.
+
+Với đủ hai task, Writing module band tiếp tục tổng hợp **raw mean** Task 1 × 1 và Task 2 × 2, rồi mới làm tròn kết quả cuối. Ví dụ raw 6.125 và 6.25 → weighted (6.125 + 2 × 6.25)/3 → final 6.0; không tổng hợp từ task band 6.0/6.5. Điểm AI vẫn advisory và thao tác sao chép chỉ điền form; người có quyền phải chủ động lưu điểm tự đánh giá/điểm giáo viên. Form giữ key tương thích `ta`, nhưng nhãn, nhận xét và accessible labels dùng **TA — Task Achievement** cho Task 1, **TR — Task Response** cho Task 2. Tiêu chí thủ công và đánh giá AI riêng tác vụ vẫn dùng được mà không đổi chấm điểm/vòng đời nhà cung cấp.
 
 Các thẻ lịch sử là **Theo kỹ năng**, **Luyện tập theo phạm vi**, **Theo đề**, **Theo bài thi thử**. Bản ghi theo phạm vi xuất hiện ở Luyện tập theo phạm vi thay vì Theo kỹ năng. Tiếp tục, Tiếp tục sau tạm dừng, Xem lại và Xóa lượt riêng dùng thao tác hiện có. Nhóm theo đề/Full Mock, xóa nhóm và phân tích toàn kỹ năng không đổi.
 
@@ -102,3 +104,7 @@ npx eslint src/lib/api/attempts.ts src/lib/api/history.ts tests/focused-attempt-
 ```
 
 Ruff kiểm mã/định dạng bao phủ tệp Python đã sửa; `git diff --check` bao phủ toàn thay đổi. Không dùng xác minh trình duyệt, E2E, mô hình trực tiếp hoặc triển khai.
+
+## Kiểm chứng bản sửa ngày 2026-11-03
+
+Xem [bàn giao Writing task band/TA](writing-task-band-ta-verification.md) cho regression API/PostgreSQL/browser, ảnh desktop/mobile, danh sách tệp, kết quả thực tế và giới hạn typecheck có sẵn.

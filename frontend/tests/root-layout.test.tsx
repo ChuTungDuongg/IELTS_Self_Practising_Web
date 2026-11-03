@@ -1,7 +1,8 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { Children, type ReactElement, type ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import RootLayout, { metadata, themeInitializationScript } from "@/app/layout";
+import RootLayout, { metadata } from "@/app/layout";
+import { themeInitializationScript } from "@/features/personalization/theme-initialization";
 import { PersonalizationProvider } from "@/features/personalization/personalization-provider";
 import { AuthProvider } from "@/features/auth/auth-provider";
 import { AppShell } from "@/components/ui/app-shell";
