@@ -4,6 +4,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.schemas.speaking_grading import FeedbackComment
+
 Trait = Literal["fc", "lr", "gra", "pr"]
 Stage = Literal[
     "PENDING",
@@ -28,6 +30,7 @@ class SpeakingCriterionProgress(BaseModel):
     feedback: str | None = Field(default=None, max_length=1200)
     strengths: list[str] = Field(default_factory=list, max_length=6)
     improvements: list[str] = Field(default_factory=list, max_length=6)
+    local_comments: list[FeedbackComment] = Field(default_factory=list, max_length=20)
     error_code: str | None = None
     evidence_summary: dict[str, int | float | str | None] = Field(default_factory=dict)
 

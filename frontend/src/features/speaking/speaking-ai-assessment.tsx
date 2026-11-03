@@ -4,12 +4,14 @@ import { useTranslation } from "@/lib/i18n/locale-provider";
 import { ApiError } from "@/lib/api/client";
 import { activeSpeakingAI, cancelSpeakingAIRun, createSpeakingAIRun, getSpeakingAIRun, latestSpeakingAIRun, watchSpeakingAIRun, type SpeakingAICriterion, type SpeakingAIRun } from "@/lib/api/speaking-ai";
 import { SpeakingAIProgress } from "./speaking-ai-progress";
+import { useSpeakingReplay } from "./speaking-audio-replay";
 
 const criteria: SpeakingAICriterion[] = ["fc", "lr", "gra", "pr"];
-export function SpeakingAIAssessment({ attemptId, canGrade = true, onTranscriptAvailable, onCopy, canCopy = false, initialRun, partNumber }: { attemptId: string; canGrade?: boolean; onTranscriptAvailable?: () => void; canCopy?: boolean; onCopy?: (run: SpeakingAIRun) => void; initialRun?: SpeakingAIRun | null; partNumber?: number }) {
-  return <AssessmentSession key={`${attemptId}:${canGrade}`} attemptId={attemptId} canGrade={canGrade} onTranscriptAvailable={onTranscriptAvailable} canCopy={canCopy} onCopy={onCopy} initialRun={initialRun} partNumber={partNumber} />;
+export function SpeakingAIAssessment({ attemptId, canGrade = true, onTranscriptAvailable, onCopy, canCopy = false, initialRun, partNumber, showProcessingNotice = true }: { attemptId: string; canGrade?: boolean; onTranscriptAvailable?: () => void; canCopy?: boolean; onCopy?: (run: SpeakingAIRun) => void; initialRun?: SpeakingAIRun | null; partNumber?: number; showProcessingNotice?: boolean }) {
+  return <AssessmentSession key={`${attemptId}:${canGrade}`} attemptId={attemptId} canGrade={canGrade} onTranscriptAvailable={onTranscriptAvailable} canCopy={canCopy} onCopy={onCopy} initialRun={initialRun} partNumber={partNumber} showProcessingNotice={showProcessingNotice} />;
 }
-function AssessmentSession({ attemptId, canGrade, onTranscriptAvailable, onCopy, canCopy, initialRun, partNumber }: { attemptId: string; canGrade: boolean; onTranscriptAvailable?: () => void; canCopy: boolean; onCopy?: (run: SpeakingAIRun) => void; initialRun?: SpeakingAIRun | null; partNumber?: number }) {
+function AssessmentSession({ attemptId, canGrade, onTranscriptAvailable, onCopy, canCopy, initialRun, partNumber, showProcessingNotice }: { attemptId: string; canGrade: boolean; onTranscriptAvailable?: () => void; canCopy: boolean; onCopy?: (run: SpeakingAIRun) => void; initialRun?: SpeakingAIRun | null; partNumber?: number; showProcessingNotice: boolean }) {
+  const replay = useSpeakingReplay();
   const { t } = useTranslation(); const [run, setRun] = useState<SpeakingAIRun | null>(initialRun ?? null);
   const [loading, setLoading] = useState(true); const [busy, setBusy] = useState(false); const [error, setError] = useState<"generic" | "notConfigured" | null>(null); const [reducedMotion, setReducedMotion] = useState(false);
   const alive = useRef(true); const pending = useRef(false); const current = useRef<SpeakingAIRun | null>(null);
@@ -66,10 +68,11 @@ function AssessmentSession({ attemptId, canGrade, onTranscriptAvailable, onCopy,
       {active ? <button className="btn btn-secondary" disabled={busy} onClick={() => void stop()}>{t("speakingAI.stop")}</button> : null}
     </div> : null}</div>
     <p className="speaking-ai-advisory">{t("speakingAI.advisory")}</p>
+    {showProcessingNotice && run?.summary.external_audio_processing === true ? <p className="notice speaking-ai-processing-notice">{t("speakingAI.externalAudioProcessing")}</p> : null}
     {error ? <p role="alert" className="notice notice-error">{t(error === "notConfigured" ? "speakingAI.notConfigured" : "speakingAI.error")}</p> : null}
     {run ? <><SpeakingAIProgress run={run} />
       {canCopy && onCopy && run.attempt_id === attemptId && run.status === "COMPLETED" && criteria.every(key => run.criteria[key].status === "COMPLETED" && run.criteria[key].score !== null) ? <button type="button" className="btn btn-secondary" onClick={() => onCopy(run)}>{t("grading.copy")}</button> : null}
-      {run.status === "FAILED" ? <p className="notice notice-error">{t(run.error_code === "SPEAKING_AUDIO_UNASSESSABLE" ? "speakingAI.audioUnavailable" : "speakingAI.failed")}</p> : null}
+      {run.status === "FAILED" ? <p className="notice notice-error">{t(run.error_code === "SPEAKING_AUDIO_UNASSESSABLE" ? "speakingAI.recordingQuality" : run.error_code === "SPEAKING_FC_UNASSESSABLE" ? "speakingAI.insufficientEvidence" : "speakingAI.failed")}</p> : null}
       <div className="speaking-ai-overall"><h3>{t("speakingAI.overall")}</h3><p className="speaking-ai-score">{run.overall_band === null ? t("speakingAI.overallWaiting") : run.overall_band.toFixed(1)}</p>
         {run.raw_mean !== null ? <p>{t("speakingAI.rawMean", { value: run.raw_mean })}</p> : null}</div>
       <div className="speaking-ai-criteria">{criteria.map((key) => {
@@ -77,15 +80,23 @@ function AssessmentSession({ attemptId, canGrade, onTranscriptAvailable, onCopy,
         const responseCount = result.evidence_summary.response_count;
         return <section className="speaking-ai-criterion" key={key} aria-label={t(`speakingAI.criterion.${key}`)}><h3>{t(`speakingAI.criterion.${key}`)}</h3>
           <p className="speaking-ai-score">{result.score === null ? "—" : result.score.toFixed(1)}</p>
-          {unavailable ? <p>{t("speakingAI.audioUnavailable")}</p> : result.status === "FAILED" ? <p>{t("speakingAI.criterionFailed")}</p> : result.score === null ? <p>{t(result.status === "SCORING" ? "speakingAI.scoring" : "speakingAI.waiting")}</p> : null}
+          {result.error_code === "SPEAKING_FC_UNASSESSABLE" || result.error_code === "SPEAKING_PR_UNASSESSABLE" ? <p>{t("speakingAI.insufficientEvidence")}</p> : unavailable ? <p>{t("speakingAI.audioUnavailable")}</p> : result.status === "FAILED" ? <p>{t("speakingAI.criterionFailed")}</p> : result.score === null ? <p>{t(result.status === "SCORING" ? "speakingAI.scoring" : "speakingAI.waiting")}</p> : null}
           {result.score !== null && result.feedback_status === "FALLBACK" ? <p>{t("speakingAI.feedbackFallback")}</p> : result.feedback_status === "READY" && result.feedback ? <p>{result.feedback}</p> : result.score !== null && result.feedback_status === "PENDING" ? <p>{t("speakingAI.feedbackPending")}</p> : null}
+          {result.feedback_status === "READY" && result.local_comments?.length ? <div className="speaking-ai-local-comments"><h4>{t("speakingAI.localComments")}</h4>{result.local_comments.map((comment, index) => <div className="speaking-ai-local-comment" key={index}>
+            <small>{t(comment.scope === "LOCAL" && comment.evidence_ids.length ? "speakingAI.specificEvidence" : "speakingAI.overviewComment")}</small>
+            <p id={`${run.run_id}-${key}-comment-${index}`}>{comment.text}</p>
+            {comment.scope === "LOCAL" && comment.audio_span ? <small className="speaking-ai-timestamp">{audioTimestamp(comment.audio_span.start_ms)}–{audioTimestamp(comment.audio_span.end_ms)}</small> : null}
+            {comment.scope === "LOCAL" && comment.audio_span && replay?.canReplay(comment.audio_span) ? <button type="button" className="btn btn-secondary speaking-ai-replay" aria-describedby={`${run.run_id}-${key}-comment-${index}`} aria-controls={`speaking-response-${comment.audio_span.response_id}`} onClick={() => replay.replay(comment.audio_span!)}>{t("speakingAI.listenSegment")}</button> : null}
+          </div>)}</div> : null}
           {result.strengths.length ? <><h4>{t("speakingAI.strengths")}</h4><ul>{result.strengths.map((item, index) => <li key={index}>{item}</li>)}</ul></> : null}
           {result.improvements.length ? <><h4>{t("speakingAI.improvements")}</h4><ul>{result.improvements.map((item, index) => <li key={index}>{item}</li>)}</ul></> : null}
           {typeof responseCount === "number" && Number.isInteger(responseCount) && responseCount >= 0 && responseCount <= 1000 ? <small>{t("speakingAI.scope", { count: responseCount })}</small> : null}
         </section>;
       })}</div>
       {run.summary.responses.length ? <section className="speaking-ai-evidence" aria-label={t("speakingAI.evidence")}><h3>{t("speakingAI.evidence")}</h3><p>{t("speakingAI.evidenceHint")}</p>
-        {run.summary.responses.map((response, index) => <div key={response.response_id}><h4>{t("speakingAI.response", { number: index + 1, part: response.part_number })}</h4><ul>
+        {run.summary.responses.map((response, index) => <div key={response.response_id}><h4>{t("speakingAI.response", { number: index + 1, part: response.part_number })}</h4>
+          {response.analysis_status === "UNASSESSABLE" || response.analysis_status === "QUALITY_FAILED" ? <p>{t("speakingAI.recordingQuality")}</p> : response.fc_eligible === false || response.pr_eligible === false || response.analysis_status === "INSUFFICIENT_EVIDENCE" || response.analysis_status === "LOW_EVIDENCE" ? <p>{t("speakingAI.insufficientEvidence")}</p> : null}
+          <p className="speaking-ai-reference-label">{t("speakingAI.referenceMetric")}</p><ul>
           {response.words_per_minute !== null ? <li>{t("speakingAI.wordsPerMinute", { value: Math.round(response.words_per_minute) })}</li> : null}
           {response.part_number === 2 && response.part2_sustained_seconds !== null ? <li>{t("speakingAI.sustained", { value: Math.round(response.part2_sustained_seconds) })}</li> : null}
           <li>{t(`speakingAI.pronunciation.${response.pronunciation_status}`)}</li>
@@ -95,4 +106,9 @@ function AssessmentSession({ attemptId, canGrade, onTranscriptAvailable, onCopy,
         </ul></div>)}</section> : null}
     </> : loading ? <p>{t("speakingAI.loading")}</p> : <p>{t("speakingAI.ready")}</p>}
   </section>;
+}
+
+function audioTimestamp(milliseconds: number) {
+  const seconds = Math.floor(milliseconds / 1000);
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}.${String(milliseconds % 1000).padStart(3, "0")}`;
 }

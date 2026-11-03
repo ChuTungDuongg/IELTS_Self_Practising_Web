@@ -51,7 +51,7 @@ export const speakingFinalScoreSchema = z.object({
   gra_feedback: z.string().nullable().optional(), pr_feedback: z.string().nullable().optional(),
 });
 export type SpeakingCriteriaInput = Omit<z.infer<typeof speakingFinalScoreSchema>, "overall_band">;
-export const speakingReviewSchema = z.object({ grading: gradingSchema.optional(), final_score: speakingFinalScoreSchema.nullable().optional(), focused_unit: focusedUnitSchema.nullable().optional(), practice_flow: z.enum(["GUIDED", "FREE"]).nullable().optional(), attempt_id: z.string().uuid(), test_title: z.string(), can_generate_transcript: z.boolean().default(true), parts: z.array(z.object({ part_number: z.number().int(), responses: z.array(manifestSchema.extend({ prompt: speakingPromptSchema })), unanswered_prompts: z.array(speakingPromptSchema).optional() })) });
+export const speakingReviewSchema = z.object({ processing_profile: z.string().max(80).optional(), external_audio_processing: z.boolean().optional(), grading: gradingSchema.optional(), final_score: speakingFinalScoreSchema.nullable().optional(), focused_unit: focusedUnitSchema.nullable().optional(), practice_flow: z.enum(["GUIDED", "FREE"]).nullable().optional(), attempt_id: z.string().uuid(), test_title: z.string(), can_generate_transcript: z.boolean().default(true), parts: z.array(z.object({ part_number: z.number().int(), responses: z.array(manifestSchema.extend({ prompt: speakingPromptSchema })), unanswered_prompts: z.array(speakingPromptSchema).optional() })) });
 export type SpeakingReviewData = z.infer<typeof speakingReviewSchema>;
 export async function getSpeakingReview(id: string, request: ApiRequester = apiRequest) { return speakingReviewSchema.parse(await request(`/speaking-attempts/${id}/review`)); }
 

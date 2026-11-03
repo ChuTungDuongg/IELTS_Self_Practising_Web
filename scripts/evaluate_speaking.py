@@ -2,6 +2,7 @@
 
 import argparse
 import asyncio
+import math
 import sys
 from pathlib import Path
 
@@ -9,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
 from app.core.config import Settings  # noqa: E402
+from app.evaluation.speaking.hybrid import analysis_report, load_analysis_evaluation  # noqa: E402
 from app.evaluation.speaking.manifest import (  # noqa: E402
     BenchmarkInputError,
     load_manifest,
@@ -35,12 +37,32 @@ def main(argv=None):
         "--config", type=Path, help="Private dotenv file for Settings (default: backend .env)."
     )
     parser.add_argument("--max-samples", type=int)
+    parser.add_argument("--require-speaker-splits", action="store_true")
+    parser.add_argument(
+        "--analysis-evaluation",
+        type=Path,
+        help="Private human truth and observed evidence JSON; never sent to inference.",
+    )
+    parser.add_argument(
+        "--max-estimated-cost-usd",
+        type=float,
+        help="Live estimated budget guard; not a provider billing cap.",
+    )
+    parser.add_argument(
+        "--estimated-cost-per-sample-usd",
+        type=float,
+        help="Operator upper estimate including audio, retries, and bounded LLM output.",
+    )
     parser.add_argument("--minimum-subgroup-samples", type=int, default=20)
     parser.add_argument("--resume", action="store_true")
     args = parser.parse_args(argv)
     try:
         # 1. Validate before provider construction or report writes.
-        items = load_manifest(args.manifest, args.max_samples)
+        items = load_manifest(
+            args.manifest,
+            args.max_samples,
+            require_speaker_splits=args.require_speaker_splits or args.allow_live,
+        )
         if args.validate_manifest:
             print(f"Validated {len(items)} labelled samples; no providers invoked.")
             return 0
@@ -50,6 +72,18 @@ def main(argv=None):
             raise BenchmarkInputError("BENCHMARK_MODE_CONFLICT")
         if not args.predictions and not args.allow_live:
             raise BenchmarkInputError("LIVE_SCORING_REQUIRES_EXPLICIT_FLAG")
+        if args.allow_live:
+            limits = (args.max_estimated_cost_usd, args.estimated_cost_per_sample_usd)
+            if (
+                args.max_samples is None
+                or not 1 <= args.max_samples <= 100
+                or any(value is None or not math.isfinite(value) or value <= 0 for value in limits)
+            ):
+                raise BenchmarkInputError("BENCHMARK_LIVE_LIMITS_REQUIRED")
+            if args.estimated_cost_per_sample_usd * len(items) > args.max_estimated_cost_usd:
+                raise BenchmarkInputError("BENCHMARK_ESTIMATED_BUDGET_EXCEEDED")
+            if not all(item.split for item in items):
+                raise BenchmarkInputError("BENCHMARK_SPEAKER_SPLITS_REQUIRED")
         destinations = {
             args.output.resolve() / name
             for name in (
@@ -64,10 +98,18 @@ def main(argv=None):
             args.manifest.resolve() in destinations
             or args.predictions
             and args.predictions.resolve() in destinations
+            or args.analysis_evaluation
+            and args.analysis_evaluation.resolve() in destinations
         ):
             raise BenchmarkInputError("BENCHMARK_INPUT_OUTPUT_OVERLAP")
         if not 5 <= args.minimum_subgroup_samples <= 10000:
             raise BenchmarkInputError("BENCHMARK_SUBGROUP_MINIMUM_INVALID")
+        analysis = None
+        if args.analysis_evaluation:
+            # Validate all private truth before any provider construction or writes.
+            analysis = analysis_report(
+                load_analysis_evaluation(args.analysis_evaluation), {s.id for s in items}
+            )
         # 2. Imported offline scores or explicitly configured current scorer.
         if args.predictions:
             result = load_predictions(args.predictions)
@@ -80,6 +122,16 @@ def main(argv=None):
             )
         # 3. Pure score-only metrics/report generation.
         report = build_report(items, result, minimum_subgroup_samples=args.minimum_subgroup_samples)
+        if analysis is not None:
+            report["speech_analysis"] = analysis
+        if args.allow_live:
+            report["live_limits"] = {
+                "max_samples": args.max_samples,
+                "max_concurrency": 1,
+                "max_estimated_cost_usd": args.max_estimated_cost_usd,
+                "estimated_cost_per_sample_usd": args.estimated_cost_per_sample_usd,
+                "billing_cap_enforced": False,
+            }
         write_reports(args.output, items, result, report)
         print(
             f"Reported {len(items)} labelled samples; overall failure rate={report['criteria']['overall']['failure_rate']}."

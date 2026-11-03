@@ -30,6 +30,8 @@ storage/speaking-private/*
 !storage/speaking-private/.gitkeep
 storage/speaking-derived/*
 !storage/speaking-derived/.gitkeep
+storage/models/*
+!storage/models/.gitkeep
 
 # Evaluation datasets/outputs can contain private student or licensed material.
 /benchmarks/writing_task1/private/*

@@ -84,6 +84,15 @@ def get_transcript_worker():
     return SpeakingTranscriptWorker(SessionFactory, get_settings())
 
 
+@runtime_router.get("/analysis-profile")
+async def speaking_analysis_profile(actor: CurrentUser):
+    import asyncio
+
+    from app.services.speaking_profile import hybrid_profile_status
+
+    return await asyncio.to_thread(hybrid_profile_status, get_settings())
+
+
 @runtime_router.post("/{attempt_id}/transcript-runs", response_model=TranscriptCreated)
 async def create_transcript_run(
     attempt_id: UUID,

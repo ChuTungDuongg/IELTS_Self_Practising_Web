@@ -1,5 +1,149 @@
 # Kiến trúc và đánh giá Speaking của BandPilot
 
+## Profile `speaking_hybrid_v1` (opt-in, working tree trên `3cf5c9a`)
+
+Mặc định vẫn là `SPEAKING_PROFILE=legacy`. Profile mới dùng **một phiên Azure
+unscripted cho mỗi đoạn ghi liên tục**, dùng chung kết quả lexical transcript,
+timing và observations phát âm; CPU Silero ONNX đo hoạt động nói trên timeline.
+`SpeechAnalysisResult` có phiên bản, capability/coverage, nguồn gốc, usage và
+limitations rõ ràng. Không gửi reference text hoặc human band vào Azure/Luna;
+không dùng completeness/read-aloud penalty. en-US là locale kỹ thuật mặc định,
+không phải yêu cầu thí sinh nói giọng Mỹ. Recognition confidence không phải
+pronunciation accuracy; điểm Azure 0–100 không đổi số học sang band IELTS.
+
+Luna tiếp tục chấm holistic ở cấp lượt theo FC/LR/GRA/PR, lưu điểm trước nhận
+xét. VAD và provider observations là bằng chứng, không phải quy tắc trừ band.
+Thiếu VAD, timeline hoặc độ bao phủ âm học làm FC/PR không đủ điều kiện; không
+bịa điểm mặc định hoặc trừ vì accent khác. Chỉ đủ bốn tiêu chí mới có overall.
+Nhận xét gắn evidence IDs được backend xác thực; replay chỉ dùng tuyến âm thanh
+riêng tư đã phân quyền. Điểm người có quyền nhập vẫn có thẩm quyền.
+
+Speech cache gắn nguồn âm thanh, segment/take mapping và identity/config Azure;
+không phụ thuộc prompt Luna. Feature/AI cache vẫn có phiên bản riêng. Checkpoint
+speech dùng JSONB riêng tư hiện có; byte âm thanh vẫn ở asset storage. Prompt đổi
+có thể chấm lại từ speech evidence đã lưu. Thay provider/locale/config/model cần
+cache identity mới. Bản ghi lịch sử/legacy vẫn đọc được. Interrupted billable
+requests có trạng thái chưa rõ cần đối soát, không tự gọi lại âm thầm.
+CLI hybrid `--resume` cũng giữ checkpoint đã bắt đầu speech analysis, kể cả
+band chưa đủ hoặc LLM thất bại; không tự gửi lại audio. Sau đối soát, operator
+chọn run/output mới một cách rõ ràng nếu chấp nhận chi phí mới. Flag bắt đầu
+orchestration không phải số call đã xác nhận hoặc hóa đơn Azure.
+
+ASR có thể bỏ fillers, repetition hoặc false starts; tên VERBATIM nghĩa là giữ
+lexical text nhận được, **không bảo đảm nguyên văn lời nói thật**. Marker lexical
+là heuristic; stress/phoneme/prosody và provider error flags có thể thiếu hoặc
+sai, đặc biệt giữa các accent. Unknown không được biến thành lỗi của thí sinh.
+Trước production cần cohort human-labelled đại diện, DEV/HOLDOUT tách speaker,
+kiểm false positives và eligibility. Profile không tự bật ở production; xem
+[cấu hình/rollback](modal-web.md#speaking-hybrid-cpu) và [transcription](speaking-transcription.md#speaking-hybrid-v1).
+Các mô tả faster-whisper/acoustic baseline bên dưới áp dụng profile legacy.
+
+### Eligibility và giới hạn dữ liệu ở profile đầu tiên
+
+Các ngưỡng dưới đây là điều kiện đủ dữ liệu kỹ thuật, chưa được hiệu chuẩn bằng
+giám khảo và không phải ngưỡng band. FC cần VAD hợp lệ trên mỗi response, stream
+complete và ít nhất 5 giây detected speech toàn lượt. PR cần stream complete trên
+mọi response, observations trên từng response, ít nhất 20 từ có bằng chứng,
+20 giây recognized utterance windows toàn lượt và coverage word accuracy ≥0.6
+(trọng số theo số từ). Câu Part 1 ngắn không phải tự đạt 20 giây. Recognized
+utterance windows có thể chứa pause: `assessed_speech_ms` hiện là tên tương thích
+của độ dài cửa sổ được nhận dạng, không phải phép đo chính xác thời gian phát âm.
+VAD và pronunciation evidence lưu riêng để không đánh đồng hai phép đo.
+
+Scorer dùng tối đa khoảng 300 observations phát âm toàn lượt, phân tầng theo
+response, loại/metric và vị trí timeline, không chọn chỉ các điểm thấp. Payload
+giữ tổng số observations, số được chọn, coverage đầy đủ và limitation
+`OBSERVATIONS_STRATIFIED_SAMPLE`; toàn bộ evidence vẫn ở checkpoint riêng tư.
+Evidence ID của mẫu vẫn resolve về audio gốc. Đây không phải tỷ lệ lỗi của toàn
+bài và không phải detector đầy đủ. Thiếu band vẫn giữ observations nghe lại được.
+No-match sau final hợp lệ làm stream partial và lưu vùng ASR chưa nhận dạng;
+không tự sửa ngữ pháp hoặc giả phần chưa nghe được. Nhận xét tổng quan không có timestamp.
+
+Speech request đang `ATTEMPTED` khi worker chết/hủy được khóa để tránh gọi lại
+mù; operator cần đối soát trước khi cho phép một request có thể tính phí mới.
+Sửa derivative WAV bị mất giữ nguyên ledger này; đổi prompt/feature không gọi lại
+Azure. Cache speech bao gồm hash bytes chuẩn hóa thực tế, source/take fingerprint,
+timeline/normalizer version và provider configuration/SDK identity. Xóa recording
+qua lifecycle hiện có xóa/cascade cả checkpoint và derivative cache. Không thêm
+SQL column hoặc migration; dữ liệu mới ở JSONB versioned đã có, legacy đọc được.
+
+`GET /api/v1/speaking-attempts/analysis-profile` yêu cầu đăng nhập và chỉ trả trạng
+thái cấu hình/SDK/VAD, không trả credential/path. `configured=true` không xác nhận
+account/region/prosody live; `LIVE_UNVERIFIED` vẫn được giữ tới khi operator test.
+Native SDK cleanup có thể bị treo trong thư viện: caller timeout/cancel có giới
+hạn, bộ nhớ PCM thuộc native worker và slot được giữ tới khi cleanup kết thúc.
+Khi đó capacity bị từ chối, không tạo thêm native thread hoặc xóa file đang đọc;
+operator có thể cần restart replica sau đối soát billing. Không retry tự động.
+
+### Quyền riêng tư và chi phí
+
+Khi bật rõ ràng profile này, backend gửi WAV đã chốt tới Azure tại region operator
+chọn; transcript và bằng chứng cần chấm đi vào LLM provider đang cấu hình. Key
+chỉ ở backend Secret; không đưa raw provider payload, token, transcript hoặc byte
+âm thanh vào log công khai. Voice/transcript có thể chứa dữ liệu cá nhân: phải
+kiểm quyền sử dụng và chính sách của cả hai provider. Microsoft hiện mô tả
+không lưu input của real-time recognition/pronunciation assessment; điều đó
+không xóa bản ghi/checkpoint riêng của ứng dụng hoặc thay chính sách LLM.
+Nguồn [Microsoft Speech privacy](https://learn.microsoft.com/en-us/azure/foundry/responsible-ai/speech-service/speech-to-text/data-privacy-security), đối chiếu 2026-11-03.
+
+Đối chiếu tài liệu chính thức 2026-11-03: [Azure Speech pricing](https://azure.microsoft.com/en-us/pricing/details/speech/)
+tính thời lượng âm thanh theo giây; [pronunciation assessment pricing](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/pronunciation-assessment-tool#pricing)
+nêu baseline bằng speech-to-text Standard/commitment, prosody có phụ phí. Một
+phiên dùng chung không cộng thêm một lượt ASR riêng. Với `D` là tổng giây billable
+của **mọi** request đã gửi, ước tính speech là
+`D / 3600 × (R_baseline + I_prosody × R_prosody)`.
+Chưa biết rate thực theo region, currency, agreement/commitment và account;
+không có con số USD được xác nhận cho project này. Submitted duration/call count
+không phải hóa đơn. Timeout, retry do người dùng và partial stream vẫn có thể
+tốn tiền. Chi phí Luna dùng usage và rate theo cấu hình OpenAI hiện có trong
+[AI Writing/OpenAI](ai-writing.md#openai-gpt6-luna); reasoning nằm trong completion
+tokens, không cộng hai lần. Cộng thêm CPU Modal, storage và network. Không có
+benchmark chi phí/độ trễ trực tiếp cho hybrid: **LIVE_UNVERIFIED**.
+
+### Đánh giá hybrid ngoại tuyến
+
+Thêm `speaker_id` giả danh và `split: "DEV" | "HOLDOUT"` cùng nhau vào mỗi dòng
+manifest. Một speaker xuất hiện ở cả hai split bị từ chối trước chọn N mẫu;
+`--require-speaker-splits` từ chối manifest cũ thiếu nhãn split. Các mẫu không có
+speaker ID vẫn dùng được trong báo cáo legacy nhưng mang `speaker_split_status=unverified`.
+Label band/split/speaker không đi vào `InferenceSample` hoặc lời nhắc suy luận.
+Báo cáo tách metrics theo DEV/HOLDOUT; `fc_pr_half_band_gate` là kiểm mô tả
+MAE ≤0.5 và |signed bias| ≤0.5 trên cặp hợp lệ FC/PR, không phải chấp thuận
+production. Luôn xem coverage, số mẫu, failure rate và tính đại diện cùng gate.
+
+`--analysis-evaluation private/analysis.json` thêm sidecar riêng tư có
+`schema_version: 1`, `samples` gồm `id`, `truth_source: "human" | "unlabelled"`,
+`truth` và `observed`. `truth` tùy chọn có `lexical_transcript`,
+`word_boundaries_ms` (ID token đã căn chỉnh thủ công → `[start,end]`), `pauses_ms`
+và `feedback_labels` (ID đơn vị đã được người chấm kiểm → boolean có lỗi thật).
+`observed` có transcript/timing/pause cùng dạng, `feedback_flags`, `latency_ms`,
+`provider_calls`, `usage` và `repeat_scores`. Không nhúng sidecar vào manifest
+hoặc suy luận. Report chỉ xuất số liệu, không xuất lexical text hoặc path.
+
+WER giữ fillers/repetitions và chỉ chuẩn hóa case/punctuation; timing báo MAE
+hai biên trên token đã khớp và số token thiếu; pause dùng matching một-một với
+IoU ≥0.5. Feedback FPR là `FP/(FP+TN)`, false discovery là `FP/(FP+TP)`; flag
+chưa được human review có mẫu số riêng, không coi là lỗi. Thiếu truth trả null.
+TTS source text không là human transcript, pronunciation hoặc IELTS truth.
+`repeat_scores` phải đến từ các lần inference mới độc lập trên cùng đầu vào;
+báo mean/max range từng tiêu chí. Cache replay không đo repeat stability.
+
+`llm_telemetry` tổng hợp latency p50/p95, logical calls, transport attempts,
+provider error rate và token usage quan sát được; không suy số token thiếu.
+`speech_telemetry` giữ attempted/failed calls và submitted duration từ các kết
+quả Azure đã trả; billed duration/amount vẫn chưa rõ. Exception trước khi nhận
+kết quả không được diễn giải thành miễn phí hoặc zero provider calls.
+Các trường nhập ngoại tuyến và telemetry của checkpoint được tiếp tục là
+recorded evidence, không chứng minh đã phát sinh call mới trong lần tạo báo cáo.
+
+Live luôn cần `--allow-live`, `--max-samples` trong 1–100, speaker split, và cả
+`--max-estimated-cost-usd`/`--estimated-cost-per-sample-usd` dương. Bộ chạy tuần
+tự, concurrency 1. Estimate phải bao gồm audio, prosody, token budgets và retries;
+guard từ chối nếu tổng estimate vượt budget. Đây là admission theo **ước tính**,
+không phải hard billing cap của Azure/OpenAI; cần account controls riêng. Chỉ
+chạy khi operator đã cho phép live và đã xác nhận rate. Không có live run trong
+lần triển khai working tree này.
+
 > **Kiểm toán tài liệu: CURRENT.** Tài liệu chuẩn cho chủ đề này; đã đối chiếu ranh giới/API trong mã nguồn, chưa xác thực trực tiếp trên hệ thống chạy.
 > Mục đích: mô tả kiến trúc và đánh giá Speaking của BandPilot. Đối chiếu mã nguồn `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [phần triển khai](../backend/app/services/speaking_ai_worker.py).
 > Đọc cùng [mô-đun/hướng dẫn hiện hành](modules/speaking.md); [kiểm toán và giới hạn](DOCS_AUDIT.md). Kết quả kiểm thử/benchmark bên dưới thuộc lần thực hiện gốc, không phải kết quả chạy lại trong đợt kiểm toán này.
@@ -69,7 +213,7 @@ identity = provenance(Settings()).model_copy(update={
 Dự đoán tổng hợp kiểm phép tính và hợp đồng tệp, không đo được độ chính xác thật của bộ chấm. Kiểm thử tự động dùng bằng chứng tổng hợp và nhà cung cấp giả:
 
 ```powershell
-uv run pytest tests/test_speaking_benchmark.py tests/test_speaking_benchmark_metrics.py -q
+uv run pytest tests/test_speaking_benchmark.py tests/test_speaking_benchmark_metrics.py tests/test_speaking_hybrid_evaluation.py tests/test_modal_speaking_hybrid.py -q
 ```
 
 ## Chấm thủ công với cấu hình nhà cung cấp
@@ -77,7 +221,8 @@ uv run pytest tests/test_speaking_benchmark.py tests/test_speaking_benchmark_met
 Chấm trực tiếp yêu cầu `--allow-live` rõ ràng. CLI đọc cùng `Settings` backend với sản xuất; `--config` chọn tệp dotenv riêng mà không đặt bí mật trong đối số lệnh. Với ASR cục bộ, đặt `SPEAKING_ASR_PROVIDER=local`, cài gói bổ sung `backend[speech]` và trỏ `SPEAKING_ASR_MODEL_DIRECTORY` tới mô hình cục bộ đầy đủ. Với ASR Modal, đặt `SPEAKING_ASR_PROVIDER=modal`, `SPEAKING_ASR_ENABLED=true`, `SPEAKING_ASR_BASE_URL` được bảo vệ, `SPEAKING_ASR_MODEL` đã ghim, `SPEAKING_ASR_MODEL_REVISION`, `SPEAKING_ASR_VERSION`, cùng `AI_WRITING_MODAL_KEY`/`AI_WRITING_MODAL_SECRET` chỉ ở backend. Web sản xuất tự nạp các cấu hình này; đánh giá thủ công cục bộ cần cấu hình riêng. Bật truyền tải LLM Speaking hiện có và nhà cung cấp phát âm riêng biệt. Quy trình benchmark không thêm bộ tải tập dữ liệu/mô hình.
 
 ```powershell
-uv run python ../scripts/evaluate_speaking.py --manifest ../benchmarks/speaking/private/manifest.jsonl --allow-live --config ../benchmarks/speaking/private/providers.env --output ../benchmarks/speaking/reports/candidate --resume
+# Chỉ sau khi có authorization live, rate và budget estimate riêng:
+uv run python ../scripts/evaluate_speaking.py --manifest ../benchmarks/speaking/private/manifest.jsonl --allow-live --max-samples 5 --max-estimated-cost-usd $BudgetUsd --estimated-cost-per-sample-usd $UpperEstimatePerSampleUsd --config ../benchmarks/speaking/private/providers.env --output ../benchmarks/speaking/reports/candidate --resume
 ```
 
 Bộ tiếp hợp gọi hợp đồng bộ chuẩn hóa, chất lượng, ASR, đặc trưng và `SpeakingScorer` hiện có, không tạo bộ chấm thứ hai. WAV đầu vào phải sẵn mono 16 kHz PCM có dấu 16 bit; WebM/Ogg/MP4/M4A dùng bộ giải mã FFmpeg sản xuất có giới hạn. Một tệp biểu diễn một bộ chứa câu trả lời đầy đủ. Cung cấp đầu vào bất biến; chuyển đổi dùng tệp tạm riêng tư. Tệp gốc không hỗ trợ, thiếu hoặc quá lớn (giới hạn 128 MiB), lỗi chất lượng và lỗi nhà cung cấp tạo mã lỗi an toàn. Không đổi dòng lượt làm bài hoặc điểm sản xuất.

@@ -118,8 +118,25 @@ it("keeps the reconnect message for a transient grading request failure", async 
 it("keeps quality failure explicit while retaining any previously saved criterion score", async () => {
   vi.mocked(api.latestSpeakingAIRun).mockResolvedValue({ ...base, status: "FAILED", stage: "FAILED", error_code: "SPEAKING_AUDIO_UNASSESSABLE", criteria: { ...base.criteria, lr: { ...criterion, status: "SCORED", score: 0, feedback_status: "FALLBACK" }, pr: { ...criterion, status: "UNAVAILABLE" } } });
   render(<SpeakingAIAssessment attemptId={base.attempt_id} />); await screen.findByText("Assessment unavailable");
-  expect(within(screen.getByRole("region", { name: "Lexical Resource" })).getByText("0.0")).toBeInTheDocument(); expect(screen.getAllByText(/Unable to assess from the available audio/)).toHaveLength(2);
+  expect(within(screen.getByRole("region", { name: "Lexical Resource" })).getByText("0.0")).toBeInTheDocument(); expect(screen.getAllByText(/Unable to assess from the available audio/)).toHaveLength(1); expect(screen.getByText(/Recording quality limits assessment/)).toBeInTheDocument();
   expect(screen.getByText("Available when all four criteria are assessed")).toBeInTheDocument();
+});
+it("distinguishes insufficient FC evidence from recording quality without estimating a low score", async () => {
+  render(<SpeakingAIAssessment attemptId={base.attempt_id} initialRun={{ ...base, status: "FAILED", stage: "FAILED", error_code: "SPEAKING_FC_UNASSESSABLE", criteria: { ...base.criteria, fc: { ...criterion, status: "UNAVAILABLE", error_code: "SPEAKING_FC_UNASSESSABLE" } } }} />);
+  expect(within(screen.getByRole("region", { name: "Fluency and Coherence" })).getByText(/Insufficient evidence for some criteria/)).toBeInTheDocument(); expect(screen.getAllByText(/Insufficient evidence for some criteria/)).toHaveLength(2);
+  expect(screen.queryByText("1.0")).toBeNull(); await act(async () => undefined);
+});
+it("retains replayable observations with timestamps when no criterion band is available", async () => {
+  const partial = { ...criterion, status: "UNAVAILABLE" as const, feedback_status: "READY" as const,
+    error_code: "SPEAKING_PR_UNASSESSABLE", local_comments: [{ text: "A qualified provider observation.",
+      evidence_ids: ["observed"], scope: "LOCAL" as const,
+      audio_span: { response_id: base.attempt_id, take_number: 1, segment_id: base.run_id,
+        start_ms: 2250, end_ms: 4500, normalized_start_ms: 2250, normalized_end_ms: 4500 } }] };
+  render(<SpeakingAIAssessment attemptId={base.attempt_id} initialRun={{ ...base, status: "FAILED", stage: "FAILED", criteria: { ...base.criteria, pr: partial } }} />);
+  expect(screen.getByText("0:02.250–0:04.500")).toBeInTheDocument();
+  expect(screen.getByText("A qualified provider observation.")).toBeInTheDocument();
+  expect(within(screen.getByRole("region", { name: "Pronunciation" })).getByText(/Insufficient evidence/)).toBeInTheDocument();
+  await act(async () => undefined);
 });
 it("ignores a grading request that resolves after unmount without cancelling it", async () => {
   let finish!: (value: Awaited<ReturnType<typeof api.createSpeakingAIRun>>) => void; vi.mocked(api.createSpeakingAIRun).mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
@@ -131,4 +148,22 @@ it("disables progress motion when system reduced-motion is requested", async () 
   vi.stubGlobal("matchMedia", () => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() })); vi.mocked(api.latestSpeakingAIRun).mockResolvedValue(base);
   render(<SpeakingAIAssessment attemptId={base.attempt_id} />); await screen.findByText("Checking audio");
   expect(screen.getByRole("region", { name: "Speaking AI assessment" })).toHaveAttribute("data-reduced-motion", "true");
+});
+it.each(["en", "vi"] as const)("shows localized evidence, reference and external-processing labels in %s without raw metadata", async (locale) => {
+  localStorage.setItem("ielts-locale", locale);
+  const ready = { ...criterion, status: "COMPLETED" as const, score: 6.5, feedback_status: "READY" as const, local_comments: [{ text: "Fictional overall observation", evidence_ids: [], audio_span: null, scope: "OVERVIEW" as const }] };
+  const response = { response_id: base.attempt_id, part_number: 1 as const, words_per_minute: 100, part2_sustained_seconds: null, pronunciation_status: "UNAVAILABLE" as const, mean_alignment_confidence: null, pitch_range_hz: null, limitations: ["PRIVATE_PROVIDER_DETAIL"], fc_eligible: false, pr_eligible: false };
+  render(<LocaleProvider><SpeakingAIAssessment attemptId={base.attempt_id} initialRun={{ ...base, status: "COMPLETED", stage: "COMPLETED", criteria: { ...base.criteria, fc: ready }, summary: { profile: "speaking_hybrid_v1", external_audio_processing: true, responses: [response, { ...response, response_id: "other", analysis_status: "UNASSESSABLE" }] } }} /></LocaleProvider>);
+  expect(screen.getByText("Fictional overall observation")).toBeInTheDocument();
+  expect(screen.getByText(locale === "en" ? "Whole-performance comment" : "Nhận xét toàn bộ bài nói")).toBeInTheDocument();
+  expect(screen.getByText(/Microsoft Azure/)).toBeInTheDocument();
+  expect(screen.getAllByText(locale === "en" ? /Reference metrics/ : /Chỉ số tham khảo/)).toHaveLength(2);
+  expect(screen.getByText(locale === "en" ? /Insufficient evidence for some criteria/ : /Chưa đủ bằng chứng cho một số tiêu chí/)).toBeInTheDocument();
+  expect(screen.getByText(locale === "en" ? /Recording quality limits assessment/ : /Chất lượng bản ghi hạn chế khả năng đánh giá/)).toBeInTheDocument();
+  expect(screen.queryByText("PRIVATE_PROVIDER_DETAIL")).toBeNull(); expect(screen.queryByRole("button", { name: /Listen to this segment|Nghe đoạn này/ })).toBeNull();
+  await act(async () => undefined);
+});
+it("does not claim historical assessments used external audio processing", async () => {
+  render(<SpeakingAIAssessment attemptId={base.attempt_id} initialRun={{ ...base, status: "COMPLETED", stage: "COMPLETED" }} />);
+  expect(screen.queryByText(/Microsoft Azure/)).toBeNull(); await act(async () => undefined);
 });

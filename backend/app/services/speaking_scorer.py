@@ -26,8 +26,10 @@ from app.schemas.speaking_grading import (
     CriterionBandScore,
     CriterionEvidence,
     CriterionFeedback,
+    CriterionFeedbackInput,
     CriterionResponseEvidence,
     CriterionResult,
+    GradingHybridPronunciationEvidence,
     GradingPronunciationEvidence,
     SpeakingAttemptEvidence,
     SpeakingCriterion,
@@ -35,11 +37,24 @@ from app.schemas.speaking_grading import (
 )
 
 _FLUENCY_LIMITATIONS = {
+    "RECOVERY_GAPS_UNKNOWN",
+    "ASR_DISFLUENCIES_NOT_GUARANTEED",
+    "PLAYBACK_MAPPING_UNAVAILABLE",
+    "VAD_UNAVAILABLE",
+    "VAD_SPEECH_ESTIMATE",
+    "VAD_WORD_TIMING_DISAGREEMENT",
+    "VAD_CAPACITY_EXCEEDED",
     "LEXICAL_DISFLUENCY_PROXIES",
     "WORD_TIMING_INCOMPLETE",
     "RECOVERY_GAP_BOUNDARIES_UNAVAILABLE",
 }
 _PR_LIMITATIONS = {
+    "PROVIDER_MEASUREMENT_NOT_GROUND_TRUTH",
+    "ACCENT_FALSE_POSITIVES_UNCALIBRATED",
+    "LOW_ACCURACY_DOES_NOT_IDENTIFY_SUBSTITUTION",
+    "SPEECH_ANALYSIS_PARTIAL",
+    "ASSESSED_DURATION_IS_RECOGNIZED_WINDOW",
+    "PR_BAND_COVERAGE_UNCALIBRATED",
     "PHONEME_ALIGNMENT_UNAVAILABLE",
     "LINGUISTIC_STRESS_UNAVAILABLE",
     "LISTENER_EFFORT_UNAVAILABLE",
@@ -118,12 +133,53 @@ def build_attempt_evidence(responses: Iterable[Mapping]) -> SpeakingAttemptEvide
     return SpeakingAttemptEvidence.model_validate({"responses": rows})
 
 
-def _pronunciation(row):
+def _stratified_observations(records, budget):
+    """Cover kinds/metrics and the whole timeline, never select only low provider scores."""
+    groups = {}
+    for record in records:
+        groups.setdefault((record.kind, record.metric), []).append(record)
+    selected = []
+    for index, key in enumerate(sorted(groups)):
+        group = sorted(groups[key], key=lambda o: (o.start_ms or 0, o.evidence_id))
+        count = min(
+            len(group), budget // max(1, len(groups)) + (index < budget % max(1, len(groups)))
+        )
+        if count == 1:
+            selected.append(group[len(group) // 2])
+            continue
+        selected.extend(group[i * (len(group) - 1) // max(1, count - 1)] for i in range(count))
+    return sorted(selected, key=lambda o: (o.start_ms or 0, o.evidence_id))
+
+
+def _pronunciation(row, *, observation_budget=400):
     source = row.features.pronunciation
-    values = {name: getattr(source, name) for name in GradingPronunciationEvidence.model_fields}
+    values = {
+        name: getattr(source, name)
+        for name in GradingPronunciationEvidence.model_fields
+        if hasattr(source, name)
+    }
     values["limitations"] = [value for value in source.limitations if value in _PR_LIMITATIONS]
+    if row.features.profile == "legacy":
+        # Keep the historic projection stable when resuming an already checkpointed score.
+        values["provider"] = values["version"] = None
     if source.status == "LOW_EVIDENCE" and "LOW_EVIDENCE" not in values["limitations"]:
         values["limitations"].append("LOW_EVIDENCE")
+    if row.features.profile == "speaking_hybrid_v1":
+        selected = _stratified_observations(source.observations, observation_budget)
+        values.update(
+            observations=selected,
+            observation_count=len(source.observations),
+            observations_selected=len(selected),
+        )
+        if len(selected) < len(source.observations):
+            values["limitations"].append("OBSERVATIONS_STRATIFIED_SAMPLE")
+        return GradingHybridPronunciationEvidence.model_validate(
+            {
+                key: value
+                for key, value in values.items()
+                if key in GradingHybridPronunciationEvidence.model_fields
+            }
+        )
     return GradingPronunciationEvidence.model_validate(values)
 
 
@@ -166,13 +222,68 @@ def criterion_evidence(
             values["quality_state"] = row.features.quality.state
             if criterion == "fc":
                 fluency = row.features.fluency.model_dump()
-                fluency["version"] = "fluency-v1"
                 fluency["limitations"] = [
                     item for item in fluency["limitations"] if item in _FLUENCY_LIMITATIONS
                 ]
                 values["fluency"] = FluencyEvidence.model_validate(fluency)
             if criterion == "pr":
-                values["pronunciation"] = _pronunciation(row)
+                values["pronunciation"] = _pronunciation(
+                    row, observation_budget=max(1, 300 // len(evidence.responses))
+                )
+            if row.features.profile == "speaking_hybrid_v1":
+                analyses = row.features.speech_analysis
+                values["transcript_limitations"] = [
+                    "ASR_IS_NOT_GROUND_TRUTH",
+                    "ASR_DISFLUENCIES_NOT_GUARANTEED",
+                ]
+                if any(r.status != "COMPLETE" for r in analyses):
+                    values["transcript_limitations"].append("SPEECH_ANALYSIS_PARTIAL")
+                values["uncertain_word_ids"] = [
+                    w.evidence_id
+                    for r in analyses
+                    for w in r.words
+                    if w.recognition_confidence is not None and w.recognition_confidence < 0.6
+                ]
+                if criterion in {"gra", "lr", "fc"}:
+                    mappings = {str(m.segment_id): m for m in row.features.timeline}
+                    values["recognized_words"] = [
+                        w.model_copy(
+                            update={
+                                "start_ms": w.start_ms
+                                + mappings[a.source.segment_id].normalized_start_ms
+                                if w.start_ms is not None and a.source.segment_id in mappings
+                                else w.start_ms,
+                                "end_ms": w.end_ms
+                                + mappings[a.source.segment_id].normalized_start_ms
+                                if w.end_ms is not None and a.source.segment_id in mappings
+                                else w.end_ms,
+                            }
+                        )
+                        for a in analyses
+                        for w in a.words
+                    ]
+                    values["uncertain_regions"] = [
+                        u.model_copy(
+                            update={
+                                "start_ms": u.start_ms
+                                + mappings[a.source.segment_id].normalized_start_ms
+                                if u.start_ms is not None and a.source.segment_id in mappings
+                                else u.start_ms,
+                                "end_ms": u.end_ms
+                                + mappings[a.source.segment_id].normalized_start_ms
+                                if u.end_ms is not None and a.source.segment_id in mappings
+                                else u.end_ms,
+                            }
+                        )
+                        for a in analyses
+                        for u in a.uncertain_regions
+                    ]
+                if any(w.recognition_confidence is None for r in analyses for w in r.words):
+                    values["transcript_limitations"].append("RECOGNITION_CONFIDENCE_UNKNOWN")
+                if criterion == "gra":
+                    values["utterances"] = [
+                        u.lexical_text for r in analyses for u in r.utterances if u.lexical_text
+                    ][:200] or None
         responses.append(CriterionResponseEvidence(**values))
     projected = CriterionEvidence(criterion=criterion, responses=responses)
     if len(projected.model_dump_json()) > 600000:
@@ -182,6 +293,30 @@ def criterion_evidence(
 
 def pronunciation_assessable(evidence: SpeakingAttemptEvidence) -> bool:
     """No band rule: check actual audio evidence, not a claimed AVAILABLE flag."""
+    if any(r.features and r.features.profile == "speaking_hybrid_v1" for r in evidence.responses):
+        features = [r.features for r in evidence.responses]
+        if any(
+            not f
+            or f.profile != "speaking_hybrid_v1"
+            or not f.quality.assessable
+            or f.pronunciation.status == "UNAVAILABLE"
+            or not f.speech_analysis
+            or any(a.status != "COMPLETE" for a in f.speech_analysis)
+            for f in features
+        ):
+            return False
+        duration = sum((f.pronunciation.assessed_speech_ms or 0) for f in features)
+        word_count = sum(len(a.words) for f in features for a in f.speech_analysis)
+        weighted_coverage = sum(
+            (f.pronunciation.evidence_coverage or 0) * sum(len(a.words) for a in f.speech_analysis)
+            for f in features
+        ) / max(1, word_count)
+        return (
+            duration >= 20000
+            and word_count >= 20
+            and weighted_coverage >= 0.6
+            and all(f.pronunciation.observations for f in features)
+        )
     for row in evidence.responses:
         feature = row.features
         if feature is None:
@@ -212,6 +347,26 @@ def pronunciation_assessable(evidence: SpeakingAttemptEvidence) -> bool:
         ):
             return False
     return True
+
+
+def fluency_assessable(evidence: SpeakingAttemptEvidence) -> bool:
+    hybrid = any(
+        r.features and r.features.profile == "speaking_hybrid_v1" for r in evidence.responses
+    )
+    if not hybrid:
+        return True  # Preserve historical legacy scoring behavior.
+    return (
+        all(
+            r.features
+            and r.features.profile == "speaking_hybrid_v1"
+            and r.features.quality.assessable
+            and r.features.fluency.temporal_eligible
+            and r.features.speech_analysis
+            and all(a.status == "COMPLETE" for a in r.features.speech_analysis)
+            for r in evidence.responses
+        )
+        and sum(r.features.fluency.detected_speech_ms or 0 for r in evidence.responses) >= 5000
+    )
 
 
 def speaking_overall(criteria: Mapping[str, float | Decimal | None]):
@@ -319,16 +474,40 @@ class SpeakingScorer:
                 evidence=projected,
             )
         if criterion == "pr" and not pronunciation_assessable(evidence):
+            from app.services.speaking_feedback import unavailable_feedback
+
             return CriterionResult(
                 criterion=criterion,
                 status="UNAVAILABLE",
-                feedback_status="UNAVAILABLE",
+                feedback_status="READY",
                 error_code="SPEAKING_PR_UNASSESSABLE",
+                feedback=unavailable_feedback("pr", evidence),
+                evidence=projected,
+            )
+        if criterion == "fc" and not fluency_assessable(evidence):
+            from app.services.speaking_feedback import unavailable_feedback
+
+            return CriterionResult(
+                criterion=criterion,
+                status="UNAVAILABLE",
+                feedback_status="READY",
+                feedback=unavailable_feedback("fc", evidence),
+                error_code="SPEAKING_FC_UNASSESSABLE",
                 evidence=projected,
             )
         for repair in (False, True):
             messages = [
-                {"role": "system", "content": system_prompt(criterion, repair=repair)},
+                {
+                    "role": "system",
+                    "content": system_prompt(
+                        criterion,
+                        repair=repair,
+                        hybrid=any(
+                            r.features and r.features.profile == "speaking_hybrid_v1"
+                            for r in evidence.responses
+                        ),
+                    ),
+                },
                 {"role": "user", "content": projected.model_dump_json(exclude_none=True)},
             ]
             try:
@@ -401,7 +580,17 @@ class SpeakingScorer:
         if stored.score is None or stored.criterion != criterion or stored.evidence != projected:
             raise ValueError("Stored Speaking score evidence does not match")
         messages = [
-            {"role": "system", "content": system_prompt(criterion, feedback=True)},
+            {
+                "role": "system",
+                "content": system_prompt(
+                    criterion,
+                    feedback=True,
+                    hybrid=any(
+                        r.features and r.features.profile == "speaking_hybrid_v1"
+                        for r in evidence.responses
+                    ),
+                ),
+            },
             {
                 "role": "user",
                 "content": json.dumps(
@@ -415,7 +604,7 @@ class SpeakingScorer:
         try:
             completion = await self.provider.complete(
                 messages,
-                CriterionFeedback.model_json_schema(),
+                CriterionFeedbackInput.model_json_schema(),
                 options=replace(
                     self.feedback_options, task="speaking", stage="feedback", criterion=criterion
                 ),
@@ -430,7 +619,10 @@ class SpeakingScorer:
         else:
             await self._observe_call(criterion, "feedback", completion, on_provider_call)
         try:
-            feedback = _validate_output(completion, CriterionFeedback, 12000)
+            feedback_input = _validate_output(completion, CriterionFeedbackInput, 30000)
+            from app.services.speaking_feedback import resolve_feedback
+
+            feedback = resolve_feedback(criterion, evidence, feedback_input)
         except Exception:
             return CriterionResult(
                 criterion=criterion,

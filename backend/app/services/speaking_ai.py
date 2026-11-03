@@ -48,6 +48,16 @@ class SpeakingAIService:
             "rubric_version": self.settings.speaking_ai_rubric_version,
             "score_contract": "half-band-v1",
             "feedback_contract": "bounded-feedback-v1",
+            **(
+                {
+                    "evidence_policy": "hybrid-eligibility-v1",
+                    "profile_prompt": "speaking-hybrid-score-v1",
+                    "projection": "stratified-pr-300-v1",
+                    "feedback_evidence": "validated-audio-ids-v1",
+                }
+                if self.settings.speaking_profile == "speaking_hybrid_v1"
+                else {}
+            ),
             "input_limit": self.settings.speaking_ai_max_input_characters,
         }
 
@@ -132,6 +142,7 @@ class SpeakingAIService:
                 feedback=feedback.get("feedback"),
                 strengths=feedback.get("strengths", []),
                 improvements=feedback.get("improvements", []),
+                local_comments=feedback.get("local_comments", []),
                 error_code=stored.get("error_code"),
                 evidence_summary={"response_count": len(run.manifest_json)},
             )

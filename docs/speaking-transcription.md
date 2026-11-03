@@ -1,3 +1,78 @@
+# Chép lời Speaking và bằng chứng hybrid
+
+<a id="speaking-hybrid-v1"></a>
+
+## Azure unscripted + CPU VAD (opt-in)
+
+Bổ sung working tree trên `3cf5c9a`: chọn `SPEAKING_PROFILE=speaking_hybrid_v1`
+rõ ràng. Default vẫn `legacy`; phần faster-whisper và acoustic proxies bên dưới
+chỉ mô tả legacy. Không có production switch hoặc benchmark live trong lần này.
+
+```dotenv
+SPEAKING_PROFILE=speaking_hybrid_v1
+SPEAKING_ASR_ENABLED=true
+SPEAKING_AZURE_KEY=<backend-secret-only>
+SPEAKING_AZURE_REGION=<your-approved-region>
+SPEAKING_AZURE_LOCALE=en-US
+SPEAKING_AZURE_PROSODY=true
+SPEAKING_AZURE_TIMEOUT_SECONDS=180
+SPEAKING_AZURE_MAX_CONCURRENCY=2
+SPEAKING_AZURE_MAX_QUEUE=8
+SPEAKING_VAD_MODEL_PATH=<absolute-local-path-to-silero-v6.0.onnx>
+SPEAKING_VAD_MODEL_SHA256=597d30b3ec076608d059477bb14cfeffdf951bf5cae370d38f65d33bbfe82004
+```
+
+Azure Speech SDK tùy chọn ghim `azure-cognitiveservices-speech==1.53.0`; CPU VAD
+dùng `onnxruntime==1.23.2`, `numpy==2.2.6`. Không dùng `speech` extra faster-whisper
+cho profile hybrid. Trên Debian Bookworm cần `libasound2`, `libssl3`,
+`ca-certificates` và `ffmpeg`. [CPU Modal preset](modal-web.md#speaking-hybrid-cpu)
+cài riêng các dependency này. Local dùng
+`uv sync --extra azure-speech --extra speech-vad` từ `backend/`.
+
+Setup model là hành động operator rõ ràng từ repository root:
+
+```powershell
+backend/.venv/Scripts/python.exe scripts/setup_speaking_vad.py storage/models/silero-v6.0.onnx
+```
+
+Script chỉ tải Silero v6.0 ONNX tại commit
+`fba061dc5559f696e62171e9a0741782b0fdc23c`, kiểm SHA-256 trên rồi lưu binary
+trong `storage/` đã bỏ qua. Không có request-time/model startup download;
+không nạp torch/CUDA. Asset thiếu, checksum sai hoặc ONNX unavailable tạo
+bằng chứng VAD unavailable và hạn chế FC, không giả silence hoặc điểm band.
+
+`analyze_response` giữ một phiên continuous recognition cho mỗi segment/take.
+Chỉ final events góp vào lexical transcript; interim không thành dữ liệu đã
+chốt. SDK không nhận reference transcript và không bật miscue/read-aloud
+completeness. `SpeechAnalysisResult` giữ lexical/display text riêng, word/
+utterance/observation IDs, timing millisecond, capability và coverage, native
+call outcome/usage, version/config fingerprint và limitations. Không suy SDK
+service model version, missing phonemes, confidence hoặc prosody từ trường khác.
+Native work có deadline, concurrency và admission queue hữu hạn; cancellation/
+timeout/partial stream không được quảng cáo là hoàn tất và không blind retry.
+
+Chuẩn hóa giữ timeline từng recorder segment, take và normalized interval;
+không trim leading/trailing audio và không chèn recovery grace thành silence.
+Offsets Azure trong một stream được ánh xạ vào normalized/response timeline;
+recovery gap không biết thời lượng vẫn unknown. VAD đo trong response window
+sau preparation. WPM, articulation rate và internal pauses dùng mẫu số riêng;
+silence đầu/cuối hoặc qua recovery boundary không thành internal pause.
+Filler/repetition/repair/false-start markers từ lexical text vẫn là heuristic;
+ASR có thể không giữ các disfluencies này. VERBATIM giữ lexical output nhận
+được, CLEAN chỉ gộp whitespace, không sửa grammar hoặc bảo đảm nhận đúng mọi từ.
+
+Speech checkpoint nằm trong metadata JSONB riêng của normalized response và
+không phụ thuộc prompt Luna. Checkpoint complete có thể tái dùng; partial/failed
+và attempted có billing chưa rõ được lưu trạng thái riêng để tránh tự phát lại
+call tính phí. Các feature/scorer fingerprints vẫn riêng; legacy records không
+bị viết lại. Key/raw response/audio không đưa vào log hoặc browser DTO. Quyền
+đọc/replay vẫn qua FastAPI theo ownership/classroom và Full Mock review lock.
+Xem [privacy, cost assumptions và evaluation](ai-speaking.md) trước xử lý dữ
+liệu thật. **LIVE_UNVERIFIED**: chưa xác nhận Azure account, unscripted fidelity,
+false positives, band agreement, latency hoặc chi phí thực.
+
+## Hồ sơ triển khai legacy
+
 > **Kiểm toán tài liệu: CURRENT.** Tài liệu chuẩn cho chủ đề này; đã đối chiếu ranh giới/API trong mã nguồn, chưa xác thực trực tiếp trên hệ thống chạy.
 > Mục đích: mô tả xử lý bản chép lời Speaking mở rộng miền ghi âm riêng tư P3 và không cấp điểm IELTS. Đối chiếu mã nguồn `aca8e0418a56e44d7e06f370ba5f3ebe5bf41778`: [phần triển khai](../backend/app/services/speaking_transcript_worker.py).
 > Đọc cùng [mô-đun/hướng dẫn hiện hành](modules/speaking.md); [kiểm toán và giới hạn](DOCS_AUDIT.md). Kết quả kiểm thử/benchmark bên dưới thuộc lần thực hiện gốc, không phải kết quả chạy lại trong đợt kiểm toán này.

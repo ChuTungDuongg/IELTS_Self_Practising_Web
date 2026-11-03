@@ -246,6 +246,8 @@ class SpeakingReviewPart(BaseModel):
 
 
 class SpeakingReviewData(BaseModel):
+    processing_profile: Literal["legacy", "speaking_hybrid_v1"] = "legacy"
+    external_audio_processing: bool = False
     final_score: SpeakingFinalScore | None = None
     grading: GradingCapabilities = Field(default_factory=GradingCapabilities)
     attempt_id: UUID

@@ -322,7 +322,12 @@ async def test_feedback_resume_uses_stored_score_without_score_call():
     result = await SpeakingScorer(resumed).feedback_for_scored("fc", item, saved[0])
     assert result.score == 6.5 and result.status == "COMPLETED"
     assert len(resumed.calls) == 1
-    assert set(resumed.calls[0][1]["properties"]) == {"feedback", "strengths", "improvements"}
+    assert set(resumed.calls[0][1]["properties"]) == {
+        "feedback",
+        "strengths",
+        "improvements",
+        "local_comments",
+    }
 
 
 async def test_feedback_resume_rejects_different_evidence():

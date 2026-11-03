@@ -508,6 +508,8 @@ class SpeakingMediaService:
                 SpeakingReviewedResponse(prompt=prompt, **manifest.model_dump())
             )
         return SpeakingReviewData(
+            processing_profile=get_settings().speaking_profile,
+            external_audio_processing=get_settings().speaking_profile == "speaking_hybrid_v1",
             grading=grading,
             final_score=final_score,
             attempt_id=aid,

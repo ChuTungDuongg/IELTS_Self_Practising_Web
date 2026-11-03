@@ -30,7 +30,18 @@ def _text(path):
         raise BenchmarkInputError("BENCHMARK_INPUT_UNREADABLE") from None
 
 
-def load_manifest(path: Path, max_samples=None):
+def validate_speaker_splits(items, *, required=False):
+    speakers = {}
+    for sample in items:
+        if required and not sample.split:
+            raise BenchmarkInputError("BENCHMARK_SPEAKER_SPLITS_REQUIRED")
+        if sample.speaker_id:
+            if sample.speaker_id in speakers and speakers[sample.speaker_id] != sample.split:
+                raise BenchmarkInputError("BENCHMARK_SPEAKER_SPLIT_LEAKAGE")
+            speakers[sample.speaker_id] = sample.split
+
+
+def load_manifest(path: Path, max_samples=None, *, require_speaker_splits=False):
     if max_samples is not None and (type(max_samples) is not int or not 1 <= max_samples <= 10000):
         raise BenchmarkInputError("BENCHMARK_SELECTION_INVALID")
     items, ids = [], set()
@@ -49,6 +60,7 @@ def load_manifest(path: Path, max_samples=None):
             raise BenchmarkInputError("BENCHMARK_TOO_MANY_SAMPLES")
     if not items:
         raise BenchmarkInputError("BENCHMARK_NO_SAMPLES")
+    validate_speaker_splits(items, required=require_speaker_splits)
     return items[:max_samples] if max_samples else items
 
 

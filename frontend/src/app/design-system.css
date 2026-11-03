@@ -369,6 +369,13 @@
   .speaking-ai-score { font-size: 36px; font-weight: 400; }
   .speaking-ai-criterion { padding: 20px; border-radius: var(--radius-card); background: var(--surface); line-height: 1.75; }
   .speaking-ai-criterion h3 { font-size: 17px; font-weight: 600; }
+  .speaking-ai-local-comments { margin-top: 16px; }
+  .speaking-ai-local-comment { border-top: 1px solid var(--line); padding-block: 12px; }
+  .speaking-ai-replay { min-height: 44px; margin-top: 8px; white-space: normal; text-align: start; }
+  .speaking-ai-reference-label { color: var(--muted); font-size: 14px; margin-block: 8px; }
+  .speaking-ai-processing-notice { margin-block: 12px; overflow-wrap: anywhere; }
+  .speaking-audio-player { min-width: 0; }
+  .speaking-audio-player :is(button, audio):focus-visible { outline: 3px solid var(--focus-ring, var(--accent)); outline-offset: 3px; }
   .history-tabs, .analytics-filters { display: flex; gap: 4px; flex-wrap: nowrap; max-width: 100%; overflow-x: auto; border-bottom: 1px solid var(--line); padding-bottom: 12px; margin-bottom: 20px; }
   .history-tabs .btn, .analytics-filters .btn { flex: none; min-height: 36px; border: 0; border-radius: var(--radius-control); background: transparent; color: var(--muted); font-weight: 500; white-space: nowrap; }
   .history-tabs .btn-primary, .analytics-filters .btn-primary { color: var(--ink); background: var(--surface-hover); }

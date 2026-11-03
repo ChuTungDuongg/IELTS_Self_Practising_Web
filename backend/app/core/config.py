@@ -49,6 +49,18 @@ class Settings(BaseSettings):
     speaking_processing_timeout_seconds: int = Field(default=120, ge=5, le=600)
     speaking_max_decoded_seconds: int = Field(default=600, ge=1, le=1800)
     speaking_asr_enabled: bool = False
+    speaking_profile: Literal["legacy", "speaking_hybrid_v1"] = "legacy"
+    speaking_azure_key: SecretStr | None = Field(default=None, repr=False)
+    speaking_azure_region: str = Field(default="", max_length=80, pattern=r"^[a-z0-9-]*$")
+    speaking_azure_locale: str = Field(default="en-US", pattern=r"^[a-z]{2}-[A-Z]{2}$")
+    speaking_azure_prosody: bool = True
+    speaking_azure_timeout_seconds: int = Field(default=180, ge=5, le=600)
+    speaking_azure_max_concurrency: int = Field(default=2, ge=1, le=16)
+    speaking_azure_max_queue: int = Field(default=8, ge=0, le=100)
+    speaking_vad_model_path: str = ""
+    speaking_vad_model_sha256: str = (
+        "597d30b3ec076608d059477bb14cfeffdf951bf5cae370d38f65d33bbfe82004"
+    )
     speaking_asr_provider: Literal["local", "modal"] = "local"
     speaking_asr_base_url: str = ""
     speaking_asr_model_directory: str = ""

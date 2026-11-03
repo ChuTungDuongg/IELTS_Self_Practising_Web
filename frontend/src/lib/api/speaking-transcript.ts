@@ -5,7 +5,7 @@ const wordSchema = z.object({ word: z.string().min(1).max(200), start: z.number(
 export const transcriptRunSchema = z.object({
   run_id: z.string().uuid(), attempt_id: z.string().uuid(), cache_key: z.string(),
   status: z.enum(["PENDING", "RUNNING", "COMPLETED", "PARTIAL", "FAILED"]), last_sequence: z.number().int().nonnegative(), created_at: z.string(),
-  responses: z.array(z.object({ response_id: z.string().uuid(), status: z.enum(["WAITING", "PROCESSING", "READY", "FAILED"]), verbatim: z.string().max(60000).nullable(), clean: z.string().max(60000).nullable(), words: z.array(wordSchema).max(10000), error_code: z.string().nullable(), source_audio_fingerprint: z.string() })).max(1000),
+  responses: z.array(z.object({ response_id: z.string().uuid(), status: z.enum(["WAITING", "PROCESSING", "READY", "PARTIAL", "FAILED"]), verbatim: z.string().max(60000).nullable(), clean: z.string().max(60000).nullable(), words: z.array(wordSchema).max(10000), error_code: z.string().nullable(), source_audio_fingerprint: z.string() })).max(1000),
 });
 export type TranscriptRun = z.infer<typeof transcriptRunSchema>;
 const eventTypes = ["run.queued", "run.started", "response.updated", "run.completed", "run.interrupted", "run.recovered"] as const;

@@ -26,6 +26,23 @@ it("rejects non-half bands and a non-advisory result without fabricating a defau
   expect(speakingAIRunSchema.safeParse({ ...base, criteria: { ...base.criteria, fc: { ...criterion, score: 6.3 } } }).success).toBe(false);
   expect(speakingAIRunSchema.safeParse({ ...base, advisory: false }).success).toBe(false);
 });
+it("retains server-resolved comments and rejects reversed or negative audio timestamps", () => {
+  const span = { response_id: attemptId, take_number: 2, segment_id: runId, start_ms: 1000, end_ms: 2000, normalized_start_ms: 4000, normalized_end_ms: 5000 };
+  const comment = { text: "Fictional local feedback", evidence_ids: ["evidence-1"], audio_span: span, scope: "LOCAL" };
+  const input = { ...base, criteria: { ...base.criteria, fc: { ...criterion, local_comments: [comment] } }, summary: { responses: [], profile: "speaking_hybrid_v1", external_audio_processing: true } };
+  const parsed = speakingAIRunSchema.parse(input);
+  expect(parsed.criteria.fc).toHaveProperty("local_comments", [comment]);
+  expect(parsed.summary).toHaveProperty("external_audio_processing", true);
+  for (const invalid of [{ ...span, start_ms: -1 }, { ...span, end_ms: 500 }, { ...span, normalized_end_ms: 3000 }]) {
+    expect(speakingAIRunSchema.safeParse({ ...input, criteria: { ...base.criteria, fc: { ...criterion, local_comments: [{ ...comment, audio_span: invalid }] } } }).success).toBe(false);
+  }
+  expect(speakingAIRunSchema.parse(base).criteria.fc.local_comments).toBeUndefined();
+});
+it("keeps nullable historical analysis status and explicit whole-attempt eligibility flags", () => {
+  const summary = { profile: "speaking_hybrid_v1", external_audio_processing: true, fc_eligible: false, pr_eligible: false, responses: [{ response_id: attemptId, part_number: 1, pronunciation_status: "UNAVAILABLE", analysis_status: null, fc_eligible: null, pr_eligible: null }] };
+  const parsed = speakingAIRunSchema.parse({ ...base, summary });
+  expect(parsed.summary).toHaveProperty("fc_eligible", false); expect(parsed.summary.responses[0].analysis_status).toBeNull();
+});
 it("suppresses replay, reconciles scores, reconnects with cursor and closes observation without cancellation", async () => {
   vi.useFakeTimers(); vi.stubGlobal("EventSource", FakeSource); vi.mocked(apiRequest).mockResolvedValue(base);
   const event = vi.fn(); const snapshot = vi.fn(); const stop = watchSpeakingAIRun(attemptId, runId, { event, snapshot, error: vi.fn() });
