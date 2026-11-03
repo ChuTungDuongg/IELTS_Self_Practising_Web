@@ -50,6 +50,64 @@ def main(argv=None):
         action="store_true",
         help="Resume known failed Luna criteria; completed Azure is always reused.",
     )
+    parser.add_argument(
+        "--auto-segment",
+        action="store_true",
+        help="Run cached local diarization; never calls cloud providers.",
+    )
+    parser.add_argument(
+        "--review-segments",
+        action="store_true",
+        help="Review private machine proposals without grading.",
+    )
+    parser.add_argument(
+        "--setup-diarization-model",
+        action="store_true",
+        help="Explicit gated HF model download into the isolated tool cache.",
+    )
+    parser.add_argument(
+        "--confirm-candidate-speaker",
+        help="Confirm one file-scoped speaker ID as the candidate; boundaries remain pending.",
+    )
+    parser.add_argument(
+        "--set-part-boundaries", nargs=2, type=int, metavar=("PART2_MS", "PART3_MS")
+    )
+    parser.add_argument(
+        "--confirm-file-parts",
+        action="store_true",
+        help="Explicitly confirm part1/part2/part3 file labels.",
+    )
+    parser.add_argument(
+        "--question-context",
+        type=Path,
+        help="Private verified question JSON, indexed by proposal IDs.",
+    )
+    parser.add_argument("--edit-segment", nargs=3, metavar=("ID", "START_MS", "END_MS"))
+    parser.add_argument("--exclude-segment", action="append", default=[], metavar="ID")
+    parser.add_argument(
+        "--acknowledge-segment",
+        action="append",
+        default=[],
+        metavar="ID",
+        help="Acknowledge a reviewed long silence; never permits known other-speaker overlap.",
+    )
+    parser.add_argument(
+        "--approve-segments",
+        action="store_true",
+        help="Confirm same candidate across files and selected boundaries/content/Parts/questions; emit segments.json.",
+    )
+    parser.add_argument(
+        "--diarization-python",
+        type=Path,
+        help="Existing isolated Python, default tools/speaking_diarization/.venv.",
+    )
+    parser.add_argument("--diarization-model-dir", type=Path)
+    parser.add_argument("--diarization-device", choices=("cpu", "cuda"), default="cpu")
+    parser.add_argument(
+        "--diarization-config",
+        type=Path,
+        help="Private resource/segmentation options; defaults 2 threads, 4GiB RSS, 30min timeout.",
+    )
     args = parser.parse_args(argv)
     try:
         allowed = ROOT / "benchmarks/speaking/private"
@@ -62,6 +120,29 @@ def main(argv=None):
         if args.config and (not config.is_file() or config.stat().st_size > 1024 * 1024):
             raise BenchmarkInputError("REPLAY_DOTENV_INVALID")
         settings = Settings(_env_file=config)
+        review_action = (
+            args.confirm_candidate_speaker
+            or args.set_part_boundaries
+            or args.confirm_file_parts
+            or args.question_context
+            or args.edit_segment
+            or args.exclude_segment
+            or args.acknowledge_segment
+        )
+        offline_action = (
+            args.auto_segment
+            or args.review_segments
+            or args.setup_diarization_model
+            or review_action
+            or args.approve_segments
+        )
+        if offline_action:
+            if args.prepare or args.mode != "validate" or args.allow_live:
+                raise BenchmarkInputError("REPLAY_MODE_CONFLICT")
+            from app.evaluation.speaking.replay_diarization_cli import run_diarization_action
+
+            run_diarization_action(root, settings, config, args)
+            return 0
         if args.prepare:
             if args.mode != "validate" or args.allow_live:
                 raise BenchmarkInputError("REPLAY_MODE_CONFLICT")

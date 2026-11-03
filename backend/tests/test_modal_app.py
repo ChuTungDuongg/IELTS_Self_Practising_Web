@@ -1,6 +1,7 @@
 """Modal composition/config tests without contacting Modal or starting a GPU."""
 
 import importlib.util
+import os
 import sys
 from pathlib import Path
 from types import ModuleType
@@ -41,6 +42,9 @@ def load_app(
     asr_provider=None,
 ):
     # Each graph test declares its inputs instead of inheriting backend test/runtime env.
+    # Web.start() mutates process settings, so keep all such mutations inside this test.
+    monkeypatch.setattr(os, "environ", os.environ.copy())
+    monkeypatch.setattr(sys, "path", sys.path.copy())
     monkeypatch.delenv("SPEAKING_ASR_ENABLED", raising=False)
     monkeypatch.delenv("IELTS_WEB_SPEAKING_ASR_PROVIDER", raising=False)
     if asr_provider is None:

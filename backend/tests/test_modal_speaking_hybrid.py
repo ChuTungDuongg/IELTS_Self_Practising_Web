@@ -46,6 +46,29 @@ def test_speaking_policy_is_forwarded_privately_without_changing_frozen_enableme
     assert "SPEAKING_AI_ENABLED" not in passed
 
 
+def test_hybrid_startup_does_not_leak_environment_to_following_tests(monkeypatch):
+    import sys
+
+    before = dict(os.environ)
+    before_path = list(sys.path)
+    with monkeypatch.context() as isolated:
+        isolated.setenv("IELTS_WEB_SPEAKING_PROFILE", "speaking_hybrid_v1")
+        isolated.setenv("AI_WRITING_PROVIDER", "openai")
+        isolated.setattr("deploy.modal.speaking_cpu.probe", lambda: {})
+        module, _, _ = load_app(isolated, asr_enabled=True)
+        stub_runtime(isolated, external=True)
+        from deploy.modal.web_runtime import configure_speaking_asr_environment
+
+        sys.modules[
+            "web_runtime"
+        ].configure_speaking_asr_environment = configure_speaking_asr_environment
+        module.Web().start()
+        assert os.environ["SPEAKING_PROFILE"] == "speaking_hybrid_v1"
+        assert os.environ["SPEAKING_ASR_PROVIDER"] == "azure"
+    assert dict(os.environ) == before
+    assert sys.path == before_path
+
+
 @pytest.mark.parametrize("enabled", [True, False])
 def test_hybrid_startup_preserves_explicit_speech_enablement_without_provider_calls(
     monkeypatch, enabled

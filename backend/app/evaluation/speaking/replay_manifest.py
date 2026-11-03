@@ -102,4 +102,7 @@ def validate(root, settings):
         if (root / "human_labels.json").exists()
         else None
     )
+    from app.evaluation.speaking.replay_segment_review import verify_approval
+
+    verify_approval(root, manifest, metadata)
     return manifest, metadata, labels
