@@ -115,3 +115,24 @@ Cấu hình production không đổi, không migration. CLI mới: --ta-evidence
 - Kiểm lại 102 backend unit/contract tests không cần database: passed. Backend integration và E2E đã có bằng chứng ở các lượt trên; GitHub CI chạy bộ backend/frontend đầy đủ cho commit đã push.
 - Thêm writing-focused-band.spec.ts vào danh sách Golden path E2E hiện có.
 - Workflow CI chạy trên pull_request hoặc push main; mở draft PR cho branch để kích hoạt checks. Không tự merge hoặc deploy. Trạng thái cuối được xác minh trên đúng SHA qua GitHub Actions.
+
+## Sửa Golden path E2E sau khi PR được merge vào main
+
+Theo yêu cầu tiếp theo, sửa và push trực tiếp main, giữ nguyên các tệp untracked có sẵn. Nền kiểm tra là merge commit e95340b. [Golden path E2E run 41587083645](https://github.com/ChuTungDuongg/IELTS_Self_Practising_Web/actions/runs/41587083645) đã build production thành công và qua bốn test cũ, nhưng hai test focused mới lỗi strict locator: nhãn Task 1 TA/Task 2 TR khớp cả form đang hiển thị và bản SSR ẩn còn lại trong lúc streaming/hydration.
+
+- Giới hạn locator vào đúng một writing-review đang hiển thị và assessment region của task; chọn combobox bằng accessible name chính xác. Áp dụng cùng phạm vi cho điểm header/card và kiểm tra sau reload. Không dùng first/nth, bỏ assertion, thêm retry hay tăng timeout để che lỗi.
+- History kiểm tra data-testid của chính attempt vừa lưu, thay cho tìm một chuỗi điểm bất kỳ trên trang. Giữ đầy đủ assertions bốn tiêu chí, raw 4.625, task_band 4.5 và module band null; chụp desktop/mobile cho cả hai task.
+- Chỉ sửa writing-focused-band.spec.ts và tài liệu này. Không đổi code sản phẩm, điểm, prompt/policy, workflow hay quyền chấm. Rollback riêng commit sửa E2E bằng git revert không tác động thay đổi scoring trước đó.
+
+Kiểm chứng local cho bản sửa:
+
+| Kiểm tra | Kết quả |
+| --- | --- |
+| Build production mặc định trong Docker Linux, Node 24, Next/Turbopack | Passed |
+| Typecheck với generated production types trong cùng container | Passed |
+| ESLint toàn frontend và git diff --check | Passed |
+| writing-task-band, writing-review, attempt-history-list | 74 passed / 3 files |
+| Đúng năm spec trong workflow Golden path, một worker, Chromium, phục vụ bằng next start từ build production | 6 passed, 44.6 giây |
+| Review độc lập diff test | Không có finding cần sửa |
+
+Build được tạo trong Docker Linux rồi phục vụ trên host, nơi API test chạy trên localhost và PostgreSQL test riêng ở cổng 55439. Lượt browser đầu khi Next còn chạy trong container bị dừng do SSR gọi localhost bên trong container và không tới API host; đây không phải kết quả kiểm chứng thành công. Lượt sáu test nêu trên chạy sau khi sửa kết nối môi trường. Artifacts/logs ở .test-tmp/e2e-main-fix/ và frontend/test-results/ (git-ignored). Trạng thái CI và Golden path E2E trên GitHub được theo dõi riêng theo đúng SHA sau push; không dùng kết quả xanh của commit trước thay thế.
