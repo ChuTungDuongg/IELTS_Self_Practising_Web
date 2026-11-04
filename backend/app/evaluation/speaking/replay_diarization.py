@@ -13,6 +13,8 @@ from app.services.speaking_audio import fingerprint
 
 def auto_segment(root, settings, *, backend=None, pause_tolerance_ms=3000):
     backend = backend or LocalDiarizer()
+    if hasattr(backend, "audio_settings"):
+        settings = backend.audio_settings(settings)
     sources = {name: probe_audio(resolve_source(root, name), settings) for name in discover(root)}
     results, reused = [], 0
     with live_lock(root / ".diarization-cache"):

@@ -28,12 +28,20 @@ def run_diarization_action(root, settings, config, args):
         or args.acknowledge_segment
     )
     if args.setup_diarization_model and (
+        args.auto_segment
+        or args.review_segments
+        or updates
+        or args.approve_segments
+        or args.diagnose_diarization
+    ):
+        raise BenchmarkInputError("REPLAY_MODE_CONFLICT")
+    if args.diagnose_diarization and (
         args.auto_segment or args.review_segments or updates or args.approve_segments
     ):
         raise BenchmarkInputError("REPLAY_MODE_CONFLICT")
     if args.auto_segment and (updates or args.approve_segments):
         raise BenchmarkInputError("REPLAY_MODE_CONFLICT")
-    if args.setup_diarization_model or args.auto_segment:
+    if args.setup_diarization_model or args.auto_segment or args.diagnose_diarization:
         options = {}
         if args.diarization_config:
             path = args.diarization_config.resolve()
@@ -48,14 +56,33 @@ def run_diarization_action(root, settings, config, args):
             device=args.diarization_device,
             **options,
         )
-        if args.setup_diarization_model:
+        if args.setup_diarization_model or args.diagnose_diarization:
+            print("Checking isolated diarization environment and local model storage...")
+            checked = backend.preflight()
+            print("Python 3.12 / pinned packages / Torch / TorchCodec / pyannote: OK")
+            major = checked.get("ffmpeg_shared_major")
+            print(
+                f"FFmpeg shared libraries: {major if major else 'system runtime'}; native imports: OK"
+            )
+            print(f"Model cache: {checked['model_state']}")
+            if args.diagnose_diarization:
+                print("Offline preflight complete. No token requested or provider called.")
+                return
+            if checked["model_state"] == "VERIFIED":
+                print(
+                    "Diarization model ready; verified existing assets, no download or token needed."
+                )
+                return
             token = os.environ.get("HF_TOKEN") or dotenv_values(config, interpolate=False).get(
                 "HF_TOKEN"
             )
             if not token and sys.stdin.isatty():
                 token = getpass.getpass("Private Hugging Face token (not echoed): ")
+            if not token:
+                raise BenchmarkInputError("REPLAY_DIARIZATION_HF_TOKEN_REQUIRED")
+            print("Downloading pinned Community-1 and verifying model assets...")
             backend.setup(token)
-            print("Pinned local diarization model installed. No Azure/OpenAI request made.")
+            print("Diarization model ready. No Azure/OpenAI request made.")
             return
         proposal, reused = auto_segment(
             root, settings, backend=backend, pause_tolerance_ms=pause_tolerance

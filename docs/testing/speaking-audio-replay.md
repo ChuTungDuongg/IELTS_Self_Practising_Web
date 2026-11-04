@@ -291,7 +291,6 @@ Không sử dụng hosted pyannoteAI. Model gated cần bạn tự đăng nhập
 chấp nhận điều kiện trên model card, rồi tạo read token. Tool không chấp nhận điều kiện thay bạn.
 
 ```powershell
-uv sync --project tools/speaking_diarization --python 3.12 --locked
 uv run --project backend python scripts/replay_speaking.py --setup-diarization-model
 ```
 
@@ -299,6 +298,25 @@ uv run --project backend python scripts/replay_speaking.py --setup-diarization-m
 của lệnh setup. Không truyền token bằng CLI arguments, không dán vào chat. Worker chỉ
 nhận token qua environment của subprocess **setup**; analyzer không nhận Azure/OpenAI/HF
 credentials. Bản ghi local không được tải lên Hugging Face khi setup.
+
+Với isolated environment đã cài như máy Windows hiện tại, đây là **một lệnh setup**:
+không cần activate Conda, sửa PATH hay tự gọi `os.add_dll_directory()`. Lệnh kiểm tra
+Python/package/native imports và quyền ghi cache trước khi hỏi token. Model đã có receipt
+và checksum hợp lệ trả success ngay, không hỏi token hoặc tải lại. Token trong environment
+có precedence hơn `backend/.env`. Có thể kiểm tra riêng bằng `--diagnose-diarization`,
+không cần token, không tải model, không gọi Azure/OpenAI.
+
+Worker tự tìm bộ shared FFmpeg 4–7 theo thứ tự: override hợp lệ `BANDPILOT_FFMPEG_DLL_DIR`,
+PATH, active Conda `Library/bin`, rồi các base/env Conda và registry local của người dùng.
+Phải đủ DLL ABI tương ứng (avcodec/avformat/avutil/swresample/swscale), không chỉ có executable.
+DLL directory được đăng ký trước import TorchCodec/pyannote và giữ handle đến khi worker thoát.
+Nếu decoder chưa có trên PATH, replay cũng dùng ffmpeg/ffprobe từ shared installation đó.
+Override là tùy chọn nâng cao, không cần cho environment đã xác nhận của người dùng.
+
+Lỗi setup trước đây còn do allowlist làm mất `SYSTEMROOT` trên Windows (tên biến được
+chuẩn hóa uppercase), gây `OSError`/Winsock 10106 khi import HF snapshot SDK và Torch.
+Allowlist đã giữ biến này, vẫn loại credentials Azure/OpenAI và implicit HF token khỏi inference.
+Xem [error codes/bootstrap details](../../tools/speaking_diarization/README.md).
 
 Weights mặc định ở `storage/models/pyannote-community-1/`, bị gitignore. Setup tải đúng
 revision `3533c8cf8e369892e6b79ff1bf80f7b0286a54ee`, ghi `bandpilot-model.json`
@@ -512,14 +530,18 @@ phục vụ kiểm tra giao diện, không phải mẫu benchmark.
 
 ### Troubleshooting
 
-- **Windows thiếu FFmpeg/ffprobe:** cài cả hai, cùng thư mục trên PATH hoặc cấu hình
-  `SPEAKING_FFMPEG_PATH`; static FFmpeg executable không bảo đảm có shared DLL cho TorchCodec.
-- **TorchCodec/native DLL error:** kiểm tra đúng isolated Python 3.12 và pinned CPU packages,
-  FFmpeg shared libraries 4–7/VC runtime; không downgrade backend. Nếu native Windows chưa chạy,
-  dùng Linux/WSL environment riêng với cùng lock, hoặc giữ manual segmentation.
+- **Windows shared FFmpeg missing:** `FFMPEG_SHARED_DLLS_MISSING` phân biệt với package/native
+  import errors. Setup tự tìm installation có sẵn, không tải FFmpeg mới. Static executable
+  không đủ cho TorchCodec; advanced override chỉ cần nếu installation nằm ngoài vùng tìm kiếm.
+- **Native import failure:** code chỉ rõ `TORCH_NATIVE_LOAD_FAILED`, `TORCHCODEC_NATIVE_LOAD_FAILED`
+  hoặc `PYANNOTE_NATIVE_LOAD_FAILED` sau bước DLL resolution. `--diagnose-diarization` trả stage
+  và exception class an toàn; không in raw provider body, path audio riêng tư hoặc environment.
+- **Storage/temp failure:** `MODEL_STORAGE_UNWRITABLE` / `TEMP_DIRECTORY_FAILED` là lỗi filesystem;
+  không bị gán thành thiếu TorchCodec. Giữ cache cũ để kiểm tra, không xóa/ghi đè tự động.
 - **Model missing/HF 401/403:** chấp nhận đúng model conditions, cấp read token riêng qua
   private file/prompt, chạy lại explicit setup; inference sẽ không tự download.
-  Setup trả `REPLAY_DIARIZATION_MODEL_DOWNLOAD_FAILED_CHECK_HF_ACCESS` thay raw Hub error.
+  Setup trả `HF_AUTHENTICATION_FAILED` (401) hoặc `HF_GATED_ACCESS_DENIED` (403) và link model
+  access; SSL/proxy/network, revision và missing file có mã riêng. Không retry credential sai.
   Asset đã thay đổi trả `REPLAY_DIARIZATION_MODEL_ASSET_MISSING_OR_CHANGED`; giữ thư mục cũ
   để kiểm tra và setup vào `--diarization-model-dir` mới, không ghi đè weights đang có.
 - **Sai cluster, similar voices, noise/overlap:** nghe ví dụ từng speaker, sửa confirmation,
@@ -528,7 +550,17 @@ phục vụ kiểm tra giao diện, không phải mẫu benchmark.
 - **Resource limit/timeout:** giảm recording length bằng bộ file Part hợp lệ hoặc cấu hình
   giới hạn phù hợp; không lách grading response cap hay tự bật dịch vụ GPU/cloud.
 
-Lần triển khai này chưa có weights/recording hai speaker thật được phép chạy:
-**MODEL_UNVERIFIED, LIVE_UNVERIFIED**. Dependency resolution và contract tests không xác nhận
-native model execution, DER, latency CPU thực tế hoặc độ chính xác phân vai. Không có giá
-provider mới cho local inference; CPU/RAM/disk và thời gian tải weights vẫn là tài nguyên thật.
+Windows repair đã xác minh **native preflight thật** trong isolated worker: tự tìm đúng FFmpeg 7
+shared đang có và import Torch/TorchCodec/pyannote thành công, không dùng DLL override.
+**DOWNLOAD_UNVERIFIED, MODEL_UNVERIFIED, LIVE_UNVERIFIED**: chưa tải weights hoặc xử lý bản ghi
+thật; native import thành công không chứng minh model inference, DER hay grading accuracy.
+Không có phí Azure/OpenAI từ preflight. CPU/RAM/disk và thời gian tải weights vẫn là tài nguyên thật.
+
+Kết quả Windows bootstrap repair: **414 passed, 12 skipped** cho regression offline gồm
+diarization/replay, ASR/features, scorer, Azure mocks và Modal composition. Skips gồm 10
+decoder tests chỉ tìm PATH, một symlink-permission test và một real-model opt-in test.
+Decoder tự tìm từ shared installation đã được chạy riêng với WAV tổng hợp một giây:
+ffprobe/normalize thành công, PCM mono 16 kHz, SHA nguồn giữ nguyên. Native worker thật chạy
+với network fence và không có DLL override đã pass. Linux DLL bypass có contract test;
+chưa chạy lại container Linux vì Docker Desktop daemon đang tắt. Ruff/format và isolated
+lock check pass; không đổi dependency pins. Không có HF download hay Azure/OpenAI request.

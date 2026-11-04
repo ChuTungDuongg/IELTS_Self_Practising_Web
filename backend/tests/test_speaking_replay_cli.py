@@ -94,11 +94,75 @@ def test_setup_missing_token_is_safe_and_does_not_echo_dotenv(cli, monkeypatch, 
 
     monkeypatch.delenv("HF_TOKEN", raising=False)
     monkeypatch.setattr(replay_diarization_cli.sys.stdin, "isatty", lambda: False)
+    monkeypatch.setattr(
+        replay_diarization_cli.LocalDiarizer,
+        "preflight",
+        lambda _: {"model_state": "NOT_INSTALLED"},
+    )
     assert cli.main(["--setup-diarization-model"]) == 2
     output = capsys.readouterr()
     assert (
         "HF_TOKEN_REQUIRED" in output.err and "PRIVATE_TEST_SECRET" not in output.err + output.out
     )
+
+
+def test_setup_rejects_native_failure_before_prompting_for_token(cli, monkeypatch, capsys):
+    from app.evaluation.speaking import replay_diarization_cli as actions
+    from app.evaluation.speaking.diarization_backend import DiarizationProcessError
+
+    def fail(_):
+        raise DiarizationProcessError(
+            "REPLAY_DIARIZATION_FFMPEG_SHARED_DLLS_MISSING", "ffmpeg_discovery"
+        )
+
+    monkeypatch.setattr(actions.LocalDiarizer, "preflight", fail)
+    monkeypatch.setattr(
+        actions.getpass, "getpass", lambda _: pytest.fail("Token prompt before preflight")
+    )
+    assert cli.main(["--setup-diarization-model"]) == 2
+    output = capsys.readouterr()
+    assert "FFMPEG_SHARED_DLLS_MISSING" in output.err and "stage=ffmpeg_discovery" in output.err
+
+
+def test_verified_setup_and_diagnostics_never_request_a_token_or_download(cli, monkeypatch, capsys):
+    from app.evaluation.speaking import replay_diarization_cli as actions
+
+    monkeypatch.setattr(actions.LocalDiarizer, "preflight", lambda _: {"model_state": "VERIFIED"})
+    monkeypatch.setattr(
+        actions.LocalDiarizer, "setup", lambda *_: pytest.fail("Verified model downloaded again")
+    )
+    monkeypatch.setattr(
+        actions.getpass, "getpass", lambda _: pytest.fail("Unnecessary token prompt")
+    )
+    assert cli.main(["--setup-diarization-model"]) == 0
+    assert cli.main(["--diagnose-diarization"]) == 0
+    assert "PRIVATE_TEST_SECRET" not in capsys.readouterr().out
+    assert cli.main(["--diagnose-diarization", "--allow-live"]) == 2
+
+
+def test_setup_respects_private_token_precedence_after_preflight(cli, monkeypatch, capsys):
+    from app.evaluation.speaking import replay_diarization_cli as actions
+
+    calls = []
+    monkeypatch.setenv("HF_TOKEN", "PRIVATE_ENV_TOKEN")
+    with (cli.ROOT / "backend/.env").open("a") as output:
+        output.write("HF_TOKEN=PRIVATE_FILE_TOKEN\n")
+
+    def checked(_):
+        calls.append("preflight")
+        return {"model_state": "NOT_INSTALLED"}
+
+    def installed(_, token):
+        assert calls == ["preflight"] and token == "PRIVATE_ENV_TOKEN"
+        calls.append("setup")
+
+    monkeypatch.setattr(actions.LocalDiarizer, "preflight", checked)
+    monkeypatch.setattr(actions.LocalDiarizer, "setup", installed)
+    monkeypatch.setattr(
+        actions.getpass, "getpass", lambda _: pytest.fail("Private token already supplied")
+    )
+    assert cli.main(["--setup-diarization-model"]) == 0 and calls == ["preflight", "setup"]
+    assert "PRIVATE_" not in capsys.readouterr().out
 
 
 def test_cli_auto_confirm_questions_approve_validate_cycle_is_offline(cli, monkeypatch, capsys):

@@ -1,11 +1,15 @@
 """Bounded optional subprocess boundary; production Web never imports Torch or pyannote."""
 
+import importlib.util
 import json
 import math
 import os
+import shutil
 import subprocess
 import tempfile
 import time
+from contextlib import contextmanager
+from functools import lru_cache
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -19,6 +23,43 @@ ROOT = Path(__file__).resolve().parents[4]
 TOOL = ROOT / "tools/speaking_diarization"
 
 
+class DiarizationProcessError(BenchmarkInputError):
+    def __init__(self, code, stage, exception_class="RuntimeError"):
+        super().__init__(code)
+        self.stage = stage if isinstance(stage, str) and stage.isidentifier() else "worker"
+        self.exception_class = (
+            exception_class
+            if isinstance(exception_class, str)
+            and exception_class.isidentifier()
+            and len(exception_class) <= 64
+            else "Exception"
+        )
+
+
+@lru_cache(maxsize=1)
+def local_runtime():
+    spec = importlib.util.spec_from_file_location(
+        "diarization_bootstrap", TOOL / "diarization_runtime.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+@contextmanager
+def temporary_workspace():
+    try:
+        directory = tempfile.TemporaryDirectory(prefix="diarization-native-")
+    except OSError as error:
+        raise DiarizationProcessError(
+            "REPLAY_DIARIZATION_TEMP_DIRECTORY_FAILED",
+            "parent_temporary_directory",
+            type(error).__name__,
+        ) from None
+    with directory as path:
+        yield path
+
+
 def model_identity():
     return json.loads((TOOL / "model.json").read_text(encoding="utf-8"))
 
@@ -26,7 +67,7 @@ def model_identity():
 def offline_environment(*, setup_token=None, threads=2, device="cpu"):
     allowed = {
         "PATH",
-        "SystemRoot",
+        "SYSTEMROOT",
         "WINDIR",
         "SYSTEMDRIVE",
         "COMSPEC",
@@ -37,8 +78,13 @@ def offline_environment(*, setup_token=None, threads=2, device="cpu"):
         "USERPROFILE",
         "APPDATA",
         "LOCALAPPDATA",
+        "PROGRAMDATA",
+        "CONDA_PREFIX",
+        "CONDA_EXE",
+        "BANDPILOT_FFMPEG_DLL_DIR",
     }
-    env = {key: value for key, value in os.environ.items() if key in allowed}
+    # Windows normalizes environment names to uppercase; dropping SYSTEMROOT breaks Winsock.
+    env = {key: value for key, value in os.environ.items() if key.upper() in allowed}
     env.update(
         PYANNOTE_METRICS_ENABLED="false",
         OTEL_SDK_DISABLED="true",
@@ -111,9 +157,14 @@ class LocalDiarizer:
             if python
             else TOOL / (".venv/Scripts/python.exe" if os.name == "nt" else ".venv/bin/python")
         )
-        self.model_dir = (
-            Path(model_dir) if model_dir else ROOT / "storage/models/pyannote-community-1"
-        ).resolve()
+        try:
+            self.model_dir = (
+                Path(model_dir) if model_dir else ROOT / "storage/models/pyannote-community-1"
+            ).resolve()
+        except (OSError, ValueError) as error:
+            raise DiarizationProcessError(
+                "REPLAY_DIARIZATION_MODEL_STORAGE_INVALID", "model_storage", type(error).__name__
+            ) from None
         if any(type(value) is not int for value in (threads, max_speakers, timeout, memory_mb)):
             raise BenchmarkInputError("REPLAY_DIARIZATION_OPTIONS_INVALID")
         if not 1 <= threads <= 8 or not 1 <= max_speakers <= 20 or device not in {"cpu", "cuda"}:
@@ -136,7 +187,7 @@ class LocalDiarizer:
             raise BenchmarkInputError("REPLAY_DIARIZATION_MODEL_MISSING_USE_SETUP")
         import psutil
 
-        with tempfile.TemporaryDirectory(prefix="diarization-native-") as directory:
+        with temporary_workspace() as directory:
             output = Path(directory) / "result.json"
             command = [
                 str(self.python),
@@ -160,15 +211,22 @@ class LocalDiarizer:
                         self.config["device"],
                     ]
                 )
-            process = subprocess.Popen(
-                command,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                env=offline_environment(
-                    setup_token=token, threads=self.config["threads"], device=self.config["device"]
-                ),
-                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
-            )
+            try:
+                process = subprocess.Popen(
+                    command,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    env=offline_environment(
+                        setup_token=token,
+                        threads=self.config["threads"],
+                        device=self.config["device"],
+                    ),
+                    creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+                )
+            except OSError as error:
+                raise DiarizationProcessError(
+                    "REPLAY_DIARIZATION_ENV_START_FAILED", "worker_start", type(error).__name__
+                ) from None
             started = time.monotonic()
             descendants = {}
             try:
@@ -221,11 +279,30 @@ class LocalDiarizer:
                     or not code.replace("_", "").isalnum()
                 ):
                     code = "REPLAY_DIARIZATION_PROCESS_FAILED"
-                raise BenchmarkInputError(code)
+                raise DiarizationProcessError(
+                    code, result.get("stage", "worker"), result.get("exception_class", "Exception")
+                )
             return result
 
-    def setup(self, token):
-        if not token:
+    def preflight(self):
+        return self._run("diagnose")
+
+    def audio_settings(self, settings):
+        if os.name != "nt" or shutil.which(settings.speaking_ffmpeg_path):
+            return settings
+        helper = local_runtime()
+        try:
+            directory, _ = helper.resolve_ffmpeg()
+        except helper.StageError as error:
+            raise DiarizationProcessError(error.code, error.stage, error.exception_class) from None
+        if not all((directory / name).is_file() for name in ("ffmpeg.exe", "ffprobe.exe")):
+            raise DiarizationProcessError(
+                "REPLAY_DIARIZATION_FFMPEG_EXECUTABLES_MISSING", "audio_decoder"
+            )
+        return settings.model_copy(update={"speaking_ffmpeg_path": str(directory / "ffmpeg.exe")})
+
+    def setup(self, token=None):
+        if not token and not self.model_dir.exists():
             raise BenchmarkInputError("REPLAY_DIARIZATION_HF_TOKEN_REQUIRED")
         return self._run("setup", token=token)
 

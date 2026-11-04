@@ -66,6 +66,11 @@ def main(argv=None):
         help="Explicit gated HF model download into the isolated tool cache.",
     )
     parser.add_argument(
+        "--diagnose-diarization",
+        action="store_true",
+        help="Check isolated native runtime/storage offline, without a token or model download.",
+    )
+    parser.add_argument(
         "--confirm-candidate-speaker",
         help="Confirm one file-scoped speaker ID as the candidate; boundaries remain pending.",
     )
@@ -133,6 +138,7 @@ def main(argv=None):
             args.auto_segment
             or args.review_segments
             or args.setup_diarization_model
+            or args.diagnose_diarization
             or review_action
             or args.approve_segments
         )
@@ -175,6 +181,25 @@ def main(argv=None):
     except (BenchmarkInputError, AppError) as error:
         code = safe_error(error)
         print(code, file=sys.stderr)
+        if hasattr(error, "stage"):
+            print(f"stage={error.stage}; exception_class={error.exception_class}", file=sys.stderr)
+        if code in {
+            "REPLAY_DIARIZATION_HF_AUTHENTICATION_FAILED",
+            "REPLAY_DIARIZATION_HF_GATED_ACCESS_DENIED",
+        }:
+            print(
+                "Check your private read token and model access: "
+                "https://huggingface.co/pyannote/speaker-diarization-community-1",
+                file=sys.stderr,
+            )
+        elif code in {
+            "REPLAY_DIARIZATION_FFMPEG_SHARED_DLLS_MISSING",
+            "REPLAY_DIARIZATION_FFMPEG_OVERRIDE_INVALID",
+        }:
+            print(
+                "A complete shared FFmpeg 4–7 installation is required; static ffmpeg.exe alone is insufficient.",
+                file=sys.stderr,
+            )
         if code == "REPLAY_NO_AUDIO":
             print(
                 "Add a local MP3/WAV to the input directory, then run --prepare.", file=sys.stderr

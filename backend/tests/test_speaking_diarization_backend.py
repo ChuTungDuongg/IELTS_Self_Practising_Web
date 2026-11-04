@@ -234,14 +234,22 @@ def test_explicit_setup_pins_snapshot_and_never_persists_or_echoes_token(
     monkeypatch.setitem(sys.modules, "huggingface_hub", SimpleNamespace(snapshot_download=download))
     monkeypatch.setenv("HF_TOKEN", "PRIVATE_HF_TOKEN_AND_SENSITIVE_URL")
     monkeypatch.setattr(worker, "versions", lambda: worker.IDENTITY["versions"])
+    monkeypatch.setattr(
+        worker.runtime, "native_imports", lambda: pytest.fail("Download imported native code")
+    )
     target = tmp_path / "model"
-    output = worker.setup(target)
+    if download_fails:
+        with pytest.raises(worker.runtime.StageError) as caught:
+            worker.setup(target)
+        output = caught.value.payload()
+    else:
+        output = worker.setup(target)
     assert calls[0][0] == worker.IDENTITY["model"]
     assert calls[0][1]["revision"] == worker.IDENTITY["revision"]
     assert "HF_TOKEN" not in os.environ
     assert "PRIVATE_HF_TOKEN" not in json.dumps(output)
     if download_fails:
-        assert output["error_code"] == "REPLAY_DIARIZATION_MODEL_DOWNLOAD_FAILED_CHECK_HF_ACCESS"
+        assert output["error_code"] == "REPLAY_DIARIZATION_HF_DOWNLOAD_FAILED"
         assert not target.exists()
     else:
         assert worker.verify_model(target)["identity"] == worker.IDENTITY
