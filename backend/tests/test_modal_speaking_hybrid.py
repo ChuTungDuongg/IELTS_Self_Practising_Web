@@ -2,9 +2,61 @@
 
 import builtins
 import os
+import shlex
 
 import pytest
 from test_modal_app import load_app, stub_runtime
+
+
+@pytest.mark.parametrize("profile", ["legacy", "speaking_hybrid_v1"])
+def test_image_build_steps_never_follow_runtime_source_mounts(monkeypatch, profile):
+    monkeypatch.setenv("IELTS_WEB_SPEAKING_PROFILE", profile)
+    monkeypatch.setenv("AI_WRITING_PROVIDER", "openai")
+    monkeypatch.delenv("IELTS_WEB_SPEAKING_VAD_MODEL_PATH", raising=False)
+    _, modal, _ = load_app(monkeypatch, asr_enabled=False)
+    # Validate the ordered image graph: Modal rejects build layers after runtime-only mounts.
+    # A permissive fluent MagicMock alone cannot detect that SDK constraint.
+    runtime_mounts = []
+    for call in modal.Image.from_registry.return_value.mock_calls:
+        method, _, options = call
+        if method in {"add_local_dir", "add_local_file", "add_local_python_source"}:
+            if not options.get("copy", False):
+                runtime_mounts.append(method)
+                continue
+        if method in {
+            "apt_install",
+            "run_commands",
+            "env",
+            "add_local_dir",
+            "add_local_file",
+            "add_local_python_source",
+        }:
+            assert not runtime_mounts, (
+                f"Build step {method} follows runtime mounts {runtime_mounts}"
+            )
+
+
+def test_hybrid_probe_can_import_sources_during_image_build(monkeypatch):
+    monkeypatch.setenv("IELTS_WEB_SPEAKING_PROFILE", "speaking_hybrid_v1")
+    monkeypatch.setenv("AI_WRITING_PROVIDER", "openai")
+    monkeypatch.delenv("IELTS_WEB_SPEAKING_VAD_MODEL_PATH", raising=False)
+    _, modal, _ = load_app(monkeypatch, asr_enabled=False)
+    copied_sources = set()
+    probes = []
+    for method, args, options in modal.Image.from_registry.return_value.mock_calls:
+        if method == "add_local_python_source" and options.get("copy"):
+            copied_sources.update(args)
+        if method != "run_commands":
+            continue
+        for command in args:
+            tokens = shlex.split(command)
+            if "deploy.modal.speaking_cpu" not in tokens:
+                continue
+            # Runtime mounts and Modal function sys.path are unavailable to shell builds.
+            assert {"deploy.modal", "deploy.runtime_config"} <= copied_sources
+            assert "PYTHONPATH=/root" in tokens[: tokens.index("python")]
+            probes.append(command)
+    assert len(probes) == 1
 
 
 def test_hybrid_image_never_imports_whisper_and_does_not_change_writing_selection(monkeypatch):

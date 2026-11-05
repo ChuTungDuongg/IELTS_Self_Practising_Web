@@ -2,6 +2,7 @@
 
 import asyncio
 import hashlib
+from uuid import uuid4
 
 from sqlalchemy import select
 
@@ -13,7 +14,9 @@ from app.services.speaking_audio import fingerprint
 from app.services.speaking_hybrid import analyze_response
 
 
-async def cached_speech_analysis(sessions, audio, settings, analyzer):
+async def cached_speech_analysis(
+    sessions, audio, settings, analyzer, *, allow_interrupted_retry=False
+):
     require_billing_authorization(settings)
     identity = analyzer.identity.model_dump(mode="json")
 
@@ -39,6 +42,8 @@ async def cached_speech_analysis(sessions, audio, settings, analyzer):
             raise AppError("SPEAKING_AUDIO_UNASSESSABLE", "Normalized source is unavailable.", 409)
         return row
 
+    previous_attempts = []
+    attempt_token = str(uuid4())
     async with sessions() as session, session.begin():
         row = await locked(session)
         cache = row.metadata_json.get("speech_analysis", {})
@@ -46,21 +51,30 @@ async def cached_speech_analysis(sessions, audio, settings, analyzer):
         if record and record["status"] in {"COMPLETE", "PARTIAL", "FAILED"}:
             # Partial is a terminal checkpoint, never advertised as a complete cache hit.
             return [SpeechAnalysisResult.model_validate(r) for r in record["results"]]
-        if record:
+        if record and (not allow_interrupted_retry or record["status"] != "ATTEMPTED"):
             raise AppError(
                 "SPEAKING_ANALYSIS_BILLING_UNKNOWN",
                 "An interrupted speech request needs explicit operator reconciliation.",
                 409,
             )
+        if record:
+            # Only a candidate-authorized retry can supersede an ambiguous call.
+            # Retain every earlier checkpoint because its provider billing is unknown.
+            previous_attempts = [
+                *record.get("previous_attempts", []),
+                {name: value for name, value in record.items() if name != "previous_attempts"},
+            ]
         row.metadata_json = {
             **row.metadata_json,
             "speech_analysis": {
                 **cache,
                 key: {
                     "status": "ATTEMPTED",
+                    "attempt_token": attempt_token,
                     "results": [],
                     "billing": "UNKNOWN",
                     "maximum_possible_calls": audio.segment_count,
+                    **({"previous_attempts": previous_attempts} if previous_attempts else {}),
                 },
             },
         }
@@ -69,12 +83,20 @@ async def cached_speech_analysis(sessions, audio, settings, analyzer):
         async with sessions() as session, session.begin():
             row = await locked(session)
             cache = dict(row.metadata_json.get("speech_analysis", {}))
+            if cache.get(key, {}).get("attempt_token") != attempt_token:
+                raise AppError(
+                    "SPEAKING_ANALYSIS_BILLING_UNKNOWN",
+                    "This speech request was superseded by an explicitly authorized retry.",
+                    409,
+                )
             cache[key] = {
                 "status": status,
+                "attempt_token": attempt_token,
                 "results": [r.model_dump(mode="json") for r in results],
                 "billing": "UNKNOWN",
                 "attempted_calls": sum(r.usage.attempted_calls for r in results),
                 "maximum_possible_calls": audio.segment_count,
+                **({"previous_attempts": previous_attempts} if previous_attempts else {}),
             }
             row.metadata_json = {**row.metadata_json, "speech_analysis": cache}
 

@@ -35,7 +35,12 @@ from app.schemas.speaking import (
     SpeakingSegmentData,
     SpeakingState,
 )
-from app.schemas.speaking_ai import TranscriptCreated, TranscriptRunData, TranscriptRunList
+from app.schemas.speaking_ai import (
+    TranscriptCreated,
+    TranscriptCreateRequest,
+    TranscriptRunData,
+    TranscriptRunList,
+)
 from app.services.speaking_attempts import SpeakingAttemptService
 from app.services.speaking_builder import SpeakingBuilderService
 from app.services.speaking_final import SpeakingFinalService
@@ -99,8 +104,14 @@ async def create_transcript_run(
     user: CurrentUser,
     session: AsyncSession = Depends(get_session),
     worker: SpeakingTranscriptWorker = Depends(get_transcript_worker),
+    body: TranscriptCreateRequest | None = None,
 ):
-    result = await SpeakingTranscriptService(session, user, get_settings()).create(attempt_id)
+    result = await SpeakingTranscriptService(session, user, get_settings()).create(
+        attempt_id,
+        retry_interrupted_response_ids=body.retry_interrupted_response_ids if body else (),
+        retry_interrupted_run_id=body.retry_interrupted_run_id if body else None,
+        retry_interrupted_after_sequence=body.retry_interrupted_after_sequence if body else None,
+    )
     if not result.cache_hit:
         worker.launch(result.run_id, restart=not result.existing_active)
     return result

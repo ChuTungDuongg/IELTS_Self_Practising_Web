@@ -89,7 +89,14 @@ class SpeakingTranscriptService:
             for r in rows
         ]
 
-    async def create(self, aid):
+    async def create(
+        self,
+        aid,
+        *,
+        retry_interrupted_response_ids=(),
+        retry_interrupted_run_id=None,
+        retry_interrupted_after_sequence=None,
+    ):
         async with self.session.begin():
             rows = await self.authorized(aid, mutate=True)
             manifest = self.manifest(rows)
@@ -101,6 +108,37 @@ class SpeakingTranscriptService:
                 )
                 .with_for_update()
             )
+            retry_ids = {str(rid) for rid in retry_interrupted_response_ids}
+            if retry_ids and (
+                run is None
+                or run.id != retry_interrupted_run_id
+                or run.status not in {"PARTIAL", "FAILED"}
+                or any(
+                    run.responses_json.get(rid, {}).get("status") != "FAILED"
+                    or run.responses_json.get(rid, {}).get("error_code")
+                    != "SPEAKING_ANALYSIS_BILLING_UNKNOWN"
+                    for rid in retry_ids
+                )
+            ):
+                raise AppError(
+                    "SPEAKING_INTERRUPTED_RETRY_NOT_AVAILABLE",
+                    "Only interrupted responses from a finished transcript run can be retried.",
+                    409,
+                )
+            if retry_ids:
+                sequence = (
+                    await self.session.scalar(
+                        select(func.max(SpeakingTranscriptEvent.sequence)).where(
+                            SpeakingTranscriptEvent.run_id == run.id
+                        )
+                    )
+                ) or 0
+                if sequence != retry_interrupted_after_sequence:
+                    raise AppError(
+                        "SPEAKING_INTERRUPTED_RETRY_NOT_AVAILABLE",
+                        "The interrupted transcript changed. Review its current state before retrying.",
+                        409,
+                    )
             if run and run.status == "COMPLETED":
                 return TranscriptCreated(run_id=run.id, cache_hit=True, existing_active=False)
             now = TimerService.now()
@@ -133,12 +171,23 @@ class SpeakingTranscriptService:
             else:
                 run.status = "PENDING"
                 run.responses_json = {
-                    rid: value if value["status"] == "READY" else {"status": "WAITING"}
+                    rid: value
+                    if value["status"] == "READY"
+                    else {
+                        "status": "WAITING",
+                        **({"allow_interrupted_retry": True} if rid in retry_ids else {}),
+                    }
                     for rid, value in run.responses_json.items()
                 }
             run.lease_token = None
             run.heartbeat_at = now
-            await self.repository.append(run, "run.queued")
+            await self.repository.append(
+                run,
+                "run.queued",
+                {"retry_interrupted_response_ids": ",".join(sorted(retry_ids))}
+                if retry_ids
+                else None,
+            )
             return TranscriptCreated(run_id=run.id, cache_hit=False, existing_active=False)
 
     async def _snapshot(self, aid, run_id, after=0):

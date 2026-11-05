@@ -69,6 +69,22 @@ class TranscriptCreated(BaseModel):
     existing_active: bool
 
 
+class TranscriptCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    retry_interrupted_response_ids: list[UUID] = Field(default_factory=list, max_length=1000)
+    retry_interrupted_run_id: UUID | None = None
+    retry_interrupted_after_sequence: int | None = Field(default=None, ge=0, strict=True)
+
+    @model_validator(mode="after")
+    def retry_context(self):
+        context = (self.retry_interrupted_run_id, self.retry_interrupted_after_sequence)
+        if self.retry_interrupted_response_ids and any(value is None for value in context):
+            raise ValueError("Interrupted retries require the exact observed run and sequence")
+        if not self.retry_interrupted_response_ids and any(value is not None for value in context):
+            raise ValueError("Retry context requires interrupted response IDs")
+        return self
+
+
 class TranscriptEventData(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     sequence: int

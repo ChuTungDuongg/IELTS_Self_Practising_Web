@@ -75,6 +75,44 @@ Xem [privacy, cost assumptions và evaluation](ai-speaking.md) trước xử lý
 liệu thật. **LIVE_UNVERIFIED**: chưa xác nhận Azure account, unscripted fidelity,
 false positives, band agreement, latency hoặc chi phí thực.
 
+### Khôi phục yêu cầu Azure bị gián đoạn
+
+HTTP `200` từ các endpoint transcript chỉ xác nhận thao tác với tài nguyên tác vụ;
+phải đọc `status` và `responses[].error_code` để biết kết quả từng câu. Một tác vụ
+`PARTIAL` vẫn giữ các bản chép lời `READY` khi những câu khác không đủ audio hoặc
+gặp lỗi. Giao diện hiển thị nguyên nhân từ danh sách mã lỗi cho phép, gồm audio
+quá ngắn, tín hiệu yếu, audio không đọc được và yêu cầu Azure bị gián đoạn.
+
+Nếu app dừng/restart sau khi lưu `ATTEMPTED` nhưng trước khi lưu kết quả Azure,
+worker khôi phục báo `SPEAKING_ANALYSIS_BILLING_UNKNOWN`. Đây không phải bằng
+chứng audio im lặng hoặc Azure từ chối credential; chưa thể xác định yêu cầu
+trước đã xử lý/tính hạn mức hay chưa. Retry thông thường và startup recovery
+không tự gửi lại yêu cầu này.
+
+Người làm bài có thể đánh dấu xác nhận trong phần tạo bản chép lời rồi nhấn thử
+lại. Client gửi `retry_interrupted_response_ids` cùng `retry_interrupted_run_id`
+và `retry_interrupted_after_sequence` của snapshot đã xem trong JSON body của
+`POST /api/v1/speaking-attempts/{attempt_id}/transcript-runs`; thiếu body hoặc
+danh sách rỗng giữ hành vi cũ. FastAPI chỉ chấp nhận đúng các câu thất bại với
+mã gián đoạn của tác vụ hiện hành, kiểm ownership và từ chối khi tác vụ còn hoạt
+động hoặc snapshot đã thay đổi. Request xác nhận cũ không thể cấp quyền cho
+một lần thử tiếp theo. Quyền gửi lại chỉ áp dụng cho các câu đã chọn; các câu `READY` tiếp tục
+được tái dùng. Billing policy, hạn mức và provider không bị thay đổi.
+
+Trước lần gửi lại có xác nhận, checkpoint cũ được lưu trong `previous_attempts`;
+authorization được ghi vào sự kiện `run.queued`. Attempt token ngăn kết quả muộn
+của lần cũ ghi đè checkpoint lần mới. Nếu lần mới lại bị gián đoạn,
+cần xác nhận mới. Không xóa marker, reset toàn bộ cache hoặc đổi version để
+vượt chốt billing. Không gửi lại audio, gọi Azure hay sửa dữ liệu cloud trong
+các kiểm thử của thay đổi này.
+
+Xác minh ngày 2026-11-05: 117 test backend đạt trên PostgreSQL 17 Docker cách ly,
+64 test frontend đạt; Ruff/format, ESLint, TypeScript và diff check đạt. Bộ backend
+chạy với `SPEAKING_PROFILE=legacy`, `SPEAKING_ASR_PROVIDER=local` ở shell test để
+không kế thừa lựa chọn Azure trong `.env` của máy; các case hybrid đặt profile
+tường minh. Bao phủ ownership/phạm vi, snapshot cũ, gián đoạn lần nữa, bảo toàn
+`READY`/quality/history và callback worker cũ; toàn bộ provider là giả lập.
+
 ## Hồ sơ triển khai legacy
 
 > **Kiểm toán tài liệu: CURRENT.** Tài liệu chuẩn cho chủ đề này; đã đối chiếu ranh giới/API trong mã nguồn, chưa xác thực trực tiếp trên hệ thống chạy.

@@ -8,6 +8,7 @@ from pathlib import Path
 from uuid import uuid4
 
 import modal
+
 from deploy.modal.web_runtime import resolve_ai_providers
 from deploy.runtime_config import boolean
 
@@ -210,12 +211,20 @@ image = (
     .add_local_file(
         ROOT / "deploy/modal/nginx.conf", "/workspace/deploy/modal/nginx.conf", copy=True
     )
-    .add_local_python_source("deploy.modal", "deploy.runtime_config")
+    # The hybrid build probe imports these modules before container startup.
+    .add_local_python_source("deploy.modal", "deploy.runtime_config", copy=True)
 )
 if SPEAKING_PROFILE == "speaking_hybrid_v1":
-    from deploy.modal.speaking_cpu import VAD_SHA256, include_vad_model, install_cpu_speech
+    from deploy.modal.speaking_cpu import (
+        VAD_SHA256,
+        include_vad_model,
+        install_cpu_speech,
+    )
 
-    image = install_cpu_speech(image).run_commands("python -m deploy.modal.speaking_cpu")
+    # Modal adds /root to sys.path for functions, not for shell image-build commands.
+    image = install_cpu_speech(image).run_commands(
+        "PYTHONPATH=/root python -m deploy.modal.speaking_cpu"
+    )
     if modal.is_local() and VAD_LOCAL_PATH:
         image = include_vad_model(image, Path(VAD_LOCAL_PATH), VAD_SHA256)
 

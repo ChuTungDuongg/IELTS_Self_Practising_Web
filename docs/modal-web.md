@@ -54,12 +54,29 @@ Image build và container startup chạy native-load probe
 `python -m deploy.modal.speaking_cpu`: import SDK/ONNX/NumPy, nạp ALSA/OpenSSL,
 tạo audio format/options CPU; không tạo recognizer, không key, không model
 download, không provider call. Probe này không chứng minh API access, VAD
-weights/session hoặc whole Web readiness. Local verification đã thực hiện:
+weights/session hoặc whole Web readiness.
+
+Source `deploy.modal`/`deploy.runtime_config` được copy vào image trước các bước
+cài CPU speech và probe; không dùng runtime-only mount trước một bước build.
+Modal đặt Python source tại `/root`; shell build chạy
+`PYTHONPATH=/root python -m deploy.modal.speaking_cpu` để import được package
+`deploy` dù working directory của base image khác `/root`. Đường dẫn mà Modal
+thêm cho function runtime không tự áp dụng cho shell build; xem
+[Modal Image](https://modal.com/docs/sdk/py/latest/Image#add_local_python_source).
+Local verification đã thực hiện:
 
 ```powershell
 docker build --file deploy/modal/Dockerfile.speaking-hybrid-probe --tag bandpilot-speaking-hybrid-probe:local .
 docker run --rm --network none bandpilot-speaking-hybrid-probe:local
 ```
+
+Kiểm lại ngày 2026-11-05 với source tại `/root/deploy/modal` và working directory
+`/`: lệnh cũ tái hiện `No module named 'deploy'`; thêm `PYTHONPATH=/root` đạt
+`CPU_NATIVE_PROBE_OK`, `provider_calls=0` khi tắt network. Dockerfile probe dùng
+cùng layout và lệnh build đã sửa; build lại và chạy tắt network đều đạt.
+Pytest tập trung: 86 passed, 1 skipped (Windows
+không cho tạo symlink); Ruff và launcher `--provider openai --check` đạt.
+Chưa chạy lại deploy Modal thật.
 
 Probe riêng cho lifecycle FastAPI (không deploy): build cùng Dockerfile với
 `--target backend-startup --tag bandpilot-speaking-hybrid-backend-probe:local`.

@@ -74,7 +74,7 @@ function AssessmentSession({ attemptId, canGrade, onTranscriptAvailable, onCopy,
     {error ? <p role="alert" className="notice notice-error">{t(speakingServiceErrorKey(error) ?? (error === "notConfigured" ? "speakingAI.notConfigured" : "speakingAI.error"))}</p> : null}
     {run ? <><SpeakingAIProgress run={run} />
       {canCopy && onCopy && run.attempt_id === attemptId && run.status === "COMPLETED" && criteria.every(key => run.criteria[key].status === "COMPLETED" && run.criteria[key].score !== null) ? <button type="button" className="btn btn-secondary" onClick={() => onCopy(run)}>{t("grading.copy")}</button> : null}
-      {run.status === "FAILED" ? <p role="alert" className="notice notice-error">{t(speakingServiceErrorKey(run.error_code) ?? (run.error_code === "SPEAKING_AUDIO_UNASSESSABLE" ? "speakingAI.recordingQuality" : run.error_code === "SPEAKING_FC_UNASSESSABLE" ? "speakingAI.insufficientEvidence" : "speakingAI.failed"))}</p> : null}
+      {run.status === "FAILED" ? <p role="alert" className="notice notice-error">{t(run.error_code === "SPEAKING_AUDIO_UNASSESSABLE" ? "speakingAI.recordingQuality" : speakingServiceErrorKey(run.error_code) ?? (run.error_code === "SPEAKING_FC_UNASSESSABLE" ? "speakingAI.insufficientEvidence" : "speakingAI.failed"))}</p> : null}
       <div className="speaking-ai-overall"><h3>{t("speakingAI.overall")}</h3><p className="speaking-ai-score">{run.overall_band === null ? t("speakingAI.overallWaiting") : run.overall_band.toFixed(1)}</p>
         {run.raw_mean !== null ? <p>{t("speakingAI.rawMean", { value: run.raw_mean })}</p> : null}</div>
       <div className="speaking-ai-criteria">{criteria.map((key) => {

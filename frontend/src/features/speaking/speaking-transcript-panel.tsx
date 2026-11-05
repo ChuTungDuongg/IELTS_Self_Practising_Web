@@ -11,22 +11,29 @@ export function SpeakingTranscriptSession({ attemptId, canGenerate = true, refre
   const { t } = useTranslation(); const [run, setRun] = useState<TranscriptRun | null>(null); const [busy, setBusy] = useState(false); const [error, setError] = useState<string | null>(null);
   const alive = useRef(true); const pending = useRef(false); const cursor = useRef(0);
   const [loading, setLoading] = useState(true);
+  const [retryAcknowledgement, setRetryAcknowledgement] = useState<string | null>(null);
   const runId = run?.run_id; const isActive = activeTranscript(run);
+  const interruptedResponseIds = run?.attempt_id === attemptId ? run.responses.filter((response) => response.status === "FAILED" && response.error_code === "SPEAKING_ANALYSIS_BILLING_UNKNOWN").map((response) => response.response_id).sort() : [];
+  const interruptionKey = !isActive && interruptedResponseIds.length ? JSON.stringify([attemptId, runId, run?.last_sequence, interruptedResponseIds]) : null;
+  const retryAcknowledged = interruptionKey !== null && retryAcknowledgement === interruptionKey;
   useEffect(() => {
     let cancelled = false; alive.current = true;
-    void latestTranscriptRun(attemptId).then((next) => { if (!cancelled && alive.current) { cursor.current = next?.last_sequence ?? 0; setRun(next); setError(null); } }).catch(() => { if (!cancelled && alive.current) setError("generic"); }).finally(() => { if (!cancelled && alive.current) setLoading(false); });
+    void latestTranscriptRun(attemptId).then((next) => { if (!cancelled && alive.current) { cursor.current = next?.last_sequence ?? 0; setRun(next); setRetryAcknowledgement(null); setError(null); } }).catch(() => { if (!cancelled && alive.current) setError("generic"); }).finally(() => { if (!cancelled && alive.current) setLoading(false); });
     return () => { cancelled = true; alive.current = false; };
   }, [attemptId, refreshKey]);
   useEffect(() => {
     if (!runId || !isActive) return;
-    return watchTranscriptRun(attemptId, runId, { event: () => undefined, snapshot: (next) => { if (alive.current) { cursor.current = next.last_sequence; setRun(next); setError(null); } }, error: () => { if (alive.current) setError("generic"); } }, cursor.current);
+    return watchTranscriptRun(attemptId, runId, { event: () => undefined, snapshot: (next) => { if (alive.current) { cursor.current = next.last_sequence; setRun(next); setRetryAcknowledgement(null); setError(null); } }, error: () => { if (alive.current) setError("generic"); } }, cursor.current);
   }, [attemptId, runId, isActive]);
   async function generate() {
     if (pending.current || !canGenerate || loading) return; pending.current = true; setBusy(true); setError(null);
-    try { const next = await createTranscriptRun(attemptId); const snapshot = await getTranscriptRun(attemptId, next.run_id); if (alive.current) setRun(snapshot); }
+    const retryIds = retryAcknowledged ? interruptedResponseIds : [];
+    setRetryAcknowledgement(null);
+    try { const next = await (retryIds.length && run ? createTranscriptRun(attemptId, { responseIds: retryIds, runId: run.run_id, lastSequence: run.last_sequence }) : createTranscriptRun(attemptId)); const snapshot = await getTranscriptRun(attemptId, next.run_id); if (alive.current) setRun(snapshot); }
     catch (caught) { if (alive.current) setError(caught instanceof ApiError ? caught.code : "generic"); } finally { pending.current = false; if (alive.current) setBusy(false); }
   }
   return <TranscriptContext.Provider value={run}><div className="speaking-controls">
+    {canGenerate && interruptionKey ? <label><input type="checkbox" checked={retryAcknowledged} disabled={loading || busy} onChange={(event) => setRetryAcknowledgement(event.target.checked ? interruptionKey : null)} /> {t("speakingTranscript.retryInterruptedAcknowledgement", { count: interruptedResponseIds.length })}</label> : null}
     {canGenerate ? <button className="btn btn-secondary" disabled={loading || busy || activeTranscript(run)} onClick={() => void generate()}>{t(run?.status === "FAILED" || run?.status === "PARTIAL" ? "speakingTranscript.retry" : "speakingTranscript.generate")}</button> : null}
     {busy || activeTranscript(run) ? <p role="status">{t("speakingTranscript.processing")}</p> : null}
     {error ? <p role="alert" className="notice notice-error">{t(speakingServiceErrorKey(error) ?? "speakingTranscript.error")}</p> : null}
@@ -35,7 +42,7 @@ export function SpeakingTranscriptSession({ attemptId, canGenerate = true, refre
 export function SpeakingTranscriptResponse({ responseId }: { responseId: string }) {
   const { t } = useTranslation(); const run = useContext(TranscriptContext); const response = run?.responses.find((r) => r.response_id === responseId);
   const status = response?.status ?? "WAITING";
-  const serviceError = speakingServiceErrorKey(response?.error_code);
+  const serviceError = speakingServiceErrorKey(response?.error_code) ?? (status === "FAILED" ? "speakingTranscript.error" : null);
   return <section className="speaking-transcript" aria-label={t("speakingTranscript.title")}><h3>{t("speakingTranscript.title")}</h3>
     <p role="status">{t(status === "READY" ? "speakingTranscript.ready" : status === "PARTIAL" ? "speakingTranscript.partial" : status === "FAILED" ? "speakingTranscript.failed" : status === "PROCESSING" ? "speakingTranscript.processing" : "speakingTranscript.waiting")}</p>
     {serviceError ? <p role="alert" className="notice notice-error">{t(serviceError)}</p> : null}

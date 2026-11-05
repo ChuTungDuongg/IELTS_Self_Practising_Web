@@ -12,8 +12,9 @@ const eventTypes = ["run.queued", "run.started", "response.updated", "run.comple
 const eventSchema = z.object({ sequence: z.number().int().positive(), event_type: z.enum(eventTypes), payload: z.record(z.string(), z.string()) });
 export type TranscriptEvent = z.infer<typeof eventSchema>;
 export const activeTranscript = (run: TranscriptRun | null) => run?.status === "PENDING" || run?.status === "RUNNING";
-export async function createTranscriptRun(attemptId: string) {
-  return z.object({ run_id: z.string().uuid(), cache_hit: z.boolean(), existing_active: z.boolean() }).parse(await apiRequest(`/speaking-attempts/${attemptId}/transcript-runs`, { method: "POST" }));
+export type InterruptedTranscriptRetry = { responseIds: string[]; runId: string; lastSequence: number };
+export async function createTranscriptRun(attemptId: string, retry?: InterruptedTranscriptRetry) {
+  return z.object({ run_id: z.string().uuid(), cache_hit: z.boolean(), existing_active: z.boolean() }).parse(await apiRequest(`/speaking-attempts/${attemptId}/transcript-runs`, { method: "POST", ...(retry?.responseIds.length ? { body: JSON.stringify({ retry_interrupted_response_ids: retry.responseIds, retry_interrupted_run_id: retry.runId, retry_interrupted_after_sequence: retry.lastSequence }) } : {}) }));
 }
 export async function latestTranscriptRun(attemptId: string) { return z.object({ run: transcriptRunSchema.nullable() }).parse(await apiRequest(`/speaking-attempts/${attemptId}/transcript-runs`)).run; }
 export async function getTranscriptRun(attemptId: string, runId: string) { return transcriptRunSchema.parse(await apiRequest(`/speaking-attempts/${attemptId}/transcript-runs/${runId}`)); }

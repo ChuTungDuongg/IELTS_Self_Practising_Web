@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { transcriptRunSchema, watchTranscriptRun } from "@/lib/api/speaking-transcript";
+import { createTranscriptRun, transcriptRunSchema, watchTranscriptRun } from "@/lib/api/speaking-transcript";
 import { apiRequest } from "@/lib/api/client";
 vi.mock("@/lib/api/client", () => ({ API_BASE_URL: "https://fixture.test/api/v1", apiRequest: vi.fn() }));
 class FakeSource {
@@ -11,6 +11,19 @@ class FakeSource {
   emit(sequence: number) { this.handlers["response.updated"]({ data: JSON.stringify({ sequence, event_type: "response.updated", payload: {} }) } as MessageEvent); }
 }
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); FakeSource.items = []; vi.clearAllMocks(); });
+it.each([undefined, { responseIds: [], runId: "11111111-1111-4111-8111-111111111111", lastSequence: 4 }])("omits interrupted-request authorization when no response IDs are supplied (%j)", async (retry) => {
+  const created = { run_id: "11111111-1111-4111-8111-111111111111", cache_hit: false, existing_active: false };
+  vi.mocked(apiRequest).mockResolvedValue(created);
+  await expect(createTranscriptRun("attempt", retry)).resolves.toEqual(created);
+  expect(apiRequest).toHaveBeenCalledExactlyOnceWith("/speaking-attempts/attempt/transcript-runs", { method: "POST" });
+});
+it("binds the explicitly acknowledged interrupted response IDs to the observed run and event sequence", async () => {
+  vi.mocked(apiRequest).mockResolvedValue({ run_id: "11111111-1111-4111-8111-111111111111", cache_hit: false, existing_active: false });
+  const responseIds = ["33333333-3333-4333-8333-333333333333"];
+  const runId = "11111111-1111-4111-8111-111111111111";
+  await createTranscriptRun("attempt", { responseIds, runId, lastSequence: 4 });
+  expect(apiRequest).toHaveBeenCalledExactlyOnceWith("/speaking-attempts/attempt/transcript-runs", { method: "POST", body: JSON.stringify({ retry_interrupted_response_ids: responseIds, retry_interrupted_run_id: runId, retry_interrupted_after_sequence: 4 }) });
+});
 it("accepts partial lexical responses without dropping available transcript text", () => {
   const response = { response_id: "33333333-3333-4333-8333-333333333333", status: "PARTIAL", verbatim: "Fictional partial speech", clean: null, words: [], error_code: null, source_audio_fingerprint: "fictional" };
   const parsed = transcriptRunSchema.parse({ run_id: "11111111-1111-4111-8111-111111111111", attempt_id: "22222222-2222-4222-8222-222222222222", cache_key: "fixture", status: "PARTIAL", last_sequence: 1, created_at: "now", responses: [response] });

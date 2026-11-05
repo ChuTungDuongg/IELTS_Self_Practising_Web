@@ -61,7 +61,10 @@ No-match sau final hợp lệ làm stream partial và lưu vùng ASR chưa nhậ
 không tự sửa ngữ pháp hoặc giả phần chưa nghe được. Nhận xét tổng quan không có timestamp.
 
 Speech request đang `ATTEMPTED` khi worker chết/hủy được khóa để tránh gọi lại
-mù; operator cần đối soát trước khi cho phép một request có thể tính phí mới.
+mù. Người làm bài có thể [xác nhận gửi lại đúng các câu bị gián đoạn](speaking-transcription.md#khôi-phục-yêu-cầu-azure-bị-gián-đoạn),
+chấp nhận khả năng request trước đã được xử lý/tính hạn mức; retry thông thường,
+startup và chấm AI không tự cấp quyền này. Checkpoint cũ giữ trong
+`previous_attempts`, và attempt token ngăn worker cũ ghi đè kết quả lần mới.
 Sửa derivative WAV bị mất giữ nguyên ledger này; đổi prompt/feature không gọi lại
 Azure. Cache speech bao gồm hash bytes chuẩn hóa thực tế, source/take fingerprint,
 timeline/normalizer version và provider configuration/SDK identity. Xóa recording
@@ -279,7 +282,10 @@ exhaustion. Safe reason codes distinguish explicit rate/concurrency/quota subcod
 when available; no raw details enter events/UI. The current stream is stopped, the
 remaining responses in that run are marked unavailable with the same code, and no
 second provider/session is tried. Durable failed/partial checkpoints are terminal;
-UI reconnect or explicit retry does not blindly resend potentially billed audio.
+UI reconnect or ordinary retry does not blindly resend potentially billed audio.
+Only interrupted `ATTEMPTED` calls can be resubmitted through the candidate's
+explicit acknowledgement described in the [recovery flow](speaking-transcription.md#khôi-phục-yêu-cầu-azure-bị-gián-đoạn);
+prior attempt history remains durable and terminal failed/partial checkpoints are unchanged.
 A persisted quota checkpoint may need operator reconciliation after service recovery.
 
 See [Microsoft SDK cancellation codes](https://learn.microsoft.com/en-us/python/api/azure-cognitiveservices-speech/azure.cognitiveservices.speech.cancellationerrorcode)

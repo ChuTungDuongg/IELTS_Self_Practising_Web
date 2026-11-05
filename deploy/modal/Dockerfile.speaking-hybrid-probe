@@ -1,15 +1,17 @@
 # Local compatibility probe; does not deploy, load VAD weights, or call Azure.
 FROM python:3.12-slim-bookworm AS native
 RUN apt-get update && apt-get install -y --no-install-recommends libasound2 libssl3 ca-certificates ffmpeg && rm -rf /var/lib/apt/lists/*
-WORKDIR /workspace
-COPY deploy/modal/speaking_cpu.py deploy/modal/speaking_cpu.py
+WORKDIR /
+# Match Modal's Python-source layout without relying on the working directory.
+COPY deploy/modal/speaking_cpu.py /root/deploy/modal/speaking_cpu.py
 RUN python -m pip install --no-cache-dir azure-cognitiveservices-speech==1.53.0 onnxruntime==1.23.2 numpy==2.2.6
-RUN python -m deploy.modal.speaking_cpu
-CMD ["python", "-m", "deploy.modal.speaking_cpu"]
+RUN PYTHONPATH=/root python -m deploy.modal.speaking_cpu
+CMD ["sh", "-c", "PYTHONPATH=/root python -m deploy.modal.speaking_cpu"]
 
 # Optional full FastAPI lifecycle probe against an explicitly isolated test DB.
 # Copy only public source/dependency files: never backend/.env or private recordings.
 FROM native AS backend-startup
+WORKDIR /workspace
 COPY backend/requirements.txt /workspace/backend/requirements.txt
 RUN python -m pip install --no-cache-dir --require-hashes -r /workspace/backend/requirements.txt
 COPY backend/app /workspace/backend/app

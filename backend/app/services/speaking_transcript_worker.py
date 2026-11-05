@@ -161,6 +161,11 @@ class SpeakingTranscriptWorker:
             await repository.append(run, "run.started")
             manifest, identity = run.manifest_json, run.identity_json
             ready = {rid for rid, value in run.responses_json.items() if value["status"] == "READY"}
+            interrupted_retries = {
+                rid
+                for rid, value in run.responses_json.items()
+                if value.get("allow_interrupted_retry") is True
+            }
         heartbeat = asyncio.create_task(self._heartbeat(run_id, token))
         try:
             provider = self.provider
@@ -238,7 +243,11 @@ class SpeakingTranscriptWorker:
                         from app.services.speaking_hybrid import analysis_to_asr
 
                         speech_analysis = await cached_speech_analysis(
-                            self.sessions, audio, self.settings, provider.analyzer
+                            self.sessions,
+                            audio,
+                            self.settings,
+                            provider.analyzer,
+                            allow_interrupted_retry=rid in interrupted_retries,
                         )
                         terminal_error = next(
                             (
@@ -294,15 +303,19 @@ class SpeakingTranscriptWorker:
                 except asyncio.CancelledError:
                     raise
                 except Exception as error:
-                    policy_failure = (
-                        isinstance(error, AppError) and error.code in TERMINAL_AZURE_ERRORS
-                    )
+                    administrative_failure = isinstance(error, AppError) and error.code in {
+                        *TERMINAL_AZURE_ERRORS,
+                        "SPEAKING_ANALYSIS_BILLING_UNKNOWN",
+                        "SPEAKING_ASR_UNAVAILABLE",
+                        "TRANSCRIPT_SOURCE_CHANGED",
+                        "TRANSCRIPT_CONFIGURATION_CHANGED",
+                    }
                     if (
                         audio
                         and quality
                         and quality.assessable
                         and not asr_succeeded
-                        and not policy_failure
+                        and not administrative_failure
                     ):
                         unusable = await await_audio_thread(
                             asyncio.to_thread(
