@@ -218,13 +218,22 @@ class SpeakingBenchmarkService:
                 SpeakingBenchmarkGradingRun,
             )
 
-            uncertain_runs = select(SpeakingBenchmarkGradingCheckpoint.run_id).where(SpeakingBenchmarkGradingCheckpoint.status.in_(["ATTEMPTED", "INTERRUPTED_BILLING_UNKNOWN"]))
+            uncertain_runs = select(SpeakingBenchmarkGradingCheckpoint.run_id).where(
+                SpeakingBenchmarkGradingCheckpoint.status.in_(
+                    ["ATTEMPTED", "INTERRUPTED_BILLING_UNKNOWN"]
+                )
+            )
             runs = list(
                 await self.session.scalars(
                     select(SpeakingBenchmarkGradingRun)
                     .where(
                         SpeakingBenchmarkGradingRun.sample_id == sample_id,
-                        (SpeakingBenchmarkGradingRun.status.in_(["PENDING", "RUNNING", "INTERRUPTED"]) | SpeakingBenchmarkGradingRun.id.in_(uncertain_runs)),
+                        (
+                            SpeakingBenchmarkGradingRun.status.in_(
+                                ["PENDING", "RUNNING", "INTERRUPTED"]
+                            )
+                            | SpeakingBenchmarkGradingRun.id.in_(uncertain_runs)
+                        ),
                     )
                     .with_for_update()
                 )
