@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import Asset, TestCover
 from app.models.classroom_classwork import ClassroomResource
 from app.models.speaking import SpeakingAudioChunk
+from app.models.speaking_benchmark import SpeakingBenchmarkSample
 from app.models.speaking_transcript import SpeakingNormalizedAudio
 from app.models.writing_benchmark import WritingBenchmarkSample
 
@@ -47,6 +48,9 @@ async def compensate_files(session, storage, paths):
                             ),
                             select(WritingBenchmarkSample.task1_image_key).where(
                                 WritingBenchmarkSample.task1_image_key.in_(paths)
+                            ),
+                            select(SpeakingBenchmarkSample.audio_key).where(
+                                SpeakingBenchmarkSample.audio_key.in_(paths)
                             ),
                         )
                     )

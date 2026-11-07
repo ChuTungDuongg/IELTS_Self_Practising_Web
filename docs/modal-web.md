@@ -549,3 +549,8 @@ Timeout bộ chuyên biệt backend mặc định 90 giây, không vượt 120. 
 ## Giới hạn xác minh P4 ngoại tuyến
 
 Kiểm thử ghép ứng dụng/runtime giả lập Modal SDK, tiến trình con và thăm dò mạng. Chúng xác minh topology, Secrets, lựa chọn migration, thứ tự dừng và hợp đồng proxy. Chúng không triển khai Web, chạy GPU, migration thật, đo độ bền Volume hoặc chứng minh kết nối cơ sở dữ liệu/bucket đang chạy. Xem [bốn cấu hình triển khai và hướng dẫn EC2](aws-deployment.md), [tiến độ chuyển đổi lưu trữ](storage-portability-work-in-progress.md).
+
+
+## Admin Speaking Benchmark CPU worker
+
+The [Phase 1 lab](testing/admin-speaking-benchmark.md) queues PostgreSQL jobs; it does not add diarization/native libraries to this Web image. The separate CPU container entrypoint requires external PostgreSQL and shared R2/S3 storage. Existing embedded PostgreSQL/local Volumes are not remotely shared: queue readiness rejects that incompatible topology. No automatic database cutover, model download, GPU start or Modal deployment occurs. See the lab guide for the bounded worker command, persistent private cache and unverified cloud limitations.

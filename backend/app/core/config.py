@@ -41,6 +41,14 @@ class Settings(BaseSettings):
     aws_session_token: SecretStr | None = Field(default=None, repr=False)
     max_image_upload_mb: int = Field(default=10, gt=0)
     max_audio_upload_mb: int = Field(default=100, gt=0)
+    speaking_benchmark_max_upload_mb: int = Field(default=100, ge=1, le=128)
+    speaking_benchmark_max_duration_seconds: int = Field(default=1200, ge=1, le=1800)
+    speaking_benchmark_execution: Literal["local", "remote", "disabled"] = "local"
+    speaking_benchmark_diarization_python: str = ""
+    speaking_benchmark_model_dir: str = ""
+    speaking_benchmark_threads: int = Field(default=2, ge=1, le=8)
+    speaking_benchmark_memory_mb: int = Field(default=4096, ge=512, le=32768)
+    speaking_benchmark_timeout_seconds: int = Field(default=3600, ge=5, le=7200)
     speaking_max_chunk_bytes: int = Field(default=2 * 1024 * 1024, ge=1024, le=10 * 1024 * 1024)
     speaking_max_response_bytes: int = Field(default=32 * 1024 * 1024, ge=1024)
     speaking_recovery_window_seconds: int = Field(default=45, ge=10, le=120)

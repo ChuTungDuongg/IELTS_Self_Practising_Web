@@ -1,4 +1,7 @@
+import { speakingLabEn } from "./speaking-benchmark-messages";
+
 export const en = {
+  ...speakingLabEn,
   "cover.loadFailed": "Could not load the test cover.",
   "cover.title": "Test cover",
   "cover.help": "PNG, JPEG or WebP, up to 10 MB.",

@@ -414,6 +414,9 @@ dependencies = [
 azure-speech = [
     { name = "azure-cognitiveservices-speech" },
 ]
+benchmark-cpu = [
+    { name = "psutil" },
+]
 speech = [
     { name = "faster-whisper" },
 ]
@@ -442,12 +445,13 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.28,<1" },
     { name = "numpy", marker = "extra == 'speech-vad'", specifier = "==2.2.6" },
     { name = "onnxruntime", marker = "extra == 'speech-vad'", specifier = "==1.23.2" },
+    { name = "psutil", marker = "extra == 'benchmark-cpu'", specifier = "==7.2.2" },
     { name = "pydantic-settings", specifier = ">=2.10,<3" },
     { name = "python-multipart", specifier = ">=0.0.20,<1" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.40,<3" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.37,<1" },
 ]
-provides-extras = ["speech", "azure-speech", "speech-vad"]
+provides-extras = ["speech", "azure-speech", "speech-vad", "benchmark-cpu"]
 
 [package.metadata.requires-dev]
 dev = [

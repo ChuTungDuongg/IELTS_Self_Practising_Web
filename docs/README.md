@@ -37,6 +37,7 @@ Không cần đọc mọi kế hoạch lịch sử. Khi thay đổi Speaking v�
 | Triển khai nghiệp vụ | [danh mục mô-đun](handbook/module-catalog.md) | [mục lục API/model/trang](handbook/source-map.md) |
 | AI Writing | [AI Writing](ai-writing.md) | [OpenAI GPT-6 Luna: local/Modal CPU/AWS](ai-writing.md#openai-gpt6-luna), [ngân hàng benchmark](writing-benchmark-bank.md) |
 | AI/runtime Speaking | [AI Speaking](ai-speaking.md) | [ghi âm](speaking-recording.md), [chép lời](speaking-transcription.md), [chấm điểm](speaking-grading.md), [replay MP3/WAV offline và live opt-in](testing/speaking-audio-replay.md) |
+| Admin Speaking Benchmark Lab | [Phase 1: dataset, CPU worker và review](testing/admin-speaking-benchmark.md) | upload riêng tư, phân tách người nói CPU, manifest được duyệt, nhãn người chấm; chưa có paid scoring |
 | Lưu trữ | [kiến trúc](storage-architecture.md) | [di chuyển](storage-migration.md), [sao lưu](storage-backup-restore.md) |
 | Chuyển dữ liệu / import bản nháp | [hợp đồng ZIP](TEST_TRANSFER_FORMAT.md) | [hợp đồng JSON bản nháp](draft-import-format.md) |
 | Chính sách lớp học | [hướng dẫn mô-đun](modules/classrooms.md) | [lịch bài giao](classroom-assignment-scheduling.md), [sổ điểm](classroom-gradebook.md), [học tập](classroom-learning-analytics.md), [lưu trữ/xóa](classroom-archive-calendar.md) |

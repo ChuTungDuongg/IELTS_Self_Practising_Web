@@ -89,3 +89,8 @@ The automatically discovered decoder was additionally exercised on a synthetic o
 ffprobe/normalization succeeded, source SHA stayed unchanged, no provider was called.
 Linux-specific DLL bypass is covered deterministically; Docker verification was unavailable
 because Docker Desktop's daemon was stopped. Package pins/lockfiles were not changed.
+
+
+## Persistent admin lab worker
+
+The [Speaking Benchmark Lab](../../docs/testing/admin-speaking-benchmark.md) reuses this pinned CPU subprocess from a separate PostgreSQL worker: from `backend/`, run `uv run --locked python ../scripts/speaking_benchmark_worker.py`. It never installs this environment into FastAPI/Modal Web. The API packages a small identity-only JSON copy; a deterministic test checks it matches `model.json`. No weights or native libraries are included there. Remote workers require external PostgreSQL and shared private R2/S3 plus a persistent pre-provisioned model cache.

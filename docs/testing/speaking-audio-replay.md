@@ -688,3 +688,8 @@ ffprobe/normalize thành công, PCM mono 16 kHz, SHA nguồn giữ nguyên. Nati
 với network fence và không có DLL override đã pass. Linux DLL bypass có contract test;
 chưa chạy lại container Linux vì Docker Desktop daemon đang tắt. Ruff/format và isolated
 lock check pass; không đổi dependency pins. Không có HF download hay Azure/OpenAI request.
+
+
+## Admin dataset preparation (Phase 1)
+
+[Speaking Benchmark Lab](admin-speaking-benchmark.md) adds owner-scoped private upload, a separate durable CPU worker, native speaker/timestamp review and human-label revisions. Its approval invokes the same pure `approved_manifest` policy as this CLI. Original regular/exclusive timelines and source SHA remain bound to the approved revision. The CLI and its live/billing gates remain unchanged. The lab supplies no paid grading or evaluation export.

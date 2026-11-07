@@ -14,6 +14,7 @@ from app.core.exceptions import AppError
 from app.models import Asset, TestCover
 from app.models.classroom_classwork import ClassroomResource
 from app.models.speaking import SpeakingAudioChunk, SpeakingAudioSegment, SpeakingMediaCleanup
+from app.models.speaking_benchmark import SpeakingBenchmarkSample
 from app.models.speaking_transcript import SpeakingNormalizedAudio
 from app.models.writing_benchmark import WritingBenchmarkSample
 from app.storage.base import AssetStorage
@@ -45,6 +46,13 @@ async def inventory_references(session) -> list[AssetReference]:
     intentionally include unused builder uploads: they still belong to a version.
     """
     statements = (
+        select(
+            SpeakingBenchmarkSample.audio_key,
+            literal("speaking_benchmark"),
+            SpeakingBenchmarkSample.byte_size,
+            SpeakingBenchmarkSample.source_sha256,
+            SpeakingBenchmarkSample.mime_type,
+        ),
         select(
             Asset.relative_path,
             literal("test_asset"),
@@ -123,6 +131,7 @@ def reference_map(references):
 async def inventory_referenced_keys(session) -> list[str]:
     """Inventory only referenced objects; cleanup-outbox rows are not live references."""
     columns = (
+        SpeakingBenchmarkSample.audio_key,
         Asset.relative_path,
         TestCover.relative_path,
         ClassroomResource.storage_key,

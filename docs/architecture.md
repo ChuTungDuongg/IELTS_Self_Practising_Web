@@ -38,6 +38,16 @@ lease, retry-consent và authorization hiện có; không có domain mutation t�
 candidate windows đã duyệt, cần provider selection/budget/live permission tường minh,
 không được import/deploy GPU service từ CPU graph. [Cấu hình và rollback](speaking-transcription.md#independent-lexical-asr).
 
+## Admin Speaking Benchmark dataset
+
+Admin Speaking Benchmark Phase 1 là module riêng tại `/admin/speaking-benchmark`, có
+owner scope bổ sung ngoài ADMIN, dữ liệu PostgreSQL/revision append-only và audio
+AssetStorage riêng tư. HTTP chỉ enqueue; worker PostgreSQL lease chạy riêng và gọi
+Community-1 trong subprocess CPU đã pin. Web không import/install Torch/Pyannote.
+Approval dùng chung policy của replay CLI; nhãn người chấm không đi vào inference.
+Remote worker yêu cầu PostgreSQL ngoài và R2/S3 chung; Modal embedded/local Volume
+không được coi là storage chia sẻ. Xem [sơ đồ, API và vận hành](testing/admin-speaking-benchmark.md).
+
 ## Styling frontend
 
 - `globals.css` sở hữu resets, account accent preferences và exam-specific defaults.

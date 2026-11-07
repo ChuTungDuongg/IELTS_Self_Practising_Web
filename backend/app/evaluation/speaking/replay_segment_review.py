@@ -248,13 +248,12 @@ def update_review(
     return generate_proposals(root, state=state)
 
 
-def approve_segments(root, settings):
-    bundle = generate_proposals(root)
-    data, results = load_diarization(root)
-    state = load_state(root, data["identity"])
-    if bundle.role_verification != "confirmed":
+def approved_manifest(
+    results, selected, *, roles_confirmed, acknowledged, max_response_ms, long_turn_id
+):
+    """Shared CLI/web policy. Source bytes and revision authorization belong to the caller."""
+    if not roles_confirmed:
         raise BenchmarkInputError("REPLAY_SPEAKER_NOT_VERIFIED")
-    selected = [p for p in bundle.segments if p.selected]
     if not selected:
         raise BenchmarkInputError("REPLAY_NO_CANDIDATE_RESPONSES")
     for proposal in selected:
@@ -266,24 +265,22 @@ def approve_segments(root, settings):
             for t in result.regular
         ):
             raise BenchmarkInputError("REPLAY_SEGMENT_OUTSIDE_CANDIDATE_SUPPORT")
-        if any(
+        if other_overlap(result, proposal.speaker_id, proposal.start_ms, proposal.end_ms) or any(
             f in proposal.flags for f in ("OTHER_SPEAKER_OVERLAP", "PART_BOUNDARY_INSIDE_RESPONSE")
         ):
             raise BenchmarkInputError("REPLAY_AMBIGUOUS_OR_OVERLAPPING_SEGMENT")
-        if "LONG_SILENCE_REVIEW" in proposal.flags and proposal.id not in state.acknowledged:
+        if "LONG_SILENCE_REVIEW" in proposal.flags and proposal.id not in acknowledged:
             raise BenchmarkInputError("REPLAY_LONG_SILENCE_REVIEW_REQUIRED")
         if not proposal.part_verified or proposal.part_number is None:
             raise BenchmarkInputError("REPLAY_PART_BOUNDARIES_NOT_VERIFIED")
         if not proposal.prompt_verified or not proposal.prompt_text.strip():
             raise BenchmarkInputError("REPLAY_PROMPT_CONTEXT_REQUIRED")
-        if proposal.end_ms - proposal.start_ms > settings.speaking_max_decoded_seconds * 1000:
+        if not 0 <= proposal.start_ms < proposal.end_ms <= result.duration_ms:
+            raise BenchmarkInputError("REPLAY_SEGMENT_RANGE_INVALID")
+        if proposal.end_ms - proposal.start_ms > max_response_ms:
             raise BenchmarkInputError("REPLAY_RESPONSE_DURATION_EXCEEDED")
-    sources = {r.source: r.source_sha256 for r in results}
-    for name, checksum in sources.items():
-        if probe_audio(resolve_source(root, name), settings)["sha256"] != checksum:
-            raise BenchmarkInputError("REPLAY_DIARIZATION_SOURCE_CHANGED_RERUN_AUTO_SEGMENT")
-    part2 = [p for p in selected if p.part_number == 2]
-    long_turn = max(part2, key=lambda p: p.end_ms - p.start_ms).id if part2 else None
+    if long_turn_id not in {p.id for p in selected if p.part_number == 2}:
+        raise BenchmarkInputError("REPLAY_FULL_ATTEMPT_PARTS_REQUIRED")
     manifest = ReplayManifest(
         candidate_only_verified=True,
         segments=[
@@ -294,7 +291,7 @@ def approve_segments(root, settings):
                 start_ms=p.start_ms,
                 end_ms=p.end_ms,
                 prompt_type="LONG_TURN"
-                if p.id == long_turn
+                if p.id == long_turn_id
                 else "FOLLOW_UP"
                 if p.part_number == 3
                 else "SHORT_ANSWER",
@@ -308,6 +305,27 @@ def approve_segments(root, settings):
     )
     if manifest.grading_limitations():
         raise BenchmarkInputError("REPLAY_" + manifest.grading_limitations()[0])
+    return manifest
+
+
+def approve_segments(root, settings):
+    bundle = generate_proposals(root)
+    data, results = load_diarization(root)
+    state = load_state(root, data["identity"])
+    selected = [p for p in bundle.segments if p.selected]
+    part2 = [p for p in selected if p.part_number == 2]
+    manifest = approved_manifest(
+        results,
+        selected,
+        roles_confirmed=bundle.role_verification == "confirmed",
+        acknowledged=state.acknowledged,
+        max_response_ms=settings.speaking_max_decoded_seconds * 1000,
+        long_turn_id=max(part2, key=lambda p: p.end_ms - p.start_ms).id if part2 else None,
+    )
+    sources = {r.source: r.source_sha256 for r in results}
+    for name, checksum in sources.items():
+        if probe_audio(resolve_source(root, name), settings)["sha256"] != checksum:
+            raise BenchmarkInputError("REPLAY_DIARIZATION_SOURCE_CHANGED_RERUN_AUTO_SEGMENT")
     existing = root / "segments.json"
     if existing.exists():
         old = read_json(existing, ReplayManifest)

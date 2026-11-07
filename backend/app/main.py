@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.router import api_router
+from app.core.benchmark_upload_limit import BenchmarkUploadLimit
 from app.core.config import get_settings
 from app.core.database import SessionFactory
 from app.core.exceptions import AppError, app_error_handler
@@ -51,6 +52,11 @@ if os.environ.get("IELTS_MODAL_WEB_TIMINGS", "").lower() in {"1", "true", "yes"}
     from app.core.request_timing import RequestTimingMiddleware
 
     app.add_middleware(RequestTimingMiddleware)
+app.add_middleware(
+    BenchmarkUploadLimit,
+    max_bytes=settings.speaking_benchmark_max_upload_mb * 1024**2,
+    prefix=settings.api_v1_prefix,
+)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[settings.frontend_origin],

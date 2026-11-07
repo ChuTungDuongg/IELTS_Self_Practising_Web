@@ -61,7 +61,11 @@ def temporary_workspace():
 
 
 def model_identity():
-    return json.loads((TOOL / "model.json").read_text(encoding="utf-8"))
+    # Tiny identity metadata is packaged with the API; the optional tool runtime,
+    # weights and native dependencies remain outside the Web deployment.
+    return json.loads(
+        Path(__file__).with_name("diarization_model.json").read_text(encoding="utf-8")
+    )
 
 
 def offline_environment(*, setup_token=None, threads=2, device="cpu"):
@@ -151,6 +155,7 @@ class LocalDiarizer:
         device="cpu",
         timeout=1800,
         memory_mb=4096,
+        should_cancel=None,
     ):
         self.python = (
             Path(python)
@@ -179,6 +184,7 @@ class LocalDiarizer:
             "memory_mb": memory_mb,
         }
         self.identity = model_identity()
+        self.should_cancel = should_cancel
 
     def _run(self, operation, *, audio=None, token=None):
         if not self.python.is_file():
@@ -235,6 +241,8 @@ class LocalDiarizer:
                 except psutil.NoSuchProcess:
                     monitor = None
                 while process.poll() is None:
+                    if self.should_cancel is not None and self.should_cancel():
+                        raise BenchmarkInputError("REPLAY_DIARIZATION_CANCELLED")
                     if time.monotonic() - started > self.config["timeout"]:
                         raise BenchmarkInputError(
                             "REPLAY_DIARIZATION_TIMEOUT_MANUAL_WORKFLOW_AVAILABLE"

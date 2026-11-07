@@ -1,6 +1,8 @@
 import type { TranslationDictionary } from "./types";
+import { speakingLabVi } from "./speaking-benchmark-messages";
 
 export const vi = {
+  ...speakingLabVi,
   "cover.loadFailed": "Không thể tải ảnh bìa của đề.",
   "cover.title": "Ảnh bìa đề",
   "cover.help": "PNG, JPEG hoặc WebP, tối đa 10 MB.",

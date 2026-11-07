@@ -1,0 +1,14 @@
+{
+  "model": "pyannote/speaker-diarization-community-1",
+  "revision": "3533c8cf8e369892e6b79ff1bf80f7b0286a54ee",
+  "adapter": "local-community1-v1",
+  "normalization": "diarization-pcm16k-mono-v1",
+  "versions": {
+    "pyannote.audio": "4.0.7",
+    "torch": "2.8.0",
+    "torchaudio": "2.8.0",
+    "torchcodec": "0.7.0",
+    "huggingface-hub": "0.36.0",
+    "numpy": "2.2.6"
+  }
+}

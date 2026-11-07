@@ -34,3 +34,8 @@ Hiệu năng/mở rộng là chủ đề xuyên suốt: [khảo sát khả năng
 Mọi mô-đun trong bảng đều có mã, tuyến và tệp test hiện hữu. AI/OAuth/cloud/nhắc hạn tùy cấu hình; không phải tất cả đang bật trong một lần triển khai. RAG/pgvector, thanh toán, gửi email/hiện diện thời gian thực chưa được xác nhận là khả năng hiện hành. Bộ chấm AI cũ dưới evaluation là ứng viên benchmark thử nghiệm/lịch sử, không phải runtime mặc định.
 
 [Ma trận bao phủ](../DOCUMENTATION_COVERAGE.md) ghi Partial/Not verified, không báo 100%. [Hướng dẫn phát triển](feature-development-playbook.md) chỉ cách thay đổi, [bản đồ mã nguồn](source-map.md) giúp tra endpoint chính xác.
+
+
+### Admin Speaking Benchmark Lab — Phase 1 addition
+
+Owner: `api/v1/speaking_benchmark.py` → `services/speaking_benchmark*.py` → `models/speaking_benchmark.py`, typed client and `features/speaking-benchmark/`. Separate entrypoint: `scripts/speaking_benchmark_worker.py`; native boundary: existing local Community-1 tool. [Schema, architecture and operational contract](../testing/admin-speaking-benchmark.md). This dataset preparation module is separate from learner Speaking and Writing Benchmark.

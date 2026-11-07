@@ -19,6 +19,7 @@ dependencies = [
 speech = ["faster-whisper>=1.2,<2"]
 azure-speech = ["azure-cognitiveservices-speech==1.53.0"]
 speech-vad = ["onnxruntime==1.23.2", "numpy==2.2.6"]
+benchmark-cpu = ["psutil==7.2.2"]
 
 [dependency-groups]
 dev = [

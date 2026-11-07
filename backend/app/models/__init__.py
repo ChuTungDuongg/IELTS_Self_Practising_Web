@@ -48,6 +48,12 @@ from app.models.speaking import (
     SpeakingResponseTake,
 )
 from app.models.speaking_ai import SpeakingAIGradingEvent, SpeakingAIGradingRun
+from app.models.speaking_benchmark import (
+    SpeakingBenchmarkHumanLabel,
+    SpeakingBenchmarkJob,
+    SpeakingBenchmarkReview,
+    SpeakingBenchmarkSample,
+)
 from app.models.speaking_transcript import (
     SpeakingNormalizedAudio,
     SpeakingTranscript,
@@ -62,6 +68,10 @@ from app.models.writing_ai import (
 from app.models.writing_benchmark import WritingBenchmarkSample
 
 __all__ = [
+    "SpeakingBenchmarkSample",
+    "SpeakingBenchmarkJob",
+    "SpeakingBenchmarkReview",
+    "SpeakingBenchmarkHumanLabel",
     "ClassroomLearningPlan",
     "ClassroomLearningPlanItem",
     "ClassroomStaff",

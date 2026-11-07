@@ -29,3 +29,8 @@ Thao tác đối tượng dùng bộ đệm đọc 1 MiB, 1–8 worker sao chép
 Việc đưa dữ liệu đám mây xuống tệp tạm luôn tường minh và có giới hạn. Tác vụ SDK/PG/tệp gây chặn chạy ngoài luồng điều phối cơ sở dữ liệu bất đồng bộ; khi hủy, công cụ chờ tác vụ dump/ghi archive đang chạy kết thúc trước khi giải phóng snapshot đã xuất. Không thêm thao tác liệt kê bucket vào khởi động ứng dụng, tuyến HTTP hoặc worker.
 
 Xem [di chuyển](storage-migration.md), [sao lưu/khôi phục](storage-backup-restore.md), [Modal](modal-web.md), [AWS](aws-deployment.md) và [trạng thái xác minh](storage-portability-work-in-progress.md). Xác minh ngoại tuyến tách biệt với IAM/R2/Modal thực tế, TLS/mạng và diễn tập khôi phục production. Thay đổi Settings không tự động di chuyển dữ liệu.
+
+
+## Private Speaking Benchmark recordings
+
+The [admin lab](testing/admin-speaking-benchmark.md) stores original MP3/WAV under opaque `benchmark/speaking/<sample UUID>/<random UUID>.<extension>` keys through AssetStorage. Keys never appear in DTOs or public Asset routes. Owner-scoped authenticated Range delivery serves the original bytes. Samples and SHA/size/duration metadata live in PostgreSQL; derived decode files are temporary. Inventory/backup/compensation recognize these keys. Upload reservations and sample deletion use the durable media-cleanup outbox with a one-hour grace and reference checks. Failed cleanup remains retryable.

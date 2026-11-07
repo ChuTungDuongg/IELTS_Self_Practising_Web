@@ -401,7 +401,7 @@ async def test_bank_bundle_fake_cli_pipeline(db_session, tmp_path, monkeypatch):
         }
         assert "human_scores" not in json.dumps(providers[-1].calls, default=str)
     assert await learner_counts() == before
-    assert [name for name in Base.metadata.tables if "benchmark" in name] == [
+    assert [name for name in Base.metadata.tables if name.startswith("writing_benchmark_")] == [
         "writing_benchmark_samples"
     ]
     await repeated_cancel_snapshot(tmp_path, monkeypatch)

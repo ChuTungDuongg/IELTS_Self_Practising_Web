@@ -3,6 +3,7 @@
 import hashlib
 import json
 from contextlib import nullcontext
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
@@ -110,13 +111,20 @@ async def queue_media_cleanup(session, attempt_ids):
 
 
 async def drain_media_cleanup(session, *, storage=None):
+    from app.models.speaking_benchmark import SpeakingBenchmarkSample
     from app.models.speaking_transcript import SpeakingNormalizedAudio
 
     storage = storage or get_asset_storage(get_settings())
     async with session.begin():
         jobs = list(
             await session.scalars(
-                select(SpeakingMediaCleanup).with_for_update(skip_locked=True).limit(100)
+                select(SpeakingMediaCleanup)
+                .where(
+                    ~SpeakingMediaCleanup.storage_key.startswith("benchmark/speaking/")
+                    | (SpeakingMediaCleanup.created_at < datetime.now(UTC) - timedelta(hours=1))
+                )
+                .with_for_update(skip_locked=True)
+                .limit(100)
             )
         )
         for job in jobs:
@@ -130,7 +138,12 @@ async def drain_media_cleanup(session, *, storage=None):
                 .where(SpeakingNormalizedAudio.storage_key == job.storage_key)
                 .limit(1)
             )
-            if referenced is None and derived is None:
+            benchmark = await session.scalar(
+                select(SpeakingBenchmarkSample.id)
+                .where(SpeakingBenchmarkSample.audio_key == job.storage_key)
+                .limit(1)
+            )
+            if referenced is None and derived is None and benchmark is None:
                 await storage_io(storage.delete, job.storage_key)
             await session.delete(job)
 
