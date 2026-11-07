@@ -116,6 +116,12 @@ async def drain_media_cleanup(session, *, storage=None):
 
     storage = storage or get_asset_storage(get_settings())
     async with session.begin():
+        # Retain hidden tombstones longer than all supported provider timeouts.
+        # Their media cleanup reservation is already durable and retryable.
+        expired_benchmarks = await session.scalars(select(SpeakingBenchmarkSample).where(SpeakingBenchmarkSample.deletion_pending_at < datetime.now(UTC) - timedelta(hours=1)).with_for_update(skip_locked=True).limit(100))
+        for sample in expired_benchmarks:
+            await session.delete(sample)
+        await session.flush()
         jobs = list(
             await session.scalars(
                 select(SpeakingMediaCleanup)

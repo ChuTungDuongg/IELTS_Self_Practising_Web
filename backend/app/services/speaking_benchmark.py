@@ -60,6 +60,7 @@ class SpeakingBenchmarkService:
         query = select(SpeakingBenchmarkSample).where(
             SpeakingBenchmarkSample.id == sample_id,
             SpeakingBenchmarkSample.owner_id == self.owner_id,
+            SpeakingBenchmarkSample.deletion_pending_at.is_(None),
         )
         row = await self.session.scalar(query.with_for_update() if lock else query)
         if row is None:
@@ -88,7 +89,9 @@ class SpeakingBenchmarkService:
 
     async def list(self, offset, limit):
         async with self.session.begin():
-            scope = SpeakingBenchmarkSample.owner_id == self.owner_id
+            scope = (
+                SpeakingBenchmarkSample.owner_id == self.owner_id
+            ) & SpeakingBenchmarkSample.deletion_pending_at.is_(None)
             total = await self.session.scalar(
                 select(func.count()).select_from(SpeakingBenchmarkSample).where(scope)
             )
@@ -210,8 +213,55 @@ class SpeakingBenchmarkService:
         async with self.session.begin():
             row = await self.owned(sample_id, lock=True)
             check_revision(row.revision, expected_revision)
+            from app.models.speaking_benchmark_grading import (
+                SpeakingBenchmarkGradingCheckpoint,
+                SpeakingBenchmarkGradingRun,
+            )
+
+            uncertain_runs = select(SpeakingBenchmarkGradingCheckpoint.run_id).where(SpeakingBenchmarkGradingCheckpoint.status.in_(["ATTEMPTED", "INTERRUPTED_BILLING_UNKNOWN"]))
+            runs = list(
+                await self.session.scalars(
+                    select(SpeakingBenchmarkGradingRun)
+                    .where(
+                        SpeakingBenchmarkGradingRun.sample_id == sample_id,
+                        (SpeakingBenchmarkGradingRun.status.in_(["PENDING", "RUNNING", "INTERRUPTED"]) | SpeakingBenchmarkGradingRun.id.in_(uncertain_runs)),
+                    )
+                    .with_for_update()
+                )
+            )
             self.session.add(SpeakingMediaCleanup(storage_key=row.audio_key))
-            await self.session.delete(row)
+            if runs:
+                row.deletion_pending_at = datetime.now(UTC)
+                for run in runs:
+                    if run.status in {"COMPLETED", "PARTIAL", "FAILED", "CANCELLED"}:
+                        continue
+                    run.status, run.stage, run.finished_at = (
+                        "CANCELLED",
+                        "sample_deleted",
+                        datetime.now(UTC),
+                    )
+                    run.lease_token, run.lease_expires_at = None, None
+                    for attempt in await self.session.scalars(
+                        select(SpeakingBenchmarkGradingCheckpoint).where(
+                            SpeakingBenchmarkGradingCheckpoint.run_id == run.id,
+                            SpeakingBenchmarkGradingCheckpoint.status == "ATTEMPTED",
+                        )
+                    ):
+                        attempt.status = "INTERRUPTED_BILLING_UNKNOWN"
+                for job in await self.session.scalars(
+                    select(SpeakingBenchmarkJob).where(
+                        SpeakingBenchmarkJob.sample_id == sample_id,
+                        SpeakingBenchmarkJob.status.in_(["PENDING", "RUNNING"]),
+                    )
+                ):
+                    job.status, job.stage, job.finished_at = (
+                        "CANCELLED",
+                        "sample_deleted",
+                        datetime.now(UTC),
+                    )
+                    job.lease_token, job.lease_expires_at = None, None
+            else:
+                await self.session.delete(row)
 
     async def review_row(self, sample, revision=None):
         row = await self.session.get(

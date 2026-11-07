@@ -15,6 +15,7 @@ import { GroundTruthForm } from "./ground-truth-form";
 import { DiarizationJobStatus } from "./job-status";
 import { ApprovalControls } from "./approval-controls";
 import { SampleMetadataEditor } from "./metadata-editor";
+import { SpeakingEvaluation } from "./evaluation/speaking-evaluation";
 import styles from "./lab.module.css";
 
 export function SpeakingBenchmarkDetail({ sampleId }: { sampleId: string }) {
@@ -63,6 +64,7 @@ export function SpeakingBenchmarkDetail({ sampleId }: { sampleId: string }) {
       </div>
       <aside className={styles.stack}><DiarizationJobStatus sampleId={sampleId} generation={generation} onFinished={finished} /><GroundTruthForm key={`${sampleId}:${labels.revision}:${reloadGeneration}`} disabled={busy || metadataDirty} sampleId={sampleId} initial={labels} onDirty={value => { dirtyRef.current = dirty || value || metadataDirty; setLabelDirty(value); }} onSaved={async value => { const current = await api.getSpeakingSample(sampleId); setSample(current); setLabels(value); }} /><SampleMetadataEditor key={`${sample.revision}:${reloadGeneration}`} sample={sample} disabled={busy || dirty || labelDirty} onDirty={value => { dirtyRef.current = dirty || labelDirty || value; setMetadataDirty(value); }} onSaved={setSample} /></aside>
     </div>
+    <SpeakingEvaluation sampleId={sampleId} labelRevision={labels.revision} onPlay={(start_ms, end_ms) => playback.play([{ start_ms, end_ms }])} />
     <ConfirmDialog open={dialog !== null} title={t(dialog === "approve" ? "speakingLab.approve" : dialog === "delete" ? "speakingLab.delete" : dialog === "suggest" ? "speakingLab.suggest" : "speakingLab.reload")} description={t(dialog === "approve" ? "speakingLab.approveConfirm" : dialog === "delete" ? "speakingLab.deleteConfirm" : dialog === "suggest" ? "speakingLab.suggestConfirm" : "speakingLab.discardConfirm")} confirmLabel={t("speakingLab.confirm")} pending={busy} errorMessage={error || undefined} onCancel={() => setDialog(null)} onConfirm={() => void confirm()} />
   </>;
 }

@@ -23,6 +23,8 @@ from app.api.v1 import (
     speaking,
     speaking_ai,
     speaking_benchmark,
+    speaking_benchmark_grading,
+    speaking_benchmark_reports,
     test_sessions,
     tests,
     transfer,
@@ -50,6 +52,8 @@ api_router.include_router(speaking.router)
 api_router.include_router(speaking.runtime_router)
 api_router.include_router(speaking_ai.router)
 api_router.include_router(speaking_benchmark.router)
+api_router.include_router(speaking_benchmark_grading.router)
+api_router.include_router(speaking_benchmark_reports.router)
 api_router.include_router(listening.router)
 api_router.include_router(writing.router)
 api_router.include_router(writing_ai.router)

@@ -1,7 +1,9 @@
 import { speakingLabEn } from "./speaking-benchmark-messages";
+import { speakingEvaluationEn } from "./speaking-benchmark-evaluation-messages";
 
 export const en = {
   ...speakingLabEn,
+  ...speakingEvaluationEn,
   "cover.loadFailed": "Could not load the test cover.",
   "cover.title": "Test cover",
   "cover.help": "PNG, JPEG or WebP, up to 10 MB.",

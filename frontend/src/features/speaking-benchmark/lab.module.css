@@ -31,5 +31,8 @@
 .check input { flex-shrink: 0; margin-top: 4px; }
 .status { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
 .status progress { width: min(240px, 100%); }
+.evaluationTable { table-layout: fixed; }
+.evaluationTable th, .evaluationTable td { overflow-wrap: anywhere; }
 @media (max-width: 1000px) { .layout { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 560px) { .fields { grid-template-columns: minmax(0, 1fr); } .panel { padding: 16px; } .lane { grid-template-columns: minmax(0, 1fr); } .table th:nth-child(3), .table td:nth-child(3) { display: none; } }
+@media (max-width: 560px) { .evaluationTable th:nth-child(3), .evaluationTable td:nth-child(3) { display: table-cell; } }

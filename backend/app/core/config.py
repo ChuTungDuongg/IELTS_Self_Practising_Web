@@ -44,6 +44,9 @@ class Settings(BaseSettings):
     speaking_benchmark_max_upload_mb: int = Field(default=100, ge=1, le=128)
     speaking_benchmark_max_duration_seconds: int = Field(default=1200, ge=1, le=1800)
     speaking_benchmark_execution: Literal["local", "remote", "disabled"] = "local"
+    speaking_benchmark_grading_enabled: bool = False
+    speaking_benchmark_grading_allow_live: bool = False
+    speaking_benchmark_report_max_rows: int = Field(default=10000, ge=1, le=100000)
     speaking_benchmark_diarization_python: str = ""
     speaking_benchmark_model_dir: str = ""
     speaking_benchmark_threads: int = Field(default=2, ge=1, le=8)

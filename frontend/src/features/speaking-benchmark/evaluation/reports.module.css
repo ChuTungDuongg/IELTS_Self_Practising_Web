@@ -1,0 +1,22 @@
+.filters { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 16px; margin-block: 20px; }
+.counts { display: flex; flex-wrap: wrap; gap: 32px; padding-block: 20px; border-block: 1px solid var(--line); margin-block: 20px; }
+.counts dt { color: var(--muted); font-size: 14px; }
+.counts dd { font-size: 28px; margin: 4px 0 0; font-variant-numeric: tabular-nums; }
+.charts { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 24px; }
+.charts figure { min-width: 0; margin: 0; border-top: 1px solid var(--line); padding-top: 16px; }
+.charts figcaption { font-weight: 600; }
+.charts svg { display: block; width: 100%; max-height: 240px; }
+.charts text { fill: var(--muted); font-size: 11px; }
+.charts p { color: var(--muted); font-size: 13px; }
+.ai { fill: var(--accent); }
+.human { fill: transparent; stroke: var(--ink); stroke-width: 1; }
+.humanKey { color: var(--ink); }
+.axis { stroke: var(--line); }
+.reference { stroke: var(--muted); stroke-dasharray: 4; opacity: .5; }
+.chartTable { grid-column: 1 / -1; }
+.tableWrap { overflow-x: auto; }
+.tableWrap table th:nth-child(3), .tableWrap table td:nth-child(3) { display: table-cell; }
+.tableWrap td:not(:first-child), .tableWrap th:not(:first-child) { text-align: end; }
+.errorBar { display: block; height: 4px; background: var(--accent); max-width: 100%; margin-top: 6px; }
+@media(max-width: 1000px) { .filters { grid-template-columns: repeat(2,minmax(0,1fr)); } .charts { grid-template-columns: 1fr; } }
+@media(max-width: 560px) { .filters { grid-template-columns: 1fr; } .counts { gap: 20px; } }

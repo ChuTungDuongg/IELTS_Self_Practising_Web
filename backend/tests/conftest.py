@@ -16,6 +16,8 @@ from app.models import Attempt, TestSession, User
 from app.models.enums import UserRole
 from testsupport.test_database import validate_test_database_url
 
+pytest_plugins = ["speaking_benchmark_grading_helpers"]
+
 
 @pytest_asyncio.fixture
 async def isolated_db_session() -> AsyncIterator[AsyncSession]:

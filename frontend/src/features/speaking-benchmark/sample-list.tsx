@@ -16,7 +16,17 @@ export function SpeakingBenchmarkList() {
   const load = useCallback(async () => { try { const [page, ready] = await Promise.all([listSpeakingSamples(offset), speakingAvailability()]); setError(""); setRows(page.items); setTotal(page.total); setAvailable(ready); } catch (failure) { setError(labError(failure, t)); } finally { setLoading(false); } }, [offset, t]);
   useEffect(() => { void Promise.resolve().then(load); }, [load]);
   return <>
-    <PageHeading eyebrow={t("admin.administration")} title={t("speakingLab.title")} description={t("speakingLab.description")} action={<Link className="btn btn-secondary" href="/admin/writing-benchmark">{t("benchmark.title")}</Link>} />
+    <PageHeading
+      eyebrow={t("admin.administration")}
+      title={t("speakingLab.title")}
+      description={t("speakingLab.description")}
+      action={
+        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+          <Link className="btn btn-primary" href="/admin/speaking-benchmark/reports">{t("speakingEval.reports")}</Link>
+          <Link className="btn btn-secondary" href="/admin/writing-benchmark">{t("benchmark.title")}</Link>
+        </div>
+      }
+    />
     {error && <p className="notice notice-error" role="alert">{error}<button className="btn btn-ghost" onClick={() => void load()}>{t("common.retry")}</button></p>}
     <div className={styles.layout}>
       <section className={styles.panel} aria-busy={loading}><h2>{t("speakingLab.samples")} ({total})</h2>

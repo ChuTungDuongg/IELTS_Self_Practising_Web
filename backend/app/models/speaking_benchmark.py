@@ -26,6 +26,7 @@ from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 class SpeakingBenchmarkSample(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "speaking_benchmark_samples"
     __table_args__ = (
+        UniqueConstraint("id", "owner_id"),
         UniqueConstraint("owner_id", "code"),
         UniqueConstraint("owner_id", "source_sha256"),
         CheckConstraint("split IN ('DEV','HOLDOUT')", name="split"),
@@ -62,6 +63,7 @@ class SpeakingBenchmarkSample(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     review_revision: Mapped[int] = mapped_column(Integer, default=0)
     label_revision: Mapped[int] = mapped_column(Integer, default=0)
     approved_fingerprint: Mapped[str | None] = mapped_column(String(64))
+    deletion_pending_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class SpeakingBenchmarkJob(UUIDPrimaryKeyMixin, TimestampMixin, Base):

@@ -1,6 +1,6 @@
 # Admin Speaking Benchmark Lab — Phase 1
 
-Implementation baseline: `7ed863b568f614ba7942f4f3130fefcac5857e82`. This feature prepares private datasets; it does not grade recordings or call Azure, OpenAI, Luna, Whisper GPU or Modal inference. See the [design](../superpowers/specs/2026-11-07-admin-speaking-benchmark-design.md) and [implementation plan](../superpowers/plans/2026-11-07-admin-speaking-benchmark.md).
+Implementation baseline: `7ed863b568f614ba7942f4f3130fefcac5857e82`. This feature prepares private datasets; it does not grade recordings or call Azure, OpenAI, Luna, Whisper GPU or Modal inference. See the [design](../superpowers/specs/2026-11-07-admin-speaking-benchmark-design.md) and [implementation plan](../superpowers/plans/2026-11-07-admin-speaking-benchmark.md). For Phase 2 evaluation, AI scoring worker, and metrics dashboard, see [Admin Speaking Benchmark Evaluation](admin-speaking-benchmark-evaluation.md).
 
 ```mermaid
 flowchart LR
