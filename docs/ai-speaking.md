@@ -1,11 +1,13 @@
 # Kiến trúc và đánh giá Speaking của BandPilot
 
-## Profile `speaking_hybrid_v1` (opt-in, working tree trên `3cf5c9a`)
+## Profile `speaking_hybrid_v1` (opt-in)
 
 Mặc định vẫn là provider local/profile legacy. `SPEAKING_ASR_PROVIDER=azure` chọn
-profile `speaking_hybrid_v1`; tên canonical của credential là `SPEAKING_AZURE_KEY`. Profile mới dùng **một phiên Azure
-unscripted cho mỗi đoạn ghi liên tục**, dùng chung kết quả lexical transcript,
-timing và observations phát âm; CPU Silero ONNX đo hoạt động nói trên timeline.
+profile `speaking_hybrid_v1`; tên canonical của credential là `SPEAKING_AZURE_KEY`. Mặc định
+`SPEAKING_LEXICAL_ASR_PROVIDER=azure_pa` dùng **một phiên Azure unscripted cho mỗi đoạn ghi liên tục**,
+dùng chung transcript/timing/observations. Operator có thể chọn ASR lexical độc lập
+theo [cấu hình transcription](speaking-transcription.md#independent-lexical-asr).
+CPU Silero ONNX đo hoạt động nói trên timeline trong cả hai chế độ.
 `SpeechAnalysisResult` có phiên bản, capability/coverage, nguồn gốc, usage và
 limitations rõ ràng. Không gửi reference text hoặc human band vào Azure/Luna;
 không dùng completeness/read-aloud penalty. en-US là locale kỹ thuật mặc định,
@@ -38,6 +40,63 @@ Trước production cần cohort human-labelled đại diện, DEV/HOLDOUT tách
 kiểm false positives và eligibility. Profile không tự bật ở production; xem
 [cấu hình/rollback](modal-web.md#speaking-hybrid-cpu) và [transcription](speaking-transcription.md#speaking-hybrid-v1).
 Các mô tả faster-whisper/acoustic baseline bên dưới áp dụng profile legacy.
+
+### Nguồn lexical độc lập và nguyên nhân đã xác nhận (2026-11-06)
+
+Đã xác nhận bằng trace và test hư cấu: parser cũ xây toàn bộ utterance và acoustic
+observations trong một đường parse; phoneme/observation tùy chọn sai có thể khiến
+utterance lexical hợp lệ bị bỏ. GRA còn lấy `SpeechAnalysisResult.utterances` của PA
+ghi đè utterances canonical. Cache trước đây chỉ có một nguồn speech, nên không thể
+thay model lexical mà vẫn tái dùng PA một cách tường minh. Đây là lỗi/coupling trong
+code; chưa chứng minh chúng giải thích mọi lỗi nhận dạng của audio người dùng.
+
+Microsoft xác nhận PA dùng model STT khác regular Azure STT trong
+[tài liệu pronunciation assessment](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/how-to-pronunciation-assessment).
+Điều này là lý do cần so sánh trên cùng audio, không phải bằng chứng Azure STT hay
+Whisper chính xác hơn đối với giọng Việt. Không đổi PA thành scripted assessment,
+không gửi transcript ASR độc lập làm reference cho PA.
+
+```text
+Normalized candidate PCM (cùng bytes / từng recorder segment)
+  -> lexical ASR được chọn -> canonical text + timings + uncertainty -> LR / GRA / FC lexical
+  -> Azure unscripted PA  -> PA words + phoneme / accuracy / prosody -> PR
+  -> CPU Silero VAD       -> speech activity / real pauses           -> FC temporal
+```
+
+Ở `azure_pa`, lexical và acoustic là cùng request; ở `azure_stt` là hai request speech
+riêng. `faster_whisper_local` tái dùng adapter CPU local, và `faster_whisper_modal` gọi
+endpoint T4 đã được operator triển khai riêng. Chọn tên provider không deploy/start
+GPU, tải model hoặc thêm Whisper vào image CPU. Không tự chuyển provider khi lỗi.
+
+`features.lexical_analysis` giữ evidence lexical riêng; `speech_analysis` vẫn giữ PA.
+GRA utterances, LR words, FC lexical/WPM lấy nguồn canonical; FC eligibility dùng VAD
+và trạng thái lexical, không phụ thuộc PA thành công. PR vẫn cần PA hoàn chỉnh theo
+coverage gates hiện có. Nếu hai engine nghe khác từ, payload PR giữ PA transcript và
+observation IDs của PA, canonical transcript vẫn riêng với
+`cross_provider_alignment=not_performed`. Không ghép confidence, phoneme hoặc accuracy
+của PA vào từ Whisper/STT. Không có cross-provider forced alignment.
+
+Adapter giữ lexical khi optional acoustic/display/timing hỏng, ghi limitations và
+missing capability riêng; acoustic damage hoặc word timing không đầy đủ làm result
+partial. NoMatch/mất coverage vẫn partial; không tạo confidence khi provider thiếu.
+Không có LLM rewrite, grammar restoration, bỏ fillers hoặc chỉnh band qua transcript.
+
+Default identity/cache của PA giữ nguyên khi không cấu hình segmentation. Independent
+projection có `independent-lexical-v1` và feature payload `evidence-v3`. Hai namespace
+JSONB `speech_analysis` / `lexical_asr` có model/config identity riêng và cùng cơ chế
+ATTEMPTED-before-call, terminal checkpoint, retry consent, attempt token fence. Đổi
+lexical model không chạy lại PA; đổi Luna prompt không chạy lại cả hai. Lịch sử
+completed không bị viết lại; đọc `get(run_id)` cũ vẫn dùng snapshot frozen. Endpoint
+`latest` tiếp tục chỉ trả identity hiện tại như trước. Lifecycle xóa normalized
+artifacts cũng xóa cả hai namespace; không thêm SQL migration/raw provider payload.
+
+Chỉ bật request cloud thứ hai khi có permission và estimate/budget tường minh. Modal
+còn cần opt-in GPU + proxy credentials. Ước tính là admission guard, không phải báo
+giá hoặc hard billing cap; timeout có thể đã tính phí và không được auto retry.
+Xem [benchmark và lệnh A/B có kiểm soát](testing/speaking-audio-replay.md#compare-asr).
+Hiện chỉ có kết quả fixture/offline; chưa có WER/CER live của cohort human-verified.
+Không đề xuất engine thắng. Rollback: chọn lại `azure_pa`, bỏ segmentation override,
+restart worker theo quy trình deploy hiện có; không xóa lịch sử/checkpoints.
 
 ### Eligibility và giới hạn dữ liệu ở profile đầu tiên
 

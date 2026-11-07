@@ -1,12 +1,136 @@
 # Replay audio Speaking trên CPU
 
 Công cụ `scripts/replay_speaking.py` chạy local, không cần trình duyệt, microphone,
-PostgreSQL hay attempt production. Nó dùng analyzer Azure và `SpeakingScorer` production,
-không tạo bộ chấm riêng. Không khởi tạo Modal, Whisper T4 hoặc vLLM L4.
+PostgreSQL hay attempt production. Nó dùng adapters và `SpeakingScorer` production,
+không tạo bộ chấm riêng. Các mode cũ không khởi tạo Modal, Whisper T4 hoặc vLLM L4;
+mode `compare-asr` có thể gọi endpoint T4 đã cấu hình riêng chỉ khi operator chọn và cho phép.
 
 Replay đã có ở `main` tại `7a3fe4a`; phần diarization local bổ sung ở mục 9. Kiểm thử
 ngoại tuyến không xác nhận credential, quota, latency hoặc độ chính xác live: **LIVE_UNVERIFIED**.
 Kiến trúc, eligibility FC/PR và giới hạn ASR nằm trong [AI Speaking](../ai-speaking.md).
+
+<a id="compare-asr"></a>
+
+## So sánh lexical ASR trên cùng audio (`compare-asr`)
+
+Mode này không chấm Luna/IELTS và không deploy dịch vụ. Chỉ nhận segments candidate
+đã duyệt với `candidate_only_verified=true`; không dùng technical-preview fallback,
+không tự cắt ngắn window và không gửi examiner/preparation. Nó dùng chính validator,
+receipt approval, source SHA-256 và normalizer của replay. Mỗi window chỉ normalize
+một lần; mọi provider nhận cùng PCM mono16k, và report lưu PCM SHA-256 để đối chiếu.
+`--asr-provider` phải chỉ định rõ từng engine (repeat flag); không có cloud mặc định.
+`--asr-segment` chọn ID đã duyệt, hoặc bỏ để dùng tất cả candidate windows.
+
+Ví dụ **chỉ chạy sau khi operator cho phép live**; `p1-answer-1` phải là ID có thật trong
+segments đã nghe và duyệt. USD bên dưới là estimate tổng giả định cho admission, không
+phải bảng giá hoặc hard billing cap:
+
+```powershell
+uv run --locked --project backend python scripts/replay_speaking.py --mode compare-asr --input benchmarks/speaking/private/replay --asr-provider azure_pa --asr-provider azure_stt --asr-segment p1-answer-1 --allow-live --max-audio-seconds 120 --provider-estimate azure_pa=0.50 --provider-estimate azure_stt=0.50 --estimated-cost-usd 1 --max-estimated-cost-usd 2
+```
+
+`--max-audio-seconds` trong mode này là **tổng duration × số provider/variant**, kể cả
+cache hit để admission bảo thủ. Hai provider trên window 44s cần ít nhất 88s budget.
+Không tự chia/cắt answer cho vừa cap. Mỗi selected provider phải có đúng một
+`--provider-estimate PROVIDER=USD`, bao gồm **mọi window và silence variant** của nó;
+tổng estimates không vượt `--estimated-cost-usd`, total không vượt budget. PA/prosody/
+STT/GPU đều phải được tính. Azure vẫn cần policy `SPEAKING_AZURE_BILLING_MODE` hiện có
+và ALLOW_PAID khi paid. CLI live flag cấp quyền một lần, không sửa dotenv production.
+
+Thêm `--segmentation-silence-ms 500 --segmentation-silence-ms 1000` để so sánh
+hai cấu hình Azure riêng (thêm duration/request estimates tương ứng). Bỏ flag để dùng
+override đã cấu hình hoặc SDK default. Không bật semantic segmentation hoặc cho rằng
+timeout dài hơn giúp slow speakers nếu chưa có số liệu human reference.
+
+Thêm `--asr-provider faster_whisper_modal --allow-modal-gpu --provider-estimate faster_whisper_modal=0.50`
+và tăng total estimate/audio cap tương ứng để gọi endpoint Large-v3 T4 hiện có. Cần
+endpoint/proxy/model/revision/version đúng; không tự deploy/start GPU, import app GPU
+hoặc tải model. `faster_whisper_local` dùng optional dependency/model CPU đã chuẩn bị,
+cũng phải được chọn rõ với estimate (có thể 0), không thêm Large-v3 vào production CPU.
+
+### Human reference và annotation riêng tư
+
+Đặt `asr-human-references.json` trong private input và truyền
+`--human-references benchmarks/speaking/private/replay/asr-human-references.json`.
+Không dùng band `human_labels.json` làm transcript truth. Reference phải do người
+chép độc lập nghe đúng window, xác nhận human_verified và bind source SHA-256 + start/
+end chính xác. Không copy đề IELTS/PA/Whisper output làm truth. Ví dụ hoàn toàn hư cấu:
+
+```json
+{
+  "schema_version": 1,
+  "references": [{
+    "segment_id": "p1-answer-1", "source_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "start_ms": 0, "end_ms": 10000,
+    "human_verified": true, "provenance": "independent_human_transcriber",
+    "text": "Yesterday I go um I I mean school",
+    "accent": "Vietnamese", "speaking_speed": "slow", "response_length": "short",
+    "annotations": [
+      {"kind": "incorrect_grammar", "start_token": 0, "end_token": 3},
+      {"kind": "self_correction", "start_token": 5, "end_token": 8}
+    ]
+  }]
+}
+```
+
+Annotation dùng token offsets zero-based/end-exclusive theo tokenizer `analysis_evaluation`:
+casefold, bỏ punctuation, giữ contractions/fillers/repeated words và sai grammar. Có
+thể thêm `filler`, `repetition` cho phrase repetitions phức tạp; fallback inventory chỉ
+um/uh/erm/er và token lặp liền nhau. Event bảo toàn khi mọi token khớp **liên tiếp**
+trong alignment; metric lexical không xác nhận pronunciation hoặc ý nghĩa của repair.
+
+WER = Levenshtein lexical (S+D+I)/human-reference words, không bỏ fillers/sửa grammar/
+synonym matching. CER dùng Unicode NFC characters, giữ case/punctuation/khoảng trắng.
+Dùng lại edit-distance implementation hiện có; bounded matching tối đa 4 triệu cặp.
+CER quá lớn được unavailable với `cer_limited`, không tự cắt reference. `missing_words`
+là deletions; `hallucinated_words` là insertions, **proxy** chứ không kết luận ngữ âm
+engine bịa từ. Substitutions ghi riêng. Self-correction/incorrect-grammar preservation
+thiếu annotations thì unavailable. Thiếu human reference thì WER/CER/preservation
+unavailable; chỉ report disagreement/coverage, không xếp hạng accuracy.
+Human reference có thể là chuỗi rỗng khi người chép xác nhận window không có lời nói:
+WER/CER không có mẫu số thì unavailable, insertions vẫn được đếm, không biến ASR output thành truth.
+
+Report có counts thực, micro WER/CER, preservation recall, missing/inserted words,
+timing bounds/order/coverage, NoMatch/partial diagnostics, recognized-window coverage,
+mean/p95 latency (nearest rank), identities, observed usage/request counts và cache hits.
+Recognized window không phải VAD-confirmed speech completeness. Strata accent/speed/
+short-long chỉ sinh khi human metadata có; không đoán accent/speed từ transcript.
+Process CPU time và RSS before/after đo local nếu psutil có, RSS không phải peak memory.
+Remote CPU/RAM/GPU telemetry không được API trả thì unavailable. Cache latency là
+latency gốc trong evidence, không phải thời gian lookup.
+
+### Checkpoint và fixtures offline
+
+PA/STT/Whisper có cache riêng dưới `benchmarks/speaking/reports/replay/.speech-cache/`,
+cùng key với PA replay cũ nếu audio/config không đổi. Chỉ reuse completed checkpoint
+đúng PCM/source/window/provider/config. ATTEMPTED hoặc terminal partial/failure không
+tự gửi lại; timeout/cancellation có billing chưa rõ, operator phải đối soát trước khi
+chủ động chọn namespace mới. Không xóa checkpoint chỉ để script chạy lại. Lock ngăn
+hai process replay phát cùng request. Full grading dùng lexical độc lập nếu opt-in
+trong config và cache riêng; estimate tổng `full` phải gồm PA + lexical + Luna.
+
+Private fixture schema `OfflineFixtures` trong `backend/app/evaluation/speaking/asr_comparison.py`:
+`{schema_version:1, observations:[...]}`. Mỗi observation có `segment_id`, `source_sha256`,
+`start_ms`, `end_ms`, `provider`, `silence_ms` (null cho SDK default), `result` theo
+`SpeechAnalysisResult` (structured evidence, không raw payload). Result bind
+`normalized_audio_fingerprint` bằng SHA-256 PCM thực và duration đúng window.
+Provider identity và source fingerprint trong result cũng phải khớp observation;
+không được gắn nhãn Azure STT cho evidence PA. Report partial/failure hiển thị riêng,
+checkpoint sai source/model không góp transcript hoặc metric và không được gửi lại tự động.
+
+```powershell
+uv run --locked --project backend python scripts/replay_speaking.py --mode compare-asr --asr-provider azure_pa --asr-provider azure_stt --asr-segment p1-answer-1 --offline-asr-fixtures benchmarks/speaking/private/replay/asr-fixtures.json --human-references benchmarks/speaking/private/replay/asr-human-references.json --max-audio-seconds 120
+uv run --locked --project backend pytest backend/tests/test_speaking_asr_comparison.py backend/tests/test_speaking_replay_cli.py -q
+```
+
+Fixture mode không dựng provider, tải model hay gọi network, không nhận `--allow-live`/
+`--allow-modal-gpu`. Import không gọi cloud. Report OFFLINE_FIXTURES không phải số liệu
+live. `summary.md` chỉ số liệu, `SENSITIVE-results.json` chứa private text/diagnostics.
+Dataset/annotations/reports/cache đều Git ignored. Benchmark artifacts tách lifecycle
+database: operator phải xóa chúng cùng dataset theo retention policy riêng.
+
+Chưa có human-verified live benchmark cho thay đổi này. Private replay tại checkout
+kiểm tra không có recording để đo; không bịa sample count hoặc khuyến nghị engine thắng.
 
 ## 1. Chuẩn bị môi trường và audio
 

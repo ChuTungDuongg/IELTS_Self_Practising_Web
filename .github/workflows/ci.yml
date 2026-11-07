@@ -15,6 +15,7 @@ concurrency:
 jobs:
   backend:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     services:
       postgres:
         image: postgres:17-alpine
@@ -71,9 +72,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends ffmpeg
       - name: Ruff lint
-        run: uv run ruff check . ../scripts
+        run: uv run ruff check --config pyproject.toml . ../scripts
       - name: Ruff format
-        run: uv run ruff format --check app tests ../scripts
+        run: uv run ruff format --config pyproject.toml --check app tests ../scripts
       - name: Upgrade fresh database
         run: uv run alembic upgrade head
       - name: Upgrade separate storage-integration test database
@@ -101,6 +102,7 @@ jobs:
           fi
   frontend:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: frontend

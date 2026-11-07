@@ -286,3 +286,4 @@ class SpeakingFeatureBundle(BaseModel):
     profile: Literal["legacy", "speaking_hybrid_v1"] = "legacy"
     timeline: list[AudioSegmentMapping] = Field(default_factory=list, max_length=1000)
     speech_analysis: list[SpeechAnalysisResult] = Field(default_factory=list, max_length=1000)
+    lexical_analysis: list[SpeechAnalysisResult] | None = Field(default=None, max_length=1000)

@@ -74,13 +74,19 @@ async def analyze_response(audio, settings, *, analyzer=None, on_result=None):
             results.append(result)
             if on_result:
                 await on_result(result)
-            # Each failed/partial stream is terminal here. Never blind retry a billable call.
-            if result.status != "COMPLETE":
+            # Metadata-only damage does not discard later recorder segments. Incomplete
+            # streams remain terminal, with no repeat call or invented missing speech.
+            metadata_only = (
+                result.status == "PARTIAL"
+                and getattr(getattr(result, "coverage", None), "stream_completed", False)
+                and result.error_code is None
+            )
+            if result.status != "COMPLETE" and not metadata_only:
                 break
     return results
 
 
-def analysis_to_asr(results, audio):
+def analysis_to_asr(results, audio, *, independent=False):
     from app.providers.speech_analysis.azure import ADAPTER_VERSION
 
     text, words = [], []
@@ -113,13 +119,23 @@ def analysis_to_asr(results, audio):
                 "Speech resource is unavailable under the current policy.",
                 429 if terminal.endswith("QUOTA_EXCEEDED") else 409,
             )
+        if independent and any(r.error_code and r.error_code != "AZURE_NO_MATCH" for r in results):
+            raise AppError(
+                "SPEAKING_LEXICAL_ASR_UNAVAILABLE",
+                "The selected lexical recognizer failed; no other engine was substituted.",
+                503,
+            )
         raise AppError("ASR_UNUSABLE", "No usable lexical speech was recognized.", 409)
     return ASRResult(
         text=" ".join(text),
         words=words,
-        provider="azure",
-        model="service-managed-unknown",
-        version=ADAPTER_VERSION,
+        provider=results[0].provider.provider if independent else "azure",
+        model=results[0].provider.configuration.get("model", "service-managed-unknown")
+        if independent
+        else "service-managed-unknown",
+        version=(results[0].provider.model_version or results[0].provider.adapter_version)
+        if independent
+        else ADAPTER_VERSION,
         language=results[0].provider.locale,
         # Per-word or utterance recognition confidence is optional, never pronunciation accuracy.
         mean_confidence=None,
@@ -136,6 +152,10 @@ class HybridASRProvider:
         if not key or not key.get_secret_value().strip() or not settings.speaking_azure_region:
             raise AppError("SPEAKING_ASR_UNAVAILABLE", "Azure Speech is not configured.", 503)
         require_billing_authorization(settings)
+        from app.providers.speaking_asr.lexical import create_lexical_analyzer, selection
+
+        if selection(settings) != "azure_pa":
+            create_lexical_analyzer(settings)  # Configuration only; no SDK/model/network work.
         self.analyzer = AzureSpeechAnalyzer(settings)
         self.settings = self.analyzer.settings
         from app.providers.speaking_asr import provider_identity
@@ -143,6 +163,62 @@ class HybridASRProvider:
         self.identity = provider_identity(settings)
 
     async def transcribe(self, audio):
+        from app.providers.speaking_asr.lexical import selection
+
+        if selection(self.settings) != "azure_pa":
+            raise AppError(
+                "SPEAKING_LEXICAL_ASR_UNAVAILABLE",
+                "Independent ASR requires the durable transcript worker.",
+                503,
+            )
         return analysis_to_asr(
             await analyze_response(audio, self.settings, analyzer=self.analyzer), audio
         )
+
+
+async def transcribe_hybrid(sessions, audio, settings, analyzer, *, allow_interrupted_retry=False):
+    """Independent caches; PA never becomes an implicit fallback for failed lexical ASR."""
+    from app.providers.speaking_asr.lexical import (
+        create_lexical_analyzer,
+        require_lexical_permission,
+        selection,
+    )
+    from app.services.speaking_analysis_cache import cached_speech_analysis
+
+    independent = selection(settings) != "azure_pa"
+    require_lexical_permission(settings, duration_ms=audio.duration_ms)
+    try:
+        acoustic = await cached_speech_analysis(
+            sessions, audio, settings, analyzer, allow_interrupted_retry=allow_interrupted_retry
+        )
+    except AppError as error:
+        if not independent or error.code != "SPEAKING_ANALYSIS_BILLING_UNKNOWN":
+            raise
+        acoustic = []  # No repeat PA charge and no fabricated acoustic evidence.
+    terminal = next((r.error_code for r in acoustic if r.error_code in TERMINAL_AZURE_ERRORS), None)
+    if terminal:
+        raise AppError(terminal, "Speech resource is unavailable under the current policy.", 409)
+    if not independent:
+        return analysis_to_asr(acoustic, audio), acoustic, None
+    lexical_analyzer = create_lexical_analyzer(settings)
+    try:
+        lexical = await cached_speech_analysis(
+            sessions,
+            audio,
+            settings,
+            lexical_analyzer,
+            cache_namespace="lexical_asr",
+            allow_interrupted_retry=allow_interrupted_retry,
+        )
+    except AppError as error:
+        if (
+            selection(settings) == "faster_whisper_modal"
+            and error.code == "SPEAKING_ASR_UNAVAILABLE"
+        ):
+            raise AppError(
+                "SPEAKING_ANALYSIS_BILLING_UNKNOWN",
+                "An independent speech request may have been submitted; explicit retry consent is required.",
+                409,
+            ) from None
+        raise
+    return analysis_to_asr(lexical, audio, independent=True), acoustic, lexical

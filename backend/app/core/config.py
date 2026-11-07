@@ -59,6 +59,20 @@ class Settings(BaseSettings):
     speaking_azure_timeout_seconds: int = Field(default=180, ge=5, le=600)
     speaking_azure_max_concurrency: int = Field(default=2, ge=1, le=16)
     speaking_azure_max_queue: int = Field(default=8, ge=0, le=100)
+    speaking_azure_segmentation_silence_timeout_ms: int | None = Field(
+        default=None, ge=100, le=5000
+    )
+    speaking_lexical_asr_provider: Literal[
+        "azure_pa", "azure_stt", "faster_whisper_local", "faster_whisper_modal"
+    ] = "azure_pa"
+    speaking_lexical_asr_allow_additional_requests: bool = False
+    speaking_lexical_asr_allow_gpu: bool = False
+    speaking_lexical_asr_estimated_cost_usd_per_minute: float | None = Field(
+        default=None, ge=0, allow_inf_nan=False
+    )
+    speaking_lexical_asr_max_estimated_cost_usd_per_response: float | None = Field(
+        default=None, gt=0, allow_inf_nan=False
+    )
     speaking_vad_model_path: str = ""
     speaking_vad_model_sha256: str = (
         "597d30b3ec076608d059477bb14cfeffdf951bf5cae370d38f65d33bbfe82004"

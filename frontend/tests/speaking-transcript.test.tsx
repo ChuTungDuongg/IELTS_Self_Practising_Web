@@ -40,7 +40,10 @@ it.each([
   ["BACKGROUND_DOMINANT", /Background noise dominates/, /Tiếng ồn nền lấn át/],
   ["ASR_UNUSABLE", /could not be recognized reliably/, /Chưa thể nhận dạng lời nói/],
   ["SPEAKING_AUDIO_UNASSESSABLE", /recording is unavailable or could not be read/, /Bản ghi hiện không khả dụng/],
-  ["SPEAKING_ANALYSIS_BILLING_UNKNOWN", /acknowledge the possible Azure usage or charges/, /hãy xác nhận khả năng phát sinh hạn mức hoặc chi phí Azure/],
+  ["SPEAKING_ANALYSIS_BILLING_UNKNOWN", /acknowledge the possible speech provider usage or charges/, /hãy xác nhận khả năng phát sinh hạn mức hoặc chi phí dịch vụ lời nói/],
+  ["SPEAKING_LEXICAL_ASR_UNAVAILABLE", /Speech recognition is temporarily unavailable/, /Dịch vụ nhận dạng lời nói tạm thời chưa khả dụng/],
+  ["SPEAKING_LEXICAL_ASR_NOT_AUTHORIZED", /billing has not been authorized/, /cấu hình chi phí chưa được cho phép/],
+  ["SPEAKING_LEXICAL_ASR_BUDGET_EXCEEDED", /budget.*too low/, /vượt quá ngân sách/],
   ["SPEAKING_ASR_UNAVAILABLE", /Speech recognition is temporarily unavailable/, /Dịch vụ nhận dạng lời nói tạm thời chưa khả dụng/],
   ["TRANSCRIPT_SOURCE_CHANGED", /recording changed during processing/, /Bản ghi đã thay đổi/],
   ["TRANSCRIPT_CONFIGURATION_CHANGED", /settings changed during this request/, /Cấu hình xử lý lời nói đã thay đổi/],
@@ -93,7 +96,7 @@ it.each(["en", "vi"] as const)("requires explicit %s acknowledgement to resend o
   vi.mocked(api.latestTranscriptRun).mockResolvedValue(interrupted);
   vi.mocked(api.getTranscriptRun).mockResolvedValue(interrupted);
   render(<LocaleProvider><SpeakingTranscriptSession attemptId={run.attempt_id}><SpeakingTranscriptResponse responseId={run.responses[0].response_id} /></SpeakingTranscriptSession></LocaleProvider>);
-  const acknowledgement = await screen.findByRole("checkbox", { name: locale === "en" ? /resend 1 interrupted.*Azure usage or charges/ : /gửi lại 1 bản ghi bị gián đoạn.*hạn mức hoặc chi phí Azure/ });
+  const acknowledgement = await screen.findByRole("checkbox", { name: locale === "en" ? /resend 1 interrupted.*usage or charges from the configured speech providers/ : /gửi lại 1 bản ghi bị gián đoạn.*hạn mức hoặc chi phí của các dịch vụ lời nói/ });
   expect(acknowledgement).not.toBeChecked();
   fireEvent.click(acknowledgement);
   expect(api.createTranscriptRun).not.toHaveBeenCalled();

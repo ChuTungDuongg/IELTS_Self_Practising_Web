@@ -81,6 +81,22 @@ def test_hybrid_image_never_imports_whisper_and_does_not_change_writing_selectio
     assert "gpu" not in modal.App.return_value.cls.call_args.kwargs
 
 
+@pytest.mark.parametrize(
+    "provider", ["azure_pa", "azure_stt", "faster_whisper_modal", "faster_whisper_local"]
+)
+def test_lexical_selection_never_adds_gpu_or_whisper_to_cpu_image(monkeypatch, provider):
+    monkeypatch.setenv("IELTS_WEB_SPEAKING_PROFILE", "speaking_hybrid_v1")
+    monkeypatch.setenv("AI_WRITING_PROVIDER", "openai")
+    monkeypatch.setenv("SPEAKING_LEXICAL_ASR_PROVIDER", provider)
+    module, modal, _ = load_app(monkeypatch, asr_enabled=True)
+    assert not module.MODAL_ASR_SERVICE_ENABLED
+    modal.App.return_value.include.assert_not_called()
+    calls = str(modal.Image.from_registry.return_value.run_commands.call_args_list)
+    assert "faster-whisper" not in calls and "torch" not in calls
+    assert "gpu" not in modal.App.return_value.cls.call_args.kwargs
+    assert "SPEAKING_LEXICAL_ASR_PROVIDER" in modal.Secret.from_local_environ.call_args.args[0]
+
+
 def test_unknown_speech_profile_fails_before_remote_resources(monkeypatch):
     monkeypatch.setenv("IELTS_WEB_SPEAKING_PROFILE", "unknown")
     with pytest.raises(ValueError, match="SPEAKING_PROFILE"):

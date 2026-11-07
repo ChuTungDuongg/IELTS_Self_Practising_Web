@@ -46,7 +46,17 @@ def test_vad_rejects_invalid_probabilities():
         intervals_from_probabilities([float("nan")], 32)
 
 
-async def test_recovered_segments_use_exact_samples_and_one_call_each(tmp_path):
+@pytest.mark.parametrize(
+    "first_status,stream_completed,expected_calls",
+    [
+        ("COMPLETE", True, 2),
+        ("PARTIAL", True, 2),
+        ("PARTIAL", False, 1),
+    ],
+)
+async def test_recovered_segments_use_exact_samples_and_one_call_each(
+    tmp_path, first_status, stream_completed, expected_calls
+):
     import wave
     from types import SimpleNamespace
 
@@ -76,11 +86,18 @@ async def test_recovered_segments_use_exact_samples_and_one_call_each(tmp_path):
         async def analyze(self, audio, **identity):
             with wave.open(str(audio.path), "rb") as wav:
                 received.append(wav.readframes(wav.getnframes()))
-            return SimpleNamespace(status="COMPLETE", source=identity)
+            return SimpleNamespace(
+                status=first_status if len(received) == 1 else "COMPLETE",
+                source=identity,
+                coverage=SimpleNamespace(stream_completed=stream_completed),
+                error_code=None,
+            )
 
     result = await analyze_response(source, None, analyzer=Analyzer())
-    assert received == [b"\x01\x00" * first, b"\x02\x00" * second]
-    assert len(result) == 2 and result[1].source["segment_id"] == str(b.segment_id)
+    assert received == [b"\x01\x00" * first, b"\x02\x00" * second][:expected_calls]
+    assert len(result) == expected_calls
+    if expected_calls == 2:
+        assert result[1].source["segment_id"] == str(b.segment_id)
 
 
 def test_same_transcript_different_pauses_produces_different_evidence(tmp_path):

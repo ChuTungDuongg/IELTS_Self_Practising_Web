@@ -157,6 +157,10 @@ class GradingHybridPronunciationEvidence(StrictDTO):
 
 
 class CriterionResponseEvidence(StrictDTO):
+    lexical_provider: str | None = None
+    acoustic_provider: str | None = None
+    acoustic_transcript: str | None = Field(default=None, max_length=60000)
+    cross_provider_alignment: Literal["not_performed", "same_provider"] | None = None
     response_id: UUID
     prompt_id: UUID
     part_number: Literal[1, 2, 3]

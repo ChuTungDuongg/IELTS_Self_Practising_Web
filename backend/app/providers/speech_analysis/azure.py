@@ -106,6 +106,9 @@ def azure_analysis_identity(settings) -> SpeechAnalysisIdentity:
         "granularity": "Phoneme",
         "output": "Detailed",
     }
+    silence = getattr(settings, "speaking_azure_segmentation_silence_timeout_ms", None)
+    if silence is not None:
+        configuration.update(segmentation_version="silence-v1", segmentation_silence_ms=silence)
     try:
         sdk_version = importlib.metadata.version("azure-cognitiveservices-speech")
     except importlib.metadata.PackageNotFoundError:
@@ -117,6 +120,35 @@ def azure_analysis_identity(settings) -> SpeechAnalysisIdentity:
         locale=settings.speaking_azure_locale,
         configuration=configuration,
         configuration_fingerprint=_hash([ADAPTER_VERSION, sdk_version, configuration]),
+    )
+
+
+def azure_stt_identity(settings) -> SpeechAnalysisIdentity:
+    """Regular STT has no pronunciation configuration or shared PA cache identity."""
+    pa = azure_analysis_identity(settings)
+    configuration = {
+        key: value
+        for key, value in pa.configuration.items()
+        if key
+        in {
+            "resource_binding",
+            "billing_policy_version",
+            "billing_mode",
+            "allow_paid",
+            "region",
+            "locale",
+            "output",
+            "segmentation_version",
+            "segmentation_silence_ms",
+        }
+    }
+    return SpeechAnalysisIdentity(
+        provider="azure-stt",
+        adapter_version="azure-stt-v1",
+        sdk_version=pa.sdk_version,
+        locale=pa.locale,
+        configuration=configuration,
+        configuration_fingerprint=_hash(["azure-stt-v1", pa.sdk_version, configuration]),
     )
 
 
@@ -142,8 +174,9 @@ def _read_pcm(audio):
 
 
 class AzureSpeechAnalyzer:
-    def __init__(self, settings):
+    def __init__(self, settings, *, pronunciation=True):
         self.settings = copy.deepcopy(settings)
+        self.pronunciation = pronunciation
         concurrency, queue = (
             settings.speaking_azure_max_concurrency,
             settings.speaking_azure_max_queue,
@@ -153,7 +186,9 @@ class AzureSpeechAnalyzer:
         if not 0 < settings.speaking_azure_timeout_seconds <= 3600:
             raise ValueError("Invalid Azure speech timeout")
         self._pool = _pool(concurrency, queue)
-        self.identity = azure_analysis_identity(settings)
+        self.identity = (
+            azure_analysis_identity(settings) if pronunciation else azure_stt_identity(settings)
+        )
 
     def _empty(self, audio, response_id, take_number, segment_id):
         locale_ok = self.settings.speaking_azure_locale == "en-US"
@@ -170,18 +205,25 @@ class AzureSpeechAnalyzer:
             status="FAILED",
             coverage=SpeechCoverage(audio_duration_ms=audio.duration_ms),
             capabilities=SpeechCapabilities(
-                prosody_requested=self.settings.speaking_azure_prosody,
-                prosody_supported=None if locale_ok else False,
+                unscripted=self.pronunciation,
+                prosody_requested=self.settings.speaking_azure_prosody
+                if self.pronunciation
+                else False,
+                prosody_supported=None if locale_ok and self.pronunciation else False,
             ),
             limitations=[
-                "UNSCRIPTED_ASR_MAY_NORMALIZE_DISFLUENCIES",
+                "UNSCRIPTED_ASR_MAY_NORMALIZE_DISFLUENCIES"
+                if self.pronunciation
+                else "ASR_DISFLUENCIES_NOT_GUARANTEED",
                 "SERVICE_MODEL_VERSION_UNKNOWN",
-                "PROVIDER_SCORES_ARE_NOT_IELTS_BANDS",
+                "PROVIDER_SCORES_ARE_NOT_IELTS_BANDS"
+                if self.pronunciation
+                else "ASR_IS_NOT_GROUND_TRUTH",
                 "BILLING_NOT_CONFIRMED",
             ]
             + (
                 ["PROSODY_LOCALE_UNSUPPORTED"]
-                if self.settings.speaking_azure_prosody and not locale_ok
+                if self.pronunciation and self.settings.speaking_azure_prosody and not locale_ok
                 else []
             ),
         )
@@ -277,20 +319,30 @@ class AzureSpeechAnalyzer:
             )
             speech_config.output_format = sdk.OutputFormat.Detailed
             speech_config.request_word_level_timestamps()
+            silence = getattr(self.settings, "speaking_azure_segmentation_silence_timeout_ms", None)
+            if silence is not None:
+                speech_config.set_property(
+                    sdk.PropertyId.Speech_SegmentationSilenceTimeoutMs, str(silence)
+                )
             stream = sdk.audio.PushAudioInputStream(
                 sdk.audio.AudioStreamFormat(
                     samples_per_second=16000, bits_per_sample=16, channels=1
                 )
             )
             audio_config = sdk.audio.AudioConfig(stream=stream)
-            pronunciation = sdk.PronunciationAssessmentConfig(
-                reference_text="",
-                grading_system=sdk.PronunciationAssessmentGradingSystem.HundredMark,
-                granularity=sdk.PronunciationAssessmentGranularity.Phoneme,
-                enable_miscue=False,
+            pronunciation = (
+                sdk.PronunciationAssessmentConfig(
+                    reference_text="",
+                    grading_system=sdk.PronunciationAssessmentGradingSystem.HundredMark,
+                    granularity=sdk.PronunciationAssessmentGranularity.Phoneme,
+                    enable_miscue=False,
+                )
+                if self.pronunciation
+                else None
             )
             if (
-                self.settings.speaking_azure_prosody
+                pronunciation is not None
+                and self.settings.speaking_azure_prosody
                 and self.settings.speaking_azure_locale == "en-US"
             ):
                 pronunciation.enable_prosody_assessment()
@@ -299,7 +351,8 @@ class AzureSpeechAnalyzer:
                 language=self.settings.speaking_azure_locale,
                 audio_config=audio_config,
             )
-            pronunciation.apply_to(recognizer)
+            if pronunciation is not None:
+                pronunciation.apply_to(recognizer)
 
             def recognized(event):
                 nonlocal error
@@ -451,7 +504,21 @@ class AzureSpeechAnalyzer:
 
     def _finish(self, audio, result, error, completed):
         result.utterances.sort(key=lambda item: item.start_ms if item.start_ms is not None else -1)
-        result.words.sort(key=lambda item: item.start_ms if item.start_ms is not None else -1)
+        # Preserve lexical order inside each utterance when optional timings are absent.
+        # Sorting an untimed word to the front would change the learner's word sequence.
+        utterance_order = {u.evidence_id: index for index, u in enumerate(result.utterances)}
+        result.words.sort(
+            key=lambda item: utterance_order.get(item.utterance_id, len(utterance_order))
+        )
+        previous_end = 0
+        for word in result.words:
+            if word.start_ms is not None:
+                if word.start_ms < previous_end:
+                    word.start_ms = word.end_ms = None
+                    if "WORD_TIMING_INCOMPLETE" not in result.limitations:
+                        result.limitations.append("WORD_TIMING_INCOMPLETE")
+                else:
+                    previous_end = word.end_ms
         result.lexical_transcript = " ".join(u.lexical_text for u in result.utterances)
         result.display_transcript = (
             " ".join(u.display_text for u in result.utterances)
@@ -498,6 +565,11 @@ class AzureSpeechAnalyzer:
             result.status = "CANCELLED"
         elif error or not completed:
             result.status = "PARTIAL" if result.utterances else "FAILED"
+        elif result.capabilities.acoustic_metadata_complete is False or any(
+            item in result.limitations
+            for item in ("WORD_TIMING_INCOMPLETE", "WORD_EVIDENCE_UNAVAILABLE")
+        ):
+            result.status = "PARTIAL"
         else:
             result.status = "COMPLETE"
         if not result.words:
@@ -509,12 +581,24 @@ class AzureSpeechAnalyzer:
         return SpeechAnalysisResult.model_validate(result.model_dump())
 
     def _append_final(self, result, raw):
-        """Parse into local lists first: malformed finals cannot leave half an utterance."""
+        """Lexical content survives optional acoustic/display/timing damage."""
         best = raw["NBest"][0]
         text = best.get("Lexical")
         if not isinstance(text, str) or not text.strip():
             raise ValueError("Missing lexical transcript")
-        start, end = _span(raw, result.source.duration_ms)
+
+        def limitation(code):
+            if code not in result.limitations:
+                result.limitations.append(code)
+
+        def bounds(item):
+            try:
+                return _span(item, result.source.duration_ms)
+            except (ValueError, TypeError, AttributeError):
+                limitation("WORD_TIMING_INCOMPLETE")
+                return None, None
+
+        start, end = bounds(raw)
         seed = [
             result.source.model_dump(),
             result.provider.configuration_fingerprint,
@@ -524,6 +608,9 @@ class AzureSpeechAnalyzer:
         ]
         uid = "utt_" + _hash(seed)[:24]
         display = best.get("Display", raw.get("DisplayText"))
+        if display is not None and not isinstance(display, str):
+            display = None
+            limitation("DISPLAY_METADATA_INVALID")
         utterance = SpeechUtterance(
             evidence_id=uid,
             start_ms=start,
@@ -534,7 +621,7 @@ class AzureSpeechAnalyzer:
         )
         observations, words = [], []
 
-        def observe(item, target, bounds, token=None, kind="pronunciation"):
+        def parse_observation(item, target, bounds, token=None, kind="pronunciation"):
             assessment = item.get("PronunciationAssessment") or {}
             for metric in ("AccuracyScore", "PronScore", "FluencyScore", "ProsodyScore"):
                 value = _number(assessment.get(metric), 100)
@@ -624,34 +711,60 @@ class AzureSpeechAnalyzer:
                     )
                 )
 
+        def observe(*args):
+            if not self.pronunciation:
+                return
+            count = len(observations)
+            try:
+                parse_observation(*args)
+            except (ValueError, TypeError, KeyError, IndexError, AttributeError):
+                del observations[count:]
+                limitation("ACOUSTIC_METADATA_PARTIAL")
+                result.capabilities.acoustic_metadata_complete = False
+
         observe(best, uid, (start, end))
-        for index, word in enumerate(best.get("Words") or []):
-            bounds = _span(word, result.source.duration_ms)
+        raw_words = best.get("Words") or []
+        if not isinstance(raw_words, list):
+            raw_words = []
+            limitation("WORD_EVIDENCE_UNAVAILABLE")
+        for index, word in enumerate(raw_words):
+            if (
+                not isinstance(word, dict)
+                or not isinstance(word.get("Word"), str)
+                or not 0 < len(word["Word"]) <= 200
+            ):
+                limitation("WORD_EVIDENCE_UNAVAILABLE")
+                continue
+            word_bounds = bounds(word)
             wid = "word_" + _hash([uid, index, word.get("Word")])[:24]
             words.append(
                 SpeechWord(
                     evidence_id=wid,
                     utterance_id=uid,
                     text=word["Word"],
-                    start_ms=bounds[0],
-                    end_ms=bounds[1],
+                    start_ms=word_bounds[0],
+                    end_ms=word_bounds[1],
                     recognition_confidence=_number(word.get("Confidence"), 1),
                 )
             )
-            observe(word, wid, bounds, word["Word"])
+            if not self.pronunciation:
+                continue
+            observe(word, wid, word_bounds, word["Word"])
             for group, kind, token_key in (
                 ("Phonemes", "phoneme", "Phoneme"),
                 ("Syllables", "syllable", "Syllable"),
             ):
-                for position, unit in enumerate(word.get(group) or []):
+                units = word.get(group) or []
+                if not isinstance(units, list):
+                    units = [None]
+                for position, unit in enumerate(units):
                     target = "unit_" + _hash([wid, kind, position])[:24]
-                    observe(
-                        unit,
-                        target,
-                        _span(unit, result.source.duration_ms),
-                        unit.get(token_key),
-                        kind,
-                    )
+                    try:
+                        unit_bounds = _span(unit, result.source.duration_ms)
+                        observe(unit, target, unit_bounds, unit.get(token_key), kind)
+                    except (ValueError, TypeError, AttributeError):
+                        limitation("ACOUSTIC_METADATA_PARTIAL")
+                        result.capabilities.acoustic_metadata_complete = False
         result.utterances.append(utterance)
         result.words.extend(words)
         result.observations.extend(observations)

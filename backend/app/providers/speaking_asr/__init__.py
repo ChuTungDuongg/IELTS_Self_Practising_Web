@@ -6,13 +6,18 @@ def provider_identity(settings):
     if settings.speaking_asr_provider == "azure":
         from app.providers.speech_analysis.azure import ADAPTER_VERSION, azure_analysis_identity
 
-        return {
+        identity = {
             **azure_analysis_identity(settings).model_dump(mode="json"),
             "provider": "azure",
             "region": settings.speaking_azure_region,
             "model": "service-managed-unknown",
             "version": ADAPTER_VERSION,
         }
+        from app.providers.speaking_asr.lexical import lexical_identity, selection
+
+        if selection(settings) != "azure_pa":
+            identity["lexical"] = lexical_identity(settings).model_dump(mode="json")
+        return identity
     if settings.speaking_asr_provider == "modal":
         return {
             "provider": "modal",

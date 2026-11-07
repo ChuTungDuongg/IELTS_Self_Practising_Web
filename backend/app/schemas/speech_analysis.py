@@ -83,6 +83,7 @@ class SpeechCapabilities(SpeechModel):
     prosody_requested: bool = False
     prosody_supported: bool | None = None
     prosody_observed: bool | None = None
+    acoustic_metadata_complete: bool | None = None
 
 
 class SpeechCoverage(SpeechModel):

@@ -25,6 +25,19 @@ Cloud Settings yêu cầu bucket và region; R2 cần thêm HTTPS account endpoi
 
 Các P3 gates đã được kiểm offline bằng boto3 Stubber, fake S3 clients và PostgreSQL cách ly. Kiểm cloud/staging thật, Modal durability và deployment là các thao tác riêng. Local backup/restore cũ vẫn tương thích và từ chối cloud mode. Workflow `--portable` được gọi tường minh tạo v2 database/object backups, kiểm checksums và restore vào destination cách ly. Operator tools cần maintenance window; chúng không tự đổi providers hoặc xóa dữ liệu nguồn. Xem [kiến trúc storage](storage-architecture.md), [migration](storage-migration.md), [backup/recovery](storage-backup-restore.md) và [cấu hình, tiến độ storage](storage-portability-work-in-progress.md).
 
+## Nguồn bằng chứng Speaking
+
+Speaking hybrid có nguồn lexical được chọn riêng qua `providers/speaking_asr/lexical.py`:
+default tái dùng Azure PA; opt-in regular Azure STT hoặc adapters Faster-Whisper hiện có.
+`speaking_hybrid.transcribe_hybrid` điều phối durable checkpoints JSONB độc lập
+`speech_analysis` (PA) và `lexical_asr`. Feature/scorer projection lấy LR/GRA/FC từ
+canonical lexical, PR từ PA, FC temporal từ CPU VAD; không implicit cross-provider
+word alignment. Model lexical/Luna prompt không invalidate PA. Worker giữ state,
+lease, retry-consent và authorization hiện có; không có domain mutation từ frontend.
+[Private ASR comparison](testing/speaking-audio-replay.md#compare-asr) chỉ gửi những
+candidate windows đã duyệt, cần provider selection/budget/live permission tường minh,
+không được import/deploy GPU service từ CPU graph. [Cấu hình và rollback](speaking-transcription.md#independent-lexical-asr).
+
 ## Styling frontend
 
 - `globals.css` sở hữu resets, account accent preferences và exam-specific defaults.

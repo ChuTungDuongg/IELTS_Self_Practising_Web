@@ -54,6 +54,11 @@ class SpeakingAIService:
                     "profile_prompt": "speaking-hybrid-score-v1",
                     "projection": "stratified-pr-300-v1",
                     "feedback_evidence": "validated-audio-ids-v1",
+                    **(
+                        {"lexical_projection": "independent-lexical-v1"}
+                        if self.settings.speaking_lexical_asr_provider != "azure_pa"
+                        else {}
+                    ),
                 }
                 if self.settings.speaking_profile == "speaking_hybrid_v1"
                 else {}

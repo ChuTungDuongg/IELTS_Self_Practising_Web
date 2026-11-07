@@ -231,8 +231,24 @@ def criterion_evidence(
                     row, observation_budget=max(1, 300 // len(evidence.responses))
                 )
             if row.features.profile == "speaking_hybrid_v1":
-                analyses = row.features.speech_analysis
+                independent = row.features.lexical_analysis is not None
+                analyses = (
+                    row.features.lexical_analysis if independent else row.features.speech_analysis
+                )
+                if independent:
+                    values["lexical_provider"] = analyses[0].provider.provider if analyses else None
+                    values["cross_provider_alignment"] = "not_performed"
+                    values["transcript_limitations"] = ["NO_CROSS_PROVIDER_ALIGNMENT"]
+                    if criterion == "pr":
+                        values["acoustic_provider"] = "azure-pronunciation-assessment"
+                        values["acoustic_transcript"] = (
+                            " ".join(a.lexical_transcript for a in row.features.speech_analysis)[
+                                :60000
+                            ]
+                            or None
+                        )
                 values["transcript_limitations"] = [
+                    *values.get("transcript_limitations", []),
                     "ASR_IS_NOT_GROUND_TRUTH",
                     "ASR_DISFLUENCIES_NOT_GUARANTEED",
                 ]
@@ -240,7 +256,7 @@ def criterion_evidence(
                     values["transcript_limitations"].append("SPEECH_ANALYSIS_PARTIAL")
                 values["uncertain_word_ids"] = [
                     w.evidence_id
-                    for r in analyses
+                    for r in (row.features.speech_analysis if criterion == "pr" else analyses)
                     for w in r.words
                     if w.recognition_confidence is not None and w.recognition_confidence < 0.6
                 ]
@@ -361,8 +377,19 @@ def fluency_assessable(evidence: SpeakingAttemptEvidence) -> bool:
             and r.features.profile == "speaking_hybrid_v1"
             and r.features.quality.assessable
             and r.features.fluency.temporal_eligible
-            and r.features.speech_analysis
-            and all(a.status == "COMPLETE" for a in r.features.speech_analysis)
+            and (
+                r.features.lexical_analysis
+                if r.features.lexical_analysis is not None
+                else r.features.speech_analysis
+            )
+            and all(
+                a.status == "COMPLETE"
+                for a in (
+                    r.features.lexical_analysis
+                    if r.features.lexical_analysis is not None
+                    else r.features.speech_analysis
+                )
+            )
             for r in evidence.responses
         )
         and sum(r.features.fluency.detected_speech_ms or 0 for r in evidence.responses) >= 5000

@@ -466,6 +466,14 @@ class SpeakingAIWorker:
                             else None,
                             "fc_eligible": r.features.fluency.temporal_eligible,
                             "pr_eligible": r.features.pronunciation.band_eligible,
+                            "lexical_provider": r.features.lexical_analysis[0].provider.provider
+                            if r.features.lexical_analysis
+                            else None,
+                            "lexical_usage": [
+                                a.usage.model_dump() for a in r.features.lexical_analysis
+                            ]
+                            if r.features.lexical_analysis is not None
+                            else None,
                             "speech_usage": {
                                 "attempted_calls": sum(
                                     a.usage.attempted_calls for a in r.features.speech_analysis

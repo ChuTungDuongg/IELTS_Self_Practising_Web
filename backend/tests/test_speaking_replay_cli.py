@@ -64,6 +64,37 @@ def test_cli_defaults_to_offline_validate_and_passes_full_limits(cli, monkeypatc
     assert "PRIVATE_TEST_SECRET" not in capsys.readouterr().out
 
 
+def test_cli_compare_asr_dispatches_only_explicit_flags(cli, monkeypatch):
+    from app.evaluation.speaking import asr_comparison
+
+    calls = []
+
+    async def compare(root, output, settings, **options):
+        calls.append(options)
+        return output / "fixture-comparison", {"status": "COMPARED"}
+
+    monkeypatch.setattr(asr_comparison, "compare_asr", compare)
+    assert (
+        cli.main(
+            [
+                "--mode",
+                "compare-asr",
+                "--asr-provider",
+                "azure_pa",
+                "--asr-provider",
+                "azure_stt",
+                "--offline-asr-fixtures",
+                "fixture.json",
+            ]
+        )
+        == 0
+    )
+    assert calls[0]["providers"] == ["azure_pa", "azure_stt"]
+    assert calls[0]["allow_live"] is False
+    assert calls[0]["allow_gpu"] is False
+    assert cli.main(["--mode", "validate", "--asr-provider", "azure_stt"]) == 2
+
+
 def test_diarization_review_and_approval_never_dispatch_cloud_modes(cli, monkeypatch):
     from app.evaluation.speaking import replay_diarization_cli
 

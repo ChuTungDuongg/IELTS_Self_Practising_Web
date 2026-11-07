@@ -32,6 +32,19 @@ def hybrid_profile_status(settings):
         vad = False
     if not vad:
         limitations.append("VAD_UNAVAILABLE")
+    lexical = lexical_profile_status(settings)
+    if lexical["provider"] in {"azure_pa", "azure_stt"}:
+        lexical["limitations"] += [
+            x
+            for x in limitations
+            if x in {"AZURE_CONFIGURATION_MISSING", "AZURE_SDK_MISSING", BILLING_BLOCKED}
+        ]
+        lexical["configured"] = not lexical["limitations"]
+    pronunciation_configured = bool(
+        settings.speaking_asr_enabled
+        and authorized
+        and not any(x in limitations for x in ("AZURE_CONFIGURATION_MISSING", "AZURE_SDK_MISSING"))
+    )
     return {
         "profile": settings.speaking_profile,
         "provider": settings.speaking_asr_provider,
@@ -39,6 +52,7 @@ def hybrid_profile_status(settings):
             settings.speaking_asr_enabled
             and settings.speaking_asr_provider == "azure"
             and authorized
+            and lexical["configured"]
             and not any(
                 x in limitations for x in ("AZURE_CONFIGURATION_MISSING", "AZURE_SDK_MISSING")
             )
@@ -49,5 +63,42 @@ def hybrid_profile_status(settings):
         "locale": settings.speaking_azure_locale,
         "prosody_requested": settings.speaking_azure_prosody,
         "live_status": "LIVE_UNVERIFIED",
+        "limitations": limitations,
+        "lexical_asr": lexical,
+        "pronunciation_configured": pronunciation_configured,
+    }
+
+
+def lexical_profile_status(settings):
+    from app.core.exceptions import AppError
+    from app.providers.speaking_asr.lexical import create_lexical_analyzer, selection
+
+    strategy = selection(settings)
+    limitations = []
+    if strategy != "azure_pa":
+        try:
+            create_lexical_analyzer(settings)
+            if strategy == "faster_whisper_local":
+                version("faster-whisper")
+                directory = Path(settings.speaking_asr_model_directory)
+                if not all(
+                    (directory / name).is_file()
+                    for name in (
+                        "model.bin",
+                        "config.json",
+                        "tokenizer.json",
+                        "preprocessor_config.json",
+                    )
+                ):
+                    limitations.append("LEXICAL_LOCAL_MODEL_UNAVAILABLE")
+        except PackageNotFoundError:
+            limitations.append("LEXICAL_LOCAL_DEPENDENCY_UNAVAILABLE")
+        except AppError as error:
+            limitations.append(error.code)
+    return {
+        "provider": strategy,
+        "configured": not limitations,
+        "additional_provider_request": strategy != "azure_pa",
+        "gpu_endpoint_required": strategy == "faster_whisper_modal",
         "limitations": limitations,
     }

@@ -15,8 +15,16 @@ from app.services.speaking_hybrid import analyze_response
 
 
 async def cached_speech_analysis(
-    sessions, audio, settings, analyzer, *, allow_interrupted_retry=False
+    sessions,
+    audio,
+    settings,
+    analyzer,
+    *,
+    allow_interrupted_retry=False,
+    cache_namespace="speech_analysis",
 ):
+    if cache_namespace not in {"speech_analysis", "lexical_asr"}:
+        raise ValueError("Unknown speech checkpoint namespace")
     require_billing_authorization(settings)
     identity = analyzer.identity.model_dump(mode="json")
 
@@ -46,7 +54,7 @@ async def cached_speech_analysis(
     attempt_token = str(uuid4())
     async with sessions() as session, session.begin():
         row = await locked(session)
-        cache = row.metadata_json.get("speech_analysis", {})
+        cache = row.metadata_json.get(cache_namespace, {})
         record = cache.get(key)
         if record and record["status"] in {"COMPLETE", "PARTIAL", "FAILED"}:
             # Partial is a terminal checkpoint, never advertised as a complete cache hit.
@@ -66,7 +74,7 @@ async def cached_speech_analysis(
             ]
         row.metadata_json = {
             **row.metadata_json,
-            "speech_analysis": {
+            cache_namespace: {
                 **cache,
                 key: {
                     "status": "ATTEMPTED",
@@ -82,7 +90,7 @@ async def cached_speech_analysis(
     async def checkpoint(results, status):
         async with sessions() as session, session.begin():
             row = await locked(session)
-            cache = dict(row.metadata_json.get("speech_analysis", {}))
+            cache = dict(row.metadata_json.get(cache_namespace, {}))
             if cache.get(key, {}).get("attempt_token") != attempt_token:
                 raise AppError(
                     "SPEAKING_ANALYSIS_BILLING_UNKNOWN",
@@ -98,7 +106,7 @@ async def cached_speech_analysis(
                 "maximum_possible_calls": audio.segment_count,
                 **({"previous_attempts": previous_attempts} if previous_attempts else {}),
             }
-            row.metadata_json = {**row.metadata_json, "speech_analysis": cache}
+            row.metadata_json = {**row.metadata_json, cache_namespace: cache}
 
     results = []
 

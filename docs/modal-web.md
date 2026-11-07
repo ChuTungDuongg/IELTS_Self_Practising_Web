@@ -4,6 +4,19 @@
 
 ## CPU speech preset `speaking_hybrid_v1` (opt-in)
 
+Nguồn lexical mặc định là `SPEAKING_LEXICAL_ASR_PROVIDER=azure_pa` (one-pass).
+`azure_stt` opt-in thêm một request regular STT trên cùng PCM, vẫn cùng Azure SDK CPU;
+không thêm GPU/dependency Whisper vào Web image. Launcher forward các biến
+`SPEAKING_LEXICAL_*` và segmentation qua backend Secret, cùng endpoint/model identity
+nếu operator đã cấu hình `faster_whisper_modal` riêng. Provider đó cần opt-in GPU,
+proxy credentials và estimate/budget; CPU graph không include/deploy T4 service.
+`faster_whisper_local` cần image/runtime tùy chỉnh với optional dependency/model local;
+CPU preset tiêu chuẩn không tự cài model. Chỉ chọn provider không làm nó sẵn sàng.
+Xem [config/readiness/cost/rollback](speaking-transcription.md#independent-lexical-asr)
+và [benchmark không tự phát sinh request](testing/speaking-audio-replay.md#compare-asr).
+Đổi về `azure_pa` rồi restart bằng quy trình bên dưới là rollback; không xóa checkpoints
+hoặc sửa transcript lịch sử. Không có deployment tự động trong thay đổi này.
+
 `SPEAKING_ASR_PROVIDER=azure` chọn profile `speaking_hybrid_v1`. Launcher đọc
 provider từ backend Settings và freeze selector không chứa secret trong image.
 `SPEECH_ENABLED` là feature gate; `MODAL_ASR_SERVICE_ENABLED` chỉ đúng khi provider

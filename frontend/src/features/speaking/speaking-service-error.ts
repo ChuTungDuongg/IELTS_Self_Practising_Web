@@ -20,6 +20,9 @@ export function speakingServiceErrorKey(code: string | null | undefined) {
     case "SPEAKING_AUDIO_UNASSESSABLE": return "speakingService.audioUnavailable" as const;
     case "SPEAKING_ANALYSIS_BILLING_UNKNOWN": return "speakingService.analysisInterrupted" as const;
     case "SPEAKING_ASR_UNAVAILABLE": return "speakingService.recognitionUnavailable" as const;
+    case "SPEAKING_LEXICAL_ASR_UNAVAILABLE": return "speakingService.recognitionUnavailable" as const;
+    case "SPEAKING_LEXICAL_ASR_NOT_AUTHORIZED": return "speakingService.billingBlocked" as const;
+    case "SPEAKING_LEXICAL_ASR_BUDGET_EXCEEDED": return "speakingService.lexicalBudgetExceeded" as const;
     case "TRANSCRIPT_SOURCE_CHANGED": return "speakingService.recordingChanged" as const;
     case "TRANSCRIPT_CONFIGURATION_CHANGED": return "speakingService.configurationChanged" as const;
     case "SPEAKING_INTERRUPTED_RETRY_NOT_AVAILABLE": return "speakingService.retryUnavailable" as const;

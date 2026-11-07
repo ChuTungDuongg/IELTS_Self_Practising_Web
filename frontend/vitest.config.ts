@@ -9,6 +9,8 @@ export default defineConfig({
     },
   },
   test: {
+    // Bound jsdom CPU/memory use on developer machines and shared CI runners.
+    maxWorkers: 2,
     environment: "jsdom",
     setupFiles: ["./tests/setup.ts"],
     exclude: ["tests/e2e/**", "node_modules/**"],

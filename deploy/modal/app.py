@@ -17,11 +17,17 @@ SPEAKING_PROFILE = os.environ.get(
 ).strip()
 if SPEAKING_PROFILE not in {"legacy", "speaking_hybrid_v1"}:
     raise ValueError("IELTS_WEB_SPEAKING_PROFILE must be legacy or speaking_hybrid_v1")
-ASR_PROVIDER = os.environ.get(
-    "IELTS_WEB_SPEAKING_ASR_PROVIDER", os.environ.get(
-        "SPEAKING_ASR_PROVIDER", "azure" if SPEAKING_PROFILE == "speaking_hybrid_v1" else "modal"
+ASR_PROVIDER = (
+    os.environ.get(
+        "IELTS_WEB_SPEAKING_ASR_PROVIDER",
+        os.environ.get(
+            "SPEAKING_ASR_PROVIDER",
+            "azure" if SPEAKING_PROFILE == "speaking_hybrid_v1" else "modal",
+        ),
     )
-).strip().lower()
+    .strip()
+    .lower()
+)
 if ASR_PROVIDER not in {"local", "modal", "azure"}:
     raise ValueError("SPEAKING_ASR_PROVIDER must be local, modal or azure")
 if ASR_PROVIDER == "azure":
@@ -238,11 +244,28 @@ web_secrets = [
             key
             for key in os.environ
             if (
-                key.startswith(("AI_WRITING_", "SPEAKING_AI_", "SPEAKING_AZURE_", "SPEAKING_VAD_"))
+                key.startswith(
+                    (
+                        "AI_WRITING_",
+                        "SPEAKING_AI_",
+                        "SPEAKING_AZURE_",
+                        "SPEAKING_VAD_",
+                        "SPEAKING_LEXICAL_",
+                    )
+                )
                 and key != "SPEAKING_AI_ENABLED"  # Frozen Web AI flag owns worker enablement.
-            ) or key in {
-                "SPEAKING_ASR_ENABLED", "SPEAKING_ASR_PROVIDER", "SPEAKING_ASR_LANGUAGE",
+            )
+            or key
+            in {
+                "SPEAKING_ASR_ENABLED",
+                "SPEAKING_ASR_PROVIDER",
+                "SPEAKING_ASR_LANGUAGE",
                 "SPEAKING_PROCESSING_TIMEOUT_SECONDS",
+                "SPEAKING_ASR_BASE_URL",
+                "SPEAKING_ASR_MODEL",
+                "SPEAKING_ASR_VERSION",
+                "SPEAKING_ASR_MODEL_REVISION",
+                "SPEAKING_ASR_MODEL_DIRECTORY",
             }
         ]
     ),

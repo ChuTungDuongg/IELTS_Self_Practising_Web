@@ -43,6 +43,11 @@ target-version = "py312"
 select = ["E", "F", "I", "UP", "B", "ASYNC"]
 ignore = ["B008", "E501"]
 
+[tool.ruff.lint.isort]
+# Classify application and shared test modules explicitly for local/CI invocations.
+known-first-party = ["app", "tests", "testsupport"]
+known-third-party = ["benchmarks", "deploy"]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

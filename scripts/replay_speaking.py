@@ -21,7 +21,49 @@ def main(argv=None):
     parser.add_argument(
         "--prepare", action="store_true", help="Create an unverified segment template offline."
     )
-    parser.add_argument("--mode", choices=("validate", "azure", "full"), default="validate")
+    parser.add_argument(
+        "--mode", choices=("validate", "azure", "full", "compare-asr"), default="validate"
+    )
+    parser.add_argument(
+        "--asr-provider",
+        action="append",
+        choices=("azure_pa", "azure_stt", "faster_whisper_local", "faster_whisper_modal"),
+        default=[],
+    )
+    parser.add_argument(
+        "--asr-segment",
+        action="append",
+        default=[],
+        help="Approved candidate segment ID; repeat to select windows.",
+    )
+    parser.add_argument(
+        "--segmentation-silence-ms",
+        action="append",
+        type=int,
+        help="Azure silence variants, 100–5000ms; repeat for comparison.",
+    )
+    parser.add_argument(
+        "--offline-asr-fixtures",
+        type=Path,
+        help="Private predictions; compare without provider/model calls.",
+    )
+    parser.add_argument(
+        "--human-references",
+        type=Path,
+        help="Private independently human-verified speech references.",
+    )
+    parser.add_argument(
+        "--provider-estimate",
+        action="append",
+        default=[],
+        metavar="PROVIDER=USD",
+        help="Aggregate estimate per selected provider, including all windows and silence variants.",
+    )
+    parser.add_argument(
+        "--allow-modal-gpu",
+        action="store_true",
+        help="Authorize calls to the existing configured GPU endpoint; never deploys it.",
+    )
     parser.add_argument(
         "--config", type=Path, help="Private dotenv; default backend/.env. No values are printed."
     )
@@ -159,6 +201,52 @@ def main(argv=None):
             )
             print(f"Draft segments: {len(manifest.segments)}. No providers called.")
             return 0
+        if args.mode == "compare-asr":
+            from app.evaluation.speaking.asr_comparison import compare_asr
+
+            estimates = {}
+            for value in args.provider_estimate:
+                name, separator, amount = value.partition("=")
+                if not separator or name in estimates:
+                    raise BenchmarkInputError("REPLAY_ASR_EVERY_PROVIDER_ESTIMATE_REQUIRED")
+                try:
+                    estimates[name] = float(amount)
+                except ValueError:
+                    raise BenchmarkInputError(
+                        "REPLAY_ASR_EVERY_PROVIDER_ESTIMATE_REQUIRED"
+                    ) from None
+            output, report = asyncio.run(
+                compare_asr(
+                    root,
+                    reports,
+                    settings,
+                    providers=args.asr_provider,
+                    segment_ids=args.asr_segment,
+                    silence_values=args.segmentation_silence_ms,
+                    fixtures_path=args.offline_asr_fixtures,
+                    references_path=args.human_references,
+                    allow_live=args.allow_live,
+                    allow_gpu=args.allow_modal_gpu,
+                    max_audio_seconds=args.max_audio_seconds
+                    if args.max_audio_seconds is not None
+                    else 120,
+                    estimated_cost_usd=args.estimated_cost_usd,
+                    max_estimated_cost_usd=args.max_estimated_cost_usd,
+                    provider_estimates=estimates,
+                )
+            )
+            print(f"{report['status']}: {output.relative_to(ROOT).as_posix()}/summary.md")
+            return 0 if report["status"] == "COMPARED" else 2
+        if (
+            args.asr_provider
+            or args.asr_segment
+            or args.segmentation_silence_ms
+            or args.offline_asr_fixtures
+            or args.human_references
+            or args.provider_estimate
+            or args.allow_modal_gpu
+        ):
+            raise BenchmarkInputError("REPLAY_MODE_CONFLICT")
         output, report = asyncio.run(
             run_replay(
                 root,

@@ -145,7 +145,16 @@ def hybrid_environment(settings, model_path):
         raise ValueError("Pinned VAD checksum mismatch; rerun scripts/setup_speaking_vad.py")
     environment = {"IELTS_WEB_SPEAKING_VAD_MODEL_PATH": str(path), "SPEAKING_AZURE_KEY": key}
     for name, value in settings.model_dump(mode="json", exclude_none=True).items():
-        if name.startswith("speaking_azure_") and name != "speaking_azure_key":
+        if (
+            name.startswith(("speaking_azure_", "speaking_lexical_"))
+            and name != "speaking_azure_key"
+        ) or name in {
+            "speaking_asr_base_url",
+            "speaking_asr_model",
+            "speaking_asr_version",
+            "speaking_asr_model_revision",
+            "speaking_asr_model_directory",
+        }:
             environment[name.upper()] = (
                 str(value).lower() if isinstance(value, bool) else str(value)
             )
@@ -257,7 +266,11 @@ def main(argv=None):
             if provider == "openai":
                 environment.update(openai_environment(settings))
                 if (
-                    asr_provider == "modal"
+                    (
+                        asr_provider == "modal"
+                        or getattr(settings, "speaking_lexical_asr_provider", "azure_pa")
+                        == "faster_whisper_modal"
+                    )
                     and speech_enabled
                     and not (settings.ai_writing_modal_key and settings.ai_writing_modal_secret)
                 ):
@@ -265,7 +278,11 @@ def main(argv=None):
                         "ASR requires AI_WRITING_MODAL_KEY and AI_WRITING_MODAL_SECRET; "
                         "use --no-asr for OpenAI grading without ASR"
                     )
-                if asr_provider == "modal" and speech_enabled:
+                if (
+                    asr_provider == "modal"
+                    or getattr(settings, "speaking_lexical_asr_provider", "azure_pa")
+                    == "faster_whisper_modal"
+                ) and speech_enabled:
                     environment.update(
                         AI_WRITING_MODAL_KEY=settings.ai_writing_modal_key,
                         AI_WRITING_MODAL_SECRET=settings.ai_writing_modal_secret,

@@ -38,7 +38,9 @@ def feature_identity(settings):
         return {
             "profile": "speaking_hybrid_v1",
             "fluency": "fluency-v2",
-            "evidence": "evidence-v2",
+            "evidence": "evidence-v3"
+            if getattr(settings, "speaking_lexical_asr_provider", "azure_pa") != "azure_pa"
+            else "evidence-v2",
             "vad": VAD_VERSION,
             "vad_checksum": settings.speaking_vad_model_sha256,
             "pause_ms": 250,
@@ -46,6 +48,11 @@ def feature_identity(settings):
             "eligibility": "coverage-v1",
             "projection": "stratified-pr-300-v1",
             "feedback": "validated-audio-ids-v1",
+            **(
+                {"lexical_projection": "independent-lexical-v1"}
+                if getattr(settings, "speaking_lexical_asr_provider", "azure_pa") != "azure_pa"
+                else {}
+            ),
         }
     return {
         "fluency": FEATURE_VERSION,
@@ -139,7 +146,13 @@ def extract_fluency_features(audio, verbatim_transcript, words, *, part_number=N
 
 
 async def build_feature_bundle(
-    audio, transcript: ASRResult, settings, *, part_number=None, speech_analysis=None
+    audio,
+    transcript: ASRResult,
+    settings,
+    *,
+    part_number=None,
+    speech_analysis=None,
+    lexical_analysis=None,
 ):
     from app.providers.speaking_pronunciation import create_provider
 
@@ -158,10 +171,11 @@ async def build_feature_bundle(
             audio, transcript.text, transcript.words, vad, part_number=part_number
         )
         return SpeakingFeatureBundle(
-            version="evidence-v2",
+            version="evidence-v3" if lexical_analysis is not None else "evidence-v2",
             profile="speaking_hybrid_v1",
             timeline=list(audio.timeline),
             speech_analysis=speech_analysis,
+            lexical_analysis=lexical_analysis,
             source_audio_fingerprint=audio.source_audio_fingerprint,
             quality=quality,
             fluency=fluency,
@@ -172,6 +186,11 @@ async def build_feature_bundle(
                     feature_identity(settings),
                     transcript.model_dump(),
                     [r.model_dump(mode="json") for r in speech_analysis],
+                    *(
+                        [[r.model_dump(mode="json") for r in lexical_analysis]]
+                        if lexical_analysis is not None
+                        else []
+                    ),
                     part_number,
                 ]
             ),

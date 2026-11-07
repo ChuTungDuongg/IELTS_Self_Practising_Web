@@ -237,12 +237,11 @@ class SpeakingTranscriptWorker:
                         await persist_quality_result(session, audio, quality)
                     if not quality.assessable:
                         raise AppError(quality.state, "Recording quality is unavailable.", 409)
-                    speech_analysis = None
+                    speech_analysis, lexical_analysis = None, None
                     if self.settings.speaking_profile == "speaking_hybrid_v1":
-                        from app.services.speaking_analysis_cache import cached_speech_analysis
-                        from app.services.speaking_hybrid import analysis_to_asr
+                        from app.services.speaking_hybrid import transcribe_hybrid
 
-                        speech_analysis = await cached_speech_analysis(
+                        result, speech_analysis, lexical_analysis = await transcribe_hybrid(
                             self.sessions,
                             audio,
                             self.settings,
@@ -257,7 +256,6 @@ class SpeakingTranscriptWorker:
                             ),
                             None,
                         )
-                        result = analysis_to_asr(speech_analysis, audio)
                     else:
                         result = ASRResult.model_validate(
                             await asyncio.wait_for(
@@ -284,6 +282,7 @@ class SpeakingTranscriptWorker:
                         self.settings,
                         part_number=part_number,
                         speech_analysis=speech_analysis,
+                        lexical_analysis=lexical_analysis,
                     )
                     await self._checkpoint(
                         run_id,
@@ -293,10 +292,22 @@ class SpeakingTranscriptWorker:
                         error=terminal_error,
                         evidence=bundle.model_dump(mode="json"),
                         partial=bool(
-                            speech_analysis
+                            (lexical_analysis if lexical_analysis is not None else speech_analysis)
                             and (
-                                len(speech_analysis) != audio.segment_count
-                                or any(r.status != "COMPLETE" for r in speech_analysis)
+                                len(
+                                    lexical_analysis
+                                    if lexical_analysis is not None
+                                    else speech_analysis
+                                )
+                                != audio.segment_count
+                                or any(
+                                    r.status != "COMPLETE"
+                                    for r in (
+                                        lexical_analysis
+                                        if lexical_analysis is not None
+                                        else speech_analysis
+                                    )
+                                )
                             )
                         ),
                     )
@@ -307,6 +318,9 @@ class SpeakingTranscriptWorker:
                         *TERMINAL_AZURE_ERRORS,
                         "SPEAKING_ANALYSIS_BILLING_UNKNOWN",
                         "SPEAKING_ASR_UNAVAILABLE",
+                        "SPEAKING_LEXICAL_ASR_UNAVAILABLE",
+                        "SPEAKING_LEXICAL_ASR_NOT_AUTHORIZED",
+                        "SPEAKING_LEXICAL_ASR_BUDGET_EXCEEDED",
                         "TRANSCRIPT_SOURCE_CHANGED",
                         "TRANSCRIPT_CONFIGURATION_CHANGED",
                     }
@@ -335,6 +349,9 @@ class SpeakingTranscriptWorker:
                         in {
                             *TERMINAL_AZURE_ERRORS,
                             "SPEAKING_ASR_UNAVAILABLE",
+                            "SPEAKING_LEXICAL_ASR_UNAVAILABLE",
+                            "SPEAKING_LEXICAL_ASR_NOT_AUTHORIZED",
+                            "SPEAKING_LEXICAL_ASR_BUDGET_EXCEEDED",
                             "SPEAKING_ANALYSIS_BILLING_UNKNOWN",
                             "SPEAKING_AUDIO_UNASSESSABLE",
                             "TRANSCRIPT_SOURCE_CHANGED",

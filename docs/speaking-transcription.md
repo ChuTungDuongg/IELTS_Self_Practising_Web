@@ -7,7 +7,7 @@
 Xem [config/Secret/launcher và billing safety](modal-web.md#azure-configuration-secrets-and-canonical-command).
 
 Chọn `SPEAKING_ASR_PROVIDER=azure` để dùng profile `speaking_hybrid_v1` hiện có. Default vẫn `legacy`; phần faster-whisper và acoustic proxies bên dưới
-chỉ mô tả legacy. Không có production switch hoặc benchmark live trong lần này.
+chỉ mô tả legacy, trừ adapter được tái dùng cho lexical độc lập bên dưới. Không tự bật production hoặc chạy benchmark live.
 
 ```dotenv
 SPEAKING_ASR_PROVIDER=azure
@@ -22,9 +22,81 @@ SPEAKING_AZURE_PROSODY=true
 SPEAKING_AZURE_TIMEOUT_SECONDS=180
 SPEAKING_AZURE_MAX_CONCURRENCY=2
 SPEAKING_AZURE_MAX_QUEUE=8
+SPEAKING_LEXICAL_ASR_PROVIDER=azure_pa
+SPEAKING_LEXICAL_ASR_ALLOW_ADDITIONAL_REQUESTS=false
+SPEAKING_LEXICAL_ASR_ALLOW_GPU=false
 SPEAKING_VAD_MODEL_PATH=<absolute-local-path-to-silero-v6.0.onnx>
 SPEAKING_VAD_MODEL_SHA256=597d30b3ec076608d059477bb14cfeffdf951bf5cae370d38f65d33bbfe82004
 ```
+
+<a id="independent-lexical-asr"></a>
+
+### Chọn lexical ASR độc lập
+
+Giữ `SPEAKING_ASR_PROVIDER=azure` và `SPEAKING_PROFILE=speaking_hybrid_v1` để PA tiếp
+tục cung cấp bằng chứng âm học. Chọn nguồn canonical qua bảng dưới:
+
+| `SPEAKING_LEXICAL_ASR_PROVIDER` | Canonical lexical | Request thêm | Điều kiện |
+|---|---|---|---|
+| `azure_pa` (default) | PA `NBest[0].Lexical` | Không | Azure/billing hiện có |
+| `azure_stt` | Regular Azure continuous STT, Detailed | Một / segment | Key/region/SDK hiện có + opt-in/budget |
+| `faster_whisper_local` | Adapter Faster-Whisper CPU int8 hiện có | Một local / segment | Optional `speech` extra, model local đầy đủ |
+| `faster_whisper_modal` | Endpoint Faster-Whisper T4 hiện có | Một cloud / segment | Endpoint/model/revision/version + proxy credentials + opt-in GPU/budget |
+
+Azure STT là ứng viên independent đầu tiên cho kiến trúc CPU; chưa có bằng chứng nó
+chính xác hơn. Ví dụ cấu hình dual-pass (giá trị USD dưới đây chỉ minh họa, operator
+phải thay bằng estimate của mình):
+
+```dotenv
+SPEAKING_LEXICAL_ASR_PROVIDER=azure_stt
+SPEAKING_LEXICAL_ASR_ALLOW_ADDITIONAL_REQUESTS=true
+SPEAKING_LEXICAL_ASR_ESTIMATED_COST_USD_PER_MINUTE=0.10
+SPEAKING_LEXICAL_ASR_MAX_ESTIMATED_COST_USD_PER_RESPONSE=0.50
+```
+
+Budget trên chỉ dành cho request lexical thêm; PA vẫn theo policy billing riêng.
+Adapter kiểm cả response duration trước khi bắt đầu PA hoặc lexical. Đây không phải
+hard invoice cap. Không bật thêm chi phí mặc định. Nếu provider không sẵn sàng thì
+run thất bại rõ ràng; không âm thầm thay engine hoặc dùng PA làm fallback. PA failure
+không có text vẫn cho phép lexical độc lập thành công, PR unavailable; quota/auth/
+billing-blocked của Azure dừng request còn lại theo safety policy hiện có.
+
+Whisper local tái dùng `SPEAKING_ASR_MODEL_DIRECTORY`, `MODEL`, `VERSION`, `LANGUAGE`;
+operator chuẩn bị model.bin/config/tokenizer/preprocessor trước. Không tự tải model.
+Thay weights tại cùng thư mục phải cập nhật `SPEAKING_ASR_MODEL_REVISION`/`VERSION`;
+cache không hash toàn bộ file model nhiều GB trong mỗi request. Revision local cũng
+nằm trong lexical identity, độc lập PA.
+CPU chỉ phù hợp benchmark hoặc model nhỏ theo tài nguyên thực. Modal tái dùng
+`SPEAKING_ASR_BASE_URL`, `MODEL`, `MODEL_REVISION`, `VERSION`, `LANGUAGE` và
+`AI_WRITING_MODAL_KEY` / `AI_WRITING_MODAL_SECRET`. Phiên bản endpoint phải khớp
+`deploy/modal/speaking_asr.py`; phải có `SPEAKING_LEXICAL_ASR_ALLOW_GPU=true` và estimate
+dương. Không cần/không tự tạo microservice hoặc GPU trong CPU deployment.
+
+PA và STT độc lập chia sẻ PCM nhưng không chia sẻ word identity/confidence. PA giữ
+reference text trống, không ghép phoneme vào token engine khác. `VERBATIM` là ASR output
+được giữ lại, không phải bản chép nguyên văn do người kiểm chứng. CLEAN chỉ gộp khoảng
+trắng. Các lỗi grammar, repetitions, fillers nhận dạng được vẫn giữ nguyên.
+
+### Segmentation cho người nói chậm
+
+`SPEAKING_AZURE_SEGMENTATION_SILENCE_TIMEOUT_MS` mặc định không đặt: giữ SDK behavior
+và cache identity cũ. Khi đặt integer 100–5000, property
+`Speech_SegmentationSilenceTimeoutMs` được gửi tường minh, với config identity
+`segmentation_version=silence-v1`. Nó áp dụng cho cả PA/STT; thay giá trị tạo cache
+riêng cho provider có cấu hình thay đổi. Không tăng mặc định theo phỏng đoán.
+So sánh 500/1000/1500ms bằng benchmark trước khi chọn cho cohort slow speakers.
+
+[Microsoft](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/how-to-recognize-speech?pivots=programming-language-python)
+cảnh báo segmentation không phù hợp có thể giảm accuracy và semantic segmentation
+chưa có NBest/confidence. Vì pipeline cần các trường đó, không bật semantic segmentation.
+Parser không sử dụng LLM để sửa câu. Missing metadata không được suy từ pronunciation
+accuracy; timing giữ offsets theo input stream và mapping nguồn recorder.
+
+Readiness `/api/v1/speaking-attempts/analysis-profile` trả `lexical_asr.provider`,
+`configured`, `limitations`, `additional_provider_request`, `gpu_endpoint_required`
+và `pronunciation_configured`; không trả keys, endpoint hoặc đường dẫn. Readiness
+không gọi provider, load model hoặc xác nhận accuracy live. Rollback bằng `azure_pa`
+và bỏ segmentation override; completed history và cache cũ được giữ.
 
 Azure Speech SDK tùy chọn ghim `azure-cognitiveservices-speech==1.53.0`; CPU VAD
 dùng `onnxruntime==1.23.2`, `numpy==2.2.6`. Không dùng `speech` extra faster-whisper

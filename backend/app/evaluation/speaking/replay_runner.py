@@ -184,8 +184,8 @@ def base_report(mode, manifest, metadata, limits):
     }
 
 
-async def speech_evidence(audio, segment, path, settings, *, analyzer, offline_test):
-    identity = azure_analysis_identity(settings)
+async def speech_evidence(audio, segment, path, settings, *, analyzer, offline_test, identity=None):
+    identity = identity or azure_analysis_identity(settings)
     pcm_hash = await await_audio_thread(asyncio.to_thread(pcm_digest, audio))
     expected = fingerprint(
         [
@@ -491,6 +491,17 @@ async def run_replay(
     )
     check_live_configuration(settings, mode)
     selected = select_segments(manifest, metadata, mode, max_audio_seconds, settings)
+    from app.providers.speaking_asr.lexical import (
+        create_lexical_analyzer,
+        require_lexical_permission,
+        selection,
+    )
+
+    independent = mode == "full" and selection(settings) != "azure_pa"
+    if independent:
+        for segment in selected:
+            require_lexical_permission(settings, duration_ms=segment.end_ms - segment.start_ms)
+        report["lexical"] = {"provider": selection(settings), "samples": []}
     report["input"]["selected_audio_ms"] = sum(s.end_ms - s.start_ms for s in selected)
     report["input"]["candidate_duration_ms"] = sum(
         s.end_ms - s.start_ms for s in selected if s.speaker_role == "candidate"
@@ -583,13 +594,41 @@ async def run_replay(
                 if not results[0].lexical_transcript.strip():
                     raise BenchmarkInputError("ASR_UNUSABLE")
                 if mode == "full":
-                    transcript = analysis_to_asr(results, audio)
+                    lexical = None
+                    if independent:
+                        lexical_analyzer = create_lexical_analyzer(settings)
+                        lexical_key = fingerprint(
+                            [
+                                namespace,
+                                audio.cache_key,
+                                await await_audio_thread(asyncio.to_thread(pcm_digest, audio)),
+                                segment.part_number,
+                                normalization_identity(settings),
+                                lexical_analyzer.identity.model_dump(mode="json"),
+                            ]
+                        )
+                        lexical, lexical_checkpoint, lexical_reused = await speech_evidence(
+                            audio,
+                            segment,
+                            output_root / ".speech-cache" / f"SENSITIVE-{lexical_key}.json",
+                            settings,
+                            analyzer=lexical_analyzer,
+                            offline_test=offline_test,
+                            identity=lexical_analyzer.identity,
+                        )
+                        report["lexical"]["samples"].append(
+                            coverage_row(lexical_key, lexical, lexical_checkpoint, lexical_reused)
+                        )
+                    transcript = analysis_to_asr(
+                        lexical if independent else results, audio, independent=independent
+                    )
                     features = await build_feature_bundle(
                         audio,
                         transcript,
                         settings,
                         part_number=segment.part_number,
                         speech_analysis=results,
+                        lexical_analysis=lexical,
                     )
                     rows.append(
                         {
