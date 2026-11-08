@@ -1,0 +1,46 @@
+.stack { display: grid; gap: 24px; min-width: 0; }
+.panel { padding: 24px; border: 1px solid var(--border); border-radius: 16px; background: var(--surface); min-width: 0; }
+.panel h2 { font-size: 18px; font-weight: 600; margin: 0 0 12px; }
+.panel h3 { font-size: 16px; font-weight: 600; margin: 0 0 8px; }
+.panel :global(.btn), .panel :global(.field) { min-height: 44px; }
+.panel :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.muted { color: var(--muted); font-size: 14px; line-height: 1.6; }
+.toolbar { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 16px; }
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 16px; }
+.actions > :global(.btn) { min-height: 44px; flex: 0 0 auto; white-space: nowrap; }
+.grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; align-items: start; }
+.form { display: grid; gap: 16px; }
+.form label { display: grid; gap: 6px; font-size: 14px; }
+.check { display: flex !important; align-items: flex-start; gap: 10px !important; min-height: 44px; padding-block: 8px; }
+.check input { margin-top: 4px; flex-shrink: 0; }
+.tableWrap { overflow-x: auto; max-width: 100%; margin-top: 12px; }
+.table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; font-size: 14px; }
+.table th, .table td { padding: 12px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
+.table th { color: var(--muted); font-weight: 500; }
+.table td.numeric { text-align: right; }
+.table th.numeric { text-align: right; }
+.counters { display: flex; flex-wrap: wrap; gap: 24px; margin: 16px 0; font-variant-numeric: tabular-nums; }
+.counterItem { min-width: 140px; padding: 12px 16px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-hover); }
+.counterLabel { font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+.counterValue { font-size: 24px; font-weight: 600; }
+.badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 9999px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+.badgeReady, .badgePass { background: rgba(34, 197, 94, 0.15); color: #16a34a; border: 1px solid rgba(34, 197, 94, 0.3); }
+.badgeBlocked, .badgeFail { background: rgba(239, 68, 68, 0.15); color: #dc2626; border: 1px solid rgba(239, 68, 68, 0.3); }
+.badgeNeedsReview, .badgeInconclusive { background: rgba(245, 158, 11, 0.15); color: #d97706; border: 1px solid rgba(245, 158, 11, 0.3); }
+.badgeInsufficient, .badgeInvalid { background: rgba(148, 163, 184, 0.15); color: #64748b; border: 1px solid rgba(148, 163, 184, 0.3); }
+.card { border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 16px; background: var(--surface); }
+.cardHeader { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+.cardTitle { font-size: 16px; font-weight: 600; margin: 0; }
+.proposalMeta { display: flex; flex-wrap: wrap; gap: 12px; font-size: 13px; color: var(--muted); margin: 8px 0; }
+.proposalFlags { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+.flagBadge { font-size: 11px; padding: 2px 8px; border-radius: 4px; background: rgba(245, 158, 11, 0.15); color: #d97706; border: 1px solid rgba(245, 158, 11, 0.3); font-weight: 500; }
+.scoreGrid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin: 12px 0; }
+.scoreField { display: grid; gap: 4px; }
+.scoreField label { font-size: 12px; font-weight: 500; color: var(--muted); }
+.scoreField input, .scoreField select { width: 100%; min-height: 40px; }
+.commentsGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 12px 0; }
+.commentField { display: grid; gap: 4px; }
+.commentField.wide { grid-column: 1 / -1; }
+.commentField label { font-size: 13px; font-weight: 500; }
+.commentField textarea { min-height: 72px; }
+.noticeWarning { border-left: 4px solid #f59e0b; background: rgba(245, 158, 11, 0.08); padding: 12px 16px; border-radius: 0 8px 8px 0; margin: 12px 0; }

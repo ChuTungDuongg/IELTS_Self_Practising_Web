@@ -36,6 +36,7 @@ async def research_report(
     experiment_id,
     *,
     latest_references=False,
+    label_selection=None,
     split=None,
     part=None,
     provider_key=None,
@@ -107,15 +108,29 @@ async def research_report(
             if split and sample["split"] != split:
                 continue
             sample_id = UUID(sample["sample_id"])
-            label_revision = selected["labels"].get(sample["sample_id"])
-            label = (
-                await selected_label(service.session, sample_id)
-                if latest_references
-                else await service.session.get(Label, (sample_id, label_revision))
-                if label_revision
-                else None
-            )
-            human = bands(label if label and label.verified else None)
+            if label_selection:
+                from app.services.speaking_benchmark_human import resolve_human_label
+
+                resolved = await resolve_human_label(
+                    service.session,
+                    service.owner_id,
+                    sample_id,
+                    sample["review_revision"],
+                    label_selection,
+                )
+                human = resolved.get("bands") if resolved.get("eligible") else dict.fromkeys(FIELDS)
+                label_rev = resolved.get("revision") if resolved.get("eligible") else None
+            else:
+                label_revision = selected["labels"].get(sample["sample_id"])
+                label = (
+                    await selected_label(service.session, sample_id)
+                    if latest_references
+                    else await service.session.get(Label, (sample_id, label_revision))
+                    if label_revision
+                    else None
+                )
+                human = bands(label if label and label.verified else None)
+                label_rev = label.revision if label else None
             if human_overall is not None and human["overall"] != human_overall:
                 continue
             for config in experiment.configuration["variants"]:
@@ -145,7 +160,8 @@ async def research_report(
                         "sample_id": sample["sample_id"],
                         "candidate_id": sample["candidate_id"],
                         "provider": variant_key,
-                        "label_revision": label.revision if label else None,
+                        "label_revision": label_rev,
+                        **({"human_label_selection": resolved} if label_selection else {}),
                         "human": human,
                         "ai": ai,
                         "run_id": str(run.id) if run else None,

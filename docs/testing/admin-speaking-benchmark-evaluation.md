@@ -1,6 +1,6 @@
 # Admin Speaking Benchmark Lab — Phase 2: Evaluation, Grading Worker, and Metrics Dashboard
 
-Implementation baseline: `5fb734e27b2c782dbaaaaca4eb3168c6150bf8d6`. This feature evaluates approved Phase 1 Speaking candidate audio against production Azure Speech and OpenAI scoring pipelines, persisting durable physical request ledgers, immutable predictions, and Human vs AI comparative metrics. See the [design](../superpowers/specs/2026-11-08-admin-speaking-benchmark-evaluation-design.md) and [implementation plan](../superpowers/plans/2026-11-08-admin-speaking-benchmark-evaluation.md).
+Implementation baseline: `5fb734e27b2c782dbaaaaca4eb3168c6150bf8d6`. This feature evaluates approved Phase 1 Speaking candidate audio against production Azure Speech and OpenAI scoring pipelines, persisting durable physical request ledgers, immutable predictions, and Human vs AI comparative metrics. See the [design](../superpowers/specs/2026-11-08-admin-speaking-benchmark-evaluation-design.md) and [implementation plan](../superpowers/plans/2026-11-08-admin-speaking-benchmark-evaluation.md). For Phase 3 research, see [Admin Speaking Benchmark Research](admin-speaking-benchmark-research.md); for Phase 4 quality and continuous evaluation gates, see [Admin Speaking Benchmark Quality & Gates](admin-speaking-benchmark-quality-and-gates.md).
 
 ```mermaid
 flowchart TD

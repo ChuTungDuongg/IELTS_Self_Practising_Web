@@ -1,7 +1,7 @@
 """Read-only owner reports and private exports. No provider constructors."""
 
 import json
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
@@ -29,10 +29,19 @@ async def compare(
     run_id: UUID,
     actor: AdminUser,
     label_revision: int | None = Query(None, ge=1),
+    human_label_kind: Literal["LEGACY", "INDEPENDENT", "ADJUDICATED"] | None = None,
+    human_label_id: UUID | None = None,
+    human_label_revision: int | None = Query(None, ge=1),
     session: AsyncSession = Depends(get_session),
 ):
     return await comparison(
-        SpeakingBenchmarkService(session, actor.id), sample_id, run_id, label_revision
+        SpeakingBenchmarkService(session, actor.id),
+        sample_id,
+        run_id,
+        label_revision,
+        dict(kind=human_label_kind, id=human_label_id, revision=human_label_revision)
+        if human_label_kind
+        else None,
     )
 
 

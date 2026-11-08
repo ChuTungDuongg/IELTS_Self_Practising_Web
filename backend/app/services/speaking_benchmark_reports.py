@@ -80,14 +80,34 @@ def comparison_row(sample, run, label):
     }
 
 
-async def comparison(service, sample_id, run_id, label_revision=None):
+async def comparison(service, sample_id, run_id, label_revision=None, label_selection=None):
     async with service.session.begin():
         sample = await service.owned(sample_id)
         run = await owned_run(service.session, service.owner_id, sample_id, run_id)
         label = await selected_label(service.session, sample_id, label_revision)
         if label_revision and label is None:
             raise failure("SPEAKING_BENCHMARK_LABEL_REVISION_NOT_FOUND", 404)
-        return comparison_row(sample, run, label)
+        result = comparison_row(sample, run, label)
+        if label_selection:
+            from app.services.speaking_benchmark_human import resolve_human_label
+
+            resolved = await resolve_human_label(
+                service.session, service.owner_id, sample_id, run.review_revision, label_selection
+            )
+            result.update(
+                human=resolved["bands"] if resolved["eligible"] else dict.fromkeys(FIELDS),
+                label_selection=resolved,
+                label_revision=resolved["revision"],
+                verified=resolved["eligible"],
+                label_status="HUMAN_VERIFIED" if resolved["eligible"] else "UNLABELLED",
+            )
+            result["differences"] = {
+                f: result["ai"][f] - result["human"][f]
+                if result["ai"][f] is not None and result["human"][f] is not None
+                else None
+                for f in FIELDS
+            }
+        return result
 
 
 def summarize(rows):
@@ -111,7 +131,33 @@ async def report(service, filters):
         )
         rows = []
         for sample in samples:
-            label = labels.get(sample.id)
+            run = runs.get(sample.id)
+            if getattr(filters, "label_selection", None):
+                from app.services.speaking_benchmark_human import resolve_human_label
+
+                resolved = await resolve_human_label(
+                    service.session,
+                    service.owner_id,
+                    sample.id,
+                    run.review_revision if run else sample.review_revision,
+                    filters.label_selection,
+                )
+                if resolved.get("eligible"):
+
+                    class ResolvedLabelAdapter:
+                        def __init__(self, rev, bands_dict):
+                            self.revision = rev
+                            self.verified = True
+                            for k, v in bands_dict.items():
+                                setattr(self, k, v)
+
+                    label = ResolvedLabelAdapter(
+                        resolved.get("revision", 1), resolved.get("bands", {})
+                    )
+                else:
+                    label = None
+            else:
+                label = labels.get(sample.id)
             if label is None:
                 continue
             run = runs.get(sample.id)
@@ -126,6 +172,8 @@ async def report(service, filters):
             ):
                 run = None  # Keep eligible denominator; missing selected prediction.
             rows.append(comparison_row(sample, run, label))
+            if filters.label_selection:
+                rows[-1]["human_label_selection"] = resolved
         splits = defaultdict(set)
         for candidate, split in candidates:
             splits[candidate].add(split)
@@ -150,6 +198,8 @@ async def report(service, filters):
                 "leaking_speaker_count": leakage,
             }
         )
+        if filters.label_selection:
+            summary["human_label_selection"] = filters.label_selection
         # Usage is observed only; never convert tokens/audio into invented dollars.
         by_run = {r["run_id"]: r for r in rows if r["run_id"]}
         attempts = (

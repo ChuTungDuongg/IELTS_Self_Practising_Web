@@ -439,3 +439,10 @@ npm --prefix frontend run build
 This audit did not rerun the entire backend suite or browser layout/screenshot QA.
 The synthetic end-to-end database tests exercise both experiment modes; actual
 Azure/Whisper/OpenAI quality, real billing and remote deployment remain unverified.
+
+
+---
+
+## Phase 4 Quality, Consensus and Regression Gates
+
+Phase 4 builds directly upon the ASR references and experiment artifacts of Phase 3 to provide multi-rater IELTS ground truth, dataset QA (`speaking-dataset-quality-v1`), frozen evaluation suites, and continuous evaluation regression gates (`speaking-regression-gate-v1`). See [Phase 4 Quality and Gates](admin-speaking-benchmark-quality-and-gates.md).

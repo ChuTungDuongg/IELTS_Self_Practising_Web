@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import Literal
+from uuid import UUID
 
 from pydantic import Field, model_validator
 
@@ -18,6 +19,21 @@ class ReportFilters(StrictDTO):
     verified_only: bool = True
     uploaded_from: datetime | None = None
     uploaded_to: datetime | None = None
+    human_label_kind: Literal["LEGACY", "INDEPENDENT", "ADJUDICATED"] | None = None
+    human_label_id: UUID | None = None
+    human_label_revision: int | None = Field(default=None, ge=1)
+
+    @property
+    def label_selection(self):
+        return (
+            dict(
+                kind=self.human_label_kind,
+                id=self.human_label_id,
+                revision=self.human_label_revision,
+            )
+            if self.human_label_kind
+            else None
+        )
 
     @model_validator(mode="after")
     def dates(self):

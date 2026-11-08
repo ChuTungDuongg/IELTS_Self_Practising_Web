@@ -1,5 +1,6 @@
 """Private owner-scoped research APIs. No requests execute in this module."""
 
+from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
@@ -243,9 +244,17 @@ def report_filters(
     human_overall: float | None = Query(None, ge=0, le=9),
     sample_id: UUID | None = None,
     segment_id: str | None = Query(None, max_length=100),
+    human_label_kind: Literal["LEGACY", "INDEPENDENT", "ADJUDICATED"] | None = None,
+    human_label_id: UUID | None = None,
+    human_label_revision: int | None = Query(None, ge=1),
 ):
     return dict(
         latest_references=latest_references,
+        label_selection=dict(
+            kind=human_label_kind, id=human_label_id, revision=human_label_revision
+        )
+        if human_label_kind
+        else None,
         split=split,
         part=part,
         provider_key=provider_key,

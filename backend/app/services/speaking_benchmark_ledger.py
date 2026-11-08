@@ -94,6 +94,12 @@ class RequestLedger:
 
             if await unresolved_research_requests(session, run.sample_id):
                 raise failure("SPEAKING_BENCHMARK_RESEARCH_REQUEST_UNSETTLED", 409)
+            from app.services.speaking_benchmark_questions_ledger import (
+                unresolved_question_requests,
+            )
+
+            if await unresolved_question_requests(session, run.sample_id):
+                raise failure("SPEAKING_BENCHMARK_QUESTION_REQUEST_UNSETTLED", 409)
             # A prior unknown physical call blocks all subsequent requests until
             # the exact attempt is reconciled, even if another body/config is supplied.
             unresolved = list(

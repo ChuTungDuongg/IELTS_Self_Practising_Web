@@ -168,8 +168,54 @@ async def grading_lab(tmp_path):
         yield factory, settings, storage, owner, sample_id, run_id
     finally:
         async with factory() as session, session.begin():
+            from app.models.speaking_benchmark_human import SpeakingBenchmarkRater
+            from app.models.speaking_benchmark_quality import (
+                SpeakingBenchmarkEvaluationSuite,
+                SpeakingBenchmarkHoldoutAudit,
+                SpeakingBenchmarkQualitySnapshot,
+                SpeakingBenchmarkRegressionGate,
+                SpeakingBenchmarkRegressionReport,
+            )
+            from app.models.speaking_benchmark_research import SpeakingBenchmarkExperiment
+
+            await session.execute(
+                delete(SpeakingBenchmarkHoldoutAudit).where(
+                    SpeakingBenchmarkHoldoutAudit.owner_id == owner
+                )
+            )
+            await session.execute(
+                delete(SpeakingBenchmarkRegressionReport).where(
+                    SpeakingBenchmarkRegressionReport.owner_id == owner
+                )
+            )
+            await session.execute(
+                delete(SpeakingBenchmarkRegressionGate).where(
+                    SpeakingBenchmarkRegressionGate.owner_id == owner
+                )
+            )
+            await session.execute(
+                delete(SpeakingBenchmarkEvaluationSuite).where(
+                    SpeakingBenchmarkEvaluationSuite.owner_id == owner
+                )
+            )
+            await session.execute(
+                delete(SpeakingBenchmarkQualitySnapshot).where(
+                    SpeakingBenchmarkQualitySnapshot.owner_id == owner
+                )
+            )
+            await session.execute(
+                delete(SpeakingBenchmarkRater).where(
+                    (SpeakingBenchmarkRater.owner_id == owner)
+                    | (SpeakingBenchmarkRater.user_id == owner)
+                )
+            )
             await session.execute(
                 delete(SpeakingBenchmarkSample).where(SpeakingBenchmarkSample.id == sample_id)
+            )
+            await session.execute(
+                delete(SpeakingBenchmarkExperiment).where(
+                    SpeakingBenchmarkExperiment.owner_id == owner
+                )
             )
             await session.execute(
                 delete(SpeakingMediaCleanup).where(SpeakingMediaCleanup.storage_key == key)

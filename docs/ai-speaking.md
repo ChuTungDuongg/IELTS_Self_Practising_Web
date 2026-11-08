@@ -362,3 +362,8 @@ Paired transcript comparisons retain the evidence actually consumed by their P2
 run through immutable cache receipts. Current research fixes preserve that
 provenance across recovery and fence cancellation atomically; no alternative
 Speaking scoring implementation or automatic calibration is introduced.
+
+
+## Quality, consensus and regression gates
+
+[Phase 4 Quality and Gates](testing/admin-speaking-benchmark-quality-and-gates.md) establishes examiner-question extraction, multi-rater IELTS Speaking ground truth with strict blind reviewer isolation, dataset QA (`speaking-dataset-quality-v1`), frozen evaluation suites, and continuous evaluation regression gates (`speaking-regression-gate-v1`). Gate evaluations and offline CI CLI (`scripts/speaking_benchmark_gate_cli.py`) project solely over persisted P1-P3 evidence without invoking paid models or modifying production rubric thresholds.

@@ -37,7 +37,7 @@ Không cần đọc mọi kế hoạch lịch sử. Khi thay đổi Speaking v�
 | Triển khai nghiệp vụ | [danh mục mô-đun](handbook/module-catalog.md) | [mục lục API/model/trang](handbook/source-map.md) |
 | AI Writing | [AI Writing](ai-writing.md) | [OpenAI GPT-6 Luna: local/Modal CPU/AWS](ai-writing.md#openai-gpt6-luna), [ngân hàng benchmark](writing-benchmark-bank.md) |
 | AI/runtime Speaking | [AI Speaking](ai-speaking.md) | [ghi âm](speaking-recording.md), [chép lời](speaking-transcription.md), [chấm điểm](speaking-grading.md), [replay MP3/WAV offline và live opt-in](testing/speaking-audio-replay.md) |
-| Admin Speaking Benchmark Lab | [Phase 1: dataset và review](testing/admin-speaking-benchmark.md), [Phase 2: AI evaluation và metrics](testing/admin-speaking-benchmark-evaluation.md) | upload riêng tư, phân tách người nói CPU, manifest được duyệt, nhãn người chấm, durable request ledger, AI grading worker, dashboard đối sánh Human vs AI và formula-safe export |
+| Admin Speaking Benchmark Lab | [Phase 1: dataset và review](testing/admin-speaking-benchmark.md), [Phase 2: AI evaluation và metrics](testing/admin-speaking-benchmark-evaluation.md), [Phase 3: ASR research](testing/admin-speaking-benchmark-research.md), [Phase 4: Quality & regression gates](testing/admin-speaking-benchmark-quality-and-gates.md) | upload riêng tư, phân tách người nói CPU, manifest được duyệt, nhãn người chấm, durable request ledger, AI grading worker, dashboard đối sánh Human vs AI, research ASR, multi-rater adjudication, dataset QA, frozen suites, regression gates và formula-safe export |
 | Lưu trữ | [kiến trúc](storage-architecture.md) | [di chuyển](storage-migration.md), [sao lưu](storage-backup-restore.md) |
 | Chuyển dữ liệu / import bản nháp | [hợp đồng ZIP](TEST_TRANSFER_FORMAT.md) | [hợp đồng JSON bản nháp](draft-import-format.md) |
 | Chính sách lớp học | [hướng dẫn mô-đun](modules/classrooms.md) | [lịch bài giao](classroom-assignment-scheduling.md), [sổ điểm](classroom-gradebook.md), [học tập](classroom-learning-analytics.md), [lưu trữ/xóa](classroom-archive-calendar.md) |
@@ -57,3 +57,4 @@ Khi đổi tuyến/schema/thực thể/bất biến/provider/triển khai, cập
 
 
 - [Admin Speaking Research: references, ASR-only and paired experiments](testing/admin-speaking-benchmark-research.md) — architecture, additive migration, billing/recovery, metrics, exports, local setup, integrity audit on `00e295f` and verification boundaries.
+- [Admin Speaking Quality & Regression Gates](testing/admin-speaking-benchmark-quality-and-gates.md) — multi-rater IELTS ground truth, blind reviewer mode, dataset QA protocol (`speaking-dataset-quality-v1`), frozen evaluation suites, regression gate engine (`speaking-regression-gate-v1`), and offline CI CLI.

@@ -58,6 +58,23 @@ from app.models.speaking_benchmark_grading import (
     SpeakingBenchmarkGradingCheckpoint,
     SpeakingBenchmarkGradingRun,
 )
+from app.models.speaking_benchmark_human import (  # noqa: F401
+    SpeakingBenchmarkAdjudication,
+    SpeakingBenchmarkHumanAssessment,
+    SpeakingBenchmarkRater,
+    SpeakingBenchmarkRaterAssignment,
+)
+from app.models.speaking_benchmark_quality import (  # noqa: F401
+    SpeakingBenchmarkEvaluationSuite,
+    SpeakingBenchmarkHoldoutAudit,
+    SpeakingBenchmarkQualitySnapshot,
+    SpeakingBenchmarkRegressionGate,
+    SpeakingBenchmarkRegressionReport,
+)
+from app.models.speaking_benchmark_questions import (  # noqa: F401
+    SpeakingBenchmarkQuestionJob,
+    SpeakingBenchmarkQuestionRequest,
+)
 from app.models.speaking_benchmark_research import (  # noqa: F401
     SpeakingBenchmarkASRObservation,
     SpeakingBenchmarkASRReference,

@@ -166,6 +166,12 @@ class ResearchLedger:
             # P2 uncertainty also blocks new ASR requests on this sample.
             if await unresolved_grading_requests(session, variant.sample_id):
                 raise failure("SPEAKING_RESEARCH_P2_REQUEST_UNSETTLED", 409)
+            from app.services.speaking_benchmark_questions_ledger import (
+                unresolved_question_requests,
+            )
+
+            if await unresolved_question_requests(session, variant.sample_id):
+                raise failure("SPEAKING_RESEARCH_QUESTION_REQUEST_UNSETTLED", 409)
             # Experiment lock serializes global budget across separate samples.
             await session.refresh(experiment, with_for_update=True)
             submitted = await session.scalar(

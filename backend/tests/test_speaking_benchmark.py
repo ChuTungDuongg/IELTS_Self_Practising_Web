@@ -105,7 +105,9 @@ def test_report_counts_missing_predictions_and_suppresses_small_groups(tmp_path)
 
 def test_provenance_is_current_versioned_secret_free_and_labels_are_not_averaged():
     settings = Settings(
-        ai_writing_vllm_api_key="PRIVATE_KEY", speaking_asr_model_directory="PRIVATE_DIRECTORY"
+        speaking_asr_provider="local",
+        ai_writing_vllm_api_key="PRIVATE_KEY",
+        speaking_asr_model_directory="PRIVATE_DIRECTORY",
     )
     identity = provenance(settings)
     assert (

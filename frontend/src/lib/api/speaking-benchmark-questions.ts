@@ -1,0 +1,24 @@
+import { z } from "zod";
+import { apiRequest } from "./client";
+
+const path = (sample: string, job?: string) => `/admin/speaking-benchmark/samples/${encodeURIComponent(sample)}/question-suggestions${job ? `/${encodeURIComponent(job)}` : ""}`;
+const record = z.record(z.string(), z.unknown());
+const post = (body?: unknown) => ({ method: "POST", ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+export const questionProviders = ["azure_stt", "faster_whisper_local", "faster_whisper_modal"] as const;
+export type QuestionProvider = typeof questionProviders[number];
+export const proposalSchema = z.object({ id: z.string(), source_review_revision: z.number(), source_sha256: z.string(), draft_fingerprint: z.string(), examiner_speaker_id: z.string(), window_id: z.string(), start_ms: z.number(), end_ms: z.number(), recognized_text: z.string(), provider_identity: record, candidate_segment_id: z.string().nullable(), part_number: z.union([z.literal(1), z.literal(2), z.literal(3)]), question_type: z.enum(["question", "instruction", "acknowledgement", "clarification", "unclear"]), ambiguity_flags: z.array(z.string()), human_verification_status: z.literal("PENDING") });
+export type QuestionProposal = z.infer<typeof proposalSchema>;
+export const questionJobSchema = z.object({ id: z.string(), sample_id: z.string(), review_revision: z.number(), source_sha256: z.string(), draft_fingerprint: z.string(), model_fingerprint: z.string(), examiner_speaker_id: z.string(), configuration: record, fingerprint: z.string(), windows: z.array(record), exclusions: z.array(record), status: z.string(), error_code: z.string().nullable(), proposals: z.array(proposalSchema), decisions: z.array(record), requests: z.array(z.object({ id: z.string(), window_id: z.string(), attempt: z.number(), status: z.string(), billing_state: z.string(), usage: record.nullable(), error_code: z.string().nullable(), reused_from: z.string().nullable(), reconciliation: record.nullable(), created_at: z.string(), finished_at: z.string().nullable() })), created_at: z.string(), started_at: z.string().nullable(), finished_at: z.string().nullable() });
+export type QuestionJob = z.infer<typeof questionJobSchema>;
+export const questionPreflightSchema = z.object({ preflight_fingerprint: z.string(), can_start: z.boolean(), blockers: z.array(z.string()), windows: z.array(record), exclusions: z.array(record), requests: z.record(z.string(), z.number()), provider_audio_seconds: z.number(), limits: record, warnings: z.array(z.string()) });
+export type QuestionPreflight = z.infer<typeof questionPreflightSchema>;
+export type QuestionConsent = { provider_audio: true; modal_gpu: boolean; estimates_usd: Record<string, number>; max_estimated_cost_usd: number };
+export type QuestionDecision = { proposal_id: string; action: "ACCEPT" | "REJECT"; text?: string; candidate_segment_id?: string; part_number?: 1 | 2 | 3; ambiguity_reviewed?: boolean };
+export async function questionJobs(sample: string, offset = 0) { return z.array(questionJobSchema).parse(await apiRequest(`${path(sample)}?offset=${offset}&limit=25`)); }
+export async function createQuestionJob(sample: string, body: { submission_key: string; review_revision: number; examiner_speaker_id: string; examiner_confirmed: true; provider: QuestionProvider; max_provider_audio_seconds: number; max_physical_requests: number }) { return questionJobSchema.parse(await apiRequest(path(sample), post(body))); }
+export async function getQuestionJob(sample: string, id: string) { return questionJobSchema.parse(await apiRequest(path(sample, id))); }
+export async function prepareQuestions(sample: string, id: string) { return questionPreflightSchema.parse(await apiRequest(`${path(sample, id)}/preflight`, post())); }
+export async function startQuestions(sample: string, id: string, fingerprint: string, consent: QuestionConsent) { return questionJobSchema.parse(await apiRequest(`${path(sample, id)}/start`, post({ preflight_fingerprint: fingerprint, consent }))); }
+export async function cancelQuestions(sample: string, id: string) { return questionJobSchema.parse(await apiRequest(`${path(sample, id)}/cancel`, post())); }
+export async function reconcileQuestions(sample: string, id: string, request_id: string, reason: string, fingerprint: string, consent: QuestionConsent) { return questionJobSchema.parse(await apiRequest(`${path(sample, id)}/reconcile`, post({ request_id, reason, preflight_fingerprint: fingerprint, consent }))); }
+export async function decideQuestions(sample: string, id: string, expected_review_revision: number, expected_decision_count: number, decisions: QuestionDecision[], batch = false) { return questionJobSchema.parse(await apiRequest(`${path(sample, id)}/decisions`, post({ expected_review_revision, expected_decision_count, independently_reviewed: true, decisions, batch }))); }

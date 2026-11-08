@@ -24,6 +24,10 @@ export function SpeakingBenchmarkList() {
         <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
           <Link className="btn btn-secondary" href="/admin/speaking-benchmark/reports">{t("speakingEval.reports")}</Link>
           <Link className="btn btn-secondary" href="/admin/speaking-benchmark/research">{t("speakingResearch.title")}</Link>
+          <Link className="btn btn-secondary" href="/admin/speaking-benchmark/quality">{t("speakingLab.quality")}</Link>
+          <Link className="btn btn-secondary" href="/admin/speaking-benchmark/suites">{t("speakingLab.suites")}</Link>
+          <Link className="btn btn-secondary" href="/admin/speaking-benchmark/gates">{t("speakingLab.gates")}</Link>
+          <Link className="btn btn-secondary" href="/admin/speaking-benchmark/reviewer">{t("speakingLab.blindReviewer")}</Link>
           <Link className="btn btn-secondary" href="/admin/writing-benchmark">{t("benchmark.title")}</Link>
         </div>
       }

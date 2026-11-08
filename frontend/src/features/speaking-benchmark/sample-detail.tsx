@@ -18,6 +18,8 @@ import { SampleMetadataEditor } from "./metadata-editor";
 import { SpeakingEvaluation } from "./evaluation/speaking-evaluation";
 import { RecordingWorkspace } from "./recording-workspace";
 import { ReferenceEditor } from "./research/reference-editor";
+import { QuestionAssistant } from "./question-assistant";
+import { HumanAdjudicationPanel } from "./human-adjudication-panel";
 import styles from "./lab.module.css";
 
 export function SpeakingBenchmarkDetail({ sampleId }: { sampleId: string }) {
@@ -28,6 +30,8 @@ export function SpeakingBenchmarkDetail({ sampleId }: { sampleId: string }) {
   const translateRef = useRef(t); useEffect(() => { translateRef.current = t; }, [t]);
   const [busy, setBusy] = useState(false); const [error, setError] = useState(""); const [generation, setGeneration] = useState(0); const [dialog, setDialog] = useState<"approve" | "delete" | "suggest" | "reload" | "leave" | null>(null);
   const [referenceDirty, setReferenceDirty] = useState(false);
+  const [humanDirty, setHumanDirty] = useState(false);
+  const [questionDirty, setQuestionDirty] = useState(false);
   const [metadataDirty, setMetadataDirty] = useState(false); const [reloadGeneration, setReloadGeneration] = useState(0);
   const [historyRevision, setHistoryRevision] = useState(1); const [historical, setHistorical] = useState<api.SpeakingReview | null>(null);
   const refresh = useCallback(async (discard = false) => {
@@ -38,7 +42,7 @@ export function SpeakingBenchmarkDetail({ sampleId }: { sampleId: string }) {
     setSample(row); setLabels(human); setAvailable(readiness); setReview(current); setDraft(current?.draft ?? null); setDirty(false); setLabelDirty(false); setMetadataDirty(false); setHistorical(null); if (discard) setReloadGeneration(v => v + 1);
   }, [sampleId]);
   useEffect(() => { let active = true; void Promise.resolve().then(() => refresh()).catch(failure => { if (active) setError(labError(failure, translateRef.current)); }); return () => { active = false; stopPlayback(); }; }, [refresh, stopPlayback]);
-  useEffect(() => { dirtyRef.current = dirty || labelDirty || metadataDirty || referenceDirty; function warn(event: BeforeUnloadEvent) { if (dirtyRef.current) event.preventDefault(); } window.addEventListener("beforeunload", warn); return () => window.removeEventListener("beforeunload", warn); }, [dirty, labelDirty, metadataDirty, referenceDirty]);
+  useEffect(() => { dirtyRef.current = dirty || labelDirty || metadataDirty || referenceDirty || humanDirty || questionDirty; function warn(event: BeforeUnloadEvent) { if (dirtyRef.current) event.preventDefault(); } window.addEventListener("beforeunload", warn); return () => window.removeEventListener("beforeunload", warn); }, [dirty, labelDirty, metadataDirty, referenceDirty, humanDirty, questionDirty]);
   function edit(value: api.SpeakingDraft) { dirtyRef.current = true; setDraft(value); setDirty(true); }
   async function operation(action: () => Promise<void>) { setBusy(true); setError(""); try { await action(); setDialog(null); } catch (failure) { setError(labError(failure, t)); } finally { setBusy(false); } }
   async function acknowledge(value: api.SpeakingReview) { setReview(value); setDraft(value.draft); setDirty(false); setSample(await api.getSpeakingSample(sampleId)); }
@@ -59,7 +63,28 @@ export function SpeakingBenchmarkDetail({ sampleId }: { sampleId: string }) {
     {!available.can_queue && <p className="notice" role="status">{t("speakingLab.workerUnavailable")} ({available.reason})</p>}
     {error && <p role="alert" className="notice notice-error">{error}</p>}
     <AudioReviewPlayer sampleId={sampleId} durationMs={sample.duration_ms} playback={playback} />
-    <RecordingWorkspace references={<ReferenceEditor sampleId={sampleId} reviewRevision={review?.revision ?? 0} onPlay={(start, end) => playback.play([{ start_ms: start, end_ms: end }])} onDirty={value => { dirtyRef.current = dirty || labelDirty || metadataDirty || value; setReferenceDirty(value); }} />} review={<div className={styles.reviewLayout}>
+    <RecordingWorkspace
+      questions={
+        <QuestionAssistant
+          key={`questions:${reloadGeneration}`}
+          onDirty={setQuestionDirty}
+          blocked={dirty || labelDirty || metadataDirty || referenceDirty}
+          sampleId={sampleId}
+          reviewRevision={review?.revision ?? 0}
+          onPlay={(start, end) => playback.play([{ start_ms: start, end_ms: end }])}
+          onDraftUpdated={() => { dirtyRef.current = dirty || labelDirty || metadataDirty || referenceDirty || humanDirty; void refresh(); }}
+        />
+      }
+      human={
+        <HumanAdjudicationPanel
+          key={`human:${reloadGeneration}`}
+          onDirty={setHumanDirty}
+          sampleId={sampleId}
+          reviewRevision={review?.revision ?? 0}
+        />
+      }
+      references={<ReferenceEditor sampleId={sampleId} reviewRevision={review?.revision ?? 0} onPlay={(start, end) => playback.play([{ start_ms: start, end_ms: end }])} onDirty={value => { dirtyRef.current = dirty || labelDirty || metadataDirty || value; setReferenceDirty(value); }} />}
+      review={<div className={styles.reviewLayout}>
       <div className={styles.stack}>
         <div className={styles.sectionIntro}><h2>{t("speakingLab.reviewTab")}</h2><p>{t("speakingLab.reviewHelp")}</p></div>
         {review && draft ? <><SpeakerTimeline review={review} draft={draft} disabled={busy || metadataDirty} onChange={edit} onPlay={playback.play} onSeek={playback.seek} /><PartBoundaryEditor draft={draft} disabled={busy || metadataDirty} durationMs={sample.duration_ms} onChange={edit} /><SegmentEditor draft={draft} disabled={busy || metadataDirty} durationMs={sample.duration_ms} onChange={edit} onPlay={playback.play} onSuggest={() => setDialog("suggest")} />

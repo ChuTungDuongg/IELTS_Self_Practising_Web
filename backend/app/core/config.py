@@ -47,6 +47,8 @@ class Settings(BaseSettings):
     speaking_benchmark_grading_enabled: bool = False
     speaking_benchmark_grading_allow_live: bool = False
     speaking_benchmark_research_enabled: bool = False
+    speaking_benchmark_questions_enabled: bool = False
+    speaking_benchmark_questions_allow_live: bool = False
     speaking_benchmark_research_allow_live: bool = False
     speaking_benchmark_research_max_samples: int = Field(default=50, ge=1, le=100)
     speaking_benchmark_research_max_provider_seconds: int = Field(default=3600, ge=1, le=86400)

@@ -44,3 +44,8 @@ Owner: `api/v1/speaking_benchmark.py` → `services/speaking_benchmark*.py` → 
 ### Admin Speaking Research — Phase 3
 
 Owner: `api/v1/speaking_benchmark_research.py`, `services/speaking_benchmark_research*.py`, reference service/model, typed client and `features/speaking-benchmark/research/`. Separate CPU entrypoint `scripts/speaking_benchmark_research_worker.py`. [Operations and measurement protocol](../testing/admin-speaking-benchmark-research.md).
+
+
+### Admin Speaking Quality, Consensus and Regression Gates — Phase 4
+
+Owner: `api/v1/speaking_benchmark_questions.py`, `api/v1/speaking_benchmark_human.py`, `api/v1/speaking_benchmark_quality.py`, corresponding services (`speaking_benchmark_questions*.py`, `speaking_benchmark_human.py`, `speaking_benchmark_quality*.py`), models (`speaking_benchmark_questions.py`, `speaking_benchmark_human.py`, `speaking_benchmark_quality.py`), typed clients (`speaking-benchmark-questions.ts`, `speaking-benchmark-human.ts`, `speaking-benchmark-quality.ts`), features UI (`features/speaking-benchmark/quality/`, `question-assistant.tsx`, `human-adjudication-panel.tsx`, `blind-reviewer.tsx`), and offline CLI `scripts/speaking_benchmark_gate_cli.py`. [Operations and measurement protocol](../testing/admin-speaking-benchmark-quality-and-gates.md).

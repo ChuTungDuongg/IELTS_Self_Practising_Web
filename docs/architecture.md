@@ -91,3 +91,8 @@ nonbillable cache receipts, rather than searching for the newest provider output
 Research and linked P2 cancellation share one transaction. Research normalization
 is a pure evaluation contract shared by reference validation and metrics; it does
 not modify learner transcripts, provider prompts or the legacy replay CLI.
+
+
+## Admin Speaking Quality, Consensus and Regression Gates boundary
+
+[Phase 4](testing/admin-speaking-benchmark-quality-and-gates.md) adds eleven additive tables (`20261108_0048`), examiner-question extraction, multi-rater human assessments, owner adjudication (`human-adjudication-v1`), dataset QA (`speaking-dataset-quality-v1`), immutable evaluation suites, regression gates (`speaking-regression-gate-v1`), and an offline CI CLI (`scripts/speaking_benchmark_gate_cli.py`). The blind reviewer API boundary (`/reviewer-assignments/{id}`) enforces strict security server-side: no AI predictions, peer ratings, or ground truth labels are returned. Gate evaluations compute pure paired statistical metrics and bootstrap confidence intervals over immutable persisted artifacts without invoking external AI providers.

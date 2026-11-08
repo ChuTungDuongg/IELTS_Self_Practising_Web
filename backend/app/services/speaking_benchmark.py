@@ -242,7 +242,10 @@ class SpeakingBenchmarkService:
             from app.services.speaking_benchmark_research_worker import cancel_sample_variants
 
             research_active = await cancel_sample_variants(self.session, sample_id)
-            if runs or research_active:
+            from app.services.speaking_benchmark_questions import cancel_question_jobs
+
+            questions_active = await cancel_question_jobs(self.session, sample_id)
+            if runs or research_active or questions_active:
                 row.deletion_pending_at = datetime.now(UTC)
                 for run in runs:
                     if run.status in {"COMPLETED", "PARTIAL", "FAILED", "CANCELLED"}:

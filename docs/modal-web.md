@@ -563,3 +563,8 @@ The [Phase 1 lab](testing/admin-speaking-benchmark.md) queues PostgreSQL jobs; i
 The follow-up integrity audit uses disposable loopback PostgreSQL and fake
 providers only. Its migration/build results do not validate Modal networking,
 shared storage durability or GPU operation; those remain separate live checks.
+
+
+## Speaking quality and regression gates
+
+[Phase 4](testing/admin-speaking-benchmark-quality-and-gates.md) evaluation suites, dataset quality audits, and regression gates run as read-only projection engines over persisted P1-P3 database records. Question suggestions reuse the existing CPU worker or Azure STT without adding Whisper/GPU dependencies to the Web image. Modal GPU faster-whisper execution requires explicit operator consent and budget limits. Offline regression gate CLI runs in zero-dependency environments.
