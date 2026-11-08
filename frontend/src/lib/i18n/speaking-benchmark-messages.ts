@@ -1,4 +1,8 @@
 export const speakingLabEn = {
+  "speakingLab.workspace": "Recording workspace",
+  "speakingLab.reviewTab": "Recording review",
+  "speakingLab.reviewHelp": "Listen to the recording, confirm the candidate, then review Parts and answer windows before approval.",
+  "speakingLab.reviewActions": "Review status and actions",
   "speakingLab.title": "Speaking Benchmark Lab",
   "speakingLab.description": "Prepare your private Speaking dataset: review speakers, approve candidate windows and record human assessments.",
   "speakingLab.samples": "Your recordings",
@@ -21,7 +25,7 @@ export const speakingLabEn = {
   "speakingLab.previous": "Previous",
   "speakingLab.next": "Next",
   "speakingLab.original": "Source audio",
-  "speakingLab.windowHelp": "One player for the original recording and selected source windows. Speaker playback follows timeline windows; overlapping voices remain audible.",
+  "speakingLab.windowHelp": "Listen to the full interview, or choose a speaker or answer window below. Overlapping voices may still be audible.",
   "speakingLab.seek": "Position (seconds)",
   "speakingLab.seekAction": "Seek",
   "speakingLab.stop": "Stop window playback",
@@ -112,6 +116,10 @@ export const speakingLabEn = {
 } as const;
 
 export const speakingLabVi: Record<keyof typeof speakingLabEn, string> = {
+  "speakingLab.workspace": "Không gian duyệt bản ghi",
+  "speakingLab.reviewTab": "Duyệt bản ghi",
+  "speakingLab.reviewHelp": "Nghe bản ghi, xác nhận thí sinh, rồi kiểm tra các Phần và đoạn trả lời trước khi duyệt.",
+  "speakingLab.reviewActions": "Trạng thái và thao tác duyệt",
   "speakingLab.title": "Speaking Benchmark Lab",
   "speakingLab.description": "Chuẩn bị bộ dữ liệu Speaking riêng tư: duyệt người nói, xác nhận đoạn thí sinh và lưu điểm người chấm.",
   "speakingLab.samples": "Bản ghi của bạn",
@@ -134,7 +142,7 @@ export const speakingLabVi: Record<keyof typeof speakingLabEn, string> = {
   "speakingLab.previous": "Trước",
   "speakingLab.next": "Tiếp",
   "speakingLab.original": "Âm thanh nguồn",
-  "speakingLab.windowHelp": "Một trình phát cho bản gốc và các cửa sổ đã chọn. Phát từng người theo mốc thời gian; các giọng nói chồng lấn vẫn nghe được.",
+  "speakingLab.windowHelp": "Nghe toàn bộ buổi phỏng vấn hoặc chọn người nói, đoạn trả lời bên dưới. Các giọng nói chồng lấn vẫn có thể nghe được.",
   "speakingLab.seek": "Vị trí (giây)",
   "speakingLab.seekAction": "Đến vị trí",
   "speakingLab.stop": "Dừng phát đoạn",

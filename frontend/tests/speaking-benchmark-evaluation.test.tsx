@@ -118,6 +118,42 @@ it("queues only after preflight, complete estimates, disclosures and final confi
   });
 });
 
+it("refreshes approved revisions after review changes without starting inference", async () => {
+  vi.mocked(api.approvedReviews).mockResolvedValue([]);
+  const { rerender } = renderWithLocale(<SpeakingEvaluation sampleId="fixture" reviewRevision={1} labelRevision={1} onPlay={vi.fn()} />);
+  await screen.findByText("Approve candidate-only segmentation before evaluation.");
+  vi.mocked(api.approvedReviews).mockResolvedValue([{ revision: 2, approved_at: "2026-11-08T00:00:00Z" }]);
+  rerender(<SpeakingEvaluation sampleId="fixture" reviewRevision={2} labelRevision={1} onPlay={vi.fn()} />);
+  expect(await screen.findByRole("option", { name: /2 ·/ })).toBeInTheDocument();
+  expect(screen.getByLabelText("Approved review revision")).toHaveValue("");
+  expect(api.prepareGrading).not.toHaveBeenCalled();
+  expect(api.submitGrading).not.toHaveBeenCalled();
+});
+
+it("selects a visible run after paging and preserves that selection during polling", async () => {
+  const makeRun = (id: string, stage: string): api.GradingRun => ({
+    id, sample_id: "fixture", review_revision: 3, config_fingerprint: "b".repeat(64),
+    configuration: { lexical_provider: "azure_pa" }, candidate_ms: 25800, window_count: 3,
+    status: "PENDING", stage, progress: 0, error_code: null, prediction: null,
+    created_at: "2026-11-08T00:00:00Z", started_at: null, finished_at: null, requests: [],
+  });
+  vi.mocked(api.listRuns).mockImplementation(async (_id, offset = 0) => offset
+    ? [makeRun("old-1", "older-first-stage"), makeRun("old-2", "older-second-stage")]
+    : Array.from({ length: 25 }, (_, i) => makeRun("run-" + i, "first-page-stage")));
+  renderWithLocale(<SpeakingEvaluation sampleId="fixture" labelRevision={1} onPlay={vi.fn()} />);
+  await screen.findByText(/first-page-stage/);
+  fireEvent.click(screen.getByRole("button", { name: "Older runs" }));
+  expect(await screen.findByText(/older-first-stage/)).toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText("Evaluation history"), { target: { value: "old-2" } });
+  expect(await screen.findByText(/older-second-stage/)).toBeInTheDocument();
+  // Polling must keep a selection that still belongs to the visible page.
+  const reads = vi.mocked(api.listRuns).mock.calls.length;
+  await waitFor(() => expect(vi.mocked(api.listRuns).mock.calls.length).toBeGreaterThan(reads), { timeout: 4500 });
+  expect(screen.getByText(/older-second-stage/)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Previous runs" }));
+  expect(await screen.findByText(/first-page-stage/)).toBeInTheDocument();
+});
+
 it("loads static readiness without starting inference and requires explicit approved selection", async () => {
   renderWithLocale(<SpeakingEvaluation sampleId="fixture" labelRevision={1} onPlay={vi.fn()} />);
   expect(await screen.findByText("SPEAKING_BENCHMARK_GRADING_DISABLED")).toBeInTheDocument();

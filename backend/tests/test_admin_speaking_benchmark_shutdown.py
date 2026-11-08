@@ -4,10 +4,14 @@ import asyncio
 import signal
 
 import pytest
-from scripts import speaking_benchmark_worker as worker
+from scripts import speaking_benchmark_grading_worker, speaking_benchmark_worker
+
+pytestmark = pytest.mark.parametrize(
+    "worker", [speaking_benchmark_worker, speaking_benchmark_grading_worker]
+)
 
 
-async def test_sigterm_cancels_once_and_waits_for_worker_cleanup(monkeypatch):
+async def test_sigterm_cancels_once_and_waits_for_worker_cleanup(monkeypatch, worker):
     started, cleanup_started, release_cleanup = (asyncio.Event() for _ in range(3))
     observed = []
 
@@ -46,7 +50,7 @@ async def test_sigterm_cancels_once_and_waits_for_worker_cleanup(monkeypatch):
         await asyncio.gather(task, return_exceptions=True)
 
 
-async def test_non_shutdown_worker_failure_is_not_hidden(monkeypatch):
+async def test_non_shutdown_worker_failure_is_not_hidden(monkeypatch, worker):
     async def failed_run(**kwargs):
         raise RuntimeError("fixture failure")
 

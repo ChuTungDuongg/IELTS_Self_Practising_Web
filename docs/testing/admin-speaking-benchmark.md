@@ -101,6 +101,10 @@ API readiness at `/availability` exposes safe size/duration limits, selected exe
 
 ## Upload and review workflow
 
+The recording detail page keeps one source player above three keyboard-accessible tabs: **Recording review**, **Human Ground Truth**, and **AI Evaluation**. Recording review opens first. Tab switches keep unsaved form values and the same audio element mounted; Left/Right and Home/End navigate the tabs. Review actions/job status sit beside the segmentation editor on desktop and below it on mobile. Metadata and revision history remain in expandable sections. Input/action rows align to their control bottoms; approval buttons share a full sidebar width. On narrow screens, player controls form a two-column row below the seek field.
+
+Stopping a pending native playback start may produce `AbortError`; this expected interruption is ignored. Permission, decoding and other genuine playback failures still show an error.
+
 1. Open `/admin/speaking-benchmark` as ADMIN (linked beside Writing Benchmark in the admin dashboard).
 2. Enter a private sample code, pseudonym/split and source/permission note. Confirm rights and upload MP3/WAV. Originals are spooled to a private temporary file in bounded chunks; actual signatures, ffprobe metadata and full bounded FFmpeg decoding are checked. The upload creates a DRAFT without inference.
 3. Request **Run CPU diarization**. HTTP returns 202; the page polls PostgreSQL-backed status. Closing the tab does not terminate the job.

@@ -264,7 +264,9 @@ class GradingJobRunner:
                     else "SPEAKING_BENCHMARK_GRADING_FAILED",
                 )
             )
-            if isinstance(error, asyncio.CancelledError):
+            # Lease loss/admin cancellation stops this child execution only. A
+            # SIGTERM/SIGINT cancels run_once itself and must still stop the daemon.
+            if isinstance(error, asyncio.CancelledError) and asyncio.current_task().cancelling():
                 raise
         finally:
             pulse.cancel()

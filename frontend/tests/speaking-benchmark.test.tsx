@@ -7,6 +7,7 @@ import { overlapWindows } from "@/features/speaking-benchmark/speaker-timeline";
 import { DiarizationJobStatus } from "@/features/speaking-benchmark/job-status";
 import { ApiError } from "@/lib/api/client";
 import * as api from "@/lib/api/speaking-benchmark";
+import * as gradingApi from "@/lib/api/speaking-benchmark-grading";
 import { renderWithLocale } from "./locale-test-utils";
 import { labAvailable, labDraft, labLabels, labReview, labSample, labSampleId } from "./speaking-benchmark-fixtures";
 
@@ -14,9 +15,13 @@ const auth = vi.hoisted(() => ({ role: "ADMIN" }));
 vi.mock("next/navigation", () => ({ usePathname: () => "/admin/speaking-benchmark", useRouter: () => ({ replace: vi.fn(), push: vi.fn() }) }));
 vi.mock("@/features/auth/auth-provider", () => ({ useAuth: () => ({ user: { role: auth.role }, loading: false, sessionError: null }) }));
 vi.mock("@/lib/api/speaking-benchmark", async original => ({ ...await original<typeof api>(), listSpeakingSamples: vi.fn(), speakingAvailability: vi.fn(), uploadSpeakingSample: vi.fn(), getSpeakingSample: vi.fn(), getSpeakingReview: vi.fn(), getSpeakingLabels: vi.fn(), getSpeakingJobs: vi.fn(), saveSpeakingReview: vi.fn(), approveSpeakingReview: vi.fn(), saveSpeakingLabels: vi.fn(), queueSpeakingDiarization: vi.fn(), suggestSpeakingWindows: vi.fn() }));
+vi.mock("@/lib/api/speaking-benchmark-grading", async original => ({ ...await original<typeof gradingApi>(), gradingAvailability: vi.fn(), approvedReviews: vi.fn(), listRuns: vi.fn() }));
 
 beforeEach(() => {
   vi.clearAllMocks(); auth.role = "ADMIN"; window.localStorage.clear();
+  vi.mocked(gradingApi.gradingAvailability).mockResolvedValue({ can_queue: false, live_status: "LIVE_UNVERIFIED", execution: "local", providers: [] });
+  vi.mocked(gradingApi.approvedReviews).mockResolvedValue([]);
+  vi.mocked(gradingApi.listRuns).mockResolvedValue([]);
   vi.mocked(api.listSpeakingSamples).mockResolvedValue({ items: [structuredClone(labSample)], total: 1, offset: 0, limit: 25 });
   vi.mocked(api.speakingAvailability).mockResolvedValue(labAvailable);
   vi.mocked(api.getSpeakingSample).mockResolvedValue(structuredClone(labSample));
@@ -29,6 +34,38 @@ beforeEach(() => {
 });
 
 describe("private Speaking lab", () => {
+  it("separates recording review from labels while preserving unsaved text across keyboard tab navigation", async () => {
+    renderWithLocale(<SpeakingBenchmarkDetail sampleId={labSampleId} />);
+    const reviewTab = await screen.findByRole("tab", { name: "Recording review" });
+    const humanTab = screen.getByRole("tab", { name: "Human Ground Truth" });
+    expect(reviewTab).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByLabelText("Overall")).not.toBeVisible();
+    fireEvent.change(screen.getByLabelText("Actual examiner question / cue-card topic"), { target: { value: "Keep my reviewed question" } });
+    fireEvent.keyDown(reviewTab, { key: "ArrowRight" });
+    expect(humanTab).toHaveFocus();
+    expect(humanTab).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByLabelText("Overall")).toBeVisible();
+    fireEvent.change(screen.getByLabelText("Overall"), { target: { value: "6.5" } });
+    fireEvent.click(reviewTab);
+    expect(screen.getByLabelText("Actual examiner question / cue-card topic")).toHaveValue("Keep my reviewed question");
+    fireEvent.click(humanTab);
+    expect(screen.getByLabelText("Overall")).toHaveValue("6.5");
+    expect(api.saveSpeakingReview).not.toHaveBeenCalled();
+    expect(api.saveSpeakingLabels).not.toHaveBeenCalled();
+  });
+  it("makes an approved review available for evaluation on the same detail page", async () => {
+    vi.mocked(api.getSpeakingReview).mockResolvedValue({ ...labReview, approval_errors: [] });
+    vi.mocked(api.approveSpeakingReview).mockResolvedValue({ ...labReview, revision: 2, approval_errors: [], approved_at: "2026-11-08T00:00:00Z" });
+    vi.mocked(api.getSpeakingSample).mockResolvedValueOnce(structuredClone(labSample)).mockResolvedValue({ ...labSample, review_revision: 2 });
+    vi.mocked(gradingApi.approvedReviews).mockResolvedValueOnce([]).mockResolvedValue([{ revision: 2, approved_at: "2026-11-08T00:00:00Z" }]);
+    renderWithLocale(<SpeakingBenchmarkDetail sampleId={labSampleId} />);
+    await screen.findByText("Approve candidate-only segmentation before evaluation.");
+    fireEvent.click(screen.getByRole("button", { name: "Approve candidate segmentation" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+    fireEvent.click(screen.getByRole("tab", { name: "AI Evaluation" }));
+    expect(await screen.findByRole("option", { name: /2 ·/ })).toBeInTheDocument();
+    expect(screen.getByLabelText("Approved review revision")).toHaveValue("");
+  });
   it.each(["USER", "TEACHER"])("denies %s before loading recordings", role => {
     auth.role = role; renderWithLocale(<Page />);
     expect(screen.getByRole("heading", { name: "Forbidden" })).toBeInTheDocument();
@@ -105,6 +142,7 @@ describe("private Speaking lab", () => {
 
   it("saves overall-only human labels without inventing criterion bands", async () => {
     renderWithLocale(<SpeakingBenchmarkDetail sampleId={labSampleId} />);
+    fireEvent.click(await screen.findByRole("tab", { name: "Human Ground Truth" }));
     fireEvent.change(await screen.findByLabelText("Overall"), { target: { value: "6.5" } });
     fireEvent.click(screen.getByRole("button", { name: "Save human labels" }));
     await waitFor(() => expect(api.saveSpeakingLabels).toHaveBeenCalledTimes(1));
@@ -117,6 +155,7 @@ describe("private Speaking lab", () => {
     let resolveSample!: (value: api.SpeakingSample) => void;
     vi.mocked(api.getSpeakingSample).mockReturnValueOnce(new Promise(resolve => { resolveSample = resolve; }));
     fireEvent.click(screen.getByText("Sample metadata"));
+    fireEvent.click(screen.getByRole("tab", { name: "Human Ground Truth" }));
     if (edited) fireEvent.change(screen.getByLabelText("Overall"), { target: { value: "6.5" } });
     fireEvent.click(screen.getByRole("button", { name: "Save human labels" }));
     await waitFor(() => expect(api.getSpeakingSample).toHaveBeenCalledTimes(2));
@@ -149,6 +188,18 @@ describe("private Speaking lab", () => {
   it("detects overlaps without joining distinct speaker evidence", () => {
     expect(overlapWindows([{ id: "a", speaker_id: "c", start_ms: 0, end_ms: 3000 }, { id: "b", speaker_id: "e", start_ms: 2000, end_ms: 4000 }])).toEqual([{ start_ms: 2000, end_ms: 3000 }]);
     expect(labDraft.candidate_confirmed).toBe(false);
+  });
+
+  it.each([['AbortError', false], ['NotAllowedError', true]] as const)("handles %s after stopping pending playback without hiding real failures", async (name, showError) => {
+    let rejectPlay!: (reason: DOMException) => void;
+    vi.mocked(HTMLMediaElement.prototype.play).mockReturnValueOnce(new Promise<void>((_resolve, reject) => { rejectPlay = reject; }));
+    function Player() { const playback = useSourcePlayback(); return <><AudioReviewPlayer sampleId={labSampleId} durationMs={60000} playback={playback} /><button onClick={() => playback.play([{ start_ms: 2000, end_ms: 5000 }])}>Window</button></>; }
+    renderWithLocale(<Player />);
+    fireEvent.click(screen.getByRole("button", { name: /^Window$/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Stop window playback" }));
+    await act(async () => rejectPlay(new DOMException("Synthetic playback interruption", name)));
+    if (showError) expect(screen.getByRole("alert")).toBeInTheDocument();
+    else expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("polls durable jobs and refreshes after completion", async () => {

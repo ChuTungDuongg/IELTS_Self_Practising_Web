@@ -7,7 +7,7 @@ import { useTranslation } from "@/lib/i18n/locale-provider";
 import { EvaluationRunDetail } from "./run-detail";
 import styles from "../lab.module.css";
 
-export function SpeakingEvaluation({ sampleId, labelRevision, onPlay }: { sampleId: string; labelRevision: number; onPlay: (start: number, end: number) => void }) {
+export function SpeakingEvaluation({ sampleId, reviewRevision = 0, labelRevision, onPlay }: { sampleId: string; reviewRevision?: number; labelRevision: number; onPlay: (start: number, end: number) => void }) {
   const { t } = useTranslation();
   const [available, setAvailable] = useState<api.GradingAvailability | null>(null);
   const [reviews, setReviews] = useState<{ revision: number; approved_at: string }[]>([]);
@@ -19,8 +19,8 @@ export function SpeakingEvaluation({ sampleId, labelRevision, onPlay }: { sample
   const [busy, setBusy] = useState(false); const [error, setError] = useState("");
   const [dialog, setDialog] = useState<{ checkpoint?: string; reason?: string } | null>(null);
   const submission = useRef<string | null>(null);
-  const load = useCallback(async () => { const value = await api.listRuns(sampleId, offset); setRuns(value); setSelected(current => current || value[0]?.id || ""); }, [sampleId, offset]);
-  useEffect(() => { let active = true; void Promise.all([api.gradingAvailability(), api.approvedReviews(sampleId)]).then(([status, history]) => { if (active) { setAvailable(status); setReviews(history); } }).catch(() => { if (active) setError("EVALUATION_UNAVAILABLE"); }); return () => { active = false; }; }, [sampleId]);
+  const load = useCallback(async () => { const value = await api.listRuns(sampleId, offset); setRuns(value); setSelected(current => value.some(row => row.id === current) ? current : value[0]?.id || ""); }, [sampleId, offset]);
+  useEffect(() => { let active = true; void Promise.all([api.gradingAvailability(), api.approvedReviews(sampleId)]).then(([status, history]) => { if (active) { setAvailable(status); setReviews(history); } }).catch(() => { if (active) setError("EVALUATION_UNAVAILABLE"); }); return () => { active = false; }; }, [sampleId, reviewRevision]);
   useEffect(() => { let active = true; const refresh = () => { if (active) void load().catch(() => { if (active) setError("EVALUATION_HISTORY_UNAVAILABLE"); }); }; refresh(); const timer = setInterval(refresh, 3000); return () => { active = false; clearInterval(timer); }; }, [load]);
   const run = runs.find(r => r.id === selected); const chosen = available?.providers.find(p => p.provider === provider);
   const providers = ["azure_pa", "openai", ...(provider === "azure_pa" ? [] : [provider])];

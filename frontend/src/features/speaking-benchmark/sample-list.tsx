@@ -22,7 +22,7 @@ export function SpeakingBenchmarkList() {
       description={t("speakingLab.description")}
       action={
         <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-          <Link className="btn btn-primary" href="/admin/speaking-benchmark/reports">{t("speakingEval.reports")}</Link>
+          <Link className="btn btn-secondary" href="/admin/speaking-benchmark/reports">{t("speakingEval.reports")}</Link>
           <Link className="btn btn-secondary" href="/admin/writing-benchmark">{t("benchmark.title")}</Link>
         </div>
       }

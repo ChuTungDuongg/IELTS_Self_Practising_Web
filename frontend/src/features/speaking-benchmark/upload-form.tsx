@@ -18,7 +18,7 @@ export function SpeakingUploadForm({ available, onUploaded }: { available: Speak
     catch (failure) { setError(labError(failure, t)); } finally { setBusy(false); }
   }}>
     <h2>{t("speakingLab.upload")}</h2><p className={styles.muted}>{t("speakingLab.uploadHelp", { mb: Math.floor(available.max_bytes / 1024 ** 2), minutes: Math.floor(available.max_duration_ms / 60000) })}</p>
-    <fieldset disabled={busy} className={styles.fields}>
+    <fieldset disabled={busy} className={`${styles.fields} ${styles.uploadFields}`}>
       <label className={styles.field}>{t("speakingLab.code")}<input className="field" name="code" required maxLength={80} pattern="[\w .-]+" /></label>
       <label className={styles.field}>{t("speakingLab.candidateId")}<input className="field" name="candidate_id" maxLength={120} /></label>
       <label className={styles.field}>{t("speakingLab.split")}<select className="select-field" name="split"><option value="DEV">DEV</option><option value="HOLDOUT">HOLDOUT</option></select></label>

@@ -16,6 +16,7 @@ from test_admin_speaking_benchmark import result_for, valid_draft
 from app.core.config import Settings, get_settings
 from app.models import User
 from app.models.enums import UserRole
+from app.models.speaking import SpeakingMediaCleanup
 from app.models.speaking_benchmark import (
     SpeakingBenchmarkJob,
     SpeakingBenchmarkReview,
@@ -169,6 +170,9 @@ async def grading_lab(tmp_path):
         async with factory() as session, session.begin():
             await session.execute(
                 delete(SpeakingBenchmarkSample).where(SpeakingBenchmarkSample.id == sample_id)
+            )
+            await session.execute(
+                delete(SpeakingMediaCleanup).where(SpeakingMediaCleanup.storage_key == key)
             )
             await session.execute(delete(User).where(User.id == owner))
         await engine.dispose()

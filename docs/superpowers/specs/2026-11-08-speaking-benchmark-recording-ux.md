@@ -1,0 +1,11 @@
+# Speaking Benchmark recording workspace UX
+
+The administrator's main job is to listen to a private recording and verify candidate-only windows. The current detail page stacks segmentation, every human-label field, metadata and AI setup on one long page. The redesign separates those jobs while preserving the existing FastAPI contracts, validation, billing consent and owner isolation.
+
+Use a persistent source player above three accessible sections: Recording review, Human Ground Truth, and AI Evaluation. Review is the default. Keep panels mounted when switching so unsaved forms and audio survive. Keyboard navigation must work and the selected tab must be explicit. Place the existing approval controls and CPU job status in a quiet review sidebar; retain history and metadata in disclosures. Backend approval errors remain authoritative. The library keeps a readable recording table and a single-column upload form rather than squeezing file inputs into half-width columns.
+
+Alternatives considered: keeping every form visible saves a click but preserves the clutter; a multi-page wizard would add routing and make revisiting evidence harder. An in-place tabbed workspace fits this existing editor. This is an implementation choice based on the user's request to simplify the recording UI; it does not change inference or dataset semantics.
+
+Use Taste's achromatic-ledger direction for restrained surfaces and aligned data, retaining BandPilot's existing typography and semantic color tokens. The existing brand button/accent treatment takes precedence over the dealt sheet's black-only chrome. UI/UX Pro Max's verified Form Labels, Submit Feedback and Error Recovery guidelines apply; generic advice to use Next Server Actions conflicts with the repository's FastAPI mutation boundary and is not adopted.
+
+Implementation: add a small accessible workspace-tabs component; reorganize existing editor components without moving their domain state; improve upload/score-field layouts and recording status labels; add state-preservation/keyboard tests; verify desktop/mobile in a real browser with synthetic fixtures. No paid inference or deployment. The user subsequently authorized committing, pushing to main, and fixing CI.
