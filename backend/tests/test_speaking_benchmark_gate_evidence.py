@@ -35,6 +35,62 @@ def test_retry_authorization_does_not_erase_unknown_physical_billing():
     assert request_metrics([request])["unknown_billing_attempts"] == 1
 
 
+async def test_bounded_cer_unavailability_is_not_zero_error():
+    from app.core.config import Settings
+    from app.providers.speaking_asr.lexical import lexical_identity
+
+    identity = lexical_identity(Settings(_env_file=None), "azure_stt").model_dump(mode="json")
+    sample_id, ref_id = uuid4(), uuid4()
+    reference = SimpleNamespace(
+        status="VERIFIED",
+        uncertainty=[],
+        segment_id="one",
+        sample_id=sample_id,
+        source_sha256="a" * 64,
+        review_revision=1,
+        manifest_fingerprint="b" * 64,
+        start_ms=0,
+        end_ms=1000,
+        revision=1,
+        text="x" * 2500,
+        annotations=[],
+    )
+
+    class Session:
+        async def get(self, *args):
+            return reference
+
+    sample = dict(
+        sample_id=str(sample_id),
+        source_sha256="a" * 64,
+        review_revision=1,
+        manifest_fingerprint="b" * 64,
+        windows=[{"id": "one", "start_ms": 0, "end_ms": 1000}],
+        references=[{"id": str(ref_id), "segment_id": "one", "eligible": True, "revision": 1}],
+    )
+    result = SpeechAnalysisResult(
+        provider=identity,
+        source=SpeechAnalysisSource(
+            audio_fingerprint="a" * 64, normalized_audio_fingerprint="c" * 64, duration_ms=1000
+        ),
+        status="COMPLETE",
+        capabilities=SpeechCapabilities(),
+        lexical_transcript=reference.text,
+        coverage=SpeechCoverage(audio_duration_ms=1000, stream_completed=True),
+        usage=SpeechUsage(
+            attempted_calls=1, submitted_audio_ms=1000, successful_calls=1, outcome="COMPLETED"
+        ),
+    )
+    metrics, errors = await lexical_metrics(
+        Session(),
+        sample,
+        {"one": SimpleNamespace(status="COMPLETED", result=result.model_dump(mode="json"))},
+        identity,
+    )
+    assert not errors and metrics["wer"] == 0
+    assert metrics["cer"] is None
+
+
 async def test_failed_run_retains_unknown_attempts_and_consumed_identity(grading_lab):
     factory, settings, storage, owner, sample, run_id = grading_lab
     async with factory() as session, session.begin():

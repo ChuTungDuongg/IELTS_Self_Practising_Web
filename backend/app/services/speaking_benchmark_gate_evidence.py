@@ -37,7 +37,7 @@ async def lexical_metrics(session, sample, results, identity):
     totals = dict(word_errors=0, reference_words=0, character_errors=0, reference_characters=0)
     events = {k: [0, 0] for k in ("filler", "repetition")}
     recognized = duration = completed = latency = latency_count = 0
-    ref_count = 0
+    ref_count = cer_count = 0
     for window in sample.get("windows", []):
         span = window["end_ms"] - window["start_ms"]
         duration += span
@@ -68,6 +68,7 @@ async def lexical_metrics(session, sample, results, identity):
         m = projected["metrics"]
         if m.get("wer") is not None:
             ref_count += 1
+            cer_count += int(m.get("cer") is not None)
             for field in totals:
                 totals[field] += m.get(field, 0) or 0
             for kind in events:
@@ -87,7 +88,9 @@ async def lexical_metrics(session, sample, results, identity):
         if complete_refs and totals["reference_words"]
         else None,
         cer=totals["character_errors"] / totals["reference_characters"]
-        if complete_refs and totals["reference_characters"]
+        if complete_refs
+        and cer_count == len(sample.get("windows", []))
+        and totals["reference_characters"]
         else None,
         filler_recall=events["filler"][0] / events["filler"][1]
         if complete_refs and events["filler"][1]
