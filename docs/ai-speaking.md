@@ -352,3 +352,8 @@ and [Speech quotas/concurrency](https://learn.microsoft.com/en-us/azure/ai-servi
 checked 2026-11-03. [Modal setup](modal-web.md#azure-configuration-secrets-and-canonical-command)
 contains the canonical launcher and Secret replacement commands. Live resource
 credentials, F0 prosody availability and billing remain **LIVE_UNVERIFIED**.
+
+
+## Admin research experiments
+
+[Phase 3 research](testing/admin-speaking-benchmark-research.md) adds ASR-only comparison without Luna and paired downstream experiments through the production scorer. Reference transcripts and human bands are evaluation-only; lower WER is not a guarantee of lower band error. No learner transcript, rubric default or scoring authority is changed. Optional GPU inference remains separately authorized.

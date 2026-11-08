@@ -229,3 +229,8 @@ Nhà cung cấp phát âm có thể thay thế yêu cầu WAV chuẩn hóa đọ
 `SPEAKING_PRONUNCIATION` chấp nhận JSON ghi đè trong giới hạn; `SPEAKING_PRONUNCIATION_ENABLED=false` vẫn cho phép chép lời và ghi rõ phần phát âm không khả dụng. Phiên bản/cấu hình nhà cung cấp và đặc trưng tham gia danh tính lượt xử lý. Các gói chất lượng/độ lưu loát/phát âm được lưu nguyên tử cùng mỗi cặp VERBATIM/CLEAN trong siêu dữ liệu nhà cung cấp riêng tư, có dấu vân tay bao phủ âm thanh, bản chép lời/căn chỉnh, chất lượng, cấu hình đặc trưng/nhà cung cấp và ngữ cảnh bài nói dài. Bản thân chép lời không chấm điểm; [quy trình chấm tư vấn](speaking-grading.md) riêng sử dụng bằng chứng này.
 
 Mốc thời gian từ phải hữu hạn, không âm, đúng thứ tự và không chồng lấn; điểm cuối không vượt thời lượng giải mã. Siêu dữ liệu nhà cung cấp không hợp lệ/chồng lấn khiến câu trả lời thất bại an toàn thay vì trở thành bằng chứng thời gian. Tiêu đề/nội dung/thời lượng WAV trong bộ nhớ đệm được xác minh trước khi tái sử dụng; tệp phái sinh thiếu/hỏng được dựng lại, đường dẫn cũ vào hàng đợi dọn dẹp. Đầu vào gốc thiếu/hỏng/vượt đường dẫn cho phép bị từ chối an toàn. Bản chép lời lịch sử bị ẩn khi dấu vân tay âm thanh không còn khớp câu trả lời đã chốt.
+
+
+## Persistent recognition research
+
+Use the [Admin Research Lab](testing/admin-speaking-benchmark-research.md) to compare Azure PA, regular Azure STT and configured optional Whisper on the exact same approved windows. Azure PA and regular STT identities remain separate. Human transcription history, uncertainty-aware metrics, physical request accounting and frozen experiments complement the existing private compare-asr CLI. Defaults remain one-pass Azure PA; no production provider switch is made by a benchmark result.

@@ -25,6 +25,7 @@ async def test_grading_upgrade_downgrade_preserves_phase1_and_legacy_rows():
     for filename in (
         "20261107_0045_speaking_benchmark.py",
         "20261108_0046_speaking_benchmark_grading.py",
+        "20261108_0047_speaking_benchmark_research.py",
     ):
         spec = importlib.util.spec_from_file_location(
             filename, Path(__file__).parents[1] / "alembic/versions" / filename
@@ -58,6 +59,17 @@ async def test_grading_upgrade_downgrade_preserves_phase1_and_legacy_rows():
             )
             assert await conn.scalar(text("SELECT count(*) FROM speaking_benchmark_samples")) == 0
             await conn.run_sync(lambda sync: apply(sync, modules[1], "upgrade"))
+            await conn.run_sync(lambda sync: apply(sync, modules[2], "upgrade"))
+            assert (
+                await conn.scalar(text("SELECT count(*) FROM speaking_benchmark_asr_references"))
+                == 0
+            )
+            await conn.run_sync(lambda sync: apply(sync, modules[2], "downgrade"))
+            assert (
+                await conn.scalar(text("SELECT value FROM legacy_sentinel"))
+                == "keep historical data"
+            )
+            await conn.run_sync(lambda sync: apply(sync, modules[2], "upgrade"))
     finally:
         async with engine.begin() as conn:
             await conn.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))

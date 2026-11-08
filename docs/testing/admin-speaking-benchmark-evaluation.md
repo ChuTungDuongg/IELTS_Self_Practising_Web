@@ -167,3 +167,8 @@ npm --prefix frontend run build
 
 - **Benchmark Validation Only:** Synthetic and test fixtures prove functional mechanics, concurrency safety, crash recovery, and ledger integrity. They do not claim live calibration accuracy or psychometric validation.
 - **Provider Billing Notice:** Live evaluation requires active Azure Speech and OpenAI API keys configured in the environment. Evaluation should only be initiated on approved datasets with full awareness of cloud provider token and audio duration charges.
+
+
+## Phase 3 paired research
+
+[Research experiments](admin-speaking-benchmark-research.md) schedule compatible P2 runs sequentially per sample; the active-run constraint and physical OpenAI repair ledger remain intact. PA and CPU VAD evidence are cached independently of lexical/scorer choices. Human transcript references and band labels are joined only after inference. Unknown research requests also block new P2 provider submissions on that sample.

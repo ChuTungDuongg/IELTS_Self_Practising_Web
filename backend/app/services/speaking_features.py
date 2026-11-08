@@ -153,6 +153,7 @@ async def build_feature_bundle(
     part_number=None,
     speech_analysis=None,
     lexical_analysis=None,
+    vad_result=None,
 ):
     from app.providers.speaking_pronunciation import create_provider
 
@@ -166,7 +167,7 @@ async def build_feature_bundle(
 
         if speech_analysis is None:
             raise ValueError("Hybrid features require the shared speech analysis result")
-        vad = await measure_vad_async(audio, settings)
+        vad = vad_result if vad_result is not None else await measure_vad_async(audio, settings)
         fluency = extract_hybrid_fluency(
             audio, transcript.text, transcript.words, vad, part_number=part_number
         )

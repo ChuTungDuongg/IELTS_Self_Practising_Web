@@ -33,12 +33,12 @@ export function useSourcePlayback() {
   return { attachAudio, play, stop, seek, advance, error, setError };
 }
 
-export function AudioReviewPlayer({ sampleId, durationMs, playback }: { sampleId: string; durationMs: number; playback: ReturnType<typeof useSourcePlayback> }) {
+export function AudioReviewPlayer({ sampleId, durationMs, playback, embedded = false, selectedWindow }: { sampleId: string; durationMs: number; playback: ReturnType<typeof useSourcePlayback>; embedded?: boolean; selectedWindow?: AudioWindow }) {
   const { t } = useTranslation(); const [at, setAt] = useState(0);
-  return <section className={styles.panel} aria-label={t("speakingLab.original")}>
-    <h2>{t("speakingLab.original")}</h2><p className={styles.muted}>{t("speakingLab.windowHelp")}</p>
+  return <section className={embedded ? styles.embeddedPlayer : styles.panel} aria-label={t("speakingLab.original")}>
+    {!embedded && <><h2>{t("speakingLab.original")}</h2><p className={styles.muted}>{t("speakingLab.windowHelp")}</p></>}
     <audio ref={node => playback.attachAudio(node)} className={styles.audio} controls preload="metadata" crossOrigin="use-credentials" src={speakingAudioUrl(sampleId)} onTimeUpdate={playback.advance} onEnded={playback.stop} onError={() => playback.setError(true)} />
-    <div className={`${styles.actions} ${styles.playerControls}`}><label>{t("speakingLab.seek")} <input className="field" aria-label={t("speakingLab.seek")} type="number" min={0} max={durationMs / 1000} step={0.1} value={at} onChange={e => setAt(Number(e.target.value))} /></label><button className="btn btn-secondary" onClick={() => playback.seek(Math.max(0, Math.min(durationMs, at * 1000)))}>{t("speakingLab.seekAction")}</button><button className="btn btn-secondary" onClick={playback.stop}>{t("speakingLab.stop")}</button></div>
+    <div className={`${styles.actions} ${styles.playerControls}`}><label>{t("speakingLab.seek")} <input className="field" aria-label={t("speakingLab.seek")} type="number" min={0} max={durationMs / 1000} step={0.1} value={at} onChange={e => setAt(Number(e.target.value))} /></label><button className="btn btn-secondary" onClick={() => playback.seek(Math.max(0, Math.min(durationMs, at * 1000)))}>{t("speakingLab.seekAction")}</button>{selectedWindow && <button className="btn btn-primary" onClick={() => playback.play([selectedWindow])}>{t("speakingLab.playWindow")}</button>}<button className="btn btn-secondary" onClick={playback.stop}>{t("speakingLab.stop")}</button></div>
     {playback.error && <p role="alert" className="notice notice-error">{t("speakingLab.playbackFailed")}</p>}
   </section>;
 }

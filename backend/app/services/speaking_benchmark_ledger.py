@@ -57,6 +57,10 @@ class RequestLedger:
     async def begin(self, stage, provider, identity):
         async with self.factory() as session, session.begin():
             run = await self.guard(session)
+            from app.services.speaking_benchmark_research_ledger import unresolved_research_requests
+
+            if await unresolved_research_requests(session, run.sample_id):
+                raise failure("SPEAKING_BENCHMARK_RESEARCH_REQUEST_UNSETTLED", 409)
             # A prior unknown physical call blocks all subsequent requests until
             # the exact attempt is reconciled, even if another body/config is supplied.
             unresolved = list(

@@ -26,6 +26,10 @@
 .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 16px 0; }
 .panel :global(.btn), .recordingToolbar :global(.btn) { min-height: 44px; }
 .playerControls { align-items: flex-end; }
+:global(:root[data-theme]) .playerControls > :global(.btn-secondary) { color: var(--accent-strong); background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 35%, var(--line)); box-shadow: none; }
+:global(:root[data-theme]) .playerControls > :global(.btn-secondary):hover:not(:disabled) { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 18%, var(--surface)); }
+:global(:root[data-theme]) .playerControls > :global(.btn-primary) { background: var(--accent); border-color: var(--accent); color: var(--accent-contrast); box-shadow: none; }
+:global(:root[data-theme]) .playerControls > :global(.btn-primary):hover:not(:disabled) { background: var(--accent-strong); border-color: var(--accent-strong); box-shadow: none; }
 .playerControls > label { flex: 0 0 160px; max-width: 160px; }
 .approvalPanel .actions { display: grid; grid-template-columns: minmax(0, 1fr); align-items: stretch; }
 .approvalPanel .actions > button { width: 100%; white-space: normal; }
@@ -37,6 +41,10 @@
 .table th { color: var(--muted); font-size: 13px; font-weight: 500; }
 .table td { font-variant-numeric: tabular-nums; }
 .audio { width: 100%; margin: 12px 0; }
+.embeddedPlayer { padding: 12px 0 20px; margin-bottom: 20px; border-bottom: 1px solid var(--line); min-width: 0; }
+.embeddedPlayer .playerControls { gap: 12px; margin: 8px 0 0; }
+.embeddedPlayer .playerControls > label { flex-basis: 120px; max-width: 120px; }
+.embeddedPlayer .playerControls > :global(.btn) { min-height: 44px; flex-shrink: 0; white-space: nowrap; }
 .lane { display: grid; grid-template-columns: minmax(120px, 180px) minmax(0, 1fr); gap: 10px; padding: 12px 0; border-bottom: 1px solid var(--line); align-items: end; }
 .track { position: relative; height: 44px; background: var(--surface-hover); border-radius: 4px; }
 .turn { position: absolute; top: 8px; height: 28px; min-width: 2px; border: 1px solid var(--accent); background: var(--accent); opacity: .7; border-radius: 3px; cursor: pointer; }
@@ -56,4 +64,6 @@
 @media (max-width: 560px) { .fields { grid-template-columns: minmax(0, 1fr); } .panel { padding: 16px; } .lane { grid-template-columns: minmax(0, 1fr); } .table th:nth-child(3), .table td:nth-child(3) { display: none; } }
 @media (max-width: 560px) { .evaluationTable th:nth-child(3), .evaluationTable td:nth-child(3) { display: table-cell; } }
 @media (max-width: 560px) { .scoreFields { grid-template-columns: repeat(2, minmax(0, 1fr)); } .tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; } .tabs button { white-space: normal; font-size: 13px; padding-inline: 4px; } }
+@media (max-width: 560px) { .tabs[data-sections="4"] { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 560px) { .playerControls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); } .playerControls > label { grid-column: 1 / -1; max-width: none; } }
+@media (max-width: 560px) { .embeddedPlayer .playerControls { grid-template-columns: repeat(2, minmax(0, 1fr)); } .embeddedPlayer .playerControls > label { grid-column: auto; max-width: none; } .embeddedPlayer .playerControls > :global(.btn) { white-space: normal; width: 100%; align-self: end; } .embeddedPlayer .playerControls > button:nth-of-type(n+2) { align-self: stretch; } }

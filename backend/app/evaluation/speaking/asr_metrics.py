@@ -7,7 +7,7 @@ from app.evaluation.speaking.hybrid import _edit_distance, _tokens
 from app.evaluation.speaking.manifest import BenchmarkInputError
 
 
-def alignment(reference, hypothesis):
+def alignment(reference, hypothesis, *, with_operations=False):
     """Bounded Levenshtein alignment, retaining exact matched reference positions."""
     if len(reference) * len(hypothesis) > 4_000_000:
         raise BenchmarkInputError("REPLAY_ASR_METRICS_TOO_LARGE")
@@ -24,22 +24,34 @@ def alignment(reference, hypothesis):
         previous = current
     i, j = len(reference), len(hypothesis)
     substitutions = deletions = insertions = 0
-    matched = {}
+    matched, operations = {}, []
     while i or j:
         direction = directions[i * width + j] if i and j else (1 if i else 2)
         if direction == 0:
             if reference[i - 1] == hypothesis[j - 1]:
                 matched[i - 1] = j - 1
+                kind = "equal"
             else:
                 substitutions += 1
+                kind = "substitution"
+            operations.append(
+                {"kind": kind, "reference": reference[i - 1], "hypothesis": hypothesis[j - 1]}
+            )
             i, j = i - 1, j - 1
         elif direction == 1:
             deletions += 1
+            operations.append(
+                {"kind": "deletion", "reference": reference[i - 1], "hypothesis": None}
+            )
             i -= 1
         else:
             insertions += 1
+            operations.append(
+                {"kind": "insertion", "reference": None, "hypothesis": hypothesis[j - 1]}
+            )
             j -= 1
-    return substitutions, deletions, insertions, matched
+    result = substitutions, deletions, insertions, matched
+    return (*result, list(reversed(operations))) if with_operations else result
 
 
 def lexical_metrics(text, reference=None):
@@ -111,7 +123,12 @@ def coverage_metrics(results, duration_ms):
             valid = False
         previous = word.end_ms
     spans = sorted(
-        (u.start_ms, u.end_ms) for r in results for u in r.utterances if u.start_ms is not None
+        (u.start_ms, u.end_ms)
+        for r in results
+        for u in r.utterances
+        if u.start_ms is not None
+        and u.end_ms is not None
+        and 0 <= u.start_ms <= u.end_ms <= duration_ms
     )
     covered, end = 0, 0
     for start, stop in spans:

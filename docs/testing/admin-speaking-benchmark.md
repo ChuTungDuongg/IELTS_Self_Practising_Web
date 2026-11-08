@@ -175,3 +175,8 @@ npm run lint
 For the **whole existing backend suite**, match CI's two-database convention: `DATABASE_URL` points to a disposable primary test database, `TEST_DATABASE_URL` equals that primary URL for legacy classroom concurrency helpers, and `P2_TEST_DATABASE_URL` points to a second independently migrated test database. Never use a development/production database as the primary. Set `SPEAKING_PROFILE=legacy`, `SPEAKING_ASR_PROVIDER=local`, `SPEAKING_ASR_ENABLED=false`, `SPEAKING_AI_ENABLED=false` and `AI_WRITING_ENABLED=false` to keep local `.env` provider defaults out of offline tests. No live provider authorization or key is needed.
 
 Execution evidence and remaining live limitations are recorded in the implementation plan after final validation. Test fixtures contain generated audio and fictional prompts/labels; no benchmark recording, human reference or personal audio is committed.
+
+
+## Phase 3 research extension
+
+[ASR research and paired experiments](admin-speaking-benchmark-research.md) add owner-scoped human transcript revisions and frozen experiments. Phase 1 remains the sole authority for candidate-only approval. Research uses selected approved revisions and does not run diarization or change sample splits.

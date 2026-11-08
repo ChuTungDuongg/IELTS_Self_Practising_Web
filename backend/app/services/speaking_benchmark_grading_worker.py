@@ -52,6 +52,11 @@ class GradingJobRunner:
     async def claim(self):
         from uuid import uuid4
 
+        from app.models.speaking_benchmark_research import SpeakingBenchmarkExperiment as Experiment
+        from app.models.speaking_benchmark_research import (
+            SpeakingBenchmarkExperimentVariant as Variant,
+        )
+
         now = datetime.now(UTC)
         async with self.factory() as session, session.begin():
             expired = list(
@@ -83,7 +88,16 @@ class GradingJobRunner:
                 select(Run)
                 .join(SpeakingBenchmarkSample)
                 .where(
-                    Run.status == "PENDING", SpeakingBenchmarkSample.deletion_pending_at.is_(None)
+                    Run.status == "PENDING",
+                    SpeakingBenchmarkSample.deletion_pending_at.is_(None),
+                    ~select(Variant.id)
+                    .join(Experiment)
+                    .where(
+                        Variant.sample_id == Run.sample_id,
+                        Variant.status == "RUNNING",
+                        Experiment.mode == "ASR_ONLY",
+                    )
+                    .exists(),
                 )
                 .order_by(Run.created_at)
                 .with_for_update(of=Run, skip_locked=True)
@@ -224,7 +238,24 @@ class GradingJobRunner:
                     if independent
                     else None
                 )
-                rows.append(await response_evidence(audio, segment, speech, words, chosen))
+                from app.services.speaking_vad import VAD_VERSION, VadResult, measure_vad_async
+
+                vad_identity = fingerprint(
+                    [audio.cache_key, VAD_VERSION, chosen.speaking_vad_model_sha256]
+                )
+                cached_vad = await ledger.cached(f"vad:{segment.id}", vad_identity)
+                vad = (
+                    VadResult.model_validate(cached_vad)
+                    if cached_vad is not None
+                    else await measure_vad_async(audio, chosen)
+                )
+                if cached_vad is None and vad.available:
+                    await ledger.save_cpu(
+                        f"vad:{segment.id}", vad_identity, vad.model_dump(mode="json")
+                    )
+                rows.append(
+                    await response_evidence(audio, segment, speech, words, chosen, vad_result=vad)
+                )
         evidence = attempt_evidence(rows, chosen)
         provider = LedgerSpeakingProvider(
             (self.llm_factory or create_provider)(chosen), ledger, config["scorer"]

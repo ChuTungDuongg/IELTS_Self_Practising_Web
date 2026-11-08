@@ -46,6 +46,10 @@ class Settings(BaseSettings):
     speaking_benchmark_execution: Literal["local", "remote", "disabled"] = "local"
     speaking_benchmark_grading_enabled: bool = False
     speaking_benchmark_grading_allow_live: bool = False
+    speaking_benchmark_research_enabled: bool = False
+    speaking_benchmark_research_allow_live: bool = False
+    speaking_benchmark_research_max_samples: int = Field(default=50, ge=1, le=100)
+    speaking_benchmark_research_max_provider_seconds: int = Field(default=3600, ge=1, le=86400)
     speaking_benchmark_report_max_rows: int = Field(default=10000, ge=1, le=100000)
     speaking_benchmark_diarization_python: str = ""
     speaking_benchmark_model_dir: str = ""

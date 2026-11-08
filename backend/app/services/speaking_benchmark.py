@@ -239,7 +239,10 @@ class SpeakingBenchmarkService:
                 )
             )
             self.session.add(SpeakingMediaCleanup(storage_key=row.audio_key))
-            if runs:
+            from app.services.speaking_benchmark_research_worker import cancel_sample_variants
+
+            research_active = await cancel_sample_variants(self.session, sample_id)
+            if runs or research_active:
                 row.deletion_pending_at = datetime.now(UTC)
                 for run in runs:
                     if run.status in {"COMPLETED", "PARTIAL", "FAILED", "CANCELLED"}:

@@ -58,6 +58,12 @@ from app.models.speaking_benchmark_grading import (
     SpeakingBenchmarkGradingCheckpoint,
     SpeakingBenchmarkGradingRun,
 )
+from app.models.speaking_benchmark_research import (  # noqa: F401
+    SpeakingBenchmarkASRObservation,
+    SpeakingBenchmarkASRReference,
+    SpeakingBenchmarkExperiment,
+    SpeakingBenchmarkExperimentVariant,
+)
 from app.models.speaking_transcript import (
     SpeakingNormalizedAudio,
     SpeakingTranscript,

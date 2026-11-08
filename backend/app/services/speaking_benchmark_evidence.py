@@ -8,7 +8,7 @@ from app.services.speaking_hybrid import analysis_to_asr
 from app.services.speaking_scorer import build_attempt_evidence
 
 
-async def response_evidence(audio, segment, speech, lexical, settings):
+async def response_evidence(audio, segment, speech, lexical, settings, *, vad_result=None):
     transcript = analysis_to_asr(
         lexical if lexical is not None else speech, audio, independent=lexical is not None
     )
@@ -19,6 +19,7 @@ async def response_evidence(audio, segment, speech, lexical, settings):
         part_number=segment.part_number,
         speech_analysis=speech,
         lexical_analysis=lexical,
+        vad_result=vad_result,
     )
     return {
         "response_id": audio.timeline[0].response_id,

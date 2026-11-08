@@ -80,3 +80,8 @@ Xem [Modal deployment](modal-web.md), [bốn profiles và EC2/Docker](aws-deploy
 ## Những giới hạn được giữ có chủ đích
 
 `AttemptService` vẫn điều phối lifecycle, autosave, review, history và grading trong một module. Các methods chia sẻ invariants về transaction, timer và ownership; tách các paths này khi chưa có contract suite riêng có nguy cơ đổi hành vi. `TestService` vẫn chứa version cloning/validation và question registry vẫn giữ canonical schema table. Chỉ nên tiếp tục tách khi có dependency lặp lại cụ thể hoặc boundary có thể kiểm thử, không dựa đơn thuần vào độ dài file.
+
+
+## Admin Speaking Research boundary
+
+[Phase 3](testing/admin-speaking-benchmark-research.md) adds four additive research tables, an owner-scoped FastAPI API and a separate CPU research consumer. ASR-only uses the existing lexical adapters without OpenAI; paired mode schedules immutable P2 runs serially. Human transcripts/bands are report inputs only, never inference identities. PostgreSQL enforces immutable configurations/results and source bindings. Private storage and existing deletion outbox remain authoritative; embedded Modal PostgreSQL/local Volumes do not become shared worker storage.

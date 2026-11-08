@@ -39,3 +39,8 @@ Mọi mô-đun trong bảng đều có mã, tuyến và tệp test hiện hữu.
 ### Admin Speaking Benchmark Lab — Phase 1 addition
 
 Owner: `api/v1/speaking_benchmark.py` → `services/speaking_benchmark*.py` → `models/speaking_benchmark.py`, typed client and `features/speaking-benchmark/`. Separate entrypoint: `scripts/speaking_benchmark_worker.py`; native boundary: existing local Community-1 tool. [Schema, architecture and operational contract](../testing/admin-speaking-benchmark.md). This dataset preparation module is separate from learner Speaking and Writing Benchmark.
+
+
+### Admin Speaking Research — Phase 3
+
+Owner: `api/v1/speaking_benchmark_research.py`, `services/speaking_benchmark_research*.py`, reference service/model, typed client and `features/speaking-benchmark/research/`. Separate CPU entrypoint `scripts/speaking_benchmark_research_worker.py`. [Operations and measurement protocol](../testing/admin-speaking-benchmark-research.md).

@@ -554,3 +554,8 @@ Kiểm thử ghép ứng dụng/runtime giả lập Modal SDK, tiến trình con
 ## Admin Speaking Benchmark CPU worker
 
 The [Phase 1 lab](testing/admin-speaking-benchmark.md) queues PostgreSQL jobs; it does not add diarization/native libraries to this Web image. The separate CPU container entrypoint requires external PostgreSQL and shared R2/S3 storage. Existing embedded PostgreSQL/local Volumes are not remotely shared: queue readiness rejects that incompatible topology. No automatic database cutover, model download, GPU start or Modal deployment occurs. See the lab guide for the bounded worker command, persistent private cache and unverified cloud limitations.
+
+
+## Speaking research worker
+
+[Phase 3 research](testing/admin-speaking-benchmark-research.md) provides `deploy/speaking-benchmark-research.Dockerfile` as a separate CPU entrypoint. It installs Azure SDK/FFmpeg, with no Torch, Pyannote, local Whisper or GPU dependency in Web. Run remote research/P2 only with reachable external PostgreSQL and private shared S3/R2. Embedded PostgreSQL and local Volumes fail readiness; no silent topology migration, weight download or deployment occurs. Existing dedicated Modal ASR GPU endpoint remains an explicit, separately consented option.
