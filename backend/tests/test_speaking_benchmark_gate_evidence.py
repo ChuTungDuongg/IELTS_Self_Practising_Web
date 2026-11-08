@@ -22,6 +22,19 @@ from app.services.speaking_benchmark_gate_evidence import (
 from app.services.speaking_benchmark_quality import create_suite
 
 
+def test_retry_authorization_does_not_erase_unknown_physical_billing():
+    from app.services.speaking_benchmark_gate_evidence import request_metrics
+
+    request = SimpleNamespace(
+        provider="azure_stt",
+        status="INTERRUPTED_BILLING_UNKNOWN",
+        reused_from=None,
+        reconciliation={"reason": "one replacement authorized"},
+        usage=None,
+    )
+    assert request_metrics([request])["unknown_billing_attempts"] == 1
+
+
 async def test_failed_run_retains_unknown_attempts_and_consumed_identity(grading_lab):
     factory, settings, storage, owner, sample, run_id = grading_lab
     async with factory() as session, session.begin():

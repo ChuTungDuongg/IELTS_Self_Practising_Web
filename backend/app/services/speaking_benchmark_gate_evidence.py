@@ -25,9 +25,7 @@ def request_metrics(requests):
     return dict(
         physical_requests=len(physical),
         unknown_billing_attempts=sum(
-            r.status in {"ATTEMPTED", "INTERRUPTED_BILLING_UNKNOWN"}
-            and not getattr(r, "reconciliation", None)
-            for r in physical
+            r.status in {"ATTEMPTED", "INTERRUPTED_BILLING_UNKNOWN"} for r in physical
         ),
         provider_audio_ms=sum((r.usage or {}).get("submitted_audio_ms", 0) for r in physical),
         cache_reuse_rate=(len(external) - len(physical)) / len(external) if external else None,
@@ -162,6 +160,8 @@ async def collect_persisted_evidence(service, suite, selection):
         config = run.configuration if run else (selected_config or {}).get("grading")
         if config:
             configs.append(config)
+            if not config.get("scorer", {}).get("rubric_version") or not config.get("lexical"):
+                invalid.append("GRADING_IDENTITY_INCOMPLETE")
         if run:
             if (
                 run.owner_id != service.owner_id
@@ -244,7 +244,7 @@ async def collect_persisted_evidence(service, suite, selection):
         selection=selection.model_dump(mode="json"),
         configuration=dict(
             metric_protocol=METRIC_PROTOCOL,
-            rubric_version=config["scorer"]["rubric_version"] if config else None,
+            rubric_version=config.get("scorer", {}).get("rubric_version") if config else None,
             fixed_grading=fixed_grading(config) if config else None,
             grading=config,
             lexical_identity=selected_config["identity"]

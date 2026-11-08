@@ -28,7 +28,7 @@ flowchart TD
     Ass[speaking_benchmark_human_assessments]
     Adj[speaking_benchmark_adjudications: human-adjudication-v1]
     Agree[Pairwise Human Agreement Metrics]
-    
+
     Rater --> Assign --> BlindAPI --> ReviewerUI --> Ass
     Ass --> Adj
     Ass --> Agree
@@ -39,7 +39,7 @@ flowchart TD
     Snap[speaking_benchmark_quality_snapshots]
     Suite[speaking_benchmark_evaluation_suites]
     HoldoutAudit[speaking_benchmark_holdout_audits]
-    
+
     QAProtocol --> Snap
     QAProtocol --> Suite
     Suite --> HoldoutAudit
@@ -51,7 +51,7 @@ flowchart TD
     P2Run[Persisted P2 GRADING Runs]
     P3Exp[Persisted P3 EXPERIMENT Variants]
     CLI["scripts/speaking_benchmark_gate_cli.py (Offline CI Gate)"]
-    
+
     Suite --> Gate
     P2Run --> Gate
     P3Exp --> Gate
@@ -248,3 +248,12 @@ Focused real-contract UI tests, Python lint/format, TypeScript, ESLint, producti
 build and fresh 0048 upgrade/downgrade/upgrade were exercised. Live inference and
 P4 browser layout remain unverified; an offline browser fixture startup was rejected
 by automatic approval review with “blocked by policy”. No authorization guard was bypassed.
+
+The first exclusive Windows full run exposed environment-dependent legacy tests:
+local `.env` selected Azure, whose settings validator activates hybrid profile even
+when `SPEAKING_PROFILE=legacy`. The affected fake-ASR grading test passes with
+`SPEAKING_ASR_PROVIDER=local`. Full offline reproduction must explicitly set that
+provider and disable ASR/AI flags, while individual hybrid tests select their own
+injected settings. The earlier interrupted runs are not full passing evidence.
+Renewed retry consent does not settle an old physical request's unknown billing;
+gate operational counts retain that uncertainty until its exact result settles.
