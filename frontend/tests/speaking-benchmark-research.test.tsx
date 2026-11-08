@@ -17,6 +17,7 @@ const report = api.researchReportSchema.parse({ schema_version: "admin-speaking-
 const reference = api.referenceSchema.parse({ id: "ref", sample_id: "s", review_revision: 2, source_sha256: cohort.source_sha256, manifest_fingerprint: cohort.manifest_fingerprint, segment_id: "response-a", start_ms: 1000, end_ms: 4000, revision: 1, normalization: "asr-research-nfc-casefold-words-v2", text: "Yesterday I go", annotations: [], uncertainty: [], metadata_labels: {}, status: "DRAFT", provenance: "independent_human_transcriber", source_reference: "Fictional human transcriber", author_id: "owner", reviewer_id: null, verified_at: null, created_at: "2026-11-08T00:00:00Z" });
 
 beforeEach(() => {
+  localStorage.clear();
   vi.clearAllMocks();
   vi.mocked(api.researchCohort).mockResolvedValue([cohort]); vi.mocked(api.referenceHistory).mockResolvedValue([]);
   vi.mocked(api.getExperiment).mockResolvedValue(experiment); vi.mocked(api.experimentResults).mockResolvedValue(report);
@@ -92,4 +93,67 @@ it("presents missing references honestly and filters exports without rerunning i
   fireEvent.click(screen.getByRole("button", { name: "Apply filters" }));
   await waitFor(() => expect(api.experimentResults).toHaveBeenCalledWith("exp", expect.objectContaining({ latest_references: "true" }), 0));
   expect(api.startExperiment).not.toHaveBeenCalled(); expect(api.createExperiment).not.toHaveBeenCalled();
+});
+
+it("preserves precise uncertainty types and source spans when revising text", async () => {
+  const uncertainty: api.ASRReference["uncertainty"] = [
+    { start_ms: 1500, end_ms: 1700, kind: "unintelligible" },
+    { start_ms: 2200, end_ms: 2400, kind: "questionable_reference" },
+  ];
+  vi.mocked(api.referenceHistory).mockResolvedValue([{ ...reference, uncertainty }]);
+  vi.mocked(api.saveReference).mockResolvedValue({ ...reference, id: "ref-2", uncertainty, revision: 2 });
+  renderWithLocale(<ReferenceEditor sampleId="s" reviewRevision={2} onPlay={vi.fn()} />);
+  await waitFor(() => expect(screen.getByLabelText("Human transcript")).toHaveValue(reference.text));
+  fireEvent.change(screen.getByLabelText("Human transcript"), { target: { value: "um Yesterday I go" } });
+  fireEvent.click(screen.getByRole("button", { name: "Save new revision" }));
+  await waitFor(() => expect(api.saveReference).toHaveBeenCalledWith("s", expect.objectContaining({ uncertainty, expected_revision: 1 })));
+});
+
+it("keeps editing disabled until the selected reference history has loaded", async () => {
+  let finish!: (rows: api.ASRReference[]) => void;
+  vi.mocked(api.referenceHistory).mockReturnValue(new Promise(resolve => { finish = resolve; }));
+  renderWithLocale(<ReferenceEditor sampleId="s" reviewRevision={2} onPlay={vi.fn()} />);
+  await screen.findByRole("option", { name: /r2/ });
+  expect(screen.getByLabelText("Human transcript")).toBeDisabled();
+  finish([reference]);
+  await waitFor(() => expect(screen.getByLabelText("Human transcript")).toBeEnabled());
+  expect(screen.getByLabelText("Human transcript")).toHaveValue(reference.text);
+});
+
+it("edits uncertainty kind and boundaries with labelled controls", async () => {
+  vi.mocked(api.referenceHistory).mockResolvedValue([reference]);
+  vi.mocked(api.saveReference).mockResolvedValue({ ...reference, id: "ref-2", revision: 2 });
+  renderWithLocale(<ReferenceEditor sampleId="s" reviewRevision={2} onPlay={vi.fn()} />);
+  await waitFor(() => expect(screen.getByLabelText("Human transcript")).toHaveValue(reference.text));
+  fireEvent.click(screen.getByLabelText("Uncertain or unintelligible speech in this window"));
+  fireEvent.change(screen.getByLabelText("Uncertainty kind"), { target: { value: "unintelligible" } });
+  fireEvent.change(screen.getByLabelText("Start in source (ms)"), { target: { value: "1500" } });
+  fireEvent.change(screen.getByLabelText("End in source (ms)"), { target: { value: "1700" } });
+  fireEvent.click(screen.getByRole("button", { name: "Save new revision" }));
+  await waitFor(() => expect(api.saveReference).toHaveBeenCalledWith("s", expect.objectContaining({ uncertainty: [{ kind: "unintelligible", start_ms: 1500, end_ms: 1700 }] })));
+});
+
+it("keeps an unsaved transcript when the interface language changes", async () => {
+  vi.mocked(api.referenceHistory).mockResolvedValue([reference]);
+  renderWithLocale(<ReferenceEditor sampleId="s" reviewRevision={2} onPlay={vi.fn()} />);
+  await waitFor(() => expect(screen.getByLabelText("Human transcript")).toHaveValue(reference.text));
+  fireEvent.change(screen.getByLabelText("Human transcript"), { target: { value: "um My unsaved verbatim words" } });
+  fireEvent.click(screen.getByRole("button", { name: "Switch to Vietnamese" }));
+  await waitFor(() => expect(screen.getByLabelText("Bản chép lời tham chiếu")).toHaveValue("um My unsaved verbatim words"));
+  expect(api.referenceHistory).toHaveBeenCalledTimes(1);
+});
+
+it("blocks response switching while the next reference history is pending", async () => {
+  vi.mocked(api.researchCohort).mockResolvedValue([{ ...cohort, windows: [...cohort.windows, { id: "response-b", part_number: 2, start_ms: 5000, end_ms: 8000 }] }]);
+  let finish!: (rows: api.ASRReference[]) => void;
+  vi.mocked(api.referenceHistory).mockResolvedValueOnce([reference]).mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+  renderWithLocale(<ReferenceEditor sampleId="s" reviewRevision={2} onPlay={vi.fn()} />);
+  await waitFor(() => expect(screen.getByLabelText("Human transcript")).toHaveValue(reference.text));
+  const selector = screen.getByLabelText("Candidate response");
+  fireEvent.change(selector, { target: { value: "2:response-b" } });
+  expect(selector).toBeDisabled();
+  expect(screen.getByLabelText("Human transcript")).toBeDisabled();
+  finish([]);
+  await waitFor(() => expect(selector).toBeEnabled());
+  expect(screen.getByLabelText("Human transcript")).toHaveValue("");
 });

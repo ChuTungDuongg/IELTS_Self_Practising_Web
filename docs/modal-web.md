@@ -559,3 +559,7 @@ The [Phase 1 lab](testing/admin-speaking-benchmark.md) queues PostgreSQL jobs; i
 ## Speaking research worker
 
 [Phase 3 research](testing/admin-speaking-benchmark-research.md) provides `deploy/speaking-benchmark-research.Dockerfile` as a separate CPU entrypoint. It installs Azure SDK/FFmpeg, with no Torch, Pyannote, local Whisper or GPU dependency in Web. Run remote research/P2 only with reachable external PostgreSQL and private shared S3/R2. Embedded PostgreSQL and local Volumes fail readiness; no silent topology migration, weight download or deployment occurs. Existing dedicated Modal ASR GPU endpoint remains an explicit, separately consented option.
+
+The follow-up integrity audit uses disposable loopback PostgreSQL and fake
+providers only. Its migration/build results do not validate Modal networking,
+shared storage durability or GPU operation; those remain separate live checks.

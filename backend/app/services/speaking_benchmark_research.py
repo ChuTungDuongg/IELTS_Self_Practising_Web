@@ -451,17 +451,12 @@ async def cancel_experiment(service, experiment_id):
                     ):
                         observation.status = "INTERRUPTED_BILLING_UNKNOWN"
             row.status, row.finished_at = "CANCELLED", datetime.now(UTC)
-        result = await dto(service.session, row)
-        run_ids = [
-            (v.sample_id, v.grading_run_id)
-            for v in await variants_for(service.session, row.id)
-            if v.grading_run_id
-        ]
-    from app.services.speaking_benchmark_grading import cancel
+        from app.services.speaking_benchmark_grading import cancel_in_transaction
 
-    for sample_id, run_id in run_ids:
-        await cancel(service, sample_id, run_id)
-    return result
+        for variant in locked_variants:
+            if variant.grading_run_id:
+                await cancel_in_transaction(service, variant.sample_id, variant.grading_run_id)
+        return await dto(service.session, row)
 
 
 async def reconcile_experiment(service, experiment_id, body):

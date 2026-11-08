@@ -21,6 +21,7 @@ from app.services.speaking_benchmark import failure
 from app.services.speaking_benchmark_reports import bands, selected_label
 from app.services.speaking_benchmark_research import owned_experiment, variants_for
 from app.services.speaking_benchmark_research_metrics import (
+    normalized_text,
     observation_metrics,
     paired_difference,
     summarize_asr,
@@ -72,7 +73,9 @@ async def research_report(
             run = await service.session.get(Run, variant.grading_run_id)
             if not run or run.owner_id != service.owner_id:
                 continue
-            reused = run.consent.get("research_experiment") != str(experiment.id)
+            reused = run.submission_key != variant.id and run.consent.get(
+                "research_experiment"
+            ) != str(experiment.id)
             for checkpoint in await service.session.scalars(
                 select(Checkpoint)
                 .where(Checkpoint.run_id == run.id, Checkpoint.provider != "cpu")
@@ -90,6 +93,11 @@ async def research_report(
                         "error_code": checkpoint.error_code,
                         "run_id": str(run.id),
                         "reused_artifact": reused,
+                        "cache_reused": checkpoint.reused_from is not None,
+                        "reused_from": str(checkpoint.reused_from)
+                        if checkpoint.reused_from
+                        else None,
+                        "usage_available": checkpoint.usage is not None,
                     }
                 )
         selected, rows, band_rows = experiment.evaluation_selection, [], []
@@ -167,12 +175,12 @@ async def research_report(
                                 Run.sample_id == sample_id,
                                 Run.manifest_fingerprint == sample["manifest_fingerprint"],
                                 Run.review_revision == sample["review_revision"],
-                                Checkpoint.status == "COMPLETED",
+                                Checkpoint.run_id == run.id,
                             )
-                            .order_by(Checkpoint.created_at.desc())
+                            .order_by(Checkpoint.created_at.desc(), Checkpoint.id)
                         )
                     )
-                    if experiment.mode == "PAIRED_GRADING"
+                    if experiment.mode == "PAIRED_GRADING" and run and comparable_config
                     else []
                 )
                 for window in sample["windows"]:
@@ -234,16 +242,26 @@ async def research_report(
                             else f"lexical:{window['id']}"
                         )
                         p2_checkpoint = next(
-                            (
-                                c
-                                for c in checkpoints
-                                if c.stage == stage
-                                and c.result
-                                and c.result.get("provider") == config["identity"]
-                            ),
+                            (c for c in checkpoints if c.stage == stage),
                             None,
                         )
-                        result = p2_checkpoint.result if p2_checkpoint else None
+                        result = (
+                            p2_checkpoint.result
+                            if p2_checkpoint and p2_checkpoint.status == "COMPLETED"
+                            else None
+                        )
+                        if result and (
+                            result.get("provider") != config["identity"]
+                            or result.get("source", {}).get("audio_fingerprint")
+                            != sample["source_sha256"]
+                        ):
+                            result = None
+                    request = p2_checkpoint if experiment.mode == "PAIRED_GRADING" else observation
+                    cached = bool(
+                        p2_checkpoint.reused_from
+                        if p2_checkpoint
+                        else observation and observation.billing_state == "CACHE_REUSED"
+                    )
                     row = {
                         "experiment_id": str(experiment.id),
                         "variant_id": str(variant.id) if variant else None,
@@ -261,12 +279,14 @@ async def research_report(
                         "provider": variant_key,
                         "model_identity": config["identity"],
                         "status": "UNKNOWN"
-                        if observation
-                        and observation.status in {"ATTEMPTED", "INTERRUPTED_BILLING_UNKNOWN"}
+                        if request
+                        and request.status in {"ATTEMPTED", "INTERRUPTED_BILLING_UNKNOWN"}
                         else result["status"]
                         if result
-                        else observation.status
-                        if observation
+                        else "UNAVAILABLE"
+                        if request and request.status == "COMPLETED"
+                        else request.status
+                        if request
                         else "NOT_ATTEMPTED",
                         "reference_id": str(reference.id) if reference else None,
                         "reference_revision": reference.revision if reference else None,
@@ -276,17 +296,11 @@ async def research_report(
                         "text": result["lexical_transcript"] if result else None,
                         "metadata_labels": metadata,
                         "latency_ms": result.get("latency_ms") if result else None,
-                        "new_requests": 0
-                        if not observation or observation.billing_state == "CACHE_REUSED"
-                        else 1,
-                        "cache_reused": bool(
-                            observation and observation.billing_state == "CACHE_REUSED"
-                        ),
-                        "usage": [result["usage"]]
-                        if observation and observation.billing_state != "CACHE_REUSED" and result
-                        else [],
+                        "new_requests": 0 if not request or cached else 1,
+                        "cache_reused": cached,
+                        "usage": [result["usage"]] if request and not cached and result else [],
                         "observation_id": str(observation.id) if observation else None,
-                        "billing_state": observation.billing_state if observation else None,
+                        "billing_state": request.billing_state if request else None,
                         "p2_checkpoint_id": str(p2_checkpoint.id) if p2_checkpoint else None,
                         "words": result.get("words", []) if result else [],
                         "diff": transcript_diff(reference.text, result["lexical_transcript"])
@@ -327,15 +341,21 @@ async def research_report(
                 requests = [
                     r for r in p2_requests if variant_keys.get(UUID(r["variant_id"])) == provider
                 ]
-                values["new_requests"] = sum(not r["reused_artifact"] for r in requests)
+                physical = [r for r in requests if not r["cache_reused"]]
+                values["new_requests"] = sum(not r["reused_artifact"] for r in physical)
+                values["cache_hits"] = sum(r["cache_reused"] for r in requests)
+                values["unknown_billing_attempts"] = sum(
+                    r["status"] in {"ATTEMPTED", "INTERRUPTED_BILLING_UNKNOWN"} for r in physical
+                )
+                values["unknown_usage_requests"] = sum(not r["usage_available"] for r in physical)
                 values["observed_usage"] = {
-                    "p2_physical_requests": len(requests),
+                    "p2_physical_requests": len(physical),
                     "by_service": {
                         p: {
-                            "requests": sum(r["provider"] == p for r in requests),
-                            "units": [r["usage"] for r in requests if r["provider"] == p],
+                            "requests": sum(r["provider"] == p for r in physical),
+                            "units": [r["usage"] for r in physical if r["provider"] == p],
                         }
-                        for p in {r["provider"] for r in requests}
+                        for p in {r["provider"] for r in physical}
                     },
                 }
         eligible_samples = {r["sample_id"] for r in rows}
@@ -349,7 +369,10 @@ async def research_report(
             for key in sorted(left_rows.keys() & right_rows.keys()):
                 a, b = left_rows[key], right_rows[key]
                 if a["text"] is not None and b["text"] is not None:
-                    at, bt = _tokens(a["text"]), _tokens(b["text"])
+                    at, bt = (
+                        _tokens(normalized_text(a["text"])),
+                        _tokens(normalized_text(b["text"])),
+                    )
                     disagreement.append(
                         {
                             "sample_id": a["sample_id"],

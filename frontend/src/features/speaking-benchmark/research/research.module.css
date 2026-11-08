@@ -13,6 +13,7 @@
 .panel :global(.field) { width: 100%; min-width: 0; }
 .form fieldset { min-width: 0; padding: 16px; border: 1px solid var(--border); }
 .form legend { padding-inline: 6px; }
+.form .editorFields { padding: 0; margin: 0; border: 0; }
 .muted { color: var(--muted); line-height: 1.6; }
 .toolbar { display: flex; gap: 12px; align-items: end; flex-wrap: wrap; }
 .toolbar > :global(.btn) { flex-shrink: 0; white-space: nowrap; }

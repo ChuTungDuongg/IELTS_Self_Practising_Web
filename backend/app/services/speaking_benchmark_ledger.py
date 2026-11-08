@@ -49,9 +49,42 @@ class RequestLedger:
                     Checkpoint.identity == identity,
                     Checkpoint.status == "COMPLETED",
                 )
-                .order_by(Checkpoint.created_at.desc())
+                .order_by(
+                    (Checkpoint.run_id == run.id).desc(),
+                    Checkpoint.created_at.desc(),
+                    Checkpoint.id,
+                )
                 .limit(1)
             )
+            if found and found.run_id != run.id:
+                # Record the exact consumed artifact before returning it. Reports
+                # must not guess provenance from whichever historical result is newest.
+                # guard() holds the sample/run locks, so concurrent hits deduplicate.
+                number = (
+                    await session.scalar(
+                        select(func.max(Checkpoint.attempt)).where(
+                            Checkpoint.run_id == run.id,
+                            Checkpoint.stage == stage,
+                            Checkpoint.identity == identity,
+                        )
+                    )
+                    or 0
+                ) + 1
+                session.add(
+                    Checkpoint(
+                        run_id=run.id,
+                        stage=stage,
+                        provider=found.provider,
+                        identity=identity,
+                        attempt=number,
+                        status="COMPLETED",
+                        billing_state="NOT_BILLABLE",
+                        result=found.result,
+                        usage={},
+                        reused_from=found.reused_from or found.id,
+                        finished_at=datetime.now(UTC),
+                    )
+                )
             return found.result if found else None
 
     async def begin(self, stage, provider, identity):
@@ -87,6 +120,7 @@ class RequestLedger:
                         Checkpoint.identity == old.identity,
                         Checkpoint.created_at > old.created_at,
                         Checkpoint.status == "COMPLETED",
+                        Checkpoint.reused_from.is_(None),
                     )
                     .limit(1)
                 )

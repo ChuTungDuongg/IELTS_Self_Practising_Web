@@ -8,10 +8,10 @@ from uuid import UUID
 from pydantic import Field, model_validator
 
 from app.evaluation.speaking.asr_comparison import Annotation, WindowBinding
+from app.evaluation.speaking.asr_normalization import NORMALIZATION, normalized_text
 from app.evaluation.speaking.hybrid import _tokens
 from app.schemas.speaking_benchmark_grading import LexicalProvider, StrictDTO
 
-NORMALIZATION = "asr-research-nfc-casefold-words-v2"
 METRIC_PROTOCOL = "admin-speaking-research-v1"
 
 
@@ -37,7 +37,7 @@ class ReferenceWrite(WindowBinding):
 
     @model_validator(mode="after")
     def bounds(self):
-        count = len(_tokens(self.text))
+        count = len(_tokens(normalized_text(self.text)))
         if self.end_ms <= self.start_ms or any(
             not a.start_token < a.end_token <= count for a in self.annotations
         ):

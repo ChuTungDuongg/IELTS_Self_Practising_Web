@@ -69,3 +69,21 @@ Use existing BandPilot tokens, Taste app-screen rules and UI/UX Pro Max. Researc
 is a persistent list/detail workspace. Progressive disclosure keeps configuration,
 consent and results distinct. One player per comparison; tables and text diffs
 are authoritative accessible views. Reference editor reuses sample playback.
+
+## Integrity audit on the implemented baseline
+
+Inspected local HEAD and fetched origin/main: `00e295f05a3e8a793e0a6481c1db5e2cafe973c6`.
+The requested modular-monolith design already exists at that commit. This follow-up
+retains it and verifies/fixes its implementation; no additional design approval,
+commit, push, deployment or paid inference is authorized by the current request.
+
+Paired transcript projections must use the linked P2 run's exact stage artifacts,
+including durable, nonbillable cache receipts. An unrelated later checkpoint with
+the same provider name is not evidence used by that run. Historical runs without
+such receipts report missing evidence rather than guessing. Physical request and
+cache counts must remain distinct, including uncertain P2 billing.
+
+Research cancellation must fence linked active P2 runs and all pending requests in
+the same PostgreSQL transaction. A crash cannot leave a cancelled experiment with
+an admitted active grading run. Reference token annotations must use the declared
+NFC normalization before validation as well as measurement. Raw text remains literal.

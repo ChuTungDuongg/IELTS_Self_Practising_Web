@@ -16,6 +16,33 @@ from app.evaluation.speaking.replay_manifest import prepare, validate
 from app.evaluation.speaking.replay_models import ReplaySegment
 
 
+def test_probe_resolves_case_insensitive_windows_executable_suffix(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    source = tmp_path / "synthetic.wav"
+    source.write_bytes(b"RIFF0000WAVE" + b"synthetic")
+    ffmpeg = tmp_path / "ffmpeg.EXE"
+    ffmpeg.touch()
+    (tmp_path / "ffprobe.exe").touch()
+    calls = []
+
+    def run(arguments, **kwargs):
+        calls.append(arguments)
+        return SimpleNamespace(
+            stdout=json.dumps(
+                {
+                    "streams": [{"sample_rate": 16000, "channels": 1}],
+                    "format": {"duration": 1, "format_name": "wav"},
+                }
+            ).encode()
+        )
+
+    monkeypatch.setattr("app.evaluation.speaking.replay_audio.shutil.which", lambda _: str(ffmpeg))
+    monkeypatch.setattr("app.evaluation.speaking.replay_audio.subprocess.run", run)
+    assert probe_audio(source, Settings(_env_file=None))["duration_ms"] == 1000
+    assert calls[0][0] == str(tmp_path / "ffprobe.exe")
+
+
 @pytest.fixture
 def settings():
     if not shutil.which("ffmpeg") or not shutil.which("ffprobe"):

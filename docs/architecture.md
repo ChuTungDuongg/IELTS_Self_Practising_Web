@@ -85,3 +85,9 @@ Xem [Modal deployment](modal-web.md), [bốn profiles và EC2/Docker](aws-deploy
 ## Admin Speaking Research boundary
 
 [Phase 3](testing/admin-speaking-benchmark-research.md) adds four additive research tables, an owner-scoped FastAPI API and a separate CPU research consumer. ASR-only uses the existing lexical adapters without OpenAI; paired mode schedules immutable P2 runs serially. Human transcripts/bands are report inputs only, never inference identities. PostgreSQL enforces immutable configurations/results and source bindings. Private storage and existing deletion outbox remain authoritative; embedded Modal PostgreSQL/local Volumes do not become shared worker storage.
+
+Paired report provenance comes from the linked P2 run's stage checkpoints and
+nonbillable cache receipts, rather than searching for the newest provider output.
+Research and linked P2 cancellation share one transaction. Research normalization
+is a pure evaluation contract shared by reference validation and metrics; it does
+not modify learner transcripts, provider prompts or the legacy replay CLI.

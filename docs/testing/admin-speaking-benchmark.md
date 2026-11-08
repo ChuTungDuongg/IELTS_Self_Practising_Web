@@ -180,3 +180,8 @@ Execution evidence and remaining live limitations are recorded in the implementa
 ## Phase 3 research extension
 
 [ASR research and paired experiments](admin-speaking-benchmark-research.md) add owner-scoped human transcript revisions and frozen experiments. Phase 1 remains the sole authority for candidate-only approval. Research uses selected approved revisions and does not run diarization or change sample splits.
+
+The reference editor retains exact uncertainty spans/types across revisions and
+blocks editing while the selected response history loads. Changing interface
+language preserves unsaved transcription. See the research guide for the current
+integrity audit and fresh offline verification, distinct from historical results.

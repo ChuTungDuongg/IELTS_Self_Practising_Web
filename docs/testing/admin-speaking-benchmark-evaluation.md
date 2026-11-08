@@ -172,3 +172,9 @@ npm --prefix frontend run build
 ## Phase 3 paired research
 
 [Research experiments](admin-speaking-benchmark-research.md) schedule compatible P2 runs sequentially per sample; the active-run constraint and physical OpenAI repair ledger remain intact. PA and CPU VAD evidence are cached independently of lexical/scorer choices. Human transcript references and band labels are joined only after inference. Unknown research requests also block new P2 provider submissions on that sample.
+
+Consumed cross-run cache artifacts now create nonbillable `reused_from` checkpoint
+receipts in the consuming run. Receipts do not increment physical provider-request
+totals or copy usage, and cannot settle an unknown physical request. Research
+cancellation fences its linked P2 run atomically; interrupted-run reconciliation
+preserves the experiment attribution. Frozen historical predictions stay unchanged.

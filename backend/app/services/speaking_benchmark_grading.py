@@ -148,19 +148,23 @@ async def detail(service, sample_id, run_id):
         )
 
 
+async def cancel_in_transaction(service, sample_id, run_id):
+    """Fence a run in the caller's transaction; sample lock must precede run lock."""
+    await service.owned(sample_id, lock=True)
+    run = await owned_run(service.session, service.owner_id, sample_id, run_id, lock=True)
+    if run.status in {"PENDING", "RUNNING", "INTERRUPTED"}:
+        run.status, run.stage, run.finished_at = "CANCELLED", "cancelled", datetime.now(UTC)
+        run.lease_token, run.lease_expires_at = None, None
+        for attempt in await service.session.scalars(
+            select(Checkpoint).where(Checkpoint.run_id == run_id, Checkpoint.status == "ATTEMPTED")
+        ):
+            attempt.status = "INTERRUPTED_BILLING_UNKNOWN"
+    return run
+
+
 async def cancel(service, sample_id, run_id):
     async with service.session.begin():
-        await service.owned(sample_id, lock=True)
-        run = await owned_run(service.session, service.owner_id, sample_id, run_id, lock=True)
-        if run.status in {"PENDING", "RUNNING", "INTERRUPTED"}:
-            run.status, run.stage, run.finished_at = "CANCELLED", "cancelled", datetime.now(UTC)
-            run.lease_token, run.lease_expires_at = None, None
-            for attempt in await service.session.scalars(
-                select(Checkpoint).where(
-                    Checkpoint.run_id == run_id, Checkpoint.status == "ATTEMPTED"
-                )
-            ):
-                attempt.status = "INTERRUPTED_BILLING_UNKNOWN"
+        run = await cancel_in_transaction(service, sample_id, run_id)
         await service.session.flush()
         return await run_dto(service.session, run)
 
@@ -183,6 +187,11 @@ async def retry_interrupted(service, sample_id, run_id, body):
         ):
             raise failure("SPEAKING_BENCHMARK_RETRY_STAGE_MISMATCH", 409)
         previous = run.consent.get("reconciliations", [])
+        research_origin = (
+            {"research_experiment": run.consent["research_experiment"]}
+            if "research_experiment" in run.consent
+            else {}
+        )
         if any(r["checkpoint_id"] == str(attempt.id) for r in previous):
             raise failure("SPEAKING_BENCHMARK_RETRY_CONFLICT", 409)
         if run.status == "CANCELLED":
@@ -210,18 +219,22 @@ async def retry_interrupted(service, sample_id, run_id, body):
                 status="PENDING",
             )
             service.session.add(run)
-        run.consent = body.consent.model_dump(mode="json") | {
-            "reconciliations": previous
-            + [
-                {
-                    "checkpoint_id": str(attempt.id),
-                    "stage": attempt.stage,
-                    "identity": attempt.identity,
-                    "reason": body.reconciliation,
-                    "authorized_at": datetime.now(UTC).isoformat(),
-                }
-            ]
-        }
+        run.consent = (
+            body.consent.model_dump(mode="json")
+            | research_origin
+            | {
+                "reconciliations": previous
+                + [
+                    {
+                        "checkpoint_id": str(attempt.id),
+                        "stage": attempt.stage,
+                        "identity": attempt.identity,
+                        "reason": body.reconciliation,
+                        "authorized_at": datetime.now(UTC).isoformat(),
+                    }
+                ]
+            }
+        )
         run.status, run.stage, run.error_code = "PENDING", "explicit_retry", None
         await service.session.flush()
         return await run_dto(service.session, run)

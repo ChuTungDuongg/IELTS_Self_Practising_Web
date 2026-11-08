@@ -5,6 +5,11 @@ modular-monolith extension of [Phase 1](admin-speaking-benchmark.md) and
 [Phase 2](admin-speaking-benchmark-evaluation.md). Implementation and verification
 are offline. Real recognition quality and band improvement remain **UNVERIFIED**.
 
+Follow-up audit inspected local HEAD and freshly fetched `origin/main` at
+`00e295f05a3e8a793e0a6481c1db5e2cafe973c6`, where Phase 3 was already implemented.
+Current working-tree corrections and fresh verification are recorded below
+separately from the original implementation's historical results.
+
 ## Architecture and authority
 
 ```mermaid
@@ -71,8 +76,10 @@ required; cross-admin isolation remains in force.
 Annotations use zero-based normalized token positions with an exclusive end:
 `filler`, `repetition`, `self_correction`, `incorrect_grammar`. API uncertainty spans
 use source milliseconds and distinguish uncertain, unintelligible and questionable
-reference quality. The UI's conservative uncertainty checkbox marks the whole
-window; any such annotation excludes that window from WER/CER/preservation metrics.
+reference quality. The editor supports each type with exact source start/end
+millisecond controls and preserves existing spans when editing text. Adding the
+first span defaults to the whole approved window; adjust its bounds after replay.
+Any such annotation excludes that window from WER/CER/preservation metrics.
 This avoids making up words or silently excluding only difficult tokens. Raw text
 and uncertainty remain visible. Optional accent/speed labels require voluntary
 metadata confirmation; no sensitive attributes are inferred from audio.
@@ -100,6 +107,14 @@ artifacts and exact provider checkpoints can be reused. PA and VAD cache identit
 exclude lexical/scorer changes; lexical identity includes its own model/config.
 Criterion scores are reused only when their actual production evidence matches.
 The research worker polls linked P2 runs with a bounded wait; run the P2 worker too.
+
+P2 cache consumption persists an immutable nonbillable checkpoint receipt in the
+consuming run, linked through `reused_from` to the original artifact. The receipt
+retains the exact stage/identity/result and carries no duplicate provider usage.
+Paired transcript reports read only the linked run's artifacts, never a newer
+unrelated hypothesis with the same provider name. Historical P2 runs lacking a
+receipt show unavailable per-window evidence; their frozen band predictions remain
+available. No historical prediction is backfilled or rewritten.
 
 Changing a reference/label changes metrics only. Changing a scorer prompt does not
 invalidate unchanged PA/VAD/lexical observations. Changing an ASR model creates a
@@ -129,6 +144,14 @@ uses its existing exact-checkpoint reconciliation in the sample's AI Evaluation,
 this action automatically. A cancelled research experiment is not silently restarted;
 create a separately authorized experiment if needed, preserving unknown-request guards.
 
+Research cancellation and linked active P2 cancellation commit atomically while
+holding the sample locks. A process failure after commit cannot leave the linked
+run admitted to submit more requests. In-flight responses may settle their own
+attempt's accounting only. A cache receipt cannot reconcile an unknown physical
+request; replacement checks require an actual later completed physical attempt.
+P2 recovery retains research attribution. Summaries distinguish physical calls,
+cache receipts, reused finalized runs, unknown billing and unavailable usage.
+
 ## Metrics and interpretation
 
 Protocol: `admin-speaking-research-v1`. Normalization:
@@ -138,6 +161,11 @@ whitespace. CER uses that normalized text with single spaces. Raw transcripts st
 unchanged. No grammar or LLM correction. Legacy replay CLI v1 normalization remains
 unchanged. Bounded Levenshtein alignment uses the existing diagonal-first tie policy;
 different equally minimal alignments can distribute S/D/I differently.
+
+Reference annotation bounds and provider-disagreement comparisons use this same
+NFC token stream. A historical reference with invalid post-normalization offsets
+returns unavailable accuracy (`REFERENCE_ANNOTATION_BOUNDS_INVALID`) until a corrected
+revision is saved; reports do not fail or silently move its annotation.
 
 WER retains exact substitution/deletion/insertion/reference-word counts. Micro WER
 is total errors / total reference words; sample macro WER averages response WER per
@@ -165,6 +193,9 @@ Bootstrap intervals use 2,000 seeded percentile resamples of **candidate cluster
 equal candidate weighting, and at least ten known independent pseudonyms. Otherwise
 CI is unavailable. Sample means and speaker means are distinguished. These descriptive
 intervals do not establish causality or a winner.
+
+Candidate clusters are sorted before seeded resampling, so database query order
+and process hash seeds cannot change the interval for the same selected data.
 
 Lower WER does not guarantee lower band error: omitted repairs, recognized grammar,
 question context, timing coverage and LLM variability can affect grading differently.
@@ -233,6 +264,11 @@ intended disposable URL during development. Web and workers must share the same
 database/private AssetStorage. FFmpeg/ffprobe must resolve; Windows uses the existing
 `tools/speaking_diarization` resolver when necessary. Worker supports `--once`, positive
 `--limit` and finite positive `--poll-interval`; SIGTERM/SIGINT perform fenced shutdown.
+
+On Windows, a PATH lookup may return `ffmpeg.EXE` even when the installed file is
+named `ffmpeg.exe`. The sibling `ffprobe.exe` lookup is case-insensitive. The
+follow-up audit exercises both PATH lookup and the existing absolute-path resolver
+with generated WAV/MP3, without downloading decoder binaries or speech models.
 
 Before separately authorized live operation, explicitly configure
 `SPEAKING_BENCHMARK_RESEARCH_ENABLED=true`,
@@ -333,3 +369,73 @@ First live A/B procedure, **only after a separate explicit operator authorizatio
 No real WER improvement, Vietnamese-accent accuracy, provider throughput/cost, semantic
 fairness, grading calibration, cloud network/IAM/durability or GPU behavior is claimed
 from fixtures. Human reference quality and pseudonym independence remain dataset duties.
+
+## Follow-up integrity audit — working tree on `00e295f`
+
+The original implementation request did not authorize commit, push, deployment,
+production migrations or live paid requests. The subsequent operator request
+authorizes committing/pushing these fixes to main and repairing CI; deployment,
+production migrations and paid inference remain outside that authorization.
+Audit work was on `codex/speaking-research-integrity`. Unrelated
+untracked user files were left untouched. The four-table migration already existed at this inspected
+commit; the fixes reuse its fields and the P2 checkpoint `reused_from` column.
+
+Corrected and regression-tested behavior:
+
+- Only the linked P2 run supplies a paired hypothesis. A newer unrelated observation
+  cannot replace it; missing historical cache receipts remain missing evidence.
+- Consumed cache artifacts have durable nonbillable receipts, deduplicated per stage
+  and identity. Physical call/usage totals exclude them in P2 and research reports.
+- Cache receipts cannot clear physical billing uncertainty. Recovery retains research
+  attribution and unknown-request counts. Cancellation fences research and linked P2
+  work in one transaction, including a simulated failure immediately after commit.
+- Reference bounds, WER/CER and provider disagreement use the same NFC policy. Invalid
+  historical annotation offsets produce an unavailable reason. Seeded candidate
+  bootstrap intervals are invariant to input order.
+- The editor preserves exact uncertainty kinds/windows and unsaved text across locale
+  changes. Reference history loading blocks editing and rapid response switching.
+- Windows `.EXE` PATH discovery correctly resolves the sibling `ffprobe.exe`.
+
+Fresh verification (synthetic audio/fake inference only):
+
+| Check | Observed result |
+| --- | --- |
+| Full frontend suite on final UI | 2,009 passed, 170 files, 161.11 s |
+| Final broader Speaking P1/P2/P3, replay, ASR/lexical, hybrid and Modal contracts | 280 passed, 1 skipped, 142.17 s |
+| Final P1/P2/P3 frontend focused suite | 38 passed, 3 files, 7.52 s |
+| Real WAV/MP3 decoder suite and uppercase-suffix regression | 11 passed, 5.16 s |
+| Frontend TypeScript, ESLint and production build | Passed |
+| Backend Ruff lint/format | Passed, 605 app/test files formatted |
+| Fresh databases upgraded from empty | Two disposable databases passed |
+| Separate disposable Alembic round trip | Empty → 0047 → 0046 → 0047; single head |
+| Independent review of integrity fixes | Findings corrected; final review found no further issue |
+
+The final backend skip is `test_source_cannot_escape_private_root_even_through_symlinks`:
+this Windows host does not permit symlink creation. The first broader backend run
+passed 271 tests with 9 skips. Enabling the installed
+Windows FFmpeg directory exposed the `.EXE` lookup defect (26 failures sharing that
+cause); it was reproduced with a new failing unit test and corrected. The final
+broader run passed 280 tests with only that host-permission skip. Neither intermediate failures
+nor the original implementation's historical full-suite results are a claim about
+the final working tree.
+
+Commands used for the broader regression (repository root, three **disposable**
+PostgreSQL databases; no application database was used):
+
+```powershell
+# Make the already-installed ffmpeg.exe AND ffprobe.exe directory available.
+# Do not install/download speech models for this suite.
+$env:PATH = "<installed-ffmpeg-bin>;" + $env:PATH
+$env:DATABASE_URL = "postgresql+asyncpg://research_test:research_test@127.0.0.1:5547/bandpilot_p3_audit_test"
+$env:P2_TEST_DATABASE_URL = "postgresql+asyncpg://research_test:research_test@127.0.0.1:5547/bandpilot_p3_isolated_test"
+$tests = @(rg --files backend/tests -g 'test_admin_speaking*.py' -g 'test_speaking_asr*.py' -g 'test_speaking_lexical_asr.py' -g 'test_speaking_replay*.py' -g 'test_speaking_hybrid*.py' -g 'test_modal_speaking_hybrid.py')
+uv run --project backend pytest @tests -q --tb=short -rs
+npm --prefix frontend test -- --run
+npm --prefix frontend run typecheck
+npm --prefix frontend run lint
+npm --prefix frontend run build
+```
+
+This audit did not rerun the entire backend suite or browser layout/screenshot QA.
+The synthetic end-to-end database tests exercise both experiment modes; actual
+Azure/Whisper/OpenAI quality, real billing and remote deployment remain unverified.

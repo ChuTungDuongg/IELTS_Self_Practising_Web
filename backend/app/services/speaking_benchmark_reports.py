@@ -162,7 +162,7 @@ async def report(service, filters):
         for row in rows:
             row["observed_usage"], row["provider_requests"] = {}, 0
         for attempt in attempts:
-            if attempt.provider == "cpu":
+            if attempt.provider == "cpu" or attempt.reused_from is not None:
                 continue
             row = by_run[str(attempt.run_id)]
             row["provider_requests"] += 1

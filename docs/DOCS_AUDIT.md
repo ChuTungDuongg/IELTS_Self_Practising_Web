@@ -124,3 +124,8 @@ Mười JSON trong [modal-p2](performance/modal-p2/) là nguồn phép đo, khô
 Một tài liệu mốc ban đầu có trạng thái UNCERTAIN: `docs/modal-web.md` có sẵn 51 dòng thay đổi và chương trình khởi chạy chưa được Git theo dõi, không thuộc commit đang kiểm toán; không sửa/stage phần đó. Đã đối chiếu cấu trúc ứng dụng/runtime Modal được commit và cẩm nang liên kết đúng. Giới hạn chung khác chưa được lần kiểm toán này xác minh: cloud/IAM/TLS/revision DB đang chạy, độ chính xác benchmark production, hình học trình duyệt, tính hợp lệ liên kết bên ngoài/bài nghiên cứu và renderer Mermaid đầy đủ.
 
 [Ma trận bao phủ](DOCUMENTATION_COVERAGE.md) ghi rõ phân hệ/trục đã có trong bản đồ; không báo 100% độ bao phủ mã. Tài liệu mới được liệt kê theo đường dẫn chuẩn ở [mục lục](README.md), không đưa vào mẫu 75 tài liệu mốc ban đầu để thổi phồng số đã kiểm tra.
+
+
+### Speaking Research integrity audit on `00e295f`
+
+The [current research verification record](testing/admin-speaking-benchmark-research.md#follow-up-integrity-audit--working-tree-on-00e295f) records the follow-up fixes, 280 passing backend tests (one host-permission skip), 2,009 passing frontend tests, migration round trip and live limitations. These are focused offline engineering results, not a new whole-repository documentation inventory or proof of live ASR/grading accuracy.

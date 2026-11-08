@@ -357,3 +357,8 @@ credentials, F0 prosody availability and billing remain **LIVE_UNVERIFIED**.
 ## Admin research experiments
 
 [Phase 3 research](testing/admin-speaking-benchmark-research.md) adds ASR-only comparison without Luna and paired downstream experiments through the production scorer. Reference transcripts and human bands are evaluation-only; lower WER is not a guarantee of lower band error. No learner transcript, rubric default or scoring authority is changed. Optional GPU inference remains separately authorized.
+
+Paired transcript comparisons retain the evidence actually consumed by their P2
+run through immutable cache receipts. Current research fixes preserve that
+provenance across recovery and fence cancellation atomically; no alternative
+Speaking scoring implementation or automatic calibration is introduced.

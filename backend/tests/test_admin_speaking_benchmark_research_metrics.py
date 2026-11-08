@@ -202,3 +202,47 @@ def test_csv_export_is_formula_safe_and_omits_private_transcripts():
     assert "'=SUM" in csv and "PRIVATE" not in csv
     assert "band_comparison" in csv
     assert "PRIVATE" not in research_export(report, "json")
+
+
+def test_annotation_bounds_use_declared_nfc_tokenization():
+    from app.schemas.speaking_benchmark_research import ReferenceWrite
+
+    fields = dict(
+        review_revision=1,
+        expected_revision=0,
+        segment_id="s",
+        source_sha256="a" * 64,
+        start_ms=0,
+        end_ms=100,
+        text="re\u0301pe\u0301te\u0301 I go",
+        provenance="unverified",
+        source_reference="",
+    )
+    with pytest.raises(ValueError, match="annotation"):
+        ReferenceWrite(
+            **fields, annotations=[{"kind": "incorrect_grammar", "start_token": 3, "end_token": 5}]
+        )
+    value = ReferenceWrite(
+        **fields, annotations=[{"kind": "incorrect_grammar", "start_token": 1, "end_token": 3}]
+    )
+    assert value.text == fields["text"], "Validation must preserve verbatim raw text"
+
+
+def test_historical_annotation_offsets_invalid_after_nfc_are_unavailable():
+    value = ref(
+        "re\u0301pe\u0301te\u0301 I go",
+        [{"kind": "incorrect_grammar", "start_token": 3, "end_token": 5}],
+    )
+    metric = reference_metrics("répété I go", value)
+    assert metric["wer"] is None
+    assert metric["unavailable_reason"] == "REFERENCE_ANNOTATION_BOUNDS_INVALID"
+
+
+def test_cluster_bootstrap_is_independent_of_query_order():
+    from app.services.speaking_benchmark_research_metrics import paired_difference
+
+    values = [(f"speaker-{i}", (i * i - 11 * i) / 17) for i in range(10)]
+    forward = paired_difference(values)
+    reverse = paired_difference(list(reversed(values)))
+    assert forward["ci95"] is not None
+    assert forward == reverse

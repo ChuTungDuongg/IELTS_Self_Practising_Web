@@ -82,3 +82,61 @@ async def test_latest_run_one_weight_latest_verified_label_and_owner_isolation(g
             ReportFilters(),
         )
         assert rows == [] and summary["uploaded_samples"] == 0
+
+
+async def test_provider_request_totals_exclude_nonbillable_cache_receipts(grading_lab):
+    from app.models.speaking_benchmark_grading import (
+        SpeakingBenchmarkGradingCheckpoint as Checkpoint,
+    )
+
+    factory, settings, storage, owner, sample, run_id = grading_lab
+    async with factory() as session, session.begin():
+        run = await session.get(Run, run_id)
+        run.status = "COMPLETED"
+        run.prediction = {"bands": {"overall": 6}, "criteria": {}, "limitations": []}
+        session.add(
+            Label(
+                sample_id=sample,
+                revision=1,
+                overall=6,
+                provenance="human_examiner",
+                reference="Independent fictional label",
+                verified=True,
+                examiner="Fictional",
+                notes="",
+            )
+        )
+        origin = Checkpoint(
+            run_id=run_id,
+            stage="azure:one",
+            provider="azure-speech",
+            identity="a" * 64,
+            attempt=1,
+            status="COMPLETED",
+            billing_state="OBSERVED",
+            result={"synthetic": True},
+            usage={"submitted_audio_ms": 1000},
+        )
+        session.add(origin)
+        await session.flush()
+        session.add(
+            Checkpoint(
+                run_id=run_id,
+                stage="azure:one",
+                provider="azure-speech",
+                identity="a" * 64,
+                attempt=2,
+                status="COMPLETED",
+                billing_state="NOT_BILLABLE",
+                result=origin.result,
+                usage={},
+                reused_from=origin.id,
+            )
+        )
+    async with factory() as session:
+        _, rows = await report(
+            SpeakingBenchmarkService(session, owner, settings=settings, storage=storage),
+            ReportFilters(),
+        )
+    assert rows[0]["provider_requests"] == 1
+    assert rows[0]["observed_usage"]["azure-speech"]["submitted_audio_ms"] == 1000

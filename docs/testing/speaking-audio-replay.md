@@ -698,3 +698,7 @@ lock check pass; không đổi dependency pins. Không có HF download hay Azure
 ## Persistent admin ASR research
 
 The [Phase 3 Admin Research Lab](admin-speaking-benchmark-research.md) reuses the compare-asr alignment/lexical/coverage metrics through source-bound database adapters. Existing CLI behavior and v1 normalization remain unchanged; the admin protocol explicitly versions NFC/casefold/punctuation/whitespace normalization. Admin references are independently verified history, never ASR ground truth inferred from another provider. No fabricated filesystem approvals are used.
+
+The admin normalization helper also validates annotation offsets and normalizes
+provider disagreement. Candidate-bootstrap intervals are invariant to query order.
+These admin fixes do not change the CLI's manifest or approval-receipt contracts.

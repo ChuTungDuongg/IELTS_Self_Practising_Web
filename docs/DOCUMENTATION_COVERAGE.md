@@ -105,3 +105,8 @@ Những kiểm tra hệ thống thực không chạy vì nhiệm vụ cấm (clo
 - Có 16 khối Mermaid trong cẩm nang/mô-đun qua kiểm cấu trúc; hai sơ đồ tuần tự mới được đối chiếu nhánh publish và create/worker trong mã. Parser/render vẫn chưa được xác minh.
 - Phân tích 10 JSON benchmark; bốn lần chạy chính có lỗi HTTP bằng 0. p95/RPS trong hồ sơ kiểm chứng cũ khớp JSON; mức giảm 78,00% và tăng tốc 4,34× được tính lại. JSON bằng chứng không đổi so với mốc mã nguồn ban đầu.
 - `git diff --check` không có lỗi khoảng trắng. Không chạy ứng dụng hay tài nguyên cloud.
+
+
+### Speaking Research integrity audit on `00e295f`
+
+The [current research verification record](testing/admin-speaking-benchmark-research.md#follow-up-integrity-audit--working-tree-on-00e295f) records the follow-up fixes, 280 passing backend tests (one host-permission skip), 2,009 passing frontend tests, migration round trip and live limitations. These are focused offline engineering results, not a new whole-repository documentation inventory or proof of live ASR/grading accuracy.

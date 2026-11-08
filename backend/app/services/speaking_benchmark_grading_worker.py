@@ -145,6 +145,7 @@ class GradingJobRunner:
                         Checkpoint.identity == attempt.identity,
                         Checkpoint.attempt > attempt.attempt,
                         Checkpoint.status == "COMPLETED",
+                        Checkpoint.reused_from.is_(None),
                     )
                     .limit(1)
                 )

@@ -51,6 +51,107 @@ async def test_completed_results_are_reused_and_finalized_predictions_frozen(gra
             row.prediction = {"bands": {"fc": 9}}
 
 
+async def test_cross_run_cache_hit_persists_one_nonbillable_receipt(grading_lab):
+    from uuid import uuid4
+
+    from sqlalchemy import select
+
+    from app.services.speaking_benchmark_grading_worker import GradingJobRunner
+
+    factory, settings, storage, _, _, run_id = grading_lab
+    worker = GradingJobRunner(factory, settings, storage=storage)
+    identifier, token = await worker.claim()
+    first = RequestLedger(factory, identifier, token)
+    origin = await first.begin("azure:one", "azure-speech", "a" * 64)
+    await first.finish(origin, {"normalized": True}, usage={"submitted_audio_ms": 1000})
+    async with factory() as session, session.begin():
+        old = await session.get(Run, run_id)
+        old.status = "COMPLETED"
+        successor = Run(
+            submission_key=uuid4(),
+            **{
+                key: getattr(old, key)
+                for key in (
+                    "sample_id",
+                    "owner_id",
+                    "review_revision",
+                    "source_sha256",
+                    "manifest_fingerprint",
+                    "config_fingerprint",
+                    "configuration",
+                    "consent",
+                    "candidate_ms",
+                    "window_count",
+                )
+            },
+        )
+        session.add(successor)
+        await session.flush()
+        successor_id = successor.id
+    identifier, token = await worker.claim()
+    assert identifier == successor_id
+    second = RequestLedger(factory, identifier, token)
+    for _ in range(2):
+        assert await second.cached("azure:one", "a" * 64) == {"normalized": True}
+    async with factory() as session:
+        receipts = list(
+            await session.scalars(select(Checkpoint).where(Checkpoint.run_id == identifier))
+        )
+        assert len(receipts) == 1
+        receipt = receipts[0]
+        assert receipt.reused_from == origin
+        assert receipt.identity == "a" * 64 and receipt.stage == "azure:one"
+        assert receipt.status == "COMPLETED" and receipt.billing_state == "NOT_BILLABLE"
+        assert receipt.usage == {}, "Cache reuse must not duplicate physical provider usage"
+
+
+async def test_cache_receipt_cannot_resolve_unknown_physical_request(grading_lab):
+    from app.services.speaking_benchmark_grading_worker import GradingJobRunner
+    from app.services.speaking_benchmark_research_ledger import unresolved_grading_requests
+
+    factory, settings, storage, _, sample_id, _ = grading_lab
+    worker = GradingJobRunner(factory, settings, storage=storage)
+    run_id, token = await worker.claim()
+    ledger = RequestLedger(factory, run_id, token)
+    origin = await ledger.begin("azure:one", "azure-speech", "a" * 64)
+    await ledger.finish(origin, {"evidence": "synthetic"})
+    now = datetime.now(UTC)
+    async with factory() as session, session.begin():
+        unknown = Checkpoint(
+            run_id=run_id,
+            stage="azure:one",
+            provider="azure-speech",
+            identity="a" * 64,
+            attempt=2,
+            status="INTERRUPTED_BILLING_UNKNOWN",
+            billing_state="UNKNOWN",
+            created_at=now,
+        )
+        session.add(unknown)
+        session.add(
+            Checkpoint(
+                run_id=run_id,
+                stage="azure:one",
+                provider="azure-speech",
+                identity="a" * 64,
+                attempt=3,
+                status="COMPLETED",
+                billing_state="NOT_BILLABLE",
+                result={"evidence": "synthetic"},
+                usage={},
+                reused_from=origin,
+                created_at=now + timedelta(seconds=1),
+            )
+        )
+    async with factory() as session:
+        assert len(await unresolved_grading_requests(session, sample_id)) == 1
+    with pytest.raises(Exception, match="BILLING_UNKNOWN"):
+        await ledger.begin("azure:next", "azure-speech", "b" * 64)
+    await worker.finish(run_id, token)
+    async with factory() as session:
+        assert (await session.get(Run, run_id)).status == "INTERRUPTED"
+
+
 async def test_cancel_then_delete_preserves_uncertain_attempt_until_cleanup(grading_lab):
     from app.models.speaking_benchmark import SpeakingBenchmarkSample
     from app.services.speaking_benchmark import SpeakingBenchmarkService

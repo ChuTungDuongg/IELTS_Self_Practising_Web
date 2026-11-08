@@ -56,4 +56,4 @@ Khi đổi tuyến/schema/thực thể/bất biến/provider/triển khai, cập
 Đường dẫn mã nguồn, liên kết cục bộ, khai báo API, tên model, phép tính và cấu trúc sơ đồ được kiểm tra ngoại tuyến; không có trình duyệt/triển khai/bộ test trong lần kiểm toán này. Tài liệu không chứng minh mọi khả năng runtime đều đang bật. Hướng dẫn vận hành có thể chứa lệnh thay đổi trạng thái: chỉ chạy trong phạm vi người dùng/người vận hành cho phép, với cơ sở dữ liệu/Secret/Volume đã xác nhận.
 
 
-- [Admin Speaking Research: references, ASR-only and paired experiments](testing/admin-speaking-benchmark-research.md) — architecture, additive migration, billing/recovery, metrics, exports, local setup and verification boundaries.
+- [Admin Speaking Research: references, ASR-only and paired experiments](testing/admin-speaking-benchmark-research.md) — architecture, additive migration, billing/recovery, metrics, exports, local setup, integrity audit on `00e295f` and verification boundaries.

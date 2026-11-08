@@ -1,9 +1,10 @@
 """Pure adapters around existing ASR/P2 metrics. No inference or database access."""
 
 import random
-import unicodedata
 from collections import defaultdict
 from statistics import mean
+
+from pydantic import ValidationError
 
 from app.evaluation.speaking.asr_comparison import HumanReference
 from app.evaluation.speaking.asr_metrics import (
@@ -12,14 +13,11 @@ from app.evaluation.speaking.asr_metrics import (
     coverage_metrics,
     lexical_metrics,
 )
+from app.evaluation.speaking.asr_normalization import normalized_text
 from app.evaluation.speaking.hybrid import _tokens
 from app.evaluation.speaking.manifest import BenchmarkInputError
 from app.schemas.speaking_benchmark_research import METRIC_PROTOCOL, NORMALIZATION
 from app.schemas.speech_analysis import SpeechAnalysisResult
-
-
-def normalized_text(text):
-    return " ".join(_tokens(unicodedata.normalize("NFC", text).casefold()))
 
 
 def reference_metrics(text, reference):
@@ -29,18 +27,20 @@ def reference_metrics(text, reference):
             if reference and reference.uncertainty
             else "VERIFIED_HUMAN_REFERENCE_MISSING"
         }
-    ref = HumanReference(
-        segment_id=reference.segment_id,
-        source_sha256=reference.source_sha256,
-        start_ms=reference.start_ms,
-        end_ms=reference.end_ms,
-        human_verified=True,
-        provenance="independent_human_transcriber",
-        text=normalized_text(reference.text),
-        annotations=reference.annotations,
-    )
     try:
+        ref = HumanReference(
+            segment_id=reference.segment_id,
+            source_sha256=reference.source_sha256,
+            start_ms=reference.start_ms,
+            end_ms=reference.end_ms,
+            human_verified=True,
+            provenance="independent_human_transcriber",
+            text=normalized_text(reference.text),
+            annotations=reference.annotations,
+        )
         result = lexical_metrics(normalized_text(text), ref)
+    except ValidationError:
+        return lexical_metrics(text) | {"unavailable_reason": "REFERENCE_ANNOTATION_BOUNDS_INVALID"}
     except BenchmarkInputError:
         return lexical_metrics(text) | {"unavailable_reason": "BOUNDED_ALIGNMENT_LIMIT_EXCEEDED"}
     return result | {
@@ -107,7 +107,9 @@ def paired_difference(values):
     for speaker, delta in values:
         if speaker:
             groups[speaker].append(delta)
-    means = [mean(v) for v in groups.values()]
+    # A fixed seed is reproducible only when candidate order is stable across
+    # query plans/process hash seeds. Responses within a candidate remain clustered.
+    means = [mean(groups[speaker]) for speaker in sorted(groups)]
     result = {
         "matched_samples": len(values),
         "known_independent_speakers": len(groups),

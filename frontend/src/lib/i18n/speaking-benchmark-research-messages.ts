@@ -1,4 +1,11 @@
 export const speakingResearchEn = {
+  "speakingResearch.uncertaintyKind": "Uncertainty kind",
+  "speakingResearch.uncertaintySpeech": "Uncertain speech",
+  "speakingResearch.unintelligible": "Unintelligible speech",
+  "speakingResearch.questionableReference": "Questionable reference quality",
+  "speakingResearch.sourceStart": "Start in source (ms)",
+  "speakingResearch.sourceEnd": "End in source (ms)",
+  "speakingResearch.addUncertainty": "Add uncertainty span",
   "speakingResearch.outliers": "Responses with the largest word error rates",
   "speakingResearch.filters": "Result filters", "speakingResearch.advancedFilters": "More filters and reference revisions", "speakingResearch.noRequests": "No physical provider requests recorded.", "speakingResearch.showDiff": "Highlight transcript differences", "speakingResearch.rawTranscript": "Original provider transcript", "speakingResearch.insufficient": "Not enough independent candidates", "speakingResearch.status": "Status", "speakingResearch.words": "reference words", "speakingResearch.responseMinimum": "Minimum response duration (ms)", "speakingResearch.responseMaximum": "Maximum response duration (ms)", "speakingResearch.humanBand": "Verified human Overall band",
   "speakingResearch.title": "ASR research", "speakingResearch.description": "Compare faithful recognition and downstream band agreement on approved candidate audio.",
@@ -11,6 +18,13 @@ export const speakingResearchEn = {
 
 export const speakingResearchVi: Record<keyof typeof speakingResearchEn, string> = {
   ...speakingResearchEn,
+  "speakingResearch.uncertaintyKind": "Loại chưa chắc chắn",
+  "speakingResearch.uncertaintySpeech": "Lời nói chưa chắc chắn",
+  "speakingResearch.unintelligible": "Lời nói không nghe được",
+  "speakingResearch.questionableReference": "Chất lượng tham chiếu cần kiểm tra",
+  "speakingResearch.sourceStart": "Bắt đầu trong audio gốc (ms)",
+  "speakingResearch.sourceEnd": "Kết thúc trong audio gốc (ms)",
+  "speakingResearch.addUncertainty": "Thêm đoạn chưa chắc chắn",
   "speakingResearch.outliers": "Các câu trả lời có tỷ lệ lỗi từ cao nhất",
   "speakingResearch.filters": "Lọc kết quả", "speakingResearch.advancedFilters": "Bộ lọc khác và phiên bản tham chiếu", "speakingResearch.noRequests": "Chưa ghi nhận yêu cầu vật lý đến dịch vụ.", "speakingResearch.showDiff": "Đánh dấu khác biệt bản chép lời", "speakingResearch.rawTranscript": "Bản chép lời gốc của dịch vụ", "speakingResearch.insufficient": "Chưa đủ thí sinh độc lập", "speakingResearch.status": "Trạng thái", "speakingResearch.words": "từ tham chiếu", "speakingResearch.responseMinimum": "Thời lượng câu trả lời tối thiểu (ms)", "speakingResearch.responseMaximum": "Thời lượng câu trả lời tối đa (ms)", "speakingResearch.humanBand": "Band Overall người chấm đã xác minh",
   "speakingResearch.title": "Nghiên cứu ASR", "speakingResearch.description": "Đối chiếu độ trung thực bản chép lời và độ khớp band trên audio thí sinh đã duyệt.",

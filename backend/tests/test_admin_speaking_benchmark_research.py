@@ -876,3 +876,186 @@ async def test_process_shutdown_preserves_unknown_request_without_replay(researc
         assert report["status"] == "INTERRUPTED"
         assert report["physical_requests"][0]["status"] == "INTERRUPTED_BILLING_UNKNOWN"
     assert not await worker.run_once()
+
+
+async def test_unlinked_paired_variant_cannot_report_historical_provider_output(research_lab):
+    from app.models.speaking_benchmark_grading import (
+        SpeakingBenchmarkGradingCheckpoint as Checkpoint,
+    )
+
+    factory, settings, storage, owner, _, old_run_id = research_lab
+    experiment = await draft_experiment(
+        research_lab, providers=("azure_pa",), mode="PAIRED_GRADING"
+    )
+    variant = experiment.variants[0]
+    window = variant.windows[0]
+    result = SpeechAnalysisResult(
+        provider=lexical_identity(settings, "azure_pa"),
+        source=SpeechAnalysisSource(
+            audio_fingerprint=experiment.configuration["cohort"][0]["source_sha256"],
+            normalized_audio_fingerprint="b" * 64,
+            duration_ms=window["end_ms"] - window["start_ms"],
+        ),
+        status="COMPLETE",
+        capabilities=SpeechCapabilities(),
+        lexical_transcript="unrelated historical hypothesis",
+        coverage=SpeechCoverage(
+            audio_duration_ms=window["end_ms"] - window["start_ms"], stream_completed=True
+        ),
+    )
+    async with factory() as session, session.begin():
+        session.add(
+            Checkpoint(
+                run_id=old_run_id,
+                stage=f"azure:{window['id']}",
+                provider="azure-speech",
+                identity="e" * 64,
+                attempt=1,
+                status="COMPLETED",
+                billing_state="OBSERVED",
+                result=result.model_dump(mode="json"),
+            )
+        )
+    async with factory() as session:
+        report = await research_report(
+            SpeakingBenchmarkService(session, owner, settings=settings, storage=storage),
+            experiment.id,
+        )
+    assert all(row["text"] is None for row in report["rows"])
+    assert report["summary"]["azure_pa"]["missing_or_failed_results"] == 3
+
+
+async def test_paired_unknown_billing_is_visible_in_provider_summary(research_lab):
+    from app.models.speaking_benchmark_grading import (
+        SpeakingBenchmarkGradingCheckpoint as Checkpoint,
+    )
+
+    factory, settings, storage, owner, _, _ = research_lab
+    experiment = await draft_experiment(
+        research_lab, providers=("azure_pa",), mode="PAIRED_GRADING"
+    )
+    await authorize(research_lab, experiment)
+    await ResearchJobRunner(factory, settings, storage=storage).run_once()
+    async with factory() as session, session.begin():
+        variant = await session.get(Variant, experiment.variants[0].id)
+        session.add(
+            Checkpoint(
+                run_id=variant.grading_run_id,
+                stage="azure:uncertain",
+                provider="azure-speech",
+                identity="e" * 64,
+                attempt=1,
+                status="INTERRUPTED_BILLING_UNKNOWN",
+                billing_state="UNKNOWN",
+            )
+        )
+    async with factory() as session:
+        report = await research_report(
+            SpeakingBenchmarkService(session, owner, settings=settings, storage=storage),
+            experiment.id,
+        )
+    assert report["summary"]["azure_pa"]["unknown_billing_attempts"] == 1
+    assert report["summary"]["azure_pa"]["unknown_usage_requests"] == 1
+
+
+async def test_paired_cancellation_survives_crash_after_first_commit(research_lab):
+    from sqlalchemy import event
+
+    from app.services.speaking_benchmark_grading_worker import GradingJobRunner
+    from app.services.speaking_benchmark_ledger import RequestLedger
+
+    factory, settings, storage, owner, _, _ = research_lab
+    experiment = await draft_experiment(
+        research_lab, providers=("azure_pa",), mode="PAIRED_GRADING"
+    )
+    await authorize(research_lab, experiment)
+    await ResearchJobRunner(factory, settings, storage=storage).run_once()
+    run_id, token = await GradingJobRunner(factory, settings, storage=storage).claim()
+    ledger = RequestLedger(factory, run_id, token)
+    attempt = await ledger.begin("azure:one", "azure-speech", "a" * 64)
+
+    def crash_after_commit(_):
+        raise RuntimeError("simulated crash after commit")
+
+    async with factory() as session:
+        event.listen(session.sync_session, "after_commit", crash_after_commit, once=True)
+        with pytest.raises(RuntimeError, match="simulated crash"):
+            await cancel_experiment(
+                SpeakingBenchmarkService(session, owner, settings=settings, storage=storage),
+                experiment.id,
+            )
+    async with factory() as session:
+        assert (await session.get(Experiment, experiment.id)).status == "CANCELLED"
+        assert (await session.get(Run, run_id)).status == "CANCELLED"
+        from app.models.speaking_benchmark_grading import (
+            SpeakingBenchmarkGradingCheckpoint as Checkpoint,
+        )
+
+        assert (await session.get(Checkpoint, attempt)).status == "INTERRUPTED_BILLING_UNKNOWN"
+    with pytest.raises(AppError, match="LEASE_LOST"):
+        await ledger.begin("azure:two", "azure-speech", "b" * 64)
+
+
+async def test_paired_recovery_preserves_physical_request_attribution(research_lab):
+    from app.schemas.speaking_benchmark_grading import RetryRequest
+    from app.services.speaking_benchmark_grading import retry_interrupted
+    from app.services.speaking_benchmark_grading_worker import GradingJobRunner
+    from app.services.speaking_benchmark_ledger import RequestLedger
+
+    factory, settings, storage, owner, sample_id, _ = research_lab
+    experiment = await draft_experiment(
+        research_lab, providers=("azure_pa",), mode="PAIRED_GRADING"
+    )
+    await authorize(research_lab, experiment)
+    await ResearchJobRunner(factory, settings, storage=storage).run_once()
+    grader = GradingJobRunner(factory, settings, storage=storage)
+    run_id, token = await grader.claim()
+    ledger = RequestLedger(factory, run_id, token)
+    attempt = await ledger.begin("azure:one", "azure-speech", "a" * 64)
+    await ledger.interrupt(attempt, "TIMEOUT")
+    await grader.finish(run_id, token)
+    body = RetryRequest(
+        checkpoint_id=attempt,
+        reconciliation="Operator checked the synthetic uncertain request",
+        consent={
+            "azure_audio": True,
+            "llm_text": True,
+            "estimates_usd": {"azure_pa": 0.1, "openai": 0.1},
+            "max_estimated_cost_usd": 1,
+        },
+    )
+    async with factory() as session:
+        service = SpeakingBenchmarkService(session, owner, settings=settings, storage=storage)
+        await retry_interrupted(service, sample_id, run_id, body)
+        report = await research_report(service, experiment.id)
+    assert report["summary"]["azure_pa"]["new_requests"] == 1
+    assert report["physical_requests"][0]["reused_artifact"] is False
+    async with factory() as session:
+        assert (await session.get(Run, run_id)).consent["research_experiment"] == str(experiment.id)
+
+
+async def test_provider_disagreement_uses_declared_unicode_normalization(research_lab):
+    factory, settings, storage, owner, _, _ = research_lab
+    experiment = await draft_experiment(research_lab)
+    await authorize(research_lab, experiment)
+    base = fake_factory(research_lab, [])
+
+    class UnicodeProvider(base):
+        async def analyze(self, audio, **kwargs):
+            result = await super().analyze(audio, **kwargs)
+            return result.model_copy(
+                update={
+                    "lexical_transcript": "CAFÉ" if self.provider == "azure_pa" else "cafe\u0301"
+                }
+            )
+
+    runner = ResearchJobRunner(factory, settings, storage=storage, analyzer_factory=UnicodeProvider)
+    while await runner.run_once():
+        pass
+    async with factory() as session:
+        report = await research_report(
+            SpeakingBenchmarkService(session, owner, settings=settings, storage=storage),
+            experiment.id,
+        )
+    assert len(report["disagreement"]) == 3
+    assert all(row["word_edit_distance"] == 0 for row in report["disagreement"])

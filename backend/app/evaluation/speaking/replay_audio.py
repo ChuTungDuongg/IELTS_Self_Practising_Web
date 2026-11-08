@@ -55,7 +55,7 @@ def probe_audio(path, settings):
     if not ffmpeg:
         raise BenchmarkInputError("REPLAY_FFMPEG_UNAVAILABLE")
     executable = Path(ffmpeg).with_name(
-        "ffprobe.exe" if Path(ffmpeg).suffix == ".exe" else "ffprobe"
+        "ffprobe.exe" if Path(ffmpeg).suffix.casefold() == ".exe" else "ffprobe"
     )
     if not executable.is_file():
         raise BenchmarkInputError("REPLAY_FFPROBE_UNAVAILABLE")

@@ -56,6 +56,7 @@ async def unresolved_grading_requests(session, sample_id):
                 Checkpoint.identity == old.identity,
                 Checkpoint.created_at > old.created_at,
                 Checkpoint.status == "COMPLETED",
+                Checkpoint.reused_from.is_(None),
             )
             .limit(1)
         )

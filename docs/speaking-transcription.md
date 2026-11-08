@@ -234,3 +234,7 @@ Mốc thời gian từ phải hữu hạn, không âm, đúng thứ tự và kh�
 ## Persistent recognition research
 
 Use the [Admin Research Lab](testing/admin-speaking-benchmark-research.md) to compare Azure PA, regular Azure STT and configured optional Whisper on the exact same approved windows. Azure PA and regular STT identities remain separate. Human transcription history, uncertainty-aware metrics, physical request accounting and frozen experiments complement the existing private compare-asr CLI. Defaults remain one-pass Azure PA; no production provider switch is made by a benchmark result.
+
+Human reference annotations use NFC-normalized token offsets. The editor preserves
+raw text and exact source-millisecond spans for uncertain/unintelligible speech and
+questionable reference quality. These annotations remain evaluation-only.
