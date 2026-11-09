@@ -15,6 +15,8 @@ import { SuiteManager } from "@/features/speaking-benchmark/quality/suite-manage
 import { GateManager } from "@/features/speaking-benchmark/quality/gate-manager";
 import { SpeakingBenchmarkReports } from "@/features/speaking-benchmark/evaluation/reports";
 import { labSample, labAvailable, labReview, labLabels } from "../speaking-benchmark-fixtures";
+import { emptyReport, filledReport, reportComparisons } from "./report-fixtures";
+import type { Comparison } from "@/lib/api/speaking-benchmark-grading";
 import "@fontsource-variable/raleway";
 import "@/app/globals.css";
 import "@/app/design-system.css";
@@ -30,10 +32,12 @@ const report = { id: "synthetic-report", gate_id: gate.id, status: "INCONCLUSIVE
 window.fetch = async (input, init) => {
   const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url, location.origin);
   const path = url.pathname;
+  if (path.includes("/reports/") && params.get("state") === "report-error") return new Response(JSON.stringify({ detail: { code: "SYNTHETIC_REPORT_ERROR", message: "Synthetic report failure" } }), { status: 503 });
+  if (path.endsWith("/reports/summary") && params.get("state") === "report-loading") await new Promise(resolve => setTimeout(resolve, 2000));
   let body: unknown = [];
   if (path.endsWith("/grading-availability")) body = { can_queue: true, live_status: "SYNTHETIC_FIXTURE", execution: "local", providers: [{ provider: "azure_pa", available: true, reasons: [], additional_audio_request: false, gpu: false }] };
   else if (path.endsWith("/availability")) body = labAvailable;
-  else if (path.endsWith("/samples")) body = { items: params.get("state") === "empty" ? [] : [labSample], total: params.get("state") === "empty" ? 0 : 1, offset: 0, limit: 25 };
+  else if (path.endsWith("/speaking-benchmark/samples")) body = { items: params.get("state") === "empty" ? [] : [labSample], total: params.get("state") === "empty" ? 0 : 1, offset: 0, limit: 25 };
   else if (path.endsWith(`/samples/${labSample.id}`)) body = labSample;
   else if (path.endsWith("/review")) body = labReview;
   else if (path.endsWith("/human-labels")) body = labLabels;
@@ -41,8 +45,15 @@ window.fetch = async (input, init) => {
   else if (path.endsWith("/grading/preflight")) body = { preflight_fingerprint: "e".repeat(64), config_fingerprint: "f".repeat(64), configuration: {}, review_revision: 1, candidate_ms: 3000, window_count: 1, parts: [1], windows: [{ id: "synthetic-window", part_number: 1, start_ms: 2000, end_ms: 5000 }], requests: { azure_pa: 1, openai_typical: 8, openai_maximum: 20 }, warnings: [], can_queue: true, blockers: [] };
   else if (path.endsWith("/grading-runs")) body = [params.get("state") === "partial" ? { ...gradingRun, status: "PARTIAL" } : gradingRun];
   else if (path.endsWith("/comparison")) body = comparison;
-  else if (path.endsWith("/reports/summary")) body = summary;
-  else if (path.endsWith("/reports/samples")) body = { items: [comparison], total: 1, offset: 0, limit: 25, configuration: comparison.configuration, chart_points: [comparison], chart_limit: 2000, chart_sampled: false };
+  else if (path.endsWith("/reports/summary")) {
+    body = params.get("state") === "empty" ? emptyReport : params.get("state")?.startsWith("report-") ? filledReport : summary;
+    if (params.get("state") === "report-configuration") body = { ...filledReport, configurations: ["a".repeat(64), "b".repeat(64)], requires_configuration: !url.searchParams.get("configuration") };
+    if (params.get("state") === "report-unpaired") body = { ...filledReport, criteria: Object.fromEntries(Object.entries(filledReport.criteria).map(([key, metric]) => [key, { ...metric, count: 0, coverage_rate: 0, mae: null, rmse: null, signed_bias: null, exact_agreement: null, within_0_5: null, within_1_0: null }])) };
+  }
+  else if (path.endsWith("/reports/samples")) {
+    const items: Comparison[] = params.get("state") === "empty" ? [] : params.get("state") === "report-unpaired" ? reportComparisons.map(row => ({ ...row, ai: {}, differences: {} })) : params.get("state")?.startsWith("report-") ? reportComparisons : [comparison];
+    body = { items, total: items.length, offset: 0, limit: 25, configuration: comparison.configuration, chart_points: items, chart_limit: 500, chart_sampled: false, outliers: params.get("state") === "report-filled" ? items.filter(row => Math.abs(row.differences.overall ?? 0) >= 1) : [] };
+  }
   else if (path.endsWith("/question-suggestions")) body = [questionJob];
   else if (path.endsWith("/quality")) body = { protocol: "speaking-dataset-quality-v1", evaluated_at: suite.created_at, status: "INSUFFICIENT_DATA", issues: [{ code: "MINIMUM_INDEPENDENT_CANDIDATES", severity: "INSUFFICIENT_DATA", artifact: "cohort", artifact_id: "synthetic-cohort", remediation: "Add independently assessed candidates before making a release decision." }], samples: [], issue_counts: { INSUFFICIENT_DATA: 1 }, eligible_samples: 0, ineligible_samples: 1, independent_candidates: 1, fingerprint: suite.fingerprint };
   else if (path.endsWith("/evaluation-suites")) body = [suite];

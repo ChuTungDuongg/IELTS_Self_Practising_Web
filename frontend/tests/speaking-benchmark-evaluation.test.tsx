@@ -354,9 +354,9 @@ it("renders reports dashboard with summary metrics, charts and export links", as
 
   renderWithLocale(<SpeakingBenchmarkReports />);
   await screen.findByText("Speaking evaluation reports");
-  expect(screen.getByText("Eligible human-labelled samples")).toBeInTheDocument();
+  expect(screen.getByText("Recordings with eligible human scores", { selector: "dt" })).toBeInTheDocument();
   expect(screen.getByText("Export filtered CSV")).toBeInTheDocument();
   expect(screen.getByText("Export filtered JSON")).toBeInTheDocument();
   expect(screen.getAllByText("CAND-001").length).toBeGreaterThanOrEqual(2);
-  expect(screen.getByText(/Global Outliers/)).toBeInTheDocument();
+  expect(screen.getByText(/Recordings with the largest differences/, { selector: "summary" })).toBeInTheDocument();
 });

@@ -3,6 +3,7 @@ import { speakingEvaluationEn } from "./speaking-benchmark-evaluation-messages";
 import { speakingResearchEn } from "./speaking-benchmark-research-messages";
 import { speakingQualityEn } from "./speaking-benchmark-quality-messages";
 import { speakingUxEn } from "./speaking-benchmark-ux-messages";
+import { speakingGuideEn } from "./speaking-lab-guide-messages";
 
 export const en = {
   ...speakingLabEn,
@@ -10,6 +11,7 @@ export const en = {
   ...speakingResearchEn,
   ...speakingQualityEn,
   ...speakingUxEn,
+  ...speakingGuideEn,
   "cover.loadFailed": "Could not load the test cover.",
   "cover.title": "Test cover",
   "cover.help": "PNG, JPEG or WebP, up to 10 MB.",

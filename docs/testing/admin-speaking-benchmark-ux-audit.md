@@ -1,6 +1,6 @@
 # Admin Speaking Benchmark UX audit
 
-Inspected commit: `ee4757d69089aeb2d3146435509918716a83f28d` (local HEAD, 9 November 2026).
+Initial inspected commit: `ee4757d69089aeb2d3146435509918716a83f28d`. Follow-up inspected local and remote `main`: `2c1e3498af4d5d59764ef2e51b92b0529f8ec8a6` (9 November 2026).
 Scope: all ten Speaking Benchmark routes, P1–P4 components, shared BandPilot navigation/tokens and the sibling Writing bank. Implementation is frontend only; no API contracts, backend rules, migrations or provider calls changed. A subsequent user instruction authorizes committing and pushing `main` and fixing failed CI. Deployment is outside this task.
 
 ## Journeys and navigation
@@ -143,7 +143,7 @@ Artifacts are local and ignored by Git under `storage/ux-audit/`:
 - `taste-inspect/`: real-browser measurements and viewport screenshots. Final list inspection: **0 FAIL, 2 WARN**. Remaining warnings: installed system-font detection (`Segoe UI Variable` is BandPilot's system face) and a development preview. The earlier unequal list/upload panel warning was resolved by the expandable upload workflow.
 - `taste-lint.log`: **0 FAIL, 9 WARN**. Warnings concern `box-shadow: none` declarations, the genuine floating utility menu, and missing-value em dashes across many components. These are intentional application patterns.
 
-Screens actually exercised in the browser cover every route's feature component. Before/after defects were visually inspected on the recording list and mobile blind form; additional representative review, gate, QA and localized dark screenshots were inspected manually. Automated captures and overflow assertions cover the broader matrix. No claim is made that every captured pixel or every possible history/error state received manual visual review.
+Screens exercised in the initial browser pass cover every route's feature component, with one correction: the report fixture's generic `/samples` matcher also caught `/reports/samples`, causing a parser error. The initial report captures therefore did not verify successful report rendering. The follow-up below fixes this matcher and replaces that evidence with valid empty and populated report captures. Before/after defects were visually inspected on the recording list and mobile blind form; additional representative review, gate, QA and localized dark screenshots were inspected manually. No claim is made that every captured pixel or every possible history/error state received manual visual review.
 
 ## Verification results
 
@@ -169,3 +169,55 @@ The existing Vitest suite emits some jsdom media-method and research-fixture dup
 - Some existing backend diagnostic codes, provider IDs and research metric terminology remain technical. Release-affecting reasons/limitations stay visible; complete prose translation of server diagnostic payloads needs a separate shared diagnostic-copy contract.
 - Browser checks used installed Edge. Safari/Firefox, real mobile hardware and screen-reader testing remain unverified.
 - Commit/push to `main` is explicitly authorized by the follow-up request. GitHub Actions results for the resulting revision are reported with delivery. Existing unrelated untracked local files are excluded from the commit. No deployment was requested.
+
+## Follow-up: readable reports and bilingual help
+
+The user's screenshot highlighted the report's empty chart row, repeated empty tables and terse mixed-language copy. These were reproduced using the committed report components and corrected synthetic API fixtures before editing those components. No real recording, transcript, provider or database result appears in the evidence.
+
+| Severity | Reproduced finding and source | Implemented change |
+| --- | --- | --- |
+| High | Three peer charts still occupy substantial space with zero pairs; `evaluation/report-charts.tsx`, `reports.tsx` | Honest empty state with a next action. With evidence, choose one chart using native keyboard-operable radios; exact values remain in its data table. Human-only distribution remains available when AI predictions are missing. |
+| High | Eleven primary metric columns obscure the basic comparison; `reports.tsx` | Five main columns: criterion, paired/eligible count, mean absolute error, signed difference and within-half-band agreement. All other statistics remain under Advanced statistics. |
+| Medium | Provider/version/date controls dominate routine filtering; `reports.tsx` | Three main selectors, persistent More filters disclosure, reset action and controlled date inputs. Full configuration fingerprints remain accessible. |
+| Medium | Empty coverage, empty rows and pagination repeat the lack of data; `reports.tsx` | Render meaningful sections only, retain CSV/JSON export, and separate result pagination from exports. Actual zero remains zero; unavailable values remain a dash. |
+| Medium | Report labels and status codes lack plain explanations; evaluation messages | Complete EN/VI report labels, explanations, loading/error/retry states, metric meanings and small-sample caution. Diagnostics remain accessible in a secondary disclosure. |
+| Medium | No contextual instructions for the lab, reports or blind reviewer; `lab-navigation.tsx` | A collapsible semantic guide table for each context, with complete natural-language EN/VI instructions. Reviewer help contains no peer or AI scores. |
+| Medium | Failed refresh can leave exports associated with a different filter selection; `reports.tsx` | Store successful results and their applied filters together. Explain retained results after a failure, retry without clearing evidence, and hide exports while refreshing. |
+| Medium | Retrying Next after a failed page request can stall; code review and regression test | Explicit request generation refreshes even an unchanged offset. The new test failed before the fix and passed after it. |
+
+Report information order changed from **all filters → all statistics → three charts → expanded technical tables → results/actions** to **routine filters → coverage → main differences → one chart with an explanation → recordings → secondary evidence/export**. The four-section lab navigation remains unchanged. Help is available beneath it rather than becoming another destination or permanently expanded panel.
+
+Taste's application guidance informed the neutral overview figures, shared report surface, aligned tabular numbers, restrained chart palette and progressive disclosure. Screenshot critique also moved the chart explanation beside the desktop plot to remove an accidental empty right half; tablet/mobile stack it above the plot. The authoritative BandPilot shell, Raleway/system typography, themes and account accent tokens remain. UI/UX Pro Max's local empty-state, chart, interaction and accessibility searches informed an actionable empty state, one question per chart, chart data alternatives, labelled controls, focus indication and approximately 44px interaction targets. No additional dependency was installed.
+
+### Follow-up file ownership
+
+- `evaluation/reports.tsx` owns filter drafts, requests, successful evidence and pagination; `report-tables.tsx` owns metric/results/coverage presentation; `report-charts.tsx` owns the selected chart. `reports.module.css` provides the responsive local layout.
+- `lab-guide.tsx` and `lab-guide.module.css` provide native disclosures and semantic tables; `lab-navigation.tsx` selects the contextual guide. `speaking-lab-guide-messages.ts`, `speaking-benchmark-evaluation-messages.ts`, `en.ts` and `vi.ts` own copy.
+- `speaking-report-ux.test.tsx` adds twelve regression cases; `speaking-benchmark-evaluation.test.tsx` follows the clearer labels. `ux-preview/main.tsx`, `report-fixtures.ts` and `report-refinement.spec.ts` supply and verify explicitly synthetic evidence, including corrected report routing.
+
+### Follow-up visual evidence
+
+Artifacts are ignored local files under `storage/ux-audit/report-refinement/`:
+
+- `before/`: four authentic baseline report captures (empty/populated, 1440/390px, VI/light), captured by temporarily restoring the inspected commit's production components and then restoring the edits.
+- `after/`: 48 matrix/state captures: 1440/1024/768/390px, EN/VI, light/dark, empty/populated; opened guide tables; loading/error/configuration-choice/human-only states. Additional exploratory captures may also exist.
+- `production/`: 32 chart/guide captures from a built, minified Vite preview at all four widths, EN/VI, light/green and dark/orange. This uses production feature code and CSS with synthetic routing/auth/data, not a live authenticated Next deployment.
+- `taste-production/`: four viewport folds, full-page sheets and `report.json`. Inspector: **0 FAIL, 1 WARN** for detection of the installed `Segoe UI Variable` system face. No font replacement is warranted. Source lint: **0 FAIL, 1 WARN**, for intentional missing-value dashes.
+
+Manually reviewed: baseline empty/populated reports, current empty desktop/mobile, populated report folds at all four widths, desktop chart composition, mobile dark chart, mobile VI/dark help and desktop EN/light help. Automated page-overflow assertions cover the full matrix; wide data tables scroll in their labelled keyboard-focusable regions, with a mobile hint. Native guide/filter disclosures preserve form values and keyboard operation. Reduced motion requires no new animation. Real screen-reader use, real mobile devices and non-Edge engines remain unverified.
+
+### Follow-up verification
+
+Final local results are recorded after the complete runs, rather than combining selectively rerun assertions. Logs are under `storage/ux-audit/report-refinement-*.log`.
+
+| Check | Result |
+| --- | --- |
+| Focused P1–P4 and UX | 73 passed across 6 files |
+| Full frontend Vitest | 2,044 passed across all 173 files in one complete final run (210.15s) |
+| ESLint | Passed; zero errors or warnings |
+| Production Next build and TypeScript | Passed |
+| Synthetic Playwright | All 6 tests passed together (1.8m), including the existing 4 workflow tests and 2 report/help tests |
+| Built fixture browser | 32 chart/help captures; all four widths, EN/VI, two themes and representative accents; no page overflow |
+| Independent code review | Pagination retry finding reproduced and fixed; follow-up review found no remaining actionable issue |
+
+No backend contracts, scoring, approval, blind-access rules, consent or billing semantics changed. No migration is needed for this UI update; local/Modal need the updated frontend to display it. Database synchronization was a separate operation and is not repeated by this change. No provider or GPU calls were made.

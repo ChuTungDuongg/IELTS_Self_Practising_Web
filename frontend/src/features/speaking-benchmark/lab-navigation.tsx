@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useTranslation } from "@/lib/i18n/locale-provider";
 import { useEffect, useRef, type MouseEvent } from "react";
 import styles from "./navigation.module.css";
+import { LabGuide } from "./lab-guide";
 
 const root = "/admin/speaking-benchmark";
 const sections = [
@@ -59,5 +60,6 @@ export function LabNavigation({ current, tool, onNavigate, onSelectNavigate }: {
       {quality.map(item => <Link key={item.href} href={item.href} onClick={onNavigate} aria-current={item.href === `${root}/${tool ?? "quality"}` ? "page" : undefined}>{t(item.label)}</Link>)}
     </nav>}
     {current === "reviewer" && <nav className={styles.secondary} aria-label={t("speakingUx.myAssignments")}><Link href={`${root}/reviewer`} onClick={onNavigate}>{t("speakingUx.myAssignments")}</Link></nav>}
+    <LabGuide mode={current === "evaluation" ? "reports" : current === "reviewer" ? "reviewer" : "workflow"} />
   </div>;
 }

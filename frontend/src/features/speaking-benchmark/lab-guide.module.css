@@ -1,0 +1,23 @@
+.guide { min-width: 0; border-bottom: 1px solid var(--line); color: var(--ink); }
+.guide summary { min-height: 44px; padding-block: 12px; cursor: pointer; font-size: 14px; font-weight: 600; line-height: 1.6; }
+.guide summary::marker { color: var(--muted); }
+.guide summary > span { margin-inline-start: 12px; color: var(--muted); font-size: 13px; font-weight: 400; }
+.guide :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.content { padding: 0 0 20px; font-size: 14px; line-height: 1.7; }
+.content > p { max-width: 85ch; margin: 0 0 16px; }
+.table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.table th, .table td { padding: 14px 16px; border-bottom: 1px solid var(--line); text-align: start; vertical-align: top; overflow-wrap: break-word; }
+.table thead th { color: var(--muted); font-size: 13px; font-weight: 500; }
+.table th:first-child { width: 24%; }
+.table tbody th { font-weight: 600; }
+.table tbody td { max-width: 75ch; }
+.note { padding-top: 16px; color: var(--muted); }
+.note h3 { margin: 0 0 6px; color: var(--ink); font-size: 14px; font-weight: 600; }
+.note p { margin: 0; max-width: 85ch; }
+.content > .note { margin: 0; }
+@media (max-width: 640px) {
+  .guide summary > span { display: block; margin-inline-start: 18px; margin-top: 4px; }
+  .content { font-size: 15px; }
+  .table th, .table td { padding: 12px 8px; }
+  .table th:first-child { width: 30%; }
+}
