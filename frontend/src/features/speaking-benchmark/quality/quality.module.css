@@ -1,4 +1,5 @@
 .stack { display: grid; gap: 24px; min-width: 0; }
+.stack > :global(.page-heading), .stack > [data-speaking-navigation] { margin-bottom: 0; }
 .panel { padding: 24px; border: 1px solid var(--border); border-radius: 16px; background: var(--surface); min-width: 0; }
 .panel h2 { font-size: 18px; font-weight: 600; margin: 0 0 12px; }
 .panel h3 { font-size: 16px; font-weight: 600; margin: 0 0 8px; }
@@ -23,17 +24,17 @@
 .counterItem { min-width: 140px; padding: 12px 16px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-hover); }
 .counterLabel { font-size: 13px; color: var(--muted); margin-bottom: 4px; }
 .counterValue { font-size: 24px; font-weight: 600; }
-.badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 9999px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
-.badgeReady, .badgePass { background: rgba(34, 197, 94, 0.15); color: #16a34a; border: 1px solid rgba(34, 197, 94, 0.3); }
-.badgeBlocked, .badgeFail { background: rgba(239, 68, 68, 0.15); color: #dc2626; border: 1px solid rgba(239, 68, 68, 0.3); }
-.badgeNeedsReview, .badgeInconclusive { background: rgba(245, 158, 11, 0.15); color: #d97706; border: 1px solid rgba(245, 158, 11, 0.3); }
-.badgeInsufficient, .badgeInvalid { background: rgba(148, 163, 184, 0.15); color: #64748b; border: 1px solid rgba(148, 163, 184, 0.3); }
+.badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 9999px; font-size: 12px; font-weight: 600;  }
+.badgeReady, .badgePass { background: var(--success-soft); color: var(--success); border: 1px solid var(--success-soft); }
+.badgeBlocked, .badgeFail { background: var(--danger-soft); color: var(--danger); border: 1px solid var(--danger-soft); }
+.badgeNeedsReview, .badgeInconclusive { background: var(--warning-soft); color: var(--warning); border: 1px solid var(--warning-soft); }
+.badgeInsufficient, .badgeInvalid { background: var(--surface-hover); color: var(--muted); border: 1px solid var(--line); }
 .card { border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 16px; background: var(--surface); }
 .cardHeader { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
 .cardTitle { font-size: 16px; font-weight: 600; margin: 0; }
 .proposalMeta { display: flex; flex-wrap: wrap; gap: 12px; font-size: 13px; color: var(--muted); margin: 8px 0; }
 .proposalFlags { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
-.flagBadge { font-size: 11px; padding: 2px 8px; border-radius: 4px; background: rgba(245, 158, 11, 0.15); color: #d97706; border: 1px solid rgba(245, 158, 11, 0.3); font-weight: 500; }
+.flagBadge { font-size: 11px; padding: 2px 8px; border-radius: 4px; background: var(--warning-soft); color: var(--warning); border: 1px solid var(--warning-soft); font-weight: 500; }
 .scoreGrid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin: 12px 0; }
 .scoreField { display: grid; gap: 4px; }
 .scoreField label { font-size: 12px; font-weight: 500; color: var(--muted); }
@@ -43,4 +44,45 @@
 .commentField.wide { grid-column: 1 / -1; }
 .commentField label { font-size: 13px; font-weight: 500; }
 .commentField textarea { min-height: 72px; }
-.noticeWarning { border-left: 4px solid #f59e0b; background: rgba(245, 158, 11, 0.08); padding: 12px 16px; border-radius: 0 8px 8px 0; margin: 12px 0; }
+.noticeWarning { border-left: 3px solid var(--warning); background: var(--warning-soft); padding: 12px 16px; border-radius: 0 8px 8px 0; margin: 12px 0; }
+
+.panel { overflow-wrap: anywhere; }
+.panel label, .panel input, .panel textarea, .panel select { min-width: 0; max-width: 100%; }
+.panel label { font-size: 14px; }
+.panel :global(.field) { width: 100%; }
+.panel summary { min-height: 44px; display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: 600; }
+.panel summary::before { content: "›"; display: inline-block; }
+.panel[open] > summary::before { transform: rotate(90deg); }
+.panel[open] > summary { margin-bottom: 16px; }
+.panel .card { border: 0; border-top: 1px solid var(--line); border-radius: 0; padding: 16px 0; }
+.panel .actions > :global(.btn), .panel .table :global(.btn) { min-height: 44px !important; white-space: normal; }
+.counterItem { border: 0; border-inline-start: 1px solid var(--line); border-radius: 0; background: transparent; padding: 8px 16px; min-width: 0; }
+.counterValue { font-weight: 500; }
+.counters { gap: 16px; }
+.table th, .table td { overflow-wrap: anywhere; }
+.table th:first-child, .table td:first-child { position: sticky; inset-inline-start: 0; background: var(--surface); z-index: 1; }
+.scoreField { align-content: end; }
+.scoreField input { min-height: 44px; }
+.commentsGrid label { min-width: 0; }
+.readingGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; align-items: start; }
+@media (max-width: 1000px) { .scoreGrid { grid-template-columns: repeat(3, minmax(0, 1fr)); } .grid, .readingGrid { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 640px) {
+  .panel { padding: 16px; }
+  .scoreGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+  .scoreGrid > :last-child:nth-child(odd) { grid-column: 1 / -1; }
+  .commentsGrid { grid-template-columns: minmax(0, 1fr); }
+  .toolbar { align-items: stretch; }
+  .toolbar > label { flex: 1 1 100% !important; }
+  .actions { align-items: stretch; }
+  .actions > :global(.btn) { flex: 1 1 auto; }
+  .table { min-width: 560px; }
+}
+
+.sourceFields { border: 0; border-top: 1px solid var(--line); margin: 0; padding: 16px 0; display: grid; gap: 16px; min-width: 0; }
+.sourceFields legend { padding-inline-end: 12px; font-weight: 600; }
+.evidence { margin-top: 20px; }
+.panel pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; padding: 12px; background: var(--surface-hover); border-radius: 8px; }
+.report { margin-top: 20px; border-top: 1px solid var(--line); padding-top: 20px; }
+.report dd { margin: 0; }
+.report .actions { margin: 0; }
+.panel .actions [aria-pressed="true"] { border-color: var(--ink); }

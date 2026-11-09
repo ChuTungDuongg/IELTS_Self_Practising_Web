@@ -3,12 +3,14 @@ import { speakingLabVi } from "./speaking-benchmark-messages";
 import { speakingEvaluationVi } from "./speaking-benchmark-evaluation-messages";
 import { speakingResearchVi } from "./speaking-benchmark-research-messages";
 import { speakingQualityVi } from "./speaking-benchmark-quality-messages";
+import { speakingUxVi } from "./speaking-benchmark-ux-messages";
 
 export const vi = {
   ...speakingLabVi,
   ...speakingEvaluationVi,
   ...speakingResearchVi,
   ...speakingQualityVi,
+  ...speakingUxVi,
   "cover.loadFailed": "Không thể tải ảnh bìa của đề.",
   "cover.title": "Ảnh bìa đề",
   "cover.help": "PNG, JPEG hoặc WebP, tối đa 10 MB.",

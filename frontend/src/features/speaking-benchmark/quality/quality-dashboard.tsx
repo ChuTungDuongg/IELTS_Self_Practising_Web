@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { LabNavigation } from "../lab-navigation";
 import { useCallback, useEffect, useState } from "react";
 import { PageHeading } from "@/components/ui/page-heading";
 import * as api from "@/lib/api/speaking-benchmark-quality";
@@ -12,6 +12,7 @@ export function QualityDashboard() {
   const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [severity, setSeverity] = useState("ALL");
   const [report, setReport] = useState<api.QualityReport | null>(null);
   const [snapshots, setSnapshots] = useState<api.QualitySnapshot[]>([]);
 
@@ -123,20 +124,8 @@ export function QualityDashboard() {
         eyebrow={t("admin.administration")}
         title={t("speakingQuality.title")}
         description={t("speakingQuality.description")}
-        action={
-          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-            <Link className="btn btn-secondary" href="/admin/speaking-benchmark">
-              {t("speakingLab.title")}
-            </Link>
-            <Link className="btn btn-secondary" href="/admin/speaking-benchmark/suites">
-              {t("speakingLab.suites")}
-            </Link>
-            <Link className="btn btn-secondary" href="/admin/speaking-benchmark/gates">
-              {t("speakingLab.gates")}
-            </Link>
-          </div>
-        }
       />
+      <LabNavigation current="quality" tool="quality" />
 
       {error && (
         <p role="alert" className="notice notice-error">
@@ -144,9 +133,125 @@ export function QualityDashboard() {
         </p>
       )}
 
+      <section className={styles.panel} aria-busy={loading}>
+        {!report && <><h2>{t("speakingUx.qualityResults")}</h2><p className={styles.muted}>{t("speakingUx.qualityEmpty")}</p></>}
+          <div className={styles.actions}>
+            <button
+              className="btn btn-primary"
+              disabled={loading}
+              onClick={() => void handleEvaluate()}
+            >
+              {t("speakingQuality.evaluate")}
+            </button>
+            {report && (
+              <button
+                className="btn btn-secondary"
+                disabled={loading}
+                onClick={() => void handleSnapshot()}
+              >
+                {t("speakingQuality.snapshot")}
+              </button>
+            )}
+          </div>
+        <p className={styles.muted}>{t("speakingUx.firstPageScope")}</p>
+      </section>
+      {/* Quality Audit Report Results */}
+      {report && (
+        <section className={styles.panel}>
+          <div className={styles.cardHeader}>
+            <h2>{t("speakingUx.qualityResults")}</h2>
+            <span className={`${styles.badge} ${statusBadgeClass}`}>
+              {report.status}
+            </span>
+          </div>
+
+          <div className={styles.counters}>
+            <div className={styles.counterItem}>
+              <div className={styles.counterLabel}>
+                {t("speakingQuality.eligibleSamples")}
+              </div>
+              <div className={styles.counterValue}>{report.eligible_samples}</div>
+            </div>
+            <div className={styles.counterItem}>
+              <div className={styles.counterLabel}>
+                {t("speakingQuality.ineligibleSamples")}
+              </div>
+              <div className={styles.counterValue}>
+                {report.ineligible_samples}
+              </div>
+            </div>
+            <div className={styles.counterItem}>
+              <div className={styles.counterLabel}>
+                {t("speakingQuality.independentCandidates")}
+              </div>
+              <div className={styles.counterValue}>
+                {report.independent_candidates}
+              </div>
+            </div>
+          </div>
+
+          <h3 style={{ marginTop: "24px" }}>
+            {t("speakingQuality.issues")} ({report.issues.length})
+          </h3>
+
+          <label className={styles.form}>{t("speakingUx.issueFilter")}
+            <select className="field" value={severity} onChange={event => setSeverity(event.target.value)}>
+              <option value="ALL">{t("speakingUx.allIssues")}</option>
+              {(["BLOCKED", "NEEDS_REVIEW", "INSUFFICIENT_DATA"] as const).map(value => <option key={value}>{value}</option>)}
+            </select>
+          </label>
+          {report.issues.length === 0 ? (
+            <p className={styles.muted}>{t("speakingQuality.noIssues")}</p>
+          ) : (
+            <div className={styles.tableWrap}>
+              {severity !== "ALL" && !report.issues.some(issue => issue.severity === severity) && <p role="status">{t("speakingUx.noMatchingIssues")}</p>}
+              <table className={styles.table}>
+                <thead>
+                  <tr>
+                    <th scope="col">{t("speakingQuality.severity")}</th>
+                    <th scope="col">{t("speakingQuality.code")}</th>
+                    <th scope="col">{t("speakingQuality.artifact")}</th>
+                    <th scope="col">{t("speakingQuality.remediation")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {report.issues.filter(issue => severity === "ALL" || issue.severity === severity).map((issue, idx) => {
+                    const badgeClass =
+                      issue.severity === "BLOCKED"
+                        ? styles.badgeBlocked
+                        : issue.severity === "NEEDS_REVIEW"
+                        ? styles.badgeNeedsReview
+                        : styles.badgeInsufficient;
+                    return (
+                      <tr key={idx}>
+                        <td>
+                          <span className={`${styles.badge} ${badgeClass}`}>
+                            {issue.severity}
+                          </span>
+                        </td>
+                        <td>
+                          <details><summary>{t("speakingUx.details")}</summary><code>{issue.code}</code></details>
+                        </td>
+                        <td>
+                          <div>{issue.artifact}</div>
+                          <div className={styles.muted} style={{ fontSize: "12px" }}>
+                            {issue.artifact_id}
+                          </div>
+                        </td>
+                        <td>{issue.remediation}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      )}
+
       {/* Quality Policy Configuration */}
-      <section className={styles.panel}>
-        <h2>{t("speakingQuality.policy")}</h2>
+      <details className={styles.panel}>
+        <summary>{t("speakingUx.policyHelp")}</summary>
         <p className={styles.muted}>{t("speakingQuality.protocol")}</p>
 
         <div className={styles.form} style={{ marginTop: "16px" }}>
@@ -162,9 +267,9 @@ export function QualityDashboard() {
                   )
                 }
               >
-                <option value="LEGACY">LEGACY (P1 Human Labels)</option>
-                <option value="INDEPENDENT">INDEPENDENT (Rater Assessments)</option>
-                <option value="ADJUDICATED">ADJUDICATED (Consensus Labels)</option>
+                <option value="LEGACY">{t("speakingUx.legacyLabel")}</option>
+                <option value="INDEPENDENT">{t("speakingUx.independentLabel")}</option>
+                <option value="ADJUDICATED">{t("speakingUx.adjudicatedLabel")}</option>
               </select>
             </label>
 
@@ -247,127 +352,23 @@ export function QualityDashboard() {
             </div>
           </div>
 
-          <div className={styles.actions}>
-            <button
-              className="btn btn-primary"
-              disabled={loading}
-              onClick={() => void handleEvaluate()}
-            >
-              {t("speakingQuality.evaluate")}
-            </button>
-            {report && (
-              <button
-                className="btn btn-secondary"
-                disabled={loading}
-                onClick={() => void handleSnapshot()}
-              >
-                {t("speakingQuality.snapshot")}
-              </button>
-            )}
-          </div>
+
         </div>
-      </section>
-
-      {/* Quality Audit Report Results */}
-      {report && (
-        <section className={styles.panel}>
-          <div className={styles.cardHeader}>
-            <h2>Quality Audit Results</h2>
-            <span className={`${styles.badge} ${statusBadgeClass}`}>
-              {report.status}
-            </span>
-          </div>
-
-          <div className={styles.counters}>
-            <div className={styles.counterItem}>
-              <div className={styles.counterLabel}>
-                {t("speakingQuality.eligibleSamples")}
-              </div>
-              <div className={styles.counterValue}>{report.eligible_samples}</div>
-            </div>
-            <div className={styles.counterItem}>
-              <div className={styles.counterLabel}>
-                {t("speakingQuality.ineligibleSamples")}
-              </div>
-              <div className={styles.counterValue}>
-                {report.ineligible_samples}
-              </div>
-            </div>
-            <div className={styles.counterItem}>
-              <div className={styles.counterLabel}>
-                {t("speakingQuality.independentCandidates")}
-              </div>
-              <div className={styles.counterValue}>
-                {report.independent_candidates}
-              </div>
-            </div>
-          </div>
-
-          <h3 style={{ marginTop: "24px" }}>
-            {t("speakingQuality.issues")} ({report.issues.length})
-          </h3>
-
-          {report.issues.length === 0 ? (
-            <p className={styles.muted}>{t("speakingQuality.noIssues")}</p>
-          ) : (
-            <div className={styles.tableWrap}>
-              <table className={styles.table}>
-                <thead>
-                  <tr>
-                    <th>{t("speakingQuality.severity")}</th>
-                    <th>{t("speakingQuality.code")}</th>
-                    <th>{t("speakingQuality.artifact")}</th>
-                    <th>{t("speakingQuality.remediation")}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {report.issues.map((issue, idx) => {
-                    const badgeClass =
-                      issue.severity === "BLOCKED"
-                        ? styles.badgeBlocked
-                        : issue.severity === "NEEDS_REVIEW"
-                        ? styles.badgeNeedsReview
-                        : styles.badgeInsufficient;
-                    return (
-                      <tr key={idx}>
-                        <td>
-                          <span className={`${styles.badge} ${badgeClass}`}>
-                            {issue.severity}
-                          </span>
-                        </td>
-                        <td>
-                          <code>{issue.code}</code>
-                        </td>
-                        <td>
-                          <div>{issue.artifact}</div>
-                          <div className={styles.muted} style={{ fontSize: "12px" }}>
-                            {issue.artifact_id}
-                          </div>
-                        </td>
-                        <td>{issue.remediation}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
-      )}
+      </details>
 
       {/* Quality Snapshots History */}
-      <section className={styles.panel}>
-        <h2>{t("speakingQuality.snapshots")} ({snapshots.length})</h2>
+      <details className={styles.panel}>
+        <summary>{t("speakingQuality.snapshots")} ({snapshots.length})</summary>
         {snapshots.length === 0 ? (
-          <p className={styles.muted}>No quality snapshots recorded yet.</p>
+          <p className={styles.muted}>{t("speakingUx.snapshotEmpty")}</p>
         ) : (
           <div className={styles.tableWrap}>
             <table className={styles.table}>
               <thead>
                 <tr>
-                  <th>Snapshot ID</th>
-                  <th>Fingerprint</th>
-                  <th>Created At</th>
+                  <th scope="col">{t("speakingUx.snapshotId")}</th>
+                  <th scope="col">{t("speakingUx.fingerprint")}</th>
+                  <th scope="col">{t("speakingUx.createdAt")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -388,7 +389,7 @@ export function QualityDashboard() {
             </table>
           </div>
         )}
-      </section>
+      </details>
     </div>
   );
 }

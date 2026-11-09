@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { LabNavigation } from "../lab-navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PageHeading } from "@/components/ui/page-heading";
 import * as api from "@/lib/api/speaking-benchmark-research";
@@ -19,7 +20,8 @@ export function ResearchDetail({ experimentId, initialFilters = {} }: { experime
   useEffect(() => { if (!experiment || !["PENDING", "RUNNING"].includes(experiment.status)) return; const timer = window.setInterval(() => void load(), 4000); return () => window.clearInterval(timer); }, [experiment, load]);
   const changed = (row: api.ResearchExperiment) => { setExperiment(row); void load(); };
   function apply() { const active = Object.fromEntries(Object.entries(draft).filter(([, value]) => value !== "")); setFilters(active); setOffset(0); window.history.replaceState(null, "", `${window.location.pathname}?${new URLSearchParams(active)}`); }
-  return <div className={styles.stack}><PageHeading eyebrow={t("speakingResearch.title")} title={experiment?.name ?? t("speakingResearch.experiments")} description={t("speakingResearch.description")} action={<Link className="btn btn-secondary" href="/admin/speaking-benchmark/research">{t("speakingResearch.experiments")}</Link>} />
+  return <div className={styles.stack}><PageHeading eyebrow={t("speakingResearch.title")} title={experiment?.name ?? t("speakingResearch.experiments")} description={t("speakingResearch.description")} />
+    <LabNavigation current="research" />
     {error && <p className="notice notice-error" role="alert">{error}<button className="btn btn-ghost" onClick={() => void load()}>{t("common.retry")}</button></p>}
     {!experiment ? <p role="status">{t("common.loading")}</p> : <>
       <ExperimentControls experiment={experiment} report={report} onChanged={changed} />

@@ -1,0 +1,37 @@
+.navigation { min-width: 0; margin-bottom: 24px; }
+.mobileLab { display: none; }
+.primary, .secondary { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 24px; }
+.primary { border-bottom: 1px solid var(--line); }
+.primary > a, .primary summary, .secondary a { display: flex; align-items: center; min-height: 44px; color: var(--muted); font-size: 14px; text-decoration: none; }
+.primary > a { border-bottom: 2px solid transparent; }
+.primary a[aria-current], .secondary a[aria-current] { color: var(--ink); font-weight: 600; }
+.primary > a[aria-current] { border-bottom-color: var(--ink); }
+.secondary { padding-top: 8px; }
+.secondary a[aria-current] { text-decoration: underline; text-underline-offset: 6px; }
+.utilities { position: relative; margin-inline-start: auto; }
+.utilities summary { cursor: pointer; list-style: none; gap: 8px; }
+.utilities summary::after { content: "⌄"; }
+.utilityLinks { position: absolute; inset-inline-end: 0; top: 100%; z-index: 10; padding: 8px; min-width: 230px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); box-shadow: 0 8px 24px color-mix(in srgb, var(--ink) 12%, transparent); }
+.utilityLinks a { display: flex; align-items: center; min-height: 44px; padding: 8px; color: var(--ink); }
+.utilityLinks a:hover { background: var(--surface-hover); }
+.navigation :focus-visible, .workAreas :focus-visible, .tasks :focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.workAreas, .tasks { min-width: 0; }
+.tabs { display: flex; gap: 24px; border-bottom: 1px solid var(--line); margin-bottom: 24px; }
+.tabs button { min-height: 44px; background: transparent; border: 0; border-bottom: 2px solid transparent; padding: 12px 0; color: var(--muted); font: inherit; font-size: 14px; cursor: pointer; }
+.tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); font-weight: 600; }
+.tasks .tabs { gap: 16px; border: 0; margin-bottom: 20px; }
+.tasks .tabs button { border: 0; padding: 8px 12px; border-radius: 8px; }
+.tasks .tabs button[aria-selected="true"] { background: var(--surface-hover); }
+.mobileSelector { display: none; }
+@media (max-width: 640px) {
+  .mobileLab { display: grid; margin-bottom: 4px; }
+  .mobileLab select { width: 100%; min-height: 44px; }
+  .primary > a { display: none; }
+  .utilities { margin: 0; width: 100%; }
+  .utilityLinks { position: static; min-width: 0; box-shadow: none; border: 0; padding: 0; }
+  .secondary { gap: 4px 16px; }
+  .mobileSelector { display: grid; gap: 8px; font-size: 14px; margin-bottom: 20px; }
+  .mobileSelector select { min-height: 44px; width: 100%; }
+  .workAreas > .tabs { display: none; }
+  .tasks .tabs { gap: 8px; flex-wrap: wrap; }
+}

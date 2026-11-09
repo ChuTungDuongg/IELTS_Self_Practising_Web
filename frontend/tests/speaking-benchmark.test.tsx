@@ -1,4 +1,4 @@
-import { act, fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import Page from "@/app/admin/speaking-benchmark/page";
 import { SpeakingBenchmarkDetail } from "@/features/speaking-benchmark/sample-detail";
@@ -8,6 +8,8 @@ import { DiarizationJobStatus } from "@/features/speaking-benchmark/job-status";
 import { ApiError } from "@/lib/api/client";
 import * as api from "@/lib/api/speaking-benchmark";
 import * as gradingApi from "@/lib/api/speaking-benchmark-grading";
+import * as questionApi from "@/lib/api/speaking-benchmark-questions";
+import { questionJob } from "./ux-preview/workflow-fixtures";
 import { renderWithLocale } from "./locale-test-utils";
 import { labAvailable, labDraft, labLabels, labReview, labSample, labSampleId } from "./speaking-benchmark-fixtures";
 
@@ -16,12 +18,14 @@ vi.mock("next/navigation", () => ({ usePathname: () => "/admin/speaking-benchmar
 vi.mock("@/features/auth/auth-provider", () => ({ useAuth: () => ({ user: { role: auth.role }, loading: false, sessionError: null }) }));
 vi.mock("@/lib/api/speaking-benchmark", async original => ({ ...await original<typeof api>(), listSpeakingSamples: vi.fn(), speakingAvailability: vi.fn(), uploadSpeakingSample: vi.fn(), getSpeakingSample: vi.fn(), getSpeakingReview: vi.fn(), getSpeakingLabels: vi.fn(), getSpeakingJobs: vi.fn(), saveSpeakingReview: vi.fn(), approveSpeakingReview: vi.fn(), saveSpeakingLabels: vi.fn(), queueSpeakingDiarization: vi.fn(), suggestSpeakingWindows: vi.fn() }));
 vi.mock("@/lib/api/speaking-benchmark-grading", async original => ({ ...await original<typeof gradingApi>(), gradingAvailability: vi.fn(), approvedReviews: vi.fn(), listRuns: vi.fn() }));
+vi.mock("@/lib/api/speaking-benchmark-questions", async original => ({ ...await original<typeof questionApi>(), questionJobs: vi.fn(), decideQuestions: vi.fn() }));
 
 beforeEach(() => {
-  vi.clearAllMocks(); auth.role = "ADMIN"; window.localStorage.clear();
+  vi.resetAllMocks(); auth.role = "ADMIN"; window.localStorage.clear();
   vi.mocked(gradingApi.gradingAvailability).mockResolvedValue({ can_queue: false, live_status: "LIVE_UNVERIFIED", execution: "local", providers: [] });
   vi.mocked(gradingApi.approvedReviews).mockResolvedValue([]);
   vi.mocked(gradingApi.listRuns).mockResolvedValue([]);
+  vi.mocked(questionApi.questionJobs).mockResolvedValue([]);
   vi.mocked(api.listSpeakingSamples).mockResolvedValue({ items: [structuredClone(labSample)], total: 1, offset: 0, limit: 25 });
   vi.mocked(api.speakingAvailability).mockResolvedValue(labAvailable);
   vi.mocked(api.getSpeakingSample).mockResolvedValue(structuredClone(labSample));
@@ -34,10 +38,63 @@ beforeEach(() => {
 });
 
 describe("private Speaking lab", () => {
+  it("refreshes the accepted question revision without dropping another proposal's dirty guard", async () => {
+    const proposal = questionJob.proposals[0];
+    const job = { ...questionJob, proposals: [proposal, { ...proposal, id: "second-proposal", recognized_text: "Second fictional proposal" }] };
+    vi.mocked(questionApi.questionJobs).mockResolvedValue([job]);
+    vi.mocked(questionApi.decideQuestions).mockResolvedValue({ ...job, decisions: [{ proposal_id: proposal.id, action: "ACCEPT" }] });
+    vi.mocked(api.getSpeakingReview).mockResolvedValueOnce(structuredClone(labReview)).mockResolvedValue({ ...labReview, revision: 2 });
+    renderWithLocale(<SpeakingBenchmarkDetail sampleId={labSampleId} />);
+    fireEvent.click(await screen.findByRole("tab", { name: "Question assistant" }));
+    await screen.findByDisplayValue("Second fictional proposal");
+    fireEvent.change(screen.getByDisplayValue("Second fictional proposal"), { target: { value: "Keep this second draft" } });
+    fireEvent.click(screen.getAllByRole("button", { name: "Accept proposal" })[0]);
+    await waitFor(() => expect(api.getSpeakingReview).toHaveBeenCalledTimes(2));
+    fireEvent.click(screen.getByRole("link", { name: /^Research$/ }));
+    expect(screen.getByRole("dialog")).toBeVisible();
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Cancel" }));
+    expect(screen.getByDisplayValue("Keep this second draft")).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole("button", { name: "Accept proposal" })[1]);
+    await waitFor(() => expect(vi.mocked(questionApi.decideQuestions).mock.calls[1]?.[2]).toBe(2));
+    await waitFor(() => expect(api.getSpeakingReview).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(screen.getAllByRole("button", { name: "Accept proposal" })[1]).toBeEnabled());
+  });
+
+  it("keeps an unfinished upload mounted when its form is collapsed", async () => {
+    renderWithLocale(<Page />);
+    await screen.findByRole("link", { name: "DEV-051" });
+    fireEvent.click(screen.getByRole("button", { name: "Upload recording" }));
+    const code = screen.getByLabelText("Sample code");
+    const audio = screen.getByLabelText("Original recording");
+    fireEvent.change(code, { target: { value: "Keep upload draft" } });
+    fireEvent.change(audio, { target: { files: [new File(["RIFFsynthetic"], "synthetic.wav")] } });
+    fireEvent.click(screen.getAllByRole("button", { name: "Upload recording" })[0]);
+    expect(code).not.toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Upload recording" }));
+    expect(screen.getByLabelText("Sample code")).toBe(code);
+    expect(code).toHaveValue("Keep upload draft");
+    expect(screen.getByLabelText("Original recording")).toBe(audio);
+    expect(api.uploadSpeakingSample).not.toHaveBeenCalled();
+  });
+
+  it("confirms leaving through the new lab navigation and restores focus on cancel", async () => {
+    renderWithLocale(<SpeakingBenchmarkDetail sampleId={labSampleId} />);
+    const prompt = await screen.findByLabelText("Actual examiner question / cue-card topic");
+    fireEvent.change(prompt, { target: { value: "Keep this recording draft" } });
+    const research = screen.getByRole("link", { name: /^Research$/ });
+    research.focus();
+    fireEvent.click(research);
+    expect(screen.getByRole("dialog")).toBeVisible();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(research).toHaveFocus();
+    expect(prompt).toHaveValue("Keep this recording draft");
+  });
+
   it("separates recording review from labels while preserving unsaved text across keyboard tab navigation", async () => {
     renderWithLocale(<SpeakingBenchmarkDetail sampleId={labSampleId} />);
-    const reviewTab = await screen.findByRole("tab", { name: "Recording review" });
-    const humanTab = screen.getByRole("tab", { name: "Human Ground Truth" });
+    const reviewTab = await screen.findByRole("tab", { name: "Preparation" });
+    const humanTab = screen.getByRole("tab", { name: "Human assessment" });
     expect(reviewTab).toHaveAttribute("aria-selected", "true");
     expect(screen.getByLabelText("Overall")).not.toBeVisible();
     fireEvent.change(screen.getByLabelText("Actual examiner question / cue-card topic"), { target: { value: "Keep my reviewed question" } });
@@ -62,8 +119,10 @@ describe("private Speaking lab", () => {
     await screen.findByText("Approve candidate-only segmentation before evaluation.");
     fireEvent.click(screen.getByRole("button", { name: "Approve candidate segmentation" }));
     fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument(), { timeout: 5000 });
+    expect(api.approveSpeakingReview).toHaveBeenCalledWith(labSampleId, 1);
     fireEvent.click(screen.getByRole("tab", { name: "AI Evaluation" }));
-    expect(await screen.findByRole("option", { name: /2 ·/ })).toBeInTheDocument();
+    expect(await screen.findByRole("option", { name: /2 ·/ }, { timeout: 5000 })).toBeInTheDocument();
     expect(screen.getByLabelText("Approved review revision")).toHaveValue("");
   });
   it.each(["USER", "TEACHER"])("denies %s before loading recordings", role => {
@@ -75,9 +134,11 @@ describe("private Speaking lab", () => {
   it("lists persisted owner samples and uploads with explicit rights", async () => {
     vi.mocked(api.uploadSpeakingSample).mockResolvedValue(labSample);
     renderWithLocale(<Page />); await screen.findByRole("link", { name: "DEV-051" });
+    fireEvent.click(screen.getByRole("button", { name: "Upload recording" }));
     fireEvent.change(screen.getByLabelText("Sample code"), { target: { value: "NEW-1" } });
     fireEvent.change(screen.getByLabelText("Source and permission note"), { target: { value: "Synthetic recording permission" } });
-    const form = screen.getByRole("button", { name: "Upload recording" }).closest("form")!;
+    const form = screen.getByLabelText("Original recording").closest("form")!;
+    expect(within(form).getByRole("button", { name: "Upload recording" })).toBeVisible();
     fireEvent.change(screen.getByLabelText("Original recording"), { target: { files: [new File(["RIFFtest"], "fixture.wav", { type: "audio/wav" })] } });
     fireEvent.click(screen.getByLabelText(/I have permission/)); fireEvent.submit(form);
     await waitFor(() => expect(api.uploadSpeakingSample).toHaveBeenCalledTimes(1));
@@ -87,7 +148,9 @@ describe("private Speaking lab", () => {
   it("shows upload failure and retains form values", async () => {
     vi.mocked(api.uploadSpeakingSample).mockRejectedValue(new ApiError("REPLAY_AUDIO_UNREADABLE", "bad", 422));
     renderWithLocale(<Page />); await screen.findByLabelText("Sample code");
-    const form = screen.getByRole("button", { name: "Upload recording" }).closest("form")!;
+    fireEvent.click(screen.getByRole("button", { name: "Upload recording" }));
+    const form = screen.getByLabelText("Original recording").closest("form")!;
+    expect(within(form).getByRole("button", { name: "Upload recording" })).toBeVisible();
     fireEvent.change(screen.getByLabelText("Sample code"), { target: { value: "BAD-1" } });
     fireEvent.change(screen.getByLabelText("Original recording"), { target: { files: [new File(["corrupt"], "fixture.mp3")] } });
     fireEvent.click(screen.getByLabelText(/I have permission/));
@@ -142,7 +205,7 @@ describe("private Speaking lab", () => {
 
   it("saves overall-only human labels without inventing criterion bands", async () => {
     renderWithLocale(<SpeakingBenchmarkDetail sampleId={labSampleId} />);
-    fireEvent.click(await screen.findByRole("tab", { name: "Human Ground Truth" }));
+    fireEvent.click(await screen.findByRole("tab", { name: "Human assessment" }));
     fireEvent.change(await screen.findByLabelText("Overall"), { target: { value: "6.5" } });
     fireEvent.click(screen.getByRole("button", { name: "Save human labels" }));
     await waitFor(() => expect(api.saveSpeakingLabels).toHaveBeenCalledTimes(1));
@@ -155,7 +218,7 @@ describe("private Speaking lab", () => {
     let resolveSample!: (value: api.SpeakingSample) => void;
     vi.mocked(api.getSpeakingSample).mockReturnValueOnce(new Promise(resolve => { resolveSample = resolve; }));
     fireEvent.click(screen.getByText("Sample metadata"));
-    fireEvent.click(screen.getByRole("tab", { name: "Human Ground Truth" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Human assessment" }));
     if (edited) fireEvent.change(screen.getByLabelText("Overall"), { target: { value: "6.5" } });
     fireEvent.click(screen.getByRole("button", { name: "Save human labels" }));
     await waitFor(() => expect(api.getSpeakingSample).toHaveBeenCalledTimes(2));

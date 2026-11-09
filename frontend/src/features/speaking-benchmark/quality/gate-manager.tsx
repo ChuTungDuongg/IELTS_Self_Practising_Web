@@ -1,6 +1,8 @@
 "use client";
 
-import Link from "next/link";
+import { GateSourceSelector } from "./gate-source-selector";
+import { GateReport } from "./gate-report";
+import { LabNavigation } from "../lab-navigation";
 import { useCallback, useEffect, useState } from "react";
 import { PageHeading } from "@/components/ui/page-heading";
 import * as api from "@/lib/api/speaking-benchmark-quality";
@@ -162,20 +164,8 @@ export function GateManager() {
         eyebrow={t("admin.administration")}
         title={t("speakingGates.title")}
         description={t("speakingGates.description")}
-        action={
-          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-            <Link className="btn btn-secondary" href="/admin/speaking-benchmark">
-              {t("speakingLab.title")}
-            </Link>
-            <Link className="btn btn-secondary" href="/admin/speaking-benchmark/quality">
-              {t("speakingLab.quality")}
-            </Link>
-            <Link className="btn btn-secondary" href="/admin/speaking-benchmark/suites">
-              {t("speakingLab.suites")}
-            </Link>
-          </div>
-        }
       />
+      <LabNavigation current="quality" tool="gates" />
 
       {error && (
         <p role="alert" className="notice notice-error">
@@ -188,7 +178,8 @@ export function GateManager() {
         <div className={styles.cardHeader}>
           <h2>{t("speakingGates.title")} ({gates.length})</h2>
           <button
-            className="btn btn-primary"
+            className="btn btn-secondary"
+            aria-expanded={showCreate}
             onClick={() => setShowCreate((v) => !v)}
           >
             {t("speakingGates.new")}
@@ -207,7 +198,6 @@ export function GateManager() {
                     className="field"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    placeholder="e.g. Whisper-v3 vs Local Whisper Gate"
                   />
                 </label>
 
@@ -227,114 +217,12 @@ export function GateManager() {
                 </label>
               </div>
 
-              {/* Baseline Selection */}
-              <div className={styles.card}>
-                <h4 style={{ margin: "0 0 8px" }}>{t("speakingGates.baseline")}</h4>
-                <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
-                  <label style={{ flex: "0 0 160px" }}>
-                    Selector Kind
-                    <select
-                      className="field"
-                      value={baselineKind}
-                      onChange={(e) =>
-                        setBaselineKind(e.target.value as "GRADING" | "EXPERIMENT")
-                      }
-                    >
-                      <option value="GRADING">GRADING (Config FP)</option>
-                      <option value="EXPERIMENT">EXPERIMENT (Variant)</option>
-                    </select>
-                  </label>
-
-                  {baselineKind === "GRADING" ? (
-                    <label style={{ flex: "1 1 280px" }}>
-                      Configuration Fingerprint (64 hex)
-                      <input
-                        type="text"
-                        className="field"
-                        value={baselineFp}
-                        onChange={(e) => setBaselineFp(e.target.value)}
-                        placeholder="64 hex characters"
-                      />
-                    </label>
-                  ) : (
-                    <>
-                      <label style={{ flex: "1 1 200px" }}>
-                        Experiment ID (UUID)
-                        <input
-                          type="text"
-                          className="field"
-                          value={baselineExpId}
-                          onChange={(e) => setBaselineExpId(e.target.value)}
-                        />
-                      </label>
-                      <label style={{ flex: "1 1 160px" }}>
-                        Variant Key
-                        <input
-                          type="text"
-                          className="field"
-                          value={baselineVariantKey}
-                          onChange={(e) => setBaselineVariantKey(e.target.value)}
-                        />
-                      </label>
-                    </>
-                  )}
-                </div>
+              <div className={styles.grid}>
+                <GateSourceSelector title={t("speakingUx.baseline")} kind={baselineKind} onKind={setBaselineKind} fingerprint={baselineFp} onFingerprint={setBaselineFp} experimentId={baselineExpId} onExperimentId={setBaselineExpId} variantKey={baselineVariantKey} onVariantKey={setBaselineVariantKey} />
+                <GateSourceSelector title={t("speakingUx.candidate")} kind={candidateKind} onKind={setCandidateKind} fingerprint={candidateFp} onFingerprint={setCandidateFp} experimentId={candidateExpId} onExperimentId={setCandidateExpId} variantKey={candidateVariantKey} onVariantKey={setCandidateVariantKey} />
               </div>
-
-              {/* Candidate Selection */}
-              <div className={styles.card}>
-                <h4 style={{ margin: "0 0 8px" }}>{t("speakingGates.candidate")}</h4>
-                <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
-                  <label style={{ flex: "0 0 160px" }}>
-                    Selector Kind
-                    <select
-                      className="field"
-                      value={candidateKind}
-                      onChange={(e) =>
-                        setCandidateKind(e.target.value as "GRADING" | "EXPERIMENT")
-                      }
-                    >
-                      <option value="GRADING">GRADING (Config FP)</option>
-                      <option value="EXPERIMENT">EXPERIMENT (Variant)</option>
-                    </select>
-                  </label>
-
-                  {candidateKind === "GRADING" ? (
-                    <label style={{ flex: "1 1 280px" }}>
-                      Configuration Fingerprint (64 hex)
-                      <input
-                        type="text"
-                        className="field"
-                        value={candidateFp}
-                        onChange={(e) => setCandidateFp(e.target.value)}
-                        placeholder="64 hex characters"
-                      />
-                    </label>
-                  ) : (
-                    <>
-                      <label style={{ flex: "1 1 200px" }}>
-                        Experiment ID (UUID)
-                        <input
-                          type="text"
-                          className="field"
-                          value={candidateExpId}
-                          onChange={(e) => setCandidateExpId(e.target.value)}
-                        />
-                      </label>
-                      <label style={{ flex: "1 1 160px" }}>
-                        Variant Key
-                        <input
-                          type="text"
-                          className="field"
-                          value={candidateVariantKey}
-                          onChange={(e) => setCandidateVariantKey(e.target.value)}
-                        />
-                      </label>
-                    </>
-                  )}
-                </div>
-              </div>
-
+              <details>
+                <summary>{t("speakingUx.advancedPolicy")}</summary>
               {/* Thresholds Builder */}
               <div>
                 <h4 style={{ margin: "0 0 8px" }}>{t("speakingGates.thresholds")}</h4>
@@ -380,7 +268,7 @@ export function GateManager() {
                 <ul style={{ marginTop: "12px", paddingLeft: "20px" }}>
                   {thresholds.map((th) => (
                     <li key={th.metric} style={{ marginBottom: "4px" }}>
-                      <code>{th.metric}</code> — max regression:{" "}
+                      <code>{th.metric}</code> — {t("speakingGates.maxRegression")}:
                       <strong>{th.max_regression}</strong>{" "}
                       <button
                         type="button"
@@ -388,7 +276,7 @@ export function GateManager() {
                         style={{ padding: "2px 6px", fontSize: "12px", minHeight: "24px" }}
                         onClick={() => removeThreshold(th.metric)}
                       >
-                        Remove
+                        {t("speakingGates.removeThreshold")}
                       </button>
                     </li>
                   ))}
@@ -398,20 +286,21 @@ export function GateManager() {
               <label>{t('speakingGates.minimumCandidates')}<input className="field" type="number" min={1} step={1} value={minimumCandidates} onChange={e => setMinimumCandidates(Number(e.target.value))} /></label>
               <label>{t('speakingGates.predictionCoverage')}<input className="field" type="number" min={0.01} max={1} step={0.01} value={predictionCoverage} onChange={e => setPredictionCoverage(Number(e.target.value))} /></label>
               <label>{t('speakingGates.referenceCoverage')}<input className="field" type="number" min={0.01} max={1} step={0.01} value={referenceCoverage} onChange={e => setReferenceCoverage(Number(e.target.value))} /></label>
-              <label>{t('speakingGates.comparison')}<select className="field" value={comparison} onChange={e => setComparison(e.target.value as typeof comparison)}><option value="CONFIGURATION">CONFIGURATION</option><option value="LEXICAL_ASR">LEXICAL_ASR</option></select></label>
+              <label>{t('speakingGates.comparison')}<select className="field" value={comparison} onChange={e => setComparison(e.target.value as typeof comparison)}><option value="CONFIGURATION">{t("speakingUx.gradingSource")}</option><option value="LEXICAL_ASR">{t("speakingUx.asrComparison")}</option></select></label>
+              </details>
               <div className={styles.actions}>
                 <button
                   className="btn btn-primary"
                   disabled={loading || !name.trim() || !suiteId || thresholds.length === 0}
                   onClick={() => void handleCreateGate()}
                 >
-                  Create Gate
+                  {t("speakingUx.createGate")}
                 </button>
                 <button
                   className="btn btn-ghost"
                   onClick={() => setShowCreate(false)}
                 >
-                  Cancel
+                  {t("common.cancel")}
                 </button>
               </div>
             </div>
@@ -422,11 +311,11 @@ export function GateManager() {
           <table className={styles.table}>
             <thead>
               <tr>
-                <th>{t("speakingGates.name")}</th>
-                <th>Baseline</th>
-                <th>Candidate</th>
-                <th>Created At</th>
-                <th>Action</th>
+                <th scope="col">{t("speakingGates.name")}</th>
+                <th scope="col">{t("speakingUx.baseline")}</th>
+                <th scope="col">{t("speakingUx.candidate")}</th>
+                <th scope="col">{t("speakingUx.createdAt")}</th>
+                <th scope="col">{t("speakingUx.action")}</th>
               </tr>
             </thead>
             <tbody>
@@ -442,8 +331,8 @@ export function GateManager() {
                     <td>
                       <strong>{g.name}</strong>
                     </td>
-                    <td>{g.baseline.kind}</td>
-                    <td>{g.candidate.kind}</td>
+                    <td>{t(g.baseline.kind === "GRADING" ? "speakingUx.gradingSource" : "speakingUx.experimentSource")}</td>
+                    <td>{t(g.candidate.kind === "GRADING" ? "speakingUx.gradingSource" : "speakingUx.experimentSource")}</td>
                     <td>{new Date(g.created_at).toLocaleDateString()}</td>
                     <td>
                       <button
@@ -451,7 +340,7 @@ export function GateManager() {
                         style={{ minHeight: "32px", padding: "4px 10px" }}
                         onClick={() => void handleSelectGate(g)}
                       >
-                        Select Gate
+                        {t("speakingUx.selectGate")}
                       </button>
                     </td>
                   </tr>
@@ -463,7 +352,6 @@ export function GateManager() {
       </section>
 
       {/* Selected Gate Details & Evaluation */}
-      <label className={styles.check}><input type="checkbox" checked={holdoutConsent} onChange={e => setHoldoutConsent(e.target.checked)} />{t('speakingSuites.holdoutConsent')}</label>
       {selectedGate && (
         <section className={styles.panel}>
           <div className={styles.cardHeader}>
@@ -482,10 +370,20 @@ export function GateManager() {
           </div>
 
           <div className={styles.muted} style={{ margin: "8px 0" }}>
-            <strong>Gate ID:</strong> <code>{selectedGate.id}</code> ·{" "}
-            <strong>Suite ID:</strong> <code>{selectedGate.suite_id}</code>
+            <strong>{t("speakingUx.gateId")}</strong> <code>{selectedGate.id}</code> ·{" "}
+            <strong>{t("speakingUx.suiteId")}</strong> <code>{selectedGate.suite_id}</code>
           </div>
 
+          <p className={styles.muted}>{t("speakingSuites.holdoutWarning")}</p>
+          <label className={styles.check}><input type="checkbox" checked={holdoutConsent} onChange={e => setHoldoutConsent(e.target.checked)} />{t("speakingSuites.holdoutConsent")}</label>
+          <div className={styles.grid}>
+            {[{ label: t("speakingUx.baseline"), value: selectedGate.baseline }, { label: t("speakingUx.candidate"), value: selectedGate.candidate }].map(source => <div key={source.label}>
+              <h3>{source.label}</h3><p>{t(source.value.kind === "GRADING" ? "speakingUx.gradingSource" : "speakingUx.experimentSource")}</p>
+              <code>{source.value.kind === "EXPERIMENT" ? source.value.variant_key : source.value.configuration_fingerprint.slice(0, 12) + "…"}</code>
+            </div>)}
+          </div>
+          <details><summary>{t("speakingUx.sources")}</summary><pre>{JSON.stringify({ baseline: selectedGate.baseline, candidate: selectedGate.candidate, policy: selectedGate.policy }, null, 2)}</pre></details>
+          {!reports.length && <p className={styles.muted}>{t("speakingGates.noReports")}</p>}
           {/* Reports History */}
           <h3 style={{ marginTop: "24px" }}>
             {t("speakingGates.reports")} ({reports.length})
@@ -505,7 +403,8 @@ export function GateManager() {
               return (
                 <button
                   key={rep.id}
-                  className={`btn ${isSelected ? "btn-primary" : "btn-secondary"}`}
+                  className="btn btn-secondary"
+                  aria-pressed={isSelected}
                   style={{ minHeight: "36px", padding: "4px 12px" }}
                   onClick={() => setSelectedReport(rep)}
                 >
@@ -518,158 +417,7 @@ export function GateManager() {
             })}
           </div>
 
-          {/* Selected Report Inspection */}
-          {selectedReport && (
-            <div className={styles.card} style={{ marginTop: "16px" }}>
-              <div className={styles.cardHeader}>
-                <div>
-                  <h3 className={styles.cardTitle}>{t("speakingGates.report")}</h3>
-                  <div className={styles.muted} style={{ fontSize: "12px" }}>
-                    Report ID: <code>{selectedReport.id}</code>
-                  </div>
-                </div>
-
-                <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
-                  <span
-                    className={`${styles.badge} ${
-                      selectedReport.status === "PASS"
-                        ? styles.badgePass
-                        : selectedReport.status === "FAIL"
-                        ? styles.badgeFail
-                        : selectedReport.status === "INCONCLUSIVE"
-                        ? styles.badgeInconclusive
-                        : styles.badgeInvalid
-                    }`}
-                  >
-                    {selectedReport.status}
-                  </span>
-                  <a
-                    className="btn btn-secondary"
-                    style={{ minHeight: "32px", padding: "4px 10px" }}
-                    href={api.regressionExportUrl(selectedReport.id, "csv")}
-                    download
-                  >
-                    {t("speakingGates.exportCsv")}
-                  </a>
-                  <a
-                    className="btn btn-secondary"
-                    style={{ minHeight: "32px", padding: "4px 10px" }}
-                    href={api.regressionExportUrl(selectedReport.id, "json")}
-                    download
-                  >
-                    {t("speakingGates.exportJson")}
-                  </a>
-                </div>
-              </div>
-
-              {/* Metrics Table */}
-              <div className={styles.tableWrap}>
-                <table className={styles.table}>
-                  <thead>
-                    <tr>
-                      <th>{t("speakingGates.metric")}</th>
-                      <th className={styles.numeric}>Baseline</th>
-                      <th className={styles.numeric}>Candidate</th>
-                      <th className={styles.numeric}>{t("speakingGates.difference")}</th>
-                      <th className={styles.numeric}>{t("speakingGates.relDifference")}</th>
-                      <th className={styles.numeric}>{t("speakingGates.maxRegression")}</th>
-                      <th>Status</th>
-                      <th>{t("speakingGates.bootstrapCI")}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(() => {
-                      const repData = selectedReport.report as Record<string, unknown>;
-                      const metricResults = ((repData.metrics ?? []) as Array<Record<string, unknown>>).map(m => ({
-                        ...m, baseline_value:m.baseline, candidate_value:m.candidate, diff:m.difference,
-                        rel_diff_pct: typeof m.relative_difference === 'number' ? m.relative_difference * 100 : null,
-                        max_regression:m.tolerable_regression, passed:m.status === 'PASS',
-                        ci_lower: (m.paired as {ci95?:number[]})?.ci95?.[0] ?? null,
-                        ci_upper: (m.paired as {ci95?:number[]})?.ci95?.[1] ?? null,
-                      })) as Array<{
-                        metric: string;
-                        baseline_value: number | null;
-                        candidate_value: number | null;
-                        diff: number | null;
-                        rel_diff_pct: number | null;
-                        max_regression: number;
-                        passed: boolean;
-                        status: string;
-                        ci_lower: number | null;
-                        ci_upper: number | null;
-                      }>;
-
-                      if (metricResults.length === 0) {
-                        return (
-                          <tr>
-                            <td colSpan={8} className={styles.muted}>
-                              No metric details recorded in report.
-                            </td>
-                          </tr>
-                        );
-                      }
-
-                      return metricResults.map((m) => (
-                        <tr key={m.metric}>
-                          <td>
-                            <code>{m.metric}</code>
-                          </td>
-                          <td className={styles.numeric}>
-                            {m.baseline_value !== null ? m.baseline_value.toFixed(4) : "-"}
-                          </td>
-                          <td className={styles.numeric}>
-                            {m.candidate_value !== null ? m.candidate_value.toFixed(4) : "-"}
-                          </td>
-                          <td className={styles.numeric}>
-                            {m.diff !== null ? (m.diff > 0 ? `+${m.diff.toFixed(4)}` : m.diff.toFixed(4)) : "-"}
-                          </td>
-                          <td className={styles.numeric}>
-                            {m.rel_diff_pct !== null ? `${m.rel_diff_pct.toFixed(2)}%` : "-"}
-                          </td>
-                          <td className={styles.numeric}>{m.max_regression.toFixed(4)}</td>
-                          <td>
-                            <span
-                              className={`${styles.badge} ${
-                                m.passed ? styles.badgePass : styles.badgeFail
-                              }`}
-                            >
-                              {m.status}
-                            </span>
-                          </td>
-                          <td>
-                            {m.ci_lower !== null && m.ci_upper !== null
-                              ? `[${m.ci_lower.toFixed(3)}, ${m.ci_upper.toFixed(3)}]`
-                              : "n/a"}
-                          </td>
-                        </tr>
-                      ));
-                    })()}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Denominators & Unknown Billing Status */}
-              <div className={styles.counters} style={{ marginTop: "16px" }}>
-                <div className={styles.counterItem}>
-                  <div className={styles.counterLabel}>Protocol</div>
-                  <div style={{ fontSize: "14px", fontWeight: 600 }}>
-                    {selectedReport.protocol}
-                  </div>
-                </div>
-                <div className={styles.counterItem}>
-                  <div className={styles.counterLabel}>
-                    {t("speakingGates.unknownBilling")}
-                  </div>
-                  <div className={styles.counterValue}>
-                    {String(
-                      (selectedReport.report as Record<string, unknown>)
-                        ?.candidate_unknown_billing_requests ?? 0
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
+          {selectedReport && <GateReport selectedReport={selectedReport} />}
         </section>
       )}
     </div>

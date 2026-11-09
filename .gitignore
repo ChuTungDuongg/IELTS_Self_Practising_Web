@@ -46,6 +46,7 @@ storage/models/*
 /benchmarks/writing_latency/reports/
 storage/benchmark/*
 !storage/benchmark/.gitkeep
+storage/ux-audit/
 storage/classroom-resources/*
 !storage/classroom-resources/.gitkeep
 /benchmarks/writing_task2/private/*

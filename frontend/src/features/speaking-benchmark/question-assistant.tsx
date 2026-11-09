@@ -132,7 +132,9 @@ export function QuestionAssistant({
         false
       );
       setActiveJob(updated);
-      setEditedTexts({}); setEditedParts({});
+      setEditedTexts(current => Object.fromEntries(Object.entries(current).filter(([id]) => id !== proposalId)));
+      setEditedParts(current => Object.fromEntries(Object.entries(current).filter(([id]) => id !== proposalId)));
+
       onDraftUpdated?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -167,7 +169,10 @@ export function QuestionAssistant({
         true
       );
       setActiveJob(updated);
-      setEditedTexts({}); setEditedParts({});
+      const acceptedIds = new Set(nonAmbiguous.map(proposal => proposal.id));
+      setEditedTexts(current => Object.fromEntries(Object.entries(current).filter(([id]) => !acceptedIds.has(id))));
+      setEditedParts(current => Object.fromEntries(Object.entries(current).filter(([id]) => !acceptedIds.has(id))));
+
       onDraftUpdated?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -191,6 +196,9 @@ export function QuestionAssistant({
           </p>
         )}
 
+        <p className={styles.muted}>{t("speakingUx.questionFlow")}</p>
+        <details open={!activeJob || activeJob.proposals.length === 0}>
+          <summary>{t("speakingUx.setup")}</summary>
         <div className={styles.toolbar}>
           <label>
             {t("speakingQuestions.provider")}
@@ -209,7 +217,7 @@ export function QuestionAssistant({
           </label>
 
           <label>
-            Examiner Speaker ID
+            {t("speakingUx.examinerId")}
             <input
               type="text"
               className="field"
@@ -264,6 +272,8 @@ export function QuestionAssistant({
             {t("speakingQuestions.extract")}
           </button>
         </div>
+
+        </details>
 
         {preflight && (
           <div className={styles.card} style={{ marginTop: "16px" }}>
@@ -339,6 +349,11 @@ export function QuestionAssistant({
         )}
       </section>
 
+      {jobs.length > 1 && <label className={styles.form}>{t("speakingUx.questionHistory")}
+        <select className="field" value={activeJob?.id ?? ""} onChange={event => { setActiveJob(jobs.find(job => job.id === event.target.value) ?? null); setPreflight(null); }}>
+          {jobs.map((job, index) => <option key={job.id} value={job.id}>{index + 1} · {job.status} · {job.created_at}</option>)}
+        </select>
+      </label>}
       {activeJob && (
         <section className={styles.panel}>
           <div className={styles.cardHeader}>
@@ -366,14 +381,15 @@ export function QuestionAssistant({
               <div className={styles.stack} style={{ marginTop: "16px" }}>
                 {activeJob.proposals.map((proposal) => {
                   const hasFlags = proposal.ambiguity_flags.length > 0;
-                  const isDecided = activeJob.decisions.some(
-                    (d) => (d as Record<string, unknown>).proposal_id === proposal.id
-                  );
+                  const decision = activeJob.decisions.findLast(d => d.proposal_id === proposal.id);
+                  const isDecided = Boolean(decision);
+                  const confirmedText = typeof decision?.text === "string" ? decision.text : proposal.recognized_text;
+                  const confirmedPart = decision?.part_number === 1 || decision?.part_number === 2 || decision?.part_number === 3 ? decision.part_number : proposal.part_number;
                   return (
                     <div key={proposal.id} className={styles.card}>
                       <div className={styles.cardHeader}>
                         <div>
-                          <strong>Part {editedParts[proposal.id] ?? proposal.part_number}</strong> ·{" "}
+                          <strong>{t("speakingUx.part", { part: editedParts[proposal.id] ?? confirmedPart })}</strong> ·{" "}
                           <span>{proposal.question_type}</span>
                         </div>
                         <div className={styles.proposalMeta}>
@@ -387,7 +403,7 @@ export function QuestionAssistant({
                               style={{ padding: "2px 8px", minHeight: "30px" }}
                               onClick={() => onPlay(proposal.start_ms, proposal.end_ms)}
                             >
-                              ▶ Play
+                              {t("speakingLab.playWindow")}
                             </button>
                           )}
                         </div>
@@ -409,7 +425,7 @@ export function QuestionAssistant({
                           <input
                             type="text"
                             className="field"
-                            value={editedTexts[proposal.id] ?? proposal.recognized_text}
+                            value={editedTexts[proposal.id] ?? confirmedText}
                             onChange={(e) =>
                               setEditedTexts({
                                 ...editedTexts,
@@ -425,7 +441,7 @@ export function QuestionAssistant({
                             {t("speakingQuestions.part")}
                             <select
                               className="field"
-                              value={editedParts[proposal.id] ?? proposal.part_number}
+                              value={editedParts[proposal.id] ?? confirmedPart}
                               onChange={(e) =>
                                 setEditedParts({
                                   ...editedParts,
@@ -434,9 +450,9 @@ export function QuestionAssistant({
                               }
                               disabled={loading || isDecided}
                             >
-                              <option value={1}>Part 1</option>
-                              <option value={2}>Part 2</option>
-                              <option value={3}>Part 3</option>
+                              <option value={1}>{t("speakingUx.part", { part: 1 })}</option>
+                              <option value={2}>{t("speakingUx.part", { part: 2 })}</option>
+                              <option value={3}>{t("speakingUx.part", { part: 3 })}</option>
                             </select>
                           </label>
                         </div>
@@ -461,9 +477,10 @@ export function QuestionAssistant({
                         >
                           {t("speakingQuestions.reject")}
                         </button>
+                        {!isDecided && <span className={styles.muted}>{t("speakingUx.pending")}</span>}
                         {isDecided && (
                           <span className={styles.muted} style={{ fontSize: "13px" }}>
-                            Decided
+                            {t(decision?.action === "ACCEPT" ? "speakingUx.accepted" : "speakingUx.rejected")}
                           </span>
                         )}
                       </div>

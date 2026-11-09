@@ -13,6 +13,6 @@ export default defineConfig({
     maxWorkers: 2,
     environment: "jsdom",
     setupFiles: ["./tests/setup.ts"],
-    exclude: ["tests/e2e/**", "node_modules/**"],
+    exclude: ["tests/e2e/**", "tests/ux-preview/**", "node_modules/**"],
   },
 });

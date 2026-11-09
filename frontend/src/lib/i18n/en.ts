@@ -2,12 +2,14 @@ import { speakingLabEn } from "./speaking-benchmark-messages";
 import { speakingEvaluationEn } from "./speaking-benchmark-evaluation-messages";
 import { speakingResearchEn } from "./speaking-benchmark-research-messages";
 import { speakingQualityEn } from "./speaking-benchmark-quality-messages";
+import { speakingUxEn } from "./speaking-benchmark-ux-messages";
 
 export const en = {
   ...speakingLabEn,
   ...speakingEvaluationEn,
   ...speakingResearchEn,
   ...speakingQualityEn,
+  ...speakingUxEn,
   "cover.loadFailed": "Could not load the test cover.",
   "cover.title": "Test cover",
   "cover.help": "PNG, JPEG or WebP, up to 10 MB.",

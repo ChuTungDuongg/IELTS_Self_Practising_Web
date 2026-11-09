@@ -1,6 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { AssessmentFields } from "./assessment-fields";
+import { LabNavigation } from "./lab-navigation";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { PageHeading } from "@/components/ui/page-heading";
 import * as api from "@/lib/api/speaking-benchmark-human";
 import { useTranslation } from "@/lib/i18n/locale-provider";
@@ -12,13 +16,15 @@ interface BlindReviewerProps {
 
 export function BlindReviewer({ assignmentId }: BlindReviewerProps) {
   const { t } = useTranslation();
+  const router = useRouter();
+  const [leaveDestination, setLeaveDestination] = useState<string | null>(null);
   const [data, setData] = useState<api.BlindAssessment | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
   // Scoring form
-  const [bands, setBands] = useState<Record<string, number | null>>({
+  const [bands, setBands] = useState<api.HumanBands>({
     fc: null,
     lr: null,
     gra: null,
@@ -111,7 +117,7 @@ export function BlindReviewer({ assignmentId }: BlindReviewerProps) {
     <div className={styles.stack}>
       <PageHeading
         eyebrow={t("speakingReviewer.title")}
-        title={`Assignment ${assignmentId.substring(0, 8)}`}
+        title={t("speakingUx.assignment", { id: assignmentId.substring(0, 8) })}
         description={t("speakingReviewer.instructions")}
       />
 
@@ -121,11 +127,20 @@ export function BlindReviewer({ assignmentId }: BlindReviewerProps) {
         </p>
       )}
 
+      <LabNavigation current="reviewer" onSelectNavigate={href => {
+        if (!data.assessments.length && (Object.values(bands).some(value => value !== null) || Object.values(comments).some(value => value.trim()) || attestation)) setLeaveDestination(href);
+        else router.push(href);
+      }} onNavigate={event => {
+        if (data.assessments.length || (!Object.values(bands).some(value => value !== null) && !Object.values(comments).some(value => value.trim()) && !attestation) || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+        event.preventDefault();
+        setLeaveDestination(event.currentTarget.getAttribute("href"));
+      }} />
+      <div className={styles.readingGrid}>
       {/* Audio Player */}
       <section className={styles.panel}>
-        <h2>Candidate Audio</h2>
+        <h2>{t("speakingUx.candidateAudio")}</h2>
         <p className={styles.muted}>
-          Duration: {Math.round(data.duration_ms / 1000)} seconds
+          {t("speakingUx.duration", { seconds: Math.round(data.duration_ms / 1000) })}
         </p>
         <audio
           controls
@@ -138,13 +153,13 @@ export function BlindReviewer({ assignmentId }: BlindReviewerProps) {
       <section className={styles.panel}>
         <h2>{t("speakingReviewer.questions")}</h2>
         {data.questions.length === 0 ? (
-          <p className={styles.muted}>No verified questions attached.</p>
+          <p className={styles.muted}>{t("speakingUx.noQuestions")}</p>
         ) : (
           <div className={styles.stack} style={{ marginTop: "12px" }}>
             {data.questions.map((q) => (
               <div key={q.id} className={styles.card}>
                 <div className={styles.cardHeader}>
-                  <strong>Part {q.part_number}</strong> ·{" "}
+                  <strong>{t("speakingUx.part", { part: q.part_number })}</strong> ·{" "}
                   <span className={styles.muted}>{q.prompt_type}</span>
                 </div>
                 <p style={{ marginTop: "6px" }}>{q.prompt_text}</p>
@@ -161,6 +176,7 @@ export function BlindReviewer({ assignmentId }: BlindReviewerProps) {
         )}
       </section>
 
+      </div>
       {/* Assessment Form or Submitted Read-Only Card */}
       <section className={styles.panel}>
         <h2>
@@ -174,82 +190,16 @@ export function BlindReviewer({ assignmentId }: BlindReviewerProps) {
             <div className={styles.noticeWarning} style={{ marginBottom: "16px" }}>
               {t("speakingReviewer.readOnlyNotice")}
             </div>
-            <div className={styles.scoreGrid}>
-              <div>
-                <strong>FC:</strong> {existingAssessment.bands.fc ?? "-"}
-              </div>
-              <div>
-                <strong>LR:</strong> {existingAssessment.bands.lr ?? "-"}
-              </div>
-              <div>
-                <strong>GRA:</strong> {existingAssessment.bands.gra ?? "-"}
-              </div>
-              <div>
-                <strong>PR:</strong> {existingAssessment.bands.pr ?? "-"}
-              </div>
-              <div>
-                <strong>Overall:</strong> {existingAssessment.bands.overall ?? "-"}
-              </div>
-            </div>
-            <div className={styles.stack} style={{ marginTop: "16px" }}>
-              {Object.entries(existingAssessment.comments).map(([k, v]) => (
-                <div key={k}>
-                  <strong>{k.toUpperCase()} Comment:</strong>
-                  <p className={styles.muted}>{v || "(none)"}</p>
-                </div>
-              ))}
+            <dl className={styles.scoreGrid}>
+              {api.criteria.map(criterion => <div key={criterion}><dt>{t(`speakingReviewer.${criterion}`)}</dt><dd>{existingAssessment.bands[criterion] ?? "—"}</dd></div>)}
+            </dl>
+            <div className={styles.stack}>
+              {api.criteria.map(criterion => <div key={criterion}><strong>{t("speakingUx.criterionComment", { criterion: t(`speakingReviewer.${criterion}`) })}</strong><p className={styles.muted}>{existingAssessment.comments[criterion] || t("speakingUx.noComment")}</p></div>)}
             </div>
           </div>
         ) : (
           <div className={styles.form}>
-            <div className={styles.scoreGrid}>
-              {(["fc", "lr", "gra", "pr", "overall"] as const).map((crit) => (
-                <div key={crit} className={styles.scoreField}>
-                  <label htmlFor={`blind-band-${crit}`}>{t(`speakingReviewer.${crit}`)}</label>
-                  <input
-                    id={`blind-band-${crit}`}
-                    type="number"
-                    step={0.5}
-                    min={0}
-                    max={9}
-                    className="field"
-                    value={bands[crit] ?? ""}
-                    onChange={(e) =>
-                      setBands({
-                        ...bands,
-                        [crit]: e.target.value ? Number(e.target.value) : null,
-                      })
-                    }
-                    disabled={submitting}
-                  />
-                </div>
-              ))}
-            </div>
-
-            <div className={styles.commentsGrid}>
-              {(["fc", "lr", "gra", "pr", "overall"] as const).map((crit) => (
-                <div
-                  key={crit}
-                  className={`${styles.commentField} ${
-                    crit === "overall" ? styles.wide : ""
-                  }`}
-                >
-                  <label>{t(`speakingReviewer.${crit}`)} Comments</label>
-                  <textarea
-                    className="field"
-                    value={comments[crit]}
-                    onChange={(e) =>
-                      setComments({
-                        ...comments,
-                        [crit]: e.target.value,
-                      })
-                    }
-                    disabled={submitting}
-                    placeholder={`Provide feedback on ${crit.toUpperCase()}...`}
-                  />
-                </div>
-              ))}
-            </div>
+            <AssessmentFields bands={bands} onBands={setBands} comments={comments} onComments={setComments} disabled={submitting} />
 
             <div className={styles.check}>
               <input
@@ -278,6 +228,7 @@ export function BlindReviewer({ assignmentId }: BlindReviewerProps) {
           </div>
         )}
       </section>
+      <ConfirmDialog open={leaveDestination !== null} title={t("speakingLab.back")} description={t("speakingLab.discardConfirm")} confirmLabel={t("speakingLab.confirm")} pending={false} onCancel={() => setLeaveDestination(null)} onConfirm={() => { if (leaveDestination) router.push(leaveDestination); }} />
     </div>
   );
 }

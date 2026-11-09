@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import * as api from "@/lib/api/speaking-benchmark-human";
+import { AssessmentFields } from "./assessment-fields";
+import { PersistentSections } from "./persistent-sections";
 import { useTranslation } from "@/lib/i18n/locale-provider";
 import styles from "./quality/quality.module.css";
 
@@ -40,7 +42,7 @@ export function HumanAdjudicationPanel({
   // External assessment modal/form state
   const [showExternalForm, setShowExternalForm] = useState(false);
   const [externalAssignmentId, setExternalAssignmentId] = useState("");
-  const [extBands, setExtBands] = useState<Record<string, number | null>>({
+  const [extBands, setExtBands] = useState<api.HumanBands>({
     fc: null,
     lr: null,
     gra: null,
@@ -62,7 +64,7 @@ export function HumanAdjudicationPanel({
 
   // Adjudication form state
   const [adjAssessmentIds, setAdjAssessmentIds] = useState<string[]>([]);
-  const [adjBands, setAdjBands] = useState<Record<string, number | null>>({
+  const [adjBands, setAdjBands] = useState<api.HumanBands>({
     fc: null,
     lr: null,
     gra: null,
@@ -71,7 +73,7 @@ export function HumanAdjudicationPanel({
   });
   const [adjRationale, setAdjRationale] = useState("");
 
-  useEffect(() => { onDirty?.(showCreateRater || showExternalForm || Boolean(adjRationale.trim()) || adjAssessmentIds.length > 0); }, [showCreateRater, showExternalForm, adjRationale, adjAssessmentIds, onDirty]);
+  useEffect(() => { onDirty?.(showCreateRater || showExternalForm || Boolean(adjRationale.trim()) || adjAssessmentIds.length > 0 || Object.values(adjBands).some(value => value !== null)); }, [showCreateRater, showExternalForm, adjRationale, adjAssessmentIds, adjBands, onDirty]);
   const refresh = useCallback(async () => {
     if (!reviewRevision) return;
     setLoading(true);
@@ -206,6 +208,7 @@ export function HumanAdjudicationPanel({
       });
       setAdjRationale("");
       setAdjAssessmentIds([]);
+      setAdjBands({ fc: null, lr: null, gra: null, pr: null, overall: null });
       await refresh();
       onSampleUpdated?.();
     } catch (err) {
@@ -223,6 +226,8 @@ export function HumanAdjudicationPanel({
         </p>
       )}
 
+      <PersistentSections compact label={t("speakingHuman.title")} sections={[
+        { id: "assignments", label: t("speakingUx.assignments"), content: <>
       {/* Rater Management and Assignment Section */}
       <section className={styles.panel}>
         <div className={styles.cardHeader}>
@@ -235,7 +240,8 @@ export function HumanAdjudicationPanel({
           </button>
         </div>
 
-        {showCreateRater && (
+        {(
+          <div hidden={!showCreateRater}>
           <div className={styles.card} style={{ marginBottom: "16px" }}>
             <h3 className={styles.cardTitle}>{t("speakingHuman.createRater")}</h3>
             <div className={styles.form}>
@@ -261,7 +267,6 @@ export function HumanAdjudicationPanel({
                     className="field"
                     value={raterName}
                     onChange={(e) => setRaterName(e.target.value)}
-                    placeholder="e.g. Examiner Jane Doe"
                   />
                 </label>
 
@@ -274,7 +279,6 @@ export function HumanAdjudicationPanel({
                       className="field"
                       value={externalKey}
                       onChange={(e) => setExternalKey(e.target.value)}
-                      placeholder="e.g. BC-TRF-EXAM-09"
                     />
                   </label>
                 )}
@@ -292,10 +296,11 @@ export function HumanAdjudicationPanel({
                   className="btn btn-ghost"
                   onClick={() => setShowCreateRater(false)}
                 >
-                  Cancel
+                  {t("common.cancel")}
                 </button>
               </div>
             </div>
+          </div>
           </div>
         )}
 
@@ -308,7 +313,7 @@ export function HumanAdjudicationPanel({
               onChange={(e) => setSelectedRaterId(e.target.value)}
               disabled={loading}
             >
-              <option value="">-- Select Rater --</option>
+              <option value="">{t("speakingUx.chooseRater")}</option>
               {raters.map((r) => (
                 <option key={r.id} value={r.id}>
                   {r.display_name} ({r.kind})
@@ -329,17 +334,17 @@ export function HumanAdjudicationPanel({
           <table className={styles.table}>
             <thead>
               <tr>
-                <th>Rater</th>
-                <th>Status</th>
-                <th>Assigned At</th>
-                <th>Actions</th>
+                <th scope="col">{t("speakingUx.rater")}</th>
+                <th scope="col">{t("speakingUx.status")}</th>
+                <th scope="col">{t("speakingUx.assignedAt")}</th>
+                <th scope="col">{t("speakingUx.action")}</th>
               </tr>
             </thead>
             <tbody>
               {assignments.length === 0 ? (
                 <tr>
                   <td colSpan={4} className={styles.muted}>
-                    No rater assignments.
+                    {t("speakingUx.noAssignments")}
                   </td>
                 </tr>
               ) : (
@@ -350,7 +355,7 @@ export function HumanAdjudicationPanel({
                     <tr key={a.id}>
                       <td>
                         <strong>{rater?.display_name ?? a.rater_id}</strong>
-                        <div className={styles.muted}>Kind: {rater?.kind}</div>
+                        <div className={styles.muted}>{t("speakingHuman.raterKind")}: {rater?.kind}</div>
                       </td>
                       <td>
                         <span
@@ -385,6 +390,8 @@ export function HumanAdjudicationPanel({
         </div>
       </section>
 
+        </> },
+        { id: "assessments", label: t("speakingUx.assessments"), content: <>
       {/* Submitted Assessments Section */}
       <section className={styles.panel}>
         <div className={styles.cardHeader}>
@@ -399,19 +406,20 @@ export function HumanAdjudicationPanel({
           </button>
         </div>
 
-        {showExternalForm && (
+        {(
+          <div hidden={!showExternalForm}>
           <div className={styles.card} style={{ marginBottom: "16px" }}>
             <h3 className={styles.cardTitle}>{t("speakingHuman.addExternal")}</h3>
             <div className={styles.form}>
               <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
                 <label style={{ flex: "1 1 200px" }}>
-                  Rater Assignment
+                  {t("speakingUx.raterAssignment")}
                   <select
                     className="field"
                     value={externalAssignmentId}
                     onChange={(e) => setExternalAssignmentId(e.target.value)}
                   >
-                    <option value="">-- Select Assignment --</option>
+                    <option value="">{t("speakingUx.chooseAssignment")}</option>
                     {assignments
                       .filter((a) => !a.revoked_at && a.review_revision === reviewRevision && raters.find(r => r.id === a.rater_id)?.kind === "EXTERNAL")
                       .map((a) => {
@@ -454,55 +462,11 @@ export function HumanAdjudicationPanel({
                     className="field"
                     value={extSourceRef}
                     onChange={(e) => setExtSourceRef(e.target.value)}
-                    placeholder="e.g. TRF 123456"
                   />
                 </label>
               </div>
 
-              <div className={styles.scoreGrid}>
-                {(["fc", "lr", "gra", "pr", "overall"] as const).map((crit) => (
-                  <div key={crit} className={styles.scoreField}>
-                    <label>{crit.toUpperCase()}</label>
-                    <input
-                      type="number"
-                      step={0.5}
-                      min={0}
-                      max={9}
-                      className="field"
-                      value={extBands[crit] ?? ""}
-                      onChange={(e) =>
-                        setExtBands({
-                          ...extBands,
-                          [crit]: e.target.value ? Number(e.target.value) : null,
-                        })
-                      }
-                    />
-                  </div>
-                ))}
-              </div>
-
-              <div className={styles.commentsGrid}>
-                {(["fc", "lr", "gra", "pr", "overall"] as const).map((crit) => (
-                  <div
-                    key={crit}
-                    className={`${styles.commentField} ${
-                      crit === "overall" ? styles.wide : ""
-                    }`}
-                  >
-                    <label>{crit.toUpperCase()} Comment</label>
-                    <textarea
-                      className="field"
-                      value={extComments[crit]}
-                      onChange={(e) =>
-                        setExtComments({
-                          ...extComments,
-                          [crit]: e.target.value,
-                        })
-                      }
-                    />
-                  </div>
-                ))}
-              </div>
+              <AssessmentFields bands={extBands} onBands={setExtBands} comments={extComments} onComments={setExtComments} disabled={loading} />
 
               <div className={styles.check}>
                 <input
@@ -524,16 +488,17 @@ export function HumanAdjudicationPanel({
                   }
                   onClick={() => void handleSubmitExternal()}
                 >
-                  Save Assessment
+                  {t("speakingUx.saveAssessment")}
                 </button>
                 <button
                   className="btn btn-ghost"
                   onClick={() => setShowExternalForm(false)}
                 >
-                  Cancel
+                  {t("common.cancel")}
                 </button>
               </div>
             </div>
+          </div>
           </div>
         )}
 
@@ -541,14 +506,14 @@ export function HumanAdjudicationPanel({
           <table className={styles.table}>
             <thead>
               <tr>
-                <th>Rater</th>
-                <th>FC</th>
-                <th>LR</th>
-                <th>GRA</th>
-                <th>PR</th>
-                <th>Overall</th>
-                <th>Provenance</th>
-                <th>Submitted</th>
+                <th scope="col">{t("speakingUx.rater")}</th>
+                <th scope="col">FC</th>
+                <th scope="col">LR</th>
+                <th scope="col">GRA</th>
+                <th scope="col">PR</th>
+                <th scope="col">{t("speakingLab.overall")}</th>
+                <th scope="col">{t("speakingHuman.provenance")}</th>
+                <th scope="col">{t("speakingUx.submitted")}</th>
               </tr>
             </thead>
             <tbody>
@@ -595,6 +560,8 @@ export function HumanAdjudicationPanel({
         </div>
       </section>
 
+        </> },
+        { id: "agreement", label: t("speakingUx.agreement"), content: <>
       {/* Inter-Rater Agreement Summary Card */}
       {agreement && (
         <section className={styles.panel}>
@@ -631,6 +598,9 @@ export function HumanAdjudicationPanel({
         </section>
       )}
 
+          {!agreement && <p className="notice">{t("speakingHuman.noAssessments")}</p>}
+        </> },
+        { id: "adjudication", label: t("speakingUx.adjudication"), content: <>
       {/* Final Adjudication Section */}
       <section className={styles.panel}>
         <h2>{t("speakingHuman.adjudication")}</h2>
@@ -639,9 +609,9 @@ export function HumanAdjudicationPanel({
         {adjudications.length > 0 && (
           <div className={styles.card} style={{ marginBottom: "16px" }}>
             <div className={styles.cardHeader}>
-              <h3 className={styles.cardTitle}>Current Adjudicated Label</h3>
+              <h3 className={styles.cardTitle}>{t("speakingUx.currentAdjudication")}</h3>
               <span className={styles.badgeReady + " " + styles.badge}>
-                Revision {adjudications[0].revision}
+                {t("speakingLab.revision", { revision: adjudications[0].revision })}
               </span>
             </div>
             <div className={styles.scoreGrid}>
@@ -658,11 +628,11 @@ export function HumanAdjudicationPanel({
                 <strong>PR:</strong> {adjudications[0].bands.pr}
               </div>
               <div>
-                <strong>Overall:</strong> {adjudications[0].bands.overall}
+                <strong>{t("speakingLab.overall")}:</strong> {adjudications[0].bands.overall}
               </div>
             </div>
             <p style={{ marginTop: "8px" }}>
-              <strong>Rationale:</strong> {adjudications[0].rationale}
+              <strong>{t("speakingHuman.rationale")}</strong> {adjudications[0].rationale}
             </p>
             <div className={styles.muted} style={{ fontSize: "12px" }}>
               {t("speakingHuman.adjudicatedAt")}:{" "}
@@ -697,7 +667,7 @@ export function HumanAdjudicationPanel({
                       }}
                     />
                     <label htmlFor={`adj-${ass.id}`}>
-                      {rater?.display_name ?? ass.rater_id} — Overall:{" "}
+                      {rater?.display_name ?? ass.rater_id} — {t("speakingLab.overall")}:
                       {ass.bands.overall ?? "-"} (FC: {ass.bands.fc}, LR:{" "}
                       {ass.bands.lr}, GRA: {ass.bands.gra}, PR: {ass.bands.pr})
                     </label>
@@ -707,27 +677,7 @@ export function HumanAdjudicationPanel({
             </div>
           </div>
 
-          <div className={styles.scoreGrid}>
-            {(["fc", "lr", "gra", "pr", "overall"] as const).map((crit) => (
-              <div key={crit} className={styles.scoreField}>
-                <label>ADJUDICATED {crit.toUpperCase()}</label>
-                <input
-                  type="number"
-                  step={0.5}
-                  min={0}
-                  max={9}
-                  className="field"
-                  value={adjBands[crit] ?? ""}
-                  onChange={(e) =>
-                    setAdjBands({
-                      ...adjBands,
-                      [crit]: e.target.value ? Number(e.target.value) : null,
-                    })
-                  }
-                />
-              </div>
-            ))}
-          </div>
+          <AssessmentFields adjudicated bands={adjBands} onBands={setAdjBands} disabled={loading} />
 
           <label>
             {t("speakingHuman.rationale")}
@@ -735,7 +685,6 @@ export function HumanAdjudicationPanel({
               className="field"
               value={adjRationale}
               onChange={(e) => setAdjRationale(e.target.value)}
-              placeholder="State the justification for this final consensus or adjudication..."
             />
           </label>
 
@@ -754,6 +703,8 @@ export function HumanAdjudicationPanel({
           </div>
         </div>
       </section>
+        </> },
+      ]} />
     </div>
   );
 }

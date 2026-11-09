@@ -1,5 +1,5 @@
 .layout { display: grid; grid-template-columns: minmax(0, 2.4fr) minmax(280px, 1fr); gap: 24px; align-items: start; }
-.panel { padding: 24px; min-width: 0; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); }
+.panel { padding: 24px; overflow-wrap: anywhere; min-width: 0; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); }
 .stack { display: grid; gap: 24px; min-width: 0; }
 .workspace { margin-top: 24px; }
 .tabs { display: flex; gap: 24px; border-bottom: 1px solid var(--line); margin-bottom: 24px; overflow-x: auto; }
@@ -61,9 +61,18 @@
 .evaluationTable { table-layout: fixed; }
 .evaluationTable th, .evaluationTable td { overflow-wrap: anywhere; }
 @media (max-width: 1000px) { .layout, .reviewLayout { grid-template-columns: minmax(0, 1fr); } }
-@media (max-width: 560px) { .fields { grid-template-columns: minmax(0, 1fr); } .panel { padding: 16px; } .lane { grid-template-columns: minmax(0, 1fr); } .table th:nth-child(3), .table td:nth-child(3) { display: none; } }
+@media (max-width: 560px) { .fields { grid-template-columns: minmax(0, 1fr); } .panel { padding: 16px; } .lane { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 560px) { .evaluationTable th:nth-child(3), .evaluationTable td:nth-child(3) { display: table-cell; } }
 @media (max-width: 560px) { .scoreFields { grid-template-columns: repeat(2, minmax(0, 1fr)); } .tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; } .tabs button { white-space: normal; font-size: 13px; padding-inline: 4px; } }
 @media (max-width: 560px) { .tabs[data-sections="4"] { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 560px) { .playerControls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); } .playerControls > label { grid-column: 1 / -1; max-width: none; } }
 @media (max-width: 560px) { .embeddedPlayer .playerControls { grid-template-columns: repeat(2, minmax(0, 1fr)); } .embeddedPlayer .playerControls > label { grid-column: auto; max-width: none; } .embeddedPlayer .playerControls > :global(.btn) { white-space: normal; width: 100%; align-self: end; } .embeddedPlayer .playerControls > button:nth-of-type(n+2) { align-self: stretch; } }
+
+.tableWrap { max-width: 100%; overflow-x: auto; }
+.panel input, .panel textarea, .panel select { max-width: 100%; min-width: 0; }
+.panel summary { min-height: 44px; cursor: pointer; }
+.recordingOptions { border-top: 1px solid var(--line); margin-top: 24px; padding-block: 12px; }
+.recordingOptions summary { min-height: 44px; cursor: pointer; }
+.recordingOptions :global(.btn-danger) { margin-inline-start: auto; }
+.uploadFields.fields { grid-template-columns: minmax(0, 1fr); }
+@media (max-width: 640px) { .table { min-width: 440px; } .recordingToolbar { align-items: stretch; } }

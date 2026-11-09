@@ -9,6 +9,8 @@ import { BlindReviewer } from "@/features/speaking-benchmark/blind-reviewer";
 import { QualityDashboard } from "@/features/speaking-benchmark/quality/quality-dashboard";
 import { GateManager } from "@/features/speaking-benchmark/quality/gate-manager";
 
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
+
 vi.mock("@/lib/api/speaking-benchmark-questions", async (original) => ({
   ...(await original<typeof questionsApi>()),
   questionJobs: vi.fn(),
@@ -222,6 +224,21 @@ describe("QuestionAssistant UI", () => {
     await waitFor(() => expect(questionsApi.decideQuestions).toHaveBeenCalled());
     expect(onDraftUpdated).toHaveBeenCalled();
   });
+  it("retains edits on other proposals when one question is accepted", async () => {
+    vi.mocked(questionsApi.questionJobs).mockResolvedValue([{ ...sampleJob, proposals: [proposal, { ...proposal, id: "prop-2", recognized_text: "Fictional second question" }] }]);
+    vi.mocked(questionsApi.decideQuestions).mockResolvedValue({ ...sampleJob, proposals: [proposal, { ...proposal, id: "prop-2", recognized_text: "Fictional second question" }], decisions: [{ proposal_id: proposal.id, action: "ACCEPT", text: "Confirmed wording", part_number: 2 }] });
+    renderWithLocale(<QuestionAssistant sampleId="sample-1" reviewRevision={1} />);
+    await screen.findByDisplayValue("Fictional second question");
+    fireEvent.change(screen.getByDisplayValue(proposal.recognized_text), { target: { value: "Confirmed wording" } });
+    fireEvent.change(screen.getByDisplayValue("Fictional second question"), { target: { value: "Keep this independent draft" } });
+    fireEvent.click(screen.getAllByRole("button", { name: /accept proposal/i })[0]);
+    await waitFor(() => expect(questionsApi.decideQuestions).toHaveBeenCalled());
+    expect(screen.getByDisplayValue("Keep this independent draft")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("Confirmed wording")).toBeDisabled();
+    expect(screen.getByText("Accepted into draft")).toBeVisible();
+    expect(questionsApi.decideQuestions).toHaveBeenCalledWith("sample-1", sampleJob.id, 1, 0, [expect.objectContaining({ proposal_id: proposal.id, action: "ACCEPT" })], false);
+  });
+
 });
 
 describe("BlindReviewer UI", () => {

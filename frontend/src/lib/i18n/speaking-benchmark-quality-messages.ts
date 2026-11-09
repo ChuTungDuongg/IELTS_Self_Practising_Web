@@ -15,7 +15,7 @@ export const speakingQualityEn = {
 
   // Question Assistant
   "speakingQuestions.title": "Examiner Question Assistant",
-  "speakingQuestions.description": "Extract examiner questions from diarized turns and verify into review draft.",
+  "speakingQuestions.description": "Generate examiner question suggestions, then verify them against the recording.",
   "speakingQuestions.provider": "ASR Provider",
   "speakingQuestions.confirmExaminer": "I confirm the speaker ID corresponds to the examiner.",
   "speakingQuestions.maxSeconds": "Max audio seconds",
@@ -85,7 +85,7 @@ export const speakingQualityEn = {
 
   // Dataset Quality
   "speakingQuality.title": "Dataset Quality QA",
-  "speakingQuality.description": "Evaluate cohort readiness and quality issues under speaking-dataset-quality-v1 protocol.",
+  "speakingQuality.description": "Check approved recordings, human labels and dataset readiness before evaluation.",
   "speakingQuality.protocol": "Protocol: speaking-dataset-quality-v1",
   "speakingQuality.evaluate": "Run Quality Audit",
   "speakingQuality.snapshot": "Save Quality Snapshot",
@@ -115,7 +115,7 @@ export const speakingQualityEn = {
 
   // Evaluation Suites
   "speakingSuites.title": "Frozen Evaluation Suites",
-  "speakingSuites.description": "Immutable evaluation suites with frozen cohorts, label selections and audit logging.",
+  "speakingSuites.description": "Freeze approved recordings and source revisions for repeatable evaluations.",
   "speakingSuites.new": "Create Evaluation Suite",
   "speakingSuites.name": "Suite Name",
   "speakingSuites.suiteDescription": "Description",
@@ -132,7 +132,7 @@ export const speakingQualityEn = {
 
   // Regression Gates & Reports
   "speakingGates.title": "Regression Gates",
-  "speakingGates.description": "Continuous evaluation regression gates under speaking-regression-gate-v1 protocol.",
+  "speakingGates.description": "Compare a candidate with a baseline and review the evidence before release.",
   "speakingGates.new": "Create Regression Gate",
   "speakingGates.name": "Gate Name",
   "speakingGates.suite": "Evaluation Suite",
@@ -195,7 +195,7 @@ export const speakingQualityVi: Record<keyof typeof speakingQualityEn, string> =
   "speakingLab.blindReviewer": "Chấm điểm độc lập (Blind)",
 
   "speakingQuestions.title": "Trợ lý câu hỏi giám khảo",
-  "speakingQuestions.description": "Trích xuất câu hỏi giám khảo từ lượt nói phân vai và xác nhận vào bản nháp kiểm duyệt.",
+  "speakingQuestions.description": "Tạo gợi ý câu hỏi giám khảo, sau đó xác minh theo bản ghi âm.",
   "speakingQuestions.provider": "Dịch vụ ASR",
   "speakingQuestions.confirmExaminer": "Tôi xác nhận mã người nói tương ứng với vai trò giám khảo.",
   "speakingQuestions.maxSeconds": "Số giây audio tối đa",
@@ -263,7 +263,7 @@ export const speakingQualityVi: Record<keyof typeof speakingQualityEn, string> =
   "speakingHuman.noAdjudication": "Chưa có phân xử cho phiên bản bài thi này.",
 
   "speakingQuality.title": "Kiểm tra chất lượng tập dữ liệu (QA)",
-  "speakingQuality.description": "Đánh giá độ sẵn sàng và phát hiện lỗi dữ liệu theo giao thức speaking-dataset-quality-v1.",
+  "speakingQuality.description": "Kiểm tra bản ghi đã duyệt, nhãn người chấm và mức độ sẵn sàng trước khi đánh giá.",
   "speakingQuality.protocol": "Giao thức: speaking-dataset-quality-v1",
   "speakingQuality.evaluate": "Chạy kiểm toán chất lượng",
   "speakingQuality.snapshot": "Lưu bản chụp chất lượng",
@@ -292,7 +292,7 @@ export const speakingQualityVi: Record<keyof typeof speakingQualityEn, string> =
   "speakingQuality.labelSelection": "Chính sách chọn nhãn",
 
   "speakingSuites.title": "Bộ đánh giá cố định (Suites)",
-  "speakingSuites.description": "Các bộ đánh giá bất biến với nhóm bài thi, chính sách nhãn và nhật ký kiểm toán cố định.",
+  "speakingSuites.description": "Cố định bản ghi đã duyệt và phiên bản nguồn để đánh giá có thể tái lập.",
   "speakingSuites.new": "Tạo bộ đánh giá",
   "speakingSuites.name": "Tên bộ đánh giá",
   "speakingSuites.suiteDescription": "Mô tả",
@@ -308,7 +308,7 @@ export const speakingQualityVi: Record<keyof typeof speakingQualityEn, string> =
   "speakingSuites.empty": "Chưa có bộ đánh giá nào được tạo.",
 
   "speakingGates.title": "Cổng kiểm thử hồi quy (Gates)",
-  "speakingGates.description": "Cổng kiểm thử hồi quy đánh giá liên tục theo giao thức speaking-regression-gate-v1.",
+  "speakingGates.description": "So sánh ứng viên với mốc chuẩn và xem bằng chứng trước khi phát hành.",
   "speakingGates.new": "Tạo cổng kiểm thử",
   "speakingGates.name": "Tên cổng kiểm thử",
   "speakingGates.suite": "Bộ đánh giá",

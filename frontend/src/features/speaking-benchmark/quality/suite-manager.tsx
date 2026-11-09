@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { LabNavigation } from "../lab-navigation";
 import { useCallback, useEffect, useState } from "react";
 import { PageHeading } from "@/components/ui/page-heading";
 import * as api from "@/lib/api/speaking-benchmark-quality";
@@ -25,6 +25,7 @@ export function SuiteManager() {
   const [labelKind, setLabelKind] = useState<"LEGACY" | "INDEPENDENT" | "ADJUDICATED">("ADJUDICATED");
   const [holdout, setHoldout] = useState(false);
   const [holdoutConsent, setHoldoutConsent] = useState(false);
+  const [inspectionConsent, setInspectionConsent] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -48,7 +49,7 @@ export function SuiteManager() {
 
   const handleSelectSuite = async (suite: api.EvaluationSuite) => {
     try {
-      setSelectedSuite(await api.getSuite(suite.id, holdoutConsent));
+      setSelectedSuite(await api.getSuite(suite.id, inspectionConsent));
       const auditLog = await api.suiteAudits(suite.id);
       setAudits(auditLog);
     } catch (err) {
@@ -111,20 +112,8 @@ export function SuiteManager() {
         eyebrow={t("admin.administration")}
         title={t("speakingSuites.title")}
         description={t("speakingSuites.description")}
-        action={
-          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-            <Link className="btn btn-secondary" href="/admin/speaking-benchmark">
-              {t("speakingLab.title")}
-            </Link>
-            <Link className="btn btn-secondary" href="/admin/speaking-benchmark/quality">
-              {t("speakingLab.quality")}
-            </Link>
-            <Link className="btn btn-secondary" href="/admin/speaking-benchmark/gates">
-              {t("speakingLab.gates")}
-            </Link>
-          </div>
-        }
       />
+      <LabNavigation current="quality" tool="suites" />
 
       {error && (
         <p role="alert" className="notice notice-error">
@@ -137,7 +126,8 @@ export function SuiteManager() {
         <div className={styles.cardHeader}>
           <h2>{t("speakingSuites.title")} ({suites.length})</h2>
           <button
-            className="btn btn-primary"
+            className="btn btn-secondary"
+            aria-expanded={showCreate}
             onClick={() => setShowCreate((v) => !v)}
           >
             {t("speakingSuites.new")}
@@ -146,6 +136,8 @@ export function SuiteManager() {
 
         {showCreate && (
           <div className={styles.card} style={{ marginBottom: "16px" }}>
+            <p className={styles.muted}>{t("speakingUx.suiteHelp")}</p>
+            <p className={styles.muted}>{t("speakingUx.firstPageScope")}</p>
             <h3 className={styles.cardTitle}>{t("speakingSuites.new")}</h3>
             <div className={styles.form}>
               <div style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
@@ -156,7 +148,6 @@ export function SuiteManager() {
                     className="field"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    placeholder="e.g. Production Speaking Benchmark Suite 2026-Q4"
                   />
                 </label>
 
@@ -171,9 +162,9 @@ export function SuiteManager() {
                       )
                     }
                   >
-                    <option value="LEGACY">LEGACY</option>
-                    <option value="INDEPENDENT">INDEPENDENT</option>
-                    <option value="ADJUDICATED">ADJUDICATED</option>
+                    <option value="LEGACY">{t("speakingUx.legacyLabel")}</option>
+                    <option value="INDEPENDENT">{t("speakingUx.independentLabel")}</option>
+                    <option value="ADJUDICATED">{t("speakingUx.adjudicatedLabel")}</option>
                   </select>
                 </label>
               </div>
@@ -184,14 +175,13 @@ export function SuiteManager() {
                   className="field"
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Describe the target evaluation purpose and cohort criteria..."
                 />
               </label>
 
               {/* Sample Selector */}
               <div>
                 <label>
-                  <strong>Select Cohort Samples ({selectedSampleIds.length} selected)</strong>
+                  <strong>{t("speakingUx.cohort", { count: selectedSampleIds.length })}</strong>
                 </label>
                 <div
                   style={{
@@ -272,28 +262,30 @@ export function SuiteManager() {
                   }
                   onClick={() => void handleCreateSuite()}
                 >
-                  Create Frozen Suite
+                  {t("speakingUx.createSuite")}
                 </button>
                 <button
                   className="btn btn-ghost"
                   onClick={() => setShowCreate(false)}
                 >
-                  Cancel
+                  {t("common.cancel")}
                 </button>
               </div>
             </div>
           </div>
         )}
 
+        <p className={styles.muted}>{t("speakingSuites.holdoutWarning")}</p>
+        <label className={styles.check}><input type="checkbox" checked={inspectionConsent} onChange={event => setInspectionConsent(event.target.checked)} />{t("speakingUx.inspectionConsent")}</label>
         <div className={styles.tableWrap}>
           <table className={styles.table}>
             <thead>
               <tr>
-                <th>{t("speakingSuites.name")}</th>
-                <th>Revision</th>
-                <th>{t("speakingSuites.fingerprint")}</th>
-                <th>{t("speakingSuites.frozenAt")}</th>
-                <th>Action</th>
+                <th scope="col">{t("speakingSuites.name")}</th>
+                <th scope="col">{t("speakingUx.revision")}</th>
+                <th scope="col">{t("speakingSuites.fingerprint")}</th>
+                <th scope="col">{t("speakingSuites.frozenAt")}</th>
+                <th scope="col">{t("speakingUx.action")}</th>
               </tr>
             </thead>
             <tbody>
@@ -323,7 +315,7 @@ export function SuiteManager() {
                         style={{ minHeight: "32px", padding: "4px 10px" }}
                         onClick={() => void handleSelectSuite(s)}
                       >
-                        Inspect
+                        {t("speakingUx.inspect")}
                       </button>
                     </td>
                   </tr>
@@ -343,14 +335,15 @@ export function SuiteManager() {
               className="btn btn-ghost"
               onClick={() => setSelectedSuite(null)}
             >
-              Close
+              {t("speakingUx.close")}
             </button>
           </div>
 
           <p className={styles.muted}>{selectedSuite.description}</p>
-          <div className={styles.muted} style={{ marginTop: "6px" }}>
-            <strong>Frozen Fingerprint:</strong> <code>{selectedSuite.fingerprint}</code>
-          </div>
+          <details><summary>{t("speakingUx.frozenBinding")}</summary>
+            <p>{t("speakingUx.fingerprint")}: <code>{selectedSuite.fingerprint}</code></p>
+            <pre>{JSON.stringify(selectedSuite.configuration, null, 2)}</pre>
+          </details>
 
           <h3 style={{ marginTop: "20px" }}>{t("speakingSuites.audits")}</h3>
           {audits.length === 0 ? (
@@ -360,9 +353,9 @@ export function SuiteManager() {
               <table className={styles.table}>
                 <thead>
                   <tr>
-                    <th>Audit ID</th>
-                    <th>Action</th>
-                    <th>Timestamp</th>
+                    <th scope="col">{t("speakingUx.auditId")}</th>
+                    <th scope="col">{t("speakingUx.action")}</th>
+                    <th scope="col">{t("speakingUx.timestamp")}</th>
                   </tr>
                 </thead>
                 <tbody>

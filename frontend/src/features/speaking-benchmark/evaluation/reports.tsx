@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import { LabNavigation } from "../lab-navigation";
 import { useEffect, useState } from "react";
 import { PageHeading } from "@/components/ui/page-heading";
 import * as api from "@/lib/api/speaking-benchmark-grading";
@@ -46,7 +47,8 @@ export function SpeakingBenchmarkReports() {
   const format = (value: number | null | undefined, percent = false) => value == null ? "—" : percent ? (value * 100).toFixed(1) + "%" : value.toFixed(2);
 
   return <>
-    <PageHeading title={t("speakingReport.title")} description={t("speakingReport.description")} action={<Link className="btn btn-secondary" href="/admin/speaking-benchmark">{t("speakingReport.back")}</Link>} />
+    <PageHeading title={t("speakingReport.title")} description={t("speakingReport.description")} />
+    <LabNavigation current="evaluation" />
     <section className={lab.panel}><form onSubmit={e => { e.preventDefault(); setBusy(true); setOffset(0); setFilters({ ...draft }); }}>
       <div className={styles.filters}>
         <label className={lab.field}>{t("speakingReport.configuration")}<select className="select-field" value={draft.configuration ?? ""} onChange={e => set("configuration", e.target.value)}><option value="">{t("speakingEval.choose")}</option>{summary?.configurations.map(c => <option key={c} value={c}>{c.slice(0, 16)}</option>)}</select></label>
